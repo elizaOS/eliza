@@ -95,7 +95,7 @@ export class AstrologyEngine {
     }
 
     const position = getChartPosition(planetId, state.chart);
-    if (!position) return this.getNextReveal(state); // skip unknown
+    if (!position) return this.getNextReveal(state); // Ignore unknown planet IDs.
 
     return {
       planet: planetId,

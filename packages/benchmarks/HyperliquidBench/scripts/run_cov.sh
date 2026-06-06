@@ -20,6 +20,9 @@ PLAN_SPEC=${1:-dataset/tasks/hl_perp_basic_01.jsonl:1}
 if [[ $# -gt 0 ]]; then
   shift
 fi
+if [[ "${1:-}" == "--" ]]; then
+  shift
+fi
 
 OUT_DIR=${OUT_DIR:-"runs/$(date +%Y%m%d-%H%M%S)"}
 NETWORK=${NETWORK:-testnet}

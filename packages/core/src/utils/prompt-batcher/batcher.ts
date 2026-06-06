@@ -208,7 +208,7 @@ export class PromptBatcher {
 
 	/**
 	 * Buffer a message for batching and optionally trigger drains for message-relevant affinities (default, room:X, audit:X).
-	 * No-arg tick() is a no-op. WHY: no background timer; only message cadence or task-driven drains run. Autonomy is not drained here (task-driven only).
+	 * No-arg tick() returns immediately. WHY: no background timer; only message cadence or task-driven drains run. Autonomy is not drained here (task-driven only).
 	 */
 	tick(message?: Memory): void {
 		if (this.disposed) return;

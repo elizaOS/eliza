@@ -119,9 +119,6 @@ describe("createVoiceCapture", () => {
 
     await expect(capture.start()).rejects.toThrow(/SpeechRecognition/);
     expect(startLocalAsrRecorderMock).not.toHaveBeenCalled();
-    expect(onStateChange).toHaveBeenLastCalledWith(
-      "error",
-      expect.any(Error),
-    );
+    expect(onStateChange).toHaveBeenLastCalledWith("error", expect.any(Error));
   });
 });

@@ -400,7 +400,7 @@ async function runGuidedValidation(): Promise<void> {
     if (missing.length === 0) {
       log("guided validation pass", { checks: report.checks });
     } else {
-      log("guided validation incomplete", { missing });
+      log("guided validation partial", { missing });
     }
   } catch (error) {
     log("guided validation failed", String(error));

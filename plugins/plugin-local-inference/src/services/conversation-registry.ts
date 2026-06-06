@@ -136,7 +136,7 @@ export class ConversationRegistry {
 
 	/**
 	 * Close + drop a handle. Idempotent — closing an unknown / already-closed
-	 * handle is a no-op so callers can call this from cleanup paths
+	 * handle has no additional effect, so callers can call this from cleanup paths
 	 * unconditionally.
 	 */
 	close(conversationId: string, modelId: string): void {

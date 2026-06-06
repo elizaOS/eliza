@@ -138,10 +138,11 @@ export const GET = withErrorHandling(async function GET(
     totalPosts: posts.length,
     gamesParticipated: new Set(posts.map((p) => p.gameId).filter(Boolean)).size,
 
-    // Placeholder for future implementation:
-    historicalAccuracy: null, // Will calculate from resolved questions
-    totalPredictions: null, // Will calculate after post-analysis
-    correctPredictions: null, // Will calculate after post-analysis
+    // Prediction-derived metrics are unavailable until resolved-question
+    // post analysis is persisted.
+    historicalAccuracy: null,
+    totalPredictions: null,
+    correctPredictions: null,
 
     // Recent activity:
     recentPosts: posts.slice(0, 10).map((p) => ({

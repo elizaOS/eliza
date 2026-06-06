@@ -5,8 +5,8 @@
  * <AppBootProvider>. All app-core code reads from this config instead of
  * reaching for window globals.
  *
- * React context lives in `boot-config-react.tsx` so Bun/Node can import this
- * module without loading `react` runtime (avoids Bun parsing @types/react).
+ * React context lives in `boot-config-react.hooks.ts` so Bun/Node can import
+ * this module without loading `react` runtime (avoids Bun parsing @types/react).
  */
 
 import type {
@@ -404,7 +404,7 @@ export function resolveCharacterCatalog(catalog: CharacterCatalogData): {
 
 // ---------------------------------------------------------------------------
 // Env var aliasing helpers (brand-agnostic version of brand-env.ts)
-// Server-side only — these are no-ops in browser environments.
+// Server-side only; inactive in browser environments.
 // ---------------------------------------------------------------------------
 
 const mirroredBrandKeys = new Set<string>();

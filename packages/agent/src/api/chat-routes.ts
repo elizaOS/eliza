@@ -863,13 +863,13 @@ async function resolveExactDocumentValueForChat(
 
 // Reserved for path #4 — actual generation throw caught by getChatFailureReply.
 // Do NOT use as the generic empty-response fallback; that mislabels every
-// IGNORE / empty-action / placeholder-text path as a provider failure.
+// IGNORE / empty-action / empty-normalized-text path as a provider failure.
 const PROVIDER_ISSUE_CHAT_REPLY = "Sorry, I'm having a provider issue";
 const INSUFFICIENT_CREDITS_CHAT_REPLY =
   "Eliza Cloud credits are depleted. Top up the cloud balance and try again.";
 // Used by paths #1-#3: planner picked IGNORE/NONE/empty REPLY, action ran but
-// emitted no text callback, or normalized text became a placeholder. None of
-// these are provider failures, so the message must not blame the provider.
+// emitted no text callback, or normalized text became empty. None of these are
+// provider failures, so the message must not blame the provider.
 const NO_RESPONSE_FALLBACK_REPLY =
   "I don't have a reply for that — try rephrasing?";
 // Routed-model errors raised by the model router when no provider plugin is
@@ -1860,7 +1860,7 @@ export async function generateChatResponse(
     };
     const emitSnapshot = (text: string): void => {
       if (!text) return;
-      // No-op when the snapshot matches the current responseText exactly:
+      // Skip when the snapshot matches the current responseText exactly:
       // re-emitting the same fullText forces clients to re-render an identical
       // bubble (and on-the-wire bytes for nothing).
       if (text === responseText) return;

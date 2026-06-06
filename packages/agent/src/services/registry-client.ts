@@ -313,7 +313,7 @@ export async function refreshRegistry(): Promise<
   try {
     await fs.unlink(cacheFilePath());
   } catch {
-    /* noop */
+    // Missing cache files are fine; the network refresh below repopulates it.
   }
   return getRegistryPlugins();
 }

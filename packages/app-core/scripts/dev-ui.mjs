@@ -15,13 +15,7 @@
  *   node …/dev-ui.mjs --ui-only                                # Vite only (API assumed running)
  */
 import { execSync, spawn } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  realpathSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { createConnection } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -231,6 +225,11 @@ const verboseApiLogs = process.env.ELIZA_DEV_VERBOSE_LOGS !== "0";
 // why this no longer needs the opt-in / concurrent-build auto-disable dance.
 // Opt out with ELIZA_DEV_NO_WATCH=1.
 const skipSourceWatch = process.env.ELIZA_DEV_NO_WATCH === "1";
+// More distinct source files than this changing in one debounce window is a
+// git reset / checkout / build (churn), not a hand edit — skip the reload.
+// Override with ELIZA_DEV_HOT_RELOAD_BULK_LIMIT.
+const HOT_RELOAD_BULK_CHANGE_LIMIT =
+  Number(process.env.ELIZA_DEV_HOT_RELOAD_BULK_LIMIT) || 4;
 const DEV_TEST_MOCK_ENV_KEYS = [
   "ELIZA_MOCK_GOOGLE_BASE",
   "ELIZA_MOCK_TWILIO_BASE",
@@ -276,10 +275,13 @@ function appendNodeOption(value, option) {
 }
 
 function resolveApiRuntimeCommand(env) {
+  const requestedRuntime = env.ELIZA_RUNTIME?.trim().toLowerCase();
   const { runtime, warning } = chooseElizaRuntime({
-    requestedRuntime: env.ELIZA_RUNTIME,
+    requestedRuntime,
     platform: process.platform,
     bunVersion: process.versions?.bun,
+    hasBun,
+    hasNode,
   });
   if (warning) {
     console.warn(
@@ -287,7 +289,22 @@ function resolveApiRuntimeCommand(env) {
     );
   }
   if (runtime === "bun") {
-    return "bun";
+    if (!hasBun) {
+      throw new Error(
+        requestedRuntime === "bun"
+          ? "ELIZA_RUNTIME=bun was requested, but bun/bunx was not found in PATH."
+          : "Bun runtime was selected, but bun/bunx was not found in PATH.",
+      );
+    }
+    return { runtime: "bun", command: which("bun") ?? "bun" };
+  }
+
+  if (!hasNode) {
+    throw new Error(
+      requestedRuntime === "node"
+        ? "ELIZA_RUNTIME=node was requested, but Node.js was not found in PATH."
+        : "Node.js was selected for the API runtime, but Node.js was not found in PATH.",
+    );
   }
 
   const pathCandidates = (env.PATH ?? "")
@@ -304,11 +321,14 @@ function resolveApiRuntimeCommand(env) {
     "/usr/local/bin/node",
     "/usr/bin/node",
   ].filter(Boolean);
-  return resolveNodeExecPathFromCandidates({
-    candidates,
-    explicitNodePath: env.ELIZA_NODE_PATH,
-    platform: process.platform,
-  });
+  return {
+    runtime: "node",
+    command: resolveNodeExecPathFromCandidates({
+      candidates,
+      explicitNodePath: env.ELIZA_NODE_PATH,
+      platform: process.platform,
+    }),
+  };
 }
 
 const visionDepsRetryCommand = [
@@ -386,13 +406,6 @@ if (!hasBun && !which("npx")) {
   console.error(
     'Neither "bun" nor "npx" was found in your PATH. ' +
       "Install Bun or Node.js with npx to run this dev script.",
-  );
-  process.exit(1);
-}
-
-if (!hasNode) {
-  console.error(
-    'Node.js was not found in your PATH. The app-core API runtime requires Node.js for built-in modules such as "node:sqlite".',
   );
   process.exit(1);
 }
@@ -762,6 +775,23 @@ async function waitForAgentReady(
   throw new Error(
     `Agent runtime not ready after ${timeout / 1000}s (port ${port} is up but /api/health never reported ready)`,
   );
+}
+
+// Single quick health probe — true only when the agent reports ready. Used to
+// gate hot-reload restarts so the watcher only ever bounces a HEALTHY agent,
+// never one that is still booting (a booting agent already picks up the latest
+// source, and killing it mid-boot would loop).
+async function isAgentReadyNow(port) {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${port}/api/health`, {
+      signal: AbortSignal.timeout(1500),
+    });
+    if (!resp.ok) return false;
+    const body = await resp.json().catch(() => null);
+    return body?.ready === true;
+  } catch {
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1150,8 +1180,9 @@ if (uiOnly) {
   // so it is immune to concurrent-build churn.
   const useWatch = !skipSourceWatch;
 
-  const apiRuntimeCmd = resolveApiRuntimeCommand(process.env);
-  const apiRuntimeIsBun = apiRuntimeCmd === "bun";
+  const { runtime: apiRuntime, command: apiRuntimeCmd } =
+    resolveApiRuntimeCommand(process.env);
+  const apiRuntimeIsBun = apiRuntime === "bun";
   const apiCmd = [
     apiRuntimeCmd,
     "--conditions=eliza-source",
@@ -1247,15 +1278,23 @@ if (uiOnly) {
     apiSpawnEnv.PATH = `${path.dirname(apiRuntimeCmd)}${path.delimiter}${apiSpawnEnv.PATH ?? ""}`;
   }
 
+  // The first launch is a cold boot; every later spawn is a hot-reload respawn
+  // (the source watcher bounced the child). Marking respawns lets the agent skip
+  // boot-tail work that only matters once — e.g. voice warmup, which otherwise
+  // re-fires a cloud TTS call and fully reloads the native whisper model on
+  // every edit, flooding the dev log.
+  let apiLaunchCount = 0;
   const apiSupervisor = createApiSupervisor({
     spawnChild: () => {
       const apiProcessSpawnedAtMs = String(Date.now());
+      const isHotReload = apiLaunchCount++ > 0;
       return spawn(apiCmd[0], apiCmd.slice(1), {
         cwd: apiSpawnCwd,
         env: {
           ...apiSpawnEnv,
           [API_PROCESS_SPAWNED_AT_ENV]: apiProcessSpawnedAtMs,
           [PROCESS_SPAWNED_AT_ENV]: apiProcessSpawnedAtMs,
+          ...(isHotReload ? { ELIZA_DEV_IS_HOT_RELOAD: "1" } : {}),
         },
         stdio: ["inherit", "pipe", "pipe"],
       });
@@ -1298,15 +1337,30 @@ if (uiOnly) {
   apiSupervisor.start();
 
   // Agent hot-reload: bounce the API child when backend source changes. The
-  // watcher only sees `*/src`, so concurrent `dist/` builds never trigger it.
+  // watcher only sees `*/src` (never `dist/`), and a restart fires only when the
+  // agent is currently healthy — so a build, or a change during boot, can never
+  // kill an in-progress boot. A booting agent already loads the latest source.
   if (useWatch) {
     sourceWatcher = startAgentSourceWatcher({
       root: apiSpawnCwd,
-      onChange: (relPath) => {
-        console.log(
-          `\n  ${green(logPrefix)} ${dim(`Source change (${relPath}) — reloading agent…`)}`,
-        );
-        apiSupervisor.restart();
+      onChange: (relPath, changedCount) => {
+        // A git reset/checkout/branch-switch or a build rewrites many files at
+        // once — that is churn, not a developer edit. Don't bounce the agent
+        // for it (the boots/502s would storm); a single restart can't track a
+        // moving tree anyway. A real edit touches one or a few files.
+        if (changedCount > HOT_RELOAD_BULK_CHANGE_LIMIT) {
+          console.log(
+            `\n  ${green(logPrefix)} ${dim(`Bulk change (${changedCount} files, e.g. ${relPath}) — skipping agent reload (looks like a reset/build).`)}`,
+          );
+          return;
+        }
+        void (async () => {
+          if (!(await isAgentReadyNow(API_PORT))) return;
+          console.log(
+            `\n  ${green(logPrefix)} ${dim(`Source change (${relPath}) — reloading agent…`)}`,
+          );
+          apiSupervisor.restart();
+        })();
       },
       onError: (dir, err) => {
         console.log(

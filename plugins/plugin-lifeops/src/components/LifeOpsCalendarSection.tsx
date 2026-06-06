@@ -8,15 +8,15 @@
  * prime cache into those props so the rendering surface is unchanged.
  */
 
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { CalendarSection } from "@elizaos/plugin-calendar/ui";
+import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { useCallback } from "react";
 import { getPrimedLifeOpsEvent } from "../lifeops-route.js";
-import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.js";
+import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.helpers.js";
 import {
   type LifeOpsSelection,
   useLifeOpsSelection,
-} from "./LifeOpsSelectionContext.js";
+} from "./LifeOpsSelectionContext.helpers.js";
 
 export interface LifeOpsCalendarSectionProps {
   selection?: LifeOpsSelection;

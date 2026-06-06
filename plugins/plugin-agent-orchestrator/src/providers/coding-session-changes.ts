@@ -79,7 +79,7 @@ export const codingSessionChangesProvider: Provider = {
     );
 
     // Surface the most recent ACTUAL change set within the recency window.
-    // Only real change sets are persisted (a no-op completion stores nothing),
+    // Only real change sets are persisted (an unchanged completion stores nothing),
     // so this correctly picks the changing round of a multi-round task and
     // can't resurrect a stale diff older than the window. The session is kept
     // alongside its change set for the task label.

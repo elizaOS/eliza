@@ -6,7 +6,7 @@
  * Worker capability:
  *
  *   - hono-real  → Worker can serve this with a real implementation.
- *   - hono-stub  → Worker route exists but returns 501 not_yet_migrated.
+ *   - hono-fallback → Worker route exists but returns 501 not_yet_migrated.
  *                  Production today still works because the Next.js app at
  *                  cloud/app/api/ serves it.
  *   - next-only  → No Hono peer at this path. Production works today via
@@ -94,10 +94,10 @@ function honoToRegex(route) {
   return new RegExp(`^${wildcarded}(/[^?]*)?(\\?.*)?$`);
 }
 
-// Determine if a Hono route file is a stub (Worker returns 501 for node-only paths).
-const STUB_RE =
+// Determine if a Hono route file is a Worker fallback (501 for node-only paths).
+const FALLBACK_RE =
   /not_yet_migrated|Stubbed at 501|501 on the Worker|501 stub|returns 501 until|not Workers-compatible|NOT_IMPLEMENTED|"reason"\s*:\s*"[^"]*not yet[^"]*"/i;
-const honoStubFiles = new Set();
+const honoFallbackFiles = new Set();
 const honoRealFiles = new Set();
 function walkApi(dir) {
   const out = [];
@@ -119,7 +119,7 @@ function walkApi(dir) {
 for (const f of walkApi(API_ROOT)) {
   const text = readFileSync(f, "utf8");
   if (!/from "hono"/.test(text)) continue;
-  if (STUB_RE.test(text)) honoStubFiles.add(f);
+  if (FALLBACK_RE.test(text)) honoFallbackFiles.add(f);
   else honoRealFiles.add(f);
 }
 
@@ -185,7 +185,7 @@ function classifyByStaticPrefix(refPath) {
   const r = refPath.replace(/\/+$/, "") || "/";
   let exampleRoute = null;
   let realFile = null;
-  let stubFile = null;
+  let fallbackFile = null;
 
   for (const route of honoRoutes.keys()) {
     const sp = routeStaticPrefix(route);
@@ -197,8 +197,8 @@ function classifyByStaticPrefix(refPath) {
 
     exampleRoute ??= route;
     const rel = relative(API_ROOT, file);
-    if (honoStubFiles.has(file)) {
-      stubFile ??= rel;
+    if (honoFallbackFiles.has(file)) {
+      fallbackFile ??= rel;
     } else {
       realFile ??= rel;
     }
@@ -207,8 +207,8 @@ function classifyByStaticPrefix(refPath) {
   if (realFile) {
     return { kind: "hono-real", route: exampleRoute, file: realFile };
   }
-  if (stubFile) {
-    return { kind: "hono-stub", route: exampleRoute, file: stubFile };
+  if (fallbackFile) {
+    return { kind: "hono-fallback", route: exampleRoute, file: fallbackFile };
   }
   return null;
 }
@@ -241,8 +241,8 @@ function classify(refPathRaw) {
   for (const [route] of honoRoutes) {
     if (honoToRegex(route).test(refPath)) {
       const file = resolveHonoFile(route);
-      if (honoStubFiles.has(file)) {
-        return { kind: "hono-stub", route, file: relative(API_ROOT, file) };
+      if (honoFallbackFiles.has(file)) {
+        return { kind: "hono-fallback", route, file: relative(API_ROOT, file) };
       }
       if (honoRealFiles.has(file)) {
         return { kind: "hono-real", route, file: relative(API_ROOT, file) };
@@ -279,7 +279,7 @@ function classify(refPathRaw) {
 
 const buckets = {
   "hono-real": [],
-  "hono-stub": [],
+  "hono-fallback": [],
   "next-only": [],
   "agent-runtime-api": [],
   unknown: [],
@@ -308,7 +308,7 @@ lines.push(
   `| hono-real | ${buckets["hono-real"].length} | Worker serves this for real. |`,
 );
 lines.push(
-  `| hono-stub | ${buckets["hono-stub"].length} | Worker returns 501; live Next.js handler still serves it. |`,
+  `| hono-fallback | ${buckets["hono-fallback"].length} | Worker returns 501; live Next.js handler still serves it. |`,
 );
 lines.push(
   `| next-only | ${buckets["next-only"].length} | Worker has no peer; only the live Next.js handler serves it. |`,
@@ -322,7 +322,7 @@ lines.push(
 lines.push("");
 
 for (const bucket of [
-  "hono-stub",
+  "hono-fallback",
   "next-only",
   "agent-runtime-api",
   "unknown",
@@ -351,7 +351,7 @@ writeFileSync(OUTPUT, lines.join("\n"));
 console.log(
   JSON.stringify({
     "hono-real": buckets["hono-real"].length,
-    "hono-stub": buckets["hono-stub"].length,
+    "hono-fallback": buckets["hono-fallback"].length,
     "next-only": buckets["next-only"].length,
     "agent-runtime-api": buckets["agent-runtime-api"].length,
     unknown: buckets.unknown.length,

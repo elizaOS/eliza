@@ -1,7 +1,16 @@
 import type { OverlayAppContext } from "@elizaos/ui";
-import { Badge, Button, Skeleton, Tabs, TabsContent, TabsList, TabsTrigger } from "@elizaos/ui";
+import {
+  Badge,
+  Button,
+  Skeleton,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
+  AlertTriangle,
   BarChart3,
   ChevronLeft,
   Globe2,
@@ -9,7 +18,7 @@ import {
   type LucideIcon,
   Package,
   RefreshCw,
-  ShieldCheck,
+  ShoppingBag,
   ShoppingCart,
   Store,
   Users,
@@ -21,75 +30,231 @@ import { CustomersPanel } from "./CustomersPanel";
 import { InventoryLevelsPanel } from "./InventoryLevelsPanel";
 import { OrdersPanel } from "./OrdersPanel";
 import { ProductsPanel } from "./ProductsPanel";
+import { loadShopifyTuiState } from "./ShopifyAppView.helpers";
 import { StoreOverviewCard } from "./StoreOverviewCard";
-import {
-  type ShopifyCustomersResponse,
-  type ShopifyInventoryResponse,
-  type ShopifyOrdersResponse,
-  type ShopifyProductsResponse,
-  type ShopifyStatus,
-  useShopifyDashboard,
-} from "./useShopifyDashboard";
+import { useShopifyDashboard } from "./useShopifyDashboard";
+
+const SH_ACCENT = "var(--accent, #ff5800)";
+const SH_TXT = "var(--txt, #111)";
+const SH_MUTED = "var(--muted, rgba(0,0,0,0.58))";
+const SH_BORDER = "var(--border, rgba(0,0,0,0.12))";
+const SH_SURFACE = "var(--surface, rgba(0,0,0,0.04))";
+const SH_OK = "var(--ok, #22c55e)";
+
+function SetupField({
+  icon: Icon,
+  label,
+  description,
+  envHint,
+}: {
+  icon: LucideIcon;
+  label: string;
+  description: string;
+  envHint: string;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 12,
+        padding: 14,
+        borderRadius: 14,
+        border: `1px solid ${SH_BORDER}`,
+        background: SH_SURFACE,
+      }}
+    >
+      <span
+        style={{
+          width: 34,
+          height: 34,
+          flexShrink: 0,
+          borderRadius: 10,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "var(--accent-subtle, rgba(255,88,0,0.14))",
+          color: SH_ACCENT,
+        }}
+      >
+        <Icon className="h-4 w-4" />
+      </span>
+      <span
+        style={{
+          minWidth: 0,
+          display: "flex",
+          flexDirection: "column",
+          gap: 2,
+        }}
+      >
+        <span style={{ fontSize: 13.5, fontWeight: 600, color: SH_TXT }}>
+          {label}
+        </span>
+        <span style={{ fontSize: 12, color: SH_MUTED, lineHeight: 1.4 }}>
+          {description}
+        </span>
+        <code
+          style={{
+            marginTop: 3,
+            fontSize: 10.5,
+            color: SH_MUTED,
+            opacity: 0.75,
+            fontFamily: "ui-monospace, monospace",
+          }}
+        >
+          {envHint}
+        </code>
+      </span>
+    </div>
+  );
+}
 
 function ShopifySetupCard() {
-  const setupItems = [
-    { label: "Domain", value: "STORE_DOMAIN", icon: Globe2, tone: "text-info" },
-    {
-      label: "Token",
-      value: "ACCESS_TOKEN",
-      icon: KeyRound,
-      tone: "text-warning",
-    },
-    { label: "Scopes", value: "read_*", icon: ShieldCheck, tone: "text-ok" },
-  ] as const;
-
   return (
-    <div className="mx-auto w-full max-w-2xl">
-      <div className="rounded-2xl border border-border/30 bg-card/40 px-5 py-6">
-        <div className="flex flex-col items-center gap-4 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-ok/25 bg-ok/12">
-            <Store className="h-7 w-7 text-ok" />
-          </div>
-          <div className="text-lg font-semibold text-txt">Connect Shopify</div>
-
-          <div className="grid w-full gap-2 sm:grid-cols-3">
-            {setupItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <div
-                  key={item.label}
-                  className="rounded-xl border border-border/24 bg-bg/50 px-3 py-3"
-                >
-                  <Icon className={`mx-auto h-4 w-4 ${item.tone}`} />
-                  <div className="mt-2 text-xs font-semibold text-txt">
-                    {item.label}
-                  </div>
-                  <div className="mt-1 font-mono text-2xs text-muted">
-                    {item.value}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="text-center text-xs text-muted">
-            <div className="flex flex-wrap justify-center gap-1">
-              {[
-                "read_products",
-                "read_orders",
-                "read_inventory",
-                "read_customers",
-              ].map((scope) => (
-                <code
-                  key={scope}
-                  className="rounded bg-bg-accent px-1.5 py-0.5 font-mono text-2xs"
-                >
-                  {scope}
-                </code>
-              ))}
-            </div>
-          </div>
+    <div className="mx-auto w-full max-w-md">
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          textAlign: "center",
+          gap: 6,
+          marginBottom: 18,
+        }}
+      >
+        <div
+          style={{
+            position: "relative",
+            width: 84,
+            height: 84,
+            borderRadius: 24,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "var(--accent-subtle, rgba(255,88,0,0.14))",
+            border: `1px solid ${SH_BORDER}`,
+          }}
+        >
+          <ShoppingBag style={{ width: 38, height: 38, color: SH_ACCENT }} />
         </div>
+        <h2
+          style={{
+            margin: "12px 0 0",
+            fontSize: 20,
+            fontWeight: 700,
+            color: SH_TXT,
+          }}
+        >
+          Connect your store
+        </h2>
+        <p
+          style={{
+            margin: 0,
+            maxWidth: 320,
+            fontSize: 13.5,
+            color: SH_MUTED,
+            lineHeight: 1.5,
+          }}
+        >
+          Link a Shopify store to manage products, orders, and inventory right
+          here.
+        </p>
+        <div
+          style={{
+            marginTop: 4,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "3px 10px",
+            borderRadius: 99,
+            border: `1px solid ${SH_BORDER}`,
+            background: SH_SURFACE,
+            fontSize: 11.5,
+            fontWeight: 600,
+            color: SH_MUTED,
+          }}
+        >
+          <WifiOff className="h-3 w-3" />
+          Not connected
+        </div>
+      </div>
+
+      <div
+        style={{
+          borderRadius: 18,
+          border: `1px solid ${SH_BORDER}`,
+          background: "var(--card, #fff)",
+          padding: 16,
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+        }}
+      >
+        <SetupField
+          icon={Globe2}
+          label="Store domain"
+          description="Your shop address, e.g. mystore.myshopify.com"
+          envHint="SHOPIFY_STORE_DOMAIN"
+        />
+        <SetupField
+          icon={KeyRound}
+          label="Access token"
+          description="Admin API token with product, order & inventory scopes"
+          envHint="SHOPIFY_ACCESS_TOKEN"
+        />
+
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 6,
+            padding: "2px 2px 6px",
+          }}
+        >
+          {[
+            { label: "Products", icon: Package },
+            { label: "Orders", icon: ShoppingCart },
+            { label: "Stock", icon: BarChart3 },
+          ].map(({ label, icon: Icon }) => (
+            <span
+              key={label}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "5px 10px",
+                borderRadius: 99,
+                border: `1px solid ${SH_BORDER}`,
+                background: SH_SURFACE,
+                fontSize: 12,
+                fontWeight: 600,
+                color: SH_TXT,
+              }}
+            >
+              <Icon style={{ width: 13, height: 13, color: SH_OK }} />
+              {label}
+            </span>
+          ))}
+        </div>
+
+        <a
+          href="/settings"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            height: 42,
+            borderRadius: 12,
+            background: SH_ACCENT,
+            color: "var(--accent-foreground, #fff)",
+            fontSize: 14,
+            fontWeight: 600,
+            textDecoration: "none",
+          }}
+        >
+          <Store className="h-4 w-4" />
+          Configure in Settings
+        </a>
       </div>
     </div>
   );
@@ -110,17 +275,19 @@ function ConnectionStatus({
 
   if (connected && domain) {
     return (
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1.5 rounded-full border border-ok/20 bg-ok/10 px-2.5 py-1">
         <Wifi className="h-3.5 w-3.5 text-ok" />
-        <span className="text-xs font-medium text-ok">{domain}</span>
+        <span className="max-w-[10rem] truncate text-xs font-medium text-ok">
+          {domain}
+        </span>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center gap-1.5">
-      <WifiOff className="h-3.5 w-3.5 text-muted/60" />
-      <span className="text-xs text-muted">Not connected</span>
+    <div className="flex items-center gap-1.5 rounded-full border border-danger/20 bg-danger/10 px-2.5 py-1">
+      <WifiOff className="h-3.5 w-3.5 text-danger" />
+      <span className="text-xs font-medium text-danger">Offline</span>
     </div>
   );
 }
@@ -132,14 +299,17 @@ type DashboardTab =
   | "inventory"
   | "customers";
 
-const DASHBOARD_TABS: { value: DashboardTab; label: string; icon: LucideIcon }[] =
-  [
-    { value: "overview", label: "Overview", icon: BarChart3 },
-    { value: "products", label: "Products", icon: Package },
-    { value: "orders", label: "Orders", icon: ShoppingCart },
-    { value: "inventory", label: "Inventory", icon: BarChart3 },
-    { value: "customers", label: "Customers", icon: Users },
-  ];
+const DASHBOARD_TABS: {
+  value: DashboardTab;
+  label: string;
+  icon: LucideIcon;
+}[] = [
+  { value: "overview", label: "Overview", icon: BarChart3 },
+  { value: "products", label: "Products", icon: Package },
+  { value: "orders", label: "Orders", icon: ShoppingCart },
+  { value: "inventory", label: "Inventory", icon: BarChart3 },
+  { value: "customers", label: "Customers", icon: Users },
+];
 
 function ShopifyDashboardTabTrigger({
   value,
@@ -164,13 +334,51 @@ function ShopifyDashboardTabTrigger({
     <TabsTrigger
       ref={ref}
       value={value}
-      className="gap-1.5"
+      className="h-9 w-9 gap-0 px-0 sm:w-auto sm:gap-1.5 sm:px-3"
       aria-current={active ? "true" : undefined}
+      title={label}
       {...agentProps}
     >
       <Icon className="h-3.5 w-3.5" />
-      {label}
+      <span className="hidden sm:inline">{label}</span>
     </TabsTrigger>
+  );
+}
+
+function OverviewTile({
+  icon: Icon,
+  label,
+  value,
+  accent,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  accent: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex min-h-24 items-start gap-3 rounded-xl border border-border/24 bg-card/35 px-3 py-3 text-left transition-colors hover:bg-card/55"
+      title={label}
+    >
+      <span
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${accent}`}
+      >
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-2xl font-semibold leading-none text-txt">
+          {value}
+        </span>
+        <span className="mt-2 block truncate text-xs font-medium text-muted">
+          {label}
+        </span>
+      </span>
+    </button>
   );
 }
 
@@ -216,6 +424,12 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
 
   const connected = status?.connected ?? false;
   const shop = status?.shop ?? null;
+  const lowInventoryItems = inventoryItems.filter(
+    (item) => item.available <= 5,
+  );
+  const urgentInventoryCount = lowInventoryItems.filter(
+    (item) => item.available === 0,
+  ).length;
 
   const backButton = useAgentElement<HTMLButtonElement>({
     id: "action-back",
@@ -253,7 +467,7 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
       data-testid="shopify-shell"
       className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-bg pb-[var(--safe-area-bottom,0px)] pl-[var(--safe-area-left,0px)] pr-[var(--safe-area-right,0px)] pt-[var(--safe-area-top,0px)] supports-[height:100dvh]:h-[100dvh]"
     >
-      <div className="flex shrink-0 items-center gap-3 border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-md">
+      <div className="flex shrink-0 items-center gap-3 border-b border-border/20 bg-bg/85 px-4 py-3 backdrop-blur-md">
         <Button
           ref={backButton.ref}
           type="button"
@@ -267,9 +481,24 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
           <ChevronLeft className="h-4 w-4" />
         </Button>
 
-        <div className="flex items-center gap-2">
-          <Store className="h-4 w-4 shrink-0 text-muted-strong" />
-          <span className="text-sm font-semibold text-txt">Shopify</span>
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border"
+            style={{
+              borderColor: connected
+                ? "var(--ok-subtle, rgba(34,197,94,0.4))"
+                : SH_BORDER,
+              background: connected
+                ? "var(--ok-subtle, rgba(34,197,94,0.1))"
+                : "var(--accent-subtle, rgba(255,88,0,0.14))",
+              color: connected ? SH_OK : SH_ACCENT,
+            }}
+          >
+            <Store className="h-4 w-4" />
+          </span>
+          <span className="truncate text-sm font-semibold text-txt">
+            {shop?.name ?? "Shopify"}
+          </span>
         </div>
 
         <div className="flex-1" />
@@ -297,7 +526,7 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
         </Button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto pb-[calc(7rem+var(--safe-area-bottom,0px))]">
         {statusError ? (
           <div className="m-4 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
             {statusError}
@@ -305,7 +534,7 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
         ) : null}
 
         {!statusLoading && !connected ? (
-          <div className="flex min-h-full items-center justify-center px-4 py-12">
+          <div className="flex min-h-full items-center justify-center px-4 py-10">
             <ShopifySetupCard />
           </div>
         ) : statusLoading && !connected ? (
@@ -313,12 +542,12 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
             <Skeleton className="h-80 w-full max-w-lg rounded-2xl mx-4" />
           </div>
         ) : (
-          <div className="px-4 py-4">
+          <div className="mx-auto w-full max-w-3xl px-4 py-4">
             <Tabs
               value={activeTab}
               onValueChange={(v) => setActiveTab(v as DashboardTab)}
             >
-              <TabsList className="mb-4 h-auto flex-wrap gap-1 p-1">
+              <TabsList className="sticky top-3 z-10 mb-4 h-auto w-full justify-between gap-1 rounded-2xl border border-border/30 bg-bg/80 p-1 shadow-sm backdrop-blur sm:w-auto sm:justify-start">
                 {DASHBOARD_TABS.map((tab) => (
                   <ShopifyDashboardTabTrigger
                     key={tab.value}
@@ -332,21 +561,68 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
 
               <TabsContent value="overview">
                 <div className="space-y-4">
-                  {shop ? (
-                    <StoreOverviewCard shop={shop} counts={counts} />
-                  ) : null}
+                  {shop ? <StoreOverviewCard shop={shop} /> : null}
 
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <div className="rounded-2xl border border-border/24 bg-card/32 px-4 py-4">
-                      <div className="flex items-center gap-2">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <OverviewTile
+                      icon={Package}
+                      label="Products"
+                      value={counts.productCount.toLocaleString()}
+                      accent="border-info/20 bg-info/10 text-info"
+                      onClick={() => setActiveTab("products")}
+                    />
+                    <OverviewTile
+                      icon={ShoppingCart}
+                      label="Orders"
+                      value={counts.orderCount.toLocaleString()}
+                      accent="border-ok/20 bg-ok/10 text-ok"
+                      onClick={() => setActiveTab("orders")}
+                    />
+                    <OverviewTile
+                      icon={AlertTriangle}
+                      label="Low stock"
+                      value={lowInventoryItems.length.toLocaleString()}
+                      accent={
+                        urgentInventoryCount > 0
+                          ? "border-danger/20 bg-danger/10 text-danger"
+                          : "border-warn/20 bg-warn/10 text-warn"
+                      }
+                      onClick={() => setActiveTab("inventory")}
+                    />
+                    <OverviewTile
+                      icon={Users}
+                      label="Customers"
+                      value={counts.customerCount.toLocaleString()}
+                      accent="border-border/30 bg-bg-accent text-muted-strong"
+                      onClick={() => setActiveTab("customers")}
+                    />
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="rounded-xl border border-border/24 bg-card/32 px-3 py-3">
+                      <div className="flex items-center justify-between gap-2">
                         <span
                           className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-bg-accent text-muted-strong"
                           title="Recent orders"
                         >
                           <ShoppingCart className="h-4 w-4" aria-hidden />
                         </span>
+                        {ordersTotal > 3 ? (
+                          <Button
+                            ref={viewAllOrdersButton.ref}
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 rounded-full px-2 text-xs-tight"
+                            onClick={() => setActiveTab("orders")}
+                            title={`View all ${ordersTotal.toLocaleString()} orders`}
+                            {...viewAllOrdersButton.agentProps}
+                          >
+                            +{(ordersTotal - 3).toLocaleString()}
+                          </Button>
+                        ) : null}
                       </div>
-                      <div className="mt-3 space-y-2">
+                      <div className="mt-2 space-y-1.5">
                         {ordersLoading && orders.length === 0 ? (
                           <>
                             <Skeleton className="h-8 w-full rounded-lg" />
@@ -354,10 +630,10 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
                             <Skeleton className="h-8 w-full rounded-lg" />
                           </>
                         ) : (
-                          orders.slice(0, 5).map((order) => (
+                          orders.slice(0, 3).map((order) => (
                             <div
                               key={order.id}
-                              className="flex items-center justify-between gap-2 rounded-lg bg-card/40 px-3 py-2"
+                              className="grid grid-cols-[5rem_minmax(0,1fr)_auto] items-center gap-2 rounded-lg bg-card/40 px-3 py-2"
                             >
                               <span className="text-xs font-semibold text-txt">
                                 {order.name}
@@ -377,91 +653,68 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
                           </p>
                         ) : null}
                       </div>
-                      {ordersTotal > 5 ? (
-                        <Button
-                          ref={viewAllOrdersButton.ref}
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="mt-2 h-7 rounded-full px-2 text-xs-tight"
-                          onClick={() => setActiveTab("orders")}
-                          title={`View all ${ordersTotal.toLocaleString()} orders`}
-                          {...viewAllOrdersButton.agentProps}
-                        >
-                          +{(ordersTotal - 5).toLocaleString()}
-                        </Button>
-                      ) : null}
                     </div>
 
-                    <div className="rounded-2xl border border-border/24 bg-card/32 px-4 py-4">
-                      <div className="flex items-center gap-2">
+                    <div className="rounded-xl border border-border/24 bg-card/32 px-3 py-3">
+                      <div className="flex items-center justify-between gap-2">
                         <span
                           className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-bg-accent text-muted-strong"
                           title="Low inventory"
                         >
                           <Package className="h-4 w-4" aria-hidden />
                         </span>
+                        {lowInventoryItems.length > 3 ? (
+                          <Button
+                            ref={viewAllInventoryButton.ref}
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 rounded-full px-2 text-xs-tight"
+                            onClick={() => setActiveTab("inventory")}
+                            title="View inventory"
+                            {...viewAllInventoryButton.agentProps}
+                          >
+                            +{(lowInventoryItems.length - 3).toLocaleString()}
+                          </Button>
+                        ) : null}
                       </div>
-                      <div className="mt-3 space-y-2">
+                      <div className="mt-2 space-y-1.5">
                         {inventoryLoading && inventoryItems.length === 0 ? (
                           <>
                             <Skeleton className="h-8 w-full rounded-lg" />
                             <Skeleton className="h-8 w-full rounded-lg" />
                           </>
                         ) : (
-                          inventoryItems
-                            .filter((item) => item.available <= 5)
-                            .slice(0, 5)
-                            .map((item) => (
-                              <div
-                                key={`${item.id}:${item.locationName}`}
-                                className="flex items-center justify-between gap-2 rounded-lg bg-card/40 px-3 py-2"
+                          lowInventoryItems.slice(0, 3).map((item) => (
+                            <div
+                              key={`${item.id}:${item.locationName}`}
+                              className="flex items-center justify-between gap-2 rounded-lg bg-card/40 px-3 py-2"
+                            >
+                              <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
+                                {item.productTitle}
+                                {item.variantTitle
+                                  ? ` — ${item.variantTitle}`
+                                  : ""}
+                              </span>
+                              <Badge
+                                variant={
+                                  item.available === 0
+                                    ? "destructive"
+                                    : "secondary"
+                                }
+                                className="shrink-0 rounded-full text-2xs"
                               >
-                                <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
-                                  {item.productTitle}
-                                  {item.variantTitle
-                                    ? ` — ${item.variantTitle}`
-                                    : ""}
-                                </span>
-                                <Badge
-                                  variant={
-                                    item.available === 0
-                                      ? "destructive"
-                                      : "secondary"
-                                  }
-                                  className="shrink-0 rounded-full text-2xs"
-                                >
-                                  {item.available}
-                                </Badge>
-                              </div>
-                            ))
+                                {item.available}
+                              </Badge>
+                            </div>
+                          ))
                         )}
-                        {inventoryItems.filter((i) => i.available <= 5)
-                          .length === 0 && !inventoryLoading ? (
+                        {lowInventoryItems.length === 0 && !inventoryLoading ? (
                           <p className="text-xs text-muted">
-                            All items sufficiently stocked.
+                            Stock levels look good.
                           </p>
                         ) : null}
                       </div>
-                      {inventoryItems.filter((i) => i.available <= 5).length >
-                      5 ? (
-                        <Button
-                          ref={viewAllInventoryButton.ref}
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="mt-2 h-7 rounded-full px-2 text-xs-tight"
-                          onClick={() => setActiveTab("inventory")}
-                          title="View inventory"
-                          {...viewAllInventoryButton.agentProps}
-                        >
-                          +
-                          {(
-                            inventoryItems.filter((i) => i.available <= 5)
-                              .length - 5
-                          ).toLocaleString()}
-                        </Button>
-                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -516,80 +769,6 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
       </div>
     </div>
   );
-}
-
-async function fetchShopifyTuiJson<T>(url: string): Promise<T | null> {
-  const response = await fetch(url);
-  if (response.status === 404) return null;
-  const data = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message =
-      data && typeof data === "object" && "error" in data
-        ? String(data.error)
-        : `Shopify request failed with ${response.status}`;
-    throw new Error(message);
-  }
-  return data as T;
-}
-
-async function postShopifyTuiJson(
-  url: string,
-  body: Record<string, unknown>,
-): Promise<unknown> {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message =
-      data && typeof data === "object" && "error" in data
-        ? String(data.error)
-        : `Shopify request failed with ${response.status}`;
-    throw new Error(message);
-  }
-  return data;
-}
-
-async function loadShopifyTuiState(): Promise<{
-  status: ShopifyStatus;
-  products: ShopifyProductsResponse | null;
-  orders: ShopifyOrdersResponse | null;
-  inventory: ShopifyInventoryResponse | null;
-  customers: ShopifyCustomersResponse | null;
-}> {
-  const status = (await fetchShopifyTuiJson<ShopifyStatus>(
-    "/api/shopify/status",
-  )) ?? {
-    connected: false,
-    shop: null,
-  };
-
-  if (!status.connected) {
-    return {
-      status,
-      products: null,
-      orders: null,
-      inventory: null,
-      customers: null,
-    };
-  }
-
-  const [products, orders, inventory, customers] = await Promise.all([
-    fetchShopifyTuiJson<ShopifyProductsResponse>(
-      "/api/shopify/products?page=1&limit=10&q=",
-    ),
-    fetchShopifyTuiJson<ShopifyOrdersResponse>(
-      "/api/shopify/orders?status=any&limit=10",
-    ),
-    fetchShopifyTuiJson<ShopifyInventoryResponse>("/api/shopify/inventory"),
-    fetchShopifyTuiJson<ShopifyCustomersResponse>(
-      "/api/shopify/customers?q=&limit=10",
-    ),
-  ]);
-
-  return { status, products, orders, inventory, customers };
 }
 
 export function ShopifyTuiView() {
@@ -665,7 +844,7 @@ export function ShopifyTuiView() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1fr)",
+          gridTemplateColumns: "1fr",
           gap: 16,
         }}
       >
@@ -746,11 +925,10 @@ export function ShopifyTuiView() {
         >
           <strong style={{ color: "#e2e8f0" }}>commerce</strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: state | products | orders | inventory | customers |
-            create-product | adjust-inventory
+            {state?.orders?.total ?? 0} orders / {lowInventory.length} low stock
           </div>
           <div style={{ color: "#a7f3d0", marginBottom: 8 }}>recent orders</div>
-          {(state?.orders?.orders ?? []).slice(0, 6).map((order) => (
+          {(state?.orders?.orders ?? []).slice(0, 4).map((order) => (
             <div
               key={order.id}
               style={{
@@ -771,7 +949,7 @@ export function ShopifyTuiView() {
           <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>
             low inventory
           </div>
-          {lowInventory.slice(0, 8).map((item) => (
+          {lowInventory.slice(0, 4).map((item) => (
             <div
               key={`${item.id}:${item.locationName}`}
               style={{ padding: "5px 0" }}
@@ -785,110 +963,4 @@ export function ShopifyTuiView() {
       </div>
     </div>
   );
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-shopify-state") {
-    return { viewType: "tui", ...(await loadShopifyTuiState()) };
-  }
-
-  if (capability === "terminal-shopify-products") {
-    const query = typeof params?.query === "string" ? params.query.trim() : "";
-    const page = typeof params?.page === "number" ? params.page : 1;
-    const limit = typeof params?.limit === "number" ? params.limit : 20;
-    return {
-      viewType: "tui",
-      products: await fetchShopifyTuiJson<ShopifyProductsResponse>(
-        `/api/shopify/products?${new URLSearchParams({
-          page: String(page),
-          limit: String(limit),
-          q: query,
-        })}`,
-      ),
-    };
-  }
-
-  if (capability === "terminal-shopify-orders") {
-    const status =
-      typeof params?.status === "string" ? params.status.trim() : "any";
-    const limit = typeof params?.limit === "number" ? params.limit : 20;
-    return {
-      viewType: "tui",
-      orders: await fetchShopifyTuiJson<ShopifyOrdersResponse>(
-        `/api/shopify/orders?${new URLSearchParams({
-          status,
-          limit: String(limit),
-        })}`,
-      ),
-    };
-  }
-
-  if (capability === "terminal-shopify-inventory") {
-    return {
-      viewType: "tui",
-      inventory: await fetchShopifyTuiJson<ShopifyInventoryResponse>(
-        "/api/shopify/inventory",
-      ),
-    };
-  }
-
-  if (capability === "terminal-shopify-customers") {
-    const query = typeof params?.query === "string" ? params.query.trim() : "";
-    const limit = typeof params?.limit === "number" ? params.limit : 20;
-    return {
-      viewType: "tui",
-      customers: await fetchShopifyTuiJson<ShopifyCustomersResponse>(
-        `/api/shopify/customers?${new URLSearchParams({
-          q: query,
-          limit: String(limit),
-        })}`,
-      ),
-    };
-  }
-
-  if (capability === "terminal-shopify-create-product") {
-    const title = typeof params?.title === "string" ? params.title.trim() : "";
-    if (!title) throw new Error("title is required");
-    return {
-      viewType: "tui",
-      product: await postShopifyTuiJson("/api/shopify/products", {
-        title,
-        vendor: typeof params?.vendor === "string" ? params.vendor : undefined,
-        productType:
-          typeof params?.productType === "string"
-            ? params.productType
-            : undefined,
-        price:
-          typeof params?.price === "string" || typeof params?.price === "number"
-            ? params.price
-            : undefined,
-      }),
-    };
-  }
-
-  if (capability === "terminal-shopify-adjust-inventory") {
-    const itemId =
-      typeof params?.itemId === "string" ? params.itemId.trim() : "";
-    const delta = typeof params?.delta === "number" ? params.delta : null;
-    if (!itemId) throw new Error("itemId is required");
-    if (delta === null) throw new Error("delta is required");
-    return {
-      viewType: "tui",
-      inventory: await postShopifyTuiJson(
-        `/api/shopify/inventory/${encodeURIComponent(itemId)}/adjust`,
-        {
-          delta,
-          locationId:
-            typeof params?.locationId === "string"
-              ? params.locationId
-              : undefined,
-        },
-      ),
-    };
-  }
-
-  throw new Error(`Unsupported capability "${capability}"`);
 }

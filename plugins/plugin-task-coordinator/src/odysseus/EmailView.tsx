@@ -1323,11 +1323,7 @@ export function EmailView({
                         type="button"
                         className="od-email-send-btn"
                         disabled={!draftTo.trim() || !onSend}
-                        title={
-                          onSend
-                            ? "Send"
-                            : "Email send has no eliza backend yet"
-                        }
+                        title={onSend ? "Send" : "Send backend offline"}
                         onClick={sendDraft}
                       >
                         Send
@@ -1340,14 +1336,8 @@ export function EmailView({
               {accounts.length === 0 && messages.length === 0 ? (
                 <div className="od-email-empty">
                   <span className="od-email-empty-title">
-                    No emails
+                    Inbox offline
                     <Smile size={14} className="od-email-empty-smiley" />
-                  </span>
-                  <span className="od-email-empty-sub">
-                    Set up at:{" "}
-                    <span className="od-email-empty-link">
-                      Settings › Integrations
-                    </span>
                   </span>
                 </div>
               ) : visibleMessages.length === 0 ? (
@@ -1781,7 +1771,7 @@ export function EmailView({
                                     title={
                                       onDownloadAttachment
                                         ? `Download ${att.filename}`
-                                        : "Attachment download has no eliza backend yet"
+                                        : "Download backend offline"
                                     }
                                     onClick={() =>
                                       onDownloadAttachment?.(
@@ -1879,9 +1869,7 @@ export function EmailView({
               <span>Draw new signature</span>
             </button>
             {signatures.length === 0 ? (
-              <div className="od-email-sig-empty">
-                No saved signatures yet — draw one above.
-              </div>
+              <div className="od-email-sig-empty">No saved signatures.</div>
             ) : (
               <div className="od-email-sig-grid">
                 {signatures.map((s) => (

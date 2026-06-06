@@ -515,9 +515,9 @@ function formatLlmGuardContext(context?: TrajectoryLlmGuardContext): string {
 }
 
 /**
- * Strict-mode assertion for any generative LLM call. In normal mode this is a
- * no-op. With `ELIZA_TRAJECTORY_STRICT=1`, it throws unless a trajectory step
- * is active.
+ * Strict-mode assertion for any generative LLM call. In normal mode this
+ * returns immediately. With `ELIZA_TRAJECTORY_STRICT=1`, it throws unless a
+ * trajectory step is active.
  */
 export function assertActiveTrajectoryForLlmCall(
 	context?: TrajectoryLlmGuardContext,

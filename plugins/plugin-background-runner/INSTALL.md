@@ -92,7 +92,7 @@ Both files have the same contract: respond to the `wake` event by calling
 back into the running app via the device-secret-authed loopback endpoint
 (see "Wake authentication" below).
 
-> Cross-wave: the runner JS files are scaffolded by Wave 3D
+> Cross-wave: the runner JS files are provided by Wave 3D
 > (`plugin-background-runner` companion task in the host app). Until Wave 3D
 > lands, manually copy a minimal runner that posts to
 > `http://127.0.0.1:31337/api/internal/wake` with the device secret.
@@ -219,7 +219,7 @@ shorter than 15 minutes on a Capacitor host
   host-app concerns — Wave 3A and 3B own those edits respectively.
 - It does **not** define `/api/internal/wake`. That endpoint lives in the
   API package and is wired by Wave 3D.
-- It does **not** start a long-lived process. The serverless seam in core's
+- It does **not** start a long-lived process. The serverless handoff in core's
   `TaskService` (`runtime.serverless = true`) means each wake runs once and
   returns.
 

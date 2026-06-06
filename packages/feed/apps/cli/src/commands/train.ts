@@ -37,6 +37,26 @@ type PythonCommand = {
   prefixArgs: string[];
 };
 
+type ArchetypeScoringService = {
+  scoreUnscoredTrajectories(
+    archetype: string,
+    limit: number,
+  ): Promise<{ scored: number; errors: number }>;
+};
+
+type TrajectoryMetricsExtractor = {
+  extractFromRaw(trajectory: {
+    trajectoryId?: string;
+    agentId?: string;
+    stepsJson: string;
+    scenarioId?: string;
+    finalPnL?: string | number | null;
+  }): {
+    episodeLength: number;
+    finalPnL: number;
+  };
+};
+
 function resolvePythonCommand(workspaceRoot: string): PythonCommand {
   const configuredPython = process.env.PYTHON_BIN?.trim();
 
@@ -94,34 +114,36 @@ async function getDbImports() {
 async function getTrainingImports() {
   const trainingMod = await import("@feed/agents/training");
   const dependencyMod = await import("@feed/agents/dependencies");
+  const maybeTrainingMod = trainingMod as typeof trainingMod & {
+    archetypeScoringService?: ArchetypeScoringService;
+    trajectoryMetricsExtractor?: TrajectoryMetricsExtractor;
+  };
   return {
-    archetypeScoringService:
-      "archetypeScoringService" in trainingMod
-        ? trainingMod.archetypeScoringService
-        : {
-            scoreUnscoredTrajectories: async () => ({
-              scored: await trainingMod.rulerScoringService.scoreTrajectories(),
-              errors: 0,
-            }),
+    archetypeScoringService: (maybeTrainingMod.archetypeScoringService
+      ? maybeTrainingMod.archetypeScoringService
+      : {
+          scoreUnscoredTrajectories: async () => ({
+            scored: await trainingMod.rulerScoringService.scoreTrajectories(),
+            errors: 0,
+          }),
+        }) satisfies ArchetypeScoringService,
+    trajectoryMetricsExtractor: (maybeTrainingMod.trajectoryMetricsExtractor
+      ? maybeTrainingMod.trajectoryMetricsExtractor
+      : {
+          extractFromRaw: (trajectory: {
+            stepsJson: string;
+            finalPnL?: string | number | null;
+          }) => {
+            const steps = JSON.parse(trajectory.stepsJson || "[]");
+            return {
+              episodeLength: Array.isArray(steps) ? steps.length : 0,
+              finalPnL:
+                typeof trajectory.finalPnL === "number"
+                  ? trajectory.finalPnL
+                  : Number(trajectory.finalPnL ?? 0) || 0,
+            };
           },
-    trajectoryMetricsExtractor:
-      "trajectoryMetricsExtractor" in trainingMod
-        ? trainingMod.trajectoryMetricsExtractor
-        : {
-            extractFromRaw: (trajectory: {
-              stepsJson: string;
-              finalPnL?: string | number | null;
-            }) => {
-              const steps = JSON.parse(trajectory.stepsJson || "[]");
-              return {
-                episodeLength: Array.isArray(steps) ? steps.length : 0,
-                finalPnL:
-                  typeof trajectory.finalPnL === "number"
-                    ? trajectory.finalPnL
-                    : Number(trajectory.finalPnL ?? 0) || 0,
-              };
-            },
-          },
+        }) satisfies TrajectoryMetricsExtractor,
     configureTrainingDependencies: dependencyMod.configureTrainingDependencies,
   };
 }

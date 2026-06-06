@@ -1,6 +1,4 @@
-import type { FormEvent } from "react";
 import { Button } from "../../ui/button";
-import { Input } from "../../ui/input";
 
 export type GameOperatorEventTone =
   | "user"
@@ -42,18 +40,10 @@ export interface GameOperatorShellProps {
   suggestedActions?: GameOperatorAction[];
   events: GameOperatorEvent[];
   emptyEventsLabel: string;
-  draft: string;
-  inputPlaceholder: string;
-  sendLabel?: string;
-  sendingLabel?: string;
   canSend: boolean;
   sending: boolean;
-  chatInputTestId: string;
-  chatSendTestId: string;
   noticeTestId?: string;
   variant?: "detail" | "live" | "running";
-  onDraftChange: (value: string) => void;
-  onSendDraft: () => void;
   onCommand: (command: string) => void;
 }
 
@@ -91,28 +81,14 @@ export function GameOperatorShell({
   suggestedActions = [],
   events,
   emptyEventsLabel,
-  draft,
-  inputPlaceholder,
-  sendLabel = "Send",
-  sendingLabel = "Sending",
   canSend,
   sending,
-  chatInputTestId,
-  chatSendTestId,
   noticeTestId,
   variant = "detail",
-  onDraftChange,
-  onSendDraft,
   onCommand,
 }: GameOperatorShellProps) {
   const latestEvent = events.at(-1) ?? null;
   const visibleEvents = events.slice(-12);
-
-  const handleSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    if (!draft.trim() || sending || !canSend) return;
-    onSendDraft();
-  };
 
   return (
     <section
@@ -209,27 +185,9 @@ export function GameOperatorShell({
             })
           )}
         </div>
-        <form className="border-t border-border/30 p-3" onSubmit={handleSubmit}>
-          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
-            <Input
-              value={draft}
-              onChange={(event) => onDraftChange(event.target.value)}
-              placeholder={inputPlaceholder}
-              className="min-h-10 rounded-sm"
-              data-testid={chatInputTestId}
-              disabled={!canSend}
-            />
-            <Button
-              type="submit"
-              className="min-h-10 rounded-sm px-4 "
-              data-testid={chatSendTestId}
-              disabled={!canSend || sending || !draft.trim()}
-            >
-              {sending ? sendingLabel : sendLabel}
-            </Button>
-          </div>
+        <div className="border-t border-border/30 p-3">
           {suggestedActions.length > 0 ? (
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2">
               {suggestedActions.map((item) => (
                 <Button
                   key={item.id}
@@ -246,7 +204,7 @@ export function GameOperatorShell({
               ))}
             </div>
           ) : null}
-        </form>
+        </div>
       </div>
     </section>
   );

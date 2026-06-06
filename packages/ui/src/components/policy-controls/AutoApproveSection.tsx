@@ -1,5 +1,5 @@
 import { ShieldCheck } from "lucide-react";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { parseAmount } from "./helpers";
@@ -53,8 +53,4 @@ export function AutoApproveSection({
       </div>
     </div>
   );
-}
-
-export function autoApproveSummary(config: AutoApproveConfig): string {
-  return `Under $${config.threshold}`;
 }

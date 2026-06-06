@@ -95,9 +95,7 @@ const CONTEXT_REFRESH_INTERVAL_MS = (() => {
   return DEFAULT_CONTEXT_REFRESH_HOURS * MS_PER_HOUR;
 })();
 
-async function loadOptionalPlugin(
-  packageName: string,
-): Promise<Plugin | null> {
+async function loadOptionalPlugin(packageName: string): Promise<Plugin | null> {
   try {
     const pluginModule = await import(packageName);
     return (pluginModule.default ?? pluginModule) as Plugin;

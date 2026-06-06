@@ -21,7 +21,9 @@ export const mainnet = {
   name: "Ethereum",
   nativeCurrency: etherCurrency,
   rpcUrls: { default: { http: ["https://eth.llamarpc.com"] } },
-  blockExplorers: { default: { name: "Etherscan", url: "https://etherscan.io" } },
+  blockExplorers: {
+    default: { name: "Etherscan", url: "https://etherscan.io" },
+  },
 } as const;
 
 export const sepolia = {
@@ -39,7 +41,9 @@ export const base = {
   name: "Base",
   nativeCurrency: etherCurrency,
   rpcUrls: { default: { http: ["https://mainnet.base.org"] } },
-  blockExplorers: { default: { name: "Basescan", url: "https://basescan.org" } },
+  blockExplorers: {
+    default: { name: "Basescan", url: "https://basescan.org" },
+  },
 } as const;
 
 export const baseSepolia = {

@@ -49,9 +49,9 @@
  * @see {@link /lib/training/AutomationPipeline} Automation pipeline
  */
 
+import { automationPipeline } from "@feed/agents/training";
 import { withCronAuth, withErrorHandling } from "@feed/api";
 import { logger } from "@feed/shared";
-import { automationPipeline } from "@feed/training";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 

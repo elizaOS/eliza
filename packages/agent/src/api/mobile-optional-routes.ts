@@ -128,7 +128,7 @@ function getStreamingSettingsModule(): Promise<StreamingSettingsModule> {
       const mod = await import(/* @vite-ignore */ "@elizaos/plugin-streaming");
       if (isStreamingSettingsModule(mod)) return mod;
     } catch {
-      // Mobile bundles intentionally stub optional desktop/streaming plugins.
+      // Mobile bundles intentionally replace optional desktop/streaming plugins.
     }
     return mobileFallbackStreamingSettingsModule();
   })();

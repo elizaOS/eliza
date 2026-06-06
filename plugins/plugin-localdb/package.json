@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-localdb",
-  "version": "2.0.3-beta.1",
+  "version": "2.0.3-beta.6",
   "type": "module",
   "description": "File-backed (Node) and localStorage (browser) persistence via plugin-inmemorydb; ships compiled ESM in dist/.",
   "main": "./dist/index.js",
@@ -40,8 +40,8 @@
     "dev": "tsup --config tsup.config.ts --watch",
     "clean": "rm -rf dist .turbo",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
-    "lint": "echo \"Lint skipped\"",
-    "lint:check": "bun run lint",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
     "test": "vitest run"
   },
   "dependencies": {

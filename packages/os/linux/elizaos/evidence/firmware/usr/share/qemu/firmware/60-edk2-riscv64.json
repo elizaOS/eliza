@@ -1,31 +1,29 @@
 {
-    "description": "UEFI firmware for riscv64",
-    "interface-types": [
-        "uefi"
-    ],
-    "mapping": {
-        "device": "flash",
-        "executable": {
-            "filename": "/usr/share/qemu-efi-riscv64/RISCV_VIRT_CODE.fd",
-            "format": "raw"
-        },
-        "nvram-template": {
-            "filename": "/usr/share/qemu-efi-riscv64/RISCV_VIRT_VARS.fd",
-            "format": "raw"
-        }
+  "claim_boundary": "scope_limited_to_structural_metadata_inventory_and_gate_diagnostics",
+  "description": "UEFI firmware for riscv64",
+  "features": [],
+  "generated_utc": "2026-05-29T08:17:04Z",
+  "interface-types": [
+    "uefi"
+  ],
+  "mapping": {
+    "device": "flash",
+    "executable": {
+      "filename": "/usr/share/qemu-efi-riscv64/RISCV_VIRT_CODE.fd",
+      "format": "raw"
     },
-    "targets": [
-        {
-            "architecture": "riscv64",
-            "machines": [
-                "virt*"
-            ]
-        }
-    ],
-    "features": [
-
-    ],
-    "tags": [
-
-    ]
+    "nvram-template": {
+      "filename": "/usr/share/qemu-efi-riscv64/RISCV_VIRT_VARS.fd",
+      "format": "raw"
+    }
+  },
+  "tags": [],
+  "targets": [
+    {
+      "architecture": "riscv64",
+      "machines": [
+        "virt*"
+      ]
+    }
+  ]
 }

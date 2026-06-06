@@ -110,6 +110,23 @@ async function __hono_POST(
       );
     }
 
+    if (existing.execution_tier === "shared") {
+      return applyCorsHeaders(
+        Response.json({
+          success: true,
+          source: "shared_runtime",
+          data: {
+            id: existing.id,
+            agentName: existing.agent_name,
+            status: existing.status,
+            executionTier: existing.execution_tier,
+            message: "Agent is already available on the shared runtime",
+          },
+        }),
+        CORS_METHODS,
+      );
+    }
+
     if (
       existing.status === "running" &&
       existing.bridge_url &&

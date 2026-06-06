@@ -3,7 +3,7 @@ import { client, type XRPairState } from "../../api";
 import {
   type TranslationContextValue,
   useTranslation,
-} from "../../state/TranslationContext";
+} from "../../state/TranslationContext.hooks";
 import { openExternalUrl } from "../../utils";
 import { Button } from "../ui/button";
 

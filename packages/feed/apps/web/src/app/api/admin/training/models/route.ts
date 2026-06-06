@@ -49,9 +49,9 @@
  * ```
  */
 
+import { modelStorage } from "@feed/agents/training";
 import { requireAdmin, successResponse, withErrorHandling } from "@feed/api";
 import { db } from "@feed/db";
-import { modelStorage } from "@feed/training";
 import type { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";

@@ -133,7 +133,7 @@ cp -p "$RELEASE_DIR/eval.json" "$DEST/eval.json"
 
 # Append a new row to `VOICE_MODEL_VERSIONS` (machine twin) and a matching
 # H3 to `models/voice/CHANGELOG.md` (human-readable). The helper is
-# idempotent — re-running with the same (id, version) is a no-op.
+# idempotent — re-running with the same (id, version) exits unchanged.
 #
 # Inputs are derived from manifest-fragment.json + voice-preset.json so the
 # helper sees exactly what's been staged into the bundle. We default the id

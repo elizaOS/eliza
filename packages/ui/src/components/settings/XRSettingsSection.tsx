@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { openExternalUrl } from "../../utils";
 import { XRPairingPanel } from "../connectors/XRPairingPanel";
 import { Button } from "../ui/button";

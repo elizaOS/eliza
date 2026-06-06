@@ -225,7 +225,7 @@ export async function addToWhitelist({
 
   // Assign default alpha groups when granting new access (async, non-blocking)
   // This ensures whitelisted users get NPC group chats immediately.
-  // assignDefaultGroups is safe to call even if user already has groups or profile is incomplete.
+  // assignDefaultGroups is safe to call even if user already has groups or profile is partial.
   if (!alreadyExists) {
     UserAlphaGroupAssignmentService.assignDefaultGroups(userId)
       .then((assignmentResult) => {

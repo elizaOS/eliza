@@ -28,19 +28,18 @@
  * `CODING_CONTAINER_IMAGE_ALLOWLIST` (default ghcr.io/{dexploarer,elizaos,
  * waifufun}/*) and reject others with 403.
  *
- * DATABASE_URL: provision() unconditionally injects a per-agent DB URL,
- * overwriting any caller-supplied DATABASE_URL in the environment vars. This
- * means self-contained images using an external database must supply their
- * connection string under a different env var name. This is the daemon's
- * standard behavior and is not unique to coding containers.
+ * DATABASE_URL: provision() injects a per-agent managed (Neon) DB URL, but it
+ * no longer clobbers a caller-supplied DATABASE_URL. A self-contained image
+ * that ships its OWN database keeps its `DATABASE_URL`; the managed URL is then
+ * exposed under `ELIZA_MANAGED_DATABASE_URL` for opt-in. Only when the caller
+ * supplies no DATABASE_URL does the managed one land as `DATABASE_URL` (the
+ * normal managed-agent path). See eliza-sandbox.ts `provision()`.
  *
  * KNOWN GAPS vs the old control-plane path (tracked as follow-ups):
  *   1. `bootstrap_source` (source.files) is NOT hydrated — a VFS-promoted
  *      workspace would start empty. The `agent_sandboxes` schema has no
  *      bootstrap/volume columns, so honoring this needs daemon + schema work.
- *   2. Custom `container.cpu` / `container.memory` are NOT plumbed to
- *      `provision()` (it uses node defaults). Same schema limitation.
- *   3. The browser coding-IDE URL (if any) is a separate concern the daemon
+ *   2. The browser coding-IDE URL (if any) is a separate concern the daemon
  *      does not yet surface; the returned `url` is the per-agent public HTTPS
  *      URL (https://<id>.<agent-domain>).
  *
@@ -154,11 +153,22 @@ async function createCodingContainer(
       orgId: user.organization_id,
       image: payload.image,
     });
+    // Humanized error: tell the caller which namespaces ARE permitted (from the
+    // live, operator-configured allowlist) and how to widen it, instead of a
+    // bare "not permitted". The machine-readable `code` is preserved so clients
+    // can still branch on it.
+    const permitted =
+      allowlist.length > 0 ? allowlist.join(", ") : "(none configured)";
     return c.json(
       {
         success: false,
         code: "CODING_CONTAINER_IMAGE_NOT_ALLOWED",
-        error: `Image '${payload.image}' is not permitted for coding containers`,
+        error:
+          `Image '${payload.image}' is not in the coding-container allowlist. ` +
+          `Permitted images: ${permitted}. ` +
+          `To run another image, ask an operator to add its GHCR namespace to ` +
+          `CODING_CONTAINER_IMAGE_ALLOWLIST.`,
+        permittedImages: allowlist,
       },
       403,
     );
@@ -187,6 +197,7 @@ async function createCodingContainer(
     agentName: payload.name || payload.project_name,
     environmentVars: payload.environment_vars,
     dockerImage: payload.image,
+    executionTier: "custom",
   });
   if (createResult.idempotent) {
     const existing = createResult.agent;
@@ -334,6 +345,21 @@ async function createCodingContainer(
         jobId: job.id,
         error: errMsg,
       });
+      // Humanized error: a provisioning failure caused by an empty/low credit
+      // balance is actionable by the user, not a server fault. Surface it as a
+      // 402 with the machine-readable `insufficient_credits` code and a concrete
+      // next step, instead of an opaque 502.
+      if (/insufficient[\s_]?credit/i.test(errMsg)) {
+        return c.json(
+          {
+            success: false,
+            code: "insufficient_credits",
+            error: "Add $0.10 to launch this coding container.",
+            jobId: job.id,
+          },
+          402,
+        );
+      }
       return c.json(
         {
           success: false,

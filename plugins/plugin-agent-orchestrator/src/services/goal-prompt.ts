@@ -24,6 +24,52 @@ export const DEFAULT_GOAL_CAPABILITIES: readonly string[] = [
   "communicate with the parent/swarm",
 ];
 
+/**
+ * Capability fence for goal tasks that build and monetize an Eliza Cloud app.
+ * Extends the coding capabilities with the parent-agent Cloud command bridge so
+ * a `/goal` sub-agent can drive the create-app → deploy → monetize → buy-domain
+ * loop. Paid Cloud commands are still gated server-side and by the broker's
+ * capped self-spend allowance (see `spend-allowance.ts`).
+ */
+export const ECONOMICS_GOAL_CAPABILITIES: readonly string[] = [
+  "read/search files",
+  "edit/apply patches",
+  "run shell/test commands",
+  "inspect git diff/status",
+  "communicate with the parent/swarm",
+  "use the parent-agent Cloud command bridge (USE_SKILL parent-agent)",
+  "create & configure Eliza Cloud apps (apps.create, apps.update, apps.monetization.update)",
+  "deploy app containers and read container quota/billing (containers.create, containers.quota)",
+  "search, buy, and attach domains (domains.search, domains.check, domains.buy, domains.attach)",
+  "create app charges & x402 payment requests (apps.charges.*, x402.requests.*)",
+  "read credits, earnings, and redemption balances (credits.*, redemptions.*)",
+];
+
+/** Named capability fences a goal task can run under. */
+export type GoalCapabilityProfile = "default" | "economics";
+
+/** Resolve a capability profile name to its allow-list. Unknown / undefined
+ * profiles fall back to the coding-only default fence. */
+export function resolveGoalCapabilities(
+  profile?: GoalCapabilityProfile,
+): readonly string[] {
+  return profile === "economics"
+    ? ECONOMICS_GOAL_CAPABILITIES
+    : DEFAULT_GOAL_CAPABILITIES;
+}
+
+/** Coerce an untyped value (e.g. a task metadata field) to a known profile, or
+ * `undefined` when it is not a recognized profile name. */
+export function coerceGoalCapabilityProfile(
+  value: unknown,
+): GoalCapabilityProfile | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "economics") return "economics";
+  if (normalized === "default") return "default";
+  return undefined;
+}
+
 export interface GoalPromptInput {
   /** The distinct person-name this sub-agent is given on spawn, so it knows its
    * own identity within the swarm (the way the main agent is named). */
@@ -39,7 +85,11 @@ export interface GoalPromptInput {
   worktreeRoomId?: string;
   workdir?: string;
   repo?: string;
-  /** Capability fence; defaults to {@link DEFAULT_GOAL_CAPABILITIES}. */
+  /** Named capability fence to apply when `allowedCapabilities` is not given.
+   * Defaults to `"default"` (the coding-only fence). */
+  capabilityProfile?: GoalCapabilityProfile;
+  /** Explicit capability fence; overrides {@link GoalPromptInput.capabilityProfile}
+   * and defaults to {@link DEFAULT_GOAL_CAPABILITIES}. */
   allowedCapabilities?: readonly string[];
 }
 
@@ -78,8 +128,9 @@ const COMPLETION_CONTRACT: readonly string[] = [
  */
 export function buildGoalPrompt(input: GoalPromptInput): string {
   const task = (input.task ?? input.goal).trim();
+  const profile = input.capabilityProfile ?? "default";
   const capabilities = [
-    ...(input.allowedCapabilities ?? DEFAULT_GOAL_CAPABILITIES),
+    ...(input.allowedCapabilities ?? resolveGoalCapabilities(profile)),
   ];
   const sections: string[] = [
     "--- Goal ---",
@@ -116,9 +167,13 @@ export function buildGoalPrompt(input: GoalPromptInput): string {
     sections.push("--- Rooms ---", roomLines.join("\n"));
   }
 
+  const capabilityLine =
+    profile === "default"
+      ? `Use only coding-relevant capabilities: ${capabilities.join(", ")}.`
+      : `You are authorized to use these capabilities for this task: ${capabilities.join(", ")}. Stay within them — do not reach for unrelated tools.`;
   sections.push(
     "--- Capabilities ---",
-    `Use only coding-relevant capabilities: ${capabilities.join(", ")}.`,
+    capabilityLine,
     "--- Working Agreement ---",
     bulletList([...COMPLETION_CONTRACT]),
     "--- Task ---",

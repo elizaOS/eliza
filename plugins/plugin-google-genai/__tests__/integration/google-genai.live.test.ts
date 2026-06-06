@@ -9,7 +9,7 @@ describe("Google GenAI Integration", () => {
   beforeAll(() => {
     if (!hasApiKey) {
       console.log(
-        "Skipping integration tests: GOOGLE_GENERATIVE_AI_API_KEY not set",
+        "Google GenAI live integration tests require GOOGLE_GENERATIVE_AI_API_KEY",
       );
     }
   });

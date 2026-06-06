@@ -483,19 +483,13 @@ export function GroupChatView({
           {/* ── Participant list (group.js #group-participants _render rows) ── */}
           <div className="od-group-participants">
             {noRoom || !activeTaskId ? (
-              <div className="od-group-participants-empty">
-                No group conversation. The orchestrator opens a task room with
-                its sub-agents when you start a coding job — that room becomes
-                the group.
-              </div>
+              <div className="od-group-participants-empty">No room.</div>
             ) : detailLoading && participants.length === 0 ? (
               <div className="od-group-participants-empty">
                 <LoadingRow label="Loading…" />
               </div>
             ) : participants.length === 0 ? (
-              <div className="od-group-participants-empty">
-                No participants yet — add a model.
-              </div>
+              <div className="od-group-participants-empty">Add a model.</div>
             ) : (
               participants.map((p) => (
                 <div className="od-group-participant" key={p.id}>
@@ -644,7 +638,7 @@ export function GroupChatView({
                 <polygon points="5 3 19 12 5 21 5 3" />
               </svg>
             )}
-            {starting ? "Starting…" : "Start Prompt"}
+            {starting ? "Starting…" : "Start"}
           </button>
         </div>
 

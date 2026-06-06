@@ -101,7 +101,7 @@ class TestDispatcher:
         tasks = L.load_tasks(env, split="dev", limit=2)
         assert isinstance(tasks, list)
         # Every env should at least yield a positive number of dev tasks
-        # because we either have real upstream data or we expose stubs.
+        # because we either have real upstream data or fallback sample tasks.
         assert len(tasks) > 0
 
     def test_invalid_split_raises(self) -> None:

@@ -4,7 +4,7 @@ Pure in-memory, ephemeral `IDatabaseAdapter` for elizaOS — zero setup, zero pe
 
 ## Purpose / role
 
-Provides a complete `DatabaseAdapter` implementation backed by JavaScript `Map` structures and an in-memory HNSW vector index. No disk I/O, no migrations, no configuration required. Load it as a plugin so the runtime registers the adapter automatically, or construct `InMemoryDatabaseAdapter` directly (useful in tests). It is opt-in — the runtime will skip registration if an adapter is already present.
+Provides a complete `DatabaseAdapter` implementation backed by JavaScript `Map` structures and an in-memory HNSW vector index. No disk I/O, no migrations, no configuration required. Load it as a plugin so the runtime registers the adapter automatically, or construct `InMemoryDatabaseAdapter` directly (useful in tests). It is opt-in — the runtime leaves the existing adapter registered if one is already present.
 
 Supported platforms: Node.js and browser (separate build entries in `exports`). Loaded via the `init` hook in `index.ts`.
 

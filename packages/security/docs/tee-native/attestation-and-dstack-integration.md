@@ -66,7 +66,7 @@ checklist item before we layer dstack onto our RoT:**
 | #617 | Guest agent exposes raw private keys to all local processes | world-readable keys | closed | Single-tenant helps, but socket perms must be locked; agent is the only client. |
 | #616 | Host-controlled Docker registry mirror → image substitution | supply chain | closed | Pin image by digest in the measured compose; never trust host mirror. |
 | #615 | Host-supplied system config unmeasured but security-relevant | unmeasured config | closed | All security-relevant config must extend an RTMR. |
-| #614 | VMM `no_tee` flag launches VMs without TDX | fake/disabled TEE | closed | Forbid `no_tee`; policy must require a real quote (`kind != none`). |
+| #614 | VMM `no_tee` flag launches VMs without TDX | non-TEE launch path | closed | Forbid `no_tee`; policy must require a real quote (`kind != none`). |
 | #613 | 10-year default cert validity undermines attestation freshness | freshness | closed | Pin short cert/quote validity; our policy `maxAgeMs` enforces freshness independently. |
 | #612 | Gateway `register_cvm` prefers stale `app_info` over live attestation | stale evidence | closed | Always verify **live** evidence; our verifier re-checks freshness nonce + timestamp. |
 | #611 | Unauthenticated `/finish` can shut down KMS onboard | DoS | closed | Network-isolate KMS control plane. |
@@ -288,7 +288,7 @@ item 5 is a generator hardening.
 | Genuine on-device CoVE quote | CoVE TSM bring-up on FPGA/silicon | no |
 | Genuine TDX+GPU quote | real TDX host + H100 + NRAS | no |
 | `memoryEncrypted` claim is *true* (MEE counter-mode live) | LPDDR5X MEE in silicon | no |
-| `secureBoot`/`debugDisabled` claims are *true* | RoT silicon + fused keys (today: stubs/placeholders) | no |
+| `secureBoot`/`debugDisabled` claims are *true* | RoT silicon + fused keys (today: hardware-backed implementation not present) | no |
 | dstack issue-list hardening verified in pinned version | pinned dstack build + config audit | partial (config audit can run) |
 | `TeeEvidence` normalization + policy verify + key-release logic | — | **yes** (fixtures + unit tests exist) |
 | Release-manifest → policy mapping (incl. new `compose`/`gpuFirmware`/`modelWeights` keys) | — | **yes** (schema + fixture work) |

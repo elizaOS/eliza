@@ -175,7 +175,7 @@ export async function handleAgentTransferRoutes(
     if (rawBody.length < 4 + passwordLength + 1) {
       error(
         res,
-        "Request body is incomplete — missing file data after password.",
+        "Request body is partial — missing file data after password.",
         400,
       );
       return true;

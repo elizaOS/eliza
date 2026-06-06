@@ -171,12 +171,6 @@ async function installConversationStreamMock(page: Page): Promise<{
           text: userText,
           timestamp: now,
         },
-        {
-          id: `always-on-assistant-${messageSequence}`,
-          role: "assistant",
-          text: assistantText,
-          timestamp: now + 1,
-        },
       );
       await route.fulfill({
         status: 200,
@@ -826,8 +820,11 @@ test("always-on chat mode starts passive browser STT and keeps capture open afte
     .poll(async () => page.locator("body").innerText(), { timeout: 5_000 })
     .toContain("always on browser turn");
 
+  // The overlay's fullscreen transcript animates out via AnimatePresence while
+  // the resting thread mounts in, so the same assistant line can be present in
+  // both during the expand/collapse transition. Assert the first visible bubble.
   await expect(
-    page.getByText("Always-on assistant heard the browser turn"),
+    page.getByText("Always-on assistant heard the browser turn").first(),
   ).toBeVisible({
     timeout: 5_000,
   });

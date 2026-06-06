@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ASSISTANT_INTENTS,
   LIFEOPS_VOICE_COMMAND_PROMPT,
-} from "./LifeOpsAssistantSection.js";
+} from "./LifeOpsAssistantSection.helpers.js";
 import { LifeOpsWorkspaceShell } from "./LifeOpsWorkspaceShell.js";
 
 vi.mock(
@@ -18,7 +18,7 @@ vi.mock(
 
 const openLifeOpsChat = vi.fn();
 
-vi.mock("./LifeOpsChatAdapter.js", () => ({
+vi.mock("./LifeOpsChatAdapter.helpers.js", () => ({
   useLifeOpsChatLauncher: () => ({ openLifeOpsChat }),
 }));
 
@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 describe("LifeOpsWorkspaceShell", () => {
-  it("keeps mobile navigation chat-first with compact assistant controls", () => {
+  it("renders a single pane with a top section-tab bar and assistant controls", () => {
     render(
       <LifeOpsWorkspaceShell
         compactLayout={true}
@@ -39,7 +39,7 @@ describe("LifeOpsWorkspaceShell", () => {
       </LifeOpsWorkspaceShell>,
     );
 
-    expect(screen.getByTestId("lifeops-workspace-nav-toggle")).toBeTruthy();
+    expect(screen.getByTestId("lifeops-nav-tabs")).toBeTruthy();
     expect(screen.getByTestId("lifeops-mobile-assistant-dock")).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "Open LifeOps chat" }),

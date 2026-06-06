@@ -1,5 +1,6 @@
 "use client";
 
+import type { StewardClient as StewardReactClient } from "@stwd/react";
 import { StewardProvider, useAuth as useStewardAuth } from "@stwd/react";
 import { StewardClient } from "@stwd/sdk";
 import { useEffect, useMemo, useRef } from "react";
@@ -10,6 +11,7 @@ import {
   configuredSessionEndpoint,
   isPlaceholderValue,
   LocalStewardAuthContext,
+  type LocalStewardAuthValue,
   readStoredToken,
   tokenIsExpired,
   tokenSecsRemaining,
@@ -152,8 +154,38 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
     };
   }, [isAuthenticated, user]);
 
+  // Map the SDK context to the local context shape explicitly instead of
+  // passing the SDK object through. The structural pass-through is fragile
+  // across @stwd/sdk resolutions (0.8.x vs 0.10.x nest differently under
+  // @stwd/react), and verifyEmailCallback must narrow the 0.10.x
+  // MFA-required union before exposing tokens.
+  const localAuth = useMemo<LocalStewardAuthValue>(
+    () => ({
+      isAuthenticated: auth.isAuthenticated,
+      isLoading: auth.isLoading,
+      user: auth.user
+        ? {
+            id: auth.user.id,
+            email: auth.user.email ?? undefined,
+            walletAddress: auth.user.walletAddress,
+          }
+        : null,
+      session: auth.session,
+      signOut: () => auth.signOut(),
+      getToken: () => auth.getToken(),
+      verifyEmailCallback: async (token: string, email: string) => {
+        const result = await auth.verifyEmailCallback(token, email);
+        if ("mfaRequired" in result) {
+          throw new Error("MFA required — not yet supported in this client.");
+        }
+        return { token: result.token, refreshToken: result.refreshToken };
+      },
+    }),
+    [auth],
+  );
+
   return (
-    <LocalStewardAuthContext.Provider value={auth}>
+    <LocalStewardAuthContext.Provider value={localAuth}>
       {children}
     </LocalStewardAuthContext.Provider>
   );
@@ -168,12 +200,19 @@ export default function StewardAuthRuntimeProvider({
   children: React.ReactNode;
   tenantId?: string;
 }) {
+  // @stwd/react@0.7.2 bundles @stwd/sdk@^0.8.0, while this package pins
+  // @stwd/sdk@^0.10.1 (bumped for the passkey-login fix). The two StewardClient
+  // classes are public-API-identical and differ only by added private fields,
+  // so they are nominally incompatible. StewardProvider only calls the public
+  // `client.getBaseUrl()` at runtime, so the 0.10.1 client is safe to pass; the
+  // cast bridges the private-field nominal mismatch until @stwd/react ships a
+  // release tracking @stwd/sdk@0.10.x.
   const client = useMemo(
     () =>
       new StewardClient({
         baseUrl: apiUrl,
         ...(tenantId && !isPlaceholderValue(tenantId) ? { tenantId } : {}),
-      }),
+      }) as unknown as StewardReactClient,
     [apiUrl, tenantId],
   );
   const authConfig = useMemo(() => ({ baseUrl: apiUrl }), [apiUrl]);

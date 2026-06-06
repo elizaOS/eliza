@@ -23,6 +23,7 @@ import {
 } from "react";
 import type { VrmEngine } from "../avatar/VrmEngine";
 import { prefetchVrmToCache } from "../avatar/VrmEngine";
+import { CompanionStageBackdrop } from "./CompanionStageBackdrop";
 import { CompanionSceneStatusContext } from "./companion-scene-status-context";
 import { SharedCompanionSceneContext } from "./shared-companion-scene-context";
 import { VrmStage } from "./VrmStage";
@@ -62,10 +63,6 @@ type CompanionWheelEvent = Pick<
 >;
 
 let _companionTeleportCompletedOnce = false;
-
-export function hasCompanionTeleportCompletedOnce(): boolean {
-  return _companionTeleportCompletedOnce;
-}
 
 function getTouchDistance(points: Map<number, TouchPoint>): number {
   const touchPoints = [...points.values()];
@@ -628,14 +625,6 @@ function CompanionSceneSurface({
           visibility: active ? "visible" : "hidden",
         }}
       >
-        <div
-          className={`absolute inset-0 z-0 bg-cover opacity-40 pointer-events-none ${
-            uiTheme === "dark"
-              ? "bg-[radial-gradient(circle_at_50%_40%,rgba(80,20,140,0.2)_0%,transparent_60%)]"
-              : "bg-[radial-gradient(circle_at_50%_40%,rgba(180,200,220,0.15)_0%,transparent_60%)]"
-          }`}
-        />
-
         {shouldMountVrm && (
           <VrmStage
             active={active}
@@ -652,6 +641,30 @@ function CompanionSceneSurface({
             t={t}
           />
         )}
+
+        {/* Aesthetic loading stage. The VRM canvas renders an opaque "Construct"
+            environment (white/dark void + grid + fog), so a backdrop placed
+            *behind* it never shows. Instead this overlays the canvas while the
+            avatar is still teleporting in: a gradient wash + accent silhouette so
+            the companion reads as a designed stage, never a flat void. It fades
+            out the instant the live avatar is ready. pointer-events:none keeps
+            camera drag / zoom working through it. */}
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 5,
+            pointerEvents: "none",
+            opacity: avatarReady ? 0 : 1,
+            transition: "opacity 600ms ease",
+          }}
+        >
+          <CompanionStageBackdrop
+            theme={uiTheme === "dark" ? "dark" : "light"}
+            showSilhouette={!avatarReady}
+          />
+        </div>
       </div>
 
       <CompanionSceneStatusContext.Provider value={sceneStatus}>

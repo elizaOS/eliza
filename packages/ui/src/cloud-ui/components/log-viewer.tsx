@@ -10,19 +10,19 @@ import {
   WifiOff,
 } from "lucide-react";
 import * as React from "react";
-import { cn } from "../lib/utils";
-import { Badge } from "./badge";
-import { BrandButton, BrandCard } from "./brand";
-import { Input } from "./input";
-import { ScrollArea } from "./scroll-area";
+import { Badge } from "../../components/ui/badge";
+import { Input } from "../../components/ui/input";
+import { ScrollArea } from "../../components/ui/scroll-area";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "./select";
-import { Skeleton } from "./skeleton";
+} from "../../components/ui/select";
+import { Skeleton } from "../../components/ui/skeleton";
+import { cn } from "../lib/utils";
+import { BrandButton, BrandCard } from "./brand";
 
 type BadgeVariant = React.ComponentProps<typeof Badge>["variant"];
 

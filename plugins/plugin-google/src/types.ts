@@ -1,5 +1,9 @@
 import type { Service } from "@elizaos/core";
-import type { OAuth2Client } from "google-auth-library";
+// Import the auth client type through googleapis' own re-export so the type
+// identity always matches the google-auth-library copy googleapis was built
+// against (bun's isolated linker can install two copies, which makes a direct
+// google-auth-library import nominally incompatible with googleapis Options).
+import type { Auth } from "googleapis";
 import type { GoogleCapability } from "./scopes.js";
 
 export const GOOGLE_SERVICE_NAME = "google";
@@ -10,7 +14,7 @@ export interface GoogleAccountRef {
   accountId: GoogleAccountId;
 }
 
-export type GoogleAuthClient = OAuth2Client;
+export type GoogleAuthClient = Auth.OAuth2Client;
 
 export interface GoogleAuthResolutionRequest extends GoogleAccountRef {
   provider: typeof GOOGLE_SERVICE_NAME;

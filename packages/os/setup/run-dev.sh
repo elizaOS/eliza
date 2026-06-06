@@ -6,7 +6,7 @@ LOG_FILE="${LOG_DIR}/setup-dev.log"
 mkdir -p "$LOG_DIR"
 
 # Tee stderr to a debug log so failures (e.g. adb not running) survive past
-# the visible "(adb not found)" placeholder line.
+# the visible "(adb not found)" fallback line.
 exec 3>>"$LOG_FILE"
 
 echo "Starting elizaOS Setup..."

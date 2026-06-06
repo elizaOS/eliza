@@ -99,7 +99,7 @@ npm tarball). **`2.0.0-alpha.12`** shipped broken dist entrypoints and must be a
 
 The published npm tarball for **`2.0.0-alpha.12`** contains **truncated** JavaScript outputs for the Node ESM and browser entrypoints (`dist/node/index.node.js`, `dist/browser/index.browser.js`). Those files only include the bundled `utils/config` helpers (~80 lines). The **main plugin implementation** (the object that should be exported as `openrouterPlugin` and as `default`) is **not present** in the file, but the final `export { … }` list still names `openrouterPlugin` and `openrouterPlugin2 as default`.
 
-**Why Bun errors:** When the runtime loads the plugin, Bun builds/transpiles that entry file and fails with errors like *`openrouterPlugin` is not declared in this file* — the symbols are exported but never defined. The CommonJS build (`dist/cjs/index.node.cjs`) is incomplete in the same way (export getters reference a missing `import_plugin` chunk).
+**Why Bun errors:** When the runtime loads the plugin, Bun builds/transpiles that entry file and fails with errors like *`openrouterPlugin` is not declared in this file* — the symbols are exported but never defined. The CommonJS build (`dist/cjs/index.node.cjs`) is truncated in the same way (export getters reference a missing `import_plugin` chunk).
 
 **Why we do not postinstall-patch the dist:** The broken release is missing the
 entire plugin body, not a single wrong identifier (contrast

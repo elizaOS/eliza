@@ -318,6 +318,7 @@ export function DagVisualizerClient() {
 
         if (list.length > 0) {
           const newest = list[0]?.dirName;
+          if (!newest) return;
           if (
             liveMode &&
             !userSelectedRef.current &&
@@ -414,8 +415,9 @@ export function DagVisualizerClient() {
     setLiveMode((prev) => {
       if (!prev) {
         userSelectedRef.current = false;
-        if (traces.length > 0) {
-          setSelectedTrace(traces[0]?.dirName);
+        const newest = traces[0]?.dirName;
+        if (newest) {
+          setSelectedTrace(newest);
         }
       }
       return !prev;
@@ -489,6 +491,7 @@ export function DagVisualizerClient() {
 
         {/* Live toggle */}
         <button
+          type="button"
           onClick={handleToggleLive}
           style={{
             background: liveMode ? "#16a34a22" : "#1e293b",
@@ -523,6 +526,7 @@ export function DagVisualizerClient() {
 
         {/* Trigger tick */}
         <button
+          type="button"
           onClick={triggerTick}
           disabled={tickRunning}
           style={{
@@ -644,6 +648,7 @@ export function DagVisualizerClient() {
               tracing, or enable FEED_DAG_TRACE=true
             </div>
             <button
+              type="button"
               onClick={triggerTick}
               disabled={tickRunning}
               style={{

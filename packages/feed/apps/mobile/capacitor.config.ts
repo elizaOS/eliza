@@ -1,4 +1,5 @@
 import type { CapacitorConfig } from "@capacitor/cli";
+import { KeyboardResize, KeyboardStyle } from "@capacitor/keyboard";
 
 const serverUrl = process.env.CAPACITOR_SERVER_URL;
 
@@ -21,8 +22,8 @@ const config: CapacitorConfig = {
       splashImmersive: true,
     },
     Keyboard: {
-      resize: "body",
-      style: "dark",
+      resize: KeyboardResize.Body,
+      style: KeyboardStyle.Dark,
     },
     StatusBar: {
       style: "DARK",

@@ -329,7 +329,18 @@ export function resolveConversationGreetingText(
     return presetGreeting;
   }
 
-  return pickRandom(runtime.character.postExamples);
+  const characterGreeting = pickRandom(runtime.character.postExamples);
+  if (characterGreeting) {
+    return characterGreeting;
+  }
+
+  // Last-resort default so the agent ALWAYS opens the conversation, even when no
+  // preset or character `postExamples` are configured (otherwise the greeting
+  // resolves to "" and the conversation starts empty).
+  const name = assistantName || characterName;
+  return name
+    ? `Hey, I'm ${name}. What can I help you with?`
+    : "Hey — what can I help you with?";
 }
 
 // ---------------------------------------------------------------------------

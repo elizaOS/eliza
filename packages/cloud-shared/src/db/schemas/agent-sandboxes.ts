@@ -76,6 +76,15 @@ export type AgentSandboxStatus =
 
 export type AgentBillingStatus = "active" | "warning" | "suspended" | "shutdown_pending" | "exempt";
 
+/**
+ * How an agent runs. "shared" agents run container-free in the hosted shared
+ * runtime (chat/webhook/cron turns via a hosted LLM); the other tiers get a
+ * dedicated container. New agents default to "shared"; the column-adding
+ * migration backfills pre-existing rows to "dedicated-lazy" because they already
+ * have containers. See services/shared-runtime/agent-tier.ts for derivation.
+ */
+export type AgentExecutionTier = "shared" | "dedicated-lazy" | "dedicated-always" | "custom";
+
 export const agentSandboxes = pgTable(
   "agent_sandboxes",
   {
@@ -91,6 +100,12 @@ export const agentSandboxes = pgTable(
     }),
     sandbox_id: text("sandbox_id"),
     status: text("status").$type<AgentSandboxStatus>().notNull().default("pending"),
+    /**
+     * Execution tier (see AgentExecutionTier). New agents default to "shared"
+     * (container-free); only a real need escalates to a dedicated container.
+     * The migration backfills pre-existing container rows to "dedicated-lazy".
+     */
+    execution_tier: text("execution_tier").$type<AgentExecutionTier>().notNull().default("shared"),
     bridge_url: text("bridge_url"),
     health_url: text("health_url"),
     agent_name: text("agent_name"),

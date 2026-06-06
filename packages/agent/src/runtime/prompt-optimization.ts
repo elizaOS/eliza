@@ -1094,8 +1094,8 @@ function buildRuntimeCompactorModelCall(
 /**
  * Async pre-step that runs a conversation-compactor strategy when
  * `ELIZA_CONVERSATION_COMPACTOR` is set and the prompt is over budget.
- * No-ops when the env var is unset, the prompt is under budget, or the
- * compactor cannot reduce the prompt.
+ * Returns the original prompt when the env var is unset, the prompt is under
+ * budget, or the compactor cannot reduce the prompt.
  *
  * Logs `[eliza] conversation-compaction strategy=X originalTokens=N
  * compactedTokens=M latencyMs=L` on a successful compaction.

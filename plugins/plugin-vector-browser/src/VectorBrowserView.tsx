@@ -1,12 +1,6 @@
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client, type QueryResult, type TableInfo } from "@elizaos/ui/api";
-import {
-  MetaPill,
-  PagePanel,
-} from "@elizaos/ui/components/composites/page-panel";
-import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
-import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
-import { SidebarScrollRegion } from "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region";
+import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 import { MemoryDetailPanel } from "@elizaos/ui/components/pages/MemoryDetailPanel";
 import {
   buildVectorGraph2DLayout,
@@ -21,7 +15,6 @@ import {
   toVectorGraph2DScreenY,
   type ViewMode,
 } from "@elizaos/ui/components/pages/vector-browser-utils";
-import { AppPageSidebar } from "@elizaos/ui/components/shared/AppPageSidebar";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Input } from "@elizaos/ui/components/ui/input";
 import {
@@ -34,8 +27,9 @@ import {
 import { ListSkeleton } from "@elizaos/ui/components/ui/skeleton-layouts";
 import { getBootConfig } from "@elizaos/ui/config";
 import { useRenderGuard } from "@elizaos/ui/hooks";
-import { PageLayout } from "@elizaos/ui/layouts";
+import { WorkspaceLayout } from "@elizaos/ui/layouts";
 import { useApp } from "@elizaos/ui/state";
+import { Clock3, Database, Hash, Layers3 } from "lucide-react";
 import type { ReactNode } from "react";
 import {
   useCallback,
@@ -58,6 +52,50 @@ function resolveVectorBrowserRuntime(): VectorBrowserRuntime {
     throw new Error("Vector browser runtime is not registered in boot config.");
   }
   return runtime as VectorBrowserRuntime;
+}
+
+function formatMemoryDate(value: string | null | undefined): string {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value.slice(0, 16);
+  return parsed.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function VectorMetric({
+  icon,
+  value,
+  label,
+  tone,
+}: {
+  icon: ReactNode;
+  value: string;
+  label: string;
+  tone: "accent" | "neutral";
+}) {
+  return (
+    <div className="flex min-h-12 items-center gap-2 rounded-sm border border-border/35 bg-card/50 px-3">
+      <span
+        className={`grid h-7 w-7 shrink-0 place-items-center rounded-sm ${
+          tone === "accent"
+            ? "bg-accent/15 text-accent"
+            : "bg-bg-muted/50 text-muted"
+        }`}
+      >
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-semibold text-txt">
+          {value}
+        </span>
+        <span className="block truncate text-[0.65rem] uppercase tracking-[0.08em] text-muted">
+          {label}
+        </span>
+      </span>
+    </div>
+  );
 }
 
 // ── Graph sub-component ────────────────────────────────────────────────
@@ -858,6 +896,10 @@ export function VectorBrowserView({
     null,
   );
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+  // Presentation-only flag: which face of the single column is showing in list
+  // mode — the master record list (false) or the selected record's detail
+  // (true). Keeps the column to one pane at a time instead of master+detail.
+  const [detailOpen, setDetailOpen] = useState(false);
   const [graphMemories, setGraphMemories] = useState<MemoryRecord[]>([]);
   const [graphLoading, setGraphLoading] = useState(false);
   const [stats, setStats] = useState<{
@@ -1126,6 +1168,11 @@ export function VectorBrowserView({
     }
   }, [memories, selectedMemory, viewMode]);
 
+  // Leaving list mode collapses the detail face so returning lands on the list.
+  useEffect(() => {
+    if (viewMode !== "list") setDetailOpen(false);
+  }, [viewMode]);
+
   // Show connection error state prominently
   const isConnectionError = error?.includes("agent is running");
 
@@ -1225,290 +1272,320 @@ export function VectorBrowserView({
     },
   });
 
-  const vectorSidebar = (
-    <AppPageSidebar
-      testId="vector-sidebar"
-      collapsible
-      contentIdentity="vector-browser"
-      collapsedRailItems={memories.map((mem) => {
-        const isActive = selectedMemory?.id === mem.id;
-        return (
-          <SidebarContent.RailItem
-            key={mem.id || `${mem.content.slice(0, 30)}-${mem.createdAt}`}
-            aria-label={mem.content || "Memory"}
-            title={mem.content || "Memory"}
-            active={isActive}
-            onClick={() => setSelectedMemory(mem)}
-          >
-            {mem.type && mem.type !== "undefined" ? mem.type.slice(0, 1) : "M"}
-          </SidebarContent.RailItem>
-        );
-      })}
-    >
-      <SidebarPanel>
-        <div className="space-y-3 pt-4">
-          {leftNav}
-          <PagePanel.SummaryCard>
-            <div className="text-sm font-semibold text-txt">
-              {selectedTable ||
-                t("common.vectors", {
-                  defaultValue: "Vectors",
-                })}
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2 text-2xs font-semibold uppercase tracking-[0.14em] text-muted/75">
-              <MetaPill>
-                {viewMode === "list"
-                  ? t("vectorbrowserview.ListView", {
-                      defaultValue: "List view",
-                    })
-                  : viewMode === "graph"
-                    ? t("vectorbrowserview.Graph2D", {
-                        defaultValue: "2D graph",
-                      })
-                    : t("vectorbrowserview.Graph3D", {
-                        defaultValue: "3D graph",
-                      })}
-              </MetaPill>
-              {stats ? (
-                <MetaPill>
-                  {t("vectorbrowserview.MemoryCount", {
-                    count: Number(stats.total).toLocaleString(),
-                    defaultValue: "{{count}} memories",
-                  })}
-                </MetaPill>
-              ) : null}
-            </div>
-          </PagePanel.SummaryCard>
+  // Selecting a record in list mode swaps the single column over to its detail.
+  const openDetail = (mem: MemoryRecord) => {
+    setSelectedMemory(mem);
+    setDetailOpen(true);
+  };
+
+  const summaryHeader = (
+    <div className="flex flex-col gap-2">
+      {leftNav}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0 truncate text-base font-semibold text-txt">
+          {selectedTable ||
+            t("common.vectors", {
+              defaultValue: "Vectors",
+            })}
         </div>
-
-        {!isConnectionError ? (
-          <div className="space-y-3 pt-4">
-            {tables.length > 1 && (
-              <Select
-                value={selectedTable}
-                onValueChange={(value: string) => {
-                  setSelectedTable(value);
-                  setPage(0);
-                  setSearch("");
-                  setSearchInput("");
-                  setSelectedMemory(null);
-                }}
-              >
-                <SelectTrigger
-                  ref={(node) => {
-                    tableSelect.ref.current = node as HTMLButtonElement | null;
-                  }}
-                  {...tableSelect.agentProps}
-                  className="w-full h-9 rounded-sm border border-border bg-card px-2.5 py-1.5 text-xs transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {tables.map((table) => (
-                    <SelectItem key={table.name} value={table.name}>
-                      {table.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-
-            <div className="grid grid-cols-3 gap-1.5">
-              <Button
-                ref={listTab.ref}
-                {...listTab.agentProps}
-                aria-current={viewMode === "list" ? "true" : undefined}
-                variant="ghost"
-                size="sm"
-                className={`h-auto min-h-[1.75rem] rounded-sm border px-4 py-1 text-left text-xs font-medium whitespace-normal break-words transition-all duration-300 ${
-                  viewMode === "list"
-                    ? "border-accent/45 bg-accent/16 text-txt-strong "
-                    : "border-transparent text-muted-strong hover:border-border/50 hover:bg-bg-hover hover:text-txt"
-                }`}
-                onClick={() => setViewMode("list")}
-              >
-                {t("vectorbrowserview.List")}
-              </Button>
-              <Button
-                ref={graph2dTab.ref}
-                {...graph2dTab.agentProps}
-                aria-current={viewMode === "graph" ? "true" : undefined}
-                variant="ghost"
-                size="sm"
-                className={`h-auto min-h-[1.75rem] rounded-sm border px-4 py-1 text-left text-xs font-medium whitespace-normal break-words transition-all duration-300 ${
-                  viewMode === "graph"
-                    ? "border-accent/45 bg-accent/16 text-txt-strong "
-                    : "border-transparent text-muted-strong hover:border-border/50 hover:bg-bg-hover hover:text-txt"
-                }`}
-                onClick={() => setViewMode("graph")}
-              >
-                {t("vectorbrowserview.2D", { defaultValue: "2D" })}
-              </Button>
-              <Button
-                ref={graph3dTab.ref}
-                {...graph3dTab.agentProps}
-                aria-current={viewMode === "3d" ? "true" : undefined}
-                variant="ghost"
-                size="sm"
-                className={`h-auto min-h-[1.75rem] rounded-sm border px-4 py-1 text-left text-xs font-medium whitespace-normal break-words transition-all duration-300 ${
-                  viewMode === "3d"
-                    ? "border-accent/45 bg-accent/16 text-txt-strong "
-                    : "border-transparent text-muted-strong hover:border-border/50 hover:bg-bg-hover hover:text-txt"
-                }`}
-                onClick={() => setViewMode("3d")}
-              >
-                {t("vectorbrowserview.3D", { defaultValue: "3D" })}
-              </Button>
-            </div>
-
-            {viewMode === "list" ? (
-              <div className="flex gap-1.5">
-                <Input
-                  ref={searchField.ref}
-                  {...searchField.agentProps}
-                  type="search"
-                  placeholder={t("vectorbrowserview.SearchContent")}
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  className="flex-1 h-10 rounded-sm border border-border/60 bg-card/50 px-3 py-2 text-sm placeholder:text-muted/65 transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent"
-                />
-                <Button
-                  ref={searchButton.ref}
-                  {...searchButton.agentProps}
-                  variant="default"
-                  size="sm"
-                  onClick={handleSearch}
-                >
-                  {t("common.search")}
-                </Button>
-              </div>
-            ) : null}
-
-            {stats ? (
-              <div className="rounded-sm border border-border/35 bg-bg/35 px-3 py-3 text-xs-tight text-muted">
-                <div className="font-semibold text-txt">
-                  {Number(stats.total).toLocaleString()}{" "}
-                  {t("vectorbrowserview.memories")}
-                </div>
-                <div className="mt-1">
-                  {Number(stats.dimensions) > 0
-                    ? t("vectorbrowserview.DimensionsEmbeddings", {
-                        defaultValue: "{dimensions}D embeddings",
-                      }).replace("{dimensions}", String(stats.dimensions))
-                    : t("vectorbrowserview.Loading", {
-                        defaultValue: "loading...",
-                      })}
-                </div>
-                {Number(stats.uniqueCount) > 0 ? (
-                  <div className="mt-1">
-                    {Number(stats.uniqueCount).toLocaleString()}{" "}
-                    {t("vectorbrowserview.unique")}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
+        {stats ? (
+          <div className="text-xs text-muted">
+            {Number(stats.total).toLocaleString()}{" "}
+            {t("vectorbrowserview.memories")}
           </div>
         ) : null}
-
-        <SidebarScrollRegion className="mt-3 space-y-1.5">
-          {isConnectionError ? (
-            <SidebarContent.EmptyState>
-              {t("vectorbrowserview.StartTheAgentToB")}
-            </SidebarContent.EmptyState>
-          ) : viewMode !== "list" ? (
-            <SidebarContent.EmptyState>
-              {t("vectorbrowserview.SelectPointHint", {
-                defaultValue:
-                  "Select a point from the viewer to inspect its full record on the right.",
-              })}
-            </SidebarContent.EmptyState>
-          ) : loading ? (
-            <SidebarContent.EmptyState>
-              {t("vectorbrowserview.LoadingMemories")}
-            </SidebarContent.EmptyState>
-          ) : memories.length === 0 ? (
-            <SidebarContent.EmptyState>
-              {search
-                ? t("vectorbrowserview.NoRecordsMatchSearchQuery", {
-                    defaultValue: "No records match your search query.",
-                  })
-                : t("vectorbrowserview.NoMemoryRecordsDetected", {
-                    defaultValue: "No memory records detected in the database.",
-                  })}
-            </SidebarContent.EmptyState>
-          ) : (
-            memories.map((mem) => {
-              const isActive = selectedMemory?.id === mem.id;
-              return (
-                <SidebarContent.Item
-                  key={mem.id || `${mem.content.slice(0, 30)}-${mem.createdAt}`}
-                  active={isActive}
-                  onClick={() => setSelectedMemory(mem)}
-                >
-                  <SidebarContent.ItemIcon active={isActive}>
-                    {mem.type && mem.type !== "undefined"
-                      ? mem.type.slice(0, 1)
-                      : "M"}
-                  </SidebarContent.ItemIcon>
-                  <SidebarContent.ItemBody>
-                    <SidebarContent.ItemTitle className="line-clamp-2">
-                      {mem.content || "(empty)"}
-                    </SidebarContent.ItemTitle>
-                    <SidebarContent.ItemDescription>
-                      {mem.embedding ? (
-                        <span>{mem.embedding.length}D</span>
-                      ) : null}
-                      {mem.createdAt ? (
-                        <span className="truncate">{mem.createdAt}</span>
-                      ) : null}
-                    </SidebarContent.ItemDescription>
-                  </SidebarContent.ItemBody>
-                </SidebarContent.Item>
-              );
-            })
-          )}
-        </SidebarScrollRegion>
-
-        {viewMode === "list" && totalPages > 1 ? (
-          <div className="mt-3 flex items-center justify-between gap-2 pt-3">
-            <Button
-              ref={prevPageButton.ref}
-              {...prevPageButton.agentProps}
-              variant="outline"
-              size="sm"
-              disabled={page === 0}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              {t("common.prev")}
-            </Button>
-            <span className="text-xs-tight text-muted">
-              {t("vectorbrowserview.Page")} {page + 1} / {totalPages}
-            </span>
-            <Button
-              ref={nextPageButton.ref}
-              {...nextPageButton.agentProps}
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages - 1}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              {t("common.next")}
-            </Button>
-          </div>
-        ) : null}
-      </SidebarPanel>
-    </AppPageSidebar>
+      </div>
+    </div>
   );
 
-  return (
-    <PageLayout sidebar={vectorSidebar} contentHeader={contentHeader}>
-      {error && !isConnectionError ? (
-        <div className="m-5 rounded-sm border border-danger/35 bg-danger/10 px-4 py-3 text-sm text-danger">
-          {error}
+  const toolbar = (
+    <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+        {tables.length > 1 && (
+          <Select
+            value={selectedTable}
+            onValueChange={(value: string) => {
+              setSelectedTable(value);
+              setPage(0);
+              setSearch("");
+              setSearchInput("");
+              setSelectedMemory(null);
+              setDetailOpen(false);
+            }}
+          >
+            <SelectTrigger
+              ref={(node) => {
+                tableSelect.ref.current = node as HTMLButtonElement | null;
+              }}
+              {...tableSelect.agentProps}
+              className="h-9 w-full rounded-sm border border-border bg-card px-2.5 py-1.5 text-xs transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {tables.map((table) => (
+                <SelectItem key={table.name} value={table.name}>
+                  {table.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        <div className="inline-flex w-full rounded-sm border border-border/50 bg-card/40 p-0.5 md:w-auto">
+          <Button
+            ref={listTab.ref}
+            {...listTab.agentProps}
+            aria-current={viewMode === "list" ? "true" : undefined}
+            variant="ghost"
+            size="sm"
+            className={`h-auto min-h-[1.75rem] flex-1 rounded-sm border px-3 py-1 text-xs font-medium transition-all duration-300 md:flex-none ${
+              viewMode === "list"
+                ? "border-accent/45 bg-accent/16 text-txt-strong "
+                : "border-transparent text-muted-strong hover:border-border/50 hover:bg-bg-hover hover:text-txt"
+            }`}
+            onClick={() => setViewMode("list")}
+          >
+            {t("vectorbrowserview.List")}
+          </Button>
+          <Button
+            ref={graph2dTab.ref}
+            {...graph2dTab.agentProps}
+            aria-current={viewMode === "graph" ? "true" : undefined}
+            variant="ghost"
+            size="sm"
+            className={`h-auto min-h-[1.75rem] flex-1 rounded-sm border px-3 py-1 text-xs font-medium transition-all duration-300 md:flex-none ${
+              viewMode === "graph"
+                ? "border-accent/45 bg-accent/16 text-txt-strong "
+                : "border-transparent text-muted-strong hover:border-border/50 hover:bg-bg-hover hover:text-txt"
+            }`}
+            onClick={() => setViewMode("graph")}
+          >
+            {t("vectorbrowserview.2D", { defaultValue: "2D" })}
+          </Button>
+          <Button
+            ref={graph3dTab.ref}
+            {...graph3dTab.agentProps}
+            aria-current={viewMode === "3d" ? "true" : undefined}
+            variant="ghost"
+            size="sm"
+            className={`h-auto min-h-[1.75rem] flex-1 rounded-sm border px-3 py-1 text-xs font-medium transition-all duration-300 md:flex-none ${
+              viewMode === "3d"
+                ? "border-accent/45 bg-accent/16 text-txt-strong "
+                : "border-transparent text-muted-strong hover:border-border/50 hover:bg-bg-hover hover:text-txt"
+            }`}
+            onClick={() => setViewMode("3d")}
+          >
+            {t("vectorbrowserview.3D", { defaultValue: "3D" })}
+          </Button>
+        </div>
+      </div>
+
+      {viewMode === "list" ? (
+        <div className="flex gap-1.5">
+          <Input
+            ref={searchField.ref}
+            {...searchField.agentProps}
+            type="search"
+            placeholder={t("vectorbrowserview.SearchContent")}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+            className="h-10 min-w-0 flex-1 rounded-sm border border-border/60 bg-card/50 px-3 py-2 text-sm placeholder:text-muted/65 transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent"
+          />
+          <Button
+            ref={searchButton.ref}
+            {...searchButton.agentProps}
+            variant="default"
+            size="sm"
+            onClick={handleSearch}
+          >
+            {t("common.search")}
+          </Button>
         </div>
       ) : null}
 
+      {stats ? (
+        <div className="grid grid-cols-3 gap-2">
+          <VectorMetric
+            icon={<Database className="h-3.5 w-3.5" aria-hidden />}
+            value={Number(stats.total).toLocaleString()}
+            label={t("vectorbrowserview.memories")}
+            tone="accent"
+          />
+          <VectorMetric
+            icon={<Layers3 className="h-3.5 w-3.5" aria-hidden />}
+            value={
+              Number(stats.dimensions) > 0
+                ? `${Number(stats.dimensions).toLocaleString()}D`
+                : "—"
+            }
+            label="embed"
+            tone="neutral"
+          />
+          <VectorMetric
+            icon={<Hash className="h-3.5 w-3.5" aria-hidden />}
+            value={Number(stats.uniqueCount).toLocaleString()}
+            label={t("vectorbrowserview.unique")}
+            tone="neutral"
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const masterList = (
+    <div className="flex flex-col gap-1.5">
+      {loading ? (
+        <div className="rounded-sm border border-border/35 bg-bg/35 px-4 py-10 text-center text-sm text-muted">
+          {t("vectorbrowserview.LoadingMemories")}
+        </div>
+      ) : memories.length === 0 ? (
+        <div className="rounded-sm border border-border/35 bg-bg/35 px-4 py-10 text-center text-sm text-muted">
+          {search
+            ? t("vectorbrowserview.NoRecordsMatchSearchQuery", {
+                defaultValue: "No records match your search query.",
+              })
+            : t("vectorbrowserview.NoMemoryRecordsDetected", {
+                defaultValue: "No memory records detected in the database.",
+              })}
+        </div>
+      ) : (
+        memories.map((mem) => {
+          const isActive = selectedMemory?.id === mem.id;
+          const createdLabel = formatMemoryDate(mem.createdAt);
+          return (
+            <button
+              type="button"
+              key={mem.id || `${mem.content.slice(0, 30)}-${mem.createdAt}`}
+              onClick={() => openDetail(mem)}
+              className={`flex w-full items-center gap-3 rounded-sm border px-3 py-2.5 text-left transition-colors ${
+                isActive
+                  ? "border-accent/45 bg-accent/12"
+                  : "border-border/40 bg-card/40 hover:border-border/60 hover:bg-bg-hover"
+              }`}
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-border/50 bg-bg/50 text-xs font-semibold uppercase text-muted">
+                {mem.type && mem.type !== "undefined"
+                  ? mem.type.slice(0, 1)
+                  : "M"}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="line-clamp-1 block text-sm font-medium text-txt">
+                  {mem.content || "(empty)"}
+                </span>
+                <span className="mt-1 flex flex-wrap gap-1.5 text-2xs text-muted">
+                  {mem.embedding ? (
+                    <span className="inline-flex items-center gap-1 rounded-sm bg-bg-muted/55 px-1.5 py-0.5">
+                      <Layers3 className="h-3 w-3" aria-hidden />
+                      {mem.embedding.length}D
+                    </span>
+                  ) : null}
+                  {createdLabel ? (
+                    <span className="inline-flex items-center gap-1 rounded-sm bg-bg-muted/55 px-1.5 py-0.5">
+                      <Clock3 className="h-3 w-3" aria-hidden />
+                      {createdLabel}
+                    </span>
+                  ) : null}
+                </span>
+              </span>
+            </button>
+          );
+        })
+      )}
+
+      {totalPages > 1 ? (
+        <div className="mt-3 flex items-center justify-between gap-2 pt-3">
+          <Button
+            ref={prevPageButton.ref}
+            {...prevPageButton.agentProps}
+            variant="outline"
+            size="sm"
+            disabled={page === 0}
+            onClick={() => setPage((p) => p - 1)}
+          >
+            {t("common.prev")}
+          </Button>
+          <span className="text-xs-tight text-muted">
+            {t("vectorbrowserview.Page")} {page + 1} / {totalPages}
+          </span>
+          <Button
+            ref={nextPageButton.ref}
+            {...nextPageButton.agentProps}
+            variant="outline"
+            size="sm"
+            disabled={page >= totalPages - 1}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            {t("common.next")}
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+
+  let mainSection: ReactNode;
+  if (viewMode === "graph") {
+    mainSection = (
+      <>
+        <PagePanel variant="inset" className="p-3">
+          {graphLoading ? (
+            <ListSkeleton rows={5} rowClassName="h-16" />
+          ) : (
+            <VectorGraph
+              memories={graphMemories}
+              onSelect={setSelectedMemory}
+            />
+          )}
+        </PagePanel>
+        <div className="max-h-[42vh] min-h-[14rem] overflow-auto rounded-sm border border-border/40 bg-card/45">
+          <MemoryDetailPanel memory={selectedMemory} />
+        </div>
+      </>
+    );
+  } else if (viewMode === "3d") {
+    mainSection = (
+      <>
+        <PagePanel variant="inset" className="p-3">
+          {graphLoading ? (
+            <ListSkeleton rows={5} rowClassName="h-16" />
+          ) : (
+            <VectorGraph3D
+              memories={graphMemories}
+              onSelect={setSelectedMemory}
+            />
+          )}
+        </PagePanel>
+        <div className="max-h-[42vh] min-h-[14rem] overflow-auto rounded-sm border border-border/40 bg-card/45">
+          <MemoryDetailPanel memory={selectedMemory} />
+        </div>
+      </>
+    );
+  } else if (detailOpen && selectedMemory) {
+    mainSection = (
+      <>
+        <div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setDetailOpen(false)}
+          >
+            {t("vectorbrowserview.BackToList", {
+              defaultValue: "← Back to list",
+            })}
+          </Button>
+        </div>
+        <div className="max-h-[70vh] min-h-[14rem] overflow-auto rounded-sm border border-border/40 bg-card/45">
+          <MemoryDetailPanel memory={selectedMemory} />
+        </div>
+      </>
+    );
+  } else {
+    mainSection = masterList;
+  }
+
+  return (
+    <WorkspaceLayout contentHeader={contentHeader} contentPadding={false}>
       {isConnectionError ? (
         <div className="flex flex-1 items-center justify-center p-6">
           <div className="rounded-sm border border-border/35 bg-bg/35 px-8 py-10 text-center ">
@@ -1533,41 +1610,18 @@ export function VectorBrowserView({
             </Button>
           </div>
         </div>
-      ) : viewMode === "graph" ? (
-        <div className="flex min-h-0 flex-1 flex-col overflow-auto p-6">
-          <PagePanel variant="inset" className="p-5">
-            {graphLoading ? (
-              <ListSkeleton rows={5} rowClassName="h-16" />
-            ) : (
-              <VectorGraph
-                memories={graphMemories}
-                onSelect={setSelectedMemory}
-              />
-            )}
-          </PagePanel>
-          <div className="mt-5 min-h-[18rem] rounded-sm border border-border/40 bg-card/45">
-            <MemoryDetailPanel memory={selectedMemory} />
-          </div>
-        </div>
-      ) : viewMode === "3d" ? (
-        <div className="flex min-h-0 flex-1 flex-col overflow-auto p-6">
-          <PagePanel variant="inset" className="p-5">
-            {graphLoading ? (
-              <ListSkeleton rows={5} rowClassName="h-16" />
-            ) : (
-              <VectorGraph3D
-                memories={graphMemories}
-                onSelect={setSelectedMemory}
-              />
-            )}
-          </PagePanel>
-          <div className="mt-5 min-h-[18rem] rounded-sm border border-border/40 bg-card/45">
-            <MemoryDetailPanel memory={selectedMemory} />
-          </div>
-        </div>
       ) : (
-        <MemoryDetailPanel memory={selectedMemory} />
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-4 pb-32 pt-4 md:px-6 md:pb-36 md:pt-6">
+          {summaryHeader}
+          {toolbar}
+          {error ? (
+            <div className="rounded-sm border border-danger/35 bg-danger/10 px-4 py-3 text-sm text-danger">
+              {error}
+            </div>
+          ) : null}
+          {mainSection}
+        </div>
       )}
-    </PageLayout>
+    </WorkspaceLayout>
   );
 }

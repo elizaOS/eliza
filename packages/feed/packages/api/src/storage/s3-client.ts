@@ -245,8 +245,11 @@ class S3StorageClient {
         Bucket: this.bucket,
         Prefix: prefix,
       });
-      const response = await this.client?.send(command);
-      return (response.Contents || []).map((obj) => obj.Key || "");
+      if (!this.client) {
+        return [];
+      }
+      const response = await this.client.send(command);
+      return (response.Contents ?? []).map((obj) => obj.Key || "");
     }
   }
 

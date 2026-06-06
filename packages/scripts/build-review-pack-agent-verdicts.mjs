@@ -86,7 +86,7 @@ function verdictFor(row) {
       verdict: "needs-telemetry-review",
       decision: "inspect",
       confidence: "medium",
-      reason: row.primaryIssue || "Telemetry is present but incomplete for model/token review.",
+      reason: row.primaryIssue || "Telemetry is present but partial for model/token review.",
       action: "Inspect the linked pack and playback/gap page, then decide whether to accept the limitation or rerun with fuller telemetry.",
     };
   }

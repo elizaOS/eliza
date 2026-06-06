@@ -15,7 +15,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";
 import type { WorkbenchTask } from "../../api/client-types-config";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { CRON_PRESETS, formatSchedule } from "../../utils/cron-format";
 import {
   encodeScheduleTags,
@@ -29,10 +29,6 @@ import { Spinner } from "../ui/spinner";
 import { Textarea } from "../ui/textarea";
 
 export type { TaskScheduleKind } from "../../utils/task-schedule";
-export {
-  decodeScheduleTags,
-  encodeScheduleTags,
-} from "../../utils/task-schedule";
 
 export interface TaskEditorInitialValue {
   id?: string;

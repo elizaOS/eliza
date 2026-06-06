@@ -31,9 +31,10 @@ const dbMock = {
         );
       }
       if (where?.date?.lt) {
+        const cutoffDate = where.date.lt;
         return (
           [...storedTopics]
-            .filter((topic) => (topic.date as Date) < where.date?.lt!)
+            .filter((topic) => (topic.date as Date) < cutoffDate)
             .sort(
               (a, b) => (b.date as Date).getTime() - (a.date as Date).getTime(),
             )[0] ?? null

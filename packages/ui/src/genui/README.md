@@ -67,7 +67,7 @@ Modal
 Tabs
 ```
 
-Eliza-specific placeholders:
+Eliza-specific component slots:
 
 ```text
 ProviderSetupCard
@@ -85,7 +85,7 @@ FileSearchResults
 ModelDownloadStatus
 ```
 
-The domain components start as render-safe placeholders. They should deepen into reusable `packages/ui` rendering modules as trace, voice, model, terminal, and Git views mature.
+The domain components start as render-safe fallbacks. They should deepen into reusable `packages/ui` rendering modules as trace, voice, model, terminal, and Git views mature.
 
 ## Actions
 

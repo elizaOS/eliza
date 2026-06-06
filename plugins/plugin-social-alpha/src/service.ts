@@ -1,7 +1,6 @@
 import {
 	asUUID,
 	ChannelType,
-	type Component,
 	logger as coreLogger,
 	createUniqueUuid,
 	type Entity,
@@ -13,9 +12,6 @@ import {
 	type Task,
 	type UUID,
 } from "@elizaos/core";
-
-/** Alias for the Component.data field type. */
-type ComponentData = Component["data"];
 
 function toJsonRecord(value: unknown): { [key: string]: JsonValue } {
 	return JSON.parse(JSON.stringify(value ?? {})) as {
@@ -94,6 +90,14 @@ type ExtractedSignal = {
 	conviction?: string;
 	llmReasoning?: string;
 };
+
+/** Shape of one message inside a historical batch file. */
+interface HistoricalBatchMessage {
+	id: UUID;
+	uid: string;
+	ts: string | number;
+	content: string;
+}
 
 type NormalizedExtractedSignal = Omit<
 	ExtractedSignal,
@@ -440,7 +444,7 @@ export class CommunityInvestorService
 			conviction: Conviction;
 			type: RecommendationType;
 			timestamp: Date;
-			metadata?: Record<string, any>;
+			metadata?: Record<string, unknown>;
 		},
 	): Promise<Position | null> {
 		try {
@@ -1045,8 +1049,6 @@ export class CommunityInvestorService
 					return null;
 				}
 
-				let tokenInfo: any;
-
 				// Analyze holder distribution
 				const holderDistributionTrend =
 					await this.analyzeHolderDistribution(tokenTradeData);
@@ -1082,7 +1084,7 @@ export class CommunityInvestorService
 							}));
 
 						// Calculate high supply holders
-						const totalSupply = tokenInfo?.totalSupply || "0";
+						const totalSupply = "0";
 						highSupplyHoldersCount = holders.filter((holder) => {
 							const holderRatio =
 								Number.parseFloat(holder.balance) /
@@ -1110,16 +1112,10 @@ export class CommunityInvestorService
 				const processedData: ProcessedTokenData = {
 					token: {
 						address: tokenAddress,
-						name:
-							tokenInfo?.name ||
-							dexScreenerData.pairs[0]?.baseToken?.name ||
-							"",
-						symbol:
-							tokenInfo?.symbol ||
-							dexScreenerData.pairs[0]?.baseToken?.symbol ||
-							"",
-						decimals: tokenInfo?.decimals || 9, // Default for Solana
-						logoURI: tokenInfo?.info?.imageThumbUrl || "",
+						name: dexScreenerData.pairs[0]?.baseToken?.name || "",
+						symbol: dexScreenerData.pairs[0]?.baseToken?.symbol || "",
+						decimals: 9, // Default for Solana
+						logoURI: "",
 					},
 					security: tokenSecurityData,
 					tradeData: tokenTradeData,
@@ -1520,13 +1516,8 @@ export class CommunityInvestorService
 		}
 
 		// Get base amount from config
-		const {
-			baseAmount,
-			minAmount,
-			maxAmount,
-			trustScoreMultiplier,
-			convictionMultiplier,
-		} = this.tradingConfig.buyAmountConfig;
+		const { baseAmount, minAmount, maxAmount, trustScoreMultiplier } =
+			this.tradingConfig.buyAmountConfig;
 
 		// Calculate multipliers
 		const trustMultiplier = 1 + (trustScore / 100) * trustScoreMultiplier;
@@ -2948,7 +2939,7 @@ ${report.tokenReports.join("\n")}
 		// 5. Price movement patterns (volatility spikes)
 		if (tokenData.priceHistory && tokenData.priceHistory.length >= 3) {
 			const prices = tokenData.priceHistory.map((p) => p.price);
-			const priceChanges = [];
+			const priceChanges: number[] = [];
 
 			for (let i = 1; i < prices.length; i++) {
 				if (prices[i - 1] > 0) {
@@ -3184,7 +3175,7 @@ ${report.tokenReports.join("\n")}
 			userId,
 			TRUST_MARKETPLACE_COMPONENT_TYPE,
 			this.componentWorldId,
-			runtime.agentId!,
+			runtime.agentId,
 		);
 
 		if (!componentResult) {
@@ -3200,10 +3191,10 @@ ${report.tokenReports.join("\n")}
 			await runtime.createComponent({
 				id: userId, // Use userId as component ID
 				entityId: userId,
-				agentId: runtime.agentId!,
+				agentId: runtime.agentId,
 				worldId: this.componentWorldId,
 				roomId: this.componentRoomId,
-				sourceEntityId: runtime.agentId!,
+				sourceEntityId: runtime.agentId,
 				type: TRUST_MARKETPLACE_COMPONENT_TYPE,
 				createdAt: Date.now(),
 				data: newProfile,
@@ -3412,8 +3403,8 @@ ${report.tokenReports.join("\n")}
 			consistency,
 		};
 
-			// Classify the user's archetype from observed performance metrics.
-			let archetype = "newbie"; // Default
+		// Classify the user's archetype from observed performance metrics.
+		let archetype = "newbie"; // Default
 		if (winRate > 0.7 && averageProfit > 30) {
 			archetype = "elite_analyst";
 		} else if (winRate > 0.6 && averageProfit > 15) {
@@ -3643,7 +3634,7 @@ ${report.tokenReports.join("\n")}
 					userId,
 					TRUST_MARKETPLACE_COMPONENT_TYPE,
 					worldIdForComponents, // Use consistent worldId
-					runtime.agentId!,
+					runtime.agentId,
 				);
 
 				if (component?.data) {
@@ -3795,9 +3786,9 @@ ${report.tokenReports.join("\n")}
 	async processHistoricalData(batch: {
 		fileId: string;
 		batchIndex: number;
-		messages: any[];
+		messages: HistoricalBatchMessage[];
 		userMap: Record<string, string>;
-	}): Promise<any[]> {
+	}): Promise<NormalizedExtractedSignal[]> {
 		logger.info(
 			`[Service] Processing historical batch ${batch.fileId}_${batch.batchIndex}`,
 		);
@@ -3833,7 +3824,10 @@ ${report.tokenReports.join("\n")}
 
 			const callsByUserId = new Map<
 				UUID,
-				{ messages: any[]; recommendations: any[] }
+				{
+					messages: HistoricalBatchMessage[];
+					recommendations: NormalizedExtractedSignal[];
+				}
 			>();
 
 			for (const rec of parsed.recommendations) {
@@ -4036,14 +4030,14 @@ RESPOND WITH JSON CONTAINING EXACTLY ${batchSize} RECOMMENDATION ENTRIES:`;
 	 */
 	private async updateProfileWithRecommendations(
 		userId: UUID,
-		messagesInBatch: any[], // The original messages that were analyzed
-		recommendationsFromLlm: any[], // The raw recommendations from the LLM
+		messagesInBatch: HistoricalBatchMessage[], // The original messages that were analyzed
+		recommendationsFromLlm: NormalizedExtractedSignal[], // The raw recommendations from the LLM
 	) {
 		const component = await this.runtime.getComponent(
 			userId,
 			TRUST_MARKETPLACE_COMPONENT_TYPE,
 			this.componentWorldId,
-			this.runtime.agentId!,
+			this.runtime.agentId,
 		);
 
 		let userProfile: UserTrustProfile;
@@ -4064,17 +4058,22 @@ RESPOND WITH JSON CONTAINING EXACTLY ${batchSize} RECOMMENDATION ENTRIES:`;
 		let profileUpdated = false;
 		for (const rec of recommendationsFromLlm) {
 			// Skip if not a call or no token information provided
-			if (!rec.isCall || rec.sentiment === "neutral") {
+			if (!rec.isCall || !rec.sentiment || rec.sentiment === "neutral") {
 				continue;
 			}
+			const sentiment = rec.sentiment;
 
 			// Check if we have at least one token identifier
-			const hasTokenMention =
-				rec.tokenMentioned?.trim() && rec.tokenMentioned !== "N/A";
-			const hasNameMention = rec.nameMentioned?.trim();
-			const hasContractAddress = rec.caMentioned?.trim();
+			const tokenMentioned =
+				rec.tokenMentioned?.trim() && rec.tokenMentioned !== "N/A"
+					? rec.tokenMentioned
+					: undefined;
+			const nameMentioned = rec.nameMentioned?.trim()
+				? rec.nameMentioned
+				: undefined;
+			const caMentioned = rec.caMentioned?.trim() ? rec.caMentioned : undefined;
 
-			if (!hasTokenMention && !hasNameMention && !hasContractAddress) {
+			if (!tokenMentioned && !nameMentioned && !caMentioned) {
 				continue;
 			}
 
@@ -4082,33 +4081,34 @@ RESPOND WITH JSON CONTAINING EXACTLY ${batchSize} RECOMMENDATION ENTRIES:`;
 			if (!originalMessage) continue;
 
 			// Try to resolve token, preferring contract address, then ticker, then name
-			let resolvedToken = null;
+			let resolvedToken: {
+				address: string;
+				chain: SupportedChain;
+				ticker?: string;
+			} | null = null;
 
-			if (hasContractAddress) {
+			if (caMentioned) {
 				// For contract addresses, use them directly
 				resolvedToken = {
-					address: rec.caMentioned,
+					address: caMentioned,
 					chain: (rec.chain as SupportedChain) || SupportedChain.SOLANA,
-					ticker:
-						rec.tokenMentioned ||
-						rec.nameMentioned ||
-						rec.caMentioned.slice(0, 8),
+					ticker: tokenMentioned || nameMentioned || caMentioned.slice(0, 8),
 				};
-			} else if (hasTokenMention) {
+			} else if (tokenMentioned) {
 				resolvedToken = await this.resolveTicker(
-					rec.tokenMentioned,
+					tokenMentioned,
 					(rec.chain as SupportedChain) || SupportedChain.SOLANA,
 				);
-			} else if (hasNameMention) {
+			} else if (nameMentioned) {
 				resolvedToken = await this.resolveTicker(
-					rec.nameMentioned,
+					nameMentioned,
 					(rec.chain as SupportedChain) || SupportedChain.SOLANA,
 				);
 			}
 
 			if (!resolvedToken) {
 				logger.warn(
-					`[Service] Could not resolve token for: "${rec.tokenMentioned || rec.nameMentioned || rec.caMentioned}". Skipping.`,
+					`[Service] Could not resolve token for: "${tokenMentioned || nameMentioned || caMentioned}". Skipping.`,
 				);
 				continue;
 			}
@@ -4121,7 +4121,7 @@ RESPOND WITH JSON CONTAINING EXACTLY ${batchSize} RECOMMENDATION ENTRIES:`;
 				tokenTicker: resolvedToken.ticker,
 				tokenAddress: resolvedToken.address,
 				chain: resolvedToken.chain,
-				recommendationType: rec.sentiment === "positive" ? "BUY" : "SELL",
+				recommendationType: sentiment === "positive" ? "BUY" : "SELL",
 				conviction: rec.conviction as Conviction,
 				rawMessageQuote: originalMessage.content,
 				priceAtRecommendation: 0,
@@ -4132,7 +4132,7 @@ RESPOND WITH JSON CONTAINING EXACTLY ${batchSize} RECOMMENDATION ENTRIES:`;
 			profileUpdated = true;
 
 			logger.info(
-				`[Service] Added ${rec.sentiment.toUpperCase()} recommendation for ${resolvedToken.ticker} from user ${userId}`,
+				`[Service] Added ${sentiment.toUpperCase()} recommendation for ${resolvedToken.ticker} from user ${userId}`,
 			);
 
 			await this.runtime.createTask({
@@ -4159,10 +4159,10 @@ RESPOND WITH JSON CONTAINING EXACTLY ${batchSize} RECOMMENDATION ENTRIES:`;
 				await this.runtime.createComponent({
 					id: newComponentId,
 					entityId: userId,
-					agentId: this.runtime.agentId!,
+					agentId: this.runtime.agentId,
 					worldId: this.componentWorldId,
 					roomId: this.componentRoomId,
-					sourceEntityId: this.runtime.agentId!,
+					sourceEntityId: this.runtime.agentId,
 					type: TRUST_MARKETPLACE_COMPONENT_TYPE,
 					createdAt: Date.now(),
 					data: userProfile,

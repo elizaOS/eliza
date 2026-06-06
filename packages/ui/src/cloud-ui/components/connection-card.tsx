@@ -6,7 +6,6 @@
 
 import { CheckCircle, ChevronDown, Copy, Loader2, XCircle } from "lucide-react";
 import type * as React from "react";
-import { cn } from "../lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,15 +16,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "./alert-dialog";
-import { Badge } from "./badge";
-import { Button } from "./button";
+} from "../../components/ui/alert-dialog";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "./collapsible";
-import { Label } from "./label";
+} from "../../components/ui/collapsible";
+import { Label } from "../../components/ui/label";
+import { cn } from "../lib/utils";
 
 type ConnectionCardStatus =
   | "loading"

@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { containers } from "../../db/schemas/containers";
@@ -115,6 +115,7 @@ class ActiveBillingService {
         .where(
           and(
             eq(agentSandboxes.organization_id, organizationId),
+            sql`${agentSandboxes.execution_tier} <> 'shared'`,
             inArray(agentSandboxes.billing_status, ["active", "warning", "shutdown_pending"]),
             or(
               eq(agentSandboxes.status, "running"),
@@ -342,6 +343,7 @@ class ActiveBillingService {
           and(
             eq(agentSandboxes.id, resourceId),
             eq(agentSandboxes.organization_id, organizationId),
+            sql`${agentSandboxes.execution_tier} <> 'shared'`,
           ),
         )
         .limit(1);

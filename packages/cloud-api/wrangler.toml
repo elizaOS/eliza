@@ -38,7 +38,7 @@ __filename = '"/worker.js"'
 # accidental runtime instantiation throws a clear error.
 "ssh2" = "./src/stubs/ssh2.ts"
 # undici is Node's fetch impl; references node:net, MessagePort, perf_hooks
-# that don't exist on Workers. Re-export runtime globals + stub the
+# that don't exist on Workers. Re-export runtime globals + map the
 # Agent/Pool/Dispatcher classes.
 "undici" = "./src/stubs/undici.ts"
 
@@ -98,7 +98,7 @@ NODE_ENV = "production"
 NEXT_PUBLIC_APP_URL = "https://elizacloud.ai"
 NEXT_PUBLIC_API_URL = "https://api.elizacloud.ai"
 ELIZA_CLOUD_URL = "https://elizacloud.ai"
-ELIZA_CLOUD_AGENT_BASE_DOMAIN = "waifu.fun"
+ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai"
 WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
 WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
 ELIZA_APP_URL = "https://eliza.app"
@@ -166,6 +166,9 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   STEWARD_DEFAULT_TENANT_KEY         Embedded Steward default tenant API key hash/source
 #   STEWARD_PLATFORM_KEYS              Server-only platform key (server-wallets, tenant ops)
 #   STEWARD_TENANT_API_KEY             Server-only tenant API key
+#   STEWARD_REQUEST_SIGNING_SECRET     HMAC secret for signed Steward mutating requests
+#   STEWARD_REQUEST_SIGNING_SECRETS    Comma-separated Steward HMAC secrets; first is used for signing
+#   STEWARD_REQUEST_SIGNING_KEY_ID     Optional Steward tenant signing-key id
 #   STRIPE_SECRET_KEY                  Stripe billing
 #   STRIPE_WEBHOOK_SECRET              Stripe webhook signing
 #   STRIPE_SMALL_PACK_PRICE_ID         (and MEDIUM/LARGE *_PRICE_ID/_PRODUCT_ID)
@@ -178,7 +181,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   OPENAI_API_KEY                     OpenAI direct
 #   AI_GATEWAY_API_KEY
 #   GROQ_API_KEY                       Groq
-#   CEREBRAS_API_KEY                   Cerebras — ultra-fast inference for provisioning placeholder agent
+#   CEREBRAS_API_KEY                   Cerebras — ultra-fast inference for provisioning chat agent
 #   FAL_KEY                            Fal.ai video gen
 #   ELEVENLABS_API_KEY                 ElevenLabs TTS
 #   VAST_API_KEY                       Vast.ai Serverless endpoint API token (Bearer)
@@ -245,7 +248,7 @@ ELIZA_CLOUD_URL = "https://staging.elizacloud.ai"
 # prod fallback (www.elizacloud.ai). Tenant row provisioned manually.
 STEWARD_TENANT_ID = "elizacloud-staging"
 NEXT_PUBLIC_STEWARD_TENANT_ID = "elizacloud-staging"
-ELIZA_CLOUD_AGENT_BASE_DOMAIN = "waifu.fun"
+ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai"
 WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
 WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
 ELIZA_APP_URL = "https://eliza.app"
@@ -304,6 +307,7 @@ workers_dev = false
 routes = [
   { pattern = "api.elizacloud.ai/*", zone_name = "elizacloud.ai" },
   { pattern = "x402.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+  { pattern = "*.elizacloud.ai/*", zone_name = "elizacloud.ai" },
 ]
 
 [env.production.define]
@@ -315,7 +319,8 @@ NODE_ENV = "production"
 NEXT_PUBLIC_APP_URL = "https://elizacloud.ai"
 NEXT_PUBLIC_API_URL = "https://api.elizacloud.ai"
 ELIZA_CLOUD_URL = "https://elizacloud.ai"
-ELIZA_CLOUD_AGENT_BASE_DOMAIN = "waifu.fun"
+ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai"
+AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.elizacloud.ai"
 WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
 WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
 ELIZA_APP_URL = "https://eliza.app"

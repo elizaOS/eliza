@@ -16,7 +16,16 @@ import {
   SelectValue,
   Switch,
 } from "@elizaos/ui";
-import { Check, ExternalLink, Loader2, Plus, RotateCcw, X } from "lucide-react";
+import {
+  Check,
+  Cloud,
+  ExternalLink,
+  Loader2,
+  Plus,
+  RotateCcw,
+  Server,
+  X,
+} from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -286,6 +295,24 @@ interface CreateElizaAgentDialogProps {
 
 type CreatePhase = "form" | "creating" | "provisioning";
 
+interface CreateAgentRequest {
+  agentName: string;
+  autoProvision: boolean;
+  dockerImage?: string;
+}
+
+interface CreateAgentResponse {
+  source?: string;
+  data?: {
+    id?: string;
+    agentId?: string;
+    sandboxId?: string;
+    jobId?: string;
+    status?: string;
+    executionTier?: string;
+  };
+}
+
 export function CreateElizaAgentDialog({
   trigger,
   onProvisionQueued,
@@ -294,6 +321,14 @@ export function CreateElizaAgentDialog({
   const t = useT();
   const [open, setOpen] = useState(false);
   const [agentName, setAgentName] = useState("");
+  // Execution mode is the user-facing primitive — Shared (no container,
+  // multi-tenant cloud runtime) vs Dedicated (own Docker container).
+  // The cloud-api derives the tier from the presence of `dockerImage` in the
+  // create body: empty → shared, set → custom (Docker). So this UI state
+  // exists to translate the mode into the body field, NOT in addition to it.
+  const [executionMode, setExecutionMode] = useState<"shared" | "dedicated">(
+    "shared",
+  );
   const [flavorId, setFlavorId] = useState(getDefaultFlavor().id);
   const [customImage, setCustomImage] = useState("");
   const [autoStart, setAutoStart] = useState(true);
@@ -309,6 +344,7 @@ export function CreateElizaAgentDialog({
   const isProvisioningPhase = phase === "provisioning";
   const selectedFlavor = getFlavorById(flavorId);
   const isCustom = flavorId === "custom";
+  const isDedicated = executionMode === "dedicated";
   const resolvedDockerImage = isCustom
     ? customImage.trim()
     : selectedFlavor?.dockerImage;
@@ -348,6 +384,7 @@ export function CreateElizaAgentDialog({
 
   function resetForm() {
     setAgentName("");
+    setExecutionMode("shared");
     setFlavorId(getDefaultFlavor().id);
     setCustomImage("");
     setError(null);
@@ -377,10 +414,15 @@ export function CreateElizaAgentDialog({
     setPhase("creating");
 
     try {
-      const createBody: Record<string, string | undefined> = {
+      const createBody: CreateAgentRequest = {
         agentName: trimmedName,
+        autoProvision: autoStart,
       };
-      if (resolvedDockerImage && flavorId !== getDefaultFlavor().id) {
+      // The cloud-api tiering rule (cloud-shared/agent-tier.ts) is:
+      // dockerImage absent → tier=shared (no container). Present → tier=custom
+      // (own Docker container). We send the image ONLY when the user picked
+      // "Dedicated" — that's what makes the user choice load-bearing.
+      if (isDedicated && resolvedDockerImage) {
         createBody.dockerImage = resolvedDockerImage;
       }
 
@@ -401,7 +443,11 @@ export function CreateElizaAgentDialog({
         );
       }
 
-      const agentId = (createData as { data?: { id?: string } }).data?.id;
+      const createdAgent = createData as CreateAgentResponse;
+      const agentId =
+        createdAgent.data?.id ??
+        createdAgent.data?.agentId ??
+        createdAgent.data?.sandboxId;
       if (!agentId) {
         throw new Error(
           t("cloud.createAgent.noAgentId", {
@@ -413,9 +459,28 @@ export function CreateElizaAgentDialog({
       setCreatedAgentId(agentId);
 
       if (autoStart) {
-        // Transition to provisioning view instead of closing
         setPhase("provisioning");
         setProvisionStartTime(Date.now());
+
+        const createJobId = createdAgent.data?.jobId;
+        if (createJobId) {
+          onProvisionQueued?.(agentId, createJobId);
+          return;
+        }
+
+        if (
+          createRes.status === 201 &&
+          (createdAgent.data?.status === "running" ||
+            createdAgent.source === "shared_runtime")
+        ) {
+          toast.success(
+            t("cloud.createAgent.agentRunning", {
+              defaultValue: "Agent is running",
+            }),
+          );
+          handleClose();
+          return;
+        }
 
         const provisionRes = await fetch(
           `/api/v1/eliza/agents/${agentId}/provision`,
@@ -431,9 +496,7 @@ export function CreateElizaAgentDialog({
           if (jobId) {
             onProvisionQueued?.(agentId, jobId);
           }
-          // Stay in provisioning view — the polling hook will track status
         } else if (provisionRes.ok) {
-          // Already running (synchronous provision)
           toast.success(
             t("cloud.createAgent.agentRunning", {
               defaultValue: "Agent is running",
@@ -588,48 +651,153 @@ export function CreateElizaAgentDialog({
                   />
                 </div>
 
-                {/* Flavor selector */}
+                {/* Execution mode — Shared vs Dedicated. PR #8223 split the
+                    cloud into a free shared runtime + per-agent Docker
+                    containers; the user has to pick. Default is Shared (matches
+                    the agent-tier.ts default when dockerImage is absent). */}
                 <div className="space-y-1.5">
-                  <Label
-                    htmlFor="eliza-flavor"
-                    className="text-white/60 text-xs"
-                  >
-                    {t("cloud.createAgent.type", { defaultValue: "Type" })}
+                  <Label className="text-white/60 text-xs">
+                    {t("cloud.createAgent.executionMode", {
+                      defaultValue: "Execution mode",
+                    })}
                   </Label>
-                  <Select
-                    value={flavorId}
-                    onValueChange={setFlavorId}
-                    disabled={busy}
+                  <div
+                    role="radiogroup"
+                    aria-label={t("cloud.createAgent.executionMode", {
+                      defaultValue: "Execution mode",
+                    })}
+                    className="grid grid-cols-2 gap-2"
                   >
-                    <SelectTrigger
-                      id="eliza-flavor"
-                      className="bg-black/40 border-white/10 text-white"
+                    <label
+                      className={`flex flex-col items-start gap-1.5 border px-3 py-2.5 text-left transition-colors focus-within:outline-none focus-within:ring-2 focus-within:ring-[#FF5800]/50 ${
+                        busy
+                          ? "cursor-not-allowed opacity-50"
+                          : "cursor-pointer"
+                      } ${
+                        !isDedicated
+                          ? "border-[#FF5800]/60 bg-[#FF5800]/[0.06]"
+                          : "border-white/10 bg-black/20 hover:border-white/20"
+                      }`}
                     >
-                      <SelectValue
-                        placeholder={t("cloud.createAgent.selectFlavor", {
-                          defaultValue: "Select flavor",
-                        })}
+                      <input
+                        type="radio"
+                        name="execution-mode"
+                        checked={!isDedicated}
+                        disabled={busy}
+                        onChange={() => setExecutionMode("shared")}
+                        className="sr-only"
                       />
-                    </SelectTrigger>
-                    <SelectContent className="border-white/10 bg-neutral-900">
-                      {AGENT_FLAVORS.map((flavor) => (
-                        <SelectItem key={flavor.id} value={flavor.id}>
-                          <div className="flex flex-col">
-                            <span>{flavor.name}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {selectedFlavor && (
-                    <p className="text-[11px] text-white/35">
-                      {selectedFlavor.description}
-                    </p>
-                  )}
+                      <div className="flex w-full items-center justify-between gap-2">
+                        <span className="inline-flex items-center gap-1.5 text-sm text-white">
+                          <Cloud className="h-3.5 w-3.5" />
+                          {t("cloud.createAgent.modeSharedTitle", {
+                            defaultValue: "Shared",
+                          })}
+                        </span>
+                        <span className="text-[10px] font-mono text-white/35">
+                          {t("cloud.createAgent.modeSharedPrice", {
+                            defaultValue: "free",
+                          })}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-white/50 leading-snug">
+                        {t("cloud.createAgent.modeSharedDescription", {
+                          defaultValue:
+                            "Multi-tenant runtime. No container. Best for chat, webhooks and cron agents.",
+                        })}
+                      </p>
+                    </label>
+
+                    <label
+                      className={`flex flex-col items-start gap-1.5 border px-3 py-2.5 text-left transition-colors focus-within:outline-none focus-within:ring-2 focus-within:ring-[#FF5800]/50 ${
+                        busy
+                          ? "cursor-not-allowed opacity-50"
+                          : "cursor-pointer"
+                      } ${
+                        isDedicated
+                          ? "border-[#FF5800]/60 bg-[#FF5800]/[0.06]"
+                          : "border-white/10 bg-black/20 hover:border-white/20"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="execution-mode"
+                        checked={isDedicated}
+                        disabled={busy}
+                        onChange={() => setExecutionMode("dedicated")}
+                        className="sr-only"
+                      />
+                      <div className="flex w-full items-center justify-between gap-2">
+                        <span className="inline-flex items-center gap-1.5 text-sm text-white">
+                          <Server className="h-3.5 w-3.5" />
+                          {t("cloud.createAgent.modeDedicatedTitle", {
+                            defaultValue: "Dedicated",
+                          })}
+                        </span>
+                        <span className="text-[10px] font-mono text-white/35">
+                          {formatHourlyRate(AGENT_PRICING.RUNNING_HOURLY_RATE)}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-white/50 leading-snug">
+                        {t("cloud.createAgent.modeDedicatedDescription", {
+                          defaultValue:
+                            "Own Docker container on a Hetzner node. Required for custom images, always-on plugins (Discord/Telegram), or BYO runtime.",
+                        })}
+                      </p>
+                    </label>
+                  </div>
                 </div>
 
-                {/* Custom image input */}
-                {isCustom && (
+                {/* Image selector — only meaningful when Dedicated. AGENT_FLAVORS
+                    holds the Docker image choices ("Eliza Agent" / "(Develop)"
+                    / "Custom Image"); we hide it for Shared because no image
+                    is ever sent in that mode. */}
+                {isDedicated && (
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="eliza-flavor"
+                      className="text-white/60 text-xs"
+                    >
+                      {t("cloud.createAgent.image", {
+                        defaultValue: "Image",
+                      })}
+                    </Label>
+                    <Select
+                      value={flavorId}
+                      onValueChange={setFlavorId}
+                      disabled={busy}
+                    >
+                      <SelectTrigger
+                        id="eliza-flavor"
+                        className="bg-black/40 border-white/10 text-white"
+                      >
+                        <SelectValue
+                          placeholder={t("cloud.createAgent.selectFlavor", {
+                            defaultValue: "Select image",
+                          })}
+                        />
+                      </SelectTrigger>
+                      <SelectContent className="border-white/10 bg-neutral-900">
+                        {AGENT_FLAVORS.map((flavor) => (
+                          <SelectItem key={flavor.id} value={flavor.id}>
+                            <div className="flex flex-col">
+                              <span>{flavor.name}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {selectedFlavor && (
+                      <p className="text-[11px] text-white/35">
+                        {selectedFlavor.description}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Custom image URL — appears only when both Dedicated AND the
+                    Custom flavor are selected. */}
+                {isDedicated && isCustom && (
                   <div className="space-y-1.5">
                     <Label
                       htmlFor="eliza-custom-image"
@@ -656,33 +824,41 @@ export function CreateElizaAgentDialog({
                   </div>
                 )}
 
-                {/* Auto-start toggle */}
-                <div className="flex items-center justify-between gap-4 border border-white/10 bg-black/20 px-3 py-2.5">
-                  <div className="space-y-0.5">
-                    <Label
-                      htmlFor="eliza-auto-start"
-                      className="text-sm text-white/70"
-                    >
-                      {t("cloud.createAgent.startImmediately", {
-                        defaultValue: "Start immediately",
-                      })}
-                    </Label>
-                    <p className="text-[11px] text-white/35">
-                      {t("cloud.createAgent.startAfterCreation", {
-                        defaultValue: "Start right after creation",
-                      })}
-                    </p>
+                {/* Auto-start toggle — only meaningful for Dedicated agents
+                    (Shared agents are always immediately available; the
+                    cloud-api short-circuits provision to source=shared_runtime
+                    regardless). */}
+                {isDedicated && (
+                  <div className="flex items-center justify-between gap-4 border border-white/10 bg-black/20 px-3 py-2.5">
+                    <div className="space-y-0.5">
+                      <Label
+                        htmlFor="eliza-auto-start"
+                        className="text-sm text-white/70"
+                      >
+                        {t("cloud.createAgent.startImmediately", {
+                          defaultValue: "Start container immediately",
+                        })}
+                      </Label>
+                      <p className="text-[11px] text-white/35">
+                        {t("cloud.createAgent.startAfterCreation", {
+                          defaultValue:
+                            "Provision the Hetzner node and boot the container right after create.",
+                        })}
+                      </p>
+                    </div>
+                    <Switch
+                      id="eliza-auto-start"
+                      checked={autoStart}
+                      onCheckedChange={setAutoStart}
+                      disabled={busy}
+                    />
                   </div>
-                  <Switch
-                    id="eliza-auto-start"
-                    checked={autoStart}
-                    onCheckedChange={setAutoStart}
-                    disabled={busy}
-                  />
-                </div>
+                )}
 
-                {/* Cost notice */}
-                {autoStart && (
+                {/* Cost notice — Dedicated shows hourly billing + min deposit
+                    when it will actually run; Shared shows "no compute cost"
+                    so the user doesn't think Free === Free of LLM tokens. */}
+                {isDedicated && autoStart ? (
                   <div className="flex items-start gap-2.5 border border-[#FF5800]/15 bg-[#FF5800]/5 px-3 py-2.5">
                     <div className="shrink-0 mt-0.5 w-1.5 h-1.5 bg-[#FF5800] rounded-full" />
                     <div className="space-y-0.5">
@@ -706,7 +882,17 @@ export function CreateElizaAgentDialog({
                       </p>
                     </div>
                   </div>
-                )}
+                ) : !isDedicated ? (
+                  <div className="flex items-start gap-2.5 border border-white/10 bg-black/20 px-3 py-2.5">
+                    <div className="shrink-0 mt-0.5 w-1.5 h-1.5 bg-white/40 rounded-full" />
+                    <p className="text-[11px] font-mono text-white/55 leading-snug">
+                      {t("cloud.createAgent.sharedCostNote", {
+                        defaultValue:
+                          "No compute cost. You only pay for LLM tokens consumed by the agent.",
+                      })}
+                    </p>
+                  </div>
+                ) : null}
 
                 {/* Inline error */}
                 {error && (
@@ -729,7 +915,7 @@ export function CreateElizaAgentDialog({
                   disabled={
                     !agentName.trim() ||
                     busy ||
-                    (isCustom && !customImage.trim())
+                    (isDedicated && isCustom && !customImage.trim())
                   }
                 >
                   {busy && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -737,12 +923,16 @@ export function CreateElizaAgentDialog({
                     ? t("cloud.createAgent.creating", {
                         defaultValue: "Creating…",
                       })
-                    : autoStart
-                      ? t("cloud.createAgent.deploy", {
-                          defaultValue: "Deploy",
-                        })
-                      : t("cloud.createAgent.create", {
-                          defaultValue: "Create",
+                    : isDedicated
+                      ? autoStart
+                        ? t("cloud.createAgent.deployDedicated", {
+                            defaultValue: "Deploy Docker container",
+                          })
+                        : t("cloud.createAgent.createDedicated", {
+                            defaultValue: "Create (don't start)",
+                          })
+                      : t("cloud.createAgent.createShared", {
+                          defaultValue: "Create shared agent",
                         })}
                 </BrandButton>
               </DialogFooter>

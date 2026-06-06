@@ -589,9 +589,9 @@ async def _run(args: argparse.Namespace) -> int:
 async def _send_safe_gesture(mirror: Any | None, prompt: str) -> None:
     """Send only head/wave gestures. Never a walk command.
 
-    If mirror is None, no-op (sim-only mode — sim's qpos will be moved
-    by the FusedAnchor's free-joint write each tick, but joints stay at
-    the default standing pose).
+    If mirror is None, return without sending a bridge gesture. In sim-only
+    mode, the sim's qpos is moved by the FusedAnchor's free-joint write each
+    tick, while joints stay at the default standing pose.
     """
     if mirror is None:
         return

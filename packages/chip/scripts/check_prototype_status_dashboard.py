@@ -34,7 +34,17 @@ VOLATILE_BUILD_OUTPUT_SUBSYSTEMS = {
     "benchmarks",
     "npu-ml-proof",
     "release-pipeline",
+    "minimum-linux-npu-target",
 }
+
+# toolchain-fast-path is a host-capability probe: its live status depends on which
+# optional EDA tools (SymbiYosys, full PD flow, riscv-elf, ...) happen to be
+# installed on the runner. A full native host reports PASS/tool_available; a
+# reduced CI image reports BLOCK/tool_blocker. The dashboard records the
+# conservative BLOCK/tool_blocker truth that holds across every environment, so we
+# allow a full-toolchain host to keep that conservative snapshot rather than
+# over-claiming PASS in the published doc.
+HOST_PROBE_SUBSYSTEMS = {"toolchain-fast-path"}
 
 
 def write_report(status: str, findings: list[dict[str, str]]) -> None:
@@ -127,13 +137,21 @@ def conservative_snapshot_allowed(
 ) -> bool:
     """Allow source docs to stay conservative after local build artifacts appear."""
 
-    if subsystem not in VOLATILE_BUILD_OUTPUT_SUBSYSTEMS:
-        return False
-
     dashboard_status = normalize_cell(row.get("Status", ""))
     dashboard_evidence = normalize_cell(row.get("Evidence class", ""))
     current_status = str(status.get("status", "")).upper()
     current_evidence = str(status.get("evidence_class", ""))
+
+    if subsystem in HOST_PROBE_SUBSYSTEMS:
+        return (
+            current_status == "PASS"
+            and current_evidence == "tool_available"
+            and dashboard_status == "BLOCK"
+            and dashboard_evidence == "tool_blocker"
+        )
+
+    if subsystem not in VOLATILE_BUILD_OUTPUT_SUBSYSTEMS:
+        return False
 
     if (
         current_status == "PASS"
@@ -151,13 +169,25 @@ def conservative_snapshot_allowed(
     ):
         return True
 
-    return (
-        subsystem == "formal"
-        and current_status == "BLOCK"
-        and current_evidence == "formal_fallback"
-        and dashboard_status == "BLOCK"
-        and dashboard_evidence in {"tool_blocker", "regen_required"}
-    )
+    if subsystem == "formal":
+        if (
+            current_status == "BLOCK"
+            and current_evidence == "formal_fallback"
+            and dashboard_status == "BLOCK"
+            and dashboard_evidence in {"tool_blocker", "regen_required"}
+        ):
+            return True
+        # The dashboard records the conservative SymbiYosys-absent state
+        # (BLOCK/formal_fallback). A host that does have SymbiYosys reports
+        # PASS/generated_artifact; allow it to keep that conservative snapshot.
+        return (
+            current_status == "PASS"
+            and current_evidence == "generated_artifact"
+            and dashboard_status == "BLOCK"
+            and dashboard_evidence == "formal_fallback"
+        )
+
+    return False
 
 
 def main() -> int:

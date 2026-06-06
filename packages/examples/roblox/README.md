@@ -13,7 +13,7 @@ This folder shows how to run an **elizaOS agent** that can talk to a Roblox expe
 
 - **Roblox → agent “subscribe”**: Roblox Open Cloud does not provide an external “subscribe to MessagingService” API.
   - That means the plugin cannot “listen to in-game chat” from outside Roblox by polling Open Cloud.
-  - The TypeScript implementation currently has a `poll()` stub; there is no reliable Open Cloud endpoint to poll for player chat.
+  - This example uses the HTTP bridge below for inbound chat because there is no reliable Open Cloud endpoint to poll for player chat.
 
 ### How we bridge inbound chat/events
 

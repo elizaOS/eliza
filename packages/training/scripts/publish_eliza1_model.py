@@ -15,8 +15,8 @@ out of the elizaOS model repo.
 
 Idempotency: after a successful upload the script writes
 `published.json` next to the GGUF with the canonical resolve URL,
-sha256, and file size. Re-running with the same input is a no-op once
-the remote LFS pointer matches the local sha — useful for the nightly
+sha256, and file size. Re-running with the same input exits unchanged
+once the remote LFS pointer matches the local sha — useful for the nightly
 publish-models-nightly CI job, which can replay safely on retry.
 
 Usage::

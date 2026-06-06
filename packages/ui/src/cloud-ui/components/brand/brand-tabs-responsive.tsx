@@ -23,15 +23,14 @@
 
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import * as React from "react";
-import { cn } from "../../lib/utils";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../select";
-import { BrandTabsContent } from "./brand-tabs";
+} from "../../../components/ui/select";
+import { cn } from "../../lib/utils";
 
 export interface TabItem {
   value: string;
@@ -160,5 +159,3 @@ export function BrandTabsResponsive({
     </TabsPrimitive.Root>
   );
 }
-
-export { BrandTabsContent };

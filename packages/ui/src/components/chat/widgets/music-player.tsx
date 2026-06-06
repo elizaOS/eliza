@@ -3,10 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchWithCsrf } from "../../../api/csrf-client";
 import { resolveApiUrl } from "../../../utils/asset-url";
 import { EmptyWidgetState, WidgetSection } from "./shared";
-import type {
-  ChatSidebarWidgetDefinition,
-  ChatSidebarWidgetProps,
-} from "./types";
+import type { ChatSidebarWidgetProps } from "./types";
 
 type PlayerState =
   | { kind: "idle" }
@@ -214,11 +211,3 @@ export function MusicPlayerSidebarWidget(_props: ChatSidebarWidgetProps) {
     </WidgetSection>
   );
 }
-
-export const MUSIC_PLAYER_WIDGET: ChatSidebarWidgetDefinition = {
-  id: "music-player.stream",
-  pluginId: "music-player",
-  order: 125,
-  defaultEnabled: true,
-  Component: MusicPlayerSidebarWidget,
-};

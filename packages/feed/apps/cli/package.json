@@ -10,8 +10,8 @@
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --target bun",
     "cli": "bun run src/index.ts",
-    "lint": "echo skip (feed) >&2",
-    "typecheck": "echo skip (feed) >&2",
+    "lint": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched apps/cli/package.json apps/cli/tsconfig.json apps/cli/src",
+    "typecheck": "cd ../.. && bun run scripts/typecheck-workspace.ts apps/cli",
     "db": "bun run src/index.ts db",
     "admin": "bun run src/index.ts admin",
     "status": "bun run src/index.ts status",

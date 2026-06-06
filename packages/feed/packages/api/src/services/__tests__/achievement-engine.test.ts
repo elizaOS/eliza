@@ -111,6 +111,7 @@ function createChainableQuery(resolveFn: () => unknown) {
   }
   chain.returning = mock(async () => resolveFn());
   // Make chainable also thenable (for await db.select()...where())
+  // biome-ignore lint/suspicious/noThenProperty: The mock intentionally emulates Drizzle's awaitable query chain.
   chain.then = (
     onFulfilled?: ((value: unknown) => unknown) | null,
     onRejected?: ((reason: unknown) => unknown) | null,
@@ -181,6 +182,7 @@ describe("Achievement Engine (checkProgress)", () => {
         chain.innerJoin = mock((..._args: unknown[]) => chain);
         chain.leftJoin = mock((..._args: unknown[]) => chain);
 
+        // biome-ignore lint/suspicious/noThenProperty: The mock intentionally emulates Drizzle's awaitable query chain.
         chain.then = (
           onFulfilled?: ((value: unknown) => unknown) | null,
           onRejected?: ((reason: unknown) => unknown) | null,
@@ -231,6 +233,7 @@ describe("Achievement Engine (checkProgress)", () => {
           }
           return [];
         });
+        // biome-ignore lint/suspicious/noThenProperty: The mock intentionally emulates Drizzle's awaitable query chain.
         chain.then = (onFulfilled?: ((value: unknown) => unknown) | null) => {
           return Promise.resolve(undefined).then(onFulfilled);
         };
@@ -250,6 +253,7 @@ describe("Achievement Engine (checkProgress)", () => {
           return chain;
         });
         chain.where = mock(() => chain);
+        // biome-ignore lint/suspicious/noThenProperty: The mock intentionally emulates Drizzle's awaitable query chain.
         chain.then = (onFulfilled?: ((value: unknown) => unknown) | null) =>
           Promise.resolve(undefined).then(onFulfilled);
         return chain;

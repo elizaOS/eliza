@@ -3275,7 +3275,7 @@ export async function startEliza(
   // holds the connection. MUST run AFTER applyConnectorSecretsToEnv (which can
   // repopulate the tokens from config.connectors) and BEFORE plugin
   // auto-enable / resolvePlugins below. Also clears the matching config
-  // connector blocks so nothing downstream re-derives the token. No-op
+  // connector blocks so nothing downstream re-derives the token. Skipped
   // outside a provisioned container or when ELIZA_SANDBOX_OWNS_CONNECTORS=1.
   {
     const { applySandboxConnectorOwnership } = await import(
@@ -3293,7 +3293,7 @@ export async function startEliza(
   // vault hydration + setup work below and the entire blocking resolve.
   //
   // autoFetchCloudGithubToken needs the cloud agent id. config.cloud?.agentId
-  // is available now; the function falls back to its own no-op guards (no cloud
+  // is available now; the function falls back to its own skip guards (no cloud
   // key / no managed namespace) when the id is absent this early.
   const discordAppIdPromise = autoResolveDiscordAppId();
   const cloudGithubTokenPromise = autoFetchCloudGithubToken(
@@ -3638,7 +3638,7 @@ export async function startEliza(
   // Cloud sandbox (Path A): if the provisioner injected the assigned
   // character via ELIZA_AGENT_CHARACTER_JSON, merge it onto the config so the
   // container boots AS that character (e.g. "Nyx") instead of the bundled
-  // default preset. No-op when the env var is absent.
+  // default preset. Skipped when the env var is absent.
   let sandboxRouteAgentId: string | null = null;
   {
     const { applySandboxCharacterFromEnv, resolveSandboxRouteAgentId } =
@@ -4866,7 +4866,7 @@ export async function startEliza(
     startEmbeddingWarmup();
     // Trigger the lazy wallet singleton fire-and-forget. This is a safety net
     // — if no wallet route or signing flow triggers it earlier, wallets are
-    // still generated here. The singleton ensures this is a no-op if already
+    // still generated here. The singleton keeps this harmless if already
     // resolved by an earlier caller.
     void ensureAgentWalletsLazy();
     bootTimer.lap("deferred:autonomy+warmup");
@@ -5320,8 +5320,8 @@ export async function startEliza(
     // the SANDBOX_REGISTRY_* env vars. Writing the `agent:<id>:server` +
     // `server:<name>:url` keys to the shared Upstash Redis lets the
     // multi-tenant gateways resolve this container as the inference target
-    // and forward inbound platform messages here. Returns null (no-op) for
-    // every non-provisioned runtime, so this is inert outside the cloud
+    // and forward inbound platform messages here. Returns null for every
+    // non-provisioned runtime, so this is inert outside the cloud
     // container. See packages/agent/src/runtime/sandbox-registry.ts.
     const { buildSandboxRegistryFromEnv } = await import(
       "./sandbox-registry.ts"

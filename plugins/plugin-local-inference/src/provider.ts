@@ -1,4 +1,5 @@
 import {
+	EventType,
 	type GenerateTextParams,
 	type IAgentRuntime,
 	type ImageDescriptionParams,
@@ -14,6 +15,9 @@ import {
 } from "@elizaos/core";
 
 import { generateMediaAction } from "./actions/generate-media.js";
+import { identifySpeakerAction } from "./actions/identify-speaker.js";
+import { voiceProfilePluginRoutes } from "./routes/voice-profile-plugin-routes.js";
+import { handleVoiceEntityBound } from "./runtime/voice-entity-binding.js";
 
 export const LOCAL_INFERENCE_PROVIDER_ID = "eliza-local-inference";
 export const LOCAL_INFERENCE_PRIORITY = -100;
@@ -1026,7 +1030,18 @@ export const localInferencePlugin: Plugin = {
 	description:
 		"Eliza-1 local provider for text, embeddings, text-to-speech, and transcription.",
 	priority: LOCAL_INFERENCE_PRIORITY,
-	actions: [generateMediaAction],
+	actions: [generateMediaAction, identifySpeakerAction],
+	events: {
+		// Round-trip half of the voice→entity binding: when the merge engine
+		// (plugin-lifeops) reports a binding, persist entityId onto the matching
+		// voice profile(s). See runtime/voice-entity-binding.ts.
+		[EventType.VOICE_ENTITY_BOUND]: [handleVoiceEntityBound],
+	},
+	// Voice-profile HTTP surface (speaker→entity bind/unbind + the
+	// VoiceProfileSection management UI). Registered as rawPath plugin routes
+	// because no server forwards these namespaces to the local-inference
+	// route dispatcher. See routes/voice-profile-plugin-routes.ts.
+	routes: voiceProfilePluginRoutes,
 	// TEXT_EMBEDDING is wired by ensureLocalInferenceHandler(), not the static
 	// plugin object. Runtime bootstrap probes embeddings before the user has
 	// activated an Eliza-1 bundle; registering the static handler there claims a

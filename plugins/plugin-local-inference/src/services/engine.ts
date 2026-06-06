@@ -416,7 +416,10 @@ interface Llama {
 }
 
 interface LlamaBindingModule {
-	getLlama(options?: { gpu?: "auto" | false }): Promise<Llama>;
+	getLlama(options?: {
+		gpu?: "auto" | false;
+		logger?: (level: string, message: string) => void;
+	}): Promise<Llama>;
 	LlamaChatSession: LlamaChatSessionCtor;
 	LlamaGrammar: LlamaGrammarCtor;
 	ChatMLChatWrapper?: ChatWrapperCtor;
@@ -443,6 +446,16 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
 	private loadedPath: string | null = null;
 	private bindingChecked = false;
 	private bindingModule: LlamaBindingModule | null = null;
+	/**
+	 * Most recent error-level message emitted by the native llama.cpp logger.
+	 * node-llama-cpp collapses every load failure into a bare
+	 * `Error("Failed to load model")`; the actionable cause (e.g.
+	 * `missing tensor 'blk.24.ssm_conv1d.weight'` for a malformed MTP graft)
+	 * only reaches the logger. We capture it here so `load()` can attach it to
+	 * the thrown error instead of leaving callers — and the nightly inference
+	 * bench — with an opaque message.
+	 */
+	private lastNativeLoadError: string | null = null;
 	/** Serialises generate calls so concurrent requests don't corrupt session state. */
 	private generationQueue: Promise<unknown> = Promise.resolve();
 	/**
@@ -514,7 +527,21 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
 		}
 
 		if (!this.llama) {
-			this.llama = await this.bindingModule.getLlama({ gpu: "auto" });
+			this.llama = await this.bindingModule.getLlama({
+				gpu: "auto",
+				logger: (level, message) => {
+					// Keep the FIRST error-level line of a failed load: llama.cpp
+					// emits the root cause (e.g. `missing tensor '…'`) before the
+					// generic `failed to load model` summary that would otherwise
+					// overwrite it. `load()` resets this to null before each attempt.
+					if (
+						(level === "error" || level === "fatal") &&
+						this.lastNativeLoadError === null
+					) {
+						this.lastNativeLoadError = message.trim();
+					}
+				},
+			});
 		}
 
 		// Catalog-driven node-llama-cpp load options. The binding only exposes
@@ -573,7 +600,19 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
 		const poolSize = resolveDefaultPoolSize(
 			process.env.ELIZA_LOCAL_SESSION_POOL_SIZE,
 		);
-		const model = await this.llama.loadModel(loadOptions);
+		this.lastNativeLoadError = null;
+		let model: LlamaModel;
+		try {
+			model = await this.llama.loadModel(loadOptions);
+		} catch (error) {
+			const detail = this.lastNativeLoadError;
+			if (detail) {
+				throw new Error(
+					`${error instanceof Error ? error.message : String(error)} (llama.cpp: ${detail}) [${modelPath}]`,
+				);
+			}
+			throw error;
+		}
 		// Reserve one sequence per pool slot. node-llama-cpp throws on
 		// `getSequence()` once `sequencesLeft` hits 0, so the context must
 		// be sized to the pool from the start.

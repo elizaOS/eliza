@@ -28,8 +28,9 @@ import {
  *
  * Splits via a case-insensitive regex over the ORIGINAL `text` (every segment
  * is a slice of `text` itself), rather than indexing a `toLowerCase()` copy —
- * some characters change length when lowercased (e.g. "İ", "ẞ"), which would
- * otherwise shift the indices and slice the highlight at the wrong offset. */
+ * some characters change length when lowercased (e.g. "İ" → "i" + U+0307, two
+ * code units), which would otherwise shift the indices in the lowercased copy
+ * and slice the highlight at the wrong offset. */
 function highlightMatch(text: string, query: string): ReactNode {
   if (!query) return text;
   const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

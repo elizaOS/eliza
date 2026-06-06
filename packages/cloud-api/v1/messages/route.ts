@@ -598,7 +598,7 @@ app.post("/", async (c) => {
     if (!balanceCheck.sufficient) {
       return anthropicError(
         "rate_limit_error",
-        `Insufficient app credits. Required: $${costWithMarkup.totalCost.toFixed(4)}`,
+        `Insufficient cloud credits. Required: $${costWithMarkup.totalCost.toFixed(4)}`,
         429,
       );
     }

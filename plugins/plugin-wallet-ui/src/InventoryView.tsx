@@ -1,39 +1,32 @@
 import type {
-  WalletAddresses,
-  WalletBalancesResponse,
   WalletConfigStatus,
   WalletMarketMover,
   WalletMarketOverviewResponse,
   WalletMarketOverviewSource,
-  WalletMarketPrediction,
   WalletMarketPriceSnapshot,
   WalletTradingProfileResponse,
   WalletTradingProfileWindow,
 } from "@elizaos/shared";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client } from "@elizaos/ui/api";
 import { Button } from "@elizaos/ui/components";
-import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
-import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
-import { SidebarScrollRegion } from "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region";
-import { AppPageSidebar } from "@elizaos/ui/components/shared/AppPageSidebar";
 import { type ActivityEvent, useActivityEvents } from "@elizaos/ui/hooks";
-import { PageLayout } from "@elizaos/ui/layouts";
 import type { InventoryChainFilters } from "@elizaos/ui/state";
 import { useApp } from "@elizaos/ui/state";
 import { cn } from "@elizaos/ui/utils";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Activity,
-  ArrowDownLeft,
+  AlertTriangle,
   ArrowLeftRight,
   BarChart3,
+  CheckCircle2,
+  CircleDot,
   Copy,
   EyeOff,
   Image as ImageIcon,
   Layers3,
   type LucideIcon,
   RefreshCw,
-  Send,
   Sparkles,
   TrendingDown,
   TrendingUp,
@@ -47,6 +40,10 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  loadWalletTuiState,
+  resolveWalletAddresses,
+} from "./InventoryView.helpers";
 import { getNativeLogoUrl } from "./inventory/chainConfig.ts";
 import {
   formatBalance,
@@ -70,12 +67,6 @@ const SUPPORTED_WALLET_CHAINS = Object.keys(ALL_INVENTORY_FILTERS);
 
 const DASHBOARD_WINDOWS: DashboardWindow[] = ["24h", "7d", "30d"];
 const HIDDEN_TOKEN_IDS_KEY = "eliza:wallet:hidden-token-ids:v1";
-const WALLET_CHAT_PREFILL_EVENT = "eliza:chat:prefill";
-const WALLET_SIDEBAR_WIDTH_KEY = "eliza:wallets:sidebar:width";
-const WALLET_SIDEBAR_COLLAPSED_KEY = "eliza:wallets:sidebar:collapsed";
-const WALLET_SIDEBAR_DEFAULT_WIDTH = 352;
-const WALLET_SIDEBAR_MIN_WIDTH = 240;
-const WALLET_SIDEBAR_MAX_WIDTH = 520;
 interface InventoryPositionAsset {
   id: string;
   kind: "token" | "nft";
@@ -109,30 +100,6 @@ const usdFormatter = new Intl.NumberFormat("en-US", {
 const compactFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 4,
 });
-
-const compactDollarFormatter = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
-
-function resolveWalletAddresses({
-  walletAddresses,
-  walletConfig,
-}: {
-  walletAddresses: WalletAddresses | null;
-  walletConfig: WalletConfigStatus | null;
-}): {
-  evmAddress: string | null;
-  solanaAddress: string | null;
-} {
-  return {
-    evmAddress: walletAddresses?.evmAddress ?? walletConfig?.evmAddress ?? null,
-    solanaAddress:
-      walletAddresses?.solanaAddress ?? walletConfig?.solanaAddress ?? null,
-  };
-}
 
 function readHiddenTokenIds(): Set<string> {
   if (typeof window === "undefined") return new Set();
@@ -186,128 +153,6 @@ function formatUsd(value: number): string {
   return usdFormatter.format(value);
 }
 
-function parseUsd(value: string | number | null | undefined): number {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-  if (typeof value !== "string") return 0;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function summarizeWalletBalances(
-  walletBalances: WalletBalancesResponse | null,
-): {
-  totalUsd: number;
-  tokens: Array<{
-    chain: string;
-    symbol: string;
-    name: string;
-    contractAddress: string | null;
-    balance: string;
-    valueUsd: number;
-    isNative: boolean;
-  }>;
-  chainErrors: Array<{ chain: string; error: string }>;
-} {
-  const tokens: Array<{
-    chain: string;
-    symbol: string;
-    name: string;
-    contractAddress: string | null;
-    balance: string;
-    valueUsd: number;
-    isNative: boolean;
-  }> = [];
-  const chainErrors: Array<{ chain: string; error: string }> = [];
-
-  for (const chain of walletBalances?.evm?.chains ?? []) {
-    const nativeValueUsd = parseUsd(chain.nativeValueUsd);
-    tokens.push({
-      chain: chain.chain,
-      symbol: chain.nativeSymbol,
-      name: `${chain.chain} native`,
-      contractAddress: null,
-      balance: chain.nativeBalance,
-      valueUsd: nativeValueUsd,
-      isNative: true,
-    });
-    if (chain.error) {
-      chainErrors.push({ chain: chain.chain, error: chain.error });
-      continue;
-    }
-    for (const token of chain.tokens) {
-      tokens.push({
-        chain: chain.chain,
-        symbol: token.symbol,
-        name: token.name,
-        contractAddress: token.contractAddress,
-        balance: token.balance,
-        valueUsd: parseUsd(token.valueUsd),
-        isNative: false,
-      });
-    }
-  }
-
-  if (walletBalances?.solana) {
-    tokens.push({
-      chain: "Solana",
-      symbol: "SOL",
-      name: "Solana native",
-      contractAddress: null,
-      balance: walletBalances.solana.solBalance,
-      valueUsd: parseUsd(walletBalances.solana.solValueUsd),
-      isNative: true,
-    });
-    for (const token of walletBalances.solana.tokens) {
-      tokens.push({
-        chain: "Solana",
-        symbol: token.symbol,
-        name: token.name,
-        contractAddress: token.mint,
-        balance: token.balance,
-        valueUsd: parseUsd(token.valueUsd),
-        isNative: false,
-      });
-    }
-  }
-
-  tokens.sort((a, b) => b.valueUsd - a.valueUsd);
-  return {
-    totalUsd: tokens.reduce((sum, token) => sum + token.valueUsd, 0),
-    tokens,
-    chainErrors,
-  };
-}
-
-async function loadWalletTuiState() {
-  const [
-    walletAddresses,
-    walletConfig,
-    walletBalances,
-    walletNfts,
-    marketOverview,
-  ] = await Promise.all([
-    client.getWalletAddresses().catch(() => null),
-    client.getWalletConfig().catch(() => null),
-    client.getWalletBalances().catch(() => null),
-    client.getWalletNfts().catch(() => null),
-    client.getWalletMarketOverview().catch(() => null),
-  ]);
-  const summary = summarizeWalletBalances(walletBalances);
-  return {
-    walletAddresses,
-    walletConfig,
-    walletBalances,
-    walletNfts,
-    marketOverview,
-    summary,
-  };
-}
-
-function formatCompactUsd(value: number): string {
-  if (!Number.isFinite(value)) return compactDollarFormatter.format(0);
-  return compactDollarFormatter.format(value);
-}
-
 function formatMarketUsd(value: number): string {
   if (!Number.isFinite(value)) return usdFormatter.format(0);
   const fractionDigits =
@@ -331,9 +176,9 @@ function formatPercentDelta(value: number): string {
   return `${sign}${magnitude}%`;
 }
 
-function formatProbability(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) return "No odds";
-  return `${Math.round(value * 100)}%`;
+function formatCompactAddress(address: string): string {
+  if (address.length <= 12) return address;
+  return `${address.slice(0, 5)}...${address.slice(-4)}`;
 }
 
 function formatBnb(value: string | null | undefined): string {
@@ -358,71 +203,6 @@ function hasClosedTradePnl(
   profile: WalletTradingProfileResponse | null,
 ): boolean {
   return (profile?.summary.evaluatedTrades ?? 0) > 0;
-}
-
-function clampWalletSidebarWidth(value: number): number {
-  return Math.min(
-    Math.max(value, WALLET_SIDEBAR_MIN_WIDTH),
-    WALLET_SIDEBAR_MAX_WIDTH,
-  );
-}
-
-function loadInitialWalletSidebarWidth(): number {
-  if (typeof window === "undefined") return WALLET_SIDEBAR_DEFAULT_WIDTH;
-  try {
-    const raw = window.localStorage.getItem(WALLET_SIDEBAR_WIDTH_KEY);
-    const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-    if (Number.isFinite(parsed)) return clampWalletSidebarWidth(parsed);
-  } catch {
-    /* ignore sandboxed storage */
-  }
-  return WALLET_SIDEBAR_DEFAULT_WIDTH;
-}
-
-function loadInitialWalletSidebarCollapsed(): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    return window.localStorage.getItem(WALLET_SIDEBAR_COLLAPSED_KEY) === "true";
-  } catch {
-    return false;
-  }
-}
-
-function useWalletSidebarDesktopMode() {
-  const [isDesktop, setIsDesktop] = useState(() => {
-    if (
-      typeof window === "undefined" ||
-      typeof window.matchMedia !== "function"
-    ) {
-      return true;
-    }
-    return window.matchMedia("(min-width: 820px)").matches;
-  });
-
-  useEffect(() => {
-    if (
-      typeof window === "undefined" ||
-      typeof window.matchMedia !== "function"
-    ) {
-      setIsDesktop(true);
-      return;
-    }
-
-    const mediaQuery = window.matchMedia("(min-width: 820px)");
-    const update = () => setIsDesktop(mediaQuery.matches);
-
-    update();
-
-    if (typeof mediaQuery.addEventListener === "function") {
-      mediaQuery.addEventListener("change", update);
-      return () => mediaQuery.removeEventListener("change", update);
-    }
-
-    mediaQuery.addListener(update);
-    return () => mediaQuery.removeListener(update);
-  }, []);
-
-  return isDesktop;
 }
 
 function providerLabel(
@@ -453,16 +233,6 @@ function formatRelativeTimestamp(timestamp: number): string {
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
   if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`;
   return new Date(timestamp).toLocaleDateString();
-}
-
-function formatMarketEndsAt(value: string | null): string | null {
-  if (!value) return null;
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) return null;
-  return new Date(timestamp).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
 }
 
 function tradingProfileWindow(
@@ -530,14 +300,6 @@ function deriveInventoryPositionAssets({
   }
 
   return positions;
-}
-
-function dispatchWalletChatPrefill(text: string): void {
-  window.dispatchEvent(
-    new CustomEvent(WALLET_CHAT_PREFILL_EVENT, {
-      detail: { text, select: true },
-    }),
-  );
 }
 
 function tokenBreakdownForRow(
@@ -1144,63 +906,74 @@ function MarketMoverList({
   );
 }
 
-function MarketPredictionList({
-  predictions,
-  source,
-}: {
-  predictions: WalletMarketPrediction[];
-  source: WalletMarketOverviewSource;
-}) {
-  if (!source.available) {
-    return (
-      <MarketDataUnavailable title="Popular predictions" source={source} />
-    );
-  }
-
-  if (predictions.length === 0) {
-    return <EmptyState icon={Sparkles} title="No predictions yet" />;
-  }
-
+function WalletMotif() {
   return (
-    <div className="space-y-2">
-      {predictions.map((prediction) => {
-        const href = prediction.slug
-          ? `https://polymarket.com/event/${prediction.slug}`
-          : null;
-        const endsAtLabel = formatMarketEndsAt(prediction.endsAt);
-        const content = (
-          <div
-            key={prediction.id}
-            className="flex min-w-0 items-center gap-3 rounded-2xl bg-bg/35 px-3 py-3 transition-colors hover:bg-bg/50"
-          >
-            <MarketAvatar
-              imageUrl={prediction.imageUrl}
-              label={prediction.highlightedOutcomeLabel}
-            />
-            <div className="min-w-0 flex-1">
-              <div className="line-clamp-2 text-sm font-medium text-txt">
-                {prediction.question}
-              </div>
-              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[0.68rem] font-medium uppercase tracking-[0.08em] text-muted">
-                <span>
-                  {prediction.highlightedOutcomeLabel}{" "}
-                  {formatProbability(prediction.highlightedOutcomeProbability)}
-                </span>
-                <span>{formatCompactUsd(prediction.volume24hUsd)} 24h vol</span>
-                {endsAtLabel ? <span>Ends {endsAtLabel}</span> : null}
-              </div>
-            </div>
-          </div>
-        );
+    <svg
+      viewBox="0 0 120 120"
+      role="img"
+      aria-label="Empty wallet"
+      className="h-24 w-24"
+    >
+      <defs>
+        <linearGradient id="walletMotifFill" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.9" />
+          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.35" />
+        </linearGradient>
+      </defs>
+      <circle
+        cx="60"
+        cy="60"
+        r="56"
+        fill="url(#walletMotifFill)"
+        opacity="0.12"
+      />
+      <rect
+        x="30"
+        y="42"
+        width="60"
+        height="40"
+        rx="10"
+        fill="url(#walletMotifFill)"
+        opacity="0.85"
+      />
+      <rect
+        x="30"
+        y="42"
+        width="60"
+        height="14"
+        rx="7"
+        fill="var(--accent)"
+        opacity="0.5"
+      />
+      <circle cx="78" cy="62" r="6" fill="var(--bg)" opacity="0.85" />
+      <circle cx="78" cy="62" r="2.5" fill="var(--accent)" />
+    </svg>
+  );
+}
 
-        return href ? (
-          <a key={prediction.id} href={href} target="_blank" rel="noreferrer">
-            {content}
-          </a>
-        ) : (
-          <div key={prediction.id}>{content}</div>
-        );
-      })}
+function WalletEmptyHero({
+  hasKeys,
+  onConfigureKeys,
+}: {
+  hasKeys: boolean;
+  onConfigureKeys: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-4 rounded-[28px] border border-border/30 bg-bg/30 px-6 py-12 text-center">
+      <WalletMotif />
+      <div className="text-base font-semibold text-txt">
+        {hasKeys ? "No assets yet" : "Wallet not configured"}
+      </div>
+      {hasKeys ? null : (
+        <Button
+          type="button"
+          variant="surfaceAccent"
+          size="sm"
+          onClick={onConfigureKeys}
+        >
+          Configure keys
+        </Button>
+      )}
     </div>
   );
 }
@@ -1208,27 +981,20 @@ function MarketPredictionList({
 function MarketPulseHero({
   overview,
   loading,
-  error,
+  hasKeys,
+  onConfigureKeys,
 }: {
   overview: WalletMarketOverviewResponse | null;
   loading: boolean;
-  error: string | null;
+  hasKeys: boolean;
+  onConfigureKeys: () => void;
 }) {
   return (
     <section className="space-y-6">
-      <div className="max-w-2xl">
-        <h2 className="text-2xl font-semibold leading-tight text-txt md:text-[2rem]">
-          No balances or trade history yet.
-        </h2>
-        <div className="mt-2 max-w-xl text-sm text-muted">
-          {overview?.stale
-            ? "Here's the latest cached market snapshot."
-            : "Here's what the market looks like right now."}
-        </div>
-      </div>
+      <WalletEmptyHero hasKeys={hasKeys} onConfigureKeys={onConfigureKeys} />
 
       {overview ? (
-        <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.92fr)]">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.92fr)]">
           <div className="space-y-4">
             <div>
               <MarketSectionHeader
@@ -1254,31 +1020,15 @@ function MarketPulseHero({
               />
             </div>
           </div>
-
-          <div>
-            <MarketSectionHeader
-              icon={Sparkles}
-              title="Popular predictions"
-              source={overview.sources.predictions}
-            />
-            <MarketPredictionList
-              predictions={overview.predictions}
-              source={overview.sources.predictions}
-            />
-          </div>
         </div>
       ) : loading ? (
-        <div className="mt-6 grid grid-cols-[repeat(auto-fit,minmax(min(100%,13.5rem),1fr))] gap-3">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,13.5rem),1fr))] gap-3">
           {["btc", "eth", "sol"].map((loadingCardId) => (
             <div
               key={loadingCardId}
               className="h-28 animate-pulse rounded-[26px] border border-border/30 bg-bg/35"
             />
           ))}
-        </div>
-      ) : error ? (
-        <div className="mt-6 rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger">
-          {error}
         </div>
       ) : null}
     </section>
@@ -1429,12 +1179,14 @@ function WalletRailAddress({
   address,
   chains,
   emptyLabel,
+  label,
   agentId,
   agentLabel,
 }: {
   address: string | null;
   chains: string[];
   emptyLabel: string;
+  label: string;
   /** Stable agent-surface id so the agent can copy this address by name. */
   agentId: string;
   /** Human/agent-facing label for the copy action. */
@@ -1463,7 +1215,12 @@ function WalletRailAddress({
     <button
       ref={ref}
       type="button"
-      className="flex w-full min-w-0 items-center justify-between gap-3 py-1 text-left transition-colors hover:text-txt"
+      className={cn(
+        "group inline-flex min-w-0 items-center gap-2 rounded-full border px-2.5 py-1.5 text-left transition-colors",
+        address
+          ? "border-border/35 bg-bg/40 text-txt hover:bg-bg/65"
+          : "border-border/25 bg-bg/25 text-muted",
+      )}
       onClick={handleCopy}
       disabled={!address}
       title={address ?? emptyLabel}
@@ -1472,36 +1229,132 @@ function WalletRailAddress({
       }
       {...agentProps}
     >
-      <span className="flex min-w-0 items-center gap-3">
-        <span className="flex shrink-0 -space-x-1.5">
-          {chains.map((chain) => (
-            <ChainLogoBadge
-              key={chain}
-              chain={chain}
-              size={18}
-              className="ring-1 ring-bg"
-            />
-          ))}
-        </span>
-        <span
-          className={cn(
-            "truncate font-mono text-xs",
-            address ? "text-txt" : "text-muted",
-          )}
-        >
-          {address ?? emptyLabel}
-        </span>
+      <span className="flex shrink-0 -space-x-1.5">
+        {chains.map((chain) => (
+          <ChainLogoBadge
+            key={chain}
+            chain={chain}
+            size={18}
+            className="ring-1 ring-bg"
+          />
+        ))}
+      </span>
+      <span className="shrink-0 text-[0.68rem] font-semibold uppercase text-muted">
+        {label}
+      </span>
+      <span
+        className={cn(
+          "min-w-0 truncate font-mono text-xs font-semibold",
+          address ? "max-w-24 text-txt" : "max-w-20 text-muted",
+        )}
+      >
+        {address ? formatCompactAddress(address) : emptyLabel}
       </span>
       {address ? (
         copied ? (
-          <span className="shrink-0 text-[0.68rem] font-semibold text-ok">
-            Copied
-          </span>
+          <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-ok" />
         ) : (
-          <Copy className="h-3.5 w-3.5 shrink-0 text-muted" />
+          <Copy className="h-3.5 w-3.5 shrink-0 text-muted transition-colors group-hover:text-txt" />
         )
-      ) : null}
+      ) : (
+        <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warn" />
+      )}
     </button>
+  );
+}
+
+function WalletConnectionChip({
+  label,
+  ready,
+}: {
+  label: string;
+  ready: boolean;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.68rem] font-semibold uppercase",
+        ready
+          ? "border-ok/25 bg-ok/10 text-ok"
+          : "border-warn/25 bg-warn/10 text-warn",
+      )}
+      title={`${label} ${ready ? "ready" : "needs RPC"}`}
+    >
+      {ready ? (
+        <CheckCircle2 className="h-3 w-3" />
+      ) : (
+        <AlertTriangle className="h-3 w-3" />
+      )}
+      {label}
+    </span>
+  );
+}
+
+function WalletChainCluster() {
+  return (
+    <span className="flex min-w-0 flex-wrap gap-1.5">
+      {SUPPORTED_WALLET_CHAINS.map((chain) => (
+        <span
+          key={chain}
+          className="inline-flex items-center gap-1.5 rounded-full border border-border/25 bg-bg/35 px-2 py-1 text-[0.65rem] font-semibold uppercase text-muted"
+        >
+          <ChainLogoBadge chain={chain} size={16} className="ring-1 ring-bg" />
+          {chain === "ethereum" ? "ETH" : chain === "solana" ? "SOL" : chain}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function WalletAddressCluster({
+  addresses,
+}: {
+  addresses: { evmAddress: string | null; solanaAddress: string | null };
+}) {
+  return (
+    <div className="flex min-w-0 flex-wrap gap-2">
+      <WalletRailAddress
+        address={addresses.evmAddress}
+        chains={SUPPORTED_WALLET_CHAINS.filter((chain) => chain !== "solana")}
+        emptyLabel="No EVM"
+        label="EVM"
+        agentId="account-copy-evm-address"
+        agentLabel="EVM address"
+      />
+      <WalletRailAddress
+        address={addresses.solanaAddress}
+        chains={["solana"]}
+        emptyLabel="No SOL"
+        label="SOL"
+        agentId="account-copy-solana-address"
+        agentLabel="Solana address"
+      />
+    </div>
+  );
+}
+
+function WalletProviderDots({
+  walletConfig,
+}: {
+  walletConfig: WalletConfigStatus | null;
+}) {
+  const evmReady = Boolean(walletConfig?.evmBalanceReady);
+  const solanaReady = Boolean(walletConfig?.solanaBalanceReady);
+  return (
+    <span className="inline-flex items-center -space-x-1">
+      <span
+        className={cn(
+          "h-2.5 w-2.5 rounded-full ring-2 ring-bg",
+          evmReady ? "bg-ok" : "bg-warn",
+        )}
+      />
+      <span
+        className={cn(
+          "h-2.5 w-2.5 rounded-full ring-2 ring-bg",
+          solanaReady ? "bg-ok" : "bg-warn",
+        )}
+      />
+    </span>
   );
 }
 
@@ -1512,15 +1365,6 @@ function WalletRailRpcButton({
   walletConfig: WalletConfigStatus | null;
   onOpenSettings: () => void;
 }) {
-  const evmReady = Boolean(walletConfig?.evmBalanceReady);
-  const solanaReady = Boolean(walletConfig?.solanaBalanceReady);
-  const toneClass = !walletConfig
-    ? "bg-muted"
-    : evmReady && solanaReady
-      ? "bg-ok"
-      : evmReady || solanaReady
-        ? "bg-warn"
-        : "bg-danger";
   const evmProvider = providerLabel(
     walletConfig?.selectedRpcProviders?.evm,
     "evm",
@@ -1542,13 +1386,13 @@ function WalletRailRpcButton({
     <button
       ref={ref}
       type="button"
-      className="inline-flex h-8 items-center gap-2 rounded-full border border-border/35 bg-bg/35 px-3 text-xs font-semibold text-txt transition-colors hover:bg-bg/55"
+      className="inline-flex h-9 items-center gap-2 rounded-full border border-border/35 bg-bg/40 px-3 text-xs font-semibold text-txt transition-colors hover:bg-bg/65"
       onClick={onOpenSettings}
       title={`RPC providers: EVM ${evmProvider}, Solana ${solanaProvider}`}
       aria-label="Open RPC settings"
       {...agentProps}
     >
-      <span className={cn("h-2 w-2 rounded-full", toneClass)} />
+      <WalletProviderDots walletConfig={walletConfig} />
       RPC
     </button>
   );
@@ -1578,11 +1422,28 @@ function WalletRailAccount({
       status: refreshing ? "active" : undefined,
       description: "Reload wallet balances, NFTs, and trading data",
     });
+  const evmReady = Boolean(walletConfig?.evmBalanceReady);
+  const solanaReady = Boolean(walletConfig?.solanaBalanceReady);
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="font-mono text-xl font-semibold leading-none text-txt">
-          {formatUsd(portfolioValueUsd)}
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start gap-4">
+        <div className="relative flex h-16 w-16 items-center justify-center rounded-[24px] border border-border/30 bg-bg/45">
+          <Wallet className="h-7 w-7 text-accent" />
+          <span className="absolute -right-1 -bottom-1 flex h-6 w-6 items-center justify-center rounded-full bg-bg ring-2 ring-bg">
+            <CircleDot className="h-4 w-4 text-ok" />
+          </span>
+        </div>
+        <div className="min-w-0 flex-1 basis-64">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <div className="font-mono text-2xl font-semibold leading-none text-txt">
+              {formatUsd(portfolioValueUsd)}
+            </div>
+            <WalletChainCluster />
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <WalletConnectionChip label="EVM" ready={evmReady} />
+            <WalletConnectionChip label="SOL" ready={solanaReady} />
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <WalletRailRpcButton
@@ -1594,7 +1455,7 @@ function WalletRailAccount({
             type="button"
             variant="ghost"
             size="icon"
-            className="h-8 w-8 shrink-0 rounded-full border border-border/35 bg-bg/35 hover:bg-bg/55"
+            className="h-9 w-9 shrink-0 rounded-full border border-border/35 bg-bg/40 hover:bg-bg/65"
             onClick={onRefresh}
             disabled={refreshing}
             aria-label="Refresh wallet"
@@ -1607,68 +1468,18 @@ function WalletRailAccount({
           </Button>
         </div>
       </div>
-      <WalletRailAddress
-        address={addresses.evmAddress}
-        chains={SUPPORTED_WALLET_CHAINS.filter((chain) => chain !== "solana")}
-        emptyLabel="No EVM address"
-        agentId="account-copy-evm-address"
-        agentLabel="EVM address"
-      />
-      <WalletRailAddress
-        address={addresses.solanaAddress}
-        chains={["solana"]}
-        emptyLabel="No Solana address"
-        agentId="account-copy-solana-address"
-        agentLabel="Solana address"
-      />
+      <WalletAddressCluster addresses={addresses} />
     </div>
-  );
-}
-
-function WalletRailActionButton({
-  icon: Icon,
-  label,
-  onClick,
-  agentId,
-}: {
-  icon: LucideIcon;
-  label: string;
-  onClick: () => void;
-  /** Stable agent-surface id so the agent can invoke this action by name. */
-  agentId: string;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: agentId,
-    role: "button",
-    label,
-    group: "wallet-actions",
-    description: `${label} from the wallet`,
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      className="flex min-w-0 flex-col items-center justify-center gap-2 rounded-2xl border border-border/35 bg-bg/55 px-2 py-3 text-xs font-semibold text-txt transition-[transform,background-color,border-color,color,box-shadow] duration-150 hover:border-border/55 hover:bg-bg/80 hover:shadow-sm active:scale-[0.99]"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      {...agentProps}
-    >
-      <Icon className="h-4.5 w-4.5 text-accent" />
-      <span className="truncate">{label}</span>
-    </button>
   );
 }
 
 function WalletRailTabButton({
   tab,
   active,
-  iconOnly,
   onSelect,
 }: {
-  tab: { id: WalletRailTab; label: string; icon: LucideIcon };
+  tab: { id: WalletRailTab; label: string; icon: LucideIcon; count: number };
   active: boolean;
-  iconOnly: boolean;
   onSelect: (id: WalletRailTab) => void;
 }) {
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
@@ -1685,7 +1496,6 @@ function WalletRailTabButton({
       type="button"
       className={cn(
         "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-[calc(var(--radius-lg)_-_4px)] px-3 py-2 text-sm font-semibold transition-colors",
-        iconOnly ? "px-2" : undefined,
         active ? "bg-bg text-txt shadow-sm" : "text-muted hover:text-txt",
       )}
       onClick={() => onSelect(tab.id)}
@@ -1695,40 +1505,16 @@ function WalletRailTabButton({
       {...agentProps}
     >
       <tab.icon className="h-3.5 w-3.5 shrink-0" />
-      {!iconOnly ? <span className="truncate">{tab.label}</span> : null}
+      <span className="truncate">{tab.label}</span>
+      <span
+        className={cn(
+          "ml-0.5 rounded-full px-1.5 py-0.5 font-mono text-[0.62rem]",
+          active ? "bg-bg/60 text-muted" : "bg-bg/35 text-muted",
+        )}
+      >
+        {tab.count}
+      </span>
     </button>
-  );
-}
-
-function WalletRailCollapsedTab({
-  tab,
-  active,
-  onSelect,
-}: {
-  tab: { id: WalletRailTab; label: string; icon: LucideIcon };
-  active: boolean;
-  onSelect: (id: WalletRailTab) => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `rail-tab-${tab.id}`,
-    role: "tab",
-    label: `${tab.label} (collapsed rail)`,
-    group: "wallet-tabs",
-    status: active ? "active" : "inactive",
-    description: `Show the ${tab.label} list from the collapsed rail`,
-  });
-  return (
-    <SidebarContent.RailItem
-      ref={ref}
-      aria-label={tab.label}
-      title={tab.label}
-      active={active}
-      aria-current={active ? "true" : undefined}
-      onClick={() => onSelect(tab.id)}
-      {...agentProps}
-    >
-      <tab.icon className="h-4 w-4" />
-    </SidebarContent.RailItem>
   );
 }
 
@@ -1757,31 +1543,13 @@ function TokenRailRow({
   profile,
   maxPnl,
   onHideToken,
-  onTokenAction,
 }: {
   row: TokenRow;
   profile: WalletTradingProfileResponse | null;
   maxPnl: number;
   onHideToken: (row: TokenRow) => void;
-  onTokenAction: (row: TokenRow, action: "swap" | "bridge") => void;
 }) {
   const slug = tokenAgentSlug(row);
-  const { ref: swapRef, agentProps: swapAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: `token-${slug}-swap`,
-      role: "button",
-      label: `Swap ${row.symbol}`,
-      group: "token-list",
-      description: `Swap the ${row.symbol} balance on ${row.chain}`,
-    });
-  const { ref: bridgeRef, agentProps: bridgeAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: `token-${slug}-bridge`,
-      role: "button",
-      label: `Bridge ${row.symbol}`,
-      group: "token-list",
-      description: `Bridge the ${row.symbol} balance from ${row.chain}`,
-    });
   const { ref: hideRef, agentProps: hideAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: `token-${slug}-hide`,
@@ -1809,28 +1577,6 @@ function TokenRailRow({
           {formatUsd(row.valueUsd)}
         </div>
         <div className="flex gap-1 opacity-70 transition-opacity group-hover:opacity-100">
-          <button
-            ref={swapRef}
-            type="button"
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-bg/65 text-muted transition-colors hover:text-txt"
-            onClick={() => onTokenAction(row, "swap")}
-            aria-label={`Swap ${row.symbol}`}
-            title={`Swap ${row.symbol}`}
-            {...swapAgentProps}
-          >
-            <ArrowLeftRight className="h-3.5 w-3.5" />
-          </button>
-          <button
-            ref={bridgeRef}
-            type="button"
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-bg/65 text-muted transition-colors hover:text-txt"
-            onClick={() => onTokenAction(row, "bridge")}
-            aria-label={`Bridge ${row.symbol}`}
-            title={`Bridge ${row.symbol}`}
-            {...bridgeAgentProps}
-          >
-            <Layers3 className="h-3.5 w-3.5" />
-          </button>
           <button
             ref={hideRef}
             type="button"
@@ -1933,7 +1679,7 @@ function RailPositionList({
   );
 }
 
-function TokenRail({
+function WalletHoldingsSection({
   rows,
   nfts,
   positions,
@@ -1942,8 +1688,6 @@ function TokenRail({
   walletConfig,
   profile,
   onHideToken,
-  onTokenAction,
-  onWalletAction,
   onOpenRpcSettings,
   onRefresh,
   refreshing,
@@ -1958,8 +1702,6 @@ function TokenRail({
   walletConfig: WalletConfigStatus | null;
   profile: WalletTradingProfileResponse | null;
   onHideToken: (row: TokenRow) => void;
-  onTokenAction: (row: TokenRow, action: "swap" | "bridge") => void;
-  onWalletAction: (action: "swap" | "send" | "receive") => void;
   onOpenRpcSettings: () => void;
   onRefresh: () => void;
   refreshing: boolean;
@@ -1967,15 +1709,6 @@ function TokenRail({
   onEnableWallet: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<WalletRailTab>("tokens");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
-    loadInitialWalletSidebarCollapsed,
-  );
-  const [sidebarWidth, setSidebarWidth] = useState<number>(
-    loadInitialWalletSidebarWidth,
-  );
-  const isDesktopSidebar = useWalletSidebarDesktopMode();
-  const showIconOnlyTabs =
-    isDesktopSidebar && !sidebarCollapsed && sidebarWidth <= 304;
   const visibleRows = useMemo(
     () =>
       rows.filter((row) => {
@@ -1996,32 +1729,17 @@ function TokenRail({
     id: WalletRailTab;
     label: string;
     icon: LucideIcon;
+    count: number;
   }> = [
     {
       id: "tokens",
       label: "Tokens",
       icon: Wallet,
+      count: visibleRows.length,
     },
-    { id: "defi", label: "DeFi", icon: Layers3 },
-    { id: "nfts", label: "NFTs", icon: ImageIcon },
+    { id: "defi", label: "DeFi", icon: Layers3, count: positions.length },
+    { id: "nfts", label: "NFTs", icon: ImageIcon, count: nfts.length },
   ];
-  const handleSidebarCollapsedChange = useCallback((next: boolean) => {
-    setSidebarCollapsed(next);
-    try {
-      window.localStorage.setItem(WALLET_SIDEBAR_COLLAPSED_KEY, String(next));
-    } catch {
-      /* ignore sandboxed storage */
-    }
-  }, []);
-  const handleSidebarWidthChange = useCallback((next: number) => {
-    const clamped = clampWalletSidebarWidth(next);
-    setSidebarWidth(clamped);
-    try {
-      window.localStorage.setItem(WALLET_SIDEBAR_WIDTH_KEY, String(clamped));
-    } catch {
-      /* ignore sandboxed storage */
-    }
-  }, []);
   const { ref: enableWalletRef, agentProps: enableWalletAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "action-enable-wallet",
@@ -2030,99 +1748,48 @@ function TokenRail({
       group: "wallet-actions",
       description: "Turn on the wallet to load balances and trading data",
     });
-  const headerContent = (
-    <div className="space-y-4">
-      {visibleRows.length > 0 ? (
-        <AssetAllocationStrip rows={visibleRows} compact />
-      ) : null}
-
-      {walletEnabled === false ? (
-        <Button
-          ref={enableWalletRef}
-          className="w-full rounded-2xl"
-          onClick={onEnableWallet}
-          {...enableWalletAgentProps}
-        >
-          Enable wallet
-        </Button>
-      ) : null}
-
-      <div className="grid grid-cols-3 gap-2">
-        <WalletRailActionButton
-          icon={ArrowLeftRight}
-          label="Swap"
-          agentId="action-swap"
-          onClick={() => onWalletAction("swap")}
-        />
-        <WalletRailActionButton
-          icon={Send}
-          label="Send"
-          agentId="action-send"
-          onClick={() => onWalletAction("send")}
-        />
-        <WalletRailActionButton
-          icon={ArrowDownLeft}
-          label="Receive"
-          agentId="action-receive"
-          onClick={() => onWalletAction("receive")}
-        />
-      </div>
-
-      <div className="grid min-w-0 grid-cols-3 rounded-2xl bg-bg/45 p-1">
-        {tabs.map((tab) => (
-          <WalletRailTabButton
-            key={tab.id}
-            tab={tab}
-            active={activeTab === tab.id}
-            iconOnly={showIconOnlyTabs}
-            onSelect={setActiveTab}
-          />
-        ))}
-      </div>
-    </div>
-  );
 
   return (
-    <AppPageSidebar
-      testId="wallets-sidebar"
-      collapsible
-      collapsed={sidebarCollapsed}
-      onCollapsedChange={handleSidebarCollapsedChange}
-      resizable
-      width={sidebarWidth}
-      onWidthChange={handleSidebarWidthChange}
-      minWidth={WALLET_SIDEBAR_MIN_WIDTH}
-      maxWidth={WALLET_SIDEBAR_MAX_WIDTH}
-      onCollapseRequest={() => handleSidebarCollapsedChange(true)}
-      contentIdentity={`wallets:${activeTab}`}
-      collapseButtonTestId="wallets-sidebar-collapse-toggle"
-      collapseButtonAriaLabel="Collapse wallet"
-      expandButtonTestId="wallets-sidebar-expand-toggle"
-      expandButtonAriaLabel="Expand wallet"
-      collapsedRailItems={tabs.map((tab) => (
-        <WalletRailCollapsedTab
-          key={tab.id}
-          tab={tab}
-          active={activeTab === tab.id}
-          onSelect={setActiveTab}
-        />
-      ))}
-      mobileTitle="Wallet"
-      mobileMeta={null}
+    <section
+      data-testid="wallets-sidebar"
+      className="rounded-[28px] border border-border/30 bg-bg/45 px-5 py-5 shadow-sm md:px-6"
     >
-      <div className="shrink-0 px-4 pb-3 pt-0">
-        <WalletRailAccount
-          addresses={addresses}
-          portfolioValueUsd={totalUsd}
-          walletConfig={walletConfig}
-          onOpenSettings={onOpenRpcSettings}
-          onRefresh={onRefresh}
-          refreshing={refreshing}
-        />
-        <div className="mt-4">{headerContent}</div>
-      </div>
-      <SidebarScrollRegion className="pt-0">
-        <SidebarPanel className="space-y-1">
+      <WalletRailAccount
+        addresses={addresses}
+        portfolioValueUsd={totalUsd}
+        walletConfig={walletConfig}
+        onOpenSettings={onOpenRpcSettings}
+        onRefresh={onRefresh}
+        refreshing={refreshing}
+      />
+      <div className="mt-4 space-y-4">
+        {visibleRows.length > 0 ? (
+          <AssetAllocationStrip rows={visibleRows} compact />
+        ) : null}
+
+        {walletEnabled === false ? (
+          <Button
+            ref={enableWalletRef}
+            className="w-full rounded-2xl"
+            onClick={onEnableWallet}
+            {...enableWalletAgentProps}
+          >
+            Enable wallet
+          </Button>
+        ) : null}
+
+        <div className="grid min-w-0 grid-cols-3 rounded-2xl border border-border/25 bg-bg/45 p-1">
+          {tabs.map((tab) => (
+            <WalletRailTabButton
+              key={tab.id}
+              tab={tab}
+              active={activeTab === tab.id}
+              onSelect={setActiveTab}
+            />
+          ))}
+        </div>
+
+        <div className="space-y-1">
           {activeTab === "tokens" ? (
             visibleRows.length === 0 ? (
               <WalletRailEmpty icon={Wallet} title="No assets" />
@@ -2134,7 +1801,6 @@ function TokenRail({
                   profile={profile}
                   maxPnl={maxPnl}
                   onHideToken={onHideToken}
-                  onTokenAction={onTokenAction}
                 />
               ))
             )
@@ -2143,9 +1809,9 @@ function TokenRail({
           ) : activeTab === "nfts" ? (
             <RailNftList nfts={nfts} />
           ) : null}
-        </SidebarPanel>
-      </SidebarScrollRegion>
-    </AppPageSidebar>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -2405,9 +2071,6 @@ export function InventoryView() {
   const [marketOverview, setMarketOverview] =
     useState<WalletMarketOverviewResponse | null>(null);
   const [marketOverviewLoading, setMarketOverviewLoading] = useState(false);
-  const [marketOverviewError, setMarketOverviewError] = useState<string | null>(
-    null,
-  );
   const initialLoadRef = useRef(false);
   const tradingProfileRequestRef = useRef(0);
   const marketOverviewRequestRef = useRef(0);
@@ -2445,20 +2108,18 @@ export function InventoryView() {
     const requestId = marketOverviewRequestRef.current + 1;
     marketOverviewRequestRef.current = requestId;
     setMarketOverviewLoading(true);
-    setMarketOverviewError(null);
 
     try {
       const overview = await client.getWalletMarketOverview();
       if (marketOverviewRequestRef.current === requestId) {
         setMarketOverview(overview);
       }
-    } catch (cause) {
-      const message =
-        cause instanceof Error && cause.message.trim().length > 0
-          ? cause.message.trim()
-          : "Failed to load market overview.";
+    } catch {
+      // Market overview is an optional capability — when the feed is
+      // unavailable the empty-wallet hero simply omits the market panels
+      // rather than surfacing an error.
       if (marketOverviewRequestRef.current === requestId) {
-        setMarketOverviewError(message);
+        setMarketOverview(null);
       }
     } finally {
       if (marketOverviewRequestRef.current === requestId) {
@@ -2559,33 +2220,6 @@ export function InventoryView() {
     loadWalletConfig,
   ]);
 
-  const handleTokenAction = useCallback(
-    (row: TokenRow, action: "swap" | "bridge") => {
-      const verb = action === "swap" ? "swap" : "bridge";
-      dispatchWalletChatPrefill(
-        `Prepare a ${verb} for ${row.symbol}. Use the visible wallet inventory, then ask me for amount, destination, slippage, and execution path before any transaction.`,
-      );
-      setActionNotice(
-        `Prepared a ${verb} request for ${row.symbol} in wallet chat.`,
-      );
-    },
-    [setActionNotice],
-  );
-
-  const handleWalletAction = useCallback(
-    (action: "swap" | "send" | "receive") => {
-      const prompt =
-        action === "swap"
-          ? "Prepare a wallet swap. Ask me for source token, destination token, amount, slippage, and route before any transaction."
-          : action === "send"
-            ? "Prepare a transfer. Ask me for token, amount, recipient address, and network requirements before any transaction."
-            : "Show the EVM and Solana receive addresses available in this wallet and ask which address I want to use.";
-      dispatchWalletChatPrefill(prompt);
-      setActionNotice(`Prepared ${action} in wallet chat.`);
-    },
-    [setActionNotice],
-  );
-
   const handleOpenRpcSettings = useCallback(() => {
     setTab("settings");
     if (typeof window !== "undefined") {
@@ -2600,129 +2234,117 @@ export function InventoryView() {
     void loadNfts();
   }, [loadBalances, loadNfts, loadWalletConfig, setState]);
 
-  const tokenSidebar = (
-    <TokenRail
-      rows={visibleAssetRows}
-      nfts={inventoryData.allNfts}
-      positions={lpPositions}
-      addresses={addresses}
-      hiddenTokenIds={hiddenTokenIds}
-      walletConfig={walletConfig}
-      profile={tradingProfile}
-      onHideToken={handleHideToken}
-      onTokenAction={handleTokenAction}
-      onWalletAction={handleWalletAction}
-      onOpenRpcSettings={handleOpenRpcSettings}
-      onRefresh={handleRefresh}
-      refreshing={
-        walletLoading ||
-        walletNftsLoading ||
-        tradingProfileLoading ||
-        marketOverviewLoading
-      }
-      walletEnabled={walletEnabled}
-      onEnableWallet={handleEnableWallet}
-    />
-  );
-
   return (
-    <PageLayout
-      className="h-full"
+    <main
       data-testid="wallet-shell"
-      sidebar={tokenSidebar}
-      contentClassName="bg-bg"
-      contentInnerClassName="w-full min-h-0"
-      mobileSidebarLabel="Wallet"
+      className="h-full min-h-0 w-full overflow-y-auto bg-bg"
     >
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-7 px-5 py-6 sm:px-7 lg:px-9">
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-5 pt-6 pb-28">
         {walletError ? (
           <div className="rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger">
             {walletError}
           </div>
         ) : null}
 
+        <WalletHoldingsSection
+          rows={visibleAssetRows}
+          nfts={inventoryData.allNfts}
+          positions={lpPositions}
+          addresses={addresses}
+          hiddenTokenIds={hiddenTokenIds}
+          walletConfig={walletConfig}
+          profile={tradingProfile}
+          onHideToken={handleHideToken}
+          onOpenRpcSettings={handleOpenRpcSettings}
+          onRefresh={handleRefresh}
+          refreshing={
+            walletLoading ||
+            walletNftsLoading ||
+            tradingProfileLoading ||
+            marketOverviewLoading
+          }
+          walletEnabled={walletEnabled}
+          onEnableWallet={handleEnableWallet}
+        />
+
         {showMarketPulseHero ? (
           <MarketPulseHero
             overview={marketOverview}
             loading={marketOverviewLoading}
-            error={marketOverviewError}
+            hasKeys={
+              addresses.evmAddress !== null || addresses.solanaAddress !== null
+            }
+            onConfigureKeys={handleOpenRpcSettings}
           />
         ) : null}
 
         {!showMarketPulseHero ? (
-          <div className="grid gap-8 xl:grid-cols-[minmax(0,1.22fr)_minmax(20rem,0.8fr)]">
-            <div className="space-y-8">
-              <DashboardSection
-                title="P&L"
-                icon={BarChart3}
-                action={
-                  <div className="flex rounded-full bg-bg/40 p-1">
-                    {DASHBOARD_WINDOWS.map((window) => (
-                      <DashboardWindowButton
-                        key={window}
-                        window={window}
-                        active={dashboardWindow === window}
-                        onSelect={setDashboardWindow}
-                      />
-                    ))}
-                  </div>
-                }
-              >
-                {(showTradePnl && pnlValue !== null) ||
-                displayedAssetRows.length > 0 ? (
-                  <div className="mb-4 flex flex-wrap items-center gap-3">
-                    {showTradePnl && pnlValue !== null ? (
-                      <SummaryChip
-                        icon={pnlValue >= 0 ? TrendingUp : TrendingDown}
-                        value={`${pnlValue > 0 ? "+" : ""}${formatBnb(tradingProfile?.summary.realizedPnlBnb)}`}
-                        tone={pnlValue >= 0 ? "gain" : "loss"}
-                        title="Realized P&L"
-                      />
-                    ) : null}
-                    {displayedAssetRows.length > 0 ? (
-                      <div className="min-w-0 flex-1">
-                        <AssetAllocationStrip
-                          rows={displayedAssetRows}
-                          compact
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-                <PnlChart profile={tradingProfile} />
-                {tradingProfileError ? (
-                  <div className="mt-3 text-xs-tight text-danger">
-                    {tradingProfileError}
-                  </div>
-                ) : null}
-              </DashboardSection>
+          <div className="flex flex-col gap-8">
+            <DashboardSection
+              title="P&L"
+              icon={BarChart3}
+              action={
+                <div className="flex rounded-full bg-bg/40 p-1">
+                  {DASHBOARD_WINDOWS.map((window) => (
+                    <DashboardWindowButton
+                      key={window}
+                      window={window}
+                      active={dashboardWindow === window}
+                      onSelect={setDashboardWindow}
+                    />
+                  ))}
+                </div>
+              }
+            >
+              {(showTradePnl && pnlValue !== null) ||
+              displayedAssetRows.length > 0 ? (
+                <div className="mb-4 flex flex-wrap items-center gap-3">
+                  {showTradePnl && pnlValue !== null ? (
+                    <SummaryChip
+                      icon={pnlValue >= 0 ? TrendingUp : TrendingDown}
+                      value={`${pnlValue > 0 ? "+" : ""}${formatBnb(tradingProfile?.summary.realizedPnlBnb)}`}
+                      tone={pnlValue >= 0 ? "gain" : "loss"}
+                      title="Realized P&L"
+                    />
+                  ) : null}
+                  {displayedAssetRows.length > 0 ? (
+                    <div className="min-w-0 flex-1">
+                      <AssetAllocationStrip rows={displayedAssetRows} compact />
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              <PnlChart profile={tradingProfile} />
+              {tradingProfileError ? (
+                <div className="mt-3 text-xs-tight text-danger">
+                  {tradingProfileError}
+                </div>
+              ) : null}
+            </DashboardSection>
 
-              <DashboardSection title="Activity" icon={Activity}>
-                <ActivityLog profile={tradingProfile} events={activityEvents} />
-              </DashboardSection>
-            </div>
+            <DashboardSection title="Activity" icon={Activity}>
+              <ActivityLog profile={tradingProfile} events={activityEvents} />
+            </DashboardSection>
 
-            <div className="space-y-8">
-              <DashboardSection title="Movers" icon={TrendingUp}>
-                <PortfolioMoversPanel
-                  rows={displayedAssetRows}
-                  profile={tradingProfile}
-                  marketOverview={marketOverview}
-                />
-              </DashboardSection>
+            <DashboardSection title="Movers" icon={TrendingUp}>
+              <PortfolioMoversPanel
+                rows={displayedAssetRows}
+                profile={tradingProfile}
+                marketOverview={marketOverview}
+              />
+            </DashboardSection>
 
-              <DashboardSection title="LP positions" icon={Layers3}>
-                <LpPositionsPanel positions={lpPositions} />
-              </DashboardSection>
+            <DashboardSection title="LP positions" icon={Layers3}>
+              <LpPositionsPanel positions={lpPositions} />
+            </DashboardSection>
 
-              <DashboardSection title="NFTs" icon={ImageIcon}>
-                <NftPreview nfts={inventoryData.allNfts} />
-              </DashboardSection>
-            </div>
+            <DashboardSection title="NFTs" icon={ImageIcon}>
+              <NftPreview nfts={inventoryData.allNfts} />
+            </DashboardSection>
           </div>
         ) : null}
       </div>
-    </PageLayout>
+    </main>
   );
 }
 
@@ -2822,7 +2444,7 @@ export function InventoryTuiView() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(280px, 1fr) minmax(280px, 1fr)",
+          gridTemplateColumns: "1fr",
           gap: 16,
         }}
       >
@@ -2914,10 +2536,11 @@ export function InventoryTuiView() {
         >
           <strong style={{ color: "#e2e8f0" }}>market</strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: state | trading-profile | market-overview
+            {(walletState?.marketOverview?.movers ?? []).length} movers /{" "}
+            {nfts.length} NFTs
           </div>
           {(walletState?.marketOverview?.movers ?? [])
-            .slice(0, 8)
+            .slice(0, 4)
             .map((mover) => (
               <div key={mover.id} style={{ padding: "4px 0" }}>
                 <span style={{ color: "#a7f3d0" }}>{mover.symbol}</span>{" "}
@@ -2929,7 +2552,7 @@ export function InventoryTuiView() {
             ))}
 
           <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>nfts</div>
-          {nfts.slice(0, 10).map((nft) => (
+          {nfts.slice(0, 4).map((nft) => (
             <div key={nft.identity} style={{ padding: "4px 0" }}>
               <span style={{ color: "#64748b" }}>{nft.chain}</span> {nft.name}
               {nft.collectionName ? (
@@ -2952,55 +2575,4 @@ export function InventoryTuiView() {
       </div>
     </div>
   );
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-wallet-state") {
-    const state = await loadWalletTuiState();
-    const addresses = resolveWalletAddresses({
-      walletAddresses: state.walletAddresses,
-      walletConfig: state.walletConfig,
-    });
-    return {
-      viewType: "tui",
-      addresses,
-      totalUsd: state.summary.totalUsd,
-      tokenCount: state.summary.tokens.length,
-      nftCount:
-        (state.walletNfts?.evm?.reduce(
-          (sum, collection) => sum + collection.nfts.length,
-          0,
-        ) ?? 0) + (state.walletNfts?.solana?.nfts.length ?? 0),
-      chainErrors: state.summary.chainErrors,
-      tokens: state.summary.tokens.slice(
-        0,
-        typeof params?.limit === "number" ? params.limit : 20,
-      ),
-    };
-  }
-
-  if (capability === "terminal-wallet-market-overview") {
-    return {
-      viewType: "tui",
-      overview: await client.getWalletMarketOverview(),
-    };
-  }
-
-  if (capability === "terminal-wallet-trading-profile") {
-    const window =
-      params?.window === "24h" ||
-      params?.window === "7d" ||
-      params?.window === "30d"
-        ? params.window
-        : "30d";
-    return {
-      viewType: "tui",
-      profile: await client.getWalletTradingProfile(window),
-    };
-  }
-
-  throw new Error(`Unsupported capability "${capability}"`);
 }

@@ -2,7 +2,7 @@
  * AI Billing Service
  *
  * Centralized billing utilities for AI SDK usage.
- * Uses real-time usage data from OpenRouter responses.
+ * Uses real-time usage data from BitRouter responses.
  *
  * Rules:
  * - Always use AI SDK (streamText, generateText) - never call providers directly
@@ -94,17 +94,46 @@ export function normalizeUsage(usage: AIUsage | undefined | null): {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  cacheReadInputTokens: number;
+  cacheWriteInputTokens: number;
 } {
   if (!usage) {
-    return { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+    return {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      cacheReadInputTokens: 0,
+      cacheWriteInputTokens: 0,
+    };
   }
 
   // AI SDK v4+ uses inputTokens/outputTokens
   const inputTokens = usage.inputTokens ?? usage.promptTokens ?? 0;
   const outputTokens = usage.outputTokens ?? usage.completionTokens ?? 0;
   const totalTokens = usage.totalTokens ?? inputTokens + outputTokens;
+  const cacheReadInputTokens = usage.cacheReadInputTokens ?? usage.cachedInputTokens ?? 0;
+  const cacheWriteInputTokens = usage.cacheWriteInputTokens ?? usage.cacheCreationInputTokens ?? 0;
 
-  return { inputTokens, outputTokens, totalTokens };
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    cacheReadInputTokens,
+    cacheWriteInputTokens,
+  };
+}
+
+function billableInputTokensForProvider(
+  provider: string,
+  inputTokens: number,
+  cacheReadInputTokens: number,
+  cacheWriteInputTokens: number,
+): number {
+  if (provider === "cerebras") {
+    return Math.max(0, inputTokens - cacheReadInputTokens - cacheWriteInputTokens);
+  }
+
+  return inputTokens;
 }
 
 // ============================================================================
@@ -177,15 +206,22 @@ export async function billUsage(
   usage: AIUsage | undefined | null,
   reservation?: CreditReservation,
 ): Promise<BillingResult> {
-  const { inputTokens, outputTokens, totalTokens } = normalizeUsage(usage);
+  const { inputTokens, outputTokens, totalTokens, cacheReadInputTokens, cacheWriteInputTokens } =
+    normalizeUsage(usage);
   const provider = context.provider ?? getProviderFromModel(context.model);
   const normalizedModel = normalizeModelName(context.model);
+  const billableInputTokens = billableInputTokensForProvider(
+    provider,
+    inputTokens,
+    cacheReadInputTokens,
+    cacheWriteInputTokens,
+  );
 
   // Calculate cost with 20% platform markup (built into calculateCost)
   let { inputCost, outputCost, totalCost } = await calculateCost(
     normalizedModel,
     provider,
-    inputTokens,
+    billableInputTokens,
     outputTokens,
     context.billingSource,
   );
@@ -250,6 +286,9 @@ export async function billUsage(
       reserved: reservation.reservedAmount,
       actual: totalCost,
       inputTokens,
+      billableInputTokens,
+      cacheReadInputTokens,
+      cacheWriteInputTokens,
       outputTokens,
     });
   }

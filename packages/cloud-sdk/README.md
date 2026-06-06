@@ -22,6 +22,50 @@ const stream = await cloud.routes.postApiV1ChatCompletionsRaw({
 });
 ```
 
+## Sign in with Eliza Cloud (web app) + app-credits
+
+A third-party web app can let users sign in with their Eliza Cloud account — no
+API key pasting — and bill inference to a registered app's credits (the app
+owner earns the configured markup). The client exposes the whole flow:
+
+```ts
+const cloud = new ElizaCloudClient(); // no key needed to start the login
+
+// 1. Start a login session and open the hosted login (a tab works well).
+const { sessionId, browserUrl } = await cloud.startCliLogin();
+window.open(browserUrl, "_blank");
+
+// 2. Poll until the user authorizes (handles the deadline/interval/terminal
+//    states for you; throws on expiry/error/timeout).
+const { apiKey, userId } = await cloud.waitForCliLogin(sessionId);
+cloud.setApiKey(apiKey!);
+
+// 3. Show/buy app-credits for your registered app.
+const balance = await cloud.getAppCreditsBalance("app_123");
+const checkout = await cloud.createAppCreditsCheckout({
+  app_id: "app_123",
+  amount: 5,
+  success_url: location.origin,
+  cancel_url: location.origin,
+});
+
+// 4. Run inference billed to the app's credits via the `appId` option
+//    (sends the `X-App-Id` header). Omit `appId` to bill the caller's own credits.
+const reply = await cloud.createChatCompletion(
+  { model: "anthropic/claude-sonnet-4.5", messages: [{ role: "user", content: "hi" }] },
+  { appId: "app_123" },
+);
+```
+
+`waitForCliLogin(sessionId, { timeoutMs?, intervalMs?, signal? })` and the
+`{ appId }` option on `createChatCompletion` / `createResponse` /
+`createEmbeddings` / `generateImage` exist so browser apps don't have to
+hand-roll the polling loop or a raw `fetch` to send `X-App-Id`.
+
+> Browser note: `startCliLogin` / `pollCliLogin` are CORS-friendly (token auth,
+> no cookies). `pairWithToken` is server/agent-only — it sets an `Origin` header
+> that browsers forbid `fetch` from overriding.
+
 `cloud.routes` is generated from the public Cloud API route tree under
 `apps/api`, including both Next-style exported HTTP handlers and Hono
 `app.get` / `app.post` / `app.all` route modules. It intentionally excludes

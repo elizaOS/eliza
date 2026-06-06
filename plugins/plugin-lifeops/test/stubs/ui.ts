@@ -1,7 +1,13 @@
+import { createElement, Fragment, type ReactNode } from "react";
+
 type ComponentProps = Record<string, unknown>;
 
 function NullComponent(_props: ComponentProps): null {
   return null;
+}
+
+function PassthroughComponent(props: { children?: ReactNode }): ReactNode {
+  return createElement(Fragment, null, props.children);
 }
 
 export class ElizaClient {}
@@ -16,7 +22,8 @@ export const PageScopedChatPane = NullComponent;
 export const SegmentedControl = NullComponent;
 export const Switch = NullComponent;
 export const Textarea = NullComponent;
-export const TooltipHint = NullComponent;
+export const TooltipHint = PassthroughComponent;
+export const TooltipProvider = PassthroughComponent;
 
 export function useAgentElement(): Record<string, unknown> {
   return { ref: { current: null }, agentProps: {} };

@@ -158,14 +158,49 @@ const MAX_RESTARTS_IN_WINDOW = 5;
 const RESTART_WINDOW_MS = 60_000;
 const restartTimestamps = [];
 
+const commandExists = (command) => {
+  const pathEnv = process.env.PATH ?? "";
+  if (!pathEnv) return false;
+  const isWindows = process.platform === "win32";
+  const extensions = isWindows
+    ? (process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM")
+        .split(";")
+        .filter(Boolean)
+    : [""];
+  for (const dir of pathEnv.split(path.delimiter).filter(Boolean)) {
+    for (const ext of extensions) {
+      const candidate = path.join(
+        dir,
+        isWindows && !command.toLowerCase().endsWith(ext.toLowerCase())
+          ? `${command}${ext}`
+          : command,
+      );
+      if (fs.existsSync(candidate)) return true;
+    }
+  }
+  return false;
+};
+
 const runNode = () => {
+  const hasBun = commandExists("bun");
+  const hasNode = commandExists("node");
   const { runtime, warning } = chooseElizaRuntime({
     requestedRuntime: process.env.ELIZA_RUNTIME,
     platform: process.platform,
     bunVersion: process.versions?.bun,
+    hasBun,
+    hasNode,
   });
   if (warning) {
     logRunner(`${warning} Set ELIZA_RUNTIME=bun to force Bun runtime.`);
+  }
+  if (runtime === "bun" && !hasBun) {
+    logRunner("Bun runtime was selected, but bun was not found in PATH.");
+    process.exit(1);
+  }
+  if (runtime === "node" && !hasNode) {
+    logRunner("Node.js runtime was selected, but node was not found in PATH.");
+    process.exit(1);
   }
   const execPath = resolveRuntimeExecPath({
     runtime,

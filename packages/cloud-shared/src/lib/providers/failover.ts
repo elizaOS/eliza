@@ -11,7 +11,7 @@ import type { ProviderHttpError } from "./types";
 /**
  * Whether a provider error is retryable via fallback.
  * Matches the structured `{ status, error }` shape (`ProviderHttpError`)
- * thrown by every provider implementation (OpenRouter, OpenAI direct,
+ * thrown by every provider implementation (BitRouter, OpenAI direct,
  * Anthropic direct, Groq).
  */
 function isRetryableProviderError(error: unknown): error is ProviderHttpError {

@@ -4,8 +4,8 @@
 "use client";
 
 import { Mic } from "lucide-react";
-import { Button } from "../button";
-import { EmptyState } from "../empty-state";
+import { Button } from "../../../components/ui/button";
+import { EmptyState } from "../../../components/ui/empty-state";
 
 interface VoiceEmptyStateProps {
   onCreateClick: () => void;

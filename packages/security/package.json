@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/security",
-  "version": "2.0.3-beta.1",
+  "version": "2.0.3-beta.6",
   "description": "Eliza security foundation: KMS contract, audit-event dispatcher, and AEAD primitives. Foundation package for SOC2 compliance work.",
   "type": "module",
   "license": "MIT",

@@ -353,7 +353,10 @@ app.post("/", async (c) => {
       FAL_KEY: env.FAL_KEY,
       FAL_API_KEY: env.FAL_API_KEY,
     };
-    if (definition.billingSource === "bitrouter" && !apiKeys.BITROUTER_API_KEY) {
+    if (
+      definition.billingSource === "bitrouter" &&
+      !apiKeys.BITROUTER_API_KEY
+    ) {
       return jsonError(
         c,
         503,
@@ -424,8 +427,8 @@ app.post("/", async (c) => {
       return c.json(
         {
           success: false,
-          error: "Insufficient app credits",
-          code: "insufficient_app_credits",
+          error: "Insufficient cloud credits",
+          code: "insufficient_credits",
           required: deduction.totalCost,
           balance: deduction.newBalance,
         },

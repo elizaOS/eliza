@@ -75,6 +75,7 @@ function taskDetail(overrides: JsonRecord = {}) {
     artifacts: [],
     messages: [],
     transcripts: [],
+    planRevisions: [],
     ...overrides,
   };
 }
@@ -124,6 +125,45 @@ async function fulfillJson(
   });
 }
 
+function timelinePage(
+  messages: JsonRecord[],
+  events: JsonRecord[],
+  url: URL,
+): { items: JsonRecord[]; nextCursor: string | null } {
+  const limit =
+    Math.max(1, Number.parseInt(url.searchParams.get("limit") ?? "100", 10)) ||
+    100;
+  const start =
+    Math.max(0, Number.parseInt(url.searchParams.get("cursor") ?? "0", 10)) ||
+    0;
+  const items = [
+    ...messages.map((message) => ({
+      id: `message:${message.id}`,
+      kind: "message",
+      threadId: message.threadId,
+      sessionId: message.sessionId ?? null,
+      timestamp: message.timestamp,
+      createdAt: message.createdAt,
+      message,
+    })),
+    ...events.map((event) => ({
+      id: `event:${event.id}`,
+      kind: "event",
+      threadId: event.threadId,
+      sessionId: event.sessionId ?? null,
+      timestamp: event.timestamp,
+      createdAt: event.createdAt,
+      event,
+    })),
+  ].sort((a, b) => Number(b.timestamp) - Number(a.timestamp));
+  const page = items.slice(start, start + limit);
+  const next = start + limit;
+  return {
+    items: page,
+    nextCursor: next < items.length ? String(next) : null,
+  };
+}
+
 async function installOrchestratorWorkbenchRoutes(
   page: Page,
   initial: {
@@ -136,6 +176,7 @@ async function installOrchestratorWorkbenchRoutes(
   messageBodies: JsonRecord[];
   addAgentBodies: JsonRecord[];
   patchBodies: JsonRecord[];
+  restartWithEditedPlanBodies: JsonRecord[];
   actionLog: string[];
 }> {
   let detail: JsonRecord | null = initial.detail ?? null;
@@ -145,6 +186,7 @@ async function installOrchestratorWorkbenchRoutes(
   const messageBodies: JsonRecord[] = [];
   const addAgentBodies: JsonRecord[] = [];
   const patchBodies: JsonRecord[] = [];
+  const restartWithEditedPlanBodies: JsonRecord[] = [];
   const actionLog: string[] = [];
 
   await page.route("**/api/orchestrator/**", async (route) => {
@@ -303,6 +345,62 @@ async function installOrchestratorWorkbenchRoutes(
 
     if (
       method === "POST" &&
+      pathname === "/api/orchestrator/tasks/smoke-task-1/retry-turn"
+    ) {
+      const body = JSON.parse(request.postData() ?? "{}") as JsonRecord;
+      actionLog.push(
+        `retry:${String(body.messageId ?? body.sessionId ?? body.mode ?? "")}`,
+      );
+      await fulfillJson(route, detail ?? taskDetail());
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      pathname === "/api/orchestrator/tasks/smoke-task-1/rerun-from-event"
+    ) {
+      const body = JSON.parse(request.postData() ?? "{}") as JsonRecord;
+      actionLog.push(`rerun:${String(body.eventId ?? "")}`);
+      await fulfillJson(route, detail ?? taskDetail());
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      pathname === "/api/orchestrator/tasks/smoke-task-1/restart"
+    ) {
+      const body = JSON.parse(request.postData() ?? "{}") as JsonRecord;
+      actionLog.push(
+        `restart:${body.stopActive === true ? "stop-active" : "keep-active"}`,
+      );
+      await fulfillJson(route, detail ?? taskDetail());
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      pathname ===
+        "/api/orchestrator/tasks/smoke-task-1/restart-with-edited-plan"
+    ) {
+      const body = JSON.parse(request.postData() ?? "{}") as JsonRecord;
+      restartWithEditedPlanBodies.push(body);
+      actionLog.push(
+        `restart-edited:${body.stopActive === true ? "stop-active" : "keep-active"}`,
+      );
+      const nextPlan = body.plan;
+      if (
+        nextPlan &&
+        typeof nextPlan === "object" &&
+        !Array.isArray(nextPlan)
+      ) {
+        detail = { ...(detail ?? taskDetail()), currentPlan: nextPlan };
+      }
+      await fulfillJson(route, detail ?? taskDetail());
+      return;
+    }
+
+    if (
+      method === "POST" &&
       pathname ===
         "/api/orchestrator/tasks/smoke-task-1/agents/session-codex/stop"
     ) {
@@ -322,6 +420,14 @@ async function installOrchestratorWorkbenchRoutes(
         ).length,
       };
       await fulfillJson(route, { stopped: true });
+      return;
+    }
+
+    if (
+      method === "GET" &&
+      pathname === "/api/orchestrator/tasks/smoke-task-1/timeline"
+    ) {
+      await fulfillJson(route, timelinePage(messages, events, url));
       return;
     }
 
@@ -370,6 +476,7 @@ async function installOrchestratorWorkbenchRoutes(
     messageBodies,
     addAgentBodies,
     patchBodies,
+    restartWithEditedPlanBodies,
     actionLog,
   };
 }
@@ -438,6 +545,26 @@ function richOrchestratorFixture() {
         { title: "Run browser smoke checks", status: "pending" },
       ],
     },
+    planRevisions: [
+      {
+        id: "plan-rev-1",
+        threadId: "smoke-task-1",
+        plan: {
+          summary: "Build, review, and verify the Kanban planner.",
+          steps: [
+            { title: "Generate app shell", status: "completed" },
+            { title: "Review visual affordances", status: "in_progress" },
+            { title: "Run browser smoke checks", status: "pending" },
+          ],
+        },
+        basePlanRevisionId: null,
+        editSummary: null,
+        createdBy: "system",
+        metadata: {},
+        timestamp: Date.parse(NOW),
+        createdAt: NOW,
+      },
+    ],
     providerPolicy: {
       preferredFramework: "codex",
       providerSource: "cerebras",
@@ -452,6 +579,8 @@ function richOrchestratorFixture() {
         framework: "codex",
         providerSource: "local-auth",
         model: "gpt-5.4",
+        originalTask:
+          "Generate the planner shell and persist card movement locally.",
         workdir: "/tmp/orchestrator-kanban",
         repo: "/home/shaw/milady/eliza",
         activeTool: "write",
@@ -468,6 +597,8 @@ function richOrchestratorFixture() {
         framework: "eliza",
         providerSource: "cerebras",
         model: "gpt-oss-120b",
+        originalTask:
+          "Review the planner visual affordances and interaction model.",
         workdir: "/tmp/orchestrator-kanban",
         repo: "/home/shaw/milady/eliza",
         activeTool: "review",
@@ -573,21 +704,26 @@ test.describe("orchestrator GUI workbench", () => {
     const fixture = richOrchestratorFixture();
     const requests = await installOrchestratorWorkbenchRoutes(page, fixture);
 
-    await openAppPath(page, "/orchestrator?task=smoke-task-1");
+    await openAppPath(page, "/orchestrator");
 
     await expect(page.getByTestId("orchestrator-workbench")).toBeVisible();
     await expect(page.getByText("Orchestrator")).toBeVisible();
-    await expect(page.getByTestId("orchestrator-task-item")).toContainText(
-      "Build Kanban planner app",
-    );
-    await expect(page.getByTestId("orchestrator-task-item")).toContainText(
-      "2/2",
-    );
+
+    // Single-pane landing: the rail lists the task card with its agent count.
+    const railTaskCard = page
+      .getByTestId("orchestrator-rail")
+      .getByTestId("task-card");
+    await expect(railTaskCard).toContainText("Build Kanban planner app");
+    await expect(railTaskCard).toContainText("2/2");
+    // The status filter defaults to "All" with the total task count.
     await expect(page.getByTestId("orchestrator-filter")).toContainText(
-      /active \(1\)/,
+      /All\s*\(1\)/,
     );
     await expect(page.getByTitle("Usage").first()).toContainText("12.3K");
     await expect(page.getByTitle("Usage").first()).toContainText("$0.42");
+
+    // Opening the card swaps the rail for the full-pane task room.
+    await railTaskCard.click();
 
     await expect(page.getByTestId("orchestrator-timeline")).toContainText(
       "Build Kanban planner app",
@@ -624,6 +760,83 @@ test.describe("orchestrator GUI workbench", () => {
     await expect(inspector).toContainText("Browser smoke report");
     await expect(inspector).toContainText("cerebras · gpt-oss-120b");
     await expect(inspector).toContainText("codex · gpt-5.4");
+    await expect(inspector).toContainText("plan-rev-1");
+
+    const editedPlan = {
+      summary: "Build, review, and verify the Kanban planner with recovery.",
+      steps: [
+        { title: "Generate app shell", status: "completed" },
+        { title: "Review visual affordances", status: "completed" },
+        { title: "Retry failed smoke path", status: "pending" },
+      ],
+    };
+    await inspector.getByTestId("orchestrator-plan-edit-toggle").click();
+    await inspector
+      .getByTestId("orchestrator-plan-edit-summary")
+      .fill("Narrow recovery path");
+    await inspector
+      .getByTestId("orchestrator-plan-draft")
+      .fill(JSON.stringify(editedPlan, null, 2));
+    page.once("dialog", (dialog) => dialog.accept());
+    await inspector.getByTestId("orchestrator-plan-restart").click();
+    await expect
+      .poll(() => requests.restartWithEditedPlanBodies)
+      .toContainEqual({
+        plan: editedPlan,
+        basePlanRevisionId: "plan-rev-1",
+        editSummary: "Narrow recovery path",
+        stopActive: true,
+      });
+    await expect
+      .poll(() => requests.actionLog)
+      .toContain("restart-edited:stop-active");
+
+    await page.getByTestId("orchestrator-inspect-session").first().click();
+    const operatorDetail = page.getByTestId("orchestrator-operator-detail");
+    await expect(operatorDetail).toContainText("Session detail");
+    await expect(operatorDetail).toContainText("Codex Builder");
+    await expect(operatorDetail).toContainText("gpt-5.4");
+    await expect(operatorDetail).toContainText(
+      "Generate the planner shell and persist card movement locally.",
+    );
+    await operatorDetail.getByRole("tab", { name: "Output" }).click();
+    await expect(operatorDetail).toContainText("Active tool");
+    await expect(operatorDetail).toContainText("write");
+    await operatorDetail.getByRole("tab", { name: "Usage" }).click();
+    await expect(operatorDetail).toContainText("~2.1K");
+    await operatorDetail.getByTestId("orchestrator-detail-retry").click();
+    await expect
+      .poll(() => requests.actionLog)
+      .toContain("retry:session-codex");
+
+    await page
+      .getByTestId("orchestrator-tool-call")
+      .first()
+      .getByRole("button")
+      .click();
+    await expect(operatorDetail).toContainText("Timeline detail");
+    await expect(operatorDetail).toContainText("tool-write-index");
+    await expect(operatorDetail).toContainText("planner/index.html");
+    await expect(operatorDetail).not.toContainText("Original task");
+    await operatorDetail.getByRole("tab", { name: "Output" }).click();
+    await expect(operatorDetail).toContainText("Wrote planner/index.html");
+    await operatorDetail.getByRole("tab", { name: "Events" }).click();
+    await expect(operatorDetail).toContainText("tool running");
+    await expect(operatorDetail).toContainText("write planner files");
+    await operatorDetail.getByTestId("orchestrator-detail-rerun").click();
+    await expect
+      .poll(() => requests.actionLog)
+      .toContain("rerun:event-tool-write");
+
+    // The operator detail drawer and the task inspector are mutually exclusive
+    // panels in the one-column workbench. On desktop the inspector is the
+    // default panel, so closing the drawer brings it back without a separate
+    // open step (the open-inspector trigger only gates the mobile slide-over).
+    await operatorDetail
+      .getByTestId("orchestrator-close-operator-detail")
+      .click();
+    await expect(operatorDetail).toBeHidden();
+    await expect(page.getByTestId("orchestrator-inspector")).toBeVisible();
 
     await page.getByTestId("orchestrator-priority-select").selectOption("high");
     await expect
@@ -652,6 +865,12 @@ test.describe("orchestrator GUI workbench", () => {
         workdir: "/tmp/build-app",
         task: "Build a small notes app and report generated files.",
       });
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.getByTestId("orchestrator-inspector-restart").click();
+    await expect
+      .poll(() => requests.actionLog)
+      .toContain("restart:stop-active");
 
     await page.getByTestId("orchestrator-stop-agent").first().click();
     await expect.poll(() => requests.actionLog).toContain("stop:session-codex");
@@ -730,23 +949,14 @@ test.describe("orchestrator GUI workbench", () => {
           acceptanceCriteria: ["Task appears in rail", "Message posts"],
         },
       ]);
-    await expect(page.getByTestId("orchestrator-task-item")).toContainText(
+    // Creating a task drops straight into its full-pane room. The in-room
+    // composer was removed with the overlay-only chat redesign — operator
+    // messages now flow through the agent-surface capability
+    // `orchestrator-send-message` (covered by the plugin's unit suite), so the
+    // visible-control contract ends at the rendered room.
+    await expect(page.getByTestId("orchestrator-timeline")).toContainText(
       "Audit orchestrator surface",
     );
     await expect(page.getByTestId("orchestrator-message-list")).toBeVisible();
-    await expect(page.getByTestId("orchestrator-composer")).toBeVisible();
-
-    await page
-      .getByTestId("orchestrator-composer")
-      .fill("Please verify the smoke task.");
-    await expect(page.getByTestId("orchestrator-send")).toBeEnabled();
-    await page.getByTestId("orchestrator-send").click();
-
-    await expect
-      .poll(() => requests.messageBodies)
-      .toEqual([{ content: "Please verify the smoke task." }]);
-    await expect(page.getByTestId("orchestrator-message-list")).toContainText(
-      "Please verify the smoke task.",
-    );
   });
 });

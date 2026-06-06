@@ -231,7 +231,7 @@ const ClearNotificationsSchema = z
     },
   );
 
-export function serializeNotificationForApi(
+function serializeNotificationForApi(
   n: Record<string, unknown> & {
     actor?: Record<string, unknown> | null;
   },
@@ -318,10 +318,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   if (type) queryParams.type = type;
 
   const validated = NotificationsQuerySchema.parse(queryParams);
-  const {
-    unreadOnly: validatedUnreadOnly,
-    type: validatedType,
-  } = validated;
+  const { unreadOnly: validatedUnreadOnly, type: validatedType } = validated;
   const validatedLimit = Math.max(1, Math.trunc(validated.limit));
   const validatedPage = Math.max(1, Math.trunc(validated.page));
   const pageOffset = (validatedPage - 1) * validatedLimit;

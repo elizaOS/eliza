@@ -265,9 +265,9 @@ test:
 iso-stage: elizaos-app
     @echo "iso-stage: staged elizaOS app into chroot_local-includes overlay"
 
-# Pre-cache the bundled LLM model. The elizaOS distro currently
-# downloads the model from the chroot during live-build (no separate
-# pre-cache step) — this is a no-op so the workflow stays uniform.
+# Pre-cache the bundled LLM model. The elizaOS distro currently downloads the
+# model from the chroot during live-build, so this compatibility target keeps
+# the workflow uniform while doing no separate cache work.
 iso-cache-model:
     @echo "iso-cache-model: skipping — elizaos resolves the model inside live-build's chroot; no separate cache step"
 

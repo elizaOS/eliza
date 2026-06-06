@@ -3,7 +3,7 @@
 Verifies that, for each supported harness (eliza, openclaw, hermes),
 the hook scans an output directory, picks the right normalizer, and
 writes a single ``trajectory.canonical.jsonl`` file with the expected
-number of entries. Also pins the "no matching artifacts" no-op
+number of entries. Also pins the "no matching artifacts" unchanged-output
 behavior and the failure path that surfaces an error but never
 raises.
 """
@@ -153,7 +153,7 @@ def test_normalize_hermes_samples_jsonl(tmp_path: Path) -> None:
     assert parsed[1]["response"]["text"] == "done"
 
 
-def test_normalize_no_matching_artifacts_is_noop(tmp_path: Path) -> None:
+def test_normalize_no_matching_artifacts_leaves_output_unchanged(tmp_path: Path) -> None:
     output_dir = tmp_path / "output"
     output_dir.mkdir()
     # Drop an unrelated file in.
@@ -163,7 +163,7 @@ def test_normalize_no_matching_artifacts_is_noop(tmp_path: Path) -> None:
         output_dir,
         harness="eliza",
         benchmark_id="bfcl",
-        task_id="task-noop",
+        task_id="task-unchanged",
     )
     assert count == 0
     assert error is None
@@ -191,7 +191,7 @@ def test_normalize_handles_corrupt_input_without_raising(tmp_path: Path) -> None
     assert path is None
 
 
-def test_normalize_unknown_harness_is_noop(tmp_path: Path) -> None:
+def test_normalize_unknown_harness_leaves_output_unchanged(tmp_path: Path) -> None:
     output_dir = tmp_path / "output"
     output_dir.mkdir()
     _write_jsonl(

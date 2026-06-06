@@ -175,13 +175,15 @@ function seedDefaultData(db: Database): void {
     INSERT INTO users (id, wallet_address, display_name, username, bio, virtual_balance, reputation_points)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `,
-    "system",
-    "0x0000000000000000000000000000000000000000",
-    "Feed System",
-    "system",
-    "Official Feed system account",
-    0,
-    0,
+    [
+      "system",
+      "0x0000000000000000000000000000000000000000",
+      "Feed System",
+      "system",
+      "Official Feed system account",
+      0,
+      0,
+    ],
   );
 
   // Create some sample prediction markets
@@ -224,14 +226,16 @@ function seedDefaultData(db: Database): void {
       INSERT INTO prediction_markets (id, question, description, creator_id, yes_price, no_price, total_volume, resolution_date)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
-      market.id,
-      market.question,
-      market.description,
-      "system",
-      market.yes_price,
-      market.no_price,
-      market.total_volume,
-      market.resolution_date,
+      [
+        market.id,
+        market.question,
+        market.description,
+        "system",
+        market.yes_price,
+        market.no_price,
+        market.total_volume,
+        market.resolution_date,
+      ],
     );
   }
 
@@ -260,9 +264,7 @@ function seedDefaultData(db: Database): void {
       INSERT INTO posts (id, author_id, content)
       VALUES (?, ?, ?)
     `,
-      post.id,
-      "system",
-      post.content,
+      [post.id, "system", post.content],
     );
   }
 

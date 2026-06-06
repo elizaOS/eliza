@@ -1,6 +1,6 @@
 import type { JSONSchema7, JSONSchema7Definition } from "json-schema";
 
-export type ModelProvider = "openai" | "anthropic" | "google" | "openrouter" | "unknown";
+export type ModelProvider = "openai" | "anthropic" | "google" | "bitrouter" | "unknown";
 
 export interface ModelInfo {
   provider: ModelProvider;

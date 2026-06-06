@@ -220,7 +220,7 @@ REMOTE
     REMOTE_TASK="$(cat <<REMOTE
 ELIZA1_BENCH_TIER=$TIER ELIZA1_BENCH_REGISTRY_KEY=$REG_KEY \
   node packages/inference/verify/eliza1_gates_collect.mjs --backend cuda --bench --out /workspace/bench.json || \
-  { echo "bench harness not present on this commit — emitting toolchain-only stub"; \
+  { echo "bench harness not present on this commit - emitting toolchain-only evidence"; \
     printf "{\"schemaVersion\":1,\"backend\":\"cuda\",\"gpu\":\"%s\",\"tier\":\"%s\",\"status\":\"toolchain-only\",\"note\":\"eliza1 bench harness not on this commit\"}\\n" "$GPU" "$TIER" > /workspace/bench.json; }
 cp /workspace/bench.json /workspace/eliza/bench.json 2>/dev/null || true
 REMOTE

@@ -16,7 +16,7 @@ import {
   type GoogleCredentialResolver,
 } from "./types.js";
 
-function mockGoogleRootUrl(): string | undefined {
+function googleRootUrlOverride(): string | undefined {
   const raw = process.env.ELIZA_MOCK_GOOGLE_BASE?.trim();
   if (!raw) return undefined;
   try {
@@ -97,7 +97,7 @@ export class GoogleApiClientFactory {
     version: TVersion,
     auth: GoogleAuthClient
   ): { version: TVersion; auth: GoogleAuthClient; rootUrl?: string } {
-    const rootUrl = mockGoogleRootUrl();
+    const rootUrl = googleRootUrlOverride();
     return rootUrl ? { version, auth, rootUrl } : { version, auth };
   }
 

@@ -73,16 +73,18 @@ export class AgentRegistry {
         description, avatar_url, created_at, is_verified, metadata
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
-      id,
-      registration.walletAddress,
-      registration.tokenId,
-      registration.chainId,
-      registration.displayName || `Agent ${registration.tokenId}`,
-      registration.description || "",
-      registration.avatarUrl || "",
-      now,
-      isVerified ? 1 : 0,
-      JSON.stringify(registration.metadata || {}),
+      [
+        id,
+        registration.walletAddress,
+        registration.tokenId,
+        registration.chainId,
+        registration.displayName || `Agent ${registration.tokenId}`,
+        registration.description || "",
+        registration.avatarUrl || "",
+        now,
+        isVerified ? 1 : 0,
+        JSON.stringify(registration.metadata || {}),
+      ],
     );
 
     // Also create user record for social features
@@ -249,13 +251,15 @@ export class AgentRegistry {
         id, wallet_address, display_name, username, bio, virtual_balance, reputation_points
       ) VALUES (?, ?, ?, ?, ?, ?, ?)
     `,
-      userId,
-      walletAddress,
-      displayName || `Agent ${userId.slice(-8)}`,
-      username,
-      "Autonomous agent on Feed",
-      1000,
-      100,
+      [
+        userId,
+        walletAddress,
+        displayName || `Agent ${userId.slice(-8)}`,
+        username,
+        "Autonomous agent on Feed",
+        1000,
+        100,
+      ],
     );
   }
 

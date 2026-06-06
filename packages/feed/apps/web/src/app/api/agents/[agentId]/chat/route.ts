@@ -7,7 +7,7 @@
  *
  * @description
  * Real-time chat interface with autonomous agents using multi-step execution.
- * Uses runtime.composeState() for providers and runtime.processActions() for execution.
+ * Uses runtime.composeState() for providers and registered action handlers for execution.
  */
 
 import {
@@ -494,7 +494,7 @@ export const POST = withErrorHandling(
           );
         }
 
-        // Execute action via runtime.processActions
+        // Execute action via the registered action handler.
         logger.info(
           `[MultiStep] Executing action: ${action}`,
           { parameters },
@@ -523,9 +523,8 @@ export const POST = withErrorHandling(
           actionParams,
         };
 
-        // Persist actionParams to stateCache so processActions' internal
-        // composeState() preserves them (it re-composes from cache, discarding
-        // any local state.data modifications).
+        // Persist actionParams to stateCache so action handlers that compose
+        // their own state still see the parsed parameters.
         const stateCache = (
           runtime as unknown as {
             stateCache?: Map<
@@ -545,7 +544,6 @@ export const POST = withErrorHandling(
           }
         }
 
-        // Build action content for processActions
         const actionContent = {
           text: `Executing action: ${action}`,
           actions: [action],
@@ -561,8 +559,6 @@ export const POST = withErrorHandling(
         };
 
         try {
-          // Use runtime.processActions - adapter.createMemory is now stubbed
-          // Capture result through callback
           let actionResult: {
             success?: boolean;
             text?: string;
@@ -570,39 +566,76 @@ export const POST = withErrorHandling(
             tag?: MessageTag;
           } | null = null;
 
-          await runtime.processActions(
-            elizaMessage,
-            [actionMessage],
+          const actionDefinition = runtime.actions.find(
+            (candidate) => candidate.name === action,
+          );
+          if (!actionDefinition) {
+            throw new Error(`Action not registered: ${action}`);
+          }
+
+          const handlerResult = await actionDefinition.handler(
+            runtime,
+            actionMessage,
             state,
-            async (results: unknown) => {
-              // Capture the first result from callback
-              const resultsArray = results as Array<{
-                content?: {
-                  success?: boolean;
-                  text?: string;
-                  values?: Record<string, unknown>;
-                  tag?: MessageTag;
-                };
-              }> | null;
-              if (resultsArray && resultsArray.length > 0) {
-                const firstResult = resultsArray[0];
-                if (firstResult) {
-                  actionResult = {
-                    success: firstResult.content?.success ?? false,
-                    text:
-                      typeof firstResult.content?.text === "string"
-                        ? firstResult.content.text
-                        : undefined,
-                    values: firstResult.content?.values,
-                    tag: firstResult.content?.tag,
-                  };
-                }
-              }
+            { actionParams },
+            async (response) => {
+              actionResult = {
+                success: response.success as boolean | undefined,
+                text:
+                  typeof response.text === "string" ? response.text : undefined,
+                values: response.values as Record<string, unknown> | undefined,
+                tag: response.tag as MessageTag | undefined,
+              };
               return [];
             },
           );
 
-          // Fallback to state cache if callback didn't capture
+          if (!actionResult && handlerResult) {
+            actionResult = {
+              success: handlerResult.success,
+              text:
+                typeof handlerResult.text === "string"
+                  ? handlerResult.text
+                  : undefined,
+              values: handlerResult.values as
+                | Record<string, unknown>
+                | undefined,
+            };
+          }
+
+          if (!actionResult) {
+            const responseActions = actionMessage.content.actions;
+            if (Array.isArray(responseActions) && responseActions.length > 0) {
+              actionResult = {
+                success: true,
+                text: `${action} executed`,
+              };
+            }
+          }
+
+          if (!actionResult) {
+            const resultsArray = [actionMessage] as Array<{
+              content?: {
+                success?: boolean;
+                text?: string;
+                values?: Record<string, unknown>;
+                tag?: MessageTag;
+              };
+            }>;
+            const firstResult = resultsArray[0];
+            if (firstResult) {
+              actionResult = {
+                success: firstResult.content?.success ?? false,
+                text:
+                  typeof firstResult.content?.text === "string"
+                    ? firstResult.content.text
+                    : undefined,
+                values: firstResult.content?.values,
+                tag: firstResult.content?.tag,
+              };
+            }
+          }
+
           if (!actionResult) {
             const cachedState = (
               runtime as unknown as { stateCache?: Map<string, unknown> }

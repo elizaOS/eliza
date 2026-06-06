@@ -11,6 +11,7 @@ import {
 } from "../../voice/voice-capture-factory";
 import { useHomeModelStatus } from "../local-inference/useHomeModelStatus";
 import type { ShellMessage, ShellPhase } from "./shell-state";
+import { useShellVoiceOutput } from "./useShellVoiceOutput";
 
 export interface ShellController {
   phase: ShellPhase;
@@ -48,6 +49,14 @@ export interface ShellController {
   toggleMute: () => void;
   /** Live interim transcription of the current utterance ("" when none). */
   transcript: string;
+  /** True while an assistant reply is being spoken aloud (voice output). */
+  speaking: boolean;
+  /** True while assistant voice output is muted by the user. */
+  agentVoiceMuted: boolean;
+  /** Mute/unmute assistant voice output. Muting stops any in-flight speech. */
+  toggleAgentVoiceMute: () => void;
+  /** DEV-only: clear the conversation and start a fresh, greeted one. */
+  clearConversation: () => void;
 }
 
 /**
@@ -68,7 +77,17 @@ export function useShellController(): ShellController {
     chatSending,
     sendChatText,
     agentStatus,
+    uiLanguage,
+    elizaCloudVoiceProxyAvailable,
+    handleNewConversation,
   } = app;
+
+  // DEV-only debug affordance: drop the current conversation and start a fresh,
+  // greeted one (handleNewConversation resets draft state + creates a new
+  // conversation with a bootstrap greeting).
+  const clearConversation = React.useCallback(() => {
+    void handleNewConversation();
+  }, [handleNewConversation]);
 
   const ready = startupCoordinator.phase === "ready";
   const modelStatus = useHomeModelStatus();
@@ -77,6 +96,9 @@ export function useShellController(): ShellController {
   const [muted, setMuted] = React.useState(false);
   const [transcript, setTranscript] = React.useState("");
   const [analyser, setAnalyser] = React.useState<AnalyserNode | null>(null);
+  // True when the most recent user turn was voice-originated (VOICE_DM). Gates
+  // whether the agent's reply is spoken back — typed turns stay silent.
+  const [lastTurnVoice, setLastTurnVoice] = React.useState(false);
   const captureRef = React.useRef<VoiceCaptureHandle | null>(null);
 
   const messages = React.useMemo<ShellMessage[]>(() => {
@@ -116,6 +138,8 @@ export function useShellController(): ShellController {
       // An image-only turn is valid: only bail when there's neither text nor an
       // attachment to send.
       if (!trimmed && !options?.images?.length) return;
+      // Record voice-ness of this turn so the reply is (or is not) spoken back.
+      setLastTurnVoice(options?.channelType === "VOICE_DM");
       if (!ready) {
         // Agent still booting — queue and flush on ready instead of dropping.
         pendingSendsRef.current.push({ text: trimmed, options });
@@ -264,10 +288,21 @@ export function useShellController(): ShellController {
           ? "idle"
           : "summoned";
 
+  const voiceOutput = useShellVoiceOutput({
+    conversationMessages: Array.isArray(conversationMessages)
+      ? conversationMessages
+      : [],
+    chatSending,
+    recording,
+    lastTurnVoice,
+    uiLanguage,
+    cloudConnected: elizaCloudVoiceProxyAvailable,
+  });
+
   const waveformMode =
     phase === "listening"
       ? "listening"
-      : phase === "responding"
+      : phase === "responding" || voiceOutput.speaking
         ? "responding"
         : "idle";
 
@@ -275,8 +310,8 @@ export function useShellController(): ShellController {
   // `send`) and flush on ready. Still block mid-response or when the agent is
   // stopped. This mirrors the canonical ChatView composer, which does NOT gate
   // on local text-model readiness: the overlay is the single chat input on the
-  // /chat tab, so a missing/loading local model must not silently no-op the
-  // send — the server returns a failureKind gate ("Connect a provider") that
+  // /chat tab, so a missing/loading local model must still submit the send.
+  // The server returns a failureKind gate ("Connect a provider") that
   // the transcript renders, exactly as the in-view composer relied on.
   const canSend = !chatSending && agentStatus?.state !== "stopped";
 
@@ -298,5 +333,9 @@ export function useShellController(): ShellController {
     muted,
     toggleMute,
     transcript,
+    speaking: voiceOutput.speaking,
+    agentVoiceMuted: voiceOutput.agentVoiceMuted,
+    toggleAgentVoiceMute: voiceOutput.toggleAgentVoiceMute,
+    clearConversation,
   };
 }

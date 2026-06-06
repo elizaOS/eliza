@@ -672,11 +672,41 @@ async function discoverPackagesFolderPlugins(): Promise<
   return discovered;
 }
 
+/**
+ * Local plugin discovery walks `node_modules/@elizaos` and the monorepo
+ * `packages/` folder. In very large / hoisted workspaces this can be slow, and
+ * it runs on every registry load — including the fallback taken when the remote
+ * registry is unreachable. Bound it so a slow scan degrades to "fewer local
+ * plugins" instead of stalling the whole catalog (`GET /api/apps`) past the
+ * HTTP request budget. The installable-app scan (`applyLocalWorkspaceApps`)
+ * runs separately and is intentionally not bounded here — it is what surfaces
+ * the catalog entries.
+ */
+const LOCAL_PLUGIN_SCAN_DEADLINE_MS = 6_000;
+
+async function withScanDeadline<T>(task: Promise<T>, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallback), LOCAL_PLUGIN_SCAN_DEADLINE_MS);
+  });
+  try {
+    return await Promise.race([task, deadline]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function applyNodeModulePlugins(
   plugins: Map<string, RegistryPluginInfo>,
 ): Promise<void> {
-  const localPlugins = await discoverNodeModulePlugins();
-  const packagesPlugins = await discoverPackagesFolderPlugins();
+  const localPlugins = await withScanDeadline(
+    discoverNodeModulePlugins(),
+    new Map<string, RegistryPluginInfo>(),
+  );
+  const packagesPlugins = await withScanDeadline(
+    discoverPackagesFolderPlugins(),
+    new Map<string, RegistryPluginInfo>(),
+  );
 
   for (const [name, info] of packagesPlugins) {
     if (!localPlugins.has(name)) {

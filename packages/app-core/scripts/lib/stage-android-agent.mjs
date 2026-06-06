@@ -365,10 +365,10 @@ function riscv64BunFilePath() {
 }
 
 function riscv64BunUrl() {
-  return firstEnvValue([
-    "ELIZA_BUN_RISCV64_URL",
-    "MILADY_BUN_RISCV64_URL",
-  ])?.value ?? null;
+  return (
+    firstEnvValue(["ELIZA_BUN_RISCV64_URL", "MILADY_BUN_RISCV64_URL"])?.value ??
+    null
+  );
 }
 
 function riscv64BunArtifactSource() {
@@ -573,7 +573,9 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
     if (!fs.existsSync(sourceFile)) {
       throw new Error(`Bun riscv64 artifact file not found: ${sourceFile}`);
     }
-    log(`Using local ${channelLabel} (${bunArch}-musl) artifact at ${sourceFile}`);
+    log(
+      `Using local ${channelLabel} (${bunArch}-musl) artifact at ${sourceFile}`,
+    );
     fs.copyFileSync(sourceFile, zipPath);
   } else {
     log(`Downloading ${channelLabel} (${bunArch}-musl) from ${url}`);
@@ -826,8 +828,8 @@ function writeIfChanged(target, content) {
  *   - Drop `libsigsys-handler.so` next to it.
  *
  * Returns the number of files changed this call (0 when nothing
- * happened). When no compiled shim exists for the ABI we no-op and
- * return 0 — the Capacitor APK build path keeps the legacy loader.
+ * happened). When no compiled shim exists for the ABI this returns 0 and
+ * the Capacitor APK build path keeps the legacy loader.
  *
  * Exported for testing.
  */

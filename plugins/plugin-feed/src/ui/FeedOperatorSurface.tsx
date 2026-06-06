@@ -10,8 +10,6 @@ import {
   formatDetailTimestamp,
   SurfaceBadge,
   SurfaceCard,
-  SurfaceEmptyState,
-  SurfaceGrid,
   SurfaceSection,
   selectLatestRunForApp,
   toneForHealthState,
@@ -19,9 +17,21 @@ import {
   toneForViewerAttachment,
   useApp,
 } from "@elizaos/app-core/ui-compat";
-import { Button, Input, TerminalPluginView } from "@elizaos/ui";
+import { Button, TerminalPluginView } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  GameSurfaceHero,
+  GameSurfaceShell,
+  GameSurfaceStrip,
+  GameSurfaceZone,
+  HeroCta,
+  type StatChip,
+  WaitingForSession,
+} from "./game-surface-shell";
+
+const FEED_HERO = "/api/views/feed/hero";
+const FEED_ACCENT = "#ff8a00";
 import {
   extractAgentSummary,
   extractChatMessages,
@@ -155,10 +165,11 @@ export function FeedOperatorSurface({
   );
   const [wallet, setWallet] = useState<FeedWallet | null>(null);
   const [tradingBalance, setTradingBalance] = useState(0);
-  const [chatInput, setChatInput] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const suggestedPrompts = (run?.session?.suggestedPrompts ?? []).slice(0, 2);
+  const recentChatMessages = agentChatMessages.slice(-2);
 
   const activeGoal =
     agentGoals.find((goal) => goal.status === "active") ??
@@ -192,24 +203,6 @@ export function FeedOperatorSurface({
     description: "Pause or resume Feed autonomous play",
     onActivate: () => void handleToggleAgent(),
   });
-  const chatInputElement = useAgentElement<HTMLInputElement>({
-    id: "steering-operator-message",
-    role: "text-input",
-    label: "Operator message",
-    group: "Steering",
-    description: "Tell Feed what to prioritize, avoid, or explain",
-    getValue: () => chatInput,
-    onFill: (value) => setChatInput(value),
-  });
-  const sendChatButton = useAgentElement<HTMLButtonElement>({
-    id: "steering-send-message",
-    role: "button",
-    label: "Send",
-    group: "Steering",
-    description: "Send the operator message to Feed",
-    onActivate: () => void handleSendChat(),
-  });
-
   const loadDashboard = useCallback(async () => {
     if (!run) return;
 
@@ -305,28 +298,6 @@ export function FeedOperatorSurface({
     }
   }, [controlAction, loadDashboard, run]);
 
-  const handleSendChat = useCallback(async () => {
-    const content = chatInput.trim();
-    if (!run || content.length === 0 || sending) return;
-
-    setSending(true);
-    setStatusMessage(null);
-    try {
-      const result = await client.sendAppRunMessage(run.runId, content);
-      setChatInput("");
-      setStatusMessage(result.message ?? "Suggestion sent to Feed.");
-      await loadDashboard();
-    } catch (error) {
-      setStatusMessage(
-        error instanceof Error
-          ? error.message
-          : "Failed to send the Feed operator message.",
-      );
-    } finally {
-      setSending(false);
-    }
-  }, [chatInput, loadDashboard, run, sending]);
-
   const handleSuggestedPrompt = useCallback(
     async (prompt: string) => {
       const content = prompt.trim();
@@ -352,17 +323,62 @@ export function FeedOperatorSurface({
   );
 
   if (!run) {
+    const chips: StatChip[] = [
+      { icon: "◉", label: "Agent", value: "Session pending", state: "pending" },
+      { icon: "◒", label: "Portfolio", value: "PnL · positions", state: "idle" },
+      { icon: "▲", label: "Markets", value: "Prices · trades", state: "idle" },
+      { icon: "◇", label: "Wallet", value: "Awaiting link", state: "idle" },
+    ];
     return (
-      <SurfaceEmptyState
-        title="Feed operator surface"
-        body="Launch Feed to see live team coordination, market activity, and the agent chat stream here."
-      />
+      <div data-testid="feed-operator-ready">
+        <GameSurfaceShell>
+          <GameSurfaceHero
+            heroUrl={FEED_HERO}
+            title="Feed"
+            statusLabel="Market dashboard ready"
+            statusState="pending"
+            cta={<HeroCta label="Spawn agent" accent={FEED_ACCENT} disabled />}
+          />
+          <GameSurfaceStrip chips={chips} />
+          <WaitingForSession
+            accent={FEED_ACCENT}
+            message="Waiting for a Feed session. Spawn the trading agent to stream live markets, portfolio PnL, and team coordination here."
+          />
+        </GameSurfaceShell>
+      </div>
     );
   }
 
+  const liveChips: StatChip[] = [
+    {
+      icon: "◉",
+      label: "Agent",
+      value: agentStatus?.autonomous ? "Autonomous" : "Operator-led",
+      state: run.health.state === "healthy" ? "ready" : "pending",
+    },
+    {
+      icon: "◒",
+      label: "Portfolio",
+      value: agentPortfolio
+        ? formatCurrency(agentPortfolio.totalAssets)
+        : "—",
+      state: agentPortfolio ? "active" : "idle",
+    },
+    {
+      icon: "▲",
+      label: "Markets",
+      value: `${predictionMarkets.length} live`,
+      state: predictionMarkets.length > 0 ? "active" : "idle",
+    },
+    {
+      icon: "◇",
+      label: "Wallet",
+      value: wallet ? formatCurrency(wallet.balance) : "—",
+      state: wallet ? "ready" : "idle",
+    },
+  ];
   return (
-    <section
-      className={`space-y-3 ${variant === "live" ? "p-3" : ""}`}
+    <div
       data-testid={
         variant === "live"
           ? "feed-live-operator-surface"
@@ -371,39 +387,53 @@ export function FeedOperatorSurface({
             : "feed-detail-operator-surface"
       }
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
-          {surfaceTitle}
-        </div>
-        <SurfaceBadge tone={toneForStatusText(run.status)}>
-          {run.status}
-        </SurfaceBadge>
-        <SurfaceBadge tone={toneForViewerAttachment(run.viewerAttachment)}>
-          {run.viewerAttachment}
-        </SurfaceBadge>
-        <SurfaceBadge tone={toneForHealthState(run.health.state)}>
-          {run.health.state}
-        </SurfaceBadge>
-        <span className="ml-auto text-2xs uppercase tracking-[0.18em] text-muted">
-          {matchingRuns.length} active run{matchingRuns.length === 1 ? "" : "s"}
-        </span>
-      </div>
+      <GameSurfaceShell>
+        <GameSurfaceHero
+          heroUrl={FEED_HERO}
+          title={surfaceTitle}
+          statusLabel={`${run.status} · ${run.health.state}`}
+          statusState={run.health.state === "healthy" ? "ready" : "pending"}
+          cta={
+            <HeroCta
+              label={autonomyActive ? "Pause agent" : "Resume agent"}
+              accent={FEED_ACCENT}
+              onClick={() => void handleToggleAgent()}
+            />
+          }
+        />
+        <GameSurfaceStrip chips={liveChips} />
+        <GameSurfaceZone>
+          <div className="flex flex-wrap items-center gap-2">
+            <SurfaceBadge tone={toneForStatusText(run.status)}>
+              {run.status}
+            </SurfaceBadge>
+            <SurfaceBadge tone={toneForViewerAttachment(run.viewerAttachment)}>
+              {run.viewerAttachment}
+            </SurfaceBadge>
+            <SurfaceBadge tone={toneForHealthState(run.health.state)}>
+              {run.health.state}
+            </SurfaceBadge>
+            <span className="ml-auto text-2xs uppercase tracking-[0.18em] text-muted">
+              {matchingRuns.length} active run
+              {matchingRuns.length === 1 ? "" : "s"}
+            </span>
+          </div>
 
       {showDashboard ? (
         <SurfaceSection title="Live Status">
-          <SurfaceGrid>
+          <div className="space-y-2">
             <SurfaceCard
               label="Agent"
               value={agentStatus?.displayName ?? agentStatus?.name ?? "Waiting"}
               subtitle={
                 agentStatus
                   ? `${agentStatus.agentStatus ?? "idle"} · ${agentStatus.autonomous ? "autonomous" : "operator-led"}`
-                  : "The Feed agent has not published status yet."
+                  : "No status"
               }
             />
             <SurfaceCard
               label="Current Focus"
-              value={activeGoal?.description ?? "No active goal recorded."}
+              value={activeGoal?.description ?? "—"}
               subtitle={
                 activeGoal
                   ? (() => {
@@ -420,7 +450,7 @@ export function FeedOperatorSurface({
               value={
                 agentPortfolio
                   ? `${formatCurrency(agentPortfolio.totalAssets)} total assets`
-                  : "Portfolio not available yet."
+                  : "—"
               }
               subtitle={
                 agentPortfolio
@@ -444,17 +474,14 @@ export function FeedOperatorSurface({
                   : "Team summary is not available yet."
               }
             />
-          </SurfaceGrid>
+          </div>
         </SurfaceSection>
       ) : null}
 
       {showDashboard ? (
         <SurfaceSection title="Market Watch">
-          <SurfaceCard
-            label="Prediction Markets"
-            value={listPreview(predictionMarkets)}
-          />
-          <div className="grid gap-2 md:grid-cols-3">
+          <SurfaceCard label="Markets" value={listPreview(predictionMarkets)} />
+          <div className="space-y-2">
             {recentTrades.slice(0, 3).map((trade) => (
               <SurfaceCard
                 key={trade.id}
@@ -466,18 +493,15 @@ export function FeedOperatorSurface({
               />
             ))}
             {recentTrades.length === 0 ? (
-              <SurfaceCard
-                label="Recent Trades"
-                value="No recent trades recorded."
-              />
+              <SurfaceCard label="Trades" value="—" />
             ) : null}
           </div>
         </SurfaceSection>
       ) : null}
 
       {showChat ? (
-        <SurfaceSection title="Team & Chat">
-          <div className="grid gap-2 md:grid-cols-2">
+        <SurfaceSection title="Team">
+          <div className="space-y-2">
             <SurfaceCard
               label="Team Conversations"
               value={
@@ -486,7 +510,7 @@ export function FeedOperatorSurface({
                       .slice(0, 3)
                       .map((conversation) => conversation.name || "Untitled")
                       .join(" · ")
-                  : "No team conversations yet."
+                  : "—"
               }
               subtitle={
                 teamConversations.length > 0
@@ -496,18 +520,14 @@ export function FeedOperatorSurface({
             />
             <SurfaceCard
               label="Operator Channel"
-              value={
-                run.session?.canSendCommands
-                  ? "Ready for live suggestions."
-                  : "Command bridge reconnecting."
-              }
+              value={run.session?.canSendCommands ? "Ready" : "Reconnecting"}
               subtitle={formatDetailTimestamp(
                 run.lastHeartbeatAt ?? run.updatedAt,
               )}
             />
           </div>
           <div className="space-y-2">
-            {agentChatMessages.slice(-3).map((message) => (
+            {recentChatMessages.map((message) => (
               <div
                 key={message.id}
                 className="rounded-xl border border-border/30 bg-bg/60 px-3 py-2"
@@ -525,9 +545,9 @@ export function FeedOperatorSurface({
                 </div>
               </div>
             ))}
-            {agentChatMessages.length === 0 ? (
+            {recentChatMessages.length === 0 ? (
               <div className="rounded-xl border border-border/30 bg-bg/60 px-3 py-2 text-xs-tight italic text-muted">
-                No agent chat history yet.
+                No relay yet.
               </div>
             ) : null}
           </div>
@@ -536,9 +556,9 @@ export function FeedOperatorSurface({
 
       {showChat ? (
         <SurfaceSection title="Steering">
-          {run.session?.suggestedPrompts?.length ? (
+          {suggestedPrompts.length ? (
             <div className="flex flex-wrap gap-2">
-              {run.session.suggestedPrompts.slice(0, 4).map((prompt, index) => (
+              {suggestedPrompts.map((prompt, index) => (
                 <FeedSuggestedPromptButton
                   key={prompt}
                   prompt={prompt}
@@ -549,14 +569,10 @@ export function FeedOperatorSurface({
               ))}
             </div>
           ) : null}
-          <div className="grid gap-2 md:grid-cols-2">
+          <div className="space-y-2">
             <SurfaceCard
               label="Autonomy"
-              value={
-                agentStatus?.autonomous
-                  ? "Autonomous play is active."
-                  : "Agent is paused or operator-led."
-              }
+              value={agentStatus?.autonomous ? "Active" : "Paused"}
               subtitle={
                 agentStatus
                   ? `${agentStatus.autonomousTrading ? "Trading" : "Trading paused"} · ${agentStatus.autonomousPosting ? "Posting" : "Posting paused"}`
@@ -586,47 +602,23 @@ export function FeedOperatorSurface({
               onClick={() => void handleToggleAgent()}
               {...toggleAgentButton.agentProps}
             >
-              {controlAction === "pause" ? "Pause agent" : "Resume agent"}
-            </Button>
-          </div>
-          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
-            <Input
-              ref={chatInputElement.ref}
-              value={chatInput}
-              onChange={(event) => setChatInput(event.target.value)}
-              placeholder="Tell Feed what to prioritize, avoid, or explain."
-              className="min-h-11 rounded-xl"
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void handleSendChat();
-                }
-              }}
-              {...chatInputElement.agentProps}
-            />
-            <Button
-              ref={sendChatButton.ref}
-              type="button"
-              className="min-h-11 rounded-xl px-4 shadow-sm"
-              onClick={() => void handleSendChat()}
-              disabled={sending || chatInput.trim().length === 0}
-              {...sendChatButton.agentProps}
-            >
-              {sending ? "Sending" : "Send"}
+              {controlAction === "pause" ? "Pause" : "Resume"}
             </Button>
           </div>
         </SurfaceSection>
       ) : null}
 
-      {statusMessage ? (
-        <div className="rounded-2xl border border-border/35 bg-card/70 px-4 py-3 text-xs-tight leading-5 text-muted-strong">
-          {statusMessage}
-        </div>
-      ) : null}
-      <div className="text-2xs uppercase tracking-[0.18em] text-muted">
-        {loading ? "Refreshing Feed surface..." : "Feed surface ready."}
-      </div>
-    </section>
+          {statusMessage ? (
+            <div className="rounded-2xl border border-border/35 bg-card/70 px-4 py-3 text-xs-tight leading-5 text-muted-strong">
+              {statusMessage}
+            </div>
+          ) : null}
+          <div className="text-2xs uppercase tracking-[0.18em] text-muted">
+            {loading ? "Refreshing..." : "Ready"}
+          </div>
+        </GameSurfaceZone>
+      </GameSurfaceShell>
+    </div>
   );
 }
 
@@ -649,60 +641,4 @@ export function FeedTuiView() {
       ]}
     />
   );
-}
-
-async function readFeedJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(
-      text || `[feed] ${response.status} ${response.statusText}`.trim(),
-    );
-  }
-  return text ? JSON.parse(text) : {};
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "get-state" || capability === "refresh-agent-status") {
-    const [status, dashboard, markets] = await Promise.all([
-      fetch("/api/apps/feed/agent/status", {
-        headers: { Accept: "application/json" },
-      }).then(readFeedJson),
-      fetch("/api/apps/feed/team/dashboard", {
-        headers: { Accept: "application/json" },
-      }).then(readFeedJson),
-      fetch("/api/apps/feed/markets?pageSize=5", {
-        headers: { Accept: "application/json" },
-      }).then(readFeedJson),
-    ]);
-    return { status, dashboard, markets };
-  }
-
-  if (capability === "open-live-dashboard") {
-    return {
-      path: "/feed",
-      endpoints: [
-        "/api/apps/feed/agent/status",
-        "/api/apps/feed/team/dashboard",
-        "/api/apps/feed/markets",
-      ],
-    };
-  }
-
-  if (capability === "send-team-message") {
-    const content =
-      typeof params?.content === "string" && params.content.trim()
-        ? params.content.trim()
-        : "Terminal status check";
-    const response = await fetch("/api/apps/feed/team/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
-    });
-    return readFeedJson(response);
-  }
-
-  throw new Error(`Feed TUI does not support "${capability}".`);
 }

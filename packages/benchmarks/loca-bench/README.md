@@ -38,7 +38,6 @@
   - [Mock MCP Servers](#mock-mcp-servers)
   - [Adjustable Environment](#adjustable-environment)
   - [Environment Description Length](#environment-description-length)
-- [TODO](#todo)
 - [Citation](#citation)
 
 ---

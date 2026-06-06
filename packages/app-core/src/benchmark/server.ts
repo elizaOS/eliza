@@ -72,7 +72,7 @@ function loadEnvFromAncestors(startDir: string): string | null {
     const candidate = path.join(current, ".env");
     if (
       // node:fs is heavy at top-level for a single existence check; use dotenv's
-      // own behavior — it silently no-ops on missing files. We still need to
+      // own behavior — it returns no parsed data for missing files. We still need to
       // know *which* path matched so we can log it and stop walking.
       dotenv.config({ path: candidate, override: false }).parsed !== undefined
     ) {

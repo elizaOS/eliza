@@ -1,7 +1,6 @@
 import { Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type {
-  StreamEventEnvelope,
   TrainingDatasetRecord,
   TrainingJobRecord,
   TrainingModelRecord,
@@ -19,6 +18,16 @@ import {
 import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
 import { formatTime } from "@elizaos/ui/utils";
 import type { ReactNode } from "react";
+import {
+  FINE_TUNING_ACTION_CLASS,
+  FINE_TUNING_PANEL_CLASS,
+  FINE_TUNING_SECTION_CLASS,
+  FINE_TUNING_SECTION_HEADER_CLASS,
+  formatDate,
+  formatProgress,
+  summarizeAvailability,
+  type TranslateFn,
+} from "./fine-tuning-panels.helpers";
 
 const FILTER_INPUT_CLASS =
   "h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt ";
@@ -359,97 +368,6 @@ function ModelListItem({
   );
 }
 
-/* ── Constants ─────────────────────────────────────────────────────── */
-
-export const TRAINING_EVENT_KINDS = new Set<TrainingStreamEvent["kind"]>([
-  "job_started",
-  "job_progress",
-  "job_log",
-  "job_completed",
-  "job_failed",
-  "job_cancelled",
-  "dataset_built",
-  "model_activated",
-  "model_imported",
-]);
-
-export const FINE_TUNING_PAGE_CLASS = "space-y-6 pb-8";
-export const FINE_TUNING_SECTION_CLASS =
-  "rounded-2xl border border-border/60 bg-card/70 p-5 shadow-sm ring-1 ring-border/15";
-export const FINE_TUNING_SECTION_HEADER_CLASS =
-  "mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between";
-export const FINE_TUNING_SECTION_KICKER_CLASS =
-  "text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70";
-export const FINE_TUNING_PANEL_CLASS =
-  "rounded-2xl border border-border/45 bg-bg/20 shadow-sm";
-export const FINE_TUNING_PANEL_HEADER_CLASS =
-  "px-3 py-2 text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70";
-export const FINE_TUNING_ACTION_CLASS =
-  "h-10 rounded-xl px-3 text-xs shadow-sm hover:border-accent disabled:opacity-50";
-export const FINE_TUNING_STATUS_CARD_CLASS =
-  "rounded-xl border border-border/35 bg-bg/30 px-3 py-3 shadow-sm";
-
-type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
-
-/* ── Formatting helpers ────────────────────────────────────────────── */
-
-export function formatDate(value: string | null): string {
-  if (!value) return "\u2014";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString();
-}
-
-export function formatProgress(value: number): string {
-  const bounded = Math.max(0, Math.min(1, value));
-  return `${Math.round(bounded * 100)}%`;
-}
-
-/* ── Event parsing ─────────────────────────────────────────────────── */
-
-export function asTrainingEvent(
-  envelope: Partial<StreamEventEnvelope>,
-): TrainingStreamEvent | null {
-  if (envelope.type !== "training_event") return null;
-  const payloadValue = envelope.payload;
-  if (!payloadValue || typeof payloadValue !== "object") return null;
-  const payload = payloadValue as Partial<TrainingStreamEvent>;
-  if (typeof payload.kind !== "string") return null;
-  if (!TRAINING_EVENT_KINDS.has(payload.kind as TrainingStreamEvent["kind"])) {
-    return null;
-  }
-  if (typeof payload.ts !== "number") return null;
-  if (typeof payload.message !== "string") return null;
-  return {
-    kind: payload.kind as TrainingStreamEvent["kind"],
-    ts: payload.ts,
-    message: payload.message,
-    jobId: typeof payload.jobId === "string" ? payload.jobId : undefined,
-    modelId: typeof payload.modelId === "string" ? payload.modelId : undefined,
-    datasetId:
-      typeof payload.datasetId === "string" ? payload.datasetId : undefined,
-    progress:
-      typeof payload.progress === "number" ? payload.progress : undefined,
-    phase: typeof payload.phase === "string" ? payload.phase : undefined,
-  };
-}
-
-/* ── Availability summary ──────────────────────────────────────────── */
-
-export function summarizeAvailability(
-  reason: string | undefined,
-  t: TranslateFn,
-): string {
-  if (!reason) return t("finetuningview.Unavailable");
-  if (reason === "runtime_not_started") {
-    return t("finetuningview.RuntimeNotStarted");
-  }
-  if (reason === "trajectories_table_missing") {
-    return t("finetuningview.NoTrajectoriesTableFound");
-  }
-  return reason;
-}
-
 /* ── Trajectories Section ──────────────────────────────────────────── */
 
 export function TrajectoriesSection({
@@ -476,13 +394,8 @@ export function TrajectoriesSection({
   return (
     <section className={FINE_TUNING_SECTION_CLASS}>
       <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
-        <div className="space-y-1">
-          <div className={FINE_TUNING_SECTION_KICKER_CLASS}>
-            {t("finetuningview.DataReview")}
-          </div>
-          <div className="text-lg font-semibold text-txt">
-            {t("finetuningview.Trajectories")}
-          </div>
+        <div className="text-lg font-semibold text-txt">
+          {t("finetuningview.Trajectories")}
         </div>
         <div className="flex items-center gap-2">
           <AgentActionButton
@@ -521,12 +434,9 @@ export function TrajectoriesSection({
           <div className="text-xs text-muted">
             {trajectoryList.total} {t("finetuningview.trajectoryRowsAvai")}
           </div>
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3">
             <div className={FINE_TUNING_PANEL_CLASS}>
-              <div className={FINE_TUNING_PANEL_HEADER_CLASS}>
-                {t("finetuningview.LatestTrajectories")}
-              </div>
-              <div className="max-h-72 overflow-auto">
+              <div className="max-h-64 overflow-auto">
                 {trajectoryList.trajectories.length === 0 ? (
                   <div className="p-3 text-xs text-muted">
                     {t("finetuningview.NoTrajectoriesFoun")}
@@ -544,9 +454,6 @@ export function TrajectoriesSection({
               </div>
             </div>
             <div className={`${FINE_TUNING_PANEL_CLASS} p-3`}>
-              <div className="mb-2 text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
-                {t("finetuningview.SelectedTrajectory")}
-              </div>
               {trajectoryLoading ? (
                 <div className="text-xs text-muted">
                   {t("finetuningview.LoadingTrajectoryD")}
@@ -582,7 +489,7 @@ export function TrajectoriesSection({
                   <SettingsControls.Textarea
                     readOnly
                     value={selectedTrajectory.stepsJson}
-                    className="min-h-56"
+                    className="max-h-72 min-h-40 overflow-auto font-mono text-xs"
                   />
                 </div>
               )}
@@ -624,16 +531,11 @@ export function DatasetSection({
   return (
     <section className={FINE_TUNING_SECTION_CLASS}>
       <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
-        <div className="space-y-1">
-          <div className={FINE_TUNING_SECTION_KICKER_CLASS}>
-            {t("finetuningview.DatasetBuild")}
-          </div>
-          <div className="text-lg font-semibold text-txt">
-            {t("finetuningview.Datasets1")}
-          </div>
+        <div className="text-lg font-semibold text-txt">
+          {t("finetuningview.Datasets1")}
         </div>
       </div>
-      <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-4">
+      <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
         <AgentTextInput
           agentId="dataset-limit"
           label="Limit trajectories"
@@ -676,7 +578,7 @@ export function DatasetSection({
           {t("finetuningview.RefreshDatasets")}
         </AgentActionButton>
       </div>
-      <div className={`${FINE_TUNING_PANEL_CLASS} max-h-60 overflow-auto p-3`}>
+      <div className={`${FINE_TUNING_PANEL_CLASS} max-h-56 overflow-auto p-3`}>
         {datasets.length === 0 ? (
           <div className="text-sm text-muted">
             {t("finetuningview.NoDatasetsYet")}
@@ -755,19 +657,11 @@ export function TrainingJobsSection({
   return (
     <section className={FINE_TUNING_SECTION_CLASS}>
       <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
-        <div className="space-y-1">
-          <div className={FINE_TUNING_SECTION_KICKER_CLASS}>
-            {t("finetuningview.Training")}
-          </div>
-          <div className="text-lg font-semibold text-txt">
-            {t("finetuningview.TrainingJobs")}
-          </div>
+        <div className="text-lg font-semibold text-txt">
+          {t("finetuningview.TrainingJobs")}
         </div>
       </div>
-      <div className="mb-3 rounded-xl border border-warning/35 bg-warning/10 px-3 py-2 text-xs text-muted">
-        {t("finetuningview.GpuFineTunesViaVast")}
-      </div>
-      <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+      <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
         <AgentSelect
           agentId="job-dataset"
           label="Training dataset"
@@ -879,8 +773,8 @@ export function TrainingJobsSection({
           </div>
         )}
       </div>
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div className={`${FINE_TUNING_PANEL_CLASS} max-h-72 overflow-auto`}>
+      <div className="grid grid-cols-1 gap-3">
+        <div className={`${FINE_TUNING_PANEL_CLASS} max-h-64 overflow-auto`}>
           {jobs.length === 0 ? (
             <div className="p-4 text-sm text-muted">
               {t("finetuningview.NoJobsYet")}
@@ -900,9 +794,6 @@ export function TrainingJobsSection({
           )}
         </div>
         <div className={`${FINE_TUNING_PANEL_CLASS} p-3`}>
-          <div className="mb-2 text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
-            {t("finetuningview.SelectedJobLogs")}
-          </div>
           <SelectedJobPanel selectedJob={selectedJob} t={t} />
         </div>
       </div>
@@ -956,20 +847,12 @@ export function TrainedModelsSection({
   return (
     <section className={FINE_TUNING_SECTION_CLASS}>
       <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
-        <div className="space-y-1">
-          <div className={FINE_TUNING_SECTION_KICKER_CLASS}>
-            {t("finetuningview.ModelOps")}
-          </div>
-          <div className="text-lg font-semibold text-txt">
-            {t("finetuningview.TrainedModels")}
-          </div>
+        <div className="text-lg font-semibold text-txt">
+          {t("finetuningview.TrainedModels")}
         </div>
       </div>
-      <div className="mb-3 rounded-xl border border-warning/35 bg-warning/10 px-3 py-2 text-xs text-muted">
-        {t("finetuningview.ModelOpsNotWiredHere")}
-      </div>
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div className={`${FINE_TUNING_PANEL_CLASS} max-h-72 overflow-auto`}>
+      <div className="grid grid-cols-1 gap-3">
+        <div className={`${FINE_TUNING_PANEL_CLASS} max-h-64 overflow-auto`}>
           {models.length === 0 ? (
             <div className="p-4 text-sm text-muted">
               {t("finetuningview.NoTrainedModelsYe")}
@@ -987,9 +870,6 @@ export function TrainedModelsSection({
           )}
         </div>
         <div className={`${FINE_TUNING_PANEL_CLASS} p-3`}>
-          <div className="mb-2 text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
-            {t("finetuningview.ModelActions")}
-          </div>
           <SelectedModelPanel
             selectedModel={selectedModel}
             importModelName={importModelName}
@@ -1026,22 +906,17 @@ export function LiveEventsPanel({
   return (
     <section className={FINE_TUNING_SECTION_CLASS}>
       <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
-        <div className="space-y-1">
-          <div className={FINE_TUNING_SECTION_KICKER_CLASS}>
-            {t("finetuningview.Streaming")}
-          </div>
-          <div className="text-lg font-semibold text-txt">
-            {t("finetuningview.LiveTrainingEvents")}
-          </div>
+        <div className="text-lg font-semibold text-txt">
+          {t("finetuningview.LiveTrainingEvents")}
         </div>
       </div>
-      <div className={`${FINE_TUNING_PANEL_CLASS} max-h-56 overflow-auto`}>
+      <div className={`${FINE_TUNING_PANEL_CLASS} max-h-48 overflow-auto`}>
         {events.length === 0 ? (
           <div className="p-4 text-sm text-muted">
             {t("finetuningview.NoLiveEventsYet")}
           </div>
         ) : (
-          events.map((event) => (
+          events.slice(0, 80).map((event) => (
             <div
               key={`${event.ts}-${event.kind}-${String(event.message)}`}
               className="px-3 py-2 text-sm"
@@ -1099,7 +974,7 @@ export function SelectedJobPanel({
       <SettingsControls.Textarea
         readOnly
         value={selectedJob.logs.join("\n")}
-        className="min-h-56"
+        className="max-h-72 min-h-40 overflow-auto font-mono text-xs"
       />
     </div>
   );
@@ -1256,7 +1131,7 @@ export function SelectedModelPanel({
         <SettingsControls.Textarea
           readOnly
           value={smokeResult}
-          className="min-h-24"
+          className="max-h-48 min-h-24 overflow-auto"
         />
       )}
     </div>

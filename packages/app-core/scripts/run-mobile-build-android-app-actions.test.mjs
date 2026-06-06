@@ -184,6 +184,65 @@ test("Android App Actions shortcuts are rewritten to the configured package and 
   );
 });
 
+test("Android App Actions rewrites branded Milady shortcut templates", () => {
+  const shortcuts = `<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <capability android:name="actions.intent.OPEN_APP_FEATURE">
+      <intent>
+        <url-template android:value="milady://feature/open?source=android-app-actions{&amp;feature}" />
+      </intent>
+      <intent>
+        <url-template android:value="milady://chat?source=android-app-actions&amp;action=chat" />
+      </intent>
+    </capability>
+    <capability android:name="actions.intent.CREATE_MESSAGE">
+      <intent>
+        <url-template android:value="milady://chat?source=android-app-actions&amp;action=ask{&amp;text}" />
+      </intent>
+      <intent>
+        <url-template android:value="milady://chat?source=android-app-actions&amp;action=chat" />
+      </intent>
+    </capability>
+    <capability android:name="actions.intent.GET_THING">
+      <intent>
+        <url-template android:value="milady://chat?source=android-app-actions&amp;action=ask{&amp;query}" />
+      </intent>
+      <intent>
+        <url-template android:value="milady://chat?source=android-app-actions&amp;action=ask" />
+      </intent>
+    </capability>
+    <shortcut android:shortcutId="eliza_app_action_chat">
+      <intent android:targetPackage="ai.milady.milady" android:targetClass="ai.milady.milady.MainActivity" android:data="milady://chat?source=android-static-shortcut" />
+    </shortcut>
+    <shortcut android:shortcutId="eliza_app_action_voice">
+      <intent android:targetPackage="ai.milady.milady" android:targetClass="ai.milady.milady.MainActivity" android:data="milady://voice?source=android-static-shortcut" />
+    </shortcut>
+    <shortcut android:shortcutId="eliza_app_action_daily_brief">
+      <intent android:targetPackage="ai.milady.milady" android:targetClass="ai.milady.milady.MainActivity" android:data="milady://lifeops/daily-brief?source=android-static-shortcut" />
+    </shortcut>
+    <shortcut android:shortcutId="eliza_app_action_new_task">
+      <intent android:targetPackage="ai.milady.milady" android:targetClass="ai.milady.milady.MainActivity" android:data="milady://lifeops/task/new?source=android-static-shortcut" />
+    </shortcut>
+    <shortcut android:shortcutId="eliza_app_action_tasks">
+      <intent android:targetPackage="ai.milady.milady" android:targetClass="ai.milady.milady.MainActivity" android:data="milady://lifeops/tasks?source=android-static-shortcut" />
+    </shortcut>
+  </shortcuts>`;
+
+  const patched = patchAndroidAppActionsXmlResource(shortcuts, {
+    androidPackage: "ai.elizaos.app",
+    urlScheme: "elizaos",
+  });
+
+  assert.doesNotMatch(patched, /milady:\/\//);
+  assert.doesNotMatch(patched, /ai\.milady\.milady/);
+  assert.deepEqual(
+    validateAndroidAppActionsXmlResource(patched, {
+      androidPackage: "ai.elizaos.app",
+      urlScheme: "elizaos",
+    }),
+    [],
+  );
+});
+
 test("Android App Actions validation rejects stale package and scheme values", () => {
   const staleShortcuts = `<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <capability android:name="actions.intent.OPEN_APP_FEATURE">

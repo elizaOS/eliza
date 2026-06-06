@@ -76,6 +76,7 @@ bun run --cwd plugins/plugin-coding-tools build        # compile to dist/
 bun run --cwd plugins/plugin-coding-tools dev          # hot-rebuild
 bun run --cwd plugins/plugin-coding-tools test         # vitest run
 bun run --cwd plugins/plugin-coding-tools typecheck    # tsgo --noEmit
+bun run --cwd plugins/plugin-coding-tools lint:check   # biome check
 bun run --cwd plugins/plugin-coding-tools check        # typecheck + test
 bun run --cwd plugins/plugin-coding-tools clean        # rm -rf dist .turbo
 ```

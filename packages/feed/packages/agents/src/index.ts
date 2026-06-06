@@ -26,6 +26,7 @@ export {
 } from "./external/ExternalAgentAdapter";
 // LLM integrations
 export * from "./llm";
+export { getModelForArchetype } from "./llm";
 // Plugins - Feed plugin is the main export
 export {
   feedPlugin,
@@ -38,6 +39,7 @@ export { groqPlugin } from "./plugins/groq";
 export * from "./plugins/plugin-agent-core/src";
 export * from "./plugins/plugin-autonomy/src";
 export * from "./plugins/plugin-experience/src";
+export type { TrajectoryStep } from "./plugins/plugin-trajectory-logger/src";
 // Plugin sub-exports for trajectory logging, autonomy, experience
 export * from "./plugins/plugin-trajectory-logger/src";
 // Runtime

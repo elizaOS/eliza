@@ -271,7 +271,7 @@ export default function HomePage() {
           buffer += chunk;
 
           const lines = buffer.split("\n");
-          buffer = lines.pop() || ""; // Keep incomplete line in buffer
+          buffer = lines.pop() || ""; // Keep partial line in buffer
 
           for (const line of lines) {
             if (line.startsWith("data: ")) {

@@ -307,7 +307,7 @@ export function DependencyGate({ onReady }: Props) {
     "libimobiledevice",
     "sideloader",
   ];
-  // Fill in checking placeholders while loading
+  // Show checking rows while loading.
   const displayResults: DependencyCheckResult[] =
     checking && results.length === 0
       ? depIds.map((id) => ({ id, status: "checking" as const }))

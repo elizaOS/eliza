@@ -13,8 +13,10 @@
       "@feed/shared/*": ["../shared/src/*"],
       "@feed/db": ["../db/src/index.ts"],
       "@feed/db/*": ["../db/src/*"],
-      "@feed/api": ["../api/src/index.ts"],
-      "@feed/api/*": ["../api/src/*"],
+      "@feed/api": ["../api/dist/index.d.ts"],
+      "@feed/api/*": ["../api/dist/*"],
+      "@feed/a2a": ["../a2a/dist/index.d.ts"],
+      "@feed/a2a/*": ["../a2a/dist/*"],
       "@feed/engine": ["../engine/src/index.ts"],
       "@feed/engine/*": ["../engine/src/*"]
     }
@@ -25,7 +27,6 @@
     { "path": "../core" },
     { "path": "../shared" },
     { "path": "../db" },
-    { "path": "../api" },
     { "path": "../engine" }
   ]
 }

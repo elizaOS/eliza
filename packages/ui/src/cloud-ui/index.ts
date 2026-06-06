@@ -1,3 +1,10 @@
+export {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "../components/ui/tabs";
+export * from "../hooks/useRenderGuard";
 export type {
   ElizaAvatarProps,
   MemoizedChatMessageMessage,
@@ -82,12 +89,6 @@ export * from "./components/primitives";
 export * from "./components/product-switcher";
 export * from "./components/promotion/promote-app-dialog";
 export * from "./components/promotion/social-connection-hint";
-export {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "./components/tabs";
 export * from "./components/voice";
 export { default as dynamic } from "./runtime/dynamic";
 export { default as Image } from "./runtime/image";

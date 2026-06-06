@@ -3,12 +3,12 @@
  * unambiguous: dated (`-20240605`, `-2024-06-05`), labeled (`-latest`,
  * `-preview`, `-beta`), or numeric (`-001`, `-1234`).
  *
- * **Why:** OpenRouter's catalog lists models under their snapshot ids
+ * **Why:** BitRouter's catalog lists models under their snapshot ids
  * (`google/gemini-2.0-flash-001`, `openai/gpt-4o-2024-11-20`) while clients
  * routinely send the unsuffixed canonical id (`google/gemini-2.0-flash`,
  * `openai/gpt-4o`). Without a second index entry under the base id, pricing
  * lookup throws "Pricing unavailable" even though the inference call itself
- * succeeds at OpenRouter (which performs its own alias resolution).
+ * succeeds at BitRouter (which performs its own alias resolution).
  *
  * **Numeric-suffix safety rail:** for `-NNN` patterns we require at least two
  * dash-separated segments to remain after the slash so `openai/gpt-4` does not

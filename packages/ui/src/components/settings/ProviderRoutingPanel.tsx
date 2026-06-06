@@ -1,9 +1,7 @@
 import type { ModelOption } from "@elizaos/shared";
 import { CheckCircle2, Loader2 } from "lucide-react";
-import {
-  ConfigRenderer,
-  defaultRegistry,
-} from "../../components/config-ui/config-renderer";
+import { ConfigRenderer } from "../../components/config-ui/config-renderer";
+import { defaultRegistry } from "../../components/config-ui/config-renderer.helpers";
 import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { useApp } from "../../state";
 import {

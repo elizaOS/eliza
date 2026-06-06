@@ -242,8 +242,8 @@ export function isStreamingTtsBackend(
 }
 
 /**
- * Stub TTS backend that returns deterministic synthetic PCM. Each phrase
- * yields `STUB_PCM_MS_PER_PHRASE` ms of silence (zeros), with the
+ * Deterministic test TTS backend. Each phrase yields
+ * `STUB_PCM_MS_PER_PHRASE` ms of silence (zeros), with the
  * cancel signal honoured at the kernel-tick boundary so barge-in tests
  * observe cancellation without waiting on a real model.
  */
@@ -330,7 +330,7 @@ export class StubOmniVoiceBackend
  * at construction so this backend stays a thin adapter.
  *
  * Until the real fused build ships, the binding is exercised against
- * the C stub at `scripts/omnivoice-fuse/ffi-stub.c`, which returns
+ * the compatibility C library at `scripts/omnivoice-fuse/ffi-stub.c`, which returns
  * `ELIZA_ERR_NOT_IMPLEMENTED` for `tts_synthesize` — the binding then
  * raises `VoiceLifecycleError({code:"kernel-missing"})`. The adapter
  * re-wraps that as `VoiceStartupError("missing-fused-build", ...)` so
@@ -535,9 +535,9 @@ export interface EngineVoiceBridgeOptions {
 	 */
 	bundleRoot: string;
 	/**
-	 * When true, use `FfiOmniVoiceBackend`. When false, use the stub backend
+	 * When true, use `FfiOmniVoiceBackend`. When false, use the deterministic test backend
 	 * only for lifecycle/unit tests; live sessions and direct synthesis reject
-	 * the stub before user-visible audio can be emitted.
+	 * the deterministic test backend before user-visible audio can be emitted.
 	 */
 	useFfiBackend: boolean;
 	/** Override sample rate. Defaults to 24 kHz. */
@@ -600,7 +600,7 @@ export interface EngineVoiceBridgeOptions {
 	 * Kokoro voices are picked by id (`KOKORO_VOICE_PACKS`), so the bundle's
 	 * per-user speaker preset is not used. Mutually exclusive with
 	 * `useFfiBackend: true` and `backendOverride`. Lifecycle loaders
-	 * default to no-op handles (ORT owns the model memory; nothing to
+	 * default to empty lifecycle handles (ORT owns the model memory; nothing to
 	 * mmap-evict).
 	 */
 	kokoroOnly?: KokoroEngineDiscoveryResult;
@@ -935,7 +935,7 @@ export class EngineVoiceBridge {
 		//     `ffi.mmapEvict(ctx, "tts" | "asr")`).
 		// Tests can opt out by either passing `lifecycleLoaders` (mocks
 		// `evictPages`) or `backendOverride` (mocks the backend) or
-		// setting `useFfiBackend: false` (stub TTS + no-op evict).
+		// setting `useFfiBackend: false` (test TTS + empty evict transition).
 		let ffiHandle: ElizaInferenceFfi | null = null;
 		let ffiContextRef: FfiContextRef | null = null;
 		let backend: OmniVoiceBackend;
@@ -1102,7 +1102,7 @@ export class EngineVoiceBridge {
 	 * Kokoro-only path. Skips bundle-root / speaker-preset / FFI checks
 	 * (Kokoro picks voices by id against `KOKORO_VOICE_PACKS`) and
 	 * synthesizes a minimal `SpeakerPreset` keyed to the discovered voice
-	 * id. Defaults lifecycle loaders to no-op handles since ORT owns the
+	 * id. Defaults lifecycle loaders to empty handles since ORT owns the
 	 * model memory. `asrAvailable` is `false`: callers needing ASR
 	 * construct `createStreamingTranscriber` directly.
 	 */
@@ -1294,8 +1294,8 @@ export class EngineVoiceBridge {
 	 * Idempotent per `roomId` — repeated calls for the same room return
 	 * the same unsubscribe handle (the prior binding is torn down first).
 	 *
-	 * No-op when the bridge was constructed without a `runtime` option;
-	 * returns a no-op unsubscribe. Callers should still call it
+	 * When the bridge was constructed without a `runtime` option, this returns
+	 * an empty unsubscribe. Callers should still call it
 	 * unconditionally — back-compat for the legacy path is automatic.
 	 */
 	bindBargeInControllerForRoom(roomId: string): () => void {
@@ -1335,7 +1335,7 @@ export class EngineVoiceBridge {
 		if (!this.hasRealTtsBackend()) {
 			throw new VoiceStartupError(
 				"missing-fused-build",
-				"[voice] Direct speech synthesis requires a fused OmniVoice backend. The stub backend is only allowed in scheduler/unit tests.",
+				"[voice] Direct speech synthesis requires a fused OmniVoice backend. The deterministic test backend is only allowed in scheduler/unit tests.",
 			);
 		}
 		const chunk = await this.scheduler.synthesizeText(text, signal);
@@ -1425,7 +1425,7 @@ export class EngineVoiceBridge {
 	 * (`DEFAULT_PHRASE_CACHE_SEED`) so common openers/acks are cached before
 	 * the next turn. The voice bridge / connector calls this when the loop is
 	 * idle. No-op (returns `{ warmed: 0, cached: 0 }`) unless a real TTS
-	 * backend is present and voice is armed — we never cache the stub's zeros
+	 * backend is present and voice is armed — we never cache the test backend's zeros
 	 * (AGENTS.md §3).
 	 */
 	async prewarmIdlePhrases(
@@ -1797,16 +1797,16 @@ function readPositiveIntEnv(name: string): number | undefined {
  * to `ffi.mmapEvict(ctx, "tts" | "asr")`. The C ABI is declared in
  * `scripts/omnivoice-fuse/ffi.h`. Production builds may implement this
  * as page eviction or as a full voice-runtime unload for mobile RAM
- * pressure; callers must reacquire before using the region again. The stub library
- * returns `ELIZA_ERR_NOT_IMPLEMENTED`, which the binding raises as
+ * pressure; callers must reacquire before using the region again. The
+ * compatibility library returns `ELIZA_ERR_NOT_IMPLEMENTED`, which the binding raises as
  * `VoiceLifecycleError({code:"kernel-missing"})`.
  *
- * When `ffi` is null, acquire/evict are documented no-ops — used by the
- * stub TTS path in tests + dev (no real mmap exists). Directory and
+ * When `ffi` is null, acquire/evict are documented empty transitions — used by the
+ * development TTS path in tests + dev (no real mmap exists). Directory and
  * "contains at least one file" checks still run for both TTS and ASR.
  * ASR never gets a virtual fallback: voice-on requires a real bundled ASR
  * model file so the FFI path can acquire the `"asr"` region and surface
- * the fused ABI's diagnostic if the runtime is incomplete.
+ * the fused ABI's diagnostic if the runtime lacks the required region support.
  */
 interface FfiContextRef {
 	current: ElizaInferenceContextHandle | null;
@@ -1890,8 +1890,8 @@ function defaultLifecycleLoaders(
  * mapping (no silent fallback to a smaller voice model — AGENTS.md §3).
  *
  * `mmapAcquire()` / `evictPages()` forward to the FFI binding when one
- * is supplied. With no FFI handle (stub mode), those calls are
- * deliberate no-ops because no real mmap was made. The lifecycle test
+ * is supplied. With no FFI handle (test mode), those calls return without
+ * touching native memory because no real mmap was made. The lifecycle test
  * still asserts the call shape via injected mocks.
  */
 function bundleMmapRegion(
@@ -1917,7 +1917,7 @@ function bundleMmapRegion(
 	const handle = ffi ? ensureContext(ctx) : null;
 	if (ffi && handle !== null) {
 		// Real fused build: load or re-page the heavy voice region now.
-		// A stub or incomplete runtime returns ELIZA_ERR_NOT_IMPLEMENTED,
+		// A compatibility runtime without region support returns ELIZA_ERR_NOT_IMPLEMENTED,
 		// which surfaces as VoiceLifecycleError({code:"kernel-missing"})
 		// before the lifecycle can enter voice-on.
 		ffi.mmapAcquire(handle, kind);
@@ -1934,8 +1934,8 @@ function bundleMmapRegion(
 				// lifecycle catches and re-classifies via `disarm-failed`.
 				ffi.mmapEvict(evictHandle, kind);
 			}
-			// Else: no FFI handle (stub TTS / no fused build) — nothing to
-			// evict. Documented no-op.
+			// Else: no FFI handle (test TTS / no fused build) — nothing to
+			// evict.
 		},
 		async release() {
 			// The FFI owns the actual mmap; release is a refcount drop on

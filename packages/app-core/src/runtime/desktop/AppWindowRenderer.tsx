@@ -52,7 +52,7 @@ import { SkillsView } from "@elizaos/ui/components/pages/SkillsView";
 import { TasksPageView } from "@elizaos/ui/components/pages/TasksPageView";
 import { TrajectoriesView } from "@elizaos/ui/components/pages/TrajectoriesView";
 import { FineTuningView } from "@elizaos/ui/components/training/injected";
-import { useBootConfig } from "@elizaos/ui/config/boot-config-react";
+import { useBootConfig } from "@elizaos/ui/config/boot-config-react.hooks";
 import { useApp } from "@elizaos/ui/state/useApp";
 import { openExternalUrl } from "@elizaos/ui/utils";
 import {

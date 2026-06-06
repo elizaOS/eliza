@@ -32,7 +32,8 @@ vi.mock("@elizaos/ui", () => ({
   useApp: () => ({ appRuns: [], setActionNotice: vi.fn() }),
 }));
 
-import { interact, ScreenshareTuiView } from "./ScreenshareOperatorSurface";
+import { ScreenshareTuiView } from "./ScreenshareOperatorSurface";
+import { interact } from "./ScreenshareOperatorSurface.interact";
 
 const sampleCapabilities = {
   platform: "darwin",

@@ -950,7 +950,7 @@ function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
 
 /**
  * AOSP / generic-FFI path: load `libllama.so` directly into the bun process
- * via `bun:ffi`. The adapter no-ops at runtime when neither
+ * via `bun:ffi`. The adapter stays inactive at runtime when neither
  * `ELIZA_LOCAL_LLAMA === "1"` nor `process.arch === "riscv64"` is true (see
  * `isAospEnabled` in `aosp-llama-adapter.ts`), so the dynamic import below
  * is safe on every platform; we only attempt registration when one of the

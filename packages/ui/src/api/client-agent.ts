@@ -48,16 +48,23 @@ import type {
   CharacterData,
   CharacterHistoryResponse,
   CodingAgentAddAgentInput,
+  CodingAgentCreatePlanRevisionInput,
   CodingAgentCreateTaskInput,
   CodingAgentForkTaskInput,
   CodingAgentOrchestratorStatus,
+  CodingAgentRerunFromEventInput,
+  CodingAgentRestartTaskInput,
+  CodingAgentRestartWithEditedPlanInput,
+  CodingAgentRetryTurnInput,
   CodingAgentScratchWorkspace,
   CodingAgentStatus,
   CodingAgentTaskEventRecord,
   CodingAgentTaskMessageRecord,
   CodingAgentTaskPage,
+  CodingAgentTaskPlanRevisionRecord,
   CodingAgentTaskThread,
   CodingAgentTaskThreadDetail,
+  CodingAgentTaskTimelineItem,
   CodingAgentUpdateTaskInput,
   CodingAgentValidateTaskInput,
   ConfigSchemaResponse,
@@ -983,6 +990,30 @@ declare module "./client-base" {
       input: CodingAgentAddAgentInput,
     ): Promise<CodingAgentTaskThreadDetail | null>;
     stopOrchestratorAgent(taskId: string, sessionId: string): Promise<boolean>;
+    retryOrchestratorTaskTurn(
+      taskId: string,
+      input: CodingAgentRetryTurnInput,
+    ): Promise<CodingAgentTaskThreadDetail | null>;
+    rerunOrchestratorTaskFromEvent(
+      taskId: string,
+      input: CodingAgentRerunFromEventInput,
+    ): Promise<CodingAgentTaskThreadDetail | null>;
+    restartOrchestratorTask(
+      taskId: string,
+      input?: CodingAgentRestartTaskInput,
+    ): Promise<CodingAgentTaskThreadDetail | null>;
+    restartOrchestratorTaskWithEditedPlan(
+      taskId: string,
+      input: CodingAgentRestartWithEditedPlanInput,
+    ): Promise<CodingAgentTaskThreadDetail | null>;
+    listOrchestratorTaskPlanRevisions(
+      taskId: string,
+      options?: { cursor?: string; limit?: number },
+    ): Promise<CodingAgentTaskPage<CodingAgentTaskPlanRevisionRecord>>;
+    createOrchestratorTaskPlanRevision(
+      taskId: string,
+      input: CodingAgentCreatePlanRevisionInput,
+    ): Promise<CodingAgentTaskPlanRevisionRecord | null>;
     listOrchestratorTaskMessages(
       taskId: string,
       options?: { cursor?: string; limit?: number },
@@ -995,10 +1026,15 @@ declare module "./client-base" {
       taskId: string,
       options?: { cursor?: string; limit?: number },
     ): Promise<CodingAgentTaskPage<CodingAgentTaskEventRecord>>;
+    listOrchestratorTaskTimeline(
+      taskId: string,
+      options?: { cursor?: string; limit?: number },
+    ): Promise<CodingAgentTaskPage<CodingAgentTaskTimelineItem>>;
     /**
      * Subscribe to a task's live change stream (SSE). Invokes `onChange` each
      * time the task room mutates so the caller can refetch the tail. Returns an
-     * unsubscribe function. No-op (returns a noop) where EventSource is absent.
+     * unsubscribe function. Where EventSource is absent, returns an inactive
+     * unsubscribe function.
      */
     streamOrchestratorTask(taskId: string, onChange: () => void): () => void;
     updateOrchestratorTask(
@@ -1286,7 +1322,7 @@ ElizaClient.prototype.getAuthStatus = async function (this: ElizaClient) {
   // agent has no port yet — we catch and fall through to HTTP so the
   // existing retry/backoff loop handles the "not ready" semantic
   // exactly as it did before RPC was in the picture. NEVER fabricates
-  // a 401-shaped placeholder (see the auth-client.ts authMe wrapper
+  // a 401-shaped fallback response (see the auth-client.ts authMe wrapper
   // history if you need the bug story).
   try {
     const viaRpc = await invokeDesktopBridgeRequest<{
@@ -3702,6 +3738,122 @@ ElizaClient.prototype.stopOrchestratorAgent = async function (
   return true;
 };
 
+ElizaClient.prototype.retryOrchestratorTaskTurn = async function (
+  this: ElizaClient,
+  taskId,
+  input,
+) {
+  try {
+    return await this.fetch<CodingAgentTaskThreadDetail>(
+      `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/retry-turn`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+};
+
+ElizaClient.prototype.rerunOrchestratorTaskFromEvent = async function (
+  this: ElizaClient,
+  taskId,
+  input,
+) {
+  try {
+    return await this.fetch<CodingAgentTaskThreadDetail>(
+      `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/rerun-from-event`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+};
+
+ElizaClient.prototype.restartOrchestratorTask = async function (
+  this: ElizaClient,
+  taskId,
+  input,
+) {
+  try {
+    return await this.fetch<CodingAgentTaskThreadDetail>(
+      `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/restart`,
+      {
+        method: "POST",
+        body: JSON.stringify(input ?? {}),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+};
+
+ElizaClient.prototype.restartOrchestratorTaskWithEditedPlan = async function (
+  this: ElizaClient,
+  taskId,
+  input,
+) {
+  try {
+    return await this.fetch<CodingAgentTaskThreadDetail>(
+      `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/restart-with-edited-plan`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+};
+
+ElizaClient.prototype.listOrchestratorTaskPlanRevisions = function (
+  this: ElizaClient,
+  taskId,
+  options,
+) {
+  const params = new URLSearchParams();
+  if (options?.cursor) params.set("cursor", options.cursor);
+  if (typeof options?.limit === "number") {
+    params.set("limit", String(options.limit));
+  }
+  const qs = params.toString();
+  return this.fetch<CodingAgentTaskPage<CodingAgentTaskPlanRevisionRecord>>(
+    `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/plan-revisions${qs ? `?${qs}` : ""}`,
+  );
+};
+
+ElizaClient.prototype.createOrchestratorTaskPlanRevision = async function (
+  this: ElizaClient,
+  taskId,
+  input,
+) {
+  try {
+    return await this.fetch<CodingAgentTaskPlanRevisionRecord>(
+      `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/plan-revisions`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+};
+
 ElizaClient.prototype.listOrchestratorTaskMessages = function (
   this: ElizaClient,
   taskId,
@@ -3748,6 +3900,22 @@ ElizaClient.prototype.listOrchestratorTaskEvents = function (
   const qs = params.toString();
   return this.fetch<CodingAgentTaskPage<CodingAgentTaskEventRecord>>(
     `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/events${qs ? `?${qs}` : ""}`,
+  );
+};
+
+ElizaClient.prototype.listOrchestratorTaskTimeline = function (
+  this: ElizaClient,
+  taskId,
+  options,
+) {
+  const params = new URLSearchParams();
+  if (options?.cursor) params.set("cursor", options.cursor);
+  if (typeof options?.limit === "number") {
+    params.set("limit", String(options.limit));
+  }
+  const qs = params.toString();
+  return this.fetch<CodingAgentTaskPage<CodingAgentTaskTimelineItem>>(
+    `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/timeline${qs ? `?${qs}` : ""}`,
   );
 };
 

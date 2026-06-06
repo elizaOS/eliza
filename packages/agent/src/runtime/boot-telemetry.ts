@@ -121,9 +121,9 @@ async function writeTelemetryFile(
 /**
  * Persist a boot run: enrich the boot summary with process memory + uptime and
  * write a timestamped record plus `latest.json` under
- * `<stateDir>/telemetry/boot/`. No-op when telemetry is disabled. Resolves once
- * the write completes (or fails safely); callers should `void` it after boot so
- * it never delays readiness.
+ * `<stateDir>/telemetry/boot/`. Returns immediately when telemetry is disabled.
+ * Resolves once the write completes (or fails safely); callers should `void` it
+ * after boot so it never delays readiness.
  */
 export async function recordBootTelemetry(summary: BootSummary): Promise<void> {
   if (telemetryDisabled()) {
@@ -166,7 +166,8 @@ interface BootEvent {
  * called at the very start of every boot, so a restart storm — where boots never
  * finish — is still countable. The dev boot-history endpoint surfaces the array
  * so an operator can see restart cadence. Best-effort; never throws, never
- * delays boot (callers should `void` it). No-op when telemetry is disabled.
+ * delays boot (callers should `void` it). Returns immediately when telemetry is
+ * disabled.
  */
 export async function recordBootEvent(label: string): Promise<void> {
   if (telemetryDisabled()) {
@@ -231,8 +232,8 @@ let activeSampler: MemorySamplerHandle | null = null;
  * Begin periodically sampling `process.memoryUsage().rss`, tracking the peak.
  * On `beforeExit`/`SIGTERM` (or {@link stopMemorySampler}) the run is flushed to
  * `<stateDir>/telemetry/memory/latest.json`. The interval is `unref()`'d so it
- * never keeps the process alive. No-op when telemetry is disabled or a sampler
- * is already running.
+ * never keeps the process alive. Returns immediately when telemetry is disabled
+ * or a sampler is already running.
  */
 export function startMemorySampler(options: MemorySamplerOptions): void {
   if (telemetryDisabled() || activeSampler) {

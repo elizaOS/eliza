@@ -417,7 +417,7 @@ export class LocalInferenceService {
 	 * `ensureLocalInferenceHandler` also attempts this at runtime boot, but
 	 * desktop activation often happens later through `/api/local-inference/active`;
 	 * at boot there may be no resident model, so that early warmup correctly
-	 * no-ops. Running it here closes that gap without blocking activation.
+	 * stays inactive. Running it here closes that gap without blocking activation.
 	 */
 	async prewarmSystemPrefix(runtime: AgentRuntime): Promise<boolean> {
 		if (!localInferenceEngine.hasLoadedModel()) return false;

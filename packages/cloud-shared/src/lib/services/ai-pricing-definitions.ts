@@ -13,6 +13,7 @@ export type PricingBillingSource =
   | "bitrouter"
   | "groq"
   | "vast"
+  | "cerebras"
   | "openai"
   | "anthropic"
   | "fal"

@@ -92,6 +92,9 @@ export interface AgentListItemDto {
   token_chain: string | null;
   token_name: string | null;
   token_ticker: string | null;
+  dockerImage?: string | null;
+  executionTier?: string;
+  webUiUrl?: string | null;
 }
 
 interface AgentAdminDetailsDto {

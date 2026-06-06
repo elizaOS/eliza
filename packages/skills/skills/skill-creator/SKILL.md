@@ -289,7 +289,7 @@ The script:
 - Optionally creates resource directories based on `--resources`
 - Optionally adds example files when `--examples` is set
 
-After initialization, customize the SKILL.md and add resources as needed. If you used `--examples`, replace or delete placeholder files.
+After initialization, customize the SKILL.md and add resources as needed. If you used `--examples`, replace or delete starter example files.
 
 ### Step 4: Edit the Skill
 
@@ -310,7 +310,7 @@ To begin implementation, start with the reusable resources identified above: `sc
 
 Added scripts must be tested by actually running them to ensure there are no bugs and that the output matches what is expected. If there are many similar scripts, only a representative sample needs to be tested to ensure confidence that they all work while balancing time to completion.
 
-If you used `--examples`, delete any placeholder files that are not needed for the skill. Only create resource directories that are actually required.
+If you used `--examples`, delete any starter example files that are not needed for the skill. Only create resource directories that are actually required.
 
 #### Update SKILL.md
 

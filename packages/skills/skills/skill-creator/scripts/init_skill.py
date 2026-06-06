@@ -111,7 +111,7 @@ EXAMPLE_SCRIPT = '''#!/usr/bin/env python3
 """
 Example helper script for {skill_name}
 
-This is a placeholder script that can be executed directly.
+This is a starter example script that can be executed directly.
 Replace with actual implementation or delete if not needed.
 
 Example real scripts from other skills:
@@ -130,7 +130,7 @@ if __name__ == "__main__":
 
 EXAMPLE_REFERENCE = """# Reference Documentation for {skill_title}
 
-This is a placeholder for detailed reference documentation.
+This is a starter example for detailed reference documentation.
 Replace with actual reference content or delete if not needed.
 
 Example real reference docs from other skills:
@@ -166,7 +166,7 @@ Reference docs are ideal for:
 
 EXAMPLE_ASSET = """# Example Asset File
 
-This placeholder represents where asset files would be stored.
+This starter example represents where asset files would be stored.
 Replace with actual asset files (templates, images, fonts, etc.) or delete if not needed.
 
 Asset files are NOT intended to be loaded into context, but rather used within
@@ -187,7 +187,7 @@ Example asset files from other skills:
 - Icons: .ico, .svg
 - Data files: .csv, .json, .xml, .yaml
 
-Note: This is a text placeholder. Actual assets can be any file type.
+Note: This is a text example. Actual assets can be any file type.
 """
 
 

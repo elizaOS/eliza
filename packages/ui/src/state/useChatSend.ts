@@ -21,7 +21,7 @@ import {
   normalizeSlashCommandName,
 } from "../chat";
 import { getWindowNavigationPath, type Tab } from "../navigation";
-import { clearChatDraft } from "./ChatComposerContext";
+import { clearChatDraft } from "./ChatComposerContext.hooks";
 import { isConversationRecord } from "./chat-conversation-guards";
 import {
   applyStreamingTextModification,
@@ -829,7 +829,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         }
 
         // Action callbacks can persist additional assistant turns that are not
-        // mirrored by the optimistic streaming placeholder in local state.
+        // mirrored by the optimistic streaming draft in local state.
         if (activeConversationIdRef.current === convId) {
           await loadConversationMessages(convId);
         }

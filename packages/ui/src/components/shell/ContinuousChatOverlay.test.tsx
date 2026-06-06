@@ -153,34 +153,35 @@ describe("ContinuousChatOverlay", () => {
     expect(thread?.getAttribute("data-revealed")).toBe("false");
   });
 
-  it("toggles a full-screen takeover with an opaque focus backdrop", () => {
+  it("toggles a full-screen takeover with a liquid-glass focus backdrop", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const root = screen.getByTestId("continuous-chat-overlay");
     const backdrop = screen.getByTestId("chat-fullscreen-backdrop");
     expect(root.getAttribute("data-fullscreen")).toBeNull();
-    // Resting: backdrop is transparent + click-through (view stays visible).
-    expect(backdrop.className).toContain("opacity-0");
+    // Resting: backdrop is inactive + click-through (the live view stays usable).
+    // pointer-events live on the className (a static Tailwind class) so the
+    // perf-sensitive backdrop-filter is the only animated property.
+    expect(backdrop.getAttribute("data-active")).toBe("false");
     expect(backdrop.className).toContain("pointer-events-none");
 
-    // Far-left button enters full screen and opens the thread over the view.
+    // Far-left button enters full screen and blooms the glass panel over the view.
     fireEvent.click(screen.getByLabelText("expand to full screen"));
     expect(root.getAttribute("data-fullscreen")).toBe("true");
-    expect(document.getElementById("continuous-thread")).toBeTruthy();
-    // Backdrop becomes a solid theme-colored screen that blocks the view.
-    expect(backdrop.className).toContain("bg-bg");
-    expect(backdrop.className).toContain("opacity-100");
+    expect(document.querySelector('[data-variant="fullscreen"]')).toBeTruthy();
+    // Backdrop becomes the active glass sheet that captures the view.
+    expect(backdrop.getAttribute("data-active")).toBe("true");
     expect(backdrop.className).toContain("pointer-events-auto");
 
     // Pressing it again returns to normal (ambient) mode: the partial bubbles
-    // remount (faded out) and the backdrop fades away.
+    // are back (faded out) and the backdrop deactivates.
     fireEvent.click(screen.getByLabelText("exit full screen"));
     expect(root.getAttribute("data-fullscreen")).toBeNull();
     expect(
       document
-        .getElementById("continuous-thread")
+        .querySelector('[data-variant="resting"]')
         ?.getAttribute("data-revealed"),
     ).toBe("false");
-    expect(backdrop.className).toContain("opacity-0");
+    expect(backdrop.getAttribute("data-active")).toBe("false");
   });
 
   it("shows only the last 2 turns with no scroll while typing, full history in fullscreen", () => {

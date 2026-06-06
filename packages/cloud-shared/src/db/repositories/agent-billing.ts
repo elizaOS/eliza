@@ -98,6 +98,7 @@ export class AgentBillingRepository {
         .where(
           and(
             eq(agentSandboxes.status, "running"),
+            sql`${agentSandboxes.execution_tier} <> 'shared'`,
             inArray(agentSandboxes.billing_status, BILLABLE_BILLING_STATUSES),
             billingDueCondition,
           ),
@@ -108,6 +109,7 @@ export class AgentBillingRepository {
         .where(
           and(
             eq(agentSandboxes.status, "stopped"),
+            sql`${agentSandboxes.execution_tier} <> 'shared'`,
             inArray(agentSandboxes.billing_status, BILLABLE_BILLING_STATUSES),
             isNotNull(agentSandboxes.last_backup_at),
             billingDueCondition,

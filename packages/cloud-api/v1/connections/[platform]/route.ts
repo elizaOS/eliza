@@ -5,7 +5,7 @@
  * The per-platform handlers (`api/v1/{twilio,blooio}/{connect,disconnect}/route.ts`)
  * still ship as Next.js routes and have not been ported to Hono yet, so this
  * dispatcher returns 501 until they are. The Hono codegen will mount this
- * stub; once the siblings are ported, restore the original delegation.
+ * temporary route; once the siblings are ported, restore the original delegation.
  */
 
 import { Hono } from "hono";

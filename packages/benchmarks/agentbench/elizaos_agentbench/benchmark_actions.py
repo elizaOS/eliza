@@ -1,4 +1,4 @@
-"""Compatibility no-ops for removed Python Eliza AgentBench actions."""
+"""Compatibility shims for removed Python Eliza AgentBench actions."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ def create_benchmark_actions() -> list[object]:
 
 
 def create_benchmark_plugin() -> None:
-    """Compatibility no-op for the removed Python Eliza plugin."""
+    """Compatibility shim for the removed Python Eliza plugin."""
     return None
 
 

@@ -26,7 +26,10 @@ describe("Notification Email Service", () => {
     });
 
     expect(token).toBeTruthy();
-    const payload = verifyNotificationUnsubscribeToken(token!);
+    if (!token) {
+      throw new Error("expected unsubscribe token");
+    }
+    const payload = verifyNotificationUnsubscribeToken(token);
 
     expect(payload).toBeTruthy();
     expect(payload?.userId).toBe("user-123");
@@ -41,7 +44,10 @@ describe("Notification Email Service", () => {
     });
 
     expect(token).toBeTruthy();
-    const [payload] = token?.split(".");
+    if (!token) {
+      throw new Error("expected unsubscribe token");
+    }
+    const [payload] = token.split(".");
     const tamperedToken = `${payload}.invalidsignature`;
     const decoded = verifyNotificationUnsubscribeToken(tamperedToken);
 
@@ -56,7 +62,10 @@ describe("Notification Email Service", () => {
     });
 
     expect(token).toBeTruthy();
-    const decoded = verifyNotificationUnsubscribeToken(token!);
+    if (!token) {
+      throw new Error("expected unsubscribe token");
+    }
+    const decoded = verifyNotificationUnsubscribeToken(token);
 
     expect(decoded).toBeNull();
   });

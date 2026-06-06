@@ -9,7 +9,11 @@
     "types": ["node", "bun-types"],
     "typeRoots": [
       "./node_modules/@types",
+      "./node_modules",
       "../../node_modules/@types",
+      "../../node_modules",
+      "../../node_modules/.bun/node_modules/@types",
+      "../../node_modules/.bun/node_modules",
       "../../../node_modules/@types",
       "../../../node_modules/.bun/node_modules/@types",
       "../../../node_modules",

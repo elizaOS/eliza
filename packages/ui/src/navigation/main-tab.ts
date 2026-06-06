@@ -4,7 +4,7 @@
  * Apps declare themselves as the shell's default landing tab by setting
  * `package.json#elizaos.app.mainTab` to `true`. At boot, the shell scans
  * the loaded apps catalog and picks the unique declarer; if none claim
- * the seam, the shell falls back to a built-in placeholder. Multiple
+ * the seam, the shell falls back to the built-in chat tab. Multiple
  * declarers are resolved deterministically by alphabetic package name
  * so a misconfigured second app never crashes the shell.
  *
@@ -26,8 +26,8 @@ export interface MainTabApp {
 /**
  * Fallback tab when no installed app declares `elizaos.app.mainTab=true`.
  *
- * The shell lands on chat by default. (Onboarding is shown first when first-run
- * is incomplete; once complete, the landing surface is chat.)
+ * The shell lands on chat by default. (Onboarding is shown first while
+ * first-run setup is still pending; once complete, the landing surface is chat.)
  */
 export const MAIN_TAB_FALLBACK = "chat" as const;
 
@@ -40,7 +40,7 @@ function declaresMainTab(app: RegistryAppInfo): boolean {
  * Discover which app should render as the shell's main tab.
  *
  * Returns `null` when no installed app claims the seam — callers should
- * fall back to a built-in placeholder.
+ * fall back to `MAIN_TAB_FALLBACK`.
  *
  * If multiple apps declare `mainTab: true`, returns the first one ordered
  * alphabetically by package name.

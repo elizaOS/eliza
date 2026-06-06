@@ -291,7 +291,7 @@ export async function authMe(): Promise<AuthMeResult> {
   // AgentNotReadyError if the agent has no port yet — we catch and
   // fall through to HTTP, which then surfaces a transport error to
   // the polling loop. The composer NEVER returns a 401-shaped
-  // "not ready" placeholder (the bug that flashed an unwanted
+  // temporary "not ready" response (the bug that flashed an unwanted
   // LoginView). When the agent does return an authoritative 401,
   // its body lands in `unauthorized` and we map to AuthMeResult.
   try {

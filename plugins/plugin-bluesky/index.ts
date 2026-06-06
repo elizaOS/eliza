@@ -68,7 +68,7 @@ const pluginTests = [
 					const password = getApiKeyOptional(runtime, "BLUESKY_PASSWORD");
 					if (!handle || !password) {
 						logger.log(
-							"Skipping service initialization test - credentials not configured",
+							"BlueSky service initialization test requires credentials",
 						);
 						return;
 					}

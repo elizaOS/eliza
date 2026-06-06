@@ -122,7 +122,7 @@ const ROUTE_PREFIX = "/api/benchmark/lifeops_bench";
  * `LifeOpsFakeBackend.applyAction` keys off dotted names
  * (`calendar.create_event`). Without this translation the calendar umbrella
  * lands on the backend's umbrella router only by coincidence of name and
- * silently no-ops on subactions the umbrella router does not implement, which
+ * silently ignores subactions the umbrella router does not implement, which
  * is the root cause of the calendar state-mutation gap (synthesis plan P0-5).
  *
  * Entries here must point at routes that exist in

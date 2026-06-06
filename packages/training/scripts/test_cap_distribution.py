@@ -185,7 +185,7 @@ def test_eliza_tier_never_dropped_by_fraction_gate():
         eliza_whitelist=frozenset({"scambench"}),
         seed=42,
     )
-    # Already 90% eliza, so gate 3 is a no-op and keeps everything.
+    # Already 90% eliza, so gate 3 leaves the set unchanged.
     assert len(kept) == 1000
     assert drops.get("non-eliza-fraction-exceeded", 0) == 0
 

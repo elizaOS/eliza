@@ -1,7 +1,7 @@
 /**
  * Restart infrastructure for Eliza — thin re-export of `@elizaos/shared/restart`.
  *
- * The single source of truth lives in `@elizaos/shared` (browser-safe, no-op
+ * The single source of truth lives in `@elizaos/shared` (browser-safe inert
  * default). This module preserves the historical import path used inside the
  * agent package so existing imports keep working.
  */

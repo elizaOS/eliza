@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-workflow",
-  "version": "2.0.3-beta.1",
+  "version": "2.0.3-beta.6",
   "description": "ElizaOS plugin for generating and running workflows in-process",
   "type": "module",
   "main": "dist/index.js",
@@ -99,6 +99,6 @@
     "drizzle-orm": "^0.45.1",
     "effect": "^3.21.1",
     "quickjs-emscripten": "0.32.0",
-    "smithers-orchestrator": "0.20.4"
+    "smithers-orchestrator": "0.22.0"
   }
 }

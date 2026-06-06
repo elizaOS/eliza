@@ -83,9 +83,7 @@ describe("LifeOps visual copy", () => {
     expect(messaging).not.toContain("Inbound:");
     expect(messaging).not.toContain("Outbound:");
     expect(messaging).not.toContain("Runtime:");
-    expect(messaging).not.toContain(
-      "Eliza can send through Messages.app now.",
-    );
+    expect(messaging).not.toContain("Eliza can send through Messages.app now.");
     expect(messaging).not.toContain(
       "Full Disk Access is still blocked for the process running Eliza",
     );
@@ -136,8 +134,12 @@ describe("LifeOps visual copy", () => {
     const source = readComponent("LifeOpsWorkspaceView.tsx");
 
     expect(source).toContain("WorkspaceStatusIcon");
-    expect(source).not.toContain("Grant calendar access for this Google account in Setup.");
-    expect(source).not.toContain("Grant Gmail access for this Google account in Setup.");
+    expect(source).not.toContain(
+      "Grant calendar access for this Google account in Setup.",
+    );
+    expect(source).not.toContain(
+      "Grant Gmail access for this Google account in Setup.",
+    );
     expect(source).not.toContain("No Gmail recommendations for this query.");
     expect(source).not.toContain("Loading recent mail…");
     expect(source).not.toContain("Inbox clear. Nothing to triage right now.");
@@ -182,7 +184,9 @@ describe("LifeOps visual copy", () => {
     expect(source).not.toContain(">Sign in<");
     expect(source).not.toContain(">Sync<");
     expect(source).not.toContain(">Syncing<");
-    expect(source).not.toContain("Cloud sign-in enables managed billing; local toggle uses\n");
+    expect(source).not.toContain(
+      "Cloud sign-in enables managed billing; local toggle uses\n",
+    );
   });
 
   it("keeps device setup compact and health-owned", () => {
@@ -242,9 +246,13 @@ describe("LifeOps visual copy", () => {
     expect(source).not.toContain("Reading mail...");
     expect(source).toContain('<span className="sr-only">Open setup</span>');
     expect(source).toContain('<span className="sr-only">Open Settings</span>');
-    expect(source).toContain('<span className="sr-only">Connect a source</span>');
+    expect(source).toContain(
+      '<span className="sr-only">Connect a source</span>',
+    );
     expect(source).not.toContain('<h2 className="mt-4');
-    expect(source).not.toContain('<span className="text-xs text-muted">No live messages.</span>');
+    expect(source).not.toContain(
+      '<span className="text-xs text-muted">No live messages.</span>',
+    );
     expect(source).not.toContain("Nothing scheduled.");
     expect(source).not.toContain("No priority messages.");
     expect(source).not.toContain("No priority mail.");
@@ -313,9 +321,7 @@ describe("LifeOps visual copy", () => {
   });
 
   it("keeps chat LifeOps overview rows compact", () => {
-    const source = readComponent(
-      "chat/widgets/plugins/lifeops-overview.tsx",
-    );
+    const source = readComponent("chat/widgets/plugins/lifeops-overview.tsx");
 
     expect(source).toContain("sr-only");
     expect(source).not.toContain("<p className=");
@@ -328,15 +334,16 @@ describe("LifeOps visual copy", () => {
 
   it("keeps chat adapter selection affordance icon-only", () => {
     const source = readComponent("LifeOpsChatAdapter.tsx");
+    const helpers = readComponent("LifeOpsChatAdapter.helpers.ts");
 
     expect(source).toContain("MessageCircle");
     expect(source).toContain("sr-only");
-    expect(source).toContain("Reminder selected");
-    expect(source).toContain("Event selected");
-    expect(source).toContain("Message selected");
-    expect(source).not.toContain("Ask about this reminder…");
-    expect(source).not.toContain("Ask about this event…");
-    expect(source).not.toContain("Ask about this message…");
+    expect(helpers).toContain("Reminder selected");
+    expect(helpers).toContain("Event selected");
+    expect(helpers).toContain("Message selected");
+    expect(helpers).not.toContain("Ask about this reminder…");
+    expect(helpers).not.toContain("Ask about this event…");
+    expect(helpers).not.toContain("Ask about this message…");
     expect(source).not.toContain(" — ");
   });
 
@@ -351,7 +358,9 @@ describe("LifeOps visual copy", () => {
     expect(source).not.toContain("lifeopssettings.browserBridgeOwner");
     expect(source).not.toContain("lifeopssettings.smartFeaturesDescription");
     expect(source).not.toContain("lifeopssettings.priorityScoringModelHelp");
-    expect(source).not.toContain("lifeopssettings.emailIntelligenceDescription");
+    expect(source).not.toContain(
+      "lifeopssettings.emailIntelligenceDescription",
+    );
     expect(source).not.toContain("lifeopssettings.emailClassifierModelHelp");
     expect(source).not.toContain("<p className=");
     expect(source).not.toContain('defaultValue: "plugin-health owns setup"');
@@ -363,15 +372,21 @@ describe("LifeOps visual copy", () => {
     expect(source).toContain("Calendars clear");
   });
 
-  it("keeps desktop navigation compact and active-label only", () => {
+  it("keeps the workspace a single vertical pane with top section tabs", () => {
     const shell = readComponent("LifeOpsWorkspaceShell.tsx");
     const nav = readComponent("LifeOpsNavRail.tsx");
     const page = readComponent("LifeOpsPageView.tsx");
 
-    expect(shell).toContain('labelMode="active"');
-    expect(shell).toContain('storageKey="lifeops:nav-rail-width:compact"');
-    expect(shell).not.toContain("defaultWidth={296}");
+    // Single column: a flex-col stack, no side rail and no resizable sidebar.
+    expect(shell).toContain("flex h-full min-h-0 min-w-0 flex-col");
+    expect(shell).toContain("LifeOpsNavTabs");
+    expect(shell).not.toContain("LifeOpsResizableSidebar");
+    expect(shell).not.toContain('storageKey="lifeops:nav-rail-width:compact"');
+    // Horizontal tab strip exists and the rail still exposes its label modes.
+    expect(nav).toContain("export function LifeOpsNavTabs");
     expect(nav).toContain('labelMode?: "all" | "active"');
+    // Right chat rail is disabled; the global pill owns LifeOps chat.
+    expect(page).toContain("chatDisabled");
     expect(page).not.toContain("Enabling…");
   });
 });

@@ -3,7 +3,7 @@
 import { getProfileUrl } from "@feed/shared";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { type KeyboardEvent, useMemo, useState } from "react";
 import { CommentInput } from "@/components/interactions/CommentInput";
 import { CommentInteractionBar } from "@/components/interactions/CommentInteractionBar";
 import { InteractionBar } from "@/components/interactions/InteractionBar";
@@ -99,28 +99,29 @@ export function ProfileReplyCard({
   const [replyCount, setReplyCount] = useState(reply.replyCount);
 
   // Determine if we're replying to a comment or directly to a post
-  const isReplyToComment = !!reply.parentComment;
+  const parentComment = reply.parentComment ?? null;
+  const isReplyToComment = !!parentComment;
 
   // Get the parent content info (either parent comment or post)
   const parentAuthorId = isReplyToComment
-    ? reply.parentComment?.author?.id || reply.parentComment?.authorId || ""
+    ? parentComment?.author?.id || parentComment?.authorId || ""
     : reply.post?.author?.id || reply.post?.authorId || "";
   const parentAuthorName = isReplyToComment
-    ? reply.parentComment?.author?.displayName ||
-      reply.parentComment?.author?.username ||
+    ? parentComment?.author?.displayName ||
+      parentComment?.author?.username ||
       "User"
     : reply.post?.author?.displayName || reply.post?.author?.username || "User";
   const parentAuthorUsername = isReplyToComment
-    ? reply.parentComment?.author?.username || null
+    ? parentComment?.author?.username || null
     : reply.post?.author?.username || null;
   const parentAuthorProfileImageUrl = isReplyToComment
-    ? reply.parentComment?.author?.profileImageUrl || null
+    ? parentComment?.author?.profileImageUrl || null
     : reply.post?.author?.profileImageUrl || null;
   const parentContent = isReplyToComment
-    ? reply.parentComment?.content || ""
+    ? parentComment?.content || ""
     : reply.post?.content || "";
   const parentTimestamp = isReplyToComment
-    ? reply.parentComment?.createdAt || ""
+    ? parentComment?.createdAt || ""
     : reply.post?.timestamp || "";
   const parentAuthorIsNPC = isNpcIdentifier(parentAuthorId);
 
@@ -192,6 +193,16 @@ export function ProfileReplyCard({
     }
   };
 
+  const handleNavigateKeyDown = (
+    event: KeyboardEvent<HTMLDivElement>,
+    url: string,
+  ) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      router.push(url);
+    }
+  };
+
   const handleReplySubmit = async () => {
     setIsReplying(false);
     setReplyCount((prev) => prev + 1);
@@ -205,9 +216,13 @@ export function ProfileReplyCard({
         {/* Connector line - from parent avatar down to reply */}
         <div className="absolute top-10 bottom-0 left-[2.1875rem] w-0.5 bg-border sm:left-[2.6875rem]" />
 
+        {/* biome-ignore lint/a11y/useSemanticElements: nested author links make a single semantic button invalid here */}
         <div
           className="flex cursor-pointer gap-3 px-4 py-3 transition-colors hover:bg-muted/50 sm:px-6"
+          role="button"
+          tabIndex={0}
           onClick={() => router.push(parentNavigateUrl)}
+          onKeyDown={(event) => handleNavigateKeyDown(event, parentNavigateUrl)}
         >
           {/* Parent Author Avatar */}
           <div className="flex flex-col items-center">
@@ -257,15 +272,13 @@ export function ProfileReplyCard({
             </p>
 
             {/* Parent Interaction Bar */}
-            {isReplyToComment ? (
+            {isReplyToComment && parentComment ? (
               <CommentInteractionBar
-                commentId={reply.parentComment?.id}
-                likeCount={reply.parentComment?.likeCount}
-                isLiked={reply.parentComment?.isLiked}
-                replyCount={reply.parentComment?.replyCount}
-                onReplyClick={() =>
-                  router.push(`/comment/${reply.parentComment?.id}`)
-                }
+                commentId={parentComment.id}
+                likeCount={parentComment.likeCount}
+                isLiked={parentComment.isLiked}
+                replyCount={parentComment.replyCount}
+                onReplyClick={() => router.push(`/comment/${parentComment.id}`)}
               />
             ) : (
               <InteractionBar
@@ -280,9 +293,15 @@ export function ProfileReplyCard({
       </div>
 
       {/* User's Reply */}
+      {/* biome-ignore lint/a11y/useSemanticElements: nested author links make a single semantic button invalid here */}
       <div
         className="flex cursor-pointer gap-3 px-4 pb-3 transition-colors hover:bg-muted/50 sm:px-6"
+        role="button"
+        tabIndex={0}
         onClick={() => router.push(`/comment/${reply.id}`)}
+        onKeyDown={(event) =>
+          handleNavigateKeyDown(event, `/comment/${reply.id}`)
+        }
       >
         {/* Reply Author Avatar */}
         <div className="flex flex-col items-center">
@@ -340,6 +359,8 @@ export function ProfileReplyCard({
 
           {/* Inline reply input */}
           {isReplying && (
+            // biome-ignore lint/a11y/noStaticElementInteractions: prevents row navigation while interacting with the embedded reply form
+            // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard events are handled by the form controls inside this container
             <div className="mt-3" onClick={(e) => e.stopPropagation()}>
               <CommentInput
                 postId={reply.postId}

@@ -2154,19 +2154,22 @@ export class FeedAgentExecutor implements AgentExecutor {
     const groupMap = new Map(groups.map((g) => [g.id, g]));
 
     return {
-      invites: invites.map((i) => ({
-        id: i.id,
-        groupId: i.groupId,
-        group: groupMap.get(i.groupId)
-          ? {
-              id: groupMap.get(i.groupId)?.id,
-              name: groupMap.get(i.groupId)?.name,
-              description: groupMap.get(i.groupId)?.description,
-            }
-          : null,
-        invitedBy: i.invitedBy,
-        invitedAt: i.invitedAt?.toISOString(),
-      })),
+      invites: invites.map((i) => {
+        const group = groupMap.get(i.groupId);
+        return {
+          id: i.id,
+          groupId: i.groupId,
+          group: group
+            ? {
+                id: group.id,
+                name: group.name ?? null,
+                description: group.description ?? null,
+              }
+            : null,
+          invitedBy: i.invitedBy,
+          invitedAt: i.invitedAt?.toISOString() ?? null,
+        };
+      }),
     };
   }
 
@@ -3053,19 +3056,22 @@ export class FeedAgentExecutor implements AgentExecutor {
 
     // Map users to blocks
     const userMap = new Map(blockedUsers.map((u) => [u.id, u]));
-    const blocks = blocksRaw.map((b) => ({
-      id: b.id,
-      blockedId: b.blockedId,
-      createdAt: b.createdAt?.toISOString(),
-      blocked: userMap.get(b.blockedId)
-        ? {
-            id: userMap.get(b.blockedId)?.id,
-            username: userMap.get(b.blockedId)?.username,
-            displayName: userMap.get(b.blockedId)?.displayName,
-            profileImageUrl: userMap.get(b.blockedId)?.profileImageUrl,
-          }
-        : null,
-    }));
+    const blocks = blocksRaw.map((b) => {
+      const blockedUser = userMap.get(b.blockedId);
+      return {
+        id: b.id,
+        blockedId: b.blockedId,
+        createdAt: b.createdAt?.toISOString() ?? null,
+        blocked: blockedUser
+          ? {
+              id: blockedUser.id,
+              username: blockedUser.username ?? null,
+              displayName: blockedUser.displayName ?? null,
+              profileImageUrl: blockedUser.profileImageUrl ?? null,
+            }
+          : null,
+      };
+    });
 
     return {
       blocks,
@@ -3117,19 +3123,22 @@ export class FeedAgentExecutor implements AgentExecutor {
 
     // Map users to mutes
     const userMap = new Map(mutedUsers.map((u) => [u.id, u]));
-    const mutes = mutesRaw.map((m) => ({
-      id: m.id,
-      mutedId: m.mutedId,
-      createdAt: m.createdAt?.toISOString(),
-      muted: userMap.get(m.mutedId)
-        ? {
-            id: userMap.get(m.mutedId)?.id,
-            username: userMap.get(m.mutedId)?.username,
-            displayName: userMap.get(m.mutedId)?.displayName,
-            profileImageUrl: userMap.get(m.mutedId)?.profileImageUrl,
-          }
-        : null,
-    }));
+    const mutes = mutesRaw.map((m) => {
+      const mutedUser = userMap.get(m.mutedId);
+      return {
+        id: m.id,
+        mutedId: m.mutedId,
+        createdAt: m.createdAt?.toISOString() ?? null,
+        muted: mutedUser
+          ? {
+              id: mutedUser.id,
+              username: mutedUser.username ?? null,
+              displayName: mutedUser.displayName ?? null,
+              profileImageUrl: mutedUser.profileImageUrl ?? null,
+            }
+          : null,
+      };
+    });
 
     return {
       mutes,

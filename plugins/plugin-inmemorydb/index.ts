@@ -55,7 +55,7 @@ export const plugin: Plugin = {
     if (hasAdapter) {
       logger.debug(
         { src: "plugin:inmemorydb" },
-        "Database adapter already exists, skipping initialization"
+        "Database adapter already exists; keeping current adapter"
       );
       return;
     }

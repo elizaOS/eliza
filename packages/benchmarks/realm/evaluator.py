@@ -448,6 +448,7 @@ def _score_supply_chain(
     orders = sol.get("orders", []) or []
     budget = float(inst.get("budget", 0))
     deadlines = inst.get("delivery_deadlines", {}) or {}
+    oracle_cost, oracle_orders, oracle_details = solvers.supply_chain_oracle(inst)
 
     total_cost = 0.0
     on_time = 0
@@ -459,13 +460,25 @@ def _score_supply_chain(
             on_time += 1
     coverage = on_time / max(1, len(deadlines))
     over_budget = total_cost > budget if budget > 0 else False
+    optimality = 0.0
+    if total_cost > 0 and oracle_cost is not None and oracle_cost > 0:
+        optimality = max(0.0, min(1.0, oracle_cost / total_cost))
+    elif coverage > 0 and oracle_cost == 0:
+        optimality = 1.0
 
     return REALMResultMetrics(
         planning_quality=coverage,
-        optimality_ratio=max(0.0, 1.0 - (total_cost / budget)) if budget > 0 else 0.0,
+        optimality_ratio=optimality,
         makespan=total_cost,
+        oracle_makespan=float(oracle_cost) if oracle_cost is not None else 0.0,
         constraint_satisfaction=0.0 if over_budget else coverage,
-        extras={"on_time": on_time, "total_cost": total_cost, "over_budget": over_budget},
+        extras={
+            "on_time": on_time,
+            "total_cost": total_cost,
+            "over_budget": over_budget,
+            "oracle_orders": oracle_orders,
+            "oracle": oracle_details,
+        },
     )
 
 

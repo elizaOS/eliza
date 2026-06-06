@@ -3,7 +3,7 @@ import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.
 export default createViewBundleConfig({
   packageName: "@elizaos/plugin-trajectory-logger",
   viewId: "trajectory-logger",
-  entry: "./src/components/TrajectoryLoggerView.tsx",
+  entry: "./src/components/trajectory-logger-view-bundle.ts",
   outDir: "dist/views",
   componentExport: "TrajectoryLoggerView",
 });

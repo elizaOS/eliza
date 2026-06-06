@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { withMockApp } from "../../storybook/mock-providers";
+import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { LoadingScreen } from "./LoadingScreen";
 
 const MOCK_VRM_URL = "data:model/gltf-binary;base64,Z2xURgAAAAAAAAAAAAAAAA==";

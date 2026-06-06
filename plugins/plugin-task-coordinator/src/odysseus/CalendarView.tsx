@@ -1040,6 +1040,7 @@ export function CalendarView({
   // are swallowed without a connected feed — there is no structured logger in
   // this browser file, so the expected case stays silent by design.
   useEffect(() => {
+    void refreshTick;
     if (!open) return;
     let cancelled = false;
     setProviderStatus("loading");
@@ -1217,7 +1218,7 @@ export function CalendarView({
     setFormState({ existing: null, date: date ?? selectedDay ?? today });
   // Provider events are read-only: opening the edit form would expose Save /
   // Delete against a feed this surface cannot write back to, so clicking one is
-  // a no-op (the row also renders a "synced" badge instead of the more-menu).
+  // ignored (the row also renders a "synced" badge instead of the more-menu).
   const openEdit = (ev: CalEvent) => {
     if (isProviderRef(ev.uid)) return;
     setFormState({ existing: ev, date: ev.date });
@@ -1381,7 +1382,7 @@ export function CalendarView({
         placeholder=" "
         autoComplete="off"
         disabled
-        title="Natural-language quick add needs a calendar parser backend (unavailable locally)"
+        title="Quick add parser offline"
         aria-label="Quick add event (unavailable)"
       />
       <span className="od-cal-quickadd-hint" aria-hidden="true">

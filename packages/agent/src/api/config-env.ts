@@ -269,7 +269,7 @@ export async function persistConfigEnv(
 
     if (isDelete) {
       if (existingIdx === undefined) {
-        // Nothing to do — don't write a .bak for a no-op.
+        // Nothing to delete — don't write a .bak for an unchanged file.
         if (key in process.env) delete process.env[key];
         return;
       }

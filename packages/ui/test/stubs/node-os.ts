@@ -1,8 +1,8 @@
-// Stub for `node:os` in the Storybook browser catalog. Vite externalizes node
+// Shim for `node:os` in the Storybook browser catalog. Vite externalizes node
 // builtins for the browser, so any access (e.g. `os.homedir()` at module scope
 // in @elizaos/core/utils/state-dir) throws "externalized for browser
 // compatibility". The core path helpers genuinely call these to derive a state
-// dir, so the stub returns benign placeholder values rather than throwing —
+// dir, so the shim returns benign browser values rather than throwing —
 // the derived paths are unused in the renderer.
 
 export const homedir = () => "/home/storybook";

@@ -120,7 +120,9 @@ src/
 
   lifeops/
     scheduled-task/             Scheduled-task runner, state log, gates, escalation, runtime wiring
-    entities/                   EntityStore + merge engine
+    entities/                   EntityStore + merge engine; voice-observer-bridge.ts
+                                handles core VOICE_TURN_OBSERVED → VoiceObserver (merge
+                                engine) → emits VOICE_ENTITY_BOUND back to the voice plugin
     relationships/              RelationshipStore
     registries/                 AnchorRegistry, EventKindRegistry, FamilyRegistry, BlockerRegistry
     channels/                   ChannelRegistry + priority-posture map

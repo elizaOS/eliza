@@ -1138,6 +1138,38 @@ export interface CodingAgentTaskMessageRecord {
   createdAt: string;
 }
 
+export type CodingAgentTaskTimelineItem =
+  | {
+      id: string;
+      kind: "message";
+      threadId: string;
+      sessionId: string | null;
+      timestamp: number;
+      createdAt: string;
+      message: CodingAgentTaskMessageRecord;
+    }
+  | {
+      id: string;
+      kind: "event";
+      threadId: string;
+      sessionId: string | null;
+      timestamp: number;
+      createdAt: string;
+      event: CodingAgentTaskEventRecord;
+    };
+
+export interface CodingAgentTaskPlanRevisionRecord {
+  id: string;
+  threadId: string;
+  plan: Record<string, unknown>;
+  basePlanRevisionId: string | null;
+  editSummary: string | null;
+  createdBy: string;
+  metadata: Record<string, unknown>;
+  timestamp: number;
+  createdAt: string;
+}
+
 export interface CodingAgentTaskTranscriptRecord {
   id: string;
   threadId: string;
@@ -1179,6 +1211,7 @@ export interface CodingAgentTaskThreadDetail extends CodingAgentTaskThread {
   artifacts: CodingAgentTaskArtifactRecord[];
   messages: CodingAgentTaskMessageRecord[];
   transcripts: CodingAgentTaskTranscriptRecord[];
+  planRevisions: CodingAgentTaskPlanRevisionRecord[];
   /** Client-only: legacy coordinator pending-decision queue. The
    * `/api/orchestrator` detail DTO does not carry this, so it is absent there;
    * the older coding-agent panel still reads it when present. */
@@ -1216,6 +1249,10 @@ export interface CodingAgentCreateTaskInput {
   priority?: CodingAgentTaskThread["priority"];
   acceptanceCriteria?: string[];
   providerPolicy?: CodingAgentTaskProviderPolicy;
+  /** Free-form task metadata forwarded to the orchestrator. Recognized keys
+   * include `autoVerify` and `capabilityProfile` (e.g. `"economics"` to let the
+   * spawned sub-agent drive the monetized-app Cloud commands). */
+  metadata?: Record<string, unknown>;
 }
 
 /** Structured payload for forking a task via `POST /api/orchestrator/tasks/:id/fork`. */
@@ -1236,6 +1273,46 @@ export interface CodingAgentAddAgentInput {
   repo?: string;
   label?: string;
   task?: string;
+}
+
+export interface CodingAgentRetryTurnInput {
+  messageId?: string;
+  sessionId?: string;
+  instruction?: string;
+  planRevisionId?: string;
+  mode?: "same-session" | "new-session";
+  agent?: CodingAgentAddAgentInput;
+}
+
+export interface CodingAgentRerunFromEventInput {
+  eventId: string;
+  instruction?: string;
+  planRevisionId?: string;
+  stopActive?: boolean;
+  preserveHistory?: boolean;
+  agent?: CodingAgentAddAgentInput;
+}
+
+export interface CodingAgentRestartTaskInput {
+  instruction?: string;
+  planRevisionId?: string;
+  stopActive?: boolean;
+  agent?: CodingAgentAddAgentInput;
+}
+
+export interface CodingAgentCreatePlanRevisionInput {
+  plan: Record<string, unknown>;
+  basePlanRevisionId?: string;
+  editSummary?: string;
+  createdBy?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CodingAgentRestartWithEditedPlanInput
+  extends CodingAgentRestartTaskInput {
+  plan: Record<string, unknown>;
+  basePlanRevisionId?: string;
+  editSummary?: string;
 }
 
 /** Structured payload for updating a task via `PATCH /api/orchestrator/tasks/:id`. */

@@ -9,9 +9,13 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildBitRouterPreparedEntries,
+  canonicalModelId,
   chooseBestCandidatePricingEntry,
+  expandPricingCatalogModelCandidates,
+  inferProviderFromCanonicalModel,
   stripVersionedSnapshotSuffix,
 } from "@/lib/services/ai-pricing";
+import { fetchBitRouterCatalogEntries } from "@/lib/services/ai-pricing/providers/bitrouter";
 
 describe("stripVersionedSnapshotSuffix — dated and labelled suffixes", () => {
   test("strips compact 8-digit date suffix", () => {
@@ -186,6 +190,68 @@ describe("buildBitRouterPreparedEntries — exact + stripped variants", () => {
     expect(entries).toHaveLength(2);
     expect(entries.every((e) => e.chargeType === "input")).toBe(true);
     expect(entries.find((e) => e.model === "google/gemini-2.0-flash")?.priority).toBe(-1);
+  });
+});
+
+describe("forced provider route pricing ids", () => {
+  test("keeps forced route ids canonical before slash-prefixed aliases", () => {
+    expect(canonicalModelId("openrouter:openai/gpt-oss-120b", "openrouter")).toBe(
+      "openrouter:openai/gpt-oss-120b",
+    );
+    expect(canonicalModelId("cerebras:gpt-oss-120b", "cerebras")).toBe("cerebras:gpt-oss-120b");
+  });
+
+  test("infers provider from forced route prefixes", () => {
+    expect(inferProviderFromCanonicalModel("openrouter:openai/gpt-oss-120b")).toBe("openrouter");
+    expect(inferProviderFromCanonicalModel("cerebras:zai-glm-4.7")).toBe("cerebras");
+  });
+
+  test("uses underlying catalog id as an alias for OpenRouter forced routes", () => {
+    expect(expandPricingCatalogModelCandidates("openrouter:openai/gpt-oss-120b")).toContain(
+      "openai/gpt-oss-120b",
+    );
+  });
+
+  test("adds synthetic Cerebras pricing rows to the BitRouter catalog", async () => {
+    const previousApiKey = process.env.BITROUTER_API_KEY;
+    const previousFetch = globalThis.fetch;
+    process.env.BITROUTER_API_KEY = "test-bitrouter-key";
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          data: [],
+        }),
+        { status: 200 },
+      );
+
+    try {
+      const entries = await fetchBitRouterCatalogEntries();
+      const gptInput = entries.find(
+        (entry) => entry.model === "cerebras:gpt-oss-120b" && entry.chargeType === "input",
+      );
+      const gptOutput = entries.find(
+        (entry) => entry.model === "cerebras:gpt-oss-120b" && entry.chargeType === "output",
+      );
+      const glmInput = entries.find(
+        (entry) => entry.model === "cerebras:zai-glm-4.7" && entry.chargeType === "input",
+      );
+      const glmOutput = entries.find(
+        (entry) => entry.model === "cerebras:zai-glm-4.7" && entry.chargeType === "output",
+      );
+
+      expect(gptInput?.provider).toBe("cerebras");
+      expect(gptInput?.unitPrice).toBe(0.00000035);
+      expect(gptOutput?.unitPrice).toBe(0.00000075);
+      expect(glmInput?.unitPrice).toBe(0.00000225);
+      expect(glmOutput?.unitPrice).toBe(0.00000275);
+    } finally {
+      if (previousApiKey === undefined) {
+        delete process.env.BITROUTER_API_KEY;
+      } else {
+        process.env.BITROUTER_API_KEY = previousApiKey;
+      }
+      globalThis.fetch = previousFetch;
+    }
   });
 });
 

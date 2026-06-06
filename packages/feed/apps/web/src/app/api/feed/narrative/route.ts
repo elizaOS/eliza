@@ -343,14 +343,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           .from(questions)
           .leftJoin(arcStates, eq(arcStates.questionId, questions.id))
           .where(inArray(questions.questionNumber, questionNumbers));
-        rows.forEach((q) =>
+        rows.forEach((q) => {
           questionMetaMap.set(q.questionNumber, {
             title: q.text,
             status: q.status ?? "active",
             arcState: (q.arcState as ArcStateType | null) ?? null,
             resolutionDate: q.resolutionDate,
-          }),
-        );
+          });
+        });
       }
 
       // Group posts by storyKey
@@ -507,7 +507,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
             new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
         );
 
-        const newestTimestamp = new Date(storyPosts[0]?.timestamp);
+        const newestPost = storyPosts[0];
+        if (!newestPost) continue;
+        const newestTimestamp = new Date(newestPost.timestamp);
         const totalLikes = storyPosts.reduce((acc, p) => acc + p.likeCount, 0);
         const totalComments = storyPosts.reduce(
           (acc, p) => acc + p.commentCount,

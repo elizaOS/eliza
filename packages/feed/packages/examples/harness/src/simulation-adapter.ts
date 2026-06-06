@@ -8,7 +8,7 @@
  *
  * @example
  * ```typescript
- * import { SimulationEngine } from '@feed/training/benchmark';
+ * import { SimulationEngine } from '@feed/agents/training';
  * import { SimulationA2AAdapter } from './simulation-adapter';
  *
  * const engine = new SimulationEngine(config);

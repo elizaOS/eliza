@@ -75,7 +75,7 @@
     {
       "uuid": "a1b2c3d4-0003-4000-8000-000000000001",
       "type": "http",
-      "documentation": "Admin docker-nodes list (designer stub; not exposed by the real control plane today)",
+      "documentation": "Admin docker-nodes list (designer mock; not exposed by the real control plane today)",
       "method": "get",
       "endpoint": "api/v1/admin/docker-nodes",
       "responses": [
@@ -241,7 +241,7 @@
       "responses": [
         {
           "uuid": "a1b2c3d4-0008-4000-8000-000000000002",
-          "body": "{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"{{urlParam 'id'}}\",\n    \"name\": \"Mock Agent\",\n    \"bio\": [\"A stub agent character returned by the control-plane mock.\"],\n    \"system\": \"You are a mock agent.\",\n    \"plugins\": []\n  }\n}",
+          "body": "{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"{{urlParam 'id'}}\",\n    \"name\": \"Mock Agent\",\n    \"bio\": [\"A mock agent character returned by the control-plane mock.\"],\n    \"system\": \"You are a mock agent.\",\n    \"plugins\": []\n  }\n}",
           "latency": 0,
           "statusCode": 200,
           "label": "ok",

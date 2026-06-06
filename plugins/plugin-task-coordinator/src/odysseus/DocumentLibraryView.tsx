@@ -1,7 +1,6 @@
-// odysseus Document Library (static/js/documentLibrary.js — the #doclib-modal
-// "Library" with its Chats / Documents / Research / Archive lib-tabs) plus
-// rag.js + fileHandler.js. The Documents tab is a list of documents with a
-// per-card expandable reader/preview pane and a RAG-inclusion indicator.
+// odysseus Document Library (static/js/documentLibrary.js + rag.js +
+// fileHandler.js), simplified to the only backed surface in this runtime:
+// documents with per-card preview and a RAG-inclusion indicator.
 //
 // REUSED-EXISTING-ELIZA-PLUGIN path: eliza already owns a full document/RAG
 // backend (plugin-knowledge surfaced through the @elizaos/ui client —
@@ -15,21 +14,12 @@
 // RAG), Create (a blank doc), and import (fileHandler.js openPicker →
 // uploadDocument), with a multi-select bulk bar and extension filter chips.
 //
-// Honest scope of the lib-tabs: only the Documents corpus is backed by an
-// eliza client method. odysseus's Chats / Research / Archive tabs are separate
-// surfaces (sessions live in the sidebar; deep-research + a document archive
-// have no eliza endpoint), so those tabs render a truthful empty panel that
-// names where the data lives rather than a fabricated list. odysseus's per-card
-// Open / Clone / Archive actions are session-backed; eliza exposes no document
-// session-open / clone / archive endpoint, so we ship only the real, eliza-
-// backed Export + Delete (no dead controls).
+// Only the document corpus is backed by an eliza client method, so unrelated
+// library tabs and session-backed actions are intentionally omitted. The view
+// ships only the real eliza-backed Import/Create/Export/Delete paths.
 //
-// Faithful to the odysseus DOM: .lib-tabs > .lib-tab, .doclib-grid >
-// .doclib-card.memory-item with a title row (doc icon + title + RAG badge +
-// chevron), a meta line (source · ext · size · time), a ⋮ actions menu, an
-// expand-to-preview pane with an expanded-action footer, a memory-toolbar with
-// sort + Select + extension chips, and a memory-bulk-bar. Pixel-exact via od-
-// classes mapped 1:1 onto odysseus's doclib + memory-item + lib-tab rules.
+// Uses the od-doclib classes for card/list parity with the rest of odysseus:
+// doc cards, compact toolbar, extension chips, preview pane, and bulk bar.
 
 import type {
   DocumentDetail,
@@ -38,17 +28,13 @@ import type {
 } from "@elizaos/ui";
 import { client } from "@elizaos/ui";
 import {
-  Archive,
   BookOpen,
   ChevronDown,
   Download,
   FilePlus,
   FileText,
-  type LucideIcon,
-  MessageSquare,
   Minus,
   MoreVertical,
-  Search,
   Trash2,
   Upload,
   X,
@@ -68,7 +54,6 @@ import { ResizeHandles } from "./ResizeHandles";
 const PAGE_SIZE = 40;
 
 type SortField = "recent" | "oldest" | "name" | "size";
-type LibTab = "chats" | "documents" | "research" | "archive";
 
 interface CardState {
   detail: DocumentDetail | null;
@@ -116,27 +101,6 @@ function extensionCounts(docs: DocumentRecord[]): [string, number][] {
   return [...counts.entries()].sort((a, b) => b[1] - a[1]);
 }
 
-// odysseus renders a 12px leading SVG on every lib-tab (documentLibrary.js:1578)
-// — Chats=speech-bubble, Documents=file, Research=magnifier, Archive=box.
-const LIB_TABS: { id: LibTab; label: string; icon: LucideIcon }[] = [
-  { id: "chats", label: "Chats", icon: MessageSquare },
-  { id: "documents", label: "Documents", icon: FileText },
-  { id: "research", label: "Research", icon: Search },
-  { id: "archive", label: "Archive", icon: Archive },
-];
-
-// odysseus's Chats / Research / Archive tabs read separate backends. eliza
-// exposes none of them through this surface, so each renders an honest panel
-// naming where that data actually lives — never a fabricated list.
-const TAB_EMPTY: Record<Exclude<LibTab, "documents">, string> = {
-  chats:
-    "Chat sessions live in the conversation sidebar, not the document corpus.",
-  research:
-    "Deep-research reports are not part of this agent's document corpus.",
-  archive:
-    "This agent's document corpus has no archive — documents are either indexed for retrieval or deleted.",
-};
-
 export function DocumentLibraryView({
   open,
   onClose,
@@ -152,7 +116,6 @@ export function DocumentLibraryView({
     { w: 640, h: 760 },
     { label: "Documents", icon: "FileText", onClose },
   );
-  const [tab, setTab] = useState<LibTab>("documents");
   const [docs, setDocs] = useState<DocumentRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState<DocumentStats | null>(null);
@@ -216,7 +179,6 @@ export function DocumentLibraryView({
 
   useEffect(() => {
     if (!open) return;
-    setTab("documents");
     setQuery("");
     setActiveExt(null);
     setExpandedId(null);
@@ -530,411 +492,352 @@ export function DocumentLibraryView({
           </button>
         </div>
 
-        <div className="od-lib-tabs" role="tablist" aria-label="Library tabs">
-          {LIB_TABS.map((t) => {
-            const TabIcon = t.icon;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                role="tab"
-                aria-selected={tab === t.id}
-                className={`od-lib-tab${tab === t.id ? " od-lib-tab-active" : ""}`}
-                onClick={() => setTab(t.id)}
-              >
-                <TabIcon size={12} aria-hidden="true" />
-                {t.label}
-              </button>
-            );
-          })}
+        <div className="od-doclib-subhead">
+          <h2 className="od-doclib-heading">
+            Documents <span className="od-doclib-count">{headerCount}</span>
+          </h2>
+          <button
+            type="button"
+            className="od-doclib-toolbar-btn od-doclib-import"
+            onClick={() => fileRef.current?.click()}
+            title="Import files from disk"
+          >
+            <Upload size={11} aria-hidden="true" /> Import
+          </button>
+          <button
+            type="button"
+            className="od-doclib-toolbar-btn"
+            onClick={createBlankDoc}
+            disabled={creating}
+            title="Create a new blank document"
+          >
+            <FilePlus size={11} aria-hidden="true" />{" "}
+            {creating ? "Creating…" : "Create"}
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            multiple
+            className="od-doclib-file-input"
+            onChange={(e) => {
+              onPickFiles(e.target.files);
+              e.target.value = "";
+            }}
+          />
         </div>
 
-        {tab !== "documents" ? (
-          <div className="od-doclib-tab-empty">{TAB_EMPTY[tab]}</div>
-        ) : (
-          <>
-            <div className="od-doclib-subhead">
-              <h2 className="od-doclib-heading">
-                Documents <span className="od-doclib-count">{headerCount}</span>
-              </h2>
+        <div className="od-doclib-toolbar">
+          <div className="od-doclib-filters">
+            <select
+              className="od-doclib-sort"
+              value={sort}
+              onChange={(e) => {
+                const next = e.target.value;
+                if (next === "name" || next === "size" || next === "oldest") {
+                  setSort(next);
+                } else {
+                  setSort("recent");
+                }
+              }}
+              aria-label="Sort documents"
+            >
+              <option value="recent">Recent</option>
+              <option value="oldest">Oldest</option>
+              <option value="name">A–Z</option>
+              <option value="size">Size</option>
+            </select>
+            <button
+              type="button"
+              className={`od-doclib-toolbar-btn${selectMode ? " od-doclib-toolbar-btn-active" : ""}`}
+              onClick={selectMode ? exitSelectMode : enterSelectMode}
+              title="Select documents"
+            >
+              {selectMode ? "Cancel" : "Select"}
+            </button>
+          </div>
+          <input
+            ref={inputRef}
+            className="od-doclib-search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") onClose();
+            }}
+            placeholder="Search documents…"
+            aria-label="Search documents"
+          />
+          {extChips.length > 0 ? (
+            <div className="od-doclib-chips">
               <button
                 type="button"
-                className="od-doclib-toolbar-btn od-doclib-import"
-                onClick={() => fileRef.current?.click()}
-                title="Import files from disk"
+                className={`od-doclib-chip${activeExt === null ? " od-doclib-chip-active" : ""}`}
+                onClick={() => setActiveExt(null)}
               >
-                <Upload size={11} aria-hidden="true" /> Import
+                all ({docs.length})
               </button>
+              {extChips.map(([ext, count]) => (
+                <button
+                  key={ext}
+                  type="button"
+                  className={`od-doclib-chip${activeExt === ext ? " od-doclib-chip-active" : ""}`}
+                  onClick={() =>
+                    setActiveExt((prev) => (prev === ext ? null : ext))
+                  }
+                >
+                  {ext} ({count})
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        {selectMode ? (
+          <div className="od-doclib-bulk-bar">
+            <label className="od-doclib-bulk-all">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={toggleSelectAll}
+              />{" "}
+              All
+            </label>
+            <span className="od-doclib-bulk-count">
+              {selectedIds.size} Selected
+            </span>
+            <div className="od-doclib-bulk-actions" ref={bulkActionsRef}>
               <button
                 type="button"
                 className="od-doclib-toolbar-btn"
-                onClick={createBlankDoc}
-                disabled={creating}
-                title="Create a new blank document"
+                disabled={selectedIds.size === 0 || bulkRunning}
+                onClick={() => setActionsOpen((p) => !p)}
               >
-                <FilePlus size={11} aria-hidden="true" />{" "}
-                {creating ? "Creating…" : "Create"}
+                Actions <ChevronDown size={11} aria-hidden="true" />
               </button>
-              <input
-                ref={fileRef}
-                type="file"
-                multiple
-                className="od-doclib-file-input"
-                onChange={(e) => {
-                  onPickFiles(e.target.files);
-                  e.target.value = "";
-                }}
-              />
-            </div>
-
-            <p className="od-doclib-desc">
-              Every document here is part of the agent's retrieval corpus.
-              Import or create files to add them to RAG, or remove a document to
-              take it out.
-            </p>
-
-            <div className="od-doclib-toolbar">
-              <div className="od-doclib-filters">
-                <select
-                  className="od-doclib-sort"
-                  value={sort}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    if (
-                      next === "name" ||
-                      next === "size" ||
-                      next === "oldest"
-                    ) {
-                      setSort(next);
-                    } else {
-                      setSort("recent");
-                    }
-                  }}
-                  aria-label="Sort documents"
-                >
-                  <option value="recent">Recent</option>
-                  <option value="oldest">Oldest</option>
-                  <option value="name">A–Z</option>
-                  <option value="size">Size</option>
-                </select>
-                <button
-                  type="button"
-                  className={`od-doclib-toolbar-btn${selectMode ? " od-doclib-toolbar-btn-active" : ""}`}
-                  onClick={selectMode ? exitSelectMode : enterSelectMode}
-                  title="Select documents"
-                >
-                  {selectMode ? "Cancel" : "Select"}
-                </button>
-                {/* odysseus doclib-tidy-btn (documentLibrary.js:1682) — an AI
-                    pass that removes empty/junk/duplicate documents. eliza
-                    exposes no tidy/dedupe endpoint, so the control renders for
-                    chrome parity but stays inert/disabled with an honest reason
-                    (no fabricated action — see the file header's no-dead-controls
-                    note). */}
-                <button
-                  type="button"
-                  className="od-doclib-toolbar-btn"
-                  disabled
-                  title="Tidy (remove empty / junk / duplicate documents) is not available — this agent's corpus has no tidy endpoint"
-                >
-                  Tidy
-                </button>
-              </div>
-              <input
-                ref={inputRef}
-                className="od-doclib-search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") onClose();
-                }}
-                placeholder="Search documents…"
-                aria-label="Search documents"
-              />
-              {extChips.length > 0 ? (
-                <div className="od-doclib-chips">
+              {actionsOpen ? (
+                <div className="od-doclib-dropdown">
                   <button
                     type="button"
-                    className={`od-doclib-chip${activeExt === null ? " od-doclib-chip-active" : ""}`}
-                    onClick={() => setActiveExt(null)}
+                    className="od-doclib-dropdown-item"
+                    onClick={bulkExport}
                   >
-                    all ({docs.length})
+                    <Download size={14} aria-hidden="true" />
+                    <span>Export</span>
                   </button>
-                  {extChips.map(([ext, count]) => (
-                    <button
-                      key={ext}
-                      type="button"
-                      className={`od-doclib-chip${activeExt === ext ? " od-doclib-chip-active" : ""}`}
-                      onClick={() =>
-                        setActiveExt((prev) => (prev === ext ? null : ext))
-                      }
-                    >
-                      {ext} ({count})
-                    </button>
-                  ))}
+                  <button
+                    type="button"
+                    className="od-doclib-dropdown-item od-doclib-dropdown-danger"
+                    onClick={bulkDelete}
+                  >
+                    <Trash2 size={14} aria-hidden="true" />
+                    <span>Delete</span>
+                  </button>
                 </div>
               ) : null}
             </div>
+            <button
+              type="button"
+              className="od-doclib-bulk-cancel"
+              onClick={exitSelectMode}
+              title="Cancel (Esc)"
+              aria-label="Cancel select"
+            >
+              <X size={12} aria-hidden="true" />
+            </button>
+          </div>
+        ) : null}
 
-            {selectMode ? (
-              <div className="od-doclib-bulk-bar">
-                <label className="od-doclib-bulk-all">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={toggleSelectAll}
-                  />{" "}
-                  All
-                </label>
-                <span className="od-doclib-bulk-count">
-                  {selectedIds.size} Selected
-                </span>
-                <div className="od-doclib-bulk-actions" ref={bulkActionsRef}>
+        <div className="od-doclib-grid">
+          {visible.length === 0 ? (
+            loading ? (
+              <div className="od-doclib-empty">Loading…</div>
+            ) : failed ? (
+              <div className="od-doclib-empty">Failed to load documents.</div>
+            ) : q || activeExt ? (
+              <div className="od-doclib-empty">
+                No documents match your search.
+              </div>
+            ) : (
+              // odysseus libraryRenderGrid empty branch (documentLibrary.js:410):
+              // "No documents yet" + a dim span with an underlined accent
+              // "Import" link + " · or create one in a session".
+              <div className="od-doclib-empty od-doclib-empty-inline">
+                <span>No documents yet</span>
+                <span className="od-doclib-empty-hint">
                   <button
                     type="button"
-                    className="od-doclib-toolbar-btn"
-                    disabled={selectedIds.size === 0 || bulkRunning}
-                    onClick={() => setActionsOpen((p) => !p)}
+                    className="od-doclib-empty-import"
+                    onClick={() => fileRef.current?.click()}
                   >
-                    Actions <ChevronDown size={11} aria-hidden="true" />
+                    Import
+                    <Upload size={13} aria-hidden="true" />
                   </button>
-                  {actionsOpen ? (
-                    <div className="od-doclib-dropdown">
+                </span>
+              </div>
+            )
+          ) : (
+            visible.map((doc) => {
+              const expanded = expandedId === doc.id;
+              const card = cards[doc.id];
+              const ext = fileExtension(doc.filename);
+              const selected = selectedIds.has(doc.id);
+              return (
+                <div
+                  className={`od-doclib-card od-memory-item${expanded ? " od-doclib-card-expanded" : ""}${selected ? " od-doclib-card-selected" : ""}`}
+                  key={doc.id}
+                >
+                  {selectMode ? (
+                    <label className="od-doclib-card-check">
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => toggleSelectItem(doc.id)}
+                        aria-label={`Select ${doc.filename}`}
+                      />
+                    </label>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="od-doclib-card-main"
+                    onClick={() =>
+                      selectMode ? toggleSelectItem(doc.id) : toggleExpand(doc)
+                    }
+                    aria-expanded={selectMode ? undefined : expanded}
+                  >
+                    <div className="od-doclib-content">
+                      <div className="od-doclib-titlerow">
+                        <span className="od-doclib-item-title">
+                          <FileText
+                            size={12}
+                            className="od-doclib-doc-icon"
+                            aria-hidden="true"
+                          />
+                          {doc.filename}
+                        </span>
+                        <span
+                          className={`od-doclib-ver${doc.fragmentCount > 0 ? "" : " od-doclib-ver-muted"}`}
+                          title={`${doc.fragmentCount} retrieval fragment${doc.fragmentCount === 1 ? "" : "s"}`}
+                        >
+                          {doc.fragmentCount > 0
+                            ? `${doc.fragmentCount} rag`
+                            : "no rag"}
+                        </span>
+                        {!selectMode ? (
+                          <ChevronDown
+                            size={12}
+                            className="od-doclib-chevron"
+                            aria-hidden="true"
+                          />
+                        ) : null}
+                      </div>
+                      <div className="od-doclib-meta">
+                        <span>{doc.provenance.label}</span>
+                        <span className="od-doclib-meta-sep">·</span>
+                        {ext ? (
+                          <>
+                            <span>{ext}</span>
+                            <span className="od-doclib-meta-sep">·</span>
+                          </>
+                        ) : null}
+                        <span>{humanSize(doc.fileSize)}</span>
+                        <span className="od-doclib-meta-sep">·</span>
+                        <span>{formatRelativeTime(doc.createdAt, locale)}</span>
+                      </div>
+                    </div>
+                  </button>
+
+                  {!selectMode ? (
+                    <span
+                      className="od-doclib-actions"
+                      ref={menuId === doc.id ? cardMenuRef : null}
+                    >
                       <button
                         type="button"
-                        className="od-doclib-dropdown-item"
-                        onClick={bulkExport}
+                        className="od-doclib-item-btn"
+                        title="Actions"
+                        aria-label="Document actions"
+                        onClick={() =>
+                          setMenuId((prev) => (prev === doc.id ? null : doc.id))
+                        }
                       >
-                        <Download size={14} aria-hidden="true" />
-                        <span>Export</span>
+                        <MoreVertical size={14} aria-hidden="true" />
                       </button>
-                      <button
-                        type="button"
-                        className="od-doclib-dropdown-item od-doclib-dropdown-danger"
-                        onClick={bulkDelete}
-                      >
-                        <Trash2 size={14} aria-hidden="true" />
-                        <span>Delete</span>
-                      </button>
+                      {menuId === doc.id ? (
+                        <div className="od-doclib-dropdown">
+                          <button
+                            type="button"
+                            className="od-doclib-dropdown-item"
+                            onClick={() => exportDoc(doc)}
+                          >
+                            <Download size={14} aria-hidden="true" />
+                            <span>Export</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="od-doclib-dropdown-item od-doclib-dropdown-danger"
+                            disabled={!doc.canDelete}
+                            title={
+                              doc.canDelete
+                                ? "Remove from RAG"
+                                : (doc.deleteabilityReason ?? "Cannot delete")
+                            }
+                            onClick={() => removeDoc(doc)}
+                          >
+                            <Trash2 size={14} aria-hidden="true" />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      ) : null}
+                    </span>
+                  ) : null}
+
+                  {expanded && !selectMode ? (
+                    <div className="od-doclib-preview">
+                      <pre>
+                        <code>
+                          {card?.loading
+                            ? "Loading…"
+                            : card?.failed
+                              ? "Failed to load document."
+                              : (card?.detail?.content?.text ??
+                                "(empty document)")}
+                        </code>
+                      </pre>
+                      <div className="od-doclib-expanded-actions">
+                        <button
+                          type="button"
+                          className="od-doclib-text-btn od-doclib-text-btn-danger"
+                          disabled={!doc.canDelete}
+                          onClick={() => removeDoc(doc)}
+                        >
+                          <Trash2 size={11} aria-hidden="true" /> Delete
+                        </button>
+                        <div className="od-doclib-action-group">
+                          <button
+                            type="button"
+                            className="od-doclib-text-btn"
+                            onClick={() => exportDoc(doc)}
+                          >
+                            <Download size={11} aria-hidden="true" /> Export
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   ) : null}
                 </div>
-                <button
-                  type="button"
-                  className="od-doclib-bulk-cancel"
-                  onClick={exitSelectMode}
-                  title="Cancel (Esc)"
-                  aria-label="Cancel select"
-                >
-                  <X size={12} aria-hidden="true" />
-                </button>
-              </div>
-            ) : null}
+              );
+            })
+          )}
+        </div>
 
-            <div className="od-doclib-grid">
-              {visible.length === 0 ? (
-                loading ? (
-                  <div className="od-doclib-empty">Loading…</div>
-                ) : failed ? (
-                  <div className="od-doclib-empty">
-                    Failed to load documents.
-                  </div>
-                ) : q || activeExt ? (
-                  <div className="od-doclib-empty">
-                    No documents match your search.
-                  </div>
-                ) : (
-                  // odysseus libraryRenderGrid empty branch (documentLibrary.js:410):
-                  // "No documents yet" + a dim span with an underlined accent
-                  // "Import" link + " · or create one in a session".
-                  <div className="od-doclib-empty od-doclib-empty-inline">
-                    <span>No documents yet</span>
-                    <span className="od-doclib-empty-hint">
-                      <button
-                        type="button"
-                        className="od-doclib-empty-import"
-                        onClick={() => fileRef.current?.click()}
-                      >
-                        Import
-                        <Upload size={13} aria-hidden="true" />
-                      </button>
-                      {" · or create one in a session"}
-                    </span>
-                  </div>
-                )
-              ) : (
-                visible.map((doc) => {
-                  const expanded = expandedId === doc.id;
-                  const card = cards[doc.id];
-                  const ext = fileExtension(doc.filename);
-                  const selected = selectedIds.has(doc.id);
-                  return (
-                    <div
-                      className={`od-doclib-card od-memory-item${expanded ? " od-doclib-card-expanded" : ""}${selected ? " od-doclib-card-selected" : ""}`}
-                      key={doc.id}
-                    >
-                      {selectMode ? (
-                        <label className="od-doclib-card-check">
-                          <input
-                            type="checkbox"
-                            checked={selected}
-                            onChange={() => toggleSelectItem(doc.id)}
-                            aria-label={`Select ${doc.filename}`}
-                          />
-                        </label>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="od-doclib-card-main"
-                        onClick={() =>
-                          selectMode
-                            ? toggleSelectItem(doc.id)
-                            : toggleExpand(doc)
-                        }
-                        aria-expanded={selectMode ? undefined : expanded}
-                      >
-                        <div className="od-doclib-content">
-                          <div className="od-doclib-titlerow">
-                            <span className="od-doclib-item-title">
-                              <FileText
-                                size={12}
-                                className="od-doclib-doc-icon"
-                                aria-hidden="true"
-                              />
-                              {doc.filename}
-                            </span>
-                            <span
-                              className={`od-doclib-ver${doc.fragmentCount > 0 ? "" : " od-doclib-ver-muted"}`}
-                              title={`${doc.fragmentCount} retrieval fragment${doc.fragmentCount === 1 ? "" : "s"}`}
-                            >
-                              {doc.fragmentCount > 0
-                                ? `${doc.fragmentCount} rag`
-                                : "no rag"}
-                            </span>
-                            {!selectMode ? (
-                              <ChevronDown
-                                size={12}
-                                className="od-doclib-chevron"
-                                aria-hidden="true"
-                              />
-                            ) : null}
-                          </div>
-                          <div className="od-doclib-meta">
-                            <span>{doc.provenance.label}</span>
-                            <span className="od-doclib-meta-sep">·</span>
-                            {ext ? (
-                              <>
-                                <span>{ext}</span>
-                                <span className="od-doclib-meta-sep">·</span>
-                              </>
-                            ) : null}
-                            <span>{humanSize(doc.fileSize)}</span>
-                            <span className="od-doclib-meta-sep">·</span>
-                            <span>
-                              {formatRelativeTime(doc.createdAt, locale)}
-                            </span>
-                          </div>
-                        </div>
-                      </button>
-
-                      {!selectMode ? (
-                        <span
-                          className="od-doclib-actions"
-                          ref={menuId === doc.id ? cardMenuRef : null}
-                        >
-                          <button
-                            type="button"
-                            className="od-doclib-item-btn"
-                            title="Actions"
-                            aria-label="Document actions"
-                            onClick={() =>
-                              setMenuId((prev) =>
-                                prev === doc.id ? null : doc.id,
-                              )
-                            }
-                          >
-                            <MoreVertical size={14} aria-hidden="true" />
-                          </button>
-                          {menuId === doc.id ? (
-                            <div className="od-doclib-dropdown">
-                              <button
-                                type="button"
-                                className="od-doclib-dropdown-item"
-                                onClick={() => exportDoc(doc)}
-                              >
-                                <Download size={14} aria-hidden="true" />
-                                <span>Export</span>
-                              </button>
-                              <button
-                                type="button"
-                                className="od-doclib-dropdown-item od-doclib-dropdown-danger"
-                                disabled={!doc.canDelete}
-                                title={
-                                  doc.canDelete
-                                    ? "Remove from RAG"
-                                    : (doc.deleteabilityReason ??
-                                      "Cannot delete")
-                                }
-                                onClick={() => removeDoc(doc)}
-                              >
-                                <Trash2 size={14} aria-hidden="true" />
-                                <span>Delete</span>
-                              </button>
-                            </div>
-                          ) : null}
-                        </span>
-                      ) : null}
-
-                      {expanded && !selectMode ? (
-                        <div className="od-doclib-preview">
-                          <pre>
-                            <code>
-                              {card?.loading
-                                ? "Loading…"
-                                : card?.failed
-                                  ? "Failed to load document."
-                                  : (card?.detail?.content?.text ??
-                                    "(empty document)")}
-                            </code>
-                          </pre>
-                          <div className="od-doclib-expanded-actions">
-                            <button
-                              type="button"
-                              className="od-doclib-text-btn od-doclib-text-btn-danger"
-                              disabled={!doc.canDelete}
-                              onClick={() => removeDoc(doc)}
-                            >
-                              <Trash2 size={11} aria-hidden="true" /> Delete
-                            </button>
-                            <div className="od-doclib-action-group">
-                              <button
-                                type="button"
-                                className="od-doclib-text-btn"
-                                onClick={() => exportDoc(doc)}
-                              >
-                                <Download size={11} aria-hidden="true" /> Export
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {docs.length < total ? (
-              <button
-                type="button"
-                className="od-doclib-load-more"
-                onClick={loadMore}
-              >
-                Load more
-              </button>
-            ) : null}
-          </>
-        )}
+        {docs.length < total ? (
+          <button
+            type="button"
+            className="od-doclib-load-more"
+            onClick={loadMore}
+          >
+            Load more
+          </button>
+        ) : null}
       </div>
     </div>
   );

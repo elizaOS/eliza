@@ -1,7 +1,7 @@
 /**
  * OpenAI direct provider.
  *
- * Used as a per-family fallback when OpenRouter is unavailable for an
+ * Used as a per-family fallback when BitRouter is unavailable for an
  * `openai/*` model. Strips the `openai/` prefix before calling the
  * upstream because OpenAI's API expects bare ids (`gpt-5.4-mini`).
  */

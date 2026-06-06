@@ -37,7 +37,7 @@ import type {
  * Resolves a single prepared pricing row for token/flat charges.
  *
  * **Why provider expansion:** `ai_pricing` may store `provider` as either the
- * short logical key (`xai`) or OpenRouter's namespace (`x-ai`) from ingest
+ * short logical key (`xai`) or BitRouter's namespace (`x-ai`) from ingest
  * timing; querying both prevents false "pricing unavailable" during and after
  * migration. **Why union-ranking:** Equivalent model spellings are collected
  * before choosing one row, so caller spelling cannot change the billed price

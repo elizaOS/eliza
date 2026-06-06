@@ -25,7 +25,8 @@ vi.mock("@elizaos/ui/platform", () => ({
   isNative: true,
 }));
 
-import { ContactsTuiView, interact } from "./ContactsAppView";
+import { ContactsTuiView } from "./ContactsAppView";
+import { interact } from "./ContactsAppView.interact";
 
 const sampleContacts = [
   {

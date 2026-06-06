@@ -82,10 +82,10 @@ Some older docs still describe generic per-request or per-token app pricing. In 
 
 Pick the narrowest money surface:
 
-- **App monetization** (`PUT /api/v1/apps/{id}/monetization`) sets ongoing inference markup and app-credit purchase share. It is not a one-off invoice.
+- **App monetization** (`PUT /api/v1/apps/{id}/monetization`) sets ongoing inference markup and app-credit purchase share. The inference markup is added to the cost debited from the caller's ORG credit balance and earned via `recordCreatorEarnings`; the purchase-share applies to the (currently stranded) per-app pool. It is not a one-off invoice.
 - **App charge requests** (`POST /api/v1/apps/{id}/charges`) ask a user to pay an exact USD amount through Stripe or OxaPay. The payer receives app credits; creator earnings flow through the app-credit earnings ledger.
 - **x402 payment requests** (`POST /api/v1/x402/requests`) ask for direct crypto settlement. Use these when the payer already has crypto or the flow is wallet-native. Current settlement support includes Base, Ethereum, BSC, and Solana; defaults point at `https://x402.elizacloud.ai`.
-- **App-credit checkout** (`POST /api/v1/app-credits/checkout`) buys app credits directly. Use app charge requests when the agent needs a durable request, metadata, callbacks, and a reusable payment URL.
+- **App-credit checkout** (`POST /api/v1/app-credits/checkout`) buys into the per-app pre-purchased credit pool (`app_credit_balances`). Note: inference billing was migrated to the org balance, so these purchases are currently stranded (issue #8253) — prefer org-credit checkout for spendable balance. Use app charge requests when the agent needs a durable request, metadata, callbacks, and a reusable payment URL.
 - **Org-credit checkout** (`POST /api/v1/credits/checkout`) tops up the user's organization. It is not creator pricing.
 - **Cloud tunnel provisioning** (`POST /api/v1/apis/tunnels/tailscale/auth-key`) debits org credits once per successful tunnel auth-key mint. It is on-demand infrastructure usage, not SaaS/subscription billing.
 - **Redemptions** (`POST /api/v1/redemptions`) request creator payout in elizaOS tokens on `base`, `bsc`/`bnb`, `ethereum`, or `solana`. Payouts are fixed to the USD quote at request time and then admin reviewed/processed.

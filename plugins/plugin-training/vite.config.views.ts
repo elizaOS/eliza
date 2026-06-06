@@ -3,7 +3,7 @@ import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.
 export default createViewBundleConfig({
   packageName: "@elizaos/plugin-training",
   viewId: "training",
-  entry: "./src/ui/FineTuningView.tsx",
+  entry: "./src/ui/training-view-bundle.ts",
   outDir: "dist/views",
   componentExport: "FineTuningView",
 });

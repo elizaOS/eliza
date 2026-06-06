@@ -32,7 +32,8 @@ vi.mock("@elizaos/capacitor-system", () => ({
   },
 }));
 
-import { interact, MessagesAppView, MessagesTuiView } from "./MessagesAppView";
+import { MessagesAppView, MessagesTuiView } from "./MessagesAppView";
+import { interact } from "./MessagesAppView.interact";
 
 const t = (key: string, opts?: { defaultValue?: string }) =>
   opts?.defaultValue ?? key;

@@ -7,6 +7,7 @@ import {
   Textarea,
   useApp,
 } from "@elizaos/ui";
+import { CalendarClock, Check, Loader2, Plus, X } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -14,7 +15,6 @@ import {
   useMemo,
   useState,
 } from "react";
-import { CalendarClock, Check, Loader2, Plus, X } from "lucide-react";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
@@ -1076,7 +1076,7 @@ function LockedSection({
   return (
     <SectionShell title={title}>
       <div className="mb-3 text-xs leading-5 text-muted">{hint}</div>
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-3">
         {[owner, agent].map((workspace) => (
           <div key={workspace.side} className="rounded-2xl bg-bg/36 px-4 py-4">
             <div className="text-sm font-semibold text-txt">
@@ -1182,13 +1182,13 @@ function CalendarColumn({
         />
       ) : (
         <div className="space-y-3">
-          {workspace.groupedCalendarEvents.map((group) => (
+          {workspace.groupedCalendarEvents.slice(0, 3).map((group) => (
             <div key={group.dayKey} className="space-y-2">
               <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
                 {group.label}
               </div>
               <div className="overflow-hidden rounded-2xl bg-bg/45">
-                {group.events.map((event, index) => (
+                {group.events.slice(0, 4).map((event, index) => (
                   <button
                     key={event.id}
                     type="button"
@@ -1510,7 +1510,7 @@ function GmailRecommendationsPanel({
           })}
         </label>
       ) : null}
-      {recommendations.map((recommendation) => (
+      {recommendations.slice(0, 3).map((recommendation) => (
         <div
           key={recommendation.id}
           className="space-y-2 rounded-2xl bg-bg/40 px-3 py-3"
@@ -1561,7 +1561,7 @@ function GmailRecommendationsPanel({
               </Button>
             ) : null}
             {recommendation.kind === "review_spam"
-              ? recommendation.sampleMessages.map((message) => (
+              ? recommendation.sampleMessages.slice(0, 2).map((message) => (
                   <Button
                     key={message.messageId}
                     size="sm"
@@ -1674,7 +1674,7 @@ function EmailColumn({
         <div className="space-y-3">
           <GmailControls workspace={workspace} t={t} />
           <div className="overflow-hidden rounded-2xl bg-bg/45">
-            {workspace.gmailMessages.map((message, index) => (
+            {workspace.gmailMessages.slice(0, 8).map((message, index) => (
               <div
                 key={message.id}
                 className={`flex w-full items-start justify-between gap-3 px-3 py-3 text-left ${
@@ -2024,7 +2024,7 @@ export function LifeOpsWorkspaceView() {
           />
         }
       >
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4">
           <CalendarColumn workspace={owner} timeZone={timeZone} t={t} />
           <CalendarColumn workspace={agent} timeZone={timeZone} t={t} />
         </div>
@@ -2035,7 +2035,7 @@ export function LifeOpsWorkspaceView() {
           defaultValue: "Email",
         })}
       >
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4">
           <EmailColumn workspace={owner} timeZone={timeZone} t={t} />
           <EmailColumn workspace={agent} timeZone={timeZone} t={t} />
         </div>

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-coding-tools",
-  "version": "2.0.3-beta.1",
+  "version": "2.0.3-beta.6",
   "description": "Native Claude-Code-style coding tools (Read, Write, Edit, Bash, Grep, Glob, etc.) for the Eliza agent.",
   "type": "module",
   "main": "dist/index.js",
@@ -74,8 +74,8 @@
     "clean": "rm -rf dist .turbo",
     "test": "vitest run",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
-    "lint": "echo \"Lint skipped\"",
-    "lint:check": "bun run lint",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
     "check": "bun run typecheck && bun run test"
   },
   "publishConfig": {

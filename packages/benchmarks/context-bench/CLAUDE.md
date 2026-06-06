@@ -54,9 +54,9 @@ pytest tests/ -v
 
 - Results write to `./benchmark_results/` (prefix `context_bench_*.json`).
 - Scored by `_score_from_contextbench_json` in `registry/scores.py`.
-- Drift harness (TypeScript): `scripts/benchmark/drift-harness.ts` — not yet
-  implemented in this checkout (file is absent; `drift.py` expects it but it has
-  not been committed).
+- Drift harness (TypeScript): `scripts/benchmark/drift-harness.ts`. Dry-run
+  mode is deterministic and requires no API keys; real runs use an
+  OpenAI-compatible chat-completions endpoint.
 - Optional extras: `pip install -e ".[embeddings]"` for semantic similarity
   scoring; `pip install -e ".[drift]"` for Python drift aggregation helpers.
 - Full background and configuration reference: [README.md](README.md).

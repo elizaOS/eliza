@@ -86,6 +86,7 @@ export const PLUGIN_VIEW_LLM_MOCK_CASES: PluginViewMockCase[] = [
   { id: "scape", viewType: "tui", path: "/scape/tui" },
   { id: "screenshare", viewType: "gui", path: "/screenshare" },
   { id: "screenshare", viewType: "tui", path: "/screenshare/tui" },
+  { id: "social-alpha", viewType: "gui", path: "/social-alpha" },
   { id: "task-coordinator", viewType: "gui", path: "/task-coordinator" },
   { id: "task-coordinator", viewType: "tui", path: "/task-coordinator/tui" },
   { id: "orchestrator", viewType: "gui", path: "/orchestrator" },

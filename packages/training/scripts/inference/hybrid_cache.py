@@ -50,7 +50,7 @@ slots indexed by ``layer_idx`` directly, so a Gated DeltaNet layer at
 ``layer_idx=0`` would write conv state into slot 0 of the compressed list
 and then a full-attention layer at ``layer_idx=3`` would write a key tensor
 into slot 3, with all the linear-attention slots in between left as
-``None`` placeholders. That's broken in two ways: (1) the model still tries
+``None`` sentinels. That's broken in two ways: (1) the model still tries
 to call ``update_conv_state(...)`` / ``update_recurrent_state(...)`` on
 slot 0 and the quantizer's parent has no such methods, (2) the patched
 fused-attention forward expects to read its own slot back as a packed-key
@@ -61,7 +61,7 @@ as ``past_key_values``. Its ``self.layers`` is a heterogeneous list (per
 ``layer_types``). For ``fused_turboquant`` / ``qjl_full``, the cache also
 holds a side ``CompressedKVCache`` that the patched fused-attention forward
 closures reference by closure, and the corresponding entries of
-``self.layers`` are ``DynamicLayer`` placeholders that just track sequence
+``self.layers`` are ``DynamicLayer`` sequence trackers that keep sequence
 length so HF's cache bookkeeping (``get_seq_length`` etc.) stays correct.
 
 The model's own forward path calls ``self.layers[layer_idx].update(...)``
@@ -71,7 +71,7 @@ the caller is the patched fused forward, which calls
 the side ``CompressedKVCache`` — but ``ElizaHybridCache`` IS that side
 cache (we use composition by inheriting the ``store_compressed_*``,
 ``get_compressed_*``, ``decode_values`` methods directly). The
-``DynamicLayer`` placeholder in ``self.layers[layer_idx]`` collects the
+``DynamicLayer`` sequence tracker in ``self.layers[layer_idx]`` collects the
 single-coord ``dummy_keys`` so that ``get_seq_length`` returns the right
 number.
 
@@ -227,7 +227,7 @@ class ElizaHybridCache(Cache):
     Full-attention slots get a backend-specific layer:
 
       * ``bf16``             -> ``DynamicLayer`` (vanilla)
-      * ``fused_turboquant`` -> ``DynamicLayer`` placeholder; the real
+      * ``fused_turboquant`` -> ``DynamicLayer`` sequence tracker; the real
                                 compressed K/V live on this object's
                                 ``_compressed_keys`` / ``_compressed_values``
                                 lists, indexed by layer_idx, and the patched
@@ -235,7 +235,7 @@ class ElizaHybridCache(Cache):
                                 ``store_compressed_key`` / ``..._value`` /
                                 ``get_compressed_*`` / ``decode_values``
                                 methods directly.
-      * ``qjl_full``         -> ``DynamicLayer`` placeholder; QJL+TurboQuant
+      * ``qjl_full``         -> ``DynamicLayer`` sequence tracker; QJL+TurboQuant
                                 state lives on side dicts. Requires the QJL
                                 CUDA extension to be built; falls back loudly.
 
@@ -694,7 +694,7 @@ class ElizaHybridCache(Cache):
             if v_compressed:
                 cache.store_compressed_value(value_states, layer_idx)
 
-            # Tiny update for the placeholder DynamicLayer so HF's seq-length
+            # Tiny update for the sequence-tracker DynamicLayer so HF's seq-length
             # bookkeeping stays consistent.
             dummy_keys = key_states[:, :, :, :1]
             if v_compressed:

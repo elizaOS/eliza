@@ -19,7 +19,7 @@
 extern "C" {
 #endif
 
-/* ── NMS + decoupled-head decode (real, Phase 1) ───────────────────── */
+/* ── NMS + decoupled-head decode (real, covered before forward) ────── */
 
 size_t yolo_nms_inplace(yolo_detection *dets,
                         size_t n,

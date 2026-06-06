@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { ShieldCheck } from "lucide-react";
 import { useState } from "react";
-import { TranslationProvider } from "../../state/TranslationContext";
+import { TranslationProvider } from "../../state/TranslationProvider";
 import { PolicyToggle } from "./PolicyToggle";
 
 const meta = {

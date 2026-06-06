@@ -109,7 +109,7 @@ def resolve_install_dir(explicit: Path | None = None) -> Path:
         )
         if version_dirs:
             return version_dirs[0]
-    return _AGENTS_ROOT / "0.21.0"
+    return _AGENTS_ROOT / "0.22.0"
 
 
 def _default_api_key(provider: str) -> str:

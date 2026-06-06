@@ -2,7 +2,7 @@
 
 Verifies the bash watcher's contract by:
   1. Constructing an isolated ELIZA_STATE_DIR.
-  2. Pointing the watcher at a stub `train_vast.sh` (which always succeeds)
+  2. Pointing the watcher at a fixture `train_vast.sh` (which always succeeds)
      and pre-seeding ``.vast_instance_id`` so the watcher reads it.
   3. Replacing the python ``scripts.lib.vast_budget enforce`` invocation
      with one that returns the hard-cap exit code (11).
@@ -28,7 +28,7 @@ import pytest
 
 @pytest.fixture
 def fake_repo(tmp_path: Path) -> Path:
-    """Lay out a minimal ROOT with .vast_instance_id + stub train_vast.sh.
+    """Lay out a minimal ROOT with .vast_instance_id + fixture train_vast.sh.
 
     The watcher reads ``$ROOT/scripts/train_vast.sh`` and
     ``$ROOT/.vast_instance_id``. We point it at a self-contained fake.
@@ -38,7 +38,7 @@ def fake_repo(tmp_path: Path) -> Path:
     scripts.mkdir(parents=True)
     (root / ".vast_instance_id").write_text("99999\n")
 
-    # Stub train_vast.sh:
+    # Fixture train_vast.sh:
     #   - status   => succeeds (so watcher reaches the budget pass)
     #   - teardown => writes a sentinel file the test can assert
     fake_train_vast = scripts / "train_vast.sh"

@@ -63,25 +63,3 @@ export interface SidebarBodyProps
 
 export interface SidebarHeaderStackProps
   extends React.HTMLAttributes<HTMLDivElement> {}
-
-export interface SidebarFilterBarOption {
-  value: string;
-  label: React.ReactNode;
-}
-
-export interface SidebarFilterBarProps
-  extends React.HTMLAttributes<HTMLDivElement> {
-  selectValue: string;
-  selectOptions: SidebarFilterBarOption[];
-  onSelectValueChange: (value: string) => void;
-  selectAriaLabel: string;
-  selectTestId?: string;
-  sortDirection: "asc" | "desc";
-  onSortDirectionToggle: () => void;
-  sortDirectionButtonTestId?: string;
-  sortAscendingLabel?: string;
-  sortDescendingLabel?: string;
-  refreshButtonTestId?: string;
-  refreshLabel?: string;
-  onRefresh: () => void;
-}

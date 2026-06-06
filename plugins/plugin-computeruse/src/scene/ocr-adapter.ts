@@ -11,7 +11,7 @@
  *   2. The on-device iOS Apple-Vision provider — `createIosVisionOcrProvider`
  *      in `mobile/ocr-provider.ts` (WS9). Plugged into the same OcrProvider
  *      registry.
- *   3. A no-op provider that returns `[]` — used in unit tests and when no
+ *   3. An empty provider that returns `[]` — used in unit tests and when no
  *      provider has been registered.
  *
  * **Integration choice (justified):**

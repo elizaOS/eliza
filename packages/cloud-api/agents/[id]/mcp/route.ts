@@ -5,7 +5,7 @@
  * POST → JSON-RPC dispatch (`initialize`, `tools/list`, `tools/call`, `ping`).
  *
  * The `chat` tool reserves credits, calls the model via the configured
- * provider (OpenRouter), then reconciles. Returns plain JSON, not SSE.
+ * provider (BitRouter), then reconciles. Returns plain JSON, not SSE.
  */
 
 import { gateway } from "@ai-sdk/gateway";

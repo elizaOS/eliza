@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 
-import {
-  getNotificationEmailFromEnv,
-  getTrimmedEnv,
-} from "../../api/src/env";
+import { getNotificationEmailFromEnv, getTrimmedEnv } from "../../api/src/env";
 
 const originalEnv = { ...process.env };
 

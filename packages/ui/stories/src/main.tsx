@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "@ui-src/styles.ts";
 import { TooltipProvider } from "@ui-src/components/ui/tooltip.tsx";
-import { TranslationProvider } from "@ui-src/state/TranslationContext.tsx";
+import { TranslationProvider } from "@ui-src/state/TranslationProvider.tsx";
 import { App } from "./App.tsx";
 import "./stories.css";
 

@@ -3,7 +3,7 @@
  *
  * Tabs are stored in localStorage under "elizaos.desktop.pinned-tabs" so they
  * survive app restarts. Only the Electrobun desktop shell uses this hook; on
- * web and mobile it is a no-op (empty list, inert methods).
+ * web and mobile it is inactive (empty list, inert methods).
  */
 
 import { useCallback, useEffect, useState } from "react";

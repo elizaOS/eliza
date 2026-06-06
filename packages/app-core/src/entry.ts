@@ -22,7 +22,7 @@ if (process.argv.includes("--no-color")) {
 // promote it to ELIZAOS_CLOUD_API_KEY so the cloud plugin's env-fallback chain
 // (plugins/plugin-elizacloud/src/cloud/cloud-api-key.ts) authenticates without
 // the browser SIWE handshake. Production never sets ELIZA_DEV_*, so this is
-// a no-op there. See scripts/cloud-siwe-login.mjs to mint a fresh key.
+// inactive there. See scripts/cloud-siwe-login.mjs to mint a fresh key.
 if (
   process.env.NODE_ENV !== "production" &&
   process.env.ELIZA_DEV_CLOUD_API_KEY &&

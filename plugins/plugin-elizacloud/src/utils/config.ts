@@ -2,7 +2,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/core";
 
-export const DEFAULT_ELIZA_CLOUD_LARGE_MODEL = "deepseek/deepseek-v4-pro";
+export const DEFAULT_ELIZA_CLOUD_LARGE_MODEL = "zai-glm-4.7";
 
 function getEnvValue(key: string): string | undefined {
   if (typeof process === "undefined") {

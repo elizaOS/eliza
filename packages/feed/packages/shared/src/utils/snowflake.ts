@@ -75,7 +75,11 @@ class SnowflakeGenerator {
     }
 
     this.generating = true;
-    const request = this.queue.shift()!;
+    const request = this.queue.shift();
+    if (!request) {
+      this.generating = false;
+      return;
+    }
 
     const id = this.generateSync();
     request.resolve(id);

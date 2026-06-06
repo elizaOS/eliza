@@ -21,7 +21,7 @@
 // renders a chip per minimized window. The view gates its own render on
 // `win.minimized` (returns null while minimized) and the dock click restores
 // it. Used OUTSIDE a WindowManagerProvider the minimize surface degrades to a
-// no-op (minimized stays false, minimize/restore do nothing) so a standalone
+// disabled state (minimized stays false, minimize/restore do nothing) so a standalone
 // view never breaks. The `meta` arg is OPTIONAL and additive — the existing
 // two-arg call sites keep their exact behaviour with minimize simply unwired.
 //
@@ -44,7 +44,7 @@ import {
   useState,
 } from "react";
 import { readPref, writePref } from "../util/storage";
-import { useWindowManager, type WindowMeta } from "../WindowManager";
+import { useWindowManager, type WindowMeta } from "../WindowManager.context";
 
 export type ResizeDir = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 

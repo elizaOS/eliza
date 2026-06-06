@@ -1,6 +1,6 @@
 import { useId, useMemo, useState } from "react";
 import type { ConnectorAccountPrivacy } from "../../api/client-agent";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import {

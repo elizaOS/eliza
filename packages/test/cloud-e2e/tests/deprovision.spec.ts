@@ -2,7 +2,6 @@ import {
   createCloudAgent,
   pollSandboxStatus,
   startAgentProvisioning,
-  tickProvisioning,
 } from "../src/helpers/provisioning";
 import { expect, test } from "../src/helpers/test-fixtures";
 
@@ -11,11 +10,17 @@ test.describe("deprovision", () => {
     stack,
     seededUser,
   }) => {
-    // Provision first so we have something to delete.
+    const processJobs = async () => {
+      const result = await stack.mocks.controlPlane.processDbBackedJobs(
+        stack.urls.pglite,
+      );
+      expect(result.failed, JSON.stringify(result.errors)).toBe(0);
+    };
     const sandboxId = await createCloudAgent(
       { apiUrl: stack.urls.api },
       seededUser.apiKey,
       "e2e-deprovision",
+      { alwaysOn: true, autoProvision: false },
     );
     await startAgentProvisioning(
       { apiUrl: stack.urls.api },
@@ -30,13 +35,10 @@ test.describe("deprovision", () => {
       "running",
       {
         timeoutMs: 30_000,
-        onTick: async () => {
-          await tickProvisioning({ apiUrl: stack.urls.api });
-        },
+        onTick: processJobs,
       },
     );
 
-    // Issue DELETE — async flow from PR #7746 should enqueue an agent_delete job
     const delRes = await fetch(
       `${stack.urls.api}/api/v1/eliza/agents/${sandboxId}`,
       {
@@ -46,18 +48,12 @@ test.describe("deprovision", () => {
     );
     expect([200, 202, 204]).toContain(delRes.status);
 
-    // DELETE best-effort wakes the worker immediately, but the scheduled cron
-    // endpoint is the production fallback. Drive that fallback explicitly so
-    // mock-stack E2E proves the queued delete job can be processed end to end.
-    const deleteTick = await tickProvisioning(
-      { apiUrl: stack.urls.api },
-      { timeoutMs: 60_000 },
-    );
-    expect(deleteTick.status).toBe(200);
+    await processJobs();
 
     await expect
       .poll(
         async () => {
+          await processJobs();
           const res = await fetch(
             `${stack.urls.api}/api/v1/eliza/agents/${sandboxId}`,
             { headers: { Authorization: `Bearer ${seededUser.apiKey}` } },

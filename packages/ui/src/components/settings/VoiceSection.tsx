@@ -5,7 +5,7 @@
  *
  * 1. Device tier banner (R10 §7, banner pulled in from VoiceTierBanner).
  * 2. Continuous chat mode (off / vad-gated / always-on).
- * 3. Wake word — placeholder until WakeWordSection is decoupled from
+ * 3. Wake word — inline controls until WakeWordSection is decoupled from
  *    VoiceConfigView.
  * 4. Local-vs-Cloud strategy (auto / force-local / force-cloud).
  * 5. Models — slot for I5's ModelUpdatesPanel (renders the slot prop or
@@ -23,14 +23,11 @@ import * as React from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { VoiceProfilesClient } from "../../api/client-voice-profiles";
 import { cn } from "../../lib/utils";
-import { useTranslation } from "../../state/TranslationContext";
-import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../../voice/local-asr-capture";
-import {
-  DEFAULT_VOICE_CONTINUOUS_MODE,
-  type VoiceContinuousMode,
-} from "../../voice/voice-chat-types";
+import { useTranslation } from "../../state/TranslationContext.hooks";
+import type { VoiceContinuousMode } from "../../voice/voice-chat-types";
 import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
 import { VoiceProfileSection } from "./VoiceProfileSection";
+import { DEFAULT_VAD_AUTO_STOP_PREFS } from "./VoiceSection.helpers";
 import { type VoiceDeviceTier, VoiceTierBanner } from "./VoiceTierBanner";
 
 export type VoiceLocalCloudStrategy = "auto" | "force-local" | "force-cloud";
@@ -47,11 +44,6 @@ export interface VadAutoStopPrefs {
   /** RMS amplitude (0–1) above which audio is treated as speech. */
   speechRmsThreshold: number;
 }
-
-export const DEFAULT_VAD_AUTO_STOP_PREFS: VadAutoStopPrefs = {
-  silenceMs: DEFAULT_LOCAL_ASR_AUTO_STOP.silenceMs,
-  speechRmsThreshold: DEFAULT_LOCAL_ASR_AUTO_STOP.speechRmsThreshold,
-};
 
 /** Bounds for the surfaced sliders, kept well inside sane capture ranges. */
 const VAD_SILENCE_MIN_MS = 300;
@@ -73,14 +65,6 @@ export interface VoiceSectionPrefs {
   vadAutoStop?: VadAutoStopPrefs;
 }
 
-export const DEFAULT_VOICE_SECTION_PREFS: VoiceSectionPrefs = {
-  continuous: DEFAULT_VOICE_CONTINUOUS_MODE,
-  strategy: "auto",
-  cloudFirstLineCache: false,
-  autoLearnVoices: true,
-  vadAutoStop: DEFAULT_VAD_AUTO_STOP_PREFS,
-};
-
 export interface VoiceSectionProps {
   /** Hardware tier from I9 (null falls back to "GOOD"). */
   tier: VoiceDeviceTier | null;
@@ -94,8 +78,7 @@ export interface VoiceSectionProps {
   profilesClient: VoiceProfilesClient;
   /**
    * Slot for I5's ModelUpdatesPanel — caller mounts it when ready, otherwise
-   * we render a "Models will appear here once they finish downloading"
-   * placeholder.
+   * we render an empty-state banner until model downloads are available.
    */
   modelsPanel?: React.ReactNode;
   /** Whether the user has at least one wake-word configured. */

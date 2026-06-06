@@ -31,7 +31,6 @@ import {
   Search,
   Star,
   Upload,
-  UserRound,
 } from "lucide-react";
 import {
   type ChangeEvent,
@@ -44,6 +43,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { loadContactsState, matchesQuery } from "./ContactsAppView.helpers";
 
 type Mode = "list" | "detail" | "new";
 
@@ -80,48 +80,6 @@ function dedupePreservingOrder(values: string[]): string[] {
     result.push(value);
   }
   return result;
-}
-
-function matchesQuery(contact: ContactSummary, q: string): boolean {
-  if (q.length === 0) return true;
-  const needle = q.toLowerCase();
-  if (contact.displayName.toLowerCase().includes(needle)) return true;
-  if (
-    contact.phoneNumbers.some((p: string) => p.toLowerCase().includes(needle))
-  ) {
-    return true;
-  }
-  if (
-    contact.emailAddresses.some((e: string) => e.toLowerCase().includes(needle))
-  ) {
-    return true;
-  }
-  return false;
-}
-
-function normalizeContactsLimit(value: unknown, fallback = 200): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  return Math.min(500, Math.max(1, Math.trunc(value)));
-}
-
-async function loadContactsState(options?: { query?: string; limit?: number }) {
-  const query = options?.query?.trim() ?? "";
-  const limit =
-    typeof options?.limit === "number"
-      ? normalizeContactsLimit(options.limit)
-      : undefined;
-  const result = await Contacts.listContacts({
-    ...(query ? { query } : {}),
-    ...(typeof limit === "number" ? { limit } : {}),
-  });
-  const contacts = query
-    ? result.contacts.filter((contact) => matchesQuery(contact, query))
-    : result.contacts;
-  return {
-    contacts,
-    query,
-    count: contacts.length,
-  };
 }
 
 export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
@@ -439,12 +397,21 @@ function ContactList({
   if (empty) {
     return (
       <div className="mx-auto flex max-w-sm flex-col items-center gap-3 px-4 py-16 text-center">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-accent/25 bg-accent/12">
-          <UserRound className="h-7 w-7 text-accent" />
-        </div>
-        <div className="text-sm font-medium text-txt">
+        <span
+          className="flex h-20 w-20 items-center justify-center rounded-3xl"
+          style={{ background: "var(--accent-subtle)" }}
+        >
+          <AddressBookMotif />
+        </span>
+        <div className="mt-2 text-base font-semibold text-txt">
           {t("contacts.empty.title", { defaultValue: "No contacts yet" })}
         </div>
+        <p className="max-w-xs text-sm text-muted">
+          {t("contacts.empty.body", {
+            defaultValue:
+              "Import a vCard or add someone to start your address book.",
+          })}
+        </p>
         <ImportVCardButton onImport={onImport} t={t} />
       </div>
     );
@@ -472,6 +439,66 @@ function ContactList({
         />
       ))}
     </ul>
+  );
+}
+
+function AddressBookMotif() {
+  return (
+    <svg width="88" height="88" viewBox="0 0 88 88" fill="none" role="img">
+      <title>Address book</title>
+      <rect
+        x="20"
+        y="14"
+        width="48"
+        height="60"
+        rx="10"
+        fill="var(--surface)"
+        stroke="var(--accent)"
+        strokeWidth="2"
+      />
+      <line
+        x1="20"
+        y1="30"
+        x2="14"
+        y2="30"
+        stroke="var(--accent)"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+      <line
+        x1="20"
+        y1="44"
+        x2="14"
+        y2="44"
+        stroke="var(--accent)"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+      <line
+        x1="20"
+        y1="58"
+        x2="14"
+        y2="58"
+        stroke="var(--accent)"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+      <circle
+        cx="44"
+        cy="38"
+        r="8"
+        fill="var(--accent-subtle)"
+        stroke="var(--accent)"
+        strokeWidth="2"
+      />
+      <path
+        d="M32 60 C32 51 56 51 56 60"
+        fill="none"
+        stroke="var(--accent)"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 
@@ -1086,13 +1113,7 @@ export function ContactsTuiView() {
         {loading ? "loading" : `${contacts.length} contacts`} | {lastAction}
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(240px, 0.9fr) minmax(300px, 1.1fr)",
-          gap: 16,
-        }}
-      >
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
         <section
           aria-label="Contacts list"
           style={{
@@ -1162,7 +1183,7 @@ export function ContactsTuiView() {
           {!loading && !error && contacts.length === 0 && (
             <div style={{ color: "#64748b" }}>no contacts</div>
           )}
-          {contacts.map((contact, index) => (
+          {contacts.slice(0, 32).map((contact, index) => (
             <ContactsTuiListItem
               key={contact.id}
               contact={contact}
@@ -1189,7 +1210,7 @@ export function ContactsTuiView() {
             {selected ? selected.displayName || "Unnamed" : "create contact"}
           </strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: list | create | import-vcard
+            {contacts.length} contacts / {query ? "filtered" : "all"}
           </div>
 
           {selected && (
@@ -1360,68 +1381,4 @@ export function ContactsTuiView() {
       </div>
     </div>
   );
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-list-contacts") {
-    const state = await loadContactsState({
-      query: typeof params?.query === "string" ? params.query : undefined,
-      limit: typeof params?.limit === "number" ? params.limit : undefined,
-    });
-    return {
-      viewType: "tui",
-      query: state.query,
-      count: state.count,
-      contacts: state.contacts.map((contact) => ({
-        id: contact.id,
-        lookupKey: contact.lookupKey,
-        displayName: contact.displayName,
-        phoneNumbers: contact.phoneNumbers,
-        emailAddresses: contact.emailAddresses,
-        starred: contact.starred,
-      })),
-    };
-  }
-
-  if (capability === "terminal-create-contact") {
-    const displayName =
-      typeof params?.displayName === "string" ? params.displayName.trim() : "";
-    if (!displayName) throw new Error("displayName is required");
-    const payload: CreateContactOptions = { displayName };
-    const phoneNumber =
-      typeof params?.phoneNumber === "string" ? params.phoneNumber.trim() : "";
-    const emailAddress =
-      typeof params?.emailAddress === "string"
-        ? params.emailAddress.trim()
-        : "";
-    if (phoneNumber) payload.phoneNumber = phoneNumber;
-    if (emailAddress) payload.emailAddress = emailAddress;
-    const result = await Contacts.createContact(payload);
-    return { created: true, id: result.id, viewType: "tui" };
-  }
-
-  if (capability === "terminal-import-vcard") {
-    const vcardText =
-      typeof params?.vcardText === "string" ? params.vcardText.trim() : "";
-    if (!vcardText) throw new Error("vcardText is required");
-    const result = await Contacts.importVCard({ vcardText });
-    return {
-      imported: result.imported.length,
-      contacts: result.imported.map((contact) => ({
-        id: contact.id,
-        lookupKey: contact.lookupKey,
-        displayName: contact.displayName,
-        phoneNumbers: contact.phoneNumbers,
-        emailAddresses: contact.emailAddresses,
-        starred: contact.starred,
-        sourceName: contact.sourceName,
-      })),
-      viewType: "tui",
-    };
-  }
-
-  throw new Error(`Unsupported capability "${capability}"`);
 }

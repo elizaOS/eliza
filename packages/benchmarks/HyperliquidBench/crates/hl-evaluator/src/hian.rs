@@ -274,11 +274,11 @@ impl std::fmt::Display for MatchKind {
 
 #[derive(Debug, Deserialize)]
 struct GroundTruth {
-    #[serde(default)]
+    #[serde(default, alias = "caseId")]
     case_id: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "withinMs")]
     within_ms: Option<i64>,
-    #[serde(default)]
+    #[serde(default, alias = "windowMs")]
     window_ms: Option<i64>,
     steps: Vec<ExpectedStep>,
 }
@@ -325,6 +325,7 @@ enum StepKind {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 struct ExpectedTransfer {
     to_perp: bool,
     #[serde(default)]
@@ -332,6 +333,7 @@ struct ExpectedTransfer {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 struct ExpectedPerpOrder {
     coin: Option<String>,
     side: Option<String>,
@@ -738,13 +740,9 @@ fn extract_transfer_event(action: &ActionLogRecord) -> Option<TransferEvent> {
     let observations = extract_observed(action);
     for obs in observations {
         let channel = obs.get("channel").and_then(Value::as_str).unwrap_or("");
-        if channel == "accountClassTransfer" {
+        if channel == "accountClassTransfer" || channel == "userNonFundingLedgerUpdates" {
             let to_perp = obs.get("toPerp").and_then(Value::as_bool)?;
-            let usdc = obs.get("usdc").and_then(Value::as_f64).or_else(|| {
-                obs.get("usdc")
-                    .and_then(Value::as_str)
-                    .and_then(|s| s.parse::<f64>().ok())
-            });
+            let usdc = read_usdc_amount(&obs);
             let time_ms = obs.get("time").and_then(Value::as_i64);
             return Some(TransferEvent {
                 to_perp,
@@ -758,17 +756,14 @@ fn extract_transfer_event(action: &ActionLogRecord) -> Option<TransferEvent> {
 
 fn find_transfer_in_ws(action: &ActionLogRecord, ws_events: &[WsEvent]) -> Option<TransferEvent> {
     for event in ws_events {
-        if event.channel.as_deref() != Some("accountClassTransfer") {
+        if !matches!(
+            event.channel.as_deref(),
+            Some("accountClassTransfer" | "userNonFundingLedgerUpdates")
+        ) {
             continue;
         }
         let to_perp = event.value.get("toPerp").and_then(Value::as_bool)?;
-        let usdc = event.value.get("usdc").and_then(Value::as_f64).or_else(|| {
-            event
-                .value
-                .get("usdc")
-                .and_then(Value::as_str)
-                .and_then(|s| s.parse::<f64>().ok())
-        });
+        let usdc = read_usdc_amount(&event.value);
         let time_ms = event.value.get("time").and_then(Value::as_i64);
         if time_ms
             .map(|t| (t - action.submit_ts_ms).abs() <= DEFAULT_WITHIN_MS)
@@ -790,6 +785,26 @@ fn find_transfer_in_ws(action: &ActionLogRecord, ws_events: &[WsEvent]) -> Optio
         }
     }
     None
+}
+
+fn read_usdc_amount(value: &Value) -> Option<f64> {
+    value
+        .get("usdc")
+        .and_then(Value::as_f64)
+        .or_else(|| {
+            value
+                .get("usdc")
+                .and_then(Value::as_str)
+                .and_then(|s| s.parse::<f64>().ok())
+        })
+        .or_else(|| value.get("change").and_then(Value::as_f64).map(f64::abs))
+        .or_else(|| {
+            value
+                .get("change")
+                .and_then(Value::as_str)
+                .and_then(|s| s.parse::<f64>().ok())
+                .map(f64::abs)
+        })
 }
 
 fn extract_observed(action: &ActionLogRecord) -> Vec<Value> {

@@ -43,3 +43,25 @@ export function isDynamicViewLoadingAllowed(): boolean {
   const platform = getFrontendPlatform();
   return platform !== "ios" && platform !== "android";
 }
+
+/** Presentation modality of the surface the dashboard renders inside. */
+export type ViewModality = "gui" | "tui" | "xr";
+
+/**
+ * Detect the active view modality of the current surface.
+ *
+ * The dashboard shell is a GUI surface on every device platform (web, desktop,
+ * iOS, Android). The WebXR view host (`@elizaos/plugin-facewear`) sets the
+ * `window.__elizaXRContext` global when a view runs inside a headset, so its
+ * presence means the surface is XR. The terminal renderer is a separate,
+ * non-DOM host, so the React shell never reports `tui`.
+ */
+export function getActiveViewModality(): ViewModality {
+  if (
+    typeof window !== "undefined" &&
+    (window as unknown as Record<string, unknown>).__elizaXRContext
+  ) {
+    return "xr";
+  }
+  return "gui";
+}

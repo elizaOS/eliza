@@ -226,9 +226,8 @@ export interface CreateCreditsCheckoutResponse extends Record<string, unknown> {
 
 export interface AppCreditsBalanceResponse extends Record<string, unknown> {
   success: boolean;
+  /** The user's org credit balance — the single ledger app purchases fund and app inference debits. */
   balance?: number;
-  totalPurchased?: number;
-  totalSpent?: number;
   isLow?: boolean;
   error?: string;
 }
@@ -568,7 +567,8 @@ export type ContainerStatus =
   | "running"
   | "stopped"
   | "failed"
-  | "suspended";
+  | "deleting"
+  | "deleted";
 
 export type ContainerBillingStatus =
   | "active"
@@ -578,30 +578,41 @@ export type ContainerBillingStatus =
   | "archived";
 export type ContainerArchitecture = "arm64" | "x86_64";
 
+/**
+ * Public, redacted container shape returned by `/api/v1/containers`.
+ *
+ * Must stay in EXACT field agreement with the API's `toContainerDto`
+ * (`packages/cloud-api/v1/containers/route.ts`). The API deliberately omits
+ * org-internal and secret columns — `organization_id`, `user_id`,
+ * `environment_vars`, `deployment_log`, `metadata`, `api_key_id`, `node_id`,
+ * `volume_path` — so they are NOT present here. Timestamps are ISO strings.
+ *
+ * Fields are nullable where the deploy response (a sparse provisioning summary)
+ * cannot populate them; the list/get reads return the full row.
+ */
 export interface CloudContainer {
   id: string;
   name: string;
   project_name: string;
   description: string | null;
-  organization_id: string;
-  user_id: string;
+  load_balancer_url: string | null;
+  public_hostname: string | null;
   status: ContainerStatus;
   image_tag: string | null;
-  port: number;
-  desired_count: number;
-  cpu: number;
-  memory: number;
-  architecture: ContainerArchitecture;
-  environment_vars: Record<string, string>;
-  health_check_path: string;
-  load_balancer_url: string | null;
-  billing_status: ContainerBillingStatus;
-  total_billed: string;
+  desired_count: number | null;
+  cpu: number | null;
+  memory: number | null;
+  port: number | null;
+  health_check_path: string | null;
   last_deployed_at: string | null;
   last_health_check: string | null;
-  deployment_log: string | null;
   error_message: string | null;
-  metadata: Record<string, unknown>;
+  billing_status: ContainerBillingStatus | null;
+  last_billed_at: string | null;
+  next_billing_at: string | null;
+  shutdown_warning_sent_at: string | null;
+  scheduled_shutdown_at: string | null;
+  total_billed: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -675,16 +686,28 @@ export interface CreateAgentRequest {
   characterId?: string;
   agentConfig?: Record<string, unknown>;
   environmentVars?: Record<string, string>;
+  dockerImage?: string;
+  alwaysOn?: boolean;
+  statefulRuntime?: boolean;
+  modelTooLargeForShared?: boolean;
+  autoProvision?: boolean;
 }
 
 export interface CreateAgentResponse {
   success: boolean;
-  data: {
+  data?: {
     id: string;
+    agentId?: string;
     agentName: string | null;
     status: import("./types.cloud-api.js").AgentSandboxStatus;
+    executionTier?: string;
+    jobId?: string;
     createdAt?: string;
   };
+  id?: string;
+  agentId?: string;
+  jobId?: string;
+  executionTier?: string;
 }
 
 export interface AgentLifecycleResponse extends Record<string, unknown> {

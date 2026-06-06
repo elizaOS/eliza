@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-agent-orchestrator",
-  "version": "2.0.3-beta.1",
+  "version": "2.0.3-beta.6",
   "description": "Canonical ElizaOS plugin for spawning and orchestrating coding agents via native Agent Client Protocol transports — combined with workspace lifecycle, GitHub integration, task share, runtime-driven sub-agent routing, and supporting services.",
   "type": "module",
   "main": "dist/node/index.node.js",
@@ -74,7 +74,9 @@
     "@elizaos/plugin-task-coordinator": "workspace:*",
     "@octokit/rest": "^22.0.0",
     "coding-agent-adapters": "0.16.3",
-    "drizzle-orm": "^0.45.1"
+    "drizzle-orm": "^0.45.1",
+    "effect": "^3.21.1",
+    "smithers-orchestrator": "0.22.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

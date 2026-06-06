@@ -233,8 +233,12 @@ export class TokenSimulationService {
 	private createRugTrajectory(
 		scenario: TokenScenario,
 	): (step: number) => number {
+		const { rugTiming } = scenario;
+		if (rugTiming === undefined) {
+			throw new Error("Rug scenario requires rugTiming");
+		}
 		return (step: number) => {
-			if (step < scenario.rugTiming!) {
+			if (step < rugTiming) {
 				// Price increases before rug to build trust
 				return scenario.initialPrice * 1.5 ** step;
 			} else {
@@ -320,19 +324,22 @@ export class TokenSimulationService {
 	private createPumpDumpTrajectory(
 		scenario: TokenScenario,
 	): (step: number) => number {
+		const { pumpTiming, dumpTiming } = scenario;
+		if (pumpTiming === undefined || dumpTiming === undefined) {
+			throw new Error("Pump/dump scenario requires pumpTiming and dumpTiming");
+		}
 		return (step: number) => {
-			if (step < scenario.pumpTiming!) {
+			if (step < pumpTiming) {
 				// Normal trading
 				return scenario.initialPrice * (1 + (Math.random() - 0.5) * 0.1);
-			} else if (step >= scenario.pumpTiming! && step < scenario.dumpTiming!) {
+			} else if (step >= pumpTiming && step < dumpTiming) {
 				// Pump phase
-				const pumpStep = step - scenario.pumpTiming! + 1;
+				const pumpStep = step - pumpTiming + 1;
 				return scenario.initialPrice * 5 ** pumpStep;
 			} else {
 				// Dump phase - lose 95% of peak value
 				const peakPrice =
-					scenario.initialPrice *
-					5 ** (scenario.dumpTiming! - scenario.pumpTiming!);
+					scenario.initialPrice * 5 ** (dumpTiming - pumpTiming);
 				return peakPrice * 0.05;
 			}
 		};

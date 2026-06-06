@@ -1,7 +1,7 @@
-// Mirrored at cloud/packages/ui/src/runtime/render-telemetry.tsx. The cloud
-// workspace is a separate package tree and cannot depend on @elizaos/ui, so
-// the two files are kept in lock-step manually. When changing one, change the
-// other.
+// Canonical render-loop telemetry for every elizaOS front-end (app shell and
+// cloud dashboard alike). The RenderTelemetryProfiler component lives in
+// ../cloud-ui/runtime/render-telemetry.tsx so it stays Fast Refresh-compatible;
+// everything else (constants, types, sink, useRenderGuard) is here.
 
 import { useEffect, useRef } from "react";
 
@@ -14,9 +14,9 @@ export const RENDER_TELEMETRY_EVENT = "eliza:render-telemetry";
 // healthy components (e.g. FirstRunScreen during first-run). A real loop renders
 // continuously, far faster than any interaction sustains, so only a rate well
 // above one commit per frame is flagged.
-const INFO_THRESHOLD = 60;
-const ERROR_THRESHOLD = 120;
-const WINDOW_MS = 1000;
+export const INFO_THRESHOLD = 60;
+export const ERROR_THRESHOLD = 120;
+export const WINDOW_MS = 1000;
 
 type ImportMetaWithEnv = ImportMeta & {
   env?: Record<string, boolean | string | undefined>;
@@ -33,11 +33,42 @@ export interface RenderTelemetryEvent {
   windowMs: number;
   timestamps: number[];
   at: number;
+  sequence: number;
+  route?: string;
+  stack?: string;
+  previousStack?: string;
 }
 
-type RenderTelemetrySink = (event: RenderTelemetryEvent) => void;
+export interface ProfilerRenderTelemetryEvent {
+  source: "ReactProfiler";
+  name: string;
+  severity: RenderTelemetrySeverity;
+  phase: "mount" | "update" | "nested-update";
+  actualDuration: number;
+  baseDuration: number;
+  startTime: number;
+  commitTime: number;
+  updateCount: number;
+  threshold: number;
+  windowMs: number;
+  at: number;
+  sequence: number;
+  route?: string;
+}
+
+export type AnyRenderTelemetryEvent =
+  | RenderTelemetryEvent
+  | ProfilerRenderTelemetryEvent;
+
+type RenderTelemetrySink = (event: AnyRenderTelemetryEvent) => void;
 
 let renderTelemetrySink: RenderTelemetrySink | null = null;
+let renderTelemetrySequence = 0;
+
+/** Allocate the next monotonic telemetry sequence id (shared across emitters). */
+export function nextRenderTelemetrySequence(): number {
+  return ++renderTelemetrySequence;
+}
 
 type RenderTelemetryGlobal = typeof globalThis & {
   __ELIZA_RENDER_TELEMETRY_DISABLED__?: boolean;
@@ -57,7 +88,7 @@ function readEnvValue(key: string): boolean | string | undefined {
   return undefined;
 }
 
-function isRenderTelemetryEnabled(): boolean {
+export function isRenderTelemetryEnabled(): boolean {
   if (
     (globalThis as RenderTelemetryGlobal)
       .__ELIZA_RENDER_TELEMETRY_DISABLED__ === true
@@ -87,15 +118,37 @@ function isRenderTelemetryEnabled(): boolean {
   );
 }
 
-function formatRenderTelemetryMessage(event: RenderTelemetryEvent): string {
+export function currentRoute(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  return `${window.location.pathname}${window.location.search}`;
+}
+
+function captureRenderStack(): string | undefined {
+  try {
+    const stack = new Error().stack;
+    if (!stack) return undefined;
+    return stack
+      .split("\n")
+      .slice(2, 12)
+      .map((line) => line.trim())
+      .join("\n");
+  } catch {
+    return undefined;
+  }
+}
+
+function formatRenderTelemetryMessage(event: AnyRenderTelemetryEvent): string {
+  if (event.source === "ReactProfiler") {
+    return `[RenderTelemetry] "${event.name}" committed ${event.updateCount} profiler updates within ${event.windowMs}ms`;
+  }
   return `[RenderTelemetry] "${event.name}" rendered ${event.renderCount} times within ${event.windowMs}ms`;
 }
 
-function emitRenderTelemetry(event: RenderTelemetryEvent): void {
+export function emitRenderTelemetry(event: AnyRenderTelemetryEvent): void {
   renderTelemetrySink?.(event);
 
   const globalObject = globalThis as typeof globalThis & {
-    __ELIZA_RENDER_TELEMETRY__?: RenderTelemetryEvent[];
+    __ELIZA_RENDER_TELEMETRY__?: AnyRenderTelemetryEvent[];
   };
   if (Array.isArray(globalObject.__ELIZA_RENDER_TELEMETRY__)) {
     globalObject.__ELIZA_RENDER_TELEMETRY__.push(event);
@@ -135,8 +188,13 @@ export function setRenderTelemetrySink(sink: RenderTelemetrySink | null): void {
  */
 export function useRenderGuard(name: string): void {
   const timestamps = useRef<number[]>([]);
+  const renderStack = useRef<string | undefined>(undefined);
+  const previousRenderStack = useRef<string | undefined>(undefined);
   const currentName = useRef(name);
   const lastSeverity = useRef<RenderTelemetrySeverity | null>(null);
+
+  previousRenderStack.current = renderStack.current;
+  renderStack.current = captureRenderStack();
 
   useEffect(() => {
     if (!isRenderTelemetryEnabled()) return;
@@ -175,6 +233,10 @@ export function useRenderGuard(name: string): void {
       windowMs: WINDOW_MS,
       timestamps: ts.slice(),
       at: now,
+      sequence: nextRenderTelemetrySequence(),
+      route: currentRoute(),
+      stack: renderStack.current,
+      previousStack: previousRenderStack.current,
     });
   });
 }

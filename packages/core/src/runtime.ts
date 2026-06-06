@@ -3273,22 +3273,25 @@ export class AgentRuntime implements IAgentRuntime {
 		userId?: UUID;
 		metadata?: Record<string, JsonValue>;
 	}) {
-		await ensureConnectionStandalone(this.adapter, {
+		const result = await ensureConnectionStandalone(this.adapter, {
 			agentId: this.agentId,
 			worldId: params.worldId,
 			messageServerId: params.messageServerId,
 			...params,
 			source: params.source ?? "default",
 		});
-		this.logger.debug(
-			{
-				src: "agent",
-				agentId: this.agentId,
-				entityId: params.entityId,
-				channelId: params.roomId,
-			},
-			"Entity connected",
-		);
+		if (result.createdRoomParticipants > 0) {
+			this.logger.debug(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					entityId: params.entityId,
+					channelId: params.roomId,
+					createdRoomParticipants: result.createdRoomParticipants,
+				},
+				"Entity connected",
+			);
+		}
 	}
 
 	async ensureParticipantInRoom(entityId: UUID, roomId: UUID) {
@@ -3525,7 +3528,7 @@ export class AgentRuntime implements IAgentRuntime {
 				(a.position || 0) - (b.position || 0) || a.name.localeCompare(b.name),
 		);
 
-		// Optional trajectory logging service (no-op by default).
+		// Optional trajectory logging service; absent unless configured.
 		const trajLogger = (await this._ensureServiceStarted("trajectories")) as
 			| (Service & TrajectoryProviderAccessLogger)
 			| null;
@@ -6170,7 +6173,7 @@ ${section_end}`;
 			}
 			if (diagnosis.incompleteFields.length > 0) {
 				diagnosticParts.push(
-					`incomplete: ${diagnosis.incompleteFields.join(", ")}`,
+					`partial: ${diagnosis.incompleteFields.join(", ")}`,
 				);
 			}
 			extractor.signalError(

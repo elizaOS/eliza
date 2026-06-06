@@ -1,3 +1,4 @@
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import * as React from "react";
 
 import type { ImageAttachment } from "../../api/client-types-chat";
@@ -47,6 +48,13 @@ const GLASS_BAR =
 // Floating (un-scrimmed) text gets a soft shadow so it reads over bright views.
 const FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
 
+// Shared easing for the overlay's motion. Matches the repo's `motion/react`
+// convention (a tween with a custom cubic-bezier, no springs); centralising it
+// keeps the reveal/swap/glow timings coherent rather than scattering magic
+// numbers. Every motion below is transform/opacity only (GPU-friendly) and is
+// softened to a near-instant cross-fade under `prefers-reduced-motion`.
+const OVERLAY_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
+
 // Resting / typing view (not fullscreen) shows only the last couple of turns
 // with no scroll; fullscreen shows the whole history with scroll.
 const RESTING_THREAD_LINES = 2;
@@ -57,10 +65,18 @@ const SEND_GLYPH = "M18 10L25 18H21V27H15V18H11Z";
 const MIC_GLYPH =
   "M6 14H9V22H6Z M11.5 10H14.5V26H11.5Z M16.5 7H19.5V29H16.5Z M22 10H25V26H22Z M27 14H30V22H27Z";
 const PLUS_GLYPH = "M16 8H20V16H28V20H20V28H16V20H8V16H16Z";
+// Assistant voice output: a speaker (distinct from the mic waveform above) —
+// "on" = speaker + sound waves, "muted" = speaker + slash.
+const SPEAKER_GLYPH =
+  "M7 15H12L18 10V26L12 21H7Z M21 14Q25 18 21 22L23 22Q27 18 23 14Z M25 11Q31 18 25 25L27 25Q33 18 27 11Z";
+const SPEAKER_MUTED_GLYPH =
+  "M7 15H12L18 10V26L12 21H7Z M21 12.4L22.4 11L31 19.6L29.6 21Z";
 // Two diagonal expand arrows (top-right + bottom-left) — "open in full page".
 const MAXIMIZE_GLYPH =
   "M20 8H28V16H25V13.1L18.5 19.6L16.4 17.5L22.9 11H20Z " +
   "M16 28H8V20H11V22.9L17.5 16.4L19.6 18.5L13.1 25H16Z";
+// Trash can (lid bar + body) — DEV-only "clear conversation" debug control.
+const TRASH_GLYPH = "M14 7H22V10H27V13H9V10H14Z M11 15H25L23.5 30H12.5Z";
 
 function Glyph({ d }: { d: string }): React.JSX.Element {
   return (
@@ -120,24 +136,31 @@ function SoftButton({
 }
 
 /** Three quiet, borderless dots that breathe while the assistant is replying. */
-function TypingDots(): React.JSX.Element {
+function TypingDots({ reduce }: { reduce?: boolean }): React.JSX.Element {
   return (
-    <div
+    <motion.div
       className="flex gap-1.5"
       role="status"
       aria-label="assistant is responding"
+      // Fade in/out so the dots dissolve with the reply rather than popping.
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: reduce ? 0 : 0.45, ease: OVERLAY_EASE }}
     >
       {[0, 1, 2].map((i) => (
         <span
           key={i}
           className={cn(
-            "h-1.5 w-1.5 animate-pulse rounded-full bg-white/70",
+            // `motion-reduce:animate-none` stills the breathing pulse for users
+            // who ask for reduced motion (the CSS pulse isn't a motion/react anim).
+            "h-1.5 w-1.5 animate-pulse rounded-full bg-white/70 motion-reduce:animate-none",
             FLOAT_SHADOW,
           )}
           style={{ animationDelay: `${i * 180}ms` }}
         />
       ))}
-    </div>
+    </motion.div>
   );
 }
 
@@ -145,15 +168,24 @@ function TypingDots(): React.JSX.Element {
 function ThreadLine({
   message,
   floating,
+  reduce,
 }: {
   message: ShellMessage;
   floating?: boolean;
+  reduce?: boolean;
 }): React.JSX.Element {
   const isUser = message.role === "user";
   return (
-    <div
+    <motion.div
       data-testid="thread-line"
       data-role={message.role}
+      // New turns rise+fade in (and the old whisper line slides out as the
+      // 2-line resting window shifts). Transform/opacity only; reduced motion
+      // collapses it to a quick fade with no positional movement.
+      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 14 }}
+      animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0 }}
+      exit={reduce ? { opacity: 0 } : { opacity: 0, y: -8 }}
+      transition={{ duration: reduce ? 0.15 : 0.52, ease: OVERLAY_EASE }}
       className={cn(
         "flex w-full",
         floating ? "mb-1.5" : "mb-2.5",
@@ -183,7 +215,7 @@ function ThreadLine({
       >
         {message.content}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -202,7 +234,15 @@ export function ContinuousChatOverlay({
     startRecording,
     stopRecording,
     transcript,
+    speaking,
+    agentVoiceMuted,
+    toggleAgentVoiceMute,
+    clearConversation,
   } = controller;
+
+  // Honor the OS "reduce motion" setting: every overlay animation collapses to
+  // a near-instant cross-fade with no positional movement when this is true.
+  const reduce = useReducedMotion() ?? false;
 
   const [draft, setDraft] = React.useState("");
   const [expanded, setExpanded] = React.useState(false);
@@ -315,7 +355,7 @@ export function ContinuousChatOverlay({
 
     if (justOpened || isNewLine || atBottom) {
       endRef.current?.scrollIntoView(
-        isNewLine && !justOpened
+        isNewLine && !justOpened && !reduce
           ? { behavior: "smooth", block: "end" }
           : { block: "end" },
       );
@@ -516,21 +556,35 @@ export function ContinuousChatOverlay({
       data-testid="continuous-chat-overlay"
       data-fullscreen={fullscreen ? "true" : undefined}
     >
-      {/* Focus backdrop — in fullscreen, a solid theme-colored (dark/light)
-          screen sits in front of the live view and behind the chat, so only the
-          conversation shows. Always mounted; fades via opacity so the takeover
-          animates in/out. It captures pointer events only while fullscreen (so
-          the view is fully blocked); clicking it exits via the outside-click
-          handler. */}
-      <div
+      {/* Focus backdrop — a LIQUID-GLASS sheet that frosts the live view behind
+          the conversation rather than blacking it out: a heavy backdrop-blur +
+          saturation, a faint diagonal specular sheen, and a soft scrim for text
+          contrast. Always mounted (so its testid is stable); opacity + the blur
+          itself animate the takeover in/out. Captures pointer events only while
+          fullscreen; clicking it exits via the outside-click handler. */}
+      <motion.div
         aria-hidden="true"
         data-testid="chat-fullscreen-backdrop"
+        data-active={fullscreen ? "true" : "false"}
         className={cn(
-          "fixed inset-0 bg-bg transition-opacity duration-300",
-          fullscreen
-            ? "pointer-events-auto opacity-100"
-            : "pointer-events-none opacity-0",
+          "fixed inset-0",
+          // The glass tint: a diagonal sheen over a gentle scrim, so the frosted
+          // view keeps depth and the bubbles stay legible on light or dark views.
+          "bg-[linear-gradient(135deg,rgba(255,255,255,0.10)_0%,rgba(255,255,255,0.02)_36%,rgba(8,10,18,0.18)_100%)]",
+          fullscreen ? "pointer-events-auto" : "pointer-events-none",
         )}
+        initial={false}
+        animate={{
+          opacity: fullscreen ? 1 : 0,
+          // Animate only the unprefixed property — framer-motion's animation
+          // target type doesn't include `WebkitBackdropFilter`. Modern targets
+          // (Chromium/Electrobun, Safari 18+/iOS WebView) support unprefixed
+          // `backdrop-filter`, so the frosted-glass takeover still animates.
+          backdropFilter: fullscreen
+            ? "blur(28px) saturate(160%)"
+            : "blur(0px) saturate(100%)",
+        }}
+        transition={{ duration: reduce ? 0.12 : 0.72, ease: OVERLAY_EASE }}
       />
 
       {/* Cinematic bottom vignette — grounds the floating bar over bright views.
@@ -542,36 +596,70 @@ export function ContinuousChatOverlay({
         />
       ) : null}
 
-      {/* Fullscreen transcript — the full history, scrollable, filling the view. */}
-      {fullscreen && hasThread ? (
-        <div
-          id="continuous-thread"
-          ref={threadRef}
-          role="log"
-          aria-label="conversation history"
-          aria-live="polite"
-          // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable log region must be keyboard-focusable so it can be arrow/Page scrolled (WCAG 2.1.1)
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              e.preventDefault();
-              collapse();
+      {/* Fullscreen transcript — the full history on a liquid-glass panel that
+          BLOOMS open from the composer (spring: rise + scale + fade) and eases
+          shut. Its own AnimatePresence so the close animates too. */}
+      <AnimatePresence>
+        {fullscreen && hasThread ? (
+          <motion.div
+            key="fullscreen-thread"
+            id="continuous-thread"
+            data-variant="fullscreen"
+            ref={threadRef}
+            role="log"
+            aria-label="conversation history"
+            aria-live="polite"
+            // The scrollable log region is keyboard-focusable so it can be
+            // arrow/Page scrolled (WCAG 2.1.1).
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                collapse();
+              }
+            }}
+            initial={
+              reduce ? { opacity: 0 } : { opacity: 0, y: 36, scale: 0.92 }
             }
-          }}
-          className={cn(
-            "pointer-events-auto relative mb-3 min-h-0 w-full max-w-3xl flex-1 overflow-y-auto px-1 py-2",
-            // No visible scrollbar — the thread still scrolls, the chrome hides.
-            "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
-          )}
-        >
-          {visibleMessages.map((m) => (
-            <ThreadLine key={m.id} message={m} floating />
-          ))}
-          {responding ? <TypingDots /> : null}
-          <div ref={endRef} />
-        </div>
-      ) : null}
+            animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+            exit={
+              reduce
+                ? { opacity: 0 }
+                : {
+                    opacity: 0,
+                    y: 22,
+                    scale: 0.955,
+                    transition: { duration: 0.5, ease: OVERLAY_EASE },
+                  }
+            }
+            transition={
+              reduce
+                ? { duration: 0.15 }
+                : { type: "spring", stiffness: 130, damping: 26, mass: 1.1 }
+            }
+            className={cn(
+              "pointer-events-auto relative mb-3 min-h-0 w-full max-w-3xl flex-1 origin-bottom overflow-y-auto px-5 py-6",
+              // The liquid-glass panel: frosted translucency, a bright top edge,
+              // an inner glow and a deep drop shadow for floating-pane depth.
+              "rounded-[28px] border border-white/12 bg-white/[0.045] backdrop-blur-2xl",
+              "shadow-[inset_0_1px_0_rgba(255,255,255,0.22),inset_0_0_60px_-22px_rgba(255,255,255,0.14),0_44px_130px_-32px_rgba(0,0,0,0.6)]",
+              // No visible scrollbar — the thread still scrolls, the chrome hides.
+              "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
+            )}
+          >
+            <AnimatePresence initial={false}>
+              {visibleMessages.map((m) => (
+                <ThreadLine key={m.id} message={m} floating reduce={reduce} />
+              ))}
+            </AnimatePresence>
+            <AnimatePresence>
+              {responding ? <TypingDots reduce={reduce} /> : null}
+            </AnimatePresence>
+            <div ref={endRef} />
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       {/* Resting / typing bubbles — the last couple of turns, floating over the
           view with no scroll. Always mounted (when there is a thread) so the
@@ -587,6 +675,7 @@ export function ContinuousChatOverlay({
           aria-live="polite"
           aria-hidden={!peek}
           data-revealed={peek ? "true" : "false"}
+          data-variant="resting"
           onPointerEnter={handleHoverEnter}
           onPointerLeave={handleHoverLeave}
           className={cn(
@@ -596,10 +685,14 @@ export function ContinuousChatOverlay({
               : "pointer-events-none opacity-0",
           )}
         >
-          {visibleMessages.slice(-RESTING_THREAD_LINES).map((m) => (
-            <ThreadLine key={m.id} message={m} floating />
-          ))}
-          {responding ? <TypingDots /> : null}
+          <AnimatePresence initial={false}>
+            {visibleMessages.slice(-RESTING_THREAD_LINES).map((m) => (
+              <ThreadLine key={m.id} message={m} floating reduce={reduce} />
+            ))}
+          </AnimatePresence>
+          <AnimatePresence>
+            {responding ? <TypingDots reduce={reduce} /> : null}
+          </AnimatePresence>
         </div>
       ) : null}
 
@@ -667,15 +760,20 @@ export function ContinuousChatOverlay({
       >
         {/* Soft breath of light for live states — not a brand-colored alert ring.
             Always mounted; only opacity changes so it swells in/out over 700ms. */}
-        <div
+        <motion.div
           aria-hidden="true"
-          className={cn(
-            "pointer-events-none absolute -inset-3 rounded-full blur-2xl transition-opacity duration-700",
-            listening || responding ? "opacity-100" : "opacity-0",
-            listening
-              ? "bg-[rgba(255,180,120,0.32)]"
-              : "bg-[rgba(190,210,255,0.22)]",
-          )}
+          className="pointer-events-none absolute -inset-3 rounded-full blur-2xl"
+          // The glow both swells (opacity) and shifts hue — warm while listening,
+          // cool while replying. Animating backgroundColor tweens that hue smoothly
+          // instead of snapping. `initial={false}`: settle at rest, animate on change.
+          initial={false}
+          animate={{
+            opacity: listening || responding ? 1 : 0,
+            backgroundColor: listening
+              ? "rgba(255,180,120,0.32)"
+              : "rgba(190,210,255,0.22)",
+          }}
+          transition={{ duration: reduce ? 0 : 1.1, ease: "easeInOut" }}
         />
         {/* Pending image attachments + any read error, above the bar. */}
         {hasImages || imageError ? (
@@ -728,6 +826,15 @@ export function ContinuousChatOverlay({
         <div className={cn(GLASS_BAR, "relative")}>
           {/* No expand/collapse chevron: focusing the input opens the thread,
               and Escape / clicking outside collapses it. */}
+          {/* DEV-only: clear the conversation and start a fresh, greeted one. */}
+          {import.meta.env.DEV ? (
+            <SoftButton
+              glyph={TRASH_GLYPH}
+              label="clear conversation (debug)"
+              onClick={() => clearConversation?.()}
+              testId="chat-composer-clear-debug"
+            />
+          ) : null}
           <SoftButton
             glyph={MAXIMIZE_GLYPH}
             label={fullscreen ? "exit full screen" : "expand to full screen"}
@@ -767,35 +874,62 @@ export function ContinuousChatOverlay({
           <span id="cc-booting-hint" className="sr-only">
             connecting — you can’t send yet
           </span>
+          {/* Assistant-voice mute: shown only while the agent is speaking or
+              already muted, so the resting bar stays uncluttered. */}
+          {speaking || agentVoiceMuted ? (
+            <SoftButton
+              glyph={agentVoiceMuted ? SPEAKER_MUTED_GLYPH : SPEAKER_GLYPH}
+              label={
+                agentVoiceMuted
+                  ? "unmute assistant voice"
+                  : "mute assistant voice"
+              }
+              active={agentVoiceMuted}
+              onClick={toggleAgentVoiceMute}
+              testId="chat-voice-mute"
+            />
+          ) : null}
           {/* One trailing control, ChatGPT-style: mic when there's nothing to
               send (or while recording, to stop), swapping to send once the user
               starts typing or attaches an image. */}
-          {(hasDraft || hasImages) && !recording ? (
-            <SoftButton
-              glyph={SEND_GLYPH}
-              label={canSend ? "send" : "send (waiting for reply)"}
-              disabled={!canSend}
-              onClick={submit}
-              testId="chat-composer-action"
-            />
-          ) : (
-            <SoftButton
-              glyph={MIC_GLYPH}
-              label={
-                pushToTalkActive
-                  ? "release to send"
-                  : recording
-                    ? "stop listening"
-                    : "talk"
-              }
-              active={recording}
-              disabled={booting}
-              onClick={handleMicClick}
-              onPointerDown={beginPushToTalkPress}
-              onPointerUp={endPushToTalkPress}
-              onPointerCancel={endPushToTalkPress}
-            />
-          )}
+          {/* The trailing control morphs between mic and send. The `key` flip
+              remounts on each swap, so React removes the old control instantly
+              (no exit lag) and the new one pops in — a quick scale/fade that
+              reads as a morph without an AnimatePresence exit delay. */}
+          <motion.div
+            key={(hasDraft || hasImages) && !recording ? "send" : "mic"}
+            className="shrink-0"
+            initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.6 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: reduce ? 0 : 0.3, ease: OVERLAY_EASE }}
+          >
+            {(hasDraft || hasImages) && !recording ? (
+              <SoftButton
+                glyph={SEND_GLYPH}
+                label={canSend ? "send" : "send (waiting for reply)"}
+                disabled={!canSend}
+                onClick={submit}
+                testId="chat-composer-action"
+              />
+            ) : (
+              <SoftButton
+                glyph={MIC_GLYPH}
+                label={
+                  pushToTalkActive
+                    ? "release to send"
+                    : recording
+                      ? "stop listening"
+                      : "talk"
+                }
+                active={recording}
+                disabled={booting}
+                onClick={handleMicClick}
+                onPointerDown={beginPushToTalkPress}
+                onPointerUp={endPushToTalkPress}
+                onPointerCancel={endPushToTalkPress}
+              />
+            )}
+          </motion.div>
         </div>
       </div>
     </div>

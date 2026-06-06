@@ -5,7 +5,7 @@
  *
  * 1. ✅ Race condition in balance check - Uses DB-tracked hot wallet balance
  * 2. ✅ Cooldown not enforced - Checks last_redemption_at
- * 3. ✅ Pending check incomplete - Checks all in-flight statuses
+ * 3. ✅ Pending check hardened - Checks all in-flight statuses
  * 4. ✅ No signature verification - Requires EIP-712 signature
  * 5. ✅ Negative balance possible - Uses SQL CHECK constraint
  * 6. ✅ Timezone bypass - Uses UTC everywhere

@@ -85,7 +85,7 @@ datasets:
   # eliza_native_v1 shape, already sanitized by the runtime privacy filter.
   # The `eliza_native_passthrough` adapter reads them directly — Python
   # does NOT re-filter, the TS export already did. A missing or empty
-  # export dir is a no-op (warning + skip), not an error.
+  # export dir emits a warning and is skipped, not treated as an error.
   - slug: eliza-nightly-action-planner
     source:
       type: local_path

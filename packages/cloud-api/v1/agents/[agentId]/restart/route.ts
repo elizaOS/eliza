@@ -7,7 +7,7 @@
  * on the daemon side so concurrent restarts can't interleave.
  *
  * Replaces the Worker-side `shutdown()` + `provision()` sequence which
- * silently no-op'd the stop from CF Workers (no SSH) and could leave
+ * silently skipped the stop from CF Workers (no SSH) and could leave
  * the old container running alongside the new one.
  */
 

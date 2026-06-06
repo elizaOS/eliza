@@ -32,12 +32,10 @@ export interface TokenResolution {
 }
 
 export class HistoricalPriceService {
-	private runtime: IAgentRuntime;
 	private birdeyeClient: BirdeyeClient;
 	private dexscreenerClient: DexscreenerClient;
 
 	constructor(runtime: IAgentRuntime) {
-		this.runtime = runtime;
 		this.birdeyeClient = BirdeyeClient.createFromRuntime(runtime);
 		this.dexscreenerClient = DexscreenerClient.createFromRuntime(runtime);
 	}

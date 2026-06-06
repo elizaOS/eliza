@@ -2,26 +2,26 @@
  * WS10 golden path: text prompt → arbiter loads diffusion → returns PNG.
  *
  * Validates PLUMBING for the image-gen flow. The diffusion backend is
- * replaced with a deterministic stub that emits a fixed PNG fixture; the
+ * replaced with a deterministic fixture provider that emits a fixed PNG fixture; the
  * test asserts on the PNG signature + size, not on pixel content. The
- * arbiter contract being stubbed:
+ * arbiter contract under test:
  *
  *   1. Caller requests image-gen for a prompt.
  *   2. Arbiter resolves the per-tier default diffusion model from
  *      ELIZA_1_BUNDLE_EXTRAS.json.
- *   3. Arbiter loads (or no-ops if already resident) the diffusion
+ *   3. Arbiter loads the diffusion weights, or reports them already resident.
  *      weights.
  *   4. Arbiter calls the diffusion runtime, receives PNG bytes, returns
  *      them to the caller.
  *
- * When WS3 (arbiter) + WS5 (image-gen pipeline) land, the stub becomes
- * the integration contract.
+ * When WS3 (arbiter) + WS5 (image-gen pipeline) are integrated, this fixture
+ * remains the golden contract.
  */
 
 import { describe, expect, it } from "vitest";
 
 /* --------------------------------------------------------------------- */
-/* Stub contracts                                                         */
+/* Fixture contracts                                                      */
 /* --------------------------------------------------------------------- */
 
 interface ImageGenRequest {
@@ -46,7 +46,7 @@ interface ArbiterImageGen {
 }
 
 /* --------------------------------------------------------------------- */
-/* Deterministic stub                                                     */
+/* Deterministic fixture provider                                         */
 /* --------------------------------------------------------------------- */
 
 const ONE_PX_PNG: Buffer = Buffer.from([
@@ -95,12 +95,12 @@ const PER_TIER_DEFAULT: Record<string, { modelId: string; file: string }> = {
   },
 };
 
-function stubArbiter(): ArbiterImageGen {
+function fixtureArbiter(): ArbiterImageGen {
   const loaded = new Set<string>();
   return {
     resolveModelId(tier: string) {
       const entry = PER_TIER_DEFAULT[tier];
-      if (!entry) throw new Error(`stub-arbiter: unknown tier "${tier}"`);
+      if (!entry) throw new Error(`fixture-arbiter: unknown tier "${tier}"`);
       return entry;
     },
     ensureLoaded(modelId: string) {
@@ -110,7 +110,7 @@ function stubArbiter(): ArbiterImageGen {
     },
     generate(req: ImageGenRequest) {
       if (!req.prompt || req.prompt.trim().length === 0) {
-        throw new Error("stub-arbiter: empty prompt");
+        throw new Error("fixture-arbiter: empty prompt");
       }
       return {
         png: ONE_PX_PNG,
@@ -129,7 +129,7 @@ function stubArbiter(): ArbiterImageGen {
 
 describe("golden path: prompt → arbiter image-gen → PNG bytes", () => {
   it("returns a valid PNG buffer for a non-empty prompt on a mobile tier", () => {
-    const arbiter = stubArbiter();
+    const arbiter = fixtureArbiter();
     const resolved = arbiter.resolveModelId("eliza-1-2b");
     expect(resolved.modelId).toBe("imagegen-sd-1_5-q5_0");
     expect(resolved.file).toBe("imagegen/sd-1.5-Q5_0.gguf");
@@ -151,14 +151,14 @@ describe("golden path: prompt → arbiter image-gen → PNG bytes", () => {
   });
 
   it("resolves to z-image-turbo on a desktop-class tier", () => {
-    const arbiter = stubArbiter();
+    const arbiter = fixtureArbiter();
     const resolved = arbiter.resolveModelId("eliza-1-9b");
     expect(resolved.modelId).toBe("imagegen-z-image-turbo-q4_k_m");
     expect(resolved.file).toBe("imagegen/z-image-turbo-Q4_K_M.gguf");
   });
 
   it("rejects an empty prompt deterministically", () => {
-    const arbiter = stubArbiter();
+    const arbiter = fixtureArbiter();
     expect(() => arbiter.generate({ prompt: "", tier: "eliza-1-2b" })).toThrow(
       /empty prompt/,
     );
@@ -168,7 +168,7 @@ describe("golden path: prompt → arbiter image-gen → PNG bytes", () => {
   });
 
   it("rejects an unknown tier deterministically", () => {
-    const arbiter = stubArbiter();
+    const arbiter = fixtureArbiter();
     expect(() => arbiter.resolveModelId("eliza-1-unknown")).toThrow(
       /unknown tier/,
     );

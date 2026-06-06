@@ -458,7 +458,7 @@ export class CapabilityBroker {
     } catch (err) {
       // The audit boundary is the only place we tolerate a catch — but we
       // surface the failure structurally rather than swallowing it. A broken
-      // audit log is a security incident, not a no-op.
+      // audit log is a security incident, not an ignorable path.
       const message = err instanceof Error ? err.message : String(err);
       logger.error(
         `[CapabilityBroker] Failed to append capability audit record at ${this.auditFilePath} (policyKey=${policyKey}): ${message}`,

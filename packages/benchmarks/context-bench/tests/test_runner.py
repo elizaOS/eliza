@@ -102,7 +102,7 @@ class TestContextBenchRunnerAsync:
         """Test position sweep run."""
         async def mock_query(context: str, question: str) -> str:
             # Extract the expected answer from the context
-            # For testing, just return a placeholder
+            # For this smoke test, a fixed answer is enough.
             return "answer"
 
         config = ContextBenchConfig(

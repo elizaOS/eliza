@@ -357,6 +357,10 @@ WORLD RULES:
     const maxRetries = 3;
     const initialDelayMs = 2000;
     let callStartTime = Date.now();
+    const client = this.client;
+    if (!client) {
+      throw new Error(`LLM provider ${this.provider} is not configured`);
+    }
 
     while (true) {
       try {
@@ -368,7 +372,7 @@ WORLD RULES:
         const isGpt5Model = model.includes("gpt-5");
 
         callStartTime = Date.now();
-        const response = await this.client?.chat.completions.create({
+        const response = await client.chat.completions.create({
           model,
           messages,
           ...(useJsonFormat ? { response_format: useJsonFormat } : {}),
@@ -447,15 +451,14 @@ WORLD RULES:
               "FeedLLMClient",
             );
 
-            const continuationResponse =
-              await this.client?.chat.completions.create({
-                model,
-                messages: continuationMessages,
-                ...(useJsonFormat ? { response_format: useJsonFormat } : {}),
-                temperature,
-                max_tokens: maxTokens,
-                ...(isQwen3Model ? { reasoning_effort: "none" as const } : {}),
-              });
+            const continuationResponse = await client.chat.completions.create({
+              model,
+              messages: continuationMessages,
+              ...(useJsonFormat ? { response_format: useJsonFormat } : {}),
+              temperature,
+              max_tokens: maxTokens,
+              ...(isQwen3Model ? { reasoning_effort: "none" as const } : {}),
+            });
 
             const contChoice = first(continuationResponse.choices);
             if (!contChoice?.message.content) {

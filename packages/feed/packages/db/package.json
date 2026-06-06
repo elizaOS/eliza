@@ -20,8 +20,8 @@
     }
   },
   "scripts": {
-    "lint": "echo skip (feed) >&2",
-    "typecheck": "echo skip (feed) >&2",
+    "lint": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/db/package.json packages/db/tsconfig.json packages/db/src",
+    "typecheck": "cd ../.. && bun run tsc -p packages/db --noEmit",
     "db:generate": "drizzle-kit generate --config=drizzle.config.cjs",
     "db:migrate": "drizzle-kit migrate --config=drizzle.config.cjs",
     "db:push": "drizzle-kit push --config=drizzle.config.cjs",

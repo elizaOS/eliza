@@ -1,7 +1,7 @@
 /**
  * Shared helper — each unavailable service sweeper calls
  * `makeUnavailableSweep()` with the blocking task ID so the orchestrator
- * produces a clean yellow status instead of a silent no-op.
+ * produces a clean yellow status instead of silent success.
  */
 
 export class UnavailableSweeperError extends Error {

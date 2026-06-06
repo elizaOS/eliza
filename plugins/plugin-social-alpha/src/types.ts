@@ -29,30 +29,6 @@ export type Optional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
  */
 export type Pretty<type> = { [key in keyof type]: type[key] } & unknown;
 
-/**
- * Type that extracts variables enclosed in double curly braces from a given string.
- *
- * @template T The input string type
- * @typedef {T} ExtractVariables
- * @param {T} T The input string to extract variables from
- * @returns {Var} The variables extracted from the input string
- */
-type ExtractVariables<T extends string> =
-	T extends `${infer Start}{{${infer Var}}}${infer Rest}`
-		? Var | ExtractVariables<Rest>
-		: never;
-
-/**
- * Represents a type that defines template variables for a given string type.
- *
- * @template T - The string type for which template variables are defined.
- * @typedef TemplateVariables
- * @type {Pretty<{ [K in ExtractVariables<T>]: string; }>}
- */
-export type TemplateVariables<T extends string> = Pretty<{
-	[K in ExtractVariables<T>]: string;
-}>;
-
 /** Recursive JSON-compatible value used in metadata records. */
 export type MetadataJsonValue =
 	| string
@@ -1069,8 +1045,8 @@ export interface MessageReceivedHandlerParams {
 	runtime: IAgentRuntime;
 	message: Memory;
 	callback: (
-		response: string | Record<string, any>,
-		metadata?: Record<string, any>,
+		response: string | Record<string, unknown>,
+		metadata?: Record<string, unknown>,
 	) => Promise<void>;
 	onComplete?: () => void;
 }

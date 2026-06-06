@@ -8,7 +8,14 @@ import {
   useApp,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { type CSSProperties, useCallback, useMemo, useState } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useCallback,
+  useMemo,
+  useState,
+} from "react";
+import { PRIMARY_COMMANDS } from "./ClawvilleOperatorSurface.helpers";
 
 type RunEventSummary = {
   eventId: string;
@@ -23,35 +30,10 @@ type RunActivitySummary = {
   type: string;
   message: string;
   severity?: string;
-  timestamp?: string | null;
+  // Matches @elizaos/ui AppSessionActivityItem.timestamp (epoch ms), the type
+  // of the run.session.activity entries this annotates.
+  timestamp?: number | null;
 };
-
-const PRIMARY_COMMANDS = [
-  {
-    id: "move-tools",
-    label: "Go to Tools",
-    command: "Move to tool workshop",
-    testId: "clawville-command-move-krusty",
-  },
-  {
-    id: "move-code",
-    label: "Go to Code",
-    command: "Move to skill forge",
-    testId: "clawville-command-move-chum",
-  },
-  {
-    id: "visit-nearest",
-    label: "Visit nearest",
-    command: "Visit the nearest building",
-    testId: "clawville-command-visit-nearest",
-  },
-  {
-    id: "ask-npc",
-    label: "Ask NPC",
-    command: "Ask the nearest NPC what to learn next",
-    testId: "clawville-command-ask-npc",
-  },
-] as const;
 
 function readString(
   source: Record<string, unknown> | null,
@@ -109,6 +91,9 @@ function cleanClawvilleMessage(message: string): string {
   return message;
 }
 
+const CLAWVILLE_HERO_URL = "/api/views/clawville/hero";
+const CLAWVILLE_ACCENT = "#ff5800";
+
 function collectRunEvents(
   run: AppRunSummary,
   localEvents: GameOperatorEvent[],
@@ -150,6 +135,284 @@ function collectRunEvents(
   return [...serverEvents, ...activityEvents, ...localEvents];
 }
 
+type ChipState = "live" | "attention" | "idle";
+
+const CHIP_DOT_COLOR: Record<ChipState, string> = {
+  live: "#22c55e",
+  attention: CLAWVILLE_ACCENT,
+  idle: "rgba(125,125,125,0.55)",
+};
+
+function HeroStatusChip({
+  state,
+  label,
+}: {
+  state: ChipState;
+  label: string;
+}) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 12px",
+        borderRadius: 999,
+        background: "rgba(0,0,0,0.5)",
+        backdropFilter: "blur(8px)",
+        border: "1px solid rgba(255,255,255,0.16)",
+        color: "#fff",
+        fontSize: 12,
+        fontWeight: 700,
+        letterSpacing: "0.04em",
+        textTransform: "uppercase",
+      }}
+    >
+      <span
+        style={{
+          width: 9,
+          height: 9,
+          borderRadius: 999,
+          background: CHIP_DOT_COLOR[state],
+          boxShadow: `0 0 0 4px ${CHIP_DOT_COLOR[state]}33`,
+        }}
+      />
+      {label}
+    </span>
+  );
+}
+
+function HeroHeader({
+  title,
+  state,
+  statusText,
+  cta,
+}: {
+  title: string;
+  state: ChipState;
+  statusText: string;
+  cta?: { label: string; onClick: () => void; disabled?: boolean } | null;
+}) {
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "34vh",
+        minHeight: 220,
+        maxHeight: 380,
+        overflow: "hidden",
+        borderRadius: 20,
+        backgroundColor: "#0b0b0f",
+        backgroundImage: `url(${CLAWVILLE_HERO_URL})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "linear-gradient(to bottom, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.12) 45%, rgba(0,0,0,0.72) 100%)",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          left: 24,
+          right: 24,
+          bottom: 22,
+          display: "flex",
+          alignItems: "flex-end",
+          justifyContent: "space-between",
+          gap: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <HeroStatusChip state={state} label={statusText} />
+          <div
+            style={{
+              color: "#fff",
+              fontSize: 34,
+              fontWeight: 800,
+              lineHeight: 1.05,
+              letterSpacing: "-0.01em",
+              textShadow: "0 2px 18px rgba(0,0,0,0.55)",
+            }}
+          >
+            {title}
+          </div>
+        </div>
+        {cta ? (
+          <button
+            type="button"
+            onClick={cta.onClick}
+            disabled={cta.disabled}
+            style={{
+              padding: "12px 22px",
+              borderRadius: 999,
+              border: "none",
+              background: CLAWVILLE_ACCENT,
+              color: "#fff",
+              fontSize: 14,
+              fontWeight: 700,
+              letterSpacing: "0.01em",
+              cursor: cta.disabled ? "default" : "pointer",
+              opacity: cta.disabled ? 0.55 : 1,
+              boxShadow: "0 8px 24px rgba(255,88,0,0.35)",
+            }}
+          >
+            {cta.label}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function StatusStripCard({
+  icon,
+  label,
+  value,
+  state,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  state: ChipState;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        flex: "1 1 160px",
+        minWidth: 150,
+        padding: "12px 14px",
+        borderRadius: 14,
+        border: "1px solid var(--border, rgba(0,0,0,0.12))",
+        background: "var(--card, rgba(255,255,255,0.8))",
+      }}
+    >
+      <div
+        aria-hidden
+        style={{
+          display: "grid",
+          placeItems: "center",
+          width: 38,
+          height: 38,
+          borderRadius: 11,
+          fontSize: 18,
+          background: "var(--surface, rgba(0,0,0,0.04))",
+        }}
+      >
+        {icon}
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 10.5,
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            color: "var(--muted, rgba(0,0,0,0.58))",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: 999,
+              background: CHIP_DOT_COLOR[state],
+            }}
+          />
+          {label}
+        </div>
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 700,
+            color: "var(--foreground, var(--text, #111))",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {value}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HeroFrame({
+  children,
+  variant,
+}: {
+  children: ReactNode;
+  variant: AppOperatorSurfaceProps["variant"];
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 16,
+        padding: variant === "live" ? 12 : 16,
+        maxWidth: 1100,
+        margin: "0 auto",
+        width: "100%",
+        boxSizing: "border-box",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function ClawvilleWaitingZone() {
+  return (
+    <div
+      style={{
+        flex: "1 1 auto",
+        minHeight: 160,
+        display: "grid",
+        placeItems: "center",
+        borderRadius: 16,
+        border: "1px dashed var(--border, rgba(0,0,0,0.12))",
+        background:
+          "radial-gradient(120% 120% at 50% 0%, var(--surface, rgba(0,0,0,0.04)) 0%, transparent 70%)",
+        padding: "28px 16px",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 10,
+          color: "var(--muted, rgba(0,0,0,0.58))",
+          textAlign: "center",
+        }}
+      >
+        <div style={{ fontSize: 30, opacity: 0.85 }}>🦀</div>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>
+          Waiting for a ClawVille session
+        </div>
+        <div style={{ fontSize: 12, opacity: 0.8 }}>
+          Launch the game to drop the agent into the reef.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ClawvilleOperatorSurface({
   appName,
   variant = "detail",
@@ -164,7 +427,6 @@ export function ClawvilleOperatorSurface({
         )[0] ?? null,
     [appName, appRuns],
   );
-  const [draft, setDraft] = useState("");
   const [localEvents, setLocalEvents] = useState<GameOperatorEvent[]>([]);
   const [sendingCommand, setSendingCommand] = useState<string | null>(null);
 
@@ -176,11 +438,10 @@ export function ClawvilleOperatorSurface({
     readString(telemetry, "nearestBuildingLabel") ??
     readString(telemetry, "nearestBuildingId") ??
     "the reef";
-  const knowledgeCount = readNumber(telemetry, "knowledgeCount");
   const canSend = Boolean(run?.runId && run.session?.canSendCommands);
 
   const sendCommand = useCallback(
-    async (content: string, clearDraftOnSuccess = false) => {
+    async (content: string) => {
       const trimmed = content.trim();
       if (!run?.runId || !trimmed || sendingCommand) return;
 
@@ -202,9 +463,6 @@ export function ClawvilleOperatorSurface({
           response.run?.session ?? response.session ?? null;
         if (response.run) {
           setState("appRuns", replaceRun(appRuns, response.run));
-        }
-        if (clearDraftOnSuccess) {
-          setDraft((current) => (current.trim() === trimmed ? "" : current));
         }
         if (persistedSession) {
           setLocalEvents([]);
@@ -248,13 +506,41 @@ export function ClawvilleOperatorSurface({
 
   if (!run) {
     return (
-      <section
-        className={variant === "live" ? "p-3" : ""}
-        data-testid="clawville-operator-empty"
-      >
-        <div className="rounded-2xl border border-border/35 bg-card/74 p-4 text-xs text-muted-strong">
-          Launch ClawVille to open game chat.
-        </div>
+      <section data-testid="clawville-operator-empty">
+        <HeroFrame variant={variant}>
+          <HeroHeader
+            title="ClawVille"
+            state="idle"
+            statusText="Game relay ready"
+          />
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 12,
+            }}
+          >
+            <StatusStripCard
+              icon="🏘"
+              label="Map"
+              value="Town staged"
+              state="live"
+            />
+            <StatusStripCard
+              icon="💬"
+              label="Chat"
+              value="Overlay relay"
+              state="idle"
+            />
+            <StatusStripCard
+              icon="⚡"
+              label="Commands"
+              value={`${PRIMARY_COMMANDS.length} quick actions`}
+              state="attention"
+            />
+          </div>
+          <ClawvilleWaitingZone />
+        </HeroFrame>
       </section>
     );
   }
@@ -262,60 +548,80 @@ export function ClawvilleOperatorSurface({
   const primaryActions: GameOperatorAction[] = PRIMARY_COMMANDS.map((item) => ({
     ...item,
   }));
-  const suggestedPrompts = run.session?.suggestedPrompts ?? [];
+  const suggestedPrompts = (run.session?.suggestedPrompts ?? []).slice(0, 2);
   const suggestedActions = suggestedPrompts.map((prompt: string) => ({
     id: prompt,
     label: prompt,
     command: prompt,
     testId: "clawville-suggested-command",
   }));
-  const events = collectRunEvents(run, localEvents);
+  const events = collectRunEvents(run, localEvents).slice(0, 3);
 
+  const heroState = statusTone(run.status);
   return (
     <>
       <ClawvilleOperatorRegistrar
         suggestedPrompts={suggestedPrompts}
-        getDraft={() => draft}
-        onDraftChange={setDraft}
         onCommand={(command) => void sendCommand(command)}
-        onSendDraft={() => void sendCommand(draft, true)}
       />
-      <GameOperatorShell
-        surfaceTestId={
-          variant === "live"
-            ? "clawville-live-operator-surface"
-            : "clawville-detail-operator-surface"
-        }
-        title="ClawVille chat"
-        statusLabel={statusLabel(run.status)}
-        statusTone={statusTone(run.status)}
-        objective={run.session?.goalLabel ?? `Near ${nearestBuilding}`}
-        detailItems={[
-          { label: "Location", value: nearestBuilding },
-          {
-            label: "Skills",
-            value:
-              knowledgeCount === null
-                ? "Not loaded"
-                : `${knowledgeCount} learned`,
-          },
-        ]}
-        primaryActions={primaryActions}
-        suggestedActions={suggestedActions}
-        events={events}
-        emptyEventsLabel="Movement, NPC chat, and visit results will appear here. Start by visiting the nearest building or asking an NPC what to learn."
-        draft={draft}
-        inputPlaceholder="Tell ClawVille what to do..."
-        canSend={canSend}
-        sending={Boolean(sendingCommand)}
-        chatInputTestId="clawville-chat-input"
-        chatSendTestId="clawville-chat-send"
-        noticeTestId="clawville-command-notice"
-        variant={variant}
-        onDraftChange={setDraft}
-        onSendDraft={() => void sendCommand(draft, true)}
-        onCommand={(command: string) => void sendCommand(command)}
-      />
+      <HeroFrame variant={variant}>
+        <HeroHeader
+          title="ClawVille"
+          state={heroState}
+          statusText={statusLabel(run.status)}
+          cta={
+            canSend
+              ? {
+                  label: "Visit nearest",
+                  onClick: () =>
+                    void sendCommand(PRIMARY_COMMANDS[0].command),
+                  disabled: Boolean(sendingCommand),
+                }
+              : null
+          }
+        />
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+          <StatusStripCard
+            icon="📍"
+            label="Location"
+            value={nearestBuilding}
+            state="live"
+          />
+          <StatusStripCard
+            icon="⚡"
+            label="Relay"
+            value={canSend ? "Ready" : "Syncing"}
+            state={canSend ? "live" : "attention"}
+          />
+          <StatusStripCard
+            icon="🎯"
+            label="Goal"
+            value={run.session?.goalLabel ?? `Near ${nearestBuilding}`}
+            state="idle"
+          />
+        </div>
+        <GameOperatorShell
+          surfaceTestId={
+            variant === "live"
+              ? "clawville-live-operator-surface"
+              : "clawville-detail-operator-surface"
+          }
+          title="ClawVille chat"
+          statusLabel={statusLabel(run.status)}
+          statusTone={statusTone(run.status)}
+          objective={run.session?.goalLabel ?? `Near ${nearestBuilding}`}
+          detailItems={[{ label: "Location", value: nearestBuilding }]}
+          primaryActions={primaryActions}
+          suggestedActions={suggestedActions}
+          events={events}
+          emptyEventsLabel="No events yet."
+          canSend={canSend}
+          sending={Boolean(sendingCommand)}
+          noticeTestId="clawville-command-notice"
+          variant={variant}
+          onCommand={(command: string) => void sendCommand(command)}
+        />
+      </HeroFrame>
     </>
   );
 }
@@ -371,59 +677,18 @@ function ClawvilleSuggestedCommandRegistrar({
   return null;
 }
 
-function ClawvilleDraftInputRegistrar({
-  getDraft,
-  onDraftChange,
-}: {
-  getDraft: () => string;
-  onDraftChange: (value: string) => void;
-}) {
-  useAgentElement<HTMLInputElement>({
-    id: "chat-command-input",
-    role: "text-input",
-    label: "ClawVille command",
-    group: "clawville-chat",
-    description: "Type a command to send to ClawVille",
-    getValue: getDraft,
-    onFill: onDraftChange,
-  });
-  return null;
-}
-
-function ClawvilleSendDraftRegistrar({
-  onSendDraft,
-}: {
-  onSendDraft: () => void;
-}) {
-  useAgentElement<HTMLButtonElement>({
-    id: "chat-send",
-    role: "button",
-    label: "Send command",
-    group: "clawville-chat",
-    description: "Send the typed command to ClawVille",
-    onActivate: onSendDraft,
-  });
-  return null;
-}
-
 /**
  * Registers the operator surface's interactive controls with the agent surface.
  * The controls themselves are rendered by GameOperatorShell (which does not
- * forward refs), so each control is registered as a callback-driven element
- * wired to the same handlers the shell invokes.
+ * forward refs), so each visible action is registered as a callback-driven
+ * element wired to the same handlers the shell invokes.
  */
 function ClawvilleOperatorRegistrar({
   suggestedPrompts,
-  getDraft,
-  onDraftChange,
   onCommand,
-  onSendDraft,
 }: {
   suggestedPrompts: string[];
-  getDraft: () => string;
-  onDraftChange: (value: string) => void;
   onCommand: (command: string) => void;
-  onSendDraft: () => void;
 }) {
   return (
     <>
@@ -444,11 +709,6 @@ function ClawvilleOperatorRegistrar({
           onCommand={onCommand}
         />
       ))}
-      <ClawvilleDraftInputRegistrar
-        getDraft={getDraft}
-        onDraftChange={onDraftChange}
-      />
-      <ClawvilleSendDraftRegistrar onSendDraft={onSendDraft} />
     </>
   );
 }
@@ -699,28 +959,3 @@ const tuiInputStyle: CSSProperties = {
   padding: "8px",
   fontFamily: "inherit",
 };
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-clawville-state") {
-    return {
-      viewType: "tui",
-      appName: "@elizaos/plugin-clawville",
-      primaryCommands: PRIMARY_COMMANDS.map((item) => item.command),
-    };
-  }
-  if (capability === "terminal-clawville-command") {
-    const runId = typeof params?.runId === "string" ? params.runId.trim() : "";
-    const content =
-      typeof params?.content === "string" ? params.content.trim() : "";
-    if (!runId) throw new Error("runId is required");
-    if (!content) throw new Error("content is required");
-    return {
-      viewType: "tui",
-      command: await client.sendAppRunMessage(runId, content),
-    };
-  }
-  throw new Error(`Unsupported ClawVille TUI capability: ${capability}`);
-}

@@ -2,7 +2,7 @@
 
 OpenClaw is a one-shot CLI, so the manager is intentionally thin:
 ``start()`` validates the binary exists and warms up the Node compile cache
-by running ``--version``; ``stop()`` is a no-op.
+by running ``--version``; ``stop()`` clears local started state.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ class OpenClawCLIManager:
         mgr = OpenClawCLIManager()
         mgr.start()             # validates binary + warms Node compile cache
         out = mgr.client.send_message("say PONG")
-        mgr.stop()              # no-op
+        mgr.stop()              # clears local started state
     """
 
     def __init__(

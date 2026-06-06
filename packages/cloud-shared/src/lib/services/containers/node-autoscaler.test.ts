@@ -1,5 +1,26 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { DockerNode } from "../../../db/repositories/docker-nodes";
+
+// Bun runs every cloud-shared test file in a single process, and `mock.module`
+// overrides are process-global with no built-in per-file teardown. Without an
+// explicit restore, these stubs leak into later files that import the real
+// modules (e.g. `compute-provider-characterization.test.ts` reading
+// `HetznerCloudError.status`), producing order-dependent failures. Capture the
+// real modules up front and re-install them in `afterAll`.
+import * as realDockerNodesNs from "../../../db/repositories/docker-nodes";
+import * as realDockerNodeWorkloadsNs from "../docker-node-workloads";
+import * as realHetznerCloudApiNs from "./hetzner-cloud-api";
+import * as realNodeBootstrapNs from "./node-bootstrap";
+
+// Snapshot the real exports into plain objects *before* the `mock.module` calls
+// below run. The `import * as` namespaces are live bindings — once `mock.module`
+// replaces a module record, the namespace reflects the stub — so we copy the
+// exports eagerly at module-evaluation time (imports are hoisted above the
+// `mock.module` statements) and restore from these snapshots in `afterAll`.
+const realDockerNodes = { ...realDockerNodesNs };
+const realDockerNodeWorkloads = { ...realDockerNodeWorkloadsNs };
+const realHetznerCloudApi = { ...realHetznerCloudApiNs };
+const realNodeBootstrap = { ...realNodeBootstrapNs };
 
 const AGENT_IMAGE = "ELIZA_AGENT_IMAGE";
 const AGENT_IMAGE_PLATFORM = "ELIZA_AGENT_IMAGE_PLATFORM";
@@ -59,6 +80,13 @@ mock.module("./hetzner-cloud-api", () => ({
 mock.module("./node-bootstrap", () => ({
   buildContainerNodeUserData: mocks.buildUserData,
 }));
+
+afterAll(() => {
+  mock.module("../../../db/repositories/docker-nodes", () => realDockerNodes);
+  mock.module("../docker-node-workloads", () => realDockerNodeWorkloads);
+  mock.module("./hetzner-cloud-api", () => realHetznerCloudApi);
+  mock.module("./node-bootstrap", () => realNodeBootstrap);
+});
 
 import { type AutoscalePolicy, NodeAutoscaler } from "./node-autoscaler";
 

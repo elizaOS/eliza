@@ -1,6 +1,6 @@
-import { Badge } from "../badge";
+import { Badge } from "../../../components/ui/badge";
+import { Progress } from "../../../components/ui/progress";
 import { BrandCard } from "../brand/brand-card";
-import { Progress } from "../progress";
 import { CostAlerts, type CostAlertsTrending } from "./cost-alerts";
 
 interface CostInsightsCardProps {

@@ -1,5 +1,50 @@
 {
   "registry": {
+    "@1claw/plugin-elizaos": {
+      "git": {
+        "repo": "1clawAI/1claw-elizaos-plugin",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@1claw/plugin-elizaos",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "HSM-backed secrets + multi-chain signing for elizaOS agents via 1Claw — vault access and EVM/Solana/BTC/XRP/Cardano/Tron signing without the agent ever holding private keys; optional Shroud TEE LLM proxy.",
+      "homepage": "https://github.com/1clawAI/1claw-elizaos-plugin",
+      "topics": [
+        "security",
+        "secrets",
+        "vault",
+        "signing",
+        "multi-chain"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "elizaos-plugin-echo": {
       "git": {
         "repo": "elizaOS/eliza",
@@ -42,50 +87,6 @@
       "kind": "plugin",
       "registryKind": "plugin",
       "directory": "packages/examples/plugin-echo"
-    },
-    "@1claw/plugin-elizaos": {
-      "git": {
-        "repo": "1clawAI/1claw-elizaos-plugin",
-        "v0": {
-          "branch": null
-        },
-        "v1": {
-          "branch": null
-        },
-        "v2": {
-          "branch": "main"
-        }
-      },
-      "npm": {
-        "repo": "@1claw/plugin-elizaos",
-        "v0": null,
-        "v1": null,
-        "v2": "0.1.0"
-      },
-      "supports": {
-        "v0": false,
-        "v1": false,
-        "v2": true
-      },
-      "description": "HSM-backed secrets + multi-chain signing for elizaOS agents via 1Claw \u2014 vault access and EVM/Solana/BTC/XRP/Cardano/Tron signing without the agent ever holding private keys; optional Shroud TEE LLM proxy.",
-      "homepage": "https://github.com/1clawAI/1claw-elizaos-plugin",
-      "topics": [
-        "security",
-        "secrets",
-        "vault",
-        "signing",
-        "multi-chain"
-      ],
-      "stargazers_count": 0,
-      "language": "TypeScript",
-      "origin": "third-party",
-      "source": "community",
-      "support": "community",
-      "builtIn": false,
-      "firstParty": false,
-      "thirdParty": true,
-      "kind": "plugin",
-      "registryKind": "plugin"
     }
   }
 }
