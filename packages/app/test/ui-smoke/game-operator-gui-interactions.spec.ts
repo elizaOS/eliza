@@ -14,6 +14,8 @@ type OperatorGameFixture = {
   surfaceTestId: string;
   suggestedPrompt: string;
   controlButton: string;
+  /** Agent-surface id for the control, when the accessible name is ambiguous. */
+  controlAgentId?: string;
   controlAction: "pause" | "resume";
   operatorRoutePath?: string;
   hostOnly?: boolean;
@@ -49,6 +51,9 @@ const FIXTURES: OperatorGameFixture[] = [
     surfaceTestId: "scape-live-operator-surface",
     suggestedPrompt: "Walk to the Lumbridge cows and train attack.",
     controlButton: "Resume",
+    // The 'scape surface also renders a plain "Resume" suggestion chip, so
+    // target the control via its stable agent-surface id.
+    controlAgentId: "control-resume",
     controlAction: "resume",
   },
 ];
@@ -533,7 +538,10 @@ for (const fixture of FIXTURES) {
       .click();
     await expect.poll(() => api.messages.at(-1)).toBe(fixture.suggestedPrompt);
 
-    await surface.getByRole("button", { name: fixture.controlButton }).click();
+    const controlLocator = fixture.controlAgentId
+      ? surface.locator(`[data-agent-id="${fixture.controlAgentId}"]`)
+      : surface.getByRole("button", { name: fixture.controlButton });
+    await controlLocator.click();
     await expect.poll(() => api.controls.at(-1)).toBe(fixture.controlAction);
   });
 }
