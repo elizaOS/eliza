@@ -248,7 +248,7 @@ function SortControls({
     defaultValue: "Sort views",
   });
   return (
-    <fieldset className="flex shrink-0 flex-wrap gap-1 rounded-lg border border-border bg-card p-1">
+    <fieldset className="flex w-fit max-w-full shrink-0 flex-wrap gap-1.5">
       <legend className="sr-only">{label}</legend>
       {VIEW_SORT_OPTIONS.map(({ icon: Icon, label, mode }) => {
         const active = sortMode === mode;
@@ -257,10 +257,10 @@ function SortControls({
             key={mode}
             type="button"
             onClick={() => onSortModeChange(mode)}
-            className={`inline-flex h-9 items-center justify-center gap-2 rounded-md px-3 text-sm font-semibold transition-colors ${
+            className={`inline-flex h-9 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-semibold transition-colors ${
               active
-                ? "bg-accent-subtle text-accent"
-                : "text-muted hover:bg-bg-accent hover:text-txt"
+                ? "border-accent/45 bg-accent-subtle text-accent"
+                : "border-border bg-card text-muted hover:border-accent/35 hover:bg-bg-accent hover:text-txt"
             }`}
             aria-pressed={active}
           >
@@ -1155,41 +1155,41 @@ export function ViewCatalog() {
                   <MetaChip>{activeModality.toUpperCase()}</MetaChip>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => void refresh()}
-                disabled={loading}
-                className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-semibold text-txt transition-colors hover:border-accent/50 hover:text-accent disabled:cursor-not-allowed disabled:opacity-60"
-                aria-label={t("viewmanager.refresh", {
-                  defaultValue: "Refresh views",
-                })}
-              >
-                <RefreshCw
-                  className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
-                  aria-hidden="true"
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                <SortControls
+                  sortMode={sortMode}
+                  onSortModeChange={setSortMode}
                 />
-                {t("viewmanager.refreshShort", { defaultValue: "Refresh" })}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => void refresh()}
+                  disabled={loading}
+                  className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-semibold text-txt transition-colors hover:border-accent/50 hover:text-accent disabled:cursor-not-allowed disabled:opacity-60"
+                  aria-label={t("viewmanager.refresh", {
+                    defaultValue: "Refresh views",
+                  })}
+                >
+                  <RefreshCw
+                    className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+                    aria-hidden="true"
+                  />
+                  {t("viewmanager.refreshShort", { defaultValue: "Refresh" })}
+                </button>
+              </div>
             </div>
 
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-              <div className="relative min-w-0 flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-                <input
-                  ref={searchInput.ref}
-                  type="search"
-                  placeholder={t("viewmanager.searchPlaceholder", {
-                    defaultValue: "Search views…",
-                  })}
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  className="h-12 w-full rounded-lg border border-border bg-card py-2 pl-10 pr-3 text-base text-txt placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
-                  {...searchInput.agentProps}
-                />
-              </div>
-              <SortControls
-                sortMode={sortMode}
-                onSortModeChange={setSortMode}
+            <div className="relative min-w-0">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+              <input
+                ref={searchInput.ref}
+                type="search"
+                placeholder={t("viewmanager.searchPlaceholder", {
+                  defaultValue: "Search views…",
+                })}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="h-12 w-full rounded-lg border border-border bg-card py-2 pl-10 pr-3 text-base text-txt placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+                {...searchInput.agentProps}
               />
             </div>
           </div>
