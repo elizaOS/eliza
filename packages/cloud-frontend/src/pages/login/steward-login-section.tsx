@@ -28,7 +28,12 @@ import {
   exchangeStewardCodeViaApi,
   syncStewardSessionCookie,
 } from "../../lib/steward-session";
-import { resolveLoginReturnTo } from "./login-return-to";
+import {
+  consumePendingOAuthReturnTo,
+  resolveLoginReturnTo,
+  sanitizeLoginReturnTo,
+  storePendingOAuthReturnTo,
+} from "./login-return-to";
 import {
   buildStewardOAuthAuthorizeUrl,
   buildStewardOAuthRedirectUri,
@@ -228,10 +233,7 @@ export default function StewardLoginSection() {
       // exchange then omits it and Steward surfaces the mismatch.
       const codeVerifier = consumeStewardPkceVerifier() ?? undefined;
       exchangeStewardCodeViaApi(code, {
-        redirectUri: buildStewardOAuthRedirectUri(
-          window.location.origin,
-          window.location.search,
-        ),
+        redirectUri: buildStewardOAuthRedirectUri(window.location.origin),
         tenantId: STEWARD_TENANT_ID,
         codeVerifier,
       })
@@ -246,7 +248,9 @@ export default function StewardLoginSection() {
             writeStoredStewardToken(res.token);
             window.dispatchEvent(new CustomEvent("steward-token-sync"));
           }
-          setRedirectTo(resolveLoginReturnTo(searchParams));
+          setRedirectTo(
+            resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
+          );
         })
         .catch((sessionError) => {
           setCallbackError(
@@ -277,7 +281,9 @@ export default function StewardLoginSection() {
 
     syncStewardSessionCookie(token, refreshToken)
       .then(() => {
-        setRedirectTo(resolveLoginReturnTo(searchParams));
+        setRedirectTo(
+          resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
+        );
       })
       .catch((sessionError) => {
         setCallbackError(
@@ -393,18 +399,13 @@ export default function StewardLoginSection() {
   async function handleOAuth(provider: StewardOAuthProvider) {
     setLoading(provider);
     setError(null);
-    // Server-side redirect flow. Preserve the current query string on
-    // redirect_uri so returnTo (used by /auth/cli-login, app-authorize, etc.)
-    // survives the OAuth round-trip. Without this, users signing in from a
-    // deep-linked page land on /dashboard instead of the page that redirected
-    // them to /login. The authorize endpoint reads `tenant_id` (snake_case);
-    // camelCase `tenantId` falls back to the user's personal tenant.
-    // Cloudflare Pages preview deploys live on `*.pages.dev`, whose hashed
-    // subdomain is never on the Steward tenant's redirect_uri allowlist.
-    // Route OAuth through staging.elizacloud.ai (which is whitelisted, matching
-    // the api-fetch-bridge precedent) so sign-in works from previews. The user
-    // lands on staging after auth — previews remain unauthenticated visual
-    // review surfaces, which is what they're for.
+    const pendingReturnTo = sanitizeLoginReturnTo(searchParams.get("returnTo"));
+    if (pendingReturnTo && !storePendingOAuthReturnTo(pendingReturnTo)) {
+      setError("Could not start sign-in — browser storage is unavailable.");
+      setLoading(null);
+      return;
+    }
+
     const host = window.location.hostname.toLowerCase();
     const oauthOrigin = host.endsWith(".pages.dev")
       ? "https://staging.elizacloud.ai"
@@ -437,7 +438,6 @@ export default function StewardLoginSection() {
       provider,
       oauthOrigin,
       {
-        redirectSearch: window.location.search,
         stewardApiUrl,
         stewardTenantId: STEWARD_TENANT_ID,
         codeChallenge,

@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { resolveLoginReturnTo } from "./login-return-to";
+import {
+  consumePendingOAuthReturnTo,
+  resolveLoginReturnTo,
+  storePendingOAuthReturnTo,
+} from "./login-return-to";
 
 function params(query: string) {
   return new URLSearchParams(query);
@@ -34,5 +38,16 @@ describe("resolveLoginReturnTo", () => {
     expect(resolveLoginReturnTo(params(""), "//evil.test/callback")).toBe(
       "/dashboard/agents",
     );
+  });
+
+  test("stores pending OAuth return targets as single-use internal paths", () => {
+    window.sessionStorage.clear();
+
+    expect(storePendingOAuthReturnTo("/auth/cli-login?session=abc")).toBe(true);
+    expect(consumePendingOAuthReturnTo()).toBe("/auth/cli-login?session=abc");
+    expect(consumePendingOAuthReturnTo()).toBeNull();
+
+    expect(storePendingOAuthReturnTo("//evil.test/callback")).toBe(false);
+    expect(consumePendingOAuthReturnTo()).toBeNull();
   });
 });
