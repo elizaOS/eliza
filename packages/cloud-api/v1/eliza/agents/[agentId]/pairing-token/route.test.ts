@@ -27,10 +27,23 @@ mock.module("@/lib/config/containers-env", () => ({
 }));
 
 mock.module("@/lib/eliza-agent-web-ui", () => ({
+  getElizaAgentDirectWebUiUrl: (sandbox: {
+    headscale_ip?: string | null;
+    web_ui_port?: number | null;
+    bridge_port?: number | null;
+  }) => {
+    const port = sandbox.web_ui_port ?? sandbox.bridge_port;
+    return sandbox.headscale_ip && port
+      ? `http://${sandbox.headscale_ip}:${port}`
+      : null;
+  },
   getElizaAgentPublicWebUiUrl: (
     sandbox: { id: string },
     options?: { baseDomain?: string | null },
-  ) => `https://${sandbox.id}.${options?.baseDomain ?? "elizacloud.ai"}`,
+  ) => {
+    if (!options?.baseDomain) return null;
+    return `https://${sandbox.id}.${options.baseDomain}`;
+  },
 }));
 
 mock.module("@/lib/services/pairing-token", () => ({
@@ -77,6 +90,10 @@ function runningSandbox(executionTier: "custom" | "dedicated-lazy" | "shared") {
     agent_name: "bnancy",
     status: "running",
     execution_tier: executionTier,
+    bridge_url: "http://168.119.244.189:19027",
+    web_ui_port: 19028,
+    bridge_port: 19027,
+    headscale_ip: null,
     environment_vars: { ELIZA_API_TOKEN: "agent-token" },
     updated_at: new Date("2026-06-04T12:00:00.000Z"),
   };
@@ -111,8 +128,7 @@ describe("eliza agent pairing token route", () => {
       success: true,
       data: {
         token: "pair-token",
-        redirectUrl:
-          "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.elizacloud.ai/pair?token=pair-token",
+        redirectUrl: "http://168.119.244.189:19028/pair?token=pair-token",
         expiresIn: 60,
       },
     });
@@ -128,16 +144,39 @@ describe("eliza agent pairing token route", () => {
       success: true,
       data: {
         token: "pair-token",
-        redirectUrl:
-          "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.elizacloud.ai/pair?token=pair-token",
+        redirectUrl: "http://168.119.244.189:19028/pair?token=pair-token",
         expiresIn: 60,
       },
     });
   });
 
-  test("uses the default web UI base domain when no runtime override is configured", async () => {
-    publicBaseDomain = undefined;
-    findByIdAndOrg.mockResolvedValue(runningSandbox("dedicated-lazy"));
+  test("falls back to the headscale direct Web UI URL when bridge_url is missing", async () => {
+    findByIdAndOrg.mockResolvedValue({
+      ...runningSandbox("dedicated-lazy"),
+      bridge_url: null,
+      headscale_ip: "100.64.0.12",
+    });
+
+    const response = await postPairingToken();
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      data: {
+        token: "pair-token",
+        redirectUrl: "http://100.64.0.12:19028/pair?token=pair-token",
+        expiresIn: 60,
+      },
+    });
+  });
+
+  test("falls back to the managed web UI hostname when no direct UI route is stored", async () => {
+    findByIdAndOrg.mockResolvedValue({
+      ...runningSandbox("dedicated-lazy"),
+      bridge_url: null,
+      web_ui_port: null,
+      bridge_port: null,
+    });
 
     const response = await postPairingToken();
 
@@ -148,6 +187,25 @@ describe("eliza agent pairing token route", () => {
         token: "pair-token",
         redirectUrl:
           "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.elizacloud.ai/pair?token=pair-token",
+        expiresIn: 60,
+      },
+    });
+  });
+
+  test("returns the bare Web UI origin when the agent does not support token pairing", async () => {
+    findByIdAndOrg.mockResolvedValue({
+      ...runningSandbox("custom"),
+      environment_vars: {},
+    });
+
+    const response = await postPairingToken();
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      data: {
+        token: "pair-token",
+        redirectUrl: "http://168.119.244.189:19028",
         expiresIn: 60,
       },
     });

@@ -342,6 +342,7 @@ import _route_v1_coding_containers_promotions_route from "../v1/coding-container
 import _route_v1_coding_containers_p_containerId_sync_route from "../v1/coding-containers/[containerId]/sync/route";
 import _route_v1_coding_containers_route from "../v1/coding-containers/route";
 import _route_v1_connections_p_platform_route from "../v1/connections/[platform]/route";
+import _route_v1_containers_route from "../v1/containers/route";
 import _route_v1_credits_balance_route from "../v1/credits/balance/route";
 import _route_v1_credits_checkout_route from "../v1/credits/checkout/route";
 import _route_v1_credits_summary_route from "../v1/credits/summary/route";
@@ -1465,6 +1466,7 @@ export function mountRoutes(app: Hono<AppEnv>): void {
     "/api/v1/connections/:platform",
     _route_v1_connections_p_platform_route,
   );
+  app.route("/api/v1/containers", _route_v1_containers_route);
   app.route("/api/v1/credits/balance", _route_v1_credits_balance_route);
   app.route("/api/v1/credits/checkout", _route_v1_credits_checkout_route);
   app.route("/api/v1/credits/summary", _route_v1_credits_summary_route);

@@ -20,7 +20,19 @@ import {
   useMemo,
   useState,
 } from "react";
+import {
+  GameSurfaceHero,
+  GameSurfaceShell,
+  GameSurfaceStrip,
+  GameSurfaceZone,
+  HeroCta,
+  type StatChip,
+  WaitingForSession,
+} from "./game-surface-shell";
 import { postAppRunCommand } from "./TwoThousandFourScapeOperatorSurface.helpers";
+
+const RS2004_HERO = "/api/views/2004scape/hero";
+const RS2004_ACCENT = "#e0782a";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "outline" | "default";
@@ -836,91 +848,60 @@ export function TwoThousandFourScapeOperatorSurface({
   );
 
   if (!run) {
+    const chips: StatChip[] = [
+      { icon: "⛬", label: "Gateway", value: "Bridge pending", state: "pending" },
+      { icon: "▶", label: "Planner", value: "15s loop", state: "idle" },
+      { icon: "◆", label: "Telemetry", value: "HP · map", state: "idle" },
+      { icon: "⚔", label: "Targets", value: "Field intel", state: "idle" },
+    ];
     return (
-      <section className="p-4" data-testid="2004scape-operator-ready">
-        <div className="mx-auto flex max-w-3xl flex-col gap-3">
-          <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/45 bg-card/82 px-4 py-3 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div
-                aria-hidden
-                className="grid h-10 w-10 place-items-center rounded-xl bg-orange-500 text-lg font-black text-white shadow-sm"
-              >
-                04
-              </div>
-              <div>
-                <div className="text-sm font-semibold text-foreground">
-                  2004scape
-                </div>
-                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
-                  Bot SDK standby
-                </div>
-              </div>
-            </div>
-            <div className="h-3 w-3 rounded-full bg-amber-400 shadow-[0_0_0_4px_rgba(251,191,36,0.18)]" />
-          </div>
-
-          <div className="grid grid-cols-1 gap-3">
-            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
-              <div className="grid h-9 w-9 place-items-center rounded-lg border border-orange-300/35 bg-orange-400/10 text-sm font-bold text-orange-700">
-                RS
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
-                  Gateway
-                </div>
-                <div className="text-sm font-semibold text-foreground">
-                  Bridge pending
-                </div>
-              </div>
-            </div>
-            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
-              <div className="grid h-9 w-9 place-items-center rounded-lg border border-emerald-300/35 bg-emerald-400/10 text-lg text-emerald-700">
-                ▶
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
-                  Planner
-                </div>
-                <div className="text-sm font-semibold text-foreground">
-                  15s loop
-                </div>
-              </div>
-            </div>
-            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
-              <div className="grid h-9 w-9 place-items-center rounded-lg border border-cyan-300/35 bg-cyan-400/10 text-lg text-cyan-700">
-                ◆
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
-                  Telemetry
-                </div>
-                <div className="text-sm font-semibold text-foreground">
-                  HP · map · targets
-                </div>
-              </div>
-            </div>
-            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
-              <div className="grid h-9 w-9 place-items-center rounded-lg border border-violet-300/35 bg-violet-400/10 text-lg text-violet-700">
-                ↗
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
-                  Path
-                </div>
-                <div className="text-sm font-semibold text-foreground">
-                  /2004scape
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      <div data-testid="2004scape-operator-ready">
+        <GameSurfaceShell>
+          <GameSurfaceHero
+            heroUrl={RS2004_HERO}
+            title="2004scape"
+            statusLabel="Bot SDK standby"
+            statusState="pending"
+            cta={<HeroCta label="Spawn bot" accent={RS2004_ACCENT} disabled />}
+          />
+          <GameSurfaceStrip chips={chips} />
+          <WaitingForSession
+            accent={RS2004_ACCENT}
+            message="Waiting for a 2004scape session. Spawn the bot to stream live player telemetry, the tutorial flow, nearby targets, and the game feed here."
+          />
+        </GameSurfaceShell>
+      </div>
     );
   }
 
+  const liveChips: StatChip[] = [
+    {
+      icon: "⛬",
+      label: "Login",
+      value: hasAutoLoginCredentials ? "Stored" : "Pending",
+      state: hasAutoLoginCredentials ? "ready" : "pending",
+    },
+    {
+      icon: "▶",
+      label: "Autoplay",
+      value: autoPlayEnabled ? "Active" : "Paused",
+      state: autoPlayEnabled ? "active" : "pending",
+    },
+    {
+      icon: "♥",
+      label: "Player",
+      value: playerLabel,
+      state: player ? "ready" : "idle",
+    },
+    {
+      icon: "⚔",
+      label: "Targets",
+      value: `${nearbyTargets.length} nearby`,
+      state: nearbyTargets.length > 0 ? "active" : "idle",
+    },
+  ];
   return (
-    <section
-      className={`space-y-3 ${variant === "live" ? "p-3" : ""}`}
+    <div
       data-testid={
         variant === "live"
           ? "2004scape-live-operator-surface"
@@ -929,17 +910,38 @@ export function TwoThousandFourScapeOperatorSurface({
             : "2004scape-detail-operator-surface"
       }
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
-          {surfaceTitle}
-        </div>
-        <SurfaceBadge tone={toneForStatusText(run.status)}>
-          {run.status}
-        </SurfaceBadge>
-        <SurfaceBadge tone={toneForHealthState(run.health.state)}>
-          {matchingRuns.length}
-        </SurfaceBadge>
-      </div>
+      <GameSurfaceShell>
+        <GameSurfaceHero
+          heroUrl={RS2004_HERO}
+          title={surfaceTitle}
+          statusLabel={`${run.status} · ${run.health.state}`}
+          statusState={run.health.state === "healthy" ? "ready" : "pending"}
+          cta={
+            session?.controls?.includes("pause") ? (
+              <HeroCta
+                label="Pause"
+                accent={RS2004_ACCENT}
+                onClick={() => void handleControl("pause")}
+              />
+            ) : session?.controls?.includes("resume") ? (
+              <HeroCta
+                label="Resume"
+                accent={RS2004_ACCENT}
+                onClick={() => void handleControl("resume")}
+              />
+            ) : undefined
+          }
+        />
+        <GameSurfaceStrip chips={liveChips} />
+        <GameSurfaceZone>
+          <div className="flex flex-wrap items-center gap-2">
+            <SurfaceBadge tone={toneForStatusText(run.status)}>
+              {run.status}
+            </SurfaceBadge>
+            <SurfaceBadge tone={toneForHealthState(run.health.state)}>
+              {matchingRuns.length} active
+            </SurfaceBadge>
+          </div>
 
       {showDashboard ? (
         <SurfaceSection title="Runtime">
@@ -1114,11 +1116,13 @@ export function TwoThousandFourScapeOperatorSurface({
         </SurfaceSection>
       ) : null}
 
-      {statusMessage ? (
-        <div className="rounded-2xl border border-border/35 bg-card/70 px-4 py-3 text-xs-tight leading-5 text-muted-strong">
-          {statusMessage}
-        </div>
-      ) : null}
-    </section>
+          {statusMessage ? (
+            <div className="rounded-2xl border border-border/35 bg-card/70 px-4 py-3 text-xs-tight leading-5 text-muted-strong">
+              {statusMessage}
+            </div>
+          ) : null}
+        </GameSurfaceZone>
+      </GameSurfaceShell>
+    </div>
   );
 }

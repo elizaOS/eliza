@@ -3,6 +3,7 @@ import {
   BatteryCharging,
   Bluetooth,
   CheckCircle2,
+  Circle,
   Clipboard,
   Download,
   Glasses,
@@ -825,7 +826,7 @@ export function SmartglassesView() {
 
         <Panel>
           <h2 className="text-sm font-semibold">Platform</h2>
-          <div className="mt-3 grid grid-cols-3 gap-1 rounded-md bg-muted/20 p-1">
+          <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg border border-border/50 bg-muted/15 p-1">
             {(Object.keys(PLATFORM_COPY) as PlatformKey[]).map((key) => (
               <PlatformTabButton
                 key={key}
@@ -1198,8 +1199,10 @@ function PlatformTabButton({
       onClick={() => onSelect(platformKey)}
       aria-current={isActive ? "page" : undefined}
       aria-label={`${label} platform`}
-      className={`h-8 rounded px-2 text-xs font-medium ${
-        isActive ? "bg-bg text-txt shadow-sm" : "text-muted hover:text-txt"
+      className={`h-8 rounded-md px-2 text-xs font-medium transition-colors ${
+        isActive
+          ? "bg-bg text-accent shadow-sm ring-1 ring-accent/30"
+          : "text-muted hover:bg-muted/20 hover:text-txt"
       }`}
       {...agentProps}
     >
@@ -1249,38 +1252,80 @@ function HeadsetStateHint({
   batteryState: string | null;
   deviceState: string | null;
 }) {
-  const states = [physicalState, batteryState, deviceState].filter(Boolean);
-  const stateText = states.length > 0 ? states.join(" / ") : "No state yet";
+  const chips: Array<{ key: string; value: string }> = [
+    { key: "physical", value: physicalState ?? "" },
+    { key: "battery", value: batteryState ?? "" },
+    { key: "device", value: deviceState ?? "" },
+  ].filter((c) => c.value.length > 0);
   const blocked = isCradleOrChargingState(physicalState, batteryState);
   const ready = physicalState === "wearing";
+  const tone = blocked
+    ? "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200"
+    : ready
+      ? "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300"
+      : "border-border/50 bg-muted/15 text-muted";
+  const hint = blocked
+    ? "Remove from charger and wear before validation."
+    : ready
+      ? "Ready for tap/audio validation."
+      : "Wear state required for tap/audio validation.";
   return (
-    <div
-      className={`mt-3 rounded-md border px-3 py-2 text-xs ${
-        blocked
-          ? "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200"
-          : ready
-            ? "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300"
-            : "border-border/60 bg-muted/20 text-muted"
-      }`}
-    >
-      <span className="font-medium">Headset state:</span> {stateText}
-      {blocked && <span> Remove from charger and wear before validation.</span>}
-      {!blocked && !ready && (
-        <span> Wear state required for tap/audio validation.</span>
-      )}
+    <div className={`mt-3 rounded-lg border px-3 py-2 ${tone}`}>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-2xs font-semibold uppercase tracking-wider opacity-70">
+          Headset
+        </span>
+        {chips.length > 0 ? (
+          chips.map((chip) => (
+            <span
+              key={chip.key}
+              className="inline-flex items-center gap-1 rounded-full border border-current/20 bg-current/5 px-2 py-0.5 text-2xs font-medium"
+            >
+              <span
+                className="h-1 w-1 rounded-full bg-current opacity-70"
+                aria-hidden
+              />
+              {chip.value}
+            </span>
+          ))
+        ) : (
+          <span className="text-2xs italic opacity-70">no state yet</span>
+        )}
+      </div>
+      <p className="mt-1.5 text-2xs leading-4 opacity-80">{hint}</p>
     </div>
   );
 }
 
 function CheckRow({ ok, label }: { ok: boolean; label: string; key?: string }) {
   return (
-    <div className="flex items-center gap-2 rounded-md border border-border/50 px-3 py-2">
-      {ok ? (
-        <CheckCircle2 className="h-4 w-4 text-green-600" />
-      ) : (
-        <XCircle className="h-4 w-4 text-muted" />
-      )}
-      <span className="text-xs">{label}</span>
+    <div
+      className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 transition-colors ${
+        ok
+          ? "border-green-500/30 bg-green-500/5"
+          : "border-border/40 bg-muted/5"
+      }`}
+    >
+      <span className={`text-xs ${ok ? "font-medium text-txt" : "text-muted"}`}>
+        {label}
+      </span>
+      <span
+        className={`inline-flex items-center gap-1.5 rounded-full px-1.5 py-0.5 ${
+          ok ? "text-green-600 dark:text-green-400" : "text-muted"
+        }`}
+      >
+        <span
+          className={`h-1.5 w-1.5 rounded-full ${
+            ok ? "bg-green-500" : "bg-muted/40"
+          }`}
+          aria-hidden
+        />
+        {ok ? (
+          <CheckCircle2 className="h-3.5 w-3.5" />
+        ) : (
+          <Circle className="h-3.5 w-3.5" />
+        )}
+      </span>
     </div>
   );
 }

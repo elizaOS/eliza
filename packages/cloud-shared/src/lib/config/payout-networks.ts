@@ -59,15 +59,15 @@ export const ELIZA_TOKEN_ADDRESSES: Record<PayoutNetwork, string> = {
   bnb: "0xea17df5cf6d172224892b5477a16acb111182478",
   solana: "DuMbhu7mvQvqQHGcnikDgb4XegXJRyhUBfdU22uELiZA",
 
-  // Testnet - Use test tokens or deploy your own for testing
-  // These are placeholder addresses - deploy test ERC20 for actual testing
+  // Testnet token addresses require env overrides before real payouts.
+  // Deploy test ERC20s or set the matching ELIZA_TOKEN_* env var for payout tests.
   "ethereum-sepolia":
     process.env.ELIZA_TOKEN_SEPOLIA || "0x0000000000000000000000000000000000000000",
   "base-sepolia":
     process.env.ELIZA_TOKEN_BASE_SEPOLIA || "0x0000000000000000000000000000000000000000",
   "bnb-testnet":
     process.env.ELIZA_TOKEN_BNB_TESTNET || "0x0000000000000000000000000000000000000000",
-  "solana-devnet": process.env.ELIZA_TOKEN_SOLANA_DEVNET || "11111111111111111111111111111111", // Placeholder
+  "solana-devnet": process.env.ELIZA_TOKEN_SOLANA_DEVNET || "11111111111111111111111111111111", // System-program sentinel
 };
 
 // ============================================================================

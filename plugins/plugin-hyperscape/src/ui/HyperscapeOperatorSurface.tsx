@@ -15,7 +15,300 @@ import {
 } from "@elizaos/app-core/ui-compat";
 import { Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { type CSSProperties, useCallback, useMemo, useState } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useCallback,
+  useMemo,
+  useState,
+} from "react";
+
+const HYPERSCAPE_HERO_URL = "/api/views/hyperscape/hero";
+const HYPERSCAPE_ACCENT = "#ff5800";
+
+type ChipState = "live" | "attention" | "idle";
+
+const CHIP_DOT_COLOR: Record<ChipState, string> = {
+  live: "#22c55e",
+  attention: HYPERSCAPE_ACCENT,
+  idle: "rgba(125,125,125,0.55)",
+};
+
+function chipStateForStatus(status: string | undefined): ChipState {
+  if (status === "running" || status === "ready") return "live";
+  if (status === "degraded" || status === "failed") return "attention";
+  return "idle";
+}
+
+function statusLabelText(status: string | undefined): string {
+  if (status === "running" || status === "ready") return "Live";
+  if (status === "degraded" || status === "failed") return "Needs attention";
+  return "Starting";
+}
+
+function HeroStatusChip({ state, label }: { state: ChipState; label: string }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 12px",
+        borderRadius: 999,
+        background: "rgba(0,0,0,0.5)",
+        backdropFilter: "blur(8px)",
+        border: "1px solid rgba(255,255,255,0.16)",
+        color: "#fff",
+        fontSize: 12,
+        fontWeight: 700,
+        letterSpacing: "0.04em",
+        textTransform: "uppercase",
+      }}
+    >
+      <span
+        style={{
+          width: 9,
+          height: 9,
+          borderRadius: 999,
+          background: CHIP_DOT_COLOR[state],
+          boxShadow: `0 0 0 4px ${CHIP_DOT_COLOR[state]}33`,
+        }}
+      />
+      {label}
+    </span>
+  );
+}
+
+function HeroHeader({
+  title,
+  state,
+  statusText,
+  cta,
+}: {
+  title: string;
+  state: ChipState;
+  statusText: string;
+  cta?: { label: string; onClick: () => void; disabled?: boolean } | null;
+}) {
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "34vh",
+        minHeight: 220,
+        maxHeight: 380,
+        overflow: "hidden",
+        borderRadius: 20,
+        backgroundColor: "#0b0b0f",
+        backgroundImage: `url(${HYPERSCAPE_HERO_URL})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "linear-gradient(to bottom, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.12) 45%, rgba(0,0,0,0.72) 100%)",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          left: 24,
+          right: 24,
+          bottom: 22,
+          display: "flex",
+          alignItems: "flex-end",
+          justifyContent: "space-between",
+          gap: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <HeroStatusChip state={state} label={statusText} />
+          <div
+            style={{
+              color: "#fff",
+              fontSize: 34,
+              fontWeight: 800,
+              lineHeight: 1.05,
+              letterSpacing: "-0.01em",
+              textShadow: "0 2px 18px rgba(0,0,0,0.55)",
+            }}
+          >
+            {title}
+          </div>
+        </div>
+        {cta ? (
+          <button
+            type="button"
+            onClick={cta.onClick}
+            disabled={cta.disabled}
+            style={{
+              padding: "12px 22px",
+              borderRadius: 999,
+              border: "none",
+              background: HYPERSCAPE_ACCENT,
+              color: "#fff",
+              fontSize: 14,
+              fontWeight: 700,
+              letterSpacing: "0.01em",
+              cursor: cta.disabled ? "default" : "pointer",
+              opacity: cta.disabled ? 0.55 : 1,
+              boxShadow: "0 8px 24px rgba(255,88,0,0.35)",
+            }}
+          >
+            {cta.label}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function StatusStripCard({
+  icon,
+  label,
+  value,
+  state,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  state: ChipState;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        flex: "1 1 160px",
+        minWidth: 150,
+        padding: "12px 14px",
+        borderRadius: 14,
+        border: "1px solid var(--border, rgba(0,0,0,0.12))",
+        background: "var(--card, rgba(255,255,255,0.8))",
+      }}
+    >
+      <div
+        aria-hidden
+        style={{
+          display: "grid",
+          placeItems: "center",
+          width: 38,
+          height: 38,
+          borderRadius: 11,
+          fontSize: 18,
+          background: "var(--surface, rgba(0,0,0,0.04))",
+        }}
+      >
+        {icon}
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 10.5,
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            color: "var(--muted, rgba(0,0,0,0.58))",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: 999,
+              background: CHIP_DOT_COLOR[state],
+            }}
+          />
+          {label}
+        </div>
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 700,
+            color: "var(--foreground, var(--text, #111))",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {value}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HeroFrame({
+  children,
+  variant,
+}: {
+  children: ReactNode;
+  variant: AppOperatorSurfaceProps["variant"];
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 16,
+        padding: variant === "live" ? 12 : 16,
+        maxWidth: 1100,
+        margin: "0 auto",
+        width: "100%",
+        boxSizing: "border-box",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function HyperscapeWaitingZone() {
+  return (
+    <div
+      style={{
+        flex: "1 1 auto",
+        minHeight: 160,
+        display: "grid",
+        placeItems: "center",
+        borderRadius: 16,
+        border: "1px dashed var(--border, rgba(0,0,0,0.12))",
+        background:
+          "radial-gradient(120% 120% at 50% 0%, var(--surface, rgba(0,0,0,0.04)) 0%, transparent 70%)",
+        padding: "28px 16px",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 10,
+          color: "var(--muted, rgba(0,0,0,0.58))",
+          textAlign: "center",
+        }}
+      >
+        <div style={{ fontSize: 30, opacity: 0.85 }}>◇</div>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>
+          Waiting for a host session
+        </div>
+        <div style={{ fontSize: 12, opacity: 0.8 }}>
+          Launch Hyperscape to attach the viewer and follow the agent.
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function HyperscapeSuggestedPromptButton({
   prompt,
@@ -270,111 +563,110 @@ export function HyperscapeOperatorSurface({
   });
   if (!run) {
     return (
-      <section className="p-4" data-testid="hyperscape-operator-ready">
-        <div className="mx-auto flex max-w-3xl flex-col gap-3">
-          <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/45 bg-card/82 px-4 py-3 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div
-                aria-hidden
-                className="grid h-10 w-10 place-items-center rounded-xl bg-cyan-600 text-lg font-black text-white shadow-sm"
-              >
-                H
-              </div>
-              <div>
-                <div className="text-sm font-semibold text-foreground">
-                  Hyperscape
-                </div>
-                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
-                  host surface ready
-                </div>
-              </div>
-            </div>
-            <div className="h-3 w-3 rounded-full bg-amber-400 shadow-[0_0_0_4px_rgba(251,191,36,0.18)]" />
+      <section data-testid="hyperscape-operator-ready">
+        <HeroFrame variant={variant}>
+          <HeroHeader
+            title="Hyperscape"
+            state="idle"
+            statusText="Host surface ready"
+          />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+            <StatusStripCard
+              icon="◇"
+              label="Auth"
+              value="Wallet pending"
+              state="attention"
+            />
+            <StatusStripCard
+              icon="◎"
+              label="Viewer"
+              value="Embed attaches"
+              state="idle"
+            />
+            <StatusStripCard
+              icon="⌖"
+              label="Follow"
+              value="Target sync"
+              state="idle"
+            />
           </div>
-
-          <div className="grid grid-cols-1 gap-3">
-            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
-              <div className="grid h-9 w-9 place-items-center rounded-lg border border-amber-300/35 bg-amber-400/10 text-lg text-amber-700">
-                ◇
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
-                  Auth
-                </div>
-                <div className="text-sm font-semibold text-foreground">
-                  Wallet pending
-                </div>
-              </div>
-            </div>
-            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
-              <div className="grid h-9 w-9 place-items-center rounded-lg border border-cyan-300/35 bg-cyan-400/10 text-lg text-cyan-700">
-                ◎
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
-                  Viewer
-                </div>
-                <div className="text-sm font-semibold text-foreground">
-                  Embed attaches
-                </div>
-              </div>
-            </div>
-            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
-              <div className="grid h-9 w-9 place-items-center rounded-lg border border-emerald-300/35 bg-emerald-400/10 text-lg text-emerald-700">
-                ⌖
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
-                  Follow
-                </div>
-                <div className="text-sm font-semibold text-foreground">
-                  Target sync
-                </div>
-              </div>
-            </div>
-            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
-              <div className="grid h-9 w-9 place-items-center rounded-lg border border-violet-300/35 bg-violet-400/10 text-lg text-violet-700">
-                ↗
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
-                  Path
-                </div>
-                <div className="text-sm font-semibold text-foreground">
-                  /hyperscape
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+          <HyperscapeWaitingZone />
+        </HeroFrame>
       </section>
     );
   }
 
+  const firstPrompt = session?.suggestedPrompts?.[0];
   return (
-    <section
-      className={`space-y-3 ${variant === "live" ? "p-3" : ""}`}
-      data-testid={surfaceTestId(variant)}
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
-          {surfaceTitle}
-        </div>
-        <SurfaceBadge tone={toneForStatusText(run.status)}>
-          {run.status}
-        </SurfaceBadge>
-        <SurfaceBadge tone={toneForViewerAttachment(run.viewerAttachment)}>
-          {run.viewerAttachment}
-        </SurfaceBadge>
-        <SurfaceBadge tone={toneForHealthState(run.health.state)}>
-          {run.health.state}
-        </SurfaceBadge>
-        <span className="ml-auto text-2xs uppercase tracking-[0.18em] text-muted">
-          {matchingRuns.length} active run{matchingRuns.length === 1 ? "" : "s"}
-        </span>
+    <HeroFrame variant={variant}>
+      <HeroHeader
+        title="Hyperscape"
+        state={chipStateForStatus(run.status)}
+        statusText={statusLabelText(run.status)}
+        cta={
+          showChat && firstPrompt
+            ? {
+                label: firstPrompt,
+                onClick: () => void handleSuggestedPrompt(firstPrompt),
+                disabled: sending,
+              }
+            : null
+        }
+      />
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+        <StatusStripCard
+          icon="◎"
+          label="Viewer"
+          value={run.viewerAttachment}
+          state={run.viewerAttachment === "attached" ? "live" : "idle"}
+        />
+        <StatusStripCard
+          icon="⌖"
+          label="Follow"
+          value={
+            session?.followEntity ??
+            run.viewer?.authMessage?.followEntity ??
+            "Pending"
+          }
+          state={session?.followEntity ? "live" : "idle"}
+        />
+        <StatusStripCard
+          icon="❤"
+          label="Health"
+          value={run.health.state}
+          state={chipStateForStatus(run.status)}
+        />
+        <StatusStripCard
+          icon="⚡"
+          label="Relay"
+          value={session?.canSendCommands ? "Ready" : "Waiting"}
+          state={session?.canSendCommands ? "live" : "attention"}
+        />
       </div>
+      <section
+        className={`space-y-3 ${variant === "live" ? "p-3" : ""}`}
+        data-testid={surfaceTestId(variant)}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
+            {surfaceTitle}
+          </div>
+          <SurfaceBadge tone={toneForStatusText(run.status)}>
+            {run.status}
+          </SurfaceBadge>
+          <SurfaceBadge tone={toneForViewerAttachment(run.viewerAttachment)}>
+            {run.viewerAttachment}
+          </SurfaceBadge>
+          <SurfaceBadge tone={toneForHealthState(run.health.state)}>
+            {run.health.state}
+          </SurfaceBadge>
+          <span className="ml-auto text-2xs uppercase tracking-[0.18em] text-muted">
+            {matchingRuns.length} active run
+            {matchingRuns.length === 1 ? "" : "s"}
+          </span>
+        </div>
 
-      {showDashboard ? (
+        {showDashboard ? (
         <>
           <SurfaceSection title="Host">
             <div className="space-y-2">
@@ -509,12 +801,13 @@ export function HyperscapeOperatorSurface({
         </SurfaceSection>
       ) : null}
 
-      {statusMessage ? (
-        <div className="rounded-2xl border border-border/35 bg-card/70 px-4 py-3 text-xs-tight leading-5 text-muted-strong">
-          {statusMessage}
-        </div>
-      ) : null}
-    </section>
+        {statusMessage ? (
+          <div className="rounded-2xl border border-border/35 bg-card/70 px-4 py-3 text-xs-tight leading-5 text-muted-strong">
+            {statusMessage}
+          </div>
+        ) : null}
+      </section>
+    </HeroFrame>
   );
 }
 

@@ -1,4 +1,20 @@
 import {
+	Badge,
+	Button,
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "@elizaos/ui/components";
+import { cn } from "@elizaos/ui/utils";
+import {
 	AlertTriangle,
 	Bot,
 	CheckCircle,
@@ -10,24 +26,6 @@ import {
 } from "lucide-react";
 import React from "react";
 import type { LeaderboardEntry, Recommendation } from "../types";
-import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "./ui/card";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "./ui/table";
-import { cn } from "./utils";
 
 interface RecommendationDetailsProps {
 	recommendations: Recommendation[];
@@ -90,10 +88,14 @@ const RecommendationDetails: React.FC<RecommendationDetailsProps> = ({
 									<Badge
 										variant={
 											rec.recommendationType === "BUY"
-												? "success"
+												? "secondary"
 												: "destructive"
 										}
-										className="text-xs px-2 py-0.5 self-start"
+										className={cn(
+											"text-xs px-2 py-0.5 self-start",
+											rec.recommendationType === "BUY" &&
+												"border-transparent bg-status-success-bg text-status-success",
+										)}
 									>
 										{rec.recommendationType}
 									</Badge>
@@ -128,7 +130,7 @@ const RecommendationDetails: React.FC<RecommendationDetailsProps> = ({
 								{rec.metrics && (
 									<div className="mt-2 pt-2.5 border-t border-border/30 text-xs space-y-1.5">
 										<p className="font-medium text-foreground/80 flex items-center">
-											<CheckCircle className="w-3.5 h-3.5 mr-1.5 text-blue-500" />
+											<CheckCircle className="w-3.5 h-3.5 mr-1.5 text-primary/70" />
 											Evaluation (as of{" "}
 											{new Date(
 												rec.metrics.evaluationTimestamp,

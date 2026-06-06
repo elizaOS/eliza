@@ -80,6 +80,7 @@ import {
 } from "../api/server.js";
 
 const _require = createRequire(import.meta.url);
+
 import { invalidateCorsAllowedPorts } from "../api/server-cors.js";
 import { isRuntimeAutonomyEnabled } from "./autonomy-policy.js";
 import {
@@ -345,12 +346,10 @@ function isOptionalAppRoutePluginUnavailableError(
   return err instanceof OptionalAppRoutePluginUnavailableError;
 }
 
-function splitPackageSpecifier(specifier: string):
-  | {
-      packageName: string;
-      exportSubpath: string;
-    }
-  | null {
+function splitPackageSpecifier(specifier: string): {
+  packageName: string;
+  exportSubpath: string;
+} | null {
   const parts = specifier.split("/");
   if (specifier.startsWith("@")) {
     if (parts.length < 2) return null;
@@ -433,24 +432,19 @@ async function loadAppRoutePluginFromSpecifier(
     logger.debug(
       `[eliza] Loading app route plugin ${specifier} from workspace source at ${sourceEntry}`,
     );
-    try {
-      module = (await import(
-        pathToFileURL(sourceEntry).href
-      )) as AppRoutePluginModule;
-    } catch (sourceErr) {
-      if (isModuleNotFoundError(sourceErr)) {
-        throw new OptionalAppRoutePluginUnavailableError(
-          specifier,
-          sourceErr,
-        );
-      }
-      throw sourceErr;
-    }
+    module = (await import(
+      pathToFileURL(sourceEntry).href
+    )) as AppRoutePluginModule;
   }
   return resolvePluginExport(module, exportName);
 }
 
+/** @internal Exported for focused loader regression tests. */
+export const __loadAppRoutePluginFromSpecifierForTest =
+  loadAppRoutePluginFromSpecifier;
+
 const WORKFLOW_ROUTE_PLUGIN_ID = "@elizaos/plugin-workflow:routes";
+const WALLET_ROUTE_PLUGIN_ID = "@elizaos/plugin-wallet:routes";
 
 function getRegistryAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   return getApps(loadRegistry()).flatMap((app) => {
@@ -547,6 +541,20 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
         loadAppRoutePluginFromSpecifier(
           "@elizaos/plugin-workflow/plugin-routes",
           "workflowRoutePlugin",
+        ),
+    });
+  }
+  // plugin-wallet has the same load-order hazard: its rawPath route plugin
+  // (`/api/wallet/market-overview`) registers only as a side effect of the
+  // `register-routes` import, which is not guaranteed to have run before this
+  // snapshot. Register it explicitly so the route is always mounted.
+  if (!byId.has(WALLET_ROUTE_PLUGIN_ID)) {
+    byId.set(WALLET_ROUTE_PLUGIN_ID, {
+      id: WALLET_ROUTE_PLUGIN_ID,
+      load: () =>
+        loadAppRoutePluginFromSpecifier(
+          "@elizaos/plugin-wallet/routes/plugin",
+          "walletRoutePlugin",
         ),
     });
   }

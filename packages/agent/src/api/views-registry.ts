@@ -69,14 +69,38 @@ const warnedLargeBundles = new Set<string>();
 async function resolvePluginPackageDir(
   pluginName: string,
 ): Promise<string | undefined> {
+  const { createRequire } = await import("node:module");
+  const req = createRequire(import.meta.url);
+
+  // Preferred: resolve the package's own package.json directly. Requires the
+  // package to expose "./package.json" in its exports map.
   try {
-    const { createRequire } = await import("node:module");
-    const req = createRequire(import.meta.url);
-    const pkgJsonPath = req.resolve(`${pluginName}/package.json`);
-    return path.dirname(pkgJsonPath);
+    return path.dirname(req.resolve(`${pluginName}/package.json`));
   } catch {
-    return undefined;
+    // Fall through to resolving the package entry instead.
   }
+
+  // Fallback: resolve the package main entry (the "." export always exists for
+  // a loadable plugin) and walk up to the directory that owns its package.json.
+  // This keeps view bundles resolvable for plugins that don't export
+  // "./package.json".
+  try {
+    let dir = path.dirname(req.resolve(pluginName));
+    for (let depth = 0; depth < 8; depth++) {
+      if (await fileExists(path.join(dir, "package.json"))) return dir;
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  } catch {
+    // Package is not reachable from this module at all.
+  }
+
+  logger.warn(
+    { src: "ViewRegistry", pluginName },
+    `Could not resolve package directory for plugin "${pluginName}"; its view bundle will be unavailable`,
+  );
+  return undefined;
 }
 
 /**

@@ -61,6 +61,11 @@ export function buildSharedEnv(
     PLAYWRIGHT_TEST_AUTH_SECRET: PLAYWRIGHT_TEST_AUTH_SECRET,
     NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH: "true",
     VITE_PLAYWRIGHT_TEST_AUTH: "true",
+    // Stub the Cloudflare registrar/DNS so domain check/buy routes never hit
+    // the real Cloudflare API (the registrar reads this via getCloudAwareEnv).
+    // The fixture spawns cloud-api-e2e-server.mjs directly, so it doesn't get
+    // the `--var` injection cloud-api-dev.mjs does — set it here instead.
+    ELIZA_CF_REGISTRAR_DEV_STUB: process.env.ELIZA_CF_REGISTRAR_DEV_STUB ?? "1",
     // PGlite via TCP bridge (cloud-api-dev.mjs handles this)
     DATABASE_URL: `postgresql://postgres@${urls.pgliteHost}:${urls.pglitePort}/postgres`,
     TEST_DATABASE_URL: `postgresql://postgres@${urls.pgliteHost}:${urls.pglitePort}/postgres`,

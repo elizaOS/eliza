@@ -407,7 +407,7 @@ async function exchangeCodeForTokens(
   if (provider.tokenHeaders) {
     for (const [key, value] of Object.entries(provider.tokenHeaders)) {
       if (value === "Basic ${base64(CLIENT_ID:CLIENT_SECRET)}") {
-        // Special placeholder for Basic auth
+        // Template token for Basic auth
         const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
         headers[key] = `Basic ${credentials}`;
         // Remove client credentials from body when using Basic auth

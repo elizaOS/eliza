@@ -109,7 +109,7 @@ export class CacheClient {
     return `${envPrefix}:${key}`;
   }
 
-  private isPlaceholderCredential(value: string | undefined): boolean {
+  private isSentinelCredential(value: string | undefined): boolean {
     if (!value) return false;
 
     return (
@@ -202,13 +202,13 @@ export class CacheClient {
     const inWorker = isCloudflareWorkerRuntime();
     const hasNativeRedisConfig = Boolean(redisUrl);
     const hasRestRedisConfig = Boolean(restUrl || restToken);
-    const socketRedisConfigured = Boolean(redisUrl) && !this.isPlaceholderCredential(redisUrl);
+    const socketRedisConfigured = Boolean(redisUrl) && !this.isSentinelCredential(redisUrl);
     const nativeRedisConfigured =
-      Boolean(redisUrl) && !this.isPlaceholderCredential(redisUrl) && !inWorker;
+      Boolean(redisUrl) && !this.isSentinelCredential(redisUrl) && !inWorker;
     const restRedisConfigured =
       Boolean(restUrl && restToken) &&
-      !this.isPlaceholderCredential(restUrl) &&
-      !this.isPlaceholderCredential(restToken);
+      !this.isSentinelCredential(restUrl) &&
+      !this.isSentinelCredential(restToken);
 
     if (backendPreference === "memory") {
       if (env.NODE_ENV === "production" && env.PLAYWRIGHT_TEST_AUTH !== "true") {
@@ -275,7 +275,7 @@ export class CacheClient {
     }
 
     if (hasNativeRedisConfig && backendPreference !== "redis-rest") {
-      logger.warn("[Cache] Ignoring placeholder or invalid native Redis credentials.");
+      logger.warn("[Cache] Ignoring sentinel or invalid native Redis credentials.");
     }
 
     if (
@@ -299,7 +299,7 @@ export class CacheClient {
     }
 
     if (hasRestRedisConfig) {
-      logger.warn("[Cache] Ignoring placeholder or invalid Redis REST credentials.");
+      logger.warn("[Cache] Ignoring sentinel or invalid Redis REST credentials.");
     }
 
     // Local dev fallback: when nothing real is configured and we're not in a

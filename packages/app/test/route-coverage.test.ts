@@ -105,7 +105,7 @@ const NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: Readonly<Record<string, string>> = {
   "plugins/plugin-screenshare/src/index.ts":
     "Screenshare is registered by runtime capability loading, not the app boot side-effect loader.",
   "plugins/plugin-social-alpha/src/index.ts":
-    "Social Alpha is opt-in and loaded by benchmark/runtime configuration rather than the app boot side-effect loader.",
+    "Social Alpha is an opt-in agent runtime plugin; its leaderboard view registers when the agent enables the plugin, not via the app boot loader.",
 };
 
 const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {

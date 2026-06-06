@@ -12,11 +12,11 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
-import { createWriteStream, type WriteStream } from "node:fs";
+import { createWriteStream, existsSync, type WriteStream } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { type AddressInfo, createConnection, createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   type RunningControlPlaneMock,
@@ -28,6 +28,30 @@ import {
 } from "@elizaos/cloud-test-mocks/hetzner";
 
 import { buildSharedEnv } from "./env";
+
+/**
+ * Resolve the bun executable for `child_process.spawn`. On Windows, Node cannot
+ * spawn the extensionless npm `bun` shim (spawn ENOENT) nor a `.cmd` without
+ * `shell: true`, so probe the native `bun.exe` first. POSIX uses plain `bun`.
+ */
+function resolveBun(): string {
+  if (process.env.BUN && existsSync(process.env.BUN)) return process.env.BUN;
+  const names = process.platform === "win32" ? ["bun.exe", "bun"] : ["bun"];
+  const home = process.env.HOME || process.env.USERPROFILE || "";
+  const dirs = [
+    resolve(home, ".bun/bin"),
+    ...(process.env.PATH?.split(delimiter) ?? []),
+  ];
+  for (const dir of dirs) {
+    for (const name of names) {
+      const candidate = resolve(dir, name);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return process.platform === "win32" ? "bun.exe" : "bun";
+}
+
+const BUN = resolveBun();
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../../../..");
 const LOG_DIR = resolve(import.meta.dirname, "../../.logs");
@@ -265,7 +289,7 @@ export async function startCloudStack(
   procs.push(
     spawnLogged(
       "pglite",
-      "bun",
+      BUN,
       ["run", "packages/scripts/cloud/admin/dev/pglite-server.ts"],
       {
         env: pgliteEnv,
@@ -293,7 +317,7 @@ export async function startCloudStack(
   if (!opts.skipMigrate) {
     await runLoggedStep(
       "cloud-migrate",
-      "bun",
+      BUN,
       ["run", "--cwd", "packages/cloud-shared", "db:migrate"],
       {
         env: stackEnv,
@@ -333,7 +357,7 @@ export async function startCloudStack(
   procs.push(
     spawnLogged(
       "cloud-frontend",
-      "bun",
+      BUN,
       ["run", "dev", "--", "--host", "127.0.0.1"],
       {
         env: frontendEnv,

@@ -3,7 +3,10 @@ import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { containersEnv } from "@/lib/config/containers-env";
-import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
+import {
+  getElizaAgentDirectWebUiUrl,
+  getElizaAgentPublicWebUiUrl,
+} from "@/lib/eliza-agent-web-ui";
 import { getPairingTokenService } from "@/lib/services/pairing-token";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import {
@@ -31,10 +34,44 @@ type PairingSandbox = NonNullable<
   Awaited<ReturnType<typeof agentSandboxesRepository.findByIdAndOrg>>
 >;
 
+/**
+ * Return the browser-facing direct web UI origin for Docker-backed agents.
+ * `bridge_url` is the API/control listener, while `web_ui_port` is the UI
+ * listener on the same host for local Docker and current Hetzner shapes.
+ */
+function resolveDirectWebUiUrlFromBridgeHost(
+  sandbox: PairingSandbox,
+): string | null {
+  if (!sandbox.web_ui_port) {
+    return null;
+  }
+
+  const raw = sandbox.bridge_url?.trim();
+  if (!raw) return null;
+
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    url.port = String(sandbox.web_ui_port);
+    url.pathname = "/";
+    url.search = "";
+    url.hash = "";
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
 function resolveManagedWebUiUrl(sandbox: PairingSandbox): string | null {
   if (sandbox.execution_tier === "shared") return null;
-  const baseDomain = containersEnv.publicBaseDomain();
-  return getElizaAgentPublicWebUiUrl(sandbox, baseDomain ? { baseDomain } : {});
+
+  return (
+    resolveDirectWebUiUrlFromBridgeHost(sandbox) ??
+    getElizaAgentDirectWebUiUrl(sandbox) ??
+    getElizaAgentPublicWebUiUrl(sandbox, {
+      baseDomain: containersEnv.publicBaseDomain(),
+    })
+  );
 }
 
 /**

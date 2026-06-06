@@ -31,7 +31,6 @@ import {
   Search,
   Star,
   Upload,
-  UserRound,
 } from "lucide-react";
 import {
   type ChangeEvent,
@@ -398,12 +397,21 @@ function ContactList({
   if (empty) {
     return (
       <div className="mx-auto flex max-w-sm flex-col items-center gap-3 px-4 py-16 text-center">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-accent/25 bg-accent/12">
-          <UserRound className="h-7 w-7 text-accent" />
-        </div>
-        <div className="text-sm font-medium text-txt">
+        <span
+          className="flex h-20 w-20 items-center justify-center rounded-3xl"
+          style={{ background: "var(--accent-subtle)" }}
+        >
+          <AddressBookMotif />
+        </span>
+        <div className="mt-2 text-base font-semibold text-txt">
           {t("contacts.empty.title", { defaultValue: "No contacts yet" })}
         </div>
+        <p className="max-w-xs text-sm text-muted">
+          {t("contacts.empty.body", {
+            defaultValue:
+              "Import a vCard or add someone to start your address book.",
+          })}
+        </p>
         <ImportVCardButton onImport={onImport} t={t} />
       </div>
     );
@@ -431,6 +439,66 @@ function ContactList({
         />
       ))}
     </ul>
+  );
+}
+
+function AddressBookMotif() {
+  return (
+    <svg width="88" height="88" viewBox="0 0 88 88" fill="none" role="img">
+      <title>Address book</title>
+      <rect
+        x="20"
+        y="14"
+        width="48"
+        height="60"
+        rx="10"
+        fill="var(--surface)"
+        stroke="var(--accent)"
+        strokeWidth="2"
+      />
+      <line
+        x1="20"
+        y1="30"
+        x2="14"
+        y2="30"
+        stroke="var(--accent)"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+      <line
+        x1="20"
+        y1="44"
+        x2="14"
+        y2="44"
+        stroke="var(--accent)"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+      <line
+        x1="20"
+        y1="58"
+        x2="14"
+        y2="58"
+        stroke="var(--accent)"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+      <circle
+        cx="44"
+        cy="38"
+        r="8"
+        fill="var(--accent-subtle)"
+        stroke="var(--accent)"
+        strokeWidth="2"
+      />
+      <path
+        d="M32 60 C32 51 56 51 56 60"
+        fill="none"
+        stroke="var(--accent)"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 

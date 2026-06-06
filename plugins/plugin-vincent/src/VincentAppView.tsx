@@ -15,7 +15,13 @@ import type { WalletAddresses } from "@elizaos/shared";
 import type { OverlayAppContext } from "@elizaos/ui";
 import { Button, PagePanel, Spinner, useApp } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { ArrowLeft, RefreshCw, ShieldCheck } from "lucide-react";
+import {
+  ArrowLeft,
+  KeyRound,
+  RefreshCw,
+  ShieldCheck,
+  Wallet,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { TradingProfileCard } from "./TradingProfileCard";
 import { TradingStrategyPanel } from "./TradingStrategyPanel";
@@ -117,7 +123,7 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
       </div>
 
       {/* Scrollable content */}
-      <div className="chat-native-scrollbar flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+      <div className="chat-native-scrollbar flex-1 overflow-y-auto px-4 pb-32 pt-4 sm:px-6 sm:pb-36">
         <div className="mx-auto max-w-5xl">
           {/* Error banner */}
           {error && <PagePanel.Notice tone="danger">{error}</PagePanel.Notice>}
@@ -149,15 +155,29 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
               )}
 
               {!vincentConnected && !loading && (
-                <div className="rounded-lg border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-                  <div className="flex items-center gap-3">
-                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-accent/25 bg-accent/12 text-accent">
+                <div className="grid gap-3 rounded-lg border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:grid-cols-3">
+                  <div className="flex items-center gap-3 rounded-xl border border-accent/20 bg-accent/10 px-3 py-3">
+                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-accent/25 bg-accent/12 text-accent">
                       <ShieldCheck className="h-5 w-5" />
                     </div>
-                    <div className="min-w-0 text-sm font-medium text-txt">
-                      {t("vincent.connectPrompt", {
-                        defaultValue: "Connect Vincent to enable trading.",
-                      })}
+                    <div className="min-w-0 text-sm font-semibold text-txt">
+                      Vincent
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 rounded-xl border border-border/20 bg-card/45 px-3 py-3">
+                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-border/25 bg-bg/50 text-muted">
+                      <Wallet className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 text-sm font-semibold text-txt">
+                      Wallet
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 rounded-xl border border-border/20 bg-card/45 px-3 py-3">
+                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-border/25 bg-bg/50 text-muted">
+                      <KeyRound className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 text-sm font-semibold text-txt">
+                      OAuth
                     </div>
                   </div>
                 </div>

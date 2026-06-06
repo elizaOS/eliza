@@ -15,6 +15,18 @@ import {
 import { Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { type CSSProperties, useCallback, useMemo, useState } from "react";
+import {
+  GameSurfaceHero,
+  GameSurfaceShell,
+  GameSurfaceStrip,
+  GameSurfaceZone,
+  HeroCta,
+  type StatChip,
+  WaitingForSession,
+} from "./game-surface-shell";
+
+const SCAPE_HERO = "/api/views/scape/hero";
+const SCAPE_ACCENT = "#d98a2b";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Telemetry shape — a partial view of what buildScapeSessionState emits.
@@ -626,91 +638,64 @@ export function ScapeOperatorSurface({
     status: paused ? "inactive" : "active",
   });
   if (!run) {
+    const chips: StatChip[] = [
+      { icon: "◇", label: "Bot SDK", value: "Token pending", state: "pending" },
+      { icon: "◉", label: "Agent", value: "Spawn pending", state: "pending" },
+      { icon: "◆", label: "Journal", value: "Goals · memory", state: "idle" },
+      { icon: "⚔", label: "World", value: "xRSPS standby", state: "idle" },
+    ];
     return (
-      <section className="p-4" data-testid="scape-operator-ready">
-        <div className="mx-auto flex max-w-3xl flex-col gap-3">
-          <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/45 bg-card/82 px-4 py-3 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div
-                aria-hidden
-                className="grid h-10 w-10 place-items-center rounded-xl bg-lime-600 text-lg font-black text-white shadow-sm"
-              >
-                S
-              </div>
-              <div>
-                <div className="text-sm font-semibold text-foreground">
-                  &apos;scape
-                </div>
-                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
-                  xRSPS spawn ready
-                </div>
-              </div>
-            </div>
-            <div className="h-3 w-3 rounded-full bg-amber-400 shadow-[0_0_0_4px_rgba(251,191,36,0.18)]" />
-          </div>
-
-          <div className="grid grid-cols-1 gap-3">
-            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
-              <div className="grid h-9 w-9 place-items-center rounded-lg border border-amber-300/35 bg-amber-400/10 text-lg text-amber-700">
-                ◇
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
-                  Bot SDK
-                </div>
-                <div className="text-sm font-semibold text-foreground">
-                  Token pending
-                </div>
-              </div>
-            </div>
-            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
-              <div className="grid h-9 w-9 place-items-center rounded-lg border border-lime-300/35 bg-lime-400/10 text-lg text-lime-700">
-                ◉
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
-                  Agent
-                </div>
-                <div className="text-sm font-semibold text-foreground">
-                  Spawn pending
-                </div>
-              </div>
-            </div>
-            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
-              <div className="grid h-9 w-9 place-items-center rounded-lg border border-cyan-300/35 bg-cyan-400/10 text-lg text-cyan-700">
-                ◆
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
-                  Journal
-                </div>
-                <div className="text-sm font-semibold text-foreground">
-                  Goals · memory
-                </div>
-              </div>
-            </div>
-            <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
-              <div className="grid h-9 w-9 place-items-center rounded-lg border border-violet-300/35 bg-violet-400/10 text-lg text-violet-700">
-                ↗
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
-                  Path
-                </div>
-                <div className="text-sm font-semibold text-foreground">
-                  /scape
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      <div data-testid="scape-operator-ready">
+        <GameSurfaceShell>
+          <GameSurfaceHero
+            heroUrl={SCAPE_HERO}
+            title="'scape"
+            statusLabel="xRSPS spawn ready"
+            statusState="pending"
+            cta={<HeroCta label="Spawn agent" accent={SCAPE_ACCENT} disabled />}
+          />
+          <GameSurfaceStrip chips={chips} />
+          <WaitingForSession
+            accent={SCAPE_ACCENT}
+            message="Waiting for an xRSPS session. Spawn the agent to stream live perception, goals, the Scape Journal, and nearby world state here."
+          />
+        </GameSurfaceShell>
+      </div>
     );
   }
 
+  const liveChips: StatChip[] = [
+    {
+      icon: "◇",
+      label: "Bot SDK",
+      value: botSdkOnline ? "Connected" : connectionStatus,
+      state: connectionTone(connectionStatus) === "success"
+        ? "ready"
+        : connectionTone(connectionStatus) === "danger"
+          ? "danger"
+          : "pending",
+    },
+    {
+      icon: "◉",
+      label: "Agent",
+      value: agent?.name ?? "Unspawned",
+      state: agent ? "active" : "idle",
+    },
+    {
+      icon: "♥",
+      label: "Vitals",
+      value: agent ? formatHp(agent) : "—",
+      state: agent?.inCombat ? "danger" : agent ? "ready" : "idle",
+    },
+    {
+      icon: "◆",
+      label: "Goal",
+      value: activeGoal?.title ?? telemetry.operatorGoal ?? "None",
+      state: activeGoal || telemetry.operatorGoal ? "active" : "idle",
+    },
+  ];
   return (
-    <section
-      className={`space-y-3 ${variant === "live" ? "p-3" : ""}`}
+    <div
       data-testid={
         variant === "live"
           ? "scape-live-operator-surface"
@@ -719,25 +704,42 @@ export function ScapeOperatorSurface({
             : "scape-detail-operator-surface"
       }
     >
-      {/* Header badges */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
-          {surfaceTitle}
-        </div>
-        <SurfaceBadge tone={toneForStatusText(run.status)}>
-          {run.status}
-        </SurfaceBadge>
-        <SurfaceBadge tone={toneForViewerAttachment(run.viewerAttachment)}>
-          {run.viewerAttachment}
-        </SurfaceBadge>
-        <SurfaceBadge tone={toneForHealthState(run.health.state)}>
-          {run.health.state}
-        </SurfaceBadge>
-        {paused ? <SurfaceBadge tone="warn">paused</SurfaceBadge> : null}
-        <span className="ml-auto text-2xs uppercase tracking-[0.18em] text-muted">
-          {matchingRuns.length} active run{matchingRuns.length === 1 ? "" : "s"}
-        </span>
-      </div>
+      <GameSurfaceShell>
+        <GameSurfaceHero
+          heroUrl={SCAPE_HERO}
+          title={surfaceTitle}
+          statusLabel={`${run.status}${paused ? " · paused" : ""} · ${run.health.state}`}
+          statusState={
+            paused ? "pending" : run.health.state === "healthy" ? "ready" : "pending"
+          }
+          cta={
+            <HeroCta
+              label={paused ? "Resume" : "Pause"}
+              accent={SCAPE_ACCENT}
+              disabled={controlling}
+              onClick={() => void handleControl(paused ? "resume" : "pause")}
+            />
+          }
+        />
+        <GameSurfaceStrip chips={liveChips} />
+        <GameSurfaceZone>
+          {/* Header badges */}
+          <div className="flex flex-wrap items-center gap-2">
+            <SurfaceBadge tone={toneForStatusText(run.status)}>
+              {run.status}
+            </SurfaceBadge>
+            <SurfaceBadge tone={toneForViewerAttachment(run.viewerAttachment)}>
+              {run.viewerAttachment}
+            </SurfaceBadge>
+            <SurfaceBadge tone={toneForHealthState(run.health.state)}>
+              {run.health.state}
+            </SurfaceBadge>
+            {paused ? <SurfaceBadge tone="warn">paused</SurfaceBadge> : null}
+            <span className="ml-auto text-2xs uppercase tracking-[0.18em] text-muted">
+              {matchingRuns.length} active run
+              {matchingRuns.length === 1 ? "" : "s"}
+            </span>
+          </div>
 
       {/* Bot connection + agent identity + goal at-a-glance */}
       {showDashboard ? (
@@ -1029,7 +1031,9 @@ export function ScapeOperatorSurface({
           </ul>
         </SurfaceSection>
       ) : null}
-    </section>
+        </GameSurfaceZone>
+      </GameSurfaceShell>
+    </div>
   );
 }
 

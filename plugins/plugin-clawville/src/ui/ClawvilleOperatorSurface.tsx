@@ -8,7 +8,13 @@ import {
   useApp,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { type CSSProperties, useCallback, useMemo, useState } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useCallback,
+  useMemo,
+  useState,
+} from "react";
 import { PRIMARY_COMMANDS } from "./ClawvilleOperatorSurface.helpers";
 
 type RunEventSummary = {
@@ -85,43 +91,8 @@ function cleanClawvilleMessage(message: string): string {
   return message;
 }
 
-function ClawvilleReadyCard({
-  icon,
-  label,
-  value,
-  tone = "cyan",
-}: {
-  icon: string;
-  label: string;
-  value: string;
-  tone?: "cyan" | "emerald" | "amber" | "violet";
-}) {
-  const toneClass = {
-    amber: "border-amber-300/35 bg-amber-400/10 text-amber-700",
-    cyan: "border-cyan-300/35 bg-cyan-400/10 text-cyan-700",
-    emerald: "border-emerald-300/35 bg-emerald-400/10 text-emerald-700",
-    violet: "border-violet-300/35 bg-violet-400/10 text-violet-700",
-  }[tone];
-
-  return (
-    <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/45 bg-card/78 px-4 py-3 shadow-sm">
-      <div
-        aria-hidden
-        className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border text-lg ${toneClass}`}
-      >
-        {icon}
-      </div>
-      <div className="min-w-0">
-        <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
-          {label}
-        </div>
-        <div className="truncate text-sm font-semibold text-foreground">
-          {value}
-        </div>
-      </div>
-    </div>
-  );
-}
+const CLAWVILLE_HERO_URL = "/api/views/clawville/hero";
+const CLAWVILLE_ACCENT = "#ff5800";
 
 function collectRunEvents(
   run: AppRunSummary,
@@ -162,6 +133,284 @@ function collectRunEvents(
     })) ?? [];
 
   return [...serverEvents, ...activityEvents, ...localEvents];
+}
+
+type ChipState = "live" | "attention" | "idle";
+
+const CHIP_DOT_COLOR: Record<ChipState, string> = {
+  live: "#22c55e",
+  attention: CLAWVILLE_ACCENT,
+  idle: "rgba(125,125,125,0.55)",
+};
+
+function HeroStatusChip({
+  state,
+  label,
+}: {
+  state: ChipState;
+  label: string;
+}) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 12px",
+        borderRadius: 999,
+        background: "rgba(0,0,0,0.5)",
+        backdropFilter: "blur(8px)",
+        border: "1px solid rgba(255,255,255,0.16)",
+        color: "#fff",
+        fontSize: 12,
+        fontWeight: 700,
+        letterSpacing: "0.04em",
+        textTransform: "uppercase",
+      }}
+    >
+      <span
+        style={{
+          width: 9,
+          height: 9,
+          borderRadius: 999,
+          background: CHIP_DOT_COLOR[state],
+          boxShadow: `0 0 0 4px ${CHIP_DOT_COLOR[state]}33`,
+        }}
+      />
+      {label}
+    </span>
+  );
+}
+
+function HeroHeader({
+  title,
+  state,
+  statusText,
+  cta,
+}: {
+  title: string;
+  state: ChipState;
+  statusText: string;
+  cta?: { label: string; onClick: () => void; disabled?: boolean } | null;
+}) {
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "34vh",
+        minHeight: 220,
+        maxHeight: 380,
+        overflow: "hidden",
+        borderRadius: 20,
+        backgroundColor: "#0b0b0f",
+        backgroundImage: `url(${CLAWVILLE_HERO_URL})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "linear-gradient(to bottom, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.12) 45%, rgba(0,0,0,0.72) 100%)",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          left: 24,
+          right: 24,
+          bottom: 22,
+          display: "flex",
+          alignItems: "flex-end",
+          justifyContent: "space-between",
+          gap: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <HeroStatusChip state={state} label={statusText} />
+          <div
+            style={{
+              color: "#fff",
+              fontSize: 34,
+              fontWeight: 800,
+              lineHeight: 1.05,
+              letterSpacing: "-0.01em",
+              textShadow: "0 2px 18px rgba(0,0,0,0.55)",
+            }}
+          >
+            {title}
+          </div>
+        </div>
+        {cta ? (
+          <button
+            type="button"
+            onClick={cta.onClick}
+            disabled={cta.disabled}
+            style={{
+              padding: "12px 22px",
+              borderRadius: 999,
+              border: "none",
+              background: CLAWVILLE_ACCENT,
+              color: "#fff",
+              fontSize: 14,
+              fontWeight: 700,
+              letterSpacing: "0.01em",
+              cursor: cta.disabled ? "default" : "pointer",
+              opacity: cta.disabled ? 0.55 : 1,
+              boxShadow: "0 8px 24px rgba(255,88,0,0.35)",
+            }}
+          >
+            {cta.label}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function StatusStripCard({
+  icon,
+  label,
+  value,
+  state,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  state: ChipState;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        flex: "1 1 160px",
+        minWidth: 150,
+        padding: "12px 14px",
+        borderRadius: 14,
+        border: "1px solid var(--border, rgba(0,0,0,0.12))",
+        background: "var(--card, rgba(255,255,255,0.8))",
+      }}
+    >
+      <div
+        aria-hidden
+        style={{
+          display: "grid",
+          placeItems: "center",
+          width: 38,
+          height: 38,
+          borderRadius: 11,
+          fontSize: 18,
+          background: "var(--surface, rgba(0,0,0,0.04))",
+        }}
+      >
+        {icon}
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 10.5,
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            color: "var(--muted, rgba(0,0,0,0.58))",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: 999,
+              background: CHIP_DOT_COLOR[state],
+            }}
+          />
+          {label}
+        </div>
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 700,
+            color: "var(--foreground, var(--text, #111))",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {value}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HeroFrame({
+  children,
+  variant,
+}: {
+  children: ReactNode;
+  variant: AppOperatorSurfaceProps["variant"];
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 16,
+        padding: variant === "live" ? 12 : 16,
+        maxWidth: 1100,
+        margin: "0 auto",
+        width: "100%",
+        boxSizing: "border-box",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function ClawvilleWaitingZone() {
+  return (
+    <div
+      style={{
+        flex: "1 1 auto",
+        minHeight: 160,
+        display: "grid",
+        placeItems: "center",
+        borderRadius: 16,
+        border: "1px dashed var(--border, rgba(0,0,0,0.12))",
+        background:
+          "radial-gradient(120% 120% at 50% 0%, var(--surface, rgba(0,0,0,0.04)) 0%, transparent 70%)",
+        padding: "28px 16px",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 10,
+          color: "var(--muted, rgba(0,0,0,0.58))",
+          textAlign: "center",
+        }}
+      >
+        <div style={{ fontSize: 30, opacity: 0.85 }}>🦀</div>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>
+          Waiting for a ClawVille session
+        </div>
+        <div style={{ fontSize: 12, opacity: 0.8 }}>
+          Launch the game to drop the agent into the reef.
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function ClawvilleOperatorSurface({
@@ -257,58 +506,41 @@ export function ClawvilleOperatorSurface({
 
   if (!run) {
     return (
-      <section
-        className={variant === "live" ? "p-3" : "p-4"}
-        data-testid="clawville-operator-empty"
-      >
-        <div className="mx-auto flex max-w-3xl flex-col gap-3">
-          <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/45 bg-card/82 px-4 py-3 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div
-                aria-hidden
-                className="grid h-10 w-10 place-items-center rounded-xl bg-rose-500 text-xl text-white shadow-sm"
-              >
-                🦀
-              </div>
-              <div>
-                <div className="text-sm font-semibold text-foreground">
-                  ClawVille
-                </div>
-                <div className="text-[11px] font-semibold uppercase tracking-normal text-muted-strong">
-                  game relay ready
-                </div>
-              </div>
-            </div>
-            <div className="h-3 w-3 rounded-full bg-amber-400 shadow-[0_0_0_4px_rgba(251,191,36,0.18)]" />
-          </div>
-
-          <div className="grid grid-cols-1 gap-3">
-            <ClawvilleReadyCard
+      <section data-testid="clawville-operator-empty">
+        <HeroFrame variant={variant}>
+          <HeroHeader
+            title="ClawVille"
+            state="idle"
+            statusText="Game relay ready"
+          />
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 12,
+            }}
+          >
+            <StatusStripCard
               icon="🏘"
               label="Map"
-              value="Town buildings staged"
-              tone="emerald"
+              value="Town staged"
+              state="live"
             />
-            <ClawvilleReadyCard
+            <StatusStripCard
               icon="💬"
               label="Chat"
-              value="Use overlay relay"
-              tone="cyan"
+              value="Overlay relay"
+              state="idle"
             />
-            <ClawvilleReadyCard
+            <StatusStripCard
               icon="⚡"
               label="Commands"
               value={`${PRIMARY_COMMANDS.length} quick actions`}
-              tone="amber"
-            />
-            <ClawvilleReadyCard
-              icon="↗"
-              label="Path"
-              value="/clawville"
-              tone="violet"
+              state="attention"
             />
           </div>
-        </div>
+          <ClawvilleWaitingZone />
+        </HeroFrame>
       </section>
     );
   }
@@ -325,33 +557,71 @@ export function ClawvilleOperatorSurface({
   }));
   const events = collectRunEvents(run, localEvents).slice(0, 3);
 
+  const heroState = statusTone(run.status);
   return (
     <>
       <ClawvilleOperatorRegistrar
         suggestedPrompts={suggestedPrompts}
         onCommand={(command) => void sendCommand(command)}
       />
-      <GameOperatorShell
-        surfaceTestId={
-          variant === "live"
-            ? "clawville-live-operator-surface"
-            : "clawville-detail-operator-surface"
-        }
-        title="ClawVille chat"
-        statusLabel={statusLabel(run.status)}
-        statusTone={statusTone(run.status)}
-        objective={run.session?.goalLabel ?? `Near ${nearestBuilding}`}
-        detailItems={[{ label: "Location", value: nearestBuilding }]}
-        primaryActions={primaryActions}
-        suggestedActions={suggestedActions}
-        events={events}
-        emptyEventsLabel="No events yet."
-        canSend={canSend}
-        sending={Boolean(sendingCommand)}
-        noticeTestId="clawville-command-notice"
-        variant={variant}
-        onCommand={(command: string) => void sendCommand(command)}
-      />
+      <HeroFrame variant={variant}>
+        <HeroHeader
+          title="ClawVille"
+          state={heroState}
+          statusText={statusLabel(run.status)}
+          cta={
+            canSend
+              ? {
+                  label: "Visit nearest",
+                  onClick: () =>
+                    void sendCommand(PRIMARY_COMMANDS[0].command),
+                  disabled: Boolean(sendingCommand),
+                }
+              : null
+          }
+        />
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+          <StatusStripCard
+            icon="📍"
+            label="Location"
+            value={nearestBuilding}
+            state="live"
+          />
+          <StatusStripCard
+            icon="⚡"
+            label="Relay"
+            value={canSend ? "Ready" : "Syncing"}
+            state={canSend ? "live" : "attention"}
+          />
+          <StatusStripCard
+            icon="🎯"
+            label="Goal"
+            value={run.session?.goalLabel ?? `Near ${nearestBuilding}`}
+            state="idle"
+          />
+        </div>
+        <GameOperatorShell
+          surfaceTestId={
+            variant === "live"
+              ? "clawville-live-operator-surface"
+              : "clawville-detail-operator-surface"
+          }
+          title="ClawVille chat"
+          statusLabel={statusLabel(run.status)}
+          statusTone={statusTone(run.status)}
+          objective={run.session?.goalLabel ?? `Near ${nearestBuilding}`}
+          detailItems={[{ label: "Location", value: nearestBuilding }]}
+          primaryActions={primaryActions}
+          suggestedActions={suggestedActions}
+          events={events}
+          emptyEventsLabel="No events yet."
+          canSend={canSend}
+          sending={Boolean(sendingCommand)}
+          noticeTestId="clawville-command-notice"
+          variant={variant}
+          onCommand={(command: string) => void sendCommand(command)}
+        />
+      </HeroFrame>
     </>
   );
 }

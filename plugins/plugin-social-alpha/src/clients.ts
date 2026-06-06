@@ -30,11 +30,6 @@ type QueryParams =
 	| Record<string, string | number | boolean | null | undefined>
 	| URLSearchParams;
 
-type JupiterSwapQuote = Record<string, unknown>;
-type JupiterSwapResponse = {
-	swapTransaction?: string;
-	error?: unknown;
-};
 type HeliusTokenAccountsParams = {
 	limit: number;
 	displayOptions: Record<string, never>;
@@ -260,7 +255,7 @@ export const http = {
 		params: Params,
 		headers?: HeadersInit,
 	) {
-		return this.post.json<_ReturnType>(
+		return http.post.json<_ReturnType>(
 			url,
 			{
 				jsonrpc: "2.0",
@@ -278,7 +273,7 @@ export const http = {
 		variables: Variables,
 		headers?: HeadersInit,
 	) {
-		return this.post.json<_ReturnType>(
+		return http.post.json<_ReturnType>(
 			url,
 			{
 				query,
@@ -288,105 +283,6 @@ export const http = {
 		);
 	},
 };
-
-/**
- * Class representing a client for interacting with the Jupiter API for swapping tokens.
- */
-
-export class JupiterClient {
-	static baseUrl = "https://api.jup.ag/swap/v1";
-	static xApiKey = process.env.JUPITER_API_KEY || "";
-
-	/**
-	 * Fetches a quote for a given input and output mint, amount, and slippage.
-	 * @param {string} inputMint The mint of the input token.
-	 * @param {string} outputMint The mint of the output token.
-	 * @param {string} amount The amount to be swapped.
-	 * @param {number} [slippageBps=50] The slippage tolerance in basis points (default: 50).
-	 * @returns {Promise<{inputMint: string, outputMint: string, inAmount: string, outAmount: string, routePlan: unknown[]} | {error: unknown}>} The quote object or an error object.
-	 */
-	static async getQuote(
-		inputMint: string,
-		outputMint: string,
-		amount: string,
-		slippageBps = 50,
-	) {
-		const headers: Record<string, string> = {};
-		if (JupiterClient.xApiKey) {
-			headers["x-api-key"] = JupiterClient.xApiKey;
-		}
-
-		const quote = await http.get.json<
-			| {
-					inputMint: string;
-					outputMint: string;
-					inAmount: string;
-					outAmount: string;
-					routePlan: unknown[];
-			  }
-			| { error: unknown }
-		>(
-			`${JupiterClient.baseUrl}/quote`,
-			{
-				inputMint,
-				outputMint,
-				amount,
-				slippageBps: slippageBps.toString(),
-			},
-			{ headers },
-		);
-
-		if ("error" in quote) {
-			console.error("Quote error:", quote);
-			throw new Error(
-				`Failed to get quote: ${quote?.error || "Unknown error"}`,
-			);
-		}
-
-		return quote;
-	}
-
-	/**
-	 * Perform a swap operation using the provided quote data and user's wallet public key.
-	 * @param quoteData - The data required for the swap operation.
-	 * @param {string} walletPublicKey - The public key of the user's wallet.
-	 * @returns The swap transaction response.
-	 */
-	static async swap(
-		quoteData: JupiterSwapQuote,
-		walletPublicKey: string,
-	): Promise<JupiterSwapResponse> {
-		const headers: Record<string, string> = {};
-		if (JupiterClient.xApiKey) {
-			headers["x-api-key"] = JupiterClient.xApiKey;
-		}
-
-		const swapRequestBody = {
-			quoteResponse: quoteData,
-			userPublicKey: walletPublicKey,
-			wrapAndUnwrapSol: true,
-			computeUnitPriceMicroLamports: 2000000,
-			dynamicComputeUnitLimit: true,
-		};
-
-		const swapData = await http.post.json<JupiterSwapResponse>(
-			`${JupiterClient.baseUrl}/swap`,
-			swapRequestBody,
-			{
-				headers,
-			},
-		);
-
-		if (!swapData?.swapTransaction) {
-			console.error("Swap error:", swapData);
-			throw new Error(
-				`Failed to get swap transaction: ${swapData?.error || "No swap transaction returned"}`,
-			);
-		}
-
-		return swapData;
-	}
-}
 
 /**
  * Options for Dexscreener.

@@ -16,7 +16,6 @@ import {
   RefreshCw,
   Send,
   ShieldCheck,
-  Smartphone,
 } from "lucide-react";
 import {
   type ChangeEvent,
@@ -66,6 +65,79 @@ function formatTime(epochMs: number): string {
   });
 }
 
+function threadInitial(address: string): string {
+  const trimmed = address.trim();
+  if (trimmed.length === 0) return "#";
+  const firstLetter = trimmed.split("").find((ch) => /[a-z]/i.test(ch));
+  if (firstLetter) return firstLetter.toUpperCase();
+  const firstDigit = trimmed.replace(/[^0-9]/g, "").slice(-1);
+  return firstDigit || "#";
+}
+
+function StatChip({
+  icon,
+  label,
+  accent = false,
+}: {
+  icon: ReactNode;
+  label: string;
+  accent?: boolean;
+}) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium"
+      style={{
+        background: accent ? "var(--accent-subtle)" : "var(--surface)",
+        color: accent ? "var(--accent)" : "var(--muted)",
+      }}
+    >
+      <span
+        aria-hidden
+        className="flex h-3.5 w-3.5 items-center justify-center"
+      >
+        {icon}
+      </span>
+      {label}
+    </span>
+  );
+}
+
+function ChatBubblesMotif() {
+  return (
+    <svg width="96" height="96" viewBox="0 0 96 96" fill="none" role="img">
+      <title>Chat bubbles</title>
+      <rect
+        x="10"
+        y="20"
+        width="56"
+        height="34"
+        rx="12"
+        fill="var(--accent-subtle)"
+        stroke="var(--accent)"
+        strokeWidth="2"
+      />
+      <path d="M24 54 L24 64 L36 54 Z" fill="var(--accent-subtle)" />
+      <rect
+        x="38"
+        y="44"
+        width="48"
+        height="30"
+        rx="11"
+        fill="var(--surface)"
+        stroke="var(--border)"
+        strokeWidth="2"
+      />
+      <path d="M72 74 L72 82 L62 74 Z" fill="var(--surface)" />
+      <circle cx="24" cy="37" r="2.5" fill="var(--accent)" />
+      <circle cx="34" cy="37" r="2.5" fill="var(--accent)" />
+      <circle cx="44" cy="37" r="2.5" fill="var(--accent)" />
+      <circle cx="56" cy="59" r="2.5" fill="var(--muted)" />
+      <circle cx="66" cy="59" r="2.5" fill="var(--muted)" />
+      <circle cx="76" cy="59" r="2.5" fill="var(--muted)" />
+    </svg>
+  );
+}
+
 function MessagesThreadButton({
   thread,
   selected,
@@ -90,18 +162,25 @@ function MessagesThreadButton({
       type="button"
       onClick={() => onOpen(thread)}
       aria-current={selected ? "true" : undefined}
-      className="flex w-full items-start gap-3 border-b border-border/16 px-4 py-3 text-left transition-colors hover:bg-bg-accent/50 focus:bg-bg-accent/50 focus:outline-none"
+      className="flex w-full items-start gap-3 border-b border-border/16 px-4 py-3 text-left transition-colors focus:outline-none"
+      style={selected ? { background: "var(--accent-subtle)" } : undefined}
       data-testid={`messages-thread-${thread.id}`}
     >
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-bg-accent">
-        <Smartphone className="h-4 w-4 text-muted" />
+      <span
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
+        style={{ background: "var(--accent-subtle)", color: "var(--accent)" }}
+      >
+        {threadInitial(thread.address)}
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-center justify-between gap-2">
           <span className="truncate text-sm font-semibold text-txt">
             {thread.address || "Unknown"}
           </span>
-          <span className="shrink-0 text-2xs text-muted">
+          <span
+            className="shrink-0 rounded-full px-2 py-0.5 text-2xs text-muted"
+            style={{ background: "var(--surface)" }}
+          >
             {formatTime(thread.lastMessage.date)}
           </span>
         </span>
@@ -110,7 +189,13 @@ function MessagesThreadButton({
         </span>
       </span>
       {thread.unreadCount > 0 ? (
-        <span className="rounded-full bg-info px-1.5 py-0.5 text-2xs font-semibold text-bg">
+        <span
+          className="rounded-full px-1.5 py-0.5 text-2xs font-semibold"
+          style={{
+            background: "var(--accent)",
+            color: "var(--accent-foreground)",
+          }}
+        >
           {thread.unreadCount}
         </span>
       ) : null}
@@ -173,44 +258,6 @@ function TuiThreadButton({
         {thread.lastMessage.body}
       </span>
     </button>
-  );
-}
-
-function MessagesDashboardCard({
-  icon,
-  label,
-  value,
-  tone = "neutral",
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-  tone?: "neutral" | "success" | "warn" | "accent";
-}) {
-  const toneClass = {
-    accent: "border-info/30 bg-info/10 text-info",
-    neutral: "border-border/30 bg-bg-accent/50 text-muted",
-    success: "border-success/30 bg-success/10 text-success",
-    warn: "border-warning/30 bg-warning/10 text-warning",
-  }[tone];
-
-  return (
-    <div className="flex min-h-16 items-center gap-3 rounded-xl border border-border/30 bg-bg/78 px-4 py-3 shadow-sm">
-      <span
-        aria-hidden
-        className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg border ${toneClass}`}
-      >
-        {icon}
-      </span>
-      <span className="min-w-0">
-        <span className="block text-[11px] font-semibold uppercase tracking-normal text-muted">
-          {label}
-        </span>
-        <span className="block truncate text-sm font-semibold text-txt">
-          {value}
-        </span>
-      </span>
-    </div>
   );
 }
 
@@ -522,66 +569,101 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
               {t("messages.loading", { defaultValue: "Loading messages…" })}
             </div>
           ) : threads.length === 0 ? (
-            <div className="flex flex-1 justify-center px-4 py-5 pb-32">
-              <div className="grid w-full max-w-3xl grid-cols-1 gap-3">
-                <MessagesDashboardCard
-                  icon={<MessageSquareText className="h-4 w-4" />}
-                  label="Threads"
-                  value="0"
-                  tone="accent"
+            <div className="flex flex-1 flex-col items-center justify-center px-6 pb-32 text-center">
+              <span
+                className="flex h-20 w-20 items-center justify-center rounded-3xl"
+                style={{ background: "var(--accent-subtle)" }}
+              >
+                <ChatBubblesMotif />
+              </span>
+              <h2 className="mt-5 text-base font-semibold text-txt">
+                {t("messages.empty.title", { defaultValue: "No messages yet" })}
+              </h2>
+              <p className="mt-1 max-w-xs text-sm text-muted">
+                {t("messages.empty.body", {
+                  defaultValue:
+                    "Start a conversation — texts you send and receive show up here.",
+                })}
+              </p>
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                <StatChip
+                  icon={<MessageSquareText className="h-3.5 w-3.5" />}
+                  label={t("messages.threadCount", {
+                    defaultValue: "0 threads",
+                  })}
                 />
-                <MessagesDashboardCard
-                  icon={<Radio className="h-4 w-4" />}
-                  label="Bridge"
-                  value={ownsSmsRole ? "Default SMS" : "Android SMS"}
-                  tone={ownsSmsRole ? "success" : "warn"}
+                <StatChip
+                  icon={<Radio className="h-3.5 w-3.5" />}
+                  label={
+                    ownsSmsRole
+                      ? t("messages.smsReady", {
+                          defaultValue: "Default SMS app",
+                        })
+                      : t("messages.smsBridge", {
+                          defaultValue: "Android SMS bridge",
+                        })
+                  }
                 />
-                <MessagesDashboardCard
-                  icon={<Inbox className="h-4 w-4" />}
-                  label="Unread"
-                  value="0"
-                />
-                <Button
-                  ref={emptyNewMessage.ref}
-                  {...emptyNewMessage.agentProps}
-                  variant="ghost"
-                  size="sm"
-                  className="min-h-14 justify-start gap-3 rounded-xl border border-border/30 bg-bg/78 px-4 text-left text-txt shadow-sm hover:bg-bg-accent hover:text-txt"
-                  onClick={openNewComposer}
-                >
-                  <span className="grid h-10 w-10 place-items-center rounded-lg bg-info text-bg">
-                    <Plus className="h-4 w-4" />
-                  </span>
-                  <span className="font-semibold">
-                    {t("messages.new", { defaultValue: "New message" })}
-                  </span>
-                </Button>
               </div>
+              <button
+                ref={emptyNewMessage.ref}
+                {...emptyNewMessage.agentProps}
+                type="button"
+                onClick={openNewComposer}
+                className="mt-6 inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition-colors"
+                style={{
+                  background: "var(--accent)",
+                  color: "var(--accent-foreground)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "var(--accent-hover)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "var(--accent)";
+                }}
+              >
+                <Plus className="h-4 w-4" />
+                {t("messages.new", { defaultValue: "New message" })}
+              </button>
             </div>
           ) : (
             <div className="chat-native-scrollbar min-h-0 flex-1 overflow-y-auto pb-32">
-              <div className="grid gap-3 px-4 py-4">
-                <MessagesDashboardCard
-                  icon={<MessageSquareText className="h-4 w-4" />}
-                  label="Threads"
-                  value={String(threads.length)}
-                  tone="accent"
-                />
-                <MessagesDashboardCard
-                  icon={<Inbox className="h-4 w-4" />}
-                  label="Unread"
-                  value={String(unreadTotal)}
-                  tone={unreadTotal > 0 ? "warn" : "neutral"}
-                />
-                <MessagesDashboardCard
-                  icon={<Radio className="h-4 w-4" />}
-                  label="Latest"
-                  value={
-                    latestThread
-                      ? formatTime(latestThread.lastMessage.date)
-                      : "idle"
-                  }
-                />
+              <div className="flex items-center gap-3 px-4 py-4">
+                <span
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
+                  style={{ background: "var(--accent-subtle)" }}
+                >
+                  <MessageSquareText
+                    className="h-5 w-5"
+                    style={{ color: "var(--accent)" }}
+                  />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-base font-semibold text-txt">
+                    {t("messages.title", { defaultValue: "Messages" })}
+                  </h2>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <StatChip
+                      icon={<MessageSquareText className="h-3.5 w-3.5" />}
+                      label={t("messages.threadCountN", {
+                        defaultValue: `${threads.length} threads`,
+                      })}
+                      accent
+                    />
+                    <StatChip
+                      icon={<Inbox className="h-3.5 w-3.5" />}
+                      label={t("messages.unreadCountN", {
+                        defaultValue: `${unreadTotal} unread`,
+                      })}
+                    />
+                    {latestThread ? (
+                      <StatChip
+                        icon={<Radio className="h-3.5 w-3.5" />}
+                        label={formatTime(latestThread.lastMessage.date)}
+                      />
+                    ) : null}
+                  </div>
+                </div>
               </div>
               <div>
                 {threads.map((thread) => (
@@ -636,17 +718,30 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
                           className={`flex ${sent ? "justify-end" : "justify-start"}`}
                         >
                           <div
-                            className={`max-w-[78%] rounded-lg px-3 py-2 ${
-                              sent ? "bg-info text-bg" : "bg-bg-accent text-txt"
-                            }`}
+                            className="max-w-[78%] rounded-2xl px-3 py-2"
+                            style={
+                              sent
+                                ? {
+                                    background: "var(--accent)",
+                                    color: "var(--accent-foreground)",
+                                  }
+                                : {
+                                    background: "var(--surface)",
+                                    color: "var(--text)",
+                                  }
+                            }
                           >
                             <div className="whitespace-pre-wrap break-words text-sm">
                               {message.body}
                             </div>
                             <div
-                              className={`mt-1 text-right text-2xs ${
-                                sent ? "text-bg/70" : "text-muted"
-                              }`}
+                              className="mt-1 text-right text-2xs"
+                              style={{
+                                opacity: 0.7,
+                                color: sent
+                                  ? "var(--accent-foreground)"
+                                  : "var(--muted)",
+                              }}
                             >
                               {formatTime(message.date)}
                             </div>

@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-device-filesystem",
-	"version": "2.0.3-beta.5",
+	"version": "2.0.3-beta.6",
 	"description": "Mobile-safe filesystem bridge for canonical FILE target=device operations on iOS/Android and desktop/AOSP.",
 	"type": "module",
 	"main": "dist/index.js",
