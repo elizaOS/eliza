@@ -30,7 +30,7 @@ export const PARENT_AGENT_BROKER_MANIFEST_ENTRY = {
   description:
     "Task-scoped bridge for asking the running parent Eliza agent to use its loaded capabilities, actions, providers, connectors, and confirmation flow.",
   guidance:
-    'Use when workspace context is not enough and the parent agent should do something with its own capabilities. Examples: `USE_SKILL parent-agent {"request":"Find the next free 30 minute slot on my calendar"}`, `USE_SKILL parent-agent {"mode":"list-actions","query":"github"}`, `USE_SKILL parent-agent {"mode":"list-cloud-commands"}`, or `USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.list"}`. Mutating, paid, or destructive Cloud commands require an explicit user yes on a follow-up turn (not LLM `confirmed`).',
+    'Use when workspace context is not enough and the parent agent should do something with its own capabilities. Examples: `USE_SKILL parent-agent {"request":"Find the next free 30 minute slot on my calendar"}`, `USE_SKILL parent-agent {"mode":"list-actions","query":"github"}`, `USE_SKILL parent-agent {"mode":"list-cloud-commands"}`, or `USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.list"}`. Mutating, paid, or destructive Cloud commands require an explicit user yes on a follow-up turn (not LLM `confirmed`). For paid self-spend commands (e.g. `domains.buy`, `containers.create`), pass `params.spendEstimateUsd` (such as the price from `domains.check`) so they auto-authorize within the configured agent spend cap instead of stalling.',
 } as const;
 
 type ParentAgentMode =
@@ -1097,11 +1097,20 @@ async function runCloudCommand(args: {
       0,
       capUsd - getSessionSpendUsd(args.sessionId),
     );
-    const preview =
+    let preview: string;
+    if (
       spendDecision.reason === "over-cap" &&
       spendDecision.estimatedCostUsd != null
-        ? `${definition.command} would spend ~$${spendDecision.estimatedCostUsd.toFixed(2)}, exceeding your remaining $${remainingUsd.toFixed(2)} self-spend allowance. Proceed?`
-        : `${definition.command} is a ${definition.risk} Eliza Cloud command. Proceed?`;
+    ) {
+      preview = `${definition.command} would spend ~$${spendDecision.estimatedCostUsd.toFixed(2)}, exceeding your remaining $${remainingUsd.toFixed(2)} self-spend allowance. Proceed?`;
+    } else if (spendDecision.reason === "unknown-cost") {
+      // Self-spend command with no cost hint. Give an autonomous agent an
+      // actionable path: fetch a quote and retry with the estimate so it can
+      // self-authorize within the cap instead of waiting on a human "yes".
+      preview = `${definition.command} is a paid Eliza Cloud command with an unknown cost. To self-authorize within your remaining $${remainingUsd.toFixed(2)} allowance, first fetch a quote (e.g. domains.check) and retry with params.spendEstimateUsd set to that price.`;
+    } else {
+      preview = `${definition.command} is a ${definition.risk} Eliza Cloud command. Proceed?`;
+    }
     const decision = await requireConfirmation({
       runtime: args.runtime,
       message: args.confirmationMessage,
