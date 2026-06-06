@@ -10,7 +10,7 @@ import {
 } from "./steward-session";
 
 describe("resolveStewardAuthEndpoint", () => {
-  it("routes production cloud auth calls through the direct API host", () => {
+  it("routes prod browser hosts to api.elizacloud.ai", () => {
     expect(
       resolveStewardAuthEndpoint(
         STEWARD_NONCE_EXCHANGE_ENDPOINT,
@@ -21,11 +21,35 @@ describe("resolveStewardAuthEndpoint", () => {
       resolveStewardAuthEndpoint(STEWARD_SESSION_ENDPOINT, "elizacloud.ai"),
     ).toBe("https://api.elizacloud.ai/api/auth/steward-session");
     expect(
+      resolveStewardAuthEndpoint(STEWARD_REFRESH_ENDPOINT, "dev.elizacloud.ai"),
+    ).toBe("https://api.elizacloud.ai/api/auth/steward-refresh");
+  });
+
+  it("routes staging.elizacloud.ai to api-staging (tenant isolation)", () => {
+    // Staging Steward tenant is `elizacloud-staging`; the prod Worker pins
+    // tenant `elizacloud`. Mixing them previously caused the bypass route to
+    // 401 `code_invalid` and silently send the user back to /login on every
+    // magic-link return.
+    expect(
+      resolveStewardAuthEndpoint(
+        STEWARD_NONCE_EXCHANGE_ENDPOINT,
+        "staging.elizacloud.ai",
+      ),
+    ).toBe(
+      "https://api-staging.elizacloud.ai/api/auth/steward-nonce-exchange",
+    );
+    expect(
+      resolveStewardAuthEndpoint(
+        STEWARD_SESSION_ENDPOINT,
+        "staging.elizacloud.ai",
+      ),
+    ).toBe("https://api-staging.elizacloud.ai/api/auth/steward-session");
+    expect(
       resolveStewardAuthEndpoint(
         STEWARD_REFRESH_ENDPOINT,
         "staging.elizacloud.ai",
       ),
-    ).toBe("https://api.elizacloud.ai/api/auth/steward-refresh");
+    ).toBe("https://api-staging.elizacloud.ai/api/auth/steward-refresh");
   });
 
   it("keeps local and preview auth calls same-origin", () => {
