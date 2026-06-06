@@ -37,6 +37,7 @@ import type {
 } from "@elizaos/core";
 import { logger as coreLogger } from "@elizaos/core";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
+import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import { normalizeRepositoryInput } from "../services/repo-input.js";
 import {
   runDurableTask,
@@ -650,11 +651,83 @@ async function runCreate(
     };
   }
 
+  // Mint a durable orchestrator task thread so the chat surface can render
+  // the `[TASK:<id>]<title>[/TASK]` widget that links back to the workbench.
+  // The ACP sessions have already succeeded; a failure here is logged but
+  // never demotes the action's success — the agents are still running.
+  const taskTitle =
+    pickString(params, content, "title") ??
+    pickString(params, content, "goal") ??
+    (tasks[0] ? labelFrom(tasks[0], 0) : "Coding task");
+  const taskGoal = pickString(params, content, "goal") ?? taskTitle;
+  const taskPriority = (pickString(params, content, "priority") ?? "normal") as
+    | "low"
+    | "normal"
+    | "high"
+    | "urgent";
+  const acceptanceCriteria = pickStringArrayFromInputs(
+    params,
+    content,
+    "acceptanceCriteria",
+  );
+  const taskRoomId =
+    typeof swarmRoomMetadata.taskRoomId === "string"
+      ? swarmRoomMetadata.taskRoomId
+      : undefined;
+  let threadId: string | null = null;
+  try {
+    const taskService = runtime.getService?.(
+      OrchestratorTaskService.serviceType,
+    ) as OrchestratorTaskService | null | undefined;
+    if (taskService && typeof taskService.createTask === "function") {
+      const detail = await taskService.createTask({
+        title: taskTitle,
+        goal: taskGoal,
+        kind: "coding",
+        priority: taskPriority,
+        originalRequest: messageText(message),
+        ...(taskRoomId ? { roomId: taskRoomId, taskRoomId } : {}),
+        acceptanceCriteria,
+      });
+      threadId = detail?.id ?? null;
+    }
+  } catch (error) {
+    logger(runtime).warn(
+      `[TASKS:create] durable task thread creation failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    threadId = null;
+  }
+
+  const widgetBlock = threadId
+    ? `\n\n[TASK:${threadId}]${taskTitle}[/TASK]`
+    : "";
+  const proseText = `Created task agent${results.length > 1 ? "s" : ""}.${widgetBlock}`;
+  await callbackText(callback, proseText);
+
   return {
     success: true,
-    text: "",
-    data: { agents: results, suppressActionResultClipboard: true },
+    text: proseText,
+    data: {
+      agents: results,
+      taskId: threadId,
+      suppressActionResultClipboard: true,
+    },
   };
+}
+
+function pickStringArrayFromInputs(
+  params: Record<string, unknown>,
+  content: Record<string, unknown>,
+  name: string,
+): string[] {
+  const raw = params[name] ?? content[name];
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
 }
 
 // ── action: spawn_agent (SPAWN_AGENT) ───────────────────────────────────────

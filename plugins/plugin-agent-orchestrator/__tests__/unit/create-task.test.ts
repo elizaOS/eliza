@@ -84,7 +84,10 @@ describe("TASKS:create", () => {
       callback(),
     );
     expect(result?.success).toBe(true);
-    expect(result?.text).toBe("");
+    // Without an OrchestratorTaskService, no [TASK:…] widget block is appended;
+    // the callback still receives the prose summary.
+    expect(result?.text).toBe("Created task agent.");
+    expect(result?.data?.taskId).toBeNull();
     expect(result?.data?.agents).toEqual([
       {
         id: "abcdef123456",
