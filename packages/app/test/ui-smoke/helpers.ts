@@ -174,6 +174,7 @@ const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
   ["Wallet & RPC", "wallet-rpc"],
   ["Permissions", "permissions"],
   ["Vault", "secrets"],
+  ["Secrets storage", "secrets"],
   ["Security", "security"],
   ["Updates", "updates"],
   ["Backup & Reset", "advanced"],

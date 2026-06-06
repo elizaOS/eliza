@@ -320,7 +320,7 @@ const SETTING_SECTIONS_TO_CLICK: readonly RegExp[] = [
   /^Connectors$/,
   /^App Permissions$/,
   /^Permissions$/,
-  /^Vault$/,
+  /^Secrets storage$/,
   /^Security$/,
   /^Updates$/,
   /^Backup & Reset$/,
