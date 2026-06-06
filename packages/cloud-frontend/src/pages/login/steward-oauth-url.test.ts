@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   buildStewardOAuthAuthorizeUrl,
+  buildStewardOAuthRedirectUri,
   consumeStewardPkceVerifier,
   createStewardPkceChallenge,
   createStewardPkcePair,
@@ -42,12 +43,21 @@ describe("Steward OAuth PKCE", () => {
     expect(consumeStewardPkceVerifier()).toBeNull();
   });
 
+  it("buildStewardOAuthRedirectUri stays stable regardless of login query params", () => {
+    expect(buildStewardOAuthRedirectUri("https://www.elizacloud.ai")).toBe(
+      "https://www.elizacloud.ai/login",
+    );
+  });
+
   it("buildStewardOAuthAuthorizeUrl includes the PKCE challenge only when provided", () => {
     const withPkce = new URL(
       buildStewardOAuthAuthorizeUrl("google", "https://www.elizacloud.ai", {
         stewardApiUrl: "https://api.example/steward",
         codeChallenge: "CHALLENGE",
       }),
+    );
+    expect(withPkce.searchParams.get("redirect_uri")).toBe(
+      "https://www.elizacloud.ai/login",
     );
     expect(withPkce.searchParams.get("response_type")).toBe("code");
     expect(withPkce.searchParams.get("code_challenge")).toBe("CHALLENGE");

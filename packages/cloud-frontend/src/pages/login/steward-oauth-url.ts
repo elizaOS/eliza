@@ -11,6 +11,10 @@ export type StewardOAuthProvider = "google" | "discord" | "github";
  * /exchange time — Steward rejects the exchange if they differ.
  */
 export function buildStewardOAuthRedirectUri(origin: string): string {
+  // Keep the OAuth redirect URI stable. Steward allowlists exact redirect URLs
+  // for tenant OAuth; putting volatile login query params (returnTo, app auth,
+  // CLI state, etc.) in redirect_uri makes legitimate production logins miss
+  // the allowlist. Preserve post-login destinations outside redirect_uri.
   return `${origin}/login`;
 }
 

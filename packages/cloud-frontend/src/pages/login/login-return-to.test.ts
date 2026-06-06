@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
   consumePendingOAuthReturnTo,
   resolveLoginReturnTo,
@@ -10,6 +10,11 @@ function params(query: string) {
 }
 
 describe("resolveLoginReturnTo", () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    vi.restoreAllMocks();
+  });
+
   test("prefers an internal returnTo query over a pending OAuth return target", () => {
     expect(
       resolveLoginReturnTo(
@@ -40,14 +45,33 @@ describe("resolveLoginReturnTo", () => {
     );
   });
 
-  test("stores pending OAuth return targets as single-use internal paths", () => {
-    window.sessionStorage.clear();
+  test("stores and consumes a sanitized OAuth return target outside redirect_uri", () => {
+    storePendingOAuthReturnTo(
+      params("returnTo=/auth/cli-login%3Fsession%3Dabc"),
+    );
 
-    expect(storePendingOAuthReturnTo("/auth/cli-login?session=abc")).toBe(true);
     expect(consumePendingOAuthReturnTo()).toBe("/auth/cli-login?session=abc");
     expect(consumePendingOAuthReturnTo()).toBeNull();
+  });
 
-    expect(storePendingOAuthReturnTo("//evil.test/callback")).toBe(false);
+  test.each([
+    "https://evil.test/dashboard",
+    "//evil.test/dashboard",
+    "",
+  ])("does not persist hostile OAuth return target %j", (returnTo) => {
+    storePendingOAuthReturnTo(
+      params(`returnTo=${encodeURIComponent(returnTo)}`),
+    );
+
     expect(consumePendingOAuthReturnTo()).toBeNull();
+  });
+
+  test("keeps pending OAuth return target across retry without returnTo in the URL", () => {
+    storePendingOAuthReturnTo(
+      params("returnTo=/payment/success%3Fsession%3D123"),
+    );
+    storePendingOAuthReturnTo(params(""));
+
+    expect(consumePendingOAuthReturnTo()).toBe("/payment/success?session=123");
   });
 });

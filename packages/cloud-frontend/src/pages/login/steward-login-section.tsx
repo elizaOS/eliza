@@ -31,7 +31,6 @@ import {
 import {
   consumePendingOAuthReturnTo,
   resolveLoginReturnTo,
-  sanitizeLoginReturnTo,
   storePendingOAuthReturnTo,
 } from "./login-return-to";
 import {
@@ -399,13 +398,18 @@ export default function StewardLoginSection() {
   async function handleOAuth(provider: StewardOAuthProvider) {
     setLoading(provider);
     setError(null);
-    const pendingReturnTo = sanitizeLoginReturnTo(searchParams.get("returnTo"));
-    if (pendingReturnTo && !storePendingOAuthReturnTo(pendingReturnTo)) {
-      setError("Could not start sign-in — browser storage is unavailable.");
-      setLoading(null);
-      return;
-    }
-
+    // Server-side redirect flow. Keep redirect_uri stable at /login so it
+    // matches Steward's exact tenant OAuth allowlist. Do not include returnTo
+    // or other volatile login query params in redirect_uri; those can make
+    // production logins fail allowlist checks before reaching the provider.
+    // The authorize endpoint reads `tenant_id` (snake_case); camelCase
+    // `tenantId` falls back to the user's personal tenant.
+    // Cloudflare Pages preview deploys live on `*.pages.dev`, whose hashed
+    // subdomain is never on the Steward tenant's redirect_uri allowlist.
+    // Route OAuth through staging.elizacloud.ai (which is whitelisted, matching
+    // the api-fetch-bridge precedent) so sign-in works from previews. The user
+    // lands on staging after auth — previews remain unauthenticated visual
+    // review surfaces, which is what they're for.
     const host = window.location.hostname.toLowerCase();
     const oauthOrigin = host.endsWith(".pages.dev")
       ? "https://staging.elizacloud.ai"
@@ -434,6 +438,7 @@ export default function StewardLoginSection() {
       setLoading(null);
       return;
     }
+    storePendingOAuthReturnTo(searchParams);
     window.location.href = buildStewardOAuthAuthorizeUrl(
       provider,
       oauthOrigin,
