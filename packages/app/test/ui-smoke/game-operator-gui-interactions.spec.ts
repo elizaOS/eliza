@@ -533,7 +533,16 @@ for (const fixture of FIXTURES) {
       .click();
     await expect.poll(() => api.messages.at(-1)).toBe(fixture.suggestedPrompt);
 
-    await surface.getByRole("button", { name: fixture.controlButton }).click();
+    const semanticControl = surface.locator(
+      `[data-agent-id="control-${fixture.controlAction}"]`,
+    );
+    if ((await semanticControl.count()) > 0) {
+      await semanticControl.first().click();
+    } else {
+      await surface
+        .getByRole("button", { name: fixture.controlButton })
+        .click();
+    }
     await expect.poll(() => api.controls.at(-1)).toBe(fixture.controlAction);
   });
 }
