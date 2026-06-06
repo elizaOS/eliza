@@ -573,7 +573,14 @@ export function useFirstRunController(): FirstRunController {
       if (firstRunNeedsCloudConnect(sourceDraft, cloudConnectedForFinish)) {
         const authWindow = preOpenWindow();
         await handleCloudLogin(authWindow);
-        return;
+        const cloudStatus = await client.getCloudStatus().catch(() => null);
+        cloudConnectedForFinish = isCloudStatusAuthenticated(
+          Boolean(cloudStatus?.connected),
+          cloudStatus?.reason,
+        );
+        if (!cloudConnectedForFinish) {
+          return;
+        }
       }
       setBusyText("Provisioning cloud agent");
       const authToken = String(

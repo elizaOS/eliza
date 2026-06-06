@@ -651,6 +651,7 @@ function shouldBridgeFetchUrl(url: URL): boolean {
     );
   }
   if (isMobileLocalAgentUrl(url.toString())) return true;
+  if (isNativeIosCloudRuntime()) return false;
   if ((url.pathname || "").startsWith("/api/")) {
     return (
       shouldRequireFullBunRuntime() ||

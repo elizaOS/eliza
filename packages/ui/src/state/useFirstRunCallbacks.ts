@@ -656,8 +656,10 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
           savePersistedActiveServer(
             createPersistedActiveServer({
               kind: "cloud",
+              id: `cloud:${provisionedAgent.agentId}`,
               apiBase: cloudAgentApiBase,
               accessToken: authToken,
+              label: firstRunName || "Eliza Cloud",
             }),
           );
         } else if (isLocalMode) {
