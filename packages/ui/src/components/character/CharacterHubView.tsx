@@ -493,6 +493,15 @@ export function CharacterHubView({
     [documentRecords],
   );
 
+  // Stable identity: DocumentsView's loadData effect depends on this callback,
+  // so an inline closure would re-trigger fetch → setState → render → new
+  // closure, looping the hub (render-guard trips on /character/documents).
+  const handleDocumentsChange = useCallback((docs: DocumentRecord[]) => {
+    setDocumentRecords(docs);
+    writeHubCache("documents", docs);
+    setDocumentsLoading(false);
+  }, []);
+
   const overviewWidgets = useMemo<CharacterOverviewWidget[]>(() => {
     const styleItems = Object.values(d.style ?? {}).reduce(
       (count, values) => count + (Array.isArray(values) ? values.length : 0),
@@ -933,11 +942,7 @@ export function CharacterHubView({
         <DocumentsView
           embedded
           fileInputId="character-hub-documents-upload"
-          onDocumentsChange={(docs) => {
-            setDocumentRecords(docs);
-            writeHubCache("documents", docs);
-            setDocumentsLoading(false);
-          }}
+          onDocumentsChange={handleDocumentsChange}
           onSelectedDocumentIdChange={setSelectedDocumentId}
           selectedDocumentId={selectedDocumentId}
           showSelectorRail={false}
