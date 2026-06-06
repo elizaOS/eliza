@@ -30,6 +30,7 @@ import {
 } from "@elizaos/shared/steward-session-client";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { signStewardMutatingRequest } from "@/api-app/steward/sign";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
 import {
   type StewardVerifyEnv,
@@ -172,27 +173,45 @@ async function callStewardRefresh(
   baseUrl: string,
   refreshToken: string,
   pinnedTenantId?: string,
+  signingSecret?: string,
 ): Promise<
   | { kind: "ok"; data: StewardRefreshOk }
   | { kind: "error"; status: number; data: StewardRefreshErr }
   | { kind: "transport"; message: string }
 > {
-  const headers: Record<string, string> = {
+  const headers = new Headers({
     "Content-Type": "application/json",
     Accept: "application/json",
-  };
+  });
   // Pin the tenant per-env: this route bypasses the /steward/* proxy in
   // bootstrap-app.ts and would otherwise hit Steward without scoping,
   // letting a staging refresh land against the prod tenant.
   if (typeof pinnedTenantId === "string" && pinnedTenantId.trim().length > 0) {
-    headers["X-Steward-Tenant"] = pinnedTenantId.trim();
+    headers.set("X-Steward-Tenant", pinnedTenantId.trim());
+  }
+  const bodyText = JSON.stringify({ refreshToken });
+  const bodyBytes = new TextEncoder().encode(bodyText);
+  const refreshUrl = new URL(`${baseUrl}/auth/refresh`);
+  // Steward's authorization-signature middleware gates mutating sensitive
+  // paths (incl. /auth/refresh) on the signed-request contract. The
+  // /steward/* embedded proxy signs automatically; this bypass route must
+  // sign the same way or Steward 502s with "Request expiry header required",
+  // which kicks the SPA back to /login after every magic-link verify.
+  if (typeof signingSecret === "string" && signingSecret.length > 0) {
+    await signStewardMutatingRequest(
+      signingSecret,
+      "POST",
+      `${refreshUrl.pathname}${refreshUrl.search}`,
+      headers,
+      bodyBytes,
+    );
   }
   let response: Response;
   try {
-    response = await fetch(`${baseUrl}/auth/refresh`, {
+    response = await fetch(refreshUrl.toString(), {
       method: "POST",
       headers,
-      body: JSON.stringify({ refreshToken }),
+      body: bodyText,
     });
   } catch (err) {
     return {
@@ -270,6 +289,7 @@ app.post("/", async (c) => {
     stewardBaseUrl,
     refreshToken,
     c.env.STEWARD_TENANT_ID,
+    c.env.STEWARD_REQUEST_SIGNING_SECRET,
   );
 
   if (refresh.kind === "transport") {
