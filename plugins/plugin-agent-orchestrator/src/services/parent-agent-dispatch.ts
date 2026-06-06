@@ -31,6 +31,56 @@ const DISPATCH_LOG_SRC = "acpx:parent-agent-dispatch";
 /** The exact prefix a child emits to invoke the parent-agent broker. */
 export const PARENT_AGENT_DIRECTIVE_MARKER = `USE_SKILL ${PARENT_AGENT_BROKER_SLUG}`;
 
+/**
+ * A child streams its `USE_SKILL parent-agent` directive mid-turn and then ends
+ * the turn to await the reply. Delivering that reply is itself a new prompt,
+ * which the ACP transport rejects with "session is already busy" until the
+ * current turn finishes — so delivery is retried until the session goes idle,
+ * up to this bound (a turn can run for the full prompt timeout). Without the
+ * retry the reply is dropped and the loop stalls on the first directive.
+ */
+const REPLY_DELIVERY_TIMEOUT_MS = 300_000;
+const REPLY_DELIVERY_POLL_MS = 250;
+
+const delay = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+/** The transport's transient "a turn is in flight" rejection (vs. a terminal
+ * failure like a lost/closed session, which must not be retried). */
+function isSessionBusyError(err: unknown): boolean {
+  return err instanceof Error && /already busy/i.test(err.message);
+}
+
+/**
+ * Deliver the broker reply back into the child session, waiting out the child's
+ * in-flight turn. Returns false (without throwing) on a terminal delivery
+ * failure or if the session never goes idle within the bound.
+ */
+async function deliverReplyToChild(
+  acp: Pick<AcpService, "sendToSession">,
+  sessionId: string,
+  reply: string,
+  log: DispatchParentAgentParams["log"],
+): Promise<boolean> {
+  const deadline = Date.now() + REPLY_DELIVERY_TIMEOUT_MS;
+  for (;;) {
+    try {
+      await acp.sendToSession(sessionId, reply);
+      return true;
+    } catch (err) {
+      if (isSessionBusyError(err) && Date.now() < deadline) {
+        await delay(REPLY_DELIVERY_POLL_MS);
+        continue;
+      }
+      log?.warn?.(
+        { src: DISPATCH_LOG_SRC, sessionId },
+        `failed to deliver parent-agent reply: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return false;
+    }
+  }
+}
+
 export interface ParentAgentDirective {
   /** Parsed JSON args object, passed verbatim to the broker as `args`. */
   args: Record<string, unknown>;
@@ -144,14 +194,6 @@ export async function dispatchParentAgentDirective(
     log?.error?.({ src: DISPATCH_LOG_SRC, sessionId }, reply);
   }
 
-  try {
-    await acp.sendToSession(sessionId, reply);
-  } catch (err) {
-    log?.warn?.(
-      { src: DISPATCH_LOG_SRC, sessionId },
-      `failed to deliver parent-agent reply: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return { ok: false, reply };
-  }
-  return { ok, reply };
+  const delivered = await deliverReplyToChild(acp, sessionId, reply, log);
+  return { ok: ok && delivered, reply };
 }

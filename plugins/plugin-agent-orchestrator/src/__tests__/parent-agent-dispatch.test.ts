@@ -146,4 +146,76 @@ describe("dispatchParentAgentDirective", () => {
     });
     expect(result.ok).toBe(false);
   });
+
+  // Regression: a child streams its directive mid-turn and then ends the turn to
+  // await the reply. Delivering the reply is a new prompt, which the transport
+  // rejects with "session is already busy" until the turn finishes — so the
+  // dispatcher must retry until the session goes idle instead of dropping it
+  // (a dropped reply stalls the loop on its first directive).
+  it("retries delivery while the child turn is still in flight (session busy)", async () => {
+    let attempts = 0;
+    const acp = {
+      sendToSession: async (sessionId: string) => {
+        attempts++;
+        if (attempts < 3) {
+          throw new Error(`ACP session is already busy: ${sessionId}`);
+        }
+        return {} as unknown as ReturnType<
+          import("../services/acp-service.js").AcpService["sendToSession"]
+        >;
+      },
+    };
+    const result = await dispatchParentAgentDirective({
+      runtime: createRuntime(),
+      acp,
+      sessionId: "sess-3",
+      args: { mode: "list-cloud-commands" },
+    });
+    expect(attempts).toBe(3);
+    expect(result.ok).toBe(true);
+  }, 10_000);
+
+  it("stops retrying and reports failure once the busy deadline passes", async () => {
+    vi.useFakeTimers();
+    try {
+      let calls = 0;
+      const acp = {
+        sendToSession: async (sessionId: string) => {
+          calls++;
+          throw new Error(`ACP session is already busy: ${sessionId}`);
+        },
+      };
+      const p = dispatchParentAgentDirective({
+        runtime: createRuntime(),
+        acp,
+        sessionId: "sess-4",
+        args: { mode: "list-cloud-commands" },
+      });
+      // Drive the fake clock past the delivery deadline; the loop must give up.
+      await vi.advanceTimersByTimeAsync(300_001);
+      const result = await p;
+      expect(result.ok).toBe(false);
+      expect(calls).toBeGreaterThan(1); // it retried — did not bail after one attempt
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 20_000);
+
+  it("does not retry a terminal (non-busy) delivery error", async () => {
+    let calls = 0;
+    const acp = {
+      sendToSession: async () => {
+        calls++;
+        throw new Error("session lost");
+      },
+    };
+    const result = await dispatchParentAgentDirective({
+      runtime: createRuntime(),
+      acp,
+      sessionId: "sess-5",
+      args: { mode: "list-cloud-commands" },
+    });
+    expect(result.ok).toBe(false);
+    expect(calls).toBe(1);
+  });
 });
