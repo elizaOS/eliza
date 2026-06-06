@@ -298,6 +298,8 @@ export interface StewardNonceExchangeRequest {
   redirectUri?: string;
   /** Steward tenant ID (e.g. "elizacloud"). */
   tenantId?: string;
+  /** PKCE verifier paired with the `code_challenge` sent to Steward. */
+  codeVerifier?: string;
 }
 
 export interface StewardNonceExchangeResponse extends StewardSessionResponse {
@@ -319,6 +321,8 @@ export interface ExchangeStewardCodeOpts extends SyncOpts {
   redirectUri?: string;
   /** Steward tenant id. */
   tenantId?: string;
+  /** PKCE verifier paired with the `code_challenge` sent to Steward. */
+  codeVerifier?: string;
 }
 
 /**
@@ -338,6 +342,7 @@ export async function exchangeStewardCode(
     code,
     ...(opts.redirectUri ? { redirectUri: opts.redirectUri } : {}),
     ...(opts.tenantId ? { tenantId: opts.tenantId } : {}),
+    ...(opts.codeVerifier ? { codeVerifier: opts.codeVerifier } : {}),
   };
   const response = await f(endpoint, {
     method: "POST",

@@ -46,6 +46,28 @@ describe("Cloud active server persistence", () => {
     expect(loadPersistedActiveServer()?.apiBase).toBeUndefined();
   });
 
+  it("keeps a provisioned cloud agent id separate from its runtime URL", () => {
+    const server = createPersistedActiveServer({
+      kind: "cloud",
+      id: "cloud:agent-123",
+      label: "Demo Agent",
+      apiBase: "https://agent-runtime.example.test/",
+      accessToken: "cloud-token",
+    });
+
+    expect(server).toEqual({
+      id: "cloud:agent-123",
+      kind: "cloud",
+      label: "Demo Agent",
+      apiBase: "https://agent-runtime.example.test",
+      accessToken: "cloud-token",
+    });
+
+    savePersistedActiveServer(server);
+
+    expect(loadPersistedActiveServer()).toEqual(server);
+  });
+
   it("normalizes legacy saved Cloud control-plane records", () => {
     localStorage.setItem(
       "elizaos:active-server",

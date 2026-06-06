@@ -24,7 +24,7 @@ export function StartupShell({ view, firstRun, onRetry }: StartupShellProps) {
   }
 
   if (view.kind === "first-run") {
-    return <>{firstRun}</>;
+    return <StartupFirstRunBackground>{firstRun}</StartupFirstRunBackground>;
   }
 
   if (view.kind === "none") {
@@ -32,6 +32,18 @@ export function StartupShell({ view, firstRun, onRetry }: StartupShellProps) {
   }
 
   return <StartupLoading phase={view.phase} status={view.status} />;
+}
+
+function StartupFirstRunBackground({ children }: { children: ReactNode }) {
+  return (
+    <div
+      data-testid="startup-first-run-background"
+      className="fixed inset-0 overflow-hidden bg-[#FF5800] text-white"
+      style={{ fontFamily: FONT }}
+    >
+      {children}
+    </div>
+  );
 }
 
 function StartupLoading(props: { phase: string; status: string }) {

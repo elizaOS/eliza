@@ -944,6 +944,7 @@ function isElizaCloudControlPlaneApiBase(value: unknown): boolean {
 
 export function createPersistedActiveServer(args: {
   kind: PersistedActiveServer["kind"];
+  id?: string;
   apiBase?: string;
   accessToken?: string;
   label?: string;
@@ -964,7 +965,7 @@ export function createPersistedActiveServer(args: {
       };
     case "cloud":
       return {
-        id: `cloud:${apiBase ?? "managed"}`,
+        id: trimPersistedValue(args.id) ?? `cloud:${apiBase ?? "managed"}`,
         kind: "cloud",
         label: explicitLabel ?? "Eliza Cloud",
         ...(apiBase ? { apiBase } : {}),
