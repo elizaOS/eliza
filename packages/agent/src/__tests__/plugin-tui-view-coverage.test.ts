@@ -73,13 +73,6 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-hyperliquid-market",
     "terminal-hyperliquid-execution-check",
   ],
-  "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx": [
-    "terminal-lifeops-state",
-    "terminal-lifeops-enable",
-    "terminal-lifeops-complete",
-    "terminal-lifeops-skip",
-    "terminal-lifeops-snooze",
-  ],
   "plugins/plugin-messages/src/components/MessagesAppView.tsx": [
     "terminal-list-threads",
     "terminal-send-sms",
