@@ -71,5 +71,4 @@ describe("Steward OAuth PKCE", () => {
     expect(withoutPkce.searchParams.has("code_challenge")).toBe(false);
     expect(withoutPkce.searchParams.has("code_challenge_method")).toBe(false);
   });
-
 });
