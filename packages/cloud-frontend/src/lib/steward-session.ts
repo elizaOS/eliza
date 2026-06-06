@@ -6,13 +6,22 @@ import {
   StewardSessionError,
 } from "@elizaos/shared/steward-session-client";
 
-const ELIZA_CLOUD_BROWSER_HOSTS = new Set([
-  "elizacloud.ai",
-  "www.elizacloud.ai",
-  "dev.elizacloud.ai",
-  "staging.elizacloud.ai",
-]);
-const ELIZA_CLOUD_DIRECT_AUTH_BASE = "https://api.elizacloud.ai";
+// Cross-zone direct-call routing for the Steward auth bypass endpoints.
+// Pages previews and third-party app integrations need an absolute URL —
+// the SPA can be served from a host that isn't bound to its API Worker.
+// Each browser host MUST point at its OWN API Worker because the Workers
+// pin a tenant via STEWARD_TENANT_ID and the bypass routes 401 with
+// `code_invalid` when a code minted for one tenant is exchanged against
+// another. Mixing staging into the prod base previously sent
+// staging-tenant codes (`elizacloud-staging`) to the prod tenant
+// (`elizacloud`) Worker — the silent failure that lands users back on
+// /login after the magic-link callback.
+const ELIZA_CLOUD_AUTH_BASES: Record<string, string> = {
+  "elizacloud.ai": "https://api.elizacloud.ai",
+  "www.elizacloud.ai": "https://api.elizacloud.ai",
+  "dev.elizacloud.ai": "https://api.elizacloud.ai",
+  "staging.elizacloud.ai": "https://api-staging.elizacloud.ai",
+};
 
 export function resolveStewardAuthEndpoint(
   path: string,
@@ -20,10 +29,8 @@ export function resolveStewardAuthEndpoint(
     ? ""
     : window.location.hostname.toLowerCase(),
 ): string {
-  if (ELIZA_CLOUD_BROWSER_HOSTS.has(hostname.toLowerCase())) {
-    return `${ELIZA_CLOUD_DIRECT_AUTH_BASE}${path}`;
-  }
-  return path;
+  const base = ELIZA_CLOUD_AUTH_BASES[hostname.toLowerCase()];
+  return base ? `${base}${path}` : path;
 }
 
 async function postAuthJson(
