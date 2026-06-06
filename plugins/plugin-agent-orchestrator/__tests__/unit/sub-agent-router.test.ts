@@ -62,6 +62,7 @@ function makeAcpService(session: SessionInfo): {
     updateSessionMetadata: ReturnType<typeof vi.fn>;
     getChangedPaths: ReturnType<typeof vi.fn>;
     stopSession: ReturnType<typeof vi.fn>;
+    sendToSession: ReturnType<typeof vi.fn>;
   };
   emit: (sessionId: string, event: string, data: unknown) => void;
 } {
@@ -84,6 +85,7 @@ function makeAcpService(session: SessionInfo): {
       },
     ),
     getChangedPaths: vi.fn((_id: string) => [] as string[]),
+    sendToSession: vi.fn(async (_id: string, _input: string) => ({})),
   };
   return {
     service,
@@ -2399,5 +2401,98 @@ describe("SubAgentRouter — deterministic session_state_lost recovery", () => {
     expect(metadata?.subAgentEvent).toBe("state_lost_exhausted");
     expect(metadata?.subAgentStatus).toBe("failed");
     expect(posted?.content?.text).toContain("could not be recovered");
+  });
+});
+
+describe("SubAgentRouter parent-agent dispatch", () => {
+  let session: SessionInfo;
+  let acp: ReturnType<typeof makeAcpService>;
+
+  beforeEach(() => {
+    session = makeSession();
+    acp = makeAcpService(session);
+  });
+
+  it("bridges a complete USE_SKILL parent-agent directive to the broker and replies", async () => {
+    const { runtime } = makeRuntime({ acp: acp.service });
+    const router = await SubAgentRouter.start(runtime);
+    try {
+      // list-cloud-commands needs no network/cloud key — the real broker
+      // renders the static catalog — so this exercises the full
+      // message -> extract -> broker -> sendToSession path.
+      acp.emit(SESSION_ID, "message", {
+        text: 'USE_SKILL parent-agent {"mode":"list-cloud-commands"}',
+      });
+      await new Promise((r) => setImmediate(r));
+
+      expect(acp.service.sendToSession).toHaveBeenCalledTimes(1);
+      const [sid, reply] = acp.service.sendToSession.mock.calls[0] as [
+        string,
+        string,
+      ];
+      expect(sid).toBe(SESSION_ID);
+      expect(reply.toLowerCase()).toContain("domains.buy");
+    } finally {
+      await router.stop();
+    }
+  });
+
+  it("reassembles a directive split across message chunks", async () => {
+    const { runtime } = makeRuntime({ acp: acp.service });
+    const router = await SubAgentRouter.start(runtime);
+    try {
+      for (const chunk of [
+        "Working on it. USE_SKILL parent-",
+        'agent {"mode":"list-cloud',
+        '-commands"}\ndone',
+      ]) {
+        acp.emit(SESSION_ID, "message", { text: chunk });
+      }
+      await new Promise((r) => setImmediate(r));
+      expect(acp.service.sendToSession).toHaveBeenCalledTimes(1);
+    } finally {
+      await router.stop();
+    }
+  });
+
+  it("ignores ordinary output without the marker", async () => {
+    const { runtime } = makeRuntime({ acp: acp.service });
+    const router = await SubAgentRouter.start(runtime);
+    try {
+      acp.emit(SESSION_ID, "message", {
+        text: "Just building the app, no broker needed here.",
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(acp.service.sendToSession).not.toHaveBeenCalled();
+    } finally {
+      await router.stop();
+    }
+  });
+
+  it("stops dispatching after the per-session round-trip cap", async () => {
+    const { runtime } = makeRuntime({
+      acp: acp.service,
+      setting: { ACPX_SUB_AGENT_ROUND_TRIP_CAP: "1" },
+    });
+    const router = await SubAgentRouter.start(runtime);
+    try {
+      acp.emit(SESSION_ID, "message", {
+        text: 'USE_SKILL parent-agent {"mode":"list-cloud-commands"}',
+      });
+      await new Promise((r) => setImmediate(r));
+      acp.emit(SESSION_ID, "message", {
+        text: 'USE_SKILL parent-agent {"mode":"list-cloud-commands"}',
+      });
+      await new Promise((r) => setImmediate(r));
+
+      expect(acp.service.sendToSession).toHaveBeenCalledTimes(2);
+      const second = acp.service.sendToSession.mock.calls[1] as [
+        string,
+        string,
+      ];
+      expect(second[1]).toContain("round-trip cap");
+    } finally {
+      await router.stop();
+    }
   });
 });
