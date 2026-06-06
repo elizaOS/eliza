@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,7 +11,11 @@ const REPO_ROOT = path.resolve(
   "..",
 );
 const DEFAULT_REPORT_DIR = path.join(REPO_ROOT, "reports", "benchmark-analysis");
-const HOME_DIR = process.env.HOME || "";
+// `process.env.HOME` is unset on Windows; fall back so report-path
+// redaction (`/Users/foo/...` → `~/...`) still strips the local home dir
+// when the script runs there.
+const HOME_DIR =
+  process.env.HOME || process.env.USERPROFILE || homedir() || "";
 
 function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, "utf8"));

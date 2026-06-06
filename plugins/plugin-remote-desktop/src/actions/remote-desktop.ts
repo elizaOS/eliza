@@ -2,15 +2,15 @@
  * REMOTE_DESKTOP action — stub.
  *
  * The real implementation currently lives in
- * `plugins/plugin-lifeops/src/actions/remote-desktop.ts` and depends on the
+ * `plugins/plugin-personal-assistant/src/actions/remote-desktop.ts` and depends on the
  * lifeops-internal helpers:
  *
- *   - `plugins/plugin-lifeops/src/lifeops/remote-desktop.ts`
+ *   - `plugins/plugin-personal-assistant/src/lifeops/remote-desktop.ts`
  *       (detectRemoteDesktopBackend, endRemoteSession, getSessionStatus,
  *        RemoteDesktopSession)
- *   - `plugins/plugin-lifeops/src/remote/remote-session-service.ts`
+ *   - `plugins/plugin-personal-assistant/src/remote/remote-session-service.ts`
  *       (getRemoteSessionService, RemoteSessionError)
- *   - `plugins/plugin-lifeops/src/actions/lib/resolve-action-args.ts`
+ *   - `plugins/plugin-personal-assistant/src/actions/lib/resolve-action-args.ts`
  *       (resolveActionArgs, SubactionsMap)
  *
  * TODO(remote-desktop migration): in the follow-up migration pass:
@@ -185,7 +185,7 @@ export const remoteDesktopAction: RemoteDesktopAction = {
     _options,
   ): Promise<ActionResult> => {
     // TODO(remote-desktop migration): replace this stub with the full handler
-    // from `plugins/plugin-lifeops/src/actions/remote-desktop.ts`.
+    // from `plugins/plugin-personal-assistant/src/actions/remote-desktop.ts`.
     //
     // The real handler dispatches on the resolved subaction:
     //
@@ -209,7 +209,7 @@ export const remoteDesktopAction: RemoteDesktopAction = {
     // Until the migration lands, this stub returns a structured
     // not-implemented result so callers see a clear signal.
     return {
-      text: "REMOTE_DESKTOP is being migrated from @elizaos/plugin-lifeops to @elizaos/plugin-remote-desktop. The handler is not yet wired up in this plugin.",
+      text: "REMOTE_DESKTOP is being migrated from @elizaos/plugin-personal-assistant to @elizaos/plugin-remote-desktop. The handler is not yet wired up in this plugin.",
       success: false,
       values: {
         success: false,
@@ -218,7 +218,7 @@ export const remoteDesktopAction: RemoteDesktopAction = {
       data: {
         actionName: ACTION_NAME,
         reason: "migration_in_progress",
-        canonicalLocation: "plugins/plugin-lifeops/src/actions/remote-desktop.ts",
+        canonicalLocation: "plugins/plugin-personal-assistant/src/actions/remote-desktop.ts",
       },
     };
   },

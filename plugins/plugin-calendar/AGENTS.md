@@ -5,7 +5,7 @@ overview and `../../CLAUDE.md` (repo root) for monorepo-wide rules.
 
 ## Role
 
-Owns the calendar domain extracted from `@elizaos/plugin-lifeops`: the calendar
+Owns the calendar domain extracted from `@elizaos/plugin-personal-assistant`: the calendar
 event/sync store + schema, the Google + Apple calendar feed, event CRUD, the
 `CALENDAR` action and its LLM handler, `/api/calendar/*` routes, the client API
 methods augmented onto `@elizaos/ui`, and the owner-facing calendar views.
@@ -15,7 +15,7 @@ methods augmented onto `@elizaos/ui`, and the owner-facing calendar views.
 - **Storage + provider logic live here.** The cross-connector **grant registry**
   (Google account selection, scopes, multi-account) stays in `plugin-lifeops`,
   which injects a `CalendarConnectorGate` into `CalendarService` at init. Never
-  import `@elizaos/plugin-lifeops` from this package — the dependency direction
+  import `@elizaos/plugin-personal-assistant` from this package — the dependency direction
   is `plugin-lifeops -> plugin-calendar`.
 - **Contract types live in `@elizaos/shared/contracts/calendar`** so `@elizaos/ui`
   (which types its `client` against them) and the plugins can both depend on them

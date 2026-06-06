@@ -40,7 +40,7 @@ const CONVERTED_PLUGINS = [
   "plugin-training",
   "plugin-trajectory-logger",
   "plugin-vincent",
-  "plugin-lifeops",
+  "plugin-personal-assistant",
 ] as const;
 
 /** Remaining views to convert; must stay empty for the ratchet to pass. */

@@ -140,7 +140,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:focus",
         "capability:write",
@@ -296,7 +296,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:focus",
         "capability:write",
@@ -452,7 +452,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:focus",
         "capability:write",
@@ -571,7 +571,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:focus",
         "capability:write",
@@ -727,7 +727,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:focus",
         "capability:write",
@@ -883,7 +883,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:focus",
         "capability:write",
@@ -1002,7 +1002,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:focus",
         "capability:write",
@@ -1153,7 +1153,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:briefing",
         "capability:read",
@@ -1226,7 +1226,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:briefing",
         "capability:read",
@@ -1299,7 +1299,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:briefing",
         "capability:read",
@@ -1372,7 +1372,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:briefing",
         "capability:read",
@@ -1595,7 +1595,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:calendar",
         "capability:read",
@@ -1826,7 +1826,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:calendar",
         "capability:read",
@@ -2057,7 +2057,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:calendar",
         "capability:read",
@@ -2288,7 +2288,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:calendar",
         "capability:read",
@@ -2519,7 +2519,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:calendar",
         "capability:read",
@@ -2750,7 +2750,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:calendar",
         "capability:read",
@@ -2981,7 +2981,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:calendar",
         "capability:read",
@@ -3212,7 +3212,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:calendar",
         "capability:read",
@@ -3443,7 +3443,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:calendar",
         "capability:read",
@@ -3674,7 +3674,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:calendar",
         "capability:read",
@@ -3905,7 +3905,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:calendar",
         "capability:read",
@@ -4136,7 +4136,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:calendar",
         "capability:read",
@@ -4207,7 +4207,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:calendar",
         "capability:read",
@@ -4268,7 +4268,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:calendar",
         "capability:read",
@@ -4329,7 +4329,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:calendar",
         "capability:read",
@@ -4390,7 +4390,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:calendar",
         "capability:read",
@@ -4496,7 +4496,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:meta",
         "capability:read",
@@ -4614,7 +4614,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:meta",
         "capability:read",
@@ -4732,7 +4732,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:meta",
         "capability:read",
@@ -4850,7 +4850,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:meta",
         "capability:read",
@@ -4968,7 +4968,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:meta",
         "capability:read",
@@ -5086,7 +5086,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:meta",
         "capability:read",
@@ -5183,7 +5183,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:meta",
         "capability:read",
@@ -5277,7 +5277,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:meta",
         "capability:read",
@@ -5371,7 +5371,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:meta",
         "capability:read",
@@ -5465,7 +5465,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:meta",
         "capability:read",
@@ -5559,7 +5559,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:meta",
         "capability:read",
@@ -5653,7 +5653,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:meta",
         "capability:read",
@@ -5747,7 +5747,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:meta",
         "capability:read",
@@ -5841,7 +5841,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:meta",
         "capability:read",
@@ -5961,7 +5961,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:docs",
         "capability:read",
@@ -6078,7 +6078,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:docs",
         "capability:read",
@@ -6195,7 +6195,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:docs",
         "capability:read",
@@ -6312,7 +6312,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:docs",
         "capability:read",
@@ -6429,7 +6429,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:docs",
         "capability:read",
@@ -6546,7 +6546,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:docs",
         "capability:read",
@@ -6663,7 +6663,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:docs",
         "capability:read",
@@ -6809,7 +6809,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:contacts",
         "capability:read",
@@ -6940,7 +6940,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:inbox",
         "capability:read",
@@ -7007,7 +7007,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:inbox",
         "capability:read",
@@ -7074,7 +7074,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:inbox",
         "capability:read",
@@ -7141,7 +7141,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:inbox",
         "capability:read",
@@ -7947,7 +7947,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:messages",
         "capability:read",
@@ -8417,7 +8417,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -8508,7 +8508,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -8599,7 +8599,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -8690,7 +8690,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -8781,7 +8781,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -8872,7 +8872,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -8963,7 +8963,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -9054,7 +9054,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -9210,7 +9210,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -9344,7 +9344,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -9478,7 +9478,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -9612,7 +9612,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -9746,7 +9746,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -9880,7 +9880,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -10014,7 +10014,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -10148,7 +10148,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -10282,7 +10282,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -10416,7 +10416,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -10550,7 +10550,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -10684,7 +10684,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -10750,7 +10750,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -10838,7 +10838,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -10926,7 +10926,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -11014,7 +11014,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -11102,7 +11102,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -11185,7 +11185,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -11246,7 +11246,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -11307,7 +11307,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -11368,7 +11368,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -11429,7 +11429,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -11498,7 +11498,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -11589,7 +11589,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -11680,7 +11680,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -11771,7 +11771,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -11862,7 +11862,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -11953,7 +11953,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -12044,7 +12044,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -12135,7 +12135,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -12228,7 +12228,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -12321,7 +12321,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -12414,7 +12414,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -12507,7 +12507,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -12600,7 +12600,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -12693,7 +12693,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -12786,7 +12786,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -12879,7 +12879,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -12972,7 +12972,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -13065,7 +13065,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -13172,7 +13172,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -13257,7 +13257,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -13342,7 +13342,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -13427,7 +13427,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -13512,7 +13512,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -13597,7 +13597,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -13682,7 +13682,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -13767,7 +13767,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -13852,7 +13852,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -13937,7 +13937,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -14022,7 +14022,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [],
       "_priority": 100,
@@ -14091,7 +14091,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -14182,7 +14182,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -14273,7 +14273,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -14364,7 +14364,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -14455,7 +14455,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -14546,7 +14546,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -14637,7 +14637,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -14728,7 +14728,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -14786,7 +14786,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [
         "general",
@@ -14827,7 +14827,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [
         "general",
@@ -14868,7 +14868,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [
         "general",
@@ -14909,7 +14909,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [
         "general",
@@ -14965,7 +14965,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:focus",
         "capability:read",
@@ -15030,7 +15030,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:focus",
         "capability:read",
@@ -15095,7 +15095,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:focus",
         "capability:read",
@@ -15160,7 +15160,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:focus",
         "capability:read",
@@ -15231,7 +15231,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:meta",
         "capability:read",
@@ -15295,7 +15295,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:meta",
         "capability:execute",
@@ -15357,7 +15357,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:meta",
         "capability:execute",
@@ -15419,7 +15419,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:meta",
         "capability:execute",
@@ -15627,7 +15627,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -15835,7 +15835,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -16043,7 +16043,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -16251,7 +16251,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -16459,7 +16459,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -16667,7 +16667,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -16875,7 +16875,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -17083,7 +17083,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -17291,7 +17291,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -17499,7 +17499,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -17707,7 +17707,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -17915,7 +17915,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -18123,7 +18123,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:reminders",
         "capability:read",
@@ -18551,7 +18551,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:meta",
         "capability:execute",
@@ -18631,7 +18631,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:meta",
         "capability:execute",
@@ -18685,7 +18685,7 @@
         },
         "strict": true
       },
-      "_plugin": "@elizaos/plugin-lifeops",
+      "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [],
       "_contexts": [
         "tasks",

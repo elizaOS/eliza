@@ -19,8 +19,8 @@ import {
  *   - `relationships` — typed edges between entities
  *
  * NOTE: This is a minimal scaffold. The full LifeOps EntityStore and
- * RelationshipStore (see `plugins/plugin-lifeops/src/lifeops/entities/store.ts`
- * and `plugins/plugin-lifeops/src/lifeops/relationships/store.ts`) carry
+ * RelationshipStore (see `plugins/plugin-personal-assistant/src/lifeops/entities/store.ts`
+ * and `plugins/plugin-personal-assistant/src/lifeops/relationships/store.ts`) carry
  * richer per-row state (identities array, attributes map, retired status,
  * sentiment trend, …). Migration of those columns lands in a follow-up.
  */

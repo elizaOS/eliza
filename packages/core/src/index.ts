@@ -23,3 +23,12 @@ export type {
 // Re-export everything from the Node.js entry point
 // This ensures that imports from "@elizaos/core" resolve correctly during builds
 export * from "./index.node";
+
+// Future-home barrels for primitives migrating out of plugin-personal-assistant.
+// These directories currently contain stubbed contracts + "not implemented"
+// classes; consumers can type against them now and the implementations land
+// when the migration happens. See each directory's README.md for the tracked
+// TODO(migrate: ...) pointers.
+export * from "./owner-state/index.js";
+export * from "./registries/index.js";
+export * from "./scheduled-task/index.js";

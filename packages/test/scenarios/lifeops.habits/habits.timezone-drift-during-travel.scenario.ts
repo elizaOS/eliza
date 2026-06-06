@@ -14,12 +14,12 @@ import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { updateLifeOpsMeetingPreferences } from "../../../../plugins/plugin-lifeops/src/lifeops/owner-profile.ts";
-import { LifeOpsRepository } from "../../../../plugins/plugin-lifeops/src/lifeops/repository.ts";
+import { updateLifeOpsMeetingPreferences } from "../../../../plugins/plugin-personal-assistant/src/lifeops/owner-profile.ts";
+import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
-} from "../../../../plugins/plugin-lifeops/src/lifeops/sql.ts";
+} from "../../../../plugins/plugin-personal-assistant/src/lifeops/sql.ts";
 
 const PACIFIC_TZ = "America/Los_Angeles";
 const HABIT_TITLE = "Stretch";

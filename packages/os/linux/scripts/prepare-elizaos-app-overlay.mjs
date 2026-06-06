@@ -277,8 +277,8 @@ export const companionPlugin = appCompanionPlugin;
 export const registerCompanionApp = () => undefined;
 export default appCompanionPlugin;
 `,
-    "@elizaos/plugin-lifeops": `
-export const appLifeOpsPlugin = {
+    "@elizaos/plugin-personal-assistant": `
+export const personalAssistantPlugin = {
   name: "lifeops",
   description: "Live-safe LifeOps overlay for elizaOS Live. Cloud connectors and proactive workflows become available after provider setup.",
   actions: [],
@@ -286,7 +286,7 @@ export const appLifeOpsPlugin = {
   services: [],
   routes: [],
 };
-export const lifeopsPlugin = {
+export const personalAssistantPlugin = {
   name: "lifeops-routes",
   routes: [],
 };
@@ -295,7 +295,7 @@ export const browserBridgeProvider = undefined;
 export const detectHealthBackend = () => ({ available: false, backend: "none" });
 export const handleLifeOpsRoutes = async () => false;
 export const handleWebsiteBlockerRoutes = async () => false;
-export default appLifeOpsPlugin;
+export default personalAssistantPlugin;
 `,
     "@elizaos/plugin-documents": `
 export const documentsPlugin = {
@@ -488,7 +488,7 @@ const forceLiveStubPackages = new Set([
   "@elizaos/plugin-documents",
   "@elizaos/plugin-google",
   "@elizaos/plugin-hyperliquid-app",
-  "@elizaos/plugin-lifeops",
+  "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-polymarket-app",
   "@elizaos/plugin-shopify-ui",
   "@elizaos/plugin-steward-app",

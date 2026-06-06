@@ -18,8 +18,8 @@ import {
 import {
   createLifeOpsConnectorGrant,
   LifeOpsRepository,
-} from "../../../../plugins/plugin-lifeops/src/lifeops/repository.ts";
-import { LifeOpsService } from "../../../../plugins/plugin-lifeops/src/lifeops/service.ts";
+} from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
+import { LifeOpsService } from "../../../../plugins/plugin-personal-assistant/src/lifeops/service.ts";
 import {
   readSignalInboundMessages,
   readSignalLocalClientConfigFromEnv,

@@ -14,12 +14,12 @@
  * `list_overdue_followups`, …) intentionally stays on `SCHEDULED_TASKS`.
  *
  * TODO(decomposition): port the real implementation from
- *   `plugins/plugin-lifeops/src/actions/entity.ts`
+ *   `plugins/plugin-personal-assistant/src/actions/entity.ts`
  * and the underlying stores from:
- *   - `plugins/plugin-lifeops/src/lifeops/entities/store.ts`        (EntityStore)
- *   - `plugins/plugin-lifeops/src/lifeops/entities/merge.ts`        (merge engine)
- *   - `plugins/plugin-lifeops/src/lifeops/entities/voice-observer-bridge.ts`
- *   - `plugins/plugin-lifeops/src/lifeops/relationships/store.ts`   (RelationshipStore)
+ *   - `plugins/plugin-personal-assistant/src/lifeops/entities/store.ts`        (EntityStore)
+ *   - `plugins/plugin-personal-assistant/src/lifeops/entities/merge.ts`        (merge engine)
+ *   - `plugins/plugin-personal-assistant/src/lifeops/entities/voice-observer-bridge.ts`
+ *   - `plugins/plugin-personal-assistant/src/lifeops/relationships/store.ts`   (RelationshipStore)
  *
  * For now the handler returns a TODO marker so the plugin compiles and registers.
  */
@@ -43,7 +43,7 @@ import {
 
 /**
  * Parameter shape mirrors the LifeOps `EntityParameters` in
- * `plugins/plugin-lifeops/src/actions/entity.ts`. Kept loose (`unknown` /
+ * `plugins/plugin-personal-assistant/src/actions/entity.ts`. Kept loose (`unknown` /
  * optional) so the stub does not block typecheck while the real port lands.
  */
 export interface EntityActionParameters {
@@ -97,7 +97,7 @@ export const entityAction: Action = {
   name: "ENTITY",
   similes: ["CONTACT", "PERSON", "ORGANIZATION", "ENTITY_CRUD"],
   description:
-    "Umbrella action for the relationships knowledge graph: person / org / place / project / concept CRUD, identity claims, typed relationships, and merge. STUB — real implementation lands in a follow-up port from `plugins/plugin-lifeops/src/actions/entity.ts`.",
+    "Umbrella action for the relationships knowledge graph: person / org / place / project / concept CRUD, identity claims, typed relationships, and merge. STUB — real implementation lands in a follow-up port from `plugins/plugin-personal-assistant/src/actions/entity.ts`.",
   contexts: [...RELATIONSHIPS_CONTEXTS],
   contextGate: { anyOf: [...RELATIONSHIPS_CONTEXTS] },
   validate: async (
@@ -122,7 +122,7 @@ export const entityAction: Action = {
       `${RELATIONSHIPS_LOG_PREFIX} TODO — ENTITY action stub. ` +
       `op=${op ?? "<unspecified>"}. ` +
       `Real handler will land in a follow-up port from ` +
-      `plugins/plugin-lifeops/src/actions/entity.ts.`;
+      `plugins/plugin-personal-assistant/src/actions/entity.ts.`;
     return {
       success: true,
       text,

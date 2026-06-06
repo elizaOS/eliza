@@ -23,7 +23,7 @@ export * from "./first-run-routes.js";
 export * from "./health.js";
 export * from "./inbox.js";
 export * from "./inbox-routes.js";
-export * from "./lifeops.js";
+export * from "./personal-assistant.js";
 export * from "./memory-routes.js";
 export * from "./misc-routes.js";
 export * from "./permissions.js";

@@ -12,7 +12,7 @@ lifecycle. Persistence lives in a drizzle `pgSchema('app_blocker')`. Ships a
 `focus` overlay view rendered by the dashboard shell.
 
 This package was scaffolded as part of decomposing the giant
-`@elizaos/plugin-lifeops`. The action / providers / services are currently
+`@elizaos/plugin-personal-assistant`. The action / providers / services are currently
 stubs that reference the live implementations still in `plugin-lifeops`. See
 `README.md` for the migration mapping.
 

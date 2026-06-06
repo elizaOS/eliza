@@ -2,8 +2,8 @@
  * Public types for @elizaos/plugin-remote-desktop.
  *
  * These mirror the types currently defined in
- * `plugins/plugin-lifeops/src/lifeops/remote-desktop.ts` and
- * `plugins/plugin-lifeops/src/remote/remote-session-service.ts`.
+ * `plugins/plugin-personal-assistant/src/lifeops/remote-desktop.ts` and
+ * `plugins/plugin-personal-assistant/src/remote/remote-session-service.ts`.
  *
  * TODO(remote-desktop migration): in the follow-up migration pass we will
  * move the canonical type definitions here and have plugin-lifeops import

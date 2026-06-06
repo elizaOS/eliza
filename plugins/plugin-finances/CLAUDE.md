@@ -2,7 +2,7 @@
 
 Owner-facing finance dashboard for elizaOS: balance summary, transactions, and
 recurring charges. Currently a scaffold landing the package in the workspace
-so subsequent passes can migrate OWNER_FINANCES out of `@elizaos/plugin-lifeops`.
+so subsequent passes can migrate OWNER_FINANCES out of `@elizaos/plugin-personal-assistant`.
 
 ## Purpose / role
 
@@ -19,10 +19,10 @@ depends on `@elizaos/plugin-sql` (declared as a peer dep and in
 **Action**
 - `OWNER_FINANCES` (`src/actions/finances.ts`) — **scaffold stub.** Returns a
   clear "not yet wired" `ActionResult`. The real handler is migrating from
-  `plugins/plugin-lifeops/src/actions/owner-surfaces.ts` (`ownerFinancesAction`
+  `plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts` (`ownerFinancesAction`
   around line 433) plus the money / payments handlers in
-  `plugins/plugin-lifeops/src/actions/money.ts` and
-  `plugins/plugin-lifeops/src/actions/payments.ts`. Role gate: ADMIN.
+  `plugins/plugin-personal-assistant/src/actions/money.ts` and
+  `plugins/plugin-personal-assistant/src/actions/payments.ts`. Role gate: ADMIN.
   Contexts: `money`, `owner`.
 
 **Views**
@@ -77,7 +77,7 @@ No env vars or settings keys yet. When OWNER_FINANCES is migrated from
 plugin-lifeops, any required env vars (CSV source paths, finance connector
 tokens, etc.) will be documented here.
 
-## Migration map from `@elizaos/plugin-lifeops`
+## Migration map from `@elizaos/plugin-personal-assistant`
 
 | Symbol / file | Source in plugin-lifeops | Destination |
 |---|---|---|
@@ -124,7 +124,7 @@ exports from `plugin-lifeops/src/actions/owner-surfaces.ts` and update the
 - **Scoping is `(agentId, entityId)`.** Transactions and recurring charges
   are per-owner per-agent.
 - **Action handler is currently a stub.** Migration from
-  `@elizaos/plugin-lifeops` is intentionally deferred. Do not add real
+  `@elizaos/plugin-personal-assistant` is intentionally deferred. Do not add real
   business logic here until the migration pass starts.
 - **Currency amounts are stored as minor units (cents) in `amountMinor`.**
   Never mix major/minor units; convert at the render boundary.

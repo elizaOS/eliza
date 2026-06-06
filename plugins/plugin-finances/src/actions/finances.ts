@@ -2,11 +2,11 @@
  * OWNER_FINANCES action stub for @elizaos/plugin-finances.
  *
  * This is a SCAFFOLD ONLY. The real implementation currently lives in
- *   plugins/plugin-lifeops/src/actions/owner-surfaces.ts  (ownerFinancesAction)
+ *   plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts  (ownerFinancesAction)
  * with the underlying money / payments / recurring-charge handlers in
- *   plugins/plugin-lifeops/src/actions/money.ts
- *   plugins/plugin-lifeops/src/actions/payments.ts
- *   plugins/plugin-lifeops/src/actions/lib/payments-recurring.ts (planned)
+ *   plugins/plugin-personal-assistant/src/actions/money.ts
+ *   plugins/plugin-personal-assistant/src/actions/payments.ts
+ *   plugins/plugin-personal-assistant/src/actions/lib/payments-recurring.ts (planned)
  *
  * The follow-up migration pass will:
  *   1. Move the OWNER_FINANCE_ACTIONS / OWNER_FINANCE_SIMILES constants here.
@@ -31,7 +31,7 @@ import type {
 } from "@elizaos/core";
 
 const OWNER_FINANCES_NOT_WIRED_MESSAGE =
-  "OWNER_FINANCES is being migrated from @elizaos/plugin-lifeops into @elizaos/plugin-finances. The action is registered but not yet wired.";
+  "OWNER_FINANCES is being migrated from @elizaos/plugin-personal-assistant into @elizaos/plugin-finances. The action is registered but not yet wired.";
 
 export const ownerFinancesAction: Action = {
   name: "OWNER_FINANCES",

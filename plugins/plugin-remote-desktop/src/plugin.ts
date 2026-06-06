@@ -17,15 +17,15 @@ import { remoteDesktopAction } from "./actions/remote-desktop.js";
  * lives in the underlying RemoteSessionService.
  *
  * TODO(remote-desktop migration): the action handler is currently a stub. The
- * full implementation lives in `@elizaos/plugin-lifeops`
- * (`plugins/plugin-lifeops/src/actions/remote-desktop.ts` plus its
+ * full implementation lives in `@elizaos/plugin-personal-assistant`
+ * (`plugins/plugin-personal-assistant/src/actions/remote-desktop.ts` plus its
  * `lifeops/remote-desktop.ts` and `remote/remote-session-service.ts`
  * helpers) and will be ported here in the next migration pass.
  */
 export const remoteDesktopPlugin: Plugin = {
   name: "remote-desktop",
   description:
-    "Remote desktop session control for Eliza agents. REMOTE_DESKTOP umbrella action (start/status/end/list/revoke) over Tailscale VNC/SSH and ngrok backends with pairing-code confirmation. Extracted from @elizaos/plugin-lifeops.",
+    "Remote desktop session control for Eliza agents. REMOTE_DESKTOP umbrella action (start/status/end/list/revoke) over Tailscale VNC/SSH and ngrok backends with pairing-code confirmation. Extracted from @elizaos/plugin-personal-assistant.",
   actions: [remoteDesktopAction],
 };
 

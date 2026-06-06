@@ -14,7 +14,7 @@ import type { Todo } from "../../types.js";
  *  - Someday  — pending / in_progress todos with no due date.
  *
  * MIGRATION STATUS: SCAFFOLD.
- * Reference implementation: plugins/plugin-lifeops/src/actions/owner-surfaces.ts
+ * Reference implementation: plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts
  * (the OWNER_TODOS surface). Filtering, drag-and-drop reordering, completion
  * toggles, and the per-row detail drawer will be ported in a follow-up pass.
  * For now this renders the three-lane layout so the view registers, mounts,

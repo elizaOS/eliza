@@ -34,7 +34,7 @@ const localPackages = [
   "eliza/plugins/plugin-companion",
   "eliza/plugins/plugin-elizamaker",
   "eliza/plugins/plugin-documents",
-  "eliza/plugins/plugin-lifeops",
+  "eliza/plugins/plugin-personal-assistant",
   "eliza/plugins/plugin-steward-app",
   "eliza/plugins/plugin-task-coordinator",
   "eliza/plugins/plugin-training",

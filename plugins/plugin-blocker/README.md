@@ -9,21 +9,21 @@ and a `focus` overlay view for the dashboard shell.
 ## Status
 
 This is the initial scaffold landed as part of decomposing the giant
-`@elizaos/plugin-lifeops` into focused plugins. The plugin compiles standalone
+`@elizaos/plugin-personal-assistant` into focused plugins. The plugin compiles standalone
 and registers with the runtime; the action / providers / services are
 intentional stubs that point at the live implementations still resident in
 `plugin-lifeops`. The next pass moves that code over and removes the lifeops
 copies.
 
-## Migration mapping from `@elizaos/plugin-lifeops`
+## Migration mapping from `@elizaos/plugin-personal-assistant`
 
 | New location (this plugin) | Source in `plugin-lifeops` |
 |---|---|
-| `src/actions/block.ts` (`blockAction`) | `plugins/plugin-lifeops/src/actions/block.ts` plus the per-target dispatchers `app-block.ts` and `website-block.ts` |
-| `src/providers/website-blocker.ts` | `plugins/plugin-lifeops/src/providers/website-blocker.ts` |
-| `src/providers/app-blocker.ts` | `plugins/plugin-lifeops/src/providers/app-blocker.ts` |
-| `src/services/website-blocker.ts` (`WebsiteBlockerService`) | `plugins/plugin-lifeops/src/website-blocker/` (`engine.ts`, `service.ts`, `access.ts`, `permissions.ts`, `public.ts`, `proactive-block-bridge.ts`, `roles.ts`, `chat-integration/`) |
-| `src/services/app-blocker.ts` (`AppBlockerService`) | `plugins/plugin-lifeops/src/app-blocker/` (`engine.ts`, `access.ts`, `types.ts`) |
+| `src/actions/block.ts` (`blockAction`) | `plugins/plugin-personal-assistant/src/actions/block.ts` plus the per-target dispatchers `app-block.ts` and `website-block.ts` |
+| `src/providers/website-blocker.ts` | `plugins/plugin-personal-assistant/src/providers/website-blocker.ts` |
+| `src/providers/app-blocker.ts` | `plugins/plugin-personal-assistant/src/providers/app-blocker.ts` |
+| `src/services/website-blocker.ts` (`WebsiteBlockerService`) | `plugins/plugin-personal-assistant/src/website-blocker/` (`engine.ts`, `service.ts`, `access.ts`, `permissions.ts`, `public.ts`, `proactive-block-bridge.ts`, `roles.ts`, `chat-integration/`) |
+| `src/services/app-blocker.ts` (`AppBlockerService`) | `plugins/plugin-personal-assistant/src/app-blocker/` (`engine.ts`, `access.ts`, `types.ts`) |
 | `src/db/schema.ts` (`pgSchema('app_blocker')`) | new — there was no drizzle table in lifeops; previous state lived in disk-backed engine files. The new schema gives the migrated services a persistent store and lets the runtime own migrations through `@elizaos/plugin-sql`. |
 | `src/components/focus/FocusView.tsx` | new — no equivalent existed in plugin-lifeops; this is the dashboard view for the extracted plugin. |
 

@@ -80,7 +80,7 @@
     "@elizaos/plugin-gitpathologist": "workspace:*",
     "@elizaos/plugin-github": "workspace:*",
     "@elizaos/plugin-health": "workspace:*",
-    "@elizaos/plugin-lifeops": "workspace:*",
+    "@elizaos/plugin-personal-assistant": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-mcp": "workspace:*",
     "@elizaos/plugin-shell": "workspace:*",

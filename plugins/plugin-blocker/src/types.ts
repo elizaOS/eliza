@@ -2,8 +2,8 @@
  * Public types + constants for @elizaos/plugin-blocker.
  *
  * MIGRATION NOTE: these types replace the local types previously embedded in
- *   plugins/plugin-lifeops/src/website-blocker/types.ts (not yet extracted)
- *   plugins/plugin-lifeops/src/app-blocker/types.ts
+ *   plugins/plugin-personal-assistant/src/website-blocker/types.ts (not yet extracted)
+ *   plugins/plugin-personal-assistant/src/app-blocker/types.ts
  * Once the real migration phase lands, those source files will move into this
  * package under src/services/ and src/actions/.
  */

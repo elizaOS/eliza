@@ -2,9 +2,9 @@
  * BLOCK action — focus / distraction-control umbrella.
  *
  * STATUS: stub. The real implementation lives in:
- *   plugins/plugin-lifeops/src/actions/block.ts            — umbrella action
- *   plugins/plugin-lifeops/src/actions/app-block.ts        — app-target dispatch
- *   plugins/plugin-lifeops/src/actions/website-block.ts    — website-target dispatch
+ *   plugins/plugin-personal-assistant/src/actions/block.ts            — umbrella action
+ *   plugins/plugin-personal-assistant/src/actions/app-block.ts        — app-target dispatch
+ *   plugins/plugin-personal-assistant/src/actions/website-block.ts    — website-target dispatch
  *
  * Target / subaction matrix (preserve when migrating):
  *   app:     block, unblock, status
@@ -98,7 +98,7 @@ export const blockAction: Action = {
     _state?: State,
   ): Promise<boolean> => {
     // TODO(migration): port appBlockValidate / websiteBlockValidate from
-    // plugins/plugin-lifeops/src/actions/{app-block,website-block}.ts.
+    // plugins/plugin-personal-assistant/src/actions/{app-block,website-block}.ts.
     return true;
   },
   handler: async (
@@ -109,7 +109,7 @@ export const blockAction: Action = {
     _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     // TODO(migration): port runAppBlockHandler / runWebsiteBlockHandler from
-    // plugins/plugin-lifeops/src/actions/{app-block,website-block}.ts and
+    // plugins/plugin-personal-assistant/src/actions/{app-block,website-block}.ts and
     // dispatch by target. Until then the stub returns a deferred result so the
     // planner can still register the action shape.
     const text = `${BLOCKER_LOG_PREFIX} BLOCK action not yet migrated from plugin-lifeops.`;

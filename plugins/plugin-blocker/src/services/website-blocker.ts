@@ -4,12 +4,12 @@
  * platforms.
  *
  * STATUS: stub. The real implementation still lives in:
- *   plugins/plugin-lifeops/src/website-blocker/engine.ts        — block/unblock engine
- *   plugins/plugin-lifeops/src/website-blocker/service.ts        — Service wrapper
- *   plugins/plugin-lifeops/src/website-blocker/access.ts         — admin permission gate
- *   plugins/plugin-lifeops/src/website-blocker/permissions.ts    — permission flow
- *   plugins/plugin-lifeops/src/website-blocker/public.ts         — public API surface
- *   plugins/plugin-lifeops/src/website-blocker/proactive-block-bridge.ts
+ *   plugins/plugin-personal-assistant/src/website-blocker/engine.ts        — block/unblock engine
+ *   plugins/plugin-personal-assistant/src/website-blocker/service.ts        — Service wrapper
+ *   plugins/plugin-personal-assistant/src/website-blocker/access.ts         — admin permission gate
+ *   plugins/plugin-personal-assistant/src/website-blocker/permissions.ts    — permission flow
+ *   plugins/plugin-personal-assistant/src/website-blocker/public.ts         — public API surface
+ *   plugins/plugin-personal-assistant/src/website-blocker/proactive-block-bridge.ts
  *
  * TODO(migration): move the listed files into this directory under
  *   src/services/website-blocker/ and wire them up here. Until that lands the
@@ -37,7 +37,7 @@ export class WebsiteBlockerService extends Service {
 
   /**
    * TODO(migration): copy implementation from
-   *   plugins/plugin-lifeops/src/website-blocker/public.ts
+   *   plugins/plugin-personal-assistant/src/website-blocker/public.ts
    */
   async listActive(): Promise<readonly never[]> {
     return [];

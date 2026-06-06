@@ -2,7 +2,7 @@
  * Public type surface for @elizaos/plugin-inbox.
  *
  * MIGRATION: This is the new home for inbox triage types.
- * Reference implementation: plugins/plugin-lifeops/src/inbox/types.ts
+ * Reference implementation: plugins/plugin-personal-assistant/src/inbox/types.ts
  * The richer types in plugin-lifeops will be moved here in a follow-up pass.
  */
 

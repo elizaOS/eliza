@@ -5,8 +5,8 @@
  * collide with other plugins. Schema is intentionally minimal for the scaffold:
  * the real columns will be filled in when the OWNER_FINANCES action and its
  * payments / recurring-charge helpers are migrated from
- * plugins/plugin-lifeops/src/actions/owner-surfaces.ts and
- * plugins/plugin-lifeops/src/actions/payments.ts.
+ * plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts and
+ * plugins/plugin-personal-assistant/src/actions/payments.ts.
  */
 
 import { sql } from "drizzle-orm";

@@ -178,8 +178,8 @@ function importAppCompanion() {
 
 function importAppLifeOps() {
   return cachedDynamicImport(
-    "@elizaos/plugin-lifeops",
-    () => import("@elizaos/plugin-lifeops"),
+    "@elizaos/plugin-personal-assistant",
+    () => import("@elizaos/plugin-personal-assistant"),
   );
 }
 

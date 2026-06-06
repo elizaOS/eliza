@@ -23,7 +23,7 @@ on:
   pull_request:
     branches: [main, develop]
     paths:
-      - "plugins/plugin-lifeops/**"
+      - "plugins/plugin-personal-assistant/**"
       - "plugins/plugin-training/**"
       - "packages/scenario-runner/**"
       - "packages/benchmarks/lifeops-bench/**"
@@ -120,7 +120,7 @@ jobs:
           set -e
           bun run --cwd packages/core typecheck
           bun run --cwd packages/scenario-runner build
-          bun run --cwd plugins/plugin-lifeops build:types
+          bun run --cwd plugins/plugin-personal-assistant build:types
           bun run --cwd plugins/plugin-training build:types
 
       - name: Verify Cerebras wiring

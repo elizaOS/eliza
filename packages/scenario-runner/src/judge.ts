@@ -39,7 +39,7 @@ let lifeOpsEvalModelModule: Promise<LifeOpsEvalModelModule> | null = null;
 
 async function isCerebrasJudgeEnabled(): Promise<boolean> {
   lifeOpsEvalModelModule ??= import(
-    "../../../plugins/plugin-lifeops/test/helpers/lifeops-eval-model.ts"
+    "../../../plugins/plugin-personal-assistant/test/helpers/lifeops-eval-model.ts"
   ) as Promise<LifeOpsEvalModelModule>;
   const { isCerebrasEvalEnabled } = await lifeOpsEvalModelModule;
   return isCerebrasEvalEnabled();

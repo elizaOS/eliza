@@ -2,7 +2,7 @@
  * Public types for @elizaos/plugin-goals.
  *
  * These mirror (and will eventually replace) the action contracts currently
- * declared inside `plugins/plugin-lifeops/src/actions/owner-surfaces.ts`.
+ * declared inside `plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts`.
  * During the decomposition phase the action handlers below remain stubs and
  * delegate (via TODO comments) to the LifeOps implementations.
  */

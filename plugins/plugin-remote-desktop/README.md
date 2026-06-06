@@ -4,24 +4,24 @@ Owner-only remote desktop session control for Eliza agents. Lets the owner conne
 
 ## Status: scaffolded, migration pending
 
-This plugin was extracted from `@elizaos/plugin-lifeops` as part of the LifeOps decomposition. The plugin surface (action metadata, types, package layout) is in place and the package compiles standalone, but the action handler is a **stub** that returns `NOT_IMPLEMENTED_MIGRATION_PENDING`. The real implementation still lives in `@elizaos/plugin-lifeops` and will be ported here in the next migration pass.
+This plugin was extracted from `@elizaos/plugin-personal-assistant` as part of the LifeOps decomposition. The plugin surface (action metadata, types, package layout) is in place and the package compiles standalone, but the action handler is a **stub** that returns `NOT_IMPLEMENTED_MIGRATION_PENDING`. The real implementation still lives in `@elizaos/plugin-personal-assistant` and will be ported here in the next migration pass.
 
 ## Migration mapping
 
-| New location (this plugin) | Source in `@elizaos/plugin-lifeops` |
+| New location (this plugin) | Source in `@elizaos/plugin-personal-assistant` |
 |---|---|
-| `src/actions/remote-desktop.ts` | `plugins/plugin-lifeops/src/actions/remote-desktop.ts` |
-| `src/lifeops/remote-desktop.ts` (todo) | `plugins/plugin-lifeops/src/lifeops/remote-desktop.ts` |
-| `src/remote/remote-session-service.ts` (todo) | `plugins/plugin-lifeops/src/remote/remote-session-service.ts` |
-| `src/remote/pairing-code.ts` (todo) | `plugins/plugin-lifeops/src/remote/pairing-code.ts` |
+| `src/actions/remote-desktop.ts` | `plugins/plugin-personal-assistant/src/actions/remote-desktop.ts` |
+| `src/lifeops/remote-desktop.ts` (todo) | `plugins/plugin-personal-assistant/src/lifeops/remote-desktop.ts` |
+| `src/remote/remote-session-service.ts` (todo) | `plugins/plugin-personal-assistant/src/remote/remote-session-service.ts` |
+| `src/remote/pairing-code.ts` (todo) | `plugins/plugin-personal-assistant/src/remote/pairing-code.ts` |
 | `src/types.ts` (already extracted) | inline in `lifeops/remote-desktop.ts` + `remote/remote-session-service.ts` |
 
 The follow-up migration pass will:
 
 1. Move the helpers above into this plugin verbatim.
-2. Either vendor or share the `resolveActionArgs` helper from `plugins/plugin-lifeops/src/actions/lib/resolve-action-args.ts`.
+2. Either vendor or share the `resolveActionArgs` helper from `plugins/plugin-personal-assistant/src/actions/lib/resolve-action-args.ts`.
 3. Replace the stub handler with the full `handleStart/handleStatus/handleEnd/handleList/handleRevoke` implementation.
-4. Have `@elizaos/plugin-lifeops` re-export `remoteDesktopAction` from this plugin during the deprecation window, then remove the action from lifeops in a later release.
+4. Have `@elizaos/plugin-personal-assistant` re-export `remoteDesktopAction` from this plugin during the deprecation window, then remove the action from lifeops in a later release.
 
 ## Plugin surface
 
@@ -40,7 +40,7 @@ No providers. No services. No schema. (The session store is currently in-memory 
 
 ## Config / env vars
 
-Inherited from the underlying remote-desktop helpers (still in `@elizaos/plugin-lifeops` until the migration). Listed here so the contract is documented in one place:
+Inherited from the underlying remote-desktop helpers (still in `@elizaos/plugin-personal-assistant` until the migration). Listed here so the contract is documented in one place:
 
 | Variable | Required | Description |
 |---|---|---|

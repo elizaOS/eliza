@@ -470,7 +470,7 @@ function getRegistryAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
  * transpiling + registering hundreds of feature routes a core dev does not
  * exercise.
  *
- * A loader's id is its full package name (e.g. `@elizaos/plugin-lifeops`,
+ * A loader's id is its full package name (e.g. `@elizaos/plugin-personal-assistant`,
  * `@elizaos/plugin-steward-app`, `@elizaos/plugin-elizacloud:routes`). Tokens
  * are matched against BOTH the full id and a normalized short alias
  * (see {@link normalizeAppRoutePluginId}), so the ergonomic short forms work

@@ -1296,7 +1296,7 @@ for (const root of [
     ["@elizaos/plugin-documents", "documents"],
     ["@elizaos/plugin-google", "google"],
     ["@elizaos/plugin-hyperliquid-app", "hyperliquid"],
-    ["@elizaos/plugin-lifeops", "lifeops"],
+    ["@elizaos/plugin-personal-assistant", "lifeops"],
     ["@elizaos/plugin-polymarket-app", "polymarket"],
     ["@elizaos/plugin-shopify-ui", "shopify"],
     ["@elizaos/plugin-steward-app", "steward"],

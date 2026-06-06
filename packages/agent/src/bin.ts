@@ -6,6 +6,7 @@
 // inclusion. Without this guard the symbol silently disappears from the bundle.
 import * as _earlyFs from "node:fs";
 import { enableCompileCache } from "node:module";
+import { homedir as _earlyHomedir } from "node:os";
 
 // Enable Node 22.8+'s persistent V8 compile cache before any heavy import so
 // the 2nd+ cold boot skips recompiling the ~70k LOC of transpiled plugin
@@ -26,7 +27,10 @@ import { enableCompileCache } from "node:module";
       return;
     }
     const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
-    const home = process.env.HOME?.trim();
+    // `process.env.HOME` is unset on Windows; `os.homedir()` returns
+    // `%USERPROFILE%` there and `$HOME` on POSIX, so this cache anchors
+    // identically to the rest of the codebase (see state-dir.ts).
+    const home = process.env.HOME?.trim() || _earlyHomedir();
     const resolvedStateDir =
       process.env.ELIZA_STATE_DIR?.trim() ||
       (xdgStateHome

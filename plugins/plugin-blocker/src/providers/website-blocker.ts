@@ -3,7 +3,7 @@
  * the planner each turn (active sessions, allow-list size, override eligibility).
  *
  * STATUS: stub. The real implementation lives in:
- *   plugins/plugin-lifeops/src/providers/website-blocker.ts
+ *   plugins/plugin-personal-assistant/src/providers/website-blocker.ts
  *
  * TODO(migration): move the source file here and repoint its service import
  * from the lifeops-local engine to ../services/website-blocker.

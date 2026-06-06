@@ -3,7 +3,7 @@
  *
  * Canonical home for the calendar event / feed / summary DTOs consumed by
  * `@elizaos/plugin-calendar` (service, action, routes, client, UI) and by
- * `@elizaos/plugin-lifeops` (briefs, reminders, travel) and the `@elizaos/ui`
+ * `@elizaos/plugin-personal-assistant` (briefs, reminders, travel) and the `@elizaos/ui`
  * client type augmentation. They live in `@elizaos/shared` because the
  * contract layer is the only package both `@elizaos/ui` and the plugins can
  * depend on without a cycle.
@@ -16,7 +16,7 @@ import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGmailMessageSummary,
-} from "./lifeops.js";
+} from "./personal-assistant.js";
 
 export interface LifeOpsCalendarEventEndedFilters {
   /** Only fire for events on these calendar ids (e.g. "primary"). */

@@ -25,7 +25,7 @@ code currently lives.
   - `recurring_charges` — `(agentId, entityId, label, amountMinor, currency,
     cadence, nextChargeAt, merchant, active, metadata, …)`
 
-## Migration map from `@elizaos/plugin-lifeops`
+## Migration map from `@elizaos/plugin-personal-assistant`
 
 | Symbol / file | Source in plugin-lifeops | Destination in plugin-finances |
 |---|---|---|

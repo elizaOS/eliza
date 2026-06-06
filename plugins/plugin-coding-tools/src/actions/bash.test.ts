@@ -15,6 +15,17 @@ import {
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
+// These tests exercise the SHELL action through `pwd`, `cd`, `git -C`, and
+// inline pipelines. The action itself does run on Windows (it routes to
+// `powershell.exe -Command` via `resolveHostShell()`), but the assertions
+// here pin the *bash* output shape — output formatting, exit-code framing,
+// pipeline composition, and rewrite heuristics that target POSIX commands.
+// Porting each assertion to a per-platform expected value would be
+// invasive and is out of scope for the Windows compatibility lane; skip
+// the suite on Windows and trust the equivalent Linux/macOS runs.
+const describeIfPosix =
+  process.platform === "win32" ? describe.skip : describe;
+
 import { SandboxService, SessionCwdService } from "../services/index.js";
 import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
 import {
@@ -143,7 +154,7 @@ function makeMessage(
   } as Memory;
 }
 
-describe("shellAction", () => {
+describeIfPosix("shellAction", () => {
   it("prefers capability router for command execution when available", async () => {
     const calls: Array<{ command: string; cwd?: string; timeoutMs?: number }> =
       [];

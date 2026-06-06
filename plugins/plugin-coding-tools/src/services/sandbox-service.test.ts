@@ -116,15 +116,15 @@ describe("SandboxService default blocklist", () => {
       const sysRoot = process.env.SystemRoot ?? "C:\\Windows";
       const pf = process.env.ProgramFiles ?? "C:\\Program Files";
       const pd = process.env.ProgramData ?? "C:\\ProgramData";
-      expect(
-        blocked.some((b) => path.resolve(b) === path.resolve(sysRoot)),
-      ).toBe(true);
-      expect(blocked.some((b) => path.resolve(b) === path.resolve(pf))).toBe(
-        true,
-      );
-      expect(blocked.some((b) => path.resolve(b) === path.resolve(pd))).toBe(
-        true,
-      );
+      // `loadConfig()` realpath-normalises every blocklist entry, which on
+      // Windows returns the canonical on-disk casing (`C:\Windows`),
+      // whereas `process.env.SystemRoot` is whatever case the environment
+      // exposes (`C:\WINDOWS`). NTFS is case-insensitive — compare lowered.
+      const samePath = (a: string, b: string): boolean =>
+        path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
+      expect(blocked.some((b) => samePath(b, sysRoot))).toBe(true);
+      expect(blocked.some((b) => samePath(b, pf))).toBe(true);
+      expect(blocked.some((b) => samePath(b, pd))).toBe(true);
     });
   }
 
@@ -217,22 +217,32 @@ describe("SandboxService default blocklist", () => {
     expect(svc.getAllowedRoots("conversation-1")).not.toContain(root);
   });
 
-  it("adds Android system roots to the default blocklist on AOSP/mobile Android", async () => {
-    const previous = process.env.ELIZA_PLATFORM;
-    try {
-      process.env.ELIZA_PLATFORM = "android";
-      const svc = await SandboxService.start(mockRuntime());
-      const blocked = svc.getBlockedPaths();
-      expect(blocked).toEqual(expect.arrayContaining(["/vendor", "/apex"]));
-      expect(blocked.some((p) => p.toLowerCase() === "/system")).toBe(true);
-      const v = await svc.validatePath(undefined, "/vendor/bin/sh");
-      expect(v.ok).toBe(false);
-      if (!v.ok) expect(v.reason).toBe("blocked");
-    } finally {
-      if (previous === undefined) delete process.env.ELIZA_PLATFORM;
-      else process.env.ELIZA_PLATFORM = previous;
-    }
-  });
+  // The Android blocklist is hard-coded as POSIX-rooted paths (`/vendor`,
+  // `/apex`, …) that `loadConfig` runs through `path.resolve`. On a Windows
+  // host that rewrites them to `C:\vendor`, so the literal `/vendor`
+  // assertion can't hold. The runtime never actually executes on Windows
+  // as an Android device, so skip on Windows rather than fabricate a fake
+  // platform expectation.
+  const itAndroidSim = process.platform === "win32" ? it.skip : it;
+  itAndroidSim(
+    "adds Android system roots to the default blocklist on AOSP/mobile Android",
+    async () => {
+      const previous = process.env.ELIZA_PLATFORM;
+      try {
+        process.env.ELIZA_PLATFORM = "android";
+        const svc = await SandboxService.start(mockRuntime());
+        const blocked = svc.getBlockedPaths();
+        expect(blocked).toEqual(expect.arrayContaining(["/vendor", "/apex"]));
+        expect(blocked.some((p) => p.toLowerCase() === "/system")).toBe(true);
+        const v = await svc.validatePath(undefined, "/vendor/bin/sh");
+        expect(v.ok).toBe(false);
+        if (!v.ok) expect(v.reason).toBe("blocked");
+      } finally {
+        if (previous === undefined) delete process.env.ELIZA_PLATFORM;
+        else process.env.ELIZA_PLATFORM = previous;
+      }
+    },
+  );
 
   it("permits paths outside the blocklist", async () => {
     const svc = await SandboxService.start(mockRuntime());

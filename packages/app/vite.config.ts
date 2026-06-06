@@ -805,7 +805,7 @@ const DEFAULT_APP_ROUTE_PLUGIN_MODULES = [
   "@elizaos/plugin-vincent",
   "@elizaos/plugin-shopify-ui",
   "@elizaos/plugin-steward-app",
-  "@elizaos/plugin-lifeops",
+  "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-github",
   "@elizaos/plugin-computeruse",
   "@elizaos/plugin-elizacloud",
@@ -2230,7 +2230,7 @@ export const INVALID_TRACER_PROVIDER = {};
           "@elizaos/plugin-facewear/register",
           "plugins/plugin-facewear/src/register.ts",
         ],
-        // plugin-calendar subpaths consumed by plugin-lifeops in the renderer
+        // plugin-calendar subpaths consumed by plugin-personal-assistant in the renderer
         // bundle. Resolve from source so the app build does not require
         // plugin-calendar to be built first (its dist is absent during the
         // renderer build in CI). client-calendar is a side-effect import that
@@ -2296,10 +2296,10 @@ export const INVALID_TRACER_PROVIDER = {};
       // The LifeOps package root also exports server/service internals.
       // The renderer only needs the UI facade; keep it off Discord/native deps.
       {
-        find: /^@elizaos\/plugin-lifeops$/,
+        find: /^@elizaos\/plugin-personal-assistant$/,
         replacement: path.resolve(
           elizaRoot,
-          "plugins/plugin-lifeops/src/ui.ts",
+          "plugins/plugin-personal-assistant/src/ui.ts",
         ),
       },
       // The Steward app package root includes wallet route handlers and

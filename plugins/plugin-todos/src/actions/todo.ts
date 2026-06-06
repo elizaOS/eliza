@@ -466,7 +466,7 @@ async function actionClear({
 // Canonical planner-facing todo surface. Backed by the per-user @elizaos/core
 // TodosService store (filesystem under TODOS_BASE_PATH). The owner-store
 // equivalent — backed by app-lifeops definitions — is OWNER_TODOS in
-// plugins/plugin-lifeops/src/actions/owner-surfaces.ts. The two surfaces target
+// plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts. The two surfaces target
 // different stores and must not be merged.
 export const todoAction: Action = {
   name: "TODO",

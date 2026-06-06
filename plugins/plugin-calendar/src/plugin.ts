@@ -5,7 +5,7 @@ import { CalendarService } from "./service/CalendarService.js";
 
 /**
  * First-class calendar plugin. Owns the calendar domain that previously lived
- * inside `@elizaos/plugin-lifeops`: the calendar event/sync store, the
+ * inside `@elizaos/plugin-personal-assistant`: the calendar event/sync store, the
  * Google + Apple calendar feed, event CRUD, the CALENDAR action, HTTP routes,
  * the client API, and the owner-facing calendar views.
  *

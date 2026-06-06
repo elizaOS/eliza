@@ -4,6 +4,15 @@ import * as path from "node:path";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// Several tests below create a temp `weather.sh` with a `#!/usr/bin/env bash`
+// shebang and rely on the OS resolving the interpreter from the shebang.
+// Windows doesn't honour POSIX shebangs without an explicit interpreter on
+// PATH; the implementation that USE_SKILL drives spawns the script with
+// the script path directly (which Linux+macOS resolve via the shebang).
+// Skip those specific tests on Windows; the corresponding non-shell
+// behaviour (guidance/auto mode) is fully covered above.
+const itShell = process.platform === "win32" ? it.skip : it;
+
 vi.mock("@elizaos/core", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@elizaos/core")>();
 	return {
@@ -97,7 +106,7 @@ describe("useSkillAction", () => {
 		expect(service.getLoadedSkill).toHaveBeenCalledWith("github");
 	});
 
-	it("exposes clean verified user-facing text from successful script stdout without cmd/output envelopes", async () => {
+	itShell("exposes clean verified user-facing text from successful script stdout without cmd/output envelopes", async () => {
 		const tempDir = await fs.mkdtemp(
 			path.join(os.tmpdir(), "use-skill-wrapper-"),
 		);
@@ -171,7 +180,7 @@ describe("useSkillAction", () => {
 		}
 	});
 
-	it("unwraps array command envelopes before verifying script stdout", async () => {
+	itShell("unwraps array command envelopes before verifying script stdout", async () => {
 		const tempDir = await fs.mkdtemp(
 			path.join(os.tmpdir(), "use-skill-array-envelope-"),
 		);
@@ -241,7 +250,7 @@ describe("useSkillAction", () => {
 		}
 	});
 
-	it("does not verify a raw command envelope when no output is present", async () => {
+	itShell("does not verify a raw command envelope when no output is present", async () => {
 		const tempDir = await fs.mkdtemp(
 			path.join(os.tmpdir(), "use-skill-command-only-"),
 		);

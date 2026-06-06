@@ -15,14 +15,14 @@ import { entityGraphProvider } from "./providers/entity-graph.js";
  *
  * NOTE: This is the decomposition scaffold. The real EntityStore, merge
  * engine, voice-observer-bridge, and RelationshipStore still live under
- * `plugins/plugin-lifeops/src/lifeops/entities/` and
- * `plugins/plugin-lifeops/src/lifeops/relationships/`. They will move here in
+ * `plugins/plugin-personal-assistant/src/lifeops/entities/` and
+ * `plugins/plugin-personal-assistant/src/lifeops/relationships/`. They will move here in
  * a follow-up pass.
  */
 export const relationshipsPlugin: Plugin = {
   name: "relationships",
   description:
-    "Entity and relationship knowledge graph for Eliza agents. Provides the ENTITY umbrella action (person/org/place/project/concept CRUD with identity claims, typed relationships, and merge), an entity-graph context provider, and a drizzle pgSchema('app_relationships') with `entities` and `relationships` tables. STUB during decomposition — real handlers will port from @elizaos/plugin-lifeops.",
+    "Entity and relationship knowledge graph for Eliza agents. Provides the ENTITY umbrella action (person/org/place/project/concept CRUD with identity claims, typed relationships, and merge), an entity-graph context provider, and a drizzle pgSchema('app_relationships') with `entities` and `relationships` tables. STUB during decomposition — real handlers will port from @elizaos/plugin-personal-assistant.",
   dependencies: ["@elizaos/plugin-sql"],
   actions: [entityAction],
   providers: [entityGraphProvider],

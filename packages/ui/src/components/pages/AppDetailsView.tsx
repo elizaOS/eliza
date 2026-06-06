@@ -71,7 +71,7 @@ type AppSource = "internal-tool" | "overlay" | "catalog" | "unknown";
 interface ResolvedApp {
   source: AppSource;
   info: RegistryAppInfo;
-  /** Plugin id derived from package name (e.g. `@elizaos/plugin-lifeops` → `lifeops`). */
+  /** Plugin id derived from package name (e.g. `@elizaos/plugin-personal-assistant` → `lifeops`). */
   pluginId: string;
   windowPath: string;
 }

@@ -13,7 +13,7 @@ import { INBOX_CONTEXTS } from "../types.ts";
  * into the planner each turn.
  *
  * MIGRATION STATUS: STUB.
- * Reference: plugins/plugin-lifeops/src/providers/inbox-triage.ts
+ * Reference: plugins/plugin-personal-assistant/src/providers/inbox-triage.ts
  *
  * The real provider reads the cross-channel triage repository and emits a
  * compact markdown summary of unresolved + needs_approval threads. The full
@@ -31,7 +31,7 @@ export const inboxTriageProvider: Provider = {
     _message: Memory,
     _state?: State,
   ): Promise<ProviderResult> => {
-    // TODO: port from plugins/plugin-lifeops/src/providers/inbox-triage.ts.
+    // TODO: port from plugins/plugin-personal-assistant/src/providers/inbox-triage.ts.
     return { text: "", data: { threads: [] } };
   },
 };

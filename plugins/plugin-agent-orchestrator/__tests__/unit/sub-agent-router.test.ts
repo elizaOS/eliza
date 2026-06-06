@@ -1504,7 +1504,11 @@ describe("SubAgentRouter", () => {
         expect(posted?.content?.text).toContain(
           "mapped local target missing or empty",
         );
-        expect(posted?.content?.text).toContain("data/apps/compliance-candy");
+        // The mapped local path can be rendered with the host's native
+        // separator (POSIX `/` vs Windows `\`). Accept either.
+        expect(posted?.content?.text).toMatch(
+          /data[\\/]apps[\\/]compliance-candy/,
+        );
         expect(posted?.content?.text).toContain("[verification:");
       } finally {
         fs.rmSync(tmpRoot, { recursive: true, force: true });

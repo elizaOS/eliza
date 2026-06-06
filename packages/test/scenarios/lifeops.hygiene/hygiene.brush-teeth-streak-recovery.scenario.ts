@@ -15,7 +15,7 @@ import {
 import {
   executeRawSql,
   sqlQuote,
-} from "../../../../plugins/plugin-lifeops/src/lifeops/sql.ts";
+} from "../../../../plugins/plugin-personal-assistant/src/lifeops/sql.ts";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 import { seedCheckinDefinition } from "../_helpers/lifeops-seeds.ts";
 

@@ -2375,19 +2375,41 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ]);
 
       if (memory.embedding && Array.isArray(memory.embedding)) {
-        const embeddingValues: Record<string, unknown> = {
-          id: v4(),
-          memoryId: memoryId,
-          createdAt: memory.createdAt !== undefined ? new Date(memory.createdAt) : new Date(),
-        };
-
-        const cleanVector = memory.embedding.map((n) =>
-          Number.isFinite(n) ? Number(n.toFixed(6)) : 0
+        const expectedDimension = Number(
+          this.embeddingDimension.replace(/^dim/, "")
         );
+        if (memory.embedding.length !== expectedDimension) {
+          // The runtime's TEXT_EMBEDDING provider returned a vector whose width
+          // does not match the column this agent is configured to write to —
+          // typically because a fallback provider (e.g. cloud at 1536 dims) ran
+          // before the configured local model finished warmup. Persist the
+          // memory itself; skip the embedding so a later write with the right
+          // model can supply one.
+          logger.warn(
+            {
+              src: "plugin:sql",
+              agentId: this.agentId,
+              expectedDimension,
+              receivedDimension: memory.embedding.length,
+              column: this.embeddingDimension,
+            },
+            "Skipping embedding insert: dimension mismatch with configured column"
+          );
+        } else {
+          const embeddingValues: Record<string, unknown> = {
+            id: v4(),
+            memoryId: memoryId,
+            createdAt: memory.createdAt !== undefined ? new Date(memory.createdAt) : new Date(),
+          };
 
-        embeddingValues[this.embeddingDimension] = cleanVector;
+          const cleanVector = memory.embedding.map((n) =>
+            Number.isFinite(n) ? Number(n.toFixed(6)) : 0
+          );
 
-        await tx.insert(embeddingTable).values([embeddingValues]);
+          embeddingValues[this.embeddingDimension] = cleanVector;
+
+          await tx.insert(embeddingTable).values([embeddingValues]);
+        }
       }
     });
 
@@ -2441,35 +2463,52 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
           // Update embedding if provided
           if (memory.embedding && Array.isArray(memory.embedding)) {
-            const cleanVector = memory.embedding.map((n) =>
-              Number.isFinite(n) ? Number(n.toFixed(6)) : 0
+            const expectedDimension = Number(
+              this.embeddingDimension.replace(/^dim/, "")
             );
-
-            // Check if embedding exists
-            const existingEmbedding = await tx
-              .select({ id: embeddingTable.id })
-              .from(embeddingTable)
-              .where(eq(embeddingTable.memoryId, memory.id))
-              .limit(1);
-
-            if (existingEmbedding.length > 0) {
-              // Update existing embedding
-              const updateValues: Record<string, unknown> = {};
-              updateValues[this.embeddingDimension] = cleanVector;
-
-              await tx
-                .update(embeddingTable)
-                .set(updateValues)
-                .where(eq(embeddingTable.memoryId, memory.id));
+            if (memory.embedding.length !== expectedDimension) {
+              logger.warn(
+                {
+                  src: "plugin:sql",
+                  agentId: this.agentId,
+                  memoryId: memory.id,
+                  expectedDimension,
+                  receivedDimension: memory.embedding.length,
+                  column: this.embeddingDimension,
+                },
+                "Skipping embedding update: dimension mismatch with configured column"
+              );
             } else {
-              // Create new embedding
-              const embeddingValues: Record<string, unknown> = {
-                id: v4(),
-                memoryId: memory.id,
-              };
-              embeddingValues[this.embeddingDimension] = cleanVector;
+              const cleanVector = memory.embedding.map((n) =>
+                Number.isFinite(n) ? Number(n.toFixed(6)) : 0
+              );
 
-              await tx.insert(embeddingTable).values([embeddingValues]);
+              // Check if embedding exists
+              const existingEmbedding = await tx
+                .select({ id: embeddingTable.id })
+                .from(embeddingTable)
+                .where(eq(embeddingTable.memoryId, memory.id))
+                .limit(1);
+
+              if (existingEmbedding.length > 0) {
+                // Update existing embedding
+                const updateValues: Record<string, unknown> = {};
+                updateValues[this.embeddingDimension] = cleanVector;
+
+                await tx
+                  .update(embeddingTable)
+                  .set(updateValues)
+                  .where(eq(embeddingTable.memoryId, memory.id));
+              } else {
+                // Create new embedding
+                const embeddingValues: Record<string, unknown> = {
+                  id: v4(),
+                  memoryId: memory.id,
+                };
+                embeddingValues[this.embeddingDimension] = cleanVector;
+
+                await tx.insert(embeddingTable).values([embeddingValues]);
+              }
             }
           }
         });

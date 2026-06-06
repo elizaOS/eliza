@@ -1371,7 +1371,7 @@ async function executeTickTurn(args: {
       : undefined;
   const startedAt = Date.now();
   const { executeLifeOpsSchedulerTask } = (await import(
-    "@elizaos/plugin-lifeops/plugin"
+    "@elizaos/plugin-personal-assistant/plugin"
   )) as {
     executeLifeOpsSchedulerTask: (
       runtime: AgentRuntime,

@@ -1,11 +1,6 @@
 import pluginDefault from "./index.js";
 
 export * from "./index.js";
-export {
-  isCloudAuthApiKeyService,
-  normalizeCloudApiKey,
-  type CloudAuthApiKeyService,
-} from "./cloud/auth-service-types";
 export default pluginDefault;
 
 // Node-only route handlers (depend on node:os and other node built-ins).

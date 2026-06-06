@@ -3,7 +3,7 @@
  * planner each turn (active sessions, blocked bundle ids, allow-list size).
  *
  * STATUS: stub. The real implementation lives in:
- *   plugins/plugin-lifeops/src/providers/app-blocker.ts
+ *   plugins/plugin-personal-assistant/src/providers/app-blocker.ts
  *
  * TODO(migration): move the source file here and repoint its service import
  * from the lifeops-local engine to ../services/app-blocker.

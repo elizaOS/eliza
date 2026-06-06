@@ -2,10 +2,10 @@
  * OWNER_ROUTINES — recurring routines (daily/weekly habits + cadences).
  *
  * STUB. Full handler currently lives at
- *   plugins/plugin-lifeops/src/actions/owner-surfaces.ts (OWNER_LIFE_ACTIONS,
+ *   plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts (OWNER_LIFE_ACTIONS,
  *   ownerRoutinesAction). Default routine packs are sourced from
- *   plugins/plugin-lifeops/src/default-packs/daily-rhythm.ts and
- *   plugins/plugin-lifeops/src/default-packs/habit-starters.ts.
+ *   plugins/plugin-personal-assistant/src/default-packs/daily-rhythm.ts and
+ *   plugins/plugin-personal-assistant/src/default-packs/habit-starters.ts.
  */
 
 import type {
@@ -91,8 +91,8 @@ export const ownerRoutinesAction: Action = {
     _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     // TODO(migrate): port handler body from
-    // plugins/plugin-lifeops/src/actions/owner-surfaces.ts. Also migrate the
-    // default packs from plugins/plugin-lifeops/src/default-packs/
+    // plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts. Also migrate the
+    // default packs from plugins/plugin-personal-assistant/src/default-packs/
     // (daily-rhythm, habit-starters) into a new src/default-packs/ folder in
     // this plugin during the foundations follow-up.
     return {

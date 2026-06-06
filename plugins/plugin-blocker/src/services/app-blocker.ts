@@ -2,9 +2,9 @@
  * AppBlockerService — macOS / mobile native app blocking surface.
  *
  * STATUS: stub. Real implementation lives in:
- *   plugins/plugin-lifeops/src/app-blocker/engine.ts  — block/unblock engine
- *   plugins/plugin-lifeops/src/app-blocker/access.ts  — admin permission gate
- *   plugins/plugin-lifeops/src/app-blocker/types.ts   — local types
+ *   plugins/plugin-personal-assistant/src/app-blocker/engine.ts  — block/unblock engine
+ *   plugins/plugin-personal-assistant/src/app-blocker/access.ts  — admin permission gate
+ *   plugins/plugin-personal-assistant/src/app-blocker/types.ts   — local types
  *
  * TODO(migration): move the listed files into
  *   src/services/app-blocker/ and wire them up here. Until that lands the
@@ -32,7 +32,7 @@ export class AppBlockerService extends Service {
 
   /**
    * TODO(migration): copy implementation from
-   *   plugins/plugin-lifeops/src/app-blocker/engine.ts
+   *   plugins/plugin-personal-assistant/src/app-blocker/engine.ts
    */
   async listActive(): Promise<readonly never[]> {
     return [];

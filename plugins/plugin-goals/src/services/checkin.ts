@@ -2,9 +2,9 @@
  * GoalsCheckinService — daily check-in engine for plugin-goals.
  *
  * STUB. The full implementation will be migrated from:
- *   plugins/plugin-lifeops/src/lifeops/checkin/checkin-service.ts
- *   plugins/plugin-lifeops/src/lifeops/checkin/schedule-resolver.ts
- *   plugins/plugin-lifeops/src/lifeops/checkin/types.ts
+ *   plugins/plugin-personal-assistant/src/lifeops/checkin/checkin-service.ts
+ *   plugins/plugin-personal-assistant/src/lifeops/checkin/schedule-resolver.ts
+ *   plugins/plugin-personal-assistant/src/lifeops/checkin/types.ts
  *
  * For the scaffold phase the service exists as a registered Service so the
  * plugin manifest is self-contained. Once foundations (core scheduler,

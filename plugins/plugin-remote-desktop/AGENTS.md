@@ -6,14 +6,14 @@ Owner-only remote desktop session control for Eliza agents.
 
 Lets the owner connect to the agent's host machine from another device (typically a phone) over Tailscale VNC, Tailscale SSH, or an ngrok TCP tunnel, gated by an explicit confirmation step and (in cloud mode) a 6-digit pairing code. The plugin is opt-in — add it to the agent's plugin list.
 
-This plugin was extracted from `@elizaos/plugin-lifeops` as part of the LifeOps decomposition. The action metadata and types are in place and the package compiles standalone, but the handler body is currently a **stub** that returns `NOT_IMPLEMENTED_MIGRATION_PENDING`. The real implementation still lives in plugin-lifeops and will be ported in the next migration pass.
+This plugin was extracted from `@elizaos/plugin-personal-assistant` as part of the LifeOps decomposition. The action metadata and types are in place and the package compiles standalone, but the handler body is currently a **stub** that returns `NOT_IMPLEMENTED_MIGRATION_PENDING`. The real implementation still lives in plugin-lifeops and will be ported in the next migration pass.
 
 ## Plugin surface
 
 **Action**
 - `REMOTE_DESKTOP` (`src/actions/remote-desktop.ts`) — umbrella action with op-based dispatch (`start` / `status` / `end` / `list` / `revoke`). Role gate: `OWNER`. Contexts: `browser`, `automation`, `settings`, `admin`, `terminal`. Sets `suppressPostActionContinuation: true` so the planner does not chain a follow-up turn after a session is opened.
 
-No providers. No services. No schema. Session state is owned by the underlying `RemoteSessionService` (currently still in `@elizaos/plugin-lifeops`); it is in-memory plus a JSON file under `resolveStateDir()`.
+No providers. No services. No schema. Session state is owned by the underlying `RemoteSessionService` (currently still in `@elizaos/plugin-personal-assistant`); it is in-memory plus a JSON file under `resolveStateDir()`.
 
 ## Layout
 
@@ -49,16 +49,16 @@ bun run --cwd plugins/plugin-remote-desktop clean        # rm -rf dist .turbo
 | `ELIZA_NGROK_AUTH_TOKEN` | ngrok auth token (passed via env, never argv) | No |
 | `ELIZA_TEST_REMOTE_DESKTOP_BACKEND` | Force mock mode for tests | No |
 
-All variables are read by the underlying helpers that still live in `@elizaos/plugin-lifeops` until the migration pass moves them here.
+All variables are read by the underlying helpers that still live in `@elizaos/plugin-personal-assistant` until the migration pass moves them here.
 
 ## Migration mapping (LifeOps decomposition)
 
-| New location (this plugin) | Source in `@elizaos/plugin-lifeops` |
+| New location (this plugin) | Source in `@elizaos/plugin-personal-assistant` |
 |---|---|
-| `src/actions/remote-desktop.ts` | `plugins/plugin-lifeops/src/actions/remote-desktop.ts` |
-| `src/lifeops/remote-desktop.ts` (TODO) | `plugins/plugin-lifeops/src/lifeops/remote-desktop.ts` |
-| `src/remote/remote-session-service.ts` (TODO) | `plugins/plugin-lifeops/src/remote/remote-session-service.ts` |
-| `src/remote/pairing-code.ts` (TODO) | `plugins/plugin-lifeops/src/remote/pairing-code.ts` |
+| `src/actions/remote-desktop.ts` | `plugins/plugin-personal-assistant/src/actions/remote-desktop.ts` |
+| `src/lifeops/remote-desktop.ts` (TODO) | `plugins/plugin-personal-assistant/src/lifeops/remote-desktop.ts` |
+| `src/remote/remote-session-service.ts` (TODO) | `plugins/plugin-personal-assistant/src/remote/remote-session-service.ts` |
+| `src/remote/pairing-code.ts` (TODO) | `plugins/plugin-personal-assistant/src/remote/pairing-code.ts` |
 | `src/types.ts` (already extracted) | inline in `lifeops/remote-desktop.ts` + `remote/remote-session-service.ts` |
 
 ## How to extend

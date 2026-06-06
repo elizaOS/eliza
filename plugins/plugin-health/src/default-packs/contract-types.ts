@@ -5,9 +5,9 @@
  * while the shared runtime registry stays structurally typed.
  *
  * Cross-references:
- *  - `eliza/plugins/plugin-lifeops/src/lifeops/wave1-types.ts` — W1-A's
+ *  - `eliza/plugins/plugin-personal-assistant/src/lifeops/wave1-types.ts` — W1-A's
  *    `ScheduledTask` shape, kept in sync with this one.
- *  - `eliza/plugins/plugin-lifeops/src/default-packs/contract-types.ts` —
+ *  - `eliza/plugins/plugin-personal-assistant/src/default-packs/contract-types.ts` —
  *    W1-D's copy of the same shape, kept in sync with this one.
  *
  * No runtime behavior lives here — types only.

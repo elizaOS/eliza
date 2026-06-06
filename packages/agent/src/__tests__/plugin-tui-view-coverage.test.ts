@@ -33,7 +33,7 @@ const VIEW_MANIFESTS = [
   "plugins/plugin-companion/src/plugin.ts",
   "plugins/plugin-contacts/src/plugin.ts",
   "plugins/plugin-hyperliquid-app/src/plugin.ts",
-  "plugins/plugin-lifeops/src/plugin.ts",
+  "plugins/plugin-personal-assistant/src/plugin.ts",
   "plugins/plugin-messages/src/plugin.ts",
   "plugins/app-model-tester/src/plugin.ts",
   "plugins/plugin-phone/src/plugin.ts",
@@ -73,7 +73,7 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-hyperliquid-market",
     "terminal-hyperliquid-execution-check",
   ],
-  "plugins/plugin-lifeops/src/components/LifeOpsPageView.tsx": [
+  "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx": [
     "terminal-lifeops-state",
     "terminal-lifeops-enable",
     "terminal-lifeops-complete",

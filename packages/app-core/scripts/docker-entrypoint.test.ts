@@ -4,6 +4,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 
+// These tests spawn the docker entrypoint shell scripts through `/bin/sh`,
+// which only exists on POSIX. The Docker images these entrypoints belong
+// to are Linux-only (alpine/debian), so on Windows we skip the whole
+// suite rather than fail. Run on Linux/macOS (or inside WSL) to exercise.
+const describeIfPosix =
+  process.platform === "win32" ? describe.skip : describe;
+
 const cloudAgentEntrypoint = path.resolve(
   import.meta.dirname,
   "../deploy/cloud-agent-docker-entrypoint.sh",
@@ -47,7 +54,7 @@ async function writeExecutable(filePath: string, body: string) {
   await writeFile(filePath, body, { mode: 0o755 });
 }
 
-describe("docker entrypoint", () => {
+describeIfPosix("docker entrypoint", () => {
   test("preserves port normalization and starts without tailscale when no auth key is configured", () => {
     const result = runDockerEntrypoint(
       {
@@ -179,7 +186,7 @@ exec /usr/bin/id "$@"
   });
 });
 
-describe("cloud-agent docker entrypoint", () => {
+describeIfPosix("cloud-agent docker entrypoint", () => {
   test("starts the cloud-agent command without tailscale when no auth key is configured", () => {
     const result = runEntrypoint(
       {

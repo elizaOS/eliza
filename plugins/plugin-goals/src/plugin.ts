@@ -1,9 +1,9 @@
 /**
  * @elizaos/plugin-goals — life direction plugin.
  *
- * Decomposed out of @elizaos/plugin-lifeops. Owns owner-set long-horizon
+ * Decomposed out of @elizaos/plugin-personal-assistant. Owns owner-set long-horizon
  * goals, recurring routines, reminders, alarms, daily check-ins, and the
- * self-care / mood / journal surface. The corresponding @elizaos/plugin-lifeops
+ * self-care / mood / journal surface. The corresponding @elizaos/plugin-personal-assistant
  * source still exists during the migration and is referenced by TODO(migrate)
  * comments in each stub.
  */
@@ -22,7 +22,7 @@ const GOALS_PLUGIN_NAME = "@elizaos/plugin-goals";
 export const goalsPlugin: Plugin = {
   name: GOALS_PLUGIN_NAME,
   description:
-    "Life direction: owner-set long-horizon goals, recurring routines, reminders, alarms, daily check-ins, and a self-care / mood / journal panel. Decomposed out of @elizaos/plugin-lifeops.",
+    "Life direction: owner-set long-horizon goals, recurring routines, reminders, alarms, daily check-ins, and a self-care / mood / journal panel. Decomposed out of @elizaos/plugin-personal-assistant.",
   dependencies: ["@elizaos/plugin-sql"],
   actions: [
     ownerGoalsAction,

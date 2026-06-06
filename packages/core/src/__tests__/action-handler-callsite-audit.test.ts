@@ -62,7 +62,7 @@ const allowedCallsites = new Map<string, string>([
 		"music router; attributes callbacks to routed child actions",
 	],
 	[
-		"plugins/plugin-lifeops/src/actions/calendar.ts",
+		"plugins/plugin-personal-assistant/src/actions/calendar.ts",
 		"calendar router; attributes callbacks to routed child actions",
 	],
 	[

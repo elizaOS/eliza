@@ -6,7 +6,7 @@ panel.
 
 ## Purpose / role
 
-Decomposed out of `@elizaos/plugin-lifeops` to make the "life direction"
+Decomposed out of `@elizaos/plugin-personal-assistant` to make the "life direction"
 surface a self-contained plugin. Owns the four owner actions
 (`OWNER_GOALS`, `OWNER_ROUTINES`, `OWNER_REMINDERS`, `OWNER_ALARMS`), the
 check-in engine (`GoalsCheckinService`), the corresponding drizzle

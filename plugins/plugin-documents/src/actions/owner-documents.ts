@@ -170,14 +170,14 @@ export const ownerDocumentsAction: Action = {
         );
       case "track_deadline":
         // TODO(migrate: plugins/plugin-lifeops/src/actions/document.ts — track_deadline branch,
-        // plugins/plugin-lifeops/src/lifeops/scheduled-task/* for the runner hookup)
+        // plugins/plugin-personal-assistant/src/lifeops/scheduled-task/* for the runner hookup)
         return failure(
           "scaffold_stub",
           "OWNER_DOCUMENTS.track_deadline is not migrated yet.",
         );
       case "upload_asset":
         // TODO(migrate: plugins/plugin-lifeops/src/actions/document.ts — upload_asset branch,
-        // plugins/plugin-lifeops/src/lifeops/approval-queue.ts for the gating)
+        // plugins/plugin-personal-assistant/src/lifeops/approval-queue.ts for the gating)
         return failure(
           "scaffold_stub",
           "OWNER_DOCUMENTS.upload_asset is not migrated yet.",
@@ -190,7 +190,7 @@ export const ownerDocumentsAction: Action = {
         );
       case "close_request":
         // TODO(migrate: plugins/plugin-lifeops/src/actions/document.ts — close_request branch,
-        // plugins/plugin-lifeops/src/types/document-request.ts for the record shape)
+        // plugins/plugin-personal-assistant/src/types/document-request.ts for the record shape)
         return failure(
           "scaffold_stub",
           "OWNER_DOCUMENTS.close_request is not migrated yet.",

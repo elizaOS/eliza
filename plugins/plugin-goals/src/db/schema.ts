@@ -11,7 +11,7 @@ import {
 /**
  * Drizzle schema for plugin-goals.
  *
- * Migrated from plugins/plugin-lifeops/src/lifeops/schema.ts where the
+ * Migrated from plugins/plugin-personal-assistant/src/lifeops/schema.ts where the
  * `app_goals` namespace (life goals, routines, reminders, alarms, check-ins)
  * previously lived alongside the rest of LifeOps. The runtime registers this
  * schema through `@elizaos/plugin-sql`.

@@ -11,7 +11,7 @@
     "declaration": false,
     "noEmit": true,
     "paths": {
-      "@elizaos/plugin-lifeops": ["../../plugins/plugin-lifeops/src/index.ts"],
+      "@elizaos/plugin-personal-assistant": ["../../plugins/plugin-personal-assistant/src/index.ts"],
       "@elizaos/plugin-task-coordinator": [
         "../../plugins/plugin-task-coordinator/src/index.ts"
       ],
@@ -27,8 +27,8 @@
         "./src/types/host-external-modules.ts"
       ],
       "@elizaos/plugin-vincent": ["../../plugins/plugin-vincent/src/index.ts"],
-      "@elizaos/plugin-lifeops-browser": [
-        "../../plugins/plugin-lifeops-browser/src/index.ts"
+      "@elizaos/plugin-personal-assistant-browser": [
+        "../../plugins/plugin-personal-assistant-browser/src/index.ts"
       ],
       "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
       "@elizaos/plugin-elizacloud": [

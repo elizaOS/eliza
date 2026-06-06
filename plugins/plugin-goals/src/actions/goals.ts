@@ -2,7 +2,7 @@
  * OWNER_GOALS — owner-set long-horizon life goals.
  *
  * STUB. Full implementation lives in
- *   plugins/plugin-lifeops/src/actions/owner-surfaces.ts (OWNER_GOAL_ACTIONS,
+ *   plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts (OWNER_GOAL_ACTIONS,
  *   ownerGoalsAction). When the LifeOps decomposition lands the handler body
  *   moves here and `plugin-lifeops` re-exports this action.
  */
@@ -77,7 +77,7 @@ export const ownerGoalsAction: Action = {
     _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     // TODO(migrate): copy the OWNER_GOALS dispatch from
-    // plugins/plugin-lifeops/src/actions/owner-surfaces.ts (search for
+    // plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts (search for
     // OWNER_GOAL_ACTIONS / ownerGoalsAction). The handler should resolve the
     // owner scope, call into the goals repository, and emit a callback line.
     return {

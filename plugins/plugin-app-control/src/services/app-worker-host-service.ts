@@ -25,7 +25,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import {
 	type IAgentRuntime,
@@ -299,7 +299,12 @@ export class AppWorkerHostService extends Service {
 			return this.snapshot(existing);
 		}
 
-		const worker = new Worker(WORKER_ENTRY, {
+		// On Windows the absolute path WORKER_ENTRY looks like `C:\...`,
+		// which Node's URL parser treats as scheme `c:` and rejects with
+		// "Only URLs with a scheme in: file, data, and node". Pass a
+		// `file://` URL on every platform.
+		const workerEntryUrl = pathToFileURL(WORKER_ENTRY);
+		const worker = new Worker(workerEntryUrl, {
 			execArgv: WORKER_ENTRY.endsWith(".ts")
 				? ["--experimental-strip-types"]
 				: [],

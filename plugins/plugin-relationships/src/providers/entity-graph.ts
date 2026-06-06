@@ -8,7 +8,7 @@
  *
  * TODO(decomposition): port the real implementation from the LifeOps
  * `lifeops` aggregator provider
- * (`plugins/plugin-lifeops/src/providers/lifeops.ts`) — specifically the
+ * (`plugins/plugin-personal-assistant/src/providers/lifeops.ts`) — specifically the
  * entity / relationship sections produced from `EntityStore.list()` +
  * `RelationshipStore.list({ fromEntityId: SELF_ENTITY_ID })`. Until that
  * port lands this provider returns an empty projection so it is safe to

@@ -14,7 +14,7 @@ import { INBOX_CONTEXTS } from "../types.ts";
  * appear on (so the agent can say "you replied to Sam on Discord last week").
  *
  * MIGRATION STATUS: STUB.
- * Reference: plugins/plugin-lifeops/src/providers/cross-channel-context.ts
+ * Reference: plugins/plugin-personal-assistant/src/providers/cross-channel-context.ts
  */
 export const crossChannelContextProvider: Provider = {
   name: "CROSS_CHANNEL_CONTEXT",
@@ -28,7 +28,7 @@ export const crossChannelContextProvider: Provider = {
     _message: Memory,
     _state?: State,
   ): Promise<ProviderResult> => {
-    // TODO: port from plugins/plugin-lifeops/src/providers/cross-channel-context.ts.
+    // TODO: port from plugins/plugin-personal-assistant/src/providers/cross-channel-context.ts.
     return { text: "", data: { history: [] } };
   },
 };

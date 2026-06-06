@@ -18,7 +18,7 @@ import {
  * INBOX umbrella action — op-based dispatch.
  *
  * MIGRATION STATUS: STUB.
- * Reference implementation: plugins/plugin-lifeops/src/actions/inbox.ts
+ * Reference implementation: plugins/plugin-personal-assistant/src/actions/inbox.ts
  *
  * The full implementation will be ported here in a follow-up pass. For now this
  * file exists so the plugin registers cleanly in the workspace and the runtime
@@ -107,7 +107,7 @@ export const inboxAction: Action = {
     _message: Memory,
     _state?: State,
   ): Promise<boolean> => {
-    // TODO: port full validation from plugins/plugin-lifeops/src/actions/inbox.ts.
+    // TODO: port full validation from plugins/plugin-personal-assistant/src/actions/inbox.ts.
     // For now we accept whenever the planner asks; the handler returns a
     // not-implemented failure so callers see exactly which op is missing.
     return true;
@@ -130,22 +130,22 @@ export const inboxAction: Action = {
 
     switch (op as InboxActionName) {
       case "list":
-        // TODO: port from plugins/plugin-lifeops/src/inbox/repository.ts +
-        // plugins/plugin-lifeops/src/inbox/message-fetcher.ts.
+        // TODO: port from plugins/plugin-personal-assistant/src/inbox/repository.ts +
+        // plugins/plugin-personal-assistant/src/inbox/message-fetcher.ts.
         return failure("not_implemented", "INBOX.list is not migrated yet.");
       case "triage":
-        // TODO: port from plugins/plugin-lifeops/src/inbox/triage-classifier.ts
-        // and the triage branch in plugins/plugin-lifeops/src/actions/inbox.ts.
+        // TODO: port from plugins/plugin-personal-assistant/src/inbox/triage-classifier.ts
+        // and the triage branch in plugins/plugin-personal-assistant/src/actions/inbox.ts.
         return failure("not_implemented", "INBOX.triage is not migrated yet.");
       case "reply":
-        // TODO: port from plugins/plugin-lifeops/src/actions/inbox.ts (reply branch)
-        // and plugins/plugin-lifeops/src/inbox/channel-deep-links.ts.
+        // TODO: port from plugins/plugin-personal-assistant/src/actions/inbox.ts (reply branch)
+        // and plugins/plugin-personal-assistant/src/inbox/channel-deep-links.ts.
         return failure("not_implemented", "INBOX.reply is not migrated yet.");
       case "snooze":
-        // TODO: port from plugins/plugin-lifeops/src/inbox/repository.ts snooze ops.
+        // TODO: port from plugins/plugin-personal-assistant/src/inbox/repository.ts snooze ops.
         return failure("not_implemented", "INBOX.snooze is not migrated yet.");
       case "archive":
-        // TODO: port from plugins/plugin-lifeops/src/inbox/repository.ts archive ops.
+        // TODO: port from plugins/plugin-personal-assistant/src/inbox/repository.ts archive ops.
         return failure("not_implemented", "INBOX.archive is not migrated yet.");
       case "approve":
         // TODO: wire through the same approval pipeline plugin-lifeops uses for

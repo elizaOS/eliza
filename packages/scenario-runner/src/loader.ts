@@ -226,12 +226,18 @@ export function scenarioFileMatchesGlob(
     : path.resolve(cwd, file);
   const absoluteFile = toPosixPath(resolvedFile);
   const cwdRelativeFile = toPosixPath(path.relative(cwd, resolvedFile));
+  // `path.isAbsolute` is platform-aware (it accepts both POSIX and Windows
+  // forms), so we must consult it on the ORIGINAL glob — not on the
+  // `toPosixPath` output. After conversion a Windows-resolved glob looks
+  // like `C:/repo/...`, which `path.posix.isAbsolute` rejects (POSIX
+  // absolute paths start with `/`). That mis-classification dropped the
+  // matcher onto `cwdRelativeFile`, breaking absolute-glob discovery on
+  // Windows hosts.
+  const globIsAbsolute = path.isAbsolute(fileGlob);
   const normalizedGlob = toPosixPath(
-    path.isAbsolute(fileGlob) ? path.resolve(fileGlob) : fileGlob,
+    globIsAbsolute ? path.resolve(fileGlob) : fileGlob,
   );
-  const target = path.posix.isAbsolute(normalizedGlob)
-    ? absoluteFile
-    : cwdRelativeFile;
+  const target = globIsAbsolute ? absoluteFile : cwdRelativeFile;
 
   return scenarioFileGlobAlternatives(normalizedGlob).some((candidateGlob) =>
     matchesPosixGlob(target, candidateGlob),

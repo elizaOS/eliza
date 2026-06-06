@@ -16,7 +16,7 @@ The plugin is opt-in — add it to the agent's plugin list. It hard-depends on
 **Status: scaffolded.** Action and provider handlers are stubs during the
 plugin-lifeops decomposition. The real EntityStore, identity merge engine,
 voice-observer-bridge, and RelationshipStore still live in
-`@elizaos/plugin-lifeops`; they port over in a follow-up pass. See `README.md`
+`@elizaos/plugin-personal-assistant`; they port over in a follow-up pass. See `README.md`
 for the migration mapping.
 
 ## Plugin surface
@@ -107,7 +107,7 @@ its own settings keys when it lands; this scaffold has none.)
   (`schema: dbSchema` in the plugin object) tells the elizaOS runtime to
   handle migrations. Do not add a manual migration runner here.
 - **Stubs only — for now.** `ENTITY` and `ENTITY_GRAPH` intentionally return
-  a TODO / empty result while the port from `@elizaos/plugin-lifeops` is in
+  a TODO / empty result while the port from `@elizaos/plugin-personal-assistant` is in
   progress. See `README.md` for the file-by-file migration map.
 - **Do NOT add a second LifeOps scheduling mechanism, a second knowledge-graph
   store, or behavior keyed on `promptInstructions` text content.** This

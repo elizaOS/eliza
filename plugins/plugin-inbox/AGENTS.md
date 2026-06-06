@@ -70,7 +70,7 @@ None at the scaffold stage. Channel credentials are read from each provider plug
 
 ## How to extend
 
-**Port an op from plugin-lifeops:** open the corresponding `case` block in `src/actions/inbox.ts`, follow the TODO comment to the source file in `plugins/plugin-lifeops/`, and replace the `not_implemented` failure with the ported logic. Keep the op enum in `src/types.ts` in sync.
+**Port an op from plugin-lifeops:** open the corresponding `case` block in `src/actions/inbox.ts`, follow the TODO comment to the source file in `plugins/plugin-personal-assistant/`, and replace the `not_implemented` failure with the ported logic. Keep the op enum in `src/types.ts` in sync.
 
 **Add a new op:** add the name to `INBOX_ACTIONS` in `src/types.ts`, add a `case` to the `switch` in `src/actions/inbox.ts`, and (if the op needs new parameters) extend the `parameters` array on `inboxAction`.
 

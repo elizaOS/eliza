@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolvePathWithinRoot } from "../safe-path.js";
 
@@ -5,8 +6,11 @@ describe("resolvePathWithinRoot", () => {
   const root = "/tmp/trajectories";
 
   it("allows files under the trajectory root", () => {
+    // `resolvePathWithinRoot` joins via `path.resolve`, so the expected
+    // value tracks the host's native separator: `/tmp/trajectories/run-1.traj`
+    // on POSIX, `C:\tmp\trajectories\run-1.traj` on Windows.
     expect(resolvePathWithinRoot(root, "run-1.traj")).toBe(
-      "/tmp/trajectories/run-1.traj",
+      path.resolve(root, "run-1.traj"),
     );
   });
 

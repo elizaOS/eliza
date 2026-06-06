@@ -448,9 +448,12 @@ describe("CombinedAutocompleteProvider", () => {
       expect(result).not.toBeNull();
       if (!result) throw new Error("result should not be null");
 
-      const item = result.items.find(
-        (entry) => entry.value === '"my folder/test.txt"',
-      );
+      // The autocomplete provider renders the resolved path with the host
+      // separator (POSIX `/` or Windows `\`). Match either when looking up
+      // the entry and when asserting the applied line.
+      const sep = process.platform === "win32" ? "\\" : "/";
+      const expectedValue = `"my folder${sep}test.txt"`;
+      const item = result.items.find((entry) => entry.value === expectedValue);
       expect(item).toBeDefined();
       if (!item) throw new Error("item should be defined");
 
@@ -461,7 +464,7 @@ describe("CombinedAutocompleteProvider", () => {
         item,
         result.prefix,
       );
-      expect(applied.lines[0]).toBe('"my folder/test.txt"');
+      expect(applied.lines[0]).toBe(expectedValue);
     });
   });
 });

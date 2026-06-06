@@ -13,7 +13,7 @@ const coreSrc = path.join(monorepoRoot, "packages/core/src");
 const vaultSrc = path.join(monorepoRoot, "packages/vault/src");
 const cloudRoutingSrc = path.join(monorepoRoot, "packages/cloud-routing/src");
 const cloudSdkSrc = path.join(monorepoRoot, "packages/cloud-sdk/src");
-const appLifeopsSrc = path.join(monorepoRoot, "plugins/plugin-lifeops/src");
+const appLifeopsSrc = path.join(monorepoRoot, "plugins/plugin-personal-assistant/src");
 const appTaskCoordinatorSrc = path.join(
   monorepoRoot,
   "plugins/plugin-task-coordinator/src",
@@ -226,14 +226,14 @@ export default defineConfig({
         replacement: path.join(appLifeopsSrc, "index.ts"),
       },
       {
-        find: /^@elizaos\/plugin-lifeops$/,
+        find: /^@elizaos\/plugin-personal-assistant$/,
         replacement: path.join(appLifeopsSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/app-lifeops\/selfcontrol$/,
         replacement: path.join(
           monorepoRoot,
-          "plugins/plugin-lifeops/src/website-blocker/public.ts",
+          "plugins/plugin-personal-assistant/src/website-blocker/public.ts",
         ),
       },
       {

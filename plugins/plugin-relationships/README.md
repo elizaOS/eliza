@@ -12,11 +12,11 @@ concept CRUD with identity claims, typed relationships, and merge), an
 **Scaffolded — decomposition in progress.** Action and provider handlers are
 stubs that return a TODO marker. The real EntityStore, identity merge engine,
 voice-observer-bridge, and RelationshipStore still live in
-`@elizaos/plugin-lifeops`; they will move here in a follow-up pass.
+`@elizaos/plugin-personal-assistant`; they will move here in a follow-up pass.
 
-## Migration mapping from `@elizaos/plugin-lifeops`
+## Migration mapping from `@elizaos/plugin-personal-assistant`
 
-| Source under `plugins/plugin-lifeops/src/` | Will move to |
+| Source under `plugins/plugin-personal-assistant/src/` | Will move to |
 |---|---|
 | `actions/entity.ts` (`ENTITY` action) | `plugins/plugin-relationships/src/actions/entity.ts` |
 | `lifeops/entities/store.ts` (`EntityStore`) | `plugins/plugin-relationships/src/services/entity-store.ts` |

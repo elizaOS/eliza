@@ -2,8 +2,8 @@
  * Public TS types for `@elizaos/plugin-relationships`.
  *
  * These mirror the canonical LifeOps shapes in
- * `plugins/plugin-lifeops/src/lifeops/entities/types.ts` and
- * `plugins/plugin-lifeops/src/lifeops/relationships/types.ts`. The richer
+ * `plugins/plugin-personal-assistant/src/lifeops/entities/types.ts` and
+ * `plugins/plugin-personal-assistant/src/lifeops/relationships/types.ts`. The richer
  * lifeops shapes (identities array, attributes map, retired status, sentiment
  * trend, type registries) will be ported here in a follow-up pass; for now we
  * expose the minimal Entity / Relationship surface that matches the DB schema
@@ -44,7 +44,7 @@ export const SELF_ENTITY_ID = "self";
  * Canonical entity-kind / op tuple accepted by the `ENTITY` action.
  *
  * Mirrors the `Subaction` union in
- * `plugins/plugin-lifeops/src/actions/entity.ts`.
+ * `plugins/plugin-personal-assistant/src/actions/entity.ts`.
  */
 export const ENTITY_OPS = [
   "create",

@@ -229,7 +229,7 @@ const COVERED_FLOOR = COVERED_ACTIONS.length;
  * — see COVERED_ACTIONS — so the reason describes only the remainder.
  */
 const LIVE_ONLY_REMAINDER: Record<string, string> = {
-  "@elizaos/plugin-lifeops":
+  "@elizaos/plugin-personal-assistant":
     "Beyond SCHEDULED_TASKS, actions need live connector creds (Gmail, calendar, messaging, owner data).",
   "@elizaos/plugin-browser":
     "Beyond web/JSDOM mode, actions need a real Chromium session or browser bridge.",
@@ -280,24 +280,24 @@ const BOOTED_PLUGIN_ACTION_SURFACE: Record<
     ],
     actions: ["BROWSER", "MANAGE_BROWSER_BRIDGE"],
   },
-  "@elizaos/plugin-lifeops": {
+  "@elizaos/plugin-personal-assistant": {
     files: [
-      "plugins/plugin-lifeops/src/actions/block.ts",
-      "plugins/plugin-lifeops/src/actions/brief.ts",
-      "plugins/plugin-lifeops/src/actions/calendar.ts",
-      "plugins/plugin-lifeops/src/actions/conflict-detect.ts",
-      "plugins/plugin-lifeops/src/actions/connector.ts",
-      "plugins/plugin-lifeops/src/actions/credentials.ts",
-      "plugins/plugin-lifeops/src/actions/document.ts",
-      "plugins/plugin-lifeops/src/actions/entity.ts",
-      "plugins/plugin-lifeops/src/actions/inbox.ts",
-      "plugins/plugin-lifeops/src/actions/owner-surfaces.ts",
-      "plugins/plugin-lifeops/src/actions/prioritize.ts",
-      "plugins/plugin-lifeops/src/actions/remote-desktop.ts",
-      "plugins/plugin-lifeops/src/actions/resolve-request.ts",
-      "plugins/plugin-lifeops/src/actions/scheduled-task.ts",
-      "plugins/plugin-lifeops/src/actions/voice-call.ts",
-      "plugins/plugin-lifeops/src/actions/work-thread.ts",
+      "plugins/plugin-personal-assistant/src/actions/block.ts",
+      "plugins/plugin-personal-assistant/src/actions/brief.ts",
+      "plugins/plugin-personal-assistant/src/actions/calendar.ts",
+      "plugins/plugin-personal-assistant/src/actions/conflict-detect.ts",
+      "plugins/plugin-personal-assistant/src/actions/connector.ts",
+      "plugins/plugin-personal-assistant/src/actions/credentials.ts",
+      "plugins/plugin-personal-assistant/src/actions/document.ts",
+      "plugins/plugin-personal-assistant/src/actions/entity.ts",
+      "plugins/plugin-personal-assistant/src/actions/inbox.ts",
+      "plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts",
+      "plugins/plugin-personal-assistant/src/actions/prioritize.ts",
+      "plugins/plugin-personal-assistant/src/actions/remote-desktop.ts",
+      "plugins/plugin-personal-assistant/src/actions/resolve-request.ts",
+      "plugins/plugin-personal-assistant/src/actions/scheduled-task.ts",
+      "plugins/plugin-personal-assistant/src/actions/voice-call.ts",
+      "plugins/plugin-personal-assistant/src/actions/work-thread.ts",
     ],
     actions: [
       "BLOCK",

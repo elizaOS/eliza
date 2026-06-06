@@ -14,16 +14,16 @@ This plugin is being extracted out of the monolithic `plugin-lifeops`. The curre
 
 | New (plugin-inbox)                                  | Source (plugin-lifeops)                                       |
 | --------------------------------------------------- | ------------------------------------------------------------- |
-| `src/actions/inbox.ts`                              | `plugins/plugin-lifeops/src/actions/inbox.ts`                 |
-| `src/providers/inbox-triage.ts`                     | `plugins/plugin-lifeops/src/providers/inbox-triage.ts`        |
-| `src/providers/cross-channel-context.ts`            | `plugins/plugin-lifeops/src/providers/cross-channel-context.ts` |
-| `src/db/schema.ts` (`app_inbox.triage_decisions`)   | `plugins/plugin-lifeops/src/inbox/repository.ts`              |
-| `src/db/schema.ts` (`app_inbox.snoozed`)            | `plugins/plugin-lifeops/src/inbox/repository.ts`              |
-| `src/db/schema.ts` (`app_inbox.archived`)           | `plugins/plugin-lifeops/src/inbox/repository.ts`              |
-| (planned) `src/inbox/triage-classifier.ts`          | `plugins/plugin-lifeops/src/inbox/triage-classifier.ts`       |
-| (planned) `src/inbox/message-fetcher.ts`            | `plugins/plugin-lifeops/src/inbox/message-fetcher.ts`         |
-| (planned) `src/inbox/channel-deep-links.ts`         | `plugins/plugin-lifeops/src/inbox/channel-deep-links.ts`      |
-| (planned) `src/inbox/reflection.ts`                 | `plugins/plugin-lifeops/src/inbox/reflection.ts`              |
+| `src/actions/inbox.ts`                              | `plugins/plugin-personal-assistant/src/actions/inbox.ts`                 |
+| `src/providers/inbox-triage.ts`                     | `plugins/plugin-personal-assistant/src/providers/inbox-triage.ts`        |
+| `src/providers/cross-channel-context.ts`            | `plugins/plugin-personal-assistant/src/providers/cross-channel-context.ts` |
+| `src/db/schema.ts` (`app_inbox.triage_decisions`)   | `plugins/plugin-personal-assistant/src/inbox/repository.ts`              |
+| `src/db/schema.ts` (`app_inbox.snoozed`)            | `plugins/plugin-personal-assistant/src/inbox/repository.ts`              |
+| `src/db/schema.ts` (`app_inbox.archived`)           | `plugins/plugin-personal-assistant/src/inbox/repository.ts`              |
+| (planned) `src/inbox/triage-classifier.ts`          | `plugins/plugin-personal-assistant/src/inbox/triage-classifier.ts`       |
+| (planned) `src/inbox/message-fetcher.ts`            | `plugins/plugin-personal-assistant/src/inbox/message-fetcher.ts`         |
+| (planned) `src/inbox/channel-deep-links.ts`         | `plugins/plugin-personal-assistant/src/inbox/channel-deep-links.ts`      |
+| (planned) `src/inbox/reflection.ts`                 | `plugins/plugin-personal-assistant/src/inbox/reflection.ts`              |
 | `src/components/inbox/InboxView.tsx`                | (new — replaces inbox UI living inside the lifeops view bundle) |
 
 ## Plugin surface

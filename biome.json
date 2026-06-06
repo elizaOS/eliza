@@ -44,7 +44,7 @@
       "!reports",
       "!docs/audits",
       "!docs/**/*.json",
-      "!plugins/plugin-lifeops/docs/audit",
+      "!plugins/plugin-personal-assistant/docs/audit",
       "!packages/elizaos/templates",
       "!packages/app-core/test/contracts/lib/openzeppelin-contracts",
       "!packages/benchmarks/evm/metrics",

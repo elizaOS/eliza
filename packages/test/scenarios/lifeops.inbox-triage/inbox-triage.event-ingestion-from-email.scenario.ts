@@ -21,11 +21,11 @@ import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { LifeOpsRepository } from "../../../../plugins/plugin-lifeops/src/lifeops/repository.ts";
+import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
-} from "../../../../plugins/plugin-lifeops/src/lifeops/sql.ts";
+} from "../../../../plugins/plugin-personal-assistant/src/lifeops/sql.ts";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 function checkEventProposed(ctx: ScenarioContext): string | undefined {

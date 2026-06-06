@@ -122,6 +122,16 @@ const config: StorybookConfig = {
       },
       { find: /^llama-cpp-capacitor$/, replacement: hostExternalStub },
       { find: /^@elizaos\/plugin-browser$/, replacement: hostExternalStub },
+      // DynamicViewLoader dynamic-imports a few plugin subpaths for runtime
+      // view bundles; in the catalog they can't be loaded, stub them.
+      {
+        find: /^@elizaos\/plugin-health(?:\/.+)?$/,
+        replacement: hostExternalStub,
+      },
+      {
+        find: /^@elizaos\/plugin-training(?:\/.+)?$/,
+        replacement: hostExternalStub,
+      },
       // Node builtins pulled by local-inference services (reachable from the
       // state graph) — stubbed so useApp()-dependent stories import cleanly.
       { find: /^node:fs\/promises$/, replacement: nodeFsStub },

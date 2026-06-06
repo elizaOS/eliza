@@ -18,7 +18,7 @@
         "./src/types/app-plugin-modules.d.ts"
       ],
       "@elizaos/plugin-companion": ["./src/types/app-plugin-modules.d.ts"],
-      "@elizaos/plugin-lifeops": ["./src/types/app-plugin-modules.d.ts"],
+      "@elizaos/plugin-personal-assistant": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/plugin-messages/register": [
         "../../plugins/plugin-messages/src/register.ts"
       ],

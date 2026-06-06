@@ -2,7 +2,7 @@
  * OWNER_ALARMS — wake/notification alarms with repeat rules.
  *
  * STUB. The current handler is in
- *   plugins/plugin-lifeops/src/actions/owner-surfaces.ts (alongside
+ *   plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts (alongside
  *   OWNER_REMINDERS). On the foundations pass the body moves here.
  */
 
@@ -76,7 +76,7 @@ export const ownerAlarmsAction: Action = {
     _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     // TODO(migrate): copy the OWNER_ALARMS handler from
-    // plugins/plugin-lifeops/src/actions/owner-surfaces.ts.
+    // plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts.
     return {
       success: false,
       text: `${GOALS_LOG_PREFIX} OWNER_ALARMS not yet implemented (scaffold stub)`,

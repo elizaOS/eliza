@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-calendar",
   "version": "2.0.3-beta.6",
   "type": "module",
-  "description": "First-class calendar plugin for elizaOS agents: Google + Apple calendar feed, event CRUD, scheduling, and owner-facing calendar views. Consumed by @elizaos/plugin-lifeops and the Odysseus task-coordinator surface.",
+  "description": "First-class calendar plugin for elizaOS agents: Google + Apple calendar feed, event CRUD, scheduling, and owner-facing calendar views. Consumed by @elizaos/plugin-personal-assistant and the Odysseus task-coordinator surface.",
   "sideEffects": [
     "./src/api/client-calendar.ts",
     "./src/ui.ts",

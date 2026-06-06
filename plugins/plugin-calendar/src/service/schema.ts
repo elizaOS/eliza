@@ -4,7 +4,7 @@
  * The calendar tables continue to live in the `app_lifeops` PostgreSQL schema
  * with their original table and column names (`life_calendar_events`,
  * `life_calendar_sync_states`) so rows written while the calendar domain was
- * part of `@elizaos/plugin-lifeops` remain valid after extraction. Do not
+ * part of `@elizaos/plugin-personal-assistant` remain valid after extraction. Do not
  * rename the schema, tables, or columns without a data migration.
  *
  * Raw SQL in this package must qualify table names with the `app_lifeops.`

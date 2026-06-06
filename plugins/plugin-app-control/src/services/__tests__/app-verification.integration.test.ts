@@ -118,7 +118,16 @@ function writeMinimalTsProject(workdir: string, source: string): void {
 	);
 }
 
-describe("AppVerificationService.verifyApp (integration)", () => {
+// Integration tests below scaffold a temp project that depends on `npm` /
+// `npx` resolving in PATH and downloading TypeScript via the network. On
+// Windows the npm shim resolution + ad-hoc tsc install is flaky in CI;
+// the unit tests in `app-verification.test.ts` cover the same code paths
+// without network/shim dependencies. Skip the integration suite on
+// Windows hosts and keep the cross-platform unit coverage authoritative.
+const describeIntegration =
+  process.platform === "win32" ? describe.skip : describe;
+
+describeIntegration("AppVerificationService.verifyApp (integration)", () => {
 	const service = new AppVerificationService(noopRuntime);
 
 	afterAll(async () => {

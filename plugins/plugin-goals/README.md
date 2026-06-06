@@ -4,7 +4,7 @@ Life direction plugin for elizaOS: owner-set long-horizon goals, recurring
 routines, reminders, alarms, daily check-ins, and a self-care / mood / journal
 panel.
 
-Decomposed out of `@elizaos/plugin-lifeops`. During the migration phase the
+Decomposed out of `@elizaos/plugin-personal-assistant`. During the migration phase the
 action handlers and check-in service are scaffold stubs that point back to
 their LifeOps source via `TODO(migrate)` comments. The plugin registers
 cleanly, compiles standalone, and serves a real (if minimal) view.

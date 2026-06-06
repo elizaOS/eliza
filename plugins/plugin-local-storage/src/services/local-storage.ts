@@ -1,5 +1,6 @@
 import { promises as fsp } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { Storage } from "@brighter/storage-adapter-local";
 import { type IAgentRuntime, logger, resolveStateDir, Service, ServiceType } from "@elizaos/core";
 
@@ -121,7 +122,22 @@ export class LocalFileStorageService extends Service {
   }
 
   private fileUrl(key: string): string {
-    return `file://${this.absolutePath(key)}`;
+    // POSIX absolute paths produce `file:///foo/bar`; Windows absolute paths
+    // need `file:///C:/foo/bar` (three slashes + drive letter + forward
+    // slashes). `pathToFileURL` handles both correctly, including spaces
+    // and other characters that need percent-encoding.
+    return pathToFileURL(this.absolutePath(key)).href;
+  }
+
+  /**
+   * Ensure every parent directory under the storage root exists before the
+   * adapter writes to the leaf. `@brighter/storage-adapter-local` does
+   * `fs.writeFile` directly — on Windows the intermediate dirs aren't
+   * auto-created, so writes to `nested/dir/sample.bin` fail with ENOENT.
+   */
+  private async ensureKeyDir(key: string): Promise<void> {
+    const target = this.absolutePath(key);
+    await fsp.mkdir(path.dirname(target), { recursive: true });
   }
 
   /**
@@ -135,6 +151,7 @@ export class LocalFileStorageService extends Service {
     const baseFileName = `${Date.now()}-${path.basename(filePath)}`;
     const key = normalizeStorageKey(subDirectory, baseFileName);
     const buffer = await fsp.readFile(filePath);
+    await this.ensureKeyDir(key);
     await storage.write(key, buffer, { encoding: "binary" });
     return { success: true, url: this.fileUrl(key) };
   }
@@ -159,6 +176,7 @@ export class LocalFileStorageService extends Service {
     const storage = this.getStorage();
     const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
     const key = normalizeStorageKey(subDirectory, fileName);
+    await this.ensureKeyDir(key);
     await storage.write(key, buffer, { encoding: "binary" });
     void contentType;
     return { success: true, url: this.fileUrl(key) };
@@ -183,6 +201,7 @@ export class LocalFileStorageService extends Service {
     const actualFileName = fileName ?? `${Date.now()}.json`;
     const key = normalizeStorageKey(subDirectory, actualFileName);
     const body = JSON.stringify(jsonData, null, 2);
+    await this.ensureKeyDir(key);
     await storage.write(key, body, { encoding: "utf8" });
     return { success: true, key, url: this.fileUrl(key) };
   }
@@ -233,7 +252,17 @@ export class LocalFileStorageService extends Service {
    */
   async exists(_unusedBucket: string, key: string): Promise<boolean> {
     const storage = this.getStorage();
-    return storage.exists(normalizeStorageKey(key));
+    try {
+      return await storage.exists(normalizeStorageKey(key));
+    } catch (err: unknown) {
+      // `@brighter/storage-adapter-local`'s `exists()` calls `fs.access`,
+      // which throws ENOENT on Windows when the file is missing instead
+      // of returning false. Coerce the absence case to `false` so the
+      // public method behaves identically on every platform.
+      const e = err as NodeJS.ErrnoException;
+      if (e?.code === "ENOENT") return false;
+      throw err;
+    }
   }
 
   /**

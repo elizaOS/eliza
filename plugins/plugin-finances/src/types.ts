@@ -3,8 +3,8 @@
  *
  * Kept intentionally minimal during the LifeOps decomposition scaffold —
  * the real types will be migrated from
- * `plugins/plugin-lifeops/src/actions/owner-surfaces.ts` (ownerFinancesAction)
- * and `plugins/plugin-lifeops/src/actions/payments.ts` /
+ * `plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts` (ownerFinancesAction)
+ * and `plugins/plugin-personal-assistant/src/actions/payments.ts` /
  * `payments-recurring.ts` in a follow-up phase.
  */
 

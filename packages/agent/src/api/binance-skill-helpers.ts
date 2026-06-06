@@ -104,7 +104,7 @@ async function rewriteFallbackActionText(args: {
   }
 }
 
-const LIFEOPS_PUBLIC_MODULE: string = "@elizaos/plugin-lifeops";
+const LIFEOPS_PUBLIC_MODULE: string = "@elizaos/plugin-personal-assistant";
 
 let ownerBlockFallbackPromise: Promise<RuntimeActionLike | null> | null = null;
 
