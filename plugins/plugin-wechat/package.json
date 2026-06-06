@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-wechat",
-  "version": "2.0.3-beta.8",
+  "version": "2.0.3-beta.9",
   "description": "WeChat connector plugin for elizaOS via proxy API",
   "type": "module",
   "license": "MIT",
