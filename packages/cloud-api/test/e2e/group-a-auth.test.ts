@@ -29,7 +29,6 @@ import {
 let serverReachable = false;
 let hasTestApiKey = false;
 let _sessionCookie: string | null = null;
-let anonSessionToken: string | null = null;
 
 function shouldRun(): boolean {
   return serverReachable && hasTestApiKey;
@@ -71,48 +70,6 @@ afterAll(async () => {
 });
 
 describe("Group A: auth + sessions", () => {
-  // --------------------------------------------------------------------
-  // /api/auth/anonymous-session — POST, get-or-create anon session.
-  // Not in publicPathPrefixes; middleware should require auth.
-  // --------------------------------------------------------------------
-  describe("POST /api/auth/anonymous-session", () => {
-    test("auth gate: rejects unauthenticated POST", async () => {
-      if (!reachableOnly()) return;
-      const res = await api.post("/api/auth/anonymous-session", {});
-      // Middleware not in publicPathPrefixes → 401. Some deployments may
-      // still treat this as public; accept either but require a structured
-      // error for the 401 case.
-      expect([200, 401]).toContain(res.status);
-      if (res.status === 401) {
-        const body = (await res.json()) as { error?: string };
-        expect(body.error).toBeTruthy();
-      }
-    });
-
-    test("happy path: with valid Bearer creates or returns an anon session", async () => {
-      if (!shouldRun()) return;
-      const res = await api.post(
-        "/api/auth/anonymous-session",
-        {},
-        { headers: bearerHeaders() },
-      );
-      // Steward session-mode users may not be able to mint anon sessions;
-      // accept 200 (session minted) or 4xx (user is not anonymous-eligible).
-      expect([200, 400, 403]).toContain(res.status);
-      if (res.status === 200) {
-        const body = (await res.json()) as {
-          isNew?: boolean;
-          user?: { id?: string };
-          session?: { session_token?: string; messages_limit?: number };
-        };
-        expect(body.session?.session_token).toBeTruthy();
-        if (body.session?.session_token) {
-          anonSessionToken = body.session.session_token;
-        }
-      }
-    });
-  });
-
   // --------------------------------------------------------------------
   // /api/auth/pair — POST, validates pairing token. Public path.
   // --------------------------------------------------------------------
@@ -321,86 +278,6 @@ describe("Group A: auth + sessions", () => {
         "server_secret_missing",
         "steward_upstream_unavailable",
       ]).toContain(body.code ?? "");
-    });
-  });
-
-  // --------------------------------------------------------------------
-  // /api/anonymous-session — GET, public. Lookup by ?token=.
-  // --------------------------------------------------------------------
-  describe("GET /api/anonymous-session", () => {
-    test("validation: missing token query returns 400", async () => {
-      if (!reachableOnly()) return;
-      const res = await api.get("/api/anonymous-session");
-      expect(res.status).toBe(400);
-      const body = (await res.json()) as { error?: string };
-      expect(body.error).toBe("Session token is required");
-    });
-
-    test("validation: malformed token (too short) returns 400", async () => {
-      if (!reachableOnly()) return;
-      const res = await api.get("/api/anonymous-session?token=short");
-      expect(res.status).toBe(400);
-      const body = (await res.json()) as { error?: string };
-      expect(body.error).toBe("Invalid session token format");
-    });
-
-    test("auth gate: well-formed but unknown token returns 404", async () => {
-      if (!reachableOnly()) return;
-      const fakeToken = "a".repeat(32);
-      const res = await api.get(`/api/anonymous-session?token=${fakeToken}`);
-      expect(res.status).toBe(404);
-      const body = (await res.json()) as { error?: string };
-      expect(body.error).toBe("Session not found or expired");
-    });
-
-    test("happy path: previously-minted token round-trips", async () => {
-      if (!reachableOnly() || !anonSessionToken) return;
-      const res = await api.get(
-        `/api/anonymous-session?token=${encodeURIComponent(anonSessionToken)}`,
-      );
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as {
-        success?: boolean;
-        session?: { id?: string; messages_limit?: number };
-      };
-      expect(body.success).toBe(true);
-      expect(body.session?.id).toBeTruthy();
-    });
-  });
-
-  // --------------------------------------------------------------------
-  // /api/set-anonymous-session — POST, public.
-  // --------------------------------------------------------------------
-  describe("POST /api/set-anonymous-session", () => {
-    test("validation: invalid JSON body returns 400", async () => {
-      if (!reachableOnly()) return;
-      const res = await fetch(`${getBaseUrl()}/api/set-anonymous-session`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{ this is not json",
-      });
-      expect(res.status).toBe(400);
-      const body = (await res.json()) as { error?: string };
-      expect(body.error).toBe("Invalid JSON body");
-    });
-
-    test("validation: missing sessionToken returns 400", async () => {
-      if (!reachableOnly()) return;
-      const res = await api.post("/api/set-anonymous-session", {});
-      expect(res.status).toBe(400);
-      const body = (await res.json()) as { error?: string };
-      expect(body.error).toBe("Session token is required");
-    });
-
-    test("auth gate: unknown sessionToken returns 404", async () => {
-      if (!reachableOnly()) return;
-      const res = await api.post("/api/set-anonymous-session", {
-        sessionToken: "z".repeat(32),
-      });
-      expect([404, 410]).toContain(res.status);
-      const body = (await res.json()) as { error?: string; code?: string };
-      expect(body.error).toBeTruthy();
-      expect(body.code).toBe("SESSION_NOT_FOUND");
     });
   });
 

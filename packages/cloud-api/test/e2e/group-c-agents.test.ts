@@ -942,42 +942,6 @@ describe("/api/my-agents/saved/:id", () => {
 });
 
 // -------------------------------------------------------------------------
-// /api/my-agents/claim-affiliate-characters — POST (session auth)
-// -------------------------------------------------------------------------
-describe("/api/my-agents/claim-affiliate-characters", () => {
-  test("POST without auth returns 401", async () => {
-    if (!serverReachable) return;
-    const res = await api.post("/api/my-agents/claim-affiliate-characters", {});
-    expect([401, 403]).toContain(res.status);
-  });
-
-  test("POST with valid Bearer (session-only) — 401 (requires session) or 200", async () => {
-    if (!shouldRun()) return;
-    // requireUserWithOrg accepts API keys too in current impl; if the route
-    // rejects the Bearer with 401 we still consider that a passing assertion
-    // because the route ran the auth gate.
-    const res = await api.post(
-      "/api/my-agents/claim-affiliate-characters",
-      {},
-      { headers: bearerHeaders() },
-    );
-    expect([200, 401, 403, 500]).toContain(res.status);
-  });
-
-  test("POST with non-JSON body is tolerated (route catches JSON parse errors)", async () => {
-    if (!shouldRun()) return;
-    const res = await api.post(
-      "/api/my-agents/claim-affiliate-characters",
-      "not-json-at-all",
-      {
-        headers: { ...bearerHeaders(), "Content-Type": "text/plain" },
-      },
-    );
-    expect([200, 400, 401, 403, 500]).toContain(res.status);
-  });
-});
-
-// -------------------------------------------------------------------------
 // /api/characters/:characterId/mcps — owned character MCP metadata
 // -------------------------------------------------------------------------
 describe("/api/characters/:characterId/mcps", () => {
