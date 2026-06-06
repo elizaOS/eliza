@@ -143,6 +143,46 @@ function getCallbackReasonMessage(
       return t("cloud.login.callback.serverError", {
         defaultValue: "Something went wrong on our end. Try again in a moment.",
       });
+    // Steward's `GET /auth/callback/email` emits these `reason` codes; without
+    // a case each one fell through to the generic message below, masking the
+    // real failure. Keep `invalid_link` copy neutral — the link is not
+    // necessarily expired/used (it can fail when the verification store can't
+    // resolve the token), so "request a new one" alone can be a dead end.
+    case "invalid_link":
+      return t("cloud.login.callback.invalidLink", {
+        defaultValue:
+          "We couldn't verify that sign-in link. Request a new one — if it keeps happening, contact support.",
+      });
+    case "tenant_mismatch":
+      return t("cloud.login.callback.tenantMismatch", {
+        defaultValue: "That sign-in link is for a different workspace.",
+      });
+    case "rate_limited":
+      return t("cloud.login.callback.rateLimited", {
+        defaultValue: "Too many attempts. Wait a moment and try again.",
+      });
+    case "method_disabled":
+      return t("cloud.login.callback.methodDisabled", {
+        defaultValue: "That sign-in method isn't enabled for this workspace.",
+      });
+    case "sso_required":
+      return t("cloud.login.callback.ssoRequired", {
+        defaultValue: "Your organization requires SSO to sign in.",
+      });
+    case "tenant_not_found":
+    case "tenant_forbidden":
+      return t("cloud.login.callback.tenantUnavailable", {
+        defaultValue: "Workspace not found or access denied.",
+      });
+    case "missing_params":
+      return t("cloud.login.callback.missingParams", {
+        defaultValue: "That sign-in link is incomplete. Request a new one.",
+      });
+    case "mfa_required":
+      return t("cloud.login.callback.mfaRequired", {
+        defaultValue:
+          "Additional verification is required to finish signing in.",
+      });
     default:
       return t("cloud.login.callback.unknown", {
         defaultValue: "Couldn't complete sign-in. Try again.",
