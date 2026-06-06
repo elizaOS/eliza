@@ -1,15 +1,21 @@
 /**
- * GET /api/v1/app-credits/balance — user's credit balance for a specific app.
+ * GET /api/v1/app-credits/balance — credits spendable in a specific app.
  *
  * Query: app_id (required, also accepted via X-App-Id header).
+ *
+ * App purchases fund and app inference debits the user's ORGANIZATION
+ * credit balance — one ledger (#8253) — so this reports the org balance.
+ * The app_id is still required so the route stays per-app addressable
+ * (and so a future per-app view can be reintroduced without a contract
+ * change).
  *
  * CORS is handled globally (wildcard origin, no credentials).
  */
 
+import { organizationsRepository } from "@elizaos/cloud-shared/db/repositories/organizations";
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { appCreditsService } from "@/lib/services/app-credits";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -25,24 +31,13 @@ app.get("/", async (c) => {
     }
 
     const user = await requireUserOrApiKeyWithOrg(c);
-
-    let balance = await appCreditsService.getBalance(appId, user.id);
-
-    if (!balance) {
-      await appCreditsService.getOrCreateBalance(
-        appId,
-        user.id,
-        user.organization_id,
-      );
-      balance = await appCreditsService.getBalance(appId, user.id);
-    }
+    const org = await organizationsRepository.findById(user.organization_id);
+    const balance = org ? Number.parseFloat(String(org.credit_balance)) : 0;
 
     return c.json({
       success: true,
-      balance: balance?.balance ?? 0,
-      totalPurchased: balance?.totalPurchased ?? 0,
-      totalSpent: balance?.totalSpent ?? 0,
-      isLow: (balance?.balance ?? 0) < LOW_BALANCE_THRESHOLD,
+      balance,
+      isLow: balance < LOW_BALANCE_THRESHOLD,
     });
   } catch (error) {
     logger.error("[App Credits API] Failed to get balance:", error);

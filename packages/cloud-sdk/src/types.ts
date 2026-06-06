@@ -226,9 +226,8 @@ export interface CreateCreditsCheckoutResponse extends Record<string, unknown> {
 
 export interface AppCreditsBalanceResponse extends Record<string, unknown> {
   success: boolean;
+  /** The user's org credit balance — the single ledger app purchases fund and app inference debits. */
   balance?: number;
-  totalPurchased?: number;
-  totalSpent?: number;
   isLow?: boolean;
   error?: string;
 }
