@@ -369,6 +369,20 @@ export async function openSettingsSection(
     return;
   }
 
+  const sectionBackButton = settingsShell
+    .getByRole("button", { name: /^Settings$/ })
+    .first();
+  if (await locatorVisible(sectionBackButton, 1_000)) {
+    await sectionBackButton.click();
+    const nextHubSectionButton = settingsShell
+      .getByRole("button", { name: sectionName })
+      .first();
+    if (await locatorVisible(nextHubSectionButton, 1_000)) {
+      await nextHubSectionButton.click();
+      return;
+    }
+  }
+
   const settingsNav = page.getByRole("navigation", { name: "Settings" });
   const sectionButton = settingsNav.getByRole("button", { name: sectionName });
   if (await locatorVisible(sectionButton, 1_000)) {
