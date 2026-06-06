@@ -68,6 +68,15 @@ const PLAYWRIGHT_TEST_AUTH_ENABLED =
     process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
 
 type AuthStep = "idle" | "loading" | "email-sent" | "success";
+
+function persistStewardToken(token: string): void {
+  writeStoredStewardToken(token);
+  if (readStoredStewardToken() !== token) {
+    throw new Error(
+      "Eliza Cloud sign-in needs browser storage. Enable storage for this site and try again.",
+    );
+  }
+}
 type Provider =
   | "passkey"
   | "email"
@@ -247,8 +256,10 @@ export default function StewardLoginSection() {
           // cookies, hydrate through the cookie refresh endpoint before
           // redirecting instead of bouncing into a login loop.
           let token = res?.token;
-          if (!token && hasStewardAuthedCookie()) {
-            const refreshed = await refreshStewardSessionViaCookie();
+          if (!token) {
+            const refreshed = await refreshStewardSessionViaCookie().catch(
+              () => null,
+            );
             token = refreshed?.token;
           }
           if (!token) {
@@ -256,7 +267,7 @@ export default function StewardLoginSection() {
               "Sign-in completed, but the browser session could not be hydrated. Refresh and try again.",
             );
           }
-          writeStoredStewardToken(token);
+          persistStewardToken(token);
           window.dispatchEvent(new CustomEvent("steward-token-sync"));
           setRedirectTo(
             resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
@@ -283,7 +294,17 @@ export default function StewardLoginSection() {
     const refreshToken = fromHash?.refreshToken ?? queryRefreshToken ?? null;
     if (!token) return;
 
-    writeStoredStewardToken(token);
+    try {
+      persistStewardToken(token);
+    } catch (sessionError) {
+      setCallbackError(
+        getErrorMessage(
+          sessionError,
+          "Could not complete Eliza Cloud sign-in.",
+        ),
+      );
+      return;
+    }
     // Refresh token is forwarded to the server only so it can be set as the
     // HttpOnly steward-refresh-token cookie — it is NOT persisted in
     // localStorage (XSS-reachable). After first login the HttpOnly cookie
