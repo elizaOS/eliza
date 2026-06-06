@@ -307,7 +307,7 @@ export function readSettingsHashSection(): string | null {
   if (typeof window === "undefined") return null;
   const hash = window.location.hash.replace(/^#/, "");
   if (!hash) return null;
-  if (hash === "cloud") return "ai-model";
+  if (hash === "cloud" || hash === "providers") return "ai-model";
   return SETTINGS_SECTIONS.some((section) => section.id === hash) ? hash : null;
 }
 

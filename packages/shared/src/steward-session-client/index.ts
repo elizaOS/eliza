@@ -53,8 +53,9 @@ export const STEWARD_NONCE_EXCHANGE_ENDPOINT =
 /**
  * Same-origin endpoint that rotates the Steward access + refresh tokens
  * using the HttpOnly `steward-refresh-token` cookie. The browser POSTs
- * with `credentials: "include"`; the cookie travels automatically and no
- * token ever enters JS.
+ * with `credentials: "include"`; the cookie travels automatically. Trusted
+ * Cloud browser origins receive the short-lived access token so the SPA can
+ * refresh its localStorage mirror while route auth remains synchronous.
  */
 export const STEWARD_REFRESH_ENDPOINT = "/api/auth/steward-refresh";
 
@@ -298,6 +299,8 @@ export interface StewardNonceExchangeRequest {
   redirectUri?: string;
   /** Steward tenant ID (e.g. "elizacloud"). */
   tenantId?: string;
+  /** PKCE verifier paired with the `code_challenge` sent to Steward. */
+  codeVerifier?: string;
 }
 
 export interface StewardNonceExchangeResponse extends StewardSessionResponse {
@@ -319,6 +322,8 @@ export interface ExchangeStewardCodeOpts extends SyncOpts {
   redirectUri?: string;
   /** Steward tenant id. */
   tenantId?: string;
+  /** PKCE verifier paired with the `code_challenge` sent to Steward. */
+  codeVerifier?: string;
 }
 
 /**
@@ -338,6 +343,7 @@ export async function exchangeStewardCode(
     code,
     ...(opts.redirectUri ? { redirectUri: opts.redirectUri } : {}),
     ...(opts.tenantId ? { tenantId: opts.tenantId } : {}),
+    ...(opts.codeVerifier ? { codeVerifier: opts.codeVerifier } : {}),
   };
   const response = await f(endpoint, {
     method: "POST",

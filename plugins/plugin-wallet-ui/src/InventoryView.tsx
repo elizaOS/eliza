@@ -16,8 +16,11 @@ import { useApp } from "@elizaos/ui/state";
 import { cn } from "@elizaos/ui/utils";
 import {
   Activity,
+  AlertTriangle,
   ArrowLeftRight,
   BarChart3,
+  CheckCircle2,
+  CircleDot,
   Copy,
   EyeOff,
   Image as ImageIcon,
@@ -171,6 +174,11 @@ function formatPercentDelta(value: number): string {
   });
   const sign = value > 0 ? "+" : value < 0 ? "-" : "";
   return `${sign}${magnitude}%`;
+}
+
+function formatCompactAddress(address: string): string {
+  if (address.length <= 12) return address;
+  return `${address.slice(0, 5)}...${address.slice(-4)}`;
 }
 
 function formatBnb(value: string | null | undefined): string {
@@ -898,30 +906,95 @@ function MarketMoverList({
   );
 }
 
+function WalletMotif() {
+  return (
+    <svg
+      viewBox="0 0 120 120"
+      role="img"
+      aria-label="Empty wallet"
+      className="h-24 w-24"
+    >
+      <defs>
+        <linearGradient id="walletMotifFill" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.9" />
+          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.35" />
+        </linearGradient>
+      </defs>
+      <circle
+        cx="60"
+        cy="60"
+        r="56"
+        fill="url(#walletMotifFill)"
+        opacity="0.12"
+      />
+      <rect
+        x="30"
+        y="42"
+        width="60"
+        height="40"
+        rx="10"
+        fill="url(#walletMotifFill)"
+        opacity="0.85"
+      />
+      <rect
+        x="30"
+        y="42"
+        width="60"
+        height="14"
+        rx="7"
+        fill="var(--accent)"
+        opacity="0.5"
+      />
+      <circle cx="78" cy="62" r="6" fill="var(--bg)" opacity="0.85" />
+      <circle cx="78" cy="62" r="2.5" fill="var(--accent)" />
+    </svg>
+  );
+}
+
+function WalletEmptyHero({
+  hasKeys,
+  onConfigureKeys,
+}: {
+  hasKeys: boolean;
+  onConfigureKeys: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-4 rounded-[28px] border border-border/30 bg-bg/30 px-6 py-12 text-center">
+      <WalletMotif />
+      <div className="text-base font-semibold text-txt">
+        {hasKeys ? "No assets yet" : "Wallet not configured"}
+      </div>
+      {hasKeys ? null : (
+        <Button
+          type="button"
+          variant="surfaceAccent"
+          size="sm"
+          onClick={onConfigureKeys}
+        >
+          Configure keys
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function MarketPulseHero({
   overview,
   loading,
-  error,
+  hasKeys,
+  onConfigureKeys,
 }: {
   overview: WalletMarketOverviewResponse | null;
   loading: boolean;
-  error: string | null;
+  hasKeys: boolean;
+  onConfigureKeys: () => void;
 }) {
   return (
     <section className="space-y-6">
-      <div className="max-w-2xl">
-        <h2 className="text-2xl font-semibold leading-tight text-txt md:text-[2rem]">
-          No balances or trade history yet.
-        </h2>
-        <div className="mt-2 max-w-xl text-sm text-muted">
-          {overview?.stale
-            ? "Here's the latest cached market snapshot."
-            : "Here's what the market looks like right now."}
-        </div>
-      </div>
+      <WalletEmptyHero hasKeys={hasKeys} onConfigureKeys={onConfigureKeys} />
 
       {overview ? (
-        <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.92fr)]">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.92fr)]">
           <div className="space-y-4">
             <div>
               <MarketSectionHeader
@@ -949,17 +1022,13 @@ function MarketPulseHero({
           </div>
         </div>
       ) : loading ? (
-        <div className="mt-6 grid grid-cols-[repeat(auto-fit,minmax(min(100%,13.5rem),1fr))] gap-3">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,13.5rem),1fr))] gap-3">
           {["btc", "eth", "sol"].map((loadingCardId) => (
             <div
               key={loadingCardId}
               className="h-28 animate-pulse rounded-[26px] border border-border/30 bg-bg/35"
             />
           ))}
-        </div>
-      ) : error ? (
-        <div className="mt-6 rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger">
-          {error}
         </div>
       ) : null}
     </section>
@@ -1110,12 +1179,14 @@ function WalletRailAddress({
   address,
   chains,
   emptyLabel,
+  label,
   agentId,
   agentLabel,
 }: {
   address: string | null;
   chains: string[];
   emptyLabel: string;
+  label: string;
   /** Stable agent-surface id so the agent can copy this address by name. */
   agentId: string;
   /** Human/agent-facing label for the copy action. */
@@ -1144,7 +1215,12 @@ function WalletRailAddress({
     <button
       ref={ref}
       type="button"
-      className="flex w-full min-w-0 items-center justify-between gap-3 py-1 text-left transition-colors hover:text-txt"
+      className={cn(
+        "group inline-flex min-w-0 items-center gap-2 rounded-full border px-2.5 py-1.5 text-left transition-colors",
+        address
+          ? "border-border/35 bg-bg/40 text-txt hover:bg-bg/65"
+          : "border-border/25 bg-bg/25 text-muted",
+      )}
       onClick={handleCopy}
       disabled={!address}
       title={address ?? emptyLabel}
@@ -1153,36 +1229,132 @@ function WalletRailAddress({
       }
       {...agentProps}
     >
-      <span className="flex min-w-0 items-center gap-3">
-        <span className="flex shrink-0 -space-x-1.5">
-          {chains.map((chain) => (
-            <ChainLogoBadge
-              key={chain}
-              chain={chain}
-              size={18}
-              className="ring-1 ring-bg"
-            />
-          ))}
-        </span>
-        <span
-          className={cn(
-            "truncate font-mono text-xs",
-            address ? "text-txt" : "text-muted",
-          )}
-        >
-          {address ?? emptyLabel}
-        </span>
+      <span className="flex shrink-0 -space-x-1.5">
+        {chains.map((chain) => (
+          <ChainLogoBadge
+            key={chain}
+            chain={chain}
+            size={18}
+            className="ring-1 ring-bg"
+          />
+        ))}
+      </span>
+      <span className="shrink-0 text-[0.68rem] font-semibold uppercase text-muted">
+        {label}
+      </span>
+      <span
+        className={cn(
+          "min-w-0 truncate font-mono text-xs font-semibold",
+          address ? "max-w-24 text-txt" : "max-w-20 text-muted",
+        )}
+      >
+        {address ? formatCompactAddress(address) : emptyLabel}
       </span>
       {address ? (
         copied ? (
-          <span className="shrink-0 text-[0.68rem] font-semibold text-ok">
-            Copied
-          </span>
+          <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-ok" />
         ) : (
-          <Copy className="h-3.5 w-3.5 shrink-0 text-muted" />
+          <Copy className="h-3.5 w-3.5 shrink-0 text-muted transition-colors group-hover:text-txt" />
         )
-      ) : null}
+      ) : (
+        <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warn" />
+      )}
     </button>
+  );
+}
+
+function WalletConnectionChip({
+  label,
+  ready,
+}: {
+  label: string;
+  ready: boolean;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.68rem] font-semibold uppercase",
+        ready
+          ? "border-ok/25 bg-ok/10 text-ok"
+          : "border-warn/25 bg-warn/10 text-warn",
+      )}
+      title={`${label} ${ready ? "ready" : "needs RPC"}`}
+    >
+      {ready ? (
+        <CheckCircle2 className="h-3 w-3" />
+      ) : (
+        <AlertTriangle className="h-3 w-3" />
+      )}
+      {label}
+    </span>
+  );
+}
+
+function WalletChainCluster() {
+  return (
+    <span className="flex min-w-0 flex-wrap gap-1.5">
+      {SUPPORTED_WALLET_CHAINS.map((chain) => (
+        <span
+          key={chain}
+          className="inline-flex items-center gap-1.5 rounded-full border border-border/25 bg-bg/35 px-2 py-1 text-[0.65rem] font-semibold uppercase text-muted"
+        >
+          <ChainLogoBadge chain={chain} size={16} className="ring-1 ring-bg" />
+          {chain === "ethereum" ? "ETH" : chain === "solana" ? "SOL" : chain}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function WalletAddressCluster({
+  addresses,
+}: {
+  addresses: { evmAddress: string | null; solanaAddress: string | null };
+}) {
+  return (
+    <div className="flex min-w-0 flex-wrap gap-2">
+      <WalletRailAddress
+        address={addresses.evmAddress}
+        chains={SUPPORTED_WALLET_CHAINS.filter((chain) => chain !== "solana")}
+        emptyLabel="No EVM"
+        label="EVM"
+        agentId="account-copy-evm-address"
+        agentLabel="EVM address"
+      />
+      <WalletRailAddress
+        address={addresses.solanaAddress}
+        chains={["solana"]}
+        emptyLabel="No SOL"
+        label="SOL"
+        agentId="account-copy-solana-address"
+        agentLabel="Solana address"
+      />
+    </div>
+  );
+}
+
+function WalletProviderDots({
+  walletConfig,
+}: {
+  walletConfig: WalletConfigStatus | null;
+}) {
+  const evmReady = Boolean(walletConfig?.evmBalanceReady);
+  const solanaReady = Boolean(walletConfig?.solanaBalanceReady);
+  return (
+    <span className="inline-flex items-center -space-x-1">
+      <span
+        className={cn(
+          "h-2.5 w-2.5 rounded-full ring-2 ring-bg",
+          evmReady ? "bg-ok" : "bg-warn",
+        )}
+      />
+      <span
+        className={cn(
+          "h-2.5 w-2.5 rounded-full ring-2 ring-bg",
+          solanaReady ? "bg-ok" : "bg-warn",
+        )}
+      />
+    </span>
   );
 }
 
@@ -1193,15 +1365,6 @@ function WalletRailRpcButton({
   walletConfig: WalletConfigStatus | null;
   onOpenSettings: () => void;
 }) {
-  const evmReady = Boolean(walletConfig?.evmBalanceReady);
-  const solanaReady = Boolean(walletConfig?.solanaBalanceReady);
-  const toneClass = !walletConfig
-    ? "bg-muted"
-    : evmReady && solanaReady
-      ? "bg-ok"
-      : evmReady || solanaReady
-        ? "bg-warn"
-        : "bg-danger";
   const evmProvider = providerLabel(
     walletConfig?.selectedRpcProviders?.evm,
     "evm",
@@ -1223,13 +1386,13 @@ function WalletRailRpcButton({
     <button
       ref={ref}
       type="button"
-      className="inline-flex h-8 items-center gap-2 rounded-full border border-border/35 bg-bg/35 px-3 text-xs font-semibold text-txt transition-colors hover:bg-bg/55"
+      className="inline-flex h-9 items-center gap-2 rounded-full border border-border/35 bg-bg/40 px-3 text-xs font-semibold text-txt transition-colors hover:bg-bg/65"
       onClick={onOpenSettings}
       title={`RPC providers: EVM ${evmProvider}, Solana ${solanaProvider}`}
       aria-label="Open RPC settings"
       {...agentProps}
     >
-      <span className={cn("h-2 w-2 rounded-full", toneClass)} />
+      <WalletProviderDots walletConfig={walletConfig} />
       RPC
     </button>
   );
@@ -1259,11 +1422,28 @@ function WalletRailAccount({
       status: refreshing ? "active" : undefined,
       description: "Reload wallet balances, NFTs, and trading data",
     });
+  const evmReady = Boolean(walletConfig?.evmBalanceReady);
+  const solanaReady = Boolean(walletConfig?.solanaBalanceReady);
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="font-mono text-xl font-semibold leading-none text-txt">
-          {formatUsd(portfolioValueUsd)}
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start gap-4">
+        <div className="relative flex h-16 w-16 items-center justify-center rounded-[24px] border border-border/30 bg-bg/45">
+          <Wallet className="h-7 w-7 text-accent" />
+          <span className="absolute -right-1 -bottom-1 flex h-6 w-6 items-center justify-center rounded-full bg-bg ring-2 ring-bg">
+            <CircleDot className="h-4 w-4 text-ok" />
+          </span>
+        </div>
+        <div className="min-w-0 flex-1 basis-64">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <div className="font-mono text-2xl font-semibold leading-none text-txt">
+              {formatUsd(portfolioValueUsd)}
+            </div>
+            <WalletChainCluster />
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <WalletConnectionChip label="EVM" ready={evmReady} />
+            <WalletConnectionChip label="SOL" ready={solanaReady} />
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <WalletRailRpcButton
@@ -1275,7 +1455,7 @@ function WalletRailAccount({
             type="button"
             variant="ghost"
             size="icon"
-            className="h-8 w-8 shrink-0 rounded-full border border-border/35 bg-bg/35 hover:bg-bg/55"
+            className="h-9 w-9 shrink-0 rounded-full border border-border/35 bg-bg/40 hover:bg-bg/65"
             onClick={onRefresh}
             disabled={refreshing}
             aria-label="Refresh wallet"
@@ -1288,20 +1468,7 @@ function WalletRailAccount({
           </Button>
         </div>
       </div>
-      <WalletRailAddress
-        address={addresses.evmAddress}
-        chains={SUPPORTED_WALLET_CHAINS.filter((chain) => chain !== "solana")}
-        emptyLabel="No EVM address"
-        agentId="account-copy-evm-address"
-        agentLabel="EVM address"
-      />
-      <WalletRailAddress
-        address={addresses.solanaAddress}
-        chains={["solana"]}
-        emptyLabel="No Solana address"
-        agentId="account-copy-solana-address"
-        agentLabel="Solana address"
-      />
+      <WalletAddressCluster addresses={addresses} />
     </div>
   );
 }
@@ -1311,7 +1478,7 @@ function WalletRailTabButton({
   active,
   onSelect,
 }: {
-  tab: { id: WalletRailTab; label: string; icon: LucideIcon };
+  tab: { id: WalletRailTab; label: string; icon: LucideIcon; count: number };
   active: boolean;
   onSelect: (id: WalletRailTab) => void;
 }) {
@@ -1339,6 +1506,14 @@ function WalletRailTabButton({
     >
       <tab.icon className="h-3.5 w-3.5 shrink-0" />
       <span className="truncate">{tab.label}</span>
+      <span
+        className={cn(
+          "ml-0.5 rounded-full px-1.5 py-0.5 font-mono text-[0.62rem]",
+          active ? "bg-bg/60 text-muted" : "bg-bg/35 text-muted",
+        )}
+      >
+        {tab.count}
+      </span>
     </button>
   );
 }
@@ -1554,14 +1729,16 @@ function WalletHoldingsSection({
     id: WalletRailTab;
     label: string;
     icon: LucideIcon;
+    count: number;
   }> = [
     {
       id: "tokens",
       label: "Tokens",
       icon: Wallet,
+      count: visibleRows.length,
     },
-    { id: "defi", label: "DeFi", icon: Layers3 },
-    { id: "nfts", label: "NFTs", icon: ImageIcon },
+    { id: "defi", label: "DeFi", icon: Layers3, count: positions.length },
+    { id: "nfts", label: "NFTs", icon: ImageIcon, count: nfts.length },
   ];
   const { ref: enableWalletRef, agentProps: enableWalletAgentProps } =
     useAgentElement<HTMLButtonElement>({
@@ -1575,7 +1752,7 @@ function WalletHoldingsSection({
   return (
     <section
       data-testid="wallets-sidebar"
-      className="rounded-[28px] border border-border/30 bg-bg/45 px-5 py-5 md:px-6"
+      className="rounded-[28px] border border-border/30 bg-bg/45 px-5 py-5 shadow-sm md:px-6"
     >
       <WalletRailAccount
         addresses={addresses}
@@ -1601,7 +1778,7 @@ function WalletHoldingsSection({
           </Button>
         ) : null}
 
-        <div className="grid min-w-0 grid-cols-3 rounded-2xl bg-bg/45 p-1">
+        <div className="grid min-w-0 grid-cols-3 rounded-2xl border border-border/25 bg-bg/45 p-1">
           {tabs.map((tab) => (
             <WalletRailTabButton
               key={tab.id}
@@ -1894,9 +2071,6 @@ export function InventoryView() {
   const [marketOverview, setMarketOverview] =
     useState<WalletMarketOverviewResponse | null>(null);
   const [marketOverviewLoading, setMarketOverviewLoading] = useState(false);
-  const [marketOverviewError, setMarketOverviewError] = useState<string | null>(
-    null,
-  );
   const initialLoadRef = useRef(false);
   const tradingProfileRequestRef = useRef(0);
   const marketOverviewRequestRef = useRef(0);
@@ -1934,20 +2108,18 @@ export function InventoryView() {
     const requestId = marketOverviewRequestRef.current + 1;
     marketOverviewRequestRef.current = requestId;
     setMarketOverviewLoading(true);
-    setMarketOverviewError(null);
 
     try {
       const overview = await client.getWalletMarketOverview();
       if (marketOverviewRequestRef.current === requestId) {
         setMarketOverview(overview);
       }
-    } catch (cause) {
-      const message =
-        cause instanceof Error && cause.message.trim().length > 0
-          ? cause.message.trim()
-          : "Failed to load market overview.";
+    } catch {
+      // Market overview is an optional capability — when the feed is
+      // unavailable the empty-wallet hero simply omits the market panels
+      // rather than surfacing an error.
       if (marketOverviewRequestRef.current === requestId) {
-        setMarketOverviewError(message);
+        setMarketOverview(null);
       }
     } finally {
       if (marketOverviewRequestRef.current === requestId) {
@@ -2067,7 +2239,7 @@ export function InventoryView() {
       data-testid="wallet-shell"
       className="h-full min-h-0 w-full overflow-y-auto bg-bg"
     >
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-5 py-6">
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-5 pt-6 pb-28">
         {walletError ? (
           <div className="rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger">
             {walletError}
@@ -2099,7 +2271,10 @@ export function InventoryView() {
           <MarketPulseHero
             overview={marketOverview}
             loading={marketOverviewLoading}
-            error={marketOverviewError}
+            hasKeys={
+              addresses.evmAddress !== null || addresses.solanaAddress !== null
+            }
+            onConfigureKeys={handleOpenRpcSettings}
           />
         ) : null}
 

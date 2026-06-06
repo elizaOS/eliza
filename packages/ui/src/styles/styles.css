@@ -34,6 +34,7 @@ electrobun-wgpu {
 @source "..";
 @source "../../../ui/src";
 @source "../../../../plugins/app-lifeops/src";
+@source "../../../../plugins/plugin-social-alpha/src/frontend";
 
 /* ── Global resets ──────────────────────────────────────────────────── */
 

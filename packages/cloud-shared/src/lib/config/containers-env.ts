@@ -28,6 +28,14 @@ function pick(...candidates: (string | undefined)[]): string | undefined {
   return undefined;
 }
 
+function parsePositiveIntList(value: string | undefined): number[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((item) => Number.parseInt(item.trim(), 10))
+    .filter((item) => Number.isFinite(item) && item > 0);
+}
+
 export const containersEnv = {
   /** Base64-encoded SSH private key for connecting to Docker nodes. */
   sshKey(): string | undefined {
@@ -251,6 +259,11 @@ export const containersEnv = {
   defaultHcloudServerType(): string {
     const env = getCloudAwareEnv();
     return pick(env.CONTAINERS_HCLOUD_SERVER_TYPE, env.HCLOUD_SERVER_TYPE) ?? "ccx33";
+  },
+
+  defaultHcloudNetworkIds(): number[] {
+    const env = getCloudAwareEnv();
+    return parsePositiveIntList(pick(env.CONTAINERS_HCLOUD_NETWORK_IDS, env.HCLOUD_NETWORK_IDS));
   },
 
   /**

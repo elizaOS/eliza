@@ -200,8 +200,11 @@ async function handleCheckoutSessionCompleted(
       stripePaymentIntentId: paymentIntentId,
     });
 
+    // processPurchase credits the org ledger directly (with this
+    // paymentIntentId on the credit transaction), so no separate
+    // marker transaction is needed here (#8253).
     logger.info(
-      `[Stripe Queue] App credits added: ${result.creditsAdded} to app ${appId} for user ${userId}`,
+      `[Stripe Queue] App credits added: ${result.creditsAdded} to org ${organizationId} for app ${appId} / user ${userId}`,
       {
         creditsAdded: result.creditsAdded,
         platformOffset: result.platformOffset,
@@ -209,24 +212,6 @@ async function handleCheckoutSessionCompleted(
         newBalance: result.newBalance,
       },
     );
-
-    await creditsService.addCredits({
-      organizationId,
-      amount: 0,
-      description: `App credit purchase (App: ${appId}) - $${credits.toFixed(2)}`,
-      metadata: {
-        user_id: userId,
-        app_id: appId,
-        payment_intent_id: paymentIntentId,
-        session_id: session.id,
-        type: purchaseType,
-        source: purchaseSource,
-        credits_to_app_balance: credits,
-        platform_offset: result.platformOffset,
-        creator_earnings: result.creatorEarnings,
-      },
-      stripePaymentIntentId: paymentIntentId,
-    });
 
     invalidateOrgTierCache(organizationId).catch((err) =>
       logger.warn("[Stripe Queue] Failed to invalidate org tier cache", {

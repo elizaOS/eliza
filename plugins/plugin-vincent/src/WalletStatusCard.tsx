@@ -5,7 +5,7 @@
 import type { WalletAddresses, WalletBalancesResponse } from "@elizaos/shared";
 import { Button, StatusBadge } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Copy, Layers3, Wallet } from "lucide-react";
+import { Check, Copy, Layers3, Network, Wallet } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
 interface WalletStatusCardProps {
@@ -38,12 +38,22 @@ function CopyableAddress({
     group: "vincent-wallet",
     description: `${agentLabel} to the clipboard`,
   });
+  const shortAddress =
+    address.length > 18
+      ? `${address.slice(0, 6)}...${address.slice(-4)}`
+      : address;
+
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-bg/50 px-3 py-2.5">
-      <div className="min-w-0 flex-1">
-        <div className="text-xs-tight font-medium text-muted">{label}</div>
-        <div className="mt-0.5 truncate font-mono text-xs text-txt">
-          {address}
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-border/30 bg-card/50 px-3 py-3">
+      <div className="flex min-w-0 items-center gap-2">
+        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-accent/20 bg-accent/10 text-accent">
+          <Network className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <div className="text-xs-tight font-semibold text-txt">{label}</div>
+          <div className="mt-0.5 font-mono text-xs text-muted">
+            {shortAddress}
+          </div>
         </div>
       </div>
       <Button
@@ -55,7 +65,11 @@ function CopyableAddress({
         onClick={() => onCopy(address, label)}
         aria-label={`Copy ${label}`}
       >
-        <Copy className="h-3.5 w-3.5" />
+        {label === "Copied!" ? (
+          <Check className="h-3.5 w-3.5 text-ok" />
+        ) : (
+          <Copy className="h-3.5 w-3.5" />
+        )}
       </Button>
     </div>
   );
@@ -114,7 +128,7 @@ export function WalletStatusCard({
         if (isNonDust(chain.nativeValueUsd)) {
           total += Number.parseFloat(chain.nativeValueUsd);
           pills.push({
-            label: `${chain.chain} Native`,
+            label: chain.chain,
             value: `$${Number.parseFloat(chain.nativeValueUsd).toFixed(2)}`,
           });
         }
@@ -171,11 +185,11 @@ export function WalletStatusCard({
     return (
       <div
         data-testid="vincent-wallet-status-card"
-        className="rounded-lg border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+        className="rounded-2xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
       >
         <div className="flex items-center gap-2">
           <Wallet className="h-4 w-4 text-muted/50" />
-          <span className="text-sm text-muted">Wallet data loading...</span>
+          <span className="text-sm text-muted">Wallet loading</span>
         </div>
       </div>
     );
@@ -184,23 +198,23 @@ export function WalletStatusCard({
   return (
     <div
       data-testid="vincent-wallet-status-card"
-      className="space-y-4 rounded-lg border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+      className="space-y-3 rounded-2xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
     >
       {/* Header row */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Wallet className="h-4 w-4 text-accent" />
-          <span className="text-sm font-semibold text-txt">Agent Wallet</span>
+          <span className="text-sm font-semibold text-txt">Wallet</span>
         </div>
         {totalUsd && <StatusBadge label={totalUsd} tone="success" withDot />}
       </div>
 
       {/* Addresses */}
       {hasAddresses && (
-        <div className="space-y-2">
+        <div className="grid gap-2 sm:grid-cols-2">
           {evmAddress && (
             <CopyableAddress
-              label={copiedField === "EVM Address" ? "Copied!" : "EVM Address"}
+              label={copiedField === "EVM" ? "Copied!" : "EVM"}
               address={evmAddress}
               onCopy={handleCopy}
               agentId="action-copy-evm-address"
@@ -209,9 +223,7 @@ export function WalletStatusCard({
           )}
           {solanaAddress && (
             <CopyableAddress
-              label={
-                copiedField === "Solana Address" ? "Copied!" : "Solana Address"
-              }
+              label={copiedField === "Solana" ? "Copied!" : "Solana"}
               address={solanaAddress}
               onCopy={handleCopy}
               agentId="action-copy-solana-address"
@@ -247,7 +259,10 @@ export function WalletStatusCard({
 
       {/* No balances message */}
       {walletBalances && balancePills.length === 0 && (
-        <p className="text-xs text-muted">No token balances above $0.01.</p>
+        <div className="flex items-center gap-2 rounded-xl border border-border/20 bg-card/45 px-3 py-2 text-xs text-muted">
+          <span className="h-2 w-2 rounded-full bg-muted/50" />
+          $0.01+
+        </div>
       )}
     </div>
   );

@@ -10,22 +10,18 @@ export type StewardOAuthProvider = "google" | "discord" | "github";
  * value we send at /authorize time exactly matches the value we send at
  * /exchange time — Steward rejects the exchange if they differ.
  */
-export function buildStewardOAuthRedirectUri(
-  origin: string,
-  redirectSearch?: string,
-): string {
-  let normalizedSearch = redirectSearch ?? "";
-  if (normalizedSearch && !normalizedSearch.startsWith("?")) {
-    normalizedSearch = `?${normalizedSearch}`;
-  }
-  return `${origin}/login${normalizedSearch}`;
+export function buildStewardOAuthRedirectUri(origin: string): string {
+  // Keep the OAuth redirect URI stable. Steward allowlists exact redirect URLs
+  // for tenant OAuth; putting volatile login query params (returnTo, app auth,
+  // CLI state, etc.) in redirect_uri makes legitimate production logins miss
+  // the allowlist. Preserve post-login destinations outside redirect_uri.
+  return `${origin}/login`;
 }
 
 export function buildStewardOAuthAuthorizeUrl(
   provider: StewardOAuthProvider,
   origin: string,
   options?: {
-    redirectSearch?: string;
     stewardApiUrl?: string;
     stewardTenantId?: string;
     /**
@@ -37,10 +33,7 @@ export function buildStewardOAuthAuthorizeUrl(
     codeChallenge?: string;
   },
 ): string {
-  const redirectUri = buildStewardOAuthRedirectUri(
-    origin,
-    options?.redirectSearch,
-  );
+  const redirectUri = buildStewardOAuthRedirectUri(origin);
   const params = new URLSearchParams({
     redirect_uri: redirectUri,
     tenant_id: options?.stewardTenantId ?? DEFAULT_STEWARD_TENANT_ID,
@@ -64,15 +57,21 @@ export function buildStewardOAuthAuthorizeUrl(
 // Steward hardened `/auth/oauth/:provider/authorize` to require a PKCE
 // `code_challenge` (S256) for `response_type=code`. We mint a high-entropy
 // verifier, send `base64url(sha256(verifier))` as the challenge at /authorize,
-// stash the verifier in sessionStorage, and replay it at /exchange. Steward
+// stash the verifier in browser storage, and replay it at /exchange. Steward
 // recomputes the challenge and rejects the exchange unless it matches what was
 // bound at /authorize — binding the redirect to the browser that began it
 // (RFC 7636 auth-code interception defense). Mirrors Steward's
 // `pkceChallengeForVerifier` (packages/api/src/routes/auth.ts).
 
 const STEWARD_PKCE_VERIFIER_STORAGE_KEY = "steward.oauth.pkce.verifier";
+const STEWARD_PKCE_VERIFIER_TTL_MS = 10 * 60 * 1000;
 // 48 random bytes → 64 base64url chars, comfortably inside RFC 7636's 43–128.
 const PKCE_VERIFIER_BYTES = 48;
+
+type StoredPkceVerifier = {
+  verifier: string;
+  expiresAt: number;
+};
 
 function base64UrlEncode(bytes: Uint8Array): string {
   let binary = "";
@@ -112,28 +111,57 @@ export async function createStewardPkcePair(): Promise<StewardPkcePair> {
 
 export function storeStewardPkceVerifier(verifier: string): boolean {
   if (typeof window === "undefined") return false;
+  const stored = JSON.stringify({
+    verifier,
+    expiresAt: Date.now() + STEWARD_PKCE_VERIFIER_TTL_MS,
+  } satisfies StoredPkceVerifier);
+  let storedAnywhere = false;
   try {
-    window.sessionStorage.setItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY, verifier);
-    return true;
+    window.sessionStorage.setItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY, stored);
+    storedAnywhere = true;
   } catch {
-    // sessionStorage can throw (private mode / storage disabled). Signal failure
-    // so the caller fails fast upfront instead of redirecting into a guaranteed
-    // post-OAuth verifier mismatch (Steward bound a challenge we can't answer).
-    return false;
+    // Storage can throw (private mode / disabled). Signal failure only if both
+    // stores fail so the caller does not redirect into a guaranteed mismatch.
   }
+  try {
+    window.localStorage.setItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY, stored);
+    storedAnywhere = true;
+  } catch {
+    // Same as above.
+  }
+  return storedAnywhere;
 }
 
 export function consumeStewardPkceVerifier(): string | null {
   if (typeof window === "undefined") return null;
+  const sessionVerifier = consumeStoredPkceVerifier(window.sessionStorage);
+  const localVerifier = consumeStoredPkceVerifier(window.localStorage);
+  return sessionVerifier ?? localVerifier;
+}
+
+function consumeStoredPkceVerifier(storage: Storage): string | null {
   try {
-    const verifier = window.sessionStorage.getItem(
-      STEWARD_PKCE_VERIFIER_STORAGE_KEY,
-    );
-    if (verifier) {
-      window.sessionStorage.removeItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY);
-    }
-    return verifier;
+    const verifier = storage.getItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY);
+    storage.removeItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY);
+    return parseStoredPkceVerifier(verifier);
   } catch {
     return null;
+  }
+}
+
+function parseStoredPkceVerifier(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as Partial<StoredPkceVerifier>;
+    if (
+      typeof parsed.verifier === "string" &&
+      typeof parsed.expiresAt === "number" &&
+      parsed.expiresAt >= Date.now()
+    ) {
+      return parsed.verifier;
+    }
+    return null;
+  } catch {
+    return value;
   }
 }

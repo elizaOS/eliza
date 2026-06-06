@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cloud-frontend",
-  "version": "2.0.3-beta.6",
+  "version": "2.0.3-beta.10",
   "type": "module",
   "scripts": {
     "dev": "bun --bun vite",
@@ -40,7 +40,7 @@
     "@solana/wallet-adapter-wallets": "^0.19.38",
     "@solana/web3.js": "1.98.4",
     "@stwd/react": "^0.7.2",
-    "@stwd/sdk": "^0.8.1",
+    "@stwd/sdk": "^0.10.1",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/react-query": "^5.90.20",
@@ -93,6 +93,7 @@
     "bs58": "^6.0.0",
     "create-hash": "^1.2.0",
     "create-hmac": "^1.1.7",
+    "elliptic": "^6.6.1",
     "hash-base": "^3.1.2",
     "jsdom": "^29.1.1",
     "secp256k1": "^5.0.1",

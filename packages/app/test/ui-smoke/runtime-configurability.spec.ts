@@ -93,12 +93,17 @@ test("onboarding exposes local, cloud, and remote runtimes and each is configura
 
   if (!(await hasDetailedFirstRunShell(page))) {
     const toast = page.getByTestId("onboarding-toast");
-    await expect(toast).toContainText("Set up your agent");
-    await expect(page.getByRole("button", { name: "Use Local" })).toBeVisible();
+    await expect(toast).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Eliza Cloud" }),
+      page.getByRole("button", { name: "Tap to speak" }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Use Local" }).click();
+    await expect(page.getByRole("button", { name: "Connect" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Use Local" })).toHaveCount(
+      0,
+    );
+    await expect(page.getByRole("button", { name: "Eliza Cloud" })).toHaveCount(
+      0,
+    );
     await expect(toast).toBeVisible();
     await expectNoRenderTelemetryErrors(
       page,

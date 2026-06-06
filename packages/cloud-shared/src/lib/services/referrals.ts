@@ -9,7 +9,6 @@ import {
 } from "../../db/repositories/referrals";
 import { usersRepository } from "../../db/repositories/users";
 import { logger } from "../utils/logger";
-import { appCreditsService } from "./app-credits";
 import { creditsService } from "./credits";
 
 function isUniqueViolation(error: unknown): boolean {
@@ -268,24 +267,19 @@ export class ReferralsService {
       throw error;
     }
 
-    // Award bonus to referred user (app-specific or org balance)
-    if (appContext?.appId) {
-      // App-specific credits for app users
-      await appCreditsService.addCredits(
-        appContext.appId,
-        referredUserId,
-        REWARDS.REFERRED_BONUS,
-        "Referral signup bonus",
-      );
-    } else {
-      // Org balance for cloud users
-      await creditsService.addCredits({
-        organizationId,
-        amount: REWARDS.REFERRED_BONUS,
-        description: "Referral signup bonus",
-        metadata: { referral_code: normalizedCode, type: "referral_bonus" },
-      });
-    }
+    // Award bonus to referred user. Always the org balance — the single
+    // ledger app inference debits (#8253); a per-app pool reward would be
+    // unspendable.
+    await creditsService.addCredits({
+      organizationId,
+      amount: REWARDS.REFERRED_BONUS,
+      description: "Referral signup bonus",
+      metadata: {
+        referral_code: normalizedCode,
+        type: "referral_bonus",
+        ...(appContext?.appId && { app_id: appContext.appId }),
+      },
+    });
 
     // Award signup bonus to referrer (always goes to org balance - referrer is cloud user)
     await creditsService.addCredits({
@@ -557,29 +551,20 @@ export class SocialRewardsService {
       };
     }
 
-    // Award credits (app-specific or org balance)
-    if (appContext?.appId) {
-      // App-specific credits for app users
-      await appCreditsService.addCredits(
-        appContext.appId,
-        userId,
-        rewardAmount,
-        `Social share reward (${platform})`,
-      );
-    } else {
-      // Org balance for cloud users
-      await creditsService.addCredits({
-        organizationId,
-        amount: rewardAmount,
-        description: `Social share reward (${platform})`,
-        metadata: {
-          platform,
-          share_type: shareType,
-          share_url: shareUrl,
-          share_record_id: shareRecord.id,
-        },
-      });
-    }
+    // Award credits. Always the org balance — the single ledger app
+    // inference debits (#8253); a per-app pool reward would be unspendable.
+    await creditsService.addCredits({
+      organizationId,
+      amount: rewardAmount,
+      description: `Social share reward (${platform})`,
+      metadata: {
+        platform,
+        share_type: shareType,
+        share_url: shareUrl,
+        share_record_id: shareRecord.id,
+        ...(appContext?.appId && { app_id: appContext.appId }),
+      },
+    });
 
     // Mark as verified (since we're awarding immediately)
     await socialShareRewardsRepository.markVerified(shareRecord.id);

@@ -49,6 +49,11 @@ export interface HeadscaleRoute {
   enabled: boolean;
 }
 
+export interface HeadscaleUser {
+  id: number | string;
+  name: string;
+}
+
 // ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
@@ -168,14 +173,23 @@ export class HeadscaleClient {
     ephemeral?: boolean;
     expiration?: string;
     aclTags?: string[];
+    user?: string;
+    ensureUser?: boolean;
   }): Promise<HeadscalePreAuthKey> {
-    const { reusable = false, ephemeral = false, expiration, aclTags = ["tag:agent"] } = opts ?? {};
+    const {
+      reusable = false,
+      ephemeral = false,
+      expiration,
+      aclTags = ["tag:agent"],
+      user,
+      ensureUser = false,
+    } = opts ?? {};
 
     // 10-minute window is sufficient for container boot + VPN enrollment.
     // Previous 24h was unnecessarily large for single-use ephemeral keys.
     const expirationTime = expiration ?? new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
-    const userId = await this.resolveUserId();
+    const userId = ensureUser ? await this.ensureUser(user) : await this.resolveUserId(user);
 
     const data = await this.request<{
       preAuthKey?: HeadscalePreAuthKey;
@@ -208,6 +222,23 @@ export class HeadscaleClient {
       logger.error("[headscale] error listing pre-auth keys:", msg);
       return [];
     }
+  }
+
+  async ensureUser(user = this.user): Promise<number> {
+    const existing = await this.findUser(user);
+    if (existing) return existing;
+
+    try {
+      await this.request<Record<string, unknown>>("POST", "/api/v1/user", { name: user });
+    } catch (error) {
+      const afterRace = await this.findUser(user);
+      if (afterRace) return afterRace;
+      throw error;
+    }
+
+    const created = await this.findUser(user);
+    if (created) return created;
+    throw new Error(`[headscale] user not found after create: ${user}`);
   }
 
   // -------------------------------------------------------------------------
@@ -293,24 +324,32 @@ export class HeadscaleClient {
    * Resolve the configured HEADSCALE_USER to a numeric user ID.
    * Falls back to listing users via the API if the value isn't already numeric.
    */
-  private async resolveUserId(): Promise<number> {
+  private async resolveUserId(user = this.user): Promise<number> {
     // If user looks numeric, use directly
-    if (/^\d+$/.test(this.user)) {
-      return Number(this.user);
+    if (/^\d+$/.test(user)) {
+      return Number(user);
     }
 
-    // Otherwise look it up via the users endpoint
+    const match = await this.findUser(user);
+    if (!match) {
+      throw new Error(`[headscale] user not found or invalid: ${user}`);
+    }
+
+    return match;
+  }
+
+  private async listUsers(): Promise<HeadscaleUser[]> {
     const data = await this.request<{
-      users?: Array<{ id: number | string; name: string }>;
+      users?: HeadscaleUser[];
     }>("GET", "/api/v1/user");
+    return data.users ?? [];
+  }
 
-    const users = data.users ?? [];
-    const match = users.find((u) => u.name === this.user || String(u.id) === this.user);
-
-    if (!match?.id || !/^\d+$/.test(String(match.id))) {
-      throw new Error(`[headscale] user not found or invalid: ${this.user}`);
-    }
-
+  private async findUser(user: string): Promise<number | null> {
+    if (/^\d+$/.test(user)) return Number(user);
+    const users = await this.listUsers();
+    const match = users.find((u) => u.name === user || String(u.id) === user);
+    if (!match?.id || !/^\d+$/.test(String(match.id))) return null;
     return Number(match.id);
   }
 }

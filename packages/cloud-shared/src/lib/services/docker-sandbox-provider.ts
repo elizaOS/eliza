@@ -835,7 +835,11 @@ export class DockerSandboxProvider implements SandboxProvider {
     let vpnEnvVars: Record<string, string> = {};
     if (headscaleEnabled) {
       try {
-        const vpnSetup = await headscaleIntegration.prepareContainerVPN(agentId);
+        const vpnSetup = await headscaleIntegration.prepareContainerVPN({
+          agentId,
+          agentName,
+          organizationId,
+        });
         vpnEnvVars = vpnSetup.envVars;
         logger.info(`[docker-sandbox] Headscale VPN enabled for ${agentId}`);
       } catch (err) {

@@ -296,6 +296,13 @@ const smokeViewDeclarations = [
     "tui",
   ],
   [
+    "social-alpha",
+    "Social Alpha",
+    "plugin-social-alpha",
+    "/social-alpha",
+    "SocialAlphaView",
+  ],
+  [
     "task-coordinator",
     "Task Coordinator",
     "plugin-task-coordinator",
@@ -5033,6 +5040,19 @@ const server = http.createServer(async (req, res) => {
     // the catch-all 501 the diagnostics guard would otherwise flag.
     await drainRequest(req);
     sendJson(req, res, 200, { suggestions: [] });
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/social-alpha/leaderboard"
+  ) {
+    // Mirror the social-alpha leaderboard route's zero-key behavior
+    // (plugins/plugin-social-alpha/src/routes.ts): with no recommendations
+    // recorded the real route returns an empty data array, and the view
+    // renders its wallet-required / empty state. Returning the same shape
+    // keeps the visual smoke deterministic and avoids the catch-all 501.
+    sendJson(req, res, 200, { data: [] });
     return;
   }
 

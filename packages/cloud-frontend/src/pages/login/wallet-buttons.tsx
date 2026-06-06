@@ -1,7 +1,11 @@
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
-import type { StewardAuth, StewardAuthResult } from "@stwd/sdk";
+import type {
+  StewardAuth,
+  StewardAuthResult,
+  StewardMfaRequiredResult,
+} from "@stwd/sdk";
 import NetworkBase from "@web3icons/react/icons/networks/NetworkBase";
 import NetworkBinanceSmartChain from "@web3icons/react/icons/networks/NetworkBinanceSmartChain";
 import NetworkEthereum from "@web3icons/react/icons/networks/NetworkEthereum";
@@ -33,6 +37,19 @@ function getWindowEthereumProvider(): Eip1193Provider | null {
 
 function isHexAddress(value: string | undefined): value is HexAddress {
   return /^0x[a-fA-F0-9]{40}$/.test(value ?? "");
+}
+
+// Wallet sign-in returns `StewardAuthResult | StewardMfaRequiredResult`.
+// There is no MFA-continuation UI in this login surface, so narrow on the
+// `mfaRequired` discriminant and surface a clear error instead of forwarding
+// an MFA challenge to onSuccess as if it carried tokens.
+function requireCompletedAuth(
+  result: StewardAuthResult | StewardMfaRequiredResult,
+): StewardAuthResult {
+  if ("mfaRequired" in result) {
+    throw new Error("MFA required — not yet supported in this client.");
+  }
+  return result;
 }
 
 async function requestEip1193Account(
@@ -212,7 +229,9 @@ function EthereumButton({
     ) => {
       onLoadingChange(true);
       try {
-        const result = await auth.signInWithSIWE(addr, signMessage);
+        const result = requireCompletedAuth(
+          await auth.signInWithSIWE(addr, signMessage),
+        );
         await onSuccess(result);
       } catch (e) {
         const err = e instanceof Error ? e : new Error(String(e));
@@ -374,9 +393,8 @@ function SolanaButton({
     try {
       const publicKey = wallet.publicKey.toBase58();
       const signMessage = wallet.signMessage;
-      const result = await auth.signInWithSolana(
-        publicKey,
-        async (msg: Uint8Array) => {
+      const result = requireCompletedAuth(
+        await auth.signInWithSolana(publicKey, async (msg: Uint8Array) => {
           const out = await signMessage(msg);
           if (!out)
             throw new Error(
@@ -385,7 +403,7 @@ function SolanaButton({
               }),
             );
           return out;
-        },
+        }),
       );
       await onSuccess(result);
     } catch (e) {

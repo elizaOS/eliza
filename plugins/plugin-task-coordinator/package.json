@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-task-coordinator",
-  "version": "2.0.3-beta.6",
+  "version": "2.0.3-beta.10",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {

@@ -276,6 +276,30 @@ describe("iOS local agent transport bridge", () => {
     expect(originalFetch).not.toHaveBeenCalled();
   });
 
+  it("lets Cloud runtime fetch Cloud API routes without local-agent bridging", async () => {
+    vi.stubEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "cloud");
+    const originalFetch = vi.fn(async () => new Response('{"ok":true}'));
+    vi.stubGlobal("fetch", originalFetch);
+    vi.stubGlobal("window", {
+      __ELIZA_API_BASE__: "https://www.elizacloud.ai",
+      location: { href: "capacitor://localhost/" },
+      navigator: { userAgent: "vitest" },
+    });
+
+    const { installIosLocalAgentFetchBridge } = await import(
+      "./ios-local-agent-transport"
+    );
+    installIosLocalAgentFetchBridge();
+
+    const response = await fetch(
+      "https://api.elizacloud.ai/api/auth/cli-session/mobile-session",
+    );
+
+    await expect(response.json()).resolves.toEqual({ ok: true });
+    expect(originalFetch).toHaveBeenCalledTimes(1);
+    expect(kernelMock.handleIosLocalAgentRequest).not.toHaveBeenCalled();
+  });
+
   it("blocks private cleartext fetches when iOS runtime mode is cloud", async () => {
     const originalFetch = vi.fn(async () => {
       throw new Error("direct fetch should not run");

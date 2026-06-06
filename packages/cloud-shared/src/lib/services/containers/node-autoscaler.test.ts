@@ -24,6 +24,7 @@ const realNodeBootstrap = { ...realNodeBootstrapNs };
 
 const AGENT_IMAGE = "ELIZA_AGENT_IMAGE";
 const AGENT_IMAGE_PLATFORM = "ELIZA_AGENT_IMAGE_PLATFORM";
+const HCLOUD_NETWORK_IDS = "CONTAINERS_HCLOUD_NETWORK_IDS";
 
 function restoreEnv(key: string, value: string | undefined): void {
   if (value === undefined) {
@@ -105,12 +106,15 @@ const policy: AutoscalePolicy = {
 describe("NodeAutoscaler Hetzner provisioning", () => {
   let originalAgentImage: string | undefined;
   let originalAgentImagePlatform: string | undefined;
+  let originalHcloudNetworkIds: string | undefined;
 
   beforeEach(() => {
     originalAgentImage = process.env[AGENT_IMAGE];
     originalAgentImagePlatform = process.env[AGENT_IMAGE_PLATFORM];
+    originalHcloudNetworkIds = process.env[HCLOUD_NETWORK_IDS];
     process.env[AGENT_IMAGE] = "ghcr.io/elizaos/eliza:latest";
     process.env[AGENT_IMAGE_PLATFORM] = "linux/arm64";
+    delete process.env[HCLOUD_NETWORK_IDS];
     mocks.createNode.mockClear();
     mocks.findAllNodes.mockClear();
     mocks.createServer.mockClear();
@@ -141,6 +145,7 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
   afterEach(() => {
     restoreEnv(AGENT_IMAGE, originalAgentImage);
     restoreEnv(AGENT_IMAGE_PLATFORM, originalAgentImagePlatform);
+    restoreEnv(HCLOUD_NETWORK_IDS, originalHcloudNetworkIds);
   });
 
   test("creates a Hetzner server and registers the autoscaled docker node", async () => {
@@ -175,6 +180,7 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
       location: "fsn1",
       image: "ubuntu-24.04",
       userData: "#cloud-config\n",
+      networkIds: [],
       labels: {
         "managed-by": "eliza-cloud",
         "node-id": "node-test",
@@ -206,6 +212,27 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
       hcloudServerId: 4242,
       rootPassword: "root-secret",
     });
+  });
+
+  test("passes configured Hetzner private network ids to new nodes", async () => {
+    process.env[HCLOUD_NETWORK_IDS] = "12305703";
+    const autoscaler = new NodeAutoscaler(policy);
+
+    await autoscaler.provisionNode(
+      { nodeId: "node-networked" },
+      {
+        controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+        registrationUrl: "https://cloud.example.test/register",
+        registrationSecret: "secret",
+      },
+    );
+
+    expect(mocks.createServer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "node-networked",
+        networkIds: [12305703],
+      }),
+    );
   });
 
   test("fails before calling hcloud when Hetzner is not configured", async () => {

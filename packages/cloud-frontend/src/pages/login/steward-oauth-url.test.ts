@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   buildStewardOAuthAuthorizeUrl,
+  buildStewardOAuthRedirectUri,
   consumeStewardPkceVerifier,
   createStewardPkceChallenge,
   createStewardPkcePair,
@@ -8,9 +9,38 @@ import {
   storeStewardPkceVerifier,
 } from "./steward-oauth-url";
 
+function createStorage(): Storage {
+  const values = new Map<string, string>();
+  return {
+    get length() {
+      return values.size;
+    },
+    clear() {
+      values.clear();
+    },
+    getItem(key: string) {
+      return values.get(key) ?? null;
+    },
+    key(index: number) {
+      return Array.from(values.keys())[index] ?? null;
+    },
+    removeItem(key: string) {
+      values.delete(key);
+    },
+    setItem(key: string, value: string) {
+      values.set(key, value);
+    },
+  };
+}
+
 describe("Steward OAuth PKCE", () => {
   beforeEach(() => {
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: createStorage(),
+    });
     window.sessionStorage.clear();
+    window.localStorage.clear();
   });
 
   it("createStewardPkceChallenge matches the RFC 7636 Appendix B vector", async () => {
@@ -42,12 +72,29 @@ describe("Steward OAuth PKCE", () => {
     expect(consumeStewardPkceVerifier()).toBeNull();
   });
 
+  it("keeps the verifier if sessionStorage is lost during mobile OAuth", () => {
+    expect(storeStewardPkceVerifier("verifier-mobile")).toBe(true);
+    window.sessionStorage.clear();
+
+    expect(consumeStewardPkceVerifier()).toBe("verifier-mobile");
+    expect(consumeStewardPkceVerifier()).toBeNull();
+  });
+
+  it("buildStewardOAuthRedirectUri stays stable regardless of login query params", () => {
+    expect(buildStewardOAuthRedirectUri("https://www.elizacloud.ai")).toBe(
+      "https://www.elizacloud.ai/login",
+    );
+  });
+
   it("buildStewardOAuthAuthorizeUrl includes the PKCE challenge only when provided", () => {
     const withPkce = new URL(
       buildStewardOAuthAuthorizeUrl("google", "https://www.elizacloud.ai", {
         stewardApiUrl: "https://api.example/steward",
         codeChallenge: "CHALLENGE",
       }),
+    );
+    expect(withPkce.searchParams.get("redirect_uri")).toBe(
+      "https://www.elizacloud.ai/login",
     );
     expect(withPkce.searchParams.get("response_type")).toBe("code");
     expect(withPkce.searchParams.get("code_challenge")).toBe("CHALLENGE");

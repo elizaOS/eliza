@@ -31,6 +31,13 @@ export class ContainersService {
     return await containersRepository.findById(id, organizationId);
   }
 
+  async getActiveByProjectName(
+    organizationId: string,
+    projectName: string,
+  ): Promise<Container | null> {
+    return await containersRepository.findActiveByProjectName(organizationId, projectName);
+  }
+
   async getByCharacterId(characterId: string): Promise<Container | null> {
     return await containersRepository.findByCharacterId(characterId);
   }

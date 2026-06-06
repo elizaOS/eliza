@@ -1,17 +1,37 @@
 import type { OverlayAppContext } from "@elizaos/app-core";
-import { Button, PagePanel, Spinner } from "@elizaos/app-core";
+import { Button } from "@elizaos/app-core";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import {
-  ArrowLeft,
-  CheckCircle2,
-  LockKeyhole,
-  RefreshCw,
-  XCircle,
-} from "lucide-react";
+import { ArrowLeft, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { loadPolymarketTuiState } from "./PolymarketAppView.helpers";
-import type { PolymarketMarket } from "./polymarket-contracts";
+import type {
+  PolymarketMarket,
+  PolymarketStatusResponse,
+} from "./polymarket-contracts";
 import { usePolymarketState } from "./usePolymarketState";
+
+const ACCENT = "var(--accent, #ff5800)";
+const TXT = "var(--txt, #111)";
+const MUTED = "var(--muted, rgba(0,0,0,0.58))";
+const BORDER = "var(--border, rgba(0,0,0,0.12))";
+const SURFACE = "var(--surface, rgba(0,0,0,0.04))";
+const OK = "var(--ok, #22c55e)";
+
+function priceToPercent(price: string | null): number | null {
+  if (price == null) return null;
+  const n = Number(price);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n * 100);
+}
+
+function shortNumber(value: string | null): string | null {
+  if (value == null) return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return value;
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
+  return `$${n.toFixed(0)}`;
+}
 
 export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
   const {
@@ -43,11 +63,18 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
     description: "Reload Polymarket status and active markets",
   });
 
+  const showEmpty = !loading && markets.length === 0;
+
   return (
     <div
       data-testid="polymarket-shell"
       className="fixed inset-0 z-50 flex h-[100vh] flex-col overflow-hidden bg-bg supports-[height:100dvh]:h-[100dvh]"
     >
+      <style>
+        {
+          "@keyframes pmShimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}"
+        }
+      </style>
       <div className="flex shrink-0 items-center justify-between border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-sm">
         <div className="flex min-w-0 items-center gap-3">
           <Button
@@ -61,7 +88,11 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div className="min-w-0">
+          <div
+            className="min-w-0"
+            style={{ display: "flex", alignItems: "center", gap: 8 }}
+          >
+            <PolymarketGlyph size={22} />
             <h1 className="truncate text-base font-semibold text-txt">
               Polymarket
             </h1>
@@ -84,101 +115,36 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
 
       <div className="chat-native-scrollbar flex-1 overflow-y-auto px-4 py-4 sm:px-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-4">
-          {error && <PagePanel.Notice tone="danger">{error}</PagePanel.Notice>}
-
           {selectedMarket ? (
-            <section className="min-w-0 rounded-lg border border-border/20 bg-bg-accent/60 p-5">
-              <button
-                type="button"
-                onClick={() => setSelectedMarket(null)}
-                className="mb-4 inline-flex items-center gap-1.5 text-xs font-medium text-muted hover:text-txt"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                Markets
-              </button>
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <h2 className="mt-2 text-xl font-semibold leading-tight text-txt">
-                    {selectedMarket.question ?? selectedMarket.slug}
-                  </h2>
-                </div>
-                <StatusPill ready={selectedMarket.active === true} />
-              </div>
-
-              <div className="mt-5 grid gap-3">
-                <Metric label="Liquidity" value={selectedMarket.liquidity} />
-                <Metric label="Volume" value={selectedMarket.volume} />
-                <Metric
-                  label="Last trade"
-                  value={selectedMarket.lastTradePrice}
-                />
-              </div>
-
-              <div className="mt-5 overflow-hidden rounded-lg border border-border/20">
-                <div className="border-b border-border/20 px-4 py-3 text-sm font-semibold text-txt">
-                  Outcomes
-                </div>
-                <div className="divide-y divide-border/15">
-                  {selectedMarket.outcomes.map((outcome) => (
-                    <div
-                      key={outcome.name}
-                      className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
-                    >
-                      <span className="min-w-0 flex-1 truncate font-medium text-txt">
-                        {outcome.name}
-                      </span>
-                      <span className="shrink-0 text-muted">
-                        {outcome.price ?? "n/a"}
-                      </span>
-                    </div>
+            <MarketDetail
+              market={selectedMarket}
+              onBack={() => setSelectedMarket(null)}
+            />
+          ) : showEmpty ? (
+            <DisconnectedState status={status} error={error} />
+          ) : (
+            <section
+              style={{ display: "flex", flexDirection: "column", gap: 12 }}
+            >
+              <ReadinessStrip status={status} />
+              {loading && markets.length === 0 ? (
+                <div style={{ display: "grid", gap: 10 }}>
+                  {[0, 1, 2, 3].map((i) => (
+                    <MarketSkeleton key={i} />
                   ))}
                 </div>
-              </div>
-            </section>
-          ) : (
-            <section className="space-y-3">
-              <div className="grid gap-3">
-                <StatusTile
-                  label="Reads"
-                  ready={status?.publicReads.ready ?? false}
-                />
-                <StatusTile
-                  label="Trading"
-                  ready={status?.trading.ready ?? false}
-                />
-              </div>
-
-              {status?.trading.missing.length ? (
-                <div className="flex items-center gap-2 rounded-md border border-warn/25 bg-warn/10 p-3 text-xs text-muted">
-                  <LockKeyhole className="h-3.5 w-3.5 shrink-0 text-warn" />
-                  <span className="truncate">{status.trading.reason}</span>
+              ) : (
+                <div style={{ display: "grid", gap: 10 }}>
+                  {markets.slice(0, 24).map((market) => (
+                    <MarketCard
+                      key={market.id}
+                      market={market}
+                      active={selectedMarketId === market.id}
+                      onSelect={setSelectedMarket}
+                    />
+                  ))}
                 </div>
-              ) : null}
-
-              <div className="overflow-hidden rounded-lg border border-border/20 bg-bg-accent/60">
-                <div className="flex items-center justify-between border-b border-border/20 px-4 py-3">
-                  <h2 className="text-sm font-semibold text-txt">Markets</h2>
-                  <span className="text-xs font-semibold tabular-nums text-muted">
-                    {markets.length}
-                  </span>
-                </div>
-                {loading && markets.length === 0 ? (
-                  <div className="flex items-center justify-center gap-3 p-4 text-sm text-muted">
-                    <Spinner className="h-4 w-4" />
-                  </div>
-                ) : (
-                  <div className="divide-y divide-border/15">
-                    {markets.slice(0, 24).map((market) => (
-                      <MarketListItem
-                        key={market.id}
-                        market={market}
-                        active={selectedMarketId === market.id}
-                        onSelect={setSelectedMarket}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
+              )}
             </section>
           )}
         </div>
@@ -187,7 +153,290 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
   );
 }
 
-function MarketListItem({
+function PolymarketGlyph({ size = 28 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 32 32"
+      role="img"
+      aria-hidden="true"
+      style={{ display: "block" }}
+    >
+      <title>Polymarket</title>
+      <defs>
+        <linearGradient id="pmYes" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor={ACCENT} />
+          <stop offset="100%" stopColor={OK} />
+        </linearGradient>
+      </defs>
+      <circle
+        cx="16"
+        cy="16"
+        r="15"
+        fill="none"
+        stroke={BORDER}
+        strokeWidth="2"
+      />
+      <path
+        d="M16 1 A15 15 0 0 1 31 16 L16 16 Z"
+        fill="url(#pmYes)"
+        opacity="0.85"
+      />
+      <circle cx="16" cy="16" r="6" fill="var(--bg, #fff)" />
+      <circle cx="16" cy="16" r="2.5" fill={ACCENT} />
+    </svg>
+  );
+}
+
+function StateDot({ ready }: { ready: boolean }) {
+  return (
+    <span
+      style={{
+        width: 8,
+        height: 8,
+        borderRadius: 99,
+        background: ready ? OK : MUTED,
+        boxShadow: ready
+          ? `0 0 0 3px var(--ok-subtle, rgba(34,197,94,0.12))`
+          : "none",
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
+function CapabilityChip({
+  label,
+  ready,
+  hint,
+}: {
+  label: string;
+  ready: boolean;
+  hint: string;
+}) {
+  return (
+    <div
+      title={hint}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 7,
+        padding: "7px 12px",
+        borderRadius: 99,
+        border: `1px solid ${ready ? "var(--ok-subtle, rgba(34,197,94,0.4))" : BORDER}`,
+        background: ready ? "var(--ok-subtle, rgba(34,197,94,0.1))" : SURFACE,
+        fontSize: 13,
+        fontWeight: 600,
+        color: TXT,
+      }}
+    >
+      <StateDot ready={ready} />
+      {label}
+      <span style={{ color: MUTED, fontWeight: 500, fontSize: 12 }}>
+        {ready ? "on" : "off"}
+      </span>
+    </div>
+  );
+}
+
+function ReadinessStrip({
+  status,
+}: {
+  status: PolymarketStatusResponse | null;
+}) {
+  const reads = status?.publicReads.ready ?? false;
+  const trading = status?.trading.ready ?? false;
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 8,
+        alignItems: "center",
+      }}
+    >
+      <CapabilityChip
+        label="Read-only"
+        ready={reads}
+        hint="Public market data (no credentials needed)"
+      />
+      <CapabilityChip
+        label="Trading"
+        ready={trading}
+        hint={status?.trading.reason ?? "Signed order placement"}
+      />
+    </div>
+  );
+}
+
+function DisconnectedState({
+  status,
+  error,
+}: {
+  status: PolymarketStatusResponse | null;
+  error: string | null;
+}) {
+  const reads = status?.publicReads.ready ?? false;
+  const trading = status?.trading.ready ?? false;
+  return (
+    <section
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        textAlign: "center",
+        gap: 16,
+        padding: "48px 20px",
+        margin: "auto 0",
+      }}
+    >
+      <div
+        style={{
+          position: "relative",
+          width: 96,
+          height: 96,
+          borderRadius: 28,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "var(--accent-subtle, rgba(255,88,0,0.14))",
+          border: `1px solid ${BORDER}`,
+        }}
+      >
+        <PolymarketGlyph size={52} />
+      </div>
+      <div style={{ maxWidth: 360 }}>
+        <h2
+          style={{
+            margin: 0,
+            fontSize: 19,
+            fontWeight: 700,
+            color: TXT,
+          }}
+        >
+          {error ? "Markets unavailable" : "No markets loaded"}
+        </h2>
+        <p
+          style={{
+            margin: "8px 0 0",
+            fontSize: 14,
+            color: MUTED,
+            lineHeight: 1.5,
+          }}
+        >
+          {error
+            ? "Couldn't reach Polymarket right now. Public market data is fetched live — try again in a moment."
+            : "Live prediction markets will appear here. Trading requires wallet credentials."}
+        </p>
+      </div>
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 8,
+          justifyContent: "center",
+        }}
+      >
+        <CapabilityChip
+          label="Read-only"
+          ready={reads}
+          hint="Public market data (no credentials needed)"
+        />
+        <CapabilityChip
+          label="Trading"
+          ready={trading}
+          hint={status?.trading.reason ?? "Signed order placement"}
+        />
+      </div>
+      {!trading && status?.trading.missing.length ? (
+        <p
+          style={{
+            margin: 0,
+            fontSize: 12,
+            color: MUTED,
+            maxWidth: 360,
+          }}
+        >
+          To enable trading, configure{" "}
+          <code style={{ fontSize: 11, color: MUTED }}>
+            {status.trading.missing.join(", ")}
+          </code>{" "}
+          in Settings.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function MarketSkeleton() {
+  return (
+    <div
+      style={{
+        height: 86,
+        borderRadius: 16,
+        border: `1px solid ${BORDER}`,
+        background: `linear-gradient(90deg, ${SURFACE} 0%, var(--bg-hover, rgba(0,0,0,0.06)) 50%, ${SURFACE} 100%)`,
+        backgroundSize: "200% 100%",
+        animation: "pmShimmer 1.4s ease-in-out infinite",
+      }}
+    />
+  );
+}
+
+function OutcomeChip({
+  name,
+  percent,
+  rank,
+}: {
+  name: string;
+  percent: number | null;
+  rank: number;
+}) {
+  const lead = rank === 0;
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "5px 10px",
+        borderRadius: 99,
+        border: `1px solid ${lead ? "var(--accent-subtle, rgba(255,88,0,0.3))" : BORDER}`,
+        background: lead
+          ? "var(--accent-subtle, rgba(255,88,0,0.14))"
+          : SURFACE,
+        fontSize: 12.5,
+        fontWeight: 600,
+        color: TXT,
+        maxWidth: "100%",
+      }}
+    >
+      <span
+        style={{
+          maxWidth: 130,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {name}
+      </span>
+      {percent != null ? (
+        <span
+          style={{
+            color: lead ? ACCENT : MUTED,
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {percent}%
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function MarketCard({
   market,
   active,
   onSelect,
@@ -205,6 +454,9 @@ function MarketListItem({
     status: active ? "active" : "inactive",
     description: `Select the ${label} market`,
   });
+  const volume = shortNumber(market.volume24hr ?? market.volume);
+  const liquidity = shortNumber(market.liquidity);
+  const outcomes = market.outcomes.slice(0, 3);
   return (
     <button
       ref={ref}
@@ -212,15 +464,254 @@ function MarketListItem({
       type="button"
       onClick={() => onSelect(market)}
       aria-current={active ? "true" : undefined}
-      className={`block w-full px-4 py-3 text-left hover:bg-bg ${
-        active ? "bg-bg" : ""
-      }`}
+      style={{
+        display: "flex",
+        gap: 12,
+        width: "100%",
+        textAlign: "left",
+        padding: 14,
+        borderRadius: 16,
+        border: `1px solid ${active ? ACCENT : BORDER}`,
+        background: active
+          ? "var(--accent-subtle, rgba(255,88,0,0.08))"
+          : "var(--card, #fff)",
+        cursor: "pointer",
+        font: "inherit",
+        color: TXT,
+        alignItems: "flex-start",
+      }}
     >
-      <span className="line-clamp-2 text-sm font-medium text-txt">{label}</span>
-      <span className="mt-1 block truncate text-xs text-muted">
-        {market.volume24hr ?? market.category ?? "—"}
+      <span
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 12,
+          flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: SURFACE,
+          border: `1px solid ${BORDER}`,
+          overflow: "hidden",
+        }}
+      >
+        {market.icon || market.image ? (
+          <img
+            src={market.icon ?? market.image ?? ""}
+            alt=""
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        ) : (
+          <PolymarketGlyph size={24} />
+        )}
+      </span>
+      <span
+        style={{
+          minWidth: 0,
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 14,
+            fontWeight: 600,
+            lineHeight: 1.35,
+            color: TXT,
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
+          {label}
+        </span>
+        <span style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {outcomes.map((outcome, i) => (
+            <OutcomeChip
+              key={outcome.name}
+              name={outcome.name}
+              percent={priceToPercent(outcome.price)}
+              rank={i}
+            />
+          ))}
+        </span>
+        <span style={{ display: "flex", gap: 14, fontSize: 12, color: MUTED }}>
+          {volume ? <span>Vol {volume}</span> : null}
+          {liquidity ? <span>Liq {liquidity}</span> : null}
+          {market.category ? <span>{market.category}</span> : null}
+        </span>
       </span>
     </button>
+  );
+}
+
+function MarketDetail({
+  market,
+  onBack,
+}: {
+  market: PolymarketMarket;
+  onBack: () => void;
+}) {
+  return (
+    <section
+      style={{
+        minWidth: 0,
+        borderRadius: 16,
+        border: `1px solid ${BORDER}`,
+        background: "var(--card, #fff)",
+        padding: 20,
+      }}
+    >
+      <button
+        type="button"
+        onClick={onBack}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          marginBottom: 16,
+          background: "transparent",
+          border: "none",
+          font: "inherit",
+          fontSize: 12.5,
+          fontWeight: 600,
+          color: MUTED,
+          cursor: "pointer",
+        }}
+      >
+        <ArrowLeft style={{ width: 14, height: 14 }} />
+        Markets
+      </button>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+        <span
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 12,
+            flexShrink: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: SURFACE,
+            border: `1px solid ${BORDER}`,
+            overflow: "hidden",
+          }}
+        >
+          {market.icon || market.image ? (
+            <img
+              src={market.icon ?? market.image ?? ""}
+              alt=""
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          ) : (
+            <PolymarketGlyph size={26} />
+          )}
+        </span>
+        <h2
+          style={{
+            margin: 0,
+            fontSize: 19,
+            fontWeight: 700,
+            lineHeight: 1.3,
+            color: TXT,
+          }}
+        >
+          {market.question ?? market.slug}
+        </h2>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+        <Metric label="Volume" value={shortNumber(market.volume) ?? "—"} />
+        <Metric
+          label="Liquidity"
+          value={shortNumber(market.liquidity) ?? "—"}
+        />
+        <Metric
+          label="Last trade"
+          value={
+            priceToPercent(market.lastTradePrice) != null
+              ? `${priceToPercent(market.lastTradePrice)}%`
+              : "—"
+          }
+        />
+      </div>
+
+      <div
+        style={{
+          marginTop: 18,
+          borderRadius: 12,
+          border: `1px solid ${BORDER}`,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            padding: "11px 14px",
+            borderBottom: `1px solid ${BORDER}`,
+            fontSize: 13,
+            fontWeight: 600,
+            color: TXT,
+          }}
+        >
+          Outcomes
+        </div>
+        {market.outcomes.map((outcome, i) => {
+          const pct = priceToPercent(outcome.price);
+          return (
+            <div
+              key={outcome.name}
+              style={{
+                padding: "11px 14px",
+                borderTop: i === 0 ? "none" : `1px solid ${BORDER}`,
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  fontSize: 13.5,
+                }}
+              >
+                <span style={{ fontWeight: 600, color: TXT }}>
+                  {outcome.name}
+                </span>
+                <span
+                  style={{ fontWeight: 700, color: i === 0 ? ACCENT : MUTED }}
+                >
+                  {pct != null ? `${pct}%` : "n/a"}
+                </span>
+              </div>
+              {pct != null ? (
+                <div
+                  style={{
+                    height: 6,
+                    borderRadius: 99,
+                    background: SURFACE,
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${pct}%`,
+                      height: "100%",
+                      borderRadius: 99,
+                      background: i === 0 ? ACCENT : MUTED,
+                    }}
+                  />
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -280,49 +771,29 @@ function PolymarketTuiMarketRow({
   );
 }
 
-function StatusPill({ ready }: { ready: boolean }) {
-  return (
-    <span
-      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
-        ready
-          ? "border-ok/35 bg-ok/12 text-ok"
-          : "border-border bg-bg text-muted"
-      }`}
-      role="status"
-      aria-label={ready ? "Ready" : "Disabled"}
-      title={ready ? "Ready" : "Disabled"}
-    >
-      {ready ? (
-        <CheckCircle2 className="h-4 w-4" />
-      ) : (
-        <XCircle className="h-4 w-4" />
-      )}
-    </span>
-  );
-}
-
-function StatusTile({ label, ready }: { label: string; ready: boolean }) {
+function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div
-      className="flex min-h-16 items-center justify-center gap-2 rounded-lg border border-border/20 bg-bg-accent/60 px-3"
-      title={label}
+      style={{
+        flex: "1 1 90px",
+        minWidth: 90,
+        borderRadius: 12,
+        border: `1px solid ${BORDER}`,
+        background: SURFACE,
+        padding: "10px 12px",
+      }}
     >
-      {ready ? (
-        <CheckCircle2 className="h-4 w-4 text-ok" />
-      ) : (
-        <XCircle className="h-4 w-4 text-muted" />
-      )}
-      <span className="text-sm font-semibold text-txt">{label}</span>
-    </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string | null }) {
-  return (
-    <div className="rounded-lg border border-border/20 bg-bg p-3">
-      <div className="text-xs text-muted">{label}</div>
-      <div className="mt-1 truncate text-sm font-semibold text-txt">
-        {value ?? "n/a"}
+      <div style={{ fontSize: 11.5, color: MUTED }}>{label}</div>
+      <div
+        style={{
+          marginTop: 4,
+          fontSize: 15,
+          fontWeight: 700,
+          color: TXT,
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {value}
       </div>
     </div>
   );

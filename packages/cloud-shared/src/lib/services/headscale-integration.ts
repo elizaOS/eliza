@@ -6,7 +6,7 @@
  * and cleanup when containers are removed.
  *
  * Flow:
- *  1. prepareContainerVPN(agentId) — generates a pre-auth key + env vars
+ *  1. prepareContainerVPN(input) — generates a pre-auth key + env vars
  *  2. Container boots, runs `tailscale up --authkey=... --hostname=...`
  *  3. waitForVPNRegistration(agentId) — polls headscale until the node appears
  *  4. cleanupContainerVPN(agentId) — removes the VPN node when the container dies
@@ -24,8 +24,18 @@ const POLL_INTERVAL_MAX_MS = 8_000;
 /** Default timeout for VPN registration (ms). */
 const DEFAULT_REGISTRATION_TIMEOUT_MS = 60_000;
 
-/** Headscale server URL passed to containers so tailscale can find the coord server. */
-const HEADSCALE_URL = process.env.HEADSCALE_API_URL || "http://localhost:8081";
+function headscalePublicUrl(): string {
+  return (
+    process.env.HEADSCALE_PUBLIC_URL || process.env.HEADSCALE_API_URL || "http://localhost:8081"
+  );
+}
+
+export interface PrepareContainerVPNInput {
+  agentId: string;
+  agentName?: string;
+  organizationId?: string;
+  userId?: string;
+}
 
 export class HeadscaleIntegration {
   private client: HeadscaleClient;
@@ -44,10 +54,11 @@ export class HeadscaleIntegration {
    * Returns a single-use, ephemeral pre-auth key and the full set of
    * environment variables the container needs to join the VPN on boot.
    */
-  async prepareContainerVPN(agentId: string): Promise<{
+  async prepareContainerVPN(input: PrepareContainerVPNInput): Promise<{
     preAuthKey: string;
     envVars: Record<string, string>;
   }> {
+    const { agentId } = input;
     logger.info(`[headscale-integration] preparing VPN for agent ${agentId}`);
 
     try {
@@ -55,18 +66,14 @@ export class HeadscaleIntegration {
         reusable: false,
         ephemeral: true,
         aclTags: ["tag:agent"],
+        user: inferHeadscaleUser(input),
+        ensureUser: true,
       });
 
-      // Sanitize agentId for use as a DNS-safe Tailscale hostname:
-      // replace non-alphanumeric chars with hyphens, strip leading/trailing hyphens, truncate to 63 chars
-      const tsHostname =
-        agentId
-          .replace(/[^a-zA-Z0-9-]/g, "-")
-          .replace(/^-+|-+$/g, "")
-          .slice(0, 63) || "agent";
+      const tsHostname = inferTailscaleHostname(input);
 
       const envVars: Record<string, string> = {
-        HEADSCALE_URL,
+        HEADSCALE_URL: headscalePublicUrl(),
         TS_AUTHKEY: preAuthKeyObj.key,
         TS_HOSTNAME: tsHostname,
         TS_STATE_DIR: "/var/lib/tailscale",
@@ -187,6 +194,38 @@ export class HeadscaleIntegration {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+export function inferHeadscaleUser(
+  input: Pick<PrepareContainerVPNInput, "agentName" | "organizationId" | "userId">,
+): string {
+  const organization = normalizeHeadscaleSegment(input.organizationId);
+  if (organization) return `org-${organization}`;
+  const user = normalizeHeadscaleSegment(input.userId);
+  if (user) return `user-${user}`;
+  const agentName = normalizeHeadscaleSegment(input.agentName);
+  if (agentName) return `agent-${agentName}`;
+  return process.env.HEADSCALE_USER || "agent";
+}
+
+export function inferTailscaleHostname(
+  input: Pick<PrepareContainerVPNInput, "agentId" | "agentName">,
+): string {
+  const name = normalizeHeadscaleSegment(input.agentName);
+  const id = normalizeHeadscaleSegment(input.agentId);
+  const suffix = id ? id.slice(0, 12) : "agent";
+  const base = name || "agent";
+  return `${base}-${suffix}`.slice(0, 63).replace(/-+$/g, "") || "agent";
+}
+
+function normalizeHeadscaleSegment(value: string | undefined): string | null {
+  const normalized = value
+    ?.trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-+/g, "-");
+  return normalized || null;
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

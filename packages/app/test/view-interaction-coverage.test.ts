@@ -255,6 +255,17 @@ const GUI_INTERACTION_OWNERS: Readonly<
       signals: ["host lifecycle", "Refresh capabilities", "screen-token-1"],
     },
   ],
+  "social-alpha": [
+    {
+      spec: "plugins/plugin-social-alpha/src/index.test.ts",
+      proves:
+        "Locks the Social Alpha leaderboard view manifest, component export, and manager visibility contract.",
+      signals: [
+        "declares the Social Alpha leaderboard view",
+        "SocialAlphaView",
+      ],
+    },
+  ],
   "task-coordinator": [
     {
       spec: "packages/app/test/ui-smoke/task-coordinator-gui-interactions.spec.ts",
@@ -359,7 +370,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(53);
+    expect(visualCases.length).toBe(54);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",

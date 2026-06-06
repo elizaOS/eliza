@@ -57,6 +57,7 @@ export const VIEW_CASES: ViewCase[] = (
     ["scape", "tui", "/scape/tui"],
     ["screenshare", "gui", "/screenshare"],
     ["screenshare", "tui", "/screenshare/tui"],
+    ["social-alpha", "gui", "/social-alpha"],
     ["task-coordinator", "gui", "/task-coordinator"],
     ["task-coordinator", "tui", "/task-coordinator/tui"],
     ["orchestrator", "gui", "/orchestrator"],

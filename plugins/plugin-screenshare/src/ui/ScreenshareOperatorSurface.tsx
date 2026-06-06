@@ -72,13 +72,29 @@ function ScreenshareMetric({
 }) {
   return (
     <div
-      className="flex min-h-16 items-center justify-center gap-2 rounded-lg border border-border/35 bg-bg/65 px-3 py-2"
+      className={`flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-lg border px-3 py-2 transition-colors ${
+        active ? "border-ok/35 bg-ok/8" : "border-border/35 bg-bg/55"
+      }`}
       title={label}
       role="status"
       aria-label={`${label}: ${value}`}
     >
-      <Icon className={`h-4 w-4 ${active ? "text-ok" : "text-muted"}`} />
-      <span className="truncate text-sm font-semibold text-txt">{value}</span>
+      <div className="flex items-center gap-1.5">
+        <span
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+            active ? "bg-ok" : "bg-muted/40"
+          }`}
+          aria-hidden
+        />
+        <Icon className={`h-3.5 w-3.5 ${active ? "text-ok" : "text-muted"}`} />
+      </div>
+      <span
+        className={`truncate text-sm font-semibold ${
+          active ? "text-txt" : "text-muted-strong"
+        }`}
+      >
+        {value}
+      </span>
     </div>
   );
 }
@@ -339,7 +355,7 @@ export function ScreenshareOperatorSurface({
           />
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="mt-3 flex flex-col gap-2">
           <ScreenshareActionButton
             agentId="action-start-host"
             label={
@@ -352,58 +368,62 @@ export function ScreenshareOperatorSurface({
             type="button"
             size="sm"
             variant="default"
-            className="h-9 gap-2"
+            className="h-10 w-full justify-center gap-2"
             onClick={() => void startHostSession()}
             disabled={busy === "start"}
           >
             <MonitorUp className="h-4 w-4" />
-            {hostSession?.status === "active" ? "Rotate" : "Start"}
+            {hostSession?.status === "active"
+              ? "Rotate session"
+              : "Start session"}
           </ScreenshareActionButton>
-          <ScreenshareActionButton
-            agentId="action-open-host-viewer"
-            label="Open host viewer"
-            group="host"
-            description="Open the viewer for the host screen share session"
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-9 gap-2"
-            onClick={() => hostViewerUrl && openViewer(hostViewerUrl)}
-            disabled={!hostViewerUrl}
-          >
-            <ExternalLink className="h-4 w-4" />
-            Open
-          </ScreenshareActionButton>
-          <ScreenshareActionButton
-            agentId="action-copy-host-details"
-            label="Copy host details"
-            group="host"
-            description="Copy the host session connection details to the clipboard"
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-9 gap-2"
-            onClick={() => void copyHostDetails()}
-            disabled={!hostSession || !hostToken}
-          >
-            <Copy className="h-4 w-4" />
-            Copy
-          </ScreenshareActionButton>
-          <ScreenshareActionButton
-            agentId="action-stop-host"
-            label="Stop host session"
-            group="host"
-            description="Stop the active host screen share session"
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-9 gap-2"
-            onClick={() => void stopHostSession()}
-            disabled={hostSession?.status !== "active"}
-          >
-            <Power className="h-4 w-4" />
-            Stop
-          </ScreenshareActionButton>
+          <div className="grid grid-cols-3 gap-2">
+            <ScreenshareActionButton
+              agentId="action-open-host-viewer"
+              label="Open host viewer"
+              group="host"
+              description="Open the viewer for the host screen share session"
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-9 justify-center gap-1.5"
+              onClick={() => hostViewerUrl && openViewer(hostViewerUrl)}
+              disabled={!hostViewerUrl}
+            >
+              <ExternalLink className="h-4 w-4" />
+              Open
+            </ScreenshareActionButton>
+            <ScreenshareActionButton
+              agentId="action-copy-host-details"
+              label="Copy host details"
+              group="host"
+              description="Copy the host session connection details to the clipboard"
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-9 justify-center gap-1.5"
+              onClick={() => void copyHostDetails()}
+              disabled={!hostSession || !hostToken}
+            >
+              <Copy className="h-4 w-4" />
+              Copy
+            </ScreenshareActionButton>
+            <ScreenshareActionButton
+              agentId="action-stop-host"
+              label="Stop host session"
+              group="host"
+              description="Stop the active host screen share session"
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-9 justify-center gap-1.5"
+              onClick={() => void stopHostSession()}
+              disabled={hostSession?.status !== "active"}
+            >
+              <Power className="h-4 w-4" />
+              Stop
+            </ScreenshareActionButton>
+          </div>
         </div>
 
         {hostSession ? (
@@ -446,7 +466,7 @@ export function ScreenshareOperatorSurface({
             value={remoteBase}
             onChange={(event) => setRemoteBase(event.target.value)}
             placeholder="Server URL"
-            className="h-9 bg-bg text-xs"
+            className="h-9 rounded-lg border-border/45 bg-bg/60 text-xs"
           />
           <ScreenshareField
             agentId="input-remote-session"
@@ -456,7 +476,7 @@ export function ScreenshareOperatorSurface({
             value={remoteSessionId}
             onChange={(event) => setRemoteSessionId(event.target.value)}
             placeholder="Session"
-            className="h-9 bg-bg text-xs"
+            className="h-9 rounded-lg border-border/45 bg-bg/60 text-xs"
           />
           <ScreenshareField
             agentId="input-remote-token"
@@ -466,7 +486,7 @@ export function ScreenshareOperatorSurface({
             value={remoteToken}
             onChange={(event) => setRemoteToken(event.target.value)}
             placeholder="Token"
-            className="h-9 bg-bg text-xs"
+            className="h-9 rounded-lg border-border/45 bg-bg/60 text-xs"
           />
         </div>
         <div className="mt-3 flex gap-2">
@@ -477,8 +497,8 @@ export function ScreenshareOperatorSurface({
             description="Open the viewer for the entered remote screen share"
             type="button"
             size="sm"
-            variant="default"
-            className="h-9 flex-1 gap-2"
+            variant={remoteViewerUrl ? "default" : "outline"}
+            className="h-10 flex-1 justify-center gap-2"
             onClick={() => remoteViewerUrl && openViewer(remoteViewerUrl)}
             disabled={!remoteViewerUrl}
           >
@@ -493,7 +513,7 @@ export function ScreenshareOperatorSurface({
             type="button"
             size="sm"
             variant="outline"
-            className="h-9 gap-2"
+            className="h-10 w-10 justify-center gap-2 px-0"
             onClick={() => void loadCapabilities()}
             title="Refresh capabilities"
           >

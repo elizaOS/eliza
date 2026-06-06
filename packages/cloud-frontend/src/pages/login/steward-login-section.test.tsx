@@ -27,6 +27,7 @@ function deferred<T>() {
 
 const mocks = vi.hoisted(() => ({
   getProviders: vi.fn(),
+  refreshStewardSessionViaCookie: vi.fn(),
   signInWithEmail: vi.fn(),
   signInWithPasskey: vi.fn(),
   walletButtonProps: [] as unknown[],
@@ -68,6 +69,7 @@ vi.mock("../../lib/steward-session", () => ({
   consumeStewardCodeFromQuery: vi.fn(() => null),
   consumeStewardTokensFromHash: vi.fn(() => null),
   exchangeStewardCodeViaApi: vi.fn(),
+  refreshStewardSessionViaCookie: mocks.refreshStewardSessionViaCookie,
 }));
 
 vi.mock("./steward-wallet-providers", () => ({
@@ -91,12 +93,16 @@ vi.mock("./wallet-buttons", () => ({
 import { I18nProvider } from "@/providers/I18nProvider";
 import StewardLoginSection from "./steward-login-section";
 
-function renderLogin() {
+function renderLogin(initialEntry = "/login") {
   return render(
     <I18nProvider initialLang="en">
-      <MemoryRouter initialEntries={["/login"]}>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route path="/login" element={<StewardLoginSection />} />
+          <Route
+            path="/dashboard/agents"
+            element={<div>Dashboard agents</div>}
+          />
         </Routes>
       </MemoryRouter>
     </I18nProvider>,
@@ -104,7 +110,11 @@ function renderLogin() {
 }
 
 beforeEach(() => {
+  // biome-ignore lint/suspicious/noDocumentCookie: jsdom auth-cookie setup.
+  document.cookie = "steward-authed=; Max-Age=0; Path=/";
+  window.localStorage.clear();
   mocks.getProviders.mockReset();
+  mocks.refreshStewardSessionViaCookie.mockReset();
   mocks.signInWithEmail.mockReset();
   mocks.signInWithPasskey.mockReset();
   mocks.walletButtonProps.length = 0;
@@ -168,5 +178,48 @@ describe("StewardLoginSection", () => {
     expect(mocks.walletButtonProps).toContainEqual(
       expect.objectContaining({ autoStart: "ethereum" }),
     );
+  });
+
+  test("hydrates a cookie-only Steward session before redirecting", async () => {
+    // biome-ignore lint/suspicious/noDocumentCookie: jsdom auth-cookie setup.
+    document.cookie = "steward-authed=1; Path=/";
+    mocks.getProviders.mockResolvedValue({
+      passkey: true,
+      email: true,
+      oauth: [],
+    });
+    mocks.refreshStewardSessionViaCookie.mockResolvedValue({
+      ok: true,
+      token: "header.payload.signature",
+    });
+
+    renderLogin("/login?returnTo=%2Fdashboard%2Fagents");
+
+    expect(await screen.findByText("Dashboard agents")).toBeVisible();
+    expect(window.localStorage.getItem("steward_session_token")).toBe(
+      "header.payload.signature",
+    );
+  });
+
+  test.each([
+    [
+      "invalid_link",
+      "We couldn't verify that sign-in link. Request a new one. If it keeps happening, contact support.",
+    ],
+    ["rate_limited", "Too many attempts. Wait a moment and try again."],
+    [
+      "mfa_required",
+      "Additional verification is required to finish signing in.",
+    ],
+  ])("shows Steward callback reason %s", async (reason, message) => {
+    mocks.getProviders.mockResolvedValue({
+      passkey: true,
+      email: true,
+      oauth: [],
+    });
+
+    renderLogin(`/login?error=email_auth_failed&reason=${reason}`);
+
+    expect(await screen.findByText(message)).toBeVisible();
   });
 });

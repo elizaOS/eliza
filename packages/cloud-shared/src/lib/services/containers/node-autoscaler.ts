@@ -231,6 +231,7 @@ export class NodeAutoscaler {
     const image = request.image ?? this.policy.defaultImage;
     const capacity = request.capacity ?? this.policy.defaultCapacity;
     const prePullImages = request.prePullImages ?? [containersEnv.defaultAgentImage()];
+    const networkIds = containersEnv.defaultHcloudNetworkIds();
 
     const userData = buildContainerNodeUserData({
       nodeId,
@@ -255,6 +256,7 @@ export class NodeAutoscaler {
       location,
       image,
       userData,
+      networkIds,
       labels,
     });
 

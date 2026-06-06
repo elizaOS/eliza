@@ -61,12 +61,12 @@ test("first-run starts with setup choices before capability settings", async ({
   await expect(
     page
       .getByRole("heading", { name: /Where should .* run\?/ })
-      .or(page.getByText("Set up your agent")),
+      .or(page.getByRole("button", { name: "Connect" })),
   ).toBeVisible();
   await expect(
     page
       .getByTestId("first-run-runtime-cloud")
-      .or(page.getByRole("button", { name: "Eliza Cloud" })),
+      .or(page.getByRole("button", { name: /^(Eliza Cloud|Connect)$/ })),
   ).toBeVisible();
   const localRuntime = page.getByTestId("first-run-runtime-local");
   if (await localRuntime.count()) {

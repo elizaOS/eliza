@@ -7,15 +7,15 @@
     <!--
       no-referrer prevents any outbound request (analytics, image CDNs,
       third-party scripts) from carrying a Referer header. The Steward OAuth
-      callback briefly carries tokens in the URL hash during the legacy
+      callback briefly carries tokens or OAuth codes in the URL hash during the
       rollout window; while #fragments are not sent in Referer per spec, this
       is belt-and-suspenders against legacy browsers / extensions that leak
       the full URL.
     -->
     <meta name="referrer" content="no-referrer" />
     <!--
-      Snapshot then strip any `#token=...` from the URL before any other JS
-      runs (React, analytics, Sentry, etc.) so the access token never reaches
+      Snapshot then strip any `#token=...` or `#code=...` from the URL before
+      any other JS runs (React, analytics, Sentry, etc.) so the access token never reaches
       anything that might log `location.href`. Tokens are then read by
       consumeStewardTokensFromHash() from `__stewardOAuthHash`.
     -->
@@ -23,7 +23,10 @@
       (() => {
         try {
           const h = window.location.hash;
-          if (h && h.indexOf("token=") !== -1) {
+          if (
+            h &&
+            (h.indexOf("token=") !== -1 || h.indexOf("code=") !== -1)
+          ) {
             window.__stewardOAuthHash = h;
             history.replaceState(
               null,
@@ -105,12 +108,6 @@
       href="/brand/favicons/apple-touch-icon.png"
     />
     <link rel="manifest" href="/site.webmanifest" />
-    <link
-      rel="preload"
-      as="image"
-      href="/brand/background/clouds_background.jpg"
-      fetchpriority="high"
-    />
 
     <!-- JSON-LD structured data. Mirrors what app/page.tsx emits via Helmet,
          but inlined so crawlers see it without executing JS. -->
