@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-defense-of-the-agents",
-  "version": "2.0.3-beta.9",
+  "version": "2.0.3-beta.10",
   "type": "module",
   "description": "Eliza app integration for Defense of the Agents.",
   "main": "./dist/index.js",

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-google-genai",
-  "version": "2.0.3-beta.9",
+  "version": "2.0.3-beta.10",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",

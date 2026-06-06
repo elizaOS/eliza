@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/shared",
-  "version": "2.0.3-beta.9",
+  "version": "2.0.3-beta.10",
   "description": "Shared code for Eliza agent and app-core.",
   "type": "module",
   "sideEffects": false,

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-todos",
-  "version": "2.0.3-beta.9",
+  "version": "2.0.3-beta.10",
   "description": "User-scoped persistent todos with CRUD. Single TODO umbrella action (op-based: write/create/update/complete/cancel/delete/list/clear) and a currentTodosProvider that surfaces the user's pending + in-progress todos to the planner each turn. Backed by drizzle pgSchema('todos').",
   "type": "module",
   "main": "dist/index.js",
