@@ -216,10 +216,13 @@ export default function StewardAuthRuntimeProvider({
     [apiUrl, tenantId],
   );
   const authConfig = useMemo(() => ({ baseUrl: apiUrl }), [apiUrl]);
+  const providerClient = client as unknown as React.ComponentProps<
+    typeof StewardProvider
+  >["client"];
 
   return (
     <StewardProvider
-      client={client}
+      client={providerClient}
       agentId="eliza-cloud"
       auth={authConfig}
       tenantId={

@@ -96,8 +96,8 @@ type LoginTranslator = ReturnType<typeof useT>;
 
 // SDK sign-in methods return `StewardAuthResult | StewardMfaRequiredResult`.
 // This client has no MFA-continuation UI, so a step-up challenge can't be
-// completed here — narrow on the `mfaRequired` discriminant and fail loudly
-// rather than mis-reading token fields off the MFA branch.
+// completed here by this surface. Narrow on the `mfaRequired` discriminant and
+// fail before reading token fields off the MFA branch.
 function requireCompletedAuth(
   result: StewardAuthResult | StewardMfaRequiredResult,
 ): StewardAuthResult {

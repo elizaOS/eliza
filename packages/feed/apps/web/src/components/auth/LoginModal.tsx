@@ -1,6 +1,7 @@
 "use client";
 
 import { logger } from "@feed/shared";
+import type { StewardAuthResult, StewardMfaRequiredResult } from "@stwd/sdk";
 import { useCallback, useEffect, useState } from "react";
 import { useStewardAuthContext } from "@/components/providers/StewardAuthProvider";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,15 @@ function getStewardApiUrl(): string {
 }
 
 const STEWARD_TENANT_ID = process.env.NEXT_PUBLIC_STEWARD_TENANT_ID ?? "feed";
+
+function requireCompletedAuth(
+  result: StewardAuthResult | StewardMfaRequiredResult,
+): StewardAuthResult {
+  if ("mfaRequired" in result) {
+    throw new Error("MFA required is not supported in this client yet.");
+  }
+  return result;
+}
 
 /** Build the Steward OAuth authorize URL. Callback lands on our /auth/callback/[provider] page. */
 function oauthUrl(provider: string): string {
@@ -113,8 +123,10 @@ export function LoginModal({
     setStep("loading");
     setErrorMsg("");
     try {
-      const result = await stewardAuth.signInWithPasskey(trimmed);
-      await onLoginSuccess(result.token);
+      const result = requireCompletedAuth(
+        await stewardAuth.signInWithPasskey(trimmed),
+      );
+      await onLoginSuccess(result.token, result.refreshToken);
       logger.info("Passkey login successful", { email: trimmed }, "LoginModal");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Passkey login failed";
