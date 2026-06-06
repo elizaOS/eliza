@@ -296,6 +296,13 @@ const smokeViewDeclarations = [
     "tui",
   ],
   [
+    "social-alpha",
+    "Social Alpha",
+    "plugin-social-alpha",
+    "/social-alpha",
+    "SocialAlphaView",
+  ],
+  [
     "task-coordinator",
     "Task Coordinator",
     "plugin-task-coordinator",

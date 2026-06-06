@@ -85,6 +85,7 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-hyperscape/src/index.ts",
   "plugins/plugin-scape/src/index.ts",
   "plugins/plugin-screenshare/src/index.ts",
+  "plugins/plugin-social-alpha/src/index.ts",
   "plugins/plugin-task-coordinator/src/index.ts",
   "plugins/plugin-trajectory-logger/src/index.ts",
   "plugins/plugin-training/src/setup-routes.ts",
@@ -103,6 +104,8 @@ const NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: Readonly<Record<string, string>> = {
     "View manager routes are built into the app shell and tested through /views; this plugin supplies agent actions plus the manager view declaration.",
   "plugins/plugin-screenshare/src/index.ts":
     "Screenshare is registered by runtime capability loading, not the app boot side-effect loader.",
+  "plugins/plugin-social-alpha/src/index.ts":
+    "Social Alpha is an opt-in agent runtime plugin; its leaderboard view registers when the agent enables the plugin, not via the app boot loader.",
 };
 
 const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
