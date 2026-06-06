@@ -20,7 +20,6 @@ import {
 import { v4 as uuidv4 } from "uuid";
 import { roomsRepository } from "../../db/repositories";
 import { connectionCache } from "../cache/connection-cache";
-import { anonymousSessionsService } from "../services/anonymous-sessions";
 import { charactersService } from "../services/characters/characters";
 import { discordService } from "../services/discord";
 import { generateRoomTitle } from "../services/room-title";
@@ -183,10 +182,6 @@ export class MessageHandler {
       };
       // Persist fallback response to ensure conversation history is complete
       await this.runtime.createMemory(responseMemory, "messages");
-    }
-
-    if (this.userContext.isAnonymous && this.userContext.sessionToken) {
-      await this.incrementAnonymousMessageCount();
     }
 
     const responseText =
@@ -439,16 +434,6 @@ export class MessageHandler {
         visibility: "visible",
       } as DialogueMetadata,
     };
-  }
-
-  private async incrementAnonymousMessageCount(): Promise<void> {
-    if (!this.userContext.sessionToken) return;
-
-    const session = await anonymousSessionsService.getByToken(this.userContext.sessionToken);
-
-    if (session) {
-      await anonymousSessionsService.incrementMessageCount(session.id);
-    }
   }
 
   private async sendToDiscordThread(

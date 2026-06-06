@@ -12,41 +12,11 @@
 "use client";
 
 import { useRenderGuard, useSetPageHeader } from "@elizaos/ui";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { type Character, useChatStore } from "@/lib/stores/chat-store";
-import { useT } from "@/providers/I18nProvider";
-
-interface AnonymousSessionResult {
-  isNew: boolean;
-  user: { id: string; [key: string]: unknown };
-  session: {
-    id: string;
-    message_count: number;
-    messages_limit: number;
-    session_token: string;
-    expires_at: string;
-    is_active: boolean;
-  };
-}
-
-async function getOrCreateAnonymousUserAction(): Promise<AnonymousSessionResult> {
-  const res = await fetch("/api/auth/anonymous-session", {
-    method: "POST",
-    credentials: "include",
-  });
-  if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-    throw new Error(
-      body?.error ?? `Failed to create anonymous session (${res.status})`,
-    );
-  }
-  return (await res.json()) as AnonymousSessionResult;
-}
-
 import type { ElizaCharacter } from "@/lib/types";
+import { useT } from "@/providers/I18nProvider";
 import { ElizaChatInterface } from "./eliza-chat-interface";
 import { ModelPlayground } from "./model-playground";
 
@@ -90,17 +60,10 @@ export function ElizaPageClient({
 }: ElizaPageClientProps) {
   const t = useT();
   useRenderGuard("ElizaPageClient");
-  const [anonymousSession, setAnonymousSession] = useState<{
-    messageCount: number;
-    messagesLimit: number;
-    remainingMessages: number;
-  } | null>(null);
-  const [isLoadingSession, setIsLoadingSession] = useState(!isAuthenticated);
   const errorShownRef = useRef(false);
 
   // Initialize store with characters (must be at top level)
-  const { setRoomId, setAnonymousSessionToken, initializeState } =
-    useChatStore();
+  const { setRoomId, initializeState } = useChatStore();
 
   // Show access error toast when redirected from private character
   useEffect(() => {
@@ -231,52 +194,45 @@ export function ElizaPageClient({
     setRoomId,
   ]);
 
-  // Initialize anonymous session for unauthenticated users (only once)
-  useEffect(() => {
-    if (!isAuthenticated && !anonymousSession && isLoadingSession) {
-      getOrCreateAnonymousUserAction()
-        .then((result) => {
-          // Safely handle potentially null/undefined result
-          if (result?.session) {
-            setAnonymousSession({
-              messageCount: result.session.message_count,
-              messagesLimit: result.session.messages_limit,
-              remainingMessages:
-                result.session.messages_limit - result.session.message_count,
-            });
-            // Store session token in chat store so it gets passed with messages
-            if (result.session.session_token) {
-              setAnonymousSessionToken(result.session.session_token);
-            }
-          }
-        })
-        .catch((error) => {
-          console.error(
-            "[ElizaPageClient] Failed to create anonymous session:",
-            error,
-          );
-        })
-        .finally(() => {
-          // Always set loading to false regardless of success/failure
-          setIsLoadingSession(false);
-        });
-    }
-  }, [
-    anonymousSession,
-    isAuthenticated,
-    isLoadingSession,
-    setAnonymousSessionToken,
-  ]); // Only run on mount
-
-  // Show loading state while initializing anonymous session
-  if (!isAuthenticated && isLoadingSession) {
+  // Guests must sign in to chat. The $5 signup bonus is the new "try it"
+  // path — anonymous sessions were removed, so unauthenticated visitors get a
+  // sign-in CTA (with the agent context preserved through the OAuth round-trip).
+  if (!isAuthenticated) {
+    const characterName =
+      sharedCharacter?.name ||
+      initialCharacters[0]?.name ||
+      t("cloud.elizaPage.thisAgent", { defaultValue: "this agent" });
+    const returnTo =
+      typeof window !== "undefined"
+        ? encodeURIComponent(window.location.pathname + window.location.search)
+        : "";
+    const loginHref = `/login?returnTo=${returnTo}`;
     return (
-      <div className="flex h-full items-center justify-center animate-in fade-in duration-300">
+      <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center animate-in fade-in duration-300">
+        <h2 className="text-xl font-semibold text-white">
+          {t("cloud.elizaPage.signInToChat", {
+            defaultValue: `Sign in to chat with ${characterName}`,
+          })}
+        </h2>
+        <p className="max-w-sm text-sm text-white/60">
+          {t("cloud.elizaPage.signInSubtext", {
+            defaultValue:
+              "Create a free account and get $5 in credits to start.",
+          })}
+        </p>
         <div className="flex items-center gap-3">
-          <div className="w-2 h-2 rounded-full bg-white/40 animate-pulse" />
-          <div className="text-white/60">
-            {t("cloud.elizaPage.loading", { defaultValue: "Loading..." })}
-          </div>
+          <a
+            href={loginHref}
+            className="bg-[#FF5800] px-5 py-2.5 font-semibold text-white transition-colors hover:bg-[#e54f00]"
+          >
+            {t("cloud.login.button.signUp", { defaultValue: "Sign Up" })}
+          </a>
+          <a
+            href={loginHref}
+            className="border border-white/30 px-5 py-2.5 font-semibold text-white transition-colors hover:bg-white/10"
+          >
+            {t("cloud.login.button.logIn", { defaultValue: "Log In" })}
+          </a>
         </div>
       </div>
     );

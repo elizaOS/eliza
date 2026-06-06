@@ -8,10 +8,8 @@
 
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { Hono } from "hono";
-import type { AnonymousSession } from "@/db/repositories/anonymous-sessions";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
-import { checkAnonymousLimit, getAnonymousUser } from "@/lib/auth-anonymous";
 import {
   RateLimitPresets,
   rateLimit,
@@ -28,7 +26,6 @@ import {
   hasLanguageModelProviderConfigured,
 } from "@/lib/providers/language-model";
 import { billUsage } from "@/lib/services/ai-billing";
-import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
 import { contentModerationService } from "@/lib/services/content-moderation";
 import { conversationsService } from "@/lib/services/conversations";
 import {
@@ -130,29 +127,12 @@ app.post("/", async (c) => {
     | null = null;
 
   try {
-    let user: ChatBillingUser;
-    let apiKey: ApiKey | undefined;
-    let isAnonymous = false;
-    let anonymousSession: AnonymousSession | null = null;
-
     const authedUser = await getCurrentUser(c);
-    if (authedUser) {
-      user = authedUser;
-      apiKey = await getRequestApiKey(c);
-    } else {
-      const anonData = await getAnonymousUser(c.req.raw);
-      if (!anonData) {
-        return c.json({ error: "Authentication required" }, 401);
-      }
-      user = anonData.user;
-      anonymousSession = anonData.session;
-      isAnonymous = true;
-      logger.info("chat-api", "Anonymous user request", {
-        userId: user.id,
-        sessionId: anonymousSession?.id,
-        messageCount: anonymousSession?.message_count,
-      });
+    if (!authedUser) {
+      return c.json({ error: "Authentication required" }, 401);
     }
+    const user: ChatBillingUser = authedUser;
+    const apiKey: ApiKey | undefined = await getRequestApiKey(c);
 
     const body = await c.req.json();
     const {
@@ -237,44 +217,11 @@ app.post("/", async (c) => {
       );
     }
 
-    if (isAnonymous && anonymousSession) {
-      const limitCheck = await checkAnonymousLimit(
-        anonymousSession.session_token,
-      );
-      if (!limitCheck.allowed) {
-        const errorMessage =
-          limitCheck.reason === "message_limit"
-            ? `You've reached your free message limit (${limitCheck.limit} messages). Sign up to continue chatting!`
-            : `You've reached the hourly rate limit. Please wait an hour or sign up for unlimited access.`;
-        logger.warn("chat-api", "Anonymous user limit reached", {
-          userId: user.id,
-          sessionId: anonymousSession.id,
-          reason: limitCheck.reason,
-          limit: limitCheck.limit,
-        });
-        return c.json(
-          {
-            error: errorMessage,
-            requiresSignup: true,
-            reason: limitCheck.reason,
-            limit: limitCheck.limit,
-            remaining: limitCheck.remaining,
-          },
-          429,
-        );
-      }
-      logger.info("chat-api", "Anonymous user message allowed", {
-        userId: user.id,
-        remaining: limitCheck.remaining,
-        limit: limitCheck.limit,
-      });
-    }
-
     let reservation: CreditReservation =
       creditsService.createAnonymousReservation();
     const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
 
-    if (!isAnonymous && user.organization_id) {
+    if (user.organization_id) {
       const messageText = messages
         .map((m) => extractTextFromParts(m.parts))
         .join(" ");
@@ -336,20 +283,6 @@ app.post("/", async (c) => {
             return;
           }
 
-          if (isAnonymous && anonymousSession) {
-            await anonymousSessionsService.incrementMessageCount(
-              anonymousSession.id,
-            );
-            logger.info(
-              "chat-api",
-              "Incremented anonymous message count after success",
-              {
-                sessionId: anonymousSession.id,
-                newCount: anonymousSession.message_count + 1,
-              },
-            );
-          }
-
           const userMessage = messages[messages.length - 1];
           const billing = await billUsage(
             {
@@ -367,18 +300,6 @@ app.post("/", async (c) => {
           const totalCostBilled = billing.totalCost;
           const inputCostBilled = billing.inputCost;
           const outputCostBilled = billing.outputCost;
-
-          if (isAnonymous && anonymousSession) {
-            await anonymousSessionsService.addTokenUsage(
-              anonymousSession.id,
-              (usage.inputTokens || 0) + (usage.outputTokens || 0),
-            );
-            logger.info("chat-api", "Anonymous user token usage tracked", {
-              userId: user.id,
-              tokens: (usage.inputTokens || 0) + (usage.outputTokens || 0),
-              model: selectedModel,
-            });
-          }
 
           if (conversationId) {
             await conversationsService.addMessageWithSequence(conversationId, {

@@ -250,7 +250,6 @@ function AgentConsoleOverview({
 export function MyAgentsClient() {
   const t = useT();
   const navigate = useNavigate();
-  const claimAttempted = useRef(false);
   const [characters, setCharacters] = useState<AgentWithOwnership[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -334,53 +333,6 @@ export function MyAgentsClient() {
     window.addEventListener("characters-updated", handleUpdate);
     return () => window.removeEventListener("characters-updated", handleUpdate);
   }, [fetchCharacters]);
-
-  // Claim any affiliate characters the user has interacted with
-  useEffect(() => {
-    if (claimAttempted.current) return;
-    claimAttempted.current = true;
-
-    const sessionToken = localStorage.getItem("eliza-anon-session-token");
-
-    fetch("/api/my-agents/claim-affiliate-characters", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionToken: sessionToken || undefined }),
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const text = await res.text();
-        return text ? JSON.parse(text) : { success: false };
-      })
-      .then((data) => {
-        if (data.success && data.claimed?.length > 0) {
-          toast.success(
-            t("cloud.myAgents.agentsAdded", {
-              count: data.claimed.length,
-              defaultValue: "{{count}} agent(s) added to your library!",
-            }),
-            {
-              description: data.claimed
-                .map((c: { name: string }) => c.name)
-                .join(", "),
-            },
-          );
-          fetchCharacters();
-
-          if (sessionToken) {
-            try {
-              localStorage.removeItem("eliza-anon-session-token");
-            } catch {
-              // Ignore cleanup errors
-            }
-          }
-        }
-      })
-      .catch((error) => {
-        logger.error("[MyAgents] Failed to claim affiliate characters:", error);
-      });
-  }, [fetchCharacters, t]);
 
   // Filter characters based on search
   const filteredCharacters = characters.filter((char) => {
