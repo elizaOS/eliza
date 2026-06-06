@@ -50,26 +50,60 @@ export async function syncStewardSessionCookie(
 }
 
 /**
- * Read the one-time OAuth code from `?code=` (nonce-exchange flow). Steward
- * redirects to the callback with `?code=<NONCE>` and **no tokens** in the
- * URL. We pull the code, strip it from history immediately so it doesn't
- * appear in browser history / extension snapshots / shared URLs, and POST it
+ * Read the one-time OAuth code from the callback URL — `?code=<NONCE>` in the
+ * query OR `#code=<NONCE>` in the URL fragment (nonce-exchange flow). Steward
+ * redirects to the callback with the code and **no tokens**; which carrier it
+ * lands in depends on the tenant's OAuth response mode. The fragment is the
+ * preferred carrier because it never leaves the browser — not in access logs,
+ * Referer, or server history — the same reason tokens are fragment-delivered
+ * (see `consumeStewardTokensFromHash`). The index.html pre-init script only
+ * snapshots/strips `#token=`, so a `#code=` fragment is still on
+ * `location.hash` when React mounts.
+ *
+ * We pull the code, strip it from the URL immediately so it doesn't appear in
+ * browser history / extension snapshots / shared URLs, and POST it
  * server-side. Returns null when no code is present so the caller can fall
  * through to the hash / query token fallbacks during the rollout window.
  */
 export function consumeStewardCodeFromQuery(): string | null {
   if (typeof window === "undefined") return null;
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get("code");
-  if (!code) return null;
-  params.delete("code");
-  const query = params.toString();
-  window.history.replaceState(
-    null,
-    "",
-    query ? `${window.location.pathname}?${query}` : window.location.pathname,
-  );
-  return code;
+
+  // Query carrier: `?code=<NONCE>` (response_mode=query).
+  const queryParams = new URLSearchParams(window.location.search);
+  const queryCode = queryParams.get("code");
+  if (queryCode) {
+    queryParams.delete("code");
+    const query = queryParams.toString();
+    window.history.replaceState(
+      null,
+      "",
+      query ? `${window.location.pathname}?${query}` : window.location.pathname,
+    );
+    return queryCode;
+  }
+
+  // Fragment carrier: `#code=<NONCE>` (response_mode=fragment). Steward keeps
+  // the code out of the query so it never hits the server; we read it from the
+  // fragment and strip the fragment, preserving any non-OAuth query params.
+  const hash = window.location.hash;
+  if (hash.length > 1) {
+    const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
+    const hashCode = hashParams.get("code");
+    if (hashCode) {
+      hashParams.delete("code");
+      const remaining = hashParams.toString();
+      window.history.replaceState(
+        null,
+        "",
+        remaining
+          ? `${window.location.pathname}${window.location.search}#${remaining}`
+          : `${window.location.pathname}${window.location.search}`,
+      );
+      return hashCode;
+    }
+  }
+
+  return null;
 }
 
 /**
