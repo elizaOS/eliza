@@ -149,7 +149,7 @@ export function CharacterOverviewSection({
 
   return (
     <section
-      className="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6 lg:grid-rows-2"
+      className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:min-h-0 lg:flex-1 lg:grid-cols-6 lg:grid-rows-2"
       aria-label="Character overview"
     >
       {/* Two hero tiles span the top row (3 columns each on lg). */}

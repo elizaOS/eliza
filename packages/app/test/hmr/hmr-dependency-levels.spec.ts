@@ -106,7 +106,7 @@ const LEVELS = [
     file: "plugins/plugin-screenshare/src/ui/ScreenshareOperatorSurface.tsx",
   },
   {
-    name: "plugin view social-alpha",
+    name: "plugin view social alpha",
     file: "plugins/plugin-social-alpha/src/frontend/LeaderboardView.tsx",
   },
   {
