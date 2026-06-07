@@ -312,34 +312,13 @@ function localAgentPathnameFromUrl(url: URL): string {
   return queryIndex >= 0 ? path.slice(0, queryIndex) || "/" : path || "/";
 }
 
-const CLOUD_RUNTIME_ALLOWED_IPC_PATHS = new Set([
-  "/api/health",
-  "/api/runtime/mode",
-  "/api/status",
-  "/api/auth/status",
-  "/api/auth/me",
-  "/api/first-run/status",
-  "/api/config",
-  "/api/config/schema",
-  "/api/character",
-  "/api/cloud/chat",
-  "/api/wallet/addresses",
-  "/api/wallet/config",
-  "/api/wallet/balances",
-  "/api/wallet/nfts",
-  "/api/wallet/market-overview",
-  "/api/wallet/trading/profile",
-  "/api/stream/settings",
-  "/api/agent/events",
-]);
-
 function isCloudRuntimeAllowedLocalAgentPath(path: string): boolean {
   const queryIndex = path.indexOf("?");
   const pathname = queryIndex >= 0 ? path.slice(0, queryIndex) : path;
   return (
-    CLOUD_RUNTIME_ALLOWED_IPC_PATHS.has(pathname) ||
-    pathname === "/api/conversations" ||
-    pathname.startsWith("/api/conversations/")
+    pathname === "/api/local-inference" ||
+    pathname.startsWith("/api/local-inference/") ||
+    pathname === "/api/tts/local-inference"
   );
 }
 
@@ -598,30 +577,6 @@ export async function handleIosLocalAgentNativeRequest(
       "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active",
     );
   }
-  if (isNativeIosCloudRuntime()) {
-    startIosLocalAgentKernel();
-    const response = await handleIosLocalAgentRequest(
-      new Request(`${IOS_LOCAL_AGENT_IPC_BASE}${path}`, {
-        method,
-        headers: options.headers,
-        body:
-          options.body == null || method === "GET" || method === "HEAD"
-            ? undefined
-            : options.body,
-      }),
-      { timeoutMs: options.timeoutMs },
-    );
-    const headers: Record<string, string> = {};
-    response.headers.forEach((value, key) => {
-      headers[key] = value;
-    });
-    return {
-      status: response.status,
-      statusText: response.statusText,
-      headers,
-      body: await response.text(),
-    };
-  }
 
   const fullBunResult = await tryFullBunNativeRequest({
     ...options,
@@ -753,20 +708,6 @@ export function installIosLocalAgentFetchBridge(): void {
   }
   globalThis.fetch = bridgedFetch;
   globalFetchBridgeInstalled = true;
-}
-
-export function __resetIosLocalAgentTransportForTests(): void {
-  transport = null;
-  fullBunRuntime = null;
-  globalRequestHandlerInstalled = false;
-  globalFetchBridgeInstalled = false;
-  if (originalFetch) {
-    globalThis.fetch = originalFetch;
-    originalFetch = null;
-  }
-  if (typeof window !== "undefined") {
-    window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__ = undefined;
-  }
 }
 
 export async function iosInProcessAgentTransportForUrl(

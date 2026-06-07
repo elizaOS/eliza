@@ -63,7 +63,6 @@ import type {
 import { useT } from "@/providers/I18nProvider";
 import { ApiError, api } from "../../lib/api-client";
 import { useAdminModerationStatus } from "../../lib/data/admin";
-import { EcosystemOverviewPanel } from "./_components/ecosystem-overview-panel";
 
 function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError) return error.message;
@@ -234,8 +233,6 @@ export default function AdminPage() {
         />
       </Helmet>
       <div className="space-y-6">
-        <EcosystemOverviewPanel />
-
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">

@@ -931,12 +931,9 @@ function isElizaCloudControlPlaneApiBase(value: unknown): boolean {
   const apiBase = normalizeApiBase(value);
   if (!apiBase) return false;
   try {
-    const url = new URL(apiBase);
-    if (!ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has(url.hostname.toLowerCase())) {
-      return false;
-    }
-    const pathname = url.pathname.replace(/\/+$/, "");
-    return pathname === "";
+    return ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has(
+      new URL(apiBase).hostname.toLowerCase(),
+    );
   } catch (err) {
     logger.debug(
       `[persistence] failed to parse apiBase URL while checking Eliza Cloud control plane: apiBase=${apiBase}; error=${describePersistenceError(err)}`,

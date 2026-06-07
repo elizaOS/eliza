@@ -54,7 +54,6 @@ export type StartupState =
       phase: "first-run-required";
       /** true = server reachable, fetch options from it. false = first-run, use static options. */
       serverReachable: boolean;
-      target?: RuntimeTarget | null;
     }
   | {
       phase: "starting-runtime";
@@ -82,11 +81,7 @@ export type StartupEvent =
   | { type: "EXISTING_INSTALL_DETECTED"; target: RuntimeTarget }
 
   // Backend poll results
-  | {
-      type: "BACKEND_REACHED";
-      firstRunComplete: boolean;
-      target?: RuntimeTarget | null;
-    }
+  | { type: "BACKEND_REACHED"; firstRunComplete: boolean }
   | { type: "BACKEND_AUTH_REQUIRED" }
   | { type: "BACKEND_NOT_FOUND" }
   | { type: "BACKEND_TIMEOUT" }
@@ -94,7 +89,7 @@ export type StartupEvent =
 
   // First-run
   | { type: "FIRST_RUN_OPTIONS_LOADED" }
-  | { type: "FIRST_RUN_COMPLETE"; target?: RuntimeTarget | null }
+  | { type: "FIRST_RUN_COMPLETE" }
 
   // Agent runtime
   | { type: "AGENT_RUNNING" }
@@ -113,24 +108,6 @@ export type StartupEvent =
 
   // Agent switching from within the app (e.g. Settings profile switcher)
   | { type: "SWITCH_AGENT"; target: RuntimeTarget };
-
-function firstRunCompleteState(target?: RuntimeTarget | null): StartupState {
-  if (target === "cloud-managed") {
-    return { phase: "hydrating" };
-  }
-  return { phase: "starting-runtime", attempts: 0 };
-}
-
-function firstRunRequiredState(target?: RuntimeTarget | null): StartupState {
-  if (target) {
-    return {
-      phase: "first-run-required",
-      serverReachable: true,
-      target,
-    };
-  }
-  return { phase: "first-run-required", serverReachable: true };
-}
 
 // ── Reducer ──────────────────────────────────────────────────────────
 
@@ -174,11 +151,9 @@ export function startupReducer(
       switch (event.type) {
         case "BACKEND_REACHED":
           if (event.firstRunComplete) {
-            return firstRunCompleteState(event.target ?? state.target);
+            return { phase: "starting-runtime", attempts: 0 };
           }
-          return firstRunRequiredState(event.target ?? state.target);
-        case "FIRST_RUN_COMPLETE":
-          return firstRunCompleteState(event.target ?? state.target);
+          return { phase: "first-run-required", serverReachable: true };
         case "BACKEND_AUTH_REQUIRED":
           return { phase: "pairing-required" };
         case "BACKEND_NOT_FOUND":
@@ -216,7 +191,7 @@ export function startupReducer(
         case "FIRST_RUN_OPTIONS_LOADED":
           return state;
         case "FIRST_RUN_COMPLETE":
-          return firstRunCompleteState(event.target ?? state.target);
+          return { phase: "starting-runtime", attempts: 0 };
         case "RETRY":
           return { phase: "restoring-session" };
         default:
@@ -276,9 +251,9 @@ export function startupReducer(
       switch (event.type) {
         case "BACKEND_REACHED":
           if (event.firstRunComplete) {
-            return firstRunCompleteState(event.target);
+            return { phase: "starting-runtime", attempts: 0 };
           }
-          return firstRunRequiredState(event.target);
+          return { phase: "first-run-required", serverReachable: true };
         case "AGENT_RUNNING":
           return { phase: "hydrating" };
         case "RETRY":

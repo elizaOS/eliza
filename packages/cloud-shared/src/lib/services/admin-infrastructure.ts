@@ -1,10 +1,9 @@
-import { asc, eq } from "drizzle-orm";
+import { asc } from "drizzle-orm";
 import { dbRead } from "../../db/helpers";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { type AgentSandboxStatus, agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import type { DockerNodeStatus } from "../../db/schemas/docker-nodes";
 import { logger } from "../utils/logger";
-import { shellQuote } from "./docker-sandbox-utils";
 import { DockerSSHClient } from "./docker-ssh";
 
 const HEARTBEAT_WARNING_MINUTES = 5;
@@ -205,38 +204,6 @@ export interface AdminInfrastructureSnapshot {
   containers: AdminInfrastructureContainer[];
 }
 
-type AdminContainerAction = "restart" | "stop" | "start" | "pull-image" | "logs" | "inspect";
-
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
-
-export interface AdminContainerActionInput {
-  action: AdminContainerAction;
-  nodeId: string;
-  containerName: string;
-  lines?: number;
-}
-
-export interface AdminContainerActionResult {
-  action: AdminContainerAction;
-  nodeId: string;
-  containerName: string;
-  output?: string;
-  logs?: string;
-  inspect?: { [key: string]: JsonValue };
-  resourceUsage?: Record<string, string>;
-  fetchedAt?: string;
-}
-
-export interface AdminDockerContainerAuditResult {
-  nodesChecked: number;
-  ghostContainers: Array<{ nodeId: string; hostname: string; names: string[] }>;
-  orphanRecords: Array<{ id: string; containerName: string | null }>;
-  totalGhostContainers: number;
-  totalOrphanRecords: number;
-  auditedAt: string;
-  message: string;
-}
-
 function toIso(value: Date | string | null | undefined): string | null {
   if (!value) return null;
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
@@ -257,155 +224,6 @@ function parseMemoryPercent(value: string): number | null {
   }
 
   return Math.round((used / total) * 100);
-}
-
-function clampLogLines(value: number | undefined): number {
-  if (!Number.isInteger(value)) return 200;
-  return Math.min(Math.max(value ?? 200, 1), 10_000);
-}
-
-async function getNodeSshClient(nodeId: string): Promise<DockerSSHClient> {
-  const node = await dockerNodesRepository.findByNodeId(nodeId);
-  if (!node) throw new Error(`Docker node not found: ${nodeId}`);
-  return new DockerSSHClient({
-    hostname: node.hostname,
-    port: node.ssh_port,
-    username: node.ssh_user,
-    hostKeyFingerprint: node.host_key_fingerprint ?? undefined,
-  });
-}
-
-function parseDockerInspect(output: string): { [key: string]: JsonValue } {
-  const parsed = JSON.parse(output) as Array<{ [key: string]: JsonValue }>;
-  const [first] = parsed;
-  if (!first) throw new Error("docker inspect returned no container data");
-  return first;
-}
-
-function parseDockerStats(output: string): Record<string, string> {
-  const [cpuPercent, memUsage, memPercent, netIO, blockIO, pids] = output.trim().split("|");
-  return {
-    cpuPercent: cpuPercent ?? "",
-    memUsage: memUsage ?? "",
-    memPercent: memPercent ?? "",
-    netIO: netIO ?? "",
-    blockIO: blockIO ?? "",
-    pids: pids ?? "",
-  };
-}
-
-export async function executeAdminContainerAction(
-  input: AdminContainerActionInput,
-): Promise<AdminContainerActionResult> {
-  const containerName = input.containerName.trim();
-  const nodeId = input.nodeId.trim();
-  if (!nodeId) throw new Error("nodeId is required");
-  if (!containerName) throw new Error("containerName is required");
-
-  const ssh = await getNodeSshClient(nodeId);
-  const container = shellQuote(containerName);
-
-  if (input.action === "logs") {
-    const logs = await ssh.exec(
-      `docker logs --tail ${clampLogLines(input.lines)} ${container} 2>&1`,
-      30_000,
-    );
-    return {
-      action: input.action,
-      nodeId,
-      containerName,
-      logs,
-      fetchedAt: new Date().toISOString(),
-    };
-  }
-
-  if (input.action === "inspect") {
-    const [inspectOutput, statsOutput] = await Promise.all([
-      ssh.exec(`docker inspect ${container}`, 30_000),
-      ssh
-        .exec(
-          `docker stats --no-stream --format '{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}|{{.BlockIO}}|{{.PIDs}}' ${container}`,
-          15_000,
-        )
-        .catch(() => ""),
-    ]);
-    return {
-      action: input.action,
-      nodeId,
-      containerName,
-      inspect: parseDockerInspect(inspectOutput),
-      resourceUsage: statsOutput ? parseDockerStats(statsOutput) : undefined,
-      fetchedAt: new Date().toISOString(),
-    };
-  }
-
-  if (input.action === "pull-image") {
-    const image = (
-      await ssh.exec(`docker inspect --format '{{.Config.Image}}' ${container}`, 15_000)
-    ).trim();
-    if (!image) throw new Error(`Cannot resolve image for ${containerName}`);
-    const output = await ssh.exec(`docker pull ${shellQuote(image)}`, 120_000);
-    return { action: input.action, nodeId, containerName, output };
-  }
-
-  const output = await ssh.exec(`docker ${input.action} ${container}`, 60_000);
-  return { action: input.action, nodeId, containerName, output };
-}
-
-export async function getAdminContainerLogsBySandboxId(
-  sandboxId: string,
-  lines?: number,
-): Promise<AdminContainerActionResult> {
-  const [row] = await dbRead
-    .select({
-      nodeId: agentSandboxes.node_id,
-      containerName: agentSandboxes.container_name,
-    })
-    .from(agentSandboxes)
-    .where(eq(agentSandboxes.id, sandboxId))
-    .limit(1);
-
-  if (!row) throw new Error(`Sandbox not found: ${sandboxId}`);
-  if (!row.nodeId || !row.containerName) {
-    throw new Error(`Sandbox is not assigned to a Docker container: ${sandboxId}`);
-  }
-
-  return executeAdminContainerAction({
-    action: "logs",
-    nodeId: row.nodeId,
-    containerName: row.containerName,
-    lines,
-  });
-}
-
-export async function auditAdminDockerContainers(): Promise<AdminDockerContainerAuditResult> {
-  const snapshot = await getAdminInfrastructureSnapshot();
-  const ghostContainers = snapshot.nodes
-    .map((node) => ({
-      nodeId: node.nodeId,
-      hostname: node.hostname,
-      names: node.ghostContainers.map((container) => container.name),
-    }))
-    .filter((node) => node.names.length > 0);
-  const orphanRecords = snapshot.containers
-    .filter((container) => !container.nodeId || !container.runtimePresent)
-    .map((container) => ({
-      id: container.id,
-      containerName: container.containerName,
-    }));
-
-  return {
-    nodesChecked: snapshot.nodes.length,
-    ghostContainers,
-    orphanRecords,
-    totalGhostContainers: ghostContainers.reduce((sum, node) => sum + node.names.length, 0),
-    totalOrphanRecords: orphanRecords.length,
-    auditedAt: new Date().toISOString(),
-    message:
-      ghostContainers.length === 0 && orphanRecords.length === 0
-        ? "No runtime drift detected"
-        : "Runtime drift detected",
-  };
 }
 
 function parseRuntimeContainers(output: string): RuntimeContainerRecord[] {

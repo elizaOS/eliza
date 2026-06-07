@@ -24,7 +24,6 @@ type FirstRunClient = Pick<
   ElizaClient,
   | "getAuthStatus"
   | "getBaseUrl"
-  | "getRestAuthToken"
   | "getStatus"
   | "provisionCloudSandbox"
   | "setBaseUrl"
@@ -67,21 +66,12 @@ async function startNativeAgentIfAvailable(): Promise<void> {
   }
 }
 
-function shouldAllowIosSharedCloudRuntime(): boolean {
+function shouldUseIosCloudLocalAgent(): boolean {
   try {
     return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios";
   } catch {
     return false;
   }
-}
-
-function readFirstRunCloudAuthToken(client: FirstRunClient): string {
-  const globalToken = (globalThis as Record<string, unknown>)
-    .__ELIZA_CLOUD_AUTH_TOKEN__;
-  if (typeof globalToken === "string" && globalToken.trim()) {
-    return globalToken.trim();
-  }
-  return client.getRestAuthToken()?.trim() || "";
 }
 
 import {
@@ -327,9 +317,7 @@ export interface FirstRunCallbacksDeps {
 
   /** Lifecycle / global */
   setFirstRunComplete: (v: boolean) => void;
-  coordinatorFirstRunCompleteRef: RefObject<
-    ((target?: CompleteFirstRunOptions["startupTarget"]) => void) | null
-  >;
+  coordinatorFirstRunCompleteRef: RefObject<(() => void) | null>;
   initialTabSetRef: RefObject<boolean>;
   setTab: (tab: Tab) => void;
   defaultLandingTab: Tab;
@@ -445,7 +433,7 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
         }) as AppState["firstRunDetectedProviders"],
       );
       setFirstRunComplete(true);
-      coordinatorFirstRunCompleteRef.current?.(options?.startupTarget);
+      coordinatorFirstRunCompleteRef.current?.();
       initialTabSetRef.current = true;
       const launchCompanionOverlay =
         options?.launchCompanionOverlay === true &&
@@ -612,25 +600,12 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
               "info",
               6000,
             );
-            if (isElizaCloudFirstRunTarget(firstRunRuntimeTarget)) {
-              completeFirstRun("settings", {
-                startupTarget: "cloud-managed",
-              });
-            } else {
-              completeFirstRun("settings");
-            }
+            completeFirstRun("settings");
             return;
           }
           await ensureFirstRunAgentRunning(client);
 
-          if (isElizaCloudFirstRunTarget(firstRunRuntimeTarget)) {
-            completeFirstRun("chat", {
-              launchCompanionOverlay: true,
-              startupTarget: "cloud-managed",
-            });
-          } else {
-            completeFirstRun("chat", { launchCompanionOverlay: true });
-          }
+          completeFirstRun("chat", { launchCompanionOverlay: true });
           return;
         }
 
@@ -649,14 +624,16 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
         const isLocalMode =
           firstRunRuntimeTarget === "local" || !firstRunRuntimeTarget;
         const isRemoteMode = firstRunRuntimeTarget === "remote";
-        let sharedCloudRuntimeReady = false;
 
         if (isSandboxMode) {
           const cloudApiBase =
             client.getBaseUrl().trim() ||
             getBootConfig().cloudApiBase ||
             "https://www.elizacloud.ai";
-          const authToken = readFirstRunCloudAuthToken(client);
+          const authToken = String(
+            (globalThis as Record<string, unknown>)
+              .__ELIZA_CLOUD_AUTH_TOKEN__ ?? "",
+          );
 
           if (!authToken) {
             throw new Error(
@@ -670,19 +647,17 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
             name: firstRunName,
             bio: style?.bio ?? ["An autonomous AI agent."],
             onProgress: () => {},
-            allowSharedRuntime: shouldAllowIosSharedCloudRuntime(),
+            allowSharedRuntime: shouldUseIosCloudLocalAgent(),
           });
 
-          const cloudAgentApiBase = resolveCloudAgentApiBase({
-            bridgeUrl: provisionedAgent.bridgeUrl,
-            webUiUrl: provisionedAgent.webUiUrl,
-          });
-          sharedCloudRuntimeReady = provisionedAgent.executionTier === "shared";
-          const appApiBase =
-            sharedCloudRuntimeReady && shouldAllowIosSharedCloudRuntime()
-              ? IOS_LOCAL_AGENT_IPC_BASE
-              : cloudAgentApiBase;
-          client.setBaseUrl(appApiBase);
+          const iosCloudLocalAgent = shouldUseIosCloudLocalAgent();
+          const cloudAgentApiBase = iosCloudLocalAgent
+            ? IOS_LOCAL_AGENT_IPC_BASE
+            : resolveCloudAgentApiBase({
+                bridgeUrl: provisionedAgent.bridgeUrl,
+                webUiUrl: provisionedAgent.webUiUrl,
+              });
+          client.setBaseUrl(cloudAgentApiBase);
           client.setToken(authToken);
           persistMobileRuntimeModeForServerTarget(firstRunRuntimeTarget);
           savePersistedActiveServer(
@@ -742,49 +717,46 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
         }
 
         const sandboxMode = isSandboxMode ? "standard" : "off";
-        if (!sharedCloudRuntimeReady) {
-          await client.submitFirstRun({
-            name: firstRunName,
-            sandboxMode: sandboxMode as "off",
-            bio: style?.bio ?? ["An autonomous AI agent."],
-            systemPrompt,
-            style: style?.style,
-            adjectives: style?.adjectives,
-            topics: style?.topics,
-            postExamples: style?.postExamples,
-            messageExamples: style?.messageExamples,
-            avatarIndex: style?.avatarIndex ?? selectedVrmIndex,
-            language: uiLanguage,
-            presetId:
-              (style?.id ?? firstRunStyle) ||
-              getDefaultStylePreset(uiLanguage).id,
-            deploymentTarget: runtimeConfig.deploymentTarget,
-            ...(runtimeConfig.linkedAccounts
-              ? { linkedAccounts: runtimeConfig.linkedAccounts }
-              : {}),
-            ...(runtimeConfig.serviceRouting
-              ? { serviceRouting: runtimeConfig.serviceRouting }
-              : {}),
-            ...(runtimeConfig.credentialInputs
-              ? { credentialInputs: runtimeConfig.credentialInputs }
-              : {}),
-            ...firstRunCapabilityPayload,
-            walletConfig: nextWalletConfig,
-          } as Parameters<FirstRunClient["submitFirstRun"]>[0]);
-          try {
-            await persistFirstRunStyleVoice({
-              style,
-              voiceProvider: firstRunVoiceProvider,
-              voiceApiKey: firstRunVoiceApiKey,
-              cloudTtsSelected:
-                runtimeConfig.serviceRouting?.tts?.transport ===
-                  "cloud-proxy" &&
-                runtimeConfig.serviceRouting?.tts?.backend === "elizacloud",
-              clientRef: client,
-            });
-          } catch {
-            // voice preset persistence is best-effort
-          }
+        await client.submitFirstRun({
+          name: firstRunName,
+          sandboxMode: sandboxMode as "off",
+          bio: style?.bio ?? ["An autonomous AI agent."],
+          systemPrompt,
+          style: style?.style,
+          adjectives: style?.adjectives,
+          topics: style?.topics,
+          postExamples: style?.postExamples,
+          messageExamples: style?.messageExamples,
+          avatarIndex: style?.avatarIndex ?? selectedVrmIndex,
+          language: uiLanguage,
+          presetId:
+            (style?.id ?? firstRunStyle) ||
+            getDefaultStylePreset(uiLanguage).id,
+          deploymentTarget: runtimeConfig.deploymentTarget,
+          ...(runtimeConfig.linkedAccounts
+            ? { linkedAccounts: runtimeConfig.linkedAccounts }
+            : {}),
+          ...(runtimeConfig.serviceRouting
+            ? { serviceRouting: runtimeConfig.serviceRouting }
+            : {}),
+          ...(runtimeConfig.credentialInputs
+            ? { credentialInputs: runtimeConfig.credentialInputs }
+            : {}),
+          ...firstRunCapabilityPayload,
+          walletConfig: nextWalletConfig,
+        } as Parameters<FirstRunClient["submitFirstRun"]>[0]);
+        try {
+          await persistFirstRunStyleVoice({
+            style,
+            voiceProvider: firstRunVoiceProvider,
+            voiceApiKey: firstRunVoiceApiKey,
+            cloudTtsSelected:
+              runtimeConfig.serviceRouting?.tts?.transport === "cloud-proxy" &&
+              runtimeConfig.serviceRouting?.tts?.backend === "elizacloud",
+            clientRef: client,
+          });
+        } catch {
+          // voice preset persistence is best-effort
         }
 
         applySelectedLocalCapabilities();
@@ -794,25 +766,12 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
             "info",
             6000,
           );
-          if (isSandboxMode) {
-            completeFirstRun("settings", { startupTarget: "cloud-managed" });
-          } else {
-            completeFirstRun("settings");
-          }
+          completeFirstRun("settings");
           return;
         }
-        if (!sharedCloudRuntimeReady) {
-          await ensureFirstRunAgentRunning(client);
-        }
+        await ensureFirstRunAgentRunning(client);
 
-        if (isSandboxMode) {
-          completeFirstRun("chat", {
-            launchCompanionOverlay: true,
-            startupTarget: "cloud-managed",
-          });
-        } else {
-          completeFirstRun("chat", { launchCompanionOverlay: true });
-        }
+        completeFirstRun("chat", { launchCompanionOverlay: true });
       } catch (err) {
         const message =
           err instanceof Error && err.message.trim()

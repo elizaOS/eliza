@@ -1,8 +1,8 @@
-name: Hetzner Control Plane Deploy
+name: Deploy Eliza Provisioning Worker
 
-# SSHes to the Hetzner control-plane host, fetches the latest develop/main
-# commit, installs the provisioning worker + agent router systemd units, and
-# proves the Node-only control-plane admin surface is reachable locally.
+# SSHes to the Hetzner provisioning host, fetches the latest develop commit,
+# installs the systemd unit shipped at packages/scripts/cloud/admin/eliza-provisioning-worker.service,
+# and restarts the eliza-provisioning-worker daemon.
 #
 # First-time setup:
 #   HCLOUD_TOKEN=... bun run packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs
@@ -16,13 +16,9 @@ on:
       - 'packages/scripts/cloud/admin/daemons/agent-router.ts'
       - 'packages/scripts/cloud/admin/eliza-provisioning-worker.service'
       - 'packages/scripts/cloud/admin/eliza-agent-router.service'
-      - 'packages/scripts/cloud/admin/install-control-plane-nginx.sh'
-      - 'packages/cloud-api/v1/_container-control-plane-forward.ts'
-      - 'packages/cloud-api/v1/admin/infrastructure/route.ts'
       - 'packages/cloud-shared/src/lib/services/provisioning-jobs.ts'
       - 'packages/cloud-shared/src/lib/services/docker-sandbox-provider.ts'
       - 'packages/cloud-shared/src/lib/services/eliza-sandbox.ts'
-      - 'packages/cloud-shared/src/lib/services/admin-infrastructure.ts'
       - 'packages/cloud-shared/src/db/repositories/agent-sandboxes.ts'
       - 'packages/cloud-shared/**'
       - 'packages/cloud-sdk/**'
@@ -154,16 +150,12 @@ jobs:
       - name: Deploy and restart worker
         if: steps.deploy_config.outputs.configured == 'true'
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
-        env:
-          STEWARD_REQUEST_SIGNING_SECRET: ${{ secrets.STEWARD_REQUEST_SIGNING_SECRET }}
-          STEWARD_REQUEST_SIGNING_SECRETS: ${{ secrets.STEWARD_REQUEST_SIGNING_SECRETS }}
-          STEWARD_REQUEST_SIGNING_KEY_ID: ${{ secrets.STEWARD_REQUEST_SIGNING_KEY_ID }}
         with:
           host: ${{ env.DEPLOY_HOST }}
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
           command_timeout: 10m
-          envs: DEPLOY_BRANCH,SYSTEMD_UNIT,STEWARD_REQUEST_SIGNING_SECRET,STEWARD_REQUEST_SIGNING_SECRETS,STEWARD_REQUEST_SIGNING_KEY_ID
+          envs: DEPLOY_BRANCH,SYSTEMD_UNIT
           script: |
             set -euo pipefail
             echo "=== Deploying eliza-provisioning-worker (branch: $DEPLOY_BRANCH) ==="
@@ -268,38 +260,8 @@ jobs:
             sudo install -m 0644 \
               packages/scripts/cloud/admin/eliza-agent-router.service \
               /etc/systemd/system/eliza-agent-router.service
-            sudo install -m 0755 \
-              packages/scripts/cloud/admin/install-control-plane-nginx.sh \
-              /usr/local/sbin/eliza-install-control-plane-nginx
             sudo systemctl daemon-reload
             sudo systemctl enable "$SYSTEMD_UNIT" eliza-agent-router.service
-            sudo /usr/local/sbin/eliza-install-control-plane-nginx
-
-            upsert_secret_env() {
-              key="$1"
-              value="$2"
-              if [ -z "$value" ]; then
-                return 0
-              fi
-              tmp="$(mktemp)"
-              sudo awk -F= -v key="$key" '$1 != key { print }' /opt/eliza/cloud/.env.local > "$tmp"
-              printf '%s=%s\n' "$key" "$value" >> "$tmp"
-              sudo install -m 0600 "$tmp" /opt/eliza/cloud/.env.local
-              rm -f "$tmp"
-            }
-
-            upsert_secret_env STEWARD_REQUEST_SIGNING_SECRET "${STEWARD_REQUEST_SIGNING_SECRET:-}"
-            upsert_secret_env STEWARD_REQUEST_SIGNING_SECRETS "${STEWARD_REQUEST_SIGNING_SECRETS:-}"
-            upsert_secret_env STEWARD_REQUEST_SIGNING_KEY_ID "${STEWARD_REQUEST_SIGNING_KEY_ID:-}"
-
-            if ! sudo awk -F= '
-              $1=="STEWARD_REQUEST_SIGNING_SECRET" && length($0) > length($1) + 1 { found=1 }
-              $1=="STEWARD_REQUEST_SIGNING_SECRETS" && length($0) > length($1) + 1 { found=1 }
-              END { exit(found ? 0 : 1) }
-            ' /opt/eliza/cloud/.env.local; then
-              echo "::error::STEWARD_REQUEST_SIGNING_SECRET or STEWARD_REQUEST_SIGNING_SECRETS is missing from /opt/eliza/cloud/.env.local. Provisioning would fail Steward agent registration with 401."
-              exit 1
-            fi
 
             sudo systemctl restart "$SYSTEMD_UNIT"
             sudo systemctl restart eliza-agent-router.service
@@ -359,41 +321,6 @@ jobs:
                   ROUTER_PORT=$(systemctl show eliza-agent-router.service --property=Environment --value | tr ' ' '\n' | awk -F= '$1=="AGENT_ROUTER_PORT" {print $2}')
                   : "${ROUTER_PORT:=3458}"
                   if curl -sf -m 3 "http://127.0.0.1:${ROUTER_PORT}/healthz" >/dev/null 2>&1; then
-                    CONTROL_PLANE_TOKEN="$(
-                      sudo awk -F= '$1=="CONTAINER_CONTROL_PLANE_TOKEN" {
-                        value=$0
-                        sub(/^[^=]+=/, "", value)
-                        gsub(/^'\''|'\''$/, "", value)
-                        gsub(/^"|"$/, "", value)
-                        print value
-                        exit
-                      }' /opt/eliza/cloud/.env.local
-                    )"
-                    if [ -z "$CONTROL_PLANE_TOKEN" ]; then
-                      echo "::error::CONTAINER_CONTROL_PLANE_TOKEN is missing from /opt/eliza/cloud/.env.local. Admin infrastructure visibility would fail closed."
-                      exit 1
-                    fi
-                    INFRA_BODY="$(
-                      curl -sf -m 45 \
-                        -H "x-container-control-plane-token: ${CONTROL_PLANE_TOKEN}" \
-                        "http://127.0.0.1:${ROUTER_PORT}/api/v1/admin/infrastructure"
-                    )"
-                    printf '%s' "$INFRA_BODY" | node -e '
-                      const chunks = [];
-                      process.stdin.on("data", (chunk) => chunks.push(chunk));
-                      process.stdin.on("end", () => {
-                        const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-                        if (body?.success !== true || typeof body?.data?.summary?.totalNodes !== "number") {
-                          throw new Error("admin infrastructure snapshot missing summary.totalNodes");
-                        }
-                        console.log(`Admin infrastructure snapshot OK: nodes=${body.data.summary.totalNodes}, containers=${body.data.summary.totalContainers}`);
-                      });
-                    '
-                    if curl -sf -m 10 "http://${DEPLOY_HOST}/health" >/dev/null 2>&1; then
-                      echo "External control-plane /health OK via http://${DEPLOY_HOST}/health."
-                    else
-                      echo "::warning::External http://${DEPLOY_HOST}/health did not respond. DNS/TLS may still be pending, but local daemons are healthy."
-                    fi
                     echo "Both daemons active and stable (worker ${AGE}s, router ${ROUTER_AGE}s, router /healthz OK) on attempt $attempt."
                     exit 0
                   fi

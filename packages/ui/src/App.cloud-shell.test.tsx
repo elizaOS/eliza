@@ -126,10 +126,7 @@ describe("App standalone chat-overlay wiring", () => {
       'setState("firstRunComplete", true)',
     );
     expect(USE_STARTUP_SHELL_CONTROLLER_TS).toContain(
-      'type: "FIRST_RUN_COMPLETE"',
-    );
-    expect(USE_STARTUP_SHELL_CONTROLLER_TS).toContain(
-      'target: "cloud-managed"',
+      'coordinatorDispatchRef.current({ type: "FIRST_RUN_COMPLETE" })',
     );
   });
 });
