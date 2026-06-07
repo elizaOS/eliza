@@ -1266,14 +1266,21 @@ export class DockerSandboxProvider implements SandboxProvider {
       // does not abort provisioning — the env vars on the container still
       // carry the same values.
       try {
+        if (!allEnv.ELIZAOS_CLOUD_BASE_URL) {
+          throw new Error(
+            "[docker-sandbox] ELIZAOS_CLOUD_BASE_URL is not set in container env. " +
+              "Refusing to fall back to the hardcoded prod URL (https://www.elizacloud.ai/api/v1) — " +
+              "this caused staging containers to silently call prod. " +
+              "Configure ELIZAOS_CLOUD_BASE_URL in the daemon/Worker env (e.g. " +
+              "https://api-staging.elizacloud.ai/api/v1 for staging, https://api.elizacloud.ai/api/v1 for prod).",
+          );
+        }
         const elizaConfig = JSON.stringify({
           logging: { level: "info" },
           cloud: {
             enabled: Boolean(allEnv.ELIZAOS_CLOUD_API_KEY),
             apiKey: allEnv.ELIZAOS_CLOUD_API_KEY || "",
-            baseUrl:
-              allEnv.ELIZAOS_CLOUD_BASE_URL ||
-              "https://www.elizacloud.ai/api/v1",
+            baseUrl: allEnv.ELIZAOS_CLOUD_BASE_URL,
           },
         });
         // Base64-encode the JSON before passing it through the shell so an
