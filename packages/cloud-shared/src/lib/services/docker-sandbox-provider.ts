@@ -56,6 +56,7 @@ import type {
 import {
   ensureStewardTenant,
   resolveStewardTenantCredentials,
+  type StewardTenantCredentials,
 } from "./steward-tenant-config";
 
 // ---------------------------------------------------------------------------
@@ -504,15 +505,6 @@ function resolveStewardRequestSigningSecret(
   return fromList ?? apiKey?.trim() ?? undefined;
 }
 
-// Pre-compute the Steward-required HMAC signature headers for a POST that
-// runs on a remote worker node via the Python shim below. We sign here in
-// Node (where the signing secret lives) and pass the headers verbatim into
-// the script. Uses the shared `signStewardMutatingRequest` helper so the
-// canonical-request shape stays byte-for-byte in lockstep with the Worker's
-// `steward-refresh` and `steward-nonce-exchange` bypasses; a divergence
-// (e.g. the legacy `X-Steward-Request-Timestamp` field) makes Steward reject
-// with `Invalid request signature` and fall through to the session-owner
-// check, which then 403s with "owner or admin session required".
 // Best-effort `curl -X DELETE` against Steward's `/agents/:id` for cleanup
 // paths (failed container create, missing Headscale registration). Signs the
 // request when STEWARD_REQUEST_SIGNING_SECRET is configured so Steward's
@@ -520,7 +512,7 @@ function resolveStewardRequestSigningSecret(
 // 401s and the agent record stays around as a ghost, blocking later retries.
 async function buildSignedDeleteAgentCurl(
   agentId: string,
-  stewardTenant: { tenantId: string; apiKey?: string },
+  stewardTenant: StewardTenantCredentials,
 ): Promise<string> {
   const path = `/agents/${encodeURIComponent(agentId)}`;
   const url = `${resolveStewardHostUrl()}${path}`;
