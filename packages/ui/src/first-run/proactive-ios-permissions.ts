@@ -10,7 +10,9 @@ import type {
 import {
   type CameraPermissionStatus,
   type CameraPluginLike,
+  type ContactsPluginLike,
   getCameraPlugin,
+  getContactsPlugin,
   getLocationPlugin,
   getScreenCapturePlugin,
   type LocationPluginLike,
@@ -23,7 +25,9 @@ import { createMobileSignalsPermissionsRegistry } from "../platform/mobile-permi
 type ProactivePermissionId = Extract<
   PermissionId,
   | "calendar"
+  | "contacts"
   | "health"
+  | "reminders"
   | "screentime"
   | "notifications"
   | "camera"
@@ -34,7 +38,7 @@ type ProactivePermissionId = Extract<
 
 type RegistryPermissionId = Extract<
   ProactivePermissionId,
-  "calendar" | "health" | "screentime" | "notifications"
+  "calendar" | "contacts" | "health" | "reminders" | "screentime" | "notifications"
 >;
 
 type ProactivePermissionRequest = {
@@ -58,6 +62,7 @@ export interface ProactiveIosPermissionsProgress {
 export interface RequestProactiveIosPermissionsOptions {
   registry?: IPermissionsRegistry;
   cameraPlugin?: CameraPluginLike;
+  contactsPlugin?: ContactsPluginLike;
   locationPlugin?: LocationPluginLike;
   screenCapturePlugin?: ScreenCapturePluginLike;
   onProgress?: (progress: ProactiveIosPermissionsProgress) => void;
@@ -67,7 +72,9 @@ let defaultProactiveIosPermissionsRequest: Promise<ProactiveIosPermissionsProgre
   null;
 
 const PROACTIVE_IOS_PERMISSION_IDS: readonly ProactivePermissionId[] = [
+  "contacts",
   "calendar",
+  "reminders",
   "health",
   "screentime",
   "notifications",
@@ -79,10 +86,22 @@ const PROACTIVE_IOS_PERMISSION_IDS: readonly ProactivePermissionId[] = [
 
 const REGISTRY_REQUESTS: readonly ProactivePermissionRequest[] = [
   {
+    id: "contacts",
+    label: "Contacts",
+    reason: "Read your name and contacts for personalized interactions.",
+    feature: { app: "onboarding", action: "contacts.setup" },
+  },
+  {
     id: "calendar",
     label: "Calendar",
     reason: "Read and update schedules for proactive planning.",
     feature: { app: "onboarding", action: "calendar.setup" },
+  },
+  {
+    id: "reminders",
+    label: "Reminders",
+    reason: "Read and create reminders for proactive task management.",
+    feature: { app: "onboarding", action: "reminders.setup" },
   },
   {
     id: "health",
@@ -344,6 +363,132 @@ export async function requestProactiveIosPermissions(
   return request;
 }
 
+// ── Owner name persistence ────────────────────────────────────────────
+
+const OWNER_NAME_KEY = "eliza:owner-given-name";
+const OWNER_FULL_NAME_KEY = "eliza:owner-full-name";
+
+/**
+ * Returns the user's given (first) name if it has been resolved from
+ * Contacts or the device name during the proactive permission sweep.
+ */
+export function getPersistedOwnerGivenName(): string | null {
+  try {
+    return globalThis.localStorage?.getItem(OWNER_NAME_KEY)?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Returns the user's full name if resolved during the permission sweep.
+ */
+export function getPersistedOwnerFullName(): string | null {
+  try {
+    return globalThis.localStorage?.getItem(OWNER_FULL_NAME_KEY)?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function persistOwnerName(givenName: string, fullName?: string): void {
+  try {
+    globalThis.localStorage?.setItem(OWNER_NAME_KEY, givenName);
+    if (fullName) {
+      globalThis.localStorage?.setItem(OWNER_FULL_NAME_KEY, fullName);
+    }
+  } catch {
+    // localStorage may be unavailable
+  }
+}
+
+/**
+ * Parse the user's first name from a device name like "Sarah's iPhone".
+ */
+function parseGivenNameFromDeviceName(deviceName: string): string | null {
+  const suffixes = [
+    "'s iPhone", "'s iPad", "'s iPod",
+    "\u2019s iPhone", "\u2019s iPad", "\u2019s iPod",
+    "'s iPhone", "'s iPad",
+  ];
+  for (const suffix of suffixes) {
+    if (deviceName.endsWith(suffix)) {
+      const name = deviceName.slice(0, -suffix.length).trim();
+      if (name.length > 0 && name.length < 40) return name;
+    }
+  }
+  return null;
+}
+
+/**
+ * After contacts permission is granted, attempt to read the user's name
+ * from their contacts list (looking for the "me" card or owner-like contact),
+ * falling back to parsing the device name.
+ */
+async function resolveOwnerName(
+  contactsPlugin: ContactsPluginLike,
+): Promise<void> {
+  // Skip if already resolved
+  if (getPersistedOwnerGivenName()) return;
+
+  try {
+    // The ElizaContacts plugin may have a getOwnerInfo method
+    const ownerInfo = contactsPlugin as ContactsPluginLike & {
+      getOwnerInfo?: () => Promise<{
+        givenName?: string;
+        familyName?: string;
+        nickname?: string;
+        displayName?: string;
+      }>;
+    };
+    if (typeof ownerInfo.getOwnerInfo === "function") {
+      const info = await ownerInfo.getOwnerInfo();
+      const given = info.givenName?.trim() || info.nickname?.trim();
+      if (given) {
+        const full = [info.givenName, info.familyName]
+          .filter((s) => s?.trim())
+          .join(" ")
+          .trim();
+        persistOwnerName(given, full || given);
+        return;
+      }
+    }
+
+    // Fallback: list contacts and look for one with the "me" flag or
+    // match the device name. Most devices expose the owner as the first
+    // starred contact or via the device name.
+    if (typeof contactsPlugin.listContacts === "function") {
+      const result = await contactsPlugin.listContacts({ limit: 5 });
+      const contacts = result?.contacts ?? [];
+      // The first starred contact is often the owner
+      const starred = contacts.find((c) => c.starred && c.displayName);
+      if (starred) {
+        const parts = starred.displayName.split(/\s+/);
+        const given = parts[0] ?? starred.displayName;
+        persistOwnerName(given, starred.displayName);
+        return;
+      }
+    }
+  } catch {
+    // Contacts plugin may not be available — fall through to device name
+  }
+
+  // Final fallback: try reading the device name
+  try {
+    const { Device } = await import("@capacitor/device");
+    const info = await Device.getInfo();
+    const deviceName = info?.name;
+    if (deviceName) {
+      const parsed = parseGivenNameFromDeviceName(deviceName);
+      if (parsed) {
+        persistOwnerName(parsed, parsed);
+      }
+    }
+  } catch {
+    // Device plugin unavailable
+  }
+}
+
 async function runProactiveIosPermissionsRequest(
   options: RequestProactiveIosPermissionsOptions,
 ): Promise<ProactiveIosPermissionsProgress> {
@@ -354,6 +499,7 @@ async function runProactiveIosPermissionsRequest(
   const registry =
     options.registry ?? createMobileSignalsPermissionsRegistry();
   const cameraPlugin = options.cameraPlugin ?? getCameraPlugin();
+  const contactsPlugin = options.contactsPlugin ?? getContactsPlugin();
   const locationPlugin = options.locationPlugin ?? getLocationPlugin();
   const screenCapturePlugin =
     options.screenCapturePlugin ?? getScreenCapturePlugin();
@@ -423,5 +569,10 @@ async function runProactiveIosPermissionsRequest(
   }
 
   const complete = progressFromStates([...states], null, false);
+
+  // Resolve the owner's name in the background after the sweep.
+  // This is non-blocking — the greeting will pick it up on next render.
+  void resolveOwnerName(contactsPlugin);
+
   return emit(finalMessage(complete), false);
 }

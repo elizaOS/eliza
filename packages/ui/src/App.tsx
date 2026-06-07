@@ -47,6 +47,7 @@ import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
 import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
 import { ErrorBoundary } from "./components/ui/error-boundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
+import { getPersistedOwnerGivenName } from "./first-run/proactive-ios-permissions";
 import { useBootConfig } from "./config/boot-config-react.hooks";
 import type { CompanionShellComponentProps } from "./config/boot-config-store";
 import {
@@ -824,9 +825,11 @@ function ViewRouter({
 
 function greetingForTimeOfDay(): string {
   const hour = new Date().getHours();
-  if (hour < 12) return "Good morning! What would you like to do?";
-  if (hour < 18) return "Good afternoon! What would you like to do?";
-  return "Good evening! What would you like to do?";
+  const name = getPersistedOwnerGivenName();
+  const suffix = name ? `, ${name}` : "";
+  if (hour < 12) return `Good morning${suffix}! What would you like to do?`;
+  if (hour < 18) return `Good afternoon${suffix}! What would you like to do?`;
+  return `Good evening${suffix}! What would you like to do?`;
 }
 
 const APP_SHELL_CLASS =
@@ -864,10 +867,12 @@ function CompanionShellContent(props: ShellContentProps): ReactNode {
 /** Time-of-day greeting for the ambient chat home's backdrop (Her-style). */
 function minimalHomeGreeting(): string {
   const h = new Date().getHours();
-  if (h < 5) return "still up?";
-  if (h < 12) return "good morning";
-  if (h < 18) return "good afternoon";
-  return "good evening";
+  const name = getPersistedOwnerGivenName();
+  const suffix = name ? `, ${name.toLowerCase()}` : "";
+  if (h < 5) return `still up${suffix}?`;
+  if (h < 12) return `good morning${suffix}`;
+  if (h < 18) return `good afternoon${suffix}`;
+  return `good evening${suffix}`;
 }
 
 function ChatRouteShellContent(props: ShellContentProps): ReactNode {
