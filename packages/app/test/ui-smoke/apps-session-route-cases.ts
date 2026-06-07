@@ -298,7 +298,7 @@ export const MANAGER_VISIBLE_VIEW_TILE_CASES: readonly SafeViewTileCase[] =
  */
 export const SAFE_VIEW_TILE_CASES: readonly SafeViewTileCase[] = [
   { viewId: "companion", path: "/companion" },
-  { viewId: "calendar", path: "/calendar" },
+  { viewId: "lifeops", path: "/lifeops" },
   { viewId: "model-tester", path: "/model-tester" },
 ].map(({ viewId, path }) => ({
   viewId,

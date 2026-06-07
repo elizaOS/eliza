@@ -13,7 +13,10 @@ const coreSrc = path.join(monorepoRoot, "packages/core/src");
 const vaultSrc = path.join(monorepoRoot, "packages/vault/src");
 const cloudRoutingSrc = path.join(monorepoRoot, "packages/cloud-routing/src");
 const cloudSdkSrc = path.join(monorepoRoot, "packages/cloud-sdk/src");
-const appLifeopsSrc = path.join(monorepoRoot, "plugins/plugin-personal-assistant/src");
+const appLifeopsSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-personal-assistant/src",
+);
 const appTaskCoordinatorSrc = path.join(
   monorepoRoot,
   "plugins/plugin-task-coordinator/src",
@@ -303,6 +306,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-app-manager\/(.+)$/,
         replacement: path.join(pluginAppManagerSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-task-coordinator$/,
+        replacement: path.join(appTaskCoordinatorSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-task-coordinator\/(.+)$/,
+        replacement: path.join(appTaskCoordinatorSrc, "$1"),
       },
       {
         find: /^@elizaos\/plugin-capacitor-bridge$/,

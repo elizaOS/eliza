@@ -186,7 +186,7 @@ afterEach(() => {
 
 describe("ElizaSandboxService shared runtime billing", () => {
   test("meters successful shared-runtime turns", async () => {
-    const { ElizaSandboxService } = await import("./eliza-sandbox");
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const sandbox = sharedSandbox();
     const findRunningSandboxSpy = spyOn(
       agentSandboxesRepository,
