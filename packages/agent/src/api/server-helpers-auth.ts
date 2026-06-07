@@ -232,6 +232,38 @@ export function getConfiguredApiToken(): string | undefined {
   return resolveApiToken(process.env) ?? undefined;
 }
 
+/**
+ * Extract an API token from an SSE handshake's query string.
+ *
+ * EventSource cannot set request headers, so browser SSE clients have no way
+ * to send `Authorization: Bearer …`. Cloud already opts in to `?token=` for
+ * the WebSocket path via `ELIZA_ALLOW_WS_QUERY_TOKEN=1`; this mirrors that
+ * trust model for SSE GETs while keeping the gate tightly scoped:
+ *  - same env flag (cloud-only, never silently enabled elsewhere),
+ *  - method must be GET (read-only),
+ *  - `Accept` must include `text/event-stream` so JSON endpoints with a stray
+ *    `?token=` cannot bypass the header path or leak via proxy access logs.
+ * The returned token is still validated by `tokenMatches` against
+ * `getConfiguredApiToken()` — same crypto.timingSafeEqual path as Bearer.
+ */
+function extractSseQueryToken(req: http.IncomingMessage): string | null {
+  if (process.env.ELIZA_ALLOW_WS_QUERY_TOKEN !== "1") return null;
+  if ((req.method ?? "GET").toUpperCase() !== "GET") return null;
+  const accept = firstHeaderValue(req.headers.accept) ?? "";
+  if (!accept.toLowerCase().includes("text/event-stream")) return null;
+  try {
+    const url = new URL(req.url ?? "/", "http://localhost");
+    const raw =
+      url.searchParams.get("token") ??
+      url.searchParams.get("apiKey") ??
+      url.searchParams.get("api_key");
+    const trimmed = raw?.trim();
+    return trimmed && trimmed.length <= 1024 ? trimmed : null;
+  } catch {
+    return null;
+  }
+}
+
 export function extractAuthToken(req: http.IncomingMessage): string | null {
   const rawAuth =
     typeof req.headers.authorization === "string"
@@ -257,6 +289,9 @@ export function extractAuthToken(req: http.IncomingMessage): string | null {
       req.headers["x-waifu-chat-access-token"]) ||
     (typeof req.headers["x-api-key"] === "string" && req.headers["x-api-key"]);
   if (typeof header === "string" && header.trim()) return header.trim();
+
+  const sseToken = extractSseQueryToken(req);
+  if (sseToken) return sseToken;
 
   return null;
 }
