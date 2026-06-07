@@ -68,7 +68,7 @@ export type {
 export { appAction, availableAppsProvider, createAppAction };
 
 export const appControlPlugin: Plugin = {
-	name: "app-control",
+	name: "@elizaos/plugin-app-control",
 	description:
 		"Launch, close, list, relaunch, load, and create Eliza apps from agent chat. Backed by the Eliza dashboard /api/apps/* HTTP surface. Also manages UI views via the VIEWS action.",
 	actions: [appAction, viewsAction, homescreenAction],
