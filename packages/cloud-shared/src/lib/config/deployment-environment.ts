@@ -20,3 +20,13 @@ export function shouldBlockUnsafeWebhookSkip(env: EnvLike = process.env): boolea
 export function shouldBlockDevnetBypass(env: EnvLike = process.env): boolean {
   return env.DEVNET === "true" && isProductionDeployment(env);
 }
+
+/**
+ * Block the Cloudflare registrar/DNS dev stub from running in production. The
+ * stub (ELIZA_CF_REGISTRAR_DEV_STUB=1) returns fake registrations that still
+ * debit credits, so a stray flag in prod charges users for domains that were
+ * never registered. Dev/test/staging may keep using it.
+ */
+export function shouldBlockRegistrarStub(env: EnvLike = process.env): boolean {
+  return env.ELIZA_CF_REGISTRAR_DEV_STUB === "1" && isProductionDeployment(env);
+}
