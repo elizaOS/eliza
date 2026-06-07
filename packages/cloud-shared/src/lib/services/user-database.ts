@@ -11,6 +11,7 @@ import type { App, UserDatabaseStatus } from "../../db/schemas/apps";
 import { logger } from "../utils/logger";
 import { fieldEncryption } from "./field-encryption";
 import { getNeonClient } from "./neon-client";
+import type { TenantDbProvisioning } from "./tenant-db/tenant-db-provisioning";
 
 /**
  * Result from provisioning a user database.
@@ -59,6 +60,19 @@ export interface DatabaseStatus {
 }
 
 export class UserDatabaseService {
+  private readonly tenantDbProvisioning?: TenantDbProvisioning;
+
+  /**
+   * @param tenantDbProvisioning When provided, apps get a fully ISOLATED
+   *   per-tenant database (own DB + role + REVOKE-CONNECT boundary). When
+   *   omitted, falls back to the legacy shared cloud DATABASE_URL. The real
+   *   isolated backend is injected once its cluster store + Postgres executor
+   *   are wired (Apps / Product 2).
+   */
+  constructor(tenantDbProvisioning?: TenantDbProvisioning) {
+    this.tenantDbProvisioning = tenantDbProvisioning;
+  }
+
   /**
    * Provision a database for an app.
    *
@@ -142,16 +156,27 @@ export class UserDatabaseService {
     }
 
     try {
-      // Use shared cloud DATABASE_URL instead of per-app Neon projects.
-      // ElizaOS plugin-sql tables scope data by agent/app UUID, so multiple
-      // apps safely coexist. This avoids BRANCHES_LIMIT_EXCEEDED errors.
-      const sharedDbUrl = process.env.DATABASE_URL;
-      if (!sharedDbUrl) {
-        throw new Error("DATABASE_URL not configured in cloud environment");
+      // Per-tenant ISOLATED database (Apps / Product 2) when the provisioning
+      // backend is wired; otherwise fall back to the legacy shared cloud
+      // DATABASE_URL (plugin-sql tables scope by agent/app UUID, so the shared
+      // mode still coexists safely). The isolated path provisions the app its
+      // own DB + role and stores that real DSN — never the shared agent URL.
+      let connectionUri: string;
+      let clusterId: string | undefined;
+      if (this.tenantDbProvisioning) {
+        const provisioned = await this.tenantDbProvisioning.provisionForApp(appId);
+        connectionUri = provisioned.dsn;
+        clusterId = provisioned.clusterId;
+      } else {
+        const sharedDbUrl = process.env.DATABASE_URL;
+        if (!sharedDbUrl) {
+          throw new Error("DATABASE_URL not configured in cloud environment");
+        }
+        connectionUri = sharedDbUrl;
       }
 
-      // Encrypt the connection URI before storing
-      const encryptedUri = await fieldEncryption.encrypt(app.organization_id, sharedDbUrl);
+      // Encrypt the connection URI before storing.
+      const encryptedUri = await fieldEncryption.encrypt(app.organization_id, connectionUri);
 
       await appDatabasesRepository.updateState(appId, {
         user_database_uri: encryptedUri,
@@ -159,11 +184,15 @@ export class UserDatabaseService {
         user_database_error: null,
       });
 
-      logger.info("Database provisioned successfully (shared DB)", { appId });
+      logger.info("Database provisioned successfully", {
+        appId,
+        mode: this.tenantDbProvisioning ? "isolated" : "shared",
+        clusterId,
+      });
 
       return {
         success: true,
-        connectionUri: sharedDbUrl,
+        connectionUri,
         region,
       };
     } catch (error) {
