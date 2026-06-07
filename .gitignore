@@ -779,6 +779,7 @@ ts_errors.log
 
 # Local runtime state and generated databases
 .eliza/
+.eliza-local/
 *.sqlite
 *.sqlite3
 *.db
