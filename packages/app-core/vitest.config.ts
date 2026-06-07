@@ -21,6 +21,7 @@ const appTaskCoordinatorSrc = path.join(
   monorepoRoot,
   "plugins/plugin-task-coordinator/src",
 );
+const toVitePath = (value: string): string => value.replaceAll("\\", "/");
 const pluginAppManagerSrc = path.join(
   monorepoRoot,
   "plugins/plugin-app-manager/src",
@@ -309,11 +310,11 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/plugin-task-coordinator$/,
-        replacement: path.join(appTaskCoordinatorSrc, "index.ts"),
+        replacement: toVitePath(path.join(appTaskCoordinatorSrc, "index.ts")),
       },
       {
         find: /^@elizaos\/plugin-task-coordinator\/(.+)$/,
-        replacement: path.join(appTaskCoordinatorSrc, "$1"),
+        replacement: `${toVitePath(appTaskCoordinatorSrc)}/$1`,
       },
       {
         find: /^@elizaos\/plugin-capacitor-bridge$/,

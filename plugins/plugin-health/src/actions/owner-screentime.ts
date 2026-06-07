@@ -44,6 +44,7 @@ const SCREENTIME_SUBACTIONS = [
 type ScreentimeSubaction = (typeof SCREENTIME_SUBACTIONS)[number];
 
 interface OwnerScreentimeParameters {
+  action?: unknown;
   subaction?: unknown;
   source?: unknown;
   identifier?: unknown;
@@ -80,9 +81,15 @@ export const ownerScreentimeAction: Action = {
     "Owner-facing screen-time umbrella action: summaries, daily/weekly breakdowns, per-app / per-website slices, browser activity reports, and time-on-target queries across iOS / Android / desktop signals.",
   parameters: [
     {
-      name: "subaction",
-      description: "Which screen-time sub-operation to run.",
+      name: "action",
+      description: "Which screen-time operation to run.",
       required: true,
+      schema: { type: "string", enum: [...SCREENTIME_SUBACTIONS] },
+    },
+    {
+      name: "subaction",
+      description: "Legacy alias for action.",
+      required: false,
       schema: { type: "string", enum: [...SCREENTIME_SUBACTIONS] },
     },
     {
@@ -134,16 +141,13 @@ export const ownerScreentimeAction: Action = {
     _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const params = (options ?? {}) as OwnerScreentimeParameters;
-    const subaction = readString(params.subaction);
-    if (!subaction) {
-      return failure("missing_subaction", "No subaction specified.");
+    const action = readString(params.action) ?? readString(params.subaction);
+    if (!action) {
+      return failure("missing_action", "No action specified.");
     }
     const known = SCREENTIME_SUBACTIONS as readonly string[];
-    if (!known.includes(subaction)) {
-      return failure(
-        "unknown_subaction",
-        `Unsupported subaction '${subaction}'.`,
-      );
+    if (!known.includes(action)) {
+      return failure("unknown_action", `Unsupported action '${action}'.`);
     }
 
     // Single TODO covers every branch: the migration target is the matching
@@ -151,7 +155,7 @@ export const ownerScreentimeAction: Action = {
     // TODO(migrate: plugins/plugin-lifeops/src/actions/screen-time.ts)
     return failure(
       "scaffold_stub",
-      `OWNER_SCREENTIME.${subaction as ScreentimeSubaction} is not migrated yet.`,
+      `OWNER_SCREENTIME.${action as ScreentimeSubaction} is not migrated yet.`,
     );
   },
   examples: [],
