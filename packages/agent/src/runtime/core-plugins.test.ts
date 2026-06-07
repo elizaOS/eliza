@@ -17,11 +17,15 @@ describe("CORE_PLUGINS", () => {
     expect(CORE_PLUGINS).not.toContain("@elizaos/plugin-google");
     expect(CORE_PLUGINS).not.toContain("@elizaos/plugin-personal-assistant");
     expect(DEFERRED_CORE_PLUGINS).not.toContain("@elizaos/plugin-google");
-    expect(DEFERRED_CORE_PLUGINS).not.toContain("@elizaos/plugin-personal-assistant");
+    expect(DEFERRED_CORE_PLUGINS).not.toContain(
+      "@elizaos/plugin-personal-assistant",
+    );
   });
 
   it("exposes plugin-google and plugin-personal-assistant as optional, explicitly-enabled plugins", () => {
     expect(OPTIONAL_CORE_PLUGINS).toContain("@elizaos/plugin-google");
-    expect(OPTIONAL_CORE_PLUGINS).toContain("@elizaos/plugin-personal-assistant");
+    expect(OPTIONAL_CORE_PLUGINS).toContain(
+      "@elizaos/plugin-personal-assistant",
+    );
   });
 });

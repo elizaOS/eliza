@@ -45,6 +45,9 @@
         "../../plugins/plugin-native-phone/src/index.ts"
       ],
       "@elizaos/plugin-personal-assistant": ["../../plugins/plugin-personal-assistant/src/index.ts"],
+      "@elizaos/plugin-health/screen-time/mobile-signal-setup": [
+        "../../plugins/plugin-health/src/screen-time/mobile-signal-setup.ts"
+      ],
       "@elizaos/plugin-phone": ["../../plugins/plugin-phone/src/index.ts"],
       "@elizaos/plugin-phone/*": ["../../plugins/plugin-phone/src/*"],
       "@elizaos/plugin-elizamaker": [
@@ -113,6 +116,10 @@
         "../../plugins/plugin-whatsapp/src/index.ts"
       ],
       "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
+      "@elizaos/plugin-streaming": [
+        "../../plugins/plugin-streaming/src/index.ts"
+      ],
+      "@elizaos/plugin-streaming/*": ["../../plugins/plugin-streaming/src/*"],
       "@elizaos/plugin-google": ["../../plugins/plugin-google/src/index.ts"],
       "@elizaos/plugin-workflow": [
         "../../plugins/plugin-workflow/src/index.ts"
@@ -127,6 +134,8 @@
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/security": ["../security/src/index.ts"],
       "@elizaos/security/*": ["../security/src/*"],
+      "@elizaos/scenario-runner": ["../scenario-runner/src/index.ts"],
+      "@elizaos/scenario-runner/*": ["../scenario-runner/src/*"],
       "@elizaos/vault": ["../vault/src/index.ts"],
       "@elizaos/skills": ["../skills/src/index.ts"],
       "react": ["../app-core/node_modules/@types/react/index.d.ts"],
