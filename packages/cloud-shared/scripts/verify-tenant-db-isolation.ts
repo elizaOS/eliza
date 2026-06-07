@@ -1,10 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { Client } from "pg";
-import { DirectPgExecutor } from "./src/lib/services/tenant-db/direct-pg-executor";
+import { DirectPgExecutor } from "../src/lib/services/tenant-db/direct-pg-executor";
 import {
   deriveTenantIdent,
   SqlTenantDbProvisioner,
-} from "./src/lib/services/tenant-db/tenant-db-provisioner";
+} from "../src/lib/services/tenant-db/tenant-db-provisioner";
 
 const ADMIN = "postgresql://postgres:adminpw@localhost:55432/postgres";
 const APP_A = "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
