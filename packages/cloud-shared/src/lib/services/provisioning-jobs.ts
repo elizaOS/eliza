@@ -29,6 +29,7 @@ import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { logger } from "../utils/logger";
 import { elizaProvisionAdvisoryLockSql } from "./eliza-provision-lock";
 import { elizaSandboxService } from "./eliza-sandbox";
+import { dispatchContainerJob, getContainerExecutorDeps } from "./container-job-service";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
 import {
   isWaifuWebhookTargetUrl,
@@ -1450,6 +1451,16 @@ export class ProvisioningJobService {
         break;
       case JOB_TYPES.AGENT_SNAPSHOT:
         await this.executeAgentSnapshot(job);
+        break;
+      // Apps lane (Product 2): generic app-container lifecycle. Routed to the
+      // standalone container-job-service (kept out of the agent-coupled paths
+      // above); the executor backend is wired at boot via setContainerExecutorDeps.
+      case JOB_TYPES.CONTAINER_PROVISION:
+      case JOB_TYPES.CONTAINER_DELETE:
+      case JOB_TYPES.CONTAINER_RESTART:
+      case JOB_TYPES.CONTAINER_UPGRADE:
+      case JOB_TYPES.CONTAINER_LOGS:
+        await dispatchContainerJob(job, getContainerExecutorDeps());
         break;
       default:
         throw new Error(`Unknown job type: ${job.type}`);

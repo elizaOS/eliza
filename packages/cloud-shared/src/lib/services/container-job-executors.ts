@@ -19,6 +19,7 @@ import {
   readContainerLogsJobData,
   readContainerProvisionJobData,
   readContainerRestartJobData,
+  readContainerUpgradeJobData,
 } from "./container-jobs-data";
 
 /** The fields an executor needs from an app container row. */
@@ -114,4 +115,47 @@ export async function executeContainerLogs(
   const data = readContainerLogsJobData(job);
   const row = await requireRow(deps.store, data.containerId);
   return deps.provider.logs(row.containerName, data.tail);
+}
+
+/**
+ * Re-deploy a container onto a (possibly new) image: best-effort remove the old
+ * container, then provision afresh and mark running. Brief downtime; blue/green
+ * is a later refinement.
+ */
+export async function executeContainerUpgrade(
+  job: JobLike,
+  deps: ContainerExecutorDeps,
+): Promise<void> {
+  const data = readContainerUpgradeJobData(job);
+  const row = await requireRow(deps.store, data.containerId);
+  await deps.provider.delete(row.containerName).catch(() => {
+    // old container may already be gone; provisioning replaces it regardless
+  });
+  const input = buildContainerProvisionInput({
+    name: row.containerName,
+    projectName: row.appId,
+    organizationId: row.organizationId,
+    userId: row.userId,
+    image: data.image ?? row.image,
+    port: row.port,
+    environmentVars: row.environmentVars,
+  });
+  try {
+    const result = await deps.provider.provision({
+      appId: row.appId,
+      containerName: row.containerName,
+      input,
+    });
+    await deps.store.markRunning(data.containerId, {
+      hostContainerId: result.containerId,
+      hostPort: result.hostPort,
+      network: result.network,
+    });
+  } catch (error) {
+    await deps.store.markError(
+      data.containerId,
+      error instanceof Error ? error.message : String(error),
+    );
+    throw error;
+  }
 }
