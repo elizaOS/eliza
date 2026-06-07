@@ -58,7 +58,7 @@ describe("AppContainerProvider.provision", () => {
     expect(calls[2]).toBe("docker start 'app-nubilio'");
   });
 
-  test("provision with a DATABASE_URL stands up the DB ambassador + rewrites the DSN host", async () => {
+  test("provision with DATABASE_URL + POSTGRES_URL stands up the ambassador + rewrites BOTH", async () => {
     const { calls, ssh } = recordingSsh();
     const provider = new AppContainerProvider({ ssh, allocateHostPort: async () => 49002 });
 
@@ -69,6 +69,7 @@ describe("AppContainerProvider.provision", () => {
         ...INPUT,
         environmentVars: {
           DATABASE_URL: "postgresql://app_x:p%40ss@10.43.0.10:5432/db_app_x?sslmode=require",
+          POSTGRES_URL: "postgresql://app_x:p%40ss@10.43.0.10:5432/db_app_x?sslmode=require",
         },
       },
     });
@@ -84,6 +85,10 @@ describe("AppContainerProvider.provision", () => {
     expect(createCmd).toContain(
       "DATABASE_URL=postgresql://app_x:p%40ss@app-db-111111112222:5432/db_app_x?sslmode=require",
     );
+    expect(createCmd).toContain(
+      "POSTGRES_URL=postgresql://app_x:p%40ss@app-db-111111112222:5432/db_app_x?sslmode=require",
+    );
+    // neither var still points at the real cluster host (both rewritten to the ambassador)
     expect(createCmd).not.toContain("@10.43.0.10:5432");
   });
 

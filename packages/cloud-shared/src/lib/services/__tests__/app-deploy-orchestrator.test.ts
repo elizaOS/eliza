@@ -47,8 +47,10 @@ describe("deployApp", () => {
     const result = await deployApp(REQ, d);
 
     expect(result).toEqual({ containerId: "container-1", jobId: "job-1" });
-    // the container row carries the app's OWN per-tenant DSN
+    // the container row carries the app's OWN per-tenant DSN under BOTH vars
+    // (DATABASE_URL standard + POSTGRES_URL for plugin-sql/eliza images)
     expect(seen.row?.environmentVars.DATABASE_URL).toBe(TENANT_DSN);
+    expect(seen.row?.environmentVars.POSTGRES_URL).toBe(TENANT_DSN);
     expect(seen.row?.image).toBe(REQ.image);
     expect(seen.row?.port).toBe(3000);
     // provision was enqueued for the created container
@@ -66,6 +68,9 @@ describe("deployApp", () => {
     await deployApp(REQ, d);
     expect(seen.row?.environmentVars.DATABASE_URL).not.toContain("agentdb");
     expect(seen.row?.environmentVars.DATABASE_URL).toContain("db_app_x");
+    // POSTGRES_URL mirrors it exactly — same isolated DB, never the agent URL
+    expect(seen.row?.environmentVars.POSTGRES_URL).not.toContain("agentdb");
+    expect(seen.row?.environmentVars.POSTGRES_URL).toContain("db_app_x");
   });
 
   test("honors a custom container port", async () => {
