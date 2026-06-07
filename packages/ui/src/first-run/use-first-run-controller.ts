@@ -50,6 +50,11 @@ import {
   MOBILE_LOCAL_AGENT_SERVER_ID,
   persistMobileRuntimeModeForServerTarget,
 } from "./mobile-runtime-mode";
+import {
+  EMPTY_PROACTIVE_IOS_PERMISSIONS_PROGRESS,
+  requestProactiveIosPermissions,
+  type ProactiveIosPermissionsProgress,
+} from "./proactive-ios-permissions";
 import { readFirstRunRuntimeTarget } from "./reload-into-first-run-runtime";
 import {
   type MicrophonePermissionController,
@@ -94,6 +99,7 @@ export interface FirstRunController {
   cloudError: string | null | undefined;
   voice: FirstRunVoiceState;
   microphone: MicrophonePermissionController;
+  proactivePermissions: ProactiveIosPermissionsProgress;
   primaryLabel: string;
   canBack: boolean;
   updateDraft: FirstRunDraftUpdate;
@@ -344,6 +350,10 @@ export function useFirstRunController(): FirstRunController {
   // The hook wraps the cross-platform permission client and degrades to a
   // getUserMedia probe when that client is unavailable; it never throws.
   const microphone = useMicrophonePermission();
+  const [proactivePermissions, setProactivePermissions] =
+    React.useState<ProactiveIosPermissionsProgress>(
+      EMPTY_PROACTIVE_IOS_PERMISSIONS_PROGRESS,
+    );
   const voiceCaptureRef = React.useRef<VoiceCaptureHandle | null>(null);
   const voiceCaptureGenerationRef = React.useRef(0);
   const voiceOutputActiveRef = React.useRef(false);
@@ -414,6 +424,31 @@ export function useFirstRunController(): FirstRunController {
     },
     [clearListenAfterSpeechTimer, stopFirstRunAudio],
   );
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void requestProactiveIosPermissions({
+      onProgress: (progress) => {
+        if (!cancelled) setProactivePermissions(progress);
+      },
+    })
+      .then((progress) => {
+        if (!cancelled) setProactivePermissions(progress);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setProactivePermissions({
+          ...EMPTY_PROACTIVE_IOS_PERMISSIONS_PROGRESS,
+          message:
+            err instanceof Error
+              ? err.message
+              : "Proactive iOS permission setup failed.",
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const setStep = React.useCallback(
     (next: FirstRunStep) => {
@@ -976,7 +1011,10 @@ export function useFirstRunController(): FirstRunController {
     if (previous) setStep(previous);
   }, [setStep, step]);
 
-  const submitting = busyText !== null || elizaCloudLoginBusy;
+  const submitting =
+    busyText !== null ||
+    elizaCloudLoginBusy ||
+    proactivePermissions.running;
   const primaryLabel =
     step === "runtime"
       ? firstRunNeedsCloudConnect(draft, elizaCloudConnected)
@@ -998,6 +1036,7 @@ export function useFirstRunController(): FirstRunController {
     cloudError: elizaCloudLoginError,
     voice,
     microphone,
+    proactivePermissions,
     primaryLabel,
     canBack: previousFirstRunStep(step) !== null && !submitting,
     updateDraft,

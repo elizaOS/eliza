@@ -102,6 +102,7 @@
 		<string>fetch</string>
 		<string>processing</string>
 		<string>remote-notification</string>
+		<string>location</string>
 	</array>
 	<key>ELIZA_APNS_ENABLED</key>
 	<string>0</string>

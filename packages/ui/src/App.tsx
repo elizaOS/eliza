@@ -55,6 +55,7 @@ import {
 } from "./events";
 import { CompactOnboarding } from "./first-run/CompactOnboarding";
 import { FirstRunScreen } from "./first-run/FirstRunScreen";
+import { requestProactiveIosPermissions } from "./first-run/proactive-ios-permissions";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
@@ -1287,6 +1288,11 @@ export function App() {
 
   const bugReport = useBugReportState();
   // Loading is handled entirely by StartupScreen.
+
+  useEffect(() => {
+    if (!isNative || !isIOS) return;
+    void requestProactiveIosPermissions();
+  }, []);
 
   useEffect(() => {
     // Safety-net watchdog: the coordinator has its own timeouts per phase, but

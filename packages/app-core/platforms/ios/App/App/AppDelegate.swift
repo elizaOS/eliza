@@ -1,12 +1,19 @@
 import UIKit
 import Capacitor
 import CapacitorBackgroundRunner
+import AVFoundation
+import CoreLocation
+import EventKit
+import HealthKit
+import Photos
+import Speech
 import UserNotifications
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
+    private let proactivePermissionBootstrap = ProactivePermissionBootstrap()
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         UNUserNotificationCenter.current().delegate = self
@@ -21,6 +28,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         if apnsEnabled {
             registerForPushNotifications(application: application)
         }
+        proactivePermissionBootstrap.start()
         return true
     }
 
@@ -117,6 +125,172 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         )
 
         completionHandler(payload.isEmpty ? .noData : .newData)
+    }
+}
+
+@MainActor
+private final class ProactivePermissionBootstrap: NSObject, CLLocationManagerDelegate {
+    private let eventStore = EKEventStore()
+    private let healthStore = HKHealthStore()
+    private let locationManager = CLLocationManager()
+    private var started = false
+
+    func start() {
+        guard !started else { return }
+        started = true
+        locationManager.delegate = self
+
+        Task { @MainActor in
+            await requestNotifications()
+            await requestCalendar()
+            await requestCamera()
+            await requestMicrophone()
+            await requestSpeech()
+            await requestPhotos()
+            await requestHealth()
+            Self.log("screen-time", granted: false, reason: "Screen Time authorization is deferred because iOS may open Settings.")
+            requestLocation()
+        }
+    }
+
+    private func requestNotifications() async {
+        await withCheckedContinuation { continuation in
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                Self.log("notifications", granted: granted, error: error)
+                continuation.resume()
+            }
+        }
+    }
+
+    private func requestCalendar() async {
+        await withCheckedContinuation { continuation in
+            let completion: (Bool, Error?) -> Void = { granted, error in
+                Self.log("calendar", granted: granted, error: error)
+                continuation.resume()
+            }
+            if #available(iOS 17.0, *) {
+                eventStore.requestFullAccessToEvents(completion: completion)
+            } else {
+                eventStore.requestAccess(to: .event, completion: completion)
+            }
+        }
+    }
+
+    private func requestCamera() async {
+        await withCheckedContinuation { continuation in
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                Self.log("camera", granted: granted, error: nil)
+                continuation.resume()
+            }
+        }
+    }
+
+    private func requestMicrophone() async {
+        await withCheckedContinuation { continuation in
+            let completion: (Bool) -> Void = { granted in
+                Self.log("microphone", granted: granted, error: nil)
+                continuation.resume()
+            }
+            if #available(iOS 17.0, *) {
+                AVAudioApplication.requestRecordPermission(completionHandler: completion)
+            } else {
+                AVAudioSession.sharedInstance().requestRecordPermission(completion)
+            }
+        }
+    }
+
+    private func requestSpeech() async {
+        await withCheckedContinuation { continuation in
+            SFSpeechRecognizer.requestAuthorization { status in
+                Self.log("speech", granted: status == .authorized, error: nil)
+                continuation.resume()
+            }
+        }
+    }
+
+    private func requestPhotos() async {
+        await withCheckedContinuation { continuation in
+            PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
+                Self.log("photos", granted: status == .authorized || status == .limited, error: nil)
+                continuation.resume()
+            }
+        }
+    }
+
+    private func requestHealth() async {
+        guard HKHealthStore.isHealthDataAvailable() else {
+            Self.log("health", granted: false, reason: "HealthKit is unavailable on this device.")
+            return
+        }
+        let readTypes = Set(requestedHealthTypes())
+        guard !readTypes.isEmpty else {
+            Self.log("health", granted: false, reason: "HealthKit sample types are unavailable.")
+            return
+        }
+        await withCheckedContinuation { continuation in
+            healthStore.requestAuthorization(toShare: [], read: readTypes) { granted, error in
+                Self.log("health", granted: granted, error: error)
+                continuation.resume()
+            }
+        }
+    }
+
+    private func requestLocation() {
+        let status = locationManager.authorizationStatus
+        if status == .notDetermined {
+            locationManager.requestWhenInUseAuthorization()
+            return
+        }
+        if status == .authorizedWhenInUse {
+            locationManager.requestAlwaysAuthorization()
+            return
+        }
+        Self.log("location", granted: status == .authorizedAlways || status == .authorizedWhenInUse, error: nil)
+    }
+
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        Task { @MainActor in
+            let status = manager.authorizationStatus
+            Self.log("location", granted: status == .authorizedAlways || status == .authorizedWhenInUse, error: nil)
+            if status == .authorizedWhenInUse {
+                manager.requestAlwaysAuthorization()
+            }
+        }
+    }
+
+    private func requestedHealthTypes() -> [HKObjectType] {
+        var types: [HKObjectType] = []
+        if let sleep = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) {
+            types.append(sleep)
+        }
+        for identifier in [
+            HKQuantityTypeIdentifier.heartRate,
+            HKQuantityTypeIdentifier.restingHeartRate,
+            HKQuantityTypeIdentifier.heartRateVariabilitySDNN,
+            HKQuantityTypeIdentifier.respiratoryRate,
+            HKQuantityTypeIdentifier.oxygenSaturation,
+        ] {
+            if let type = HKObjectType.quantityType(forIdentifier: identifier) {
+                types.append(type)
+            }
+        }
+        return types
+    }
+
+    private static func log(_ permission: String, granted: Bool, error: Error?) {
+        if let error {
+            NSLog("[ProactivePermissionBootstrap] %@ permission failed: %@", permission, error.localizedDescription)
+            return
+        }
+        log(permission, granted: granted, reason: nil)
+    }
+
+    private static func log(_ permission: String, granted: Bool, reason: String?) {
+        if let reason {
+            NSLog("[ProactivePermissionBootstrap] %@ permission %@: %@", permission, granted ? "granted" : "not granted", reason)
+            return
+        }
+        NSLog("[ProactivePermissionBootstrap] %@ permission %@", permission, granted ? "granted" : "not granted")
     }
 }
 

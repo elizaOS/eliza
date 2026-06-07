@@ -20,12 +20,19 @@
 // here because packages/app/src/main.tsx still imports them via lazyNamedComponent.
 
 import "./api/client-lifeops.js";
+import { useLifeOpsActivitySignals } from "./hooks/useLifeOpsActivitySignals.js";
 
 export * from "./components/AppBlockerSettingsCard.js";
 export * from "./components/WebsiteBlockerSettingsCard.js";
+export { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "./platform/lifeops-github.js";
 export type {
   AppBlockerSettingsCardProps,
   AppBlockerSettingsMode,
   WebsiteBlockerSettingsCardProps,
   WebsiteBlockerSettingsMode,
 } from "./types/index.js";
+
+export function LifeOpsActivitySignalsEffect(): null {
+  useLifeOpsActivitySignals();
+  return null;
+}

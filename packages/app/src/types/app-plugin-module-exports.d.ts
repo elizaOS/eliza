@@ -26,21 +26,12 @@ declare module "@elizaos/plugin-personal-assistant" {
   export const LifeOpsActivitySignalsEffect: import("react").ComponentType<
     Record<string, never>
   >;
-  export const LifeOpsBrowserSetupPanel: import("react").ComponentType<
-    Record<string, never>
-  >;
-  export const LifeOpsPageView: import("react").ComponentType<
-    Record<string, never>
-  >;
   export const WebsiteBlockerSettingsCard: import("react").ComponentType<
     import("@elizaos/ui").WebsiteBlockerSettingsCardProps
   >;
   export function dispatchQueuedLifeOpsGithubCallbackFromUrl(
     url: string,
-  ): void | Promise<void>;
-  export function registerLifeOpsApp(): void;
-  export const personalAssistantPlugin: unknown;
-  export default personalAssistantPlugin;
+  ): boolean;
 }
 
 declare module "@elizaos/plugin-phone" {

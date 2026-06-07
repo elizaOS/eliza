@@ -12,7 +12,15 @@ export function CompactOnboarding({
   showVoicePill = false,
 }: CompactOnboardingProps): React.ReactElement {
   const c = useFirstRunController();
-  const { busyText, cloudError, error, submitting, voice, cloudOnly } = c;
+  const {
+    busyText,
+    cloudError,
+    error,
+    proactivePermissions,
+    submitting,
+    voice,
+    cloudOnly,
+  } = c;
   const busy = submitting;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: greet once on mount; re-running would restart voice every render.
@@ -68,7 +76,8 @@ export function CompactOnboarding({
     return () => document.removeEventListener(TRAY_ACTION_EVENT, onTrayAction);
   }, [chooseCloud]);
 
-  const statusMessage = error ?? cloudError ?? busyText;
+  const statusMessage =
+    error ?? cloudError ?? busyText ?? proactivePermissions.message;
 
   return (
     <>

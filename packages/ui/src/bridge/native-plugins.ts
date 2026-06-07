@@ -23,6 +23,19 @@ export function getNativePlugin<T extends NativePlugin>(name: string): T {
   return (getCapacitorPlugins()[name] ?? {}) as T;
 }
 
+function getNativePluginOrRegister<T extends NativePlugin>(name: string): T {
+  const existing = getCapacitorPlugins()[name];
+  if (existing) return existing as T;
+  try {
+    if (Capacitor.isNativePlatform()) {
+      return Capacitor.registerPlugin<T>(name);
+    }
+  } catch {
+    return {} as T;
+  }
+  return {} as T;
+}
+
 export interface SwabbleConfig {
   triggers: string[];
   minPostTriggerGap?: number;
@@ -311,6 +324,37 @@ export interface AppBlockerPluginLike extends NativePlugin {
   blockApps(options: BlockAppsOptions): Promise<BlockAppsResult>;
   unblockApps(): Promise<UnblockAppsResult>;
   getStatus(): Promise<AppBlockerStatus>;
+}
+
+export interface CameraPermissionStatus {
+  camera: "granted" | "denied" | "prompt";
+  microphone: "granted" | "denied" | "prompt";
+  photos: "granted" | "denied" | "prompt" | "limited";
+}
+
+export interface CameraPluginLike extends NativePlugin {
+  checkPermissions?(): Promise<CameraPermissionStatus>;
+  requestPermissions?(): Promise<CameraPermissionStatus>;
+}
+
+export interface LocationPermissionStatus {
+  location: "granted" | "denied" | "prompt";
+  background?: "granted" | "denied" | "prompt";
+}
+
+export interface LocationPluginLike extends NativePlugin {
+  checkPermissions?(): Promise<LocationPermissionStatus>;
+  requestPermissions?(): Promise<LocationPermissionStatus>;
+}
+
+export interface ScreenCapturePermissionStatus {
+  screenCapture: "granted" | "denied" | "prompt" | "not_supported";
+  microphone: "granted" | "denied" | "prompt";
+}
+
+export interface ScreenCapturePluginLike extends NativePlugin {
+  checkPermissions?(): Promise<ScreenCapturePermissionStatus>;
+  requestPermissions?(): Promise<ScreenCapturePermissionStatus>;
 }
 
 export interface PhonePluginLike extends NativePlugin {
@@ -646,15 +690,17 @@ export function getTalkModePlugin(): TalkModePluginLike {
 }
 
 export function getMobileSignalsPlugin(): MobileSignalsPluginLike {
-  return getNativePlugin<MobileSignalsPluginLike>("MobileSignals");
+  return getNativePluginOrRegister<MobileSignalsPluginLike>("MobileSignals");
 }
 
 export function getAppleCalendarPlugin(): AppleCalendarPluginLike {
-  return getNativePlugin<AppleCalendarPluginLike>("AppleCalendar");
+  return getNativePluginOrRegister<AppleCalendarPluginLike>("AppleCalendar");
 }
 
 export function getPushNotificationsPlugin(): PushNotificationsPluginLike {
-  return getNativePlugin<PushNotificationsPluginLike>("PushNotifications");
+  return getNativePluginOrRegister<PushNotificationsPluginLike>(
+    "PushNotifications",
+  );
 }
 
 export function getAppBlockerPlugin(): AppBlockerPluginLike {
@@ -664,17 +710,27 @@ export function getAppBlockerPlugin(): AppBlockerPluginLike {
     {}) as AppBlockerPluginLike;
 }
 
-export function getCameraPlugin(): GenericNativePlugin {
+export function getCameraPlugin(): CameraPluginLike {
   const plugins = getCapacitorPlugins();
-  return (plugins.AppCamera ?? plugins.Camera ?? {}) as GenericNativePlugin;
+  return (plugins.ElizaCamera ??
+    plugins.AppCamera ??
+    plugins.Camera ??
+    getNativePluginOrRegister<CameraPluginLike>(
+      "ElizaCamera",
+    )) as CameraPluginLike;
 }
 
-export function getLocationPlugin(): GenericNativePlugin {
-  return getNativePlugin<GenericNativePlugin>("Location");
+export function getLocationPlugin(): LocationPluginLike {
+  const plugins = getCapacitorPlugins();
+  return (plugins.ElizaLocation ??
+    plugins.Location ??
+    getNativePluginOrRegister<LocationPluginLike>(
+      "ElizaLocation",
+    )) as LocationPluginLike;
 }
 
-export function getScreenCapturePlugin(): GenericNativePlugin {
-  return getNativePlugin<GenericNativePlugin>("ScreenCapture");
+export function getScreenCapturePlugin(): ScreenCapturePluginLike {
+  return getNativePluginOrRegister<ScreenCapturePluginLike>("ScreenCapture");
 }
 
 export function getCanvasPlugin(): GenericNativePlugin {

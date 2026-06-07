@@ -238,12 +238,6 @@ const InferenceCloudAlertButton = lazyNamedComponent<{
 const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
 );
-const LifeOpsPageView = lazyNamedComponent<Record<string, never>>(
-  async () => (await importAppLifeOps()).LifeOpsPageView,
-);
-const BrowserBridgeSetupPanel = lazyNamedComponent<Record<string, never>>(
-  async () => (await importAppLifeOps()).LifeOpsBrowserSetupPanel,
-);
 const LifeOpsActivitySignalsEffect = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppLifeOps()).LifeOpsActivitySignalsEffect,
 );
@@ -499,8 +493,6 @@ function buildAppBootConfig({
     stewardTransactionHistory: TransactionHistory,
     characterCatalog: APP_CHARACTER_CATALOG,
     envAliases: APP_ENV_ALIASES,
-    lifeOpsPageView: LifeOpsPageView,
-    lifeOpsBrowserSetupPanel: BrowserBridgeSetupPanel,
     appBlockerSettingsCard: AppBlockerSettingsCard,
     websiteBlockerSettingsCard: WebsiteBlockerSettingsCard,
     clientMiddleware: {
@@ -531,7 +523,6 @@ function initializeAppModules(): Promise<void> {
     ]);
 
     companionModule.registerCompanionApp();
-    lifeOpsModule.registerLifeOpsApp();
     loadedCompanionSceneStatusHook = companionModule.useCompanionSceneStatus;
     dispatchQueuedLifeOpsGithubCallback =
       lifeOpsModule.dispatchQueuedLifeOpsGithubCallbackFromUrl;
@@ -1663,6 +1654,7 @@ function shouldLoadModelTesterShellRoute(): boolean {
 function mountReactApp(): void {
   const rootEl = document.getElementById("root");
   if (!rootEl) throw new Error("Root element #root not found");
+  rootEl.innerHTML = "";
 
   if (isVoicePillShellMode()) {
     createRoot(rootEl).render(
@@ -1707,6 +1699,51 @@ function mountReactApp(): void {
       </StrictMode>
     </ErrorBoundary>,
   );
+}
+
+function renderBootSurface(message: string): void {
+  const rootEl = document.getElementById("root");
+  if (!rootEl || rootEl.childElementCount > 0) return;
+  const container = document.createElement("main");
+  container.style.cssText =
+    "min-height:100dvh;display:flex;align-items:center;justify-content:center;background:#fff;color:#171717;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:32px;text-align:center;";
+  const panel = document.createElement("section");
+  panel.style.cssText =
+    "display:flex;min-height:160px;width:min(100%,320px);flex-direction:column;align-items:center;justify-content:center;gap:18px;";
+  const mark = document.createElement("div");
+  mark.style.cssText =
+    "height:44px;width:44px;border-radius:999px;background:#ff5800;box-shadow:0 18px 40px rgba(255,88,0,.24);";
+  const text = document.createElement("p");
+  text.style.cssText = "margin:0;font-size:17px;font-weight:600;line-height:1.35;";
+  text.textContent = message;
+  panel.append(mark, text);
+  container.appendChild(panel);
+  rootEl.appendChild(container);
+}
+
+function renderBootError(error: unknown): void {
+  const rootEl = document.getElementById("root");
+  if (!rootEl) return;
+  rootEl.innerHTML = "";
+  const message =
+    error instanceof Error && error.message.trim()
+      ? error.message.trim()
+      : "The app could not finish starting.";
+  const container = document.createElement("main");
+  container.style.cssText =
+    "min-height:100dvh;display:flex;align-items:center;justify-content:center;background:#fff;color:#171717;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:28px;";
+  const panel = document.createElement("section");
+  panel.style.cssText =
+    "width:min(100%,360px);border:1px solid rgba(23,23,23,.12);border-radius:8px;padding:20px;background:#fff;";
+  const title = document.createElement("h1");
+  title.style.cssText = "margin:0 0 10px;font-size:18px;line-height:1.25;";
+  title.textContent = "Eliza could not start";
+  const body = document.createElement("p");
+  body.style.cssText = "margin:0;color:#555;font-size:14px;line-height:1.45;";
+  body.textContent = message;
+  panel.append(title, body);
+  container.appendChild(panel);
+  rootEl.appendChild(container);
 }
 
 function isPopoutWindow(): boolean {
@@ -2227,6 +2264,7 @@ function applyStoredDetachedShellTheme(): void {
 
 async function main(): Promise<void> {
   registerViewServiceWorker();
+  renderBootSurface("Starting Eliza");
 
   const appWindowSlug = window.location.pathname.startsWith("/apps/")
     ? window.location.pathname.slice("/apps/".length).split("/")[0]
@@ -2303,10 +2341,20 @@ async function main(): Promise<void> {
   await initializePlatform();
 }
 
+function runMain(): void {
+  void main().catch((error) => {
+    console.error(
+      `${APP_LOG_PREFIX} App boot failed:`,
+      error instanceof Error ? error.message : error,
+    );
+    renderBootError(error);
+  });
+}
+
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", main);
+  document.addEventListener("DOMContentLoaded", runMain);
 } else {
-  main();
+  runMain();
 }
 
 export { isAndroid, isDesktopPlatform as isDesktop, isIOS, isNative, platform };

@@ -38,6 +38,15 @@ const mocks = vi.hoisted(() => ({
   microphoneRequest: vi.fn(async () => {}),
   persistMobileRuntimeModeForServerTarget: vi.fn(),
   preOpenWindow: vi.fn(() => null),
+  requestProactiveIosPermissions: vi.fn(async () => ({
+    running: false,
+    message: null,
+    completed: 0,
+    total: 8,
+    granted: 0,
+    blocked: 0,
+    states: [],
+  })),
   prepareFirstRunVoiceAndTranscription: vi.fn(async () => null),
   savePersistedActiveServer: vi.fn(),
   setActionNotice: vi.fn(),
@@ -139,6 +148,19 @@ vi.mock("./mobile-runtime-mode", () => ({
     mocks.persistMobileRuntimeModeForServerTarget,
 }));
 
+vi.mock("./proactive-ios-permissions", () => ({
+  EMPTY_PROACTIVE_IOS_PERMISSIONS_PROGRESS: {
+    running: false,
+    message: null,
+    completed: 0,
+    total: 8,
+    granted: 0,
+    blocked: 0,
+    states: [],
+  },
+  requestProactiveIosPermissions: mocks.requestProactiveIosPermissions,
+}));
+
 vi.mock("./reload-into-first-run-runtime", () => ({
   readFirstRunRuntimeTarget: () => null,
 }));
@@ -183,6 +205,7 @@ describe("useFirstRunController cloud first-run", () => {
     });
     mocks.persistMobileRuntimeModeForServerTarget.mockClear();
     mocks.preOpenWindow.mockClear();
+    mocks.requestProactiveIosPermissions.mockClear();
     mocks.provisionCloudSandbox.mockClear();
     mocks.savePersistedActiveServer.mockClear();
     mocks.setBaseUrl.mockClear();
