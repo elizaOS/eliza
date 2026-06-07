@@ -12,7 +12,6 @@
  */
 
 import type { AppContainerProvider } from "./app-container-provider";
-import { buildContainerProvisionInput } from "./container-provider-input";
 import {
   type JobLike,
   readContainerDeleteJobData,
@@ -21,6 +20,7 @@ import {
   readContainerRestartJobData,
   readContainerUpgradeJobData,
 } from "./container-jobs-data";
+import { buildContainerProvisionInput } from "./container-provider-input";
 
 /** The fields an executor needs from an app container row. */
 export interface AppContainerRow {

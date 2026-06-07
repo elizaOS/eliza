@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   type AppDeployDeps,
-  deployApp,
   type DeployAppRequest,
+  deployApp,
   type NewAppContainerRow,
 } from "../app-deploy-orchestrator";
 
