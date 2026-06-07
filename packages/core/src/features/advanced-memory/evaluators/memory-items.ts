@@ -60,7 +60,6 @@ export interface LongTermMemoryOutput {
 
 export interface SummaryPrepared {
   memoryService: MemoryService;
-  allDialogueMessages: Memory[];
   summarizationMessages: Memory[];
   existingSummary: Awaited<
     ReturnType<MemoryService["getCurrentSessionSummary"]>
@@ -226,7 +225,6 @@ async function prepareSummary(
       : [];
   return {
     memoryService,
-    allDialogueMessages,
     summarizationMessages,
     existingSummary,
     lastOffset,
@@ -291,9 +289,13 @@ export const summaryEvaluator: Evaluator<SummaryOutput, SummaryPrepared> = {
     return prepareSummary(runtime, message);
   },
   prompt({ runtime, prepared }) {
-    const recentMessages = prepared.existingSummary
-      ? prepared.summarizationMessages
-      : prepared.allDialogueMessages;
+    // Always prompt with the bounded summarizationMessages slice. The stored
+    // lastMessageOffset only advances by this slice, so prompting with the full
+    // allDialogueMessages (up to 1000 fetched) on the first summary both
+    // over-sends — context_length_exceeded in busy rooms, the summary never
+    // stores, so the same oversized request retries forever — and double-counts
+    // messages on the next run. The rolling summary builds up across runs.
+    const recentMessages = prepared.summarizationMessages;
     return `Update rolling summary. Merge recent messages into existing summary/topics. Keep key info, decisions, open questions, main topics. If nothing useful: text="", topics=[], keyPoints=[].
 
 Existing summary:
@@ -360,8 +362,13 @@ ${formatMessages(runtime, recentMessages)}`;
                 ? message.entityId
                 : undefined,
             summary: summaryText,
-            messageCount: prepared.totalDialogueCount,
-            lastMessageOffset: prepared.totalDialogueCount,
+            // Advance by the bounded slice we actually summarized, not the full
+            // backlog — otherwise the first summary covers only the first
+            // summaryMaxNewMessages messages but jumps the offset past the rest,
+            // silently dropping them. Mirrors the existing-summary branch
+            // (newOffset) so the rolling summary catches up over runs.
+            messageCount: prepared.summarizationMessages.length,
+            lastMessageOffset: newOffset,
             startTime,
             endTime,
             topics: output.topics,
