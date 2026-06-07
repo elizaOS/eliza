@@ -634,6 +634,38 @@ async function runInfraMaintenanceCycle(logger: WorkerLogger): Promise<void> {
   }
 }
 
+/**
+ * Apps (Product 2): arm the node deploy backend so the daemon runs APP_DEPLOY +
+ * CONTAINER_* jobs (provision an isolated per-tenant DB -> run an isolated
+ * container with that DSN). Gated OFF by default — only when
+ * `APPS_DEPLOY_ENABLED=1`. Additive + safe: when off, the cloud-api deploy
+ * trigger is also gated off, so no APP_DEPLOY/CONTAINER_* jobs are ever enqueued,
+ * the executor seam is never queried, and Product-1 (agents) is untouched.
+ *
+ * Defaults to the PREBUILT-image path proven on staging (no `buildExec`): images
+ * resolve from `app.metadata.imageTag` / `APP_DEFAULT_IMAGE`. The cluster admin
+ * DSN is env-sourced via `APPS_TENANT_ADMIN_DSN` (no `SECRETS_MASTER_KEY`).
+ */
+async function armAppsDeployBackendIfEnabled(
+  logger: WorkerLogger,
+): Promise<void> {
+  if (process.env.APPS_DEPLOY_ENABLED !== "1") return;
+  const { configureAppsDeployBackend } = await import(
+    "@elizaos/cloud-shared/lib/services/apps-deploy-backend"
+  );
+  const port = process.env.APPS_DEPLOY_PORT
+    ? Number(process.env.APPS_DEPLOY_PORT)
+    : undefined;
+  configureAppsDeployBackend({ port });
+  logger.info("[provisioning-worker] apps deploy backend armed", {
+    tenantDbAdminDsn: process.env.APPS_TENANT_ADMIN_DSN
+      ? "env-sourced"
+      : "encrypted",
+    images: "prebuilt (imageTag/APP_DEFAULT_IMAGE)",
+    port: port ?? 3000,
+  });
+}
+
 async function main(): Promise<void> {
   loadLocalEnv(import.meta.url);
 
@@ -649,6 +681,9 @@ async function main(): Promise<void> {
 
   await assertProvisioningWorkerPreflight();
   logger.info("[provisioning-worker] startup preflight passed");
+
+  // Apps (Product 2): arm the deploy backend when enabled (gated; no-op by default).
+  await armAppsDeployBackendIfEnabled(logger);
 
   if (config.runOnce) {
     await pollCycle(logger, config);
