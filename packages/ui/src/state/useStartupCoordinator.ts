@@ -133,7 +133,7 @@ export interface StartupCoordinatorHandle {
   retry: () => void;
   reset: () => void;
   pairingSuccess: () => void;
-  firstRunComplete: () => void;
+  firstRunComplete: (target?: RuntimeTarget) => void;
   policy: PlatformPolicy;
   legacyPhase: "starting-backend" | "initializing-agent" | "ready";
   loading: boolean;
@@ -355,14 +355,18 @@ export function useStartupCoordinator(
     () => dispatch({ type: "PAIRING_SUCCESS" }),
     [],
   );
-  const firstRunCompleteFn = useCallback(
-    () => dispatch({ type: "FIRST_RUN_COMPLETE" }),
-    [],
-  );
+  const firstRunCompleteFn = useCallback((target?: RuntimeTarget) => {
+    if (target) {
+      dispatch({ type: "FIRST_RUN_COMPLETE", target });
+    } else {
+      dispatch({ type: "FIRST_RUN_COMPLETE" });
+    }
+  }, []);
 
   let target: RuntimeTarget | null = null;
   if (state.phase === "resolving-target") target = state.target;
   else if (state.phase === "polling-backend") target = state.target;
+  else if (state.phase === "first-run-required") target = state.target ?? null;
 
   return {
     state,

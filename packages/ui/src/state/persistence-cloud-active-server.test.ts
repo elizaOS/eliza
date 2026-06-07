@@ -9,6 +9,7 @@ import {
 import {
   applyRestoredConnection,
   canRestoreActiveServer,
+  isDirectCloudSharedRuntimeBridge,
   reconcileMobileRestoredActiveServer,
 } from "./startup-phase-restore";
 
@@ -66,6 +67,44 @@ describe("Cloud active server persistence", () => {
     savePersistedActiveServer(server);
 
     expect(loadPersistedActiveServer()).toEqual(server);
+  });
+
+  it("keeps a Cloud bridge URL hosted on the Cloud API domain", () => {
+    const server = createPersistedActiveServer({
+      kind: "cloud",
+      id: "cloud:agent-123",
+      label: "Demo Agent",
+      apiBase: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-123/bridge",
+      accessToken: "cloud-token",
+    });
+
+    expect(server).toEqual({
+      id: "cloud:agent-123",
+      kind: "cloud",
+      label: "Demo Agent",
+      apiBase: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-123/bridge",
+      accessToken: "cloud-token",
+    });
+
+    savePersistedActiveServer(server);
+
+    expect(loadPersistedActiveServer()).toEqual(server);
+  });
+
+  it("identifies direct shared Cloud bridge URLs", () => {
+    expect(
+      isDirectCloudSharedRuntimeBridge(
+        "https://api.elizacloud.ai/api/v1/eliza/agents/agent-123/bridge",
+      ),
+    ).toBe(true);
+    expect(isDirectCloudSharedRuntimeBridge("https://api.elizacloud.ai/")).toBe(
+      false,
+    );
+    expect(
+      isDirectCloudSharedRuntimeBridge(
+        "https://www.elizacloud.ai/api/v1/eliza/agents/agent-123/bridge",
+      ),
+    ).toBe(false);
   });
 
   it("normalizes legacy saved Cloud control-plane records", () => {

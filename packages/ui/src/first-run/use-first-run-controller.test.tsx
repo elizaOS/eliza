@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type ActiveServerArgs = {
   kind: "cloud";
+  id?: string;
   apiBase?: string;
   accessToken?: string;
 };
@@ -23,7 +24,7 @@ const mocks = vi.hoisted(() => ({
   completeFirstRun: vi.fn(),
   createPersistedActiveServer: vi.fn(
     (args: ActiveServerArgs): ActiveServerRecord => ({
-      id: "cloud:agent-1",
+      id: args.id ?? "cloud:agent-1",
       kind: "cloud",
       label: "Demo Agent",
       ...(args.apiBase ? { apiBase: args.apiBase } : {}),
@@ -46,15 +47,19 @@ const mocks = vi.hoisted(() => ({
   submitFirstRun: vi.fn(async () => null),
   synthesizeFirstRunSpeech: vi.fn(async () => new ArrayBuffer(0)),
   getCloudStatus: vi.fn(),
+  getRestAuthToken: vi.fn<() => string | null>(() => null),
   provisionCloudSandbox: vi.fn(async () => ({
     agentId: "agent-1",
-    bridgeUrl: "https://agent-1.runtime.elizacloud.ai",
+    bridgeUrl: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/bridge",
+    executionTier: "shared",
     webUiUrl: null,
   })),
 }));
 
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
+    getPlatform: vi.fn(() => "ios"),
+    isNativePlatform: vi.fn(() => true),
     registerPlugin: vi.fn(() => ({})),
   },
 }));
@@ -62,6 +67,7 @@ vi.mock("@capacitor/core", () => ({
 vi.mock("../api", () => ({
   client: {
     getCloudStatus: mocks.getCloudStatus,
+    getRestAuthToken: mocks.getRestAuthToken,
     provisionCloudSandbox: mocks.provisionCloudSandbox,
     setBaseUrl: mocks.setBaseUrl,
     setToken: mocks.setToken,
@@ -126,6 +132,7 @@ vi.mock("./auto-download-recommended", () => ({
 vi.mock("./mobile-runtime-mode", () => ({
   ANDROID_LOCAL_AGENT_LABEL: "On-device agent",
   ANDROID_LOCAL_AGENT_SERVER_ID: "local:mobile",
+  IOS_LOCAL_AGENT_IPC_BASE: "eliza-local-agent://ipc",
   MOBILE_LOCAL_AGENT_LABEL: "On-device agent",
   MOBILE_LOCAL_AGENT_SERVER_ID: "local:mobile",
   persistMobileRuntimeModeForServerTarget:
@@ -167,6 +174,8 @@ describe("useFirstRunController cloud first-run", () => {
       connected: mocks.cloudAuthenticated,
       reason: mocks.cloudAuthenticated ? "native-token" : "missing-token",
     }));
+    mocks.getRestAuthToken.mockReset();
+    mocks.getRestAuthToken.mockReturnValue(null);
     mocks.handleCloudLogin.mockReset();
     mocks.handleCloudLogin.mockImplementation(async () => {
       mocks.cloudAuthenticated = true;
@@ -202,17 +211,17 @@ describe("useFirstRunController cloud first-run", () => {
         name: "Demo Agent",
         bio: expect.any(Array),
         onProgress: expect.any(Function),
+        allowSharedRuntime: true,
       }),
     );
-    expect(mocks.setBaseUrl).toHaveBeenCalledWith(
-      "https://agent-1.runtime.elizacloud.ai",
-    );
+    expect(mocks.setBaseUrl).toHaveBeenCalledWith("eliza-local-agent://ipc");
     expect(mocks.setToken).toHaveBeenCalledWith("cloud-token");
     expect(mocks.savePersistedActiveServer).toHaveBeenCalledWith(
       expect.objectContaining({
+        id: "cloud:agent-1",
         kind: "cloud",
         label: "Demo Agent",
-        apiBase: "https://agent-1.runtime.elizacloud.ai",
+        apiBase: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/bridge",
         accessToken: "cloud-token",
       }),
     );
@@ -220,21 +229,46 @@ describe("useFirstRunController cloud first-run", () => {
       expect.objectContaining({
         kind: "cloud",
         label: "Demo Agent",
-        apiBase: "https://agent-1.runtime.elizacloud.ai",
+        apiBase: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/bridge",
         accessToken: "cloud-token",
+        cloudAgentId: "agent-1",
       }),
     );
     expect(mocks.persistMobileRuntimeModeForServerTarget).toHaveBeenCalledWith(
       "elizacloud",
     );
-    expect(mocks.submitFirstRun).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: "Demo Agent",
-        sandboxMode: "standard",
-      }),
-    );
+    expect(mocks.submitFirstRun).not.toHaveBeenCalled();
     expect(mocks.completeFirstRun).toHaveBeenCalledWith("chat", {
       launchCompanionOverlay: true,
+      startupTarget: "cloud-managed",
     });
+  });
+
+  it("uses a restored cloud client bearer token when provisioning", async () => {
+    mocks.cloudAuthenticated = true;
+    mocks.getRestAuthToken.mockReturnValue("restored-cloud-token");
+    Reflect.deleteProperty(globalThis, "__ELIZA_CLOUD_AUTH_TOKEN__");
+
+    const { result } = renderHook(() => useFirstRunController());
+
+    await act(async () => {
+      await result.current.finishRuntime("cloud");
+    });
+
+    expect(mocks.handleCloudLogin).not.toHaveBeenCalled();
+    expect(mocks.provisionCloudSandbox).toHaveBeenCalledWith(
+      expect.objectContaining({
+        authToken: "restored-cloud-token",
+        allowSharedRuntime: true,
+      }),
+    );
+    expect(mocks.setBaseUrl).toHaveBeenCalledWith("eliza-local-agent://ipc");
+    expect(mocks.savePersistedActiveServer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "cloud",
+        apiBase: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/bridge",
+        accessToken: "restored-cloud-token",
+      }),
+    );
   });
 });

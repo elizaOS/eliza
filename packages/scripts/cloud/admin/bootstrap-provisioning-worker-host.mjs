@@ -187,6 +187,14 @@ function readFirstEnv(...keys) {
 
 function validateRuntimeEnv(env) {
   const required = ["DATABASE_URL", "NEON_API_KEY", "CONTAINERS_SSH_KEY"];
+  if (
+    !env.STEWARD_REQUEST_SIGNING_SECRET?.trim() &&
+    !env.STEWARD_REQUEST_SIGNING_SECRETS?.trim()
+  ) {
+    required.push(
+      "STEWARD_REQUEST_SIGNING_SECRET or STEWARD_REQUEST_SIGNING_SECRETS",
+    );
+  }
   const missing = required.filter((key) => !env[key]?.trim());
   if (missing.length === 0 || values["allow-incomplete-env"]) {
     warnMissingUpstash(env);

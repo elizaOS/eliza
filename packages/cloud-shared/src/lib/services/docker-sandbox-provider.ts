@@ -159,6 +159,33 @@ function resolveStewardRefreshServiceToken(): string {
   return "";
 }
 
+export function buildStewardRuntimeAuthEnv(params: {
+  stewardAgentToken?: string;
+  stewardJwt: string;
+  stewardRefreshServiceToken: string;
+}): Record<string, string> {
+  return {
+    ...(params.stewardAgentToken ? { STEWARD_AGENT_TOKEN: params.stewardAgentToken } : {}),
+    ...(params.stewardJwt
+      ? {
+          STEWARD_JWT: params.stewardJwt,
+          STEWARD_JWT_FILE,
+          STEWARD_REFRESH_URL: resolveStewardRefreshUrl(),
+          ...(params.stewardRefreshServiceToken
+            ? { STEWARD_REFRESH_SERVICE_TOKEN: params.stewardRefreshServiceToken }
+            : {}),
+        }
+      : {}),
+  };
+}
+
+export function canProvisionCoreAgentWithoutStewardRegistration(
+  env: Record<string, string | undefined>,
+): boolean {
+  if (env.ELIZA_CLOUD_PROVISIONED !== "1") return false;
+  return Boolean(env.ELIZA_API_TOKEN?.trim() || env.ELIZAOS_CLOUD_API_KEY?.trim());
+}
+
 /**
  * Strip secret-bearing fields from a persisted character before it is injected
  * into the container as ELIZA_AGENT_CHARACTER_JSON. The container receives the
@@ -457,8 +484,9 @@ function warnMissingStewardTenantApiKey(apiKey?: string) {
   );
 }
 
-function resolveStewardRequestSigningSecret(apiKey?: string): string | undefined {
-  const env = getCloudAwareEnv();
+export function resolveStewardProvisioningSigningSecret(
+  env: NodeJS.ProcessEnv = getCloudAwareEnv(),
+): string | undefined {
   const explicit = env.STEWARD_REQUEST_SIGNING_SECRET?.trim();
   if (explicit) {
     return explicit;
@@ -466,7 +494,7 @@ function resolveStewardRequestSigningSecret(apiKey?: string): string | undefined
   const fromList = env.STEWARD_REQUEST_SIGNING_SECRETS?.split(",")
     .map((secret) => secret.trim())
     .find((secret) => secret.length > 0);
-  return fromList ?? apiKey?.trim() ?? undefined;
+  return fromList ?? undefined;
 }
 
 function resolveStewardRequestSigningKeyId(): string | undefined {
@@ -483,7 +511,6 @@ function buildStewardCanonicalRequest(input: {
   path: string;
   tenantId: string;
   apiKey: string;
-  timestamp: string;
   expiresAt: string;
   idempotencyKey: string;
   body: string;
@@ -500,37 +527,34 @@ function buildStewardCanonicalRequest(input: {
     sha256TextHex(""),
     sha256TextHex(""),
     sha256TextHex(""),
-    input.timestamp,
+    "",
     input.expiresAt,
     input.idempotencyKey,
     sha256TextHex(input.body),
   ].join("\n");
 }
 
-function buildStewardSignedHeaders(params: {
+export function buildStewardProvisioningSignedHeaders(params: {
   path: string;
   body: string;
   tenantId: string;
   apiKey?: string;
   signingSecret: string;
 }): Record<string, string> {
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const expiresAt = (Number(timestamp) + 300).toString();
-  const idempotencyKey = `eliza-cloud-${crypto.randomUUID()}`;
+  const expiresAt = (Math.floor(Date.now() / 1000) + 60).toString();
+  const idempotencyKey = crypto.randomUUID();
   const signingKeyId = resolveStewardRequestSigningKeyId();
   const canonical = buildStewardCanonicalRequest({
     method: "POST",
     path: params.path,
     tenantId: params.tenantId,
     apiKey: params.apiKey ?? "",
-    timestamp,
     expiresAt,
     idempotencyKey,
     body: params.body,
   });
   const signature = createHmac("sha256", params.signingSecret).update(canonical).digest("hex");
   return {
-    "X-Steward-Request-Timestamp": timestamp,
     "X-Steward-Request-Expires-At": expiresAt,
     "Idempotency-Key": idempotencyKey,
     "X-Steward-Signature": `v1=${signature}`,
@@ -548,27 +572,26 @@ async function registerAgentWithSteward(
   warnMissingStewardTenantApiKey(apiKey);
   const agentBody = JSON.stringify({ id: agentId, name: agentName });
   const tokenBody = JSON.stringify({ expiresIn: "365d" });
-  const signingSecret = resolveStewardRequestSigningSecret(apiKey);
-  const agentSignedHeaders =
-    signingSecret === undefined
-      ? {}
-      : buildStewardSignedHeaders({
-          path: "/agents",
-          body: agentBody,
-          tenantId,
-          ...(apiKey === undefined ? {} : { apiKey }),
-          signingSecret,
-        });
-  const tokenSignedHeaders =
-    signingSecret === undefined
-      ? {}
-      : buildStewardSignedHeaders({
-          path: `/agents/${encodeURIComponent(agentId)}/token`,
-          body: tokenBody,
-          tenantId,
-          ...(apiKey === undefined ? {} : { apiKey }),
-          signingSecret,
-        });
+  const signingSecret = resolveStewardProvisioningSigningSecret();
+  if (signingSecret === undefined) {
+    throw new Error(
+      "[docker-sandbox] STEWARD_REQUEST_SIGNING_SECRET is required for Steward agent registration",
+    );
+  }
+  const agentSignedHeaders = buildStewardProvisioningSignedHeaders({
+    path: "/agents",
+    body: agentBody,
+    tenantId,
+    ...(apiKey === undefined ? {} : { apiKey }),
+    signingSecret,
+  });
+  const tokenSignedHeaders = buildStewardProvisioningSignedHeaders({
+    path: `/agents/${encodeURIComponent(agentId)}/token`,
+    body: tokenBody,
+    tenantId,
+    ...(apiKey === undefined ? {} : { apiKey }),
+    signingSecret,
+  });
 
   const script = `python3 - <<'PY'
 import json
@@ -969,13 +992,39 @@ export class DockerSandboxProvider implements SandboxProvider {
       logger.info(
         `[docker-sandbox] Registering ${agentId} with Steward tenant ${stewardTenant.tenantId} on ${nodeId}`,
       );
-      const stewardAgentToken = await registerAgentWithSteward(
-        ssh,
-        agentId,
-        agentName,
-        stewardTenant.tenantId,
-        stewardTenant.apiKey,
-      );
+      const stewardJwt = isAgentTokenSigningConfigured()
+        ? (await mintAgentToken(agentId, 900)).token
+        : "";
+      let stewardAgentToken: string | undefined;
+      let stewardRegistrationFailed = false;
+      try {
+        stewardAgentToken = await registerAgentWithSteward(
+          ssh,
+          agentId,
+          agentName,
+          stewardTenant.tenantId,
+          stewardTenant.apiKey,
+        );
+      } catch (registrationError) {
+        if (!stewardJwt && !canProvisionCoreAgentWithoutStewardRegistration(baseEnv)) {
+          throw registrationError;
+        }
+        stewardRegistrationFailed = true;
+        logger.warn(
+          "[docker-sandbox] Steward agent registration failed; continuing without legacy Steward agent token",
+          {
+            agentId,
+            tenantId: stewardTenant.tenantId,
+            hasStewardJwt: Boolean(stewardJwt),
+            hasElizaApiToken: Boolean(baseEnv.ELIZA_API_TOKEN?.trim()),
+            hasCloudApiKey: Boolean(baseEnv.ELIZAOS_CLOUD_API_KEY?.trim()),
+            error:
+              registrationError instanceof Error
+                ? registrationError.message
+                : String(registrationError),
+          },
+        );
+      }
 
       // Pass the shared Upstash credentials through to the sandbox so it can
       // self-register `agent:<id>:server` + `server:<name>:url` keys that
@@ -991,9 +1040,6 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
 
-      const stewardJwt = isAgentTokenSigningConfigured()
-        ? (await mintAgentToken(agentId, 900)).token
-        : "";
       const stewardRefreshServiceToken = resolveStewardRefreshServiceToken();
       if (!stewardJwt) {
         logger.warn(
@@ -1003,17 +1049,12 @@ export class DockerSandboxProvider implements SandboxProvider {
 
       const allEnv: Record<string, string> = {
         ...baseEnv,
-        STEWARD_AGENT_TOKEN: stewardAgentToken,
-        ...(stewardJwt
-          ? {
-              STEWARD_JWT: stewardJwt,
-              STEWARD_JWT_FILE,
-              STEWARD_REFRESH_URL: resolveStewardRefreshUrl(),
-              ...(stewardRefreshServiceToken
-                ? { STEWARD_REFRESH_SERVICE_TOKEN: stewardRefreshServiceToken }
-                : {}),
-            }
-          : {}),
+        ...buildStewardRuntimeAuthEnv({
+          stewardAgentToken,
+          stewardJwt,
+          stewardRefreshServiceToken,
+        }),
+        ...(stewardRegistrationFailed ? { STEWARD_REGISTRATION_STATUS: "failed" } : {}),
         // Bind to 0.0.0.0 so Docker port mapping works (container otherwise
         // listens on 127.0.0.1 which is unreachable via -p host:container).
         // Set BOTH AGENT_API_BIND and ELIZA_API_BIND — the image default for

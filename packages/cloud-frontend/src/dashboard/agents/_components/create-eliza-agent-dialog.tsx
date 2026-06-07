@@ -327,7 +327,7 @@ export function CreateElizaAgentDialog({
   // create body: empty → shared, set → custom (Docker). So this UI state
   // exists to translate the mode into the body field, NOT in addition to it.
   const [executionMode, setExecutionMode] = useState<"shared" | "dedicated">(
-    "shared",
+    "dedicated",
   );
   const [flavorId, setFlavorId] = useState(getDefaultFlavor().id);
   const [customImage, setCustomImage] = useState("");
@@ -384,7 +384,7 @@ export function CreateElizaAgentDialog({
 
   function resetForm() {
     setAgentName("");
-    setExecutionMode("shared");
+    setExecutionMode("dedicated");
     setFlavorId(getDefaultFlavor().id);
     setCustomImage("");
     setError(null);

@@ -248,7 +248,9 @@ function AppProviderInner({
   // We store a ref to the coordinator's retry since it's created after this line.
   const coordinatorRetryRef = useRef<(() => void) | null>(null);
   const coordinatorResetRef = useRef<(() => void) | null>(null);
-  const coordinatorFirstRunCompleteRef = useRef<(() => void) | null>(null);
+  const coordinatorFirstRunCompleteRef = useRef<
+    ((target?: RuntimeTarget) => void) | null
+  >(null);
   const retryStartup = useCallback(() => {
     lifecycle.retryStartup();
     coordinatorRetryRef.current?.();

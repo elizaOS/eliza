@@ -1,1 +1,4 @@
 action-benchmark-report/
+
+#Ignore cursor AI rules
+.cursor/rules/codacy.mdc

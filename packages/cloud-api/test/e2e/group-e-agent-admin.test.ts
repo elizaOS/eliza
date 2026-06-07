@@ -522,6 +522,22 @@ describe("Group E: session-cookie sanity check", () => {
 });
 
 describe("Group E: admin / docker control-plane forwarding", () => {
+  test("GET /api/v1/admin/infrastructure forwards to the control plane", async () => {
+    if (!shouldRun()) return;
+    const unauthed = await api.get("/api/v1/admin/infrastructure");
+    expectAuthGate(unauthed.status, "GET admin/infrastructure (unauth)");
+
+    const authed = await api.get("/api/v1/admin/infrastructure", {
+      headers: bearerHeaders(),
+    });
+    expect(authed.status).toBe(503);
+    const body = (await authed.json()) as { code?: string };
+    expect([
+      "CONTAINER_CONTROL_PLANE_NOT_CONFIGURED",
+      "CONTAINER_CONTROL_PLANE_UNREACHABLE",
+    ]).toContain(body.code ?? "");
+  });
+
   test("POST /api/v1/admin/docker-nodes/:nodeId/health-check forwards to the control plane", async () => {
     if (!shouldRun()) return;
     const unauthed = await api.post(

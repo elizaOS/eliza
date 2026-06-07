@@ -1,28 +1,31 @@
-/**
- * GET /api/v1/admin/infrastructure
- *
- * Explicit 501 on the Worker. The original handler calls
- * `getAdminInfrastructureSnapshot`, which transitively imports `ssh2`
- * (Node-only) for live Docker-node SSH inspection. Sidecar handles this;
- * SPA gets a clear 501 instead of a 404.
- */
-
 import { Hono } from "hono";
 
+import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { requireAdmin } from "@/lib/auth/workers-hono-auth";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { forwardToContainerControlPlane } from "../../_container-control-plane-forward";
 
 const app = new Hono<AppEnv>();
 
-app.all("*", (c) =>
-  c.json(
-    {
-      success: false,
-      error: "not_yet_migrated",
-      reason:
-        "node-only dep: ssh2 (DockerSSHClient via admin-infrastructure snapshot).",
-    },
-    501,
-  ),
-);
+app.get("/", async (c) => {
+  try {
+    const { user, role } = await requireAdmin(c);
+    if (role !== "super_admin") {
+      return c.json(
+        { success: false, error: "Super admin access required" },
+        403,
+      );
+    }
+    return forwardToContainerControlPlane(c, user);
+  } catch (error) {
+    logger.error("[Admin Infrastructure] forward error", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return failureResponse(c, error);
+  }
+});
+
+app.all("*", (c) => c.json({ success: false, error: "not found" }, 404));
 
 export default app;

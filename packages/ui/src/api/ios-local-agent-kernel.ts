@@ -383,6 +383,10 @@ function readIosCloudPairing(): IosCloudPairing {
   };
 }
 
+function iosCloudAgentLabel(cloud: IosCloudPairing): string {
+  return cloud.label ?? "Eliza Cloud Agent";
+}
+
 function readBundleIndex(): Record<string, IosBundleRecord> {
   return readJson<Record<string, IosBundleRecord>>(BUNDLE_INDEX_KEY, {});
 }
@@ -2793,20 +2797,23 @@ export async function handleIosLocalAgentRequest(
   if (method === "OPTIONS") return new Response(null, { status: 204 });
 
   if (method === "GET" && pathname === "/api/health") {
+    const cloud = readIosCloudPairing();
     return json({
       ready: running,
-      runtime: "ok",
-      database: "localStorage",
+      runtime: cloud.paired ? "cloud" : "ok",
+      database: cloud.paired ? "cloud" : "localStorage",
       plugins: { loaded: 0, failed: 0 },
       coordinator: "not_wired",
       connectors: {},
       uptime: Math.floor((Date.now() - startedAt) / 1000),
       agentState: running ? "running" : "not_started",
       localAgent: {
-        mode: "ios-local",
+        mode: cloud.paired ? "ios-cloud-shell" : "ios-local",
         transport: "ittp",
         fullAgentRuntime: false,
         taskService: false,
+        cloudProvisioned: cloud.paired,
+        activeAgentId: cloud.agentId,
       },
     });
   }
@@ -2816,6 +2823,15 @@ export async function handleIosLocalAgentRequest(
   }
 
   if (method === "GET" && pathname === "/api/runtime/mode") {
+    const cloud = readIosCloudPairing();
+    if (cloud.paired) {
+      return json({
+        mode: "cloud",
+        deploymentRuntime: "cloud",
+        isRemoteController: true,
+        remoteApiBaseConfigured: true,
+      });
+    }
     return json({
       mode: "local",
       deploymentRuntime: "local",
@@ -2828,7 +2844,7 @@ export async function handleIosLocalAgentRequest(
     const cloud = readIosCloudPairing();
     return json({
       state: running ? "running" : "not_started",
-      agentName: AGENT_NAME,
+      agentName: cloud.paired ? iosCloudAgentLabel(cloud) : AGENT_NAME,
       model: activeState.status === "ready" ? activeState.modelId : null,
       startedAt,
       uptime: Date.now() - startedAt,
@@ -2898,6 +2914,26 @@ export async function handleIosLocalAgentRequest(
   }
 
   if (method === "GET" && pathname === "/api/auth/me") {
+    const cloud = readIosCloudPairing();
+    if (cloud.paired && cloud.agentId) {
+      return json({
+        identity: {
+          id: cloud.agentId,
+          displayName: iosCloudAgentLabel(cloud),
+          kind: "machine",
+        },
+        session: {
+          id: `cloud:${cloud.agentId}`,
+          kind: "machine",
+          expiresAt: null,
+        },
+        access: {
+          mode: "bearer",
+          passwordConfigured: true,
+          ownerConfigured: true,
+        },
+      });
+    }
     return json({
       identity: {
         id: "local-agent",

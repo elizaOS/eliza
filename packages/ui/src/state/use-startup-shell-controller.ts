@@ -136,7 +136,10 @@ export function useStartupShellController(): StartupShellController {
         }
 
         setState("firstRunComplete", true);
-        coordinatorDispatchRef.current({ type: "FIRST_RUN_COMPLETE" });
+        coordinatorDispatchRef.current({
+          type: "FIRST_RUN_COMPLETE",
+          target: "cloud-managed",
+        });
       })
       .catch(() => {
         cloudSkipProbeStartedRef.current = false;
@@ -150,7 +153,10 @@ export function useStartupShellController(): StartupShellController {
   const handleBootstrapAdvance = useCallback(() => {
     setShowBootstrap(false);
     setState("firstRunComplete", true);
-    coordinatorDispatchRef.current({ type: "FIRST_RUN_COMPLETE" });
+    coordinatorDispatchRef.current({
+      type: "FIRST_RUN_COMPLETE",
+      target: "cloud-managed",
+    });
   }, [setState]);
 
   let startupErrorState: StartupErrorState | null = null;

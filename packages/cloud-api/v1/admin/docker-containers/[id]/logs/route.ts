@@ -1,24 +1,31 @@
-/**
- * Admin Docker Container Logs API
- *
- * Worker boundary: DockerSSHClient depends on `ssh2`, which workerd cannot
- * load. Logs remain on the Node sidecar / Docker control-plane path.
- */
-
 import { Hono } from "hono";
 
+import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { requireAdmin } from "@/lib/auth/workers-hono-auth";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { forwardToContainerControlPlane } from "../../../../_container-control-plane-forward";
 
 const app = new Hono<AppEnv>();
 
-app.all("/*", (c) =>
-  c.json(
-    {
-      error: "not_yet_migrated",
-      reason: "DockerSSHClient (ssh2) is Node-only; needs Node sidecar",
-    },
-    501,
-  ),
-);
+app.get("/", async (c) => {
+  try {
+    const { user, role } = await requireAdmin(c);
+    if (role !== "super_admin") {
+      return c.json(
+        { success: false, error: "Super admin access required" },
+        403,
+      );
+    }
+    return forwardToContainerControlPlane(c, user);
+  } catch (error) {
+    logger.error("[Admin Docker Logs] forward error", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return failureResponse(c, error);
+  }
+});
+
+app.all("*", (c) => c.json({ success: false, error: "not found" }, 404));
 
 export default app;

@@ -24,6 +24,7 @@ test.describe.configure({ timeout: 90_000 });
 const FAKE_AGENT_ID = "11111111-1111-1111-1111-111111111111";
 const FAKE_CHARACTER_ID = "22222222-2222-2222-2222-222222222222";
 const FAKE_JOB_ID = "33333333-3333-3333-3333-333333333333";
+const FAKE_WEB_UI_URL = `https://${FAKE_AGENT_ID}.elizacloud.ai`;
 
 async function installTestAuthCookie(context: BrowserContext) {
   await context.addCookies([
@@ -69,9 +70,26 @@ test("agent flow: landing → login → create agent → chat", async ({
     (url) => url.pathname === "/api/v1/eliza/agents",
     (route) => {
       if (route.request().method() === "POST") {
-        // Create
+        const createBody = route.request().postDataJSON() as {
+          agentName?: string;
+          autoProvision?: boolean;
+          dockerImage?: string;
+        };
+        expect(createBody.agentName).toBe("playwright-agent");
+        expect(createBody.autoProvision).toBe(true);
+        expect(createBody.dockerImage).toMatch(/^ghcr\.io\//);
         return route.fulfill({
-          json: { success: true, data: { id: FAKE_AGENT_ID } },
+          status: 202,
+          json: {
+            success: true,
+            data: {
+              id: FAKE_AGENT_ID,
+              jobId: FAKE_JOB_ID,
+              status: "pending",
+              executionTier: "custom",
+              webUiUrl: FAKE_WEB_UI_URL,
+            },
+          },
         });
       }
       listCallCount += 1;
@@ -83,10 +101,19 @@ test("agent flow: landing → login → create agent → chat", async ({
                 id: FAKE_AGENT_ID,
                 agentName: "playwright-agent",
                 status: "running",
+                executionTier: "custom",
+                execution_tier: "custom",
+                webUiUrl: FAKE_WEB_UI_URL,
+                canonical_web_ui_url: FAKE_WEB_UI_URL,
+                dockerImage: "ghcr.io/elizaos/eliza-agent:latest",
                 errorMessage: null,
+                error_message: null,
                 lastHeartbeatAt: new Date().toISOString(),
+                last_heartbeat_at: new Date().toISOString(),
                 createdAt: new Date().toISOString(),
+                created_at: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
               },
             ];
       return route.fulfill({ json: { success: true, data: agents } });
@@ -125,11 +152,21 @@ test("agent flow: landing → login → create agent → chat", async ({
           data: {
             id: FAKE_AGENT_ID,
             agentName: "playwright-agent",
+            agent_name: "playwright-agent",
             status: "running",
+            executionTier: "custom",
+            execution_tier: "custom",
+            webUiUrl: FAKE_WEB_UI_URL,
+            canonical_web_ui_url: FAKE_WEB_UI_URL,
+            dockerImage: "ghcr.io/elizaos/eliza-agent:latest",
             errorMessage: null,
+            error_message: null,
             lastHeartbeatAt: new Date().toISOString(),
+            last_heartbeat_at: new Date().toISOString(),
             createdAt: new Date().toISOString(),
+            created_at: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
           },
         },
       });
@@ -171,7 +208,9 @@ test("agent flow: landing → login → create agent → chat", async ({
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await dialog.getByLabel(/agent name/i).fill("playwright-agent");
-  await dialog.getByRole("button", { name: /create shared agent/i }).click();
+  await dialog
+    .getByRole("button", { name: /deploy docker container/i })
+    .click();
 
   // ── 5. Provisioning completes and the running agent appears ─────────────
   // The mocked job can complete quickly enough to skip the transient
@@ -179,6 +218,33 @@ test("agent flow: landing → login → create agent → chat", async ({
   await expect(
     page.getByRole("link", { name: "playwright-agent" }).first(),
   ).toBeVisible({ timeout: 10_000 });
+
+  await page.route(
+    `**/api/v1/eliza/agents/${FAKE_AGENT_ID}/pairing-token`,
+    (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: {
+            redirectUrl: `${FAKE_WEB_UI_URL}/pair?token=pair-token`,
+          },
+        },
+      }),
+  );
+  await context.route(`${FAKE_WEB_UI_URL}/pair?token=pair-token`, (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><title>Paired</title>",
+    }),
+  );
+  const popupPromise = page.waitForEvent("popup");
+  await page
+    .getByRole("button", { name: /open web ui/i })
+    .first()
+    .click();
+  const popup = await popupPromise;
+  await expect(popup).toHaveURL(`${FAKE_WEB_UI_URL}/pair?token=pair-token`);
+  await popup.close();
 
   // ── 6. Chat surface ────────────────────────────────────────────────────
   // Stub the public character lookup so /chat/:characterRef renders the

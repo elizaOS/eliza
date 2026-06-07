@@ -26,10 +26,25 @@ import { loadLocalEnv } from "./shared/load-env";
 type Logger = typeof import("@elizaos/cloud-shared/lib/utils/logger").logger;
 type FindAgentSandboxRoutingById =
   typeof import("@elizaos/cloud-shared/db/agent-sandbox-routing").findAgentSandboxRoutingById;
+type GetAdminInfrastructureSnapshot =
+  typeof import("@elizaos/cloud-shared/lib/services/admin-infrastructure").getAdminInfrastructureSnapshot;
+type ExecuteAdminContainerAction =
+  typeof import("@elizaos/cloud-shared/lib/services/admin-infrastructure").executeAdminContainerAction;
+type GetAdminContainerLogsBySandboxId =
+  typeof import("@elizaos/cloud-shared/lib/services/admin-infrastructure").getAdminContainerLogsBySandboxId;
+type AuditAdminDockerContainers =
+  typeof import("@elizaos/cloud-shared/lib/services/admin-infrastructure").auditAdminDockerContainers;
 
 interface RouterDeps {
   logger: Logger;
   findAgentSandboxRoutingById: FindAgentSandboxRoutingById;
+}
+
+interface AdminDeps {
+  getAdminInfrastructureSnapshot: GetAdminInfrastructureSnapshot;
+  executeAdminContainerAction: ExecuteAdminContainerAction;
+  getAdminContainerLogsBySandboxId: GetAdminContainerLogsBySandboxId;
+  auditAdminDockerContainers: AuditAdminDockerContainers;
 }
 
 interface AgentRouterConfig {
@@ -71,6 +86,7 @@ export function readRouterConfig(
 }
 
 let depsPromise: Promise<RouterDeps> | null = null;
+let adminDepsPromise: Promise<AdminDeps> | null = null;
 
 async function loadDeps(): Promise<RouterDeps> {
   if (!depsPromise) {
@@ -84,6 +100,20 @@ async function loadDeps(): Promise<RouterDeps> {
     }));
   }
   return depsPromise;
+}
+
+async function loadAdminDeps(): Promise<AdminDeps> {
+  if (!adminDepsPromise) {
+    adminDepsPromise = import(
+      "@elizaos/cloud-shared/lib/services/admin-infrastructure"
+    ).then((module) => ({
+      getAdminInfrastructureSnapshot: module.getAdminInfrastructureSnapshot,
+      executeAdminContainerAction: module.executeAdminContainerAction,
+      getAdminContainerLogsBySandboxId: module.getAdminContainerLogsBySandboxId,
+      auditAdminDockerContainers: module.auditAdminDockerContainers,
+    }));
+  }
+  return adminDepsPromise;
 }
 
 interface RoutingResponse {
@@ -210,8 +240,159 @@ function headerValue(value: string | string[] | undefined): string | undefined {
   return value;
 }
 
+function stripTrailingSlash(pathname: string): string {
+  return pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+}
+
 function getEffectiveHost(req: IncomingMessage): string | undefined {
   return headerValue(req.headers["x-forwarded-host"]) ?? req.headers.host;
+}
+
+function readBearerToken(req: IncomingMessage | undefined): string | null {
+  const authorization = headerValue(req?.headers.authorization);
+  if (!authorization?.startsWith("Bearer ")) return null;
+  return authorization.slice(7).trim() || null;
+}
+
+function readControlPlaneHeaderToken(
+  req: IncomingMessage | undefined,
+): string | null {
+  return (
+    headerValue(req?.headers["x-container-control-plane-token"]) ??
+    readBearerToken(req)
+  );
+}
+
+export function getControlPlaneAuthFailure(
+  req: IncomingMessage | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): { status: number; body: Record<string, unknown> } | null {
+  const expected = env.CONTAINER_CONTROL_PLANE_TOKEN?.trim();
+  if (!expected) {
+    return {
+      status: 503,
+      body: {
+        success: false,
+        code: "CONTAINER_CONTROL_PLANE_TOKEN_NOT_CONFIGURED",
+        error: "Container control plane token is not configured",
+      },
+    };
+  }
+
+  const provided = readControlPlaneHeaderToken(req);
+  if (provided !== expected) {
+    return {
+      status: 401,
+      body: {
+        success: false,
+        code: "CONTAINER_CONTROL_PLANE_UNAUTHORIZED",
+        error: "Invalid container control plane token",
+      },
+    };
+  }
+
+  return null;
+}
+
+async function handleAdminInfrastructureRequest(
+  req: IncomingMessage | undefined,
+): Promise<Response> {
+  const authFailure = getControlPlaneAuthFailure(req);
+  if (authFailure) {
+    return Response.json(authFailure.body, { status: authFailure.status });
+  }
+
+  const { getAdminInfrastructureSnapshot } = await loadAdminDeps();
+  return Response.json({
+    success: true,
+    data: await getAdminInfrastructureSnapshot(),
+  });
+}
+
+async function readJsonBody<T>(req: IncomingMessage | undefined): Promise<T> {
+  if (!req) throw new Error("request body is required");
+  const body = await readIncomingBody(req);
+  if (!body?.byteLength) return {} as T;
+  return JSON.parse(Buffer.from(body).toString("utf8")) as T;
+}
+
+function readPositiveInt(value: string | null, fallback: number): number {
+  const parsed = value ? Number.parseInt(value, 10) : fallback;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+async function handleAdminContainerActionRequest(
+  req: IncomingMessage | undefined,
+): Promise<Response> {
+  const authFailure = getControlPlaneAuthFailure(req);
+  if (authFailure) {
+    return Response.json(authFailure.body, { status: authFailure.status });
+  }
+
+  const body = await readJsonBody<{
+    action?: string;
+    nodeId?: string;
+    containerName?: string;
+    lines?: number;
+  }>(req);
+  const action = body.action;
+  if (
+    action !== "restart" &&
+    action !== "stop" &&
+    action !== "start" &&
+    action !== "pull-image" &&
+    action !== "logs" &&
+    action !== "inspect"
+  ) {
+    return Response.json(
+      { success: false, error: "Invalid container action" },
+      { status: 400 },
+    );
+  }
+
+  const { executeAdminContainerAction } = await loadAdminDeps();
+  return Response.json({
+    success: true,
+    data: await executeAdminContainerAction({
+      action,
+      nodeId: body.nodeId ?? "",
+      containerName: body.containerName ?? "",
+      lines: body.lines,
+    }),
+  });
+}
+
+async function handleAdminDockerLogsRequest(
+  req: IncomingMessage | undefined,
+  url: URL,
+  sandboxId: string,
+): Promise<Response> {
+  const authFailure = getControlPlaneAuthFailure(req);
+  if (authFailure) {
+    return Response.json(authFailure.body, { status: authFailure.status });
+  }
+
+  const lines = readPositiveInt(url.searchParams.get("lines"), 200);
+  const { getAdminContainerLogsBySandboxId } = await loadAdminDeps();
+  return Response.json({
+    success: true,
+    data: await getAdminContainerLogsBySandboxId(sandboxId, lines),
+  });
+}
+
+async function handleAdminDockerAuditRequest(
+  req: IncomingMessage | undefined,
+): Promise<Response> {
+  const authFailure = getControlPlaneAuthFailure(req);
+  if (authFailure) {
+    return Response.json(authFailure.body, { status: authFailure.status });
+  }
+
+  const { auditAdminDockerContainers } = await loadAdminDeps();
+  return Response.json({
+    success: true,
+    data: await auditAdminDockerContainers(),
+  });
 }
 
 async function readIncomingBody(
@@ -295,14 +476,57 @@ async function handleRequest(
   url: URL,
   req?: IncomingMessage,
 ): Promise<Response> {
-  if (url.pathname === "/healthz") {
+  const pathname = stripTrailingSlash(url.pathname);
+
+  if (pathname === "/healthz") {
     return Response.json({ ok: true }, { status: 200 });
+  }
+  if (pathname === "/api/v1/admin/infrastructure") {
+    if (req?.method !== "GET") {
+      return Response.json(
+        { success: false, error: "method not allowed" },
+        { status: 405 },
+      );
+    }
+    return handleAdminInfrastructureRequest(req);
+  }
+  if (pathname === "/api/v1/admin/infrastructure/containers/actions") {
+    if (req?.method !== "POST") {
+      return Response.json(
+        { success: false, error: "method not allowed" },
+        { status: 405 },
+      );
+    }
+    return handleAdminContainerActionRequest(req);
+  }
+  if (pathname === "/api/v1/admin/docker-containers/audit") {
+    if (req?.method !== "POST") {
+      return Response.json(
+        { success: false, error: "method not allowed" },
+        { status: 405 },
+      );
+    }
+    return handleAdminDockerAuditRequest(req);
+  }
+  const logsMatch = pathname.match(
+    /^\/api\/v1\/admin\/docker-containers\/([^/]+)\/logs$/,
+  );
+  if (logsMatch) {
+    if (req?.method !== "GET") {
+      return Response.json(
+        { success: false, error: "method not allowed" },
+        { status: 405 },
+      );
+    }
+    return handleAdminDockerLogsRequest(
+      req,
+      url,
+      decodeURIComponent(logsMatch[1]),
+    );
   }
   // /headscale-ip is the path nginx Lua already calls; /routing is the alias
   // for new callers.
-  const match = url.pathname.match(
-    /^\/agents\/([^/]+)\/(headscale-ip|routing)$/,
-  );
+  const match = pathname.match(/^\/agents\/([^/]+)\/(headscale-ip|routing)$/);
   if (!match) {
     const agentId = req ? extractAgentIdFromHost(getEffectiveHost(req)) : null;
     if (agentId && req) return proxyAgentRequest(agentId, url, req);

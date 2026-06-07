@@ -32,6 +32,42 @@ describe("startup coordinator", () => {
     });
   });
 
+  it("skips local runtime startup for cloud-managed completed sessions", () => {
+    expect(
+      startupReducer(
+        { phase: "polling-backend", target: "cloud-managed", attempts: 0 },
+        { type: "BACKEND_REACHED", firstRunComplete: true },
+      ),
+    ).toEqual({ phase: "hydrating" });
+
+    expect(
+      startupReducer(
+        {
+          phase: "first-run-required",
+          serverReachable: true,
+          target: "cloud-managed",
+        },
+        { type: "FIRST_RUN_COMPLETE" },
+      ),
+    ).toEqual({ phase: "hydrating" });
+  });
+
+  it("keeps local and remote completed sessions on runtime startup", () => {
+    expect(
+      startupReducer(
+        { phase: "polling-backend", target: "embedded-local", attempts: 0 },
+        { type: "BACKEND_REACHED", firstRunComplete: true },
+      ),
+    ).toEqual({ phase: "starting-runtime", attempts: 0 });
+
+    expect(
+      startupReducer(
+        { phase: "first-run-required", serverReachable: true },
+        { type: "FIRST_RUN_COMPLETE", target: "remote-backend" },
+      ),
+    ).toEqual({ phase: "starting-runtime", attempts: 0 });
+  });
+
   it("resets back to session restoration", () => {
     expect(
       startupReducer(

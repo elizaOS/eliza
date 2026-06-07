@@ -40,7 +40,7 @@ export function CompactOnboarding({
     c.updateDraft("runtime", "cloud");
     void (async () => {
       try {
-        await c.finishRuntime();
+        await c.finishRuntime("cloud");
         // In the overlay shell, the first-run API call succeeded but
         // completeFirstRun() only sets React state in this isolated window.
         // Close the window so the main process can open the dashboard.

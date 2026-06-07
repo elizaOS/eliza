@@ -1,10 +1,16 @@
 import { describe, expect, it } from "bun:test";
+import type { IncomingMessage } from "node:http";
 import {
   extractAgentIdFromHost,
+  getControlPlaneAuthFailure,
   isBridgeHostFallbackEnabled,
   resolveSandboxRouting,
   selectAgentProxyTarget,
 } from "./agent-router";
+
+function requestWithHeaders(headers: Record<string, string>): IncomingMessage {
+  return { headers } as IncomingMessage;
+}
 
 describe("resolveSandboxRouting", () => {
   it("prefers headscale IP for the target when bridge metadata is available", () => {
@@ -159,6 +165,50 @@ describe("extractAgentIdFromHost", () => {
     expect(extractAgentIdFromHost("example.com", "elizacloud.ai")).toBeNull();
     expect(
       extractAgentIdFromHost("not-an-agent.elizacloud.ai", "elizacloud.ai"),
+    ).toBeNull();
+  });
+});
+
+describe("getControlPlaneAuthFailure", () => {
+  it("fails closed when the sidecar token is not configured", () => {
+    expect(
+      getControlPlaneAuthFailure(
+        requestWithHeaders({}),
+        {} as NodeJS.ProcessEnv,
+      ),
+    ).toMatchObject({
+      status: 503,
+      body: { code: "CONTAINER_CONTROL_PLANE_TOKEN_NOT_CONFIGURED" },
+    });
+  });
+
+  it("rejects requests without the matching internal token", () => {
+    expect(
+      getControlPlaneAuthFailure(
+        requestWithHeaders({ "x-container-control-plane-token": "wrong" }),
+        { CONTAINER_CONTROL_PLANE_TOKEN: "expected" } as NodeJS.ProcessEnv,
+      ),
+    ).toMatchObject({
+      status: 401,
+      body: { code: "CONTAINER_CONTROL_PLANE_UNAUTHORIZED" },
+    });
+  });
+
+  it("accepts the explicit control-plane token header", () => {
+    expect(
+      getControlPlaneAuthFailure(
+        requestWithHeaders({ "x-container-control-plane-token": "expected" }),
+        { CONTAINER_CONTROL_PLANE_TOKEN: "expected" } as NodeJS.ProcessEnv,
+      ),
+    ).toBeNull();
+  });
+
+  it("accepts bearer auth for Worker-forwarded requests", () => {
+    expect(
+      getControlPlaneAuthFailure(
+        requestWithHeaders({ authorization: "Bearer expected" }),
+        { CONTAINER_CONTROL_PLANE_TOKEN: "expected" } as NodeJS.ProcessEnv,
+      ),
     ).toBeNull();
   });
 });

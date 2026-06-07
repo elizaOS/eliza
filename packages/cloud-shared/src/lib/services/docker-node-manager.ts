@@ -76,6 +76,10 @@ function isAutoscaledNode(node: DockerNode): boolean {
   return meta.provider === "hetzner-cloud" && meta.autoscaled === true;
 }
 
+export function isDeprecatedDockerNode(node: Pick<DockerNode, "node_id">): boolean {
+  return node.node_id.startsWith("milady-core-");
+}
+
 // ---------------------------------------------------------------------------
 // DockerNodeManager
 // ---------------------------------------------------------------------------
@@ -102,15 +106,25 @@ export class DockerNodeManager {
     const nodes = await dockerNodesRepository.findEnabled();
     const candidates = (
       await Promise.all(
-        nodes.map(async (node) => {
-          const allocated = await countAllocatedWorkloadsOnNode(node.node_id);
-          const canProbeForCapacity = node.status !== "offline";
-          return {
-            node,
-            allocated,
-            available: canProbeForCapacity ? Math.max(0, node.capacity - allocated) : 0,
-          };
-        }),
+        nodes
+          .filter((node) => {
+            if (node.status !== "healthy") return false;
+            if (isDeprecatedDockerNode(node)) {
+              logger.warn("[docker-node-manager] Skipping deprecated Docker node", {
+                nodeId: node.node_id,
+              });
+              return false;
+            }
+            return true;
+          })
+          .map(async (node) => {
+            const allocated = await countAllocatedWorkloadsOnNode(node.node_id);
+            return {
+              node,
+              allocated,
+              available: Math.max(0, node.capacity - allocated),
+            };
+          }),
       )
     )
       .filter((candidate) => candidate.available > 0)
