@@ -299,7 +299,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 # blocks — they must be re-declared per-env. Same physical resources.
 [[env.staging.r2_buckets]]
 binding = "BLOB"
-bucket_name = "eliza-cloud-blob"
+bucket_name = "eliza-cloud-blob-staging"
 
 [env.production]
 name = "eliza-cloud-api-prod"
