@@ -12,6 +12,7 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
+import { containersEnv } from "@/lib/config/containers-env";
 import { elizaAppSessionService } from "@/lib/services/eliza-app";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
@@ -21,7 +22,11 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const app = new Hono<AppEnv>();
 
 const DEFAULT_AGENT_NAME = "Eliza";
-const DEFAULT_DOCKER_IMAGE = "elizaos/eliza:latest";
+// Use the canonical managed-agent image so the daemon pulls from ghcr.io
+// (the source of truth), not Docker Hub where the image does not exist.
+// A bare name like "elizaos/eliza:latest" causes Docker to resolve against
+// docker.io, producing an "unauthorized" / "pull access denied" error.
+const DEFAULT_DOCKER_IMAGE = containersEnv.defaultAgentImage();
 
 async function resolveSession(c: Context<AppEnv>) {
   const authHeader = c.req.header("Authorization");

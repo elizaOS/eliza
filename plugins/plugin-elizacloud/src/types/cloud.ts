@@ -361,7 +361,7 @@ export const DEFAULT_CLOUD_CONFIG: CloudPluginConfig = {
     maxSnapshots: 10,
   },
   container: {
-    defaultImage: "elizaos/agent:latest",
+    defaultImage: "ghcr.io/elizaos/agent:latest",
     defaultArchitecture: "arm64",
     defaultCpu: 1792,
     defaultMemory: 1792,

@@ -112,9 +112,9 @@ export class ControlPlaneStore {
     enabled: true,
     minSize: 0,
     maxSize: 10,
-    image: "elizaos/agent:latest",
+    image: "ghcr.io/elizaos/agent:latest",
     rolloutState: "idle",
-    targetImage: "elizaos/agent:latest",
+    targetImage: "ghcr.io/elizaos/agent:latest",
     completedSandboxes: 0,
     totalSandboxes: 0,
   };

@@ -90,7 +90,7 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   const actionPollTimeoutMs = options.hetznerActionPollTimeoutMs ?? 5000;
   const stuckProvisioningMs = options.stuckProvisioningMs ?? 10 * 60 * 1000;
   const hotPoolSize = options.hotPoolSize ?? 0;
-  const defaultAgentImage = options.defaultAgentImage ?? "elizaos/agent:latest";
+  const defaultAgentImage = options.defaultAgentImage ?? "ghcr.io/elizaos/agent:latest";
   const containerLogLines = options.containerLogLines ?? [
     "[mock] container started",
     "[mock] health check passed",

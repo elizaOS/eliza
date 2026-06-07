@@ -41,16 +41,15 @@ function readRegistryToken(): string | undefined {
 
 export async function loginToImageRegistry(ssh: DockerSSHClient, image: string): Promise<void> {
   const registryHost = getImageRegistryHost(image);
+  if (!registryHost) return;
+
   const username = containersEnv.registryUsername();
   const token = readRegistryToken();
-  if (!registryHost && !username && !token) return;
-  if (!registryHost) return;
-  if (!username || !token) {
-    throw new HetznerClientError(
-      "invalid_input",
-      `Docker registry credentials are required to pull from ${registryHost}`,
-    );
-  }
+  // When credentials are not configured, skip login and let `docker pull`
+  // negotiate an anonymous token (GHCR and Docker Hub both support this for
+  // public images). Requiring login for every ghcr.io ref blocked deploys of
+  // first-party public images like ghcr.io/elizaos/eliza:stable.
+  if (!username || !token) return;
 
   await ssh.exec(
     `printf %s ${shellQuote(token)} | docker login ${shellQuote(registryHost)} -u ${shellQuote(username)} --password-stdin >/dev/null`,

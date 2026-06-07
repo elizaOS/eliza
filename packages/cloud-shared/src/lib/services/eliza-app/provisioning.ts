@@ -1,13 +1,18 @@
 import { agentSandboxesRepository } from "../../../db/repositories/agent-sandboxes";
 import { creditTransactionsRepository } from "../../../db/repositories/credit-transactions";
 import type { AgentSandbox } from "../../../db/schemas/agent-sandboxes";
+import { containersEnv } from "../../config/containers-env";
 import { logger } from "../../utils/logger";
 import { creditsService } from "../credits";
 import { elizaSandboxService } from "../eliza-sandbox";
 import { provisioningJobService } from "../provisioning-jobs";
 
 const DEFAULT_AGENT_NAME = "Eliza";
-const DEFAULT_DOCKER_IMAGE = "elizaos/eliza:latest";
+// Use the canonical managed-agent image so the daemon pulls from ghcr.io
+// (the source of truth), not Docker Hub where the image does not exist.
+// A bare name like "elizaos/eliza:latest" causes Docker to resolve against
+// docker.io, producing an "unauthorized" / "pull access denied" error.
+const DEFAULT_DOCKER_IMAGE = containersEnv.defaultAgentImage();
 const ELIZA_APP_INITIAL_CREDITS = 5.0;
 
 export interface ElizaAppProvisioningStatus {
