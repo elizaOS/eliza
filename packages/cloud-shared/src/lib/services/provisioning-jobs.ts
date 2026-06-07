@@ -27,6 +27,8 @@ import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { jobs } from "../../db/schemas/jobs";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { logger } from "../utils/logger";
+import { dispatchAppDeployJob } from "./app-deploy-job-service";
+import { dispatchContainerJob, getContainerExecutorDeps } from "./container-job-service";
 import { elizaProvisionAdvisoryLockSql } from "./eliza-provision-lock";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
@@ -1450,6 +1452,21 @@ export class ProvisioningJobService {
         break;
       case JOB_TYPES.AGENT_SNAPSHOT:
         await this.executeAgentSnapshot(job);
+        break;
+      // Apps lane (Product 2): generic app-container lifecycle. Routed to the
+      // standalone container-job-service (kept out of the agent-coupled paths
+      // above); the executor backend is wired at boot via setContainerExecutorDeps.
+      case JOB_TYPES.CONTAINER_PROVISION:
+      case JOB_TYPES.CONTAINER_DELETE:
+      case JOB_TYPES.CONTAINER_RESTART:
+      case JOB_TYPES.CONTAINER_UPGRADE:
+      case JOB_TYPES.CONTAINER_LOGS:
+        await dispatchContainerJob(job, getContainerExecutorDeps());
+        break;
+      // Apps lane (Product 2): the node deploy. The Worker enqueues this; the
+      // daemon runs the real isolated provision via the injected AppDeployRunner.
+      case JOB_TYPES.APP_DEPLOY:
+        await dispatchAppDeployJob(job);
         break;
       default:
         throw new Error(`Unknown job type: ${job.type}`);

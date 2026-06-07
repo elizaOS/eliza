@@ -34,6 +34,32 @@ export const JOB_TYPES = {
    * inverse of `agent_sleep`.
    */
   AGENT_WAKE: "agent_wake",
+
+  // ── Apps lane (Product 2) ──────────────────────────────────────────────
+  // Generic, image-agnostic container lifecycle for user-deployed apps —
+  // distinct from the AGENT_* lane above. These rows target the `containers`
+  // table (not `agent_sandboxes`), carry NO eliza scaffolding, and NEVER
+  // receive the shared agent DATABASE_URL. The daemon picks them up via the
+  // same `Object.values(JOB_TYPES)` scan, so registering them here is enough;
+  // executors are added separately and never alter the AGENT_* arms.
+  /** Provision a generic app container from a caller-supplied image. */
+  CONTAINER_PROVISION: "container_provision",
+  /** Stop + remove an app container and free its slot. */
+  CONTAINER_DELETE: "container_delete",
+  /** Restart an app container in place. */
+  CONTAINER_RESTART: "container_restart",
+  /** Re-deploy an app container onto a new image. */
+  CONTAINER_UPGRADE: "container_upgrade",
+  /** Fetch recent logs from an app container. */
+  CONTAINER_LOGS: "container_logs",
+  /**
+   * Run the full app deploy on a node host (Apps / Product 2): the cloud-api
+   * Worker enqueues this (pg-free) and the provisioning-worker daemon claims it,
+   * runs the node AppDeployRunner (ensure tenant DB -> create container row with
+   * the per-tenant DSN -> enqueue CONTAINER_PROVISION -> link), keeping all
+   * `pg`/SSH off the workerd request path.
+   */
+  APP_DEPLOY: "app_deploy",
 } as const;
 
 export type ProvisioningJobType = (typeof JOB_TYPES)[keyof typeof JOB_TYPES];
