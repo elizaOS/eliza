@@ -1,0 +1,91 @@
+import { describe, expect, test } from "bun:test";
+import {
+  type AppDeployDeps,
+  deployApp,
+  type DeployAppRequest,
+  type NewAppContainerRow,
+} from "../app-deploy-orchestrator";
+
+const REQ: DeployAppRequest = {
+  appId: "11111111-2222-3333-4444-555555555555",
+  organizationId: "org-1",
+  userId: "user-1",
+  containerName: "app-nubilio",
+  image: "ghcr.io/nubs/nubilio:latest",
+};
+
+const TENANT_DSN = "postgresql://app_x:pw@apps-cluster-1/db_app_x?sslmode=require";
+
+function deps(over: Partial<AppDeployDeps> = {}) {
+  const seen: {
+    row?: NewAppContainerRow;
+    enqueued?: { containerId: string };
+    linked?: { appId: string; containerId: string };
+  } = {};
+  const base: AppDeployDeps = {
+    async ensureTenantDb() {
+      return TENANT_DSN;
+    },
+    async createContainerRow(row) {
+      seen.row = row;
+      return { containerId: "container-1" };
+    },
+    async enqueueProvision(p) {
+      seen.enqueued = { containerId: p.containerId };
+      return { id: "job-1" };
+    },
+    async linkContainerToApp(appId, containerId) {
+      seen.linked = { appId, containerId };
+    },
+  };
+  return { seen, deps: { ...base, ...over } };
+}
+
+describe("deployApp", () => {
+  test("provisions an isolated DB, creates the row with that DSN, enqueues, links", async () => {
+    const { seen, deps: d } = deps();
+    const result = await deployApp(REQ, d);
+
+    expect(result).toEqual({ containerId: "container-1", jobId: "job-1" });
+    // the container row carries the app's OWN per-tenant DSN
+    expect(seen.row?.environmentVars.DATABASE_URL).toBe(TENANT_DSN);
+    expect(seen.row?.image).toBe(REQ.image);
+    expect(seen.row?.port).toBe(3000);
+    // provision was enqueued for the created container
+    expect(seen.enqueued?.containerId).toBe("container-1");
+    // container linked back to the app
+    expect(seen.linked).toEqual({ appId: REQ.appId, containerId: "container-1" });
+  });
+
+  test("the injected DSN is the per-tenant one, never a shared agent URL", async () => {
+    const { seen, deps: d } = deps({
+      async ensureTenantDb() {
+        return TENANT_DSN;
+      },
+    });
+    await deployApp(REQ, d);
+    expect(seen.row?.environmentVars.DATABASE_URL).not.toContain("agentdb");
+    expect(seen.row?.environmentVars.DATABASE_URL).toContain("db_app_x");
+  });
+
+  test("honors a custom container port", async () => {
+    const { seen, deps: d } = deps();
+    await deployApp({ ...REQ, port: 8080 }, d);
+    expect(seen.row?.port).toBe(8080);
+  });
+
+  test("surfaces a DB-provisioning failure before creating any container", async () => {
+    let created = false;
+    const { deps: d } = deps({
+      async ensureTenantDb() {
+        throw new Error("No tenant DB cluster has capacity");
+      },
+      async createContainerRow(row) {
+        created = true;
+        return { containerId: "x" };
+      },
+    });
+    await expect(deployApp(REQ, d)).rejects.toThrow("capacity");
+    expect(created).toBe(false);
+  });
+});
