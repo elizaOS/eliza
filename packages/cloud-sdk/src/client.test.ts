@@ -338,3 +338,51 @@ describe("ElizaCloudClient web sign-in + app-credits affordances", () => {
     ).rejects.toThrow(/expired/i);
   });
 });
+
+describe("ElizaCloudClient.transcribeAudio", () => {
+  it("POSTs multipart audio to /api/v1/voice/stt with X-App-Id", async () => {
+    let captured:
+      | { url: string; method?: string; headers: Headers; body: unknown }
+      | undefined;
+    const fetchImpl = (async (input, init = {}) => {
+      captured = {
+        url: String(input),
+        method: init.method,
+        headers: new Headers(init.headers),
+        body: init.body,
+      };
+      return new Response(
+        JSON.stringify({ transcript: "hello world", duration_ms: 1234 }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    const client = new ElizaCloudClient({
+      baseUrl: "https://cloud.test",
+      apiKey: "eliza_test_key",
+      fetchImpl,
+    });
+    const res = await client.transcribeAudio(
+      {
+        audio: new Blob(["fake-audio"], { type: "audio/webm" }),
+        filename: "speech.webm",
+        languageCode: "en",
+      },
+      { appId: "app-123" },
+    );
+
+    expect(res).toEqual({ transcript: "hello world", duration_ms: 1234 });
+    expect(captured?.url).toContain("/api/v1/voice/stt");
+    expect(captured?.method).toBe("POST");
+    expect(captured?.headers.get("x-app-id")).toBe("app-123");
+    expect(captured?.headers.get("authorization")).toBe(
+      "Bearer eliza_test_key",
+    );
+    // A FormData body (not a JSON string) confirms multipart — the runtime sets
+    // the multipart boundary, so the SDK never forces application/json here.
+    expect(captured?.body).toBeInstanceOf(FormData);
+    const form = captured?.body as FormData;
+    expect(form.get("languageCode")).toBe("en");
+    expect(form.get("audio")).toBeInstanceOf(Blob);
+  });
+});

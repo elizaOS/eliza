@@ -31,7 +31,8 @@ import { type ComponentType, lazy } from "react";
 export const APP_PLUGIN_SPECS = {
   "@elizaos/app-core": () => import("@elizaos/app-core"),
   "@elizaos/app-companion": () => import("@elizaos/app-companion"),
-  "@elizaos/app-lifeops": () => import("@elizaos/app-lifeops"),
+  "@elizaos/plugin-personal-assistant": () =>
+    import("@elizaos/plugin-personal-assistant"),
   "@elizaos/app-phone": () => import("@elizaos/app-phone"),
   "@elizaos/app-steward": () => import("@elizaos/app-steward"),
   "@elizaos/app-task-coordinator": () =>
@@ -104,24 +105,22 @@ const InferenceCloudAlertButton = lazyNamedComponent<{
 const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await loadPlugin("@elizaos/app-phone")).PhoneCompanionApp,
 );
-const LifeOpsPageView = lazyNamedComponent<Record<string, never>>(
-  async () => (await loadPlugin("@elizaos/app-lifeops")).LifeOpsPageView,
-);
-const BrowserBridgeSetupPanel = lazyNamedComponent<Record<string, never>>(
-  async () =>
-    (await loadPlugin("@elizaos/app-lifeops")).LifeOpsBrowserSetupPanel,
-);
-const LifeOpsActivitySignalsEffect = lazyNamedComponent<Record<string, never>>(
-  async () =>
-    (await loadPlugin("@elizaos/app-lifeops")).LifeOpsActivitySignalsEffect,
-);
+// LifeOpsPageView / LifeOpsBrowserSetupPanel / LifeOpsActivitySignalsEffect
+// were removed when @elizaos/plugin-lifeops was decomposed into plugin-todos,
+// plugin-inbox, plugin-goals, plugin-health, plugin-calendar, plugin-documents,
+// plugin-blocker, plugin-finances, plugin-relationships and renamed to
+// @elizaos/plugin-personal-assistant. The boot config slots are optional and
+// UI consumers render a fallback when absent.
 const AppBlockerSettingsCard = lazyNamedComponent<AppBlockerSettingsCardProps>(
-  async () => (await loadPlugin("@elizaos/app-lifeops")).AppBlockerSettingsCard,
+  async () =>
+    (await loadPlugin("@elizaos/plugin-personal-assistant"))
+      .AppBlockerSettingsCard,
 );
 const WebsiteBlockerSettingsCard =
   lazyNamedComponent<WebsiteBlockerSettingsCardProps>(
     async () =>
-      (await loadPlugin("@elizaos/app-lifeops")).WebsiteBlockerSettingsCard,
+      (await loadPlugin("@elizaos/plugin-personal-assistant"))
+        .WebsiteBlockerSettingsCard,
   );
 const StewardLogo = lazyNamedComponent<StewardLogoProps>(
   async () => (await loadPlugin("@elizaos/app-steward")).StewardLogo,
@@ -149,7 +148,7 @@ const FineTuningView = lazyNamedComponent<FineTuningViewProps>(
   async () => (await loadPlugin("@elizaos/app-training")).FineTuningView,
 );
 
-export { LifeOpsActivitySignalsEffect, PhoneCompanionApp };
+export { PhoneCompanionApp };
 
 // ---------------------------------------------------------------------------
 // Hook proxies. Companion/Vincent expose hook factories that are only known
@@ -158,7 +157,6 @@ export { LifeOpsActivitySignalsEffect, PhoneCompanionApp };
 // ---------------------------------------------------------------------------
 
 let loadedCompanionSceneStatusHook: (() => CompanionSceneStatus) | null = null;
-let dispatchQueuedLifeOpsGithubCallback: ((url: string) => void) | null = null;
 
 export function useLoadedCompanionSceneStatus(): CompanionSceneStatus {
   return (
@@ -167,10 +165,6 @@ export function useLoadedCompanionSceneStatus(): CompanionSceneStatus {
       teleportKey: "",
     }
   );
-}
-
-export function dispatchLifeOpsGithubCallbackIfReady(url: string): void {
-  dispatchQueuedLifeOpsGithubCallback?.(url);
 }
 
 // ---------------------------------------------------------------------------
@@ -200,9 +194,14 @@ export function initializeAppPlugins(
     // app-core must resolve first; it owns the shared boot config singleton.
     await loadPlugin("@elizaos/app-core");
 
-    const [companionModule, lifeOpsModule] = await Promise.all([
+    const [companionModule] = await Promise.all([
       loadPlugin("@elizaos/app-companion"),
-      loadPlugin("@elizaos/app-lifeops"),
+      // Loaded for the side-effectful API client (BRIEF / PRIORITIZE /
+      // scheduled-task CRUD / approvals) and to surface AppBlocker /
+      // WebsiteBlocker settings cards. No top-level register call since
+      // the /lifeops view was killed during the plugin-personal-assistant
+      // decomposition.
+      loadPlugin("@elizaos/plugin-personal-assistant"),
       // Loaded for its self-registration side effect (Vincent overlay app).
       loadPlugin("@elizaos/app-vincent"),
       loadPlugin("@elizaos/app-task-coordinator"),
@@ -229,8 +228,6 @@ export function initializeAppPlugins(
 
     companionModule.registerCompanionApp();
     loadedCompanionSceneStatusHook = companionModule.useCompanionSceneStatus;
-    dispatchQueuedLifeOpsGithubCallback =
-      lifeOpsModule.dispatchQueuedLifeOpsGithubCallbackFromUrl;
 
     const bootConfig: AppBootConfig = {
       branding: args.branding,
@@ -264,8 +261,9 @@ export function initializeAppPlugins(
       stewardTransactionHistory: TransactionHistory,
       characterCatalog: args.characterCatalog,
       envAliases: args.envAliases,
-      lifeOpsPageView: LifeOpsPageView,
-      lifeOpsBrowserSetupPanel: BrowserBridgeSetupPanel,
+      // lifeOpsPageView / lifeOpsBrowserSetupPanel intentionally omitted —
+      // both are optional in AppBootConfig and UI consumers render a
+      // fallback when absent.
       appBlockerSettingsCard: AppBlockerSettingsCard,
       websiteBlockerSettingsCard: WebsiteBlockerSettingsCard,
       clientMiddleware: args.clientMiddleware,

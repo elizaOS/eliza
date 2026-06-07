@@ -60,6 +60,7 @@ export interface StackHandle {
   stop: () => Promise<void>;
   urls: {
     api: string;
+    /** Empty string when the stack was started with `frontend: false`. */
     frontend: string;
     hetzner: string;
     controlPlane: string;
@@ -229,6 +230,12 @@ export interface StartCloudStackOptions {
   apiPort?: number;
   /** Override frontend port. Default: free port. */
   frontendPort?: number;
+  /**
+   * Boot the cloud-frontend Vite dev server. Defaults to true. Set to false for
+   * API-only stacks (e.g. the monetized-app loop) that never drive a browser —
+   * skips the Vite spawn + health wait, and leaves `urls.frontend` empty.
+   */
+  frontend?: boolean;
 }
 
 /**
@@ -327,11 +334,19 @@ export async function startCloudStack(
     );
   }
 
+  // Boot cloud-api through its wrangler dev launcher — the same entrypoint the
+  // cloud:mock stack uses (`bun run --cwd packages/cloud-api dev`). The earlier
+  // no-wrangler "e2e-server" adapter imported cloud-api straight from TypeScript
+  // source, which neither node (it can't load the extensionless `.ts` relative
+  // imports) nor bun (cloud-api's `@/…` path aliases need a tsconfig `baseUrl`
+  // that tsgo forbids) can resolve — only wrangler/esbuild bundling does. The
+  // `stripBunAncestryEnv` in env.ts exists precisely so wrangler starts from a
+  // bun-spawned context. wrangler pre-bundles, so requests are fast.
   procs.push(
     spawnLogged(
       "cloud-api",
-      "node",
-      ["packages/scripts/cloud/admin/dev/cloud-api-e2e-server.mjs"],
+      BUN,
+      ["run", "--cwd", "packages/cloud-api", "dev"],
       {
         env: stackEnv,
         cwd: REPO_ROOT,
@@ -346,32 +361,35 @@ export async function startCloudStack(
     label: "cloud-api",
   });
 
-  // 3. cloud-frontend Vite dev
-  const frontendEnv = {
-    ...stackEnv,
-    PORT: String(frontendPort),
-    VITE_API_BASE_URL: apiUrl,
-    VITE_API_PROXY_TARGET: apiUrl,
-    NEXT_PUBLIC_API_BASE_URL: apiUrl,
-  };
-  procs.push(
-    spawnLogged(
-      "cloud-frontend",
-      BUN,
-      ["run", "dev", "--", "--host", "127.0.0.1"],
-      {
-        env: frontendEnv,
-        cwd: join(REPO_ROOT, "packages", "cloud-frontend"),
-        logFile: join(LOG_DIR, "cloud-frontend.log"),
-      },
-    ),
-  );
+  // 3. cloud-frontend Vite dev (skipped for API-only stacks)
+  let frontendUrl = "";
+  if (opts.frontend !== false) {
+    const frontendEnv = {
+      ...stackEnv,
+      PORT: String(frontendPort),
+      VITE_API_BASE_URL: apiUrl,
+      VITE_API_PROXY_TARGET: apiUrl,
+      NEXT_PUBLIC_API_BASE_URL: apiUrl,
+    };
+    procs.push(
+      spawnLogged(
+        "cloud-frontend",
+        BUN,
+        ["run", "dev", "--", "--host", "127.0.0.1"],
+        {
+          env: frontendEnv,
+          cwd: join(REPO_ROOT, "packages", "cloud-frontend"),
+          logFile: join(LOG_DIR, "cloud-frontend.log"),
+        },
+      ),
+    );
 
-  const frontendUrl = `http://127.0.0.1:${frontendPort}`;
-  await waitForHttpOk(frontendUrl, {
-    timeoutMs: 120_000,
-    label: "cloud-frontend",
-  });
+    frontendUrl = `http://127.0.0.1:${frontendPort}`;
+    await waitForHttpOk(frontendUrl, {
+      timeoutMs: 120_000,
+      label: "cloud-frontend",
+    });
+  }
 
   let stopped = false;
   const stop = async () => {

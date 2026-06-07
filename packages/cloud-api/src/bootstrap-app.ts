@@ -14,6 +14,7 @@ import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
 import { corsMiddleware } from "@/lib/cors/cloud-api-hono-cors";
 import { observeCloudRequest } from "@/lib/observability/cloud-backend-observability";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
+import { configureAppsDeployTrigger } from "@/lib/services/app-deploy-job-service";
 import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -29,6 +30,15 @@ export function createApp(): Hono<AppEnv> {
   // console sink) before any route handlers run. Idempotent — safe to
   // call from tests too.
   initAuditDispatcher();
+
+  // Apps (Product 2): when enabled, wire the deploy trigger so
+  // POST /api/v1/apps/:id/deploy enqueues a real isolated APP_DEPLOY job (the
+  // provisioning-worker daemon runs it). Gated OFF by default — until
+  // APPS_DEPLOY_ENABLED=1, createDeployment keeps its legacy stub behavior. No
+  // `pg` is imported here; process.env is populated on workerd via nodejs_compat.
+  if (process.env.APPS_DEPLOY_ENABLED === "1") {
+    configureAppsDeployTrigger();
+  }
 
   const app = new Hono<AppEnv>({ strict: false });
 

@@ -199,6 +199,28 @@ export interface GenerateImageResponse {
   numImages?: number;
 }
 
+/** Audio input for {@link ElizaCloudClient.transcribeAudio}. */
+export interface VoiceSttRequest {
+  /**
+   * Audio payload as a Blob or File. In the browser pass the File/Blob from
+   * MediaRecorder; on the server wrap a Buffer, e.g.
+   * `new Blob([buffer], { type: "audio/webm" })`. Max 25MB.
+   */
+  audio: Blob;
+  /** Filename for the multipart part (the extension aids type detection). */
+  filename?: string;
+  /** Optional language hint forwarded to the STT provider. */
+  languageCode?: string;
+}
+
+/** Result of POST /api/v1/voice/stt. */
+export interface VoiceSttResponse {
+  /** Transcribed text. */
+  transcript: string;
+  /** Audio duration in milliseconds, measured server-side. */
+  duration_ms: number;
+}
+
 export interface CreditSummaryResponse extends Record<string, unknown> {
   success: true;
   organization: {

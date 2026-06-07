@@ -8,14 +8,17 @@
  * Reference: eliza-cloud/backend/services/container-orchestrator.ts
  */
 
-import { createHash, createHmac } from "node:crypto";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import type { DockerNode } from "../../db/schemas/docker-nodes";
-import { isAgentTokenSigningConfigured, mintAgentToken } from "../auth/agent-token";
+import {
+  isAgentTokenSigningConfigured,
+  mintAgentToken,
+} from "../auth/agent-token";
 import { containersEnv } from "../config/containers-env";
 import { getAgentBaseDomain } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+import { signStewardMutatingRequest } from "../steward/sign";
 import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 import { logger } from "../utils/logger";
 import { getNodeAutoscaler } from "./containers/node-autoscaler";
@@ -45,8 +48,16 @@ import {
 } from "./docker-sandbox-utils";
 import { DockerSSHClient } from "./docker-ssh";
 import { headscaleIntegration } from "./headscale-integration";
-import type { SandboxCreateConfig, SandboxHandle, SandboxProvider } from "./sandbox-provider-types";
-import { ensureStewardTenant, resolveStewardTenantCredentials } from "./steward-tenant-config";
+import type {
+  SandboxCreateConfig,
+  SandboxHandle,
+  SandboxProvider,
+} from "./sandbox-provider-types";
+import {
+  ensureStewardTenant,
+  resolveStewardTenantCredentials,
+  type StewardTenantCredentials,
+} from "./steward-tenant-config";
 
 // ---------------------------------------------------------------------------
 // Exported metadata type for strongly-typed provider metadata
@@ -112,7 +123,10 @@ function resolveStewardHostUrl(): string {
 
 function resolveStewardContainerEnvUrl(): string {
   const env = getCloudAwareEnv();
-  return resolveStewardContainerUrl(resolveStewardHostUrl(), env.STEWARD_CONTAINER_URL);
+  return resolveStewardContainerUrl(
+    resolveStewardHostUrl(),
+    env.STEWARD_CONTAINER_URL,
+  );
 }
 
 const STEWARD_JWT_FILE = "/app/data/steward.jwt";
@@ -145,7 +159,10 @@ function resolveElizaCloudPublicUrl(): string {
 
 function resolveStewardRefreshUrl(): string {
   const env = getCloudAwareEnv();
-  if (typeof env.STEWARD_REFRESH_URL === "string" && env.STEWARD_REFRESH_URL.trim()) {
+  if (
+    typeof env.STEWARD_REFRESH_URL === "string" &&
+    env.STEWARD_REFRESH_URL.trim()
+  ) {
     return env.STEWARD_REFRESH_URL.trim();
   }
   return `${resolveElizaCloudPublicUrl()}/v1/agent-tokens`;
@@ -153,8 +170,12 @@ function resolveStewardRefreshUrl(): string {
 
 function resolveStewardRefreshServiceToken(): string {
   const env = getCloudAwareEnv();
-  for (const candidate of [env.ELIZA_CLOUD_SERVICE_TOKEN, env.AGENT_TOKEN_SERVICE_TOKEN]) {
-    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+  for (const candidate of [
+    env.ELIZA_CLOUD_SERVICE_TOKEN,
+    env.AGENT_TOKEN_SERVICE_TOKEN,
+  ]) {
+    if (typeof candidate === "string" && candidate.trim())
+      return candidate.trim();
   }
   return "";
 }
@@ -171,9 +192,14 @@ function resolveStewardRefreshServiceToken(): string {
  * Persona + connector POLICY fields (dmPolicy, messagePrefix, enabled, etc.)
  * are preserved so the runtime still loads the right character + behaviour.
  */
-function redactCharacterSecrets(character: Record<string, unknown>): Record<string, unknown> {
+function redactCharacterSecrets(
+  character: Record<string, unknown>,
+): Record<string, unknown> {
   // Deep clone so we never mutate the caller's DB-derived object.
-  const clone = JSON.parse(JSON.stringify(character)) as Record<string, unknown>;
+  const clone = JSON.parse(JSON.stringify(character)) as Record<
+    string,
+    unknown
+  >;
   delete clone.secrets;
   if (clone.settings && typeof clone.settings === "object") {
     delete (clone.settings as Record<string, unknown>).secrets;
@@ -274,7 +300,8 @@ export function requiresHeadscaleRoute(
     // every key from it (Copilot review on #8152).
     const cloudEnv = getCloudAwareEnv();
     return {
-      AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: cloudEnv.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK,
+      AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK:
+        cloudEnv.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK,
       CONTAINERS_PUBLIC_BASE_DOMAIN: cloudEnv.CONTAINERS_PUBLIC_BASE_DOMAIN,
       ELIZA_CLOUD_AGENT_BASE_DOMAIN: cloudEnv.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
       ENVIRONMENT: cloudEnv.ENVIRONMENT,
@@ -339,7 +366,9 @@ function buildStewardPluginInstallCommand(containerName: string): string {
  * (the proxy listens on the docker host). Returns an empty object when
  * proxy mode is disabled so callers can spread it unconditionally.
  */
-export function buildStewardProxyEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+export function buildStewardProxyEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
   if (env.USE_STEWARD_PROXY !== "true") return {};
   const base = "http://host.docker.internal:8080";
   return {
@@ -370,7 +399,9 @@ const AUTOSCALED_NODE_READY_POLL_MS = 10_000;
 
 function getDockerHealthCmd(port: string, path = "/api/health"): string {
   if (!/^\d+$/.test(port)) {
-    throw new Error(`[docker-sandbox] Invalid port "${port}": must be a numeric string.`);
+    throw new Error(
+      `[docker-sandbox] Invalid port "${port}": must be a numeric string.`,
+    );
   }
   if (!/^\/[A-Za-z0-9._~/-]*$/.test(path)) {
     throw new Error(`[docker-sandbox] Invalid health check path "${path}".`);
@@ -382,7 +413,8 @@ function getDockerHealthCmd(port: string, path = "/api/health"): string {
 
 export function resolveContainerPort(config: SandboxCreateConfig): string {
   const requested =
-    typeof config.environmentVars.PORT === "string" && config.environmentVars.PORT.trim()
+    typeof config.environmentVars.PORT === "string" &&
+    config.environmentVars.PORT.trim()
       ? config.environmentVars.PORT.trim()
       : typeof config.environmentVars.HTTP_PORT === "string" &&
           config.environmentVars.HTTP_PORT.trim()
@@ -399,7 +431,9 @@ export function resolveContainerPort(config: SandboxCreateConfig): string {
 function extractStewardToken(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) {
-    throw new Error("[docker-sandbox] Steward token endpoint returned an empty response");
+    throw new Error(
+      "[docker-sandbox] Steward token endpoint returned an empty response",
+    );
   }
 
   try {
@@ -457,7 +491,9 @@ function warnMissingStewardTenantApiKey(apiKey?: string) {
   );
 }
 
-function resolveStewardRequestSigningSecret(apiKey?: string): string | undefined {
+function resolveStewardRequestSigningSecret(
+  apiKey?: string,
+): string | undefined {
   const env = getCloudAwareEnv();
   const explicit = env.STEWARD_REQUEST_SIGNING_SECRET?.trim();
   if (explicit) {
@@ -469,73 +505,92 @@ function resolveStewardRequestSigningSecret(apiKey?: string): string | undefined
   return fromList ?? apiKey?.trim() ?? undefined;
 }
 
-function resolveStewardRequestSigningKeyId(): string | undefined {
-  const keyId = getCloudAwareEnv().STEWARD_REQUEST_SIGNING_KEY_ID?.trim();
-  return keyId && keyId.length > 0 ? keyId : undefined;
+function resolveStewardPlatformKey(): string | undefined {
+  const env = getCloudAwareEnv();
+  const single = env.STEWARD_PLATFORM_KEY?.trim();
+  if (single) return single;
+  const fromList = env.STEWARD_PLATFORM_KEYS?.split(",")
+    .map((k) => k.trim())
+    .find((k) => k.length > 0);
+  return fromList || undefined;
 }
 
-function sha256TextHex(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
+function buildPlatformAgentPath(tenantId: string, agentId?: string): string {
+  const base = `/platform/tenants/${encodeURIComponent(tenantId)}/agents`;
+  return agentId ? `${base}/${encodeURIComponent(agentId)}` : base;
 }
 
-function buildStewardCanonicalRequest(input: {
+// Best-effort `curl -X DELETE` against Steward's platform agent endpoint for
+// cleanup paths (failed container create, missing Headscale registration).
+// Uses the platform-key path so the daemon authenticates as a platform
+// operator instead of impersonating a tenant owner session — Steward's
+// `/agents/:id` (tenant-scoped) route requires `session-jwt + tenantRole
+// owner|admin`, which a backend service cannot satisfy. The platform-key
+// path `/platform/tenants/:id/agents/:id` is exactly what Steward exposes
+// for this case (scope `platform:agent:delete`). Without signing the call
+// 401s and the agent record stays around as a ghost, blocking retries.
+async function buildSignedDeleteAgentCurl(
+  agentId: string,
+  stewardTenant: StewardTenantCredentials,
+): Promise<string> {
+  const path = buildPlatformAgentPath(stewardTenant.tenantId, agentId);
+  const url = `${resolveStewardHostUrl()}${path}`;
+  const platformKey = resolveStewardPlatformKey();
+  const signingSecret = resolveStewardRequestSigningSecret(
+    stewardTenant.apiKey,
+  );
+  const flags = [
+    `-H ${shellQuote(`X-Steward-Tenant: ${stewardTenant.tenantId}`)}`,
+    ...(platformKey
+      ? [`-H ${shellQuote(`X-Steward-Platform-Key: ${platformKey}`)}`]
+      : []),
+  ];
+  if (signingSecret !== undefined) {
+    const signed = await buildStewardSignedHeaders({
+      method: "DELETE",
+      path,
+      body: "",
+      tenantId: stewardTenant.tenantId,
+      ...(platformKey === undefined ? {} : { platformKey }),
+      signingSecret,
+    });
+    for (const [name, value] of Object.entries(signed)) {
+      flags.push(`-H ${shellQuote(`${name}: ${value}`)}`);
+    }
+  }
+  return `curl -s -X DELETE ${flags.join(" ")} ${shellQuote(url)} || true`;
+}
+
+async function buildStewardSignedHeaders(params: {
   method: string;
   path: string;
-  tenantId: string;
-  apiKey: string;
-  timestamp: string;
-  expiresAt: string;
-  idempotencyKey: string;
-  body: string;
-}): string {
-  return [
-    "steward-request-signature-v1",
-    input.method.toUpperCase(),
-    input.path,
-    input.tenantId,
-    sha256TextHex(""),
-    sha256TextHex(input.apiKey),
-    sha256TextHex(""),
-    sha256TextHex(""),
-    sha256TextHex(""),
-    sha256TextHex(""),
-    sha256TextHex(""),
-    input.timestamp,
-    input.expiresAt,
-    input.idempotencyKey,
-    sha256TextHex(input.body),
-  ].join("\n");
-}
-
-function buildStewardSignedHeaders(params: {
-  path: string;
   body: string;
   tenantId: string;
-  apiKey?: string;
+  platformKey?: string;
   signingSecret: string;
-}): Record<string, string> {
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const expiresAt = (Number(timestamp) + 300).toString();
-  const idempotencyKey = `eliza-cloud-${crypto.randomUUID()}`;
-  const signingKeyId = resolveStewardRequestSigningKeyId();
-  const canonical = buildStewardCanonicalRequest({
-    method: "POST",
-    path: params.path,
-    tenantId: params.tenantId,
-    apiKey: params.apiKey ?? "",
-    timestamp,
-    expiresAt,
-    idempotencyKey,
-    body: params.body,
+}): Promise<Record<string, string>> {
+  const headers = new Headers();
+  headers.set("X-Steward-Tenant", params.tenantId);
+  if (params.platformKey) {
+    headers.set("X-Steward-Platform-Key", params.platformKey);
+  }
+  await signStewardMutatingRequest(
+    params.signingSecret,
+    params.method,
+    params.path,
+    headers,
+    new TextEncoder().encode(params.body),
+  );
+  const out: Record<string, string> = {};
+  headers.forEach((value, name) => {
+    // Strip tenant/platform-key — the caller injects them via curl flag or
+    // Python shim. Avoid double-injection.
+    if (name === "x-steward-tenant" || name === "x-steward-platform-key") {
+      return;
+    }
+    out[name] = value;
   });
-  const signature = createHmac("sha256", params.signingSecret).update(canonical).digest("hex");
-  return {
-    "X-Steward-Request-Timestamp": timestamp,
-    "X-Steward-Request-Expires-At": expiresAt,
-    "Idempotency-Key": idempotencyKey,
-    "X-Steward-Signature": `v1=${signature}`,
-    ...(signingKeyId === undefined ? {} : { "X-Steward-Signing-Key-Id": signingKeyId }),
-  };
+  return out;
 }
 
 async function registerAgentWithSteward(
@@ -545,28 +600,45 @@ async function registerAgentWithSteward(
   tenantId: string,
   apiKey?: string,
 ): Promise<string> {
+  // The legacy tenant-scoped POST /agents route requires a session-jwt with
+  // owner|admin role (Steward `requireTenantAdminSession`), which a daemon
+  // cannot satisfy. Switch to the platform-key path Steward exposes for
+  // exactly this use-case: POST /platform/tenants/:id/agents (scope
+  // `platform:agent:create`) and POST /platform/tenants/:id/agents/:id/token
+  // (scope `platform:agent-token:create`). The tenant `apiKey` argument is
+  // kept only for backwards-compat — we now authenticate via
+  // STEWARD_PLATFORM_KEY.
   warnMissingStewardTenantApiKey(apiKey);
+  const platformKey = resolveStewardPlatformKey();
   const agentBody = JSON.stringify({ id: agentId, name: agentName });
-  const tokenBody = JSON.stringify({ expiresIn: "365d" });
+  // Steward caps agent-token expiry at 7d (validated in
+  // packages/api/src/routes/platform.ts — "expiresIn must be a duration up
+  // to 7d using s, m, h, or d"). The daemon refreshes agent JWTs via the
+  // STEWARD_REFRESH_URL flow before they expire, so a 7d ceiling is fine.
+  const tokenBody = JSON.stringify({ expiresIn: "7d" });
   const signingSecret = resolveStewardRequestSigningSecret(apiKey);
+  const agentPath = buildPlatformAgentPath(tenantId);
+  const tokenPath = `${buildPlatformAgentPath(tenantId, agentId)}/token`;
   const agentSignedHeaders =
     signingSecret === undefined
       ? {}
-      : buildStewardSignedHeaders({
-          path: "/agents",
+      : await buildStewardSignedHeaders({
+          method: "POST",
+          path: agentPath,
           body: agentBody,
           tenantId,
-          ...(apiKey === undefined ? {} : { apiKey }),
+          ...(platformKey === undefined ? {} : { platformKey }),
           signingSecret,
         });
   const tokenSignedHeaders =
     signingSecret === undefined
       ? {}
-      : buildStewardSignedHeaders({
-          path: `/agents/${encodeURIComponent(agentId)}/token`,
+      : await buildStewardSignedHeaders({
+          method: "POST",
+          path: tokenPath,
           body: tokenBody,
           tenantId,
-          ...(apiKey === undefined ? {} : { apiKey }),
+          ...(platformKey === undefined ? {} : { platformKey }),
           signingSecret,
         });
 
@@ -577,10 +649,10 @@ import urllib.error
 import urllib.request
 
 base_url = ${JSON.stringify(resolveStewardHostUrl())}
-api_key = ${JSON.stringify(apiKey ?? "")}
+platform_key = ${JSON.stringify(platformKey ?? "")}
 tenant_id = ${JSON.stringify(tenantId)}
-agent_id = ${JSON.stringify(agentId)}
-agent_name = ${JSON.stringify(agentName)}
+agent_path = ${JSON.stringify(agentPath)}
+token_path = ${JSON.stringify(tokenPath)}
 agent_body = ${JSON.stringify(agentBody)}
 token_body = ${JSON.stringify(tokenBody)}
 agent_signed_headers = ${JSON.stringify(agentSignedHeaders)}
@@ -591,8 +663,8 @@ def post(path, body_text, signed_headers):
     headers = {"Content-Type": "application/json", "User-Agent": "eliza-cloud-provisioner/1.0"}
     if tenant_id:
         headers["X-Steward-Tenant"] = tenant_id
-    if api_key:
-        headers["X-Steward-Key"] = api_key
+    if platform_key:
+        headers["X-Steward-Platform-Key"] = platform_key
     headers.update(signed_headers)
     req = urllib.request.Request(
         f"{base_url}{path}",
@@ -607,13 +679,13 @@ def post(path, body_text, signed_headers):
         return error.code, error.read().decode("utf-8")
 
 
-status, body = post("/agents", agent_body, agent_signed_headers)
+status, body = post(agent_path, agent_body, agent_signed_headers)
 if status not in (200, 201, 202, 400, 409):
     print(body, file=sys.stderr)
     raise SystemExit(f"Steward agent registration failed with status {status}")
 # 400/409 = agent already exists, continue to token minting
 
-status, body = post(f"/agents/{agent_id}/token", token_body, token_signed_headers)
+status, body = post(token_path, token_body, token_signed_headers)
 if status not in (200, 201):
     print(body, file=sys.stderr)
     raise SystemExit(f"Steward token mint failed with status {status}")
@@ -692,7 +764,10 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
 
     // Unreachable, but satisfies the compiler
-    throw lastError ?? new Error("[docker-sandbox] create exhausted all retry attempts");
+    throw (
+      lastError ??
+      new Error("[docker-sandbox] create exhausted all retry attempts")
+    );
   }
 
   /**
@@ -703,9 +778,17 @@ export class DockerSandboxProvider implements SandboxProvider {
    * sandboxes, so a duplicate will fail at INSERT time. The public `create()`
    * method wraps this in a retry loop to handle port collisions automatically.
    */
-  private async _createOnce(config: SandboxCreateConfig): Promise<SandboxHandle> {
-    const { agentId, agentName, environmentVars, organizationId, agentConfig, routeAgentId } =
-      config;
+  private async _createOnce(
+    config: SandboxCreateConfig,
+  ): Promise<SandboxHandle> {
+    const {
+      agentId,
+      agentName,
+      environmentVars,
+      organizationId,
+      agentConfig,
+      routeAgentId,
+    } = config;
 
     // Resolve Docker image: per-agent DB override > operator env override > hardcoded default.
     // Keep the fallback out of DOCKER_IMAGE_OVERRIDE so per-agent flavor/image
@@ -722,7 +805,8 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     const cloudEnv = getCloudAwareEnv();
     const env: HeadscaleRouteEnv = {
-      AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: cloudEnv.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK,
+      AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK:
+        cloudEnv.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK,
       CONTAINERS_PUBLIC_BASE_DOMAIN: cloudEnv.CONTAINERS_PUBLIC_BASE_DOMAIN,
       ELIZA_CLOUD_AGENT_BASE_DOMAIN: cloudEnv.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
       ENVIRONMENT: cloudEnv.ENVIRONMENT,
@@ -809,7 +893,11 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     // 3. Allocate ports (check DB for existing assignments to avoid collisions)
     const usedPorts = await getUsedDockerHostPorts(nodeId);
-    const bridgePort = allocatePort(BRIDGE_PORT_MIN, BRIDGE_PORT_MAX, usedPorts);
+    const bridgePort = allocatePort(
+      BRIDGE_PORT_MIN,
+      BRIDGE_PORT_MAX,
+      usedPorts,
+    );
     // No need to add bridgePort to exclusion set — web UI port range [20000,25000)
     // never overlaps bridge range [18790,19790)
     const webUiPort = allocatePort(WEBUI_PORT_MIN, WEBUI_PORT_MAX, usedPorts);
@@ -845,11 +933,13 @@ export class DockerSandboxProvider implements SandboxProvider {
       } catch (err) {
         if (headscaleRouteRequired) {
           if (dbNode) {
-            await dockerNodesRepository.decrementAllocated(nodeId).catch((rollbackErr) => {
-              logger.warn(
-                `[docker-sandbox] Failed to decrement allocated_count after Headscale preparation failure for node ${nodeId}: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
-              );
-            });
+            await dockerNodesRepository
+              .decrementAllocated(nodeId)
+              .catch((rollbackErr) => {
+                logger.warn(
+                  `[docker-sandbox] Failed to decrement allocated_count after Headscale preparation failure for node ${nodeId}: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
+                );
+              });
           }
           throw err;
         }
@@ -888,7 +978,8 @@ export class DockerSandboxProvider implements SandboxProvider {
       kmsEnv.ELIZA_KMS_BACKEND = backend;
       if (backend === "local") {
         const rootKey =
-          environmentVars.ELIZA_LOCAL_ROOT_KEY?.trim() || process.env.ELIZA_LOCAL_ROOT_KEY?.trim();
+          environmentVars.ELIZA_LOCAL_ROOT_KEY?.trim() ||
+          process.env.ELIZA_LOCAL_ROOT_KEY?.trim();
         if (rootKey) kmsEnv.ELIZA_LOCAL_ROOT_KEY = rootKey;
       }
     }
@@ -911,7 +1002,9 @@ export class DockerSandboxProvider implements SandboxProvider {
       // no agent_config (the runtime keeps its default-character behaviour).
       ...(agentConfig && typeof agentConfig === "object"
         ? {
-            ELIZA_AGENT_CHARACTER_JSON: JSON.stringify(redactCharacterSecrets(agentConfig)),
+            ELIZA_AGENT_CHARACTER_JSON: JSON.stringify(
+              redactCharacterSecrets(agentConfig),
+            ),
           }
         : {}),
       STEWARD_API_URL: stewardContainerUrl,
@@ -943,7 +1036,12 @@ export class DockerSandboxProvider implements SandboxProvider {
     // 6. SSH to node, ensure volume dir, pull image, register in Steward,
     // then create/start the container. Pass hostKeyFingerprint so pooled
     // clients pin the key when available.
-    const ssh = DockerSSHClient.getClient(hostname, sshPort, hostKeyFingerprint, sshUser);
+    const ssh = DockerSSHClient.getClient(
+      hostname,
+      sshPort,
+      hostKeyFingerprint,
+      sshUser,
+    );
 
     try {
       // Ensure volume directory exists
@@ -953,10 +1051,14 @@ export class DockerSandboxProvider implements SandboxProvider {
       );
 
       // Pull image (may take a while on first run)
-      logger.info(`[docker-sandbox] Pulling image ${resolvedImage} on ${nodeId}`);
+      logger.info(
+        `[docker-sandbox] Pulling image ${resolvedImage} on ${nodeId}`,
+      );
       try {
         await ssh.exec(
-          ["docker pull", ...platformFlags, shellQuote(resolvedImage)].join(" "),
+          ["docker pull", ...platformFlags, shellQuote(resolvedImage)].join(
+            " ",
+          ),
           PULL_TIMEOUT_MS,
         );
         logger.info(`[docker-sandbox] Image pulled successfully on ${nodeId}`);
@@ -984,7 +1086,8 @@ export class DockerSandboxProvider implements SandboxProvider {
       // sandbox will skip registration silently in that case.
       const registryRedisUrl = process.env.KV_REST_API_URL?.trim() ?? "";
       const registryRedisToken = process.env.KV_REST_API_TOKEN?.trim() ?? "";
-      const canSelfRegister = registryRedisUrl !== "" && registryRedisToken !== "";
+      const canSelfRegister =
+        registryRedisUrl !== "" && registryRedisToken !== "";
       if (!canSelfRegister) {
         logger.warn(
           "[docker-sandbox] KV_REST_API_URL / KV_REST_API_TOKEN missing from orchestrator env — sandbox will not register in Redis and gateways will not route inbound platform messages to it",
@@ -1033,7 +1136,8 @@ export class DockerSandboxProvider implements SandboxProvider {
         // (no D-Bus keychain). Generate one per container — the vault state
         // lives only in the per-container PGlite, so a unique per-launch key
         // is fine.
-        ELIZA_VAULT_PASSPHRASE: environmentVars.ELIZA_VAULT_PASSPHRASE || crypto.randomUUID(),
+        ELIZA_VAULT_PASSPHRASE:
+          environmentVars.ELIZA_VAULT_PASSPHRASE || crypto.randomUUID(),
         // Gateway service discovery — see SandboxRegistry in app-core.
         // SANDBOX_PUBLIC_URL targets the public Docker host (not the headscale
         // VPN IP set later at line ~653) because the gateways on Railway can't
@@ -1046,7 +1150,9 @@ export class DockerSandboxProvider implements SandboxProvider {
               // The gateways route by the platform character_id, so the
               // container must register under (and answer as) that id, not
               // the sandbox id. Injected only when the caller provides it.
-              ...(routeAgentId?.trim() ? { SANDBOX_ROUTE_AGENT_ID: routeAgentId.trim() } : {}),
+              ...(routeAgentId?.trim()
+                ? { SANDBOX_ROUTE_AGENT_ID: routeAgentId.trim() }
+                : {}),
               SANDBOX_SERVER_NAME: `sandbox-${agentId}-${crypto.randomUUID()}`,
               SANDBOX_PUBLIC_URL: `http://${hostname}:${bridgePort}/api`,
             }
@@ -1071,7 +1177,8 @@ export class DockerSandboxProvider implements SandboxProvider {
         `--name ${shellQuote(containerName)}`,
         "--restart unless-stopped",
         `--network ${shellQuote(DOCKER_NETWORK)}`,
-        ...(requiresDockerHostGateway(stewardContainerUrl) || Object.keys(proxyEnv).length > 0
+        ...(requiresDockerHostGateway(stewardContainerUrl) ||
+        Object.keys(proxyEnv).length > 0
           ? ["--add-host host.docker.internal:host-gateway"]
           : []),
         `--health-cmd ${shellQuote(getDockerHealthCmd(allEnv.PORT || containerPort, healthCheckPath))}`,
@@ -1080,9 +1187,13 @@ export class DockerSandboxProvider implements SandboxProvider {
         "--health-start-period 15s",
         "--health-retries 6",
         ...(config.container?.memoryMb
-          ? [`--memory ${shellQuote(`${Math.ceil(config.container.memoryMb)}m`)}`]
+          ? [
+              `--memory ${shellQuote(`${Math.ceil(config.container.memoryMb)}m`)}`,
+            ]
           : []),
-        ...(headscaleEnabled ? ["--cap-add=NET_ADMIN", "--device /dev/net/tun"] : []),
+        ...(headscaleEnabled
+          ? ["--cap-add=NET_ADMIN", "--device /dev/net/tun"]
+          : []),
         `-v ${shellQuote(volumePath)}:/app/data`,
         `-v ${shellQuote(`${volumePath}/eliza`)}:/root/.eliza`,
         // The cloud image serves both API and web UI from PORT (default 3000).
@@ -1098,20 +1209,31 @@ export class DockerSandboxProvider implements SandboxProvider {
       // run the cloud-init bootstrap; the network can also be pruned away).
       // Without this, `docker create --network` below fails with an opaque
       // "network not found" and the provision retries forever.
-      await ssh.exec(buildEnsureNetworkCmd(DOCKER_NETWORK), DOCKER_CMD_TIMEOUT_MS);
+      await ssh.exec(
+        buildEnsureNetworkCmd(DOCKER_NETWORK),
+        DOCKER_CMD_TIMEOUT_MS,
+      );
 
       const containerId = extractDockerCreateContainerId(
         await ssh.exec(dockerCreateCmd, DOCKER_CMD_TIMEOUT_MS),
       );
-      await ssh.exec(`docker start ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS);
+      await ssh.exec(
+        `docker start ${shellQuote(containerName)}`,
+        DOCKER_CMD_TIMEOUT_MS,
+      );
       logger.info(
         `[docker-sandbox] Container created on ${nodeId}: ${containerId} (${containerName})`,
       );
 
       if (shouldInstallStewardPlugin(agentId, environmentVars)) {
         try {
-          await ssh.exec(buildStewardPluginInstallCommand(containerName), PULL_TIMEOUT_MS);
-          logger.info(`[docker-sandbox] Steward Eliza plugin installed in ${containerName}`);
+          await ssh.exec(
+            buildStewardPluginInstallCommand(containerName),
+            PULL_TIMEOUT_MS,
+          );
+          logger.info(
+            `[docker-sandbox] Steward Eliza plugin installed in ${containerName}`,
+          );
         } catch (pluginErr) {
           logger.warn(
             `[docker-sandbox] Failed to install Steward Eliza plugin in ${containerName}: ${pluginErr instanceof Error ? pluginErr.message : String(pluginErr)}`,
@@ -1122,10 +1244,16 @@ export class DockerSandboxProvider implements SandboxProvider {
       if (stewardJwt && stewardRefreshServiceToken) {
         try {
           await ssh.exec(
-            buildStewardRefreshCommand(containerName, agentId, stewardRefreshServiceToken),
+            buildStewardRefreshCommand(
+              containerName,
+              agentId,
+              stewardRefreshServiceToken,
+            ),
             DOCKER_CMD_TIMEOUT_MS,
           );
-          logger.info(`[docker-sandbox] Steward JWT refresh sidecar started in ${containerName}`);
+          logger.info(
+            `[docker-sandbox] Steward JWT refresh sidecar started in ${containerName}`,
+          );
         } catch (refreshErr) {
           logger.warn(
             `[docker-sandbox] Failed to start Steward JWT refresh sidecar in ${containerName}: ${refreshErr instanceof Error ? refreshErr.message : String(refreshErr)}`,
@@ -1138,23 +1266,36 @@ export class DockerSandboxProvider implements SandboxProvider {
       // does not abort provisioning — the env vars on the container still
       // carry the same values.
       try {
+        if (!allEnv.ELIZAOS_CLOUD_BASE_URL) {
+          throw new Error(
+            "[docker-sandbox] ELIZAOS_CLOUD_BASE_URL is not set in container env. " +
+              "Refusing to fall back to the hardcoded prod URL (https://www.elizacloud.ai/api/v1) — " +
+              "this caused staging containers to silently call prod. " +
+              "Configure ELIZAOS_CLOUD_BASE_URL in the daemon/Worker env (e.g. " +
+              "https://api-staging.elizacloud.ai/api/v1 for staging, https://api.elizacloud.ai/api/v1 for prod).",
+          );
+        }
         const elizaConfig = JSON.stringify({
           logging: { level: "info" },
           cloud: {
             enabled: Boolean(allEnv.ELIZAOS_CLOUD_API_KEY),
             apiKey: allEnv.ELIZAOS_CLOUD_API_KEY || "",
-            baseUrl: allEnv.ELIZAOS_CLOUD_BASE_URL || "https://www.elizacloud.ai/api/v1",
+            baseUrl: allEnv.ELIZAOS_CLOUD_BASE_URL,
           },
         });
         // Base64-encode the JSON before passing it through the shell so an
         // apiKey/baseUrl containing single quotes can't break out of the
         // outer sh -c quoting or inject commands on the remote host.
-        const encodedConfig = Buffer.from(elizaConfig, "utf-8").toString("base64");
+        const encodedConfig = Buffer.from(elizaConfig, "utf-8").toString(
+          "base64",
+        );
         const writeCmd = `docker exec ${shellQuote(containerName)} sh -c ${shellQuote(
           `mkdir -p /root/.eliza && printf %s ${shellQuote(encodedConfig)} | base64 -d > /root/.eliza/eliza.json`,
         )}`;
         await ssh.exec(writeCmd, DOCKER_CMD_TIMEOUT_MS);
-        logger.info(`[docker-sandbox] Cloud config written to eliza.json in ${containerName}`);
+        logger.info(
+          `[docker-sandbox] Cloud config written to eliza.json in ${containerName}`,
+        );
       } catch (configErr) {
         logger.warn(
           `[docker-sandbox] Failed to write eliza.json: ${configErr instanceof Error ? configErr.message : String(configErr)}`,
@@ -1165,10 +1306,12 @@ export class DockerSandboxProvider implements SandboxProvider {
       // container failed to start, so we try to clean up the Steward record.
       try {
         await ssh.exec(
-          `curl -s -X DELETE -H ${shellQuote(`X-Steward-Tenant: ${stewardTenant.tenantId}`)} ${stewardTenant.apiKey ? `-H ${shellQuote(`X-Steward-Key: ${stewardTenant.apiKey}`)}` : ""} ${shellQuote(`${resolveStewardHostUrl()}/agents/${agentId}`)} || true`,
+          await buildSignedDeleteAgentCurl(agentId, stewardTenant),
           DOCKER_CMD_TIMEOUT_MS,
         );
-        logger.info(`[docker-sandbox] Cleaned up Steward agent ${agentId} after container failure`);
+        logger.info(
+          `[docker-sandbox] Cleaned up Steward agent ${agentId} after container failure`,
+        );
       } catch (cleanupErr) {
         logger.warn(
           `[docker-sandbox] Failed to cleanup Steward agent ${agentId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
@@ -1176,7 +1319,10 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
 
       await ssh
-        .exec(`docker rm -f ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS)
+        .exec(
+          `docker rm -f ${shellQuote(containerName)}`,
+          DOCKER_CMD_TIMEOUT_MS,
+        )
         .catch(() => {});
 
       // Rollback allocated_count on failure
@@ -1185,11 +1331,13 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
       // Clean up Headscale pre-auth key if VPN was prepared
       if (headscaleEnabled) {
-        await headscaleIntegration.cleanupContainerVPN(agentId).catch((cleanupErr) => {
-          logger.warn(
-            `[docker-sandbox] Headscale cleanup failed during rollback for ${agentId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
-          );
-        });
+        await headscaleIntegration
+          .cleanupContainerVPN(agentId)
+          .catch((cleanupErr) => {
+            logger.warn(
+              `[docker-sandbox] Headscale cleanup failed during rollback for ${agentId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
+            );
+          });
       }
       throw new Error(
         `[docker-sandbox] Failed to create container on ${nodeId}: ${err instanceof Error ? err.message : String(err)}`,
@@ -1212,7 +1360,10 @@ export class DockerSandboxProvider implements SandboxProvider {
     // 8. Wait for Headscale VPN registration if enabled
     if (headscaleEnabled) {
       try {
-        headscaleIp = await headscaleIntegration.waitForVPNRegistration(agentId, 60_000);
+        headscaleIp = await headscaleIntegration.waitForVPNRegistration(
+          agentId,
+          60_000,
+        );
         if (headscaleIp) {
           logger.info(
             `[docker-sandbox] Container ${containerName} registered on VPN: ${headscaleIp}`,
@@ -1241,7 +1392,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       });
       await ssh
         .exec(
-          `curl -s -X DELETE -H ${shellQuote(`X-Steward-Tenant: ${stewardTenant.tenantId}`)} ${stewardTenant.apiKey ? `-H ${shellQuote(`X-Steward-Key: ${stewardTenant.apiKey}`)}` : ""} ${shellQuote(`${resolveStewardHostUrl()}/agents/${agentId}`)} || true`,
+          await buildSignedDeleteAgentCurl(agentId, stewardTenant),
           DOCKER_CMD_TIMEOUT_MS,
         )
         .then(() => {
@@ -1306,18 +1457,24 @@ export class DockerSandboxProvider implements SandboxProvider {
     const hcloudToken = containersEnv.hetznerCloudToken();
     const publicKey = env.CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY?.trim();
     if (!hcloudToken || !publicKey) {
-      logger.warn("[docker-sandbox] No Docker capacity and autoscale is not configured", {
-        hasHcloudToken: Boolean(hcloudToken),
-        hasPublicKey: Boolean(publicKey),
-      });
+      logger.warn(
+        "[docker-sandbox] No Docker capacity and autoscale is not configured",
+        {
+          hasHcloudToken: Boolean(hcloudToken),
+          hasPublicKey: Boolean(publicKey),
+        },
+      );
       return null;
     }
 
     try {
-      logger.info("[docker-sandbox] No reachable Docker capacity; provisioning autoscaled node", {
-        image,
-        platform,
-      });
+      logger.info(
+        "[docker-sandbox] No reachable Docker capacity; provisioning autoscaled node",
+        {
+          image,
+          platform,
+        },
+      );
       const provisioned = await getNodeAutoscaler().provisionNode(
         {
           prePullImages: [image],
@@ -1332,7 +1489,9 @@ export class DockerSandboxProvider implements SandboxProvider {
 
       const deadline = Date.now() + AUTOSCALED_NODE_READY_TIMEOUT_MS;
       while (Date.now() < deadline) {
-        const node = await dockerNodesRepository.findByNodeId(provisioned.nodeId);
+        const node = await dockerNodesRepository.findByNodeId(
+          provisioned.nodeId,
+        );
         if (
           node &&
           (await dockerNodeManager.ensureNodeReady(node, {
@@ -1345,18 +1504,26 @@ export class DockerSandboxProvider implements SandboxProvider {
           });
           return node;
         }
-        await new Promise((resolve) => setTimeout(resolve, AUTOSCALED_NODE_READY_POLL_MS));
+        await new Promise((resolve) =>
+          setTimeout(resolve, AUTOSCALED_NODE_READY_POLL_MS),
+        );
       }
 
-      logger.warn("[docker-sandbox] Autoscaled Docker node did not become ready before timeout", {
-        nodeId: provisioned.nodeId,
-        hostname: provisioned.hostname,
-      });
+      logger.warn(
+        "[docker-sandbox] Autoscaled Docker node did not become ready before timeout",
+        {
+          nodeId: provisioned.nodeId,
+          hostname: provisioned.hostname,
+        },
+      );
       return null;
     } catch (error) {
-      logger.warn("[docker-sandbox] Autoscaled Docker node provisioning failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.warn(
+        "[docker-sandbox] Autoscaled Docker node provisioning failed",
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
       return null;
     }
   }
@@ -1407,7 +1574,10 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
     }
     try {
-      await ssh.exec(`docker rm -f ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS);
+      await ssh.exec(
+        `docker rm -f ${shellQuote(containerName)}`,
+        DOCKER_CMD_TIMEOUT_MS,
+      );
     } catch (err) {
       rmErr = err;
       const msg = err instanceof Error ? err.message : String(err);
@@ -1426,7 +1596,8 @@ export class DockerSandboxProvider implements SandboxProvider {
     // Mirrors the escalation guard in stop(), but stays best-effort (no throw)
     // because traffic has already been redirected to the new container.
     if (stopErr && rmErr) {
-      const stopMsg = stopErr instanceof Error ? stopErr.message : String(stopErr);
+      const stopMsg =
+        stopErr instanceof Error ? stopErr.message : String(stopErr);
       const rmMsg = rmErr instanceof Error ? rmErr.message : String(rmErr);
       if (!isAlreadyGoneMessage(stopMsg) && !isAlreadyGoneMessage(rmMsg)) {
         logger.warn(
@@ -1436,11 +1607,13 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
     }
 
-    await dockerNodesRepository.decrementAllocated(node.node_id).catch((err) => {
-      logger.warn(
-        `[docker-sandbox] stopOnSpecificNode: decrement allocated_count failed for ${node.node_id}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    });
+    await dockerNodesRepository
+      .decrementAllocated(node.node_id)
+      .catch((err) => {
+        logger.warn(
+          `[docker-sandbox] stopOnSpecificNode: decrement allocated_count failed for ${node.node_id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
   }
 
   async stop(sandboxId: string): Promise<void> {
@@ -1468,7 +1641,10 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     try {
       // Graceful stop with 10s timeout, then force-remove
-      await ssh.exec(`docker stop -t 10 ${shellQuote(meta.containerName)}`, DOCKER_CMD_TIMEOUT_MS);
+      await ssh.exec(
+        `docker stop -t 10 ${shellQuote(meta.containerName)}`,
+        DOCKER_CMD_TIMEOUT_MS,
+      );
       logger.info(`[docker-sandbox] Container stopped: ${meta.containerName}`);
     } catch (err) {
       stopErr = err;
@@ -1478,7 +1654,10 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
 
     try {
-      await ssh.exec(`docker rm -f ${shellQuote(meta.containerName)}`, DOCKER_CMD_TIMEOUT_MS);
+      await ssh.exec(
+        `docker rm -f ${shellQuote(meta.containerName)}`,
+        DOCKER_CMD_TIMEOUT_MS,
+      );
       logger.info(`[docker-sandbox] Container removed: ${meta.containerName}`);
     } catch (err) {
       rmErr = err;
@@ -1488,7 +1667,8 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
 
     if (stopErr && rmErr) {
-      const stopMsg = stopErr instanceof Error ? stopErr.message : String(stopErr);
+      const stopMsg =
+        stopErr instanceof Error ? stopErr.message : String(stopErr);
       const rmMsg = rmErr instanceof Error ? rmErr.message : String(rmErr);
       // "No such container" from either call means the container was
       // already gone — that is a success, not a failure. We only escalate
@@ -1516,11 +1696,13 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     // Clean up Headscale VPN registration if enabled
     if (process.env.HEADSCALE_API_KEY && meta.agentId) {
-      await headscaleIntegration.cleanupContainerVPN(meta.agentId).catch((err) => {
-        logger.warn(
-          `[docker-sandbox] Headscale cleanup failed for ${meta.agentId}: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      });
+      await headscaleIntegration
+        .cleanupContainerVPN(meta.agentId)
+        .catch((err) => {
+          logger.warn(
+            `[docker-sandbox] Headscale cleanup failed for ${meta.agentId}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
     }
 
     // Remove from in-memory registry
@@ -1591,10 +1773,14 @@ export class DockerSandboxProvider implements SandboxProvider {
       // Wait before retrying (but don't overshoot the deadline)
       const remaining = deadline - Date.now();
       if (remaining > HEALTH_CHECK_POLL_INTERVAL_MS) {
-        await new Promise((resolve) => setTimeout(resolve, HEALTH_CHECK_POLL_INTERVAL_MS));
+        await new Promise((resolve) =>
+          setTimeout(resolve, HEALTH_CHECK_POLL_INTERVAL_MS),
+        );
       } else if (remaining > 0) {
         // One last attempt after a short wait
-        await new Promise((resolve) => setTimeout(resolve, Math.min(remaining, 1000)));
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.min(remaining, 1000)),
+        );
       } else {
         break;
       }
@@ -1621,11 +1807,16 @@ export class DockerSandboxProvider implements SandboxProvider {
         diagnostics: diagnostics.slice(-12_000),
       });
     } catch (diagnosticsError) {
-      logger.warn("[docker-sandbox] Failed to collect health timeout diagnostics", {
-        containerName: meta.containerName,
-        error:
-          diagnosticsError instanceof Error ? diagnosticsError.message : String(diagnosticsError),
-      });
+      logger.warn(
+        "[docker-sandbox] Failed to collect health timeout diagnostics",
+        {
+          containerName: meta.containerName,
+          error:
+            diagnosticsError instanceof Error
+              ? diagnosticsError.message
+              : String(diagnosticsError),
+        },
+      );
     }
     return false;
   }
@@ -1634,12 +1825,19 @@ export class DockerSandboxProvider implements SandboxProvider {
   // runCommand
   // ------------------------------------------------------------------
 
-  async runCommand(sandboxId: string, cmd: string, args?: string[]): Promise<string> {
+  async runCommand(
+    sandboxId: string,
+    cmd: string,
+    args?: string[],
+  ): Promise<string> {
     const meta = await this.resolveContainer(sandboxId);
 
     // Shell-escape each argument to prevent command injection
-    const escapedArgs = args && args.length > 0 ? args.map((a) => shellQuote(a)).join(" ") : "";
-    const fullCmd = escapedArgs ? `${shellQuote(cmd)} ${escapedArgs}` : shellQuote(cmd);
+    const escapedArgs =
+      args && args.length > 0 ? args.map((a) => shellQuote(a)).join(" ") : "";
+    const fullCmd = escapedArgs
+      ? `${shellQuote(cmd)} ${escapedArgs}`
+      : shellQuote(cmd);
 
     logger.info(
       `[docker-sandbox] Executing command in ${meta.containerName}: ${cmd} ${(args ?? []).join(" ").slice(0, 80)}`,
@@ -1713,7 +1911,9 @@ export class DockerSandboxProvider implements SandboxProvider {
         let sshUser = DEFAULT_SSH_USERNAME;
         let hostKeyFingerprint: string | undefined;
 
-        const dbNode = await dockerNodesRepository.findByNodeId(sandbox.node_id);
+        const dbNode = await dockerNodesRepository.findByNodeId(
+          sandbox.node_id,
+        );
         if (dbNode) {
           hostname = dbNode.hostname;
           sshPort = dbNode.ssh_port ?? DEFAULT_SSH_PORT;

@@ -211,27 +211,46 @@ async function processContainerBilling(
   // credits. Earnings → org credits conversion goes through
   // redeemableEarningsService so we get a credit_conversion ledger entry
   // for the audit trail.
-  const { fromEarnings, fromCredits } = plan;
+  let fromEarnings = plan.fromEarnings;
+  let fromCredits = plan.fromCredits;
 
   if (fromEarnings > 0 && org.earnings_source_user_id) {
-    const conversion = await redeemableEarningsService.convertToCredits({
-      userId: org.earnings_source_user_id,
-      amount: fromEarnings,
-      organizationId,
-      description: `Container hosting: ${containerName}`,
-      metadata: {
-        container_id: containerId,
-        container_name: containerName,
-        billing_type: "daily_container",
-        billing_period: now.toISOString().split("T")[0],
-      },
-    });
-    if (!conversion.success) {
+    try {
+      const conversion = await redeemableEarningsService.convertToCredits({
+        userId: org.earnings_source_user_id,
+        amount: fromEarnings,
+        organizationId,
+        description: `Container hosting: ${containerName}`,
+        metadata: {
+          container_id: containerId,
+          container_name: containerName,
+          billing_type: "daily_container",
+          billing_period: now.toISOString().split("T")[0],
+        },
+      });
+      if (!conversion.success) {
+        throw new Error("earnings conversion returned success=false");
+      }
+    } catch (conversionError) {
+      // convertToCredits debits the earnings ledger and THROWS on
+      // insufficient/contended earnings (it never returns success=false). The
+      // earnings were not debited, so do NOT spare credits by fromEarnings —
+      // charge the full day to credits. Previously this threw out of the whole
+      // handler, leaving the container unbilled (free hosting) for the day, and
+      // the unconditional `+ fromEarnings` below would have inflated the balance
+      // by undebited earnings.
       logger.error(
-        `[Container Billing] Earnings convert failed for ${containerName}`,
-        conversion,
+        `[Container Billing] Earnings convert failed for ${containerName}; charging full cost to credits`,
+        {
+          containerId,
+          error:
+            conversionError instanceof Error
+              ? conversionError.message
+              : String(conversionError),
+        },
       );
-      // Fall through: try to charge full cost to credits below.
+      fromEarnings = 0;
+      fromCredits = dailyCost;
     }
   }
 

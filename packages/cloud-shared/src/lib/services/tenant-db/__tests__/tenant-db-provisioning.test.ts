@@ -1,0 +1,77 @@
+import { describe, expect, test } from "bun:test";
+import type { AllocatedCluster } from "../cluster-pool";
+import {
+  SqlTenantDbProvisioning,
+  type SqlTenantDbProvisioningDeps,
+  type TenantDbProvisioner,
+} from "../tenant-db-provisioning";
+
+const ALLOCATED: AllocatedCluster = {
+  id: "cluster-1",
+  host: "apps-cluster-1:5432",
+  adminDsnEncrypted: "enc:v1:admin-dsn",
+};
+
+const PROVISIONED_DSN = "postgresql://app_x:pw@apps-cluster-1:5432/db_app_x?sslmode=require";
+
+function deps(
+  over: Partial<SqlTenantDbProvisioningDeps> = {},
+): SqlTenantDbProvisioningDeps & { seen: Record<string, unknown> } {
+  const seen: Record<string, unknown> = {};
+  const base: SqlTenantDbProvisioningDeps = {
+    pool: {
+      async allocate() {
+        return ALLOCATED;
+      },
+    },
+    async decrypt(enc) {
+      seen.decryptedArg = enc;
+      return "postgresql://admin:pw@apps-cluster-1:5432/postgres";
+    },
+    makeProvisioner(cluster, adminDsn): TenantDbProvisioner {
+      seen.providerCluster = cluster;
+      seen.providerAdminDsn = adminDsn;
+      return {
+        async provision(appId) {
+          seen.provisionedApp = appId;
+          return { dbName: "db_app_x", roleName: "app_x", dsn: PROVISIONED_DSN };
+        },
+      };
+    },
+  };
+  return { ...base, ...over, seen };
+}
+
+describe("SqlTenantDbProvisioning", () => {
+  test("provisions on the allocated cluster and returns the real isolated DSN", async () => {
+    const d = deps();
+    const result = await new SqlTenantDbProvisioning(d).provisionForApp("app-1");
+
+    expect(result).toEqual({ dsn: PROVISIONED_DSN, clusterId: "cluster-1" });
+    // it decrypted THIS cluster's admin dsn and handed it to the provisioner
+    expect(d.seen.decryptedArg).toBe("enc:v1:admin-dsn");
+    expect(d.seen.providerAdminDsn).toBe("postgresql://admin:pw@apps-cluster-1:5432/postgres");
+    expect(d.seen.providerCluster).toEqual({ host: "apps-cluster-1:5432" });
+    expect(d.seen.provisionedApp).toBe("app-1");
+  });
+
+  test("the returned DSN is the per-tenant one, never the shared env DATABASE_URL", async () => {
+    process.env.DATABASE_URL = "postgresql://SHARED@shared/agentdb";
+    const result = await new SqlTenantDbProvisioning(deps()).provisionForApp("app-1");
+    expect(result.dsn).toBe(PROVISIONED_DSN);
+    expect(result.dsn).not.toContain("SHARED");
+  });
+
+  test("propagates a NoClusterCapacity failure from the pool", async () => {
+    const d = deps({
+      pool: {
+        async allocate() {
+          throw new Error("No tenant DB cluster has capacity");
+        },
+      },
+    });
+    await expect(new SqlTenantDbProvisioning(d).provisionForApp("app-1")).rejects.toThrow(
+      "capacity",
+    );
+  });
+});

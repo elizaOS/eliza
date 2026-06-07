@@ -26,9 +26,6 @@ declare module "@elizaos/plugin-personal-assistant" {
   export const WebsiteBlockerSettingsCard: import("react").ComponentType<
     import("@elizaos/ui").WebsiteBlockerSettingsCardProps
   >;
-  export function dispatchQueuedLifeOpsGithubCallbackFromUrl(
-    url: string,
-  ): boolean;
   export const personalAssistantPlugin: unknown;
   export default personalAssistantPlugin;
 }

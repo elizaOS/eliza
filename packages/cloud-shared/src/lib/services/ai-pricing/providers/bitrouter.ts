@@ -1,8 +1,14 @@
 import { getProviderKey } from "../../../providers/provider-env";
 import { logger } from "../../../utils/logger";
-import { type PricingChargeUnit, type PricingProductFamily } from "../../ai-pricing-definitions";
+import {
+  type PricingChargeUnit,
+  type PricingProductFamily,
+} from "../../ai-pricing-definitions";
 import { getCachedExternalEntries } from "../cache";
-import { inferProviderFromCanonicalModel, parseNumericPrice } from "../dimensions";
+import {
+  inferProviderFromCanonicalModel,
+  parseNumericPrice,
+} from "../dimensions";
 import { stripVersionedSnapshotSuffix } from "../suffix-stripping";
 import {
   type BitRouterCatalogModel,
@@ -11,6 +17,13 @@ import {
 } from "../types";
 
 const CEREBRAS_PRICING_SOURCE_URL = "https://www.cerebras.ai/pricing";
+// OpenRouter doesn't return a priced row from BitRouter for `openai/gpt-oss-120b`,
+// but it's the canonical fallback for the cloud's default TEXT_SMALL model
+// (`openai/gpt-oss-120b:nitro`, see packages/core/src/contracts/service-routing.ts).
+// Variant stripping in candidate-selection.ts collapses :nitro / :free to the
+// base id, so one base entry covers every variant.
+const OPENROUTER_PRICING_SOURCE_URL =
+  "https://openrouter.ai/openai/gpt-oss-120b";
 
 const FORCED_BITROUTER_PRICING: ReadonlyArray<{
   model: string;
@@ -31,7 +44,8 @@ const FORCED_BITROUTER_PRICING: ReadonlyArray<{
     outputUnitPrice: 0.00000075,
     sourceUrl: CEREBRAS_PRICING_SOURCE_URL,
     metadata: {
-      sourceNote: "Cerebras Developer tier price converted from $0.35/$0.75 per 1M tokens.",
+      sourceNote:
+        "Cerebras Developer tier price converted from $0.35/$0.75 per 1M tokens.",
     },
   },
   {
@@ -43,27 +57,47 @@ const FORCED_BITROUTER_PRICING: ReadonlyArray<{
     outputUnitPrice: 0.00000275,
     sourceUrl: CEREBRAS_PRICING_SOURCE_URL,
     metadata: {
-      sourceNote: "Cerebras Developer tier price converted from $2.25/$2.75 per 1M tokens.",
+      sourceNote:
+        "Cerebras Developer tier price converted from $2.25/$2.75 per 1M tokens.",
+    },
+  },
+  {
+    model: "openai/gpt-oss-120b",
+    provider: "openai",
+    productFamily: "language",
+    unit: "token",
+    // $0.10 / 1M input tokens
+    inputUnitPrice: 0.0000001,
+    // $0.50 / 1M output tokens
+    outputUnitPrice: 0.0000005,
+    sourceUrl: OPENROUTER_PRICING_SOURCE_URL,
+    metadata: {
+      sourceNote:
+        "Estimate from OpenRouter public pricing (2026-06-07). Replace once BitRouter catalog returns a priced row for openai/gpt-oss-120b.",
     },
   },
 ];
 
 function bitRouterModelsUrl(): string {
-  const baseUrl = (getProviderKey("BITROUTER_BASE_URL") ?? "https://api.bitrouter.ai/v1").replace(
-    /\/+$/,
-    "",
-  );
+  const baseUrl = (
+    getProviderKey("BITROUTER_BASE_URL") ?? "https://api.bitrouter.ai/v1"
+  ).replace(/\/+$/, "");
   const apiBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
   return `${apiBaseUrl}/models?output_modalities=all`;
 }
 
-function inferBitRouterProductFamily(model: BitRouterCatalogModel): PricingProductFamily {
+function inferBitRouterProductFamily(
+  model: BitRouterCatalogModel,
+): PricingProductFamily {
   if (model.id.includes("embedding")) {
     return "embedding";
   }
   const outputModalities = model.architecture?.output_modalities;
   if (Array.isArray(outputModalities) && outputModalities.length > 0) {
-    if (outputModalities.includes("image") && !outputModalities.includes("text")) {
+    if (
+      outputModalities.includes("image") &&
+      !outputModalities.includes("text")
+    ) {
       return "image";
     }
     return "language";
@@ -77,7 +111,11 @@ function inferBitRouterProductFamily(model: BitRouterCatalogModel): PricingProdu
   return "language";
 }
 
-function nestedPrice(pricing: Record<string, unknown>, group: string, key: string): unknown {
+function nestedPrice(
+  pricing: Record<string, unknown>,
+  group: string,
+  key: string,
+): unknown {
   const value = pricing[group];
   if (!value || typeof value !== "object") return undefined;
   return (value as Record<string, unknown>)[key];
@@ -145,7 +183,12 @@ export function buildBitRouterPreparedEntries(
   });
 
   const entries: PreparedPricingEntry[] = [];
-  const promptPrice = resolveTokenUnitPrice(pricing, "prompt", "input_tokens", "no_cache");
+  const promptPrice = resolveTokenUnitPrice(
+    pricing,
+    "prompt",
+    "input_tokens",
+    "no_cache",
+  );
   if (promptPrice != null) {
     entries.push(buildEntry(model.id, "input", promptPrice));
     if (baseId !== null) {
@@ -153,7 +196,12 @@ export function buildBitRouterPreparedEntries(
     }
   }
 
-  const completionPrice = resolveTokenUnitPrice(pricing, "completion", "output_tokens", "text");
+  const completionPrice = resolveTokenUnitPrice(
+    pricing,
+    "completion",
+    "output_tokens",
+    "text",
+  );
   if (completionPrice != null) {
     entries.push(buildEntry(model.id, "output", completionPrice));
     if (baseId !== null) {
@@ -233,10 +281,14 @@ async function fetchBitRouterJson<T>(url: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-export async function fetchBitRouterCatalogEntries(): Promise<PreparedPricingEntry[]> {
+export async function fetchBitRouterCatalogEntries(): Promise<
+  PreparedPricingEntry[]
+> {
   return await getCachedExternalEntries("bitrouter", async () => {
     const url = bitRouterModelsUrl();
-    const payload = await fetchBitRouterJson<{ data?: BitRouterCatalogModel[] }>(url);
+    const payload = await fetchBitRouterJson<{
+      data?: BitRouterCatalogModel[];
+    }>(url);
     const models = Array.isArray(payload.data) ? payload.data : [];
     const entries = [
       ...models.flatMap((model) => buildBitRouterPreparedEntries(model)),
