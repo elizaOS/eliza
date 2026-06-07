@@ -2293,8 +2293,13 @@ export const INVALID_TRACER_PROVIDER = {};
           "packages/shared/src/brand/index.ts",
         ),
       },
-      // The LifeOps package root also exports server/service internals.
-      // The renderer only needs the UI facade; keep it off Discord/native deps.
+      // plugin-personal-assistant no longer ships a renderer view (the
+      // legacy /lifeops dashboard was killed in the lifeops decomposition);
+      // domain views live in plugin-todos/inbox/goals/health/calendar/etc.
+      // src/ui.ts is the browser-safe facade — it imports the side-effectful
+      // HTTP client and re-exports the surviving settings-card components,
+      // without dragging discord/health/phone/calendly/native deps into the
+      // browser bundle (those are pulled in by src/index.ts / src/plugin.ts).
       {
         find: /^@elizaos\/plugin-personal-assistant$/,
         replacement: path.resolve(

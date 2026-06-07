@@ -2,7 +2,7 @@ import type http from "node:http";
 import type { AgentRuntime, Route } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
-  personalAssistantPlugin,
+  personalAssistantRoutesPlugin,
   requireLifeOpsRouteOwnerAdminAccess,
 } from "./plugin.js";
 
@@ -74,7 +74,7 @@ function findRoute(
   type: Route["type"],
   path: string,
 ): Route & { handler: NonNullable<Route["handler"]> } {
-  const route = personalAssistantPlugin.routes?.find(
+  const route = personalAssistantRoutesPlugin.routes?.find(
     (candidate) => candidate.type === type && candidate.path === path,
   );
   expect(route?.handler).toBeTypeOf("function");

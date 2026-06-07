@@ -241,6 +241,7 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
 
 const managerVisibleViewTileCases = [
   { viewId: "2004scape", path: "/2004scape" },
+  { viewId: "calendar", path: "/calendar" },
   { viewId: "clawville", path: "/clawville" },
   { viewId: "companion", path: "/companion" },
   { viewId: "contacts", path: "/contacts" },
@@ -254,7 +255,6 @@ const managerVisibleViewTileCases = [
   { viewId: "health", path: "/health" },
   { viewId: "hyperliquid", path: "/hyperliquid" },
   { viewId: "hyperscape", path: "/hyperscape" },
-  { viewId: "calendar", path: "/calendar" },
   { viewId: "inbox", path: "/inbox" },
   { viewId: "messages", path: "/messages" },
   { viewId: "model-tester", path: "/model-tester" },
