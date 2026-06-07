@@ -11,7 +11,7 @@ import {
   MonitorSmartphone,
   Server,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { logger } from "@/lib/utils/logger";
