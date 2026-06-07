@@ -26,9 +26,11 @@ describe("JOB_TYPES", () => {
     expect(JOB_TYPES.AGENT_UPGRADE).toBe("agent_upgrade");
     expect(JOB_TYPES.AGENT_SLEEP).toBe("agent_sleep");
     expect(JOB_TYPES.AGENT_WAKE).toBe("agent_wake");
+    // Apps lane (Product 2): the Worker enqueues APP_DEPLOY; the daemon runs it.
+    expect(JOB_TYPES.APP_DEPLOY).toBe("app_deploy");
     // Lock the size so a new entry without a matching assertion above
     // fails CI instead of being silently under-covered by tests below.
-    expect(Object.keys(JOB_TYPES)).toHaveLength(16);
+    expect(Object.keys(JOB_TYPES)).toHaveLength(17);
   });
 
   test("wire values are unique (no two symbols share a string)", () => {

@@ -24,8 +24,8 @@
  */
 
 import { logger } from "../utils/logger";
+import { setAppDeployRunner } from "./app-deploy-job-service";
 import { makeNodeAppDeployRunner } from "./app-deploy-runner";
-import { appDeploymentsService } from "./app-deployments";
 import { AppImageBuilder, type BuildExec } from "./app-image-builder";
 import { makeBuildFromRepoResolver } from "./app-image-resolver";
 import { buildContainerExecutorDeps } from "./container-executor-deps";
@@ -66,7 +66,10 @@ export function configureAppsDeployBackend(config: AppsDeployBackendConfig): voi
     port: config.port,
   });
 
-  appDeploymentsService.setDeployRunner(runner);
+  // Daemon runs APP_DEPLOY jobs (enqueued by the Worker) via this runner, and
+  // CONTAINER_* jobs via the executor deps. createDeployment itself is never
+  // called here (it runs on the Worker, which enqueues APP_DEPLOY).
+  setAppDeployRunner(runner);
   setContainerExecutorDeps(buildContainerExecutorDeps);
 
   logger.info("[apps-deploy-backend] armed", {

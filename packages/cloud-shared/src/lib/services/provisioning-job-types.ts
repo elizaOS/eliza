@@ -52,6 +52,14 @@ export const JOB_TYPES = {
   CONTAINER_UPGRADE: "container_upgrade",
   /** Fetch recent logs from an app container. */
   CONTAINER_LOGS: "container_logs",
+  /**
+   * Run the full app deploy on a node host (Apps / Product 2): the cloud-api
+   * Worker enqueues this (pg-free) and the provisioning-worker daemon claims it,
+   * runs the node AppDeployRunner (ensure tenant DB -> create container row with
+   * the per-tenant DSN -> enqueue CONTAINER_PROVISION -> link), keeping all
+   * `pg`/SSH off the workerd request path.
+   */
+  APP_DEPLOY: "app_deploy",
 } as const;
 
 export type ProvisioningJobType = (typeof JOB_TYPES)[keyof typeof JOB_TYPES];

@@ -27,9 +27,10 @@ import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { jobs } from "../../db/schemas/jobs";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { logger } from "../utils/logger";
+import { dispatchAppDeployJob } from "./app-deploy-job-service";
+import { dispatchContainerJob, getContainerExecutorDeps } from "./container-job-service";
 import { elizaProvisionAdvisoryLockSql } from "./eliza-provision-lock";
 import { elizaSandboxService } from "./eliza-sandbox";
-import { dispatchContainerJob, getContainerExecutorDeps } from "./container-job-service";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
 import {
   isWaifuWebhookTargetUrl,
@@ -1461,6 +1462,11 @@ export class ProvisioningJobService {
       case JOB_TYPES.CONTAINER_UPGRADE:
       case JOB_TYPES.CONTAINER_LOGS:
         await dispatchContainerJob(job, getContainerExecutorDeps());
+        break;
+      // Apps lane (Product 2): the node deploy. The Worker enqueues this; the
+      // daemon runs the real isolated provision via the injected AppDeployRunner.
+      case JOB_TYPES.APP_DEPLOY:
+        await dispatchAppDeployJob(job);
         break;
       default:
         throw new Error(`Unknown job type: ${job.type}`);
