@@ -44,6 +44,58 @@ import { containers } from "../../db/schemas/containers";
 import { logger } from "../utils/logger";
 import type { AppContainerRow, AppContainerStore } from "./container-job-executors";
 
+/** The `containers` columns the executor's view projects from (structural). */
+export interface ProjectableContainerRow {
+  id: string;
+  name: string;
+  project_name: string;
+  image_tag: string | null;
+  port: number;
+  organization_id: string;
+  user_id: string;
+  environment_vars: Record<string, string> | null;
+  metadata: Record<string, unknown> | null;
+}
+
+/**
+ * Project a `containers` row onto the executor's {@link AppContainerRow}. Pure,
+ * so the impedance map (image_tag→image, the appId fallback chain, the env-vars
+ * carrying the per-tenant DSN) is unit-tested without a DB.
+ */
+export function mapContainerRowToAppContainerRow(row: ProjectableContainerRow): AppContainerRow {
+  const metaAppId =
+    typeof row.metadata?.appId === "string" ? (row.metadata.appId as string) : undefined;
+  return {
+    id: row.id,
+    // project_name is set to the appId by the deploy orchestrator's
+    // createContainerRow; metadata.appId is a belt-and-suspenders fallback.
+    appId: metaAppId ?? row.project_name,
+    containerName: row.name,
+    image: row.image_tag ?? "",
+    port: row.port,
+    organizationId: row.organization_id,
+    userId: row.user_id,
+    environmentVars: row.environment_vars ?? undefined,
+  };
+}
+
+/**
+ * Merge host-placement fields into a container's metadata jsonb, preserving
+ * everything already there (e.g. `appId`). Pure — the 2AM `containers` schema
+ * has no dedicated host columns, so metadata is the canonical placement sink.
+ */
+export function mergeHostPlacementMetadata(
+  existing: Record<string, unknown> | null | undefined,
+  info: { hostContainerId: string; hostPort: number; network: string },
+): Record<string, unknown> {
+  return {
+    ...(existing ?? {}),
+    hostContainerId: info.hostContainerId,
+    hostPort: info.hostPort,
+    network: info.network,
+  };
+}
+
 /** Read/write seam impl over `containersRepository` + a direct id-scoped read. */
 export class ContainerRepoAppContainerStore implements AppContainerStore {
   async getById(containerId: string): Promise<AppContainerRow | null> {
@@ -56,22 +108,7 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
       .where(eq(containers.id, containerId))
       .limit(1);
     if (!row) return null;
-
-    return {
-      id: row.id,
-      // project_name is set to the appId by the deploy orchestrator's
-      // createContainerRow; metadata.appId is a belt-and-suspenders fallback.
-      appId:
-        (typeof (row.metadata as Record<string, unknown>)?.appId === "string"
-          ? ((row.metadata as Record<string, unknown>).appId as string)
-          : undefined) ?? row.project_name,
-      containerName: row.name,
-      image: row.image_tag ?? "",
-      port: row.port,
-      organizationId: row.organization_id,
-      userId: row.user_id,
-      environmentVars: (row.environment_vars as Record<string, string>) ?? undefined,
-    };
+    return mapContainerRowToAppContainerRow(row);
   }
 
   async markRunning(
@@ -90,12 +127,7 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
 
     // Merge host placement into metadata (no dedicated columns on the 2AM
     // schema), preserving anything already there (e.g. appId).
-    const nextMetadata: Record<string, unknown> = {
-      ...((row.metadata as Record<string, unknown>) ?? {}),
-      hostContainerId: info.hostContainerId,
-      hostPort: info.hostPort,
-      network: info.network,
-    };
+    const nextMetadata = mergeHostPlacementMetadata(row.metadata, info);
 
     // Two writes: status (id-scoped) + metadata/last_deployed_at (org-scoped
     // update, which is the only metadata-writing surface the repo exposes).
