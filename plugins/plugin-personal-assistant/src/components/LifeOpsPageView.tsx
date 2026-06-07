@@ -1,3 +1,4 @@
+import { TerminalPluginView } from "@elizaos/ui";
 import * as React from "react";
 
 type LifeOpsPanel = "brief" | "approvals" | "schedule";
@@ -132,5 +133,17 @@ export function LifeOpsPageView() {
 }
 
 export function LifeOpsTuiView() {
-  return <LifeOpsPageView />;
+  return (
+    <TerminalPluginView
+      id="lifeops"
+      label="LifeOps TUI"
+      description="Terminal personal assistant workspace for briefs, approvals, schedule repair, and owner operations"
+      commands={["terminal-lifeops-state", "terminal-lifeops-enable"]}
+      endpoints={[
+        "/api/lifeops/overview",
+        "/api/lifeops/inbox",
+        "/api/lifeops/calendar/feed",
+      ]}
+    />
+  );
 }
