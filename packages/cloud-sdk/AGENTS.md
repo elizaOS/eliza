@@ -92,6 +92,29 @@ import { MockCloudSetupSessionService, DEFAULT_SETUP_POLICY, isActionAllowed }
   from "@elizaos/cloud-sdk/cloud-setup-session";
 ```
 
+### Sub-export (`@elizaos/cloud-sdk/app-auth`)
+
+"Sign in with Eliza Cloud" client helpers for **third-party apps** — a small,
+dependency-free wrapper over the live app-auth flow (consent page →
+one-time `eac_` code → `GET /api/v1/app-auth/session` exchange → user). No PKCE
+(the consent step is gated by the user's existing Eliza Cloud session; the
+`redirect_uri` is validated against the app's registered allowed origins).
+
+```ts
+import { ElizaCloudAppAuth } from "@elizaos/cloud-sdk/app-auth";
+
+const auth = new ElizaCloudAppAuth({ appId, redirectUri });
+// 1. send the user here:
+location.href = auth.authorizeUrl(state);
+// 2. on your callback route (server-side recommended):
+const { user, app } = await auth.completeSignIn(req.url);
+```
+
+Standalone functions are also exported: `buildAppAuthorizeUrl`,
+`parseAppAuthorizeCallback`, `exchangeAppAuthorizeCode`, `looksLikeAppAuthCode`,
+plus `ElizaCloudAuthError` and the `APP_AUTH_*` path/prefix constants. All take
+an optional `fetchImpl` / `baseUrl` / `apiBaseUrl` for tests and custom origins.
+
 ## Commands
 
 ```bash

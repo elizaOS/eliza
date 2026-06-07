@@ -36,6 +36,16 @@
       "import": "./dist/cloud-setup-session/*.js",
       "default": "./dist/cloud-setup-session/*.js"
     },
+    "./app-auth": {
+      "types": "./dist/app-auth/index.d.ts",
+      "eliza-source": {
+        "types": "./src/app-auth/index.ts",
+        "import": "./src/app-auth/index.ts",
+        "default": "./src/app-auth/index.ts"
+      },
+      "import": "./dist/app-auth/index.js",
+      "default": "./dist/app-auth/index.js"
+    },
     "./package.json": "./package.json"
   }
 }
