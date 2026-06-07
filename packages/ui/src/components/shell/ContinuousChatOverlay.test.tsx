@@ -169,18 +169,16 @@ describe("ContinuousChatOverlay", () => {
     expect(thread?.getAttribute("data-revealed")).toBe("false");
   });
 
-  it("toggles a full-screen takeover with a liquid-glass focus backdrop", () => {
+  it("toggles a full-screen takeover with a lightweight focus backdrop", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const root = screen.getByTestId("continuous-chat-overlay");
     const backdrop = screen.getByTestId("chat-fullscreen-backdrop");
     expect(root.getAttribute("data-fullscreen")).toBeNull();
     // Resting: backdrop is inactive + click-through (the live view stays usable).
-    // pointer-events live on the className (a static Tailwind class) so the
-    // perf-sensitive backdrop-filter is the only animated property.
     expect(backdrop.getAttribute("data-active")).toBe("false");
     expect(backdrop.className).toContain("pointer-events-none");
 
-    // Far-left button enters full screen and blooms the glass panel over the view.
+    // Far-left button enters full screen and fades a cheap scrim over the view.
     fireEvent.click(screen.getByLabelText("expand to full screen"));
     expect(root.getAttribute("data-fullscreen")).toBe("true");
     expect(document.querySelector('[data-variant="fullscreen"]')).toBeTruthy();

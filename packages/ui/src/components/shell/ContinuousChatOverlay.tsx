@@ -48,11 +48,9 @@ const GLASS_BAR =
 // Floating (un-scrimmed) text gets a soft shadow so it reads over bright views.
 const FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
 
-// Shared easing for the overlay's motion. Matches the repo's `motion/react`
-// convention (a tween with a custom cubic-bezier, no springs); centralising it
-// keeps the reveal/swap/glow timings coherent rather than scattering magic
-// numbers. Every motion below is transform/opacity only (GPU-friendly) and is
-// softened to a near-instant cross-fade under `prefers-reduced-motion`.
+// Shared easing for the overlay's cheap motion path. Fullscreen open/close must
+// stay opacity/translate only: animating blur/filter or scaling a scrollable
+// transcript repaints too much of the viewport and visibly janks on laptops.
 const OVERLAY_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 // Resting / typing view (not fullscreen) shows only the last couple of turns
@@ -202,7 +200,7 @@ function ThreadLine({
           isUser ? "rounded-br-md" : "rounded-bl-md",
           floating
             ? cn(
-                "border backdrop-blur-md",
+                "border",
                 isUser
                   ? "border-white/15 bg-black/55 text-white"
                   : "border-white/10 bg-black/45 text-white/90",
@@ -578,11 +576,8 @@ export function ContinuousChatOverlay({
       data-testid="continuous-chat-overlay"
       data-fullscreen={fullscreen ? "true" : undefined}
     >
-      {/* Focus backdrop — a LIQUID-GLASS sheet that frosts the live view behind
-          the conversation rather than blacking it out: a heavy backdrop-blur +
-          saturation, a faint diagonal specular sheen, and a soft scrim for text
-          contrast. Always mounted (so its testid is stable); opacity + the blur
-          itself animate the takeover in/out. Captures pointer events only while
+      {/* Focus backdrop — a cheap scrim over the live view. Always mounted (so
+          its testid is stable); only opacity animates. Captures pointer events only while
           fullscreen; clicking it exits via the outside-click handler. */}
       <motion.div
         aria-hidden="true"
@@ -590,23 +585,14 @@ export function ContinuousChatOverlay({
         data-active={fullscreen ? "true" : "false"}
         className={cn(
           "fixed inset-0",
-          // The glass tint: a diagonal sheen over a gentle scrim, so the frosted
-          // view keeps depth and the bubbles stay legible on light or dark views.
-          "bg-[linear-gradient(135deg,rgba(255,255,255,0.10)_0%,rgba(255,255,255,0.02)_36%,rgba(8,10,18,0.18)_100%)]",
+          "bg-[linear-gradient(135deg,rgba(255,255,255,0.08)_0%,rgba(8,10,18,0.64)_48%,rgba(0,0,0,0.70)_100%)]",
           fullscreen ? "pointer-events-auto" : "pointer-events-none",
         )}
         initial={false}
         animate={{
           opacity: fullscreen ? 1 : 0,
-          // Animate only the unprefixed property — framer-motion's animation
-          // target type doesn't include `WebkitBackdropFilter`. Modern targets
-          // (Chromium/Electrobun, Safari 18+/iOS WebView) support unprefixed
-          // `backdrop-filter`, so the frosted-glass takeover still animates.
-          backdropFilter: fullscreen
-            ? "blur(28px) saturate(160%)"
-            : "blur(0px) saturate(100%)",
         }}
-        transition={{ duration: reduce ? 0.12 : 0.72, ease: OVERLAY_EASE }}
+        transition={{ duration: reduce ? 0.08 : 0.16, ease: OVERLAY_EASE }}
       />
 
       {/* Cinematic bottom vignette — grounds the floating bar over bright views.
@@ -618,9 +604,8 @@ export function ContinuousChatOverlay({
         />
       ) : null}
 
-      {/* Fullscreen transcript — the full history on a liquid-glass panel that
-          BLOOMS open from the composer (spring: rise + scale + fade) and eases
-          shut. Its own AnimatePresence so the close animates too. */}
+      {/* Fullscreen transcript — full history in a plain composited panel. Keep
+          the transition to opacity/translate so long threads do not stutter. */}
       <AnimatePresence>
         {fullscreen && hasThread ? (
           <motion.div
@@ -640,31 +625,26 @@ export function ContinuousChatOverlay({
                 collapse();
               }
             }}
-            initial={
-              reduce ? { opacity: 0 } : { opacity: 0, y: 36, scale: 0.92 }
-            }
-            animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 12 }}
+            animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0 }}
             exit={
               reduce
                 ? { opacity: 0 }
                 : {
                     opacity: 0,
-                    y: 22,
-                    scale: 0.955,
-                    transition: { duration: 0.5, ease: OVERLAY_EASE },
+                    y: 8,
+                    transition: { duration: 0.12, ease: OVERLAY_EASE },
                   }
             }
             transition={
               reduce
-                ? { duration: 0.15 }
-                : { type: "spring", stiffness: 130, damping: 26, mass: 1.1 }
+                ? { duration: 0.08 }
+                : { duration: 0.18, ease: OVERLAY_EASE }
             }
             className={cn(
               "pointer-events-auto relative mb-3 min-h-0 w-full max-w-3xl flex-1 origin-bottom overflow-y-auto px-5 py-6",
-              // The liquid-glass panel: frosted translucency, a bright top edge,
-              // an inner glow and a deep drop shadow for floating-pane depth.
-              "rounded-[28px] border border-white/12 bg-white/[0.045] backdrop-blur-2xl",
-              "shadow-[inset_0_1px_0_rgba(255,255,255,0.22),inset_0_0_60px_-22px_rgba(255,255,255,0.14),0_44px_130px_-32px_rgba(0,0,0,0.6)]",
+              "rounded-[24px] border border-white/12 bg-black/60",
+              "shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_28px_80px_-28px_rgba(0,0,0,0.62)]",
               // No visible scrollbar — the thread still scrolls, the chrome hides.
               "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
