@@ -53,9 +53,10 @@
     "test:scenarios": "cd ../.. && bun packages/scenario-runner/src/cli.ts list plugins/plugin-personal-assistant/test/scenarios",
     "bench:work-threads": "cd ../.. && bun plugins/plugin-personal-assistant/scripts/work-thread-benchmark.ts",
     "verify:live-schedule": "bun run ./scripts/verify-live-schedule-data.ts",
-    "build": "bun run build:js && bun run build:types",
+    "build": "bun run build:js && bun run build:views && bun run build:types",
     "clean": "rm -rf dist",
     "build:js": "bun run clean && tsup --config tsup.config.ts",
+    "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "dependencies": {
@@ -96,6 +97,7 @@
     "ts-morph": "28.0.0",
     "tsup": "^8.5.1",
     "react-dom": "*",
+    "vite": "^8.0.0",
     "vitest": "^4.0.17"
   },
   "peerDependencies": {
