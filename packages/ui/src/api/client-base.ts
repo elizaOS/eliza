@@ -101,12 +101,9 @@ function isElizaCloudControlPlaneBase(
   const normalized = normalizeBaseUrl(value);
   if (!normalized) return false;
   try {
-    const url = new URL(normalized);
-    if (!ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has(url.hostname.toLowerCase())) {
-      return false;
-    }
-    const pathname = url.pathname.replace(/\/+$/, "");
-    return pathname === "";
+    return ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has(
+      new URL(normalized).hostname.toLowerCase(),
+    );
   } catch {
     return false;
   }

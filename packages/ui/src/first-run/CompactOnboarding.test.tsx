@@ -141,7 +141,6 @@ describe("CompactOnboarding", () => {
     await waitFor(() => {
       expect(finishRuntime).toHaveBeenCalledTimes(1);
     });
-    expect(finishRuntime).toHaveBeenCalledWith("cloud");
     expect(updateDraft).toHaveBeenCalledWith("runtime", "cloud");
   });
 });

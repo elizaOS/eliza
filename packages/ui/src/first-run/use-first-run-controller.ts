@@ -45,7 +45,6 @@ import {
 import {
   ANDROID_LOCAL_AGENT_LABEL,
   ANDROID_LOCAL_AGENT_SERVER_ID,
-  IOS_LOCAL_AGENT_IPC_BASE,
   MOBILE_LOCAL_AGENT_LABEL,
   MOBILE_LOCAL_AGENT_SERVER_ID,
   persistMobileRuntimeModeForServerTarget,
@@ -105,9 +104,7 @@ export interface FirstRunController {
   updateDraft: FirstRunDraftUpdate;
   setStep: (step: FirstRunStep) => void;
   goBack: () => void;
-  finishRuntime: (
-    runtimeOverride?: FirstRunProfileDraft["runtime"],
-  ) => Promise<void>;
+  finishRuntime: () => Promise<void>;
   startVoice: () => Promise<void>;
   stopVoice: () => Promise<void>;
   toggleVoice: () => Promise<void>;
@@ -120,23 +117,6 @@ type SpeechRecognitionWindow = Window & {
 };
 
 type FirstRunAsrProvider = "local-inference" | "browser";
-
-function shouldAllowIosSharedCloudRuntime(): boolean {
-  try {
-    return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios";
-  } catch {
-    return false;
-  }
-}
-
-function readFirstRunCloudAuthToken(): string {
-  const globalToken = (globalThis as Record<string, unknown>)
-    .__ELIZA_CLOUD_AUTH_TOKEN__;
-  if (typeof globalToken === "string" && globalToken.trim()) {
-    return globalToken.trim();
-  }
-  return client.getRestAuthToken()?.trim() || "";
-}
 
 function isFirstRunBrowserSpeechRecognitionSupported(): boolean {
   if (typeof window === "undefined") return false;
@@ -638,7 +618,10 @@ export function useFirstRunController(): FirstRunController {
         }
       }
       setBusyText("Provisioning cloud agent");
-      const authToken = readFirstRunCloudAuthToken();
+      const authToken = String(
+        (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ ??
+          "",
+      ).trim();
       if (!authToken) {
         throw new Error("Eliza Cloud authentication required.");
       }
@@ -653,7 +636,6 @@ export function useFirstRunController(): FirstRunController {
             (entry): entry is string => typeof entry === "string",
           )
         : ["An autonomous AI agent."];
-      const allowSharedCloudRuntime = shouldAllowIosSharedCloudRuntime();
       const provisionedAgent = await client.provisionCloudSandbox({
         cloudApiBase:
           getBootConfig().cloudApiBase || "https://www.elizacloud.ai",
@@ -661,44 +643,29 @@ export function useFirstRunController(): FirstRunController {
         name,
         bio,
         onProgress: () => {},
-        allowSharedRuntime: allowSharedCloudRuntime,
       });
-      const cloudAgentApiBase = provisionedAgent.bridgeUrl;
-      const sharedCloudRuntimeReady =
-        provisionedAgent.executionTier === "shared";
-      const appApiBase =
-        sharedCloudRuntimeReady && allowSharedCloudRuntime
-          ? IOS_LOCAL_AGENT_IPC_BASE
-          : cloudAgentApiBase;
-      client.setBaseUrl(appApiBase);
+      client.setBaseUrl(provisionedAgent.bridgeUrl);
       client.setToken(authToken);
       const activeServer = createPersistedActiveServer({
         kind: "cloud",
-        id: `cloud:${provisionedAgent.agentId}`,
-        apiBase: cloudAgentApiBase,
+        apiBase: provisionedAgent.bridgeUrl,
         accessToken: authToken,
       });
       savePersistedActiveServer(activeServer);
       addAgentProfile({
         kind: "cloud",
         label: activeServer.label,
-        ...(cloudAgentApiBase ? { apiBase: cloudAgentApiBase } : {}),
+        ...(activeServer.apiBase ? { apiBase: activeServer.apiBase } : {}),
         ...(activeServer.accessToken
           ? { accessToken: activeServer.accessToken }
           : {}),
-        cloudAgentId: provisionedAgent.agentId,
       });
       persistMobileRuntimeModeForServerTarget("elizacloud");
-      if (!sharedCloudRuntimeReady) {
-        setBusyText("Saving first-run profile");
-        await client.submitFirstRun(plan.payload);
-      }
+      setBusyText("Saving first-run profile");
+      await client.submitFirstRun(plan.payload);
       clearPersistedFirstRunState();
       setBusyText(null);
-      completeFirstRun("chat", {
-        launchCompanionOverlay: true,
-        startupTarget: "cloud-managed",
-      });
+      completeFirstRun("chat", { launchCompanionOverlay: true });
     },
     [
       completeFirstRun,
@@ -745,12 +712,7 @@ export function useFirstRunController(): FirstRunController {
   );
 
   const finishRuntime = React.useCallback(
-    async (runtimeOverride?: FirstRunProfileDraft["runtime"]) =>
-      finishRuntimeForDraft(
-        runtimeOverride
-          ? { ...draftRef.current, runtime: runtimeOverride }
-          : draftRef.current,
-      ),
+    async () => finishRuntimeForDraft(draftRef.current),
     [finishRuntimeForDraft],
   );
 

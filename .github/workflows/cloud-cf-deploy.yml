@@ -126,7 +126,7 @@ jobs:
             fi
           fi
 
-      - name: Publish Worker runtime secrets
+      - name: Publish Worker AI secrets
         if: steps.cf.outputs.configured == 'true'
         working-directory: packages/cloud-api
         env:
@@ -140,16 +140,6 @@ jobs:
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
           VAST_BASE_URL: ${{ secrets.VAST_BASE_URL }}
-          STEWARD_API_URL: ${{ secrets.STEWARD_API_URL }}
-          STEWARD_TENANT_API_KEY: ${{ secrets.STEWARD_TENANT_API_KEY }}
-          STEWARD_REQUEST_SIGNING_SECRET: ${{ secrets.STEWARD_REQUEST_SIGNING_SECRET }}
-          STEWARD_REQUEST_SIGNING_SECRETS: ${{ secrets.STEWARD_REQUEST_SIGNING_SECRETS }}
-          STEWARD_REQUEST_SIGNING_KEY_ID: ${{ secrets.STEWARD_REQUEST_SIGNING_KEY_ID }}
-          CONTAINER_CONTROL_PLANE_URL: ${{ secrets.CONTAINER_CONTROL_PLANE_URL }}
-          HETZNER_CONTAINER_CONTROL_PLANE_URL: ${{ secrets.HETZNER_CONTAINER_CONTROL_PLANE_URL }}
-          CONTAINER_CONTROL_PLANE_TOKEN: ${{ secrets.CONTAINER_CONTROL_PLANE_TOKEN }}
-          HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
-          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
@@ -178,17 +168,7 @@ jobs:
             FAL_KEY \
             ELEVENLABS_API_KEY \
             VAST_API_KEY \
-            VAST_BASE_URL \
-            STEWARD_API_URL \
-            STEWARD_TENANT_API_KEY \
-            STEWARD_REQUEST_SIGNING_SECRET \
-            STEWARD_REQUEST_SIGNING_SECRETS \
-            STEWARD_REQUEST_SIGNING_KEY_ID \
-            CONTAINER_CONTROL_PLANE_URL \
-            HETZNER_CONTAINER_CONTROL_PLANE_URL \
-            CONTAINER_CONTROL_PLANE_TOKEN \
-            HEADSCALE_API_KEY \
-            HCLOUD_TOKEN
+            VAST_BASE_URL
           do
             publish_secret "$name"
           done

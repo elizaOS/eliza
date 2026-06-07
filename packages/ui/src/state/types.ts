@@ -96,7 +96,6 @@ export interface CompleteFirstRunOptions {
    * `/apps/companion`. Ignored when companion mode or the apps surface is disabled.
    */
   launchCompanionOverlay?: boolean;
-  startupTarget?: "embedded-local" | "remote-backend" | "cloud-managed";
 }
 
 /** Deferred work scheduling for multi-step navigation. */
@@ -256,9 +255,7 @@ export interface StartupCoordinatorView {
   retry: () => void;
   reset: () => void;
   pairingSuccess: () => void;
-  firstRunComplete: (
-    target?: "embedded-local" | "remote-backend" | "cloud-managed",
-  ) => void;
+  firstRunComplete: () => void;
   policy: {
     supportsLocalRuntime: boolean;
     backendTimeoutMs: number;

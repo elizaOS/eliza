@@ -85,22 +85,6 @@ async function backfillCloudApiBase(
   }
 }
 
-export function isDirectCloudSharedRuntimeBridge(
-  value: string | undefined,
-): boolean {
-  if (!value) return false;
-  try {
-    const url = new URL(value);
-    return (
-      url.protocol === "https:" &&
-      url.hostname.toLowerCase() === "api.elizacloud.ai" &&
-      /^\/api\/v1\/eliza\/agents\/[^/]+\/bridge\/?$/.test(url.pathname)
-    );
-  } catch {
-    return false;
-  }
-}
-
 export interface RestoringSessionDeps {
   setStartupError: (v: null) => void;
   setAuthRequired: (v: boolean) => void;
@@ -259,11 +243,7 @@ export async function applyRestoredConnection(args: {
 
   if (restoredActiveServer.kind === "cloud") {
     const resolved = await backfillCloudApiBase(restoredActiveServer);
-    const apiBase =
-      isIOS && isDirectCloudSharedRuntimeBridge(resolved.apiBase)
-        ? IOS_LOCAL_AGENT_IPC_BASE
-        : (resolved.apiBase ?? null);
-    clientRef.setBaseUrl(apiBase);
+    clientRef.setBaseUrl(resolved.apiBase ?? null);
     clientRef.setToken(resolved.accessToken ?? null);
     return;
   }
