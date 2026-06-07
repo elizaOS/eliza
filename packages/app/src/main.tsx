@@ -238,15 +238,12 @@ const InferenceCloudAlertButton = lazyNamedComponent<{
 const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
 );
-const LifeOpsPageView = lazyNamedComponent<Record<string, never>>(
-  async () => (await importAppLifeOps()).LifeOpsPageView,
-);
-const BrowserBridgeSetupPanel = lazyNamedComponent<Record<string, never>>(
-  async () => (await importAppLifeOps()).LifeOpsBrowserSetupPanel,
-);
-const LifeOpsActivitySignalsEffect = lazyNamedComponent<Record<string, never>>(
-  async () => (await importAppLifeOps()).LifeOpsActivitySignalsEffect,
-);
+// LifeOpsPageView / LifeOpsBrowserSetupPanel / LifeOpsActivitySignalsEffect
+// were removed when @elizaos/plugin-lifeops was decomposed into plugin-todos,
+// plugin-inbox, plugin-goals, plugin-health, plugin-calendar, plugin-documents,
+// plugin-blocker, plugin-finances, plugin-relationships and renamed to
+// @elizaos/plugin-personal-assistant. The boot config slots are optional and
+// UI consumers render a fallback when absent.
 const AppBlockerSettingsCard = lazyNamedComponent<AppBlockerSettingsCardProps>(
   async () => (await importAppLifeOps()).AppBlockerSettingsCard,
 );
@@ -277,7 +274,6 @@ const FineTuningView = lazyNamedComponent<FineTuningViewProps>(
 );
 
 let loadedCompanionSceneStatusHook: (() => CompanionSceneStatus) | null = null;
-let dispatchQueuedLifeOpsGithubCallback: ((url: string) => void) | null = null;
 
 function useLoadedCompanionSceneStatus(): CompanionSceneStatus {
   return (
@@ -499,8 +495,11 @@ function buildAppBootConfig({
     stewardTransactionHistory: TransactionHistory,
     characterCatalog: APP_CHARACTER_CATALOG,
     envAliases: APP_ENV_ALIASES,
-    lifeOpsPageView: LifeOpsPageView,
-    lifeOpsBrowserSetupPanel: BrowserBridgeSetupPanel,
+    // lifeOpsPageView / lifeOpsBrowserSetupPanel intentionally omitted —
+    // both slots are optional in AppBootConfig and UI consumers render a
+    // fallback ("view unavailable") when absent. The legacy /lifeops
+    // dashboard was killed during the plugin-personal-assistant
+    // decomposition (commit eef57bf53e).
     appBlockerSettingsCard: AppBlockerSettingsCard,
     websiteBlockerSettingsCard: WebsiteBlockerSettingsCard,
     clientMiddleware: {
@@ -516,8 +515,13 @@ function initializeAppModules(): Promise<void> {
   appModulesInitialized ??= (async () => {
     await importAppCore();
 
-    const [companionModule, lifeOpsModule] = await Promise.all([
+    const [companionModule] = await Promise.all([
       importAppCompanion(),
+      // Imported for the side-effectful API client (BRIEF / PRIORITIZE /
+      // scheduled-task CRUD / approvals) and to surface AppBlocker /
+      // WebsiteBlocker settings cards. The plugin no longer exports a
+      // top-level registerLifeOpsApp() since the /lifeops view was killed
+      // during the plugin-personal-assistant decomposition.
       importAppLifeOps(),
       // Imported for its self-registration side effect (Vincent overlay app).
       importAppVincent(),
@@ -531,10 +535,7 @@ function initializeAppModules(): Promise<void> {
     ]);
 
     companionModule.registerCompanionApp();
-    lifeOpsModule.registerLifeOpsApp();
     loadedCompanionSceneStatusHook = companionModule.useCompanionSceneStatus;
-    dispatchQueuedLifeOpsGithubCallback =
-      lifeOpsModule.dispatchQueuedLifeOpsGithubCallbackFromUrl;
 
     setBootConfig(
       buildAppBootConfig({
@@ -1438,11 +1439,9 @@ function handleDeepLink(url: string): void {
       break;
     case "lifeops":
       window.location.hash = "#lifeops";
-      dispatchQueuedLifeOpsGithubCallback?.(url);
       break;
     case "settings":
       window.location.hash = "#settings";
-      dispatchQueuedLifeOpsGithubCallback?.(url);
       break;
     case "connect": {
       const gatewayUrl = parsed.searchParams.get("url");
@@ -1698,7 +1697,6 @@ function mountReactApp(): void {
               <>
                 <DesktopSurfaceNavigationRuntime />
                 <DesktopTrayRuntime />
-                <LifeOpsActivitySignalsEffect />
                 <App />
               </>
             )}
