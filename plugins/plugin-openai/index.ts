@@ -53,11 +53,14 @@ export const openaiPlugin: Plugin = {
   name: "openai",
   description: "OpenAI API integration for text, image, audio, and embedding models",
   autoEnable: {
-    envKeys: ["OPENAI_API_KEY"],
+    envKeys: ["OPENAI_API_KEY", "CEREBRAS_API_KEY"],
   },
 
   config: {
     OPENAI_API_KEY: env.OPENAI_API_KEY ?? null,
+    CEREBRAS_API_KEY: env.CEREBRAS_API_KEY ?? null,
+    CEREBRAS_BASE_URL: env.CEREBRAS_BASE_URL ?? null,
+    CEREBRAS_MODEL: env.CEREBRAS_MODEL ?? null,
     OPENAI_BASE_URL: env.OPENAI_BASE_URL ?? null,
     OPENAI_NANO_MODEL: env.OPENAI_NANO_MODEL ?? null,
     OPENAI_MEDIUM_MODEL: env.OPENAI_MEDIUM_MODEL ?? null,

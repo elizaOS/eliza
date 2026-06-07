@@ -96,6 +96,26 @@
         "required": true,
         "sensitive": true
       },
+      "CEREBRAS_API_KEY": {
+        "type": "string",
+        "description": "API key used to authenticate requests to Cerebras's OpenAI-compatible API.",
+        "required": false,
+        "sensitive": true
+      },
+      "CEREBRAS_BASE_URL": {
+        "type": "string",
+        "description": "Base URL for Cerebras OpenAI-compatible API requests.",
+        "required": false,
+        "default": "https://api.cerebras.ai/v1",
+        "sensitive": false
+      },
+      "CEREBRAS_MODEL": {
+        "type": "string",
+        "description": "Identifier of the Cerebras model to use when Cerebras mode is active.",
+        "required": false,
+        "default": "gpt-oss-120b",
+        "sensitive": false
+      },
       "OPENAI_BASE_URL": {
         "type": "string",
         "description": "Base URL for all OpenAI API requests.",

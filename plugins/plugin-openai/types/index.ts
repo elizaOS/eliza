@@ -373,6 +373,15 @@ export interface OpenAIPluginConfig {
   /** OpenAI API key */
   OPENAI_API_KEY?: string;
 
+  /** Cerebras API key for Cerebras's OpenAI-compatible endpoint */
+  CEREBRAS_API_KEY?: string;
+
+  /** Cerebras API base URL */
+  CEREBRAS_BASE_URL?: string;
+
+  /** Cerebras model identifier */
+  CEREBRAS_MODEL?: string;
+
   /** Base URL for API requests */
   OPENAI_BASE_URL?: string;
 

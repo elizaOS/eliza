@@ -287,7 +287,7 @@ const INTENTIONAL_MULTI_SERVICE_TYPES = new Set<string>([
  */
 export class NoModelProviderConfiguredError extends Error {
 	constructor(
-		message: string = "This agent has no LLM provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY in your environment, or sign in to Eliza Cloud (ELIZAOS_CLOUD_API_KEY).",
+		message: string = "This agent has no LLM provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, CEREBRAS_API_KEY, or OPENROUTER_API_KEY in your environment, or sign in to Eliza Cloud (ELIZAOS_CLOUD_API_KEY).",
 	) {
 		super(message);
 		this.name = "NoModelProviderConfiguredError";

@@ -57,6 +57,7 @@ const KEY_PREFIX_HINTS: Readonly<
 > = {
   ANTHROPIC_API_KEY: { prefix: "sk-ant-", label: "Anthropic" },
   OPENAI_API_KEY: { prefix: "sk-", label: "OpenAI" },
+  CEREBRAS_API_KEY: { prefix: "csk-", label: "Cerebras" },
   GROQ_API_KEY: { prefix: "gsk_", label: "Groq" },
   XAI_API_KEY: { prefix: "xai-", label: "xAI" },
   OPENROUTER_API_KEY: { prefix: "sk-or-", label: "OpenRouter" },
@@ -82,7 +83,7 @@ const KEY_PREFIX_HINTS: Readonly<
  * @param paramDefs - Full parameter definitions with required/sensitive metadata
  */
 export function validatePluginConfig(
-  _pluginId: string,
+  pluginId: string,
   _category: string,
   envKey: string | null,
   configKeys: string[],
@@ -125,6 +126,23 @@ export function validatePluginConfig(
       const value = providedConfig?.[param.key] ?? process.env[param.key];
 
       if (!value?.trim()) {
+        if (
+          (pluginId === "openai" || pluginId === "@elizaos/plugin-openai") &&
+          param.key === "OPENAI_API_KEY"
+        ) {
+          const cerebrasValue =
+            providedConfig?.CEREBRAS_API_KEY ?? process.env.CEREBRAS_API_KEY;
+          if (cerebrasValue?.trim()) {
+            continue;
+          }
+          errors.push({
+            field: param.key,
+            message:
+              "OPENAI_API_KEY or CEREBRAS_API_KEY is required but neither is set",
+          });
+          continue;
+        }
+
         // Required param with a default is a warning, not an error
         if (param.default) {
           warnings.push({

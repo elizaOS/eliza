@@ -3754,7 +3754,7 @@ export async function startEliza(
         "[eliza] No plugins loaded — at least one model provider plugin is required",
       );
       logger.error(
-        "[eliza] Set an API key (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY) in your environment",
+        "[eliza] Set an API key (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY, CEREBRAS_API_KEY) in your environment",
       );
       throw new Error("No plugins loaded");
     }

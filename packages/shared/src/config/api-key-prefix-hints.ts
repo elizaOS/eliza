@@ -26,6 +26,7 @@ export const API_KEY_PREFIX_HINTS: Readonly<Record<string, ApiKeyPrefixHint>> =
   {
     ANTHROPIC_API_KEY: { prefix: "sk-ant-", label: "Anthropic" },
     OPENAI_API_KEY: { prefix: "sk-", label: "OpenAI" },
+    CEREBRAS_API_KEY: { prefix: "csk-", label: "Cerebras" },
     GROQ_API_KEY: { prefix: "gsk_", label: "Groq" },
     XAI_API_KEY: { prefix: "xai-", label: "xAI" },
     OPENROUTER_API_KEY: { prefix: "sk-or-", label: "OpenRouter" },

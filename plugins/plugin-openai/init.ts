@@ -22,8 +22,8 @@ async function validateOpenAIConfiguration(runtime: IAgentRuntime): Promise<void
 
   if (!apiKey) {
     logger.warn(
-      "[OpenAI] OPENAI_API_KEY is not configured. " +
-        "OpenAI functionality will fail until a valid API key is provided."
+      "[OpenAI] OPENAI_API_KEY or CEREBRAS_API_KEY is not configured. " +
+        "OpenAI-compatible functionality will fail until a valid API key is provided."
     );
     return;
   }
@@ -37,7 +37,7 @@ async function validateOpenAIConfiguration(runtime: IAgentRuntime): Promise<void
     if (!response.ok) {
       logger.warn(
         `[OpenAI] API key validation failed: ${response.status} ${response.statusText}. ` +
-          "Please verify your OPENAI_API_KEY is correct."
+          "Please verify your configured API key is correct."
       );
       return;
     }
