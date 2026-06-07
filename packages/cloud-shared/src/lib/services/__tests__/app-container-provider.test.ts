@@ -58,6 +58,35 @@ describe("AppContainerProvider.provision", () => {
     expect(calls[2]).toBe("docker start 'app-nubilio'");
   });
 
+  test("provision with a DATABASE_URL stands up the DB ambassador + rewrites the DSN host", async () => {
+    const { calls, ssh } = recordingSsh();
+    const provider = new AppContainerProvider({ ssh, allocateHostPort: async () => 49002 });
+
+    await provider.provision({
+      appId: APP_ID,
+      containerName: "app-nubilio",
+      input: {
+        ...INPUT,
+        environmentVars: {
+          DATABASE_URL: "postgresql://app_x:p%40ss@10.43.0.10:5432/db_app_x?sslmode=require",
+        },
+      },
+    });
+
+    const joined = calls.join("\n");
+    // ambassador: rm stale, run socat to the REAL DB, attach to the app net
+    expect(joined).toContain("docker run -d --name 'app-db-111111112222'");
+    expect(joined).toContain("'TCP:10.43.0.10:5432'");
+    expect(joined).toContain("'TCP-LISTEN:5432,fork,reuseaddr'");
+    expect(joined).toMatch(/docker network connect 'app-net-\S+' 'app-db-111111112222'/);
+    // the app container's DSN host is rewritten to the ambassador (creds/db/params kept)
+    const createCmd = calls.find((c) => c.startsWith("docker create")) ?? "";
+    expect(createCmd).toContain(
+      "DATABASE_URL=postgresql://app_x:p%40ss@app-db-111111112222:5432/db_app_x?sslmode=require",
+    );
+    expect(createCmd).not.toContain("@10.43.0.10:5432");
+  });
+
   test("lifecycle verbs issue the expected docker commands", async () => {
     const { calls, ssh } = recordingSsh();
     const provider = new AppContainerProvider({ ssh, allocateHostPort: async () => 1 });
@@ -66,6 +95,7 @@ describe("AppContainerProvider.provision", () => {
     await provider.logs("app-x", 50);
     expect(calls).toEqual([
       "docker rm -f 'app-x'",
+      "docker rm -f 'app-db-x' >/dev/null 2>&1 || true",
       "docker restart 'app-x'",
       "docker logs --tail 50 'app-x'",
     ]);
