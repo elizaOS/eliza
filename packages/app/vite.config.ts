@@ -2351,10 +2351,11 @@ export const INVALID_TRACER_PROVIDER = {};
           "plugins/plugin-health/src/screen-time/mobile-signal-setup.ts",
         ),
       },
-      // Browser-safe aliases for local app plugin package roots.
-      ...createAppPluginBrowserAliases(),
       // Dynamic aliases for local app plugin package subpaths.
       ...createWorkspacePackageAliases([path.resolve(elizaRoot, "plugins")]),
+      // Browser-safe aliases for local app plugin package roots. Keep these
+      // after workspace aliases so UI facades win over package root exports.
+      ...createAppPluginBrowserAliases(),
       ...(() => {
         const sharedPkgPath = path.resolve(
           elizaRoot,

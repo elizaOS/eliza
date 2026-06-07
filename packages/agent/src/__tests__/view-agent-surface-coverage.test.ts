@@ -3,8 +3,8 @@
  * element with the agent surface (useAgentElement) so the floating pill can
  * address it. Guards against a view regressing to an unaddressable surface.
  *
- * lifeops is tracked as pending — its working tree currently carries an
- * unrelated refactor; it is converted separately.
+ * plugin-personal-assistant now exposes a compatibility facade; its former
+ * LifeOps view surface is covered by the decomposed domain plugins.
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -40,7 +40,6 @@ const CONVERTED_PLUGINS = [
   "plugin-training",
   "plugin-trajectory-logger",
   "plugin-vincent",
-  "plugin-personal-assistant",
 ] as const;
 
 /** Remaining views to convert; must stay empty for the ratchet to pass. */
@@ -204,7 +203,7 @@ describe("agent-surface view coverage", () => {
     expect(isAgentControllable(file)).toBe(true);
   });
 
-  it("has zero unconverted plugin views (lifeops now included)", () => {
+  it("has zero unconverted plugin views", () => {
     expect(PENDING_PLUGINS).toHaveLength(0);
   });
 });
