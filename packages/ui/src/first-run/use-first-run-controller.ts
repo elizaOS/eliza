@@ -52,8 +52,8 @@ import {
 } from "./mobile-runtime-mode";
 import {
   EMPTY_PROACTIVE_IOS_PERMISSIONS_PROGRESS,
-  requestProactiveIosPermissions,
   type ProactiveIosPermissionsProgress,
+  requestProactiveIosPermissions,
 } from "./proactive-ios-permissions";
 import { readFirstRunRuntimeTarget } from "./reload-into-first-run-runtime";
 import {
@@ -1012,9 +1012,7 @@ export function useFirstRunController(): FirstRunController {
   }, [setStep, step]);
 
   const submitting =
-    busyText !== null ||
-    elizaCloudLoginBusy ||
-    proactivePermissions.running;
+    busyText !== null || elizaCloudLoginBusy || proactivePermissions.running;
   const primaryLabel =
     step === "runtime"
       ? firstRunNeedsCloudConnect(draft, elizaCloudConnected)

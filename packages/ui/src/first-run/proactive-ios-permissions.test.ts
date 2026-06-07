@@ -10,8 +10,9 @@ import type {
   ScreenCapturePluginLike,
 } from "../bridge/native-plugins";
 import {
-  requestProactiveIosPermissions,
+  getFriendlyNameFromUserId,
   type ProactiveIosPermissionsProgress,
+  requestProactiveIosPermissions,
 } from "./proactive-ios-permissions";
 
 const capacitorState = vi.hoisted(() => ({
@@ -73,23 +74,32 @@ describe("requestProactiveIosPermissions", () => {
   it("requests the proactive iOS startup permissions", async () => {
     const permissionsRegistry = registry();
     const cameraPlugin: CameraPluginLike = {
-      requestPermissions: vi.fn(async () => ({
-        camera: "granted",
-        microphone: "granted",
-        photos: "limited",
-      }) as const),
+      requestPermissions: vi.fn(
+        async () =>
+          ({
+            camera: "granted",
+            microphone: "granted",
+            photos: "limited",
+          }) as const,
+      ),
     };
     const locationPlugin: LocationPluginLike = {
-      requestPermissions: vi.fn(async () => ({
-        location: "granted",
-        background: "granted",
-      }) as const),
+      requestPermissions: vi.fn(
+        async () =>
+          ({
+            location: "granted",
+            background: "granted",
+          }) as const,
+      ),
     };
     const screenCapturePlugin: ScreenCapturePluginLike = {
-      requestPermissions: vi.fn(async () => ({
-        screenCapture: "prompt",
-        microphone: "granted",
-      }) as const),
+      requestPermissions: vi.fn(
+        async () =>
+          ({
+            screenCapture: "prompt",
+            microphone: "granted",
+          }) as const,
+      ),
     };
     const progress: ProactiveIosPermissionsProgress[] = [];
 
@@ -122,12 +132,12 @@ describe("requestProactiveIosPermissions", () => {
     expect(screenCapturePlugin.requestPermissions).toHaveBeenCalled();
     expect(result).toMatchObject({
       running: false,
-      completed: 8,
-      total: 8,
-      granted: 6,
+      completed: 10,
+      total: 10,
+      granted: 8,
       blocked: 2,
       message:
-        "6/8 proactive permissions are ready. Review the remaining permissions in Settings.",
+        "8/10 proactive permissions are ready. Review the remaining permissions in Settings.",
     });
     expect(progress.at(-1)).toEqual(result);
   });
@@ -145,9 +155,39 @@ describe("requestProactiveIosPermissions", () => {
     expect(result).toMatchObject({
       running: false,
       completed: 0,
-      total: 8,
+      total: 10,
       granted: 0,
       blocked: 0,
     });
+  });
+});
+
+describe("getFriendlyNameFromUserId", () => {
+  it("extracts and capitalizes name from email", () => {
+    expect(getFriendlyNameFromUserId("john.doe@gmail.com")).toBe("John");
+    expect(getFriendlyNameFromUserId("SARAH@example.com")).toBe("Sarah");
+    expect(getFriendlyNameFromUserId("alice-smith@domain.org")).toBe("Alice");
+  });
+
+  it("extracts name from ENS domain", () => {
+    expect(getFriendlyNameFromUserId("bob.eth")).toBe("Bob");
+    expect(getFriendlyNameFromUserId("charlie.ETH")).toBe("Charlie");
+  });
+
+  it("returns null for wallet address", () => {
+    expect(
+      getFriendlyNameFromUserId("0x1234567890123456789012345678901234567890"),
+    ).toBeNull();
+  });
+
+  it("handles standard usernames", () => {
+    expect(getFriendlyNameFromUserId("david")).toBe("David");
+    expect(getFriendlyNameFromUserId("emma_jones")).toBe("Emma");
+  });
+
+  it("returns null for invalid inputs", () => {
+    expect(getFriendlyNameFromUserId(null)).toBeNull();
+    expect(getFriendlyNameFromUserId("")).toBeNull();
+    expect(getFriendlyNameFromUserId("   ")).toBeNull();
   });
 });

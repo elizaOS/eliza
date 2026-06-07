@@ -38,6 +38,11 @@ const DEFAULT_SYSTEM_PROMPT =
   "You are Eliza, a private on-device assistant. Answer directly and concisely.";
 const DEFAULT_CLOUD_MARKET_PREVIEW_BASE_URL = "https://www.elizacloud.ai";
 const CLOUD_WALLET_MARKET_OVERVIEW_PATH = "/market/preview/wallet-overview";
+
+function isBuildtimeCloudMode(): boolean {
+  const mode = import.meta.env.VITE_ELIZA_IOS_RUNTIME_MODE;
+  return mode === "cloud" || mode === "cloud-hybrid";
+}
 const WALLET_MARKET_OVERVIEW_CACHE_TTL_MS = 120_000;
 const WALLET_MARKET_OVERVIEW_FETCH_TIMEOUT_MS = 8_000;
 const COINGECKO_MARKET_LIMIT = 80;
@@ -1779,6 +1784,8 @@ function emptyUsage(modelId?: string | null): LocalReply["usage"] {
 }
 
 async function localModelStatusReply(text: string): Promise<LocalReply | null> {
+  if (isBuildtimeCloudMode()) return null;
+
   const intent = classifyLocalModelIntent(text);
   if (activeState.status === "ready" && intent !== "status") return null;
 
@@ -2204,6 +2211,13 @@ async function generateLocalReply(
     };
   }
 
+  if (isBuildtimeCloudMode()) {
+    return {
+      text: "Please sign in to Eliza Cloud to get started. Go to Settings → Cloud to connect your account.",
+      usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+    };
+  }
+
   const statusReply = await localModelStatusReply(text);
   if (statusReply) return statusReply;
   await ensureActiveModelLoaded();
@@ -2292,6 +2306,13 @@ async function generateLocalReply(
 }
 
 async function generateLocalGreeting(): Promise<LocalReply> {
+  if (isBuildtimeCloudMode()) {
+    return {
+      text: "What would you like to work on?",
+      usage: emptyUsage(activeState.modelId),
+    };
+  }
+
   const setupReply = await localModelStatusReply(
     "download the default local model",
   );
@@ -3611,7 +3632,16 @@ export async function handleIosLocalAgentRequest(
     if (!conversation) return json({ error: "Conversation not found" }, 404);
 
     if (method === "GET" && pathname.endsWith("/messages")) {
-      return json({ messages: conversation.messages });
+      let messages = conversation.messages;
+      if (isBuildtimeCloudMode()) {
+        messages = messages.filter(
+          (m) =>
+            !m.text.includes("eliza-1-2B") &&
+            !m.text.includes("downloading") &&
+            !m.text.includes("download the default local model"),
+        );
+      }
+      return json({ messages });
     }
 
     if (method === "POST" && pathname.endsWith("/messages/truncate")) {

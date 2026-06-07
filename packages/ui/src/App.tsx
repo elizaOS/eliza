@@ -47,7 +47,6 @@ import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
 import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
 import { ErrorBoundary } from "./components/ui/error-boundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
-import { getPersistedOwnerGivenName } from "./first-run/proactive-ios-permissions";
 import { useBootConfig } from "./config/boot-config-react.hooks";
 import type { CompanionShellComponentProps } from "./config/boot-config-store";
 import {
@@ -56,7 +55,10 @@ import {
 } from "./events";
 import { CompactOnboarding } from "./first-run/CompactOnboarding";
 import { FirstRunScreen } from "./first-run/FirstRunScreen";
-import { requestProactiveIosPermissions } from "./first-run/proactive-ios-permissions";
+import {
+  requestProactiveIosPermissions,
+  useOwnerGivenName,
+} from "./first-run/proactive-ios-permissions";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
@@ -823,9 +825,8 @@ function ViewRouter({
   );
 }
 
-function greetingForTimeOfDay(): string {
+function greetingForTimeOfDay(name: string | null): string {
   const hour = new Date().getHours();
-  const name = getPersistedOwnerGivenName();
   const suffix = name ? `, ${name}` : "";
   if (hour < 12) return `Good morning${suffix}! What would you like to do?`;
   if (hour < 18) return `Good afternoon${suffix}! What would you like to do?`;
@@ -865,9 +866,8 @@ function CompanionShellContent(props: ShellContentProps): ReactNode {
 }
 
 /** Time-of-day greeting for the ambient chat home's backdrop (Her-style). */
-function minimalHomeGreeting(): string {
+function minimalHomeGreeting(name: string | null): string {
   const h = new Date().getHours();
-  const name = getPersistedOwnerGivenName();
   const suffix = name ? `, ${name.toLowerCase()}` : "";
   if (h < 5) return `still up${suffix}?`;
   if (h < 12) return `good morning${suffix}`;
@@ -881,6 +881,7 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
   // the whole chat experience. Ask it anything, or ask it to open a view ("show
   // me the coding view") which surfaces over this base.
   const reduceMotion = useReducedMotion() ?? false;
+  const ownerName = useOwnerGivenName();
   return (
     <div key="chat-shell" className={APP_SHELL_CLASS}>
       <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden">
@@ -909,7 +910,7 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
                 }
           }
         >
-          {minimalHomeGreeting()}
+          {minimalHomeGreeting(ownerName)}
         </motion.p>
         <CustomActionsPanel
           open={props.customActionsPanelOpen}
@@ -982,6 +983,7 @@ function ShellContent(props: ShellContentProps): ReactNode {
 
 function ShellFoundationMount() {
   const controller = useShellControllerContext();
+  const ownerName = useOwnerGivenName();
   if (!controller) return null;
 
   return (
@@ -996,7 +998,7 @@ function ShellFoundationMount() {
           messages={controller.messages}
           onSend={controller.send}
           canSend={controller.canSend}
-          greeting={greetingForTimeOfDay()}
+          greeting={greetingForTimeOfDay(ownerName)}
           recording={controller.recording}
           onToggleRecording={controller.toggleRecording}
         />

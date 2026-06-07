@@ -7,6 +7,7 @@ import type {
   PermissionState,
   PermissionStatus,
 } from "@elizaos/shared";
+import { useEffect, useState } from "react";
 import {
   type CameraPermissionStatus,
   type CameraPluginLike,
@@ -15,12 +16,13 @@ import {
   getContactsPlugin,
   getLocationPlugin,
   getScreenCapturePlugin,
-  type LocationPluginLike,
   type LocationPermissionStatus,
+  type LocationPluginLike,
   type ScreenCapturePermissionStatus,
   type ScreenCapturePluginLike,
 } from "../bridge/native-plugins";
 import { createMobileSignalsPermissionsRegistry } from "../platform/mobile-permissions-client";
+import { useApp } from "../state";
 
 type ProactivePermissionId = Extract<
   PermissionId,
@@ -38,7 +40,12 @@ type ProactivePermissionId = Extract<
 
 type RegistryPermissionId = Extract<
   ProactivePermissionId,
-  "calendar" | "contacts" | "health" | "reminders" | "screentime" | "notifications"
+  | "calendar"
+  | "contacts"
+  | "health"
+  | "reminders"
+  | "screentime"
+  | "notifications"
 >;
 
 type ProactivePermissionRequest = {
@@ -367,6 +374,7 @@ export async function requestProactiveIosPermissions(
 
 const OWNER_NAME_KEY = "eliza:owner-given-name";
 const OWNER_FULL_NAME_KEY = "eliza:owner-full-name";
+const OWNER_NAME_CHANGED_EVENT = "eliza:owner-name-changed";
 
 /**
  * Returns the user's given (first) name if it has been resolved from
@@ -385,10 +393,81 @@ export function getPersistedOwnerGivenName(): string | null {
  */
 export function getPersistedOwnerFullName(): string | null {
   try {
-    return globalThis.localStorage?.getItem(OWNER_FULL_NAME_KEY)?.trim() || null;
+    return (
+      globalThis.localStorage?.getItem(OWNER_FULL_NAME_KEY)?.trim() || null
+    );
   } catch {
     return null;
   }
+}
+
+export function getFriendlyNameFromUserId(
+  userId: string | null,
+): string | null {
+  if (!userId) return null;
+  const clean = userId.trim();
+  if (!clean) return null;
+
+  if (clean.includes("@")) {
+    const localPart = clean.split("@")[0];
+    const firstSegment = localPart.split(/[^a-zA-Z0-9]/)[0];
+    if (firstSegment) {
+      return (
+        firstSegment.charAt(0).toUpperCase() +
+        firstSegment.slice(1).toLowerCase()
+      );
+    }
+  }
+
+  if (clean.toLowerCase().endsWith(".eth")) {
+    const prefix = clean.slice(0, -4);
+    const firstSegment = prefix.split(/[^a-zA-Z0-9]/)[0];
+    if (firstSegment) {
+      return (
+        firstSegment.charAt(0).toUpperCase() +
+        firstSegment.slice(1).toLowerCase()
+      );
+    }
+  }
+
+  if (clean.startsWith("0x")) {
+    return null;
+  }
+
+  if (/^[a-zA-Z0-9._-]{1,20}$/.test(clean)) {
+    const firstSegment = clean.split(/[^a-zA-Z0-9]/)[0];
+    if (firstSegment) {
+      return (
+        firstSegment.charAt(0).toUpperCase() +
+        firstSegment.slice(1).toLowerCase()
+      );
+    }
+  }
+
+  return null;
+}
+
+export function useOwnerGivenName(): string | null {
+  const [name, setName] = useState(getPersistedOwnerGivenName);
+  const { elizaCloudUserId } = useApp();
+
+  useEffect(() => {
+    const current = getPersistedOwnerGivenName();
+    if (current !== name) setName(current);
+
+    if (typeof document === "undefined") return;
+    const handler = () => setName(getPersistedOwnerGivenName());
+    document.addEventListener(OWNER_NAME_CHANGED_EVENT, handler);
+    return () =>
+      document.removeEventListener(OWNER_NAME_CHANGED_EVENT, handler);
+  }, [name]);
+
+  if (elizaCloudUserId) {
+    const friendlyName = getFriendlyNameFromUserId(elizaCloudUserId);
+    if (friendlyName) return friendlyName;
+  }
+
+  return name;
 }
 
 function persistOwnerName(givenName: string, fullName?: string): void {
@@ -396,6 +475,9 @@ function persistOwnerName(givenName: string, fullName?: string): void {
     globalThis.localStorage?.setItem(OWNER_NAME_KEY, givenName);
     if (fullName) {
       globalThis.localStorage?.setItem(OWNER_FULL_NAME_KEY, fullName);
+    }
+    if (typeof document !== "undefined") {
+      document.dispatchEvent(new Event(OWNER_NAME_CHANGED_EVENT));
     }
   } catch {
     // localStorage may be unavailable
@@ -407,9 +489,14 @@ function persistOwnerName(givenName: string, fullName?: string): void {
  */
 function parseGivenNameFromDeviceName(deviceName: string): string | null {
   const suffixes = [
-    "'s iPhone", "'s iPad", "'s iPod",
-    "\u2019s iPhone", "\u2019s iPad", "\u2019s iPod",
-    "'s iPhone", "'s iPad",
+    "'s iPhone",
+    "'s iPad",
+    "'s iPod",
+    "\u2019s iPhone",
+    "\u2019s iPad",
+    "\u2019s iPod",
+    "'s iPhone",
+    "'s iPad",
   ];
   for (const suffix of suffixes) {
     if (deviceName.endsWith(suffix)) {
@@ -496,8 +583,7 @@ async function runProactiveIosPermissionsRequest(
     return EMPTY_PROACTIVE_IOS_PERMISSIONS_PROGRESS;
   }
 
-  const registry =
-    options.registry ?? createMobileSignalsPermissionsRegistry();
+  const registry = options.registry ?? createMobileSignalsPermissionsRegistry();
   const cameraPlugin = options.cameraPlugin ?? getCameraPlugin();
   const contactsPlugin = options.contactsPlugin ?? getContactsPlugin();
   const locationPlugin = options.locationPlugin ?? getLocationPlugin();
