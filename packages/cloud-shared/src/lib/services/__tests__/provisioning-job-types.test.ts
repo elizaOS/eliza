@@ -28,7 +28,7 @@ describe("JOB_TYPES", () => {
     expect(JOB_TYPES.AGENT_WAKE).toBe("agent_wake");
     // Lock the size so a new entry without a matching assertion above
     // fails CI instead of being silently under-covered by tests below.
-    expect(Object.keys(JOB_TYPES)).toHaveLength(11);
+    expect(Object.keys(JOB_TYPES)).toHaveLength(16);
   });
 
   test("wire values are unique (no two symbols share a string)", () => {
