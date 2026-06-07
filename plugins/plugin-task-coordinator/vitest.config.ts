@@ -4,6 +4,7 @@ import { defineConfig } from "vitest/config";
 
 const rootDir = dirname(fileURLToPath(import.meta.url));
 const toVitePath = (value: string): string => value.replaceAll("\\", "/");
+const pluginBrowserSrc = resolve(rootDir, "../plugin-browser/src");
 
 export default defineConfig({
   resolve: {
@@ -26,6 +27,14 @@ export default defineConfig({
             "../plugin-health/src/screen-time/mobile-signal-setup.ts",
           ),
         ),
+      },
+      {
+        find: /^@elizaos\/plugin-browser$/,
+        replacement: toVitePath(resolve(pluginBrowserSrc, "index.ts")),
+      },
+      {
+        find: /^@elizaos\/plugin-browser\/(.+)$/,
+        replacement: `${toVitePath(pluginBrowserSrc)}/$1`,
       },
     ],
   },

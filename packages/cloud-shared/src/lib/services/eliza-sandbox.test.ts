@@ -321,27 +321,22 @@ describe("ElizaSandboxService wake", () => {
       }
       return Response.json({ ok: true });
     });
-    const findByIdAndOrgSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(
-      sleepingSandbox,
-    );
-    const trySetProvisioningSpy = spyOn(
-      agentSandboxesRepository,
-      "trySetProvisioning",
-    ).mockResolvedValue({
+    const originalFindByIdAndOrg = agentSandboxesRepository.findByIdAndOrg;
+    const originalTrySetProvisioning = agentSandboxesRepository.trySetProvisioning;
+    const originalGetLatestBackup = agentSandboxesRepository.getLatestBackup;
+    const originalGetReconstructedBackupState =
+      agentSandboxesRepository.getReconstructedBackupState;
+    agentSandboxesRepository.findByIdAndOrg = mock(async () => sleepingSandbox);
+    agentSandboxesRepository.trySetProvisioning = mock(async () => ({
       ...sleepingSandbox,
       status: "provisioning",
-    });
-    const getLatestBackupSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(
-      backup,
-    );
-    const getReconstructedBackupStateSpy = spyOn(
-      agentSandboxesRepository,
-      "getReconstructedBackupState",
-    ).mockResolvedValue({
+    }));
+    agentSandboxesRepository.getLatestBackup = mock(async () => backup);
+    agentSandboxesRepository.getReconstructedBackupState = mock(async () => ({
       memories: [],
       config: {},
       workspaceFiles: {},
-    });
+    }));
     const createForAgentSpy = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
       id: "22222222-2222-4222-8222-222222222222",
       plainKey: "eliza_test_agent_key",
@@ -372,10 +367,10 @@ describe("ElizaSandboxService wake", () => {
         expect.objectContaining({ status: "running" }),
       );
     } finally {
-      findByIdAndOrgSpy.mockRestore();
-      trySetProvisioningSpy.mockRestore();
-      getLatestBackupSpy.mockRestore();
-      getReconstructedBackupStateSpy.mockRestore();
+      agentSandboxesRepository.findByIdAndOrg = originalFindByIdAndOrg;
+      agentSandboxesRepository.trySetProvisioning = originalTrySetProvisioning;
+      agentSandboxesRepository.getLatestBackup = originalGetLatestBackup;
+      agentSandboxesRepository.getReconstructedBackupState = originalGetReconstructedBackupState;
       createForAgentSpy.mockRestore();
       updateSpy.mockRestore();
     }

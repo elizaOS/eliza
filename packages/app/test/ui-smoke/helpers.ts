@@ -382,6 +382,9 @@ export async function openSettingsSection(
   if (!(await locatorVisible(settingsShell, 2_000))) {
     await replayNavigationAfterStartup(page);
   }
+  if (!(await locatorVisible(settingsShell, 2_000))) {
+    await openAppPath(page, "/settings");
+  }
   await expect(settingsShell).toBeVisible({ timeout: READY_CHECK_TIMEOUT_MS });
 
   const hubSectionButton = settingsShell

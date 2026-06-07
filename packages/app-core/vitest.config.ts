@@ -155,6 +155,9 @@ export default defineConfig({
       // Uses Node.js built-in test runner (node:test), not vitest.
       "scripts/android-sms-gateway-template.test.mjs",
       "scripts/stage-android-agent.test.mjs",
+      ...(process.platform === "win32"
+        ? ["scripts/lib/apple-entitlement-audit.test.mjs"]
+        : []),
       ".claude/**",
       "test/app/memory-relationships.real.e2e.test.ts",
       "test/app/qa-checklist.real.e2e.test.ts",
