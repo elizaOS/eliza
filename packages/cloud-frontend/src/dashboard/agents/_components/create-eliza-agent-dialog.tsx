@@ -29,7 +29,7 @@ import {
 import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
-  AGENT_FLAVORS,
+  getAgentFlavorsForEnv,
   getDefaultFlavor,
   getFlavorById,
 } from "@/lib/constants/agent-flavors";
@@ -748,10 +748,11 @@ export function CreateElizaAgentDialog({
                   </div>
                 </div>
 
-                {/* Image selector — only meaningful when Dedicated. AGENT_FLAVORS
-                    holds the Docker image choices ("Eliza Agent" / "(Develop)"
-                    / "Custom Image"); we hide it for Shared because no image
-                    is ever sent in that mode. */}
+                {/* Image selector — only meaningful when Dedicated.
+                    `getAgentFlavorsForEnv()` returns the per-env Docker image
+                    choices ("Eliza Agent" on prod / "(Develop)" on staging /
+                    both on local dev, plus "Custom Image"); we hide it for
+                    Shared because no image is ever sent in that mode. */}
                 {isDedicated && (
                   <div className="space-y-1.5">
                     <Label
@@ -778,7 +779,7 @@ export function CreateElizaAgentDialog({
                         />
                       </SelectTrigger>
                       <SelectContent className="border-white/10 bg-neutral-900">
-                        {AGENT_FLAVORS.map((flavor) => (
+                        {getAgentFlavorsForEnv().map((flavor) => (
                           <SelectItem key={flavor.id} value={flavor.id}>
                             <div className="flex flex-col">
                               <span>{flavor.name}</span>

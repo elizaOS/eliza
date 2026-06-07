@@ -55,6 +55,11 @@ function resolveLocalFirst(
 // listed here is *not* exposed — keeps server-only secrets out of the SPA.
 // Mirrors the `NEXT_PUBLIC_*` vars that consumer code actually reads via
 // `process.env.*` (historical Next.js-shaped call sites).
+//
+// `VITE_ENVIRONMENT` is also exposed automatically on `import.meta.env` by
+// Vite's default `envPrefix`; the entry below additionally inlines it as
+// `process.env.VITE_ENVIRONMENT` so isomorphic code that reads via
+// `process.env.*` works in the SPA too.
 const PUBLIC_ENV_KEYS = [
   "NEXT_PUBLIC_API_URL",
   "NEXT_PUBLIC_APP_URL",
@@ -75,6 +80,7 @@ const PUBLIC_ENV_KEYS = [
   "NEXT_PUBLIC_IS_MOBILE_APP",
   "NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH",
   "NEXT_PUBLIC_ASSETS_CDN_URL",
+  "VITE_ENVIRONMENT",
 ] as const;
 
 // `.env.local` lives at `cloud/` (the monorepo's web root), one level above
