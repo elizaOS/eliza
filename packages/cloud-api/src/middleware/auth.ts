@@ -22,6 +22,7 @@ import { getAuditDispatcher } from "../services/audit-dispatcher-singleton";
 
 const publicPathPrefixes = [
   "/api/health",
+  "/api/i18n/locale",
   "/api/og",
   "/api/openapi.json",
   "/api/eliza",

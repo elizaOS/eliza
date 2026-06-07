@@ -25,6 +25,116 @@ import { authMiddleware } from "./middleware/auth";
 import { initAuditDispatcher } from "./services/audit-dispatcher-singleton";
 import { embeddedStewardHandler } from "./steward/embedded";
 
+/**
+ * Supported UI languages, mirrored from `packages/ui/src/i18n/messages.ts`.
+ * Kept inline because cloud-api must not import the React UI package into the
+ * Workers bundle.
+ */
+type UiLanguage = "en" | "zh-CN" | "ko" | "ja" | "vi" | "tl" | "pt" | "es";
+
+/** ISO 3166-1 alpha-2 country → best-supported UI language. */
+const REGION_LANGUAGE: Record<string, UiLanguage> = {
+  CN: "zh-CN",
+  TW: "zh-CN",
+  HK: "zh-CN",
+  MO: "zh-CN",
+  SG: "zh-CN",
+  KR: "ko",
+  KP: "ko",
+  JP: "ja",
+  VN: "vi",
+  PH: "tl",
+  PT: "pt",
+  BR: "pt",
+  AO: "pt",
+  MZ: "pt",
+  ES: "es",
+  MX: "es",
+  AR: "es",
+  CO: "es",
+  CL: "es",
+  PE: "es",
+  VE: "es",
+  EC: "es",
+  GT: "es",
+  CU: "es",
+  BO: "es",
+  DO: "es",
+  HN: "es",
+  PY: "es",
+  SV: "es",
+  NI: "es",
+  CR: "es",
+  PA: "es",
+  UY: "es",
+  PR: "es",
+};
+
+const SUPPORTED = new Set<string>(Object.values(REGION_LANGUAGE).concat("en"));
+
+function matchSupported(tag: string): UiLanguage | null {
+  if (!tag) return null;
+  if (/^en(-|$)/i.test(tag)) return "en";
+  const lower = tag.toLowerCase();
+  if (SUPPORTED.has(lower)) return lower as UiLanguage;
+  const base = lower.split("-")[0];
+  if (SUPPORTED.has(base)) return base as UiLanguage;
+  return null;
+}
+
+function languageFromAcceptLanguage(header: string | null): UiLanguage | null {
+  if (typeof header !== "string" || !header.trim()) return null;
+  const ranked = header
+    .split(",")
+    .map((part) => {
+      const [tag, ...params] = part.trim().split(";");
+      const q = params
+        .map((p) => p.trim())
+        .find((p) => p.startsWith("q="))
+        ?.slice(2);
+      return { tag: tag.trim(), q: q ? Number.parseFloat(q) : 1 };
+    })
+    .filter((entry) => entry.tag && entry.tag !== "*")
+    .sort((a, b) => b.q - a.q);
+  for (const { tag } of ranked) {
+    const matched = matchSupported(tag);
+    if (matched) return matched;
+  }
+  return null;
+}
+
+function languageFromRegion(country: string | null): UiLanguage | null {
+  if (typeof country !== "string") return null;
+  const code = country.trim().toUpperCase();
+  return code ? (REGION_LANGUAGE[code] ?? null) : null;
+}
+
+function resolveServerLanguage(opts: {
+  acceptLanguage: string | null;
+  country: string | null;
+}): UiLanguage | null {
+  return (
+    languageFromAcceptLanguage(opts.acceptLanguage) ??
+    languageFromRegion(opts.country)
+  );
+}
+
+const COUNTRY_HEADERS = [
+  "cf-ipcountry",
+  "x-vercel-ip-country",
+  "x-appengine-country",
+  "fastly-geo-country",
+  "x-country-code",
+] as const;
+
+function countryFromHeaders(headers: Headers): string | null {
+  for (const name of COUNTRY_HEADERS) {
+    const value = headers.get(name);
+    if (value && value.toUpperCase() !== "XX") return value;
+  }
+  return null;
+}
+
 export function createApp(): Hono<AppEnv> {
   // Initialise the global audit dispatcher (auth_events sink + optional
   // console sink) before any route handlers run. Idempotent — safe to
@@ -180,6 +290,21 @@ export function createApp(): Hono<AppEnv> {
       return handleBlueBubblesWebhook(c);
     }
     await next();
+  });
+
+  // Public language suggestion derived from the CDN IP-geo country header and
+  // `Accept-Language`. Pre-auth — used by the SPA on first visit before any
+  // session exists. Mounted at the edge so every cloud-served frontend gets it
+  // regardless of which backend serves the agent. The path prefix is allowed
+  // in `middleware/auth.ts` `publicPathPrefixes`. The mapping table mirrors
+  // `packages/ui/src/i18n/region.ts` — kept inline (rather than importing
+  // `@elizaos/ui`) because cloud-api is a Workers bundle and must not pull in
+  // the React UI surface.
+  app.get("/api/i18n/locale", (c) => {
+    const acceptLanguage = c.req.header("accept-language") ?? null;
+    const country = countryFromHeaders(c.req.raw.headers);
+    const language = resolveServerLanguage({ acceptLanguage, country });
+    return c.json({ language });
   });
 
   mountRoutes(app);
