@@ -1,0 +1,59 @@
+#cloud-config
+# Tenant Postgres node for Eliza Cloud Apps (Product 2).
+#
+# Stands up ONE self-managed Postgres that holds thousands of per-tenant
+# DATABASE+ROLE (each app gets its own DB + LOGIN role with REVOKE CONNECT FROM
+# PUBLIC — the hard isolation boundary). The per-tenant DDL is run at deploy time
+# by the node daemon (DirectPgExecutor over the admin DSN); this only stands up
+# the cluster + the admin superuser + locks the network surface.
+#
+# Reachable ONLY on the private apps network (the firewall opens no public 5432).
+#
+# STAN: tune shared_buffers/max_connections for thousands of small DBs; wire
+# volume-snapshot backups; consider scram-sha-256 + per-shard nodes as
+# database_count grows.
+
+hostname: ${hostname}
+manage_etc_hosts: true
+
+users:
+  - name: deploy
+    groups: sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: true
+    ssh_authorized_keys:
+%{ for key in operator_ssh_keys ~}
+      - ${key}
+%{ endfor ~}
+
+package_update: true
+packages:
+  - postgresql
+  - postgresql-contrib
+  - jq
+
+runcmd:
+  # 1. Mount the data volume at the Postgres data dir (survives node rebuilds).
+  - export VOL=$(ls /dev/disk/by-id/scsi-0HC_Volume_* 2>/dev/null | head -1)
+  - if [ -n "$VOL" ] && ! blkid "$VOL" >/dev/null 2>&1; then mkfs.ext4 -F "$VOL"; fi
+  - systemctl stop postgresql || true
+  - mkdir -p /mnt/tenant-pgdata
+  - if [ -n "$VOL" ]; then echo "$VOL /mnt/tenant-pgdata ext4 defaults,nofail 0 2" >> /etc/fstab && mount -a; fi
+  - export PGVER=$(ls /etc/postgresql | head -1)
+  - export PGDATA="/mnt/tenant-pgdata/$PGVER/main"
+  - if [ ! -d "$PGDATA" ]; then mkdir -p "$PGDATA" && chown -R postgres:postgres /mnt/tenant-pgdata && sudo -u postgres /usr/lib/postgresql/$PGVER/bin/initdb -D "$PGDATA"; fi
+  # 2. Point the cluster config at the volume + listen on all ifaces (the
+  #    firewall + pg_hba are the access control; no public 5432 rule exists).
+  - sed -i "s|^data_directory.*|data_directory = '$PGDATA'|" /etc/postgresql/$PGVER/main/postgresql.conf
+  - sed -i "s|^#listen_addresses.*|listen_addresses = '*'|" /etc/postgresql/$PGVER/main/postgresql.conf
+  # 3. Allow the private apps subnet to connect (scram); deny everything else.
+  - echo "hostssl all all 10.30.0.0/16 scram-sha-256" >> /etc/postgresql/$PGVER/main/pg_hba.conf
+  - echo "host    all all 10.30.0.0/16 scram-sha-256" >> /etc/postgresql/$PGVER/main/pg_hba.conf
+  - sed -i "s|^#password_encryption.*|password_encryption = scram-sha-256|" /etc/postgresql/$PGVER/main/postgresql.conf
+  - systemctl enable postgresql && systemctl start postgresql
+  # 4. Set the admin (postgres) superuser password the daemon's admin DSN uses.
+  - sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD '${admin_password}';"
+  # STAN: generate a server TLS cert for hostssl (self-signed or internal CA);
+  # until then switch the pg_hba lines above to 'host' and the admin DSN to
+  # sslmode=disable on the private net.
