@@ -34,8 +34,36 @@ const LEVELS = [
     file: "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.tsx",
   },
   {
-    name: "plugin view lifeops",
-    file: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
+    name: "plugin view focus",
+    file: "plugins/plugin-personal-assistant/src/ui.ts",
+  },
+  {
+    name: "plugin view calendar",
+    file: "plugins/plugin-personal-assistant/src/ui.ts",
+  },
+  {
+    name: "plugin view documents",
+    file: "plugins/plugin-personal-assistant/src/ui.ts",
+  },
+  {
+    name: "plugin view finances",
+    file: "plugins/plugin-personal-assistant/src/ui.ts",
+  },
+  {
+    name: "plugin view goals",
+    file: "plugins/plugin-personal-assistant/src/ui.ts",
+  },
+  {
+    name: "plugin view health",
+    file: "plugins/plugin-personal-assistant/src/ui.ts",
+  },
+  {
+    name: "plugin view inbox",
+    file: "plugins/plugin-personal-assistant/src/ui.ts",
+  },
+  {
+    name: "plugin view todos",
+    file: "plugins/plugin-personal-assistant/src/ui.ts",
   },
   {
     name: "plugin view messages",
