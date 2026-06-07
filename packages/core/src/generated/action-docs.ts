@@ -3570,11 +3570,11 @@ export const allActionsSpec = {
 		{
 			name: "CALENDAR",
 			description:
-				"Owner-facing calendar umbrella action. Op-based dispatch over the unified Google + Apple calendar feed: read_feed, create_event, update_event, delete_event, find_slots, next_event, describe_event, travel_buffer.",
+				"Owner-facing calendar umbrella action. Action-based dispatch over the unified Google + Apple calendar feed: read_feed, create_event, update_event, delete_event, find_slots, next_event, describe_event, travel_buffer.",
 			parameters: [
 				{
-					name: "op",
-					description: "Which calendar sub-operation to run.",
+					name: "action",
+					description: "Which calendar operation to run.",
 					required: true,
 					schema: {
 						type: "string",
@@ -3589,7 +3589,7 @@ export const allActionsSpec = {
 							"travel_buffer",
 						],
 					},
-					descriptionCompressed: "Which calendar sub-operation to run.",
+					descriptionCompressed: "Which calendar operation to run.",
 				},
 				{
 					name: "eventId",
@@ -3667,7 +3667,7 @@ export const allActionsSpec = {
 					actions: ["CALENDAR"],
 					params: {
 						CALENDAR: {
-							op: "read_feed",
+							action: "read_feed",
 							eventId: "example",
 							startAt: "example",
 							endAt: "example",
@@ -3679,7 +3679,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Owner-facing calendar umbrella action. Op-based dispatch over the unified Google + Apple calendar feed: read_feed, create_event, update_event, delete_event...",
+				"Owner-facing calendar umbrella action. Action-based dispatch over the unified Google + Apple calendar feed: read_feed, create_event, update_event, delete_event...",
 		},
 		{
 			name: "COMPUTER_USE",
@@ -5155,16 +5155,16 @@ export const allActionsSpec = {
 		{
 			name: "INBOX",
 			description:
-				"Unified cross-channel inbox umbrella action. Op-based dispatch: list, triage, reply, snooze, archive, approve. Operates across email, Discord, Telegram, WhatsApp, Slack, X and similar non-SMS channels (Android SMS is handled by plugin-messages).",
+				"Unified cross-channel inbox umbrella action. Action-based dispatch: list, triage, reply, snooze, archive, approve. Operates across email, Discord, Telegram, WhatsApp, Slack, X and similar non-SMS channels (Android SMS is handled by plugin-messages).",
 			parameters: [
 				{
-					name: "op",
-					description: "Which inbox sub-operation to run.",
+					name: "action",
+					description: "Which inbox operation to run.",
 					required: true,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Which inbox sub-operation to run.",
+					descriptionCompressed: "Which inbox operation to run.",
 				},
 				{
 					name: "threadId",
@@ -5245,7 +5245,7 @@ export const allActionsSpec = {
 					actions: ["INBOX"],
 					params: {
 						INBOX: {
-							op: "example",
+							action: "example",
 							threadId: "example",
 							channel: "example",
 							decision: "example",
@@ -5258,7 +5258,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Unified cross-channel inbox umbrella action. Op-based dispatch: list, triage, reply, snooze, archive, approve. Operates across email, Discord, Telegram...",
+				"Unified cross-channel inbox umbrella action. Action-based dispatch: list, triage, reply, snooze, archive, approve. Operates across email, Discord, Telegram...",
 		},
 		{
 			name: "LINEAR",
@@ -6116,8 +6116,8 @@ export const allActionsSpec = {
 				"Owner-facing Docs And Portals umbrella action. Subaction-based dispatch covering signature requests, approval flows, deadline tracking, asset uploads, ID/form collection, and request closure.",
 			parameters: [
 				{
-					name: "subaction",
-					description: "Which OWNER_DOCUMENTS sub-operation to run.",
+					name: "action",
+					description: "Which OWNER_DOCUMENTS operation to run.",
 					required: true,
 					schema: {
 						type: "string",
@@ -6130,7 +6130,7 @@ export const allActionsSpec = {
 							"close_request",
 						],
 					},
-					descriptionCompressed: "Which OWNER_DOCUMENTS sub-operation to run.",
+					descriptionCompressed: "Which OWNER_DOCUMENTS operation to run.",
 				},
 				{
 					name: "requestId",
@@ -6356,13 +6356,13 @@ export const allActionsSpec = {
 				"Owner-facing health umbrella action: surface today's health summary, multi-day trends, per-metric breakdowns, and connector status (Apple Health / Google Fit / Strava / Fitbit / Withings / Oura).",
 			parameters: [
 				{
-					name: "subaction",
-					description: "Which health sub-operation to run.",
+					name: "action",
+					description: "Which health operation to run.",
 					required: true,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Which health sub-operation to run.",
+					descriptionCompressed: "Which health operation to run.",
 				},
 				{
 					name: "metric",
@@ -6401,7 +6401,7 @@ export const allActionsSpec = {
 					actions: ["OWNER_HEALTH"],
 					params: {
 						OWNER_HEALTH: {
-							subaction: "example",
+							action: "example",
 							metric: "example",
 							date: "example",
 							days: 1,
@@ -6561,13 +6561,13 @@ export const allActionsSpec = {
 				"Owner-facing screen-time umbrella action: summaries, daily/weekly breakdowns, per-app / per-website slices, browser activity reports, and time-on-target queries across iOS / Android / desktop signals.",
 			parameters: [
 				{
-					name: "subaction",
-					description: "Which screen-time sub-operation to run.",
+					name: "action",
+					description: "Which screen-time operation to run.",
 					required: true,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Which screen-time sub-operation to run.",
+					descriptionCompressed: "Which screen-time operation to run.",
 				},
 				{
 					name: "source",
@@ -6633,7 +6633,7 @@ export const allActionsSpec = {
 					actions: ["OWNER_SCREENTIME"],
 					params: {
 						OWNER_SCREENTIME: {
-							subaction: "example",
+							action: "example",
 							source: "example",
 							identifier: "example",
 							date: "example",
