@@ -26,7 +26,7 @@ import type http from "node:http";
 import { logger } from "@elizaos/core";
 import { getSensitiveLimiter } from "./auth/sensitive-rate-limit";
 
-const RELAY_TIMEOUT_MS = 5_000;
+const RELAY_TIMEOUT_MS = 15_000;
 const pairingRelayLimiter = getSensitiveLimiter("cloud.pair.relay");
 
 function resolveCloudApiBaseUrl(): string {
