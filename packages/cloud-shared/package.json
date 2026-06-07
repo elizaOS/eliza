@@ -38,6 +38,7 @@
     "@aws-sdk/client-s3": "^3.1039.0",
     "@brighter/storage-adapter-s3": "^1.6.3",
     "@electric-sql/pglite": "^0.4.5",
+    "@electric-sql/pglite-socket": "0.1.6",
     "@elevenlabs/elevenlabs-js": "^2.45.0",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",

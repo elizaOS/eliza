@@ -14,11 +14,8 @@
  */
 
 import { mkdirSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
-
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
-import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
 
 const PORT = Number.parseInt(process.env.PGLITE_PORT ?? "5432", 10);
 const HOST = process.env.PGLITE_HOST ?? "127.0.0.1";
@@ -39,6 +36,13 @@ const tag = "[pglite]";
 if (DATA_DIR) {
   mkdirSync(DATA_DIR, { recursive: true });
 }
+
+const requireFromCwd = createRequire(path.join(process.cwd(), "package.json"));
+const [{ PGlite }, { vector }, { PGLiteSocketServer }] = await Promise.all([
+  import(requireFromCwd.resolve("@electric-sql/pglite")),
+  import(requireFromCwd.resolve("@electric-sql/pglite/vector")),
+  import(requireFromCwd.resolve("@electric-sql/pglite-socket")),
+]);
 
 const db = await PGlite.create({
   dataDir: DATA_DIR,
