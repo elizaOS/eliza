@@ -87,7 +87,15 @@ export function canonicalModelId(model: string, provider?: string | null): strin
   const slashIndex = model.indexOf("/");
   const colonIndex = model.indexOf(":");
   if (colonIndex > 0 && (slashIndex === -1 || colonIndex < slashIndex)) {
-    return model;
+    const prefix = model.slice(0, colonIndex);
+    // Forced-provider keys (cerebras, openrouter, anthropic, openai, etc.) never
+    // contain a dash. A dashed prefix (gpt-oss-120b:nitro) means the model id lost
+    // its provider/ prefix upstream — fall through so the provider gets prepended
+    // and the slash-guarded stripBitRouterModelVariant in candidate-selection.ts
+    // can collapse :nitro / :free / :floor / :online onto the base id.
+    if (!prefix.includes("-")) {
+      return model;
+    }
   }
 
   if (model.includes("/")) {

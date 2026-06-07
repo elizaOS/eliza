@@ -335,6 +335,53 @@ describe("forced provider route pricing ids", () => {
   });
 });
 
+describe("canonicalModelId — OpenRouter routing variants on bare model ids", () => {
+  // PR #8307 added gpt-oss-120b pricing but lookup was missing it because the
+  // canonical id resolution short-circuited on the first colon. Routing-suffix
+  // ids like `gpt-oss-120b:nitro` were treated as forced-provider ids (e.g.
+  // `cerebras:gpt-oss-120b`) and returned unchanged, so the provider prefix
+  // was never prepended and the slash-guarded `:nitro` stripper in
+  // candidate-selection couldn't collapse onto the base id. The dashes-in-prefix
+  // heuristic distinguishes: real provider keys (cerebras, openrouter, anthropic)
+  // never have dashes; a dashed prefix (gpt-oss-120b, claude-3-5-haiku) is a
+  // bare model id that lost its `provider/` segment upstream.
+  test("prepends provider for bare id with routing suffix", () => {
+    expect(canonicalModelId("gpt-oss-120b:nitro", "openai")).toBe(
+      "openai/gpt-oss-120b:nitro",
+    );
+  });
+
+  test("prepends provider for bare id with no suffix", () => {
+    expect(canonicalModelId("gpt-oss-120b", "openai")).toBe(
+      "openai/gpt-oss-120b",
+    );
+  });
+
+  test("leaves already-canonical id unchanged", () => {
+    expect(canonicalModelId("openai/gpt-oss-120b", "openai")).toBe(
+      "openai/gpt-oss-120b",
+    );
+  });
+
+  test("leaves already-canonical id with routing suffix unchanged", () => {
+    expect(canonicalModelId("openai/gpt-oss-120b:nitro", "openai")).toBe(
+      "openai/gpt-oss-120b:nitro",
+    );
+  });
+
+  test("preserves forced-provider id (cerebras has no dash in prefix)", () => {
+    expect(canonicalModelId("cerebras:gpt-oss-120b", "openai")).toBe(
+      "cerebras:gpt-oss-120b",
+    );
+  });
+
+  test("heuristic generalizes to anthropic + :floor on dashed bare id", () => {
+    expect(canonicalModelId("claude-3-5-haiku:floor", "anthropic")).toBe(
+      "anthropic/claude-3-5-haiku:floor",
+    );
+  });
+});
+
 describe("chooseBestCandidatePricingEntry — tie-break when stripped variants conflict", () => {
   function buildCandidate(snapshotId: string, unitPrice: number) {
     return {
