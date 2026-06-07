@@ -84,9 +84,10 @@ jobs:
       # R2 (S3-compatible) state backend creds.
       AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATE_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATE_SECRET_ACCESS_KEY }}
-      # Non-secret inputs threaded as TF_VAR_*.
+      # Non-secret inputs threaded as TF_VAR_*. The zone id is accepted as either
+      # a secret OR a var (operators have set it both ways) — secret wins if present.
       TF_VAR_environment: ${{ github.event.inputs.environment }}
-      TF_VAR_cloudflare_zone_id: ${{ vars.APPS_CLOUDFLARE_ZONE_ID }}
+      TF_VAR_cloudflare_zone_id: ${{ secrets.APPS_CLOUDFLARE_ZONE_ID || vars.APPS_CLOUDFLARE_ZONE_ID }}
       TF_VAR_ssh_public_keys: '["${{ vars.APPS_OPERATOR_SSH_KEY }}"]'
     steps:
       - uses: actions/checkout@v4
@@ -101,7 +102,7 @@ jobs:
           [ -n "$AWS_ACCESS_KEY_ID" ] || { echo "::error::missing repo secret R2_STATE_ACCESS_KEY_ID"; fail=1; }
           [ -n "$AWS_SECRET_ACCESS_KEY" ] || { echo "::error::missing repo secret R2_STATE_SECRET_ACCESS_KEY"; fail=1; }
           [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::missing repo secret CLOUDFLARE_API_TOKEN"; fail=1; }
-          [ -n "$TF_VAR_cloudflare_zone_id" ] || { echo "::error::set vars.APPS_CLOUDFLARE_ZONE_ID on the '${{ github.event.inputs.environment }}' environment"; fail=1; }
+          [ -n "$TF_VAR_cloudflare_zone_id" ] || { echo "::error::set APPS_CLOUDFLARE_ZONE_ID (secret or var) on the '${{ github.event.inputs.environment }}' environment"; fail=1; }
           [ "$TF_VAR_ssh_public_keys" != '[""]' ] || { echo "::error::set vars.APPS_OPERATOR_SSH_KEY on the '${{ github.event.inputs.environment }}' environment"; fail=1; }
           exit $fail
 
