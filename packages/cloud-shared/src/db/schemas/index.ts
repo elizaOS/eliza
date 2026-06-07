@@ -75,6 +75,7 @@ export * from "./secrets";
 export * from "./seo";
 export * from "./service-pricing";
 export * from "./telegram-chats";
+export * from "./tenant-db-clusters";
 export * from "./token-redemptions";
 export * from "./tts-first-line-cache";
 export * from "./twilio-inbound-calls";

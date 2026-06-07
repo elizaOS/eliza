@@ -8,7 +8,6 @@
  * Reference: eliza-cloud/backend/services/container-orchestrator.ts
  */
 
-import { createHash, createHmac } from "node:crypto";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import type { DockerNode } from "../../db/schemas/docker-nodes";
@@ -16,6 +15,7 @@ import { isAgentTokenSigningConfigured, mintAgentToken } from "../auth/agent-tok
 import { containersEnv } from "../config/containers-env";
 import { getAgentBaseDomain } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+import { signStewardMutatingRequest } from "../steward/sign";
 import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 import { logger } from "../utils/logger";
 import { getNodeAutoscaler } from "./containers/node-autoscaler";
@@ -46,7 +46,11 @@ import {
 import { DockerSSHClient } from "./docker-ssh";
 import { headscaleIntegration } from "./headscale-integration";
 import type { SandboxCreateConfig, SandboxHandle, SandboxProvider } from "./sandbox-provider-types";
-import { ensureStewardTenant, resolveStewardTenantCredentials } from "./steward-tenant-config";
+import {
+  ensureStewardTenant,
+  resolveStewardTenantCredentials,
+  type StewardTenantCredentials,
+} from "./steward-tenant-config";
 
 // ---------------------------------------------------------------------------
 // Exported metadata type for strongly-typed provider metadata
@@ -469,73 +473,64 @@ function resolveStewardRequestSigningSecret(apiKey?: string): string | undefined
   return fromList ?? apiKey?.trim() ?? undefined;
 }
 
-function resolveStewardRequestSigningKeyId(): string | undefined {
-  const keyId = getCloudAwareEnv().STEWARD_REQUEST_SIGNING_KEY_ID?.trim();
-  return keyId && keyId.length > 0 ? keyId : undefined;
+// Best-effort `curl -X DELETE` against Steward's `/agents/:id` for cleanup
+// paths (failed container create, missing Headscale registration). Signs the
+// request when STEWARD_REQUEST_SIGNING_SECRET is configured so Steward's
+// authorization-signature middleware accepts it. Without signing the call
+// 401s and the agent record stays around as a ghost, blocking later retries.
+async function buildSignedDeleteAgentCurl(
+  agentId: string,
+  stewardTenant: StewardTenantCredentials,
+): Promise<string> {
+  const path = `/agents/${encodeURIComponent(agentId)}`;
+  const url = `${resolveStewardHostUrl()}${path}`;
+  const signingSecret = resolveStewardRequestSigningSecret(stewardTenant.apiKey);
+  const flags = [
+    `-H ${shellQuote(`X-Steward-Tenant: ${stewardTenant.tenantId}`)}`,
+    ...(stewardTenant.apiKey ? [`-H ${shellQuote(`X-Steward-Key: ${stewardTenant.apiKey}`)}`] : []),
+  ];
+  if (signingSecret !== undefined) {
+    const signed = await buildStewardSignedHeaders({
+      method: "DELETE",
+      path,
+      body: "",
+      tenantId: stewardTenant.tenantId,
+      ...(stewardTenant.apiKey === undefined ? {} : { apiKey: stewardTenant.apiKey }),
+      signingSecret,
+    });
+    for (const [name, value] of Object.entries(signed)) {
+      flags.push(`-H ${shellQuote(`${name}: ${value}`)}`);
+    }
+  }
+  return `curl -s -X DELETE ${flags.join(" ")} ${shellQuote(url)} || true`;
 }
 
-function sha256TextHex(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
-}
-
-function buildStewardCanonicalRequest(input: {
+async function buildStewardSignedHeaders(params: {
   method: string;
-  path: string;
-  tenantId: string;
-  apiKey: string;
-  timestamp: string;
-  expiresAt: string;
-  idempotencyKey: string;
-  body: string;
-}): string {
-  return [
-    "steward-request-signature-v1",
-    input.method.toUpperCase(),
-    input.path,
-    input.tenantId,
-    sha256TextHex(""),
-    sha256TextHex(input.apiKey),
-    sha256TextHex(""),
-    sha256TextHex(""),
-    sha256TextHex(""),
-    sha256TextHex(""),
-    sha256TextHex(""),
-    input.timestamp,
-    input.expiresAt,
-    input.idempotencyKey,
-    sha256TextHex(input.body),
-  ].join("\n");
-}
-
-function buildStewardSignedHeaders(params: {
   path: string;
   body: string;
   tenantId: string;
   apiKey?: string;
   signingSecret: string;
-}): Record<string, string> {
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const expiresAt = (Number(timestamp) + 300).toString();
-  const idempotencyKey = `eliza-cloud-${crypto.randomUUID()}`;
-  const signingKeyId = resolveStewardRequestSigningKeyId();
-  const canonical = buildStewardCanonicalRequest({
-    method: "POST",
-    path: params.path,
-    tenantId: params.tenantId,
-    apiKey: params.apiKey ?? "",
-    timestamp,
-    expiresAt,
-    idempotencyKey,
-    body: params.body,
+}): Promise<Record<string, string>> {
+  const headers = new Headers();
+  headers.set("X-Steward-Tenant", params.tenantId);
+  if (params.apiKey) headers.set("X-Steward-Key", params.apiKey);
+  await signStewardMutatingRequest(
+    params.signingSecret,
+    params.method,
+    params.path,
+    headers,
+    new TextEncoder().encode(params.body),
+  );
+  const out: Record<string, string> = {};
+  headers.forEach((value, name) => {
+    // Strip tenant/key — they're set separately by the caller (Python shim
+    // or curl flag) and we don't want to double-inject them.
+    if (name === "x-steward-tenant" || name === "x-steward-key") return;
+    out[name] = value;
   });
-  const signature = createHmac("sha256", params.signingSecret).update(canonical).digest("hex");
-  return {
-    "X-Steward-Request-Timestamp": timestamp,
-    "X-Steward-Request-Expires-At": expiresAt,
-    "Idempotency-Key": idempotencyKey,
-    "X-Steward-Signature": `v1=${signature}`,
-    ...(signingKeyId === undefined ? {} : { "X-Steward-Signing-Key-Id": signingKeyId }),
-  };
+  return out;
 }
 
 async function registerAgentWithSteward(
@@ -552,7 +547,8 @@ async function registerAgentWithSteward(
   const agentSignedHeaders =
     signingSecret === undefined
       ? {}
-      : buildStewardSignedHeaders({
+      : await buildStewardSignedHeaders({
+          method: "POST",
           path: "/agents",
           body: agentBody,
           tenantId,
@@ -562,7 +558,8 @@ async function registerAgentWithSteward(
   const tokenSignedHeaders =
     signingSecret === undefined
       ? {}
-      : buildStewardSignedHeaders({
+      : await buildStewardSignedHeaders({
+          method: "POST",
           path: `/agents/${encodeURIComponent(agentId)}/token`,
           body: tokenBody,
           tenantId,
@@ -1165,7 +1162,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       // container failed to start, so we try to clean up the Steward record.
       try {
         await ssh.exec(
-          `curl -s -X DELETE -H ${shellQuote(`X-Steward-Tenant: ${stewardTenant.tenantId}`)} ${stewardTenant.apiKey ? `-H ${shellQuote(`X-Steward-Key: ${stewardTenant.apiKey}`)}` : ""} ${shellQuote(`${resolveStewardHostUrl()}/agents/${agentId}`)} || true`,
+          await buildSignedDeleteAgentCurl(agentId, stewardTenant),
           DOCKER_CMD_TIMEOUT_MS,
         );
         logger.info(`[docker-sandbox] Cleaned up Steward agent ${agentId} after container failure`);
@@ -1240,10 +1237,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         nodeId,
       });
       await ssh
-        .exec(
-          `curl -s -X DELETE -H ${shellQuote(`X-Steward-Tenant: ${stewardTenant.tenantId}`)} ${stewardTenant.apiKey ? `-H ${shellQuote(`X-Steward-Key: ${stewardTenant.apiKey}`)}` : ""} ${shellQuote(`${resolveStewardHostUrl()}/agents/${agentId}`)} || true`,
-          DOCKER_CMD_TIMEOUT_MS,
-        )
+        .exec(await buildSignedDeleteAgentCurl(agentId, stewardTenant), DOCKER_CMD_TIMEOUT_MS)
         .then(() => {
           logger.info(
             `[docker-sandbox] Cleaned up Steward agent ${agentId} after missing Headscale registration`,

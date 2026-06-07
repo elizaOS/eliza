@@ -1,16 +1,17 @@
 /**
  * Steward request-signing helper for callers that bypass the `/steward/*`
- * proxy in `bootstrap-app.ts` (currently the OAuth nonce-exchange route, which
- * forwards straight to upstream Steward so it can pin the tenant per-env).
+ * proxy in cloud-api's `bootstrap-app.ts` and talk to upstream Steward
+ * directly: the OAuth nonce-exchange route, the steward-refresh bypass, and
+ * the provisioning daemon's agent registration / cleanup calls.
  *
  * Steward's `authorization-signature` middleware
  * (Steward-Fi/steward: packages/api/src/middleware/authorization-signature.ts)
- * is the AUTHORITATIVE definition of the canonical request. `embedded.ts`
- * mirrors it for the proxy path; this module mirrors it for the direct path.
- * All copies MUST stay byte-for-byte in lockstep — if upstream adds, removes,
- * or reorders a header the canonical hashes, update every copy together or
- * signed requests start returning 401. Keep this list identical to
- * `buildStewardCanonicalRequest` in `embedded.ts`.
+ * is the AUTHORITATIVE definition of the canonical request. cloud-api's
+ * `embedded.ts` mirrors it for the proxy path; this module mirrors it for
+ * every direct-path caller. All copies MUST stay byte-for-byte in lockstep —
+ * if upstream adds, removes, or reorders a header the canonical hashes,
+ * update every copy together or signed requests start returning 401. Keep
+ * this list identical to `buildStewardCanonicalRequest` in `embedded.ts`.
  */
 
 // Matches embedded.ts: a short freshness window for the X-Steward-Request-*
@@ -42,11 +43,7 @@ async function hmacSha256Hex(secret: string, message: string): Promise<string> {
     false,
     ["sign"],
   );
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(message),
-  );
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
   return bytesToHex(new Uint8Array(signature));
 }
 
@@ -64,18 +61,10 @@ export async function buildStewardCanonicalRequest(
   const bodyHash = await sha256Hex(body);
   const authHash = await sha256TextHex(headers.get("authorization") ?? "");
   const apiKeyHash = await sha256TextHex(headers.get("x-steward-key") ?? "");
-  const platformKeyHash = await sha256TextHex(
-    headers.get("x-steward-platform-key") ?? "",
-  );
-  const signerIdHash = await sha256TextHex(
-    headers.get("x-steward-signer-id") ?? "",
-  );
-  const signerSecretHash = await sha256TextHex(
-    headers.get("x-steward-signer-secret") ?? "",
-  );
-  const quorumIdHash = await sha256TextHex(
-    headers.get("x-steward-key-quorum-id") ?? "",
-  );
+  const platformKeyHash = await sha256TextHex(headers.get("x-steward-platform-key") ?? "");
+  const signerIdHash = await sha256TextHex(headers.get("x-steward-signer-id") ?? "");
+  const signerSecretHash = await sha256TextHex(headers.get("x-steward-signer-secret") ?? "");
+  const quorumIdHash = await sha256TextHex(headers.get("x-steward-key-quorum-id") ?? "");
   const quorumCredentialsHash = await sha256TextHex(
     headers.get("x-steward-key-quorum-credentials") ?? "",
   );
@@ -121,12 +110,7 @@ export async function signStewardMutatingRequest(
   if (!headers.get("idempotency-key")) {
     headers.set("idempotency-key", crypto.randomUUID());
   }
-  const canonical = await buildStewardCanonicalRequest(
-    method,
-    pathAndSearch,
-    headers,
-    body,
-  );
+  const canonical = await buildStewardCanonicalRequest(method, pathAndSearch, headers, body);
   const signature = await hmacSha256Hex(secret, canonical);
   headers.set("x-steward-signature", `v1=${signature}`);
 }
