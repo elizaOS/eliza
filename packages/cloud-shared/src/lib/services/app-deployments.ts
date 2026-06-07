@@ -17,6 +17,7 @@ import {
   deploymentIdFor,
   publicStatusFor,
 } from "./app-deployments-helpers";
+import type { AppDeployRunner } from "./app-deploy-orchestrator";
 import { appsService } from "./apps";
 
 export type { DeploymentStatus } from "./app-deployments-helpers";
@@ -52,6 +53,17 @@ export interface DeploymentRecord {
 }
 
 export class AppDeploymentsService {
+  private readonly deployRunner?: AppDeployRunner;
+
+  /**
+   * @param deployRunner When wired (Apps / Product 2), a deploy provisions a
+   *   real isolated container after the app is marked `building`. When omitted,
+   *   `createDeployment` keeps its legacy behavior (status flip only).
+   */
+  constructor(deployRunner?: AppDeployRunner) {
+    this.deployRunner = deployRunner;
+  }
+
   /**
    * Mark the app as building and stamp `last_deployed_at`.
    *
@@ -80,6 +92,23 @@ export class AppDeploymentsService {
     });
     if (!updated) {
       throw new Error("Failed to record deployment start");
+    }
+
+    // Apps lane (Product 2): if the real deploy backend is wired, kick off the
+    // isolated container provision. Best-effort — on failure mark the app
+    // errored so the caller's status poll reflects it. No-op (legacy stub
+    // behavior) when no runner is injected.
+    if (this.deployRunner) {
+      try {
+        await this.deployRunner.run(input.appId);
+      } catch (error) {
+        logger.error("[AppDeployments] deploy run failed", {
+          appId: input.appId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        await appsService.update(input.appId, { deployment_status: "failed" });
+        throw error;
+      }
     }
 
     logger.info("[AppDeployments] deployment queued", {

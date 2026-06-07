@@ -51,6 +51,16 @@ export interface DeployAppResult {
 }
 
 /**
+ * Seam the deploy route/service calls to kick off the real provision for a
+ * queued app deploy. The concrete runner (wired with the apps repo, image
+ * resolution, and {@link deployApp}'s deps) lives at the integration boundary;
+ * `AppDeploymentsService` invokes it after marking the app `building`.
+ */
+export interface AppDeployRunner {
+  run(appId: string): Promise<void>;
+}
+
+/**
  * Deploy an app container. Order matters: the DB DSN must exist before the
  * container row is created (the row carries it), and the row must exist before
  * the provision job can reference it.
