@@ -25,7 +25,11 @@
 
 import { logger } from "../utils/logger";
 import { setAppDeployRunner } from "./app-deploy-job-service";
-import { makeNodeAppDeployRunner } from "./app-deploy-runner";
+import {
+  type DefaultAppDeployRunner,
+  makeDirectAppDeployRunner,
+  makeNodeAppDeployRunner,
+} from "./app-deploy-runner";
 import { AppImageBuilder, type BuildExec } from "./app-image-builder";
 import { makeBuildFromRepoResolver } from "./app-image-resolver";
 import { buildContainerExecutorDeps } from "./container-executor-deps";
@@ -51,7 +55,6 @@ export interface AppsDeployBackendConfig {
  * is processed.
  */
 export function configureAppsDeployBackend(config: AppsDeployBackendConfig): void {
-  const userDatabaseService = new UserDatabaseService(makeTenantDbProvisioning());
   const builder = new AppImageBuilder({ exec: config.buildExec });
   const resolveImage = makeBuildFromRepoResolver({
     builder,
@@ -59,12 +62,30 @@ export function configureAppsDeployBackend(config: AppsDeployBackendConfig): voi
     dockerfile: config.dockerfile,
   });
 
-  const runner = makeNodeAppDeployRunner({
-    userDatabaseService,
-    jobsWriter: containerJobsWriter,
-    resolveImage,
-    port: config.port,
-  });
+  // ENCRYPTION-FREE path (env-sourced cluster admin DSN): when
+  // APPS_TENANT_ADMIN_DSN is set, the daemon needs no SECRETS_MASTER_KEY — the
+  // cluster admin DSN comes from env (passthrough decrypt) and the per-tenant DB
+  // is provisioned directly (no encrypted app_databases write). Otherwise use the
+  // standard encrypted path via UserDatabaseService.
+  const adminDsnFromEnv = process.env.APPS_TENANT_ADMIN_DSN;
+  let runner: DefaultAppDeployRunner;
+  if (adminDsnFromEnv) {
+    const provisioning = makeTenantDbProvisioning({ decrypt: async () => adminDsnFromEnv });
+    runner = makeDirectAppDeployRunner({
+      tenantDbProvisioning: provisioning,
+      jobsWriter: containerJobsWriter,
+      resolveImage,
+      port: config.port,
+    });
+  } else {
+    const userDatabaseService = new UserDatabaseService(makeTenantDbProvisioning());
+    runner = makeNodeAppDeployRunner({
+      userDatabaseService,
+      jobsWriter: containerJobsWriter,
+      resolveImage,
+      port: config.port,
+    });
+  }
 
   // Daemon runs APP_DEPLOY jobs (enqueued by the Worker) via this runner, and
   // CONTAINER_* jobs via the executor deps. createDeployment itself is never
@@ -75,5 +96,6 @@ export function configureAppsDeployBackend(config: AppsDeployBackendConfig): voi
   logger.info("[apps-deploy-backend] armed", {
     registry: config.registry,
     port: config.port ?? 3000,
+    mode: adminDsnFromEnv ? "env-sourced (no field-encryption)" : "encrypted",
   });
 }
