@@ -27,24 +27,22 @@ describe("cloudflareRegistrarService production stub guard", () => {
     process.env.ENVIRONMENT = "production";
     process.env.ELIZA_CF_REGISTRAR_DEV_STUB = "1";
 
-    await expect(
-      cloudflareRegistrarService.checkAvailability("guard-example.com"),
-    ).rejects.toThrow(/production deployment/i);
-    await expect(
-      cloudflareRegistrarService.registerDomain("guard-example.com"),
-    ).rejects.toThrow(/production deployment/i);
+    await expect(cloudflareRegistrarService.checkAvailability("guard-example.com")).rejects.toThrow(
+      /production deployment/i,
+    );
+    await expect(cloudflareRegistrarService.registerDomain("guard-example.com")).rejects.toThrow(
+      /production deployment/i,
+    );
   });
 
   it("still serves the stub outside production (dev/test)", async () => {
     process.env.ENVIRONMENT = "development";
     process.env.ELIZA_CF_REGISTRAR_DEV_STUB = "1";
 
-    const availability =
-      await cloudflareRegistrarService.checkAvailability("guard-example.com");
+    const availability = await cloudflareRegistrarService.checkAvailability("guard-example.com");
     expect(availability.available).toBe(true);
 
-    const registration =
-      await cloudflareRegistrarService.registerDomain("guard-example.com");
+    const registration = await cloudflareRegistrarService.registerDomain("guard-example.com");
     expect(registration.registrationId).toContain("stub-reg-");
   });
 });
