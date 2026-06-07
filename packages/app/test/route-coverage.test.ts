@@ -68,6 +68,7 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-contacts/src/plugin.ts",
   "plugins/plugin-hyperliquid-app/src/plugin.ts",
   "plugins/plugin-messages/src/plugin.ts",
+  "plugins/plugin-personal-assistant/src/plugin.ts",
   "plugins/app-model-tester/src/plugin.ts",
   "plugins/plugin-blocker/src/plugin.ts",
   "plugins/plugin-calendar/src/plugin.ts",
@@ -145,7 +146,8 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-hyperliquid-app":
     "plugins/plugin-hyperliquid-app/src/plugin.ts",
   "@elizaos/plugin-hyperscape": "plugins/plugin-hyperscape/src/index.ts",
-  "@elizaos/plugin-personal-assistant": null,
+  "@elizaos/plugin-personal-assistant":
+    "plugins/plugin-personal-assistant/src/plugin.ts",
   "@elizaos/plugin-messages/register": "plugins/plugin-messages/src/plugin.ts",
   "@elizaos/plugin-phone": "plugins/plugin-phone/src/plugin.ts",
   "@elizaos/plugin-phone/register": "plugins/plugin-phone/src/plugin.ts",
@@ -193,6 +195,12 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     id: "messages",
     viewType: "xr",
     path: "/messages",
+  },
+  {
+    manifestPath: "plugins/plugin-personal-assistant/src/plugin.ts",
+    id: "lifeops",
+    viewType: "xr",
+    path: "/lifeops",
   },
   {
     manifestPath: "plugins/app-model-tester/src/plugin.ts",

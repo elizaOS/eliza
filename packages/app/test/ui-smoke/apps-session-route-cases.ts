@@ -256,6 +256,7 @@ const managerVisibleViewTileCases = [
   { viewId: "hyperliquid", path: "/hyperliquid" },
   { viewId: "hyperscape", path: "/hyperscape" },
   { viewId: "inbox", path: "/inbox" },
+  { viewId: "lifeops", path: "/lifeops" },
   { viewId: "messages", path: "/messages" },
   { viewId: "model-tester", path: "/model-tester" },
   { viewId: "orchestrator", path: "/orchestrator" },
