@@ -11,13 +11,13 @@
  * becomes the integration boundary — callers will not need to change.
  */
 import { logger } from "../utils/logger";
+import type { AppDeployRunner } from "./app-deploy-orchestrator";
 import {
   assertDeployable,
   type DeploymentStatus,
   deploymentIdFor,
   publicStatusFor,
 } from "./app-deployments-helpers";
-import type { AppDeployRunner } from "./app-deploy-orchestrator";
 import { appsService } from "./apps";
 
 export type { DeploymentStatus } from "./app-deployments-helpers";
@@ -53,7 +53,7 @@ export interface DeploymentRecord {
 }
 
 export class AppDeploymentsService {
-  private readonly deployRunner?: AppDeployRunner;
+  private deployRunner?: AppDeployRunner;
 
   /**
    * @param deployRunner When wired (Apps / Product 2), a deploy provisions a
@@ -62,6 +62,16 @@ export class AppDeploymentsService {
    */
   constructor(deployRunner?: AppDeployRunner) {
     this.deployRunner = deployRunner;
+  }
+
+  /**
+   * Runtime-inject the deploy backend (Apps / Product 2). Used by the node boot
+   * composer (`configureAppsDeployBackend`) so the singleton this Worker/daemon
+   * shares can be armed without a module-load-time `pg`/SSH dependency. Calling
+   * with the same runner is idempotent; legacy behavior holds until it's set.
+   */
+  setDeployRunner(runner: AppDeployRunner): void {
+    this.deployRunner = runner;
   }
 
   /**

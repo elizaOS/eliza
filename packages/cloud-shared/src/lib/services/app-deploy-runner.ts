@@ -78,6 +78,8 @@ export interface AppDeployRunnerDeps {
     id: string;
     name: string;
     metadata: Record<string, unknown>;
+    /** The app's git repo (apps.github_repo) — the build pipeline's context. */
+    repoUrl?: string;
   }) => Promise<string | undefined> | string | undefined;
   /** App listen port. Default 3000. */
   port?: number;
@@ -104,7 +106,7 @@ export function toNewContainer(row: NewAppContainerRow): NewContainer {
 
 async function resolveImageRef(
   deps: AppDeployRunnerDeps,
-  app: { id: string; name: string; metadata: Record<string, unknown> },
+  app: { id: string; name: string; metadata: Record<string, unknown>; repoUrl?: string },
 ): Promise<string> {
   const fromResolver = deps.resolveImage ? await deps.resolveImage(app) : undefined;
   const fromMetadata =
@@ -142,6 +144,7 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
       id: app.id,
       name: app.name,
       metadata: (app.metadata as Record<string, unknown>) ?? {},
+      repoUrl: app.github_repo ?? undefined,
     });
     const containerName = containerNameForApp(appId);
 
