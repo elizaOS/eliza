@@ -50,6 +50,7 @@ import {
   deployApp,
   type NewAppContainerRow,
 } from "./app-deploy-orchestrator";
+import { deriveAppPublicUrl } from "./app-url";
 import { appsService } from "./apps";
 import { ContainerJobEnqueuer, type ContainerJobsWriter } from "./container-job-service";
 import type { UserDatabaseService } from "./user-database";
@@ -164,8 +165,13 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
         // Re-read for the freshest metadata before merging containerId in.
         const current = await appsService.getById(id);
         const existingMeta = (current?.metadata as Record<string, unknown>) ?? {};
+        // The public URL is deterministic from the container id (same ingress
+        // derivation as the agent path), so the deploy-status poll can surface
+        // it immediately. Skipped when no public base domain is configured.
+        const endpoint = deriveAppPublicUrl(containerId);
         await appsService.update(id, {
           metadata: { ...existingMeta, containerId },
+          ...(endpoint ? { production_url: endpoint.url } : {}),
         });
       },
     };

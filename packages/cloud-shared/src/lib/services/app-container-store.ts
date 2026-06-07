@@ -42,6 +42,7 @@ import { dbRead } from "../../db/helpers";
 import { containersRepository } from "../../db/repositories/containers";
 import { containers } from "../../db/schemas/containers";
 import { logger } from "../utils/logger";
+import { deriveAppPublicUrl } from "./app-url";
 import type { AppContainerRow, AppContainerStore } from "./container-job-executors";
 
 /** The `containers` columns the executor's view projects from (structural). */
@@ -129,12 +130,18 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
     // schema), preserving anything already there (e.g. appId).
     const nextMetadata = mergeHostPlacementMetadata(row.metadata, info);
 
-    // Two writes: status (id-scoped) + metadata/last_deployed_at (org-scoped
+    // Stamp the app's public URL via the SAME ingress hostname derivation the
+    // agent path uses (reused, not rebuilt) so the running app is reachable at
+    // a real URL. Skipped when no public base domain is configured (local dev).
+    const endpoint = deriveAppPublicUrl(containerId);
+
+    // Two writes: status (id-scoped) + metadata/url/last_deployed_at (org-scoped
     // update, which is the only metadata-writing surface the repo exposes).
     await containersRepository.updateStatus(containerId, "running");
     await containersRepository.update(containerId, row.organization_id, {
       metadata: nextMetadata,
       last_deployed_at: new Date(),
+      ...(endpoint ? { public_hostname: endpoint.hostname, load_balancer_url: endpoint.url } : {}),
     });
   }
 
