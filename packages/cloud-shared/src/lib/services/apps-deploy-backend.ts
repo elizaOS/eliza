@@ -26,6 +26,7 @@
 import { logger } from "../utils/logger";
 import { setAppDeployRunner } from "./app-deploy-job-service";
 import {
+  type AppDeployRunnerDeps,
   type DefaultAppDeployRunner,
   makeDirectAppDeployRunner,
   makeNodeAppDeployRunner,
@@ -39,11 +40,18 @@ import { makeTenantDbProvisioning } from "./tenant-db/make-tenant-db-provisionin
 import { UserDatabaseService } from "./user-database";
 
 export interface AppsDeployBackendConfig {
-  /** Registry that app images are built + pushed to (e.g. `ghcr.io/elizaos`). */
-  registry: string;
-  /** Exec seam for the image builder — SSH to a builder node in production. */
-  buildExec: BuildExec;
-  /** Dockerfile path within each app's repo. Default: `Dockerfile`. */
+  /** Registry that app images are built + pushed to (e.g. `ghcr.io/elizaos`). Required only when `buildExec` is set. */
+  registry?: string;
+  /**
+   * Exec seam for the image builder — SSH to a builder node. When omitted, the
+   * deploy uses the PREBUILT-image path: the runner resolves the image from
+   * `app.metadata.imageTag` then `APP_DEFAULT_IMAGE`, with no build step. This is
+   * the path proven on staging (a pushed/known image), so the daemon can be armed
+   * without standing up a builder; pass `buildExec` (+ `registry`) to enable
+   * build-from-repo.
+   */
+  buildExec?: BuildExec;
+  /** Dockerfile path within each app's repo. Default: `Dockerfile`. Only used with `buildExec`. */
   dockerfile?: string;
   /** App listen port. Default 3000. */
   port?: number;
@@ -55,12 +63,20 @@ export interface AppsDeployBackendConfig {
  * is processed.
  */
 export function configureAppsDeployBackend(config: AppsDeployBackendConfig): void {
-  const builder = new AppImageBuilder({ exec: config.buildExec });
-  const resolveImage = makeBuildFromRepoResolver({
-    builder,
-    registry: config.registry,
-    dockerfile: config.dockerfile,
-  });
+  // Build-from-repo resolver only when a builder exec is provided; otherwise the
+  // runner falls back to app.metadata.imageTag / APP_DEFAULT_IMAGE (prebuilt).
+  let resolveImage: AppDeployRunnerDeps["resolveImage"] | undefined;
+  if (config.buildExec) {
+    if (!config.registry) {
+      throw new Error("[apps-deploy-backend] registry is required when buildExec is set");
+    }
+    const builder = new AppImageBuilder({ exec: config.buildExec });
+    resolveImage = makeBuildFromRepoResolver({
+      builder,
+      registry: config.registry,
+      dockerfile: config.dockerfile,
+    });
+  }
 
   // ENCRYPTION-FREE path (env-sourced cluster admin DSN): when
   // APPS_TENANT_ADMIN_DSN is set, the daemon needs no SECRETS_MASTER_KEY — the
@@ -94,8 +110,9 @@ export function configureAppsDeployBackend(config: AppsDeployBackendConfig): voi
   setContainerExecutorDeps(buildContainerExecutorDeps);
 
   logger.info("[apps-deploy-backend] armed", {
-    registry: config.registry,
+    registry: config.registry ?? null,
     port: config.port ?? 3000,
     mode: adminDsnFromEnv ? "env-sourced (no field-encryption)" : "encrypted",
+    images: config.buildExec ? "build-from-repo" : "prebuilt (imageTag/APP_DEFAULT_IMAGE)",
   });
 }
