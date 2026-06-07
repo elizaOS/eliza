@@ -115,7 +115,11 @@ declare module "@elizaos/app-lifeops" {
 }
 
 declare module "@elizaos/plugin-personal-assistant" {
-  export * from "@elizaos/app-lifeops";
+  export const AppBlockerSettingsCard: ComponentType<AppBlockerSettingsCardProps>;
+  export const WebsiteBlockerSettingsCard: ComponentType<WebsiteBlockerSettingsCardProps>;
+  export function dispatchQueuedLifeOpsGithubCallbackFromUrl(
+    url: string,
+  ): boolean;
 }
 
 declare module "@elizaos/app-phone" {

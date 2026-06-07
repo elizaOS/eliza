@@ -49,6 +49,13 @@ async function routeFirstRunIncomplete(page: Page): Promise<void> {
   });
 }
 
+async function hasDetailedFirstRunShell(page: Page): Promise<boolean> {
+  return page
+    .getByTestId("first-run-shell")
+    .isVisible({ timeout: 500 })
+    .catch(() => false);
+}
+
 test("first-run onboarding renders without a render loop and lets the runtime be chosen", async ({
   page,
 }) => {
@@ -64,6 +71,22 @@ test("first-run onboarding renders without a render loop and lets the runtime be
     .getByTestId("first-run-shell")
     .or(page.getByTestId("onboarding-toast"));
   await expect(shell).toBeVisible({ timeout: 20_000 });
+
+  if (!(await hasDetailedFirstRunShell(page))) {
+    const toast = page.getByTestId("onboarding-toast");
+    await expect(toast).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Tap to speak" }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Connect" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Eliza Cloud" })).toHaveCount(
+      0,
+    );
+    await page.waitForTimeout(4_000);
+    await expectNoRenderTelemetryErrors(page, "compact first-run onboarding");
+    await expect(toast).toBeVisible();
+    return;
+  }
 
   // The typed prompt reveals the runtime cards. Cloud is the recommended
   // resting choice and is always offered. The Local and Remote cards only

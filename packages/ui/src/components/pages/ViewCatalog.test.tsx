@@ -225,7 +225,7 @@ describe("ViewCatalog", () => {
     expect(screen.queryByText("Terminal TUI")).toBeNull();
   });
 
-  it("renders cards image-forward: real hero as image, placeholder as icon, no description/tags", () => {
+  it("renders cards image-forward with description and scan metadata", () => {
     getActiveViewModalityMock.mockReturnValue("gui");
     useAvailableViewsMock.mockReturnValue({
       views: [
@@ -234,7 +234,7 @@ describe("ViewCatalog", () => {
           path: "/apps/withhero",
           heroImageUrl: "/api/views/withhero/hero",
           hasHeroImage: true,
-          description: "hidden description",
+          description: "Visible description",
           tags: ["hiddentag"],
         }),
         view("nohero", {
@@ -243,7 +243,7 @@ describe("ViewCatalog", () => {
           icon: "Wallet",
           heroImageUrl: "/api/views/nohero/hero",
           hasHeroImage: false,
-          description: "also hidden",
+          description: "Also visible",
         }),
       ],
       loading: false,
@@ -261,9 +261,13 @@ describe("ViewCatalog", () => {
     expect(
       screen.getByTestId("view-card-nohero").querySelector("img"),
     ).toBeNull();
-    expect(screen.queryByText("hidden description")).toBeNull();
-    expect(screen.queryByText("also hidden")).toBeNull();
-    expect(screen.queryByText("hiddentag")).toBeNull();
+    const withHeroCard = screen.getByTestId("view-card-withhero");
+    const noHeroCard = screen.getByTestId("view-card-nohero");
+    expect(withHeroCard.textContent).toContain("Visible description");
+    expect(withHeroCard.textContent).toContain("/apps/withhero");
+    expect(withHeroCard.textContent).toContain("hiddentag");
+    expect(noHeroCard.textContent).toContain("Also visible");
+    expect(noHeroCard.textContent).toContain("/apps/nohero");
   });
 
   it("lists not-loaded catalog apps in a Get section and triggers get() on click", () => {
@@ -305,11 +309,12 @@ describe("ViewCatalog", () => {
 
     render(<ViewCatalog />);
 
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Pin Remote Ledger as desktop tab",
-      }),
-    );
+    const pinButton = screen.getByRole("button", {
+      name: "Pin Remote Ledger as desktop tab",
+    });
+    expect(pinButton.parentElement?.className).toContain("opacity-100");
+
+    fireEvent.click(pinButton);
 
     expect(window.location.pathname).toBe("/views");
     expect(events).toHaveLength(1);
@@ -413,6 +418,32 @@ describe("ViewCatalog", () => {
     );
     expect(screen.getByText("Remote Ledger")).toBeTruthy();
     expect(screen.queryByText("Local Notes")).toBeNull();
+  });
+
+  it("falls back to client-side search when semantic search is unavailable", async () => {
+    vi.useFakeTimers();
+    fetchWithCsrfMock.mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({}),
+    } as Response);
+
+    render(<ViewCatalog />);
+
+    fireEvent.change(screen.getByPlaceholderText("Search views…"), {
+      target: { value: "notes" },
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(250);
+      await Promise.resolve();
+    });
+
+    expect(fetchWithCsrfMock).toHaveBeenCalledWith(
+      "/api/views/search?q=notes&limit=10",
+    );
+    expect(screen.getByText("Local Notes")).toBeTruthy();
+    expect(screen.queryByText("Remote Ledger")).toBeNull();
   });
 
   it("creates, edits, and deletes dynamic views through the rendered management controls", async () => {

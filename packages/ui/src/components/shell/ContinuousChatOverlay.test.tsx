@@ -113,6 +113,22 @@ describe("ContinuousChatOverlay", () => {
     expect(strip.className).toContain("opacity-100");
   });
 
+  it("reveals suggestions when an empty composer receives keyboard focus", () => {
+    render(
+      <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
+    );
+    const strip = screen.getByTestId("chat-suggestions");
+    const firstSuggestion = screen.getByTestId("chat-suggestion-0");
+
+    expect(strip.className).toContain("opacity-0");
+    expect(firstSuggestion.tabIndex).toBe(-1);
+
+    fireEvent.focus(screen.getByLabelText("message"));
+
+    expect(strip.className).toContain("opacity-100");
+    expect(firstSuggestion.tabIndex).toBe(0);
+  });
+
   it("filters whitespace-only messages from the expanded thread", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     fireEvent.focus(screen.getByLabelText("message"));

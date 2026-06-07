@@ -88,6 +88,13 @@ describe("CompactOnboarding", () => {
     expect(connect.className).toContain("bg-transparent");
     expect(connect.className).toContain("border");
     expect(connect.className).toContain("rounded-[2px]");
+    expect(screen.getByTestId("onboarding-status").textContent).toBe("");
+    expect(document.querySelector(".first-run-screen")?.className).toContain(
+      "overflow-y-auto",
+    );
+    expect(
+      document.querySelector(".first-run-screen > div")?.className,
+    ).toContain("min(24rem,44dvh)");
     expect(screen.queryByText("Set up your agent")).toBeNull();
     expect(screen.queryByText("Connect to cloud.")).toBeNull();
     expect(screen.queryByText("Use Local")).toBeNull();

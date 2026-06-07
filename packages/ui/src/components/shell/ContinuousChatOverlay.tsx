@@ -248,6 +248,7 @@ export function ContinuousChatOverlay({
   const [expanded, setExpanded] = React.useState(false);
   const [fullscreen, setFullscreen] = React.useState(false);
   const [hovered, setHovered] = React.useState(false);
+  const [composerFocused, setComposerFocused] = React.useState(false);
   const [whisperVisible, setWhisperVisible] = React.useState(false);
   const [pushToTalkActive, setPushToTalkActive] = React.useState(false);
   const [pendingImages, setPendingImages] = React.useState<ImageAttachment[]>(
@@ -258,7 +259,8 @@ export function ContinuousChatOverlay({
   const inputRef = React.useRef<HTMLInputElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const threadRef = React.useRef<HTMLDivElement>(null);
-  const composerRef = React.useRef<HTMLDivElement>(null);
+  const suggestionsRef = React.useRef<HTMLFieldSetElement>(null);
+  const composerRef = React.useRef<HTMLFieldSetElement>(null);
   const focusThreadRef = React.useRef(false);
   const pushToTalkTimerRef = React.useRef<number | null>(null);
   const pushToTalkActiveRef = React.useRef(false);
@@ -279,13 +281,14 @@ export function ContinuousChatOverlay({
   const responding = phase === "responding";
   const hasDraft = draft.trim().length > 0;
   const hasImages = pendingImages.length > 0;
-  const open = expanded || hovered || fullscreen;
+  const open = expanded || hovered || fullscreen || composerFocused;
   // "Peek" = the non-fullscreen reveal: the chat bubbles + suggestions fade in
-  // when the user hovers the bar OR clicks into the input (expanded), while a
-  // reply is streaming (responding), or briefly when a new line arrives
-  // (whisperVisible). They fade back out otherwise.
+  // when the user hovers the bar, focuses the composer, clicks into a populated
+  // thread (expanded), while a reply is streaming (responding), or briefly when
+  // a new line arrives (whisperVisible). They fade back out otherwise.
   const peek =
-    !fullscreen && (hovered || expanded || responding || whisperVisible);
+    !fullscreen &&
+    (hovered || composerFocused || expanded || responding || whisperVisible);
 
   // The suggestion strip rides along with the bubbles (same peek reveal). The
   // base conditions keep it sensible (ready, nothing typed/attached, not
@@ -468,6 +471,7 @@ export function ContinuousChatOverlay({
     setExpanded(false);
     setFullscreen(false);
     setHovered(false);
+    setComposerFocused(false);
     if (hoverLeaveTimerRef.current !== null) {
       window.clearTimeout(hoverLeaveTimerRef.current);
       hoverLeaveTimerRef.current = null;
@@ -500,6 +504,22 @@ export function ContinuousChatOverlay({
     }, 150);
   }, []);
 
+  const handleAmbientFocus = React.useCallback(() => {
+    setComposerFocused(true);
+  }, []);
+
+  const handleAmbientBlur = React.useCallback(
+    (event: React.FocusEvent<HTMLElement>) => {
+      const next = event.relatedTarget;
+      const staysInOverlay =
+        next instanceof Element &&
+        ((composerRef.current?.contains(next) ?? false) ||
+          (suggestionsRef.current?.contains(next) ?? false));
+      if (!staysInOverlay) setComposerFocused(false);
+    },
+    [],
+  );
+
   // The maximize button: toggle a true full-screen transcript. /chat is the
   // overlay itself (overlay-only), so there is no separate page to navigate to —
   // "full screen" means expanding this same thread to fill the viewport.
@@ -516,24 +536,26 @@ export function ContinuousChatOverlay({
   // Click into the composer → reveal the thread, but keep keyboard focus in the
   // input (don't arm the thread-focus move) so the user can type immediately.
   const expand = React.useCallback(() => {
+    setComposerFocused(true);
     if (!hasThread) return;
     setExpanded(true);
   }, [hasThread]);
 
-  // Close the thread on any pointer-down that isn't on a message bubble or the
-  // composer — i.e. anywhere that isn't the chat itself (the live view behind, a
-  // gap in the thread, the backdrop). The overlay root is pointer-events-none,
-  // so a capture-phase document listener still catches clicks that fall through
-  // to the view behind; guarding on the bubbles + composer keeps clicks on the
-  // conversation (e.g. selecting message text) from dismissing it.
+  // Close the thread on any pointer-down that isn't on a message bubble, the
+  // suggestions, or the composer — i.e. anywhere that isn't the chat itself (the
+  // live view behind, a gap in the thread, the backdrop). The overlay root is
+  // pointer-events-none, so a capture-phase document listener still catches
+  // clicks that fall through to the view behind; guarding on the chat affordances
+  // keeps normal interaction from dismissing it.
   React.useEffect(() => {
     if (!open) return;
     const onPointerDown = (e: PointerEvent) => {
       const target = e.target instanceof Element ? e.target : null;
       if (!target) return;
       const onBubble = target.closest('[data-testid="thread-line"]') !== null;
+      const inSuggestions = suggestionsRef.current?.contains(target) ?? false;
       const inComposer = composerRef.current?.contains(target) ?? false;
-      if (onBubble || inComposer) return;
+      if (onBubble || inSuggestions || inComposer) return;
       collapseAll();
     };
     document.addEventListener("pointerdown", onPointerDown, true);
@@ -717,12 +739,16 @@ export function ContinuousChatOverlay({
           fade with them, so they only appear when the conversation does. Tapping
           one sends it immediately. */}
       {suggestionsBase ? (
-        <div
+        <fieldset
+          ref={suggestionsRef}
           onPointerEnter={handleHoverEnter}
           onPointerLeave={handleHoverLeave}
+          onFocus={handleAmbientFocus}
+          onBlur={handleAmbientBlur}
+          aria-label="Suggested prompts"
           aria-hidden={!suggestionsVisible}
           className={cn(
-            "relative mb-2 flex w-full max-w-3xl flex-wrap items-center justify-center gap-2 transition-opacity duration-200",
+            "relative m-0 mb-2 flex w-full max-w-3xl flex-wrap items-center justify-center gap-2 border-0 p-0 transition-opacity duration-200",
             suggestionsVisible
               ? "pointer-events-auto opacity-100"
               : "pointer-events-none opacity-0",
@@ -735,6 +761,7 @@ export function ContinuousChatOverlay({
               type="button"
               data-testid={`chat-suggestion-${i}`}
               aria-label={s}
+              tabIndex={suggestionsVisible ? 0 : -1}
               onClick={() => pickSuggestion(s)}
               className={cn(
                 "max-w-full truncate rounded-full border border-white/15 bg-black/40 px-3 py-1.5",
@@ -747,16 +774,19 @@ export function ContinuousChatOverlay({
               {s}
             </button>
           ))}
-        </div>
+        </fieldset>
       ) : null}
 
       {/* The always-present ambient composer (the heart of the layer). Hovering
           it (or the bubbles/suggestions) peeks the chat; leaving fades it out. */}
-      <div
+      <fieldset
         ref={composerRef}
         onPointerEnter={handleHoverEnter}
         onPointerLeave={handleHoverLeave}
-        className="pointer-events-auto relative w-full max-w-3xl"
+        onFocus={handleAmbientFocus}
+        onBlur={handleAmbientBlur}
+        aria-label="Chat composer"
+        className="pointer-events-auto relative m-0 w-full max-w-3xl border-0 p-0"
       >
         {/* Soft breath of light for live states — not a brand-colored alert ring.
             Always mounted; only opacity changes so it swells in/out over 700ms. */}
@@ -931,7 +961,7 @@ export function ContinuousChatOverlay({
             )}
           </motion.div>
         </div>
-      </div>
+      </fieldset>
     </div>
   );
 }

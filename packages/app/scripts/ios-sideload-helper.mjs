@@ -37,7 +37,8 @@ function fail(message, detail = "") {
 }
 
 function resolveAppPath() {
-  const explicitAppPath = optionValue("--app") ?? process.env.ELIZA_IOS_APP_PATH;
+  const explicitAppPath =
+    optionValue("--app") ?? process.env.ELIZA_IOS_APP_PATH;
   if (explicitAppPath) return path.resolve(explicitAppPath);
   const derivedDataPath = process.env.ELIZA_IOS_DERIVED_DATA_PATH?.trim();
   if (!derivedDataPath) return undefined;

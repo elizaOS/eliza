@@ -21,7 +21,7 @@ import {
   Star,
   Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { fetchWithCsrf } from "../../api/csrf-client";
 import {
@@ -60,21 +60,19 @@ const VIEW_LOADING_SKELETON_KEYS = [
   "view-skeleton-6",
 ];
 
-/** A small uppercase modality chip (GUI / TUI / XR). */
+/** A small modality chip (GUI / TUI / XR). */
 function ModalityChip({ modality }: { modality: ViewModality }) {
   return (
-    <span className="rounded-full border border-border/60 bg-card/70 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-strong backdrop-blur-sm">
+    <span className="rounded-full border border-border/60 bg-card/70 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-muted-strong backdrop-blur-sm">
       {modality}
     </span>
   );
 }
 
-/** A "loaded" status chip with a green status dot. */
-function LoadedChip({ label }: { label: string }) {
+function ViewMetaBadge({ children }: { children: ReactNode }) {
   return (
-    <span className="flex items-center gap-1 rounded-full border border-border/60 bg-card/70 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-strong backdrop-blur-sm">
-      <span className="h-1.5 w-1.5 rounded-full bg-[#4caf50] shadow-[0_0_4px_rgba(76,175,80,0.7)]" />
-      {label}
+    <span className="max-w-full truncate rounded-full border border-border/50 bg-muted/10 px-1.5 py-0.5 text-[10px] font-medium text-muted-strong">
+      {children}
     </span>
   );
 }
@@ -93,7 +91,7 @@ function SectionHeader({
 }) {
   return (
     <h2
-      className="mb-2.5 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-muted-strong"
+      className="mb-2.5 flex items-center gap-2 text-[11px] font-bold uppercase text-muted-strong"
       data-testid={testId}
     >
       <Icon className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
@@ -282,6 +280,11 @@ function ViewCard({
   const showManagementButtons = Boolean(onEdit || onDelete);
   const showHero = Boolean(view.hasHeroImage && view.heroImageUrl);
   const modality = view.viewType ?? "gui";
+  const providerLabel = view.builtin
+    ? t("viewmanager.card.provider.core", { defaultValue: "Core" })
+    : view.pluginName;
+  const displayPath = view.path ?? `/apps/${view.id}`;
+  const visibleTags = (view.tags ?? []).slice(0, compact ? 0 : 2);
 
   return (
     <div
@@ -289,7 +292,7 @@ function ViewCard({
       data-testid={`view-card-${view.id}`}
     >
       {(showPinButton || showManagementButtons) && (
-        <div className="absolute right-2 top-2 z-20 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+        <div className="absolute right-2 top-2 z-20 flex gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
           {showPinButton && <ViewCardPinButton view={view} onPin={onPin} />}
           {onEdit && <ViewCardEditButton view={view} onEdit={onEdit} />}
           {onDelete && <ViewCardDeleteButton view={view} onDelete={onDelete} />}
@@ -315,16 +318,31 @@ function ViewCard({
               compact={compact}
             />
           )}
-          <div className="pointer-events-none absolute left-2 top-2 z-10 flex flex-wrap gap-1">
-            <LoadedChip
-              label={t("viewmanager.chip.loaded", { defaultValue: "Loaded" })}
-            />
-            {!compact && <ModalityChip modality={modality} />}
+          {!compact ? (
+            <div className="pointer-events-none absolute left-2 top-2 z-10 flex flex-wrap gap-1">
+              <ModalityChip modality={modality} />
+            </div>
+          ) : null}
+        </div>
+        <div className="flex min-h-[5rem] flex-col gap-2 px-3 pb-3 pt-2">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-txt transition-colors group-hover:text-accent">
+              {view.label}
+            </p>
+            {!compact && view.description ? (
+              <p className="mt-1 line-clamp-2 text-xs leading-snug text-muted">
+                {view.description}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <ViewMetaBadge>{providerLabel}</ViewMetaBadge>
+            {!compact ? <ViewMetaBadge>{displayPath}</ViewMetaBadge> : null}
+            {visibleTags.map((tag) => (
+              <ViewMetaBadge key={tag}>{tag}</ViewMetaBadge>
+            ))}
           </div>
         </div>
-        <p className="truncate px-3 py-2 text-sm font-semibold text-txt transition-colors group-hover:text-accent">
-          {view.label}
-        </p>
       </ViewCardOpenButton>
     </div>
   );
@@ -550,11 +568,18 @@ async function fetchSearchResults(
   // GUI is the server default — only the XR/TUI surfaces scope the query.
   if (viewType !== "gui") url.searchParams.set("viewType", viewType);
   const resp = await fetchWithCsrf(url.pathname + url.search);
-  if (!resp.ok) return [];
+  if (!resp.ok) {
+    throw new Error(`GET /api/views/search returned HTTP ${resp.status}`);
+  }
   const body = (await resp.json()) as unknown;
-  if (!body || typeof body !== "object" || !("results" in body)) return [];
+  if (!body || typeof body !== "object" || !("results" in body)) {
+    throw new Error("GET /api/views/search returned an invalid response");
+  }
   const { results } = body as { results: unknown };
-  return Array.isArray(results) ? (results as ViewRegistryEntry[]) : [];
+  if (!Array.isArray(results)) {
+    throw new Error("GET /api/views/search returned non-array results");
+  }
+  return results as ViewRegistryEntry[];
 }
 
 export function ViewCatalog() {
@@ -922,7 +947,7 @@ export function ViewCatalog() {
             }}
           >
             <div className="mb-2 flex items-center justify-between gap-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted/70">
+              <h2 className="text-xs font-semibold uppercase text-muted/70">
                 {t("viewmanager.management.heading", {
                   defaultValue: "Dynamic view management",
                 })}

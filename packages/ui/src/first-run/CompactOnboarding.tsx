@@ -72,8 +72,8 @@ export function CompactOnboarding({
 
   return (
     <>
-      <div className="first-run-screen pointer-events-none fixed inset-0 p-6 text-white">
-        <div className="mx-auto flex h-full w-full max-w-[22rem] flex-col items-center justify-start pt-[calc(var(--safe-area-top,0px)+24rem)] text-center">
+      <div className="first-run-screen pointer-events-none fixed inset-0 overflow-y-auto p-6 text-white">
+        <div className="mx-auto flex min-h-full w-full max-w-[22rem] flex-col items-center justify-start pb-[max(1.5rem,var(--safe-area-bottom,0px))] pt-[calc(var(--safe-area-top,0px)+min(24rem,44dvh))] text-center">
           <div
             data-testid="onboarding-toast"
             className="pointer-events-auto flex flex-col items-center text-white"
@@ -99,11 +99,13 @@ export function CompactOnboarding({
               <span className="absolute inset-[6px] rounded-full bg-[radial-gradient(circle_at_36%_32%,rgba(255,255,255,0.82),rgba(255,88,0,0.24)_42%,transparent_72%)]" />
               <span className="absolute inset-[15px] rounded-full bg-white/90 shadow-[inset_0_1px_2px_rgba(255,255,255,0.9),0_0_14px_rgba(255,88,0,0.52)]" />
             </button>
-            {statusMessage ? (
-              <p className="mt-5 min-h-5 text-sm leading-snug text-white">
-                {statusMessage}
-              </p>
-            ) : null}
+            <p
+              data-testid="onboarding-status"
+              className="mt-5 min-h-5 text-sm leading-snug text-white"
+              aria-live="polite"
+            >
+              {statusMessage ?? ""}
+            </p>
             <button
               type="button"
               disabled={busy}

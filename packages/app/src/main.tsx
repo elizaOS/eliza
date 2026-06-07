@@ -238,15 +238,6 @@ const InferenceCloudAlertButton = lazyNamedComponent<{
 const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
 );
-const LifeOpsPageView = lazyNamedComponent<Record<string, never>>(
-  async () => (await importAppLifeOps()).LifeOpsPageView,
-);
-const BrowserBridgeSetupPanel = lazyNamedComponent<Record<string, never>>(
-  async () => (await importAppLifeOps()).LifeOpsBrowserSetupPanel,
-);
-const LifeOpsActivitySignalsEffect = lazyNamedComponent<Record<string, never>>(
-  async () => (await importAppLifeOps()).LifeOpsActivitySignalsEffect,
-);
 const AppBlockerSettingsCard = lazyNamedComponent<AppBlockerSettingsCardProps>(
   async () => (await importAppLifeOps()).AppBlockerSettingsCard,
 );
@@ -499,8 +490,6 @@ function buildAppBootConfig({
     stewardTransactionHistory: TransactionHistory,
     characterCatalog: APP_CHARACTER_CATALOG,
     envAliases: APP_ENV_ALIASES,
-    lifeOpsPageView: LifeOpsPageView,
-    lifeOpsBrowserSetupPanel: BrowserBridgeSetupPanel,
     appBlockerSettingsCard: AppBlockerSettingsCard,
     websiteBlockerSettingsCard: WebsiteBlockerSettingsCard,
     clientMiddleware: {
@@ -531,7 +520,6 @@ function initializeAppModules(): Promise<void> {
     ]);
 
     companionModule.registerCompanionApp();
-    lifeOpsModule.registerLifeOpsApp();
     loadedCompanionSceneStatusHook = companionModule.useCompanionSceneStatus;
     dispatchQueuedLifeOpsGithubCallback =
       lifeOpsModule.dispatchQueuedLifeOpsGithubCallbackFromUrl;
@@ -1698,7 +1686,6 @@ function mountReactApp(): void {
               <>
                 <DesktopSurfaceNavigationRuntime />
                 <DesktopTrayRuntime />
-                <LifeOpsActivitySignalsEffect />
                 <App />
               </>
             )}
