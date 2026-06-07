@@ -56,11 +56,10 @@ NEXT_PUBLIC_ELIZA_CLOUD_URL=http://localhost:3000
 # App URL (defaults to http://localhost:3012)
 NEXT_PUBLIC_APP_URL=http://localhost:3012
 
-# Privy App ID (for authentication)
-NEXT_PUBLIC_PRIVY_APP_ID=your_privy_app_id
-
-# Affiliate API key with "affiliate:create-character" permission (required for character creation)
-NEXT_PUBLIC_AFFILIATE_API_KEY=eliza_your_affiliate_api_key
+# Affiliate API key with "affiliate:create-character" permission (required for
+# character creation). SERVER-ONLY — not NEXT_PUBLIC, so it is never inlined
+# into the client bundle. Read by the /api/affiliate/create-character route.
+AFFILIATE_API_KEY=eliza_your_affiliate_api_key
 ```
 
 ## Architecture
@@ -73,9 +72,13 @@ NEXT_PUBLIC_AFFILIATE_API_KEY=eliza_your_affiliate_api_key
 
 ### Integration with ElizaOS Cloud
 
-The app uses the ElizaOS Cloud Affiliate API:
+Character creation goes through a same-origin server route
+(`app/api/affiliate/create-character`) that attaches the server-only
+`AFFILIATE_API_KEY` and forwards to the ElizaOS Cloud Affiliate API. The
+privileged key never reaches the browser:
 
 ```typescript
+// browser → same-origin proxy → ElizaOS Cloud
 POST /api/affiliate/create-character
 {
   character: ElizaOSCharacter,
@@ -89,7 +92,6 @@ POST /api/affiliate/create-character
 - **Framework**: Next.js 15 with App Router
 - **Runtime**: Bun
 - **Styling**: Tailwind CSS
-- **Authentication**: Privy
 - **AI Integration**: ElizaOS Cloud API
 - **Testing**: Playwright + Synpress
 
@@ -126,6 +128,8 @@ bun run test tests/playwright/homepage.spec.ts
 clone-your-crush/
 ├── app/
 │   ├── api/              # API routes
+│   │   ├── affiliate/
+│   │   │   └── create-character/ # server-side proxy (holds the affiliate key)
 │   │   ├── analyze-photo/
 │   │   ├── create-character/
 │   │   ├── generate-field/
@@ -137,8 +141,6 @@ clone-your-crush/
 ├── lib/
 │   ├── constants.ts      # App configuration
 │   └── utils.ts          # Utility functions
-├── providers/
-│   └── PrivyProvider.tsx # Auth provider
 ├── tests/
 │   ├── playwright/       # Playwright tests
 │   └── synpress/         # Wallet integration tests
