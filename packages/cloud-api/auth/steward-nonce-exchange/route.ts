@@ -29,7 +29,7 @@ import {
 } from "@elizaos/shared/steward-session-client";
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
-import { signStewardMutatingRequest } from "@/api-app/steward/sign";
+import { signStewardMutatingRequest } from "@/lib/steward/sign";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
 import {
   type StewardVerifyEnv,
