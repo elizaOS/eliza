@@ -3,7 +3,6 @@ const DEFAULT_APP_ROUTE_PLUGIN_MODULES = [
   "@elizaos/app-vincent/register-routes",
   "@elizaos/app-shopify/register-routes",
   "@elizaos/app-steward/register-routes",
-  "@elizaos/app-lifeops/register-routes",
   "@elizaos/plugin-github/register-routes",
   "@elizaos/plugin-computeruse/register-routes",
   "@elizaos/plugin-elizacloud/register-routes",

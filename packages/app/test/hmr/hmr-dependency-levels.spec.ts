@@ -34,10 +34,6 @@ const LEVELS = [
     file: "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.tsx",
   },
   {
-    name: "plugin view lifeops",
-    file: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
-  },
-  {
     name: "plugin view messages",
     file: "plugins/plugin-messages/src/components/MessagesAppView.tsx",
   },

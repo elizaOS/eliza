@@ -28,7 +28,6 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-companion/src/plugin.ts",
   "plugins/plugin-contacts/src/plugin.ts",
   "plugins/plugin-hyperliquid-app/src/plugin.ts",
-  "plugins/plugin-personal-assistant/src/plugin.ts",
   "plugins/plugin-messages/src/plugin.ts",
   "plugins/app-model-tester/src/plugin.ts",
   "plugins/plugin-phone/src/plugin.ts",

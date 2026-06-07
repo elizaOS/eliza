@@ -238,12 +238,6 @@ const InferenceCloudAlertButton = lazyNamedComponent<{
 const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
 );
-// LifeOpsPageView / LifeOpsBrowserSetupPanel / LifeOpsActivitySignalsEffect
-// were removed when @elizaos/plugin-lifeops was decomposed into plugin-todos,
-// plugin-inbox, plugin-goals, plugin-health, plugin-calendar, plugin-documents,
-// plugin-blocker, plugin-finances, plugin-relationships and renamed to
-// @elizaos/plugin-personal-assistant. The boot config slots are optional and
-// UI consumers render a fallback when absent.
 const AppBlockerSettingsCard = lazyNamedComponent<AppBlockerSettingsCardProps>(
   async () => (await importAppLifeOps()).AppBlockerSettingsCard,
 );
@@ -495,11 +489,6 @@ function buildAppBootConfig({
     stewardTransactionHistory: TransactionHistory,
     characterCatalog: APP_CHARACTER_CATALOG,
     envAliases: APP_ENV_ALIASES,
-    // lifeOpsPageView / lifeOpsBrowserSetupPanel intentionally omitted —
-    // both slots are optional in AppBootConfig and UI consumers render a
-    // fallback ("view unavailable") when absent. The legacy /lifeops
-    // dashboard was killed during the plugin-personal-assistant
-    // decomposition (commit eef57bf53e).
     appBlockerSettingsCard: AppBlockerSettingsCard,
     websiteBlockerSettingsCard: WebsiteBlockerSettingsCard,
     clientMiddleware: {
@@ -517,11 +506,7 @@ function initializeAppModules(): Promise<void> {
 
     const [companionModule] = await Promise.all([
       importAppCompanion(),
-      // Imported for the side-effectful API client (BRIEF / PRIORITIZE /
-      // scheduled-task CRUD / approvals) and to surface AppBlocker /
-      // WebsiteBlocker settings cards. The plugin no longer exports a
-      // top-level registerLifeOpsApp() since the /lifeops view was killed
-      // during the plugin-personal-assistant decomposition.
+      // Side-effect import for the PA HTTP client + Blocker settings cards.
       importAppLifeOps(),
       // Imported for its self-registration side effect (Vincent overlay app).
       importAppVincent(),
@@ -2177,9 +2162,8 @@ async function initializeMobileAgentTunnel(): Promise<void> {
 async function stopMobileAgentTunnel(): Promise<void> {
   mobileAgentTunnelStartPromise = null;
   try {
-    const { MobileAgentBridge } = await import(
-      "@elizaos/capacitor-mobile-agent-bridge"
-    );
+    const { MobileAgentBridge } =
+      await import("@elizaos/capacitor-mobile-agent-bridge");
     await MobileAgentBridge.stopInboundTunnel();
   } catch (error) {
     console.warn(

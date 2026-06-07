@@ -81,9 +81,9 @@ The plugin is opt-in; add `@elizaos/plugin-personal-assistant` to the agent's pl
 | `owner.profile_extraction` (response handler) | `src/lifeops/owner/profile-extraction-evaluator.ts` | Extracts owner facts from agent responses |
 | `threadOps` (response handler field) | `src/lifeops/work-threads/field-evaluator-thread-ops.ts` | Propagates work-thread field ops from responses |
 
-### Views (registered via `views` array)
+### Views
 
-- `lifeops` — `LifeOpsPageView` (desktop dashboard), `LifeOpsTuiView` (TUI), and an XR variant. Bundle: `dist/views/bundle.js`.
+No views — the domain views moved to per-domain plugins (plugin-todos, plugin-inbox, plugin-goals, plugin-health, plugin-calendar, plugin-documents, plugin-blocker, plugin-finances, plugin-relationships) during the lifeops decomposition. PA exports only the Blocker settings cards via `src/ui.ts`.
 
 ## Layout
 
@@ -182,9 +182,8 @@ src/
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-personal-assistant build              # Full build (JS + views + types)
+bun run --cwd plugins/plugin-personal-assistant build              # Full build (JS + types)
 bun run --cwd plugins/plugin-personal-assistant build:js           # tsup bundling only
-bun run --cwd plugins/plugin-personal-assistant build:views        # Vite views bundle
 bun run --cwd plugins/plugin-personal-assistant build:types        # tsc declaration emit
 bun run --cwd plugins/plugin-personal-assistant test               # Unit tests (vitest)
 bun run --cwd plugins/plugin-personal-assistant test:background-real  # Long-running real e2e tests
@@ -256,5 +255,4 @@ bun run --cwd plugins/plugin-personal-assistant clean              # Remove dist
 - **`LifeOpsService` is composed from mixins.** Core logic lives in `src/lifeops/service-mixin-*.ts` files. `src/lifeops/service.ts` composes them. Add a new domain capability as a mixin.
 - **Default packs must pass lint.** `bun run lint:default-packs` (also `pretest`) enforces the rules embedded in `scripts/lint-default-packs.mjs`. CI blocks packs that fail.
 - **plugin-google is auto-registered.** If `@elizaos/plugin-google` is not already in the runtime's plugin list, `init()` dynamically imports and registers it. Ensure it is installed in the workspace.
-- **Views are built separately.** The `build:views` step (Vite) produces `dist/views/bundle.js`. The main `build:js` step (tsup) does not include views. Run `build` to get both.
 - See root `AGENTS.md` for repo-wide architecture commandments, logger conventions, ESM rules, and naming.
