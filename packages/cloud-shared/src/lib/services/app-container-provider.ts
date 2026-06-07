@@ -11,6 +11,13 @@
  * scaffolding, no shared network, no NET_ADMIN.
  */
 
+import {
+  ambassadorName,
+  buildEnsureAmbassadorCmds,
+  buildRemoveAmbassadorCmdForContainer,
+  parseDsnEndpoint,
+  rewriteDsnToAmbassador,
+} from "./app-db-ambassador";
 import { buildAppDockerCreateCmd } from "./app-docker-cmd";
 import { appNetworkName, buildEnsureAppNetworkCmd } from "./app-network-utils";
 import type { CreateContainerInput } from "./containers/hetzner-client/types";
@@ -30,6 +37,13 @@ export interface AppContainerProviderDeps {
   pidsLimit?: number;
   /** Parse the container id from `docker create` stdout. */
   extractContainerId?: (dockerCreateStdout: string) => string;
+  /**
+   * Network the DB ambassador uses to reach the tenant DB (its only egress).
+   * Default `bridge`. The app container itself never joins this network.
+   */
+  dbEgressNetwork?: string;
+  /** socat image for the DB ambassador. Defaults to the module default. */
+  ambassadorImage?: string;
 }
 
 export interface ProvisionAppContainerParams {
@@ -61,11 +75,39 @@ export class AppContainerProvider {
     const network = appNetworkName(params.appId);
     await this.deps.ssh.exec(buildEnsureAppNetworkCmd(network));
 
+    // DB ambassador: the app is on an `--internal` net (no egress at all), so it
+    // can't reach its tenant DB directly. Stand up a per-app socat forwarder on
+    // the app net that reaches ONLY the tenant DB, and point the app's
+    // DATABASE_URL at it. The app keeps zero general egress; REVOKE-CONNECT still
+    // isolates the actual database. No DSN -> no ambassador (nothing to reach).
+    let input = params.input;
+    const dsn = input.environmentVars?.DATABASE_URL;
+    const endpoint = dsn ? parseDsnEndpoint(dsn) : null;
+    if (dsn && endpoint) {
+      const cmds = buildEnsureAmbassadorCmds({
+        appId: params.appId,
+        network,
+        db: endpoint,
+        egressNetwork: this.deps.dbEgressNetwork,
+        image: this.deps.ambassadorImage,
+      });
+      for (const cmd of cmds) {
+        await this.deps.ssh.exec(cmd);
+      }
+      input = {
+        ...input,
+        environmentVars: {
+          ...input.environmentVars,
+          DATABASE_URL: rewriteDsnToAmbassador(dsn, ambassadorName(params.appId)),
+        },
+      };
+    }
+
     const hostPort = await this.deps.allocateHostPort();
     const createCmd = buildAppDockerCreateCmd({
       appId: params.appId,
       containerName: params.containerName,
-      input: params.input,
+      input,
       hostPort,
       egressProxyUrl: this.deps.egressProxyUrl,
       pidsLimit: this.deps.pidsLimit,
@@ -80,6 +122,8 @@ export class AppContainerProvider {
 
   async delete(containerName: string): Promise<void> {
     await this.deps.ssh.exec(`docker rm -f ${shellQuote(containerName)}`);
+    // Tear down the per-app DB ambassador too (best-effort; no-op if absent).
+    await this.deps.ssh.exec(buildRemoveAmbassadorCmdForContainer(containerName));
   }
 
   async restart(containerName: string): Promise<void> {

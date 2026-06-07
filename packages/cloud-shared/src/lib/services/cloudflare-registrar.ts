@@ -24,6 +24,7 @@
  * without spending money on real registrations.
  */
 
+import { shouldBlockRegistrarStub } from "../config/deployment-environment";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { CloudflareApiError, cloudflareApiRequest } from "../utils/cloudflare-api";
 import { logger } from "../utils/logger";
@@ -31,6 +32,16 @@ import { logger } from "../utils/logger";
 /** Read at call time so per-request Cloudflare Worker bindings are visible (cloud-bindings ALS). */
 function config() {
   const env = getCloudAwareEnv();
+  // Fail closed: the dev stub fabricates registrations but the buy route still
+  // debits credits, so a stray ELIZA_CF_REGISTRAR_DEV_STUB=1 in production would
+  // charge users for domains that were never registered. Refuse loudly instead.
+  if (shouldBlockRegistrarStub(env)) {
+    throw new Error(
+      "FATAL: ELIZA_CF_REGISTRAR_DEV_STUB=1 is set in a production deployment. " +
+        "Stub mode returns fake domain registrations that still debit credits. " +
+        "Unset ELIZA_CF_REGISTRAR_DEV_STUB and configure CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN.",
+    );
+  }
   return {
     accountId: env.CLOUDFLARE_ACCOUNT_ID ?? "",
     apiToken: env.CLOUDFLARE_API_TOKEN ?? "",

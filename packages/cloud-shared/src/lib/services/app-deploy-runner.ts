@@ -53,6 +53,7 @@ import {
 import { deriveAppPublicUrl } from "./app-url";
 import { appsService } from "./apps";
 import { ContainerJobEnqueuer, type ContainerJobsWriter } from "./container-job-service";
+import type { TenantDbProvisioning } from "./tenant-db/tenant-db-provisioning";
 import type { UserDatabaseService } from "./user-database";
 
 /** Everything the runner needs to compose `deployApp`'s deps. Injected for tests. */
@@ -219,6 +220,33 @@ export function makeNodeAppDeployRunner(args: {
         );
       }
       return provisioned.connectionUri;
+    },
+    jobsWriter: args.jobsWriter,
+    resolveImage: args.resolveImage,
+    port: args.port,
+  });
+}
+
+/**
+ * NODE factory (ENCRYPTION-FREE) — `ensureTenantDb` provisions the isolated
+ * tenant DB DIRECTLY via the injected {@link TenantDbProvisioning}, returning the
+ * DSN without routing through `userDatabaseService`. So it never writes the
+ * field-encrypted `app_databases.user_database_uri` and needs no
+ * `SECRETS_MASTER_KEY` — the per-tenant DSN still rides into the container's
+ * `environment_vars`. Use when the daemon has no field-encryption key (the
+ * cluster admin DSN is env-sourced via a passthrough decrypt). Isolation is
+ * unchanged: REVOKE-CONNECT per tenant still applies.
+ */
+export function makeDirectAppDeployRunner(args: {
+  tenantDbProvisioning: TenantDbProvisioning;
+  jobsWriter: ContainerJobsWriter;
+  resolveImage?: AppDeployRunnerDeps["resolveImage"];
+  port?: number;
+}): DefaultAppDeployRunner {
+  return new DefaultAppDeployRunner({
+    ensureTenantDb: async (appId) => {
+      const { dsn } = await args.tenantDbProvisioning.provisionForApp(appId);
+      return dsn;
     },
     jobsWriter: args.jobsWriter,
     resolveImage: args.resolveImage,

@@ -7,6 +7,7 @@
  * here).
  */
 
+import { shouldBlockRegistrarStub } from "../config/deployment-environment";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { cloudflareApiRequest } from "../utils/cloudflare-api";
 import { logger } from "../utils/logger";
@@ -14,6 +15,14 @@ import { logger } from "../utils/logger";
 /** Read at call time so per-request Cloudflare Worker bindings are visible. */
 function config() {
   const env = getCloudAwareEnv();
+  // The DNS stub shares the registrar dev-stub flag; block it in production for
+  // the same reason (a stray flag must never silently fake managed-domain DNS).
+  if (shouldBlockRegistrarStub(env)) {
+    throw new Error(
+      "FATAL: ELIZA_CF_REGISTRAR_DEV_STUB=1 is set in a production deployment. " +
+        "Unset it and configure CLOUDFLARE_API_TOKEN for real DNS operations.",
+    );
+  }
   return {
     apiToken: env.CLOUDFLARE_API_TOKEN ?? "",
     devStub: env.ELIZA_CF_REGISTRAR_DEV_STUB === "1",

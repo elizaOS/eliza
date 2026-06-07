@@ -1,0 +1,123 @@
+name: Terraform — Apps Data Plane (Hetzner)
+
+# Plan/apply the Eliza Cloud Apps (Product 2) data-plane IaC
+# (packages/cloud-infra/cloud/terraform/hetzner/apps-data-plane).
+#
+#   pull_request touching the module -> fmt + validate (NO cloud creds, no state — safe)
+#   workflow_dispatch (manual)        -> terraform plan or apply against an
+#                                        environment (staging | production)
+#
+# Apply provisions real billed Hetzner servers (an app worker node + a tenant
+# Postgres node), so it is an explicit operator action — it never auto-runs.
+# "develop = staging" is expressed by choosing environment=staging on dispatch.
+#
+# Secrets:
+#   environment-scoped (set on each `staging` / `production` GitHub Environment):
+#     HCLOUD_TOKEN                  Hetzner Cloud API token for that env's project
+#   repo-level (already present in this repo):
+#     CLOUDFLARE_API_TOKEN          Cloudflare DNS token (wildcard apps record)
+#     R2_STATE_ACCESS_KEY_ID        R2 token -> AWS_ACCESS_KEY_ID (tf state backend)
+#     R2_STATE_SECRET_ACCESS_KEY    R2 token -> AWS_SECRET_ACCESS_KEY (tf state backend)
+# Variables (environment-scoped):
+#   APPS_CLOUDFLARE_ZONE_ID         Cloudflare zone id for the apps base domain
+#   APPS_OPERATOR_SSH_KEY           operator SSH public key allowed onto the nodes
+
+on:
+  pull_request:
+    paths:
+      - "packages/cloud-infra/cloud/terraform/hetzner/apps-data-plane/**"
+      - ".github/workflows/terraform-apps-data-plane.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to target
+        type: choice
+        default: staging
+        options: [staging, production]
+      action:
+        description: terraform action
+        type: choice
+        default: plan
+        options: [plan, apply]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: terraform-apps-${{ github.event.inputs.environment || 'pr' }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TF_DIR: packages/cloud-infra/cloud/terraform/hetzner/apps-data-plane
+  TF_VERSION: "1.9.5"
+
+jobs:
+  # PR validation: format + validate only. No cloud credentials, no remote state,
+  # so it runs safely on every PR (incl. before the env HCLOUD_TOKEN exists).
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: terraform fmt -check
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform fmt -check -recursive
+      - name: terraform validate (no backend)
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate -no-color
+
+  # Manual plan/apply against a real environment. The `environment:` binding makes
+  # that env's HCLOUD_TOKEN (and any required reviewers) apply to this run.
+  plan-apply:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    env:
+      HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      # R2 (S3-compatible) state backend creds.
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATE_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATE_SECRET_ACCESS_KEY }}
+      # Non-secret inputs threaded as TF_VAR_*.
+      TF_VAR_environment: ${{ github.event.inputs.environment }}
+      TF_VAR_cloudflare_zone_id: ${{ vars.APPS_CLOUDFLARE_ZONE_ID }}
+      TF_VAR_ssh_public_keys: '["${{ vars.APPS_OPERATOR_SSH_KEY }}"]'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Preflight — required secrets / vars present
+        run: |
+          fail=0
+          [ -n "$HCLOUD_TOKEN" ] || { echo "::error::set secrets.HCLOUD_TOKEN on the '${{ github.event.inputs.environment }}' environment"; fail=1; }
+          [ -n "$AWS_ACCESS_KEY_ID" ] || { echo "::error::missing repo secret R2_STATE_ACCESS_KEY_ID"; fail=1; }
+          [ -n "$AWS_SECRET_ACCESS_KEY" ] || { echo "::error::missing repo secret R2_STATE_SECRET_ACCESS_KEY"; fail=1; }
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::missing repo secret CLOUDFLARE_API_TOKEN"; fail=1; }
+          [ -n "$TF_VAR_cloudflare_zone_id" ] || { echo "::error::set vars.APPS_CLOUDFLARE_ZONE_ID on the '${{ github.event.inputs.environment }}' environment"; fail=1; }
+          [ "$TF_VAR_ssh_public_keys" != '[""]' ] || { echo "::error::set vars.APPS_OPERATOR_SSH_KEY on the '${{ github.event.inputs.environment }}' environment"; fail=1; }
+          exit $fail
+
+      - name: terraform fmt -check
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform fmt -check -recursive
+
+      - name: terraform init (R2 backend)
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init -input=false -backend-config="backend-${{ github.event.inputs.environment }}.hcl"
+
+      - name: terraform plan
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform plan -no-color -input=false
+
+      - name: terraform apply
+        if: github.event.inputs.action == 'apply'
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform apply -auto-approve -input=false

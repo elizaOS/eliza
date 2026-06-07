@@ -473,21 +473,41 @@ function resolveStewardRequestSigningSecret(apiKey?: string): string | undefined
   return fromList ?? apiKey?.trim() ?? undefined;
 }
 
-// Best-effort `curl -X DELETE` against Steward's `/agents/:id` for cleanup
-// paths (failed container create, missing Headscale registration). Signs the
-// request when STEWARD_REQUEST_SIGNING_SECRET is configured so Steward's
-// authorization-signature middleware accepts it. Without signing the call
-// 401s and the agent record stays around as a ghost, blocking later retries.
+function resolveStewardPlatformKey(): string | undefined {
+  const env = getCloudAwareEnv();
+  const single = env.STEWARD_PLATFORM_KEY?.trim();
+  if (single) return single;
+  const fromList = env.STEWARD_PLATFORM_KEYS?.split(",")
+    .map((k) => k.trim())
+    .find((k) => k.length > 0);
+  return fromList || undefined;
+}
+
+function buildPlatformAgentPath(tenantId: string, agentId?: string): string {
+  const base = `/platform/tenants/${encodeURIComponent(tenantId)}/agents`;
+  return agentId ? `${base}/${encodeURIComponent(agentId)}` : base;
+}
+
+// Best-effort `curl -X DELETE` against Steward's platform agent endpoint for
+// cleanup paths (failed container create, missing Headscale registration).
+// Uses the platform-key path so the daemon authenticates as a platform
+// operator instead of impersonating a tenant owner session — Steward's
+// `/agents/:id` (tenant-scoped) route requires `session-jwt + tenantRole
+// owner|admin`, which a backend service cannot satisfy. The platform-key
+// path `/platform/tenants/:id/agents/:id` is exactly what Steward exposes
+// for this case (scope `platform:agent:delete`). Without signing the call
+// 401s and the agent record stays around as a ghost, blocking retries.
 async function buildSignedDeleteAgentCurl(
   agentId: string,
   stewardTenant: StewardTenantCredentials,
 ): Promise<string> {
-  const path = `/agents/${encodeURIComponent(agentId)}`;
+  const path = buildPlatformAgentPath(stewardTenant.tenantId, agentId);
   const url = `${resolveStewardHostUrl()}${path}`;
+  const platformKey = resolveStewardPlatformKey();
   const signingSecret = resolveStewardRequestSigningSecret(stewardTenant.apiKey);
   const flags = [
     `-H ${shellQuote(`X-Steward-Tenant: ${stewardTenant.tenantId}`)}`,
-    ...(stewardTenant.apiKey ? [`-H ${shellQuote(`X-Steward-Key: ${stewardTenant.apiKey}`)}`] : []),
+    ...(platformKey ? [`-H ${shellQuote(`X-Steward-Platform-Key: ${platformKey}`)}`] : []),
   ];
   if (signingSecret !== undefined) {
     const signed = await buildStewardSignedHeaders({
@@ -495,7 +515,7 @@ async function buildSignedDeleteAgentCurl(
       path,
       body: "",
       tenantId: stewardTenant.tenantId,
-      ...(stewardTenant.apiKey === undefined ? {} : { apiKey: stewardTenant.apiKey }),
+      ...(platformKey === undefined ? {} : { platformKey }),
       signingSecret,
     });
     for (const [name, value] of Object.entries(signed)) {
@@ -510,12 +530,14 @@ async function buildStewardSignedHeaders(params: {
   path: string;
   body: string;
   tenantId: string;
-  apiKey?: string;
+  platformKey?: string;
   signingSecret: string;
 }): Promise<Record<string, string>> {
   const headers = new Headers();
   headers.set("X-Steward-Tenant", params.tenantId);
-  if (params.apiKey) headers.set("X-Steward-Key", params.apiKey);
+  if (params.platformKey) {
+    headers.set("X-Steward-Platform-Key", params.platformKey);
+  }
   await signStewardMutatingRequest(
     params.signingSecret,
     params.method,
@@ -525,9 +547,11 @@ async function buildStewardSignedHeaders(params: {
   );
   const out: Record<string, string> = {};
   headers.forEach((value, name) => {
-    // Strip tenant/key — they're set separately by the caller (Python shim
-    // or curl flag) and we don't want to double-inject them.
-    if (name === "x-steward-tenant" || name === "x-steward-key") return;
+    // Strip tenant/platform-key — the caller injects them via curl flag or
+    // Python shim. Avoid double-injection.
+    if (name === "x-steward-tenant" || name === "x-steward-platform-key") {
+      return;
+    }
     out[name] = value;
   });
   return out;
@@ -540,19 +564,34 @@ async function registerAgentWithSteward(
   tenantId: string,
   apiKey?: string,
 ): Promise<string> {
+  // The legacy tenant-scoped POST /agents route requires a session-jwt with
+  // owner|admin role (Steward `requireTenantAdminSession`), which a daemon
+  // cannot satisfy. Switch to the platform-key path Steward exposes for
+  // exactly this use-case: POST /platform/tenants/:id/agents (scope
+  // `platform:agent:create`) and POST /platform/tenants/:id/agents/:id/token
+  // (scope `platform:agent-token:create`). The tenant `apiKey` argument is
+  // kept only for backwards-compat — we now authenticate via
+  // STEWARD_PLATFORM_KEY.
   warnMissingStewardTenantApiKey(apiKey);
+  const platformKey = resolveStewardPlatformKey();
   const agentBody = JSON.stringify({ id: agentId, name: agentName });
-  const tokenBody = JSON.stringify({ expiresIn: "365d" });
+  // Steward caps agent-token expiry at 7d (validated in
+  // packages/api/src/routes/platform.ts — "expiresIn must be a duration up
+  // to 7d using s, m, h, or d"). The daemon refreshes agent JWTs via the
+  // STEWARD_REFRESH_URL flow before they expire, so a 7d ceiling is fine.
+  const tokenBody = JSON.stringify({ expiresIn: "7d" });
   const signingSecret = resolveStewardRequestSigningSecret(apiKey);
+  const agentPath = buildPlatformAgentPath(tenantId);
+  const tokenPath = `${buildPlatformAgentPath(tenantId, agentId)}/token`;
   const agentSignedHeaders =
     signingSecret === undefined
       ? {}
       : await buildStewardSignedHeaders({
           method: "POST",
-          path: "/agents",
+          path: agentPath,
           body: agentBody,
           tenantId,
-          ...(apiKey === undefined ? {} : { apiKey }),
+          ...(platformKey === undefined ? {} : { platformKey }),
           signingSecret,
         });
   const tokenSignedHeaders =
@@ -560,10 +599,10 @@ async function registerAgentWithSteward(
       ? {}
       : await buildStewardSignedHeaders({
           method: "POST",
-          path: `/agents/${encodeURIComponent(agentId)}/token`,
+          path: tokenPath,
           body: tokenBody,
           tenantId,
-          ...(apiKey === undefined ? {} : { apiKey }),
+          ...(platformKey === undefined ? {} : { platformKey }),
           signingSecret,
         });
 
@@ -574,10 +613,10 @@ import urllib.error
 import urllib.request
 
 base_url = ${JSON.stringify(resolveStewardHostUrl())}
-api_key = ${JSON.stringify(apiKey ?? "")}
+platform_key = ${JSON.stringify(platformKey ?? "")}
 tenant_id = ${JSON.stringify(tenantId)}
-agent_id = ${JSON.stringify(agentId)}
-agent_name = ${JSON.stringify(agentName)}
+agent_path = ${JSON.stringify(agentPath)}
+token_path = ${JSON.stringify(tokenPath)}
 agent_body = ${JSON.stringify(agentBody)}
 token_body = ${JSON.stringify(tokenBody)}
 agent_signed_headers = ${JSON.stringify(agentSignedHeaders)}
@@ -588,8 +627,8 @@ def post(path, body_text, signed_headers):
     headers = {"Content-Type": "application/json", "User-Agent": "eliza-cloud-provisioner/1.0"}
     if tenant_id:
         headers["X-Steward-Tenant"] = tenant_id
-    if api_key:
-        headers["X-Steward-Key"] = api_key
+    if platform_key:
+        headers["X-Steward-Platform-Key"] = platform_key
     headers.update(signed_headers)
     req = urllib.request.Request(
         f"{base_url}{path}",
@@ -604,13 +643,13 @@ def post(path, body_text, signed_headers):
         return error.code, error.read().decode("utf-8")
 
 
-status, body = post("/agents", agent_body, agent_signed_headers)
+status, body = post(agent_path, agent_body, agent_signed_headers)
 if status not in (200, 201, 202, 400, 409):
     print(body, file=sys.stderr)
     raise SystemExit(f"Steward agent registration failed with status {status}")
 # 400/409 = agent already exists, continue to token minting
 
-status, body = post(f"/agents/{agent_id}/token", token_body, token_signed_headers)
+status, body = post(token_path, token_body, token_signed_headers)
 if status not in (200, 201):
     print(body, file=sys.stderr)
     raise SystemExit(f"Steward token mint failed with status {status}")
@@ -1135,12 +1174,21 @@ export class DockerSandboxProvider implements SandboxProvider {
       // does not abort provisioning — the env vars on the container still
       // carry the same values.
       try {
+        if (!allEnv.ELIZAOS_CLOUD_BASE_URL) {
+          throw new Error(
+            "[docker-sandbox] ELIZAOS_CLOUD_BASE_URL is not set in container env. " +
+              "Refusing to fall back to the hardcoded prod URL (https://www.elizacloud.ai/api/v1) — " +
+              "this caused staging containers to silently call prod. " +
+              "Configure ELIZAOS_CLOUD_BASE_URL in the daemon/Worker env (e.g. " +
+              "https://api-staging.elizacloud.ai/api/v1 for staging, https://api.elizacloud.ai/api/v1 for prod).",
+          );
+        }
         const elizaConfig = JSON.stringify({
           logging: { level: "info" },
           cloud: {
             enabled: Boolean(allEnv.ELIZAOS_CLOUD_API_KEY),
             apiKey: allEnv.ELIZAOS_CLOUD_API_KEY || "",
-            baseUrl: allEnv.ELIZAOS_CLOUD_BASE_URL || "https://www.elizacloud.ai/api/v1",
+            baseUrl: allEnv.ELIZAOS_CLOUD_BASE_URL,
           },
         });
         // Base64-encode the JSON before passing it through the shell so an

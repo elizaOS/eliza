@@ -422,3 +422,107 @@ describe("isServerTokenAuthorized / X-Server-Token gateway auth", () => {
     expect(isAuthorized(req)).toBe(false);
   });
 });
+
+/**
+ * Simulate an SSE handshake from a browser EventSource: a remote (non-loopback)
+ * GET to a streaming endpoint with `Accept: text/event-stream` and the API
+ * token smuggled in the query string because EventSource cannot set headers.
+ */
+class RemoteSseRequest extends http.IncomingMessage {
+  constructor(
+    method: string,
+    url: string,
+    headers: Record<string, string> = {},
+  ) {
+    const socket = new Socket();
+    Object.defineProperty(socket, "remoteAddress", {
+      value: "203.0.113.7",
+      configurable: true,
+    });
+    super(socket);
+    this.method = method;
+    this.url = url;
+    this.headers = {};
+    this.headers.host = "203.0.113.7:19687";
+    for (const [key, value] of Object.entries(headers)) {
+      this.headers[key.toLowerCase()] = value;
+    }
+  }
+}
+
+describe("SSE query-token auth (?token= for EventSource)", () => {
+  const API_TOKEN = "agent_abc123";
+
+  beforeEach(() => {
+    delete process.env.AGENT_SERVER_SHARED_SECRET;
+    delete process.env.ELIZA_CLOUD_PROVISIONED;
+    delete process.env.ELIZA_ALLOW_WS_QUERY_TOKEN;
+    delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
+    process.env.ELIZA_API_TOKEN = API_TOKEN;
+  });
+
+  afterEach(() => {
+    delete process.env.ELIZA_API_TOKEN;
+    delete process.env.ELIZA_ALLOW_WS_QUERY_TOKEN;
+  });
+
+  it("authorizes a GET SSE handshake carrying the correct ?token= when the flag is on", () => {
+    process.env.ELIZA_ALLOW_WS_QUERY_TOKEN = "1";
+    const req = new RemoteSseRequest(
+      "GET",
+      `/api/conversations/conv-1/messages/stream?token=${API_TOKEN}`,
+      { Accept: "text/event-stream" },
+    );
+    expect(isAuthorized(req)).toBe(true);
+  });
+
+  it("rejects a GET SSE handshake with a wrong ?token=", () => {
+    process.env.ELIZA_ALLOW_WS_QUERY_TOKEN = "1";
+    const req = new RemoteSseRequest(
+      "GET",
+      "/api/conversations/conv-1/messages/stream?token=wrong",
+      { Accept: "text/event-stream" },
+    );
+    expect(isAuthorized(req)).toBe(false);
+  });
+
+  it("rejects ?token= when ELIZA_ALLOW_WS_QUERY_TOKEN is unset (non-cloud deploys stay locked)", () => {
+    // Flag NOT set -> SSE query token must be ignored entirely, even if correct.
+    const req = new RemoteSseRequest(
+      "GET",
+      `/api/conversations/conv-1/messages/stream?token=${API_TOKEN}`,
+      { Accept: "text/event-stream" },
+    );
+    expect(isAuthorized(req)).toBe(false);
+  });
+
+  it("rejects ?token= on non-SSE Accept (scope is text/event-stream only)", () => {
+    process.env.ELIZA_ALLOW_WS_QUERY_TOKEN = "1";
+    const req = new RemoteSseRequest(
+      "GET",
+      `/api/whatever?token=${API_TOKEN}`,
+      { Accept: "application/json" },
+    );
+    expect(isAuthorized(req)).toBe(false);
+  });
+
+  it("rejects ?token= on POST even with SSE Accept (read-only safety)", () => {
+    process.env.ELIZA_ALLOW_WS_QUERY_TOKEN = "1";
+    const req = new RemoteSseRequest(
+      "POST",
+      `/api/conversations/conv-1/messages/stream?token=${API_TOKEN}`,
+      { Accept: "text/event-stream" },
+    );
+    expect(isAuthorized(req)).toBe(false);
+  });
+
+  it("still prefers Bearer over ?token= when both are present", () => {
+    process.env.ELIZA_ALLOW_WS_QUERY_TOKEN = "1";
+    const req = new RemoteSseRequest(
+      "GET",
+      "/api/conversations/conv-1/messages/stream?token=wrong",
+      { Accept: "text/event-stream", Authorization: `Bearer ${API_TOKEN}` },
+    );
+    expect(isAuthorized(req)).toBe(true);
+  });
+});

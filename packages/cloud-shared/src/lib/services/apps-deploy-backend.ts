@@ -25,7 +25,12 @@
 
 import { logger } from "../utils/logger";
 import { setAppDeployRunner } from "./app-deploy-job-service";
-import { makeNodeAppDeployRunner } from "./app-deploy-runner";
+import {
+  type AppDeployRunnerDeps,
+  type DefaultAppDeployRunner,
+  makeDirectAppDeployRunner,
+  makeNodeAppDeployRunner,
+} from "./app-deploy-runner";
 import { AppImageBuilder, type BuildExec } from "./app-image-builder";
 import { makeBuildFromRepoResolver } from "./app-image-resolver";
 import { buildContainerExecutorDeps } from "./container-executor-deps";
@@ -35,11 +40,18 @@ import { makeTenantDbProvisioning } from "./tenant-db/make-tenant-db-provisionin
 import { UserDatabaseService } from "./user-database";
 
 export interface AppsDeployBackendConfig {
-  /** Registry that app images are built + pushed to (e.g. `ghcr.io/elizaos`). */
-  registry: string;
-  /** Exec seam for the image builder — SSH to a builder node in production. */
-  buildExec: BuildExec;
-  /** Dockerfile path within each app's repo. Default: `Dockerfile`. */
+  /** Registry that app images are built + pushed to (e.g. `ghcr.io/elizaos`). Required only when `buildExec` is set. */
+  registry?: string;
+  /**
+   * Exec seam for the image builder — SSH to a builder node. When omitted, the
+   * deploy uses the PREBUILT-image path: the runner resolves the image from
+   * `app.metadata.imageTag` then `APP_DEFAULT_IMAGE`, with no build step. This is
+   * the path proven on staging (a pushed/known image), so the daemon can be armed
+   * without standing up a builder; pass `buildExec` (+ `registry`) to enable
+   * build-from-repo.
+   */
+  buildExec?: BuildExec;
+  /** Dockerfile path within each app's repo. Default: `Dockerfile`. Only used with `buildExec`. */
   dockerfile?: string;
   /** App listen port. Default 3000. */
   port?: number;
@@ -51,20 +63,45 @@ export interface AppsDeployBackendConfig {
  * is processed.
  */
 export function configureAppsDeployBackend(config: AppsDeployBackendConfig): void {
-  const userDatabaseService = new UserDatabaseService(makeTenantDbProvisioning());
-  const builder = new AppImageBuilder({ exec: config.buildExec });
-  const resolveImage = makeBuildFromRepoResolver({
-    builder,
-    registry: config.registry,
-    dockerfile: config.dockerfile,
-  });
+  // Build-from-repo resolver only when a builder exec is provided; otherwise the
+  // runner falls back to app.metadata.imageTag / APP_DEFAULT_IMAGE (prebuilt).
+  let resolveImage: AppDeployRunnerDeps["resolveImage"] | undefined;
+  if (config.buildExec) {
+    if (!config.registry) {
+      throw new Error("[apps-deploy-backend] registry is required when buildExec is set");
+    }
+    const builder = new AppImageBuilder({ exec: config.buildExec });
+    resolveImage = makeBuildFromRepoResolver({
+      builder,
+      registry: config.registry,
+      dockerfile: config.dockerfile,
+    });
+  }
 
-  const runner = makeNodeAppDeployRunner({
-    userDatabaseService,
-    jobsWriter: containerJobsWriter,
-    resolveImage,
-    port: config.port,
-  });
+  // ENCRYPTION-FREE path (env-sourced cluster admin DSN): when
+  // APPS_TENANT_ADMIN_DSN is set, the daemon needs no SECRETS_MASTER_KEY — the
+  // cluster admin DSN comes from env (passthrough decrypt) and the per-tenant DB
+  // is provisioned directly (no encrypted app_databases write). Otherwise use the
+  // standard encrypted path via UserDatabaseService.
+  const adminDsnFromEnv = process.env.APPS_TENANT_ADMIN_DSN;
+  let runner: DefaultAppDeployRunner;
+  if (adminDsnFromEnv) {
+    const provisioning = makeTenantDbProvisioning({ decrypt: async () => adminDsnFromEnv });
+    runner = makeDirectAppDeployRunner({
+      tenantDbProvisioning: provisioning,
+      jobsWriter: containerJobsWriter,
+      resolveImage,
+      port: config.port,
+    });
+  } else {
+    const userDatabaseService = new UserDatabaseService(makeTenantDbProvisioning());
+    runner = makeNodeAppDeployRunner({
+      userDatabaseService,
+      jobsWriter: containerJobsWriter,
+      resolveImage,
+      port: config.port,
+    });
+  }
 
   // Daemon runs APP_DEPLOY jobs (enqueued by the Worker) via this runner, and
   // CONTAINER_* jobs via the executor deps. createDeployment itself is never
@@ -73,7 +110,9 @@ export function configureAppsDeployBackend(config: AppsDeployBackendConfig): voi
   setContainerExecutorDeps(buildContainerExecutorDeps);
 
   logger.info("[apps-deploy-backend] armed", {
-    registry: config.registry,
+    registry: config.registry ?? null,
     port: config.port ?? 3000,
+    mode: adminDsnFromEnv ? "env-sourced (no field-encryption)" : "encrypted",
+    images: config.buildExec ? "build-from-repo" : "prebuilt (imageTag/APP_DEFAULT_IMAGE)",
   });
 }
