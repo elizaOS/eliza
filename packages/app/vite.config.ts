@@ -2356,11 +2356,13 @@ export const INVALID_TRACER_PROVIDER = {};
           "plugins/plugin-health/src/screen-time/mobile-signal-setup.ts",
         ),
       },
-      // Dynamic aliases for local app plugin package subpaths.
-      ...createWorkspacePackageAliases([path.resolve(elizaRoot, "plugins")]),
       // Browser-safe aliases for local app plugin package roots. Keep these
-      // after workspace aliases so UI facades win over package root exports.
+      // before workspace aliases; Vite/Rollup uses the first matching alias, and
+      // the renderer must prefer UI facades over package root exports.
       ...createAppPluginBrowserAliases(),
+      // Dynamic aliases for local app plugin package roots that do not have a
+      // dedicated browser facade.
+      ...createWorkspacePackageAliases([path.resolve(elizaRoot, "plugins")]),
       ...(() => {
         const sharedPkgPath = path.resolve(
           elizaRoot,
