@@ -140,6 +140,18 @@ jobs:
             exit $LASTEXITCODE
           }
 
+      - name: Prepare generated workspace artifacts
+        shell: pwsh
+        run: |
+          node packages/scripts/ensure-workspace-symlinks.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node packages/scripts/ensure-native-plugins-linked.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node packages/scripts/run-turbo.mjs run build --filter=@elizaos/logger --filter=@elizaos/contracts --filter=@elizaos/prompts --filter=@elizaos/core --filter=@elizaos/shared --concurrency=4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run lane "${{ matrix.lane }}"
         shell: pwsh
         run: ${{ matrix.command }}
