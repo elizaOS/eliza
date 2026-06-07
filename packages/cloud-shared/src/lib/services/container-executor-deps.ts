@@ -103,10 +103,20 @@ export function buildContainerExecutorDeps(): ContainerExecutorDeps {
   }
   const ssh = makeNodeSsh();
   const egressProxyUrl = process.env.CONTAINERS_EGRESS_PROXY_URL || undefined;
-  const provider = new AppContainerProvider({ ssh, allocateHostPort, egressProxyUrl });
+  // The DB ambassador's egress network (it reaches the tenant DB) + socat image.
+  const dbEgressNetwork = process.env.APPS_DB_EGRESS_NETWORK || undefined;
+  const ambassadorImage = process.env.APPS_DB_AMBASSADOR_IMAGE || undefined;
+  const provider = new AppContainerProvider({
+    ssh,
+    allocateHostPort,
+    egressProxyUrl,
+    dbEgressNetwork,
+    ambassadorImage,
+  });
   logger.info("[container-executor-deps] built apps container backend", {
     node: selectNodeHost(),
     egressProxy: Boolean(egressProxyUrl),
+    dbEgressNetwork: dbEgressNetwork ?? "bridge",
   });
   return { provider, store: appContainerStore };
 }
