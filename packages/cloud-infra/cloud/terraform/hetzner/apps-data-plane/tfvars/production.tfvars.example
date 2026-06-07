@@ -1,0 +1,21 @@
+# Copy to production.tfvars (gitignored) and fill in real values.
+
+environment        = "production"
+hcloud_location    = "fsn1"
+cloudflare_zone_id = "<zone-id-for-elizacloud.ai>"
+apps_base_domain   = "apps.elizacloud.ai"
+
+app_node_count           = 2 # behind a load balancer (see main.tf STAN note)
+app_node_server_type     = "cpx41"
+tenant_db_server_type    = "ccx33"
+tenant_db_volume_size_gb = 500
+
+network_cidr = "10.30.0.0/16"
+subnet_cidr  = "10.30.1.0/24"
+
+# Production MUST be tightened to operator + control-plane IPs only.
+operator_ingress_cidrs = ["<operator-ip>/32"]
+
+ssh_public_keys = [
+  # "ssh-ed25519 AAAA... operator@laptop"
+]
