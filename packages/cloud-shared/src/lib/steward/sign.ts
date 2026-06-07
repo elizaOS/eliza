@@ -1,16 +1,17 @@
 /**
  * Steward request-signing helper for callers that bypass the `/steward/*`
- * proxy in `bootstrap-app.ts` (currently the OAuth nonce-exchange route, which
- * forwards straight to upstream Steward so it can pin the tenant per-env).
+ * proxy in cloud-api's `bootstrap-app.ts` and talk to upstream Steward
+ * directly: the OAuth nonce-exchange route, the steward-refresh bypass, and
+ * the provisioning daemon's agent registration / cleanup calls.
  *
  * Steward's `authorization-signature` middleware
  * (Steward-Fi/steward: packages/api/src/middleware/authorization-signature.ts)
- * is the AUTHORITATIVE definition of the canonical request. `embedded.ts`
- * mirrors it for the proxy path; this module mirrors it for the direct path.
- * All copies MUST stay byte-for-byte in lockstep — if upstream adds, removes,
- * or reorders a header the canonical hashes, update every copy together or
- * signed requests start returning 401. Keep this list identical to
- * `buildStewardCanonicalRequest` in `embedded.ts`.
+ * is the AUTHORITATIVE definition of the canonical request. cloud-api's
+ * `embedded.ts` mirrors it for the proxy path; this module mirrors it for
+ * every direct-path caller. All copies MUST stay byte-for-byte in lockstep —
+ * if upstream adds, removes, or reorders a header the canonical hashes,
+ * update every copy together or signed requests start returning 401. Keep
+ * this list identical to `buildStewardCanonicalRequest` in `embedded.ts`.
  */
 
 // Matches embedded.ts: a short freshness window for the X-Steward-Request-*
