@@ -5,6 +5,7 @@ import { defineConfig } from "vitest/config";
 const rootDir = dirname(fileURLToPath(import.meta.url));
 const toVitePath = (value: string): string => value.replaceAll("\\", "/");
 const pluginBrowserSrc = resolve(rootDir, "../plugin-browser/src");
+const pluginTrainingSrc = resolve(rootDir, "../plugin-training/src");
 
 export default defineConfig({
   resolve: {
@@ -35,6 +36,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-browser\/(.+)$/,
         replacement: `${toVitePath(pluginBrowserSrc)}/$1`,
+      },
+      {
+        find: /^@elizaos\/plugin-training$/,
+        replacement: toVitePath(resolve(pluginTrainingSrc, "index.ts")),
+      },
+      {
+        find: /^@elizaos\/plugin-training\/(.+)$/,
+        replacement: `${toVitePath(pluginTrainingSrc)}/$1`,
       },
     ],
   },
