@@ -114,9 +114,8 @@ let _localInferenceRoutes:
   | undefined;
 async function getLocalInferenceRoutes() {
   if (!_localInferenceRoutes) {
-    _localInferenceRoutes = await import(
-      "@elizaos/plugin-local-inference/routes"
-    );
+    _localInferenceRoutes =
+      await import("@elizaos/plugin-local-inference/routes");
   }
   return _localInferenceRoutes;
 }
@@ -142,7 +141,6 @@ import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleFirstRunRoute } from "./first-run-routes";
 import { handleFirstRunTtsRoute } from "./first-run-tts-route";
-import { handleI18nLocaleRoute } from "./i18n-locale-routes";
 import { handleInternalWakeRoute } from "./internal-routes";
 import {
   isPerfInstrumentEnabled,
@@ -729,9 +727,6 @@ async function handleCompatRouteInner(
     });
   }
 
-  // Public language suggestion from IP-geo + Accept-Language (pre-auth).
-  if (await handleI18nLocaleRoute(req, res)) return true;
-
   // Dev observability routes — extracted to dev-compat-routes.ts
   if (await handleDevCompatRoutes(req, res, state)) return true;
 
@@ -782,9 +777,8 @@ async function handleCompatRouteInner(
 
   if (method === "POST" && url.pathname === "/api/tts/cloud") {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
-    const { handleCloudTtsPreviewRoute } = await import(
-      "@elizaos/plugin-elizacloud"
-    );
+    const { handleCloudTtsPreviewRoute } =
+      await import("@elizaos/plugin-elizacloud");
     return handleCloudTtsPreviewRoute(req, res);
   }
 
@@ -926,9 +920,8 @@ async function handleCompatRouteInner(
   if (uiSpecMatch) {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const pluginId = decodeURIComponent(uiSpecMatch[1]);
-    const { buildPluginConfigUiSpec } = await import(
-      "@elizaos/shared/config/plugin-ui-spec"
-    );
+    const { buildPluginConfigUiSpec } =
+      await import("@elizaos/shared/config/plugin-ui-spec");
     const { buildPluginListResponse } = await getPluginRegistryApi();
     const pluginList = buildPluginListResponse(state.current);
     const plugin = pluginList.plugins.find(
@@ -1199,7 +1192,9 @@ export async function startApiServer(
   try {
     if (compatState.current) {
       await ensureRuntimeSqlCompatibility(compatState.current);
-      await (await lazyEnsureTTS())(compatState.current);
+      await (
+        await lazyEnsureTTS()
+      )(compatState.current);
     }
 
     const upstreamStart = Date.now();
@@ -1234,7 +1229,9 @@ export async function startApiServer(
         }
 
         try {
-          await (await lazyEnsureTTS())(runtime);
+          await (
+            await lazyEnsureTTS()
+          )(runtime);
         } catch (err) {
           logger.warn(
             `[eliza][runtime] TTS init failed (non-critical): ${

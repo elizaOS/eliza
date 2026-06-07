@@ -41,6 +41,7 @@ COPY packages/ui/package.json ./packages/ui/package.json
 COPY plugins/plugin-sql/package.json ./plugins/plugin-sql/package.json
 COPY plugins/plugin-elizacloud/package.json ./plugins/plugin-elizacloud/package.json
 COPY plugins/plugin-workflow/package.json ./plugins/plugin-workflow/package.json
+COPY plugins/plugin-wallet/package.json ./plugins/plugin-wallet/package.json
 COPY packages/app/package.json ./packages/app/package.json
 COPY packages/app-core/platforms/electrobun/package.json ./packages/app-core/platforms/electrobun/package.json
 COPY packages/app-core/deploy/cloud-agent-template/package.json ./packages/app-core/deploy/cloud-agent-template/package.json
@@ -67,6 +68,7 @@ const KEEP = [
   "plugins/plugin-sql",
   "plugins/plugin-elizacloud",
   "plugins/plugin-workflow",
+  "plugins/plugin-wallet",
   "packages/app",
 ];
 const ALLOW = new Set([
@@ -78,6 +80,7 @@ const ALLOW = new Set([
   "@elizaos/plugin-sql",
   "@elizaos/plugin-elizacloud",
   "@elizaos/plugin-workflow",
+  "@elizaos/plugin-wallet",
 ]);
 const PRUNE_FIELDS = [
   "dependencies",
@@ -199,6 +202,7 @@ COPY packages/agent ./packages/agent
 COPY packages/app-core ./packages/app-core
 COPY packages/shared ./packages/shared
 COPY plugins/plugin-workflow ./plugins/plugin-workflow
+COPY plugins/plugin-wallet ./plugins/plugin-wallet
 COPY package.json plugins.json ./
 COPY packages/app-core/scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
 
@@ -207,7 +211,7 @@ RUN set -eux; \
   # Keep bun's symlink structure intact — cp -rL breaks transitive dep resolution.
   cp -a node_modules/. /runtime/node_modules/; \
   # Overlay workspace packages with full source (not just the symlinked dist).
-  for dir in packages/agent packages/app-core packages/shared plugins/plugin-workflow; do \
+  for dir in packages/agent packages/app-core packages/shared plugins/plugin-workflow plugins/plugin-wallet; do \
     name="$(node -p "require('./${dir}/package.json').name")"; \
     target="/runtime/node_modules/${name}"; \
     rm -rf "$target"; \
