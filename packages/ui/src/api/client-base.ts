@@ -781,6 +781,13 @@ export class ElizaClient {
 
     let url = `${wsProtocol}//${host}/ws`;
     const params = new URLSearchParams({ clientId: this.clientId });
+    // Browsers cannot set Authorization on `new WebSocket(url)`. Pass the same
+    // token HTTP uses as a query param; cloud servers (ELIZA_ALLOW_WS_QUERY_TOKEN=1)
+    // honor it during the upgrade handshake. Self-hosted servers without that
+    // flag will ignore the query token and fall back to the post-open
+    // `{type:"auth"}` message below.
+    const token = this.apiToken;
+    if (token) params.set("token", token);
     url += `?${params.toString()}`;
 
     this.ws = new WebSocket(url);
