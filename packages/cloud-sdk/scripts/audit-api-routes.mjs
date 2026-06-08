@@ -86,13 +86,21 @@ async function readGeneratedRouteMethods(cloudRoot) {
   const sourcePath = path.join(
     cloudRoot,
     "packages",
-    "sdk",
+    "cloud-sdk",
     "src",
     "public-routes.ts",
   );
   const source = await readFile(sourcePath, "utf8");
+  // Tolerant of the generator's multi-line descriptor format, e.g.
+  //   "GET /api/v1/models": {
+  //     method: "GET",
+  //     path: "/api/v1/models",
+  //     methodName: "getApiV1Models",
+  // `\s*` spans the newlines+indentation between the key and each field; the
+  // quoted-key-then-`{` anchor keeps matches scoped to one entry (inner fields
+  // use bare keys like `method:`, so they never re-trigger the key capture).
   const endpointRe =
-    /^\s+"([^"]+)": \{ method: "([^"]+)", path: "([^"]+)", methodName: "([^"]+)"/gm;
+    /"([^"]+)":\s*\{\s*method:\s*"([^"]+)",\s*path:\s*"([^"]+)",\s*methodName:\s*"([^"]+)"/g;
   const routes = new Map();
 
   for (const match of source.matchAll(endpointRe)) {
