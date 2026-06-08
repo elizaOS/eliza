@@ -39,13 +39,13 @@ resource "random_password" "tenant_db_admin" {
   special = false # keep DSN URL-safe (no escaping in admin_dsn_encrypted)
 }
 
-resource "hcloud_ssh_key" "operators" {
-  for_each = { for key in var.ssh_public_keys : substr(sha256(key), 0, 12) => key }
-
-  name       = "eliza-apps-op-${var.environment}-${each.key}"
-  public_key = each.value
-  labels     = local.common_labels
-}
+# Operator/daemon SSH access is provisioned by cloud-init: each node's `deploy`
+# user gets `var.ssh_public_keys` in its authorized_keys (see cloud-init/*.tftpl),
+# and the provisioning-worker SSHes in as `deploy`. We intentionally do NOT
+# register an `hcloud_ssh_key` here: the operator key is already present in the
+# shared Hetzner project, so creating it returns 409 uniqueness_error — and an
+# hcloud-managed key only seeds `root`, which nothing connects as. var.ssh_public_keys
+# still flows to cloud-init below.
 
 # ── Private network: apps + tenant DB only; isolated from the agent plane ─────
 resource "hcloud_network" "apps" {
@@ -119,7 +119,6 @@ resource "hcloud_server" "tenant_db" {
   location     = var.hcloud_location
   server_type  = var.tenant_db_server_type
   image        = var.hcloud_image
-  ssh_keys     = [for k in hcloud_ssh_key.operators : k.id]
   firewall_ids = [hcloud_firewall.tenant_db.id]
   labels       = merge(local.common_labels, { "role" = "tenant-db" })
 
@@ -156,7 +155,6 @@ resource "hcloud_server" "app_node" {
   location     = var.hcloud_location
   server_type  = var.app_node_server_type
   image        = var.hcloud_image
-  ssh_keys     = [for k in hcloud_ssh_key.operators : k.id]
   firewall_ids = [hcloud_firewall.app_node.id]
   labels = merge(local.common_labels, {
     "role"           = "app-node"

@@ -21,9 +21,9 @@ variable "hcloud_image" {
 
 # ── App worker node(s): Docker hosts for UNTRUSTED user images ───────────────
 variable "app_node_server_type" {
-  description = "Hetzner server type for an app worker node (runs untrusted user containers). cpx41 = 8 vCPU / 16 GB; size to expected concurrent app density."
+  description = "Hetzner server type for an app worker node (runs untrusted user containers). ccx23 = 4 dedicated vCPU / 16 GB — dedicated vCPU suits untrusted multi-tenant workloads (no noisy-neighbor) and is orderable in fsn1 (cpx41 was retired there). Size to expected concurrent app density."
   type        = string
-  default     = "cpx41"
+  default     = "ccx23"
 }
 
 variable "app_node_count" {
