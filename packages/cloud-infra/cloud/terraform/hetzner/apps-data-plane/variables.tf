@@ -49,6 +49,12 @@ variable "tenant_db_volume_size_gb" {
   default     = 200
 }
 
+variable "provision_tenant_db" {
+  description = "Provision the dedicated tenant Postgres node (the ccx33). DEFAULT false: a dedicated DB node is pure unrecovered cost at low density (#8342), so for beta we run app-node-only and co-locate the first few tenant DBs on the app node. Flip to true once you have real DB-app density to justify a dedicated cluster node. The app node is independent of it (it only bakes in the static private DB host)."
+  type        = bool
+  default     = false
+}
+
 variable "ssh_public_keys" {
   description = "Operator SSH public keys allowed to log in as root. Provide via tfvars; never commit private keys."
   type        = list(string)
