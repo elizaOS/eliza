@@ -243,7 +243,7 @@ NODE_ENV = "production"
 NEXT_PUBLIC_APP_URL = "https://staging.elizacloud.ai"
 NEXT_PUBLIC_API_URL = "https://api-staging.elizacloud.ai"
 ELIZA_CLOUD_URL = "https://staging.elizacloud.ai"
-BITROUTER_BASE_URL = "https://bitrouter-production.up.railway.app"
+BITROUTER_BASE_URL = "https://bitrouter-staging.up.railway.app"
 # Per-tenant `magicLinkBaseUrl` (set in Steward Neon `tenant_configs.email_config`)
 # redirects email magic-link callbacks to staging.elizacloud.ai instead of the
 # prod fallback (www.elizacloud.ai). Tenant row provisioned manually.

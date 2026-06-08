@@ -44,6 +44,12 @@ export interface AppContainerProviderDeps {
   dbEgressNetwork?: string;
   /** socat image for the DB ambassador. Defaults to the module default. */
   ambassadorImage?: string;
+  /**
+   * Address of the node this provider provisions on (the SSH target host).
+   * Surfaced on the result + persisted as the container's placement so the
+   * ingress can route `<shortid>.<base>` -> `nodeHost:hostPort`. Default "".
+   */
+  nodeHost?: string;
 }
 
 export interface ProvisionAppContainerParams {
@@ -56,11 +62,27 @@ export interface ProvisionedAppContainer {
   containerId: string;
   hostPort: number;
   network: string;
+  /** The node the container runs on (for ingress routing + placement). */
+  nodeHost: string;
 }
 
 function defaultExtractContainerId(stdout: string): string {
   const last = stdout.trim().split("\n").pop()?.trim() ?? "";
   return last;
+}
+
+/**
+ * Parse host ports already published on a node from `docker ps --format
+ * '{{.Ports}}'` output — lines like `0.0.0.0:28123->3000/tcp, :::28123->3000/tcp`.
+ * Used to avoid host-port collisions when placing a new app container.
+ */
+export function parseUsedHostPorts(dockerPsPortsOutput: string): Set<number> {
+  const used = new Set<number>();
+  for (const match of dockerPsPortsOutput.matchAll(/:(\d{2,5})->/g)) {
+    const port = Number(match[1]);
+    if (Number.isFinite(port)) used.add(port);
+  }
+  return used;
 }
 
 export class AppContainerProvider {
@@ -94,16 +116,29 @@ export class AppContainerProvider {
       for (const cmd of cmds) {
         await this.deps.ssh.exec(cmd);
       }
-      input = {
-        ...input,
-        environmentVars: {
-          ...input.environmentVars,
-          DATABASE_URL: rewriteDsnToAmbassador(dsn, ambassadorName(params.appId)),
-        },
-      };
+      // Rewrite EVERY injected DSN var (DATABASE_URL + POSTGRES_URL) to the
+      // ambassador host. They carry the same tenant DSN; an un-rewritten
+      // POSTGRES_URL would point at the real cluster host, which is unreachable
+      // from the app's --internal network.
+      const ambHost = ambassadorName(params.appId);
+      const rewritten: Record<string, string> = { ...input.environmentVars };
+      for (const key of ["DATABASE_URL", "POSTGRES_URL"]) {
+        const value = rewritten[key];
+        if (value) rewritten[key] = rewriteDsnToAmbassador(value, ambHost);
+      }
+      input = { ...input, environmentVars: rewritten };
     }
 
-    const hostPort = await this.deps.allocateHostPort();
+    // Collision-safe host port: avoid ports already published on the node. The
+    // `docker ps` probe is best-effort — on failure we fall back to the blind
+    // pick (no worse than before). Re-pick a few times if the first collides.
+    const usedPorts = parseUsedHostPorts(
+      await this.deps.ssh.exec("docker ps --format '{{.Ports}}'").catch(() => ""),
+    );
+    let hostPort = await this.deps.allocateHostPort();
+    for (let attempt = 0; attempt < 20 && usedPorts.has(hostPort); attempt++) {
+      hostPort = await this.deps.allocateHostPort();
+    }
     const createCmd = buildAppDockerCreateCmd({
       appId: params.appId,
       containerName: params.containerName,
@@ -117,7 +152,7 @@ export class AppContainerProvider {
     const containerId = (this.deps.extractContainerId ?? defaultExtractContainerId)(stdout);
     await this.deps.ssh.exec(`docker start ${shellQuote(params.containerName)}`);
 
-    return { containerId, hostPort, network };
+    return { containerId, hostPort, network, nodeHost: this.deps.nodeHost ?? "" };
   }
 
   async delete(containerName: string): Promise<void> {

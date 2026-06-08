@@ -12,6 +12,7 @@
  */
 
 import type { AppContainerProvider } from "./app-container-provider";
+import { deriveAppPublicUrl } from "./app-url";
 import {
   type JobLike,
   readContainerDeleteJobData,
@@ -40,7 +41,7 @@ export interface AppContainerStore {
   getById(containerId: string): Promise<AppContainerRow | null>;
   markRunning(
     containerId: string,
-    info: { hostContainerId: string; hostPort: number; network: string },
+    info: { hostContainerId: string; hostPort: number; network: string; nodeHost?: string },
   ): Promise<void>;
   markDeleted(containerId: string): Promise<void>;
   markError(containerId: string, error: string): Promise<void>;
@@ -49,6 +50,15 @@ export interface AppContainerStore {
 export interface ContainerExecutorDeps {
   provider: AppContainerProvider;
   store: AppContainerStore;
+  /**
+   * Ingress hooks (optional). When set, the executor registers the per-app route
+   * `<shortid>.<base>` -> `nodeHost:hostPort` right after the container is marked
+   * running, and removes it on delete. add failures fail the deploy (so the user
+   * retries rather than a silent 502); remove failures are swallowed (a reconciler
+   * sweeps orphans). No-ops when unset (ingress not configured).
+   */
+  onRouteAdded?: (route: { hostname: string; nodeHost: string; hostPort: number }) => Promise<void>;
+  onRouteRemoved?: (route: { hostname: string }) => Promise<void>;
 }
 
 async function requireRow(store: AppContainerStore, containerId: string): Promise<AppContainerRow> {
@@ -82,7 +92,18 @@ export async function executeContainerProvision(
       hostContainerId: result.containerId,
       hostPort: result.hostPort,
       network: result.network,
+      nodeHost: result.nodeHost,
     });
+    // Register the ingress route so `<shortid>.<base>` reaches this container.
+    // Inside the try: an add failure marks the container errored (no silent 502).
+    const endpoint = deriveAppPublicUrl(containerId);
+    if (endpoint && deps.onRouteAdded) {
+      await deps.onRouteAdded({
+        hostname: endpoint.hostname,
+        nodeHost: result.nodeHost,
+        hostPort: result.hostPort,
+      });
+    }
   } catch (error) {
     await deps.store.markError(containerId, error instanceof Error ? error.message : String(error));
     throw error;
@@ -96,6 +117,11 @@ export async function executeContainerDelete(
   const { containerId } = readContainerDeleteJobData(job);
   const row = await deps.store.getById(containerId);
   if (row) await deps.provider.delete(row.containerName);
+  // Remove the ingress route (best-effort; a reconciler sweeps any orphan).
+  const endpoint = deriveAppPublicUrl(containerId);
+  if (endpoint && deps.onRouteRemoved) {
+    await deps.onRouteRemoved({ hostname: endpoint.hostname }).catch(() => undefined);
+  }
   await deps.store.markDeleted(containerId);
 }
 

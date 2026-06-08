@@ -157,3 +157,84 @@ describe("executeContainerDelete / restart / logs", () => {
     expect(calls.find((c) => c.op === "logs")?.arg).toEqual({ name: "app-nubilio", tail: 50 });
   });
 });
+
+describe("ingress route hooks", () => {
+  const BASE = "CONTAINERS_PUBLIC_BASE_DOMAIN";
+  function withBase<T>(value: string | undefined, fn: () => Promise<T>): Promise<T> {
+    const prev = process.env[BASE];
+    if (value === undefined) delete process.env[BASE];
+    else process.env[BASE] = value;
+    return fn().finally(() => {
+      if (prev === undefined) delete process.env[BASE];
+      else process.env[BASE] = prev;
+    });
+  }
+
+  test("provision adds the route (host + nodeHost + hostPort) + threads nodeHost to markRunning", async () => {
+    await withBase("apps.elizacloud.ai", async () => {
+      const { events, store } = fakeStore();
+      const { provider } = fakeProvider({
+        async provision() {
+          return {
+            containerId: "docker-abc",
+            hostPort: 49001,
+            network: "app-net-x",
+            nodeHost: "10.30.1.5",
+          };
+        },
+      } as never);
+      const routes: Array<{ hostname: string; nodeHost: string; hostPort: number }> = [];
+      await executeContainerProvision(
+        job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
+        {
+          provider,
+          store,
+          onRouteAdded: async (r) => {
+            routes.push(r);
+          },
+        },
+      );
+      expect(routes).toHaveLength(1);
+      expect(routes[0].hostname).toMatch(/\.apps\.elizacloud\.ai$/);
+      expect(routes[0]).toMatchObject({ nodeHost: "10.30.1.5", hostPort: 49001 });
+      // nodeHost is also persisted (markRunning -> metadata.hostname / ingress-map)
+      expect(events.find((e) => e.op === "running")?.info).toMatchObject({ nodeHost: "10.30.1.5" });
+    });
+  });
+
+  test("delete removes the route (best-effort)", async () => {
+    await withBase("apps.elizacloud.ai", async () => {
+      const { store } = fakeStore();
+      const { provider } = fakeProvider();
+      const removed: string[] = [];
+      await executeContainerDelete(job({ containerId: "container-1", organizationId: "org-1" }), {
+        provider,
+        store,
+        onRouteRemoved: async (r) => {
+          removed.push(r.hostname);
+        },
+      });
+      expect(removed).toHaveLength(1);
+      expect(removed[0]).toMatch(/\.apps\.elizacloud\.ai$/);
+    });
+  });
+
+  test("no base domain -> no route call (ingress not configured)", async () => {
+    await withBase(undefined, async () => {
+      const { store } = fakeStore();
+      const { provider } = fakeProvider();
+      let called = false;
+      await executeContainerProvision(
+        job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
+        {
+          provider,
+          store,
+          onRouteAdded: async () => {
+            called = true;
+          },
+        },
+      );
+      expect(called).toBe(false);
+    });
+  });
+});

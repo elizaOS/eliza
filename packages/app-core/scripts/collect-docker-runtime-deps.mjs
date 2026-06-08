@@ -99,6 +99,7 @@ const LINKED_WORKSPACE_PACKAGES = [
   "plugins/plugin-sql",
   "plugins/plugin-telegram",
   "plugins/plugin-video",
+  "plugins/plugin-wallet",
   "plugins/plugin-whatsapp",
   "plugins/plugin-workflow",
   "plugins/plugin-x402",
