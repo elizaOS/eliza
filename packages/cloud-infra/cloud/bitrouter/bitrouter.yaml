@@ -51,4 +51,4 @@ models:
       - provider: openrouter
         service_id: "openai/gpt-oss-120b"
 
-inherit_defaults: true
+inherit_defaults: false
