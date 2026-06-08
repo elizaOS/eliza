@@ -1480,7 +1480,7 @@ function ElementRenderer({ elementId }: { elementId: string }) {
     return null;
   }
 
-  const component = COMPONENTS[el.type];
+  const component = COMPONENTS[el.type as SupportedUiComponentType];
   if (!component) {
     return (
       <div className="text-2xs text-destructive border border-dashed border-destructive p-2">
