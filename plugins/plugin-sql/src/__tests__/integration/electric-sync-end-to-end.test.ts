@@ -81,21 +81,7 @@ async function pgExec(query: string): Promise<void> {
   }
 }
 
-/** Query Postgres and return rows. */
-async function pgQuery<T = Record<string, unknown>>(
-  query: string,
-  params?: unknown[]
-): Promise<T[]> {
-  if (!pgModule) throw new Error("pg module not loaded");
-  const client = new pgModule.Client({ connectionString: POSTGRES_URL });
-  try {
-    await client.connect();
-    const result = await client.query(query, params);
-    return result.rows as T[];
-  } finally {
-    await client.end();
-  }
-}
+
 
 /**
  * Create the plugin-sql schema tables in Postgres so Electric can
