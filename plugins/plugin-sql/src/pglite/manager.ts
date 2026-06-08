@@ -9,10 +9,30 @@ import {
 } from "node:fs";
 import { PGlite, type PGliteOptions } from "@electric-sql/pglite";
 import { fuzzystrmatch } from "@electric-sql/pglite/contrib/fuzzystrmatch";
+import { live } from "@electric-sql/pglite/live";
 import { vector } from "@electric-sql/pglite/vector";
+import { electricSync } from "@electric-sql/pglite-sync";
 import { logger } from "@elizaos/core";
 import type { IDatabaseClientManager } from "../types";
+import { WriteBackService } from "../write-back";
 import { createPgliteInitError, PGLITE_ERROR_CODES } from "./errors";
+
+/**
+ * Canonical list of table names synced via Electric and tracked by the
+ * write-back service. Used by both syncShapesToTables (read path) and
+ * PgliteDatabaseAdapter (write path) so the two stay in sync.
+ */
+export const SYNCED_TABLE_NAMES = [
+  "agents",
+  "entities",
+  "worlds",
+  "rooms",
+  "participants",
+  "memories",
+  "relationships",
+  "tasks",
+  "user_sessions",
+] as const satisfies readonly string[];
 
 type PglitePidFileStatus =
   | "missing"
@@ -21,6 +41,63 @@ type PglitePidFileStatus =
   | "cleared-stale"
   | "cleared-malformed"
   | "check-failed";
+
+/**
+ * Runtime sync status of the Electric Sync client wired into PGlite.
+ * - syncing: the sync stream is connecting or catching up with the source.
+ * - synced: the local PGlite is up-to-date with the Electric source.
+ * - error: the sync stream encountered a non-recoverable error.
+ * - disabled: no ELIZA_ELECTRIC_SYNC_URL was configured at boot.
+ */
+export type PgliteSyncStatus = "syncing" | "synced" | "error" | "disabled";
+
+/** Per-table sync state. */
+export type PgliteSyncTableState = "pending" | "synced" | "error";
+
+/** Per-table status map exposed by getSyncStatus(). */
+export type PgliteSyncTableStatus = Record<string, { state: PgliteSyncTableState; error?: string }>;
+
+/**
+ * Result row type for live queries. Matches the shape returned by
+ * {@link https://pglite.dev/docs/live-queries | pg.live.query()}.
+ */
+export interface LiveQueryResult<T = Record<string, unknown>> {
+  rows: T[];
+  fields: { name: string; dataTypeID: number }[];
+  affectedRows?: number;
+}
+
+/**
+ * Return value from {@link https://pglite.dev/docs/live-queries | pg.live.query()}.
+ */
+export interface LiveQueryReturn<T = Record<string, unknown>> {
+  initialResults: LiveQueryResult<T>;
+  unsubscribe: () => Promise<void>;
+  refresh: (options?: { offset?: number; limit?: number }) => Promise<void>;
+}
+
+/**
+ * The `pg.live` namespace added by the `@electric-sql/pglite/live` extension.
+ */
+export interface LiveNamespace {
+  query<T = Record<string, unknown>>(
+    sql: string,
+    params: unknown[] | undefined,
+    callback: (result: LiveQueryResult<T>) => void
+  ): Promise<LiveQueryReturn<T>>;
+  incrementalQuery<T = Record<string, unknown>>(
+    sql: string,
+    params: unknown[] | undefined,
+    key: string,
+    callback: (result: LiveQueryResult<T>) => void
+  ): Promise<LiveQueryReturn<T>>;
+  changes<T = Record<string, unknown>>(
+    sql: string,
+    params: unknown[] | undefined,
+    key: string,
+    callback: (changes: unknown[]) => void
+  ): Promise<LiveQueryReturn<T>>;
+}
 
 export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
   // A lock whose liveness we cannot positively confirm (EPERM / non-ESRCH probe
@@ -38,9 +115,40 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
   private initializePromise: Promise<void> | null = null;
   private lockFd: number | null = null;
   private lockPath: string | null = null;
+  private syncUrl: string | null;
+  private agentId: string | null;
+  private syncStatus: PgliteSyncStatus = "disabled";
+  private syncError: string | null = null;
+  private syncUnsubscribe: (() => void) | null = null;
+  private syncTableStates: PgliteSyncTableStatus = {};
+  private syncedTables: string[] = [];
+  // Serializes calls to startSync() so concurrent forceResync() / ensureSync()
+  // calls don't race into syncShapesToTables ("Already syncing shape" errors).
+  private startSyncMutex: Promise<void> | null = null;
+  // Serializes the full forceResync() operation so concurrent calls don't race
+  // into unsubscribe + DROP SCHEMA ("electric.subscriptions_metadata does not
+  // exist" when the extension hasn't drained before DROP CASCADE).
+  private forceResyncMutex: ReturnType<PGliteClientManager["forceResync"]> | null = null;
+  // Write-back service: forwards local PGlite writes to the cloud API
+  // (Electric Pattern 1 — Online Writes) for bidirectional sync.
+  private writeBack: WriteBackService;
 
-  constructor(options: PGliteOptions) {
+  constructor(
+    options: PGliteOptions & {
+      syncUrl?: string;
+      agentId?: string;
+      writeBackBaseUrl?: string;
+      serviceKey?: string;
+    }
+  ) {
     this.options = options;
+    this.syncUrl = options.syncUrl ?? null;
+    this.agentId = options.agentId ?? null;
+    this.writeBack = new WriteBackService({
+      writeBaseUrl: options.writeBackBaseUrl,
+      agentId: options.agentId,
+      serviceKey: options.serviceKey,
+    });
     this.acquireDataDirLockIfNeeded();
     try {
       this.client = this.createClient(options);
@@ -57,6 +165,51 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
 
   public getConnection(): PGlite {
     return this.client;
+  }
+
+  /**
+   * Access the write-back service for forwarding local writes to the
+   * cloud API. Returns null when write-back is not configured.
+   */
+  public getWriteBack(): WriteBackService | null {
+    return this.writeBack.enabled ? this.writeBack : null;
+  }
+
+  /**
+   * Notify the write-back service of a local write to a sync table.
+   * Called by the adapter after a successful write operation.
+   * No-op when write-back is not configured.
+   */
+  public notifyWrite(
+    table: string,
+    operation: "insert" | "upsert" | "delete",
+    row: Record<string, unknown>
+  ): void {
+    this.writeBack.enqueue(table, operation, row);
+  }
+
+  /**
+   * Current Electric Sync status.
+   * - "disabled": no ELIZA_ELECTRIC_SYNC_URL was configured.
+   * - "syncing": sync client is connecting or catching up.
+   * - "synced": local PGlite is up-to-date with the Electric source.
+   * - "error": sync encountered an error (see syncError).
+   *
+   * Also returns per-table state so operators can see which specific
+   * tables are healthy vs errored vs still pending.
+   */
+  public getSyncStatus(): {
+    status: PgliteSyncStatus;
+    error: string | null;
+    tables: PgliteSyncTableStatus;
+    synced: string[];
+  } {
+    return {
+      status: this.syncStatus,
+      error: this.syncError,
+      tables: { ...this.syncTableStates },
+      synced: [...this.syncedTables],
+    };
   }
 
   public isShuttingDown(): boolean {
@@ -83,6 +236,29 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
 
   public async close(): Promise<void> {
     this.shuttingDown = true;
+    // Flush pending write-backs before tearing down.
+    if (this.writeBack.enabled) {
+      try {
+        await this.writeBack.flush();
+      } catch {}
+    }
+    // Drain any in-progress startSync before we tear down.
+    if (this.startSyncMutex) {
+      try {
+        await this.startSyncMutex;
+      } catch {}
+    }
+    if (this.syncUnsubscribe) {
+      try {
+        this.syncUnsubscribe();
+      } catch {}
+      this.syncUnsubscribe = null;
+    }
+    // Allow the sync extension's async teardown (network abort handlers,
+    // final subscription-metadata writes) to settle before we close the
+    // database. A single setTimeout(0) is insufficient — the extension uses
+    // network I/O whose abort + cleanup can take multiple event-loop ticks.
+    await new Promise((r) => setTimeout(r, 50));
     if (this.client) {
       try {
         await this.client.close();
@@ -97,13 +273,19 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     if (process.env.ELIZA_PGLITE_DISABLE_EXTENSIONS === "1") {
       return new PGlite(options);
     }
+    // When ELIZA_ELECTRIC_SYNC_URL is set (or syncUrl was passed in options),
+    // register the electricSync extension so the PGlite instance can sync.
+    const syncUrl = this.syncUrl ?? process.env.ELIZA_ELECTRIC_SYNC_URL ?? null;
+    const extensions = {
+      ...(options.extensions ?? {}),
+      vector,
+      fuzzystrmatch,
+      live,
+      ...(syncUrl ? { electric: electricSync() } : {}),
+    } as PGliteOptions["extensions"];
     return new PGlite({
       ...options,
-      extensions: {
-        ...(options.extensions ?? {}),
-        vector,
-        fuzzystrmatch,
-      },
+      extensions,
     });
   }
 
@@ -397,9 +579,376 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     this.initialized = true;
   }
 
+  /**
+   * Ensure the Electric Sync stream is started. Idempotent — safe to call
+   * on every database operation. The first call after PGlite is initialized
+   * and after migrations have created the target tables will start the sync
+   * stream; subsequent calls are no-ops.
+   *
+   * This is deliberately separate from {@link initialize} because the Drizzle
+   * migrations that create the target tables run AFTER plugin init completes.
+   * Starting sync during init would try to insert into non-existent tables.
+   */
+  public async ensureSync(): Promise<void> {
+    // Already started or PGlite not initialized yet — no-op.
+    if (this.syncUnsubscribe) return;
+    if (!this.initialized) return;
+    // startSync() handles its own guards: missing syncUrl → "disabled",
+    // missing agentId → "error", double-call → no-op. It also resets
+    // syncStatus/syncError on entry, so calling it after a transient
+    // error safely retries the sync stream.
+    await this.startSync();
+  }
+
+  /**
+   * Access the PGlite live query namespace for reactive queries that
+   * push updated results whenever the underlying tables change. Useful
+   * for dashboard health endpoints and real-time monitoring.
+   *
+   * Returns the {@link https://pglite.dev/docs/live-queries | pg.live}
+   * namespace, which provides:
+   *   - `live.query(sql, params, callback)` — simple live query
+   *   - `live.incrementalQuery(sql, params, key, callback)` — diff-based
+   *   - `live.changes(sql, params, key, callback)` — raw change stream
+   *
+   * Returns null when PGlite extensions are disabled.
+   */
+  public liveQuery(): LiveNamespace | null {
+    // Cast through unknown because the PGlite type doesn't declare the
+    // `live` namespace added by the extension at runtime.
+    const clientWithLive = this.client as PGlite & {
+      live?: LiveNamespace;
+    };
+    return clientWithLive.live ?? null;
+  }
+
+  /**
+   * Force-reset the Electric Sync stream: unsubscribe, drop all internal
+   * sync state from the `electric` schema, and restart from scratch.
+   *
+   * Use this when operators diagnose a split-brain scenario (local PGlite
+   * has diverged from the source Postgres) or when the sync stream is
+   * stuck in an unrecoverable error state. The local data in the synced
+   * tables is preserved — only the Electric metadata tables are dropped,
+   * forcing a full re-sync that reconstructs state from the source.
+   *
+   * Returns the sync status after the reset. When sync is not configured
+   * (no ELIZA_ELECTRIC_SYNC_URL), returns null.
+   */
+  public async forceResync(): Promise<{
+    status: PgliteSyncStatus;
+    error: string | null;
+    tables: PgliteSyncTableStatus;
+    synced: string[];
+  } | null> {
+    // Serialize the full forceResync operation so concurrent calls don't
+    // race into unsubscribe + DROP SCHEMA before the extension has drained.
+    if (this.forceResyncMutex) return this.forceResyncMutex;
+    this.forceResyncMutex = this.forceResyncInternal();
+    try {
+      return await this.forceResyncMutex;
+    } finally {
+      this.forceResyncMutex = null;
+    }
+  }
+
+  private async forceResyncInternal(): Promise<{
+    status: PgliteSyncStatus;
+    error: string | null;
+    tables: PgliteSyncTableStatus;
+    synced: string[];
+  } | null> {
+    const syncUrl = this.syncUrl ?? process.env.ELIZA_ELECTRIC_SYNC_URL ?? null;
+    if (!syncUrl) return null;
+    if (!this.initialized) return null;
+
+    // 1. Unsubscribe the current sync stream.
+    if (this.syncUnsubscribe) {
+      try {
+        this.syncUnsubscribe();
+      } catch {}
+      this.syncUnsubscribe = null;
+      // Let the sync extension drain in-flight network operations before we
+      // drop the schema it depends on. A single setTimeout(0) is insufficient
+      // — the extension uses network I/O whose abort + final teardown can take
+      // multiple event-loop ticks. A modest delay prevents "electric.
+      // subscriptions_metadata does not exist" when DROP CASCADE removes it
+      // while the extension is still writing teardown bookmarks.
+      await new Promise((r) => setTimeout(r, 50));
+    }
+
+    // 2. Drop the Electric metadata schema so the sync stream loses its
+    //    last-known offset and shape state. CASCADE removes all dependent
+    //    objects (tables, functions, sequences) that the electricSync
+    //    extension created in this schema.
+    try {
+      await this.client.query("DROP SCHEMA IF EXISTS electric CASCADE");
+      logger.info({ src: "plugin:sql", syncUrl }, "Dropped electric schema — sync state reset");
+    } catch (err) {
+      logger.warn(
+        { src: "plugin:sql", error: this.getErrorText(err) },
+        "Failed to drop electric schema during force re-sync — continuing"
+      );
+    }
+
+    // 3. Start a fresh sync stream. startSyncInternal() resets
+    //    syncTableStates, syncedTables, syncStatus and syncError
+    //    itself, so we don't need a separate state reset here.
+    //    (A redundant reset races with concurrent forceResync calls.)
+    await this.startSync();
+
+    return this.getSyncStatus();
+  }
+
+  /**
+   * Start the Electric Sync stream after PGlite is initialized.
+   * Uses the official multi-table {@link https://pglite.dev/docs/sync#multi-table-sync | syncShapesToTables}
+   * API so all shape updates that happened in a single Postgres transaction
+   * are applied in a single PGlite transaction, preserving consistency
+   * across all runtime tables.
+   *
+   * Each shape is filtered by agent_id so that in a shared-Neon deployment
+   * an agent only syncs its own data — preserving per-agent physical isolation
+   * even though the source Postgres is multi-tenant.
+   *
+   * Sync failures are non-fatal: the agent runs on its local PGlite
+   * regardless of sync health. Per-table error state is tracked so
+   * operators can diagnose individual table issues without assuming
+   * the entire sync is broken.
+   */
+  private async startSync(): Promise<void> {
+    const syncUrl = this.syncUrl ?? process.env.ELIZA_ELECTRIC_SYNC_URL ?? null;
+    if (!syncUrl) {
+      this.syncStatus = "disabled";
+      return;
+    }
+
+    // Guard: don't start sync during shutdown — close() is tearing down.
+    if (this.shuttingDown) return;
+
+    // Serialize concurrent startSync() calls. forceResync() unsets
+    // syncUnsubscribe before calling startSync(), so the old guard was
+    // insufficient — two forceResync()s could race past it. A promise
+    // mutex ensures only one call to syncShapesToTables at a time.
+    if (this.startSyncMutex) return this.startSyncMutex;
+    this.startSyncMutex = this.startSyncInternal(syncUrl);
+    try {
+      return await this.startSyncMutex;
+    } finally {
+      this.startSyncMutex = null;
+    }
+  }
+
+  /** Internal body of startSync, extracted so the mutex wraps only the
+   *  syncShapesToTables call, not the early-return guards. */
+  private async startSyncInternal(syncUrl: string): Promise<void> {
+    // Guard against re-entry via the old syncUnsubscribe path.
+    if (this.syncUnsubscribe) {
+      return;
+    }
+
+    // Set sync status now that we're past the mutex and actually starting.
+    this.syncStatus = "syncing";
+    this.syncError = null;
+
+    try {
+      // TypeScript: pglite-sync adds an `electric` namespace on the PGlite
+      // instance when the electricSync() extension is registered.
+      // The official API: https://pglite.dev/docs/sync#multitable-sync
+      const clientWithElectric = this.client as PGlite & {
+        electric?: {
+          syncShapesToTables?: (opts: {
+            shapes: Record<
+              string,
+              {
+                shape: { url: string; params?: Record<string, string> };
+                table: string;
+                primaryKey: string[];
+              }
+            >;
+            key: string;
+            onInitialSync?: () => void;
+            onError?: (err: Error) => void;
+          }) => { isUpToDate: boolean; unsubscribe: () => void };
+        };
+      };
+
+      if (!clientWithElectric.electric?.syncShapesToTables) {
+        const msg =
+          "electricSync extension registered but pg.electric.syncShapesToTables not available";
+        logger.warn({ src: "plugin:sql", syncUrl }, msg);
+        this.syncStatus = "error";
+        this.syncError = msg;
+        return;
+      }
+
+      // Per-agent WHERE filter: in a shared-Neon deployment the source
+      // Postgres holds all agents' rows. The `agent_id` column scopes every
+      // table, so each PGlite syncs only the rows that belong to its agent.
+      // Refuse to sync without an agentId — syncing all rows would silently
+      // leak every agent's data into the local PGlite.
+      const agentId = this.agentId ?? process.env.AGENT_ID ?? null;
+      if (!agentId) {
+        const msg =
+          "ELIZA_ELECTRIC_SYNC_URL is configured but agentId is unknown — refusing to sync without per-agent filtering";
+        logger.error({ src: "plugin:sql", syncUrl }, msg);
+        this.syncStatus = "error";
+        this.syncError = msg;
+        return;
+      }
+
+      // Electric Cloud does NOT support $1 positional placeholders — the
+      // `where` clause must use literal SQL values. agentId is a UUID,
+      // validated explicitly so direct interpolation is safe.
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(agentId)) {
+        const msg = `agentId is not a valid UUID: ${agentId}`;
+        logger.error({ src: "plugin:sql", syncUrl }, msg);
+        this.syncStatus = "error";
+        this.syncError = msg;
+        return;
+      }
+      const where = `agent_id = '${agentId}'`;
+      const agentWhere = `id = '${agentId}'`;
+
+      // Derive the shape definitions from SYNCED_TABLE_NAMES so the read path
+      // stays in sync with the write-back notification path. Per-table
+      // overrides: agents filters by id (literal UUID, not $1 placeholder —
+      // Electric Cloud requires literal values in WHERE clauses),
+      // user_sessions has no agent_id column so filters on ended_at IS NULL.
+      const tables = SYNCED_TABLE_NAMES.map((name) => ({
+        key: name,
+        table: name,
+        pk: ["id"] as string[],
+        where:
+          name === "agents"
+            ? agentWhere
+            : name === "user_sessions"
+              ? ("ended_at IS NULL" as const)
+              : where,
+        params:
+          name === "user_sessions"
+            ? ({} as Record<string, string>)
+            : ({} as Record<string, string>),
+      }));
+
+      // Initialize per-table state as "pending".
+      this.syncTableStates = {};
+      for (const { key } of tables) {
+        this.syncTableStates[key] = { state: "pending" };
+      }
+      this.syncedTables = [];
+
+      // Build the shapes record as expected by syncShapesToTables.
+      // https://pglite.dev/docs/sync#syncshapestotables-api
+      const shapes: Record<
+        string,
+        {
+          shape: { url: string; params: Record<string, string> };
+          table: string;
+          primaryKey: string[];
+        }
+      > = {};
+      for (const { key, table, pk, where: tableWhere, params: tableParams } of tables) {
+        shapes[key] = {
+          shape: {
+            url: syncUrl,
+            params: { table, where: tableWhere, ...tableParams },
+          },
+          table,
+          primaryKey: pk,
+        };
+      }
+
+      // Per-agent sync key so different agents' sync streams don't collide
+      // and resume-from-last-offset works across container restarts.
+      const syncKey = agentId;
+
+      // Track which tables have completed initial sync. The onInitialSync
+      // callback fires once when ALL shapes are synced.
+      let initialSyncComplete = false;
+
+      const sync = clientWithElectric.electric.syncShapesToTables({
+        shapes,
+        key: syncKey,
+        onInitialSync: () => {
+          // Guard: if the manager is shutting down, don't touch
+          // PGlite or internal state — close() is running.
+          if (this.shuttingDown) return;
+          initialSyncComplete = true;
+          // Mark all tables as synced.
+          for (const { key } of tables) {
+            this.syncTableStates[key] = { state: "synced" };
+          }
+          this.syncedTables = tables.map((t) => t.key);
+          this.syncStatus = "synced";
+          this.syncError = null;
+          logger.info(
+            { src: "plugin:sql", syncedTables: this.syncedTables },
+            `Electric Sync initial sync complete for all ${tables.length} tables`
+          );
+        },
+        onError: (err: Error) => {
+          // Guard: if the manager is shutting down, the PGlite
+          // instance may already be closed — don't touch state.
+          if (this.shuttingDown) return;
+          // Sync errors are warnings, not fatal — the agent runs on
+          // local PGlite regardless. Track the error for diagnostics
+          // but don't declare every table broken.
+          this.syncError = err.message;
+          if (!initialSyncComplete) {
+            // Before initial sync: all pending tables that haven't
+            // individually errored stay pending.
+            this.syncStatus = "error";
+          }
+          // After initial sync: the existing synced data is fine;
+          // just log the stream disruption.
+          logger.error(
+            { src: "plugin:sql", error: err.message },
+            "Electric Sync stream error — agent continues on local PGlite"
+          );
+        },
+      });
+
+      this.syncUnsubscribe = () => sync.unsubscribe();
+
+      // If isUpToDate is already true after syncShapesToTables returns,
+      // the initial sync happened synchronously (e.g., all tables empty
+      // or caught up instantly). Fire onInitialSync manually.
+      if (sync.isUpToDate && !initialSyncComplete && !this.shuttingDown) {
+        for (const { key } of tables) {
+          this.syncTableStates[key] = { state: "synced" };
+        }
+        this.syncedTables = tables.map((t) => t.key);
+        this.syncStatus = "synced";
+      }
+
+      logger.info(
+        {
+          src: "plugin:sql",
+          syncUrl,
+          agentId,
+          syncKey,
+          status: this.syncStatus,
+          tables: tables.length,
+          syncedTables: this.syncedTables,
+        },
+        "Electric Sync client started for all core tables"
+      );
+    } catch (err) {
+      this.syncStatus = "error";
+      this.syncError = err instanceof Error ? err.message : String(err);
+      logger.error(
+        { src: "plugin:sql", error: this.syncError },
+        "Failed to start Electric Sync client — agent continues on local PGlite"
+      );
+    }
+  }
+
   private async initializeInternal(): Promise<void> {
     try {
       await this.queryMigrationsSchema();
+      // Sync is deferred to ensureSync() — called lazily from
+      // withDatabase() after migrations have created the target tables.
       return;
     } catch (initialError) {
       const dataDir = this.getDataDir();
@@ -432,6 +981,7 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
 
         try {
           await this.queryMigrationsSchema();
+          // Sync deferred — will be started by ensureSync() on first DB op.
           return;
         } catch (retryError) {
           logger.error(

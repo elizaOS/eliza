@@ -1,0 +1,19 @@
+# Electric Cloud reverse proxy — rewrites every incoming request
+# to the Electric Cloud shape API with auth query params injected.
+#
+# Per https://electric.ax/docs/sync/guides/troubleshooting#missing-headers
+#
+# Required env vars: ELECTRIC_CLOUD_SOURCE_ID, ELECTRIC_CLOUD_SECRET
+# Start with: ELECTRIC_CLOUD_SOURCE_ID=... ELECTRIC_CLOUD_SECRET=... caddy run --config plugins/plugin-sql/caddy/electric-proxy.Caddyfile
+
+http://localhost:3001 {
+    # Forward every request to Electric Cloud with auth params appended.
+    # Note: designed for query-param client URLs like /?table=agents&offset=-1.
+    # Path-based format (/v1/shape/{table}) is not handled — the table name
+    # is lost in the rewrite since {query} only captures the query string.
+    rewrite * /v1/shape?{query}&source_id={$ELECTRIC_CLOUD_SOURCE_ID}&secret={$ELECTRIC_CLOUD_SECRET}
+
+    reverse_proxy https://api.electric-sql.cloud {
+        header_up Host api.electric-sql.cloud
+    }
+}

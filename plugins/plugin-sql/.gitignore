@@ -94,7 +94,8 @@ web_modules/
 
 .yarn-integrity
 
-# dotenv environment variable files
+# dotenv environment variable files (keep .env out of git;
+# .env.example is the template — it IS tracked)
 
 .env
 .env.development.local
@@ -102,6 +103,7 @@ web_modules/
 .env.production.local
 .env.local
 .env.test
+!.env.example
 
 # parcel-bundler cache (https://parceljs.org/)
 
