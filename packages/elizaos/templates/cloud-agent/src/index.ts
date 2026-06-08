@@ -1,4 +1,4 @@
-import { AgentRuntime, elizaOS } from "@elizaos/core";
+import { AgentRuntime } from "@elizaos/core";
 
 const character = await import("../character.json", { with: { type: "json" } });
 
