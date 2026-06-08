@@ -7,6 +7,16 @@ import {
 } from "@elizaos/shared";
 import { loadElizaConfig } from "../config/config.ts";
 
+/**
+ * Optional-route fallbacks: minimal, safe-default handlers for endpoints whose
+ * "real" implementations live in plugins/features that may not be loaded in
+ * every deployment (mobile bundles, cloud-agent containers, lightweight
+ * runtimes). Every handler degrades to an inert snapshot (empty list /
+ * `unavailable` / `off`) rather than 404, so the dashboard SPA can render
+ * without exploding when, e.g., computer-use, the apps catalog, or coding-agent
+ * tooling are absent.
+ */
+
 type StreamingSettingsModule = {
   readStreamSettings: () => StreamVisualSettings;
   validateStreamSettings: (value: unknown) => {
@@ -135,14 +145,6 @@ function getStreamingSettingsModule(): Promise<StreamingSettingsModule> {
   return streamingSettingsModulePromise;
 }
 
-function mobileLocalCompatibilityEnabled(): boolean {
-  return (
-    isMobilePlatform() ||
-    process.env.ELIZA_DEVICE_BRIDGE_ENABLED === "1" ||
-    process.env.ELIZA_MOBILE_LOCAL_AGENT === "1"
-  );
-}
-
 function isTrueMobileLocalAgent(): boolean {
   return isMobilePlatform() || process.env.ELIZA_MOBILE_LOCAL_AGENT === "1";
 }
@@ -216,10 +218,6 @@ export async function handleMobileOptionalRoutes(
   pathname: string,
   method: string,
 ): Promise<boolean> {
-  if (!mobileLocalCompatibilityEnabled()) {
-    return false;
-  }
-
   if (method === "GET" && pathname === "/api/runtime/mode") {
     sendJson(res, getRuntimeModeFallbackSnapshot());
     return true;
