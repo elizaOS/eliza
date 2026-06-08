@@ -13,7 +13,11 @@ export const DEFAULT_SKIP_ENTRIES = new Set([
   "node_modules",
 ]);
 
-function assertCopyPathContained(root: string, target: string, label: string): void {
+function assertCopyPathContained(
+  root: string,
+  target: string,
+  label: string,
+): void {
   const resolvedRoot = path.resolve(root);
   const resolvedTarget = path.resolve(target);
   if (

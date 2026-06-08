@@ -1,0 +1,23 @@
+{
+  "name": "__APP_NAME__",
+  "clients": [],
+  "modelProvider": "openai",
+  "settings": {
+    "model": "gpt-4",
+    "temperature": 0.7,
+    "maxTokens": 4096
+  },
+  "bio": ["A cloud-deployed Eliza agent created from `elizaos create --template cloud-agent`."],
+  "lore": [],
+  "knowledge": [],
+  "topics": ["assistance", "conversation"],
+  "adjectives": ["helpful", "responsive"],
+  "plugins": [],
+  "style": {
+    "all": [],
+    "chat": [],
+    "post": []
+  },
+  "messageExamples": [],
+  "postExamples": []
+}

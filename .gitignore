@@ -841,3 +841,5 @@ waifu.fun/
 # Local workspace environment configs and device outputs
 .eliza-local/
 **/.codex/
+scratch/
+lint_output*.txt

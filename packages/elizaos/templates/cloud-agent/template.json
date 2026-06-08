@@ -1,0 +1,8 @@
+{
+  "id": "cloud-agent",
+  "name": "cloud-agent",
+  "description": "Create a minimal Eliza Cloud agent with Dockerfile and character config",
+  "kind": "cloud-agent",
+  "version": 1,
+  "languages": ["typescript"]
+}
