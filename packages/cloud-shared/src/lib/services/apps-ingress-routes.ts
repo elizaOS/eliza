@@ -16,10 +16,30 @@
 export interface AppRouteInput {
   /** The app's public host, e.g. `abc12345.apps.elizacloud.ai`. */
   hostname: string;
+  /**
+   * Additional hostnames to host-match on the SAME route — the app's verified
+   * custom domains (e.g. `elocute.fun`). One route, many hosts, one `@id`, so a
+   * single DELETE tears them all down. Deduped against `hostname`; empty/omitted
+   * keeps the route a plain single-host wildcard route.
+   */
+  extraHostnames?: string[];
   /** The app node the container runs on (private IP or hostname reachable by Caddy). */
   nodeHost: string;
   /** The published host port of the container on that node. */
   hostPort: number;
+}
+
+/** Lower-case, trim, drop empties, and de-dupe a host list (order-preserving). */
+function normalizeHosts(hosts: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const host of hosts) {
+    const norm = host.trim().toLowerCase();
+    if (!norm || seen.has(norm)) continue;
+    seen.add(norm);
+    out.push(norm);
+  }
+  return out;
 }
 
 /** A Caddy admin-API route object (the subset we emit). */
@@ -44,7 +64,7 @@ export function buildCaddyRouteId(hostname: string): string {
 export function buildCaddyRoute(input: AppRouteInput): CaddyRoute {
   return {
     "@id": buildCaddyRouteId(input.hostname),
-    match: [{ host: [input.hostname] }],
+    match: [{ host: normalizeHosts([input.hostname, ...(input.extraHostnames ?? [])]) }],
     handle: [
       {
         handler: "reverse_proxy",
