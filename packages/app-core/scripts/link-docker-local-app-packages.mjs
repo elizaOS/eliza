@@ -64,6 +64,7 @@ const localPackages = [
   "eliza/plugins/plugin-sql",
   "eliza/plugins/plugin-telegram",
   "eliza/plugins/plugin-video",
+  "eliza/plugins/plugin-wallet",
   "eliza/plugins/plugin-whatsapp",
   "eliza/plugins/plugin-workflow",
   "eliza/plugins/plugin-x402",
