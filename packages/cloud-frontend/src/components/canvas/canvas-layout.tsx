@@ -1,5 +1,5 @@
 import { PageHeaderProvider, TooltipProvider } from "@elizaos/ui";
-import { Suspense, useEffect } from "react";
+import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { useCanvasStore } from "@/lib/stores/canvas-store";
 import { CloudAssistantPill } from "./cloud-assistant-pill";
