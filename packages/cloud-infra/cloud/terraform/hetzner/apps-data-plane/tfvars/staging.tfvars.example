@@ -7,7 +7,7 @@ apps_base_domain   = "apps-staging.elizacloud.ai"
 
 # Sizing — start small for the allowlist beta.
 app_node_count           = 1
-app_node_server_type     = "cpx41"
+app_node_server_type     = "ccx23"
 tenant_db_server_type    = "ccx33"
 tenant_db_volume_size_gb = 200
 
