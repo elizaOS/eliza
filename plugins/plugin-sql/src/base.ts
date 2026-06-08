@@ -2375,9 +2375,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ]);
 
       if (memory.embedding && Array.isArray(memory.embedding)) {
-        const expectedDimension = Number(
-          this.embeddingDimension.replace(/^dim/, "")
-        );
+        const expectedDimension = Number(this.embeddingDimension.replace(/^dim/, ""));
         if (memory.embedding.length !== expectedDimension) {
           // The runtime's TEXT_EMBEDDING provider returned a vector whose width
           // does not match the column this agent is configured to write to —
@@ -2463,9 +2461,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
           // Update embedding if provided
           if (memory.embedding && Array.isArray(memory.embedding)) {
-            const expectedDimension = Number(
-              this.embeddingDimension.replace(/^dim/, "")
-            );
+            const expectedDimension = Number(this.embeddingDimension.replace(/^dim/, ""));
             if (memory.embedding.length !== expectedDimension) {
               logger.warn(
                 {

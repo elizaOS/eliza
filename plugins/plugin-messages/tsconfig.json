@@ -18,8 +18,14 @@
       "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
+      "@elizaos/plugin-task-coordinator": [
+        "../plugin-task-coordinator/src/index.ts"
+      ],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
+      "@elizaos/plugin-health/screen-time/mobile-signal-setup": [
+        "../plugin-health/src/screen-time/mobile-signal-setup.ts"
+      ],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],

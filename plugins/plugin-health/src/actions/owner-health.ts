@@ -101,7 +101,10 @@ export const ownerHealthAction: Action = {
     }
     const known = HEALTH_SUBACTIONS as readonly string[];
     if (!known.includes(subaction)) {
-      return failure("unknown_subaction", `Unsupported subaction '${subaction}'.`);
+      return failure(
+        "unknown_subaction",
+        `Unsupported subaction '${subaction}'.`,
+      );
     }
 
     switch (subaction as HealthSubaction) {

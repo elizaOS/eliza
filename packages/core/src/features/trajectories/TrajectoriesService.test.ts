@@ -135,9 +135,7 @@ describe("TrajectoriesService", () => {
 		expect(result.trajectories).toHaveLength(1);
 		expect(result.trajectories[0]?.endTime).toBe(1_700_000_003_000);
 		expect(result.trajectories[0]?.durationMs).toBe(3_000);
-		expect(result.trajectories[0]?.updatedAt).toBe(
-			"2023-11-14T22:13:23.000Z",
-		);
+		expect(result.trajectories[0]?.updatedAt).toBe("2023-11-14T22:13:23.000Z");
 	});
 
 	it("persists LLM calls with bounded JSON-safe payloads", async () => {

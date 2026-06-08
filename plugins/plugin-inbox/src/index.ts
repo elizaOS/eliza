@@ -1,9 +1,5 @@
-export { inboxPlugin, default } from "./plugin.ts";
-
 export { inboxAction } from "./actions/inbox.ts";
-export { crossChannelContextProvider } from "./providers/cross-channel-context.ts";
-export { inboxTriageProvider } from "./providers/inbox-triage.ts";
-
+export { InboxView } from "./components/inbox/InboxView.tsx";
 export {
   type ArchivedInsert,
   type ArchivedRow,
@@ -16,7 +12,8 @@ export {
   type TriageDecisionRow,
   triageDecisionsTable,
 } from "./db/schema.ts";
-
-export { InboxView } from "./components/inbox/InboxView.tsx";
+export { default, inboxPlugin } from "./plugin.ts";
+export { crossChannelContextProvider } from "./providers/cross-channel-context.ts";
+export { inboxTriageProvider } from "./providers/inbox-triage.ts";
 
 export * from "./types.ts";

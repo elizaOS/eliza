@@ -3912,6 +3912,8 @@ export function inferDirectCurrentRequestCandidateActions(
 		const codingAction = findCodingDelegationActionName(actions);
 		if (codingAction) return [codingAction];
 	}
+	const viewShellAction = findViewShellActionName(actions, messageText);
+	if (viewShellAction) return [viewShellAction];
 	const viewCapabilityAction = findViewCapabilityActionName(
 		actions,
 		messageText,
@@ -3949,7 +3951,9 @@ function shouldUseDirectReplyFastPath(args: {
 }
 
 function looksLikeContextDependentMutationRequest(text: string): boolean {
-	const tokens = new Set(tokenizeActionMetadata(text).map(normalizeSingularToken));
+	const tokens = new Set(
+		tokenizeActionMetadata(text).map(normalizeSingularToken),
+	);
 	const mutationTokens = [
 		"ADD",
 		"CREATE",
@@ -4062,7 +4066,17 @@ const VIEW_REQUEST_OPERATION_GROUPS = {
 	delete: ["DELETE", "REMOVE"],
 	open: ["GO", "NAVIGATE", "OPEN", "SWITCH"],
 	close: ["CLOSE", "DISMISS", "HIDE"],
-	layout: ["ARRANGE", "BOTTOM", "LEFT", "LAYOUT", "RIGHT", "SPLIT", "TILE", "TOP"],
+	layout: [
+		"ARRANGE",
+		"BOTTOM",
+		"LEFT",
+		"LAYOUT",
+		"RIGHT",
+		"SPLIT",
+		"TILE",
+		"TOP",
+	],
+	pin: ["DOCK", "PIN"],
 } as const;
 
 const VIEW_REQUEST_OPERATION_TOKENS: ReadonlySet<string> = new Set<string>(
@@ -4104,17 +4118,57 @@ const VIEW_REQUEST_GENERIC_TOKENS: ReadonlySet<string> = new Set<string>([
 	"WITH",
 ]);
 
+const VIEW_REQUEST_SURFACE_TOKENS: ReadonlySet<string> = new Set<string>([
+	"APP",
+	"APPLICATION",
+	"MANAGER",
+	"PANEL",
+	"SCREEN",
+	"UI",
+	"VIEW",
+	"WINDOW",
+]);
+
+function findViewsActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "tags">>,
+): string | undefined {
+	return actions.find((action) => {
+		if (normalizeActionIdentifier(action.name) === "VIEWS") return true;
+		return (action.tags ?? []).some(
+			(tag) => normalizedMetadataPhrase(tag) === "VIEW_CAPABILITY",
+		);
+	})?.name;
+}
+
+function findViewShellActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "tags">>,
+	messageText: string,
+): string | undefined {
+	if (looksLikeInstructionalViewQuestion(messageText)) return undefined;
+	const viewActionName = findViewsActionName(actions);
+	if (!viewActionName) return undefined;
+
+	const messageTokens = tokenizeActionMetadata(messageText).map(
+		normalizeSingularToken,
+	);
+	const messageOperationGroups = operationGroupsForTokens(messageTokens);
+	if (messageOperationGroups.size === 0) return undefined;
+
+	const tokenSet = new Set(messageTokens);
+	for (const token of VIEW_REQUEST_SURFACE_TOKENS) {
+		if (tokenSet.has(token)) return viewActionName;
+	}
+	return undefined;
+}
+
 function findViewCapabilityActionName(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	messageText: string,
 ): string | undefined {
 	if (looksLikeInstructionalViewQuestion(messageText)) return undefined;
-	const viewAction = actions.find((action) => {
-		if (normalizeActionIdentifier(action.name) === "VIEWS") return true;
-		return (action.tags ?? []).some(
-			(tag) => normalizedMetadataPhrase(tag) === "VIEW_CAPABILITY",
-		);
-	});
+	const viewActionName = findViewsActionName(actions);
+	if (!viewActionName) return undefined;
+	const viewAction = actions.find((action) => action.name === viewActionName);
 	if (!viewAction) return undefined;
 
 	const messageTokens = tokenizeActionMetadata(messageText);
@@ -4145,7 +4199,7 @@ function findViewCapabilityActionName(
 			);
 		if (targetTokens.length === 0) continue;
 		if (targetTokens.every((token) => messageTokenSet.has(token))) {
-			return viewAction.name;
+			return viewActionName;
 		}
 	}
 	return undefined;
@@ -4194,7 +4248,10 @@ function operationGroupsForTokens(tokens: readonly string[]): Set<string> {
 	return groups;
 }
 
-function setsIntersect<T>(left: ReadonlySet<T>, right: ReadonlySet<T>): boolean {
+function setsIntersect<T>(
+	left: ReadonlySet<T>,
+	right: ReadonlySet<T>,
+): boolean {
 	for (const entry of left) {
 		if (right.has(entry)) return true;
 	}

@@ -23,20 +23,48 @@
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/types": ["../../packages/shared/src/types/index.ts"],
       "@elizaos/shared/brand": ["../../packages/shared/src/brand/index.ts"],
-      "@elizaos/shared/character-presets": ["../../packages/shared/src/character-presets.ts"],
-      "@elizaos/shared/runtime-env": ["../../packages/shared/src/runtime-env.ts"],
-      "@elizaos/shared/settings-debug": ["../../packages/shared/src/settings-debug.ts"],
-      "@elizaos/shared/api/agent-api-types": ["../../packages/shared/src/api/agent-api-types.ts"],
-      "@elizaos/shared/config/plugin-ui-spec": ["../../packages/shared/src/config/plugin-ui-spec.ts"],
-      "@elizaos/shared/contracts/conversation-routes": ["../../packages/shared/src/contracts/conversation-routes.ts"],
-      "@elizaos/shared/contracts/first-run-options": ["../../packages/shared/src/contracts/first-run-options.ts"],
-      "@elizaos/shared/elizacloud/cloud-secrets": ["../../packages/shared/src/elizacloud/cloud-secrets.ts"],
-      "@elizaos/shared/elizacloud/server-cloud-tts": ["../../packages/shared/src/elizacloud/server-cloud-tts.ts"],
+      "@elizaos/shared/character-presets": [
+        "../../packages/shared/src/character-presets.ts"
+      ],
+      "@elizaos/shared/runtime-env": [
+        "../../packages/shared/src/runtime-env.ts"
+      ],
+      "@elizaos/shared/settings-debug": [
+        "../../packages/shared/src/settings-debug.ts"
+      ],
+      "@elizaos/shared/api/agent-api-types": [
+        "../../packages/shared/src/api/agent-api-types.ts"
+      ],
+      "@elizaos/shared/config/plugin-ui-spec": [
+        "../../packages/shared/src/config/plugin-ui-spec.ts"
+      ],
+      "@elizaos/shared/contracts/conversation-routes": [
+        "../../packages/shared/src/contracts/conversation-routes.ts"
+      ],
+      "@elizaos/shared/contracts/first-run-options": [
+        "../../packages/shared/src/contracts/first-run-options.ts"
+      ],
+      "@elizaos/shared/elizacloud/cloud-secrets": [
+        "../../packages/shared/src/elizacloud/cloud-secrets.ts"
+      ],
+      "@elizaos/shared/elizacloud/server-cloud-tts": [
+        "../../packages/shared/src/elizacloud/server-cloud-tts.ts"
+      ],
       "@elizaos/shared/utils/env": ["../../packages/shared/src/utils/env.ts"],
-      "@elizaos/shared/utils/number-parsing": ["../../packages/shared/src/utils/number-parsing.ts"],
-      "@elizaos/shared/utils/sql-compat": ["../../packages/shared/src/utils/sql-compat.ts"],
+      "@elizaos/shared/utils/number-parsing": [
+        "../../packages/shared/src/utils/number-parsing.ts"
+      ],
+      "@elizaos/shared/utils/sql-compat": [
+        "../../packages/shared/src/utils/sql-compat.ts"
+      ],
       "@elizaos/plugin-registry": [
         "../../plugins/plugin-registry/src/index.ts"
+      ],
+      "@elizaos/plugin-task-coordinator": [
+        "../../plugins/plugin-task-coordinator/src/index.ts"
+      ],
+      "@elizaos/plugin-health/screen-time/mobile-signal-setup": [
+        "../../plugins/plugin-health/src/screen-time/mobile-signal-setup.ts"
       ],
       "@elizaos/plugin-app-manager": ["./src/index.ts"],
       "@elizaos/plugin-app-manager/*": ["./src/*"],
@@ -63,7 +91,9 @@
       ],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/capacitor-bun-runtime": ["../../plugins/plugin-native-bun-runtime/src/index.ts"]
+      "@elizaos/capacitor-bun-runtime": [
+        "../../plugins/plugin-native-bun-runtime/src/index.ts"
+      ]
     }
   },
   "include": ["src/**/*"],

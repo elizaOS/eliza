@@ -11,28 +11,28 @@
  */
 
 export interface SendCandidate {
-	readonly channelId: string;
-	readonly connectorId?: string;
-	readonly origin: string;
-	/** Opaque body the connector will eventually deliver. */
-	readonly body: unknown;
-	/** Optional caller-supplied metadata (priority, tags, …). */
-	readonly metadata?: Record<string, unknown>;
+  readonly channelId: string;
+  readonly connectorId?: string;
+  readonly origin: string;
+  /** Opaque body the connector will eventually deliver. */
+  readonly body: unknown;
+  /** Optional caller-supplied metadata (priority, tags, …). */
+  readonly metadata?: Record<string, unknown>;
 }
 
 export type SendDecision =
-	| { readonly action: "send" }
-	| { readonly action: "approve"; readonly reason: string }
-	| { readonly action: "drop"; readonly reason: string };
+  | { readonly action: "send" }
+  | { readonly action: "approve"; readonly reason: string }
+  | { readonly action: "drop"; readonly reason: string };
 
 export interface SendPolicy {
-	evaluate(candidate: SendCandidate): Promise<SendDecision>;
+  evaluate(candidate: SendCandidate): Promise<SendDecision>;
 }
 
 export class StubSendPolicy implements SendPolicy {
-	async evaluate(_candidate: SendCandidate): Promise<SendDecision> {
-		throw new Error(
-			"[StubSendPolicy] not implemented — see packages/app-core/src/dispatch/README.md",
-		);
-	}
+  async evaluate(_candidate: SendCandidate): Promise<SendDecision> {
+    throw new Error(
+      "[StubSendPolicy] not implemented — see packages/app-core/src/dispatch/README.md",
+    );
+  }
 }

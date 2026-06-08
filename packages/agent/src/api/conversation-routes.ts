@@ -134,7 +134,9 @@ function chunkVisibleTextForSse(text: string): string[] {
   return chunks;
 }
 
-function parseStructuredStreamChunk(chunk: string): Record<string, unknown> | null {
+function parseStructuredStreamChunk(
+  chunk: string,
+): Record<string, unknown> | null {
   const trimmed = chunk.trim();
   if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return null;
   let parsed: unknown;
@@ -143,7 +145,8 @@ function parseStructuredStreamChunk(chunk: string): Record<string, unknown> | nu
   } catch {
     return null;
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+    return null;
   const record = parsed as Record<string, unknown>;
   const type = record.type;
   return type === "tool_call" ||

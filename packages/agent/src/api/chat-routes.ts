@@ -17,8 +17,8 @@ import {
   type AgentRuntime,
   ChannelType,
   type Content,
-  createUniqueUuid,
   createMessageMemory,
+  createUniqueUuid,
   logger,
   ModelType,
   type RouteRequestContext,
@@ -2255,22 +2255,22 @@ export async function generateChatResponse(
                 timeoutDuration: generationTimeoutMs,
                 abortSignal: generationAbortController.signal,
                 keepExistingResponses: true,
-                  onStreamChunk: opts?.onChunk
-                    ? async (chunk: string) => {
-                        if (generationTimedOut || opts?.isAborted?.()) {
-                          throw createChatGenerationTimeoutError(
-                            generationTimeoutMs,
-                          );
-                        }
-                        if (!chunk) return;
-                        if (isStructuredRuntimeStreamChunk(chunk)) {
-                          opts.onChunk?.(chunk);
-                          return;
-                        }
-                        if (!claimStreamSource("onStreamChunk")) return;
-                        appendIncomingText(chunk);
+                onStreamChunk: opts?.onChunk
+                  ? async (chunk: string) => {
+                      if (generationTimedOut || opts?.isAborted?.()) {
+                        throw createChatGenerationTimeoutError(
+                          generationTimeoutMs,
+                        );
                       }
-                    : undefined,
+                      if (!chunk) return;
+                      if (isStructuredRuntimeStreamChunk(chunk)) {
+                        opts.onChunk?.(chunk);
+                        return;
+                      }
+                      if (!claimStreamSource("onStreamChunk")) return;
+                      appendIncomingText(chunk);
+                    }
+                  : undefined,
               },
             );
 

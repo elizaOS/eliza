@@ -1792,18 +1792,8 @@ android smoke model works`,
 	it("routes registered view-backed mutation requests through VIEWS", () => {
 		const viewAction = {
 			name: "VIEWS",
-			similes: [
-				"CREATE_STICKY_NOTE",
-				"LIST_NOTES",
-				"CREATE_CALENDAR_EVENT",
-			],
-			tags: [
-				"view-capability",
-				"notes",
-				"sticky-notes",
-				"calendar",
-				"events",
-			],
+			similes: ["CREATE_STICKY_NOTE", "LIST_NOTES", "CREATE_CALENDAR_EVENT"],
+			tags: ["view-capability", "notes", "sticky-notes", "calendar", "events"],
 		};
 		expect(
 			inferDirectCurrentRequestCandidateActions(
@@ -1836,6 +1826,54 @@ android smoke model works`,
 			),
 		).toEqual([]);
 
+		const genericViewAction = {
+			name: "VIEWS",
+			similes: [
+				"OPEN_VIEW_WINDOW",
+				"PIN_VIEW",
+				"SPLIT_VIEWS",
+				"TILE_VIEWS",
+				"VIEW_MANAGER",
+			],
+			tags: ["views", "ui", "window", "layout"],
+		};
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[genericViewAction],
+				"split orchestrator and views manager side by side",
+			),
+		).toEqual(["VIEWS"]);
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[genericViewAction],
+				"open orchestrator in a new window",
+			),
+		).toEqual(["VIEWS"]);
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[genericViewAction],
+				"pin views manager as a tab",
+			),
+		).toEqual(["VIEWS"]);
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[genericViewAction],
+				"open the plugin docs",
+			),
+		).toEqual([]);
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[genericViewAction],
+				"open a browser tab to google",
+			),
+		).toEqual([]);
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[genericViewAction],
+				"how do I open a view in a new window?",
+			),
+		).toEqual([]);
+
 		const routed = messageHandlerFromFieldResult(
 			{
 				shouldRespond: "RESPOND",
@@ -1858,6 +1896,30 @@ android smoke model works`,
 		expect(routed.plan.requiresTool).toBe(true);
 		expect(routed.plan.contexts).toContain("general");
 		expect(routed.plan.candidateActions).toEqual(["VIEWS"]);
+
+		const routedLayout = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				intents: ["split views"],
+				replyText:
+					"Open each window and use your operating system's snap feature.",
+				candidateActionNames: [],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [genericViewAction],
+				messageText: "split orchestrator and views manager side by side",
+			},
+		);
+
+		expect(routedLayout.plan.simple).toBe(false);
+		expect(routedLayout.plan.requiresTool).toBe(true);
+		expect(routedLayout.plan.contexts).toContain("general");
+		expect(routedLayout.plan.candidateActions).toEqual(["VIEWS"]);
 	});
 
 	it("repairs build requests misrouted to LifeOps scheduled tasks", () => {

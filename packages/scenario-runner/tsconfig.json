@@ -28,6 +28,9 @@
       "@elizaos/app-core": ["../app-core/src/index.ts"],
       "@elizaos/app-core/*": ["../app-core/src/*"],
       "@elizaos/ui": ["../ui/src/index.ts"],
+      "@elizaos/plugin-health/screen-time/mobile-signal-setup": [
+        "../../plugins/plugin-health/src/screen-time/mobile-signal-setup.ts"
+      ],
       "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/skills": ["../skills/src/index.ts"],
       "@elizaos/skills/*": ["../skills/src/*"],
@@ -49,6 +52,9 @@
       "@elizaos/plugin-agent-orchestrator": [
         "../../plugins/plugin-agent-orchestrator/src/index.ts"
       ],
+      "@elizaos/plugin-task-coordinator": [
+        "../../plugins/plugin-task-coordinator/src/index.ts"
+      ],
       "@elizaos/plugin-app-control": [
         "../../plugins/plugin-app-control/src/index.ts"
       ],
@@ -57,9 +63,6 @@
       ],
       "@elizaos/plugin-app-manager": [
         "../../plugins/plugin-app-manager/src/index.ts"
-      ],
-      "@elizaos/plugin-app-control": [
-        "../../plugins/plugin-app-control/src/index.ts"
       ],
       "@elizaos/plugin-commands": ["../../plugins/plugin-commands/index.ts"],
       "@elizaos/plugin-device-filesystem": [

@@ -15,16 +15,16 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  ensureTrajectoriesTable,
-  loadTrajectoryById,
-  parsePersistedTrajectoryRow,
-  type PersistedTrajectory,
-  saveTrajectory,
-} from "./trajectory-internals";
-import {
   persistedTrajectoryToDetailRecord,
   trajectoryRowToListItem,
 } from "./trajectory-export";
+import {
+  ensureTrajectoriesTable,
+  loadTrajectoryById,
+  type PersistedTrajectory,
+  parsePersistedTrajectoryRow,
+  saveTrajectory,
+} from "./trajectory-internals";
 import {
   DEFAULT_GET_STEPS_LIMIT,
   getSteps,

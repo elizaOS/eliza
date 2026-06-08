@@ -20,6 +20,9 @@
       ],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
+      "@elizaos/plugin-task-coordinator": [
+        "../plugin-task-coordinator/src/index.ts"
+      ],
       "@elizaos/plugin-computeruse": ["../plugin-computeruse/src/index.ts"],
       "@elizaos/plugin-computeruse/*": ["../plugin-computeruse/src/*"],
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
@@ -30,6 +33,9 @@
         "../../plugins/plugin-wallet-ui/src/index.ts"
       ],
       "@elizaos/plugin-wallet-ui/*": ["../../plugins/plugin-wallet-ui/src/*"],
+      "@elizaos/plugin-health/screen-time/mobile-signal-setup": [
+        "../plugin-health/src/screen-time/mobile-signal-setup.ts"
+      ],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"]
     }

@@ -74,10 +74,16 @@ export function InboxView(props: InboxViewProps): ReactElement {
         </p>
       </header>
 
-      <div
-        role="group"
+      <fieldset
         aria-label="Channel filters"
-        style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}
+        style={{
+          border: 0,
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "0.5rem",
+          margin: 0,
+          padding: 0,
+        }}
       >
         {CHANNEL_CHIPS.map((chip) => {
           const active = activeChannels.has(chip.id);
@@ -102,7 +108,7 @@ export function InboxView(props: InboxViewProps): ReactElement {
             </button>
           );
         })}
-      </div>
+      </fieldset>
 
       <section
         aria-label="Threads"

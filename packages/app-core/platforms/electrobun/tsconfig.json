@@ -48,6 +48,9 @@
       "@elizaos/shared": ["../../../shared/src/index.ts"],
       "@elizaos/shared/*": ["../../../shared/src/*"],
       "@elizaos/ui": ["../../../ui/src/index.ts"],
+      "@elizaos/plugin-health/screen-time/mobile-signal-setup": [
+        "../../../../plugins/plugin-health/src/screen-time/mobile-signal-setup.ts"
+      ],
       "@elizaos/ui/*": ["../../../ui/src/*"],
       "@elizaos/plugin-elizacloud": [
         "../../../../plugins/plugin-elizacloud/src/index.node.ts"

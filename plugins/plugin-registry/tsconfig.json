@@ -49,6 +49,9 @@
       "@elizaos/plugin-task-coordinator/*": [
         "../plugin-task-coordinator/src/*"
       ],
+      "@elizaos/plugin-health/screen-time/mobile-signal-setup": [
+        "../plugin-health/src/screen-time/mobile-signal-setup.ts"
+      ],
       "@elizaos/plugin-wallet": ["../plugin-wallet/src/index.ts"],
       "@elizaos/plugin-wallet/*": ["../plugin-wallet/src/*"],
       "@elizaos/plugin-computeruse": ["../plugin-computeruse/dist/index.d.ts"],

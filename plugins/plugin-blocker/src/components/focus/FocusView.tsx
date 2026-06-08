@@ -73,7 +73,9 @@ function ActiveSessionCard({
   session: FocusActiveSession | null | undefined;
 }): ReactNode {
   if (!session) {
-    return <div style={{ ...cardStyle, ...dimStyle }}>No active focus session.</div>;
+    return (
+      <div style={{ ...cardStyle, ...dimStyle }}>No active focus session.</div>
+    );
   }
   return (
     <div style={cardStyle}>
@@ -93,10 +95,21 @@ function ScheduleList({
   schedule: ReadonlyArray<FocusScheduleEntry> | undefined;
 }): ReactNode {
   if (!schedule || schedule.length === 0) {
-    return <div style={{ ...cardStyle, ...dimStyle }}>No scheduled blocks.</div>;
+    return (
+      <div style={{ ...cardStyle, ...dimStyle }}>No scheduled blocks.</div>
+    );
   }
   return (
-    <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+    <ul
+      style={{
+        listStyle: "none",
+        margin: 0,
+        padding: 0,
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+      }}
+    >
       {schedule.map((entry) => (
         <li key={entry.id} style={cardStyle}>
           <div style={{ fontWeight: 600 }}>{entry.label}</div>
@@ -109,7 +122,10 @@ function ScheduleList({
   );
 }
 
-export function FocusView({ schedule, activeSession }: FocusViewProps = {}): ReactNode {
+export function FocusView({
+  schedule,
+  activeSession,
+}: FocusViewProps = {}): ReactNode {
   return (
     <div style={containerStyle}>
       <header style={sectionStyle}>

@@ -36,6 +36,9 @@
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/ui": ["../ui/src/cloud-ui/index.ts"],
+      "@elizaos/plugin-health/screen-time/mobile-signal-setup": [
+        "../../plugins/plugin-health/src/screen-time/mobile-signal-setup.ts"
+      ],
       "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/core": ["../core/src/index.node.ts"],
       "@elizaos/core/*": ["../core/src/*"],

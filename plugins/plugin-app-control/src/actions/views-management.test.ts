@@ -61,6 +61,22 @@ function message(text: string, roomId = "room-1") {
 	};
 }
 
+function composedViewPrompt(userRequest: string) {
+	return [
+		"Answer the user request using the contextual documents below as the source of truth.",
+		"",
+		"<contextual_documents>",
+		'<source title="source-1" similarity="1.000">',
+		"Route chat through Cloud and configure purchase-share settings.",
+		"</source>",
+		"</contextual_documents>",
+		"",
+		"<user_request>",
+		userRequest,
+		"</user_request>",
+	].join("\n");
+}
+
 function view(patch: Partial<ViewSummary> = {}): ViewSummary {
 	return {
 		id: "remote-ledger",
@@ -539,6 +555,199 @@ describe("view management actions", () => {
 		);
 	});
 
+	it("resolves existing registered view targets for natural-language window and pin requests", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "orchestrator",
+						label: "Orchestrator",
+						path: "/orchestrator",
+					}),
+					view({
+						id: "views-manager",
+						label: "Views",
+						path: "/views",
+						tags: ["views-manager"],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		vi.mocked(globalThis.fetch)
+			.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({ ok: true }),
+			} as Response)
+			.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({ ok: true }),
+			} as Response)
+			.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({ ok: true }),
+			} as Response)
+			.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({ ok: true }),
+			} as Response)
+			.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({ ok: true }),
+			} as Response)
+			.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({ ok: true }),
+			} as Response);
+
+		const windowResult = await action.handler(
+			runtime as never,
+			message("open orchestrator in a new window") as never,
+			undefined,
+			undefined,
+			callback,
+		);
+
+		expect(windowResult?.success).toBe(true);
+		expect(windowResult?.values).toMatchObject({
+			mode: "window",
+			viewId: "orchestrator",
+			viewType: "gui",
+			alwaysOnTop: false,
+		});
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/orchestrator/navigate",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					action: "open-window",
+					alwaysOnTop: false,
+				}),
+			}),
+		);
+
+		const openActionWindowResult = await action.handler(
+			runtime as never,
+			message("open orchestrator in a new window") as never,
+			undefined,
+			{
+				action: "open",
+				view: "orchestrator",
+			},
+			callback,
+		);
+
+		expect(openActionWindowResult?.success).toBe(true);
+		expect(openActionWindowResult?.values).toMatchObject({
+			mode: "window",
+			viewId: "orchestrator",
+			viewType: "gui",
+			alwaysOnTop: false,
+		});
+		expect(globalThis.fetch).toHaveBeenLastCalledWith(
+			"http://127.0.0.1:3456/api/views/orchestrator/navigate",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					action: "open-window",
+					alwaysOnTop: false,
+				}),
+			}),
+		);
+
+		const pinResult = await action.handler(
+			runtime as never,
+			message("pin views manager as a tab") as never,
+			undefined,
+			undefined,
+			callback,
+		);
+
+		expect(pinResult?.success).toBe(true);
+		expect(pinResult?.values).toMatchObject({
+			mode: "pin",
+			viewId: "views-manager",
+			viewType: "gui",
+		});
+		expect(globalThis.fetch).toHaveBeenLastCalledWith(
+			"http://127.0.0.1:3456/api/views/views-manager/navigate",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					action: "pin-tab",
+					alwaysOnTop: false,
+				}),
+			}),
+		);
+
+		const explicitPinResult = await action.handler(
+			runtime as never,
+			message("pin views manager as a tab") as never,
+			undefined,
+			{
+				action: "pin",
+				view: "views manager",
+			},
+			callback,
+		);
+
+		expect(explicitPinResult?.success).toBe(true);
+		expect(explicitPinResult?.values).toMatchObject({
+			mode: "pin",
+			viewId: "views-manager",
+			viewType: "gui",
+		});
+		expect(globalThis.fetch).toHaveBeenLastCalledWith(
+			"http://127.0.0.1:3456/api/views/views-manager/navigate",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					action: "pin-tab",
+					alwaysOnTop: false,
+				}),
+			}),
+		);
+
+		const pollutedSplitResult = await action.handler(
+			runtime as never,
+			message("split orchestrator and views manager side by side") as never,
+			undefined,
+			{
+				action: "split",
+				views: ["orchestrator", "views manager", "chat", "settings"],
+			},
+			callback,
+		);
+
+		expect(pollutedSplitResult?.success).toBe(true);
+		expect(pollutedSplitResult?.values).toMatchObject({
+			mode: "split",
+			viewIds: ["orchestrator", "views-manager"],
+			layout: "horizontal",
+		});
+		expect(globalThis.fetch).toHaveBeenLastCalledWith(
+			"http://127.0.0.1:3456/api/views/orchestrator/navigate",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					action: "split-view",
+					views: ["orchestrator", "views-manager"],
+					layout: "horizontal",
+				}),
+			}),
+		);
+	});
+
 	it("routes split and tile requests through the shell layout navigate API", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
@@ -615,6 +824,238 @@ describe("view management actions", () => {
 					action: "tile-views",
 					views: ["notes", "calendar"],
 					layout: "grid",
+				}),
+			}),
+		);
+	});
+
+	it("routes existing registered view layout requests without simple-view targets", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "chat",
+						label: "Chat",
+						path: "/chat",
+					}),
+					view({
+						id: "settings",
+						label: "Settings",
+						path: "/settings",
+					}),
+					view({
+						id: "orchestrator",
+						label: "Orchestrator",
+						path: "/orchestrator",
+					}),
+					view({
+						id: "views-manager",
+						label: "Views",
+						path: "/views",
+						tags: ["views-manager"],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		vi.mocked(globalThis.fetch)
+			.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({ ok: true }),
+			} as Response)
+			.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({ ok: true }),
+			} as Response)
+			.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({ ok: true }),
+			} as Response);
+
+		const splitResult = await action.handler(
+			runtime as never,
+			message("split orchestrator and views manager side by side") as never,
+			undefined,
+			undefined,
+			callback,
+		);
+
+		expect(splitResult?.success).toBe(true);
+		expect(splitResult?.values).toMatchObject({
+			mode: "split",
+			viewIds: ["orchestrator", "views-manager"],
+			layout: "horizontal",
+		});
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/orchestrator/navigate",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					action: "split-view",
+					views: ["orchestrator", "views-manager"],
+					layout: "horizontal",
+				}),
+			}),
+		);
+
+		const tileResult = await action.handler(
+			runtime as never,
+			message("tile chat settings orchestrator and views manager") as never,
+			undefined,
+			undefined,
+			callback,
+		);
+
+		expect(tileResult?.success).toBe(true);
+		expect(tileResult?.values).toMatchObject({
+			mode: "tile",
+			viewIds: ["chat", "settings", "orchestrator", "views-manager"],
+			layout: "grid",
+		});
+		expect(globalThis.fetch).toHaveBeenLastCalledWith(
+			"http://127.0.0.1:3456/api/views/chat/navigate",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					action: "tile-views",
+					views: ["chat", "settings", "orchestrator", "views-manager"],
+					layout: "grid",
+				}),
+			}),
+		);
+
+		const plannerPartialTileResult = await action.handler(
+			runtime as never,
+			message("tile chat settings orchestrator and views manager") as never,
+			undefined,
+			{
+				action: "tile",
+				views: ["orchestrator", "views manager"],
+			},
+			callback,
+		);
+
+		expect(plannerPartialTileResult?.success).toBe(true);
+		expect(plannerPartialTileResult?.values).toMatchObject({
+			mode: "tile",
+			viewIds: ["chat", "settings", "orchestrator", "views-manager"],
+			layout: "grid",
+		});
+		expect(globalThis.fetch).toHaveBeenLastCalledWith(
+			"http://127.0.0.1:3456/api/views/chat/navigate",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					action: "tile-views",
+					views: ["chat", "settings", "orchestrator", "views-manager"],
+					layout: "grid",
+				}),
+			}),
+		);
+
+		const badSplitModeTileResult = await action.handler(
+			runtime as never,
+			message("tile chat settings orchestrator and views manager") as never,
+			undefined,
+			{
+				action: "split",
+				views: ["orchestrator", "views manager"],
+			},
+			callback,
+		);
+
+		expect(badSplitModeTileResult?.success).toBe(true);
+		expect(badSplitModeTileResult?.values).toMatchObject({
+			mode: "tile",
+			viewIds: ["chat", "settings", "orchestrator", "views-manager"],
+			layout: "grid",
+		});
+		expect(globalThis.fetch).toHaveBeenLastCalledWith(
+			"http://127.0.0.1:3456/api/views/chat/navigate",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					action: "tile-views",
+					views: ["chat", "settings", "orchestrator", "views-manager"],
+					layout: "grid",
+				}),
+			}),
+		);
+	});
+
+	it("uses the composed user_request block for layout target extraction", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "chat",
+						label: "Chat",
+						path: "/chat",
+					}),
+					view({
+						id: "settings",
+						label: "Settings",
+						path: "/settings",
+					}),
+					view({
+						id: "orchestrator",
+						label: "Orchestrator",
+						path: "/orchestrator",
+					}),
+					view({
+						id: "views-manager",
+						label: "Views",
+						path: "/views",
+						tags: ["views-manager"],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({ ok: true }),
+		} as Response);
+
+		const result = await action.handler(
+			runtime as never,
+			message(
+				composedViewPrompt("split orchestrator and views manager side by side"),
+			) as never,
+			undefined,
+			{
+				action: "split",
+				views: ["orchestrator", "views manager"],
+			},
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			mode: "split",
+			viewIds: ["orchestrator", "views-manager"],
+			layout: "horizontal",
+		});
+		expect(globalThis.fetch).toHaveBeenLastCalledWith(
+			"http://127.0.0.1:3456/api/views/orchestrator/navigate",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					action: "split-view",
+					views: ["orchestrator", "views-manager"],
+					layout: "horizontal",
 				}),
 			}),
 		);

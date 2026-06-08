@@ -16,6 +16,9 @@
     "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
+      "@elizaos/plugin-health/screen-time/mobile-signal-setup": [
+        "../../../plugins/plugin-health/src/screen-time/mobile-signal-setup.ts"
+      ],
       "@ui-src/*": ["../ui/src/*"]
     }
   },

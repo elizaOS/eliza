@@ -35,9 +35,7 @@ describe("resolveStewardAuthEndpoint", () => {
         STEWARD_NONCE_EXCHANGE_ENDPOINT,
         "staging.elizacloud.ai",
       ),
-    ).toBe(
-      "https://api-staging.elizacloud.ai/api/auth/steward-nonce-exchange",
-    );
+    ).toBe("https://api-staging.elizacloud.ai/api/auth/steward-nonce-exchange");
     expect(
       resolveStewardAuthEndpoint(
         STEWARD_SESSION_ENDPOINT,

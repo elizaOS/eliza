@@ -1285,9 +1285,7 @@ export function MessageContent({
             ? "Local model download in progress"
             : "Local model required"}
         </div>
-        <div className="mb-2 whitespace-pre-wrap text-muted">
-          {displayText}
-        </div>
+        <div className="mb-2 whitespace-pre-wrap text-muted">{displayText}</div>
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"
@@ -1328,9 +1326,7 @@ export function MessageContent({
     return (
       <div className="border border-warn/30 bg-warn/5 rounded-sm p-3 text-sm">
         <div className="font-medium mb-1">Connect a provider to chat</div>
-        <div className="text-muted whitespace-pre-wrap mb-2">
-          {displayText}
-        </div>
+        <div className="text-muted whitespace-pre-wrap mb-2">{displayText}</div>
         <Button type="button" size="sm" onClick={handleOpenSettings}>
           Open Settings
         </Button>

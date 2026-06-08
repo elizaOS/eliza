@@ -27,6 +27,9 @@
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
       "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
+      "@elizaos/plugin-health/screen-time/mobile-signal-setup": [
+        "../plugin-health/src/screen-time/mobile-signal-setup.ts"
+      ],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
@@ -34,6 +37,9 @@
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
+      "@elizaos/plugin-task-coordinator": [
+        "../plugin-task-coordinator/src/index.ts"
+      ],
       "react": ["../../packages/app-core/node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": [
         "../../packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"

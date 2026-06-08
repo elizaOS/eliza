@@ -154,7 +154,8 @@ const PLUGIN_REGISTRY: Array<{
   {
     pluginDir: "plugins/plugin-personal-assistant",
     manifestPath: "plugins/plugin-personal-assistant/src/plugin.ts",
-    xrComponentSrc: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
+    xrComponentSrc:
+      "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
     requiredTerms: ["LifeOpsPageView", "useState"],
   },
   {

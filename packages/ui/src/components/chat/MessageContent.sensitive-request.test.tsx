@@ -420,7 +420,9 @@ describe("MessageContent fallback sanitization", () => {
       }),
     );
 
-    expect(document.body.textContent).toContain("Set a provider key in Settings.");
+    expect(document.body.textContent).toContain(
+      "Set a provider key in Settings.",
+    );
     expect(document.body.textContent).not.toContain("tool_result");
     expect(document.body.textContent).not.toContain("decision");
   });

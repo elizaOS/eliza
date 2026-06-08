@@ -2522,12 +2522,11 @@ export class TrajectoriesService extends Service {
 		const finalStatus = trajectory.metrics.finalStatus;
 		const rawEndTime =
 			typeof trajectory.endTime === "number" ? trajectory.endTime : null;
-		const timingStatus =
-			isFinalTrajectoryStatus(finalStatus)
-				? finalStatus
-				: rawEndTime
-					? "completed"
-					: "active";
+		const timingStatus = isFinalTrajectoryStatus(finalStatus)
+			? finalStatus
+			: rawEndTime
+				? "completed"
+				: "active";
 		const timing = normalizeReadTrajectoryTiming({
 			status: timingStatus,
 			startTime: trajectory.startTime,
@@ -2572,10 +2571,7 @@ export class TrajectoriesService extends Service {
 			typeof value === "string" ? value : null;
 		const source =
 			typeof metadata.source === "string" ? metadata.source : "chat";
-		const normalizedDurationMs =
-			status === "active"
-				? null
-				: timing.durationMs;
+		const normalizedDurationMs = status === "active" ? null : timing.durationMs;
 		const updatedAtMs =
 			normalizedEndTime ?? (trajectory.startTime || Date.now());
 
@@ -2763,7 +2759,9 @@ export class TrajectoriesService extends Service {
 
 	private rowToTrajectory(row: SqlRow): Trajectory {
 		const startTime = asNumber(pickCell(row, "start_time")) ?? 0;
-		const metrics = parseTrajectoryMetrics(pickCell(row, "metrics_json", "metrics"));
+		const metrics = parseTrajectoryMetrics(
+			pickCell(row, "metrics_json", "metrics"),
+		);
 		const timing = normalizeReadTrajectoryTiming({
 			status:
 				asString(pickCell(row, "status")) ??

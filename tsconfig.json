@@ -138,6 +138,9 @@
       "@elizaos/plugin-facewear": ["./plugins/plugin-facewear/src/index.ts"],
       "@elizaos/plugin-feed": ["./plugins/plugin-feed/src/index.ts"],
       "@elizaos/plugin-groq": ["./plugins/plugin-groq/index.ts"],
+      "@elizaos/plugin-health/screen-time/mobile-signal-setup": [
+        "./plugins/plugin-health/src/screen-time/mobile-signal-setup.ts"
+      ],
       "@elizaos/plugin-hyperliquid-app": [
         "./plugins/plugin-hyperliquid-app/src/index.ts"
       ],
@@ -145,7 +148,9 @@
         "./plugins/plugin-hyperscape/src/index.ts"
       ],
       "@elizaos/plugin-imessage": ["./plugins/plugin-imessage/src/index.ts"],
-      "@elizaos/plugin-personal-assistant": ["./plugins/plugin-personal-assistant/src/index.ts"],
+      "@elizaos/plugin-personal-assistant": [
+        "./plugins/plugin-personal-assistant/src/index.ts"
+      ],
       "@elizaos/plugin-local-inference": [
         "./plugins/plugin-local-inference/src/index.ts"
       ],

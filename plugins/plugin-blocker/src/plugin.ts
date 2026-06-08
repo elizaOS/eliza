@@ -37,7 +37,8 @@ export const blockerPlugin: Plugin = {
     {
       id: "focus",
       label: "Focus",
-      description: "Website + app blocking schedule and active session controls",
+      description:
+        "Website + app blocking schedule and active session controls",
       icon: "ShieldOff",
       path: "/focus",
       bundlePath: "dist/views/bundle.js",

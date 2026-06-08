@@ -1,15 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import {
-  isProductionDeployment,
-  shouldBlockRegistrarStub,
-} from "./deployment-environment";
+import { isProductionDeployment, shouldBlockRegistrarStub } from "./deployment-environment";
 
 describe("isProductionDeployment", () => {
   it("uses ENVIRONMENT when it is set", () => {
     expect(isProductionDeployment({ ENVIRONMENT: "production" })).toBe(true);
-    expect(
-      isProductionDeployment({ ENVIRONMENT: "staging", NODE_ENV: "production" }),
-    ).toBe(false);
+    expect(isProductionDeployment({ ENVIRONMENT: "staging", NODE_ENV: "production" })).toBe(false);
   });
 
   it("falls back to NODE_ENV when ENVIRONMENT is unset", () => {
@@ -48,9 +43,7 @@ describe("shouldBlockRegistrarStub", () => {
         ENVIRONMENT: "staging",
       }),
     ).toBe(false);
-    expect(shouldBlockRegistrarStub({ ELIZA_CF_REGISTRAR_DEV_STUB: "1" })).toBe(
-      false,
-    );
+    expect(shouldBlockRegistrarStub({ ELIZA_CF_REGISTRAR_DEV_STUB: "1" })).toBe(false);
   });
 
   it("does not block when the stub flag is off", () => {

@@ -1277,9 +1277,7 @@ export function normalizePersistedUpdatedAt(input: {
     input.endTime > 0
       ? input.endTime
       : null) ??
-    (typeof createdAtMs === "number" && createdAtMs > 0
-      ? createdAtMs
-      : null) ??
+    (typeof createdAtMs === "number" && createdAtMs > 0 ? createdAtMs : null) ??
     (startTime > 0 ? startTime : Date.now());
 
   return new Date(timestamp).toISOString();
@@ -1694,10 +1692,7 @@ export function parsePersistedTrajectoryRow(
       readRecordValue(row, ["total_reward", "totalReward"]),
       0,
     ),
-    createdAt: toText(
-      rawCreatedAt,
-      new Date(startTime).toISOString(),
-    ),
+    createdAt: toText(rawCreatedAt, new Date(startTime).toISOString()),
     updatedAt: normalizePersistedUpdatedAt({
       startTime,
       endTime: timing.endTime,

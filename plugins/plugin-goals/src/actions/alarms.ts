@@ -38,7 +38,8 @@ export const ownerAlarmsAction: Action = {
   parameters: [
     {
       name: "action",
-      description: "Action: create | update | delete | snooze | dismiss | list.",
+      description:
+        "Action: create | update | delete | snooze | dismiss | list.",
       required: true,
       schema: { type: "string" as const, enum: [...ALARM_ACTIONS] },
     },

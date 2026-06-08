@@ -67,7 +67,8 @@ export const blockAction: Action = {
   parameters: [
     {
       name: "target",
-      description: "What to block: app (native macOS/mobile app) or website (hostname).",
+      description:
+        "What to block: app (native macOS/mobile app) or website (hostname).",
       required: true,
       schema: { type: "string" as const, enum: [...BLOCK_TARGETS] },
     },

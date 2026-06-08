@@ -24,8 +24,16 @@
       "@elizaos/plugin-agent-skills": [
         "../../plugins/plugin-agent-skills/src/index.ts"
       ],
+      "@elizaos/plugin-anthropic": ["../../plugins/plugin-anthropic/index.ts"],
+      "@elizaos/plugin-commands": [
+        "../../plugins/plugin-commands/src/index.ts"
+      ],
+      "@elizaos/plugin-commands/*": ["../../plugins/plugin-commands/src/*"],
       "@elizaos/plugin-registry": [
         "../../plugins/plugin-registry/src/index.ts"
+      ],
+      "@elizaos/plugin-health/screen-time/mobile-signal-setup": [
+        "../../plugins/plugin-health/src/screen-time/mobile-signal-setup.ts"
       ],
       "@elizaos/logger": ["../logger/src/index.ts"],
       "@elizaos/app-core": ["./src/index.ts"],
@@ -105,6 +113,9 @@
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/security": ["../security/src/index.ts"],
       "@elizaos/security/*": ["../security/src/*"],
+      "@elizaos/scenario-runner/cerebras-judge": [
+        "../scenario-runner/src/cerebras-judge.ts"
+      ],
       "@elizaos/vault": ["../vault/src/index.ts"],
       "@elizaos/skills": ["../skills/src/index.ts"],
       "@elizaos/capacitor-gateway": [

@@ -147,14 +147,13 @@ export function getBaseURL(runtime: IAgentRuntime): string {
   const browserURL = getSetting(runtime, "OPENAI_BROWSER_BASE_URL");
   const cerebrasMode = isCerebrasMode(runtime);
   const openAiBaseURL = getSetting(runtime, "OPENAI_BASE_URL");
-  const cerebrasBaseURL =
-    getSetting(runtime, "CEREBRAS_BASE_URL") ?? "https://api.cerebras.ai/v1";
+  const cerebrasBaseURL = getSetting(runtime, "CEREBRAS_BASE_URL") ?? "https://api.cerebras.ai/v1";
   const baseURL =
     isBrowser() && browserURL
       ? browserURL
-      : (cerebrasMode
+      : cerebrasMode
         ? cerebrasBaseURL
-        : (openAiBaseURL ?? "https://api.openai.com/v1"));
+        : (openAiBaseURL ?? "https://api.openai.com/v1");
   logger.debug(`[OpenAI] Base URL: ${baseURL}`);
   return baseURL;
 }

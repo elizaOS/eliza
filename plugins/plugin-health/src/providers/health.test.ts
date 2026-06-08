@@ -57,8 +57,10 @@ describe("health provider", () => {
     expect(result.text).toContain(
       "oura 2026-05-30 | 1234 steps | 45 active min | 7.3h sleep | 62 bpm | 63.3 kg",
     );
-    expect(result.values.healthConnectedProviderCount).toBe(1);
-    expect(result.values.healthConnectedProviders).toEqual(["oura"]);
+    expect(result.values).toMatchObject({
+      healthConnectedProviderCount: 1,
+      healthConnectedProviders: ["oura"],
+    });
   });
 
   it("keeps host access and summary loading as injected adapters", async () => {

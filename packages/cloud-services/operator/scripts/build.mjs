@@ -10,8 +10,8 @@
 // Windows we no-op and let Linux CI do the real build.
 
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const pkgDir = path.resolve(path.dirname(__filename), "..");

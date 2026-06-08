@@ -31,6 +31,9 @@
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
       "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
+      "@elizaos/plugin-health/screen-time/mobile-signal-setup": [
+        "../plugin-health/src/screen-time/mobile-signal-setup.ts"
+      ],
       "@elizaos/ui/agent-surface": [
         "../../packages/ui/src/agent-surface/index.ts"
       ],

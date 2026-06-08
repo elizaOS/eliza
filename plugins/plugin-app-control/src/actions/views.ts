@@ -173,11 +173,45 @@ const LAYOUT_OVERRIDE_MODES = new Set([
 	"remove",
 	"show",
 ]);
+const VIEW_SURFACE_TOKENS = new Set([
+	"app",
+	"apps",
+	"desktop",
+	"manager",
+	"panel",
+	"panels",
+	"screen",
+	"screens",
+	"tab",
+	"tabs",
+	"ui",
+	"view",
+	"views",
+	"window",
+	"windows",
+]);
+const USER_REQUEST_OPEN_TAG = "<user_request>";
+const USER_REQUEST_CLOSE_TAG = "</user_request>";
+
+function extractUserRequestText(text: string): string | null {
+	const start = text.lastIndexOf(USER_REQUEST_OPEN_TAG);
+	if (start < 0) return null;
+	const contentStart = start + USER_REQUEST_OPEN_TAG.length;
+	const end = text.indexOf(USER_REQUEST_CLOSE_TAG, contentStart);
+	if (end < 0) return null;
+	const value = text.slice(contentStart, end).trim();
+	return value.length > 0 ? value : null;
+}
+
+function viewRequestText(text: string): string {
+	return extractUserRequestText(text) ?? text;
+}
 
 function readViewTypeOption(
 	text: string,
 	options?: Record<string, unknown>,
 ): ViewType | undefined {
+	const requestText = viewRequestText(text);
 	const explicit =
 		readStringOption(options, "viewType") ??
 		readStringOption(options, "type") ??
@@ -192,9 +226,9 @@ function readViewTypeOption(
 	)
 		return "xr";
 
-	if (/\b(tui|terminal)\b/i.test(text)) return "tui";
-	if (/\b(xr|spatial|immersive)\b/i.test(text)) return "xr";
-	if (/\b(gui|graphical)\b/i.test(text)) return "gui";
+	if (/\b(tui|terminal)\b/i.test(requestText)) return "tui";
+	if (/\b(xr|spatial|immersive)\b/i.test(requestText)) return "xr";
+	if (/\b(gui|graphical)\b/i.test(requestText)) return "gui";
 	return undefined;
 }
 
@@ -261,7 +295,7 @@ function inferMode(
 ): ViewsMode | null {
 	const explicit =
 		readStringOption(options, "action") ?? readStringOption(options, "mode");
-	const trimmed = text.trim();
+	const trimmed = viewRequestText(text).trim();
 	const normalizedExplicit = explicit?.trim().toLowerCase().replace(/-/g, "_");
 	if (
 		normalizedExplicit === "close" ||
@@ -276,6 +310,9 @@ function inferMode(
 		normalizedExplicit === "split_view" ||
 		normalizedExplicit === "split_views"
 	) {
+		if (isTileLayoutRequest(trimmed) && !isSplitLayoutRequest(trimmed)) {
+			return "tile";
+		}
 		return "split";
 	}
 	if (
@@ -305,6 +342,8 @@ function inferMode(
 		return "close";
 	}
 	if (normalizedExplicit && isGenericViewNavigationMode(normalizedExplicit)) {
+		if (isPinRequest(trimmed)) return "pin";
+		if (isWindowRequest(trimmed)) return "window";
 		if (isTileLayoutRequest(trimmed)) return "tile";
 		if (isSplitLayoutRequest(trimmed)) return "split";
 	}
@@ -319,6 +358,8 @@ function inferMode(
 		(MODES as readonly string[]).includes(normalizedExplicit)
 	) {
 		if (LAYOUT_OVERRIDE_MODES.has(normalizedExplicit)) {
+			if (isPinRequest(trimmed)) return "pin";
+			if (isWindowRequest(trimmed)) return "window";
 			if (isTileLayoutRequest(trimmed)) return "tile";
 			if (isSplitLayoutRequest(trimmed)) return "split";
 		}
@@ -330,8 +371,8 @@ function inferMode(
 	if (DELETE_VERBS_RE.test(trimmed)) return "delete";
 	if (CREATE_VERBS.test(trimmed)) return "create";
 	if (EDIT_VERBS_RE.test(trimmed)) return "edit";
-	if (PIN_VERBS.test(trimmed)) return "pin";
-	if (WINDOW_VERBS.test(trimmed)) return "window";
+	if (isPinRequest(trimmed) || PIN_VERBS.test(trimmed)) return "pin";
+	if (isWindowRequest(trimmed) || WINDOW_VERBS.test(trimmed)) return "window";
 	if (isTileLayoutRequest(trimmed)) return "tile";
 	if (isSplitLayoutRequest(trimmed)) return "split";
 	if (INTERACT_VERBS.test(trimmed)) return "interact";
@@ -385,6 +426,54 @@ function isSplitLayoutRequest(text: string): boolean {
 			text,
 		) ||
 		/\b(?:on|to|at)\s+(?:the\s+)?(?:left|right|top|bottom)\b/i.test(text)
+	);
+}
+
+function normalizedWordSet(text: string): Set<string> {
+	return new Set(
+		normalizeLooseTerm(text)
+			.split(" ")
+			.map((token) => token.trim())
+			.filter(Boolean),
+	);
+}
+
+function hasAnyToken(tokens: ReadonlySet<string>, values: readonly string[]) {
+	return values.some((value) => tokens.has(value));
+}
+
+function mentionsViewSurface(tokens: ReadonlySet<string>): boolean {
+	for (const token of tokens) {
+		if (VIEW_SURFACE_TOKENS.has(token)) return true;
+	}
+	return false;
+}
+
+function isPinRequest(text: string): boolean {
+	const tokens = normalizedWordSet(text);
+	return hasAnyToken(tokens, ["dock", "pin"]) && mentionsViewSurface(tokens);
+}
+
+function isWindowRequest(text: string): boolean {
+	const tokens = normalizedWordSet(text);
+	const hasWindowIntent =
+		hasAnyToken(tokens, ["detach", "popout", "window", "windows"]) ||
+		(tokens.has("pop") && tokens.has("out"));
+	if (!hasWindowIntent) return false;
+	return (
+		hasAnyToken(tokens, [
+			"detach",
+			"display",
+			"launch",
+			"new",
+			"open",
+			"pop",
+			"popout",
+			"separate",
+			"show",
+			"window",
+			"windows",
+		]) && mentionsViewSurface(tokens)
 	);
 }
 
@@ -983,12 +1072,13 @@ function isCloseAllRequest(
 	text: string,
 	options?: Record<string, unknown>,
 ): boolean {
+	const requestText = viewRequestText(text);
 	const explicit = readViewTargetOption(options)?.trim().toLowerCase();
 	return (
 		readBooleanOption(options, "all") ||
 		explicit === "all" ||
 		explicit === "__all__" ||
-		CLOSE_ALL_VERBS.test(text)
+		CLOSE_ALL_VERBS.test(requestText)
 	);
 }
 
@@ -999,11 +1089,12 @@ function extractCloseTarget(
 	const explicit = readViewTargetOption(options);
 	if (explicit) return explicit;
 
-	const lower = text.toLowerCase();
+	const requestText = viewRequestText(text);
+	const lower = requestText.toLowerCase();
 	for (const verb of CLOSE_TARGET_VERBS) {
 		const idx = lower.indexOf(verb);
 		if (idx === -1) continue;
-		const rest = text.slice(idx + verb.length).trim();
+		const rest = requestText.slice(idx + verb.length).trim();
 		if (!rest) continue;
 		const tokens = rest
 			.split(/[\s,!.?]+/)
@@ -1052,6 +1143,16 @@ function resolveCloseTargetView(
 	if (byLabel) return { kind: "match", view: byLabel };
 
 	const normalizedTarget = normalizeLooseTerm(target);
+	const byLooseId = views.find(
+		(view) => normalizeLooseTerm(view.id) === normalizedTarget,
+	);
+	if (byLooseId) return { kind: "match", view: byLooseId };
+
+	const byLooseLabel = views.find(
+		(view) => normalizeLooseTerm(view.label) === normalizedTarget,
+	);
+	if (byLooseLabel) return { kind: "match", view: byLooseLabel };
+
 	const byTag = views.find((view) =>
 		(view.tags ?? []).some(
 			(tag) =>
@@ -1170,7 +1271,7 @@ function preferLayoutModeOverCapability({
 	options?: Record<string, unknown>;
 	views: readonly ViewSummary[];
 }): "split" | "tile" | null {
-	const trimmed = text.trim();
+	const trimmed = viewRequestText(text).trim();
 	if (!trimmed || hasCapabilityPayloadOptions(options)) return null;
 
 	const mode = isTileLayoutRequest(trimmed)
@@ -1191,32 +1292,89 @@ function resolveLayoutTargets(
 	views: readonly ViewSummary[],
 ): ViewSummary[] {
 	const explicit = readLayoutTargetsFromOptions(options);
-	const resolved: ViewSummary[] = [];
+	const explicitResolved: ViewSummary[] = [];
 	for (const target of explicit) {
 		const match = resolveCloseTargetView(target, views);
-		if (match.kind === "match") resolved.push(match.view);
+		if (match.kind === "match") explicitResolved.push(match.view);
 	}
 
-	if (uniqueByViewId(resolved).length >= 2) {
-		return uniqueByViewId(resolved);
-	}
-
-	const lower = text.toLowerCase();
-	const normalizedText = normalizeLooseTerm(text);
+	const requestText = viewRequestText(text);
+	const lower = requestText.toLowerCase();
+	const normalizedText = normalizeLooseTerm(requestText);
+	const textResolved: ViewSummary[] = [];
 	for (const view of views) {
 		const id = view.id.toLowerCase();
 		const label = view.label.toLowerCase();
-		const terms = [id, label, ...(view.tags ?? [])];
+		const normalizedLabel = normalizeLooseTerm(label);
+		const labelIsGenericSurface = VIEW_SURFACE_TOKENS.has(normalizedLabel);
+		const terms = [
+			id,
+			...(labelIsGenericSurface ? [] : [label]),
+			...(view.tags ?? []).filter(
+				(tag) => !VIEW_SURFACE_TOKENS.has(normalizeLooseTerm(tag)),
+			),
+		];
 		if (
 			lower.includes(id) ||
-			(label.length >= 3 && lower.includes(label)) ||
+			(!labelIsGenericSurface && label.length >= 3 && lower.includes(label)) ||
 			terms.some((term) => textMentionsTerm(normalizedText, term))
 		) {
-			resolved.push(view);
+			textResolved.push(view);
 		}
 	}
 
-	return uniqueByViewId(resolved);
+	const explicitUnique = uniqueByViewId(explicitResolved);
+	const textUnique = uniqueByViewId(textResolved);
+	return textUnique.length >= 2
+		? textUnique
+		: textUnique.length === 1 && explicitUnique.length <= 1
+			? textUnique
+			: uniqueByViewId([...explicitUnique, ...textUnique]);
+}
+
+async function resolveSingleShellTargetView({
+	client,
+	text,
+	options,
+	viewType,
+}: {
+	client: ViewsClient;
+	text: string;
+	options?: Record<string, unknown>;
+	viewType?: ViewType;
+}): Promise<
+	| { kind: "match"; view: ViewSummary }
+	| { kind: "ambiguous"; candidates: ViewSummary[] }
+	| { kind: "none" }
+> {
+	const requestText = viewRequestText(text);
+	const explicit = readViewTargetOption(options)?.trim();
+	if (
+		explicit?.toLowerCase() === "current" ||
+		(!explicit && /\bcurrent\b/i.test(requestText))
+	) {
+		const currentView = await client.getCurrentView().catch(() => null);
+		if (!currentView?.viewId) return { kind: "none" };
+		return {
+			kind: "match",
+			view: {
+				id: currentView.viewId,
+				label: currentView.viewLabel ?? currentView.viewId,
+				available: true,
+				pluginName: "current",
+				viewType: currentView.viewType ?? viewType ?? "gui",
+				...(currentView.viewPath ? { path: currentView.viewPath } : {}),
+			},
+		};
+	}
+
+	const views = await client.listViews({ viewType });
+	if (explicit) return resolveCloseTargetView(explicit, views);
+
+	const targets = resolveLayoutTargets(requestText, undefined, views);
+	if (targets.length === 1) return { kind: "match", view: targets[0] };
+	if (targets.length > 1) return { kind: "ambiguous", candidates: targets };
+	return { kind: "none" };
 }
 
 function uniqueByViewId(views: readonly ViewSummary[]): ViewSummary[] {
@@ -1229,6 +1387,7 @@ function readLayoutValue(
 	text: string,
 	options?: Record<string, unknown>,
 ): "horizontal" | "vertical" | "grid" {
+	const requestText = viewRequestText(text);
 	const explicit =
 		readStringOption(options, "layout") ??
 		readStringOption(options, "orientation") ??
@@ -1250,11 +1409,11 @@ function readLayoutValue(
 		return "vertical";
 	if (value === "grid" || value === "tile" || value === "tiled") return "grid";
 
-	if (/\b(left|right|horizontal|side.?by.?side)\b/i.test(text)) {
+	if (/\b(left|right|horizontal|side.?by.?side)\b/i.test(requestText)) {
 		return "horizontal";
 	}
-	if (/\b(next to|beside|alongside)\b/i.test(text)) return "horizontal";
-	if (/\b(top|bottom|vertical|stack)\b/i.test(text)) return "vertical";
+	if (/\b(next to|beside|alongside)\b/i.test(requestText)) return "horizontal";
+	if (/\b(top|bottom|vertical|stack)\b/i.test(requestText)) return "vertical";
 	return "grid";
 }
 
@@ -1262,6 +1421,7 @@ function readPlacementValue(
 	text: string,
 	options?: Record<string, unknown>,
 ): "left" | "right" | "top" | "bottom" | undefined {
+	const requestText = viewRequestText(text);
 	const explicit = readStringOption(options, "placement")?.trim().toLowerCase();
 	if (
 		explicit === "left" ||
@@ -1271,7 +1431,7 @@ function readPlacementValue(
 	) {
 		return explicit;
 	}
-	const match = /\b(left|right|top|bottom)\b/i.exec(text);
+	const match = /\b(left|right|top|bottom)\b/i.exec(requestText);
 	const value = match?.[1]?.toLowerCase();
 	if (
 		value === "left" ||
@@ -2141,23 +2301,38 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					}
 
 					case "pin": {
-						const pinViewId =
-							readStringOption(actionOptions, "view") ??
-							readStringOption(actionOptions, "id") ??
-							readStringOption(actionOptions, "name");
-						if (!pinViewId) {
+						const resolution = await resolveSingleShellTargetView({
+							client,
+							text,
+							options: actionOptions,
+							viewType,
+						});
+						if (resolution.kind === "none") {
 							const reply =
 								"Specify which view to pin as a desktop tab, e.g. action=pin view=wallet.";
 							await callback?.({ text: reply });
 							return { success: false, text: reply };
 						}
-						const resolvedViewType = await resolveViewTypeForId(
-							client,
-							pinViewId,
-							readExplicitViewTypeOption(options) ?? viewType,
-						);
+						if (resolution.kind === "ambiguous") {
+							const list = resolution.candidates
+								.map((view) => `- ${view.label} (${view.id})`)
+								.join("\n");
+							const reply = `That matches multiple views:\n${list}\nWhich one should I pin?`;
+							await callback?.({ text: reply });
+							return {
+								success: false,
+								text: reply,
+								data: { candidates: resolution.candidates },
+							};
+						}
+						const pinView = resolution.view;
+						const resolvedViewType =
+							readExplicitViewTypeOption(options) ??
+							viewType ??
+							pinView.viewType ??
+							(await resolveViewTypeForId(client, pinView.id));
 						const pinResultText = await pinViewAsTab(
-							pinViewId,
+							pinView.id,
 							resolvedViewType === "gui" ? undefined : resolvedViewType,
 						);
 						await callback?.({ text: pinResultText });
@@ -2166,32 +2341,47 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							text: pinResultText,
 							values: {
 								mode: "pin",
-								viewId: pinViewId,
+								viewId: pinView.id,
 								viewType: resolvedViewType ?? "gui",
 							},
-							data: { viewId: pinViewId, viewType: resolvedViewType ?? "gui" },
+							data: { viewId: pinView.id, viewType: resolvedViewType ?? "gui" },
 						};
 					}
 
 					case "window": {
-						const windowViewId =
-							readStringOption(actionOptions, "view") ??
-							readStringOption(actionOptions, "id") ??
-							readStringOption(actionOptions, "name");
+						const resolution = await resolveSingleShellTargetView({
+							client,
+							text,
+							options: actionOptions,
+							viewType,
+						});
 						const alwaysOnTop = readBooleanOption(actionOptions, "alwaysOnTop");
-						if (!windowViewId) {
+						if (resolution.kind === "none") {
 							const reply =
 								"Specify which view to open in a new window, e.g. action=window view=wallet.";
 							await callback?.({ text: reply });
 							return { success: false, text: reply };
 						}
-						const resolvedViewType = await resolveViewTypeForId(
-							client,
-							windowViewId,
-							readExplicitViewTypeOption(options) ?? viewType,
-						);
+						if (resolution.kind === "ambiguous") {
+							const list = resolution.candidates
+								.map((view) => `- ${view.label} (${view.id})`)
+								.join("\n");
+							const reply = `That matches multiple views:\n${list}\nWhich one should I open in a new window?`;
+							await callback?.({ text: reply });
+							return {
+								success: false,
+								text: reply,
+								data: { candidates: resolution.candidates },
+							};
+						}
+						const windowView = resolution.view;
+						const resolvedViewType =
+							readExplicitViewTypeOption(options) ??
+							viewType ??
+							windowView.viewType ??
+							(await resolveViewTypeForId(client, windowView.id));
 						const windowResultText = await openViewInWindow(
-							windowViewId,
+							windowView.id,
 							resolvedViewType === "gui" ? undefined : resolvedViewType,
 							alwaysOnTop,
 						);
@@ -2201,12 +2391,12 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							text: windowResultText,
 							values: {
 								mode: "window",
-								viewId: windowViewId,
+								viewId: windowView.id,
 								viewType: resolvedViewType ?? "gui",
 								alwaysOnTop,
 							},
 							data: {
-								viewId: windowViewId,
+								viewId: windowView.id,
 								viewType: resolvedViewType ?? "gui",
 								alwaysOnTop,
 							},

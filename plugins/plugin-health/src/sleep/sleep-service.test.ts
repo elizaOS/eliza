@@ -13,7 +13,7 @@ function episode(
     startAt: params.startAt ?? "2026-06-01T22:00:00.000Z",
     endAt:
       params.endAt === undefined ? "2026-06-02T06:00:00.000Z" : params.endAt,
-    source: params.source ?? "activity",
+    source: params.source ?? "activity_gap",
     confidence: params.confidence ?? 0.8,
     cycleType: params.cycleType ?? "overnight",
     sealed: true,
