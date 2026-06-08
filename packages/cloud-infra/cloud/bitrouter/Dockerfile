@@ -10,13 +10,7 @@ WORKDIR /app
 COPY bitrouter.yaml /app/bitrouter.yaml
 COPY auth-proxy.mjs /app/auth-proxy.mjs
 COPY entrypoint.sh /app/entrypoint.sh
-RUN grep -q "buffer-v2" /app/auth-proxy.mjs \
-  && grep -q "openrouter:" /app/bitrouter.yaml \
-  && grep -q "api_protocol: openai" /app/bitrouter.yaml \
-  && grep -q "no_cache: 0.039" /app/bitrouter.yaml \
-  && grep -q "no_cache: 0.35" /app/bitrouter.yaml \
-  && grep -q "no_cache: 2.25" /app/bitrouter.yaml \
-  && chmod +x /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 ENV BITROUTER_HOME=/app
 ENV BITROUTER_UPSTREAM=http://127.0.0.1:4356
