@@ -333,6 +333,75 @@ describe("forced provider route pricing ids", () => {
       globalThis.fetch = previousFetch;
     }
   });
+
+  test("emits forced embedding:input row for bare text-embedding-3-small id", async () => {
+    // plugin-elizacloud sends the unprefixed id `text-embedding-3-small` to
+    // cloud-api's text embedding handler. BitRouter has no /v1/embeddings
+    // route (live 404 confirmed), so the request falls through to OpenAI
+    // Direct. Without a pricing row the cost computation 5xxs and
+    // plugin-sql writes zero-vectors. The forced row at priority -1 supplies
+    // the missing price without overriding a real BitRouter row if one
+    // ever materializes.
+    const previousApiKey = process.env.BITROUTER_API_KEY;
+    const previousFetch = globalThis.fetch;
+    process.env.BITROUTER_API_KEY = "test-bitrouter-key";
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ data: [] }), { status: 200 });
+
+    try {
+      const entries = await fetchBitRouterCatalogEntries();
+      const input = entries.find(
+        (entry) =>
+          entry.model === "text-embedding-3-small" &&
+          entry.chargeType === "input",
+      );
+
+      expect(input?.provider).toBe("openai");
+      expect(input?.productFamily).toBe("embedding");
+      expect(input?.unitPrice).toBe(0.00000002);
+      expect(input?.priority).toBe(-1);
+    } finally {
+      if (previousApiKey === undefined) {
+        delete process.env.BITROUTER_API_KEY;
+      } else {
+        process.env.BITROUTER_API_KEY = previousApiKey;
+      }
+      globalThis.fetch = previousFetch;
+    }
+  });
+
+  test("emits forced embedding:input row for prefixed openai/text-embedding-3-small id", async () => {
+    // plugin-openrouter sends the canonical `openai/text-embedding-3-small`
+    // form. Both prefixed and bare ids are needed because the cloud-api
+    // routes by raw model id without normalizing, and the two plugins
+    // emit different shapes.
+    const previousApiKey = process.env.BITROUTER_API_KEY;
+    const previousFetch = globalThis.fetch;
+    process.env.BITROUTER_API_KEY = "test-bitrouter-key";
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ data: [] }), { status: 200 });
+
+    try {
+      const entries = await fetchBitRouterCatalogEntries();
+      const input = entries.find(
+        (entry) =>
+          entry.model === "openai/text-embedding-3-small" &&
+          entry.chargeType === "input",
+      );
+
+      expect(input?.provider).toBe("openai");
+      expect(input?.productFamily).toBe("embedding");
+      expect(input?.unitPrice).toBe(0.00000002);
+      expect(input?.priority).toBe(-1);
+    } finally {
+      if (previousApiKey === undefined) {
+        delete process.env.BITROUTER_API_KEY;
+      } else {
+        process.env.BITROUTER_API_KEY = previousApiKey;
+      }
+      globalThis.fetch = previousFetch;
+    }
+  });
 });
 
 describe("canonicalModelId — OpenRouter routing variants on bare model ids", () => {
