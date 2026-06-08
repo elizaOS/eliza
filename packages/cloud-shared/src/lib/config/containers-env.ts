@@ -241,6 +241,15 @@ export const containersEnv = {
   },
 
   /**
+   * Caddy admin-API base URL the daemon uses to add/remove per-app ingress routes
+   * (e.g. `http://127.0.0.1:2019` over an SSH tunnel, or the app node's
+   * private-IP admin endpoint). Undefined = ingress not wired (routes are no-ops).
+   */
+  caddyAdminUrl(): string | undefined {
+    return getCloudAwareEnv().APPS_CADDY_ADMIN_URL || undefined;
+  },
+
+  /**
    * Default Hetzner Cloud location for provisioning nodes and volumes
    * (e.g. "fsn1", "nbg1", "hel1"). Hetzner volumes are location-bound, so
    * the volume and the server it attaches to must share a location.

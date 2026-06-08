@@ -44,6 +44,12 @@ export interface AppContainerProviderDeps {
   dbEgressNetwork?: string;
   /** socat image for the DB ambassador. Defaults to the module default. */
   ambassadorImage?: string;
+  /**
+   * Address of the node this provider provisions on (the SSH target host).
+   * Surfaced on the result + persisted as the container's placement so the
+   * ingress can route `<shortid>.<base>` -> `nodeHost:hostPort`. Default "".
+   */
+  nodeHost?: string;
 }
 
 export interface ProvisionAppContainerParams {
@@ -56,6 +62,8 @@ export interface ProvisionedAppContainer {
   containerId: string;
   hostPort: number;
   network: string;
+  /** The node the container runs on (for ingress routing + placement). */
+  nodeHost: string;
 }
 
 function defaultExtractContainerId(stdout: string): string {
@@ -117,7 +125,7 @@ export class AppContainerProvider {
     const containerId = (this.deps.extractContainerId ?? defaultExtractContainerId)(stdout);
     await this.deps.ssh.exec(`docker start ${shellQuote(params.containerName)}`);
 
-    return { containerId, hostPort, network };
+    return { containerId, hostPort, network, nodeHost: this.deps.nodeHost ?? "" };
   }
 
   async delete(containerName: string): Promise<void> {
