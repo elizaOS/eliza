@@ -44,6 +44,12 @@ export interface MakeTenantDbProvisioningOpts {
   decrypt?: (encrypted: string) => Promise<string>;
   /** Override the role-password generator (deterministic tests). */
   genPassword?: () => string;
+  /** Override the host->cluster resolver (teardown). Defaults to the repository. */
+  resolveClusterByHost?: (
+    host: string,
+  ) => Promise<{ id: string; adminDsnEncrypted: string } | null>;
+  /** Override the slot-release (teardown). Defaults to the repository. */
+  releaseSlot?: (clusterId: string) => Promise<void>;
 }
 
 /**
@@ -59,6 +65,11 @@ export function makeTenantDbProvisioning(
   const decrypt = opts.decrypt ?? ((encrypted: string) => fieldEncryption.decrypt(encrypted));
   const genPassword = opts.genPassword ?? genRolePassword;
 
+  const resolveClusterByHost =
+    opts.resolveClusterByHost ?? ((host: string) => tenantDbClustersRepository.findByHost(host));
+  const releaseSlot =
+    opts.releaseSlot ?? ((clusterId: string) => tenantDbClustersRepository.releaseSlot(clusterId));
+
   return new SqlTenantDbProvisioning({
     pool,
     decrypt,
@@ -68,5 +79,7 @@ export function makeTenantDbProvisioning(
         executor: new DirectPgExecutor(adminDsn),
         genPassword,
       }),
+    resolveClusterByHost,
+    releaseSlot,
   });
 }
