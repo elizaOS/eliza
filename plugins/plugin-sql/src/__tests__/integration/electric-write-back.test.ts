@@ -152,11 +152,9 @@ describe("Electric Write-Back e2e", () => {
     // database — per-table 404s are expected and don't block the
     // tables that DO exist from syncing.
     const syncDeadline = Date.now() + 15_000;
-    let synced = false;
     while (Date.now() < syncDeadline) {
       const status = manager.getSyncStatus();
       if (status.status === "synced") {
-        synced = true;
         break;
       }
       if (status.status === "error") throw new Error(`Sync errored: ${status.error}`);
