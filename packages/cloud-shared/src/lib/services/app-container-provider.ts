@@ -94,13 +94,17 @@ export class AppContainerProvider {
       for (const cmd of cmds) {
         await this.deps.ssh.exec(cmd);
       }
-      input = {
-        ...input,
-        environmentVars: {
-          ...input.environmentVars,
-          DATABASE_URL: rewriteDsnToAmbassador(dsn, ambassadorName(params.appId)),
-        },
-      };
+      // Rewrite EVERY injected DSN var (DATABASE_URL + POSTGRES_URL) to the
+      // ambassador host. They carry the same tenant DSN; an un-rewritten
+      // POSTGRES_URL would point at the real cluster host, which is unreachable
+      // from the app's --internal network.
+      const ambHost = ambassadorName(params.appId);
+      const rewritten: Record<string, string> = { ...input.environmentVars };
+      for (const key of ["DATABASE_URL", "POSTGRES_URL"]) {
+        const value = rewritten[key];
+        if (value) rewritten[key] = rewriteDsnToAmbassador(value, ambHost);
+      }
+      input = { ...input, environmentVars: rewritten };
     }
 
     const hostPort = await this.deps.allocateHostPort();
