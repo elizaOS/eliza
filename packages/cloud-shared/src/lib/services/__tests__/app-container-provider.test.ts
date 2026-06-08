@@ -1,6 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { AppContainerProvider, type AppContainerSsh } from "../app-container-provider";
+import {
+  AppContainerProvider,
+  type AppContainerSsh,
+  parseUsedHostPorts,
+} from "../app-container-provider";
 import type { CreateContainerInput } from "../containers/hetzner-client/types";
+
+describe("parseUsedHostPorts", () => {
+  test("extracts host ports from `docker ps` Ports output (ipv4 + ipv6 dedup)", () => {
+    const out = "0.0.0.0:28123->3000/tcp, :::28123->3000/tcp\n0.0.0.0:30500->80/tcp";
+    expect([...parseUsedHostPorts(out)].sort((a, b) => a - b)).toEqual([28123, 30500]);
+  });
+  test("empty output -> empty set", () => {
+    expect(parseUsedHostPorts("").size).toBe(0);
+  });
+});
 
 const APP_ID = "11111111-2222-3333-4444-555555555555";
 
@@ -48,14 +62,39 @@ describe("AppContainerProvider.provision", () => {
     expect(result.hostPort).toBe(49001);
     expect(result.network).toMatch(/^app-net-/);
 
-    // network ensure first, then create, then start
+    // network ensured first; a docker-ps probe runs for collision-safe ports
     expect(calls[0]).toContain("docker network create --driver bridge --internal");
-    expect(calls[1]).toContain("docker create");
-    expect(calls[1]).toContain("--cap-drop=ALL");
-    expect(calls[1]).toContain("-p 49001:3000");
-    expect(calls[1]).toContain("HTTP_PROXY=http://egress-gw:3128");
-    expect(calls[1]).not.toContain("NET_ADMIN");
-    expect(calls[2]).toBe("docker start 'app-nubilio'");
+    expect(calls.some((c) => c.startsWith("docker ps"))).toBe(true);
+    const createCmd = calls.find((c) => c.startsWith("docker create")) ?? "";
+    expect(createCmd).toContain("--cap-drop=ALL");
+    expect(createCmd).toContain("-p 49001:3000");
+    expect(createCmd).toContain("HTTP_PROXY=http://egress-gw:3128");
+    expect(createCmd).not.toContain("NET_ADMIN");
+    expect(calls).toContain("docker start 'app-nubilio'");
+  });
+
+  test("picks a host port not already in use on the node (collision-safe)", async () => {
+    // node already has 30000 published; allocator hands out 30000 then 31000
+    const ports = [30000, 31000];
+    let i = 0;
+    const ssh = {
+      async exec(command: string) {
+        if (command.startsWith("docker ps")) return "0.0.0.0:30000->3000/tcp, :::30000->3000/tcp";
+        if (command.startsWith("docker create")) return "cid";
+        return "";
+      },
+    };
+    const provider = new AppContainerProvider({
+      ssh,
+      allocateHostPort: async () => ports[i++] ?? 39999,
+    });
+    const result = await provider.provision({
+      appId: APP_ID,
+      containerName: "app-x",
+      input: INPUT,
+    });
+    // skipped the in-use 30000, landed on 31000
+    expect(result.hostPort).toBe(31000);
   });
 
   test("provision with DATABASE_URL + POSTGRES_URL stands up the ambassador + rewrites BOTH", async () => {

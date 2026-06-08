@@ -87,13 +87,17 @@ export function mapContainerRowToAppContainerRow(row: ProjectableContainerRow): 
  */
 export function mergeHostPlacementMetadata(
   existing: Record<string, unknown> | null | undefined,
-  info: { hostContainerId: string; hostPort: number; network: string },
+  info: { hostContainerId: string; hostPort: number; network: string; nodeHost?: string },
 ): Record<string, unknown> {
   return {
     ...(existing ?? {}),
     hostContainerId: info.hostContainerId,
     hostPort: info.hostPort,
     network: info.network,
+    // `hostname` = the node the container runs on. This is the key the ingress-map
+    // snapshot reads to build a per-app upstream — without it the snapshot could
+    // never emit one (latent gap). Only written when known.
+    ...(info.nodeHost ? { hostname: info.nodeHost } : {}),
   };
 }
 
@@ -114,7 +118,7 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
 
   async markRunning(
     containerId: string,
-    info: { hostContainerId: string; hostPort: number; network: string },
+    info: { hostContainerId: string; hostPort: number; network: string; nodeHost?: string },
   ): Promise<void> {
     const [row] = await dbRead
       .select({ organization_id: containers.organization_id, metadata: containers.metadata })
