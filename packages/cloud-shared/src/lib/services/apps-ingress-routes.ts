@@ -65,10 +65,12 @@ export function buildCaddyRouteByIdUrl(adminBase: string, routeId: string): stri
 }
 
 /**
- * The on-demand-TLS `ask` URL Caddy hits (before issuing a LE cert for a
- * subdomain) to confirm the shortid is a live app — abuse prevention so an
- * attacker can't make Caddy spam Let's Encrypt for non-existent subdomains.
+ * The on-demand-TLS `ask` URL Caddy hits before issuing a LE cert for a
+ * subdomain — abuse prevention so an attacker can't make Caddy spam Let's
+ * Encrypt for non-existent subdomains. Caddy appends `?domain=<sni>` to this
+ * FIXED URL on each handshake; the endpoint returns 200 iff a running app owns
+ * that hostname.
  */
-export function buildOnDemandAskUrl(controlPlaneBase: string, shortid: string): string {
-  return `${controlPlaneBase.replace(/\/+$/, "")}/api/apps/${encodeURIComponent(shortid)}/is-valid`;
+export function buildOnDemandAskUrl(controlPlaneBase: string): string {
+  return `${controlPlaneBase.replace(/\/+$/, "")}/api/v1/apps-ingress/ask`;
 }

@@ -45,9 +45,9 @@ describe("admin-API urls", () => {
 });
 
 describe("buildOnDemandAskUrl", () => {
-  test("points at the control-plane is-valid endpoint for the shortid", () => {
-    expect(buildOnDemandAskUrl("https://api.elizacloud.ai", "abc12345")).toBe(
-      "https://api.elizacloud.ai/api/apps/abc12345/is-valid",
+  test("points at the fixed apps-ingress ask endpoint (Caddy appends ?domain=)", () => {
+    expect(buildOnDemandAskUrl("https://api.elizacloud.ai/")).toBe(
+      "https://api.elizacloud.ai/api/v1/apps-ingress/ask",
     );
   });
 });

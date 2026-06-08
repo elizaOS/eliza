@@ -28,6 +28,9 @@ const publicPathPrefixes = [
   "/api/eliza",
   "/api/fal/proxy",
   "/api/public",
+  // Caddy on-demand-TLS `ask` for the apps front door — called by app nodes
+  // without a session; side-effect-free existence check (see route doc).
+  "/api/v1/apps-ingress/ask",
   "/api/auth/pair",
   "/api/auth/cli-session",
   "/api/v1/cli-auth",
