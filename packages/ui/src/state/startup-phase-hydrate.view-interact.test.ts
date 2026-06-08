@@ -206,6 +206,40 @@ describe("bindReadyPhase view interaction bridge", () => {
     window.removeEventListener("eliza:navigate:view", navHandler);
   });
 
+  it("dispatches shell:navigate:view layout metadata to the browser shell", () => {
+    const navHandler = vi.fn();
+    window.addEventListener("eliza:navigate:view", navHandler);
+    const cleanup = bindReadyPhase({ current: makeDeps() });
+
+    clientMock.handlers.get("shell:navigate:view")?.({
+      viewId: "notes",
+      viewPath: "/notes",
+      viewLabel: "Notes",
+      viewType: "gui",
+      action: "tile-views",
+      views: ["notes", " calendar ", "", false],
+      layout: " grid ",
+      placement: " bottom ",
+    });
+
+    expect(navHandler).toHaveBeenCalledTimes(1);
+    const event = navHandler.mock.calls[0][0] as CustomEvent;
+    expect(event.detail).toEqual({
+      viewId: "notes",
+      viewPath: "/notes",
+      viewLabel: "Notes",
+      viewType: "gui",
+      action: "tile-views",
+      alwaysOnTop: false,
+      views: ["notes", "calendar"],
+      layout: "grid",
+      placement: "bottom",
+    });
+
+    cleanup();
+    window.removeEventListener("eliza:navigate:view", navHandler);
+  });
+
   it("dispatches valid XR shell:navigate:view events to the browser shell", () => {
     const navHandler = vi.fn();
     window.addEventListener("eliza:navigate:view", navHandler);

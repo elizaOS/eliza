@@ -30,6 +30,8 @@ import {
   enrichTrajectoryLlmCall,
   executeRawSql,
   extractRows,
+  normalizePersistedTrajectoryTiming,
+  normalizePersistedUpdatedAt,
   type PersistedStep,
   type PersistedTrajectory,
   saveTrajectory,
@@ -1082,6 +1084,14 @@ function listItemToUIRecord(item: TrajectoryListItem): UITrajectoryRecord {
     item.status === "timeout" || item.status === "error"
       ? "error"
       : item.status;
+  const timing = normalizePersistedTrajectoryTiming({
+    status: item.status,
+    startTime: item.startTime,
+    endTime: item.endTime,
+    durationMs: item.durationMs,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  });
   return {
     id: item.id,
     agentId: item.agentId,
@@ -1091,8 +1101,8 @@ function listItemToUIRecord(item: TrajectoryListItem): UITrajectoryRecord {
     source: item.source,
     status: status as "active" | "completed" | "error",
     startTime: item.startTime,
-    endTime: item.endTime,
-    durationMs: item.durationMs,
+    endTime: timing.endTime,
+    durationMs: timing.durationMs,
     llmCallCount: item.llmCallCount,
     providerAccessCount: item.providerAccessCount,
     totalPromptTokens: item.totalPromptTokens,
@@ -1105,14 +1115,24 @@ function listItemToUIRecord(item: TrajectoryListItem): UITrajectoryRecord {
       ...(item.batchId ? { batchId: item.batchId } : {}),
     },
     createdAt: item.createdAt,
-    updatedAt: item.updatedAt ?? item.createdAt,
+    updatedAt: normalizePersistedUpdatedAt({
+      startTime: item.startTime,
+      endTime: timing.endTime,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+    }),
   };
 }
 
 function trajectoryToUIDetail(traj: Trajectory): UITrajectoryDetailResult {
   const finalStatus = (traj.metrics?.finalStatus as string) ?? "completed";
-  const normalizedEndTime =
-    typeof traj.endTime === "number" && traj.endTime > 0 ? traj.endTime : null;
+  const timing = normalizePersistedTrajectoryTiming({
+    status: normalizePersistedStatus(finalStatus),
+    startTime: traj.startTime,
+    endTime: typeof traj.endTime === "number" ? traj.endTime : null,
+    durationMs: typeof traj.durationMs === "number" ? traj.durationMs : null,
+  });
+  const normalizedEndTime = timing.endTime;
   const status: "active" | "completed" | "error" =
     finalStatus === "timeout" ||
     finalStatus === "terminated" ||
@@ -1186,9 +1206,7 @@ function trajectoryToUIDetail(traj: Trajectory): UITrajectoryDetailResult {
   const normalizedDurationMs =
     status === "active"
       ? null
-      : typeof traj.durationMs === "number"
-        ? traj.durationMs
-        : null;
+      : timing.durationMs;
   const updatedAtMs = normalizedEndTime ?? (traj.startTime || Date.now());
 
   const trajectory: UITrajectoryRecord = {

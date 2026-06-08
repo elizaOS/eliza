@@ -386,3 +386,42 @@ describe("MessageContent permission cards", () => {
     );
   });
 });
+
+describe("MessageContent fallback sanitization", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const internalJson =
+    '{"type":"tool_result","result":{"secret":"internal"}}{"success":false,"decision":"CONTINUE"}';
+
+  it("sanitizes local-inference fallback text", () => {
+    renderWithApp(
+      baseMessage({
+        text: `${internalJson}Local model required.`,
+        localInference: { status: "missing", modelId: "llama.test" },
+      }),
+    );
+
+    expect(document.body.textContent).toContain("Local model required.");
+    expect(document.body.textContent).not.toContain("tool_result");
+    expect(document.body.textContent).not.toContain("decision");
+  });
+
+  it("sanitizes no-provider fallback text", () => {
+    renderWithApp(
+      baseMessage({
+        text: `${internalJson}Set a provider key in Settings.`,
+        failureKind: "no_provider",
+      }),
+    );
+
+    expect(document.body.textContent).toContain("Set a provider key in Settings.");
+    expect(document.body.textContent).not.toContain("tool_result");
+    expect(document.body.textContent).not.toContain("decision");
+  });
+});

@@ -134,6 +134,26 @@ function chunkVisibleTextForSse(text: string): string[] {
   return chunks;
 }
 
+function parseStructuredStreamChunk(chunk: string): Record<string, unknown> | null {
+  const trimmed = chunk.trim();
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const record = parsed as Record<string, unknown>;
+  const type = record.type;
+  return type === "tool_call" ||
+    type === "tool_result" ||
+    type === "evaluation" ||
+    type === "context_event"
+    ? record
+    : null;
+}
+
 // ---------------------------------------------------------------------------
 // Deleted-conversations state persistence
 // ---------------------------------------------------------------------------
@@ -1705,6 +1725,11 @@ export async function handleConversationRoutes(
               disconnectTracker.isAborted() ||
               disconnectTracker.checkConnectionClosed()
             ) {
+              return;
+            }
+            const structuredEvent = parseStructuredStreamChunk(chunk);
+            if (structuredEvent) {
+              writeSseJson(res, structuredEvent);
               return;
             }
             streamedText += chunk;

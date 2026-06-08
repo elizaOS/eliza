@@ -17,6 +17,8 @@ import type {
 } from "../types/trajectory.ts";
 import {
   enrichTrajectoryLlmCall,
+  normalizePersistedTrajectoryTiming,
+  normalizePersistedUpdatedAt,
   normalizeStatus,
   normalizeTrajectoryMetadata,
   type PersistedLlmCall,
@@ -120,15 +122,25 @@ export function trajectoryRowToListItem(
       batchId: record.batch_id,
     },
   );
+  const status = normalizeStatus(record.status, "completed");
+  const startTime = toNumber(record.start_time, Date.now());
+  const timing = normalizePersistedTrajectoryTiming({
+    status,
+    startTime,
+    endTime: toOptionalNumber(record.end_time) ?? null,
+    durationMs: toOptionalNumber(record.duration_ms) ?? null,
+    createdAt: record.created_at,
+    updatedAt: record.updated_at,
+  });
 
   return {
     id: toText(record.id ?? record.trajectory_id, ""),
     agentId: toText(record.agent_id, agentId),
     source: toText(record.source, "runtime"),
-    status: normalizeStatus(record.status, "completed"),
-    startTime: toNumber(record.start_time, Date.now()),
-    endTime: toOptionalNumber(record.end_time) ?? null,
-    durationMs: toOptionalNumber(record.duration_ms) ?? null,
+    status,
+    startTime,
+    endTime: timing.endTime,
+    durationMs: timing.durationMs,
     stepCount: toNumber(record.step_count, 0),
     llmCallCount: toNumber(record.llm_call_count, 0),
     providerAccessCount: toNumber(record.provider_access_count, 0),
@@ -148,6 +160,12 @@ export function trajectoryRowToListItem(
       record.created_at,
       new Date(toNumber(record.start_time, Date.now())).toISOString(),
     ),
+    updatedAt: normalizePersistedUpdatedAt({
+      startTime,
+      endTime: timing.endTime,
+      createdAt: record.created_at,
+      updatedAt: record.updated_at,
+    }),
     metadata: normalizedMetadata.metadata as Record<
       string,
       JsonValue | undefined
@@ -159,8 +177,14 @@ export function persistedTrajectoryToDetailRecord(
   persisted: PersistedTrajectory,
   agentId: string,
 ): Trajectory {
-  const endTime =
-    typeof persisted.endTime === "number" ? persisted.endTime : undefined;
+  const timing = normalizePersistedTrajectoryTiming({
+    status: persisted.status,
+    startTime: persisted.startTime,
+    endTime: persisted.endTime,
+    createdAt: persisted.createdAt,
+    updatedAt: persisted.updatedAt,
+  });
+  const endTime = timing.endTime ?? undefined;
   return {
     trajectoryId: persisted.id,
     agentId,
@@ -168,9 +192,7 @@ export function persistedTrajectoryToDetailRecord(
     status: persisted.status,
     startTime: persisted.startTime,
     ...(endTime !== undefined ? { endTime } : {}),
-    ...(endTime !== undefined
-      ? { durationMs: Math.max(0, endTime - persisted.startTime) }
-      : {}),
+    ...(timing.durationMs !== null ? { durationMs: timing.durationMs } : {}),
     ...(persisted.scenarioId ? { scenarioId: persisted.scenarioId } : {}),
     ...(persisted.batchId ? { batchId: persisted.batchId } : {}),
     steps: persisted.steps.map((step) =>

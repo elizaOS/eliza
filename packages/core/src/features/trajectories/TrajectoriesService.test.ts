@@ -1,10 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { IAgentRuntime } from "../../types";
-import { TrajectoriesService } from "./TrajectoriesService";
+import { TrajectoriesService } from "./TrajectoriesService.ts";
 
 function createRuntimeWithoutSql(): IAgentRuntime {
 	return {
 		adapter: { db: {} },
+		getService: () => null,
+		getServicesByType: () => [],
+	} as unknown as IAgentRuntime;
+}
+
+function createRuntimeWithSql(): IAgentRuntime {
+	return {
+		adapter: { db: { execute: async () => ({ rows: [] }) } },
 		getService: () => null,
 		getServicesByType: () => [],
 	} as unknown as IAgentRuntime;
@@ -66,6 +74,70 @@ describe("TrajectoriesService", () => {
 		expect((service as TrajectoriesService).isEnabled()).toBe(false);
 
 		await service.stop();
+	});
+
+	it("normalizes completed legacy rows with missing end timestamps", async () => {
+		const trajectoryId = "00000000-0000-4000-8000-000000000030";
+		const stepId = "00000000-0000-4000-8000-000000000031";
+		const row = {
+			...makeTrajectoryRow(trajectoryId, stepId),
+			status: "completed",
+			start_time: 1_700_000_000_000,
+			end_time: 0,
+			duration_ms: null,
+			created_at: "2023-11-14T22:13:20.000Z",
+			updated_at: "2023-11-14T22:13:22.500Z",
+			metrics_json: JSON.stringify({ finalStatus: "completed" }),
+		};
+		const service = new TrajectoriesService(createRuntimeWithSql());
+		const serviceInternals = service as unknown as {
+			rowToTrajectory: (row: Record<string, unknown>) => {
+				endTime: number;
+				durationMs: number;
+			};
+		};
+
+		const trajectory = serviceInternals.rowToTrajectory(row);
+
+		expect(trajectory.endTime).toBe(1_700_000_002_500);
+		expect(trajectory.durationMs).toBe(2_500);
+	});
+
+	it("normalizes completed legacy rows in trajectory lists", async () => {
+		const trajectoryId = "00000000-0000-4000-8000-000000000032";
+		const stepId = "00000000-0000-4000-8000-000000000033";
+		const row = {
+			...makeTrajectoryRow(trajectoryId, stepId),
+			status: "completed",
+			start_time: 1_700_000_000_000,
+			end_time: null,
+			duration_ms: null,
+			created_at: "2023-11-14T22:13:20.000Z",
+			updated_at: "2023-11-14T22:13:23.000Z",
+		};
+		const service = new TrajectoriesService(createRuntimeWithSql());
+		const serviceInternals = service as unknown as {
+			ensureStorageReady: () => Promise<void>;
+			executeRawSql: (
+				sqlText: string,
+			) => Promise<{ rows: Array<Record<string, unknown>>; columns: string[] }>;
+		};
+		serviceInternals.ensureStorageReady = async () => undefined;
+		serviceInternals.executeRawSql = async (sqlText: string) => {
+			if (sqlText.includes("count(*)")) {
+				return { rows: [{ total: 1 }], columns: ["total"] };
+			}
+			return { rows: [row], columns: Object.keys(row) };
+		};
+
+		const result = await service.listTrajectories();
+
+		expect(result.trajectories).toHaveLength(1);
+		expect(result.trajectories[0]?.endTime).toBe(1_700_000_003_000);
+		expect(result.trajectories[0]?.durationMs).toBe(3_000);
+		expect(result.trajectories[0]?.updatedAt).toBe(
+			"2023-11-14T22:13:23.000Z",
+		);
 	});
 
 	it("persists LLM calls with bounded JSON-safe payloads", async () => {

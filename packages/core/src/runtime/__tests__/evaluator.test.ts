@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import {
+	getStreamingContext,
+	runWithStreamingContext,
+} from "../../streaming-context";
 import { ModelType } from "../../types/model";
 import { parseEvaluatorOutput, runEvaluator } from "../evaluator";
 
@@ -168,6 +172,72 @@ df -h / /home
 			tags: ["test"],
 		});
 		expect(messageToUser).toHaveBeenCalledWith("Sent.");
+	});
+
+	it("does not stream raw evaluator JSON as visible chunks", async () => {
+		const rawChunks: string[] = [];
+		const evaluations: unknown[] = [];
+		const runtime = {
+			useModel: vi.fn(async () => {
+				const context = getStreamingContext();
+				await context?.onStreamChunk('{"success":true,', "message-1");
+				await context?.onStreamChunk(
+					'"decision":"FINISH","thought":"Done."}',
+					"message-1",
+				);
+				return `{
+  "success": true,
+  "thought": "Done.",
+  "decision": "FINISH",
+  "messageToUser": "Done."
+}`;
+			}),
+		};
+
+		const result = await runWithStreamingContext(
+			{
+				messageId: "message-1",
+				onStreamChunk: (chunk) => {
+					rawChunks.push(chunk);
+				},
+				onEvaluation: (payload) => {
+					evaluations.push(payload);
+				},
+			},
+			() =>
+				runEvaluator({
+					runtime,
+					context: {
+						id: "ctx",
+						staticPrefix: {
+							characterPrompt: {
+								content: "agent_name: Eliza",
+								stable: true,
+							},
+						},
+						events: [],
+					},
+					trajectory: {
+						context: { id: "ctx" },
+						steps: [],
+						archivedSteps: [],
+						plannedQueue: [],
+						evaluatorOutputs: [],
+					},
+				}),
+		);
+
+		expect(result.messageToUser).toBe("Done.");
+		expect(rawChunks).toEqual([]);
+		expect(evaluations).toHaveLength(1);
+		expect(evaluations[0]).toMatchObject({
+			evaluation: {
+				success: true,
+				decision: "FINISH",
+				messageToUser: "Done.",
+			},
+			messageId: "message-1",
+		});
 	});
 
 	it("repairs missing success only when FINISH follows a successful tool result", async () => {

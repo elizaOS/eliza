@@ -41,6 +41,10 @@ import {
   type WorkbenchOverview,
 } from "../api";
 import type { UiLanguage } from "../i18n";
+import {
+  filterRenderableConversationMessages,
+  shouldDisplayConversationMessage as shouldKeepConversationMessage,
+} from "../utils/chat-display-text";
 import { normalizeOwnerName } from "../utils/owner-name";
 import {
   type AutonomyRunHealthMap,
@@ -53,18 +57,6 @@ import { normalizeConversationList } from "./chat-conversation-guards";
 import type { LoadConversationMessagesResult } from "./internal";
 
 // ── Helpers (module-level, no React deps) ────────────────────────────
-
-function shouldKeepConversationMessage(message: ConversationMessage): boolean {
-  if (message.role !== "assistant") return true;
-  if (message.text.trim().length > 0) return true;
-  return Boolean(message.blocks?.length);
-}
-
-function filterRenderableConversationMessages(
-  messages: ConversationMessage[],
-): ConversationMessage[] {
-  return messages.filter((message) => shouldKeepConversationMessage(message));
-}
 
 function hasConversationBootstrapMessage(
   messages: ConversationMessage[],

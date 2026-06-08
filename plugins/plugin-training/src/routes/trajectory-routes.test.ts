@@ -13,6 +13,77 @@ vi.mock("@elizaos/agent", () => ({
   enrichTrajectoryLlmCall: vi.fn((call) => call),
   executeRawSql: vi.fn(async () => []),
   extractRows: vi.fn(() => []),
+  normalizePersistedTrajectoryTiming: vi.fn(
+    (input: {
+      status: string;
+      startTime: number;
+      endTime: number | null;
+      durationMs?: number | null;
+      createdAt?: unknown;
+      updatedAt?: unknown;
+    }) => {
+      if (input.status === "active") {
+        return { endTime: null, durationMs: null };
+      }
+      const parseTime = (value: unknown): number | null => {
+        if (typeof value === "number" && Number.isFinite(value)) return value;
+        if (typeof value !== "string") return null;
+        const parsed = Date.parse(value);
+        return Number.isFinite(parsed) ? parsed : null;
+      };
+      const startTime = Number.isFinite(input.startTime) ? input.startTime : 0;
+      const endTime =
+        (typeof input.endTime === "number" &&
+        Number.isFinite(input.endTime) &&
+        input.endTime > 0 &&
+        input.endTime >= startTime
+          ? input.endTime
+          : null) ??
+        parseTime(input.updatedAt) ??
+        parseTime(input.createdAt) ??
+        (startTime > 0 ? startTime : Date.now());
+      return {
+        endTime,
+        durationMs:
+          typeof input.durationMs === "number" &&
+          Number.isFinite(input.durationMs) &&
+          input.durationMs >= 0
+            ? input.durationMs
+            : Math.max(0, endTime - startTime),
+      };
+    },
+  ),
+  normalizePersistedUpdatedAt: vi.fn(
+    (input: {
+      startTime: number;
+      endTime: number | null;
+      createdAt?: unknown;
+      updatedAt?: unknown;
+    }) => {
+      const parseTime = (value: unknown): number | null => {
+        if (typeof value === "number" && Number.isFinite(value)) return value;
+        if (typeof value !== "string") return null;
+        const parsed = Date.parse(value);
+        return Number.isFinite(parsed) ? parsed : null;
+      };
+      const startTime = Number.isFinite(input.startTime) ? input.startTime : 0;
+      const endTime =
+        typeof input.endTime === "number" && Number.isFinite(input.endTime)
+          ? input.endTime
+          : null;
+      const floorTime = endTime ?? startTime;
+      const updatedAt = parseTime(input.updatedAt);
+      const createdAt = parseTime(input.createdAt);
+      return new Date(
+        (typeof updatedAt === "number" && updatedAt > 0 && updatedAt >= floorTime
+          ? updatedAt
+          : null) ??
+          endTime ??
+          createdAt ??
+          (startTime > 0 ? startTime : Date.now()),
+      ).toISOString();
+    },
+  ),
   saveTrajectory: vi.fn(async () => undefined),
 }));
 
@@ -38,12 +109,15 @@ function createResponse(): MockResponse {
 }
 
 function createRequest(body?: unknown): http.IncomingMessage {
-  if (body === undefined) {
-    return Readable.from([]) as http.IncomingMessage;
-  }
-  return Readable.from([
-    Buffer.from(JSON.stringify(body)),
-  ]) as http.IncomingMessage;
+  const request =
+    body === undefined
+      ? (Readable.from([]) as http.IncomingMessage)
+      : (Readable.from([
+          Buffer.from(JSON.stringify(body)),
+        ]) as http.IncomingMessage);
+  request.headers = {};
+  request.url = "/";
+  return request;
 }
 
 function createRuntime(logger: unknown): AgentRuntime {
@@ -196,6 +270,50 @@ describe("trajectory routes", () => {
     expect(body).not.toHaveProperty("cacheObservations");
     expect(body).not.toHaveProperty("cacheStats");
     expect(body).not.toHaveProperty("contextDiffs");
+  });
+
+  it("normalizes completed list rows with missing end timestamps", async () => {
+    const logger = createLogger({
+      listTrajectories: vi.fn(async () => ({
+        trajectories: [
+          {
+            id: "traj-legacy",
+            agentId: "agent-1",
+            source: "runtime",
+            status: "completed",
+            startTime: 1_700_000_000_000,
+            endTime: null,
+            durationMs: null,
+            llmCallCount: 0,
+            providerAccessCount: 0,
+            totalPromptTokens: 0,
+            totalCompletionTokens: 0,
+            createdAt: "2023-11-14T22:13:20.000Z",
+            updatedAt: "2023-11-14T22:13:25.000Z",
+            metadata: {},
+          },
+        ],
+        total: 1,
+        offset: 0,
+        limit: 50,
+      })),
+    });
+    const response = createResponse();
+
+    await handleTrajectoryRoute(
+      createRequest(),
+      response,
+      createRuntime(logger),
+      "/api/trajectories",
+      "GET",
+    );
+
+    const body = parseJsonResponse(response);
+    const trajectories = body.trajectories as Array<Record<string, unknown>>;
+    expect(trajectories[0]?.status).toBe("completed");
+    expect(trajectories[0]?.endTime).toBe(1_700_000_005_000);
+    expect(trajectories[0]?.durationMs).toBe(5_000);
+    expect(trajectories[0]?.updatedAt).toBe("2023-11-14T22:13:25.000Z");
   });
 
   it("rejects non-native JSON export shapes", async () => {

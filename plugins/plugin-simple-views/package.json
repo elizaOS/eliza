@@ -1,0 +1,99 @@
+{
+  "name": "@elizaos/plugin-simple-views",
+  "version": "2.0.3-beta.10",
+  "type": "module",
+  "description": "Lightweight test views for dynamic view switching: sticky notes and a simple local calendar.",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "eliza-source": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "eliza",
+    "plugin",
+    "views",
+    "notes",
+    "calendar"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/ui": "workspace:*"
+  },
+  "peerDependencies": {
+    "lucide-react": "^1.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "lucide-react": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.6",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.0",
+    "vitest": "^4.0.17"
+  },
+  "scripts": {
+    "build": "bun run build:js && bun run build:views && bun run build:types",
+    "build:js": "tsc --noCheck -p tsconfig.build-js.json",
+    "build:views": "bunx --bun vite build --config vite.config.views.ts",
+    "build:types": "tsc --noCheck -p tsconfig.build.json",
+    "clean": "rm -rf dist .turbo",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "echo \"Lint skipped\"",
+    "lint:check": "bun run lint",
+    "test": "vitest run --passWithNoTests",
+    "check": "bun run typecheck && bun run test"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {}
+  },
+  "elizaos": {
+    "app": {
+      "displayName": "Simple Views",
+      "category": "productivity"
+    }
+  }
+}

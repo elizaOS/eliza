@@ -21,6 +21,7 @@ import {
   normalizeSlashCommandName,
 } from "../chat";
 import { getWindowNavigationPath, type Tab } from "../navigation";
+import { filterRenderableConversationMessages } from "../utils/chat-display-text";
 import { clearChatDraft } from "./ChatComposerContext.hooks";
 import { isConversationRecord } from "./chat-conversation-guards";
 import {
@@ -1460,18 +1461,4 @@ export function useChatSend(deps: UseChatSendDeps) {
     handleChatEdit,
     handleChatClear,
   };
-}
-
-// ── File-local helper (needed by runQueuedChatSend) ──────────────────
-
-function shouldKeepConversationMessage(message: ConversationMessage): boolean {
-  if (message.role !== "assistant") return true;
-  if (message.text.trim().length > 0) return true;
-  return Boolean(message.blocks?.length);
-}
-
-function filterRenderableConversationMessages(
-  messages: ConversationMessage[],
-): ConversationMessage[] {
-  return messages.filter((message) => shouldKeepConversationMessage(message));
 }

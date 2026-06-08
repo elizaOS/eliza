@@ -42,6 +42,7 @@ import {
   type ResolvedPlugin as RuntimeResolvedPlugin,
   STATIC_ELIZA_PLUGINS,
 } from "./plugin-types.ts";
+import { normalizeDirectCerebrasProviderConfig } from "./provider-config-normalization.ts";
 
 export {
   CHANNEL_PLUGIN_MAP,
@@ -49,7 +50,6 @@ export {
   OPTIONAL_PLUGIN_MAP,
   PROVIDER_PLUGIN_MAP,
 } from "./plugin-collector.ts";
-
 export {
   CUSTOM_PLUGINS_DIRNAME,
   EJECTED_PLUGINS_DIRNAME,
@@ -65,6 +65,7 @@ export {
   STATIC_ELIZA_PLUGINS,
   scanDropInPlugins,
 } from "./plugin-types.ts";
+export { normalizeDirectCerebrasProviderConfig } from "./provider-config-normalization.ts";
 
 // resolvePlugins is re-exported via index.ts from ./plugin-resolver
 
@@ -3426,6 +3427,7 @@ export async function startEliza(
   syncSolanaPublicKeyEnv();
 
   normalizeOpenAiCompatibleProviderConfig(config);
+  normalizeDirectCerebrasProviderConfig(config);
 
   // Log active database configuration for debugging persistence issues
   {
@@ -5062,6 +5064,8 @@ export async function startEliza(
           applyCloudConfigToEnv(freshConfig);
           applyX402ConfigToEnv(freshConfig);
           applyDatabaseConfigToEnv(freshConfig);
+          normalizeOpenAiCompatibleProviderConfig(freshConfig);
+          normalizeDirectCerebrasProviderConfig(freshConfig);
           await autoFetchCloudGithubToken(
             freshConfig.cloud?.agentId?.trim() || agentId,
           );

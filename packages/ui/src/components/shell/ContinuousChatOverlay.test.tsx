@@ -159,6 +159,17 @@ describe("ContinuousChatOverlay", () => {
     expect(user?.className).toContain("justify-end");
   });
 
+  it("anchors typing dots as an assistant-aligned transcript row", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({ phase: "responding" })}
+      />,
+    );
+    const typing = screen.getByTestId("typing-dots");
+    expect(typing.className).toContain("w-full");
+    expect(typing.className).toContain("justify-start");
+  });
+
   it("collapses the bubbles on Escape", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const input = screen.getByLabelText("message");

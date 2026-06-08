@@ -7,6 +7,7 @@ import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evalu
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import {
+	inferDirectCurrentRequestCandidateActions,
 	messageHandlerFromFieldResult,
 	runV5MessageRuntimeStage1,
 } from "../services/message";
@@ -1786,6 +1787,77 @@ android smoke model works`,
 		expect(routed.plan.requiresTool).toBe(true);
 		expect(routed.plan.contexts).toContain("general");
 		expect(routed.plan.candidateActions).toEqual(["TASKS"]);
+	});
+
+	it("routes registered view-backed mutation requests through VIEWS", () => {
+		const viewAction = {
+			name: "VIEWS",
+			similes: [
+				"CREATE_STICKY_NOTE",
+				"LIST_NOTES",
+				"CREATE_CALENDAR_EVENT",
+			],
+			tags: [
+				"view-capability",
+				"notes",
+				"sticky-notes",
+				"calendar",
+				"events",
+			],
+		};
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[viewAction],
+				"create a sticky note titled launch checklist",
+			),
+		).toEqual(["VIEWS"]);
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[viewAction],
+				"add a calendar event titled team sync on 2026-06-08 at 17:00",
+			),
+		).toEqual(["VIEWS"]);
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[viewAction],
+				"i want notes to be on left of screen",
+			),
+		).toEqual(["VIEWS"]);
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[viewAction],
+				"and calender on the right",
+			),
+		).toEqual(["VIEWS"]);
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[viewAction],
+				"how do I create sticky notes?",
+			),
+		).toEqual([]);
+
+		const routed = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				intents: ["create sticky note"],
+				replyText: 'I created the note "launch checklist".',
+				candidateActionNames: [],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [viewAction],
+				messageText: "create a sticky note titled launch checklist",
+			},
+		);
+
+		expect(routed.plan.simple).toBe(false);
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.contexts).toContain("general");
+		expect(routed.plan.candidateActions).toEqual(["VIEWS"]);
 	});
 
 	it("repairs build requests misrouted to LifeOps scheduled tasks", () => {

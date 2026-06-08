@@ -3,6 +3,7 @@
  */
 
 import { Keyboard } from "@capacitor/keyboard";
+import { X } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import "./components/chat/chat-source-registration";
 import {
@@ -16,7 +17,10 @@ import {
   useMemo,
   useState,
 } from "react";
-import { createNavigateViewHandler } from "./app-navigate-view";
+import {
+  type ActiveViewLayout,
+  createNavigateViewHandler,
+} from "./app-navigate-view";
 import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
@@ -552,6 +556,112 @@ function renderRemoteView(view: ViewRegistryEntry): ReactNode {
   );
 }
 
+function viewLayoutLabel(layout: ActiveViewLayout): string {
+  return layout.mode === "split" ? "Split view" : "Tiled views";
+}
+
+function splitLayoutIsStacked(layout: ActiveViewLayout): boolean {
+  const hint = `${layout.layout ?? ""} ${layout.placement ?? ""}`.toLowerCase();
+  return /\b(vertical|rows?|top|bottom|above|below)\b/.test(hint);
+}
+
+function viewLayoutGridClass(layout: ActiveViewLayout, count: number): string {
+  if (layout.mode === "split") {
+    return splitLayoutIsStacked(layout)
+      ? "grid-cols-1 grid-rows-2"
+      : "grid-cols-1 md:grid-cols-2";
+  }
+  if (count <= 1) return "grid-cols-1";
+  if (count === 2) return "grid-cols-1 md:grid-cols-2";
+  return "grid-cols-1 md:grid-cols-2 xl:grid-cols-3";
+}
+
+function ViewLayoutSurface({
+  availableViews,
+  layout,
+  onClear,
+}: {
+  availableViews: ViewRegistryEntry[];
+  layout: ActiveViewLayout;
+  onClear: () => void;
+}): ReactNode {
+  const entries = layout.viewIds
+    .map((viewId) => availableViews.find((view) => view.id === viewId))
+    .filter((view): view is ViewRegistryEntry => Boolean(view));
+  const paneClassName =
+    "flex min-h-[18rem] min-w-0 flex-col overflow-hidden border border-border/45 bg-bg";
+
+  return (
+    <TabContentView>
+      <section
+        data-testid="view-layout-surface"
+        className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-bg"
+      >
+        <header className="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b border-border/45 px-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-sm font-medium text-txt">
+              {viewLayoutLabel(layout)}
+            </span>
+            <span className="shrink-0 text-xs tabular-nums text-muted">
+              {entries.length}
+            </span>
+          </div>
+          <button
+            type="button"
+            aria-label="Close layout"
+            title="Close layout"
+            data-testid="view-layout-close"
+            onClick={onClear}
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-muted transition-colors hover:bg-border/35 hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </button>
+        </header>
+        <div
+          className={`grid min-h-0 flex-1 gap-2 overflow-auto p-2 ${viewLayoutGridClass(
+            layout,
+            entries.length,
+          )}`}
+        >
+          {entries.length > 0 ? (
+            entries.map((view) => (
+              <section
+                key={view.id}
+                data-testid={`view-layout-pane-${view.id}`}
+                className={paneClassName}
+              >
+                <div className="flex h-9 shrink-0 items-center border-b border-border/35 px-2.5">
+                  <span className="truncate text-xs font-medium text-muted">
+                    {view.label}
+                  </span>
+                </div>
+                <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+                  {view.bundleUrl ? (
+                    <DynamicViewLoader
+                      bundleUrl={view.bundleUrl}
+                      componentExport={view.componentExport}
+                      viewId={view.id}
+                      viewType={view.viewType}
+                    />
+                  ) : (
+                    <div className="flex h-full min-h-0 items-center justify-center px-4 text-center text-sm text-muted">
+                      {view.label} is not available as a dynamic view.
+                    </div>
+                  )}
+                </div>
+              </section>
+            ))
+          ) : (
+            <div className="flex min-h-[18rem] items-center justify-center border border-border/45 px-4 text-center text-sm text-muted">
+              Requested views are not available.
+            </div>
+          )}
+        </div>
+      </section>
+    </TabContentView>
+  );
+}
+
 /**
  * Fallback shown when a view/tab is unavailable. Chat is the always-present
  * ContinuousChatOverlay that floats over every view — views never embed an
@@ -834,6 +944,7 @@ const APP_SHELL_CLASS =
 type ShellContentProps = {
   CompanionShell: ComponentType<CompanionShellComponentProps> | undefined;
   actionNotice: ActionNotice | null;
+  availableViewsForLayout: ViewRegistryEntry[];
   customActionsPanelOpen: boolean;
   desktopTabBar: ReactNode;
   isChat: boolean;
@@ -845,6 +956,8 @@ type ShellContentProps = {
   settingsInitialSection: string | null;
   tab: string;
   uiShellMode: string;
+  viewLayout: ActiveViewLayout | null;
+  onClearViewLayout: () => void;
 };
 
 function CompanionShellContent(props: ShellContentProps): ReactNode {
@@ -939,7 +1052,15 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
     <div key={`tab-shell-${props.tab}`} className={APP_SHELL_CLASS}>
       {props.desktopTabBar}
       <main className={routedShellMainClass(props.tab)}>
-        <ViewRouter settingsInitialSection={props.settingsInitialSection} />
+        {props.viewLayout ? (
+          <ViewLayoutSurface
+            availableViews={props.availableViewsForLayout}
+            layout={props.viewLayout}
+            onClear={props.onClearViewLayout}
+          />
+        ) : (
+          <ViewRouter settingsInitialSection={props.settingsInitialSection} />
+        )}
       </main>
     </div>
   );
@@ -1149,6 +1270,7 @@ export function App() {
     null,
   );
   const { views: availableViewsForDesktopTabs } = useAvailableViews();
+  const [viewLayout, setViewLayout] = useState<ActiveViewLayout | null>(null);
 
   const [editingAction, setEditingAction] = useState<
     import("./api").CustomActionDef | null
@@ -1198,15 +1320,30 @@ export function App() {
     if (typeof window === "undefined") return;
     const handleNavigateView = createNavigateViewHandler({
       availableViewsForDesktopTabs,
+      closeDesktopTab,
+      desktopTabs,
       invokeDesktopBridgeRequest,
       openDesktopTab,
       setActiveDesktopTabId,
       setTab,
+      setViewLayout,
     });
     window.addEventListener("eliza:navigate:view", handleNavigateView);
     return () =>
       window.removeEventListener("eliza:navigate:view", handleNavigateView);
-  }, [setTab, availableViewsForDesktopTabs, openDesktopTab]);
+  }, [
+    setTab,
+    availableViewsForDesktopTabs,
+    closeDesktopTab,
+    desktopTabs,
+    openDesktopTab,
+  ]);
+
+  useEffect(() => {
+    if (tab !== "views" && viewLayout) {
+      setViewLayout(null);
+    }
+  }, [tab, viewLayout]);
 
   useEffect(() => {
     if (isSettingsPage || settingsInitialSection === null) {
@@ -1241,6 +1378,7 @@ export function App() {
     (viewId: string) => {
       const dtab = desktopTabs.find((t) => t.viewId === viewId);
       if (!dtab) return;
+      setViewLayout(null);
       setActiveDesktopTabId(viewId);
       try {
         if (typeof window === "undefined") return;
@@ -1259,6 +1397,7 @@ export function App() {
 
   const handleDesktopTabClose = useCallback(
     (viewId: string) => {
+      setViewLayout(null);
       closeDesktopTab(viewId);
       if (activeDesktopTabId === viewId) {
         setActiveDesktopTabId(null);
@@ -1269,8 +1408,13 @@ export function App() {
   );
 
   const handleOpenViewManagerFromTabBar = useCallback(() => {
+    setViewLayout(null);
     setTab("views");
   }, [setTab]);
+
+  const handleClearViewLayout = useCallback(() => {
+    setViewLayout(null);
+  }, []);
 
   // desktopTabBar is computed here (after handlers) so the memo below can
   // reference a stable value. Rendered inside each shell variant, not at the
@@ -1314,6 +1458,7 @@ export function App() {
       <ShellContent
         CompanionShell={CompanionShell}
         actionNotice={actionNotice}
+        availableViewsForLayout={availableViewsForDesktopTabs}
         customActionsPanelOpen={customActionsPanelOpen}
         desktopTabBar={desktopTabBar}
         isChat={isChat}
@@ -1325,6 +1470,8 @@ export function App() {
         settingsInitialSection={settingsInitialSection}
         tab={tab}
         uiShellMode={uiShellMode}
+        viewLayout={viewLayout}
+        onClearViewLayout={handleClearViewLayout}
       />
     ),
     [
@@ -1338,6 +1485,9 @@ export function App() {
       customActionsPanelOpen,
       settingsInitialSection,
       desktopTabBar,
+      availableViewsForDesktopTabs,
+      viewLayout,
+      handleClearViewLayout,
     ],
   );
 

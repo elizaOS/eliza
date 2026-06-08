@@ -1087,14 +1087,13 @@ async function forwardMigrateStepsJsonToRows(
     // Find trajectories that have steps_json content but no rows yet.
     const result = await executeRawSql(
       runtime,
-      `SELECT t.id AS id, t.steps_json AS steps_json
+      `SELECT t.id AS id, CAST(t.steps_json AS TEXT) AS steps_json
        FROM trajectories t
        LEFT JOIN trajectory_steps s ON s.trajectory_id = t.id
        WHERE s.id IS NULL
          AND t.steps_json IS NOT NULL
-         AND t.steps_json <> ''
-         AND t.steps_json <> '[]'
-       GROUP BY t.id, t.steps_json`,
+         AND CAST(t.steps_json AS TEXT) <> ''
+         AND CAST(t.steps_json AS TEXT) <> '[]'`,
     );
     const rows = extractRows(result);
     if (rows.length === 0) return;
@@ -1165,7 +1164,7 @@ async function forwardMigrateStepsJsonToRows(
     }
 
     if (migrated > 0) {
-      coreLogger.warn(
+      coreLogger.info(
         `[trajectory-persistence] Forward-migrated ${migrated} step rows from steps_json into trajectory_steps`,
       );
     }
@@ -1197,6 +1196,93 @@ export function normalizeStatus(
     return status;
   }
   return fallback;
+}
+
+export function toOptionalEpochMs(value: unknown): number | undefined {
+  const directNumber = toOptionalNumber(value);
+  if (directNumber !== undefined) return directNumber;
+  const text = toOptionalText(value);
+  if (!text) return undefined;
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+export function normalizePersistedTrajectoryTiming(input: {
+  status: TrajectoryStatus;
+  startTime: number;
+  endTime: number | null | undefined;
+  durationMs?: number | null;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}): { endTime: number | null; durationMs: number | null } {
+  if (input.status === "active") {
+    return { endTime: null, durationMs: null };
+  }
+
+  const startTime = Number.isFinite(input.startTime) ? input.startTime : 0;
+  const existingEndTime =
+    typeof input.endTime === "number" &&
+    Number.isFinite(input.endTime) &&
+    input.endTime > 0 &&
+    input.endTime >= startTime
+      ? input.endTime
+      : null;
+  const fallbackEndTime = startTime > 0 ? startTime : Date.now();
+  const endTime =
+    existingEndTime ??
+    [
+      toOptionalEpochMs(input.updatedAt),
+      toOptionalEpochMs(input.createdAt),
+      fallbackEndTime,
+    ].find(
+      (candidate): candidate is number =>
+        typeof candidate === "number" &&
+        Number.isFinite(candidate) &&
+        candidate > 0 &&
+        candidate >= startTime,
+    ) ??
+    startTime;
+  const durationMs =
+    existingEndTime !== null &&
+    typeof input.durationMs === "number" &&
+    Number.isFinite(input.durationMs) &&
+    input.durationMs >= 0
+      ? input.durationMs
+      : Math.max(0, endTime - startTime);
+
+  return { endTime, durationMs };
+}
+
+export function normalizePersistedUpdatedAt(input: {
+  startTime: number;
+  endTime: number | null | undefined;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}): string {
+  const startTime = Number.isFinite(input.startTime) ? input.startTime : 0;
+  const floorTime =
+    typeof input.endTime === "number" && Number.isFinite(input.endTime)
+      ? input.endTime
+      : startTime;
+  const updatedAtMs = toOptionalEpochMs(input.updatedAt);
+  const createdAtMs = toOptionalEpochMs(input.createdAt);
+  const timestamp =
+    (typeof updatedAtMs === "number" &&
+    updatedAtMs > 0 &&
+    updatedAtMs >= floorTime
+      ? updatedAtMs
+      : null) ??
+    (typeof input.endTime === "number" &&
+    Number.isFinite(input.endTime) &&
+    input.endTime > 0
+      ? input.endTime
+      : null) ??
+    (typeof createdAtMs === "number" && createdAtMs > 0
+      ? createdAtMs
+      : null) ??
+    (startTime > 0 ? startTime : Date.now());
+
+  return new Date(timestamp).toISOString();
 }
 
 export function normalizeStepId(value: unknown): string | null {
@@ -1559,8 +1645,20 @@ export function parsePersistedTrajectoryRow(
     readRecordValue(row, ["start_time", "startTime"]),
     Date.now(),
   );
-  const endTime =
-    toOptionalNumber(readRecordValue(row, ["end_time", "endTime"])) ?? null;
+  const status = normalizeStatus(readRecordValue(row, ["status"]), "completed");
+  const rawCreatedAt = readRecordValue(row, ["created_at", "createdAt"]);
+  const rawUpdatedAt = readRecordValue(row, ["updated_at", "updatedAt"]);
+  const timing = normalizePersistedTrajectoryTiming({
+    status,
+    startTime,
+    endTime:
+      toOptionalNumber(readRecordValue(row, ["end_time", "endTime"])) ?? null,
+    durationMs:
+      toOptionalNumber(readRecordValue(row, ["duration_ms", "durationMs"])) ??
+      null,
+    createdAt: rawCreatedAt,
+    updatedAt: rawUpdatedAt,
+  });
   const steps = parseSteps(
     readRecordValue(row, ["steps_json", "stepsJson", "steps"]),
   );
@@ -1585,9 +1683,9 @@ export function parsePersistedTrajectoryRow(
       fallbackId,
     ),
     source: toText(readRecordValue(row, ["source"]), "runtime"),
-    status: normalizeStatus(readRecordValue(row, ["status"]), "completed"),
+    status,
     startTime,
-    endTime,
+    endTime: timing.endTime,
     scenarioId: normalizedMetadata.scenarioId,
     batchId: normalizedMetadata.batchId,
     steps,
@@ -1597,13 +1695,15 @@ export function parsePersistedTrajectoryRow(
       0,
     ),
     createdAt: toText(
-      readRecordValue(row, ["created_at", "createdAt"]),
+      rawCreatedAt,
       new Date(startTime).toISOString(),
     ),
-    updatedAt: toText(
-      readRecordValue(row, ["updated_at", "updatedAt"]),
-      new Date(endTime ?? startTime).toISOString(),
-    ),
+    updatedAt: normalizePersistedUpdatedAt({
+      startTime,
+      endTime: timing.endTime,
+      createdAt: rawCreatedAt,
+      updatedAt: rawUpdatedAt,
+    }),
   };
 }
 
@@ -1767,7 +1867,17 @@ export async function saveTrajectory(
 
   const summary = summarizeTrajectory(trajectory);
   const isActive = trajectory.status === "active";
-  const endTime = isActive ? null : (trajectory.endTime ?? summary.endTime);
+  const persistedEndTime =
+    typeof trajectory.endTime === "number" &&
+    Number.isFinite(trajectory.endTime) &&
+    trajectory.endTime >= summary.startTime
+      ? trajectory.endTime
+      : undefined;
+  const summaryEndTime =
+    Number.isFinite(summary.endTime) && summary.endTime >= summary.startTime
+      ? summary.endTime
+      : summary.startTime;
+  const endTime = isActive ? null : (persistedEndTime ?? summaryEndTime);
   const durationMs =
     typeof endTime === "number"
       ? Math.max(0, endTime - summary.startTime)

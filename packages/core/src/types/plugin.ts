@@ -579,6 +579,15 @@ export interface ViewDeclaration {
 	bundleUrl?: string;
 	/** Capabilities the agent can exercise on this view when it is mounted. */
 	capabilities?: ViewCapability[];
+	/**
+	 * Optional backend capability handler for operations that do not require a
+	 * mounted UI surface. The view route invokes this before falling back to the
+	 * frontend `view:interact` WebSocket round-trip.
+	 */
+	serverInteract?: (
+		capability: string,
+		params?: Record<string, unknown>,
+	) => Promise<unknown>;
 	/** Allow this view to be pinned as a desktop tab. Default true. */
 	desktopTabEnabled?: boolean;
 	/** Show this view in the view manager grid. Default true. */

@@ -4116,11 +4116,7 @@
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
-        "node-llama-cpp": "*",
       },
-      "optionalPeers": [
-        "node-llama-cpp",
-      ],
     },
     "plugins/plugin-local-storage": {
       "name": "@elizaos/plugin-local-storage",
@@ -5069,6 +5065,33 @@
       },
       "optionalPeers": [
         "@elizaos/signal-native",
+      ],
+    },
+    "plugins/plugin-simple-views": {
+      "name": "@elizaos/plugin-simple-views",
+      "version": "2.0.3-beta.10",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/ui": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "^25.0.6",
+        "@types/react": "^19.0.0",
+        "@types/react-dom": "^19.0.0",
+        "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vite": "^8.0.0",
+        "vitest": "^4.0.17",
+      },
+      "peerDependencies": {
+        "lucide-react": "^1.0.0",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+      },
+      "optionalPeers": [
+        "lucide-react",
+        "react",
+        "react-dom",
       ],
     },
     "plugins/plugin-slack": {
@@ -6724,6 +6747,8 @@
     "@elizaos/plugin-shopify-ui": ["@elizaos/plugin-shopify-ui@workspace:plugins/plugin-shopify-ui"],
 
     "@elizaos/plugin-signal": ["@elizaos/plugin-signal@workspace:plugins/plugin-signal"],
+
+    "@elizaos/plugin-simple-views": ["@elizaos/plugin-simple-views@workspace:plugins/plugin-simple-views"],
 
     "@elizaos/plugin-slack": ["@elizaos/plugin-slack@workspace:plugins/plugin-slack"],
 

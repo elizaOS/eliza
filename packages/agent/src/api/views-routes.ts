@@ -230,6 +230,9 @@ export interface CurrentViewState {
   viewLabel: string;
   viewType: ViewType;
   action?: string;
+  views?: string[];
+  layout?: string;
+  placement?: string;
   updatedAt: string;
 }
 
@@ -741,6 +744,13 @@ export async function handleViewsRoutes(
   // Optional body fields:
   //   action: "pin-tab"    — tells the shell to add to desktop tab bar
   //   action: "open-window" — tells the shell to open in a new Electrobun window
+  //   action: "close"      — tells the shell to close/hide the target view
+  //   action: "close-all"  — tells the shell to close/hide all open views
+  //   action: "split-view" — asks the shell to split multiple views
+  //   action: "tile-views" — asks the shell to tile multiple views
+  //   views: string[]      — view ids participating in split/tile actions
+  //   layout: string       — split/tile layout hint: horizontal, vertical, grid
+  //   placement: string    — optional split placement hint: left/right/top/bottom
   //   path: string         — override the navigation path
   //   alwaysOnTop: boolean — for open-window, ask the shell to keep it above normal windows
   if (method === "POST" && subResource === "navigate") {
@@ -760,6 +770,25 @@ export async function handleViewsRoutes(
     const viewLabel = entry?.label ?? id;
     const action = typeof body?.action === "string" ? body.action : undefined;
     const alwaysOnTop = body?.alwaysOnTop === true;
+    const layoutViews = Array.isArray(body?.views)
+      ? body.views.filter(
+          (value): value is string =>
+            typeof value === "string" && value.trim().length > 0,
+        )
+      : undefined;
+    const layout =
+      typeof body?.layout === "string" && body.layout.trim().length > 0
+        ? body.layout.trim()
+        : undefined;
+    const placement =
+      typeof body?.placement === "string" && body.placement.trim().length > 0
+        ? body.placement.trim()
+        : undefined;
+    const layoutPayload = {
+      ...(layoutViews && layoutViews.length > 0 ? { views: layoutViews } : {}),
+      ...(layout ? { layout } : {}),
+      ...(placement ? { placement } : {}),
+    };
 
     logger.info(
       { src: "ViewsRoutes", viewId: id, viewPath, action },
@@ -774,6 +803,7 @@ export async function handleViewsRoutes(
       viewType: resolvedViewType,
       ...(action ? { action } : {}),
       ...(alwaysOnTop ? { alwaysOnTop } : {}),
+      ...layoutPayload,
       updatedAt: new Date().toISOString(),
     };
     // Publish to the prompt-optimization layer so the planner upweights this
@@ -793,6 +823,7 @@ export async function handleViewsRoutes(
       viewType: resolvedViewType,
       ...(action ? { action } : {}),
       ...(alwaysOnTop ? { alwaysOnTop } : {}),
+      ...layoutPayload,
     });
 
     json(res, {
@@ -802,6 +833,7 @@ export async function handleViewsRoutes(
       viewType: resolvedViewType,
       ...(action ? { action } : {}),
       ...(alwaysOnTop ? { alwaysOnTop } : {}),
+      ...layoutPayload,
     });
     return true;
   }
@@ -914,6 +946,39 @@ export async function handleViewsRoutes(
       `[ViewsRoutes] Interact with view "${id}" capability="${capability}"`,
     );
 
+    if (typeof entry.serverInteract === "function") {
+      try {
+        const result = await entry.serverInteract(capability, params);
+        ctx.broadcastWs?.({
+          type: "view:event",
+          viewEventType: `view:${id}:updated`,
+          payload: { viewId: id, capability },
+        });
+        json(res, {
+          requestId,
+          success: resultSuccess(result),
+          result,
+        });
+      } catch (err) {
+        logger.warn(
+          { src: "ViewsRoutes", viewId: id, capability, requestId, err },
+          `[ViewsRoutes] Server interaction failed for view "${id}"`,
+        );
+        json(res, {
+          requestId,
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+          result: {
+            success: false,
+            text: `Cannot invoke capability "${capability}" on view "${id}": ${
+              err instanceof Error ? err.message : String(err)
+            }.`,
+          },
+        });
+      }
+      return true;
+    }
+
     // Register the pending slot before broadcasting — avoids a race where the
     // frontend responds before we start waiting.
     const resultPromise = pendingInteractRequests.waitFor(requestId, timeoutMs);
@@ -950,6 +1015,14 @@ export async function handleViewsRoutes(
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
+
+function resultSuccess(result: unknown): boolean {
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    return true;
+  }
+  const success = (result as Record<string, unknown>).success;
+  return typeof success === "boolean" ? success : true;
+}
 
 function streamHeroImage(
   res: http.ServerResponse,

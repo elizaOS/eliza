@@ -373,6 +373,102 @@ describe("action catalogue and retrieval", () => {
 		}
 	});
 
+	it("maps generated view-close candidate hints to VIEWS instead of page delegation", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "PAGE_DELEGATE",
+				description:
+					"Delegate main-chat browser, wallet, settings, owner data, and page-specific operations.",
+				routingHint:
+					"Do not use PAGE_DELEGATE for UI view/window/panel/app navigation, opening/closing views, view manager, or split/tile layout; those belong to VIEWS.",
+			},
+			{
+				name: "VIEWS",
+				description:
+					"Manage UI views, app panels, windows, layout, split panes, tiling, and view switching.",
+				routingHint:
+					"Use VIEWS for open, show, switch to, close, hide, split, tile, or list plugin views.",
+				similes: ["OPEN_VIEW", "CLOSE_VIEW", "SPLIT_VIEWS"],
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "close the calendar view",
+			candidateActions: ["CALENDAR_CLOSE_VIEW"],
+		});
+
+		expect(response.query.parentActionHints).toEqual(["VIEWS"]);
+		expect(response.results[0]).toMatchObject({
+			name: "VIEWS",
+			score: 1,
+			matchedBy: expect.arrayContaining(["exact"]),
+		});
+	});
+
+	it("maps generated view operation names to VIEWS by convention", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "PAGE_DELEGATE",
+				description:
+					"Delegate browser, wallet, settings, owner data, and page-specific operations.",
+			},
+			{
+				name: "VIEWS",
+				description:
+					"Manage UI views, app panels, windows, layout, split panes, tiling, and registered plugin view capabilities.",
+			},
+		]);
+
+		for (const candidateAction of [
+			"OPEN_VIEW",
+			"OPEN_APPLICATION",
+			"HIDE_PLUGIN_PANEL",
+			"TILE_APPS",
+			"CREATE_BOARD_CARD",
+			"GET_BOARD_CARDS",
+			"CREATE_TIMELINE_EVENT",
+			"GET_DASHBOARD_STATE",
+			"DELETE_RECORD",
+		]) {
+			const response = retrieveActions({
+				catalog,
+				messageText: "do the view thing",
+				candidateActions: [candidateAction],
+			});
+
+			expect(response.query.parentActionHints, candidateAction).toEqual([
+				"VIEWS",
+			]);
+			expect(response.results[0]).toMatchObject({
+				name: "VIEWS",
+				score: 1,
+				matchedBy: expect.arrayContaining(["exact"]),
+			});
+		}
+	});
+
+	it("does not map generated capability names to VIEWS when a real namespace parent exists", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "CALENDAR",
+				description: "Manage calendar events, schedules, and reminders.",
+			},
+			{
+				name: "VIEWS",
+				description: "Manage UI views and invoke registered view capabilities.",
+			},
+		]);
+
+		const response = retrieveActions({
+			catalog,
+			messageText: "add a calendar event",
+			candidateActions: ["CALENDAR_CREATE_EVENT"],
+		});
+
+		expect(response.query.parentActionHints).toEqual([]);
+		expect(response.results[0]?.name).toBe("CALENDAR");
+	});
+
 	it("does not retrieve actions from context match alone", () => {
 		const catalog = buildActionCatalog([
 			{

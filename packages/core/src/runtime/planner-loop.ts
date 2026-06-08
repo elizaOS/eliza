@@ -4,7 +4,11 @@ import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { logger } from "../logger";
 import { plannerSchema, plannerTemplate } from "../prompts/planner";
 import { resolveOptimizedPromptForRuntime } from "../services/optimized-prompt-resolver";
-import { emitStreamingHook, getStreamingContext } from "../streaming-context";
+import {
+	emitStreamingHook,
+	getStreamingContext,
+	runWithStreamingContext,
+} from "../streaming-context";
 import type { ActionResult, ProviderDataRecord } from "../types/components";
 import type { ContextEvent, ContextObjectTool } from "../types/context-object";
 import {
@@ -1090,10 +1094,15 @@ async function callPlanner(params: {
 
 	const startedAt = Date.now();
 	const modelType = params.modelType ?? ModelType.ACTION_PLANNER;
-	const raw = await params.runtime.useModel(
-		modelType,
-		modelParams,
-		params.provider,
+	const streamingContext = getStreamingContext();
+	const raw = await runWithStreamingContext(
+		streamingContext
+			? {
+					...streamingContext,
+					onStreamChunk: async () => undefined,
+				}
+			: undefined,
+		() => params.runtime.useModel(modelType, modelParams, params.provider),
 	);
 	const endedAt = Date.now();
 

@@ -137,7 +137,8 @@ function SoftButton({
 function TypingDots({ reduce }: { reduce?: boolean }): React.JSX.Element {
   return (
     <motion.div
-      className="flex gap-1.5"
+      className="mb-2.5 flex w-full justify-start"
+      data-testid="typing-dots"
       role="status"
       aria-label="assistant is responding"
       // Fade in/out so the dots dissolve with the reply rather than popping.
@@ -146,18 +147,22 @@ function TypingDots({ reduce }: { reduce?: boolean }): React.JSX.Element {
       exit={{ opacity: 0 }}
       transition={{ duration: reduce ? 0 : 0.45, ease: OVERLAY_EASE }}
     >
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className={cn(
-            // `motion-reduce:animate-none` stills the breathing pulse for users
-            // who ask for reduced motion (the CSS pulse isn't a motion/react anim).
-            "h-1.5 w-1.5 animate-pulse rounded-full bg-white/70 motion-reduce:animate-none",
-            FLOAT_SHADOW,
-          )}
-          style={{ animationDelay: `${i * 180}ms` }}
-        />
-      ))}
+      <div
+        className={cn(
+          "rounded-2xl rounded-bl-md border border-white/10 bg-black/45 px-3.5 py-2 text-white/90",
+          FLOAT_SHADOW,
+        )}
+      >
+        <span className="flex gap-1.5">
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/70 motion-reduce:animate-none"
+              style={{ animationDelay: `${i * 180}ms` }}
+            />
+          ))}
+        </span>
+      </div>
     </motion.div>
   );
 }

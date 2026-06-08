@@ -149,6 +149,36 @@ describe("plugin-openai Cerebras config (pure)", () => {
     expect(getActionPlannerModel(runtime)).toBe("gpt-oss-120b");
   });
 
+  it("ignores stale OpenAI-only model env in Cerebras mode", () => {
+    const runtime = buildRuntime({
+      ELIZA_PROVIDER: "cerebras",
+      CEREBRAS_MODEL: "gpt-oss-120b",
+      OPENAI_SMALL_MODEL: "gpt-5.4-mini",
+      OPENAI_LARGE_MODEL: "gpt-5",
+      OPENAI_RESPONSE_HANDLER_MODEL: "gpt-4o-mini",
+      OPENAI_ACTION_PLANNER_MODEL: "o3",
+      SMALL_MODEL: "gpt-4o",
+      LARGE_MODEL: "openai/gpt-oss-120b",
+    });
+
+    expect(getSmallModel(runtime)).toBe("gpt-oss-120b");
+    expect(getLargeModel(runtime)).toBe("gpt-oss-120b");
+    expect(getResponseHandlerModel(runtime)).toBe("gpt-oss-120b");
+    expect(getActionPlannerModel(runtime)).toBe("gpt-oss-120b");
+  });
+
+  it("keeps explicit Cerebras-compatible small and large OpenAI-plugin model env", () => {
+    const runtime = buildRuntime({
+      ELIZA_PROVIDER: "cerebras",
+      CEREBRAS_MODEL: "gpt-oss-120b",
+      OPENAI_SMALL_MODEL: "gpt-oss-120b",
+      OPENAI_LARGE_MODEL: "cerebras-large-test",
+    });
+
+    expect(getSmallModel(runtime)).toBe("gpt-oss-120b");
+    expect(getLargeModel(runtime)).toBe("cerebras-large-test");
+  });
+
   it("can route image descriptions to OpenAI while text uses Cerebras", () => {
     const runtime = buildRuntime({
       OPENAI_BASE_URL: "https://api.cerebras.ai/v1",

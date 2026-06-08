@@ -2339,7 +2339,7 @@ const ACTION_CATALOG_CACHE_LIMIT = 8;
 function actionCatalogCacheKey(actions: readonly Action[]): string {
 	let key = "";
 	for (const action of actions) {
-		key += `${action.name} `;
+		key += `${action.name}\u0000`;
 	}
 	return key;
 }
@@ -2747,6 +2747,43 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 					clearReply: true,
 					debug: [
 						`voice turn signal suppressed reply (${signal?.source ?? "unknown"}; p=${typeof signal?.endOfTurnProbability === "number" ? signal.endOfTurnProbability.toFixed(3) : "n/a"}; next=${signal?.nextSpeaker ?? "unknown"})`,
+					],
+				};
+			},
+		},
+		{
+			name: "core.simple_registered_action_request",
+			description:
+				"Promotes simple-path replies to planning when the current user request matches a registered action's metadata.",
+			priority: 20,
+			shouldRun: ({ message, messageHandler, runtime }) => {
+				if (messageHandler.processMessage !== "RESPOND") return false;
+				if (messageHandler.plan.requiresTool === true) return false;
+				const nonSimpleContexts = (messageHandler.plan.contexts ?? []).filter(
+					(context) => context !== SIMPLE_CONTEXT_ID,
+				);
+				if (nonSimpleContexts.length > 0) return false;
+				const text = getUserMessageText(message);
+				if (!text?.trim()) return false;
+				return (
+					inferDirectCurrentRequestCandidateActions(runtime.actions ?? [], text)
+						.length > 0
+				);
+			},
+			evaluate: ({ message, runtime }) => {
+				const text = getUserMessageText(message) ?? "";
+				const candidateActions = inferDirectCurrentRequestCandidateActions(
+					runtime.actions ?? [],
+					text,
+				);
+				if (candidateActions.length === 0) return undefined;
+				return {
+					requiresTool: true,
+					addContexts: ["general"],
+					addCandidateActions: candidateActions,
+					reply: "On it.",
+					debug: [
+						`current request matched registered action metadata: ${candidateActions.join(", ")}`,
 					],
 				};
 			},
@@ -3875,6 +3912,11 @@ export function inferDirectCurrentRequestCandidateActions(
 		const codingAction = findCodingDelegationActionName(actions);
 		if (codingAction) return [codingAction];
 	}
+	const viewCapabilityAction = findViewCapabilityActionName(
+		actions,
+		messageText,
+	);
+	if (viewCapabilityAction) return [viewCapabilityAction];
 	if (looksLikeWebSearchRequest(messageText)) {
 		const lookupAction = findWebLookupActionName(actions);
 		if (lookupAction) return [lookupAction];
@@ -3894,6 +3936,7 @@ function shouldUseDirectReplyFastPath(args: {
 	) {
 		return false;
 	}
+	if (looksLikeContextDependentMutationRequest(text)) return false;
 	if (/https?:\/\//iu.test(text)) return false;
 	if (
 		/\b(?:search|browse|lookup|look\s+up|find|fetch|download|install|run|execute|build|deploy|commit|push|pull\s+request|pr\b|issue|debug|inspect|logs?|repo|github|terminal|shell|file|folder|save|send|create|edit|modify|fix|improve|rewrite|update|delete|remove|uninstall|schedule|remind|todo|task|calendar|email|contact|message|dm|call|wallet|balance|price|weather|news|latest|current|today|tomorrow|yesterday|remember|forget|settings?|password|secret|key|token|screen|screenshot|browser|click|open|close|app|view|plugin|window|device|workflow|automation|draw|sketch|paint|illustrate|render|picture|photo|photograph|image|speak|read\s+aloud|read\s+out|narrate|text\s*to\s*speech|tts|voice\s+this|voice\s+over|audio|video|animate|animation)\b/iu.test(
@@ -3903,6 +3946,37 @@ function shouldUseDirectReplyFastPath(args: {
 		return false;
 	}
 	return true;
+}
+
+function looksLikeContextDependentMutationRequest(text: string): boolean {
+	const tokens = new Set(tokenizeActionMetadata(text).map(normalizeSingularToken));
+	const mutationTokens = [
+		"ADD",
+		"CREATE",
+		"MAKE",
+		"PUT",
+		"SET",
+		"WRITE",
+		"EDIT",
+		"UPDATE",
+		"DELETE",
+		"REMOVE",
+	];
+	const contextReferenceTokens = [
+		"ANOTHER",
+		"IT",
+		"ONE",
+		"SAME",
+		"THAT",
+		"THEM",
+		"THESE",
+		"THIS",
+		"THOSE",
+	];
+	return (
+		mutationTokens.some((token) => tokens.has(token)) &&
+		contextReferenceTokens.some((token) => tokens.has(token))
+	);
 }
 
 function looksLikeHighStakesPersonalCrisisRequest(text: string): boolean {
@@ -3979,6 +4053,152 @@ function findCodingDelegationActionName(
 		)?.name ??
 		findAvailableActionName(actions, LEGACY_CODING_DELEGATION_ACTION_NAMES)
 	);
+}
+
+const VIEW_REQUEST_OPERATION_GROUPS = {
+	create: ["ADD", "CREATE", "MAKE", "NEW"],
+	read: ["FIND", "GET", "LIST", "READ", "SHOW", "WHAT", "WHICH"],
+	update: ["CHANGE", "EDIT", "MODIFY", "RENAME", "UPDATE"],
+	delete: ["DELETE", "REMOVE"],
+	open: ["GO", "NAVIGATE", "OPEN", "SWITCH"],
+	close: ["CLOSE", "DISMISS", "HIDE"],
+	layout: ["ARRANGE", "BOTTOM", "LEFT", "LAYOUT", "RIGHT", "SPLIT", "TILE", "TOP"],
+} as const;
+
+const VIEW_REQUEST_OPERATION_TOKENS: ReadonlySet<string> = new Set<string>(
+	Object.values(VIEW_REQUEST_OPERATION_GROUPS).flat(),
+);
+
+const VIEW_REQUEST_GENERIC_TOKENS: ReadonlySet<string> = new Set<string>([
+	"ACTION",
+	"ACTIONS",
+	"APP",
+	"APPS",
+	"APPLICATION",
+	"APPLICATIONS",
+	"BROADCAST",
+	"CALL",
+	"CAPABILITY",
+	"CAPABILITIES",
+	"CURRENT",
+	"EVENT",
+	"EVENTS",
+	"INVOKE",
+	"LAYOUT",
+	"MANAGER",
+	"MODE",
+	"NOTIFY",
+	"PANEL",
+	"PANELS",
+	"PIN",
+	"PLUGIN",
+	"PLUGINS",
+	"SCREEN",
+	"SIGNAL",
+	"UI",
+	"USE",
+	"VIEW",
+	"VIEWS",
+	"WINDOW",
+	"WINDOWS",
+	"WITH",
+]);
+
+function findViewCapabilityActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
+	messageText: string,
+): string | undefined {
+	if (looksLikeInstructionalViewQuestion(messageText)) return undefined;
+	const viewAction = actions.find((action) => {
+		if (normalizeActionIdentifier(action.name) === "VIEWS") return true;
+		return (action.tags ?? []).some(
+			(tag) => normalizedMetadataPhrase(tag) === "VIEW_CAPABILITY",
+		);
+	});
+	if (!viewAction) return undefined;
+
+	const messageTokens = tokenizeActionMetadata(messageText);
+	const messageTokenSet = new Set(messageTokens.map(normalizeSingularToken));
+	const messageOperationGroups = operationGroupsForTokens(messageTokens);
+	if (messageOperationGroups.size === 0) return undefined;
+
+	for (const alias of [
+		viewAction.name,
+		...(viewAction.similes ?? []),
+		...(viewAction.tags ?? []),
+	]) {
+		const aliasTokens = tokenizeActionMetadata(String(alias));
+		if (aliasTokens.length === 0) continue;
+		const aliasOperationGroups = operationGroupsForTokens(aliasTokens);
+		if (
+			aliasOperationGroups.size > 0 &&
+			!setsIntersect(aliasOperationGroups, messageOperationGroups)
+		) {
+			continue;
+		}
+		const targetTokens = aliasTokens
+			.map(normalizeSingularToken)
+			.filter(
+				(token) =>
+					!VIEW_REQUEST_OPERATION_TOKENS.has(token) &&
+					!VIEW_REQUEST_GENERIC_TOKENS.has(token),
+			);
+		if (targetTokens.length === 0) continue;
+		if (targetTokens.every((token) => messageTokenSet.has(token))) {
+			return viewAction.name;
+		}
+	}
+	return undefined;
+}
+
+function looksLikeInstructionalViewQuestion(messageText: string): boolean {
+	return /^\s*(?:explain|describe|teach|what\s+(?:is|are)|how\s+(?:do|can|to)\b)/iu.test(
+		messageText,
+	);
+}
+
+function tokenizeActionMetadata(value: string): string[] {
+	const matches = value
+		.replace(/([a-z])([A-Z])/g, "$1 $2")
+		.toUpperCase()
+		.match(/[A-Z0-9]+/g);
+	return matches ?? [];
+}
+
+function normalizedMetadataPhrase(value: string): string {
+	return tokenizeActionMetadata(value).map(normalizeSingularToken).join("_");
+}
+
+function normalizeSingularToken(token: string): string {
+	if (token === "CALENDER") return "CALENDAR";
+	if (token.length > 3 && token.endsWith("IES")) {
+		return `${token.slice(0, -3)}Y`;
+	}
+	if (token.length > 3 && token.endsWith("S")) {
+		return token.slice(0, -1);
+	}
+	return token;
+}
+
+function operationGroupsForTokens(tokens: readonly string[]): Set<string> {
+	const groups = new Set<string>();
+	for (const token of tokens.map(normalizeSingularToken)) {
+		for (const [group, groupTokens] of Object.entries(
+			VIEW_REQUEST_OPERATION_GROUPS,
+		)) {
+			if ((groupTokens as readonly string[]).includes(token)) {
+				groups.add(group);
+			}
+		}
+	}
+	return groups;
+}
+
+function setsIntersect<T>(left: ReadonlySet<T>, right: ReadonlySet<T>): boolean {
+	for (const entry of left) {
+		if (right.has(entry)) return true;
+	}
+	return false;
 }
 
 function findAvailableActionName(

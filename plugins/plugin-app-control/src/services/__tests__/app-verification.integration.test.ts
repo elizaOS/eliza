@@ -125,7 +125,7 @@ function writeMinimalTsProject(workdir: string, source: string): void {
 // without network/shim dependencies. Skip the integration suite on
 // Windows hosts and keep the cross-platform unit coverage authoritative.
 const describeIntegration =
-  process.platform === "win32" ? describe.skip : describe;
+	process.platform === "win32" ? describe.skip : describe;
 
 describeIntegration("AppVerificationService.verifyApp (integration)", () => {
 	const service = new AppVerificationService(noopRuntime);

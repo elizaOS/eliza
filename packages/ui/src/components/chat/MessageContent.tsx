@@ -1,4 +1,3 @@
-import { stripAssistantStageDirections } from "@elizaos/shared";
 import {
   type FormEvent,
   useCallback,
@@ -21,6 +20,7 @@ import {
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
 import { useApp } from "../../state/useApp";
 import type { ConfigUiHint } from "../../types";
+import { sanitizeAssistantDisplayText } from "../../utils/chat-display-text";
 import { PermissionCard } from "../composites/chat/permission-card";
 import {
   createClientPermissionsRegistry,
@@ -102,34 +102,8 @@ type Segment =
 const CONFIG_RE = /\[CONFIG:([@\w][\w@./:-]*)\]/g;
 const FENCED_JSON_RE = /```(?:json)?\s*\n([\s\S]*?)```/g;
 
-const HIDDEN_TAG_BLOCK_RE =
-  /<(think|analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi;
-
-/**
- * Strip trailing partial hidden tags at the end of a streaming text chunk.
- * During streaming, the buffer may end mid-tag (e.g. `"Hello<thi"`,
- * `"Hello</respon"`, or just `"Hello<"`).  These fragments are not
- * user-facing content and must be hidden from both the display and voice
- * pipelines.
- */
-const TRAILING_PARTIAL_TAG_RE = /<\/?[a-zA-Z][^>]*$|<\/?$/s;
-
 function normalizeDisplayText(text: string): string {
-  // Bound input length to keep the regex passes linear in adversarial cases.
-  const MAX_DISPLAY_LEN = 200_000;
-  let normalized =
-    text.length > MAX_DISPLAY_LEN ? text.slice(0, MAX_DISPLAY_LEN) : text;
-
-  // Hide hidden reasoning/tool blocks from chat bubbles.
-  normalized = normalized.replace(HIDDEN_TAG_BLOCK_RE, " ");
-
-  // During streaming, a chunk may end mid-tag (e.g. "<thi").
-  // Strip any unterminated opening or closing tag at the very end so the
-  // user never sees hidden-tag fragments while tokens arrive.
-  normalized = normalized.replace(TRAILING_PARTIAL_TAG_RE, "");
-
-  normalized = stripAssistantStageDirections(normalized);
-  return normalized.trim();
+  return sanitizeAssistantDisplayText(text);
 }
 
 function tryParse(s: string): unknown {
@@ -1191,16 +1165,19 @@ export function MessageContent({
   const [localDownloadError, setLocalDownloadError] = useState<string | null>(
     null,
   );
+  const displayText = useMemo(
+    () => normalizeDisplayText(message.text),
+    [message.text],
+  );
 
   // Parse segments — memoize to avoid re-parsing on every render
   const segments = useMemo(() => {
     try {
       return parseSegments(message.text, analysisMode);
     } catch {
-      // If parsing fails, just show plain text
-      return [{ kind: "text" as const, text: message.text }];
+      return [{ kind: "text" as const, text: displayText }];
     }
-  }, [message.text, analysisMode]);
+  }, [message.text, analysisMode, displayText]);
 
   const handleChoice = useCallback(
     (value: string) => {
@@ -1309,7 +1286,7 @@ export function MessageContent({
             : "Local model required"}
         </div>
         <div className="mb-2 whitespace-pre-wrap text-muted">
-          {message.text}
+          {displayText}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -1352,7 +1329,7 @@ export function MessageContent({
       <div className="border border-warn/30 bg-warn/5 rounded-sm p-3 text-sm">
         <div className="font-medium mb-1">Connect a provider to chat</div>
         <div className="text-muted whitespace-pre-wrap mb-2">
-          {message.text}
+          {displayText}
         </div>
         <Button type="button" size="sm" onClick={handleOpenSettings}>
           Open Settings

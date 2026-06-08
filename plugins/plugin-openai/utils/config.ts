@@ -145,14 +145,16 @@ function authHeaderForKey(runtime: IAgentRuntime, key: string | undefined): Reco
 
 export function getBaseURL(runtime: IAgentRuntime): string {
   const browserURL = getSetting(runtime, "OPENAI_BROWSER_BASE_URL");
+  const cerebrasMode = isCerebrasMode(runtime);
+  const openAiBaseURL = getSetting(runtime, "OPENAI_BASE_URL");
   const cerebrasBaseURL =
-    isCerebrasMode(runtime) && !getSetting(runtime, "OPENAI_BASE_URL")
-      ? (getSetting(runtime, "CEREBRAS_BASE_URL") ?? "https://api.cerebras.ai/v1")
-      : undefined;
+    getSetting(runtime, "CEREBRAS_BASE_URL") ?? "https://api.cerebras.ai/v1";
   const baseURL =
     isBrowser() && browserURL
       ? browserURL
-      : (getSetting(runtime, "OPENAI_BASE_URL") ?? cerebrasBaseURL ?? "https://api.openai.com/v1");
+      : (cerebrasMode
+        ? cerebrasBaseURL
+        : (openAiBaseURL ?? "https://api.openai.com/v1"));
   logger.debug(`[OpenAI] Base URL: ${baseURL}`);
   return baseURL;
 }
@@ -197,14 +199,56 @@ export function getImageDescriptionBaseURL(runtime: IAgentRuntime): string {
   return getBaseURL(runtime);
 }
 
+const DEFAULT_CEREBRAS_TEXT_MODEL = "gpt-oss-120b";
+
 function getCerebrasModel(runtime: IAgentRuntime): string | undefined {
   return isCerebrasMode(runtime) ? getSetting(runtime, "CEREBRAS_MODEL") : undefined;
 }
 
+function isLikelyOpenAiOnlyTextModel(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized.startsWith("gpt-oss-")) return false;
+  return (
+    normalized.startsWith("gpt-") ||
+    normalized.startsWith("openai/") ||
+    normalized.startsWith("chatgpt-") ||
+    /^o\d/.test(normalized)
+  );
+}
+
+function getCerebrasCompatibleModel(
+  runtime: IAgentRuntime,
+  openAiKey: string,
+  sharedKey: string
+): string | undefined {
+  if (!isCerebrasMode(runtime)) {
+    return undefined;
+  }
+
+  const openAiModel = getSetting(runtime, openAiKey);
+  if (openAiModel && !isLikelyOpenAiOnlyTextModel(openAiModel)) {
+    return openAiModel;
+  }
+
+  const cerebrasModel = getCerebrasModel(runtime);
+  if (cerebrasModel) {
+    return cerebrasModel;
+  }
+
+  const sharedModel = getSetting(runtime, sharedKey);
+  if (sharedModel && !isLikelyOpenAiOnlyTextModel(sharedModel)) {
+    return sharedModel;
+  }
+
+  return DEFAULT_CEREBRAS_TEXT_MODEL;
+}
+
 export function getSmallModel(runtime: IAgentRuntime): string {
   return (
+    getCerebrasCompatibleModel(runtime, "OPENAI_SMALL_MODEL", "SMALL_MODEL") ??
     getSetting(runtime, "OPENAI_SMALL_MODEL") ??
-    getCerebrasModel(runtime) ??
     getSetting(runtime, "SMALL_MODEL") ??
     "gpt-5.4-mini"
   );
@@ -212,8 +256,8 @@ export function getSmallModel(runtime: IAgentRuntime): string {
 
 export function getNanoModel(runtime: IAgentRuntime): string {
   return (
+    getCerebrasCompatibleModel(runtime, "OPENAI_NANO_MODEL", "NANO_MODEL") ??
     getSetting(runtime, "OPENAI_NANO_MODEL") ??
-    getCerebrasModel(runtime) ??
     getSetting(runtime, "NANO_MODEL") ??
     getSmallModel(runtime)
   );
@@ -221,8 +265,8 @@ export function getNanoModel(runtime: IAgentRuntime): string {
 
 export function getMediumModel(runtime: IAgentRuntime): string {
   return (
+    getCerebrasCompatibleModel(runtime, "OPENAI_MEDIUM_MODEL", "MEDIUM_MODEL") ??
     getSetting(runtime, "OPENAI_MEDIUM_MODEL") ??
-    getCerebrasModel(runtime) ??
     getSetting(runtime, "MEDIUM_MODEL") ??
     getSmallModel(runtime)
   );
@@ -230,8 +274,8 @@ export function getMediumModel(runtime: IAgentRuntime): string {
 
 export function getLargeModel(runtime: IAgentRuntime): string {
   return (
+    getCerebrasCompatibleModel(runtime, "OPENAI_LARGE_MODEL", "LARGE_MODEL") ??
     getSetting(runtime, "OPENAI_LARGE_MODEL") ??
-    getCerebrasModel(runtime) ??
     getSetting(runtime, "LARGE_MODEL") ??
     "gpt-5"
   );
@@ -239,6 +283,7 @@ export function getLargeModel(runtime: IAgentRuntime): string {
 
 export function getMegaModel(runtime: IAgentRuntime): string {
   return (
+    getCerebrasCompatibleModel(runtime, "OPENAI_MEGA_MODEL", "MEGA_MODEL") ??
     getSetting(runtime, "OPENAI_MEGA_MODEL") ??
     getSetting(runtime, "MEGA_MODEL") ??
     getLargeModel(runtime)
@@ -247,9 +292,14 @@ export function getMegaModel(runtime: IAgentRuntime): string {
 
 export function getResponseHandlerModel(runtime: IAgentRuntime): string {
   return (
+    getCerebrasCompatibleModel(
+      runtime,
+      "OPENAI_RESPONSE_HANDLER_MODEL",
+      "RESPONSE_HANDLER_MODEL"
+    ) ??
+    getCerebrasCompatibleModel(runtime, "OPENAI_SHOULD_RESPOND_MODEL", "SHOULD_RESPOND_MODEL") ??
     getSetting(runtime, "OPENAI_RESPONSE_HANDLER_MODEL") ??
     getSetting(runtime, "OPENAI_SHOULD_RESPOND_MODEL") ??
-    getCerebrasModel(runtime) ??
     getSetting(runtime, "RESPONSE_HANDLER_MODEL") ??
     getSetting(runtime, "SHOULD_RESPOND_MODEL") ??
     getSmallModel(runtime)
@@ -258,9 +308,10 @@ export function getResponseHandlerModel(runtime: IAgentRuntime): string {
 
 export function getActionPlannerModel(runtime: IAgentRuntime): string {
   return (
+    getCerebrasCompatibleModel(runtime, "OPENAI_ACTION_PLANNER_MODEL", "ACTION_PLANNER_MODEL") ??
+    getCerebrasCompatibleModel(runtime, "OPENAI_PLANNER_MODEL", "PLANNER_MODEL") ??
     getSetting(runtime, "OPENAI_ACTION_PLANNER_MODEL") ??
     getSetting(runtime, "OPENAI_PLANNER_MODEL") ??
-    getCerebrasModel(runtime) ??
     getSetting(runtime, "ACTION_PLANNER_MODEL") ??
     getSetting(runtime, "PLANNER_MODEL") ??
     getMediumModel(runtime)

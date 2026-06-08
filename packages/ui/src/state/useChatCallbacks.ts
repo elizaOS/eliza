@@ -14,6 +14,10 @@ import {
   type ImageAttachment,
 } from "../api";
 import { type Tab, tabFromPath } from "../navigation";
+import {
+  filterRenderableConversationMessages,
+  shouldDisplayConversationMessage as shouldKeepConversationMessage,
+} from "../utils/chat-display-text";
 import { isTtsDebugEnabled } from "../utils/tts-debug";
 import {
   isConversationRecord,
@@ -30,18 +34,6 @@ import { useChatLifecycle } from "./useChatLifecycle";
 import { useChatSend } from "./useChatSend";
 
 // ── Helpers (file-local) ────────────────────────────────────────────
-
-function shouldKeepConversationMessage(message: ConversationMessage): boolean {
-  if (message.role !== "assistant") return true;
-  if (message.text.trim().length > 0) return true;
-  return Boolean(message.blocks?.length);
-}
-
-function filterRenderableConversationMessages(
-  messages: ConversationMessage[],
-): ConversationMessage[] {
-  return messages.filter((message) => shouldKeepConversationMessage(message));
-}
 
 function hasConversationBootstrapMessage(
   messages: ConversationMessage[],

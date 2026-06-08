@@ -320,6 +320,85 @@ describe("action tiering", () => {
 		]);
 	});
 
+	it("narrows generated view action candidates to the VIEWS parent", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "PAGE_DELEGATE",
+				description: "Delegate page-scoped browser and owner operations.",
+			},
+			{
+				name: "VIEWS",
+				description:
+					"Open, close, split, tile, and manage UI views and panels.",
+				similes: ["OPEN_VIEW", "CLOSE_VIEW", "SPLIT_VIEWS"],
+			},
+		]);
+		const pageDelegate = catalog.parentByName.get("PAGE_DELEGATE");
+		const views = catalog.parentByName.get("VIEWS");
+		if (!pageDelegate || !views) {
+			throw new Error("missing view routing parents");
+		}
+
+		for (const candidateAction of [
+			"CALENDAR_CLOSE_VIEW",
+			"CREATE_BOARD_CARD",
+			"GET_BOARD_CARDS",
+			"CREATE_TIMELINE_EVENT",
+			"GET_DASHBOARD_STATE",
+			"VIEW_OPEN",
+			"OPEN_VIEW",
+			"OPEN_APPLICATION",
+		]) {
+			const surface = tierActionResults({
+				catalog,
+				results: [resultFor(pageDelegate, 0.95), resultFor(views, 0.92)],
+				narrowToCandidateActions: [candidateAction],
+			});
+
+			expect(
+				surface.tierAParents.map((parent) => parent.name),
+				candidateAction,
+			).toEqual(["VIEWS"]);
+			expect(surface.exposedActionNames).toContain("VIEWS");
+			expect(surface.exposedActionNames).not.toContain("PAGE_DELEGATE");
+		}
+	});
+
+	it("does not narrow generated capability candidates away from a real namespace parent", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "CALENDAR",
+				description: "Manage calendar events.",
+				subActions: ["CALENDAR_CREATE_EVENT"],
+			},
+			{
+				name: "CALENDAR_CREATE_EVENT",
+				description: "Create a calendar event.",
+			},
+			{
+				name: "VIEWS",
+				description: "Manage UI views and invoke view capabilities.",
+			},
+		]);
+		const calendar = catalog.parentByName.get("CALENDAR");
+		const views = catalog.parentByName.get("VIEWS");
+		if (!calendar || !views) {
+			throw new Error("missing test parents");
+		}
+
+		const surface = tierActionResults({
+			catalog,
+			results: [resultFor(calendar, 0.95), resultFor(views, 0.92)],
+			narrowToCandidateActions: ["CALENDAR_CREATE_EVENT"],
+		});
+
+		expect(surface.tierAParents.map((parent) => parent.name)).toEqual([
+			"CALENDAR",
+		]);
+		expect(surface.exposedActionNames).toContain("CALENDAR_CREATE_EVENT");
+		expect(surface.exposedActionNames).not.toContain("VIEWS");
+	});
+
 	it("creates deterministic hashes from sorted parent sets", () => {
 		const left = stableActionSurfaceHash({
 			protocolActions: ["REPLY", "IGNORE", "STOP", "CONTINUE"],

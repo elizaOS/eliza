@@ -17,9 +17,14 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   ensureTrajectoriesTable,
   loadTrajectoryById,
+  parsePersistedTrajectoryRow,
   type PersistedTrajectory,
   saveTrajectory,
 } from "./trajectory-internals";
+import {
+  persistedTrajectoryToDetailRecord,
+  trajectoryRowToListItem,
+} from "./trajectory-export";
 import {
   DEFAULT_GET_STEPS_LIMIT,
   getSteps,
@@ -394,6 +399,42 @@ describe("trajectory_steps dedicated table", () => {
     runtime = createMockRuntime(engine);
   });
 
+  it("normalizes completed legacy trajectory rows before list and detail export", () => {
+    const row = {
+      id: "legacy-trajectory",
+      agent_id: "agent-1",
+      source: "runtime",
+      status: "completed",
+      start_time: 1_700_000_000_000,
+      end_time: 0,
+      duration_ms: null,
+      step_count: 0,
+      llm_call_count: 0,
+      provider_access_count: 0,
+      total_prompt_tokens: 0,
+      total_completion_tokens: 0,
+      total_cache_read_input_tokens: 0,
+      total_cache_creation_input_tokens: 0,
+      total_reward: 0,
+      steps_json: "[]",
+      metadata: "{}",
+      created_at: "2023-11-14T22:13:20.000Z",
+      updated_at: "2023-11-14T22:13:24.000Z",
+    };
+
+    const parsed = parsePersistedTrajectoryRow(row, "fallback");
+    const listItem = trajectoryRowToListItem(row, "agent-1");
+    const detail = persistedTrajectoryToDetailRecord(parsed, "agent-1");
+
+    expect(parsed.endTime).toBe(1_700_000_004_000);
+    expect(parsed.updatedAt).toBe("2023-11-14T22:13:24.000Z");
+    expect(listItem?.endTime).toBe(1_700_000_004_000);
+    expect(listItem?.durationMs).toBe(4_000);
+    expect(listItem?.updatedAt).toBe("2023-11-14T22:13:24.000Z");
+    expect(detail.endTime).toBe(1_700_000_004_000);
+    expect(detail.durationMs).toBe(4_000);
+  });
+
   it("creates the trajectory_steps table with no script length cap", async () => {
     const ok = await ensureTrajectoriesTable(runtime);
     expect(ok).toBe(true);
@@ -404,6 +445,40 @@ describe("trajectory_steps dedicated table", () => {
     expect(stepsTable?.columns.has("trajectory_id")).toBe(true);
     expect(stepsTable?.columns.has("ordinal")).toBe(true);
     expect(stepsTable?.columns.has("script")).toBe(true);
+  });
+
+  it("migrates legacy steps_json rows without grouping by the JSON column", async () => {
+    const legacySteps = [
+      {
+        stepId: "legacy-step-1",
+        stepNumber: 0,
+        timestamp: 1_700_000_000_000,
+        kind: "action",
+        script: "console.log('legacy');",
+        llmCalls: [],
+        providerAccesses: [],
+      },
+    ];
+    const trajectories = newTable();
+    trajectories.columns.add("id");
+    trajectories.columns.add("steps_json");
+    trajectories.rows.set(trajectoryId, {
+      id: trajectoryId,
+      steps_json: JSON.stringify(legacySteps),
+    });
+    engine.tables.set("trajectories", trajectories);
+
+    const ok = await ensureTrajectoriesTable(runtime);
+
+    expect(ok).toBe(true);
+    const stepsTable = engine.tables.get("trajectory_steps");
+    expect(stepsTable?.rows.size).toBe(1);
+    const migrated = [...(stepsTable?.rows.values() ?? [])][0];
+    expect(migrated?.id).toBe("legacy-step-1");
+    expect(migrated?.trajectory_id).toBe(trajectoryId);
+    expect(migrated?.ordinal).toBe(0);
+    expect(migrated?.step_type).toBe("action");
+    expect(migrated?.script).toBe("console.log('legacy');");
   });
 
   it("inserts 1000 steps and paginates them", async () => {

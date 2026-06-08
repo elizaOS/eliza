@@ -139,6 +139,37 @@ describe("agent view-switch raw WS frame to DOM navigate event", () => {
     teardown();
   });
 
+  it("preserves split/tile layout metadata from backend navigate frames", () => {
+    clientMock.deliverFrame(
+      JSON.stringify({
+        type: "shell:navigate:view",
+        viewId: "notes",
+        viewPath: "/notes",
+        viewLabel: "Notes",
+        viewType: "gui",
+        action: "split-view",
+        views: [" notes ", "calendar", "", 7],
+        layout: " horizontal ",
+        placement: " right ",
+      }),
+    );
+
+    expect(navHandler).toHaveBeenCalledTimes(1);
+    const detail = (navHandler.mock.calls[0][0] as CustomEvent).detail;
+    expect(detail).toEqual({
+      viewId: "notes",
+      viewPath: "/notes",
+      viewLabel: "Notes",
+      viewType: "gui",
+      action: "split-view",
+      alwaysOnTop: false,
+      views: ["notes", "calendar"],
+      layout: "horizontal",
+      placement: "right",
+    });
+    teardown();
+  });
+
   it("fills defaults when the backend omits action and alwaysOnTop", () => {
     // The backend spreads `action`/`alwaysOnTop` only when truthy
     // (views-routes.ts:794-795), so a plain `show` navigation omits both keys.

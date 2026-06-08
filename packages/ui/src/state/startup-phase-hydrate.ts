@@ -428,6 +428,21 @@ export function bindReadyPhase(
           : undefined;
       const action = typeof data.action === "string" ? data.action : undefined;
       const alwaysOnTop = data.alwaysOnTop === true;
+      const views = Array.isArray(data.views)
+        ? data.views.flatMap((viewId) => {
+            if (typeof viewId !== "string") return [];
+            const trimmed = viewId.trim();
+            return trimmed ? [trimmed] : [];
+          })
+        : undefined;
+      const layout =
+        typeof data.layout === "string" && data.layout.trim()
+          ? data.layout.trim()
+          : undefined;
+      const placement =
+        typeof data.placement === "string" && data.placement.trim()
+          ? data.placement.trim()
+          : undefined;
       window.dispatchEvent(
         new CustomEvent("eliza:navigate:view", {
           detail: {
@@ -437,6 +452,9 @@ export function bindReadyPhase(
             viewType,
             action,
             alwaysOnTop,
+            ...(views && views.length > 0 ? { views } : {}),
+            ...(layout ? { layout } : {}),
+            ...(placement ? { placement } : {}),
           },
         }),
       );

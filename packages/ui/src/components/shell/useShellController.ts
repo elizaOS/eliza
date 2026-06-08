@@ -5,6 +5,10 @@ import type { HomeModelStatus } from "../../services/local-inference/home-model-
 import { useApp } from "../../state";
 import { loadVadAutoStop } from "../../state/persistence";
 import {
+  sanitizeAssistantDisplayText,
+  shouldDisplayConversationMessage,
+} from "../../utils/chat-display-text";
+import {
   createVoiceCapture,
   type VoiceCaptureHandle,
   type VoiceCaptureState,
@@ -105,13 +109,18 @@ export function useShellController(): ShellController {
     const source = Array.isArray(conversationMessages)
       ? conversationMessages
       : [];
-    return source.map((message) => ({
-      id: message.id,
-      role: message.role,
-      content: message.text,
-      createdAt: message.timestamp,
-      failureKind: message.failureKind,
-    }));
+    return source
+      .filter((message) => shouldDisplayConversationMessage(message))
+      .map((message) => ({
+        id: message.id,
+        role: message.role,
+        content:
+          message.role === "assistant"
+            ? sanitizeAssistantDisplayText(message.text)
+            : message.text,
+        createdAt: message.timestamp,
+        failureKind: message.failureKind,
+      }));
   }, [conversationMessages]);
 
   const pendingSendsRef = React.useRef<

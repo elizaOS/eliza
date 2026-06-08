@@ -65,7 +65,7 @@ describe("view-interact-registry", () => {
     });
   });
 
-  it("returns a failure result when no handler is registered", async () => {
+  it("ignores requests for unmounted views", async () => {
     const { dispatchViewInteract } = await import("./view-interact-registry");
 
     await dispatchViewInteract(
@@ -76,13 +76,7 @@ describe("view-interact-registry", () => {
       "req-missing",
     );
 
-    expect(sendWsMessage).toHaveBeenCalledWith({
-      type: "view:interact:result",
-      requestId: "req-missing",
-      success: false,
-      error:
-        'No interact handler registered for gui view "missing-view" - view may not be mounted',
-    });
+    expect(sendWsMessage).not.toHaveBeenCalled();
   });
 
   it("returns a failure result when a handler throws", async () => {
@@ -108,6 +102,32 @@ describe("view-interact-registry", () => {
       success: false,
       error: "interact failed",
     });
+  });
+
+  it("executes each request id at most once", async () => {
+    const { dispatchViewInteract, registerViewInteractHandler } = await import(
+      "./view-interact-registry"
+    );
+    const handler = vi.fn(async () => ({ ok: true }));
+    registerViewInteractHandler("notes", "gui", handler);
+
+    await dispatchViewInteract(
+      "notes",
+      "gui",
+      "create-note",
+      undefined,
+      "req-dupe",
+    );
+    await dispatchViewInteract(
+      "notes",
+      "gui",
+      "create-note",
+      undefined,
+      "req-dupe",
+    );
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(sendWsMessage).toHaveBeenCalledTimes(1);
   });
 
   it("stringifies non-Error handler failures", async () => {
@@ -174,11 +194,6 @@ describe("view-interact-registry", () => {
       undefined,
       "req-unregistered",
     );
-    expect(sendWsMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        requestId: "req-unregistered",
-        success: false,
-      }),
-    );
+    expect(sendWsMessage).not.toHaveBeenCalled();
   });
 });

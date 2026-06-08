@@ -2,6 +2,7 @@ import * as React from "react";
 
 import type { ConversationMessage } from "../../api/client-types-chat";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
+import { sanitizeAssistantDisplayText } from "../../utils/chat-display-text";
 import { useVoiceConfig } from "../../voice/useVoiceConfig";
 
 /** `useVoiceChat` requires a transcript sink; the overlay owns input elsewhere. */
@@ -13,7 +14,8 @@ function findLatestAssistantText(
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (message && message.role === "assistant" && message.text.trim()) {
-      return { id: message.id, text: message.text };
+      const text = sanitizeAssistantDisplayText(message.text);
+      if (text) return { id: message.id, text };
     }
   }
   return null;

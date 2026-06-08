@@ -17,6 +17,7 @@ import {
   type AgentRuntime,
   ChannelType,
   type Content,
+  createUniqueUuid,
   createMessageMemory,
   logger,
   ModelType,
@@ -963,6 +964,28 @@ function ensureMessageMemoryContent(
     : { ...content, text: "" };
 }
 
+function ensureReplyTargetForMessageEvent(
+  runtime: AgentRuntime,
+  sourceMessageId: UUID | string | undefined,
+  content: Content,
+): Content & { text: string } {
+  const normalized = ensureMessageMemoryContent(content);
+  const existingInReplyTo = (normalized as { inReplyTo?: unknown }).inReplyTo;
+  if (typeof existingInReplyTo === "string" && existingInReplyTo.trim()) {
+    return {
+      ...normalized,
+      inReplyTo: existingInReplyTo.trim(),
+    };
+  }
+  if (typeof sourceMessageId !== "string" || !sourceMessageId.trim()) {
+    return normalized;
+  }
+  return {
+    ...normalized,
+    inReplyTo: createUniqueUuid(runtime, sourceMessageId),
+  };
+}
+
 function buildRuntimeActionNameLookup(
   runtime: AgentRuntime,
 ): Map<string, string> {
@@ -1415,6 +1438,27 @@ export function writeChatTokenSse(
   fullText: string,
 ): void {
   writeSse(res, { type: "token", text, fullText });
+}
+
+function isStructuredRuntimeStreamChunk(chunk: string): boolean {
+  const trimmed = chunk.trim();
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return false;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return false;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return false;
+  }
+  const type = (parsed as Record<string, unknown>).type;
+  return (
+    type === "tool_call" ||
+    type === "tool_result" ||
+    type === "evaluation" ||
+    type === "context_event"
+  );
 }
 
 export function writeSseData(
@@ -1979,7 +2023,9 @@ export async function generateChatResponse(
             id: crypto.randomUUID() as UUID,
             roomId: message.roomId,
             entityId: runtime.agentId,
-            content: ensureMessageMemoryContent(
+            content: ensureReplyTargetForMessageEvent(
+              runtime,
+              message.id,
               androidDirectResult.responseContent,
             ),
           });
@@ -2209,18 +2255,22 @@ export async function generateChatResponse(
                 timeoutDuration: generationTimeoutMs,
                 abortSignal: generationAbortController.signal,
                 keepExistingResponses: true,
-                onStreamChunk: opts?.onChunk
-                  ? async (chunk: string) => {
-                      if (generationTimedOut || opts?.isAborted?.()) {
-                        throw createChatGenerationTimeoutError(
-                          generationTimeoutMs,
-                        );
+                  onStreamChunk: opts?.onChunk
+                    ? async (chunk: string) => {
+                        if (generationTimedOut || opts?.isAborted?.()) {
+                          throw createChatGenerationTimeoutError(
+                            generationTimeoutMs,
+                          );
+                        }
+                        if (!chunk) return;
+                        if (isStructuredRuntimeStreamChunk(chunk)) {
+                          opts.onChunk?.(chunk);
+                          return;
+                        }
+                        if (!claimStreamSource("onStreamChunk")) return;
+                        appendIncomingText(chunk);
                       }
-                      if (!chunk) return;
-                      if (!claimStreamSource("onStreamChunk")) return;
-                      appendIncomingText(chunk);
-                    }
-                  : undefined,
+                    : undefined,
               },
             );
 
@@ -2262,7 +2312,9 @@ export async function generateChatResponse(
                     roomId: message.roomId,
                     entityId: runtime.agentId,
                     content: markSyntheticChatFailureContent(
-                      ensureMessageMemoryContent(
+                      ensureReplyTargetForMessageEvent(
+                        runtime,
+                        message.id,
                         responseMessage.content ?? { text: "" },
                       ),
                     ),
@@ -2956,6 +3008,7 @@ export async function handleChatRoutes(
             {
               isAborted: () => aborted,
               onChunk: (chunk) => {
+                if (isStructuredRuntimeStreamChunk(chunk)) return;
                 fullText += chunk;
                 if (chunk) sendChunk({ content: chunk }, null);
               },
@@ -3277,6 +3330,7 @@ export async function handleChatRoutes(
 
         const onDelta = (chunk: string) => {
           if (!chunk) return;
+          if (isStructuredRuntimeStreamChunk(chunk)) return;
           fullText += chunk;
           writeSseJson(
             res,

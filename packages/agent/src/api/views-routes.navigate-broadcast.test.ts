@@ -1,7 +1,11 @@
 import type http from "node:http";
 import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { registerBuiltinViews } from "./views-registry.ts";
+import {
+  registerBuiltinViews,
+  registerPluginViews,
+  unregisterPluginViews,
+} from "./views-registry.ts";
 import {
   clearCurrentViewState,
   getCurrentViewState,
@@ -56,6 +60,36 @@ function makeNavigateCtx(
   return { ctx, json, error, broadcastWs };
 }
 
+function makeInteractCtx(
+  id: string,
+  body: NavigateBody | null,
+): {
+  ctx: ViewsRouteContext;
+  json: ReturnType<typeof vi.fn>;
+  error: ReturnType<typeof vi.fn>;
+  broadcastWs: ReturnType<typeof vi.fn>;
+} {
+  const req = Readable.from(
+    body === null ? [] : [Buffer.from(JSON.stringify(body))],
+  ) as unknown as http.IncomingMessage;
+  const res = {} as http.ServerResponse;
+  const json = vi.fn();
+  const error = vi.fn();
+  const broadcastWs = vi.fn();
+  const pathname = `/api/views/${encodeURIComponent(id)}/interact`;
+  const ctx: ViewsRouteContext = {
+    req,
+    res,
+    method: "POST",
+    pathname,
+    url: new URL(`http://local${pathname}`),
+    json,
+    error,
+    broadcastWs,
+  };
+  return { ctx, json, error, broadcastWs };
+}
+
 describe("POST /api/views/:id/navigate broadcast contract", () => {
   beforeEach(() => {
     registerBuiltinViews();
@@ -64,6 +98,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
 
   afterEach(() => {
     clearCurrentViewState();
+    unregisterPluginViews("@test/views-route");
     vi.restoreAllMocks();
   });
 
@@ -116,6 +151,55 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     });
   });
 
+  it("broadcasts close actions without requiring a navigation path consumer", async () => {
+    const { ctx, broadcastWs } = makeNavigateCtx("settings", {
+      action: "close",
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWs).toHaveBeenCalledWith({
+      type: "shell:navigate:view",
+      viewId: "settings",
+      viewPath: "/settings",
+      viewLabel: "Settings",
+      viewType: "gui",
+      action: "close",
+    });
+  });
+
+  it("broadcasts split and tile layout metadata to the shell", async () => {
+    const { ctx, broadcastWs, json } = makeNavigateCtx("notes", {
+      action: "split-view",
+      views: ["notes", "calendar"],
+      layout: "horizontal",
+      placement: "right",
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "shell:navigate:view",
+        viewId: "notes",
+        action: "split-view",
+        views: ["notes", "calendar"],
+        layout: "horizontal",
+        placement: "right",
+      }),
+    );
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({
+        ok: true,
+        action: "split-view",
+        views: ["notes", "calendar"],
+        layout: "horizontal",
+        placement: "right",
+      }),
+    );
+  });
+
   it("drops a non-boolean alwaysOnTop and a non-string action", async () => {
     const { ctx, broadcastWs } = makeNavigateCtx("settings", {
       action: 7,
@@ -156,6 +240,48 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
         viewId: "__view-manager__",
         viewPath: "/apps",
         viewType: "gui",
+      }),
+    );
+  });
+
+  it("broadcasts generic view update events after server-backed interactions", async () => {
+    await registerPluginViews(
+      {
+        name: "@test/views-route",
+        description: "Synthetic view route test plugin.",
+        views: [
+          {
+            id: "scratchpad",
+            label: "Scratchpad",
+            path: "/scratchpad",
+            capabilities: [{ id: "get-state", description: "Read state." }],
+            serverInteract: async () => ({
+              success: true,
+              text: "Read scratchpad state.",
+            }),
+          },
+        ],
+      },
+      process.cwd(),
+    );
+    const { ctx, json, broadcastWs } = makeInteractCtx("scratchpad", {
+      capability: "get-state",
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWs).toHaveBeenCalledWith({
+      type: "view:event",
+      viewEventType: "view:scratchpad:updated",
+      payload: { viewId: "scratchpad", capability: "get-state" },
+    });
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({
+        success: true,
+        result: expect.objectContaining({
+          text: "Read scratchpad state.",
+        }),
       }),
     );
   });
