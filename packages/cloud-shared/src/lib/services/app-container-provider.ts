@@ -71,6 +71,20 @@ function defaultExtractContainerId(stdout: string): string {
   return last;
 }
 
+/**
+ * Parse host ports already published on a node from `docker ps --format
+ * '{{.Ports}}'` output — lines like `0.0.0.0:28123->3000/tcp, :::28123->3000/tcp`.
+ * Used to avoid host-port collisions when placing a new app container.
+ */
+export function parseUsedHostPorts(dockerPsPortsOutput: string): Set<number> {
+  const used = new Set<number>();
+  for (const match of dockerPsPortsOutput.matchAll(/:(\d{2,5})->/g)) {
+    const port = Number(match[1]);
+    if (Number.isFinite(port)) used.add(port);
+  }
+  return used;
+}
+
 export class AppContainerProvider {
   private readonly deps: AppContainerProviderDeps;
 
@@ -111,7 +125,16 @@ export class AppContainerProvider {
       };
     }
 
-    const hostPort = await this.deps.allocateHostPort();
+    // Collision-safe host port: avoid ports already published on the node. The
+    // `docker ps` probe is best-effort — on failure we fall back to the blind
+    // pick (no worse than before). Re-pick a few times if the first collides.
+    const usedPorts = parseUsedHostPorts(
+      await this.deps.ssh.exec("docker ps --format '{{.Ports}}'").catch(() => ""),
+    );
+    let hostPort = await this.deps.allocateHostPort();
+    for (let attempt = 0; attempt < 20 && usedPorts.has(hostPort); attempt++) {
+      hostPort = await this.deps.allocateHostPort();
+    }
     const createCmd = buildAppDockerCreateCmd({
       appId: params.appId,
       containerName: params.containerName,
