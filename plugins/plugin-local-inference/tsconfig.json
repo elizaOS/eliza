@@ -67,8 +67,18 @@
 			"@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
 			"@elizaos/app-core/*": ["../../packages/app-core/src/*"],
 			"@elizaos/ui": ["../../packages/ui/src/index.ts"],
+			"@elizaos/capacitor-contacts": ["../plugin-native-contacts/src/index.ts"],
+			"@elizaos/capacitor-messages": ["../plugin-native-messages/src/index.ts"],
+			"@elizaos/capacitor-mobile-signals": [
+				"../plugin-native-mobile-signals/src/index.ts"
+			],
+			"@elizaos/capacitor-phone": ["../plugin-native-phone/src/index.ts"],
+			"@elizaos/capacitor-system": ["../plugin-native-system/src/index.ts"],
 			"@elizaos/plugin-health/screen-time/mobile-signal-setup": [
 				"../plugin-health/src/screen-time/mobile-signal-setup.ts"
+			],
+			"@elizaos/plugin-training": [
+				"../../packages/ui/src/types/host-external-modules.ts"
 			],
 			"@elizaos/ui/*": ["../../packages/ui/src/*"],
 			"@elizaos/vault": ["../../packages/vault/src/index.ts"],

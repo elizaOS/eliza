@@ -211,6 +211,20 @@ function normalizedRequests() {
   }));
 }
 
+function parseNavigateViewId(pathname: string): string | null {
+  const parts = pathname.split("/");
+  if (
+    parts.length !== 5 ||
+    parts[0] !== "" ||
+    parts[1] !== "api" ||
+    parts[2] !== "views" ||
+    parts[4] !== "navigate"
+  ) {
+    return null;
+  }
+  return parts[3] ? decodeURIComponent(parts[3]) : null;
+}
+
 export default scenario({
   id: "deterministic-app-control-actions",
   title: "Deterministic app-control action catalog",
@@ -251,25 +265,12 @@ export default scenario({
             });
           }
 
-          if (
-            request.method === "POST" &&
-            request.pathname === "/api/views/settings/navigate"
-          ) {
+          const navigateViewId = parseNavigateViewId(request.pathname);
+          if (request.method === "POST" && navigateViewId) {
             return jsonResponse({
               ok: true,
               navigated: true,
-              viewId: "settings",
-            });
-          }
-
-          if (
-            request.method === "POST" &&
-            request.pathname === "/api/views/remote-ledger/navigate"
-          ) {
-            return jsonResponse({
-              ok: true,
-              navigated: true,
-              viewId: "remote-ledger",
+              viewId: navigateViewId,
             });
           }
 
@@ -638,6 +639,127 @@ export default scenario({
     },
     {
       kind: "action",
+      name: "close settings view",
+      text: "Close the settings view",
+      actionName: "VIEWS",
+      options: { action: "close", view: "settings", viewType: "gui" },
+      responseIncludesAny: ["Closed Settings."],
+      assertTurn: (execution) =>
+        expectActionTurn(execution, {
+          actionName: "VIEWS",
+          parameters: { action: "close", view: "settings", viewType: "gui" },
+          responseText: "Closed Settings.",
+          resultFields: {
+            "values.mode": "close",
+            "values.viewId": "settings",
+            "values.viewType": "gui",
+            "data.action": "close",
+          },
+        }),
+    },
+    {
+      kind: "action",
+      name: "split settings and remote ledger views",
+      text: "Split the selected views side by side",
+      actionName: "VIEWS",
+      options: {
+        action: "split",
+        layout: "horizontal",
+        viewType: "gui",
+        views: ["settings", "remote-ledger"],
+      },
+      responseIncludesAny: ["Split views: Settings, Remote Ledger"],
+      assertTurn: (execution) =>
+        expectActionTurn(execution, {
+          actionName: "VIEWS",
+          parameters: {
+            action: "split",
+            layout: "horizontal",
+            viewType: "gui",
+            views: ["settings", "remote-ledger"],
+          },
+          responseText: "Split views: Settings, Remote Ledger (horizontal).",
+          resultFields: {
+            "values.mode": "split",
+            "values.viewIds.0": "settings",
+            "values.viewIds.1": "remote-ledger",
+            "values.layout": "horizontal",
+            "data.action": "split-view",
+          },
+        }),
+    },
+    {
+      kind: "action",
+      name: "tile remote ledger settings and feed board views",
+      text: "Tile selected views",
+      actionName: "VIEWS",
+      options: {
+        action: "tile",
+        viewType: "gui",
+        views: ["remote-ledger", "settings", "feed-board"],
+      },
+      responseIncludesAny: ["Tiled views: Remote Ledger, Settings, Feed Board"],
+      assertTurn: (execution) =>
+        expectActionTurn(execution, {
+          actionName: "VIEWS",
+          parameters: {
+            action: "tile",
+            viewType: "gui",
+            views: ["remote-ledger", "settings", "feed-board"],
+          },
+          responseText: "Tiled views: Remote Ledger, Settings, Feed Board.",
+          resultFields: {
+            "values.mode": "tile",
+            "values.viewIds.0": "remote-ledger",
+            "values.viewIds.1": "settings",
+            "values.viewIds.2": "feed-board",
+            "values.layout": "grid",
+            "data.action": "tile-views",
+          },
+        }),
+    },
+    {
+      kind: "action",
+      name: "close remote ledger via alias action",
+      text: "Close the remote ledger view",
+      actionName: "CLOSE_VIEW",
+      options: { target: "remote-ledger" },
+      responseIncludesAny: ["Closed Remote Ledger."],
+      assertTurn: (execution) =>
+        expectActionTurn(execution, {
+          actionName: "CLOSE_VIEW",
+          parameters: { target: "remote-ledger" },
+          responseText: "Closed Remote Ledger.",
+          resultFields: {
+            "values.mode": "close",
+            "values.viewId": "remote-ledger",
+            "values.viewType": "gui",
+            "data.action": "close",
+          },
+        }),
+    },
+    {
+      kind: "action",
+      name: "close all views via alias action",
+      text: "Close all views",
+      actionName: "CLOSE_ALL_VIEWS",
+      options: {},
+      responseIncludesAny: ["Closed all views."],
+      assertTurn: (execution) =>
+        expectActionTurn(execution, {
+          actionName: "CLOSE_ALL_VIEWS",
+          parameters: {},
+          responseText: "Closed all views.",
+          resultFields: {
+            "values.mode": "close",
+            "values.scope": "all",
+            "data.action": "close-all",
+            "data.viewId": "__all__",
+          },
+        }),
+    },
+    {
+      kind: "action",
       name: "reset homescreen scene",
       text: "Reset the homescreen to default",
       actionName: "HOMESCREEN",
@@ -885,7 +1007,19 @@ export default scenario({
       type: "actionCalled",
       actionName: "VIEWS",
       status: "success",
-      minCount: 10,
+      minCount: 13,
+    },
+    {
+      type: "actionCalled",
+      actionName: "CLOSE_VIEW",
+      status: "success",
+      minCount: 1,
+    },
+    {
+      type: "actionCalled",
+      actionName: "CLOSE_ALL_VIEWS",
+      status: "success",
+      minCount: 1,
     },
     {
       type: "actionCalled",
@@ -903,6 +1037,9 @@ export default scenario({
         /"open"/,
         /"current"/,
         /"broadcast"/,
+        /"close"/,
+        /"split"/,
+        /"tile"/,
         /wallet:refresh/,
         /remote-ledger/,
         /settings/,
@@ -996,6 +1133,92 @@ export default scenario({
             method: "POST",
             pathname: "/api/views/events/broadcast",
             response: { body: { ok: true, delivered: 2 }, status: 200 },
+            search: "",
+          },
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/views",
+            response: { body: { views }, status: 200 },
+            search: "?viewType=gui",
+          },
+          {
+            body: { action: "close", alwaysOnTop: false },
+            method: "POST",
+            pathname: "/api/views/settings/navigate",
+            response: {
+              body: { ok: true, navigated: true, viewId: "settings" },
+              status: 200,
+            },
+            search: "",
+          },
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/views",
+            response: { body: { views }, status: 200 },
+            search: "?viewType=gui",
+          },
+          {
+            body: {
+              action: "split-view",
+              views: ["settings", "remote-ledger"],
+              layout: "horizontal",
+            },
+            method: "POST",
+            pathname: "/api/views/settings/navigate",
+            response: {
+              body: { ok: true, navigated: true, viewId: "settings" },
+              status: 200,
+            },
+            search: "",
+          },
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/views",
+            response: { body: { views }, status: 200 },
+            search: "?viewType=gui",
+          },
+          {
+            body: {
+              action: "tile-views",
+              views: ["remote-ledger", "settings", "feed-board"],
+              layout: "grid",
+            },
+            method: "POST",
+            pathname: "/api/views/remote-ledger/navigate",
+            response: {
+              body: { ok: true, navigated: true, viewId: "remote-ledger" },
+              status: 200,
+            },
+            search: "",
+          },
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/views",
+            response: { body: { views }, status: 200 },
+            search: "",
+          },
+          {
+            body: { action: "close", alwaysOnTop: false },
+            method: "POST",
+            pathname: "/api/views/remote-ledger/navigate",
+            response: {
+              body: { ok: true, navigated: true, viewId: "remote-ledger" },
+              status: 200,
+            },
+            search: "",
+          },
+          {
+            body: { action: "close-all", alwaysOnTop: false },
+            method: "POST",
+            pathname: "/api/views/__all__/navigate",
+            response: {
+              body: { ok: true, navigated: true, viewId: "__all__" },
+              status: 200,
+            },
             search: "",
           },
           {

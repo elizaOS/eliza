@@ -354,7 +354,7 @@ describe("scenario PR workflow contract", () => {
       "ensureRealAppRegistryService",
     );
     expect(deterministicGeneratedAppRoutesScenario).toContain(
-      "/api/apps/hero/${GENERATED_SLUG}",
+      `/api/apps/hero/\${GENERATED_SLUG}`,
     );
     expect(deterministicGeneratedAppRoutesScenario).toContain(
       "registerRuntimeAppRouteModule",
@@ -560,9 +560,8 @@ describe("scenario PR workflow contract", () => {
     expect(scenarioExecutor).toContain(
       "../../../plugins/plugin-app-control/src/index.ts",
     );
-    expect(scenarioExecutor).toContain(
-      "actions: [mod.appAction, mod.homescreenAction, mod.viewsAction]",
-    );
+    expect(scenarioExecutor).toContain("mod.closeViewAction");
+    expect(scenarioExecutor).toContain("mod.closeAllViewsAction");
     expect(appControlViewsManagement).toContain(
       "owner-gates mutating view management modes but allows window navigation validation",
     );

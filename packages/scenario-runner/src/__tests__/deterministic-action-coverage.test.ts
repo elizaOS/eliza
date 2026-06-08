@@ -73,7 +73,13 @@ const IMPORTED_CORE_PLUGINS: Record<string, Plugin> = {
 
 /** Expected action names for each imported core plugin (verified against live imports). */
 const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
-  "@elizaos/plugin-app-control": ["APP", "HOMESCREEN", "VIEWS"],
+  "@elizaos/plugin-app-control": [
+    "APP",
+    "CLOSE_ALL_VIEWS",
+    "CLOSE_VIEW",
+    "HOMESCREEN",
+    "VIEWS",
+  ],
   "@elizaos/plugin-coding-tools": ["FILE", "SHELL", "WORKTREE"],
   "@elizaos/plugin-agent-skills": [
     "SKILL",
@@ -175,6 +181,8 @@ const COVERED_ACTIONS: readonly string[] = [
   "BROWSER_SCREENSHOT",
   "BROWSER_TYPE",
   "BROWSER_WAIT",
+  "CLOSE_ALL_VIEWS",
+  "CLOSE_VIEW",
   "FILE",
   "GENERATE_MEDIA",
   "GIT_PATHOLOGY",
@@ -340,6 +348,7 @@ const APP_CONTROL_MODE_SURFACE: Record<
   APP: ["create", "launch", "list", "load_from_directory", "relaunch"],
   VIEWS: [
     "broadcast",
+    "close",
     "create",
     "current",
     "delete",
@@ -352,6 +361,8 @@ const APP_CONTROL_MODE_SURFACE: Record<
     "remove",
     "search",
     "show",
+    "split",
+    "tile",
     "window",
   ],
 };
@@ -442,6 +453,12 @@ const REQUIRED_APP_CONTROL_MODE_TURNS: readonly {
   },
   {
     actionName: "VIEWS",
+    mode: "close",
+    label: "VIEWS close view",
+    requiredOptions: { view: isNonEmptyString },
+  },
+  {
+    actionName: "VIEWS",
     mode: "interact",
     label: "VIEWS mounted-view interact",
     requiredOptions: {
@@ -460,6 +477,18 @@ const REQUIRED_APP_CONTROL_MODE_TURNS: readonly {
     mode: "window",
     label: "VIEWS detached window",
     requiredOptions: { view: isNonEmptyString },
+  },
+  {
+    actionName: "VIEWS",
+    mode: "split",
+    label: "VIEWS split layout",
+    requiredOptions: { views: isStringArrayWithAtLeastTwo },
+  },
+  {
+    actionName: "VIEWS",
+    mode: "tile",
+    label: "VIEWS tile layout",
+    requiredOptions: { views: isStringArrayWithAtLeastTwo },
   },
   {
     actionName: "VIEWS",
@@ -682,7 +711,11 @@ const PROSE_ONLY_LLM_SCENARIOS: Record<string, string> = {
  * Covered actions that are not yet strict natural-language routed. This
  * baseline may only shrink as actions move to STRICT_LLM_ROUTED_ACTIONS.
  */
-const DIRECT_ONLY_COVERED_ACTIONS: readonly string[] = ["HOMESCREEN"];
+const DIRECT_ONLY_COVERED_ACTIONS: readonly string[] = [
+  "CLOSE_ALL_VIEWS",
+  "CLOSE_VIEW",
+  "HOMESCREEN",
+];
 
 function collectActionNames(plugin: Plugin): string[] {
   return sorted((plugin.actions ?? []).map((action) => action.name));
@@ -720,6 +753,14 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function isStringArrayWithAtLeastTwo(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.filter((entry): entry is string => isNonEmptyString(entry)).length >=
+      2
+  );
+}
+
 function toRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -753,15 +794,17 @@ function appControlActionModes(actionName: AppControlActionName): string[] {
   const action = (plugin.actions ?? []).find(
     (candidate) => candidate.name === actionName,
   );
-  const actionParameter = (action?.parameters ?? []).find(
-    (param) => param.name === "action",
-  ) as { schema?: { enum?: unknown } } | undefined;
-  const modes = actionParameter?.schema?.enum;
-  return sorted(
-    Array.isArray(modes)
-      ? modes.filter((mode): mode is string => typeof mode === "string")
-      : [],
-  );
+  const modes = new Set<string>();
+  for (const parameter of action?.parameters ?? []) {
+    if (parameter.name !== "action" && parameter.name !== "mode") continue;
+    const schemaEnum = (parameter as { schema?: { enum?: unknown } }).schema
+      ?.enum;
+    if (!Array.isArray(schemaEnum)) continue;
+    for (const mode of schemaEnum) {
+      if (typeof mode === "string") modes.add(mode);
+    }
+  }
+  return sorted(modes);
 }
 
 async function scenarioActionModeTurns(): Promise<
