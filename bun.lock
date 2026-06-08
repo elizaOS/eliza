@@ -5135,6 +5135,7 @@
       "version": "2.0.3-beta.10",
       "dependencies": {
         "@electric-sql/pglite": "^0.4.0",
+        "@electric-sql/pglite-sync": "^0.6.1",
         "@neondatabase/serverless": "^1.1.0",
         "drizzle-orm": "0.45.2",
         "pg": "^8.16.3",
@@ -6321,7 +6322,13 @@
 
     "@effect/workflow": ["@effect/workflow@0.18.2", "", { "peerDependencies": { "@effect/experimental": "^0.60.0", "@effect/platform": "^0.96.1", "@effect/rpc": "^0.75.1", "effect": "^3.21.2" } }, "sha512-2av0TexhxHnapQa3eLn6TkniokUFRZKf8dlWlLqbODMpXAJ3mm+DOHWM0ozMGkg9K/+zGCtiL3dMqJyJ8r7G8g=="],
 
+    "@electric-sql/client": ["@electric-sql/client@1.5.20", "", { "dependencies": { "@microsoft/fetch-event-source": "^2.0.1" }, "optionalDependencies": { "@rollup/rollup-darwin-arm64": "^4.18.1" }, "bin": { "intent": "bin/intent.mjs" } }, "sha512-Ftf+ze/rZK9dBzvZqW7wrS74aQBToUlhQeUFm7KCTfOCkNJZ+7iZMm9JW/NjyIQjPOz4ApXg3VWOpeCbzsU3IQ=="],
+
+    "@electric-sql/experimental": ["@electric-sql/experimental@1.0.14", "", { "optionalDependencies": { "@rollup/rollup-darwin-arm64": "^4.18.1" }, "peerDependencies": { "@electric-sql/client": "1.0.14" } }, "sha512-Wpv9UC7r4JYnQO4GbtQve7SVIX/VcBwAP12Xx11ObK2TBI+NJHtDRimUEKKQorq9Kr6yTAJ3BYOKCINxFsbDIg=="],
+
     "@electric-sql/pglite": ["@electric-sql/pglite@0.4.6", "", {}, "sha512-qmlmfN8UyKCee35qkV0r/MBp+Znl8FjBz7OpoglNvww3GJpw0/DLP0o1ZymvLNmcD5DTLOQdzKPtF8Hd3mdl1w=="],
+
+    "@electric-sql/pglite-sync": ["@electric-sql/pglite-sync@0.6.1", "", { "dependencies": { "@electric-sql/client": "^1.0.9", "@electric-sql/experimental": "^1.0.9" }, "peerDependencies": { "@electric-sql/pglite": "0.5.1" } }, "sha512-9vLfvBEEaWfWWX4jbGRiidiQM8t5VXcl0dutIylV0WYfMUoUghqqJGHpGKOdBhIg+CPKMafe+tMyltTmLpGJkQ=="],
 
     "@electron/get": ["@electron/get@5.0.0", "", { "dependencies": { "debug": "^4.1.1", "env-paths": "^3.0.0", "graceful-fs": "^4.2.11", "progress": "^2.0.3", "semver": "^7.6.3", "sumchecker": "^3.0.1" }, "optionalDependencies": { "undici": "^7.24.4" } }, "sha512-pjoBpru1KdEtcExBnuHAP1cAc/5faoedw0hzJkL3o4/IJp7HNF1+fbrdxT3gMYRX2oJfvnA/WXeCTVQpYYxyJA=="],
 
@@ -7570,6 +7577,8 @@
     "@metamask/utils": ["@metamask/utils@5.0.2", "", { "dependencies": { "@ethereumjs/tx": "^4.1.2", "@types/debug": "^4.1.7", "debug": "^4.3.4", "semver": "^7.3.8", "superstruct": "^1.0.3" } }, "sha512-yfmE79bRQtnMzarnKfX7AEJBwFTxvTyw3nBQlu/5rmGXrjAeAMltoGxO62TFurxrQAFMNa/fEjIHNvungZp0+g=="],
 
     "@meteora-ag/dlmm": ["@meteora-ag/dlmm@1.9.10", "", { "dependencies": { "@coral-xyz/anchor": "0.31.0", "@coral-xyz/borsh": "0.31.0", "@solana/buffer-layout": "^4.0.1", "@solana/spl-token": "^0.4.6", "@solana/web3.js": "^1.91.6", "bn.js": "^5.2.1", "decimal.js": "^10.4.2", "express": "^4.19.2", "gaussian": "^1.3.0" } }, "sha512-J/pzKk2RGqUjdCeJk378aWINQk44OVOJ49GF5wVxolX6NI9+QICNpb/DgS78iSzHzr6Muty0NPwzFj+iLv6yTg=="],
+
+    "@microsoft/fetch-event-source": ["@microsoft/fetch-event-source@2.0.1", "", {}, "sha512-W6CLUJ2eBMw3Rec70qrsEW0jOm/3twwJv21mrmj2yORiaVmVYGS4sSS5yUwvQc1ZlDLYGPnClVWmUUMagKNsfA=="],
 
     "@mobily/ts-belt": ["@mobily/ts-belt@3.13.1", "", {}, "sha512-K5KqIhPI/EoCTbA6CGbrenM9s41OouyK8A03fGJJcla/zKucsgLbz8HNbeseoLarRPgyWJsUyCYqFhI7t3Ra9Q=="],
 
