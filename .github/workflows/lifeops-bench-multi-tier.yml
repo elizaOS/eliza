@@ -14,7 +14,7 @@
 # Local equivalents:
 #   cd packages/benchmarks/lifeops-bench && pip install -e .
 #   lifeops-bench --agent cerebras-direct --model-tier large --suite smoke
-#   lifeops-bench --agent hermes --model-tier frontier --suite smoke
+#   lifeops-bench --agent anthropic-direct --model-tier frontier --suite smoke
 
 name: LifeOps Benchmark — Multi-Tier
 
@@ -219,7 +219,7 @@ jobs:
         if: steps.gate.outputs.skip != 'true'
         run: |
           cd packages/benchmarks/lifeops-bench
-          pip install -e .
+          pip install -e '.[anthropic]'
 
       - name: Run multi-tier driver (frontier only)
         if: steps.gate.outputs.skip != 'true'
@@ -231,7 +231,7 @@ jobs:
           RUN_DIR="${{ github.workspace }}/runs/frontier"
           mkdir -p "$RUN_DIR/frontier"
           lifeops-bench \
-            --agent hermes \
+            --agent anthropic-direct \
             --model-tier frontier \
             --suite "${{ needs.resolve-inputs.outputs.suite }}" \
             --output-dir "$RUN_DIR/frontier" \

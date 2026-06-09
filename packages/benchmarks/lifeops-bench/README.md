@@ -44,7 +44,7 @@ clarification, and verifiable end-state correctness.
 1. **elizaOS adapter** (`agents/__init__.py::build_eliza_agent`) — drives the elizaOS runtime via the existing TS bench server.
 2. **Hermes adapter** (`agents/hermes.py`) — drives any model that speaks the Hermes XML `<tool_call>` template (local Hermes, llama-cpp servers, hosted endpoints).
 3. **OpenClaw adapter** (`agents/openclaw.py`) — translates LifeOpsBench history/tools into OpenClaw's text-embedded `<tool_call>{"tool": ..., "args": ...}</tool_call>` protocol.
-4. **cerebras-direct adapter** (`agents/cerebras_direct.py`) — calls the eval/teacher model (gpt-oss-120b on Cerebras) directly with the OpenAI tool-call format. Used as the upper-bound reference.
+4. **cerebras-direct / anthropic-direct adapters** (`agents/cerebras_direct.py`, `agents/anthropic_direct.py`) — call the resolved tier provider directly through the shared tool-call wrapper. Used as upper-bound references for the large and frontier tiers.
 
 Plus reference oracles for sanity:
 
@@ -115,6 +115,7 @@ python3 -m eliza_lifeops_bench --agent hermes --domain mail
 ```bash
 CEREBRAS_API_KEY=... \
 python3 -m eliza_lifeops_bench --agent cerebras-direct --seeds 3
+python3 -m eliza_lifeops_bench --agent anthropic-direct --model-tier frontier --suite smoke
 ```
 
 ### Cost / time discipline

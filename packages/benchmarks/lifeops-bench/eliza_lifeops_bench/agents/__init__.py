@@ -13,6 +13,7 @@ from typing import Any, Awaitable, Callable
 
 from ..types import MessageTurn
 from ._openai_compat import OpenAICompatAgent
+from .anthropic_direct import build_anthropic_direct_agent
 from .adapter_paths import ensure_benchmark_adapter_importable
 from .cerebras_direct import build_cerebras_direct_agent
 from .hermes import build_hermes_agent
@@ -73,6 +74,7 @@ __all__ = [
     "PerfectAgent",
     "WrongAgent",
     "WrongMode",
+    "build_anthropic_direct_agent",
     "build_cerebras_direct_agent",
     "build_eliza_agent",
     "build_hermes_agent",

@@ -42,6 +42,7 @@ _AGENT_CHOICES = (
     "openclaw",
     "hermes",
     "smithers",
+    "anthropic-direct",
     "cerebras-direct",
 )
 _DOMAIN_CHOICES = tuple(d.value for d in Domain)
@@ -373,6 +374,14 @@ def _build_agent_fn(name: str, *, model_override: str | None = None, base_url_ov
                 f"cerebras-direct agent unavailable: {exc}"
             ) from exc
         return build_cerebras_direct_agent(model=model_override, base_url=base_url_override)
+    if name == "anthropic-direct":
+        try:
+            from .agents import build_anthropic_direct_agent  # type: ignore[attr-defined]
+        except ImportError as exc:
+            raise SystemExit(
+                f"anthropic-direct agent unavailable: {exc}"
+            ) from exc
+        return build_anthropic_direct_agent(model=model_override)
     raise SystemExit(f"Unknown agent: {name}")
 
 

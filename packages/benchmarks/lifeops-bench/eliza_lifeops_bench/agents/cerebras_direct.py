@@ -9,37 +9,9 @@ all the heavy lifting (message translation, cost accounting) lives in
 
 from __future__ import annotations
 
-import json
-import os
-
 from ..clients.cerebras import CerebrasClient
-from ._openai_compat import LIFEOPS_TOOL_SYSTEM_PROMPT, OpenAICompatAgent
-
-
-def _load_optimized_system_prompt() -> str:
-    """Load the system prompt from LIFEOPS_PLANNER_PROMPT_FILE if set.
-
-    Supports plain-text files and JSON artifacts produced by the MIPRO
-    optimizer (which store the prompt under the ``prompt`` key).
-    Falls back to the default bench system prompt when the env var is
-    unset or the file cannot be read.
-    """
-    override_path = os.environ.get("LIFEOPS_PLANNER_PROMPT_FILE", "").strip()
-    if not override_path or not os.path.exists(override_path):
-        return LIFEOPS_TOOL_SYSTEM_PROMPT
-    try:
-        if override_path.endswith(".json"):
-            with open(override_path, "r", encoding="utf-8") as fh:
-                obj = json.load(fh)
-            if isinstance(obj, dict) and isinstance(obj.get("prompt"), str):
-                return obj["prompt"]
-        else:
-            text = open(override_path, "r", encoding="utf-8").read().strip()
-            if text:
-                return text
-    except OSError:
-        pass
-    return LIFEOPS_TOOL_SYSTEM_PROMPT
+from ._openai_compat import OpenAICompatAgent
+from .planner_prompt import load_optimized_system_prompt
 
 
 def build_cerebras_direct_agent(
@@ -67,7 +39,7 @@ def build_cerebras_direct_agent(
     from that path (plain text or JSON artifact with a ``prompt`` key) instead
     of the default bench prompt.
     """
-    system_prompt = _load_optimized_system_prompt()
+    system_prompt = load_optimized_system_prompt()
 
     def factory() -> CerebrasClient:
         return CerebrasClient(model=model, base_url=base_url, api_key=api_key)
