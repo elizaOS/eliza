@@ -10,6 +10,7 @@ const HMR_SPEC = path.join(HERE, "hmr", "hmr-dependency-levels.spec.ts");
 const CI_WORKFLOW = path.join(REPO_ROOT, ".github/workflows/ci.yaml");
 const ROOT_PACKAGE_JSON = path.join(REPO_ROOT, "package.json");
 const APP_PACKAGE_JSON = path.join(REPO_ROOT, "packages/app/package.json");
+const EXPECTED_GUI_VIEW_COUNT = 36;
 
 type GuiViewCase = {
   id: string;
@@ -78,8 +79,8 @@ describe("plugin view HMR coverage", () => {
       .filter((level) => !existsSync(path.join(REPO_ROOT, level.file)))
       .map((level) => `${level.id} ${level.file}`);
 
-    expect(guiCases.length).toBe(28);
-    expect(hmrLevels.length).toBe(28);
+    expect(guiCases.length).toBe(EXPECTED_GUI_VIEW_COUNT);
+    expect(hmrLevels.length).toBe(EXPECTED_GUI_VIEW_COUNT);
     expect(missing, "Add HMR source probes for new GUI views.").toEqual([]);
     expect(
       stale,
