@@ -31,6 +31,7 @@ const HEALTH_SUBACTIONS = ["today", "trend", "by_metric", "status"] as const;
 type HealthSubaction = (typeof HEALTH_SUBACTIONS)[number];
 
 interface OwnerHealthParameters {
+  action?: unknown;
   subaction?: unknown;
   metric?: unknown;
   date?: unknown;
@@ -55,9 +56,14 @@ export const ownerHealthAction: Action = {
     "Owner-facing health umbrella action: surface today's health summary, multi-day trends, per-metric breakdowns, and connector status (Apple Health / Google Fit / Strava / Fitbit / Withings / Oura).",
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: "Which health sub-operation to run.",
       required: true,
+      schema: { type: "string", enum: [...HEALTH_SUBACTIONS] },
+    },
+    {
+      name: "subaction",
+      description: "Legacy alias for action.",
       schema: { type: "string", enum: [...HEALTH_SUBACTIONS] },
     },
     {
@@ -95,7 +101,7 @@ export const ownerHealthAction: Action = {
     _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const params = (options ?? {}) as OwnerHealthParameters;
-    const subaction = readString(params.subaction);
+    const subaction = readString(params.action) ?? readString(params.subaction);
     if (!subaction) {
       return failure("missing_subaction", "No subaction specified.");
     }

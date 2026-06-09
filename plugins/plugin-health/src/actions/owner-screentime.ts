@@ -44,6 +44,7 @@ const SCREENTIME_SUBACTIONS = [
 type ScreentimeSubaction = (typeof SCREENTIME_SUBACTIONS)[number];
 
 interface OwnerScreentimeParameters {
+  action?: unknown;
   subaction?: unknown;
   source?: unknown;
   identifier?: unknown;
@@ -80,9 +81,14 @@ export const ownerScreentimeAction: Action = {
     "Owner-facing screen-time umbrella action: summaries, daily/weekly breakdowns, per-app / per-website slices, browser activity reports, and time-on-target queries across iOS / Android / desktop signals.",
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: "Which screen-time sub-operation to run.",
       required: true,
+      schema: { type: "string", enum: [...SCREENTIME_SUBACTIONS] },
+    },
+    {
+      name: "subaction",
+      description: "Legacy alias for action.",
       schema: { type: "string", enum: [...SCREENTIME_SUBACTIONS] },
     },
     {
@@ -134,7 +140,7 @@ export const ownerScreentimeAction: Action = {
     _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const params = (options ?? {}) as OwnerScreentimeParameters;
-    const subaction = readString(params.subaction);
+    const subaction = readString(params.action) ?? readString(params.subaction);
     if (!subaction) {
       return failure("missing_subaction", "No subaction specified.");
     }

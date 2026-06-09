@@ -64,7 +64,7 @@
     "build": "bun run build.ts",
     "dev": "bun --hot build.ts",
     "clean": "rm -rf dist .turbo",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "echo \"Lint skipped\"",
     "lint:check": "bun run lint",

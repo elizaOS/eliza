@@ -78,12 +78,17 @@ export const ownerDocumentsAction: Action = {
     "OWNER_DOCUMENTS_CLOSE_REQUEST",
   ],
   description:
-    "Owner-facing Docs And Portals umbrella action. Subaction-based dispatch covering signature requests, approval flows, deadline tracking, asset uploads, ID/form collection, and request closure.",
+    "Owner-facing Docs And Portals umbrella action. Action-based dispatch covering signature requests, approval flows, deadline tracking, asset uploads, ID/form collection, and request closure.",
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: "Which OWNER_DOCUMENTS sub-operation to run.",
       required: true,
+      schema: { type: "string", enum: [...SUBACTIONS] },
+    },
+    {
+      name: "subaction",
+      description: "Legacy alias for action.",
       schema: { type: "string", enum: [...SUBACTIONS] },
     },
     {

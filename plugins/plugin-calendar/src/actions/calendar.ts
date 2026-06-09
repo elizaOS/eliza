@@ -71,12 +71,17 @@ export const calendarAction: Action = {
     "FIND_SLOTS",
   ],
   description:
-    "Owner-facing calendar umbrella action. Op-based dispatch over the unified Google + Apple calendar feed: read_feed, create_event, update_event, delete_event, find_slots, next_event, describe_event, travel_buffer.",
+    "Owner-facing calendar umbrella action. Action-based dispatch over the unified Google + Apple calendar feed: read_feed, create_event, update_event, delete_event, find_slots, next_event, describe_event, travel_buffer.",
   parameters: [
     {
-      name: "op",
+      name: "action",
       description: "Which calendar sub-operation to run.",
       required: true,
+      schema: { type: "string", enum: [...CALENDAR_OPS] },
+    },
+    {
+      name: "op",
+      description: "Legacy alias for action.",
       schema: { type: "string", enum: [...CALENDAR_OPS] },
     },
     {

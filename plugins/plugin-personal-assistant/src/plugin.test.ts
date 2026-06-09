@@ -4,7 +4,7 @@ import {
   personalAssistantPlugin,
   ensureLifeOpsGooglePluginRegistered,
 } from "./plugin.js";
-import { personalAssistantPlugin } from "./routes/plugin.js";
+import { personalAssistantRoutesPlugin } from "./routes/plugin.js";
 
 function createRuntimeWithPluginRegistration(initialPlugins: Plugin[] = []): {
   runtime: IAgentRuntime;
@@ -57,8 +57,12 @@ describe("LifeOps Google plugin registration", () => {
   });
 
   it("declares plugin-google for app and route plugin dependency resolution", () => {
-    expect(personalAssistantPlugin.dependencies).toContain("@elizaos/plugin-google");
-    expect(personalAssistantPlugin.dependencies).toContain("@elizaos/plugin-google");
+    expect(personalAssistantPlugin.dependencies).toContain(
+      "@elizaos/plugin-google",
+    );
+    expect(personalAssistantRoutesPlugin.dependencies).toContain(
+      "@elizaos/plugin-google",
+    );
   });
 
   it("registers plugin-google when LifeOps is registered directly", async () => {
@@ -78,7 +82,9 @@ describe("LifeOps Google plugin registration", () => {
   });
 
   it("registers generic Google connector routes without legacy LifeOps setup routes", () => {
-    const routePaths = (personalAssistantPlugin.routes ?? []).map((route) => route.path);
+    const routePaths = (personalAssistantRoutesPlugin.routes ?? []).map(
+      (route) => route.path,
+    );
 
     expect(routePaths).toContain("/api/connectors/google/oauth/start");
     expect(routePaths).toContain("/api/connectors/google/oauth/callback");

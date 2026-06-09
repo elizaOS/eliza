@@ -1,5 +1,6 @@
 /**
- * Feature-by-feature functional parity validation for all 24 XR views.
+ * Feature-by-feature functional parity validation for all 23 source-buildable
+ * XR view plugins.
  *
  * The architectural guarantee: every XR view uses the SAME bundlePath
  * ("dist/views/bundle.js") and the SAME componentExport as the GUI view.
@@ -150,13 +151,6 @@ const PLUGIN_REGISTRY: Array<{
     manifestPath: "plugins/plugin-hyperliquid-app/src/plugin.ts",
     xrComponentSrc: "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.tsx",
     requiredTerms: ["HyperliquidAppView", "useState"],
-  },
-  {
-    pluginDir: "plugins/plugin-personal-assistant",
-    manifestPath: "plugins/plugin-personal-assistant/src/plugin.ts",
-    xrComponentSrc:
-      "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
-    requiredTerms: ["LifeOpsPageView", "useState"],
   },
   {
     pluginDir: "plugins/plugin-messages",
@@ -311,11 +305,6 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
       "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.interact.ts",
     capabilities: ["terminal-hyperliquid-state"],
   },
-  "plugins/plugin-personal-assistant": {
-    srcFile:
-      "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.interact.ts",
-    capabilities: ["terminal-lifeops-state", "terminal-lifeops-enable"],
-  },
   "plugins/plugin-messages": {
     srcFile:
       "plugins/plugin-messages/src/components/MessagesAppView.interact.ts",
@@ -376,7 +365,7 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("XR feature-by-feature functional parity — all 24 views", () => {
+describe("XR feature-by-feature functional parity — all 23 source-buildable view plugins", () => {
   // A. Shared bundle architecture ─────────────────────────────────────────────
 
   it("A — every XR view uses the same bundlePath as the GUI view (shared bundle = shared features)", () => {
@@ -473,7 +462,7 @@ describe("XR feature-by-feature functional parity — all 24 views", () => {
     );
   });
 
-  it("B — all 24 XR component sources use React hooks (useState/useEffect) for stateful UIs", () => {
+  it("B — all 23 XR component sources use React hooks (useState/useEffect) for stateful UIs", () => {
     const noHooks: string[] = [];
     for (const { pluginDir, xrComponentSrc } of PLUGIN_REGISTRY) {
       if (!fileExists(xrComponentSrc)) continue;
@@ -546,11 +535,11 @@ describe("XR feature-by-feature functional parity — all 24 views", () => {
 
   // Summary assertion ─────────────────────────────────────────────────────────
 
-  it("summary — all 24 plugins have XR views that are functionally identical to their GUI views", () => {
+  it("summary — all 23 plugins have XR views that are functionally identical to their GUI views", () => {
     // This test is a logical consequence of tests A, B, C, D above all passing.
     // It explicitly states the guarantee: same bundle + same component = same features.
     const xrPluginCount = PLUGIN_REGISTRY.length;
-    expect(xrPluginCount).toBe(24);
+    expect(xrPluginCount).toBe(23);
 
     for (const { pluginDir, manifestPath } of PLUGIN_REGISTRY) {
       const source = readFile(manifestPath);

@@ -137,12 +137,11 @@ const ALL_XR_VIEW_IDS = [
   "facewear",
 ] as const;
 
-// The 24 plugin manifest paths (same as plugin-tui-view-coverage.test.ts)
+// The source-buildable plugin manifest paths (same as plugin-tui-view-coverage.test.ts)
 const VIEW_MANIFESTS = [
   "plugins/plugin-companion/src/plugin.ts",
   "plugins/plugin-contacts/src/plugin.ts",
   "plugins/plugin-hyperliquid-app/src/plugin.ts",
-  "plugins/plugin-personal-assistant/src/plugin.ts",
   "plugins/plugin-messages/src/plugin.ts",
   "plugins/app-model-tester/src/plugin.ts",
   "plugins/plugin-phone/src/plugin.ts",

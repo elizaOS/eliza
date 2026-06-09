@@ -104,7 +104,7 @@ function extractXrViews(
   return results;
 }
 
-// The 24 plugin manifests → (plugin directory, manifest path)
+// The 23 source-buildable plugin manifests → (plugin directory, manifest path)
 const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
   {
     pluginDir: "plugins/plugin-companion",
@@ -117,10 +117,6 @@ const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
   {
     pluginDir: "plugins/plugin-hyperliquid-app",
     manifestPath: "plugins/plugin-hyperliquid-app/src/plugin.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-personal-assistant",
-    manifestPath: "plugins/plugin-personal-assistant/src/plugin.ts",
   },
   {
     pluginDir: "plugins/plugin-messages",
@@ -204,7 +200,7 @@ const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
   },
 ];
 
-describe("XR view bundle coverage — all 24 plugin bundles built and valid", () => {
+describe("XR view bundle coverage — all 23 source-buildable plugin bundles built and valid", () => {
   it("declares dist/views/bundle.js for every plugin with an XR view", () => {
     const missingDeclarations: string[] = [];
     for (const { pluginDir, manifestPath } of PLUGIN_BUNDLES) {

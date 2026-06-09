@@ -15,7 +15,7 @@ import {
 } from "../types.ts";
 
 /**
- * INBOX umbrella action — op-based dispatch.
+ * INBOX umbrella action — action-based dispatch.
  *
  * MIGRATION STATUS: STUB.
  * Reference implementation: plugins/plugin-personal-assistant/src/actions/inbox.ts
@@ -52,14 +52,19 @@ export const inboxAction: Action = {
   name: "INBOX",
   similes: ["TRIAGE_INBOX", "INBOX_REPLY", "INBOX_SNOOZE", "INBOX_ARCHIVE"],
   description:
-    "Unified cross-channel inbox umbrella action. Op-based dispatch: list, triage, reply, snooze, archive, approve. Operates across email, Discord, Telegram, WhatsApp, Slack, X and similar non-SMS channels (Android SMS is handled by plugin-messages).",
+    "Unified cross-channel inbox umbrella action. Action-based dispatch: list, triage, reply, snooze, archive, approve. Operates across email, Discord, Telegram, WhatsApp, Slack, X and similar non-SMS channels (Android SMS is handled by plugin-messages).",
   contexts: [...INBOX_CONTEXTS],
   contextGate: { anyOf: [...INBOX_CONTEXTS] },
   parameters: [
     {
-      name: "op",
+      name: "action",
       description: "Which inbox sub-operation to run.",
       required: true,
+      schema: { type: "string", enum: [...INBOX_ACTIONS] },
+    },
+    {
+      name: "op",
+      description: "Legacy alias for action.",
       schema: { type: "string", enum: [...INBOX_ACTIONS] },
     },
     {
