@@ -79,10 +79,14 @@ These are tracked as follow-ups in
 
 | Component                    | Resource    | Monthly (€) |
 |------------------------------|-------------|-------------|
-| 1× cpx21 (3 vCPU / 4 GB)     | control VM  | ~5          |
+| 1× cpx32 (4 vCPU / 8 GB) x86 | control VM  | ~11         |
 | 1× IPv4 + IPv6               | floating IP | included    |
 | Cloudflare R2 state          | < 100 KB    | 0           |
-| **Total per environment**    |             | **~5**      |
+| **Total per environment**    |             | **~11**     |
+
+The default is `cpx32` since Hetzner retired `cpx21` in `fsn1`. Production VM
+`eliza-1` actually runs `cax21` (ARM, ~€7/mo, manually provisioned) — flipping
+prod via TF needs the cloud-init arm64 templating fix tracked as a followup.
 
 A 2nd control-plane VM (HA, currently unused) doubles the line. The
 **data-plane autoscale** cost is separate and elastic.

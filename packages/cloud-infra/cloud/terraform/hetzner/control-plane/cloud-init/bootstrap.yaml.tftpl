@@ -78,12 +78,11 @@ runcmd:
   - curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
   - apt-get install -y nodejs
 
-  # Swap: the staging cpx32 / cpx22 / cax11 shapes are too small to run
-  # `turbo run build --filter=@elizaos/...` (19+ packages in parallel)
-  # without OOM-killing one of the workspace builds. 8 GB swap is enough
-  # headroom that the build completes even under memory pressure; on
-  # bigger control-plane shapes (cax21 8 GB) this is unused. Persists
-  # across reboots via /etc/fstab.
+  # Swap as defensive headroom: cpx32 (8 GB) and cax21 (8 GB) both fit the
+  # workspace build, but a parallel `turbo run build` can spike past RSS
+  # and OOM-kill one of the packages. 8 GB swap absorbs the peak. On
+  # smaller shapes (cpx11 2 GB, cax11 4 GB) this is the only way the
+  # build completes at all. Persists across reboots via /etc/fstab.
   - test -f /swapfile || fallocate -l 8G /swapfile
   - chmod 600 /swapfile
   - mkswap /swapfile || true

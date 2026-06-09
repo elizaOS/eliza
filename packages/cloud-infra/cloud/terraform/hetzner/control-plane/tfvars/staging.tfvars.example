@@ -2,7 +2,7 @@
 
 environment           = "staging"
 hcloud_location       = "fsn1"
-hcloud_server_type    = "cpx21"
+hcloud_server_type    = "cpx32"
 control_plane_count   = 1
 cloudflare_zone_id    = "<zone-id-for-elizacloud.ai>"
 
