@@ -7,6 +7,19 @@ variable "environment" {
   }
 }
 
+# ── Multi-project credentials ────────────────────────────────────────────────
+# Each environment has its own Hetzner Cloud Project (= its own 5-server quota,
+# its own SSH keys, its own private network). The provider picks up the token
+# from this variable OR the HCLOUD_TOKEN env var. GitHub Actions wires the
+# right project's token via the environment-scoped secret HCLOUD_TOKEN.
+# See ../ARCHITECTURE.md § "Multi-project layout" for the pattern.
+variable "hcloud_token" {
+  description = "Hetzner Cloud API token for the project that owns THIS environment's resources. Leave null to pick up from HCLOUD_TOKEN env var (the GHA pattern)."
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
 variable "hcloud_location" {
   description = "Hetzner Cloud datacenter location (must match data-plane). Existing fleet runs in fsn1."
   type        = string
