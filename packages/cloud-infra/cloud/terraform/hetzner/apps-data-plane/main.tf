@@ -169,9 +169,11 @@ resource "hcloud_server" "app_node" {
   })
 
   user_data = templatefile("${path.module}/cloud-init/app-node.yaml.tftpl", {
-    hostname          = "eliza-apps-node-${var.environment}-${each.value}"
-    operator_ssh_keys = var.ssh_public_keys
-    tenant_db_host    = cidrhost(var.subnet_cidr, 10)
+    hostname                   = "eliza-apps-node-${var.environment}-${each.value}"
+    operator_ssh_keys          = var.ssh_public_keys
+    tenant_db_host             = cidrhost(var.subnet_cidr, 10)
+    apps_base_domain           = var.apps_base_domain
+    apps_private_network_cidr  = var.network_cidr
   })
 
   # Allow in-place rename via Hetzner Console without TF drift (matches control-plane).

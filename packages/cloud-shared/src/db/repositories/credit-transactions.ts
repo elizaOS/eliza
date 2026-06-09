@@ -105,6 +105,23 @@ export class CreditTransactionsRepository {
     return !!row;
   }
 
+  /**
+   * Returns an existing deploy-fee debit when the same deployment idempotency
+   * key was already charged (safe retries after a partial queue).
+   */
+  async findDebitByIdempotencyKey(
+    organizationId: string,
+    idempotencyKey: string,
+  ): Promise<CreditTransaction | undefined> {
+    return await dbWrite.query.creditTransactions.findFirst({
+      where: and(
+        eq(creditTransactions.organization_id, organizationId),
+        eq(creditTransactions.type, "debit"),
+        sql`${creditTransactions.metadata}->>'idempotencyKey' = ${idempotencyKey}`,
+      ),
+    });
+  }
+
   // ============================================================================
   // WRITE OPERATIONS (use primary)
   // ============================================================================

@@ -21,19 +21,25 @@ export const RFC1918_RANGES = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"] 
  * return traffic and (optionally) the egress proxy. Belt-and-suspenders behind
  * the `--internal` network.
  */
-export function buildAppNodeNftablesRules(opts: { egressProxyIp?: string } = {}): string {
+export function buildAppNodeNftablesRules(
+  opts: { egressProxyIp?: string; allowedPrivateCidrs?: readonly string[] } = {},
+): string {
+  const allowProxy = opts.egressProxyIp ? [`        ip daddr ${opts.egressProxyIp} accept`] : [];
+  const allowPrivate = (opts.allowedPrivateCidrs ?? []).map(
+    (cidr) => `        ip daddr ${cidr} accept`,
+  );
   const blocks = [
     `        ip daddr ${CLOUD_METADATA_IP} drop`,
     ...RFC1918_RANGES.map((r) => `        ip daddr ${r} drop`),
   ];
-  const allowProxy = opts.egressProxyIp ? [`        ip daddr ${opts.egressProxyIp} accept`] : [];
   return [
     "table inet app_isolation {",
     "    chain forward {",
     "        type filter hook forward priority 0; policy drop;",
     "        ct state established,related accept",
-    ...blocks,
     ...allowProxy,
+    ...allowPrivate,
+    ...blocks,
     "    }",
     "}",
   ].join("\n");

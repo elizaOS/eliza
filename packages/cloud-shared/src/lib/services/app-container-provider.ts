@@ -64,6 +64,8 @@ export interface ProvisionedAppContainer {
   network: string;
   /** The node the container runs on (for ingress routing + placement). */
   nodeHost: string;
+  /** docker_nodes.node_id the container was placed on. */
+  nodeId?: string;
 }
 
 function defaultExtractContainerId(stdout: string): string {
@@ -155,17 +157,17 @@ export class AppContainerProvider {
     return { containerId, hostPort, network, nodeHost: this.deps.nodeHost ?? "" };
   }
 
-  async delete(containerName: string): Promise<void> {
+  async delete(containerName: string, _nodeId?: string | null): Promise<void> {
     await this.deps.ssh.exec(`docker rm -f ${shellQuote(containerName)}`);
     // Tear down the per-app DB ambassador too (best-effort; no-op if absent).
     await this.deps.ssh.exec(buildRemoveAmbassadorCmdForContainer(containerName));
   }
 
-  async restart(containerName: string): Promise<void> {
+  async restart(containerName: string, _nodeId?: string | null): Promise<void> {
     await this.deps.ssh.exec(`docker restart ${shellQuote(containerName)}`);
   }
 
-  async logs(containerName: string, tail = 200): Promise<string> {
+  async logs(containerName: string, tail = 200, _nodeId?: string | null): Promise<string> {
     return this.deps.ssh.exec(`docker logs --tail ${tail} ${shellQuote(containerName)}`);
   }
 }

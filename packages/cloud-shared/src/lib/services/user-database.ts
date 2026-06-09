@@ -180,6 +180,7 @@ export class UserDatabaseService {
 
       await appDatabasesRepository.updateState(appId, {
         user_database_uri: encryptedUri,
+        user_database_cluster_id: clusterId ?? null,
         user_database_status: "ready",
         user_database_error: null,
       });
@@ -232,9 +233,7 @@ export class UserDatabaseService {
 
     // ISOLATED (Apps / Product 2): DROP the app's OWN per-tenant DATABASE + ROLE
     // and release its cluster slot — otherwise we leak a live DB we keep paying
-    // for AND burn one of the cluster's finite slots forever (#8342). Only runs
-    // when the provisioning backend is wired (the daemon — DROP needs `pg`); on
-    // the Worker (shared-mode, no backend) this is a no-op.
+    // for AND burn one of the cluster's finite slots forever (#8342).
     const isolatedUri = database.user_database_uri;
     if (this.tenantDbProvisioning && isolatedUri) {
       try {
@@ -247,9 +246,39 @@ export class UserDatabaseService {
           });
         }
       } catch (error) {
-        // Don't fail the app delete on a teardown hiccup; a reconciler sweeps orphans.
         logger.warn("Failed to deprovision isolated tenant DB", {
           appId,
+          error: error instanceof Error ? error.message : "Unknown",
+        });
+      }
+    } else if (
+      database.user_database_cluster_id &&
+      database.user_database_status === "ready"
+    ) {
+      // Workers cannot load node-`pg`; enqueue DDL deprovision for the daemon.
+      try {
+        const app = await appsRepository.findById(appId);
+        if (!app?.organization_id) {
+          throw new Error("app organization_id required to enqueue tenant DB deprovision");
+        }
+        const { enqueueTenantDbDeprovisionOnce } = await import(
+          "./tenant-db-deprovision-job-service"
+        );
+        const { provisioningJobService } = await import("./provisioning-jobs");
+        await enqueueTenantDbDeprovisionOnce({
+          appId,
+          clusterId: database.user_database_cluster_id,
+          organizationId: app.organization_id,
+        });
+        void provisioningJobService.triggerImmediate().catch(() => {});
+        logger.info("Enqueued tenant DB deprovision job", {
+          appId,
+          clusterId: database.user_database_cluster_id,
+        });
+      } catch (error) {
+        logger.warn("Failed to enqueue tenant DB deprovision job", {
+          appId,
+          clusterId: database.user_database_cluster_id,
           error: error instanceof Error ? error.message : "Unknown",
         });
       }
@@ -265,13 +294,13 @@ export class UserDatabaseService {
           projectId: database.user_database_project_id,
         });
       } catch (error) {
-        // Log but don't fail - database might already be deleted
         logger.warn("Failed to delete Neon project (may already be deleted)", {
           appId,
           projectId: database.user_database_project_id,
           error: error instanceof Error ? error.message : "Unknown",
         });
       }
+    }
     }
   }
 

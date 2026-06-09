@@ -37,6 +37,10 @@ export interface AllocatedCluster {
 export interface ClusterPoolStore {
   listAllocatable(): Promise<ClusterCandidate[]>;
   tryClaimSlot(clusterId: string): Promise<boolean>;
+  /** Decrement `database_count` after a tenant DB is dropped (floor at 0). */
+  releaseSlot(clusterId: string): Promise<boolean>;
+  /** Load a cluster's admin credentials for deprovision DDL. */
+  findById(clusterId: string): Promise<AllocatedCluster | null>;
 }
 
 /** Thrown when every active cluster is at capacity — operators add a cluster. */
@@ -98,5 +102,13 @@ export class ClusterPool {
       // Lost the race for that slot — loop and re-select.
     }
     throw new NoClusterCapacityError();
+  }
+
+  async release(clusterId: string): Promise<boolean> {
+    return this.store.releaseSlot(clusterId);
+  }
+
+  async findById(clusterId: string): Promise<AllocatedCluster | null> {
+    return this.store.findById(clusterId);
   }
 }

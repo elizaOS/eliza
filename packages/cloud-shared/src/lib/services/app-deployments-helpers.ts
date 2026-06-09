@@ -7,6 +7,7 @@
  */
 
 import type { AppDeploymentStatus } from "../../db/schemas/apps";
+import { CONTAINER_PRICING } from "../constants/pricing";
 import { ApiError } from "../api/cloud-worker-errors";
 
 export type { AppDeploymentStatus };
@@ -56,6 +57,30 @@ export function assertDeployable(app: { deployment_status: AppDeploymentStatus }
       409,
       "session_not_ready",
       "A deployment is already in progress for this app",
+    );
+  }
+}
+
+/** Upfront deploy charge surfaced to callers before a build is queued. */
+export const APP_DEPLOY_UPFRONT_CHARGE_USD = CONTAINER_PRICING.DEPLOYMENT;
+
+/** Idempotency key for a single queued deploy (`<appId>:<startedAt iso>`). */
+export function deployCreditIdempotencyKey(deploymentId: string): string {
+  return `app_deploy:${deploymentId}`;
+}
+
+/**
+ * Throws 402 when the org cannot cover the one-time deploy charge. The actual
+ * debit happens in {@link deductDeployCredits} once the deploy is stamped.
+ */
+export function assertSufficientDeployCredits(creditBalanceUsd: number): void {
+  if (creditBalanceUsd < APP_DEPLOY_UPFRONT_CHARGE_USD) {
+    const deficit = Math.max(APP_DEPLOY_UPFRONT_CHARGE_USD - creditBalanceUsd, 0.01);
+    throw new ApiError(
+      402,
+      "insufficient_credits",
+      `Insufficient credits to deploy. Required: $${APP_DEPLOY_UPFRONT_CHARGE_USD.toFixed(2)}, ` +
+        `available: $${creditBalanceUsd.toFixed(2)}. Add at least $${deficit.toFixed(2)} at /dashboard/billing.`,
     );
   }
 }

@@ -8,10 +8,11 @@
 # the cluster + the admin superuser + locks the network surface.
 #
 # Reachable ONLY on the private apps network (the firewall opens no public 5432).
+# App containers connect via pgbouncer (6432) on the private net; direct 5432 is
+# reserved for admin DDL from the daemon.
 #
-# STAN: tune shared_buffers/max_connections for thousands of small DBs; wire
-# volume-snapshot backups; consider scram-sha-256 + per-shard nodes as
-# database_count grows.
+# STAN: volume-snapshot backups; scram-sha-256 + per-shard nodes as database_count
+# grows; tune shared_buffers as load increases.
 
 hostname: ${hostname}
 manage_etc_hosts: true
@@ -31,7 +32,31 @@ package_update: true
 packages:
   - postgresql
   - postgresql-contrib
+  - pgbouncer
   - jq
+
+write_files:
+  - path: /etc/pgbouncer/pgbouncer.ini
+    content: |
+      [databases]
+      * = host=127.0.0.1 port=5432
+
+      [pgbouncer]
+      listen_addr = 0.0.0.0
+      listen_port = 6432
+      auth_type = scram-sha-256
+      auth_file = /etc/pgbouncer/userlist.txt
+      pool_mode = transaction
+      max_client_conn = 5000
+      default_pool_size = 50
+      min_pool_size = 5
+      reserve_pool_size = 10
+      server_reset_query = DISCARD ALL
+      ignore_startup_parameters = extra_float_digits
+
+  - path: /etc/pgbouncer/userlist.txt
+    content: |
+      "postgres" "${admin_password}"
 
 runcmd:
   # 1. Mount the data volume at the Postgres data dir (survives node rebuilds).
@@ -47,13 +72,19 @@ runcmd:
   #    firewall + pg_hba are the access control; no public 5432 rule exists).
   - sed -i "s|^data_directory.*|data_directory = '$PGDATA'|" /etc/postgresql/$PGVER/main/postgresql.conf
   - sed -i "s|^#listen_addresses.*|listen_addresses = '*'|" /etc/postgresql/$PGVER/main/postgresql.conf
-  # 3. Allow the private apps subnet to connect (scram); deny everything else.
+  - sed -i "s|^#max_connections.*|max_connections = 500|" /etc/postgresql/$PGVER/main/postgresql.conf
+  - sed -i "s|^max_connections.*|max_connections = 500|" /etc/postgresql/$PGVER/main/postgresql.conf
+  - echo "max_connections = 500" >> /etc/postgresql/$PGVER/main/postgresql.conf
+  - sed -i "s|^#password_encryption.*|password_encryption = scram-sha-256|" /etc/postgresql/$PGVER/main/postgresql.conf
+  # 3. Allow the private apps subnet on pgbouncer (6432) + admin direct (5432).
   - echo "hostssl all all 10.30.0.0/16 scram-sha-256" >> /etc/postgresql/$PGVER/main/pg_hba.conf
   - echo "host    all all 10.30.0.0/16 scram-sha-256" >> /etc/postgresql/$PGVER/main/pg_hba.conf
-  - sed -i "s|^#password_encryption.*|password_encryption = scram-sha-256|" /etc/postgresql/$PGVER/main/postgresql.conf
+  - echo "host    all all 127.0.0.1/32 scram-sha-256" >> /etc/postgresql/$PGVER/main/pg_hba.conf
   - systemctl enable postgresql && systemctl start postgresql
   # 4. Set the admin (postgres) superuser password the daemon's admin DSN uses.
   - sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD '${admin_password}';"
+  - chown postgres:postgres /etc/pgbouncer/userlist.txt && chmod 600 /etc/pgbouncer/userlist.txt
+  - chown postgres:postgres /etc/pgbouncer/pgbouncer.ini
+  - systemctl enable pgbouncer && systemctl restart pgbouncer
   # STAN: generate a server TLS cert for hostssl (self-signed or internal CA);
-  # until then switch the pg_hba lines above to 'host' and the admin DSN to
-  # sslmode=disable on the private net.
+  # until then app DSNs use sslmode=disable on the private net via pgbouncer.

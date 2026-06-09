@@ -3,7 +3,12 @@ import { dbRead } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { containers as containersTable } from "../../db/schemas/containers";
 import { logger } from "../utils/logger";
-import { readDockerHostPortFromMetadata } from "./docker-sandbox-utils";
+import { allocatePort, readDockerHostPortFromMetadata } from "./docker-sandbox-utils";
+
+/** Ephemeral host port range for app containers (maps container app port). */
+export const APP_CONTAINER_HOST_PORT_MIN = 20000;
+/** Exclusive upper bound — includes host port 39999. */
+export const APP_CONTAINER_HOST_PORT_MAX = 40000;
 
 /**
  * Return Docker host ports already allocated on a node across both control
@@ -51,4 +56,10 @@ export async function getUsedDockerHostPorts(nodeId: string): Promise<Set<number
   }
 
   return used;
+}
+
+/** Pick a collision-safe host port for an app container on a docker node. */
+export async function allocateAppContainerHostPort(nodeId: string): Promise<number> {
+  const used = await getUsedDockerHostPorts(nodeId);
+  return allocatePort(APP_CONTAINER_HOST_PORT_MIN, APP_CONTAINER_HOST_PORT_MAX, used);
 }

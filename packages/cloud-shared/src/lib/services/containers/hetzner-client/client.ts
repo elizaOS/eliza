@@ -26,6 +26,7 @@ import {
 } from "../../docker-sandbox-utils";
 import { DockerSSHClient } from "../../docker-ssh";
 import { getHetznerVolumeService, isHetznerVolumesAvailable } from "../hetzner-volumes";
+import { buildRemoveAmbassadorCmdForContainer } from "../../app-db-ambassador";
 import {
   decodeWorkspaceFiles,
   deleteWorkspaceFiles,
@@ -406,6 +407,37 @@ export class HetznerContainersClient {
           error: err instanceof Error ? err.message : String(err),
         });
       });
+    } else if (row.node_id && row.name) {
+      // App containers (Product 2) may lack hetzner-docker metadata on legacy rows;
+      // node_id + name are enough to docker-stop on the worker node.
+      const node = await dockerNodesRepository.findByNodeId(row.node_id);
+      if (node) {
+        const ssh = DockerSSHClient.getClient(
+          node.hostname,
+          node.ssh_port ?? 22,
+          node.host_key_fingerprint ?? undefined,
+          node.ssh_user ?? "root",
+        );
+        await ssh
+          .exec(`docker stop -t 10 ${shellQuote(row.name)}`, 30_000)
+          .catch((err) => {
+            logger.warn(`[hetzner-client] app container docker stop failed for ${row.name}`, {
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+        await ssh.exec(`docker rm -f ${shellQuote(row.name)}`, 30_000);
+        await ssh.exec(buildRemoveAmbassadorCmdForContainer(row.name), 30_000).catch(() => {});
+        await dockerNodesRepository.decrementAllocated(row.node_id).catch((err) => {
+          logger.warn(`[hetzner-client] decrementAllocated failed for ${row.node_id}`, {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      } else {
+        logger.warn("[hetzner-client] app container stop skipped: node not registered", {
+          containerId,
+          nodeId: row.node_id,
+        });
+      }
     }
 
     if (row.hcloud_volume_id !== null && isHetznerVolumesAvailable()) {

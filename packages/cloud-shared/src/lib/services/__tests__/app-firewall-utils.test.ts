@@ -28,6 +28,19 @@ describe("buildAppNodeNftablesRules", () => {
   test("omits the proxy allow when no proxy ip is given", () => {
     expect(buildAppNodeNftablesRules()).not.toContain("accept\n    }");
   });
+
+  test("allows the apps private subnet before the RFC1918 drop (tenant DB ambassador)", () => {
+    const rules = buildAppNodeNftablesRules({
+      egressProxyIp: "172.17.0.1",
+      allowedPrivateCidrs: ["10.30.0.0/16"],
+    });
+    const proxyIdx = rules.indexOf("ip daddr 172.17.0.1 accept");
+    const privateIdx = rules.indexOf("ip daddr 10.30.0.0/16 accept");
+    const rfc1918Idx = rules.indexOf("ip daddr 10.0.0.0/8 drop");
+    expect(proxyIdx).toBeGreaterThan(-1);
+    expect(privateIdx).toBeGreaterThan(proxyIdx);
+    expect(rfc1918Idx).toBeGreaterThan(privateIdx);
+  });
 });
 
 describe("buildHetznerAppFirewallRules", () => {

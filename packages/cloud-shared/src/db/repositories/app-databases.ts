@@ -15,6 +15,7 @@ type DatabaseStateColumns = Pick<
   | "user_database_region"
   | "user_database_status"
   | "user_database_error"
+  | "user_database_cluster_id"
 >;
 
 export type AppDatabaseState = DatabaseStateColumns & {
@@ -30,6 +31,7 @@ type AppDatabaseStateUpdate = Partial<
     | "user_database_region"
     | "user_database_status"
     | "user_database_error"
+    | "user_database_cluster_id"
   >
 >;
 
@@ -144,6 +146,7 @@ export class AppDatabasesRepository {
       user_database_region: database.user_database_region,
       user_database_status: database.user_database_status as UserDatabaseStatus,
       user_database_error: database.user_database_error,
+      user_database_cluster_id: database.user_database_cluster_id,
       source: "app_databases",
     };
   }

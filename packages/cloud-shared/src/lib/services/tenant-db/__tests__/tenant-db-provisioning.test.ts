@@ -23,6 +23,14 @@ function deps(
       async allocate() {
         return ALLOCATED;
       },
+      async release() {
+        seen.releasedCluster = true;
+        return true;
+      },
+      async findById(clusterId) {
+        seen.foundCluster = clusterId;
+        return ALLOCATED;
+      },
     },
     async decrypt(enc) {
       seen.decryptedArg = enc;
@@ -70,6 +78,12 @@ describe("SqlTenantDbProvisioning", () => {
       pool: {
         async allocate() {
           throw new Error("No tenant DB cluster has capacity");
+        },
+        async release() {
+          return true;
+        },
+        async findById() {
+          return null;
         },
       },
     });

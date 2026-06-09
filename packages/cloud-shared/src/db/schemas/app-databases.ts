@@ -40,6 +40,9 @@ export const appDatabases = pgTable(
     /** Error message if provisioning failed. */
     user_database_error: text("user_database_error"),
 
+    /** Tenant DB cluster that hosts an isolated per-app database (Apps / Product 2). */
+    user_database_cluster_id: text("user_database_cluster_id"),
+
     // Lifecycle
     created_at: timestamp("created_at").notNull().defaultNow(),
     updated_at: timestamp("updated_at").notNull().defaultNow(),

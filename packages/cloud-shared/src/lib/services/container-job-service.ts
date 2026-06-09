@@ -18,6 +18,7 @@ import {
   executeContainerLogs,
   executeContainerProvision,
   executeContainerRestart,
+  executeContainerStop,
   executeContainerUpgrade,
 } from "./container-job-executors";
 import {
@@ -25,6 +26,7 @@ import {
   containerLogsJobDataToRecord,
   containerProvisionJobDataToRecord,
   containerRestartJobDataToRecord,
+  containerStopJobDataToRecord,
   containerUpgradeJobDataToRecord,
   type JobLike,
 } from "./container-jobs-data";
@@ -32,6 +34,7 @@ import { JOB_TYPES } from "./provisioning-job-types";
 
 const CONTAINER_JOB_TYPES: ReadonlySet<string> = new Set([
   JOB_TYPES.CONTAINER_PROVISION,
+  JOB_TYPES.CONTAINER_STOP,
   JOB_TYPES.CONTAINER_DELETE,
   JOB_TYPES.CONTAINER_RESTART,
   JOB_TYPES.CONTAINER_UPGRADE,
@@ -51,6 +54,9 @@ export async function dispatchContainerJob(
   switch (job.type) {
     case JOB_TYPES.CONTAINER_PROVISION:
       await executeContainerProvision(job, deps);
+      return;
+    case JOB_TYPES.CONTAINER_STOP:
+      await executeContainerStop(job, deps);
       return;
     case JOB_TYPES.CONTAINER_DELETE:
       await executeContainerDelete(job, deps);
@@ -117,6 +123,14 @@ export class ContainerJobEnqueuer {
       organizationId: p.organizationId,
       userId: p.userId,
       data: containerProvisionJobDataToRecord(p),
+    });
+  }
+
+  enqueueStop(p: { containerId: string; organizationId: string }): Promise<{ id: string }> {
+    return this.writer.insertJob({
+      type: JOB_TYPES.CONTAINER_STOP,
+      organizationId: p.organizationId,
+      data: containerStopJobDataToRecord(p),
     });
   }
 

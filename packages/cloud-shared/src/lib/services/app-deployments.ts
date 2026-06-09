@@ -10,10 +10,13 @@
  * When a real build/upload service (Vercel or otherwise) lands, this service
  * becomes the integration boundary — callers will not need to change.
  */
+import { organizationsRepository } from "../../db/repositories/organizations";
 import { logger } from "../utils/logger";
+import { deductDeployCredits } from "./app-deploy-billing";
 import type { AppDeployRunner } from "./app-deploy-orchestrator";
 import {
   assertDeployable,
+  assertSufficientDeployCredits,
   type DeploymentStatus,
   deploymentIdFor,
   publicStatusFor,
@@ -115,6 +118,12 @@ export class AppDeploymentsService {
     }
     assertDeployable(existing);
 
+    const org = await organizationsRepository.findById(input.organizationId);
+    if (!org) {
+      throw new Error("Organization not found");
+    }
+    assertSufficientDeployCredits(Number(org.credit_balance));
+
     const startedAt = new Date();
     const updated = await appsService.update(input.appId, {
       deployment_status: "building",
@@ -122,6 +131,19 @@ export class AppDeploymentsService {
     });
     if (!updated) {
       throw new Error("Failed to record deployment start");
+    }
+
+    const deploymentId = deploymentIdFor(updated);
+    try {
+      await deductDeployCredits({
+        organizationId: input.organizationId,
+        userId: input.userId,
+        appId: input.appId,
+        deploymentId,
+      });
+    } catch (error) {
+      await appsService.update(input.appId, { deployment_status: "failed" });
+      throw error;
     }
 
     // Apps lane (Product 2): trigger the real isolated deploy.
@@ -154,6 +176,7 @@ export class AppDeploymentsService {
       appId: input.appId,
       organizationId: input.organizationId,
       userId: input.userId,
+      deploymentId,
       repoUrl: input.repoUrl ?? updated.github_repo ?? null,
       ref: input.ref ?? null,
       dockerfile: input.dockerfile ?? null,

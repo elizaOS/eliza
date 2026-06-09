@@ -305,8 +305,17 @@ export class AppsService {
     // no-ops for shared DB apps or apps without a provisioned project.
     if (app) {
       try {
-        const { userDatabaseService } = await import("./user-database");
-        await userDatabaseService.cleanupDatabase(id);
+        const { UserDatabaseService, userDatabaseService } = await import("./user-database");
+        let databaseService = userDatabaseService;
+        try {
+          const { makeTenantDbProvisioning } = await import(
+            "./tenant-db/make-tenant-db-provisioning"
+          );
+          databaseService = new UserDatabaseService(makeTenantDbProvisioning());
+        } catch {
+          // Worker runtime — singleton falls back to cluster-slot release only.
+        }
+        await databaseService.cleanupDatabase(id);
         logger.info("Cleaned up user database for app", { appId: id });
       } catch (error) {
         // Log but don't fail deletion - database might already be gone

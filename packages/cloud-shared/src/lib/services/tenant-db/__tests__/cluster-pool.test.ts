@@ -71,6 +71,12 @@ describe("ClusterPool.allocate", () => {
         claims.push(id);
         return claim(id);
       },
+      async releaseSlot() {
+        return true;
+      },
+      async findById() {
+        return null;
+      },
     };
   }
 
@@ -102,6 +108,12 @@ describe("ClusterPool.allocate", () => {
           return false;
         }
         return true;
+      },
+      async releaseSlot() {
+        return true;
+      },
+      async findById() {
+        return null;
       },
     };
     const got = await new ClusterPool(s).allocate();

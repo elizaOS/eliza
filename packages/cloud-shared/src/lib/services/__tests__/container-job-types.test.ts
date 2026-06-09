@@ -8,6 +8,7 @@ import { JOB_TYPES } from "../provisioning-job-types";
 
 const CONTAINER_TYPES = {
   CONTAINER_PROVISION: "container_provision",
+  CONTAINER_STOP: "container_stop",
   CONTAINER_DELETE: "container_delete",
   CONTAINER_RESTART: "container_restart",
   CONTAINER_UPGRADE: "container_upgrade",

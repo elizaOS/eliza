@@ -44,6 +44,8 @@ export const JOB_TYPES = {
   // executors are added separately and never alter the AGENT_* arms.
   /** Provision a generic app container from a caller-supplied image. */
   CONTAINER_PROVISION: "container_provision",
+  /** Stop the live Docker container while preserving the control-plane row (billing suspend). */
+  CONTAINER_STOP: "container_stop",
   /** Stop + remove an app container and free its slot. */
   CONTAINER_DELETE: "container_delete",
   /** Restart an app container in place. */
@@ -60,6 +62,12 @@ export const JOB_TYPES = {
    * `pg`/SSH off the workerd request path.
    */
   APP_DEPLOY: "app_deploy",
+  /**
+   * Drop a per-tenant app database (DDL) and release its cluster slot. The
+   * cloud-api Worker enqueues this on app delete; the provisioning-worker
+   * daemon runs `makeTenantDbProvisioning().deprovisionForApp()` (node-`pg`).
+   */
+  TENANT_DB_DEPROVISION: "tenant_db_deprovision",
 } as const;
 
 export type ProvisioningJobType = (typeof JOB_TYPES)[keyof typeof JOB_TYPES];

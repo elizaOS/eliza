@@ -4,9 +4,9 @@
 # each app on its OWN `--internal` docker network with --cap-drop=ALL, behind a
 # default-deny egress proxy (see cloud-shared/lib/services/app-network-utils.ts).
 #
-# This bootstrap installs docker + a squid egress proxy + an ingress reverse
-# proxy (Caddy) that maps <shortid>.<base-domain> -> the app container's host
-# port (the ingress-map / public_hostname the runtime stamps).
+# This bootstrap installs docker + squid egress proxy + Caddy ingress + host
+# nftables isolation. Caddy serves *.<apps_base_domain> and reverse-proxies to
+# per-container host ports (see cloud-api admin/containers/ingress-map).
 #
 # STAN: for untrusted images decide gVisor (runsc) / Kata / userns-remap +
 # seccomp profile; this draft uses stock docker + cap-drop + --internal, which is
@@ -31,6 +31,9 @@ apt:
     docker:
       source: "deb [arch=amd64 signed-by=$KEY_FILE] https://download.docker.com/linux/ubuntu $RELEASE stable"
       keyid: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+    caddy:
+      source: "deb [signed-by=$KEY_FILE] https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main"
+      keyid: 1CADA2F4F588A4B8
 
 package_update: true
 packages:
@@ -40,12 +43,25 @@ packages:
   - containerd.io
   - squid
   - jq
+  - nftables
+  - caddy
 
 write_files:
-  # Default-deny egress proxy: app containers (HTTP_PROXY -> :3128) can only
-  # reach explicitly allowlisted hosts. STAN: extend allowed_dst as needed
-  # (package registries the apps legitimately need). The tenant DB is reached
-  # over the private net, NOT through this proxy.
+  # Per-app docker networks get /24 subnets from distinct pools — avoids bridge
+  # collisions when thousands of `--internal` networks are created (#8321 #5).
+  - path: /etc/docker/daemon.json
+    content: |
+      {
+        "default-address-pools": [
+          { "base": "172.18.0.0/16", "size": 24 },
+          { "base": "172.19.0.0/16", "size": 24 }
+        ],
+        "log-driver": "json-file",
+        "log-opts": { "max-size": "10m", "max-file": "3" }
+      }
+
+  # Default-deny egress proxy — mirrors buildSquidAllowlistConf() defaults in
+  # cloud-shared (DEFAULT_APP_EGRESS_ALLOWED_HOSTS). Tenant DB is private-net only.
   - path: /etc/squid/conf.d/apps-egress.conf
     content: |
       http_port 3128
@@ -53,11 +69,63 @@ write_files:
       http_access allow allowed_dst
       http_access deny all
 
+  # Belt-and-suspenders forward-chain isolation — mirrors buildAppNodeNftablesRules()
+  # (docker bridge gateway for squid egress + apps private net for DB ambassador).
+  - path: /etc/nftables.d/app-isolation.nft
+    content: |
+      table inet app_isolation {
+          chain forward {
+              type filter hook forward priority 0; policy drop;
+              ct state established,related accept
+              ip daddr 172.17.0.1 accept
+              ip daddr ${apps_private_network_cidr} accept
+              ip daddr 169.254.169.254 drop
+              ip daddr 10.0.0.0/8 drop
+              ip daddr 172.16.0.0/12 drop
+              ip daddr 192.168.0.0/16 drop
+          }
+      }
+
+  # Caddy ingress — provisioning-worker pushes ingress-map snippets over SSH;
+  # the path unit reloads when apps.d changes. Admin API is loopback-only for
+  # explicit /load reloads via APPS_CADDY_ADMIN_URL.
+  - path: /etc/caddy/Caddyfile
+    content: |
+      {
+        admin 127.0.0.1:2019
+        email ops@elizacloud.ai
+      }
+      import /etc/caddy/apps.d/*.caddy
+
+  - path: /etc/caddy/apps.d/.keep
+    content: ""
+    permissions: "0644"
+
+  - path: /etc/systemd/system/eliza-caddy-reload.path
+    content: |
+      [Path]
+      PathChanged=/etc/caddy/apps.d
+      PathChanged=/etc/caddy/Caddyfile
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/systemd/system/eliza-caddy-reload.service
+    content: |
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/bin/caddy validate --config /etc/caddy/Caddyfile
+      ExecStart=/usr/bin/caddy reload --config /etc/caddy/Caddyfile
+
 runcmd:
-  - systemctl enable docker && systemctl start docker
+  - mkdir -p /etc/caddy/apps.d && chown -R caddy:caddy /etc/caddy/apps.d
+  - systemctl enable docker && systemctl restart docker
   - systemctl enable squid && systemctl restart squid
-  # The tenant DB lives at ${tenant_db_host} on the private net; app containers
-  # get a per-tenant DSN pointing there (injected by the deploy runner).
+  - nft -f /etc/nftables.d/app-isolation.nft || true
+  - systemctl enable --now caddy
+  - systemctl enable eliza-caddy-reload.path && systemctl start eliza-caddy-reload.path
   - echo "tenant_db_host=${tenant_db_host}" > /etc/eliza-apps-node.env
-  # STAN: install Caddy (or reuse the existing ingress-map -> Caddyfile emitter)
-  # to terminate TLS and reverse-proxy <shortid>.<base> to the container host port.
+  - echo "apps_base_domain=${apps_base_domain}" >> /etc/eliza-apps-node.env
+  - echo "apps_private_network_cidr=${apps_private_network_cidr}" >> /etc/eliza-apps-node.env
+  - echo "egress_proxy_url=http://172.17.0.1:3128" >> /etc/eliza-apps-node.env
+  - echo "APPS_CADDY_ADMIN_URL=http://127.0.0.1:2019" >> /etc/eliza-apps-node.env

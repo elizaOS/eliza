@@ -148,6 +148,8 @@ export const containerBillingRecords = pgTable(
     amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
     billing_period_start: timestamp("billing_period_start").notNull(),
     billing_period_end: timestamp("billing_period_end").notNull(),
+    /** UTC calendar day (`YYYY-MM-DD`) for idempotent daily billing. */
+    billing_period: text("billing_period"),
     status: text("status").default("success").notNull(), // success, failed, insufficient_credits
     credit_transaction_id: uuid("credit_transaction_id").references(() => creditTransactions.id, {
       onDelete: "set null",

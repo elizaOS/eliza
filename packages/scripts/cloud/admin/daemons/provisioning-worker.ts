@@ -67,6 +67,7 @@ export interface ProvisioningWorkerConfig {
   batchSize: number;
   runOnce: boolean;
   nodeHealthIntervalMs: number;
+  appsIngressSyncIntervalMs: number;
 }
 
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
@@ -77,6 +78,8 @@ const DEFAULT_BATCH_SIZE = 3;
  * CRON_FANOUT schedule. SSH uses `CONTAINERS_SSH_KEY` from this host.
  */
 const DEFAULT_NODE_HEALTH_INTERVAL_MS = 5 * 60_000;
+/** Apps ingress-map → Caddy live sync cadence (control-plane pushes over SSH). */
+const DEFAULT_APPS_INGRESS_SYNC_INTERVAL_MS = 60_000;
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -102,6 +105,10 @@ export function readWorkerConfig(
     nodeHealthIntervalMs: parsePositiveInt(
       env.WORKER_NODE_HEALTH_INTERVAL,
       DEFAULT_NODE_HEALTH_INTERVAL_MS,
+    ),
+    appsIngressSyncIntervalMs: parsePositiveInt(
+      env.APPS_INGRESS_SYNC_INTERVAL_MS,
+      DEFAULT_APPS_INGRESS_SYNC_INTERVAL_MS,
     ),
   };
 }
@@ -471,8 +478,65 @@ async function processPoolDrainIdleCycle(): Promise<PoolDrainSummary> {
   return { drained: result.drained.length };
 }
 
+interface AppsIngressSyncCycleSummary {
+  fetchedEntries: number;
+  synced: number;
+  skipped: number;
+  failed: number;
+}
+
+/**
+ * Poll cloud-api ingress-map (`?format=caddy`) and push the snippet to each app
+ * worker node over SSH, then reload Caddy via APPS_CADDY_ADMIN_URL on the node.
+ * Gated by APPS_INGRESS_SYNC_ENABLED=1 + API origin + super-admin API key.
+ */
+async function processAppsIngressSyncCycle(): Promise<AppsIngressSyncCycleSummary | null> {
+  const {
+    readAppsIngressSyncConfig,
+    resolveAppsIngressNodeHostnames,
+    syncAppsIngressToNodes,
+  } = await import("@elizaos/cloud-shared/lib/services/apps-ingress-client");
+  const { DockerSSHClient } = await import("@elizaos/cloud-shared/lib/services/docker-ssh");
+
+  const config = readAppsIngressSyncConfig();
+  if (!config) return null;
+
+  const hostnames = resolveAppsIngressNodeHostnames();
+  if (hostnames.length === 0) {
+    return { fetchedEntries: 0, synced: 0, skipped: 0, failed: 0 };
+  }
+
+  const summary = await syncAppsIngressToNodes({
+    config,
+    hostnames,
+    previousSnippetByHost: ingressSnippetByHost,
+    sshForHost: (hostname) => new DockerSSHClient({ hostname }),
+  });
+
+  let synced = 0;
+  let skipped = 0;
+  let failed = 0;
+  for (const node of summary.nodes) {
+    if (node.error) {
+      failed += 1;
+      continue;
+    }
+    if (node.changed) synced += 1;
+    else skipped += 1;
+  }
+
+  return {
+    fetchedEntries: summary.fetchedEntries,
+    synced,
+    skipped,
+    failed,
+  };
+}
+
 let running = true;
 let lastInfraMaintenanceAt = 0;
+let lastAppsIngressSyncAt = 0;
+const ingressSnippetByHost = new Map<string, string>();
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -562,6 +626,20 @@ async function pollCycle(
   if (now - lastInfraMaintenanceAt >= config.nodeHealthIntervalMs) {
     lastInfraMaintenanceAt = now;
     await runInfraMaintenanceCycle(logger);
+  }
+
+  if (now - lastAppsIngressSyncAt >= config.appsIngressSyncIntervalMs) {
+    lastAppsIngressSyncAt = now;
+    try {
+      const ingress = await processAppsIngressSyncCycle();
+      if (ingress && (ingress.synced > 0 || ingress.failed > 0)) {
+        logger.info("[provisioning-worker] apps ingress sync cycle complete", ingress);
+      }
+    } catch (error) {
+      logger.error("[provisioning-worker] apps ingress sync cycle failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 }
 
@@ -677,6 +755,7 @@ async function main(): Promise<void> {
     batchSize: config.batchSize,
     runOnce: config.runOnce,
     nodeHealthIntervalMs: config.nodeHealthIntervalMs,
+    appsIngressSyncIntervalMs: config.appsIngressSyncIntervalMs,
   });
 
   await assertProvisioningWorkerPreflight();

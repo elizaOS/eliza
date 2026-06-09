@@ -67,8 +67,7 @@ export function makeTenantDbProvisioning(
 
   const resolveClusterByHost =
     opts.resolveClusterByHost ?? ((host: string) => tenantDbClustersRepository.findByHost(host));
-  const releaseSlot =
-    opts.releaseSlot ?? ((clusterId: string) => tenantDbClustersRepository.releaseSlot(clusterId));
+  const releaseSlot = opts.releaseSlot ?? (async (clusterId: string) => { await tenantDbClustersRepository.releaseSlot(clusterId); });
 
   return new SqlTenantDbProvisioning({
     pool,

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   mapContainerRowToAppContainerRow,
+  mergeAppHetznerMetadata,
   mergeHostPlacementMetadata,
   type ProjectableContainerRow,
 } from "../app-container-store";
@@ -19,6 +20,7 @@ function row(overrides: Partial<ProjectableContainerRow> = {}): ProjectableConta
     user_id: "user-1",
     environment_vars: { DATABASE_URL: DSN, PORT: "3000" },
     metadata: {},
+    node_id: null,
     ...overrides,
   };
 }
@@ -35,6 +37,7 @@ describe("mapContainerRowToAppContainerRow", () => {
       organizationId: "org-1",
       userId: "user-1",
       environmentVars: { DATABASE_URL: DSN, PORT: "3000" },
+      nodeId: null,
     });
   });
 
@@ -65,6 +68,26 @@ describe("mergeHostPlacementMetadata", () => {
   test("null/undefined existing → just the host placement", () => {
     expect(mergeHostPlacementMetadata(null, info)).toEqual(info);
     expect(mergeHostPlacementMetadata(undefined, info)).toEqual(info);
+  });
+});
+
+describe("mergeAppHetznerMetadata", () => {
+  const info = { hostContainerId: "h-9", hostPort: 21000, network: "app-net-x" };
+
+  test("adds hetzner-docker fields for billing cancel + ingress-map", () => {
+    const meta = mergeAppHetznerMetadata({ appId: "a1" }, info, {
+      nodeId: "app-node-1",
+      hostname: "10.30.1.20",
+      containerName: "app-abc",
+      hostPort: 21000,
+      containerPort: 3000,
+      image: "ghcr.io/elizaos/app-x:latest",
+    });
+    expect(meta.provider).toBe("hetzner-docker");
+    expect(meta.containerName).toBe("app-abc");
+    expect(meta.hostname).toBe("10.30.1.20");
+    expect(meta.hostPort).toBe(21000);
+    expect(meta.appId).toBe("a1");
   });
 });
 

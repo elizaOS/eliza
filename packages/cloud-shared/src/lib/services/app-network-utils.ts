@@ -18,6 +18,15 @@
 
 import { shellQuote } from "./docker-sandbox-utils";
 
+/** Default egress allowlist for untrusted app containers (matches cloud-init). */
+export const DEFAULT_APP_EGRESS_ALLOWED_HOSTS = [
+  ".ghcr.io",
+  ".githubusercontent.com",
+] as const;
+
+/** Default docker bridge gateway — egress proxy reachable from `--internal` app nets. */
+export const DEFAULT_DOCKER_BRIDGE_GATEWAY = "172.17.0.1";
+
 export const APP_NETWORK_DEFAULTS = {
   /** Cap on processes to blunt fork bombs from untrusted images. */
   pidsLimit: 512,
@@ -75,7 +84,9 @@ export function buildAppEgressEnv(egressProxyUrl: string): Record<string, string
  * destination hosts. Anything not on the allowlist is refused, so a compromised
  * app can't exfiltrate to or pivot through arbitrary hosts.
  */
-export function buildSquidAllowlistConf(allowedHosts: readonly string[]): string {
+export function buildSquidAllowlistConf(
+  allowedHosts: readonly string[] = DEFAULT_APP_EGRESS_ALLOWED_HOSTS,
+): string {
   const safe = allowedHosts.filter((h) => /^[A-Za-z0-9.*_-]+$/.test(h));
   const acls = safe.map((h) => `acl allowed_dst dstdomain ${h}`).join("\n");
   return [

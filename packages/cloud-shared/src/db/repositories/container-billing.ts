@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import { containerBillingRecords, containers } from "../schemas/containers";
 import { creditTransactions } from "../schemas/credit-transactions";
@@ -21,6 +21,7 @@ export interface BillableContainer {
   shutdown_warning_sent_at: Date | null;
   scheduled_shutdown_at: Date | null;
   total_billed: string;
+  last_billed_at: Date | null;
 }
 
 export interface ContainerBillingOrganization {
@@ -51,6 +52,26 @@ export interface RecordSuccessfulBillingInput {
   fromEarnings: number;
   fromCredits: number;
   now: Date;
+  rebillCutoff: Date;
+}
+
+export type RecordSuccessfulDailyBillingResult =
+  | { status: "billed"; newBalance: number; transactionId: string }
+  | { status: "already_billed_recently" };
+
+export type ClaimDailyBillingSlotResult =
+  | { status: "claimed"; totalBilled: string }
+  | { status: "already_billed_recently" };
+
+export interface ClaimDailyBillingSlotInput {
+  containerId: string;
+  rebillCutoff: Date;
+  now: Date;
+}
+
+export interface FinalizeDailyBillingInput extends RecordSuccessfulBillingInput {
+  /** total_billed captured when the slot was claimed (before finalize). */
+  claimedTotalBilled: string;
 }
 
 export class ContainerBillingRepository {
@@ -70,6 +91,7 @@ export class ContainerBillingRepository {
         shutdown_warning_sent_at: containers.shutdown_warning_sent_at,
         scheduled_shutdown_at: containers.scheduled_shutdown_at,
         total_billed: containers.total_billed,
+        last_billed_at: containers.last_billed_at,
       })
       .from(containers)
       .where(
@@ -111,7 +133,23 @@ export class ContainerBillingRepository {
     return orgRows.map((org) => ({
       ...org,
       billing_email: billingEmailByOrg.get(org.id) ?? null,
-    }));
+    })      );
+  }
+
+  /** Running containers marked suspended in billing — still consuming Hetzner. */
+  async listSuspendedButRunning(): Promise<
+    Pick<BillableContainer, "id" | "name" | "organization_id">[]
+  > {
+    return await dbRead
+      .select({
+        id: containers.id,
+        name: containers.name,
+        organization_id: containers.organization_id,
+      })
+      .from(containers)
+      .where(
+        and(eq(containers.status, "running"), eq(containers.billing_status, "suspended")),
+      );
   }
 
   async suspendContainer(containerId: string, now: Date): Promise<void> {
@@ -150,10 +188,43 @@ export class ContainerBillingRepository {
     });
   }
 
-  async recordSuccessfulDailyBilling(input: RecordSuccessfulBillingInput): Promise<{
-    newBalance: number;
-    transactionId: string;
-  }> {
+  /**
+   * Reserve a daily billing slot before earnings conversion so a cron retry
+   * cannot double-debit redeemable_earnings if finalize fails mid-flight.
+   */
+  async claimDailyBillingSlot(
+    input: ClaimDailyBillingSlotInput,
+  ): Promise<ClaimDailyBillingSlotResult> {
+    const [claimed] = await dbWrite
+      .update(containers)
+      .set({
+        last_billed_at: input.now,
+        next_billing_at: new Date(input.now.getTime() + 24 * 60 * 60 * 1000),
+        updated_at: input.now,
+      })
+      .where(
+        and(
+          eq(containers.id, input.containerId),
+          or(
+            isNull(containers.last_billed_at),
+            lt(containers.last_billed_at, input.rebillCutoff),
+          ),
+        ),
+      )
+      .returning({ total_billed: containers.total_billed });
+
+    if (!claimed) {
+      return { status: "already_billed_recently" as const };
+    }
+
+    return { status: "claimed" as const, totalBilled: claimed.total_billed };
+  }
+
+  async finalizeDailyBilling(
+    input: FinalizeDailyBillingInput,
+  ): Promise<RecordSuccessfulDailyBillingResult> {
+    const billingPeriod = input.now.toISOString().split("T")[0];
+
     return await dbWrite.transaction(async (tx) => {
       await tx
         .update(organizations)
@@ -175,7 +246,7 @@ export class ContainerBillingRepository {
             container_id: input.containerId,
             container_name: input.containerName,
             billing_type: "daily_container",
-            billing_period: input.now.toISOString().split("T")[0],
+            billing_period: billingPeriod,
             paid_from_earnings: input.fromEarnings.toFixed(4),
             paid_from_credits: input.fromCredits.toFixed(4),
           },
@@ -186,28 +257,62 @@ export class ContainerBillingRepository {
       await tx
         .update(containers)
         .set({
-          last_billed_at: input.now,
-          next_billing_at: new Date(input.now.getTime() + 24 * 60 * 60 * 1000),
           billing_status: "active" as ContainerBillingStatus,
           shutdown_warning_sent_at: null,
           scheduled_shutdown_at: null,
-          total_billed: String(Number(input.currentTotalBilled) + input.dailyCost),
+          total_billed: String(Number(input.claimedTotalBilled) + input.dailyCost),
           updated_at: input.now,
         })
         .where(eq(containers.id, input.containerId));
 
-      await tx.insert(containerBillingRecords).values({
-        container_id: input.containerId,
-        organization_id: input.organizationId,
-        amount: String(input.dailyCost),
-        billing_period_start: input.now,
-        billing_period_end: new Date(input.now.getTime() + 24 * 60 * 60 * 1000),
-        status: "success",
-        credit_transaction_id: creditTx.id,
-        created_at: input.now,
-      });
+      try {
+        await tx.insert(containerBillingRecords).values({
+          container_id: input.containerId,
+          organization_id: input.organizationId,
+          amount: String(input.dailyCost),
+          billing_period: billingPeriod,
+          billing_period_start: input.now,
+          billing_period_end: new Date(input.now.getTime() + 24 * 60 * 60 * 1000),
+          status: "success",
+          credit_transaction_id: creditTx.id,
+          created_at: input.now,
+        });
+      } catch (error) {
+        const pgCode =
+          error && typeof error === "object" && "code" in error
+            ? String((error as { code: unknown }).code)
+            : "";
+        if (pgCode === "23505") {
+          throw new Error(
+            `Duplicate container billing record for ${input.containerId} on ${billingPeriod}`,
+          );
+        }
+        throw error;
+      }
 
-      return { newBalance: input.newBalance, transactionId: creditTx.id };
+      return {
+        status: "billed" as const,
+        newBalance: input.newBalance,
+        transactionId: creditTx.id,
+      };
+    });
+  }
+
+  /** @deprecated Prefer claimDailyBillingSlot + finalizeDailyBilling for cron billing. */
+  async recordSuccessfulDailyBilling(
+    input: RecordSuccessfulBillingInput,
+  ): Promise<RecordSuccessfulDailyBillingResult> {
+    const claim = await this.claimDailyBillingSlot({
+      containerId: input.containerId,
+      rebillCutoff: input.rebillCutoff,
+      now: input.now,
+    });
+    if (claim.status === "already_billed_recently") {
+      return { status: "already_billed_recently" };
+    }
+    return this.finalizeDailyBilling({
+      ...input,
+      claimedTotalBilled: claim.totalBilled,
     });
   }
 }

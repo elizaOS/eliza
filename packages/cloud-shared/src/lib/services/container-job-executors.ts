@@ -11,7 +11,10 @@
  * or repo directly.
  */
 
-import type { AppContainerProvider } from "./app-container-provider";
+import type {
+  ProvisionAppContainerParams,
+  ProvisionedAppContainer,
+} from "./app-container-provider";
 import { deriveAppPublicUrl } from "./app-url";
 import {
   type JobLike,
@@ -19,9 +22,18 @@ import {
   readContainerLogsJobData,
   readContainerProvisionJobData,
   readContainerRestartJobData,
+  readContainerStopJobData,
   readContainerUpgradeJobData,
 } from "./container-jobs-data";
 import { buildContainerProvisionInput } from "./container-provider-input";
+
+/** SSH/docker operations the CONTAINER_* executors delegate to. */
+export interface AppContainerOps {
+  provision(params: ProvisionAppContainerParams): Promise<ProvisionedAppContainer>;
+  delete(containerName: string, nodeId?: string | null): Promise<void>;
+  restart(containerName: string, nodeId?: string | null): Promise<void>;
+  logs(containerName: string, tail?: number, nodeId?: string | null): Promise<string>;
+}
 
 /** The fields an executor needs from an app container row. */
 export interface AppContainerRow {
@@ -34,6 +46,7 @@ export interface AppContainerRow {
   userId: string;
   /** Caller env incl. the app's per-tenant DATABASE_URL (never the shared one). */
   environmentVars?: Record<string, string>;
+  nodeId?: string | null;
 }
 
 /** Read/write seam for app container state (over the `containers` table). */
@@ -41,14 +54,14 @@ export interface AppContainerStore {
   getById(containerId: string): Promise<AppContainerRow | null>;
   markRunning(
     containerId: string,
-    info: { hostContainerId: string; hostPort: number; network: string; nodeHost?: string },
+    info: { hostContainerId: string; hostPort: number; network: string; nodeHost?: string; nodeId?: string },
   ): Promise<void>;
   markDeleted(containerId: string): Promise<void>;
   markError(containerId: string, error: string): Promise<void>;
 }
 
 export interface ContainerExecutorDeps {
-  provider: AppContainerProvider;
+  provider: AppContainerOps;
   store: AppContainerStore;
   /**
    * Ingress hooks (optional). When set, the executor registers the per-app route
@@ -106,6 +119,7 @@ export async function executeContainerProvision(
       hostPort: result.hostPort,
       network: result.network,
       nodeHost: result.nodeHost,
+      nodeId: result.nodeId,
     });
     // Register the ingress route so `<shortid>.<base>` reaches this container,
     // plus the app's verified custom domains (best-effort — a domain-lookup
@@ -129,13 +143,29 @@ export async function executeContainerProvision(
   }
 }
 
+/**
+ * Stop the live Docker runtime while preserving the control-plane row — the
+ * primitive billing suspension needs. Runs on the daemon via hetzner-client
+ * (SSH), not inline from the Worker.
+ */
+export async function executeContainerStop(
+  job: JobLike,
+  _deps: ContainerExecutorDeps,
+): Promise<void> {
+  const { containerId, organizationId } = readContainerStopJobData(job);
+  const { getHetznerContainersClient } = await import("./containers/hetzner-client");
+  await getHetznerContainersClient().stopContainer(containerId, organizationId, {
+    purgeVolume: false,
+  });
+}
+
 export async function executeContainerDelete(
   job: JobLike,
   deps: ContainerExecutorDeps,
 ): Promise<void> {
   const { containerId } = readContainerDeleteJobData(job);
   const row = await deps.store.getById(containerId);
-  if (row) await deps.provider.delete(row.containerName);
+  if (row) await deps.provider.delete(row.containerName, row.nodeId);
   // Remove the ingress route (best-effort; a reconciler sweeps any orphan).
   const endpoint = deriveAppPublicUrl(containerId);
   if (endpoint && deps.onRouteRemoved) {
@@ -150,7 +180,7 @@ export async function executeContainerRestart(
 ): Promise<void> {
   const { containerId } = readContainerRestartJobData(job);
   const row = await requireRow(deps.store, containerId);
-  await deps.provider.restart(row.containerName);
+  await deps.provider.restart(row.containerName, row.nodeId);
 }
 
 export async function executeContainerLogs(
@@ -159,7 +189,7 @@ export async function executeContainerLogs(
 ): Promise<string> {
   const data = readContainerLogsJobData(job);
   const row = await requireRow(deps.store, data.containerId);
-  return deps.provider.logs(row.containerName, data.tail);
+  return deps.provider.logs(row.containerName, data.tail, row.nodeId);
 }
 
 /**

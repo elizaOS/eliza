@@ -39,11 +39,13 @@
 
 import { eq } from "drizzle-orm";
 import { dbRead } from "../../db/helpers";
+import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { containersRepository } from "../../db/repositories/containers";
 import { containers } from "../../db/schemas/containers";
 import { logger } from "../utils/logger";
 import { deriveAppPublicUrl } from "./app-url";
 import type { AppContainerRow, AppContainerStore } from "./container-job-executors";
+import type { HetznerContainerMetadata } from "./containers/hetzner-client/types";
 
 /** The `containers` columns the executor's view projects from (structural). */
 export interface ProjectableContainerRow {
@@ -56,6 +58,7 @@ export interface ProjectableContainerRow {
   user_id: string;
   environment_vars: Record<string, string> | null;
   metadata: Record<string, unknown> | null;
+  node_id: string | null;
 }
 
 /**
@@ -77,6 +80,7 @@ export function mapContainerRowToAppContainerRow(row: ProjectableContainerRow): 
     organizationId: row.organization_id,
     userId: row.user_id,
     environmentVars: row.environment_vars ?? undefined,
+    nodeId: row.node_id,
   };
 }
 
@@ -101,6 +105,27 @@ export function mergeHostPlacementMetadata(
   };
 }
 
+/** Merge hetzner-docker metadata so billing cancel + ingress-map can stop/route app containers. */
+export function mergeAppHetznerMetadata(
+  existing: Record<string, unknown> | null | undefined,
+  placement: { hostContainerId: string; hostPort: number; network: string },
+  hetzner: Pick<
+    HetznerContainerMetadata,
+    "nodeId" | "hostname" | "containerName" | "hostPort" | "containerPort" | "image"
+  >,
+): Record<string, unknown> {
+  return {
+    ...mergeHostPlacementMetadata(existing, placement),
+    provider: "hetzner-docker" as const,
+    nodeId: hetzner.nodeId,
+    hostname: hetzner.hostname,
+    containerName: hetzner.containerName,
+    hostPort: hetzner.hostPort,
+    containerPort: hetzner.containerPort,
+    image: hetzner.image,
+  };
+}
+
 /** Read/write seam impl over `containersRepository` + a direct id-scoped read. */
 export class ContainerRepoAppContainerStore implements AppContainerStore {
   async getById(containerId: string): Promise<AppContainerRow | null> {
@@ -118,10 +143,16 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
 
   async markRunning(
     containerId: string,
-    info: { hostContainerId: string; hostPort: number; network: string; nodeHost?: string },
+    info: { hostContainerId: string; hostPort: number; network: string; nodeHost?: string; nodeId?: string },
   ): Promise<void> {
     const [row] = await dbRead
-      .select({ organization_id: containers.organization_id, metadata: containers.metadata })
+      .select({
+        organization_id: containers.organization_id,
+        metadata: containers.metadata,
+        name: containers.name,
+        image_tag: containers.image_tag,
+        port: containers.port,
+      })
       .from(containers)
       .where(eq(containers.id, containerId))
       .limit(1);
@@ -130,9 +161,26 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
       return;
     }
 
-    // Merge host placement into metadata (no dedicated columns on the 2AM
-    // schema), preserving anything already there (e.g. appId).
-    const nextMetadata = mergeHostPlacementMetadata(row.metadata, info);
+    let nextMetadata = mergeHostPlacementMetadata(row.metadata, info);
+    if (info.nodeId) {
+      const node = await dockerNodesRepository.findByNodeId(info.nodeId);
+      const hostname = node?.hostname;
+      if (hostname) {
+        nextMetadata = mergeAppHetznerMetadata(row.metadata, info, {
+          nodeId: info.nodeId,
+          hostname,
+          containerName: row.name,
+          hostPort: info.hostPort,
+          containerPort: row.port,
+          image: row.image_tag ?? "",
+        });
+      } else {
+        logger.warn("[AppContainerStore] markRunning: node hostname unknown; hetzner metadata skipped", {
+          containerId,
+          nodeId: info.nodeId,
+        });
+      }
+    }
 
     // Stamp the app's public URL via the SAME ingress hostname derivation the
     // agent path uses (reused, not rebuilt) so the running app is reachable at
@@ -145,6 +193,7 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
     await containersRepository.update(containerId, row.organization_id, {
       metadata: nextMetadata,
       last_deployed_at: new Date(),
+      ...(info.nodeId ? { node_id: info.nodeId } : {}),
       ...(endpoint ? { public_hostname: endpoint.hostname, load_balancer_url: endpoint.url } : {}),
     });
   }

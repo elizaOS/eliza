@@ -7,7 +7,14 @@
  */
 import { describe, expect, test } from "bun:test";
 import { ApiError } from "../../api/cloud-worker-errors";
-import { assertDeployable, deploymentIdFor, publicStatusFor } from "../app-deployments-helpers";
+import {
+  APP_DEPLOY_UPFRONT_CHARGE_USD,
+  assertDeployable,
+  assertSufficientDeployCredits,
+  deployCreditIdempotencyKey,
+  deploymentIdFor,
+  publicStatusFor,
+} from "../app-deployments-helpers";
 
 describe("publicStatusFor", () => {
   test("maps draft to DRAFT", () => {
@@ -57,5 +64,31 @@ describe("assertDeployable", () => {
     // retry from a fresh deploy after a deploy-side failure during upload,
     // so we don't reject it here.
     expect(() => assertDeployable({ deployment_status: "deploying" })).not.toThrow();
+  });
+});
+
+describe("deployCreditIdempotencyKey", () => {
+  test("scopes the charge to a single stamped deployment", () => {
+    expect(deployCreditIdempotencyKey("app_1:2026-05-19T15:00:00.000Z")).toBe(
+      "app_deploy:app_1:2026-05-19T15:00:00.000Z",
+    );
+  });
+});
+
+describe("assertSufficientDeployCredits", () => {
+  test("throws ApiError(402) when balance is below the deploy charge", () => {
+    expect(() => assertSufficientDeployCredits(0)).toThrow(ApiError);
+    try {
+      assertSufficientDeployCredits(APP_DEPLOY_UPFRONT_CHARGE_USD - 0.01);
+    } catch (err) {
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as ApiError).status).toBe(402);
+      expect((err as ApiError).code).toBe("insufficient_credits");
+    }
+  });
+
+  test("allows balance at or above the deploy charge", () => {
+    expect(() => assertSufficientDeployCredits(APP_DEPLOY_UPFRONT_CHARGE_USD)).not.toThrow();
+    expect(() => assertSufficientDeployCredits(100)).not.toThrow();
   });
 });

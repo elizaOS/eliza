@@ -17,62 +17,106 @@
  */
 
 import { Buffer } from "node:buffer";
+import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
-import { AppContainerProvider, type AppContainerSsh } from "./app-container-provider";
+import {
+  AppContainerProvider,
+  type AppContainerProviderDeps,
+  type AppContainerSsh,
+  type ProvisionAppContainerParams,
+  type ProvisionedAppContainer,
+} from "./app-container-provider";
 import { appContainerStore } from "./app-container-store";
 import { addAppRoute, removeAppRoute } from "./apps-ingress-provisioner";
 import type { ContainerExecutorDeps } from "./container-job-executors";
+import { allocateAppContainerHostPort } from "./docker-port-allocation";
+import { dockerNodeManager } from "./docker-node-manager";
 import { DockerSSHClient } from "./docker-ssh";
 import { listVerifiedAppOrigins } from "./managed-domains";
+
+export interface ParsedSeedDockerNode {
+  nodeId: string;
+  hostname: string;
+}
 
 /** True when the apps-container provision backend has enough env to run. */
 export function appsContainersEnabled(): boolean {
   if (process.env.APPS_CONTAINERS_ENABLED === "0") return false;
-  const hasNodes = Boolean(selectNodeHostOrNull());
+  const hasSeed = Boolean(containersEnv.seedNodes());
   const hasKey = Boolean(containersEnv.sshKey() || containersEnv.sshKeyPath());
-  return hasNodes && hasKey;
+  return hasSeed && hasKey;
 }
 
-/**
- * Pick a target docker node host. Reads the `CONTAINERS_DOCKER_NODES` seed list
- * (`nodeId:hostname:capacity,...`) and takes the first entry's hostname. This is
- * the seed-only fallback; the production daemon should prefer
- * `dockerNodeManager`'s registered-node selection (least-loaded / autoscaled) —
- * see the wiring note. Returns null when nothing is configured.
- */
-function selectNodeHostOrNull(): string | null {
+/** Parse `nodeId:hostname:capacity` from the CONTAINERS_DOCKER_NODES seed list. */
+export function parseSeedDockerNodeEntry(entry: string): ParsedSeedDockerNode | null {
+  const trimmed = entry.trim();
+  if (!trimmed) return null;
+  const parts = trimmed.split(":");
+  if (parts.length >= 2) {
+    const nodeId = parts[0]?.trim();
+    const hostname = parts[1]?.trim();
+    if (nodeId && hostname) return { nodeId, hostname };
+  }
+  const host = parts[0]?.trim();
+  if (host) return { nodeId: host, hostname: host };
+  return null;
+}
+
+export function parseFirstSeedNodeOrNull(): ParsedSeedDockerNode | null {
   const seed = containersEnv.seedNodes();
   if (!seed) return null;
   const first = seed.split(",")[0]?.trim();
   if (!first) return null;
-  // Format: nodeId:hostname:capacity. Hostname is the 2nd colon field; fall back
-  // to the whole token if it's a bare hostname.
-  const parts = first.split(":");
-  const host = parts.length >= 2 ? parts[1]?.trim() : parts[0]?.trim();
-  return host || null;
+  return parseSeedDockerNodeEntry(first);
 }
 
-function selectNodeHost(): string {
-  const host = selectNodeHostOrNull();
-  if (!host) {
-    throw new Error(
-      "No CONTAINERS_DOCKER_NODES configured — cannot provision app container (set the docker node host)",
-    );
+/** Prefer the registered docker_nodes pool; fall back to the seed list. */
+export async function resolveAppContainerNode(): Promise<ParsedSeedDockerNode> {
+  const managed = await dockerNodeManager.getAvailableNode();
+  if (managed) {
+    return { nodeId: managed.node_id, hostname: managed.hostname };
   }
-  return host;
+  const seeded = parseFirstSeedNodeOrNull();
+  if (seeded) return seeded;
+  throw new Error(
+    "No docker node capacity available — register nodes or set CONTAINERS_DOCKER_NODES",
+  );
 }
 
-/** A pooled SSH connection to the chosen node, exposing the `AppContainerSsh` seam. */
-function makeNodeSsh(): AppContainerSsh {
-  const host = selectNodeHost();
+async function resolveNodePlacement(
+  nodeId?: string | null,
+): Promise<ParsedSeedDockerNode> {
+  if (nodeId) {
+    const configured = await dockerNodeManager.getNodeConfig(nodeId);
+    if (configured) {
+      return { nodeId: configured.node_id, hostname: configured.hostname };
+    }
+    const seeded = parseFirstSeedNodeOrNull();
+    if (seeded?.nodeId === nodeId) return seeded;
+    throw new Error(`Docker node ${nodeId} is not registered`);
+  }
+  return resolveAppContainerNode();
+}
+
+function buildProviderForNode(
+  node: ParsedSeedDockerNode,
+  shared: Omit<AppContainerProviderDeps, "ssh" | "allocateHostPort">,
+): AppContainerProvider {
+  return new AppContainerProvider({
+    ...shared,
+    ssh: makeNodeSsh(node.hostname),
+    allocateHostPort: () => allocateAppContainerHostPort(node.nodeId),
+  });
+}
+
+function makeNodeSsh(hostname: string): AppContainerSsh {
   const keyB64 = containersEnv.sshKey();
   const privateKey = keyB64 ? Buffer.from(keyB64, "base64") : undefined;
-  // DockerSSHClient.exec(command, timeoutMs?) IS the AppContainerSsh shape.
   const client = privateKey
-    ? new DockerSSHClient({ hostname: host, username: containersEnv.sshUser(), privateKey })
+    ? new DockerSSHClient({ hostname, username: containersEnv.sshUser(), privateKey })
     : new DockerSSHClient({
-        hostname: host,
+        hostname,
         username: containersEnv.sshUser(),
         privateKeyPath: containersEnv.sshKeyPath(),
       });
@@ -80,15 +124,59 @@ function makeNodeSsh(): AppContainerSsh {
 }
 
 /**
- * Allocate an external host port for the container's app port. Ephemeral-range
- * picker; the deploy density is low (one container per app) so a random pick
- * from the high range is collision-safe enough for now. A node-local registry /
- * `docker port` probe is the hardening follow-up.
+ * Provider that picks the least-loaded docker node per provision, allocates a
+ * collision-safe host port on that node, and records `nodeId` for ingress/LB.
  */
-async function allocateHostPort(): Promise<number> {
-  const MIN = 20000;
-  const MAX = 39999;
-  return MIN + Math.floor(Math.random() * (MAX - MIN + 1));
+export class NodeSelectingAppContainerProvider {
+  private readonly shared: Omit<AppContainerProviderDeps, "ssh" | "allocateHostPort">;
+
+  constructor(shared: Omit<AppContainerProviderDeps, "ssh" | "allocateHostPort">) {
+    this.shared = shared;
+  }
+
+  async provision(params: ProvisionAppContainerParams): Promise<ProvisionedAppContainer> {
+    const node = await resolveAppContainerNode();
+    await dockerNodesRepository.incrementAllocated(node.nodeId);
+    try {
+      const result = await buildProviderForNode(node, this.shared).provision(params);
+      return { ...result, nodeId: node.nodeId, nodeHost: node.hostname };
+    } catch (error) {
+      try {
+        await dockerNodesRepository.decrementAllocated(node.nodeId);
+      } catch (rollbackError) {
+        logger.warn("[container-executor-deps] Failed to rollback node allocation", {
+          nodeId: node.nodeId,
+          error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+        });
+      }
+      throw error;
+    }
+  }
+
+  async delete(containerName: string, nodeId?: string | null): Promise<void> {
+    const node = await resolveNodePlacement(nodeId);
+    await buildProviderForNode(node, this.shared).delete(containerName);
+    if (nodeId) {
+      try {
+        await dockerNodesRepository.decrementAllocated(node.nodeId);
+      } catch (error) {
+        logger.warn("[container-executor-deps] Failed to decrement node allocation on delete", {
+          nodeId: node.nodeId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+
+  async restart(containerName: string, nodeId?: string | null): Promise<void> {
+    const node = await resolveNodePlacement(nodeId);
+    await buildProviderForNode(node, this.shared).restart(containerName);
+  }
+
+  async logs(containerName: string, tail = 200, nodeId?: string | null): Promise<string> {
+    const node = await resolveNodePlacement(nodeId);
+    return buildProviderForNode(node, this.shared).logs(containerName, tail);
+  }
 }
 
 /**
@@ -103,19 +191,13 @@ export function buildContainerExecutorDeps(): ContainerExecutorDeps {
         "A CONTAINER_* job was claimed but cannot be provisioned.",
     );
   }
-  const ssh = makeNodeSsh();
-  const nodeHost = selectNodeHost();
   const egressProxyUrl = process.env.CONTAINERS_EGRESS_PROXY_URL || undefined;
-  // The DB ambassador's egress network (it reaches the tenant DB) + socat image.
   const dbEgressNetwork = process.env.APPS_DB_EGRESS_NETWORK || undefined;
   const ambassadorImage = process.env.APPS_DB_AMBASSADOR_IMAGE || undefined;
-  const provider = new AppContainerProvider({
-    ssh,
-    allocateHostPort,
+  const provider = new NodeSelectingAppContainerProvider({
     egressProxyUrl,
     dbEgressNetwork,
     ambassadorImage,
-    nodeHost,
   });
 
   // Ingress route hooks — wired only when a Caddy admin URL is configured.
@@ -130,7 +212,7 @@ export function buildContainerExecutorDeps(): ContainerExecutorDeps {
     : {};
 
   logger.info("[container-executor-deps] built apps container backend", {
-    node: nodeHost,
+    seedNode: parseFirstSeedNodeOrNull()?.nodeId ?? "docker_nodes_pool",
     egressProxy: Boolean(egressProxyUrl),
     dbEgressNetwork: dbEgressNetwork ?? "bridge",
     ingress: Boolean(caddyAdminUrl),

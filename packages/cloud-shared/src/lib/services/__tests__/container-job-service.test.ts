@@ -122,15 +122,17 @@ describe("ContainerJobEnqueuer", () => {
     const { inserts, writer } = fakeWriter();
     const e = new ContainerJobEnqueuer(writer);
     await e.enqueueProvision({ containerId: "c1", organizationId: "o1", userId: "u1" });
+    await e.enqueueStop({ containerId: "c1", organizationId: "o1" });
     await e.enqueueDelete({ containerId: "c1", organizationId: "o1" });
     await e.enqueueUpgrade({ containerId: "c1", organizationId: "o1", image: "ghcr.io/x:2" });
 
     expect(inserts.map((i) => i.type)).toEqual([
       JOB_TYPES.CONTAINER_PROVISION,
+      JOB_TYPES.CONTAINER_STOP,
       JOB_TYPES.CONTAINER_DELETE,
       JOB_TYPES.CONTAINER_UPGRADE,
     ]);
     expect(inserts[0].data).toMatchObject({ containerId: "c1", userId: "u1" });
-    expect(inserts[2].data).toMatchObject({ image: "ghcr.io/x:2" });
+    expect(inserts[3].data).toMatchObject({ image: "ghcr.io/x:2" });
   });
 });

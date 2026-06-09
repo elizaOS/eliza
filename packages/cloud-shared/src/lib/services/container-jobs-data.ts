@@ -22,6 +22,11 @@ export interface ContainerProvisionJobData {
   userId: string;
 }
 
+export interface ContainerStopJobData {
+  containerId: string;
+  organizationId: string;
+}
+
 export interface ContainerDeleteJobData {
   containerId: string;
   organizationId: string;
@@ -59,6 +64,10 @@ export function isContainerProvisionJobData(value: unknown): value is ContainerP
   return hasStrings(value, ["containerId", "organizationId", "userId"]);
 }
 
+export function isContainerStopJobData(value: unknown): value is ContainerStopJobData {
+  return hasStrings(value, ["containerId", "organizationId"]);
+}
+
 export function isContainerDeleteJobData(value: unknown): value is ContainerDeleteJobData {
   return hasStrings(value, ["containerId", "organizationId"]);
 }
@@ -84,6 +93,13 @@ export function isContainerLogsJobData(value: unknown): value is ContainerLogsJo
 export function readContainerProvisionJobData(job: JobLike): ContainerProvisionJobData {
   if (!isContainerProvisionJobData(job.data)) {
     throw new Error(`Invalid container provision job data for job ${job.id}`);
+  }
+  return job.data;
+}
+
+export function readContainerStopJobData(job: JobLike): ContainerStopJobData {
+  if (!isContainerStopJobData(job.data)) {
+    throw new Error(`Invalid container stop job data for job ${job.id}`);
   }
   return job.data;
 }
@@ -118,6 +134,12 @@ export function readContainerLogsJobData(job: JobLike): ContainerLogsJobData {
 
 export function containerProvisionJobDataToRecord(
   data: ContainerProvisionJobData,
+): Record<string, unknown> {
+  return { ...data };
+}
+
+export function containerStopJobDataToRecord(
+  data: ContainerStopJobData,
 ): Record<string, unknown> {
   return { ...data };
 }

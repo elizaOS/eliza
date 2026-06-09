@@ -1457,6 +1457,7 @@ export class ProvisioningJobService {
       // standalone container-job-service (kept out of the agent-coupled paths
       // above); the executor backend is wired at boot via setContainerExecutorDeps.
       case JOB_TYPES.CONTAINER_PROVISION:
+      case JOB_TYPES.CONTAINER_STOP:
       case JOB_TYPES.CONTAINER_DELETE:
       case JOB_TYPES.CONTAINER_RESTART:
       case JOB_TYPES.CONTAINER_UPGRADE:
@@ -1468,6 +1469,14 @@ export class ProvisioningJobService {
       case JOB_TYPES.APP_DEPLOY:
         await dispatchAppDeployJob(job);
         break;
+      // Apps lane (Product 2): per-tenant DB teardown on app delete (Worker enqueues).
+      case JOB_TYPES.TENANT_DB_DEPROVISION: {
+        const { dispatchTenantDbDeprovisionJob } = await import(
+          "./tenant-db-deprovision-job-service"
+        );
+        await dispatchTenantDbDeprovisionJob(job);
+        break;
+      }
       default:
         throw new Error(`Unknown job type: ${job.type}`);
     }

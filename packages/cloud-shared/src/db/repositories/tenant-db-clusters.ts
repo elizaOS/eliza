@@ -10,7 +10,7 @@ import { type NewTenantDbCluster, tenantDbClusters } from "../schemas/tenant-db-
  */
 export const tenantDbClustersRepository: ClusterPoolStore & {
   create(input: NewTenantDbCluster): Promise<{ id: string }>;
-  releaseSlot(clusterId: string): Promise<void>;
+  releaseSlot(clusterId: string): Promise<boolean>;
   findByHost(host: string): Promise<{ id: string; adminDsnEncrypted: string } | null>;
 } = {
   async listAllocatable(): Promise<ClusterCandidate[]> {
@@ -33,12 +33,20 @@ export const tenantDbClustersRepository: ClusterPoolStore & {
     return rows;
   },
 
-  /**
-   * Atomically claim a database slot: increment `database_count` only if the
-   * cluster is still active and under capacity. The `WHERE … < max_databases`
-   * guard makes concurrent claims race-safe — two callers can't overfill a
-   * cluster — and the empty `RETURNING` set signals "lost the race".
-   */
+
+  async findById(clusterId: string) {
+    const [row] = await dbRead
+      .select({
+        id: tenantDbClusters.id,
+        host: tenantDbClusters.host,
+        adminDsnEncrypted: tenantDbClusters.admin_dsn_encrypted,
+      })
+      .from(tenantDbClusters)
+      .where(eq(tenantDbClusters.id, clusterId))
+      .limit(1);
+    return row ?? null;
+  },
+
   async tryClaimSlot(clusterId: string): Promise<boolean> {
     const claimed = await dbWrite
       .update(tenantDbClusters)
@@ -73,14 +81,16 @@ export const tenantDbClustersRepository: ClusterPoolStore & {
    * counted) can never drive the count negative and free phantom capacity. Safe
    * to call more than once; callers run it after the DROP DATABASE/ROLE succeeds.
    */
-  async releaseSlot(clusterId: string): Promise<void> {
-    await dbWrite
+  async releaseSlot(clusterId: string): Promise<boolean> {
+    const released = await dbWrite
       .update(tenantDbClusters)
       .set({
         database_count: sql`GREATEST(0, ${tenantDbClusters.database_count} - 1)`,
         updated_at: new Date(),
       })
-      .where(eq(tenantDbClusters.id, clusterId));
+      .where(eq(tenantDbClusters.id, clusterId))
+      .returning({ id: tenantDbClusters.id });
+    return released.length > 0;
   },
 
   /**

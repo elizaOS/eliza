@@ -23,11 +23,15 @@ import {
   CONTAINER_PRICING,
   calculateDailyContainerCost,
 } from "@/lib/constants/pricing";
+import { activeBillingService } from "@/lib/services/active-billing";
 import { computeContainerBillingPlan } from "@/lib/services/container-billing-policy";
 import { emailService } from "@/lib/services/email";
 import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+
+/** Skip re-billing if charged within this window (daily cadence guard). */
+const REBILL_GUARD_HOURS = 22;
 
 interface BillingResult {
   containerId: string;
@@ -116,7 +120,22 @@ async function processContainerBilling(
       `[Container Billing] Shutting down container ${containerName} due to insufficient credits`,
     );
 
-    await containerBillingRepository.suspendContainer(containerId, now);
+    const cancelResult = await activeBillingService.cancelResource({
+      organizationId,
+      resourceId: containerId,
+      resourceType: "container",
+      mode: "stop",
+    });
+
+    if (cancelResult.infrastructureAction.status === "failed") {
+      logger.warn(
+        `[Container Billing] Container ${containerName} billing suspended but docker stop failed`,
+        {
+          containerId,
+          error: cancelResult.infrastructureAction.error,
+        },
+      );
+    }
 
     return {
       containerId,
@@ -207,10 +226,47 @@ async function processContainerBilling(
   }
 
   // Pay-as-you-go split (decided by computeContainerBillingPlan above):
+  const rebillCutoff = new Date(now.getTime() - REBILL_GUARD_HOURS * 60 * 60 * 1000);
+  if (container.last_billed_at && new Date(container.last_billed_at) >= rebillCutoff) {
+    logger.info(
+      `[Container Billing] Skipping ${containerName}; already billed within ${REBILL_GUARD_HOURS} hours`,
+      { containerId },
+    );
+    return {
+      containerId,
+      containerName,
+      organizationId,
+      action: "skipped",
+      error: "Already billed recently",
+    };
+  }
+
   // take what we can from earnings first, then charge the remainder to
   // credits. Earnings → org credits conversion goes through
   // redeemableEarningsService so we get a credit_conversion ledger entry
   // for the audit trail.
+  //
+  // Claim the billing slot BEFORE earnings conversion so a cron retry cannot
+  // double-debit redeemable_earnings if finalize fails after convertToCredits.
+  const billingClaim = await containerBillingRepository.claimDailyBillingSlot({
+    containerId,
+    rebillCutoff,
+    now,
+  });
+  if (billingClaim.status === "already_billed_recently") {
+    logger.info(
+      `[Container Billing] Skipping ${containerName}; billing claim lost to a concurrent run`,
+      { containerId },
+    );
+    return {
+      containerId,
+      containerName,
+      organizationId,
+      action: "skipped",
+      error: "Already billed recently",
+    };
+  }
+
   let fromEarnings = plan.fromEarnings;
   let fromCredits = plan.fromCredits;
 
@@ -256,20 +312,20 @@ async function processContainerBilling(
 
   const newBalance = currentBalance + fromEarnings - dailyCost;
 
-  // Atomic billing — credits down by (dailyCost - fromEarnings), record kept.
-  const billingResult =
-    await containerBillingRepository.recordSuccessfulDailyBilling({
-      containerId,
-      organizationId,
-      userId: container.user_id,
-      containerName,
-      currentTotalBilled: container.total_billed,
-      dailyCost,
-      newBalance,
-      fromEarnings,
-      fromCredits,
-      now,
-    });
+  const billingResult = await containerBillingRepository.finalizeDailyBilling({
+    containerId,
+    organizationId,
+    userId: container.user_id,
+    containerName,
+    currentTotalBilled: container.total_billed,
+    dailyCost,
+    newBalance,
+    fromEarnings,
+    fromCredits,
+    now,
+    rebillCutoff,
+    claimedTotalBilled: billingClaim.totalBilled,
+  });
 
   logger.info(
     `[Container Billing] Billed ${containerName}: $${dailyCost.toFixed(4)} (earnings $${fromEarnings.toFixed(4)} + credits $${fromCredits.toFixed(4)})`,
@@ -308,6 +364,47 @@ async function getOrgUserEmail(organizationId: string): Promise<string | null> {
 }
 
 /**
+ * Stop containers that were billing-suspended in DB but never docker-stopped.
+ */
+async function reconcileSuspendedContainers(): Promise<number> {
+  const orphaned = await containerBillingRepository.listSuspendedButRunning();
+  let stopped = 0;
+  for (const container of orphaned) {
+    try {
+      const cancelResult = await activeBillingService.cancelResource({
+        organizationId: container.organization_id,
+        resourceId: container.id,
+        resourceType: "container",
+        mode: "stop",
+      });
+      if (cancelResult.infrastructureAction.status !== "failed") {
+        stopped++;
+      } else {
+        logger.warn(
+          `[Container Billing] Reconcile: failed to stop suspended container ${container.name}`,
+          {
+            containerId: container.id,
+            error: cancelResult.infrastructureAction.error,
+          },
+        );
+      }
+    } catch (error) {
+      logger.warn(
+        `[Container Billing] Reconcile: error stopping suspended container ${container.name}`,
+        {
+          containerId: container.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+    }
+  }
+  if (stopped > 0) {
+    logger.info(`[Container Billing] Reconciled ${stopped} suspended-but-running container(s)`);
+  }
+  return stopped;
+}
+
+/**
  * Main billing handler
  */
 async function handleContainerBilling(c: AppContext): Promise<Response> {
@@ -317,6 +414,7 @@ async function handleContainerBilling(c: AppContext): Promise<Response> {
     const appUrl = c.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
 
     logger.info("[Container Billing] Starting daily container billing run");
+    await reconcileSuspendedContainers();
     // Get all running containers that need billing
     const runningContainers =
       await containerBillingRepository.listBillableContainers();

@@ -247,6 +247,7 @@ class ActiveBillingService {
           container.id,
           organizationId,
           mode,
+          triggerEnv,
         );
         const unitPrice = calculateDailyContainerCost({
           desiredCount: container.desired_count,
@@ -449,25 +450,29 @@ async function cancelContainerInfrastructure(
   containerId: string,
   organizationId: string,
   mode: "stop" | "delete",
+  triggerEnv?: AppEnv["Bindings"],
 ): Promise<InfrastructureCancellationAction> {
   try {
-    const { getHetznerContainersClient } = await import("./containers/hetzner-client");
-    const client = getHetznerContainersClient();
+    // SSH/docker can't run inline from Cloudflare Workers. Enqueue the
+    // appropriate CONTAINER_* job; the provisioning-worker daemon executes it.
+    const { ContainerJobEnqueuer } = await import("./container-job-service");
+    const { containerJobsWriter } = await import("./container-jobs-writer");
+    const enqueuer = new ContainerJobEnqueuer(containerJobsWriter);
 
     if (mode === "delete") {
-      await client.deleteContainer(containerId, organizationId, { purgeVolume: false });
-      return {
-        attempted: true,
-        status: "deleted",
-        message: "Container runtime and control-plane row were deleted.",
-      };
+      await enqueuer.enqueueDelete({ containerId, organizationId });
+    } else {
+      await enqueuer.enqueueStop({ containerId, organizationId });
     }
+    void provisioningJobService.triggerImmediate(triggerEnv).catch(() => {});
 
-    await client.stopContainer(containerId, organizationId, { purgeVolume: false });
     return {
       attempted: true,
-      status: "stopped",
-      message: "Container runtime was stopped and removed from the Docker node.",
+      status: mode === "delete" ? "deleted" : "queued",
+      message:
+        mode === "delete"
+          ? "Container deletion queued; the orchestrator will tear down runtime and remove the control-plane row."
+          : "Container stop queued; the orchestrator will shut down the Docker runtime while preserving the control-plane row.",
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

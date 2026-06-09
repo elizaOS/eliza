@@ -24,6 +24,9 @@ import {
  * Billing details → organization_billing table
  * Extended config → organization_config table
  */
+/** Schema default for `organizations.credit_balance` (USD). */
+export const ORG_DEFAULT_CREDIT_BALANCE = "100.000000" as const;
+
 export const organizations = pgTable(
   "organizations",
   {
@@ -32,7 +35,7 @@ export const organizations = pgTable(
     slug: text("slug").notNull().unique(),
     credit_balance: numeric("credit_balance", { precision: 12, scale: 6 })
       .notNull()
-      .default("100.000000"),
+      .default(ORG_DEFAULT_CREDIT_BALANCE),
 
     // Settings (kept for backward compatibility with container management)
     settings: jsonb("settings").$type<Record<string, unknown>>().default({}),
