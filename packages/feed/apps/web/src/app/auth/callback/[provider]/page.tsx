@@ -2,12 +2,17 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
+import { consumeStewardPkceVerifier } from "@elizaos/shared/steward-session-client";
 import { useStewardAuthContext } from "@/components/providers/StewardAuthProvider";
-import {
-  buildFeedOAuthRedirectUri,
-  consumeStewardPkceVerifier,
-  type FeedStewardOAuthProvider,
-} from "@/lib/steward-oauth";
+
+type FeedStewardOAuthProvider = "google" | "discord" | "twitter";
+
+function buildFeedOAuthRedirectUri(
+  origin: string,
+  provider: FeedStewardOAuthProvider,
+): string {
+  return `${origin}/auth/callback/${provider}`;
+}
 
 const STEWARD_TENANT_ID = process.env.NEXT_PUBLIC_STEWARD_TENANT_ID ?? "feed";
 

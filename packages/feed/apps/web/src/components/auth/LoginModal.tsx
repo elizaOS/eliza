@@ -13,14 +13,25 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { useAuth } from "@/hooks/useAuth";
 import {
-  buildFeedOAuthRedirectUri,
   buildStewardOAuthAuthorizeUrl,
   createStewardPkcePair,
   storeStewardPkceVerifier,
-  type FeedStewardOAuthProvider,
-} from "@/lib/steward-oauth";
+  type StewardOAuthProvider,
+} from "@elizaos/shared/steward-session-client";
+import { useAuth } from "@/hooks/useAuth";
+
+type FeedStewardOAuthProvider = Extract<
+  StewardOAuthProvider,
+  "google" | "discord" | "twitter"
+>;
+
+function buildFeedOAuthRedirectUri(
+  origin: string,
+  provider: FeedStewardOAuthProvider,
+): string {
+  return `${origin}/auth/callback/${provider}`;
+}
 
 /**
  * Steward-backed login modal.
