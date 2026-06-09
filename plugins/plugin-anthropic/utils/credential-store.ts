@@ -11,6 +11,8 @@
  * (env var → keychain → ~/.claude/.credentials.json).
  */
 
+import { resolveStateDir } from "@elizaos/core";
+
 interface OAuthToken {
   accessToken: string;
   expiresAt: number;
@@ -239,7 +241,6 @@ function readAppManagedAnthropicToken(): OAuthToken | null {
   const { join } = require("node:path") as typeof import("node:path");
   const { homedir } = require("node:os") as typeof import("node:os");
   const { readFileSync } = require("node:fs") as typeof import("node:fs");
-  const { resolveStateDir } = require("@elizaos/core") as typeof import("@elizaos/core");
   const stateDir = resolveStateDir();
   const accountId = getEnvVar("ANTHROPIC_SUBSCRIPTION_ACCOUNT_ID")?.trim() || "default";
   const paths = [
