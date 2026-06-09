@@ -22,13 +22,13 @@ The public `elizaos` package installs the `elizaos` binary. The CLI is small on 
 You can run the CLI without a global install:
 
 ```bash
-npx elizaos
+npx elizaos@beta
 ```
 
 Or install it globally:
 
 ```bash
-bun add -g elizaos
+bun add -g elizaos@beta
 ```
 
 Verify the installed binary:
@@ -117,7 +117,19 @@ The upgrade command reads `.elizaos/template.json`, renders the latest version o
     export PATH="$HOME/.bun/bin:$PATH"
     ```
 
-    You can always use `npx elizaos` without a global install.
+    You can always use `npx elizaos@beta` without a global install.
+  </Accordion>
+
+  <Accordion icon="triangle-exclamation" title="ERR_PACKAGE_PATH_NOT_EXPORTED on elizaos --version">
+    npm `latest` still points at `elizaos@1.7.2`, whose bin shim imports a
+    forbidden `@elizaos/cli` subpath. Pin the beta channel until `latest` is
+    republished:
+
+    ```bash
+    bun add -g elizaos@beta
+    # or
+    npx elizaos@beta --version
+    ```
   </Accordion>
 
   <Accordion icon="node-js" title="Node version mismatch">
