@@ -63,8 +63,8 @@ export interface AutoscalePolicy {
 }
 
 export const DEFAULT_AUTOSCALE_POLICY: AutoscalePolicy = {
-  minFreeSlotsBuffer: 4,
-  minHotAvailableSlots: 1,
+  minFreeSlotsBuffer: containersEnv.autoscaleMinFreeSlotsBuffer(),
+  minHotAvailableSlots: containersEnv.autoscaleMinHotAvailableSlots(),
   maxNodes: 12,
   scaleUpCooldownMs: 5 * 60 * 1000,
   idleNodeMinAgeMs: 30 * 60 * 1000,

@@ -323,6 +323,33 @@ export const containersEnv = {
     return Number.isFinite(parsed) && parsed >= 1 ? Math.min(64, Math.floor(parsed)) : 8;
   },
 
+  /**
+   * Free slots that must remain across the pool before a new node is
+   * provisioned. Also acts as the drain preservation floor: a drain is
+   * refused if it would leave the pool below this number of free slots.
+   *
+   * Smaller buffer → pool can collapse to fewer nodes when demand is low
+   * (right for staging). Larger buffer → hot-start latency reserved (right
+   * for prod). Clamped to [0, 64]. Default: 4.
+   */
+  autoscaleMinFreeSlotsBuffer(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.CONTAINERS_AUTOSCALE_MIN_FREE_SLOTS_BUFFER);
+    const parsed = raw !== undefined ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.min(64, Math.floor(parsed)) : 4;
+  },
+
+  /**
+   * Emergency floor for hot agent starts; bypasses scale-up cooldown when
+   * pool availability drops below this. Clamped to [0, 64]. Default: 1.
+   */
+  autoscaleMinHotAvailableSlots(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.CONTAINERS_AUTOSCALE_MIN_HOT_AVAILABLE_SLOTS);
+    const parsed = raw !== undefined ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.min(64, Math.floor(parsed)) : 1;
+  },
+
   // ── Warm pool ───────────────────────────────────────────────────────────
 
   /**
