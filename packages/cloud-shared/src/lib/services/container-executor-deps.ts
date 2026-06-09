@@ -24,6 +24,7 @@ import { appContainerStore } from "./app-container-store";
 import { addAppRoute, removeAppRoute } from "./apps-ingress-provisioner";
 import type { ContainerExecutorDeps } from "./container-job-executors";
 import { DockerSSHClient } from "./docker-ssh";
+import { listVerifiedAppOrigins } from "./managed-domains";
 
 /** True when the apps-container provision backend has enough env to run. */
 export function appsContainersEnabled(): boolean {
@@ -134,5 +135,16 @@ export function buildContainerExecutorDeps(): ContainerExecutorDeps {
     dbEgressNetwork: dbEgressNetwork ?? "bridge",
     ingress: Boolean(caddyAdminUrl),
   });
-  return { provider, store: appContainerStore, ...ingress };
+  return {
+    provider,
+    store: appContainerStore,
+    // Verified custom domains for the app -> bare hostnames, folded into the
+    // ingress route's host-match. Reuses the existing CORS verified-origin query
+    // (status='active' AND verified=true); only invoked when ingress is wired.
+    listVerifiedAppHostnames: (appId) =>
+      listVerifiedAppOrigins(appId).then((origins) =>
+        origins.map((origin) => origin.replace(/^https?:\/\//, "").replace(/\/+$/, "")),
+      ),
+    ...ingress,
+  };
 }

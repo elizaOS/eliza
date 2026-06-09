@@ -202,6 +202,71 @@ describe("ingress route hooks", () => {
     });
   });
 
+  test("provision folds the app's verified custom domains into the route", async () => {
+    await withBase("apps.elizacloud.ai", async () => {
+      const { store } = fakeStore();
+      const { provider } = fakeProvider({
+        async provision() {
+          return {
+            containerId: "docker-abc",
+            hostPort: 49001,
+            network: "app-net-x",
+            nodeHost: "10.30.1.5",
+          };
+        },
+      } as never);
+      let captured: { hostname: string; extraHostnames?: string[] } | undefined;
+      await executeContainerProvision(
+        job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
+        {
+          provider,
+          store,
+          listVerifiedAppHostnames: async (appId) => {
+            expect(appId).toBe(ROW.appId); // looked up by the app, not the container
+            return ["elocute.fun", "www.elocute.fun"];
+          },
+          onRouteAdded: async (r) => {
+            captured = r;
+          },
+        },
+      );
+      expect(captured?.hostname).toMatch(/\.apps\.elizacloud\.ai$/);
+      expect(captured?.extraHostnames).toEqual(["elocute.fun", "www.elocute.fun"]);
+    });
+  });
+
+  test("a custom-domain lookup failure never fails the deploy (route still added, no extras)", async () => {
+    await withBase("apps.elizacloud.ai", async () => {
+      const { events, store } = fakeStore();
+      const { provider } = fakeProvider({
+        async provision() {
+          return {
+            containerId: "docker-abc",
+            hostPort: 49001,
+            network: "app-net-x",
+            nodeHost: "10.30.1.5",
+          };
+        },
+      } as never);
+      let captured: { extraHostnames?: string[] } | undefined;
+      await executeContainerProvision(
+        job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
+        {
+          provider,
+          store,
+          listVerifiedAppHostnames: async () => {
+            throw new Error("domains db unavailable");
+          },
+          onRouteAdded: async (r) => {
+            captured = r;
+          },
+        },
+      );
+      expect(captured?.extraHostnames).toEqual([]); // degraded gracefully
+      expect(events.find((e) => e.op === "running")).toBeDefined(); // deploy still succeeded
+    });
+  });
+
   test("delete removes the route (best-effort)", async () => {
     await withBase("apps.elizacloud.ai", async () => {
       const { store } = fakeStore();

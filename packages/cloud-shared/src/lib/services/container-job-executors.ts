@@ -55,10 +55,23 @@ export interface ContainerExecutorDeps {
    * `<shortid>.<base>` -> `nodeHost:hostPort` right after the container is marked
    * running, and removes it on delete. add failures fail the deploy (so the user
    * retries rather than a silent 502); remove failures are swallowed (a reconciler
-   * sweeps orphans). No-ops when unset (ingress not configured).
+   * sweeps orphans). No-ops when unset (ingress not configured). `extraHostnames`
+   * carries the app's verified custom domains, host-matched on the same route.
    */
-  onRouteAdded?: (route: { hostname: string; nodeHost: string; hostPort: number }) => Promise<void>;
+  onRouteAdded?: (route: {
+    hostname: string;
+    extraHostnames?: string[];
+    nodeHost: string;
+    hostPort: number;
+  }) => Promise<void>;
   onRouteRemoved?: (route: { hostname: string }) => Promise<void>;
+  /**
+   * Verified custom hostnames attached to an app (e.g. `elocute.fun`), folded
+   * into the ingress route's host-match so the app also serves on its own
+   * domain(s). Optional + best-effort: a lookup failure (or unset hook) just
+   * means the app keeps only its `<shortid>.<base>` host — never fails a deploy.
+   */
+  listVerifiedAppHostnames?: (appId: string) => Promise<string[]>;
 }
 
 async function requireRow(store: AppContainerStore, containerId: string): Promise<AppContainerRow> {
@@ -94,12 +107,18 @@ export async function executeContainerProvision(
       network: result.network,
       nodeHost: result.nodeHost,
     });
-    // Register the ingress route so `<shortid>.<base>` reaches this container.
+    // Register the ingress route so `<shortid>.<base>` reaches this container,
+    // plus the app's verified custom domains (best-effort — a domain-lookup
+    // failure must NOT fail the deploy; the app just keeps its wildcard host).
     // Inside the try: an add failure marks the container errored (no silent 502).
     const endpoint = deriveAppPublicUrl(containerId);
     if (endpoint && deps.onRouteAdded) {
+      const extraHostnames = deps.listVerifiedAppHostnames
+        ? await deps.listVerifiedAppHostnames(row.appId).catch(() => [] as string[])
+        : [];
       await deps.onRouteAdded({
         hostname: endpoint.hostname,
+        extraHostnames,
         nodeHost: result.nodeHost,
         hostPort: result.hostPort,
       });

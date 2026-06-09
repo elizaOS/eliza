@@ -26,6 +26,26 @@ describe("buildCaddyRoute", () => {
       handle: [{ handler: "reverse_proxy", upstreams: [{ dial: "10.30.1.5:28123" }] }],
     });
   });
+
+  test("folds verified custom domains into the same route's host-match (deduped + lowercased)", () => {
+    const route = buildCaddyRoute({
+      hostname: HOST,
+      extraHostnames: ["Elocute.fun", "www.elocute.fun", "elocute.fun", "   "],
+      nodeHost: "10.30.1.5",
+      hostPort: 28123,
+    });
+    // @id stays keyed off the wildcard host, so one DELETE tears down all hosts
+    expect(route["@id"]).toBe("app-abc12345");
+    expect(route.match).toEqual([
+      { host: ["abc12345.apps.elizacloud.ai", "elocute.fun", "www.elocute.fun"] },
+    ]);
+  });
+
+  test("empty/omitted extraHostnames keeps the plain single-host route", () => {
+    expect(
+      buildCaddyRoute({ hostname: HOST, extraHostnames: [], nodeHost: "n", hostPort: 1 }).match,
+    ).toEqual([{ host: ["abc12345.apps.elizacloud.ai"] }]);
+  });
 });
 
 describe("admin-API urls", () => {
