@@ -367,6 +367,17 @@ export async function exchangeStewardCode(
  * swallowed — the caller has already wiped localStorage and there's nothing
  * useful to do about a cookie that won't clear.
  */
+export {
+  buildStewardOAuthAuthorizeUrl,
+  consumeStewardPkceVerifier,
+  createStewardPkceChallenge,
+  createStewardPkcePair,
+  generateStewardPkceVerifier,
+  storeStewardPkceVerifier,
+  type StewardOAuthProvider,
+  type StewardPkcePair,
+} from "./steward-oauth-pkce.js";
+
 export function clearStewardSession(opts: ClearOpts = {}): void {
   const endpoints = opts.endpoints ?? [STEWARD_SESSION_ENDPOINT];
   const f = opts.fetchImpl ?? (typeof fetch !== "undefined" ? fetch : null);

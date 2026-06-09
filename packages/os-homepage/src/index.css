@@ -873,7 +873,8 @@ h3 {
 }
 
 .email-row button,
-.oauth-row a {
+.oauth-row a,
+.oauth-row button {
   display: inline-flex;
   min-height: 3.25rem;
   align-items: center;
@@ -887,7 +888,8 @@ h3 {
 }
 
 .email-row button:hover,
-.oauth-row a:hover {
+.oauth-row a:hover,
+.oauth-row button:hover:not(:disabled) {
   background: var(--brand-black);
   color: var(--brand-white);
 }
