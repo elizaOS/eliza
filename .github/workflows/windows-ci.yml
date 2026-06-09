@@ -140,6 +140,10 @@ jobs:
             exit $LASTEXITCODE
           }
 
+      - name: Ensure generated shared i18n data
+        shell: pwsh
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
       - name: Run lane "${{ matrix.lane }}"
         shell: pwsh
         run: ${{ matrix.command }}
