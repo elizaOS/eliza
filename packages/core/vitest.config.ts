@@ -9,6 +9,15 @@ const pluginSqlRoot = path.join(
 	"plugin-sql",
 	"typescript",
 );
+const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
+const contractsSrc = path.join(
+	elizaWorkspaceRoot,
+	"packages",
+	"contracts",
+	"src",
+);
+const loggerSrc = path.join(elizaWorkspaceRoot, "packages", "logger", "src");
+const promptsSrc = path.join(elizaWorkspaceRoot, "packages", "prompts", "src");
 
 export default defineConfig({
 	resolve: {
@@ -28,6 +37,26 @@ export default defineConfig({
 			{
 				find: /^@elizaos\/plugin-sql\/(.+)$/,
 				replacement: path.join(pluginSqlRoot, "$1"),
+			},
+			{
+				find: /^@elizaos\/contracts$/,
+				replacement: path.join(contractsSrc, "index.ts"),
+			},
+			{
+				find: /^@elizaos\/contracts\/(.+)$/,
+				replacement: path.join(contractsSrc, "$1"),
+			},
+			{
+				find: /^@elizaos\/logger$/,
+				replacement: path.join(loggerSrc, "index.ts"),
+			},
+			{
+				find: /^@elizaos\/prompts$/,
+				replacement: path.join(promptsSrc, "index.ts"),
+			},
+			{
+				find: /^@elizaos\/prompts\/(.+)$/,
+				replacement: path.join(promptsSrc, "$1"),
 			},
 		],
 	},
