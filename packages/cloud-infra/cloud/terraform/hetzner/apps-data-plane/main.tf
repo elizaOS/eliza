@@ -132,8 +132,9 @@ resource "hcloud_server" "tenant_db" {
     operator_ssh_keys = var.ssh_public_keys
   })
 
+  # Allow in-place rename via Hetzner Console without TF drift (matches control-plane).
   lifecycle {
-    ignore_changes = [user_data, image, ssh_keys]
+    ignore_changes = [user_data, image, name, ssh_keys]
   }
 }
 
@@ -173,8 +174,9 @@ resource "hcloud_server" "app_node" {
     tenant_db_host    = cidrhost(var.subnet_cidr, 10)
   })
 
+  # Allow in-place rename via Hetzner Console without TF drift (matches control-plane).
   lifecycle {
-    ignore_changes = [user_data, image, ssh_keys]
+    ignore_changes = [user_data, image, name, ssh_keys]
   }
 }
 
