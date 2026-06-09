@@ -27,9 +27,9 @@ variable "hcloud_location" {
 }
 
 variable "hcloud_server_type" {
-  description = "Hetzner server type for the control-plane VM. cpx21 = 3 vCPU / 4 GB / 80 GB SSD ≈ €5/mo, enough for daemon + agent-router + headscale + monitoring."
+  description = "Hetzner server type for the control-plane VM. cpx32 = 4 vCPU / 8 GB / 160 GB SSD ≈ €11/mo, matches the existing staging eliza-staging-1 manually-provisioned VM. Previously cpx21 (3 vCPU / 4 GB) but Hetzner retired cpx21 in fsn1. Production runs cax21 (ARM) — switching staging to ARM would save ~€4/mo and unblock future cpx retirement, but needs a few cloud-init template tweaks (docker apt arch + bun-linux-aarch64 archive). Staging stays on x86 cpx32 here for parity with the proven-working setup; ARM migration is followup."
   type        = string
-  default     = "cpx21"
+  default     = "cpx32"
 }
 
 variable "hcloud_image" {
