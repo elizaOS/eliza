@@ -23,6 +23,7 @@ import { AppContainerProvider, type AppContainerSsh } from "./app-container-prov
 import { appContainerStore } from "./app-container-store";
 import { addAppRoute, removeAppRoute } from "./apps-ingress-provisioner";
 import type { ContainerExecutorDeps } from "./container-job-executors";
+import { allocateAppContainerHostPort } from "./docker-port-allocation";
 import { DockerSSHClient } from "./docker-ssh";
 import { listVerifiedAppOrigins } from "./managed-domains";
 
@@ -79,16 +80,24 @@ function makeNodeSsh(): AppContainerSsh {
   return { exec: (command, timeoutMs) => client.exec(command, timeoutMs) };
 }
 
+/** Parse the docker node id from the first `CONTAINERS_DOCKER_NODES` seed entry. */
+function parseSeedNodeIdOrNull(): string | null {
+  const seed = containersEnv.seedNodes();
+  if (!seed) return null;
+  const first = seed.split(",")[0]?.trim();
+  if (!first) return null;
+  const parts = first.split(":");
+  const nodeId = parts[0]?.trim();
+  return nodeId || first;
+}
+
 /**
- * Allocate an external host port for the container's app port. Ephemeral-range
- * picker; the deploy density is low (one container per app) so a random pick
- * from the high range is collision-safe enough for now. A node-local registry /
- * `docker port` probe is the hardening follow-up.
+ * Allocate a collision-safe external host port for the container's app port.
+ * Queries sandbox + app-container metadata on the target node before picking.
  */
 async function allocateHostPort(): Promise<number> {
-  const MIN = 20000;
-  const MAX = 39999;
-  return MIN + Math.floor(Math.random() * (MAX - MIN + 1));
+  const nodeId = parseSeedNodeIdOrNull() ?? "seed-node";
+  return allocateAppContainerHostPort(nodeId);
 }
 
 /**

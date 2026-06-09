@@ -1,6 +1,11 @@
 output "tenant_db_private_host" {
-  description = "Private-network IP of the tenant Postgres node. This is the HOST for the admin DSN seeded into tenant_db_clusters.admin_dsn_encrypted, and the host the app's per-tenant DSN points at."
+  description = "Private-network IP of the tenant Postgres node (without port). Use tenant_db_client_host for app DSNs."
   value       = cidrhost(var.subnet_cidr, 10)
+}
+
+output "tenant_db_client_host" {
+  description = "host:port for tenant app DSNs — PgBouncer transaction pool on :5432."
+  value       = "${cidrhost(var.subnet_cidr, 10)}:5432"
 }
 
 output "tenant_db_public_ip" {
@@ -10,7 +15,7 @@ output "tenant_db_public_ip" {
 
 output "tenant_db_admin_dsn" {
   description = "Admin DSN for the tenant Postgres cluster (over the PRIVATE network). Encrypt this and seed it into tenant_db_clusters.admin_dsn_encrypted. SENSITIVE."
-  value       = "postgresql://postgres:${random_password.tenant_db_admin.result}@${cidrhost(var.subnet_cidr, 10)}:5432/postgres?sslmode=require"
+  value       = "postgresql://postgres:${random_password.tenant_db_admin.result}@${cidrhost(var.subnet_cidr, 10)}:5433/postgres?sslmode=require"
   sensitive   = true
 }
 
@@ -32,7 +37,7 @@ output "apps_wildcard_hostname" {
 output "next_steps" {
   description = "What to do after apply."
   value       = <<-EOT
-    1. Encrypt tenant_db_admin_dsn and seed it into tenant_db_clusters (provider='direct_pg', host=tenant_db_private_host).
+    1. Encrypt tenant_db_admin_dsn and seed it into tenant_db_clusters (provider='direct_pg', host=tenant_db_client_host for app DSNs; admin_dsn uses :5433 direct Postgres).
     2. Set the daemon/Worker apps env: CONTAINERS_DOCKER_NODES (app_node_ips), CONTAINERS_PUBLIC_BASE_DOMAIN=${var.apps_base_domain}, the image registry, CONTAINERS_EGRESS_PROXY_URL.
     3. Wire the 2 boot one-liners (cloud-api configureAppsDeployTrigger + daemon configureAppsDeployBackend) and flip the feature gate for an allowlist.
     4. On-node kernel re-check (throwaway --internal scratch net on an app node) before opening to users.
