@@ -36,6 +36,9 @@ function deps(
           seen.provisionedApp = appId;
           return { dbName: "db_app_x", roleName: "app_x", dsn: PROVISIONED_DSN };
         },
+        async deprovision(appId) {
+          seen.deprovisionedApp = appId;
+        },
       };
     },
   };
@@ -73,5 +76,31 @@ describe("SqlTenantDbProvisioning", () => {
     await expect(new SqlTenantDbProvisioning(d).provisionForApp("app-1")).rejects.toThrow(
       "capacity",
     );
+  });
+
+  test("deprovisionForApp resolves the cluster by host, DROPs the DB, releases the slot", async () => {
+    const released: string[] = [];
+    const d = deps({
+      async resolveClusterByHost(host) {
+        d.seen.resolvedHost = host;
+        return { id: "cluster-1", adminDsnEncrypted: "enc:v1:admin-dsn" };
+      },
+      async releaseSlot(clusterId) {
+        released.push(clusterId);
+      },
+    });
+    const result = await new SqlTenantDbProvisioning(d).deprovisionForApp("app-1", PROVISIONED_DSN);
+
+    expect(result).toEqual({ deprovisioned: true });
+    expect(d.seen.resolvedHost).toBe("apps-cluster-1"); // host parsed from the stored DSN
+    expect(d.seen.deprovisionedApp).toBe("app-1"); // the DROP ran on that cluster
+    expect(released).toEqual(["cluster-1"]); // the slot was released
+  });
+
+  test("deprovisionForApp throws a clear error when the teardown deps aren't wired", async () => {
+    // base deps() has no resolveClusterByHost / releaseSlot
+    await expect(
+      new SqlTenantDbProvisioning(deps()).deprovisionForApp("app-1", PROVISIONED_DSN),
+    ).rejects.toThrow("not configured");
   });
 });
