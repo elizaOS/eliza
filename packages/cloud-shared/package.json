@@ -16,11 +16,11 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build:linked-workspaces": "bun run --cwd ../.. build:core",
+    "build:linked-workspaces": "bun run --cwd ../contracts build && bun run --cwd ../logger build && bun run --cwd ../core build",
     "lint": "bunx @biomejs/biome check .",
     "lint:fix": "bunx @biomejs/biome check --write .",
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
+    "test": "bun run build:linked-workspaces && bun test",
     "preflight:messaging-gateways": "node scripts/messaging-gateway-preflight.mjs",
     "preflight:messaging-gateways:strict": "node scripts/messaging-gateway-preflight.mjs --strict",
     "db:check-migrations": "drizzle-kit check",

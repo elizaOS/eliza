@@ -4,6 +4,7 @@ import { defineConfig } from "vitest/config";
 
 const pluginRoot = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(pluginRoot, "../..");
+const sharedSrc = path.join(repoRoot, "packages/shared/src");
 
 export default defineConfig({
   resolve: {
@@ -24,6 +25,14 @@ export default defineConfig({
         find: /^@elizaos\/logger\/(.+)$/,
         replacement: path.join(repoRoot, "packages/logger/src/$1"),
       },
+      {
+        find: /^@elizaos\/shared$/,
+        replacement: path.join(sharedSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/shared\/(.+)$/,
+        replacement: path.join(sharedSrc, "$1"),
+      },
     ],
     conditions: ["node"],
   },
@@ -40,7 +49,7 @@ export default defineConfig({
     pool: "forks",
     server: {
       deps: {
-        inline: ["@elizaos/core"],
+        inline: ["@elizaos/core", "@elizaos/shared"],
       },
     },
   },

@@ -2,14 +2,22 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, it } from "vitest";
 
-import {
+const {
   assertMasEntitlementRuntimeEvidence,
   assertReviewedAppleStoreEntitlements,
   scanAppleAppBundleForNativeRuntimeSignals,
   validateEntitlementsAgainstTarget,
-} from "./apple-entitlement-audit.mjs";
+} = await import(
+  /* @vite-ignore */ pathToFileURL(
+    path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "apple-entitlement-audit.mjs",
+    ),
+  ).href
+);
 
 describe("apple entitlement audit", () => {
   it("accepts the reviewed App Store entitlement sources", () => {
