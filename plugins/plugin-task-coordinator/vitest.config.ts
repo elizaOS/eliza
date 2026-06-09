@@ -4,10 +4,23 @@ import { defineConfig } from "vitest/config";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../..");
+const uiSrc = path.resolve(elizaRoot, "packages/ui/src");
 
 export default defineConfig({
   resolve: {
     alias: [
+      {
+        find: /^@elizaos\/ui$/,
+        replacement: path.resolve(uiSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/ui\/api$/,
+        replacement: path.resolve(uiSrc, "api/index.ts"),
+      },
+      {
+        find: /^@elizaos\/ui\/(.+)$/,
+        replacement: path.resolve(uiSrc, "$1"),
+      },
       {
         // DynamicViewLoader imports this browser-safe helper as a host external;
         // resolve it to source so this package's UI tests do not require a
