@@ -31,7 +31,7 @@
     "test": "vitest run --passWithNoTests",
     "test:packaged": "node ./scripts/packaged-smoke.mjs",
     "lint:bin-exports": "node ./scripts/lint-bin-exports.mjs",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run build && bun run lint:bin-exports"
   },
   "dependencies": {
     "@clack/prompts": "^1.0.0",
