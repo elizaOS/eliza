@@ -17,9 +17,9 @@ import {
   STEWARD_NONCE_EXCHANGE_ENDPOINT,
   STEWARD_SESSION_ENDPOINT,
   STEWARD_TENANT_ID,
+  type StewardOAuthProvider,
   storeStewardPkceVerifier,
   syncStewardSession,
-  type StewardOAuthProvider,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { StewardAuth } from "@stwd/sdk";

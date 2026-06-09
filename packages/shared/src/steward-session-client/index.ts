@@ -373,9 +373,9 @@ export {
   createStewardPkceChallenge,
   createStewardPkcePair,
   generateStewardPkceVerifier,
-  storeStewardPkceVerifier,
   type StewardOAuthProvider,
   type StewardPkcePair,
+  storeStewardPkceVerifier,
 } from "./steward-oauth-pkce.js";
 
 export function clearStewardSession(opts: ClearOpts = {}): void {
