@@ -12,8 +12,8 @@
  */
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -62,6 +62,10 @@ export function runKeywordGenerator({
   return { skipped: false };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+function isMain(importMetaUrl = import.meta.url, entry = process.argv[1]) {
+  return Boolean(entry) && importMetaUrl === pathToFileURL(resolve(entry)).href;
+}
+
+if (isMain()) {
   runKeywordGenerator();
 }
