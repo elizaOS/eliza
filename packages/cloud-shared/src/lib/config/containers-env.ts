@@ -328,15 +328,15 @@ export const containersEnv = {
    * provisioned. Also acts as the drain preservation floor: a drain is
    * refused if it would leave the pool below this number of free slots.
    *
-   * Smaller buffer → pool can collapse to fewer nodes when demand is low
-   * (right for staging). Larger buffer → hot-start latency reserved (right
-   * for prod). Clamped to [0, 64]. Default: 4.
+   * Default: 2 — half a 4-slot node kept hot across the pool. Bump via env
+   * for fleets where the cold-start tail matters more than node cost.
+   * Clamped to [0, 64].
    */
   autoscaleMinFreeSlotsBuffer(): number {
     const env = getCloudAwareEnv();
     const raw = pick(env.CONTAINERS_AUTOSCALE_MIN_FREE_SLOTS_BUFFER);
     const parsed = raw !== undefined ? Number(raw) : Number.NaN;
-    return Number.isFinite(parsed) && parsed >= 0 ? Math.min(64, Math.floor(parsed)) : 4;
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.min(64, Math.floor(parsed)) : 2;
   },
 
   /**
