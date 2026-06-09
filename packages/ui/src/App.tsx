@@ -74,7 +74,7 @@ import { isIOS, isNative } from "./platform/init";
 import { type ActionNotice, useApp } from "./state";
 
 const MOBILE_NAV_PADDING_CLASS =
-  "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px))]";
+  "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem))]";
 type ExtractComponent<TValue> =
   TValue extends ComponentType<infer Props> ? ComponentType<Props> : never;
 
@@ -347,7 +347,7 @@ function TabScrollView({
       main={
         <div
           data-shell-scroll-region="true"
-          className={`flex-1 min-h-0 min-w-0 w-full overflow-y-auto ${className}`}
+          className={`eliza-continuous-chat-scroll flex-1 min-h-0 min-w-0 w-full overflow-y-auto pb-[var(--eliza-continuous-chat-clearance,5.25rem)] ${className}`}
         >
           {children}
         </div>
@@ -621,7 +621,7 @@ function ViewLayoutSurface({
           className={`grid min-h-0 flex-1 gap-2 overflow-auto p-2 ${viewLayoutGridClass(
             layout,
             entries.length,
-          )}`}
+          )} eliza-continuous-chat-scroll pb-[calc(0.5rem+var(--eliza-continuous-chat-clearance,5.25rem))]`}
         >
           {entries.length > 0 ? (
             entries.map((view) => (

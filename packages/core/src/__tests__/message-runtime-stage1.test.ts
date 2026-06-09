@@ -1476,6 +1476,101 @@ android smoke model works`,
 		}
 	});
 
+	it("routes text HANDLE_RESPONSE layout-only view follow-ups through VIEWS", async () => {
+		const runtime = makeRuntime([
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				intents: ["split views"],
+				candidateActionNames: [],
+				replyText: "I'll split it vertically.",
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			}),
+			{
+				thought: "Use the view manager to change the current split layout.",
+				toolCalls: [
+					{
+						id: "views-split-vertical",
+						name: "VIEWS",
+						args: { action: "split", layout: "vertical" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "The current view layout was changed.",
+				messageToUser: "Done.",
+			}),
+		]);
+		const viewsHandler = vi.fn(async () => ({
+			success: true,
+			text: "Views split vertically.",
+			data: { actionName: "VIEWS" },
+		}));
+		runtime.actions = [
+			{
+				name: "VIEWS",
+				similes: [
+					"OPEN_VIEW_WINDOW",
+					"PIN_VIEW",
+					"SPLIT_VIEWS",
+					"TILE_VIEWS",
+					"VIEW_MANAGER",
+				],
+				tags: ["views", "ui", "window", "layout"],
+				contexts: ["views"],
+				contextGate: { anyOf: ["views"] },
+				description: "Manage and navigate UI views.",
+				parameters: [
+					{
+						name: "action",
+						description: "View operation to perform",
+						required: true,
+						schema: { type: "string" },
+					},
+					{
+						name: "layout",
+						description: "Layout direction",
+						required: false,
+						schema: { type: "string" },
+					},
+				],
+				examples: [],
+				validate: async () => true,
+				handler: viewsHandler,
+			},
+		] as never;
+		const message = makeMessage({
+			text: "split vertical instead",
+			channelType: ChannelType.DM,
+			source: "client_chat",
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(viewsHandler).toHaveBeenCalledTimes(1);
+		const calls = useModelCalls(runtime);
+		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
+		const plannerCall = calls[1]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
+		expect(plannerUserContent).toContain('"candidateActions":["VIEWS"]');
+		expect(plannerUserContent).toContain('"requiresTool":true');
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe("Done.");
+		}
+	});
+
 	it("declines live lookups when no web search action is registered instead of falling back to shell", async () => {
 		const runtime = makeRuntime([
 			JSON.stringify({
@@ -1846,7 +1941,41 @@ android smoke model works`,
 		expect(
 			inferDirectCurrentRequestCandidateActions(
 				[genericViewAction],
+				"split vertical instead",
+			),
+		).toEqual(["VIEWS"]);
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[genericViewAction],
 				"open orchestrator in a new window",
+			),
+		).toEqual(["VIEWS"]);
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[genericViewAction],
+				"open plugin browser",
+			),
+		).toEqual(["VIEWS"]);
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[
+					{ name: "VIEWS" },
+					{
+						...genericViewAction,
+						similes: [
+							...genericViewAction.similes,
+							"CREATE_CALENDAR_EVENT",
+							"LIST_CALENDAR_EVENTS",
+						],
+						tags: [
+							...genericViewAction.tags,
+							"view-capability",
+							"calendar",
+							"events",
+						],
+					},
+				],
+				"open calendar on the right",
 			),
 		).toEqual(["VIEWS"]);
 		expect(
@@ -1920,6 +2049,44 @@ android smoke model works`,
 		expect(routedLayout.plan.requiresTool).toBe(true);
 		expect(routedLayout.plan.contexts).toContain("general");
 		expect(routedLayout.plan.candidateActions).toEqual(["VIEWS"]);
+
+		const routedBadModelCandidate = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				intents: ["open calendar view"],
+				replyText: "Opening it now.",
+				candidateActionNames: ["OPEN_PLUGIN"],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [
+					{
+						...genericViewAction,
+						similes: [
+							...genericViewAction.similes,
+							"CREATE_CALENDAR_EVENT",
+							"LIST_CALENDAR_EVENTS",
+						],
+						tags: [
+							...genericViewAction.tags,
+							"view-capability",
+							"calendar",
+							"events",
+						],
+					},
+				],
+				messageText: "open calendar on the right",
+			},
+		);
+
+		expect(routedBadModelCandidate.plan.simple).toBe(false);
+		expect(routedBadModelCandidate.plan.requiresTool).toBe(true);
+		expect(routedBadModelCandidate.plan.contexts).toContain("general");
+		expect(routedBadModelCandidate.plan.candidateActions).toEqual(["VIEWS"]);
 	});
 
 	it("repairs build requests misrouted to LifeOps scheduled tasks", () => {

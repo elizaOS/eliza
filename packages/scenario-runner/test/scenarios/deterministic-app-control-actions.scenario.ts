@@ -1160,6 +1160,13 @@ export default scenario({
             search: "?viewType=gui",
           },
           {
+            body: null,
+            method: "GET",
+            pathname: "/api/views/current",
+            response: { body: { currentView }, status: 200 },
+            search: "",
+          },
+          {
             body: {
               action: "split-view",
               views: ["settings", "remote-ledger"],

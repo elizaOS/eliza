@@ -1724,6 +1724,54 @@ describe("view management actions", () => {
 		);
 	});
 
+	it("opens the plugins page from plugin-browser aliases", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "plugins-page",
+						label: "Plugins",
+						path: "/apps/plugins",
+						tags: [
+							"plugins",
+							"plugin-browser",
+							"plugin browser",
+							"plugin-manager",
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		vi.mocked(globalThis.fetch).mockResolvedValue({
+			ok: true,
+			status: 200,
+			text: async () => "",
+		} as Response);
+
+		const result = await action.handler(
+			runtime as never,
+			message("open plugin browser") as never,
+			undefined,
+			{ action: "open", view: "plugin-browser" },
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			mode: "show",
+			viewId: "plugins-page",
+		});
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/plugins-page/navigate",
+			expect.objectContaining({ method: "POST" }),
+		);
+	});
+
 	it("dispatches generated capability action names through the registered view catalog", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
@@ -1849,6 +1897,13 @@ describe("view management actions", () => {
 			{ action: "show", view: "notes" },
 			callback,
 		);
+		const listNotesAliasResult = await action.handler(
+			runtime as never,
+			message("show me my notes") as never,
+			undefined,
+			{ action: "interact", view: "notes", capability: "list-notes" },
+			callback,
+		);
 		const deleteNoteResult = await action.handler(
 			runtime as never,
 			message("delete note") as never,
@@ -1952,6 +2007,12 @@ describe("view management actions", () => {
 		});
 		expect(showNotesResult?.success).toBe(true);
 		expect(showNotesResult?.values).toMatchObject({
+			mode: "interact",
+			viewId: "notes",
+			capability: "get-notes",
+		});
+		expect(listNotesAliasResult?.success).toBe(true);
+		expect(listNotesAliasResult?.values).toMatchObject({
 			mode: "interact",
 			viewId: "notes",
 			capability: "get-notes",
@@ -2344,7 +2405,7 @@ describe("view management actions", () => {
 		);
 	});
 
-	it("prefers layout over stale generated capability options for placement follow-ups", async () => {
+	it("uses placement orientation over stale generated capability options for placement follow-ups", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
 		const action = createViewsAction({
@@ -2387,6 +2448,7 @@ describe("view management actions", () => {
 			{
 				action: "create-calendar-event",
 				view: "calendar",
+				layout: "vertical",
 			},
 			callback,
 		);
@@ -2409,6 +2471,198 @@ describe("view management actions", () => {
 					views: ["notes", "calendar"],
 					layout: "horizontal",
 					placement: "right",
+				}),
+			}),
+		);
+	});
+
+	it("reuses current split views for layout-only split follow-ups", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "plugins-page",
+						label: "Plugins",
+						path: "/apps/plugins",
+					}),
+					view({ id: "calendar", label: "Calendar", path: "/calendar" }),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "plugins-page",
+					viewLabel: "Plugins",
+					viewPath: "/apps/plugins",
+					viewType: "gui",
+					action: "split-view",
+					views: ["plugins-page", "calendar"],
+					layout: "horizontal",
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({ ok: true }),
+		} as Response);
+
+		const result = await action.handler(
+			runtime as never,
+			message("split vertical instead") as never,
+			undefined,
+			{
+				action: "split",
+				layout: "vertical",
+				views: ["notes", "plugins-page", "calendar"],
+			},
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			mode: "split",
+			viewIds: ["plugins-page", "calendar"],
+			layout: "vertical",
+		});
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/plugins-page/navigate",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					action: "split-view",
+					views: ["plugins-page", "calendar"],
+					layout: "vertical",
+				}),
+			}),
+		);
+	});
+
+	it("reuses current split views for text-only layout follow-ups", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "plugins-page",
+						label: "Plugins",
+						path: "/apps/plugins",
+					}),
+					view({ id: "calendar", label: "Calendar", path: "/calendar" }),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "plugins-page",
+					viewLabel: "Plugins",
+					viewPath: "/apps/plugins",
+					viewType: "gui",
+					action: "split-view",
+					views: ["plugins-page", "calendar"],
+					layout: "horizontal",
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({ ok: true }),
+		} as Response);
+
+		const result = await action.handler(
+			runtime as never,
+			message("split vertical instead") as never,
+			undefined,
+			undefined,
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			mode: "split",
+			viewIds: ["plugins-page", "calendar"],
+			layout: "vertical",
+		});
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/plugins-page/navigate",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					action: "split-view",
+					views: ["plugins-page", "calendar"],
+					layout: "vertical",
+				}),
+			}),
+		);
+	});
+
+	it("reuses current split views when planner supplies a filtered view type", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const listViews = vi.fn(async (options?: { viewType?: string }) =>
+			options?.viewType === "tui"
+				? []
+				: [
+						view({
+							id: "plugins-page",
+							label: "Plugins",
+							path: "/apps/plugins",
+						}),
+						view({ id: "calendar", label: "Calendar", path: "/calendar" }),
+					],
+		);
+		const action = createViewsAction({
+			client: {
+				listViews,
+				getCurrentView: vi.fn(async () => ({
+					viewId: "plugins-page",
+					viewLabel: "Plugins",
+					viewPath: "/apps/plugins",
+					viewType: "gui",
+					action: "split-view",
+					views: ["plugins-page", "calendar"],
+					layout: "horizontal",
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({ ok: true }),
+		} as Response);
+
+		const result = await action.handler(
+			runtime as never,
+			message("split vertical instead") as never,
+			undefined,
+			{
+				action: "split",
+				layout: "vertical",
+				viewType: "tui",
+			},
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			mode: "split",
+			viewIds: ["plugins-page", "calendar"],
+			layout: "vertical",
+		});
+		expect(listViews).toHaveBeenCalledWith({ viewType: "tui" });
+		expect(listViews).toHaveBeenCalledWith();
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/plugins-page/navigate",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					action: "split-view",
+					views: ["plugins-page", "calendar"],
+					layout: "vertical",
 				}),
 			}),
 		);

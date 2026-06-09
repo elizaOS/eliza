@@ -130,6 +130,7 @@
   /* Touch target minimum (Apple HIG 44px) */
   --min-touch-target: 2.75rem;
   --eliza-mobile-nav-offset: 0px;
+  --eliza-continuous-chat-clearance: 5.25rem;
 
   /* Plugin UI Design Tokens */
   --plugin-field-gap: 1rem;
@@ -151,6 +152,14 @@
 
 :root.eliza-mobile-bottom-nav {
   --eliza-mobile-nav-offset: 3.75rem;
+}
+
+.eliza-continuous-chat-scroll {
+  scroll-padding-bottom: calc(
+    var(--eliza-mobile-nav-offset, 0px) +
+    var(--safe-area-bottom, 0px) +
+    var(--eliza-continuous-chat-clearance, 5.25rem)
+  );
 }
 
 [data-theme="dark"],

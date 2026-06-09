@@ -1203,10 +1203,7 @@ function trajectoryToUIDetail(traj: Trajectory): UITrajectoryDetailResult {
   }
 
   const metadata = buildDisplayMetadata(traj);
-  const normalizedDurationMs =
-    status === "active"
-      ? null
-      : timing.durationMs;
+  const normalizedDurationMs = status === "active" ? null : timing.durationMs;
   const updatedAtMs = normalizedEndTime ?? (traj.startTime || Date.now());
 
   const trajectory: UITrajectoryRecord = {
@@ -1235,6 +1232,31 @@ function trajectoryToUIDetail(traj: Trajectory): UITrajectoryDetailResult {
     providerAccesses,
     ...buildUIEventFields(traj, trajectoryId),
   };
+}
+
+async function listItemToHydratedUIRecord(
+  runtime: AgentRuntime,
+  logger: TrajectoryLoggerApi,
+  item: TrajectoryListItem,
+): Promise<UITrajectoryRecord> {
+  const fallback = listItemToUIRecord(item);
+  if (
+    item.status !== "active" ||
+    item.endTime !== null ||
+    item.durationMs !== null
+  ) {
+    return fallback;
+  }
+
+  const detail = await logger.getTrajectoryDetail(item.id);
+  if (!detail) return fallback;
+
+  const hydrated = await maybeBackfillTrajectoryFromConversationMemory(
+    runtime,
+    await maybeBackfillTrajectoryFromUseModelLogs(runtime, detail),
+  );
+  const record = trajectoryToUIDetail(hydrated).trajectory;
+  return record.status === "active" ? fallback : record;
 }
 
 const LEGACY_SYNTHETIC_RESPONSE_MARKER = "place" + "holder call inserted";
@@ -1768,8 +1790,14 @@ async function handleGetTrajectories(
     ? result.trajectories.slice(offset, offset + limit)
     : result.trajectories;
 
+  const uiTrajectories = await Promise.all(
+    pagedTrajectories.map((item) =>
+      listItemToHydratedUIRecord(runtime, logger, item),
+    ),
+  );
+
   const uiResult = {
-    trajectories: pagedTrajectories.map(listItemToUIRecord),
+    trajectories: uiTrajectories,
     total: result.total,
     offset,
     limit,

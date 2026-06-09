@@ -37,6 +37,26 @@ async function runBrowserAction(args: {
 }
 
 describe("BROWSER action", () => {
+  it("leaves app-internal plugin browser UI requests for the view router", async () => {
+    const runtime = runtimeWithService(browserService());
+    const message = { content: { text: "open plugin browser" } };
+
+    await expect(
+      browserAction.validate?.(runtime as never, message as never, undefined),
+    ).resolves.toBe(false);
+  });
+
+  it("still validates plugin-browser text when the user gives an explicit URL", async () => {
+    const runtime = runtimeWithService(browserService());
+    const message = {
+      content: { text: "open https://example.com/plugin-browser docs" },
+    };
+
+    await expect(
+      browserAction.validate?.(runtime as never, message as never, undefined),
+    ).resolves.toBe(true);
+  });
+
   it("normalizes legacy action aliases and forwards target overrides", async () => {
     const service = browserService({
       tabs: [

@@ -813,6 +813,14 @@ function resolveViewCapability({
 		const vTokens = viewTokens(candidate.view);
 		const cTokens = capabilityTokens(candidate.capability);
 		const capOperation = operationFamilyForCapability(candidate.capability);
+		if (
+			explicitCapability &&
+			sourceOperation &&
+			capOperation &&
+			capOperation !== sourceOperation
+		) {
+			continue;
+		}
 		const viewMatches =
 			requestedView?.id === candidate.view.id ||
 			countIntersection(sourceTokens, vTokens) > 0 ||
@@ -1332,6 +1340,19 @@ function resolveLayoutTargets(
 			: uniqueByViewId([...explicitUnique, ...textUnique]);
 }
 
+function isLayoutOnlyFollowupRequest(
+	text: string,
+	views: readonly ViewSummary[],
+): boolean {
+	const requestText = viewRequestText(text).trim();
+	if (!requestText) return false;
+	if (resolveLayoutTargets(requestText, undefined, views).length > 0)
+		return false;
+	return /\b(instead|again|horizontal|vertical|row|column|stack|side.?by.?side|left-right|top-bottom)\b/i.test(
+		requestText,
+	);
+}
+
 async function resolveSingleShellTargetView({
 	client,
 	text,
@@ -1444,6 +1465,14 @@ function readPlacementValue(
 	return undefined;
 }
 
+function layoutForPlacement(
+	placement?: "left" | "right" | "top" | "bottom",
+): "horizontal" | "vertical" | undefined {
+	if (placement === "left" || placement === "right") return "horizontal";
+	if (placement === "top" || placement === "bottom") return "vertical";
+	return undefined;
+}
+
 async function completeSplitTargetsWithCurrentView({
 	client,
 	targets,
@@ -1466,6 +1495,43 @@ async function completeSplitTargetsWithCurrentView({
 		return [targets[0], currentSummary];
 	}
 	return [currentSummary, targets[0]];
+}
+
+async function completeSplitTargetsFromCurrentLayout({
+	client,
+	targets,
+	views,
+	preferCurrentLayout,
+}: {
+	client: ViewsClient;
+	targets: ViewSummary[];
+	views: readonly ViewSummary[];
+	preferCurrentLayout?: boolean;
+}): Promise<ViewSummary[]> {
+	const currentView = await client.getCurrentView().catch(() => null);
+	const currentLayoutIds = currentView?.views ?? [];
+	const byId = new Map(views.map((view) => [view.id, view]));
+	if (currentLayoutIds.some((viewId) => !byId.has(viewId))) {
+		const unfilteredViews = await client.listViews().catch(() => []);
+		for (const view of unfilteredViews) byId.set(view.id, view);
+	}
+	const currentTargets = currentLayoutIds.map((viewId) => {
+		const summary = byId.get(viewId);
+		if (summary) return summary;
+		return {
+			id: viewId,
+			label: viewId === currentView?.viewId ? currentView.viewLabel : viewId,
+			available: true,
+			pluginName: "current-layout",
+			viewType: currentView?.viewType ?? "gui",
+			...(viewId === currentView?.viewId && currentView.viewPath
+				? { path: currentView.viewPath }
+				: {}),
+		};
+	});
+	if (preferCurrentLayout && currentTargets.length >= 2) return currentTargets;
+	if (targets.length >= 2) return targets;
+	return currentTargets.length >= 2 ? currentTargets : targets;
 }
 
 async function runViewsClose({
@@ -1579,7 +1645,9 @@ async function runViewsLayout({
 	const views = await client.listViews({ viewType });
 	const placement =
 		mode === "split" ? readPlacementValue(text, options) : undefined;
-	const targets =
+	const layoutOnlyFollowup =
+		mode === "split" ? isLayoutOnlyFollowupRequest(text, views) : false;
+	let targets =
 		mode === "split"
 			? await completeSplitTargetsWithCurrentView({
 					client,
@@ -1588,6 +1656,14 @@ async function runViewsLayout({
 					placement,
 				})
 			: resolveLayoutTargets(text, options, views);
+	if (mode === "split") {
+		targets = await completeSplitTargetsFromCurrentLayout({
+			client,
+			targets,
+			views,
+			preferCurrentLayout: layoutOnlyFollowup,
+		});
+	}
 	const singleViewPlacement =
 		mode === "split" && targets.length === 1 && placement !== undefined;
 	if (targets.length < 2 && !singleViewPlacement) {
@@ -1603,12 +1679,17 @@ async function runViewsLayout({
 		};
 	}
 
-	const layout = mode === "tile" ? "grid" : readLayoutValue(text, options);
+	const layout =
+		mode === "tile"
+			? "grid"
+			: (layoutForPlacement(placement) ?? readLayoutValue(text, options));
 	const viewIds = targets.map((view) => view.id);
 	const labels = targets.map((view) => view.label).join(", ");
 	const action = mode === "split" ? "split-view" : "tile-views";
 	const primary = targets[0];
-	const resolvedViewType = viewType ?? primary.viewType;
+	const resolvedViewType = layoutOnlyFollowup
+		? (primary.viewType ?? viewType)
+		: (viewType ?? primary.viewType);
 	const resultText = await navigateViewLayout({
 		viewId: primary.id,
 		action,
@@ -1738,7 +1819,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 		descriptionCompressed:
 			"views list|current|show|open|close|search|manager|broadcast|interact|pin|window|split|tile|create|edit|delete; navigate/close UI views; invoke registered view capabilities for notes/events/dashboards/records; click/read/focus elements; split/tile layouts; scaffold/edit/remove view plugins",
 		routingHint:
-			"UI view/window/panel/app navigation and layout -> VIEWS. Use VIEWS for open/show/switch/close/hide view requests, view manager, list views, split/tile views, pin view, open view in a separate window, or invoking a capability declared by a registered plugin view, including view-backed content operations like creating/listing notes or calendar events. Close/hide means VIEWS action=close, not delete/remove. For view capabilities use action=interact with view=<view id> and capability=<capability id>, or pass a generated capability action name that can be resolved from the view catalog. Pass capability data as params={...} or top-level keys such as title/body/date/time/notes/color; never use dotted keys such as params.title.",
+			"UI view/window/panel/app navigation and layout -> VIEWS. Use VIEWS for open/show/switch/close/hide view requests, view manager, list views, split/tile views, pin view, open view in a separate window, or invoking a capability declared by a registered plugin view, including view-backed content operations like creating/listing notes or calendar events. For add/create calendar-event requests, use action=interact view=calendar capability=create-calendar-event; do not answer by opening or splitting the calendar unless the user asked for layout. Close/hide means VIEWS action=close, not delete/remove. For view capabilities use action=interact with view=<view id> and capability=<capability id>, or pass a generated capability action name that can be resolved from the view catalog. Pass capability data as params={...} or top-level keys such as title/body/date/time/notes/color; never use dotted keys such as params.title.",
 		allowAdditionalParameters: true,
 		suppressPostActionContinuation: true,
 
@@ -2563,6 +2644,21 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					name: "{{agentName}}",
 					content: {
 						text: 'Created event "team sync".',
+						action: "VIEWS",
+					},
+				},
+			],
+			[
+				{
+					name: "{{user1}}",
+					content: {
+						text: "tomorrow is my birthday can you add that to calendar",
+					},
+				},
+				{
+					name: "{{agentName}}",
+					content: {
+						text: 'Created event "Birthday".',
 						action: "VIEWS",
 					},
 				},

@@ -37,6 +37,9 @@ export interface CurrentViewSummary {
 	viewLabel: string;
 	viewType: ViewType;
 	action?: string;
+	views?: string[];
+	layout?: string;
+	placement?: string;
 	updatedAt: string;
 }
 
@@ -215,7 +218,28 @@ function parseCurrentView(body: unknown): CurrentViewSummary | null {
 	}
 	const action =
 		typeof currentView.action === "string" ? currentView.action : undefined;
-	return { viewId, viewPath, viewLabel, viewType, action, updatedAt };
+	const views = Array.isArray(currentView.views)
+		? currentView.views.filter(
+				(view): view is string => typeof view === "string",
+			)
+		: undefined;
+	const layout =
+		typeof currentView.layout === "string" ? currentView.layout : undefined;
+	const placement =
+		typeof currentView.placement === "string"
+			? currentView.placement
+			: undefined;
+	return {
+		viewId,
+		viewPath,
+		viewLabel,
+		viewType,
+		action,
+		views,
+		layout,
+		placement,
+		updatedAt,
+	};
 }
 
 export interface ViewsClient {

@@ -75,7 +75,9 @@ vi.mock("@elizaos/agent", () => ({
       const updatedAt = parseTime(input.updatedAt);
       const createdAt = parseTime(input.createdAt);
       return new Date(
-        (typeof updatedAt === "number" && updatedAt > 0 && updatedAt >= floorTime
+        (typeof updatedAt === "number" &&
+        updatedAt > 0 &&
+        updatedAt >= floorTime
           ? updatedAt
           : null) ??
           endTime ??
@@ -314,6 +316,63 @@ describe("trajectory routes", () => {
     expect(trajectories[0]?.endTime).toBe(1_700_000_005_000);
     expect(trajectories[0]?.durationMs).toBe(5_000);
     expect(trajectories[0]?.updatedAt).toBe("2023-11-14T22:13:25.000Z");
+  });
+
+  it("hydrates stale active list rows from trajectory detail before mapping", async () => {
+    const logger = createLogger({
+      listTrajectories: vi.fn(async () => ({
+        trajectories: [
+          {
+            id: "traj-active",
+            agentId: "agent-1",
+            source: "runtime",
+            status: "active",
+            startTime: 1_700_000_000_000,
+            endTime: null,
+            durationMs: null,
+            llmCallCount: 0,
+            providerAccessCount: 0,
+            totalPromptTokens: 0,
+            totalCompletionTokens: 0,
+            createdAt: "2023-11-14T22:13:20.000Z",
+            updatedAt: "2023-11-14T22:13:21.000Z",
+            metadata: {},
+          },
+        ],
+        total: 1,
+        offset: 0,
+        limit: 50,
+      })),
+      getTrajectoryDetail: vi.fn(async () =>
+        createTrajectory({
+          trajectoryId: "traj-active",
+          startTime: 1_700_000_000_000,
+          endTime: 1_700_000_004_000,
+          durationMs: 4_000,
+          metadata: { source: "runtime" },
+          metrics: { finalStatus: "completed" },
+        }),
+      ),
+    });
+    const response = createResponse();
+
+    await handleTrajectoryRoute(
+      createRequest(),
+      response,
+      createRuntime(logger),
+      "/api/trajectories",
+      "GET",
+    );
+
+    const body = parseJsonResponse(response);
+    const trajectories = body.trajectories as Array<Record<string, unknown>>;
+    expect(logger.getTrajectoryDetail).toHaveBeenCalledWith("traj-active");
+    expect(trajectories[0]).toMatchObject({
+      id: "traj-active",
+      status: "completed",
+      endTime: 1_700_000_004_000,
+      durationMs: 4_000,
+    });
   });
 
   it("rejects non-native JSON export shapes", async () => {

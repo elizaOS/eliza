@@ -42,7 +42,7 @@ import type { ShellController } from "./useShellController";
 // The expanded transcript itself is intentionally chrome-free (no panel
 // background/border); its lines carry their own scrim via ThreadLine `floating`.
 const GLASS_BAR =
-  "flex items-center gap-2 rounded-full border border-white/18 bg-black/45 px-3 py-2 backdrop-blur-xl " +
+  "flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-white/18 bg-black/45 px-2 py-2 backdrop-blur-xl sm:gap-2 sm:px-3 " +
   "shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_16px_46px_-12px_rgba(0,0,0,0.66)]";
 
 // Floating (un-scrimmed) text gets a soft shadow so it reads over bright views.
@@ -73,9 +73,6 @@ const SPEAKER_MUTED_GLYPH =
 const MAXIMIZE_GLYPH =
   "M20 8H28V16H25V13.1L18.5 19.6L16.4 17.5L22.9 11H20Z " +
   "M16 28H8V20H11V22.9L17.5 16.4L19.6 18.5L13.1 25H16Z";
-// Trash can (lid bar + body) — DEV-only "clear conversation" debug control.
-const TRASH_GLYPH = "M14 7H22V10H27V13H9V10H14Z M11 15H25L23.5 30H12.5Z";
-
 function Glyph({ d }: { d: string }): React.JSX.Element {
   return (
     <svg viewBox="0 0 36 36" className="h-4 w-4" aria-hidden="true">
@@ -240,7 +237,6 @@ export function ContinuousChatOverlay({
     speaking,
     agentVoiceMuted,
     toggleAgentVoiceMute,
-    clearConversation,
   } = controller;
 
   // Honor the OS "reduce motion" setting: every overlay animation collapses to
@@ -566,10 +562,29 @@ export function ContinuousChatOverlay({
       document.removeEventListener("pointerdown", onPointerDown, true);
   }, [open, collapseAll]);
 
+  // When the user scrolls the app behind the ambient chat, get the transient
+  // bubbles out of the way. Fullscreen chat owns its own scroll region, so this
+  // only applies to the resting overlay peek state.
+  React.useEffect(() => {
+    if (!peek) return;
+    const onScroll = (event: Event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const insideChat =
+        target &&
+        ((threadRef.current?.contains(target) ?? false) ||
+          (suggestionsRef.current?.contains(target) ?? false) ||
+          (composerRef.current?.contains(target) ?? false));
+      if (insideChat) return;
+      collapseAll();
+    };
+    document.addEventListener("scroll", onScroll, true);
+    return () => document.removeEventListener("scroll", onScroll, true);
+  }, [collapseAll, peek]);
+
   return (
     <div
       className={cn(
-        "pointer-events-none fixed flex flex-col items-center px-4",
+        "pointer-events-none fixed flex w-full min-w-0 flex-col items-center px-3 sm:px-4",
         // Fullscreen: take over the whole viewport (transcript fills, composer
         // pinned to the bottom). Otherwise: a bottom-anchored ambient bar.
         fullscreen
@@ -771,7 +786,7 @@ export function ContinuousChatOverlay({
         onFocus={handleAmbientFocus}
         onBlur={handleAmbientBlur}
         aria-label="Chat composer"
-        className="pointer-events-auto relative m-0 w-full max-w-3xl border-0 p-0"
+        className="pointer-events-auto relative m-0 w-full min-w-0 max-w-3xl border-0 p-0"
       >
         {/* Soft breath of light for live states — not a brand-colored alert ring.
             Always mounted; only opacity changes so it swells in/out over 700ms. */}
@@ -841,15 +856,6 @@ export function ContinuousChatOverlay({
         <div className={cn(GLASS_BAR, "relative")}>
           {/* No expand/collapse chevron: focusing the input opens the thread,
               and Escape / clicking outside collapses it. */}
-          {/* DEV-only: clear the conversation and start a fresh, greeted one. */}
-          {import.meta.env.DEV ? (
-            <SoftButton
-              glyph={TRASH_GLYPH}
-              label="clear conversation (debug)"
-              onClick={() => clearConversation?.()}
-              testId="chat-composer-clear-debug"
-            />
-          ) : null}
           <SoftButton
             glyph={MAXIMIZE_GLYPH}
             label={fullscreen ? "exit full screen" : "expand to full screen"}
@@ -884,7 +890,7 @@ export function ContinuousChatOverlay({
             aria-describedby={booting ? "cc-booting-hint" : undefined}
             aria-disabled={booting}
             readOnly={booting}
-            className="min-w-0 flex-1 border-none bg-transparent text-sm text-white/[0.92] outline-none placeholder:text-white/45"
+            className="h-8 min-w-0 flex-1 border-none bg-transparent px-1 text-sm text-white/[0.92] outline-none placeholder:text-white/45"
           />
           <span id="cc-booting-hint" className="sr-only">
             connecting — you can’t send yet

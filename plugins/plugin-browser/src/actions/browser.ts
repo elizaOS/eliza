@@ -135,6 +135,42 @@ function extractFirstUrl(value: string): string | null {
   return match?.[0] ?? null;
 }
 
+function textWords(value: string): Set<string> {
+  const words = new Set<string>();
+  let current = "";
+  for (const char of value.toLowerCase()) {
+    const code = char.charCodeAt(0);
+    const isAsciiLetter = code >= 97 && code <= 122;
+    const isDigit = code >= 48 && code <= 57;
+    if (isAsciiLetter || isDigit) {
+      current += char;
+      continue;
+    }
+    if (current) {
+      words.add(current);
+      current = "";
+    }
+  }
+  if (current) words.add(current);
+  return words;
+}
+
+function isPluginBrowserUiRequest(messageText: string): boolean {
+  if (extractFirstUrl(messageText)) return false;
+  const words = textWords(messageText);
+  const mentionsPlugins = words.has("plugin") || words.has("plugins");
+  if (!mentionsPlugins) return false;
+  return [
+    "browser",
+    "catalog",
+    "manager",
+    "marketplace",
+    "page",
+    "view",
+    "views",
+  ].some((word) => words.has(word));
+}
+
 function inferBrowserSubaction(
   params: BrowserActionParameters | undefined,
   messageText: string,
@@ -347,7 +383,8 @@ export const browserAction: Action = {
     "BROWSER action. Control registered browser target: app workspace, bridge Chrome/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. action=autofill_login + domain vault-gated autofills open workspace tab.",
   descriptionCompressed:
     "Browser open|navigate|click|type|screenshot|state|autofill_login; bridge status elsewhere",
-  validate: async () => true,
+  validate: async (_runtime, message) =>
+    !isPluginBrowserUiRequest(getMessageText(message)),
   handler: async (runtime, message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | BrowserActionParameters

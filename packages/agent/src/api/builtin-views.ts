@@ -51,7 +51,15 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     icon: "Puzzle",
     path: "/apps/plugins",
     order: 60,
-    tags: ["plugins", "configuration", "extensions"],
+    tags: [
+      "plugins",
+      "plugin-browser",
+      "plugin browser",
+      "plugin-manager",
+      "plugin manager",
+      "configuration",
+      "extensions",
+    ],
     visibleInManager: true,
   },
   {

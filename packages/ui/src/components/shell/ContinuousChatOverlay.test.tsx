@@ -321,6 +321,19 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.getAllByTestId("chat-composer-textarea")).toHaveLength(1);
   });
 
+  it("keeps composer controls inside one constrained input pill", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+
+    const input = screen.getByTestId("chat-composer-textarea");
+    const bar = input.parentElement;
+
+    expect(screen.queryByTestId("chat-composer-clear-debug")).toBeNull();
+    expect(bar?.className).toContain("max-w-full");
+    expect(bar?.className).not.toContain("flex-wrap");
+    expect(input.className).toContain("flex-1");
+    expect(input.className).not.toContain("basis-full");
+  });
+
   it("shows exactly three resting prompt suggestions", () => {
     render(
       <ContinuousChatOverlay
@@ -370,6 +383,17 @@ describe("ContinuousChatOverlay", () => {
     expect(thread?.getAttribute("data-revealed")).toBe("true");
     // A click on the live view behind (here, the bare document body) closes it.
     fireEvent.pointerDown(document.body);
+    expect(thread?.getAttribute("data-revealed")).toBe("false");
+  });
+
+  it("collapses the bubbles when the underlying app scrolls", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const thread = document.getElementById("continuous-thread");
+
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(thread?.getAttribute("data-revealed")).toBe("true");
+
+    fireEvent.scroll(document.body);
     expect(thread?.getAttribute("data-revealed")).toBe("false");
   });
 
