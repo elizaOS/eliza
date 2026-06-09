@@ -28,6 +28,12 @@ resource "hcloud_server" "control_plane" {
   # `milady` VM. The environment lives in labels, not the hostname, so the
   # prod/staging distinction shows up in the Hetzner Console filter
   # without bloating the hostname every operator types into SSH.
+  #
+  # No hcloud_firewall is attached: the CP runs agent-router (HTTP),
+  # headscale (HTTP/UDP), and other services that need inbound from the
+  # public internet OR from agent containers, and we don't have a clean
+  # inventory of every bound port. Defense is pubkey-only SSH + per-service
+  # auth on the bound ports.
   name        = "eliza-${var.environment}-${each.value}"
   location    = var.hcloud_location
   server_type = var.hcloud_server_type

@@ -66,7 +66,11 @@ variable "control_plane_hostname_prefix" {
 }
 
 variable "deploy_branch" {
-  description = "Git branch the host's auto-deploy workflow follows."
+  description = "Git branch the host's auto-deploy workflow follows. Staging defaults to 'develop'; production MUST be 'main' (enforced by the validation below) so a staging fix doesn't accidentally land in prod via the wrong branch pin."
   type        = string
   default     = "develop"
+  validation {
+    condition     = var.environment != "production" || var.deploy_branch == "main"
+    error_message = "deploy_branch must be 'main' when environment='production' — set it explicitly via the workflow to prevent prod tracking develop"
+  }
 }

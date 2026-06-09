@@ -7,3 +7,6 @@ cloudflare_zone_id    = "<zone-id-for-elizacloud.ai>"
 ssh_public_keys = [
   # "ssh-ed25519 AAAA... operator@laptop"
 ]
+
+# Production MUST track 'main' (module validation enforces).
+deploy_branch = "main"

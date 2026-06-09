@@ -7,3 +7,6 @@ skip_metadata_api_check     = true
 skip_region_validation      = true
 skip_requesting_account_id  = true
 use_path_style              = true
+
+# Native S3 backend lockfile (requires TF 1.10+). No DynamoDB needed.
+use_lockfile                = true
