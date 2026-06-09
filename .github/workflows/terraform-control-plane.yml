@@ -1,37 +1,37 @@
-name: Terraform — Apps Data Plane (Hetzner)
+name: Terraform — Control Plane (Hetzner)
 
-# Plan/apply the Eliza Cloud Apps (Product 2) data-plane IaC
-# (packages/cloud-infra/cloud/terraform/hetzner/apps-data-plane).
+# Plan/apply the Eliza Cloud control-plane IaC
+# (packages/cloud-infra/cloud/terraform/hetzner/control-plane).
 #
 #   pull_request touching the module -> fmt + validate (NO cloud creds, no state — safe)
 #   workflow_dispatch (manual)        -> terraform plan or apply against an
 #                                        environment (staging | production)
 #
-# Apply provisions real billed Hetzner servers (an app worker node + a tenant
-# Postgres node), so it is an explicit operator action — it never auto-runs.
+# Apply provisions a real billed Hetzner control-plane VM (the box that runs
+# eliza-provisioning-worker, agent-router, headscale, and cloudflared). It is
+# an explicit operator action — it never auto-runs.
 # "develop = staging" is expressed by choosing environment=staging on dispatch.
 #
 # Secrets:
 #   environment-scoped (set on each `staging` / `production` GitHub Environment):
 #     HCLOUD_TOKEN                  Hetzner Cloud API token for that env's project
 #   repo-level (already present in this repo):
-#     CLOUDFLARE_API_TOKEN          Cloudflare DNS token (wildcard apps record)
+#     CLOUDFLARE_API_TOKEN          Cloudflare DNS token (control-plane A record)
 #     R2_STATE_ACCESS_KEY_ID        R2 token -> AWS_ACCESS_KEY_ID (tf state backend)
 #     R2_STATE_SECRET_ACCESS_KEY    R2 token -> AWS_SECRET_ACCESS_KEY (tf state backend)
-# Variables (environment-scoped — set per env, no defaults shipped in the module):
-#   APPS_CLOUDFLARE_ZONE_ID         Cloudflare zone id for the apps base domain
-#   APPS_OPERATOR_SSH_KEY           operator SSH public key allowed onto the nodes
-#   APPS_BASE_DOMAIN                e.g. apps.elizacloud.ai (prod) /
-#                                        apps-staging.elizacloud.ai (staging)
-#   OPERATOR_INGRESS_CIDRS          JSON array of allowed SSH CIDRs, e.g.
-#                                        ["1.2.3.4/32"] — `0.0.0.0/0` rejected
-#                                        by the module's `validation` block.
+# Variables (environment-scoped — shared with apps-data-plane workflow):
+#   APPS_CLOUDFLARE_ZONE_ID         Cloudflare zone id for elizacloud.ai (one zone)
+#   APPS_OPERATOR_SSH_KEY           operator SSH public key allowed onto the VM
+#   DEPLOY_BRANCH (optional)        Branch the host's auto-deploy follows.
+#                                        Defaults to `develop` (staging) /
+#                                        REQUIRED to be `main` for production
+#                                        per the module's validation.
 
 on:
   pull_request:
     paths:
-      - "packages/cloud-infra/cloud/terraform/hetzner/apps-data-plane/**"
-      - ".github/workflows/terraform-apps-data-plane.yml"
+      - "packages/cloud-infra/cloud/terraform/hetzner/control-plane/**"
+      - ".github/workflows/terraform-control-plane.yml"
   workflow_dispatch:
     inputs:
       environment:
@@ -50,14 +50,13 @@ permissions:
   pull-requests: write
 
 # Serialize plan/apply per env across branches so two operators can't apply
-# the same env concurrently. PR validation stays parallel (different group via
-# the format() fallback).
+# the same env concurrently. PR validation stays parallel (different group).
 concurrency:
-  group: terraform-apps-${{ github.event.inputs.environment || format('pr-{0}', github.ref) }}
+  group: terraform-control-plane-${{ github.event.inputs.environment || format('pr-{0}', github.ref) }}
   cancel-in-progress: false
 
 env:
-  TF_DIR: packages/cloud-infra/cloud/terraform/hetzner/apps-data-plane
+  TF_DIR: packages/cloud-infra/cloud/terraform/hetzner/control-plane
   # 1.10.5 — needed for S3 backend `use_lockfile = true` (R2 has no DynamoDB
   # equivalent, this is how we serialize state writes). Bumping below 1.10
   # silently reintroduces the parallel-apply race.
@@ -100,13 +99,9 @@ jobs:
       TF_VAR_environment: ${{ github.event.inputs.environment }}
       TF_VAR_cloudflare_zone_id: ${{ secrets.APPS_CLOUDFLARE_ZONE_ID || vars.APPS_CLOUDFLARE_ZONE_ID }}
       TF_VAR_ssh_public_keys: '["${{ vars.APPS_OPERATOR_SSH_KEY }}"]'
-      # apps_base_domain must be distinct per env (Cloudflare DNS wildcard
-      # records collide otherwise — staging would overwrite prod's record on
-      # the next apply). Module validation also rejects identical defaults.
-      TF_VAR_apps_base_domain: ${{ vars.APPS_BASE_DOMAIN }}
-      # operator_ingress_cidrs MUST be a JSON array literal; module validation
-      # rejects 0.0.0.0/0. Set as a GH env var, e.g. '["1.2.3.4/32"]'.
-      TF_VAR_operator_ingress_cidrs: ${{ vars.OPERATOR_INGRESS_CIDRS }}
+      # deploy_branch: defaults to 'develop' if unset; module validation forces
+      # 'main' when environment=production so prod can't accidentally track dev.
+      TF_VAR_deploy_branch: ${{ vars.DEPLOY_BRANCH }}
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -123,16 +118,6 @@ jobs:
           [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::missing repo secret CLOUDFLARE_API_TOKEN"; fail=1; }
           [ -n "$TF_VAR_cloudflare_zone_id" ] || { echo "::error::set APPS_CLOUDFLARE_ZONE_ID (secret or var) on the '$env' environment"; fail=1; }
           [ "$TF_VAR_ssh_public_keys" != '[""]' ] || { echo "::error::set vars.APPS_OPERATOR_SSH_KEY on the '$env' environment"; fail=1; }
-          [ -n "$TF_VAR_apps_base_domain" ] || { echo "::error::set vars.APPS_BASE_DOMAIN on the '$env' environment (distinct per env — apps.elizacloud.ai prod / apps-staging.elizacloud.ai staging)"; fail=1; }
-          [ -n "$TF_VAR_operator_ingress_cidrs" ] || { echo "::error::set vars.OPERATOR_INGRESS_CIDRS on the '$env' environment (JSON array of allowed SSH CIDRs, no 0.0.0.0/0)"; fail=1; }
-          # Defense in depth: reject 0.0.0.0/0 here too, before TF validation
-          # runs — fails the workflow earlier with a clearer error.
-          case "$TF_VAR_operator_ingress_cidrs" in
-            *'0.0.0.0/0'*|*'::/0'*)
-              echo "::error::OPERATOR_INGRESS_CIDRS contains '0.0.0.0/0' or '::/0' — module validation rejects these; pin to operator IPs"
-              fail=1
-              ;;
-          esac
           exit $fail
 
       - name: terraform fmt -check
