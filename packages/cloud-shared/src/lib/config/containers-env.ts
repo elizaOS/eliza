@@ -217,6 +217,23 @@ export const containersEnv = {
   },
 
   /**
+   * Cloud deployment environment (`staging`, `production`, `local`, …).
+   *
+   * Stamped onto provisioned Hetzner servers via the `environment` label so
+   * the orchestrator/scheduler can scope per-env operations from the API
+   * (`?label_selector=environment=staging`) and never act on a node from a
+   * different environment.
+   *
+   * Defaults to `"local"` to match the other env-prefixed callers
+   * (cache client, a2a task store, credit-events) — same fallback, same
+   * source of truth (the `ENVIRONMENT` env var).
+   */
+  environment(): string {
+    const env = getCloudAwareEnv();
+    return pick(env.ENVIRONMENT) ?? "local";
+  },
+
+  /**
    * Base domain for per-container public hostnames (e.g.
    * `containers.elizacloud.ai`). When set, every new container gets
    * `<short-id>.<base-domain>` written to `public_hostname` and is

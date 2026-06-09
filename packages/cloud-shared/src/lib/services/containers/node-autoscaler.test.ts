@@ -184,6 +184,8 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
       labels: {
         "managed-by": "eliza-cloud",
         "node-id": "node-test",
+        environment: "local",
+        tier: "data-plane",
         purpose: "onboarding-e2e",
       },
     });
