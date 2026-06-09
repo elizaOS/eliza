@@ -4,8 +4,8 @@ output "tenant_db_private_host" {
 }
 
 output "tenant_db_public_ip" {
-  description = "Public IP of the tenant DB node (SSH/admin only — Postgres is NOT exposed publicly)."
-  value       = hcloud_server.tenant_db.ipv4_address
+  description = "Public IP of the tenant DB node (SSH/admin only — Postgres is NOT exposed publicly). null when provision_tenant_db = false (app-node-only beta)."
+  value       = one(hcloud_server.tenant_db[*].ipv4_address)
 }
 
 output "tenant_db_admin_dsn" {
