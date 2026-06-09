@@ -130,6 +130,19 @@ function runScenarioList(root, globs = [], extraEnv = {}) {
     .filter(Boolean);
 }
 
+function collectWorkflowCoverage(root, globs) {
+  const covered = new Set();
+  const globSummaries = [];
+  for (const glob of globs) {
+    const ids = runScenarioList(root, [glob]);
+    for (const id of ids) {
+      covered.add(id);
+    }
+    globSummaries.push({ glob, count: ids.length });
+  }
+  return { covered, globSummaries };
+}
+
 function workflowScenarioGlobs() {
   const workflowPath = path.join(
     REPO_ROOT,
@@ -519,15 +532,15 @@ function main() {
     ),
   ].sort();
 
-  const covered = new Set();
   const coverageGlobs = [
     ...workflowScenarioGlobs(),
     "packages/test/scenarios/executive-assistant/*.scenario.ts",
     "packages/test/scenarios/connector-certification/*.scenario.ts",
   ];
-  for (const id of runScenarioList(DEFAULT_SCENARIO_ROOT, coverageGlobs)) {
-    covered.add(id);
-  }
+  const { covered, globSummaries } = collectWorkflowCoverage(
+    DEFAULT_SCENARIO_ROOT,
+    coverageGlobs,
+  );
 
   const defaultSet = new Set(defaultIds);
   const missingDefaultIds = [...defaultSet]
@@ -550,13 +563,22 @@ function main() {
     "packages-test-include-pending.txt",
     includePendingIds,
   );
-  writeList(options.reportDir, "plugin-personal-assistant.txt", pluginLifeopsIds);
+  writeList(
+    options.reportDir,
+    "plugin-personal-assistant.txt",
+    pluginLifeopsIds,
+  );
   writeList(options.reportDir, "plugin-app-control.txt", pluginAppControlIds);
   writeList(options.reportDir, "scenario-runner-test.txt", scenarioRunnerIds);
   writeList(options.reportDir, "all-scenarios.txt", allScenarioRows);
   writeFileSync(
     path.join(options.reportDir, "workflow-coverage.json"),
     `${JSON.stringify(summary, null, 2)}\n`,
+    "utf8",
+  );
+  writeFileSync(
+    path.join(options.reportDir, "workflow-coverage-globs.json"),
+    `${JSON.stringify(globSummaries, null, 2)}\n`,
     "utf8",
   );
   const runArtifacts = existingScenarioRunArtifacts(options.reportDir);
