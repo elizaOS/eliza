@@ -1,4 +1,16 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+
+import * as realAgentSandboxesNs from "../../../db/repositories/agent-sandboxes";
+import * as realCreditTransactionsNs from "../../../db/repositories/credit-transactions";
+import * as realCreditsNs from "../credits";
+import * as realElizaSandboxNs from "../eliza-sandbox";
+import * as realProvisioningJobsNs from "../provisioning-jobs";
+
+const realAgentSandboxes = { ...realAgentSandboxesNs };
+const realCreditTransactions = { ...realCreditTransactionsNs };
+const realCredits = { ...realCreditsNs };
+const realElizaSandbox = { ...realElizaSandboxNs };
+const realProvisioningJobs = { ...realProvisioningJobsNs };
 
 const listByOrganization = mock();
 const createAgent = mock();
@@ -56,6 +68,14 @@ mock.module("../provisioning-jobs", () => ({
     enqueueAgentProvision,
   },
 }));
+
+afterAll(() => {
+  mock.module("../../../db/repositories/agent-sandboxes", () => realAgentSandboxes);
+  mock.module("../../../db/repositories/credit-transactions", () => realCreditTransactions);
+  mock.module("../credits", () => realCredits);
+  mock.module("../eliza-sandbox", () => realElizaSandbox);
+  mock.module("../provisioning-jobs", () => realProvisioningJobs);
+});
 
 const { ensureElizaAppProvisioning } = await import(
   `./provisioning.ts?test=provisioning-${Date.now()}`

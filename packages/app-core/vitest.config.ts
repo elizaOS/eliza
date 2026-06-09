@@ -10,6 +10,7 @@ const agentSrc = path.join(monorepoRoot, "packages/agent/src");
 const uiDir = path.join(monorepoRoot, "packages/ui");
 const sharedSrc = path.join(monorepoRoot, "packages/shared/src");
 const coreSrc = path.join(monorepoRoot, "packages/core/src");
+const loggerSrc = path.join(monorepoRoot, "packages/logger/src");
 const vaultSrc = path.join(monorepoRoot, "packages/vault/src");
 const cloudRoutingSrc = path.join(monorepoRoot, "packages/cloud-routing/src");
 const cloudSdkSrc = path.join(monorepoRoot, "packages/cloud-sdk/src");
@@ -208,6 +209,14 @@ export default defineConfig({
         replacement: path.join(coreSrc, "index.node.ts"),
       },
       { find: /^@elizaos\/core\/(.+)$/, replacement: path.join(coreSrc, "$1") },
+      {
+        find: /^@elizaos\/logger$/,
+        replacement: path.join(loggerSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/logger\/(.+)$/,
+        replacement: path.join(loggerSrc, "$1"),
+      },
       {
         find: /^@elizaos\/vault$/,
         replacement: path.join(vaultSrc, "index.ts"),

@@ -1,6 +1,23 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
+import * as realDbClientNs from "../../db/client";
+import * as realAgentSandboxesNs from "../../db/repositories/agent-sandboxes";
+import * as realUsersNs from "../../db/repositories/users";
 import * as realDbSchemas from "../../db/schemas";
+import * as realAgentGatewayRelayNs from "./agent-gateway-relay";
+import * as realElizaAgentConfigNs from "./eliza-agent-config";
+import * as realElizaSandboxNs from "./eliza-sandbox";
+
+// Bun's `mock.module` overrides are process-global in this lane. Capture the
+// real modules so these focused router stubs do not leak into later service
+// tests that import the actual sandbox/repository modules.
+const realDbClient = { ...realDbClientNs };
+const realAgentSandboxes = { ...realAgentSandboxesNs };
+const realUsers = { ...realUsersNs };
+const realAgentGatewayRelay = { ...realAgentGatewayRelayNs };
+const realElizaAgentConfig = { ...realElizaAgentConfigNs };
+const realElizaSandbox = { ...realElizaSandboxNs };
+const realSchemas = { ...realDbSchemas };
 
 const findByPhoneNumberWithOrganization = mock();
 const listByOrganization = mock();
@@ -74,7 +91,7 @@ mock.module("../../db/repositories/agent-sandboxes", () => ({
 }));
 
 mock.module("../../db/schemas", () => ({
-  ...realDbSchemas,
+  ...realSchemas,
   anonymousSessions: {},
   agentPhoneContacts: {
     agent_id: "contact_agent_id",
@@ -141,6 +158,16 @@ mock.module("./eliza-agent-config", () => ({
   readManagedAgentDiscordBinding: mock(() => null),
   readManagedAgentDiscordGateway: mock(() => null),
 }));
+
+afterAll(() => {
+  mock.module("../../db/client", () => realDbClient);
+  mock.module("../../db/repositories/users", () => realUsers);
+  mock.module("../../db/repositories/agent-sandboxes", () => realAgentSandboxes);
+  mock.module("../../db/schemas", () => realSchemas);
+  mock.module("./agent-gateway-relay", () => realAgentGatewayRelay);
+  mock.module("./eliza-sandbox", () => realElizaSandbox);
+  mock.module("./eliza-agent-config", () => realElizaAgentConfig);
+});
 
 const { AgentGatewayRouterService } = await import("./agent-gateway-router");
 

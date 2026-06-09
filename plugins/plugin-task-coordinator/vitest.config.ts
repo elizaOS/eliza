@@ -4,11 +4,20 @@ import { defineConfig } from "vitest/config";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../..");
+const sharedSrc = path.resolve(elizaRoot, "packages/shared/src");
 const uiSrc = path.resolve(elizaRoot, "packages/ui/src");
 
 export default defineConfig({
   resolve: {
     alias: [
+      {
+        find: /^@elizaos\/shared$/,
+        replacement: path.resolve(sharedSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/shared\/(.+)$/,
+        replacement: path.resolve(sharedSrc, "$1"),
+      },
       {
         find: /^@elizaos\/ui$/,
         replacement: path.resolve(uiSrc, "index.ts"),
@@ -45,5 +54,10 @@ export default defineConfig({
     ],
     testTimeout: 60_000,
     hookTimeout: 60_000,
+    server: {
+      deps: {
+        inline: ["@elizaos/shared"],
+      },
+    },
   },
 });
