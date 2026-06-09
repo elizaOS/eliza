@@ -7,3 +7,9 @@ cloudflare_zone_id    = "<zone-id-for-elizacloud.ai>"
 ssh_public_keys = [
   # "ssh-ed25519 AAAA... operator@laptop"
 ]
+
+# Tight operator IPs only; module validation rejects 0.0.0.0/0 / ::/0.
+operator_ingress_cidrs = ["<operator-ip>/32"]
+
+# Production MUST track 'main' (module validation enforces).
+deploy_branch = "main"

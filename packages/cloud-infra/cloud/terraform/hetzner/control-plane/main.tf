@@ -20,6 +20,29 @@ resource "hcloud_ssh_key" "operators" {
   labels     = local.common_labels
 }
 
+# Closes the SSH-world-open gap on the control-plane VM. Ports 80/443 are NOT
+# opened publicly — the cloudflared tunnel handles ingress egress-only from
+# the VM, so nothing legitimate hits the VM on those ports directly. ICMP
+# stays open for routing/MTU discovery (no security cost, breaks debugging
+# if blocked).
+resource "hcloud_firewall" "control_plane" {
+  name   = "eliza-control-plane-${var.environment}"
+  labels = local.common_labels
+
+  rule {
+    direction  = "in"
+    protocol   = "tcp"
+    port       = "22"
+    source_ips = var.operator_ingress_cidrs
+  }
+
+  rule {
+    direction  = "in"
+    protocol   = "icmp"
+    source_ips = ["0.0.0.0/0", "::/0"]
+  }
+}
+
 resource "hcloud_server" "control_plane" {
   for_each = toset([for i in range(var.control_plane_count) : tostring(i + 1)])
 
@@ -28,11 +51,12 @@ resource "hcloud_server" "control_plane" {
   # `milady` VM. The environment lives in labels, not the hostname, so the
   # prod/staging distinction shows up in the Hetzner Console filter
   # without bloating the hostname every operator types into SSH.
-  name        = "eliza-${var.environment}-${each.value}"
-  location    = var.hcloud_location
-  server_type = var.hcloud_server_type
-  image       = var.hcloud_image
-  ssh_keys    = [for k in hcloud_ssh_key.operators : k.id]
+  name         = "eliza-${var.environment}-${each.value}"
+  location     = var.hcloud_location
+  server_type  = var.hcloud_server_type
+  image        = var.hcloud_image
+  ssh_keys     = [for k in hcloud_ssh_key.operators : k.id]
+  firewall_ids = [hcloud_firewall.control_plane.id]
   labels = merge(local.common_labels, {
     "control-plane-index" = each.value
   })

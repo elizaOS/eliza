@@ -66,7 +66,20 @@ variable "control_plane_hostname_prefix" {
 }
 
 variable "deploy_branch" {
-  description = "Git branch the host's auto-deploy workflow follows."
+  description = "Git branch the host's auto-deploy workflow follows. Staging defaults to 'develop'; production MUST be 'main' (enforced by the validation below) so a staging fix doesn't accidentally land in prod via the wrong branch pin."
   type        = string
   default     = "develop"
+  validation {
+    condition     = var.environment != "production" || var.deploy_branch == "main"
+    error_message = "deploy_branch must be 'main' when environment='production' — set it explicitly via the workflow to prevent prod tracking develop"
+  }
+}
+
+variable "operator_ingress_cidrs" {
+  description = "CIDRs allowed to SSH the control-plane VM. No default: the workflow MUST supply a tight list — '0.0.0.0/0' is explicitly rejected by the validation below to fail closed on every apply. The control-plane has no firewall today (port 22 is open to the world); this variable feeds the new hcloud_firewall.control_plane resource that closes that gap."
+  type        = list(string)
+  validation {
+    condition     = length(var.operator_ingress_cidrs) > 0 && alltrue([for c in var.operator_ingress_cidrs : c != "0.0.0.0/0" && c != "::/0"])
+    error_message = "operator_ingress_cidrs MUST be a non-empty list of tight CIDRs (no 0.0.0.0/0 or ::/0); pin to operator IPs"
+  }
 }

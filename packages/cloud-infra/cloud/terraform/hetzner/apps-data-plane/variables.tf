@@ -92,13 +92,23 @@ variable "cloudflare_zone_id" {
 }
 
 variable "apps_base_domain" {
-  description = "Base domain apps are served under (CONTAINERS_PUBLIC_BASE_DOMAIN). Each app gets <shortid>.<base>. e.g. apps.elizacloud.ai"
+  description = "Base domain apps are served under (CONTAINERS_PUBLIC_BASE_DOMAIN). Each app gets <shortid>.<base>. MUST be distinct per environment to avoid Cloudflare DNS collisions when both envs share the same zone — staging should be e.g. apps-staging.elizacloud.ai, prod e.g. apps.elizacloud.ai. No default: forces the workflow to supply it explicitly."
   type        = string
-  default     = "apps.elizacloud.ai"
+  validation {
+    condition     = length(var.apps_base_domain) > 0 && !can(regex("\\s", var.apps_base_domain))
+    error_message = "apps_base_domain must be a non-empty hostname (no whitespace)"
+  }
+  validation {
+    condition     = var.environment != "staging" || endswith(var.apps_base_domain, "-staging.elizacloud.ai") || startswith(var.apps_base_domain, "apps-staging.")
+    error_message = "staging apps_base_domain must end in '-staging.elizacloud.ai' (e.g. apps-staging.elizacloud.ai) to keep prod and staging DNS records distinct"
+  }
 }
 
 variable "operator_ingress_cidrs" {
-  description = "CIDRs allowed to SSH the nodes (operator IPs / control-plane). Defaults to 'anywhere' for the DRAFT — Stan MUST tighten this before production."
+  description = "CIDRs allowed to SSH the nodes (operator IPs / control-plane). No default: the workflow MUST supply a tight list — '0.0.0.0/0' is explicitly rejected by the validation below to fail closed on every apply."
   type        = list(string)
-  default     = ["0.0.0.0/0", "::/0"]
+  validation {
+    condition     = length(var.operator_ingress_cidrs) > 0 && alltrue([for c in var.operator_ingress_cidrs : c != "0.0.0.0/0" && c != "::/0"])
+    error_message = "operator_ingress_cidrs MUST be a non-empty list of tight CIDRs (no 0.0.0.0/0 or ::/0); pin to operator IPs or the control-plane IP"
+  }
 }

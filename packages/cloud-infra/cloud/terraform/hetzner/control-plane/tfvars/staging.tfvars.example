@@ -10,3 +10,12 @@ cloudflare_zone_id    = "<zone-id-for-elizacloud.ai>"
 ssh_public_keys = [
   # "ssh-ed25519 AAAA... operator@laptop"
 ]
+
+# Tight operator IPs only; module validation rejects 0.0.0.0/0 / ::/0.
+# Feeds the new hcloud_firewall.control_plane that closes the SSH-world-open
+# gap on the CP VM.
+operator_ingress_cidrs = ["<operator-ip>/32"]
+
+# Branch the host's auto-deploy follows. Staging tracks 'develop' by default;
+# production MUST be 'main' (enforced by validation).
+deploy_branch = "develop"

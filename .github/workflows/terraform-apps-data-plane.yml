@@ -18,9 +18,14 @@ name: Terraform — Apps Data Plane (Hetzner)
 #     CLOUDFLARE_API_TOKEN          Cloudflare DNS token (wildcard apps record)
 #     R2_STATE_ACCESS_KEY_ID        R2 token -> AWS_ACCESS_KEY_ID (tf state backend)
 #     R2_STATE_SECRET_ACCESS_KEY    R2 token -> AWS_SECRET_ACCESS_KEY (tf state backend)
-# Variables (environment-scoped):
+# Variables (environment-scoped — set per env, no defaults shipped in the module):
 #   APPS_CLOUDFLARE_ZONE_ID         Cloudflare zone id for the apps base domain
 #   APPS_OPERATOR_SSH_KEY           operator SSH public key allowed onto the nodes
+#   APPS_BASE_DOMAIN                e.g. apps.elizacloud.ai (prod) /
+#                                        apps-staging.elizacloud.ai (staging)
+#   OPERATOR_INGRESS_CIDRS          JSON array of allowed SSH CIDRs, e.g.
+#                                        ["1.2.3.4/32"] — `0.0.0.0/0` rejected
+#                                        by the module's `validation` block.
 
 on:
   pull_request:
@@ -44,13 +49,19 @@ permissions:
   contents: read
   pull-requests: write
 
+# Serialize plan/apply per env across branches so two operators can't apply
+# the same env concurrently. PR validation stays parallel (different group via
+# the format() fallback).
 concurrency:
-  group: terraform-apps-${{ github.event.inputs.environment || 'pr' }}-${{ github.ref }}
+  group: terraform-apps-${{ github.event.inputs.environment || format('pr-{0}', github.ref) }}
   cancel-in-progress: false
 
 env:
   TF_DIR: packages/cloud-infra/cloud/terraform/hetzner/apps-data-plane
-  TF_VERSION: "1.9.5"
+  # 1.10.5 — needed for S3 backend `use_lockfile = true` (R2 has no DynamoDB
+  # equivalent, this is how we serialize state writes). Bumping below 1.10
+  # silently reintroduces the parallel-apply race.
+  TF_VERSION: "1.10.5"
 
 jobs:
   # PR validation: format + validate only. No cloud credentials, no remote state,
@@ -89,6 +100,13 @@ jobs:
       TF_VAR_environment: ${{ github.event.inputs.environment }}
       TF_VAR_cloudflare_zone_id: ${{ secrets.APPS_CLOUDFLARE_ZONE_ID || vars.APPS_CLOUDFLARE_ZONE_ID }}
       TF_VAR_ssh_public_keys: '["${{ vars.APPS_OPERATOR_SSH_KEY }}"]'
+      # apps_base_domain must be distinct per env (Cloudflare DNS wildcard
+      # records collide otherwise — staging would overwrite prod's record on
+      # the next apply). Module validation also rejects identical defaults.
+      TF_VAR_apps_base_domain: ${{ vars.APPS_BASE_DOMAIN }}
+      # operator_ingress_cidrs MUST be a JSON array literal; module validation
+      # rejects 0.0.0.0/0. Set as a GH env var, e.g. '["1.2.3.4/32"]'.
+      TF_VAR_operator_ingress_cidrs: ${{ vars.OPERATOR_INGRESS_CIDRS }}
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -97,22 +115,36 @@ jobs:
 
       - name: Preflight — required secrets / vars present
         run: |
+          env="${{ github.event.inputs.environment }}"
           fail=0
-          [ -n "$HCLOUD_TOKEN" ] || { echo "::error::set secrets.HCLOUD_TOKEN on the '${{ github.event.inputs.environment }}' environment"; fail=1; }
+          [ -n "$HCLOUD_TOKEN" ] || { echo "::error::set secrets.HCLOUD_TOKEN on the '$env' environment"; fail=1; }
           [ -n "$AWS_ACCESS_KEY_ID" ] || { echo "::error::missing repo secret R2_STATE_ACCESS_KEY_ID"; fail=1; }
           [ -n "$AWS_SECRET_ACCESS_KEY" ] || { echo "::error::missing repo secret R2_STATE_SECRET_ACCESS_KEY"; fail=1; }
           [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::missing repo secret CLOUDFLARE_API_TOKEN"; fail=1; }
-          [ -n "$TF_VAR_cloudflare_zone_id" ] || { echo "::error::set APPS_CLOUDFLARE_ZONE_ID (secret or var) on the '${{ github.event.inputs.environment }}' environment"; fail=1; }
-          [ "$TF_VAR_ssh_public_keys" != '[""]' ] || { echo "::error::set vars.APPS_OPERATOR_SSH_KEY on the '${{ github.event.inputs.environment }}' environment"; fail=1; }
+          [ -n "$TF_VAR_cloudflare_zone_id" ] || { echo "::error::set APPS_CLOUDFLARE_ZONE_ID (secret or var) on the '$env' environment"; fail=1; }
+          [ "$TF_VAR_ssh_public_keys" != '[""]' ] || { echo "::error::set vars.APPS_OPERATOR_SSH_KEY on the '$env' environment"; fail=1; }
+          [ -n "$TF_VAR_apps_base_domain" ] || { echo "::error::set vars.APPS_BASE_DOMAIN on the '$env' environment (distinct per env — apps.elizacloud.ai prod / apps-staging.elizacloud.ai staging)"; fail=1; }
+          [ -n "$TF_VAR_operator_ingress_cidrs" ] || { echo "::error::set vars.OPERATOR_INGRESS_CIDRS on the '$env' environment (JSON array of allowed SSH CIDRs, no 0.0.0.0/0)"; fail=1; }
+          # Defense in depth: reject 0.0.0.0/0 here too, before TF validation
+          # runs — fails the workflow earlier with a clearer error.
+          case "$TF_VAR_operator_ingress_cidrs" in
+            *'0.0.0.0/0'*|*'::/0'*)
+              echo "::error::OPERATOR_INGRESS_CIDRS contains '0.0.0.0/0' or '::/0' — module validation rejects these; pin to operator IPs"
+              fail=1
+              ;;
+          esac
           exit $fail
 
       - name: terraform fmt -check
         working-directory: ${{ env.TF_DIR }}
         run: terraform fmt -check -recursive
 
-      - name: terraform init (R2 backend)
+      - name: terraform init (R2 backend, lockfile readonly)
         working-directory: ${{ env.TF_DIR }}
-        run: terraform init -input=false -backend-config="backend-${{ github.event.inputs.environment }}.hcl"
+        # -lockfile=readonly fails the run if the committed .terraform.lock.hcl
+        # would need updating (e.g. provider checksum drift). Forces operators
+        # to run `terraform init -upgrade` in a PR explicitly.
+        run: terraform init -input=false -lockfile=readonly -backend-config="backend-${{ github.event.inputs.environment }}.hcl"
 
       - name: terraform plan
         working-directory: ${{ env.TF_DIR }}
