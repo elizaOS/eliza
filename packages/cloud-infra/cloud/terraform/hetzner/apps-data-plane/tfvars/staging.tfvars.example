@@ -7,7 +7,7 @@ apps_base_domain   = "apps-staging.elizacloud.ai"
 
 # Sizing — start small for the allowlist beta.
 app_node_count           = 1
-app_node_server_type     = "cpx41"
+app_node_server_type     = "ccx23"
 tenant_db_server_type    = "ccx33"
 tenant_db_volume_size_gb = 200
 
@@ -22,3 +22,7 @@ operator_ingress_cidrs = ["0.0.0.0/0", "::/0"]
 ssh_public_keys = [
   # "ssh-ed25519 AAAA... operator@laptop"
 ]
+
+# Beta: app-node-only (no dedicated DB node — co-locate the first tenant DBs on
+# the app node). Flip to true once you have real DB-app density (#8342).
+provision_tenant_db      = false

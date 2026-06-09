@@ -225,25 +225,53 @@ export class UserDatabaseService {
     logger.info("Cleaning up database for app", { appId });
 
     const database = await appDatabasesRepository.findStateByAppIdForWrite(appId);
-    if (!database?.user_database_project_id) {
+    if (!database) {
       logger.debug("No database to clean up", { appId });
       return;
     }
 
-    try {
-      const neonClient = getNeonClient();
-      await neonClient.deleteProject(database.user_database_project_id);
-      logger.info("Database cleaned up successfully", {
-        appId,
-        projectId: database.user_database_project_id,
-      });
-    } catch (error) {
-      // Log but don't fail - database might already be deleted
-      logger.warn("Failed to delete Neon project (may already be deleted)", {
-        appId,
-        projectId: database.user_database_project_id,
-        error: error instanceof Error ? error.message : "Unknown",
-      });
+    // ISOLATED (Apps / Product 2): DROP the app's OWN per-tenant DATABASE + ROLE
+    // and release its cluster slot — otherwise we leak a live DB we keep paying
+    // for AND burn one of the cluster's finite slots forever (#8342). Only runs
+    // when the provisioning backend is wired (the daemon — DROP needs `pg`); on
+    // the Worker (shared-mode, no backend) this is a no-op.
+    const isolatedUri = database.user_database_uri;
+    if (this.tenantDbProvisioning && isolatedUri) {
+      try {
+        const dsn = await fieldEncryption.decryptIfNeeded(isolatedUri);
+        if (dsn) {
+          const result = await this.tenantDbProvisioning.deprovisionForApp(appId, dsn);
+          logger.info("Isolated tenant DB deprovisioned", {
+            appId,
+            deprovisioned: result.deprovisioned,
+          });
+        }
+      } catch (error) {
+        // Don't fail the app delete on a teardown hiccup; a reconciler sweeps orphans.
+        logger.warn("Failed to deprovision isolated tenant DB", {
+          appId,
+          error: error instanceof Error ? error.message : "Unknown",
+        });
+      }
+    }
+
+    // NEON (legacy shared-host path): delete the user's Neon project.
+    if (database.user_database_project_id) {
+      try {
+        const neonClient = getNeonClient();
+        await neonClient.deleteProject(database.user_database_project_id);
+        logger.info("Database cleaned up successfully", {
+          appId,
+          projectId: database.user_database_project_id,
+        });
+      } catch (error) {
+        // Log but don't fail - database might already be deleted
+        logger.warn("Failed to delete Neon project (may already be deleted)", {
+          appId,
+          projectId: database.user_database_project_id,
+          error: error instanceof Error ? error.message : "Unknown",
+        });
+      }
     }
   }
 

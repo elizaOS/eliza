@@ -11,6 +11,8 @@
  * the shared agent DATABASE_URL — is asserted as a unit test.
  */
 
+import { type AppDatabaseMode, DEFAULT_APP_DATABASE_MODE } from "./app-database-mode";
+
 export interface DeployAppRequest {
   appId: string;
   organizationId: string;
@@ -18,6 +20,12 @@ export interface DeployAppRequest {
   containerName: string;
   image: string;
   port?: number;
+  /**
+   * Whether this app gets its OWN isolated per-tenant Postgres. Default "none"
+   * (a stateless app — no DB, no DATABASE_URL). "isolated" provisions the app's
+   * own DB and injects the DSN. See {@link AppDatabaseMode}.
+   */
+  databaseMode?: AppDatabaseMode;
 }
 
 export interface NewAppContainerRow {
@@ -69,7 +77,13 @@ export async function deployApp(
   req: DeployAppRequest,
   deps: AppDeployDeps,
 ): Promise<DeployAppResult> {
-  const dsn = await deps.ensureTenantDb(req.appId);
+  // Only "isolated" apps get a per-tenant DB. "none" (the default) is a stateless
+  // app: skip provisioning entirely and inject NO DATABASE_URL — so a stateless
+  // app never pays for a DB it doesn't use, and the deploy doesn't depend on the
+  // tenant-DB cluster existing. Add one later by flipping the mode + redeploying
+  // (ensureTenantDb is create-if-not-exists, so it materializes seamlessly).
+  const mode = req.databaseMode ?? DEFAULT_APP_DATABASE_MODE;
+  const dsn = mode === "isolated" ? await deps.ensureTenantDb(req.appId) : undefined;
 
   const { containerId } = await deps.createContainerRow({
     appId: req.appId,
@@ -78,12 +92,12 @@ export async function deployApp(
     containerName: req.containerName,
     image: req.image,
     port: req.port ?? 3000,
-    // The app's OWN isolated DSN — never the shared agent DATABASE_URL. Inject it
-    // under BOTH `DATABASE_URL` (the de-facto standard most apps read) and
-    // `POSTGRES_URL` (what plugin-sql / eliza-based images read primarily), so an
-    // arbitrary user app reaches its isolated tenant DB regardless of which var it
-    // expects — never a silent fallback to a throwaway local/PGlite store.
-    environmentVars: { DATABASE_URL: dsn, POSTGRES_URL: dsn },
+    // Isolated apps get their OWN per-tenant DSN under BOTH `DATABASE_URL` (the
+    // de-facto standard most apps read) and `POSTGRES_URL` (what plugin-sql /
+    // eliza-based images read) — never the shared agent DATABASE_URL, and never a
+    // silent fallback to a throwaway local/PGlite store. Stateless ("none") apps
+    // get neither var.
+    environmentVars: dsn ? { DATABASE_URL: dsn, POSTGRES_URL: dsn } : {},
   });
 
   const { id: jobId } = await deps.enqueueProvision({

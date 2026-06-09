@@ -6,7 +6,7 @@ cloudflare_zone_id = "<zone-id-for-elizacloud.ai>"
 apps_base_domain   = "apps.elizacloud.ai"
 
 app_node_count           = 2 # behind a load balancer (see main.tf STAN note)
-app_node_server_type     = "cpx41"
+app_node_server_type     = "ccx23"
 tenant_db_server_type    = "ccx33"
 tenant_db_volume_size_gb = 500
 
@@ -19,3 +19,7 @@ operator_ingress_cidrs = ["<operator-ip>/32"]
 ssh_public_keys = [
   # "ssh-ed25519 AAAA... operator@laptop"
 ]
+
+# Beta: app-node-only (no dedicated DB node — co-locate the first tenant DBs on
+# the app node). Flip to true once you have real DB-app density (#8342).
+provision_tenant_db      = false

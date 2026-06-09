@@ -114,7 +114,11 @@ resource "hcloud_firewall" "tenant_db" {
 }
 
 # ── Tenant Postgres node ──────────────────────────────────────────────────────
+# Gated on var.provision_tenant_db (default false): beta runs app-node-only and
+# co-locates the first tenant DBs on the app node, so a dedicated ccx33 isn't a
+# fixed loss at low density (#8342). Flip the var to true to add it at scale.
 resource "hcloud_server" "tenant_db" {
+  count        = var.provision_tenant_db ? 1 : 0
   name         = "eliza-apps-tenantdb-${var.environment}"
   location     = var.hcloud_location
   server_type  = var.tenant_db_server_type
@@ -134,7 +138,8 @@ resource "hcloud_server" "tenant_db" {
 }
 
 resource "hcloud_server_network" "tenant_db" {
-  server_id  = hcloud_server.tenant_db.id
+  count      = var.provision_tenant_db ? 1 : 0
+  server_id  = hcloud_server.tenant_db[0].id
   network_id = hcloud_network.apps.id
   # First usable host in the subnet — stable private IP the app nodes + the
   # control-plane provisioner connect to (admin DSN host).
@@ -142,8 +147,9 @@ resource "hcloud_server_network" "tenant_db" {
 }
 
 resource "hcloud_volume_attachment" "tenant_db_data" {
+  count     = var.provision_tenant_db ? 1 : 0
   volume_id = hcloud_volume.tenant_db_data.id
-  server_id = hcloud_server.tenant_db.id
+  server_id = hcloud_server.tenant_db[0].id
   automount = false
 }
 
