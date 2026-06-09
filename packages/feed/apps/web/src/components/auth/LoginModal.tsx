@@ -14,6 +14,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
+import {
+  buildFeedOAuthRedirectUri,
+  buildStewardOAuthAuthorizeUrl,
+  createStewardPkcePair,
+  storeStewardPkceVerifier,
+  type FeedStewardOAuthProvider,
+} from "@/lib/steward-oauth";
 
 /**
  * Steward-backed login modal.
@@ -52,17 +59,22 @@ function requireCompletedAuth(
   return result;
 }
 
-/** Build the Steward OAuth authorize URL. Callback lands on our /auth/callback/[provider] page. */
-function oauthUrl(provider: string): string {
-  const stewardBase = getStewardApiUrl();
-  const callbackBase =
-    typeof window !== "undefined" ? window.location.origin : "";
-  const redirectUri = `${callbackBase}/auth/callback/${provider}`;
-  return (
-    `${stewardBase}/auth/oauth/${provider}/authorize` +
-    `?redirect_uri=${encodeURIComponent(redirectUri)}` +
-    `&tenant_id=${encodeURIComponent(STEWARD_TENANT_ID)}`
-  );
+async function startOAuthRedirect(
+  provider: FeedStewardOAuthProvider,
+): Promise<void> {
+  const origin = window.location.origin;
+  const redirectUri = buildFeedOAuthRedirectUri(origin, provider);
+  const pkce = await createStewardPkcePair();
+  if (!storeStewardPkceVerifier(pkce.verifier)) {
+    throw new Error(
+      "Could not start sign-in — browser storage is unavailable. Enable cookies / site data and try again.",
+    );
+  }
+  window.location.href = buildStewardOAuthAuthorizeUrl(provider, redirectUri, {
+    stewardApiUrl: getStewardApiUrl(),
+    stewardTenantId: STEWARD_TENANT_ID,
+    codeChallenge: pkce.challenge,
+  });
 }
 
 export function LoginModal({
@@ -137,8 +149,16 @@ export function LoginModal({
   }, [email, stewardAuth, onLoginSuccess]);
 
   const handleOAuth = useCallback(
-    (provider: "google" | "discord" | "twitter") => {
-      window.location.href = oauthUrl(provider);
+    (provider: FeedStewardOAuthProvider) => {
+      setStep("loading");
+      setErrorMsg("");
+      void startOAuthRedirect(provider).catch((err: unknown) => {
+        const msg =
+          err instanceof Error ? err.message : "Could not start OAuth sign-in";
+        logger.warn("OAuth redirect failed", { error: msg }, "LoginModal");
+        setErrorMsg(msg);
+        setStep("error");
+      });
     },
     [],
   );
