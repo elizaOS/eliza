@@ -53,10 +53,11 @@ resource "hcloud_server" "control_plane" {
   # shouldn't recreate the box, only update in place where possible.
   lifecycle {
     ignore_changes = [
-      user_data, # bootstrap runs once at first boot
-      image,     # updating image rebuilds — explicit `terraform taint` to opt in
-      name,      # legacy VMs may not follow the env-prefixed naming convention; renaming is out of band
-      ssh_keys,  # operator key rotations don't recreate the box (keys are baked into authorized_keys at boot)
+      user_data,   # bootstrap runs once at first boot
+      image,       # updating image rebuilds — explicit `terraform taint` to opt in
+      name,        # legacy VMs may not follow the env-prefixed naming convention; renaming is out of band
+      ssh_keys,    # operator key rotations don't recreate the box (keys are baked into authorized_keys at boot)
+      server_type, # cross-arch flips (cax21 ARM ↔ cpx32 x86) are ForceNew, not in-place; would wipe headscale + cloudflared state on adopt-existing-vm import. Resize must go through `terraform taint` or out-of-band `hcloud server change-type` before plan/apply.
     ]
   }
 }
