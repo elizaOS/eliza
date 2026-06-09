@@ -10,6 +10,10 @@ const loggerSrc = path.resolve(elizaRoot, "packages/logger/src");
 const promptsSrc = path.resolve(elizaRoot, "packages/prompts/src");
 const sharedSrc = path.resolve(elizaRoot, "packages/shared/src");
 const uiSrc = path.resolve(elizaRoot, "packages/ui/src");
+const hostExternalStub = path.resolve(
+  elizaRoot,
+  "packages/ui/test/stubs/host-external.ts",
+);
 
 export default defineConfig({
   resolve: {
@@ -67,6 +71,18 @@ export default defineConfig({
         replacement: path.resolve(uiSrc, "$1"),
       },
       {
+        find: /^@elizaos\/app-core(?:\/browser|\/ui-compat)?$/,
+        replacement: hostExternalStub,
+      },
+      {
+        find: /^@elizaos\/capacitor-(contacts|messages|mobile-signals|phone|system)$/,
+        replacement: hostExternalStub,
+      },
+      {
+        find: /^@elizaos\/plugin-browser$/,
+        replacement: hostExternalStub,
+      },
+      {
         // DynamicViewLoader imports this browser-safe helper as a host external;
         // resolve it to source so this package's UI tests do not require a
         // prebuilt plugin-health dist on clean checkouts.
@@ -75,6 +91,10 @@ export default defineConfig({
           elizaRoot,
           "plugins/plugin-health/src/screen-time/mobile-signal-setup.ts",
         ),
+      },
+      {
+        find: /^@elizaos\/plugin-training$/,
+        replacement: hostExternalStub,
       },
     ],
   },
