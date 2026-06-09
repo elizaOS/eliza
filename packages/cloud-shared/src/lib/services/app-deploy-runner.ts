@@ -44,6 +44,7 @@
 import { containersRepository } from "../../db/repositories/containers";
 import type { NewContainer } from "../../db/schemas/containers";
 import { logger } from "../utils/logger";
+import { resolveAppDatabaseMode } from "./app-database-mode";
 import {
   type AppDeployDeps,
   type AppDeployRunner,
@@ -185,6 +186,9 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
         containerName,
         image,
         port: this.deps.port ?? 3000,
+        // Per-app choice (apps.metadata.databaseMode, default "none"): a stateless
+        // app provisions no DB; an "isolated" app gets its own per-tenant Postgres.
+        databaseMode: resolveAppDatabaseMode((app.metadata as Record<string, unknown>) ?? {}),
       },
       orchestratorDeps,
     );
