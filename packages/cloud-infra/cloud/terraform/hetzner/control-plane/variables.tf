@@ -74,12 +74,3 @@ variable "deploy_branch" {
     error_message = "deploy_branch must be 'main' when environment='production' — set it explicitly via the workflow to prevent prod tracking develop"
   }
 }
-
-variable "operator_ingress_cidrs" {
-  description = "CIDRs allowed to SSH the control-plane VM. No default: the workflow MUST supply a tight list — '0.0.0.0/0' is explicitly rejected by the validation below to fail closed on every apply. The control-plane has no firewall today (port 22 is open to the world); this variable feeds the new hcloud_firewall.control_plane resource that closes that gap."
-  type        = list(string)
-  validation {
-    condition     = length(var.operator_ingress_cidrs) > 0 && alltrue([for c in var.operator_ingress_cidrs : c != "0.0.0.0/0" && c != "::/0"])
-    error_message = "operator_ingress_cidrs MUST be a non-empty list of tight CIDRs (no 0.0.0.0/0 or ::/0); pin to operator IPs"
-  }
-}

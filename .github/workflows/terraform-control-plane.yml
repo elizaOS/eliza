@@ -22,9 +22,6 @@ name: Terraform — Control Plane (Hetzner)
 # Variables (environment-scoped — shared with apps-data-plane workflow):
 #   APPS_CLOUDFLARE_ZONE_ID         Cloudflare zone id for elizacloud.ai (one zone)
 #   APPS_OPERATOR_SSH_KEY           operator SSH public key allowed onto the VM
-#   OPERATOR_INGRESS_CIDRS          JSON array of allowed SSH CIDRs, e.g.
-#                                        ["1.2.3.4/32"] — `0.0.0.0/0` rejected
-#                                        by the module's `validation` block.
 #   DEPLOY_BRANCH (optional)        Branch the host's auto-deploy follows.
 #                                        Defaults to `develop` (staging) /
 #                                        REQUIRED to be `main` for production
@@ -102,9 +99,6 @@ jobs:
       TF_VAR_environment: ${{ github.event.inputs.environment }}
       TF_VAR_cloudflare_zone_id: ${{ secrets.APPS_CLOUDFLARE_ZONE_ID || vars.APPS_CLOUDFLARE_ZONE_ID }}
       TF_VAR_ssh_public_keys: '["${{ vars.APPS_OPERATOR_SSH_KEY }}"]'
-      # operator_ingress_cidrs MUST be a JSON array literal; module validation
-      # rejects 0.0.0.0/0. Set as a GH env var, e.g. '["1.2.3.4/32"]'.
-      TF_VAR_operator_ingress_cidrs: ${{ vars.OPERATOR_INGRESS_CIDRS }}
       # deploy_branch: defaults to 'develop' if unset; module validation forces
       # 'main' when environment=production so prod can't accidentally track dev.
       TF_VAR_deploy_branch: ${{ vars.DEPLOY_BRANCH }}
@@ -124,15 +118,6 @@ jobs:
           [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::missing repo secret CLOUDFLARE_API_TOKEN"; fail=1; }
           [ -n "$TF_VAR_cloudflare_zone_id" ] || { echo "::error::set APPS_CLOUDFLARE_ZONE_ID (secret or var) on the '$env' environment"; fail=1; }
           [ "$TF_VAR_ssh_public_keys" != '[""]' ] || { echo "::error::set vars.APPS_OPERATOR_SSH_KEY on the '$env' environment"; fail=1; }
-          [ -n "$TF_VAR_operator_ingress_cidrs" ] || { echo "::error::set vars.OPERATOR_INGRESS_CIDRS on the '$env' environment (JSON array of allowed SSH CIDRs, no 0.0.0.0/0)"; fail=1; }
-          # Defense in depth: reject 0.0.0.0/0 here too, before TF validation
-          # runs — fails the workflow earlier with a clearer error.
-          case "$TF_VAR_operator_ingress_cidrs" in
-            *'0.0.0.0/0'*|*'::/0'*)
-              echo "::error::OPERATOR_INGRESS_CIDRS contains '0.0.0.0/0' or '::/0' — module validation rejects these; pin to operator IPs"
-              fail=1
-              ;;
-          esac
           exit $fail
 
       - name: terraform fmt -check
