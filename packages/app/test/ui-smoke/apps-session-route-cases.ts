@@ -258,6 +258,7 @@ const managerVisibleViewTileCases = [
   { viewId: "inbox", path: "/inbox" },
   { viewId: "messages", path: "/messages" },
   { viewId: "model-tester", path: "/model-tester" },
+  { viewId: "notes", path: "/notes" },
   { viewId: "orchestrator", path: "/orchestrator" },
   { viewId: "phone", path: "/phone" },
   { viewId: "polymarket", path: "/polymarket" },

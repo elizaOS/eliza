@@ -75,6 +75,7 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-finances/src/plugin.ts",
   "plugins/plugin-calendar/src/plugin.ts",
   "plugins/plugin-documents/src/plugin.ts",
+  "plugins/plugin-simple-views/src/index.ts",
   "plugins/plugin-messages/src/plugin.ts",
   "plugins/app-model-tester/src/plugin.ts",
   "plugins/plugin-phone/src/plugin.ts",
@@ -129,6 +130,8 @@ const NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: Readonly<Record<string, string>> = {
     "Decomposed from lifeops; the calendar domain view registers when the agent enables the plugin, not via the app boot loader.",
   "plugins/plugin-documents/src/plugin.ts":
     "Decomposed from lifeops; the documents domain view registers when the agent enables the plugin, not via the app boot loader.",
+  "plugins/plugin-simple-views/src/index.ts":
+    "Simple notes/calendar test views register when the agent enables the plugin, not via the app boot loader.",
 };
 
 const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {

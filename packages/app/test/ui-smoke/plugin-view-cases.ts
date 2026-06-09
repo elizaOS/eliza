@@ -30,6 +30,7 @@ export const VIEW_CASES: ViewCase[] = (
     ["finances", "gui", "/finances"],
     ["calendar", "gui", "/calendar"],
     ["documents", "gui", "/documents"],
+    ["notes", "gui", "/notes"],
     ["messages", "gui", "/messages"],
     ["messages", "tui", "/messages/tui"],
     ["model-tester", "gui", "/model-tester"],

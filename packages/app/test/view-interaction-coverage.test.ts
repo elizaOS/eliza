@@ -43,6 +43,16 @@ const VISUAL_BASELINE_OWNER: InteractionOwner = {
   ],
 };
 
+const SCAFFOLD_CLICK_SAFE_OWNER: InteractionOwner = {
+  spec: "packages/app/test/ui-smoke/all-pages-clicksafe.spec.ts",
+  proves:
+    "Loads scaffold app routes and validates allowlisted controls remain click-safe.",
+  signals: [
+    "visible safe app tiles and allowlisted buttons are click-safe",
+    "DIRECT_ROUTE_CASES",
+  ],
+};
+
 const GUI_INTERACTION_OWNERS: Readonly<
   Record<string, readonly InteractionOwner[]>
 > = {
@@ -80,13 +90,39 @@ const GUI_INTERACTION_OWNERS: Readonly<
   ],
   lifeops: [
     {
-      spec: "packages/app/test/ui-smoke/apps-lifeops-feed-interactions.spec.ts",
+      spec: "packages/app/test/ui-smoke/apps-personal-assistant-feed-interactions.spec.ts",
       proves:
         "Exercises reminders, alarms, creation, snooze/complete flows, and deterministic LifeOps routes.",
       signals: [
         "LifeOps app supports deterministic reminders",
         "snoozeRequests",
       ],
+    },
+  ],
+  todos: [SCAFFOLD_CLICK_SAFE_OWNER],
+  health: [SCAFFOLD_CLICK_SAFE_OWNER],
+  inbox: [SCAFFOLD_CLICK_SAFE_OWNER],
+  goals: [SCAFFOLD_CLICK_SAFE_OWNER],
+  focus: [SCAFFOLD_CLICK_SAFE_OWNER],
+  finances: [SCAFFOLD_CLICK_SAFE_OWNER],
+  calendar: [
+    {
+      spec: "plugins/plugin-simple-views/src/simple-views.interact.test.ts",
+      proves:
+        "Creates calendar events, reads calendar state, selects dates, and rejects invalid dates through the server interaction surface.",
+      signals: [
+        "creates calendar events and selects their date",
+        "get-calendar-state",
+      ],
+    },
+  ],
+  documents: [SCAFFOLD_CLICK_SAFE_OWNER],
+  notes: [
+    {
+      spec: "plugins/plugin-simple-views/src/simple-views.interact.test.ts",
+      proves:
+        "Creates, reads, deletes, and clears sticky notes through the server interaction surface.",
+      signals: ["creates and reads sticky notes", "deletes sticky notes"],
     },
   ],
   messages: [
@@ -182,7 +218,7 @@ const GUI_INTERACTION_OWNERS: Readonly<
   ],
   feed: [
     {
-      spec: "packages/app/test/ui-smoke/apps-lifeops-feed-interactions.spec.ts",
+      spec: "packages/app/test/ui-smoke/apps-personal-assistant-feed-interactions.spec.ts",
       proves:
         "Exercises feed GUI no-run state and TUI command routing through deterministic interact routes.",
       signals: ["feed gui no-run state", "feed tui"],
@@ -370,7 +406,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(54);
+    expect(visualCases.length).toBe(61);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",
