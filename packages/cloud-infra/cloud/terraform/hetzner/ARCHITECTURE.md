@@ -113,29 +113,38 @@ is no `hcloud_project` Terraform resource — projects are management-plane only
 
 ```
 Hetzner Cloud account (one human)
-├── Project "eliza-prod"      (HCLOUD_TOKEN_PROD,    5/5 servers max)
+├── Project "eliza-prod"      (env-scoped HCLOUD_TOKEN, 5/5 servers max)
 │   ├── eliza-1               (control-plane, cax21)
-│   └── eliza-core-<hex>      (worker, ccx33, autoscaled)
-└── Project "eliza-staging"   (HCLOUD_TOKEN_STAGING, 5/5 servers max)
-    ├── eliza-staging-1               (control-plane, cpx32)
-    ├── eliza-core-<hex>              (worker, autoscaled)
-    └── eliza-apps-node-staging-1     (apps Product-2)
+│   └── eliza-core-<hex>      (worker, ccx33, autoscaled by node-autoscaler.ts)
+├── Project "eliza-staging"   (env-scoped HCLOUD_TOKEN, 5/5 servers max)
+│   ├── eliza-staging-1               (control-plane, cpx32)
+│   └── eliza-core-<hex>              (worker, cpx32, autoscaled)
+└── Project "apps"            (repo-level HCLOUD_APPS_TOKEN, shared)
+    ├── eliza-apps-node-staging-1     (apps Product-2, staging)
+    ├── eliza-apps-tenantdb-staging   (tenant Postgres, staging)
+    ├── eliza-apps-node-production-1  (apps Product-2, production)
+    └── eliza-apps-tenantdb-production (tenant Postgres, production)
 ```
 
 ### Why split
 
-- **Quota isolation** — prod can't starve staging, staging can't starve prod
-- **Blast radius** — a leaked staging token can't delete prod resources
+- **Quota isolation** — prod can't starve staging, staging can't starve prod;
+  apps untrusted-container quota is independent of agent capacity
+- **Blast radius** — a leaked staging token can't delete prod resources; an
+  apps-tenant-DB compromise can't reach the agent plane (separate network)
 - **Cost visibility** — Hetzner billing already splits per project in the invoice
-- **No upgrade ticket** — 2 projects × 5 default quota = 10 effective servers,
-  vs. waiting for a manual `Limit increase` on a single shared project
+- **Apps stays simple** — Product 2 is alpha; one shared `apps` project keeps
+  operator overhead low until there's real prod-Apps traffic to isolate.
+  Future split into `apps-staging` + `apps-prod` is a token-and-state-file
+  swap, no resource recreation.
 
 ### Token plumbing
 
 | Where                                          | Sets                          | Used for                |
 |------------------------------------------------|-------------------------------|-------------------------|
-| GitHub Environment `staging`   → `HCLOUD_TOKEN`| staging project token         | terraform plan/apply on staging |
-| GitHub Environment `production`→ `HCLOUD_TOKEN`| prod project token            | terraform plan/apply on prod    |
+| GitHub Environment `staging`   → `HCLOUD_TOKEN`| staging project token         | terraform plan/apply on control-plane staging |
+| GitHub Environment `production`→ `HCLOUD_TOKEN`| prod project token            | terraform plan/apply on control-plane prod    |
+| Repo-level → `HCLOUD_APPS_TOKEN`               | apps project token (shared)   | terraform plan/apply on apps-data-plane (both envs) |
 | Staging control-plane `/opt/eliza/cloud/.env.local` → `HCLOUD_TOKEN` | staging project token | provisioning-worker autoscaler   |
 | Prod control-plane `/opt/eliza/cloud/.env.local`    → `HCLOUD_TOKEN` | prod project token    | provisioning-worker autoscaler   |
 

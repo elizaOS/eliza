@@ -7,14 +7,20 @@ variable "environment" {
   }
 }
 
-# ── Multi-project credentials ────────────────────────────────────────────────
-# Each environment has its own Hetzner Cloud Project (= its own 5-server quota,
-# its own SSH keys, its own private network). The provider picks up the token
-# from this variable OR the HCLOUD_TOKEN env var. GitHub Actions wires the
-# right project's token via the environment-scoped secret HCLOUD_TOKEN.
-# See ARCHITECTURE.md § "Multi-project layout" for the pattern.
+# ── Shared apps-project credentials ──────────────────────────────────────────
+# The apps data-plane lives in a SINGLE SHARED Hetzner Cloud Project (one
+# quota, one set of SSH keys, one private network) — NOT split per environment
+# like the control-plane is. The per-env scoping stays in the Terraform state
+# file key + resource names (eliza-apps-node-${env}-N, eliza-apps-tenantdb-
+# ${env}); both staging and production apply rounds land in the same Hetzner
+# project.
+#
+# The provider picks up the token from this variable OR the HCLOUD_TOKEN env
+# var. GitHub Actions wires the REPO-LEVEL secret HCLOUD_APPS_TOKEN as
+# HCLOUD_TOKEN for both staging and production runs.
+# See ARCHITECTURE.md § "Multi-project layout" for the topology.
 variable "hcloud_token" {
-  description = "Hetzner Cloud API token for the project that owns THIS environment's resources. Leave null to pick up from HCLOUD_TOKEN env var (the GHA pattern)."
+  description = "Hetzner Cloud API token for the shared apps Hetzner project. Leave null to pick up from HCLOUD_TOKEN env var (the GHA pattern, sourced from repo-level secret HCLOUD_APPS_TOKEN)."
   type        = string
   default     = null
   sensitive   = true

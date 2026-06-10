@@ -42,10 +42,13 @@ resource "random_password" "tenant_db_admin" {
 # Operator/daemon SSH access is provisioned by cloud-init: each node's `deploy`
 # user gets `var.ssh_public_keys` in its authorized_keys (see cloud-init/*.tftpl),
 # and the provisioning-worker SSHes in as `deploy`. We intentionally do NOT
-# register an `hcloud_ssh_key` here: the operator key is already present in the
-# shared Hetzner project, so creating it returns 409 uniqueness_error — and an
-# hcloud-managed key only seeds `root`, which nothing connects as. var.ssh_public_keys
-# still flows to cloud-init below.
+# register an `hcloud_ssh_key` here: the apps Hetzner project is shared across
+# staging + production (Apps Product 2 is alpha — one project for both envs is
+# enough). Both env applies would race on the same `eliza-op-...` key and 409
+# the second one. The operator pubkey is added to the apps project ONCE via
+# Hetzner Console (out-of-band, one-shot); after that all cloud-init writes
+# work — they only need the pubkey string in var.ssh_public_keys, not a
+# Hetzner-registered key reference.
 
 # ── Private network: apps + tenant DB only; isolated from the agent plane ─────
 resource "hcloud_network" "apps" {

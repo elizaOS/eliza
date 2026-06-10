@@ -11,10 +11,21 @@ name: Terraform — Apps Data Plane (Hetzner)
 # Postgres node), so it is an explicit operator action — it never auto-runs.
 # "develop = staging" is expressed by choosing environment=staging on dispatch.
 #
+# Topology:
+#   Apps Product 2 (untrusted user containers + per-user tenant DB) lives in
+#   a DEDICATED Hetzner project (`apps`) — separate from the agent control-
+#   plane projects (`eliza-staging`, `eliza-prod`). One Hetzner project
+#   holds both staging and production Apps resources; the per-env scoping
+#   stays in the Terraform state file key + resource names (eliza-apps-node-
+#   ${env}-N, eliza-apps-tenantdb-${env}). This is intentional: Apps Product
+#   2 is alpha — operator overhead of two more projects (apps-staging +
+#   apps-prod) isn't worth it until there's real prod traffic to isolate.
+#
 # Secrets:
-#   environment-scoped (set on each `staging` / `production` GitHub Environment):
-#     HCLOUD_TOKEN                  Hetzner Cloud API token for that env's project
-#   repo-level (already present in this repo):
+#   repo-level (NOT env-scoped — apps project is shared across envs):
+#     HCLOUD_APPS_TOKEN             Hetzner Cloud API token for the `apps`
+#                                   project. Both staging + production
+#                                   applies authenticate with the same value.
 #     CLOUDFLARE_API_TOKEN          Cloudflare DNS token (wildcard apps record)
 #     R2_STATE_ACCESS_KEY_ID        R2 token -> AWS_ACCESS_KEY_ID (tf state backend)
 #     R2_STATE_SECRET_ACCESS_KEY    R2 token -> AWS_SECRET_ACCESS_KEY (tf state backend)
@@ -83,14 +94,17 @@ jobs:
           terraform init -backend=false -input=false
           terraform validate -no-color
 
-  # Manual plan/apply against a real environment. The `environment:` binding makes
-  # that env's HCLOUD_TOKEN (and any required reviewers) apply to this run.
+  # Manual plan/apply against a real environment. The `environment:` binding
+  # gates the run on the GH environment's required-reviewer rule (if set), but
+  # the Hetzner credential is the repo-level HCLOUD_APPS_TOKEN — Apps Product
+  # 2 lives in a dedicated shared Hetzner project, not the per-env eliza-prod
+  # / eliza-staging projects (see header comment).
   plan-apply:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment }}
     env:
-      HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+      HCLOUD_TOKEN: ${{ secrets.HCLOUD_APPS_TOKEN }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       # R2 (S3-compatible) state backend creds.
       AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATE_ACCESS_KEY_ID }}
@@ -117,7 +131,7 @@ jobs:
         run: |
           env="${{ github.event.inputs.environment }}"
           fail=0
-          [ -n "$HCLOUD_TOKEN" ] || { echo "::error::set secrets.HCLOUD_TOKEN on the '$env' environment"; fail=1; }
+          [ -n "$HCLOUD_TOKEN" ] || { echo "::error::set repo secret HCLOUD_APPS_TOKEN (apps Hetzner project token, shared across envs)"; fail=1; }
           [ -n "$AWS_ACCESS_KEY_ID" ] || { echo "::error::missing repo secret R2_STATE_ACCESS_KEY_ID"; fail=1; }
           [ -n "$AWS_SECRET_ACCESS_KEY" ] || { echo "::error::missing repo secret R2_STATE_SECRET_ACCESS_KEY"; fail=1; }
           [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::missing repo secret CLOUDFLARE_API_TOKEN"; fail=1; }
