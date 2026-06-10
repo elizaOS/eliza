@@ -1,4 +1,5 @@
 import type { PreparedPricingEntry, PriceLookupSource } from "../types";
+import { fetchAtlasCloudCatalogEntries } from "./atlascloud";
 import { fetchBitRouterCatalogEntries } from "./bitrouter";
 import { fetchCerebrasPublicCatalogEntries } from "./cerebras";
 import { fetchElevenLabsEntries } from "./elevenlabs";
@@ -12,6 +13,8 @@ export async function fetchEntriesForSource(
   switch (source) {
     case "bitrouter":
       return await fetchBitRouterCatalogEntries();
+    case "atlascloud":
+      return await fetchAtlasCloudCatalogEntries();
     case "gateway":
     case "openai":
     case "anthropic":
