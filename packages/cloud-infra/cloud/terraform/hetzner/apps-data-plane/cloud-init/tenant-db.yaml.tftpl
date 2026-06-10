@@ -9,9 +9,17 @@
 #
 # Reachable ONLY on the private apps network (the firewall opens no public 5432).
 #
+# The cluster setup is wrapped in a systemd oneshot service (tenant-db-init)
+# rather than cloud-init runcmd, because runcmd is per-instance: it only fires
+# on first boot. After a Hetzner rescale (server_type change), the cloud
+# refreshes user_data + reboots but cloud-init treats it as the same instance,
+# so runcmd never runs again — and we end up with an empty volume and dead
+# Postgres. The systemd unit runs on every boot, every step is grep-/path-
+# guarded, so it's a no-op after first successful run.
+#
 # STAN: tune shared_buffers/max_connections for thousands of small DBs; wire
-# volume-snapshot backups; consider scram-sha-256 + per-shard nodes as
-# database_count grows.
+# volume-snapshot backups; generate a server TLS cert for hostssl (until then
+# the pg_hba lines below stay 'host' and the admin DSN uses sslmode=disable).
 
 hostname: ${hostname}
 manage_etc_hosts: true
@@ -33,27 +41,122 @@ packages:
   - postgresql-contrib
   - jq
 
+write_files:
+  - path: /usr/local/bin/tenant-db-init.sh
+    owner: root:root
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      # Idempotent tenant-DB cluster init. Re-running this script is a no-op
+      # once the cluster is up. Invoked by /etc/systemd/system/tenant-db-init.service
+      # on every boot — so rescales, image swaps, and operator reboots all
+      # converge back to the right state.
+      set -euo pipefail
+      log() { echo "[tenant-db-init] $*"; }
+
+      # 1. Locate the Hetzner data volume by stable scsi id.
+      VOL="$(ls /dev/disk/by-id/scsi-0HC_Volume_* 2>/dev/null | head -1 || true)"
+      if [ -z "$VOL" ]; then
+        log "no Hetzner data volume attached yet; deferring (next boot will retry)."
+        exit 0
+      fi
+      log "data volume = $VOL"
+
+      # 2. Format only if no filesystem detected. blkid is the gate — never -F.
+      if ! blkid "$VOL" >/dev/null 2>&1; then
+        log "no fs on $VOL — formatting ext4."
+        mkfs.ext4 "$VOL"
+      fi
+
+      # 3. fstab + mount, grep-guarded so we don't accumulate duplicate lines.
+      mkdir -p /mnt/tenant-pgdata
+      if ! grep -qE "^[^#]*[[:space:]]/mnt/tenant-pgdata[[:space:]]" /etc/fstab; then
+        echo "$VOL /mnt/tenant-pgdata ext4 defaults,nofail 0 2" >> /etc/fstab
+      fi
+      mountpoint -q /mnt/tenant-pgdata || mount -a
+
+      # 4. Postgres version detection. The package may not be installed on the
+      # very first boot if cloud-init hasn't reached the package stage yet —
+      # defer cleanly; the next boot will pick it up.
+      PGVER="$(ls /etc/postgresql 2>/dev/null | head -1 || true)"
+      if [ -z "$PGVER" ]; then
+        log "postgresql package not installed yet; deferring."
+        exit 0
+      fi
+      PGDATA="/mnt/tenant-pgdata/$PGVER/main"
+      CONF="/etc/postgresql/$PGVER/main/postgresql.conf"
+      HBA="/etc/postgresql/$PGVER/main/pg_hba.conf"
+      log "PGVER=$PGVER PGDATA=$PGDATA"
+
+      # 5. initdb if PGDATA doesn't exist or isn't an initialised cluster.
+      if [ ! -f "$PGDATA/PG_VERSION" ]; then
+        log "no cluster at $PGDATA — initdb."
+        systemctl stop "postgresql@$PGVER-main" 2>/dev/null || true
+        mkdir -p "$PGDATA"
+        chown -R postgres:postgres /mnt/tenant-pgdata
+        sudo -u postgres "/usr/lib/postgresql/$PGVER/bin/initdb" -D "$PGDATA" --auth-host=scram-sha-256
+      fi
+
+      # 6. postgresql.conf — sed pattern matches both commented and uncommented
+      # forms so the script is idempotent regardless of which boot ran it last.
+      sed -i -E "s|^#?[[:space:]]*data_directory[[:space:]]*=.*|data_directory = '$PGDATA'|" "$CONF"
+      sed -i -E "s|^#?[[:space:]]*listen_addresses[[:space:]]*=.*|listen_addresses = '*'|" "$CONF"
+      sed -i -E "s|^#?[[:space:]]*password_encryption[[:space:]]*=.*|password_encryption = scram-sha-256|" "$CONF"
+
+      # 7. pg_hba — grep-guard before append so reboots don't grow the file.
+      if ! grep -qE "^hostssl[[:space:]]+all[[:space:]]+all[[:space:]]+10\.30\.0\.0/16" "$HBA"; then
+        echo "hostssl all all 10.30.0.0/16 scram-sha-256" >> "$HBA"
+      fi
+      if ! grep -qE "^host[[:space:]]+all[[:space:]]+all[[:space:]]+10\.30\.0\.0/16" "$HBA"; then
+        echo "host    all all 10.30.0.0/16 scram-sha-256" >> "$HBA"
+      fi
+
+      # 8. Start / restart so the new data_directory takes effect. Restart is
+      # safe — if PGDATA changed since last run, postgres reloads cleanly; if
+      # nothing changed, restart is a no-op for clients connecting before/after.
+      systemctl enable postgresql >/dev/null
+      systemctl restart postgresql
+      # Wait for the cluster socket so the ALTER USER below doesn't race.
+      for i in 1 2 3 4 5 6 7 8 9 10; do
+        sudo -u postgres pg_isready -q && break
+        sleep 1
+      done
+
+      # 9. Admin password (postgres superuser). The value is rendered from
+      # random_password.tenant_db_admin in TF state, stable across reboots, so
+      # this ALTER is idempotent.
+      sudo -u postgres psql -tAc "ALTER USER postgres WITH PASSWORD '${admin_password}';" >/dev/null
+
+      log "done."
+
+  - path: /etc/systemd/system/tenant-db-init.service
+    owner: root:root
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Tenant DB cluster init (idempotent, runs every boot)
+      After=network-online.target cloud-final.service
+      Wants=network-online.target
+      # Run BEFORE postgresql so the script's restart isn't fighting the
+      # default unit. The script itself enables + starts postgresql once
+      # data_directory is wired.
+      Before=postgresql.service
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/local/bin/tenant-db-init.sh
+      # Keep the unit's own state simple: success = postgres up; failure leaves
+      # it for the operator to inspect via `journalctl -u tenant-db-init`.
+      StandardOutput=journal
+      StandardError=journal
+
+      [Install]
+      WantedBy=multi-user.target
+
 runcmd:
-  # 1. Mount the data volume at the Postgres data dir (survives node rebuilds).
-  - export VOL=$(ls /dev/disk/by-id/scsi-0HC_Volume_* 2>/dev/null | head -1)
-  - if [ -n "$VOL" ] && ! blkid "$VOL" >/dev/null 2>&1; then mkfs.ext4 -F "$VOL"; fi
-  - systemctl stop postgresql || true
-  - mkdir -p /mnt/tenant-pgdata
-  - if [ -n "$VOL" ]; then echo "$VOL /mnt/tenant-pgdata ext4 defaults,nofail 0 2" >> /etc/fstab && mount -a; fi
-  - export PGVER=$(ls /etc/postgresql | head -1)
-  - export PGDATA="/mnt/tenant-pgdata/$PGVER/main"
-  - if [ ! -d "$PGDATA" ]; then mkdir -p "$PGDATA" && chown -R postgres:postgres /mnt/tenant-pgdata && sudo -u postgres /usr/lib/postgresql/$PGVER/bin/initdb -D "$PGDATA"; fi
-  # 2. Point the cluster config at the volume + listen on all ifaces (the
-  #    firewall + pg_hba are the access control; no public 5432 rule exists).
-  - sed -i "s|^data_directory.*|data_directory = '$PGDATA'|" /etc/postgresql/$PGVER/main/postgresql.conf
-  - sed -i "s|^#listen_addresses.*|listen_addresses = '*'|" /etc/postgresql/$PGVER/main/postgresql.conf
-  # 3. Allow the private apps subnet to connect (scram); deny everything else.
-  - echo "hostssl all all 10.30.0.0/16 scram-sha-256" >> /etc/postgresql/$PGVER/main/pg_hba.conf
-  - echo "host    all all 10.30.0.0/16 scram-sha-256" >> /etc/postgresql/$PGVER/main/pg_hba.conf
-  - sed -i "s|^#password_encryption.*|password_encryption = scram-sha-256|" /etc/postgresql/$PGVER/main/postgresql.conf
-  - systemctl enable postgresql && systemctl start postgresql
-  # 4. Set the admin (postgres) superuser password the daemon's admin DSN uses.
-  - sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD '${admin_password}';"
-  # STAN: generate a server TLS cert for hostssl (self-signed or internal CA);
-  # until then switch the pg_hba lines above to 'host' and the admin DSN to
-  # sslmode=disable on the private net.
+  # Activate the systemd unit on first boot. On subsequent boots, systemd
+  # picks it up automatically (WantedBy=multi-user.target) — runcmd is per-
+  # instance and never runs again, but the unit does.
+  - systemctl daemon-reload
+  - systemctl enable --now tenant-db-init.service
