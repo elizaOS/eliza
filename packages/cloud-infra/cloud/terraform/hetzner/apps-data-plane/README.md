@@ -1,50 +1,55 @@
-# Eliza Cloud Apps — data plane (Hetzner) — **REVIEW DRAFT**
+# Eliza Cloud Apps — per-env data plane (Hetzner)
 
-> ⚠️ **Draft for Stan (data-plane owner). NOT applied.** This is the IaC half of
-> "Eliza Cloud Apps" (Product 2). The application code is built + verified in
-> **PR #8293**; this terraform stands up the isolated infrastructure it targets.
-> Review + harden the `STAN:` items before `terraform apply`.
+> The IaC half of "Eliza Cloud Apps" (Product 2). The application code is built
+> + verified in **PR #8293**; this terraform stands up the per-env worker nodes
+> + wildcard DNS. Shared resources (private network + tenant Postgres) live in
+> the sibling [`apps-shared`](../apps-shared/) module — apply that one **first**.
 
 ## What this provisions
-The **isolated apps data plane**, kept separate from the agent data plane by
-design (*agents share the data plane; apps get an isolated one*):
+
+The **per-env** pieces of the apps data plane:
 
 | Resource | Purpose |
 |---|---|
-| `hcloud_network.apps` (+ subnet) | Private network for apps + their tenant DB. **No overlap with the agent net.** |
-| `hcloud_server.tenant_db` (+ volume) | One self-managed Postgres holding thousands of per-tenant `DATABASE`+`ROLE` (`REVOKE CONNECT FROM PUBLIC` per tenant). Reachable **only** on the private net. |
 | `hcloud_server.app_node[*]` | Docker host(s) for **untrusted** user containers (per-app `--internal` net + cap-drop + egress proxy). |
-| `hcloud_firewall.*` | App node: SSH + 80/443. Tenant DB: SSH only (Postgres private-net only). |
+| `hcloud_server_network.app_node[*]` | Attaches each app node to the SHARED `apps-shared` private network. |
+| `hcloud_firewall.app_node` | SSH + 80/443. |
 | `cloudflare_dns_record.apps_wildcard` | `*.<apps_base_domain>` → app node (use an LB for >1 node). |
 
+The shared private network, tenant Postgres node, and `random_password` admin
+secret live in [`../apps-shared`](../apps-shared/). This module reads them via
+a `terraform_remote_state` data source pointed at
+`hetzner/apps-shared/shared.tfstate`.
+
 ## How it connects to the code (PR #8293)
-1. `terraform apply` →` outputs.tenant_db_admin_dsn` (sensitive) + `app_node_ips`.
+1. Apply `../apps-shared` once → `outputs.tenant_db_admin_dsn` (sensitive) +
+   `tenant_db_private_ip`.
 2. Encrypt the admin DSN, seed it into **`tenant_db_clusters`** (`provider='direct_pg'`,
-   `host=tenant_db_private_host`). The runtime `ClusterPool` allocates from it; the
-   daemon's `DirectPgExecutor` runs the per-tenant `CREATE ROLE/DATABASE/REVOKE CONNECT`.
-3. Set daemon/Worker env: `CONTAINERS_DOCKER_NODES` (= `app_node_ips`),
+   `host=tenant_db_private_ip`). The runtime `ClusterPool` allocates from it;
+   the daemon's `DirectPgExecutor` runs the per-tenant `CREATE ROLE/DATABASE/REVOKE CONNECT`.
+3. Apply THIS module per env → `outputs.app_node_ips`.
+4. Set daemon/Worker env: `CONTAINERS_DOCKER_NODES` (= `app_node_ips`),
    `CONTAINERS_PUBLIC_BASE_DOMAIN` (= `apps_base_domain`), `CONTAINERS_EGRESS_PROXY_URL`,
    the image registry.
-4. Wire the 2 gated boot one-liners: cloud-api `configureAppsDeployTrigger()` +
+5. Wire the 2 gated boot one-liners: cloud-api `configureAppsDeployTrigger()` +
    daemon `configureAppsDeployBackend({ registry, buildExec })`.
-5. Flip the feature gate for an allowlist; **on-node kernel re-check** (throwaway
+6. Flip the feature gate for an allowlist; **on-node kernel re-check** (throwaway
    `--internal` scratch net) before opening to users.
 
 ## Apply (after review)
 
-**One-shot setup on a fresh `apps` Hetzner project**, then every subsequent
-apply just works:
+**One-shot setup on a fresh `apps` Hetzner project**:
 
 1. **Generate a Hetzner API token** scoped to the `apps` project (Console →
    Security → API Tokens). Store it as the repo-level GitHub secret
    `HCLOUD_APPS_TOKEN` (shared across staging + production — the apps data
    plane is one project, see `../ARCHITECTURE.md`).
 2. **Register the operator SSH public key** in the `apps` project (Console →
-   Security → SSH Keys → Add). Without this, the `eliza-op-${env}` key
-   isn't usable by the autoscaler's later `--ssh-key` references and recovery
-   paths break. cloud-init still seeds `authorized_keys` from
+   Security → SSH Keys → Add). cloud-init still seeds `authorized_keys` from
    `var.ssh_public_keys` for the `deploy` user — but the hcloud-managed key
    is the canonical fallback for root-level `hcloud server reset` flows.
+3. **Apply `../apps-shared` first** — this module's `terraform_remote_state`
+   data source will fail until that state file exists.
 
 Then plan/apply from CI:
 
@@ -68,14 +73,11 @@ terraform apply -var-file=staging.tfvars
 ```
 
 ## STAN — must confirm before production
-- **SSH surface:** `operator_ingress_cidrs` is world-open in the draft. Tighten.
+- **SSH surface:** `operator_ingress_cidrs` — tighten.
 - **Untrusted-image hardening:** gVisor (runsc) / Kata / userns-remap + seccomp on
   the app node — the draft uses stock docker + `--cap-drop=ALL` + `--internal`
   (the verified baseline, not defense-in-depth vs a kernel 0-day).
-- **Tenant DB:** TLS cert for `hostssl`, backups (volume snapshots), the admin
-  password lifecycle (currently a `random_password` in TF state), Postgres tuning
-  for thousands of small DBs, and the shard story as `database_count` grows.
 - **Ingress/TLS:** install Caddy (or reuse the existing ingress-map → Caddyfile
   emitter) on the app node; front multiple app nodes with `hcloud_load_balancer`.
-- **Egress allowlist:** `squid` default-deny currently allows only ghcr.io +
-  githubusercontent — extend to what apps legitimately need.
+- **Egress allowlist:** `squid` default-deny on the app node currently allows only
+  ghcr.io + githubusercontent — extend to what apps legitimately need.
