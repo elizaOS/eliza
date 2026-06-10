@@ -47,7 +47,7 @@
 	},
 	"dependencies": {
 		"@discordjs/builders": "^1.14.1",
-		"@discordjs/collection": "1.5.3",
+		"@discordjs/collection": "2.1.1",
 		"@discordjs/formatters": "^0.6.2",
 		"@discordjs/opus": "^0.10.0",
 		"@discordjs/rest": "^2.6.1",
