@@ -6,6 +6,7 @@ import { buildRouteCatalog } from "../../app-core/src/api/dev-route-catalog";
 import {
   DIRECT_ROUTE_CASES,
   MANAGER_VISIBLE_VIEW_TILE_CASES,
+  SAFE_VIEW_TILE_CASES,
 } from "./ui-smoke/apps-session-route-cases";
 
 /**
@@ -745,6 +746,24 @@ function managerVisibleGuiViewPaths(): Map<string, string> {
   return byId;
 }
 
+function managerVisibleGuiViewManifestsById(): Map<string, string> {
+  const byId = new Map<string, string>();
+  for (const manifestPath of PLUGIN_VIEW_MANIFESTS) {
+    const source = readFileSync(path.resolve(REPO_ROOT, manifestPath), "utf8");
+    for (const object of viewObjects(source)) {
+      const id = stringField(object, "id");
+      const pathValue = stringField(object, "path");
+      const viewType = stringField(object, "viewType") ?? "gui";
+      const visibleInManager = /visibleInManager:\s*true/.test(object);
+      if (!id || !pathValue || viewType !== "gui" || !visibleInManager) {
+        continue;
+      }
+      if (!byId.has(id)) byId.set(id, manifestPath);
+    }
+  }
+  return byId;
+}
+
 describe("app route coverage gate", () => {
   it("route smoke matrix covers catalog and app-window routes", () => {
     const smokePaths = new Set([
@@ -809,6 +828,37 @@ describe("app route coverage gate", () => {
         `Safe view tile "${tile.viewId}" expectedPath must match its manifest view path`,
       ).toBe(viewPath);
     }
+  });
+
+  it("click-safe view tile sample uses app-booted manager-visible views", () => {
+    const managerViewManifests = managerVisibleGuiViewManifestsById();
+    const bootMappedManifests = new Set(
+      Object.values(BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE).filter(
+        (manifest): manifest is (typeof PLUGIN_VIEW_MANIFESTS)[number] =>
+          typeof manifest === "string",
+      ),
+    );
+    const missing = SAFE_VIEW_TILE_CASES.filter(
+      (tile) => !managerViewManifests.has(tile.viewId),
+    ).map((tile) => tile.viewId);
+    const notBootLoaded = SAFE_VIEW_TILE_CASES.flatMap((tile) => {
+      const manifest = managerViewManifests.get(tile.viewId);
+      if (!manifest || bootMappedManifests.has(manifest)) return [];
+      return [`${tile.viewId} (${manifest})`];
+    });
+
+    expect(
+      SAFE_VIEW_TILE_CASES.length,
+      "SAFE_VIEW_TILE_CASES must not be empty",
+    ).toBeGreaterThan(0);
+    expect(
+      missing,
+      `Click-safe view tile samples must be manager-visible gui views: ${missing.join(", ")}`,
+    ).toEqual([]);
+    expect(
+      notBootLoaded,
+      `Click-safe view tile samples must be app-booted; agent-only plugin views belong in plugin-views-visual: ${notBootLoaded.join(", ")}`,
+    ).toEqual([]);
   });
 
   it("discovers every production plugin view manifest in the manifest ratchet", () => {

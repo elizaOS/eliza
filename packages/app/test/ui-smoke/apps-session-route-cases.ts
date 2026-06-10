@@ -293,12 +293,13 @@ export const MANAGER_VISIBLE_VIEW_TILE_CASES: readonly SafeViewTileCase[] =
 
 /**
  * Browser click-safe subset. The full dynamic-view matrix is covered by
- * plugin-views-visual; this suite samples representative View Manager tiles
- * without turning all-pages click safety into a long game/app bootstrap loop.
+ * plugin-views-visual; this suite samples representative app-booted View
+ * Manager tiles without turning all-pages click safety into a long game/app
+ * bootstrap loop.
  */
 export const SAFE_VIEW_TILE_CASES: readonly SafeViewTileCase[] = [
   { viewId: "companion", path: "/companion" },
-  { viewId: "todos", path: "/todos" },
+  { viewId: "vincent", path: "/vincent" },
   { viewId: "model-tester", path: "/model-tester" },
 ].map(({ viewId, path }) => ({
   viewId,

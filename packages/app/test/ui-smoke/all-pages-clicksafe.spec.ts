@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { SETTINGS_SECTIONS } from "../../../../scripts/ai-qa/route-catalog.ts";
 import {
   DIRECT_ROUTE_CASES,
   escapeRegExp,
@@ -8,7 +9,7 @@ import {
   assertReadyChecks,
   installDefaultAppRoutes,
   openAppPath,
-  openSettingsSection,
+  openSettingsSectionById,
   seedAppStorage,
 } from "./helpers";
 
@@ -308,35 +309,14 @@ const SAFE_VIEW_TILES: readonly {
   expectedPath: new RegExp(`${escapeRegExp(tileCase.expectedPath)}$`),
 }));
 
-const SETTING_SECTIONS_TO_CLICK: readonly RegExp[] = [
-  /^Basics$/,
-  /^Providers$/,
-  /^Runtime$/,
-  /^Appearance$/,
-  /^Voice$/,
-  /^Capabilities$/,
-  /^Apps$/,
-  /^Remote Plugins$/,
-  /^Connectors$/,
-  /^App Permissions$/,
-  /^Wallet & RPC$/,
-  /^Permissions$/,
-  /^Vault$/,
-  /^Security$/,
-  /^Updates$/,
-  /^Backup & Reset$/,
-];
+const SETTING_SECTION_IDS_TO_CLICK: readonly string[] = SETTINGS_SECTIONS.map(
+  (section) => section.id,
+);
 const SETTING_DEEP_LINKS: readonly {
   hash: string;
-}[] = [
-  { hash: "ai-model" },
-  { hash: "voice" },
-  { hash: "connectors" },
-  { hash: "permissions" },
-  { hash: "secrets" },
-  { hash: "security" },
-  { hash: "advanced" },
-];
+}[] = SETTINGS_SECTIONS.map((section) => ({
+  hash: section.id,
+}));
 const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 const ONE_PIXEL_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
@@ -1471,10 +1451,10 @@ async function clickSafeAllowlist(
   await expectNoPageIssues(issues, "apps favorite toggle");
 
   await probeRoute(page, coreRouteProbe("settings"));
-  for (const section of SETTING_SECTIONS_TO_CLICK) {
-    await openSettingsSection(page, section);
+  for (const sectionId of SETTING_SECTION_IDS_TO_CLICK) {
+    await openSettingsSectionById(page, sectionId);
     await page.waitForTimeout(150);
-    await expectNoPageIssues(issues, `settings section ${String(section)}`);
+    await expectNoPageIssues(issues, `settings section ${sectionId}`);
   }
 
   for (const link of SETTING_DEEP_LINKS) {

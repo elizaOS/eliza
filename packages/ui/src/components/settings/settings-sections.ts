@@ -242,13 +242,13 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   {
     id: "secrets",
     label: "settings.sections.secrets.label",
-    defaultLabel: "Vault",
+    defaultLabel: "Secrets storage",
     icon: KeyRound,
     tone: "warn",
     hue: "amber",
     group: "security",
     titleKey: "settings.sections.secrets.label",
-    defaultTitle: "Vault",
+    defaultTitle: "Secrets storage",
     Component: SecretsManagerSection,
   },
   {

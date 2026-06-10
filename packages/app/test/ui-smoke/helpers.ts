@@ -369,6 +369,17 @@ export async function openSettingsSection(
     return;
   }
 
+  const sectionBackButton = settingsShell
+    .locator('[data-agent-id="section-back"]')
+    .first();
+  if (await locatorVisible(sectionBackButton, 1_000)) {
+    await sectionBackButton.click();
+    if (await locatorVisible(hubSectionButton, 2_000)) {
+      await hubSectionButton.click();
+      return;
+    }
+  }
+
   const settingsNav = page.getByRole("navigation", { name: "Settings" });
   const sectionButton = settingsNav.getByRole("button", { name: sectionName });
   if (await locatorVisible(sectionButton, 1_000)) {
@@ -393,6 +404,41 @@ export async function openSettingsSection(
   await expect(sectionHeading.first()).toBeVisible({
     timeout: READY_CHECK_TIMEOUT_MS,
   });
+}
+
+export async function openSettingsSectionById(
+  page: Page,
+  sectionId: string,
+): Promise<void> {
+  const settingsShell = page.getByTestId("settings-shell");
+  if (!(await locatorVisible(settingsShell, 2_000))) {
+    await replayNavigationAfterStartup(page);
+  }
+  await expect(settingsShell).toBeVisible({ timeout: READY_CHECK_TIMEOUT_MS });
+
+  const section = settingsShell.locator(`#${sectionId}`).first();
+  if (await locatorVisible(section, 500)) return;
+
+  const sectionTile = settingsShell
+    .locator(`[data-agent-id="section-${sectionId}"]`)
+    .first();
+  if (await locatorVisible(sectionTile, 1_000)) {
+    await sectionTile.click();
+    return;
+  }
+
+  const sectionBackButton = settingsShell
+    .locator('[data-agent-id="section-back"]')
+    .first();
+  if (await locatorVisible(sectionBackButton, 1_000)) {
+    await sectionBackButton.click();
+  }
+
+  await expect(
+    sectionTile,
+    `Expected Settings section "${sectionId}" to be visible in the hub`,
+  ).toBeVisible({ timeout: READY_CHECK_TIMEOUT_MS });
+  await sectionTile.click();
 }
 
 function settingsSectionIdFromLabel(
