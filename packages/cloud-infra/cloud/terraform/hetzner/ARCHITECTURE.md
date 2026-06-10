@@ -120,11 +120,15 @@ Hetzner Cloud account (one human)
 │   ├── eliza-staging-1               (control-plane, cpx32)
 │   └── eliza-core-<hex>              (worker, cpx32, autoscaled)
 └── Project "apps"            (repo-level HCLOUD_APPS_TOKEN, shared)
-    ├── eliza-apps-node-staging-1     (apps Product-2, staging)
-    ├── eliza-apps-tenantdb-staging   (tenant Postgres, staging)
-    ├── eliza-apps-node-production-1  (apps Product-2, production)
-    └── eliza-apps-tenantdb-production (tenant Postgres, production)
+    ├── eliza-app-tenant              (tenant Postgres — SHARED across envs; apps-shared/)
+    ├── eliza-apps-node-staging-1     (apps Product-2 worker, staging; apps-data-plane/)
+    └── eliza-apps-node-production-1  (apps Product-2 worker, production; apps-data-plane/)
 ```
+
+The tenant DB is intentionally shared across staging + production app workers
+— alpha scale, one Postgres node holds both env's per-tenant DATABASE+ROLE,
+isolation is per-tenant not per-env. Its IaC lives in the dedicated
+`apps-shared/` module with a single shared backend.
 
 ### Why split
 
@@ -144,7 +148,7 @@ Hetzner Cloud account (one human)
 |------------------------------------------------|-------------------------------|-------------------------|
 | GitHub Environment `staging`   → `HCLOUD_TOKEN`| staging project token         | terraform plan/apply on control-plane staging |
 | GitHub Environment `production`→ `HCLOUD_TOKEN`| prod project token            | terraform plan/apply on control-plane prod    |
-| Repo-level → `HCLOUD_APPS_TOKEN`               | apps project token (shared)   | terraform plan/apply on apps-data-plane (both envs) |
+| Repo-level → `HCLOUD_APPS_TOKEN`               | apps project token (shared)   | terraform plan/apply on apps-shared + apps-data-plane (both envs) |
 | Staging control-plane `/opt/eliza/cloud/.env.local` → `HCLOUD_TOKEN` | staging project token | provisioning-worker autoscaler   |
 | Prod control-plane `/opt/eliza/cloud/.env.local`    → `HCLOUD_TOKEN` | prod project token    | provisioning-worker autoscaler   |
 

@@ -1,15 +1,22 @@
 name: Terraform — Apps Data Plane (Hetzner)
 
-# Plan/apply the Eliza Cloud Apps (Product 2) data-plane IaC
-# (packages/cloud-infra/cloud/terraform/hetzner/apps-data-plane).
+# Plan/apply the PER-ENV half of the Eliza Cloud Apps (Product 2) data-plane IaC
+# (packages/cloud-infra/cloud/terraform/hetzner/apps-data-plane) — i.e. the
+# app worker node(s) + their wildcard Cloudflare record.
+#
+# The SHARED resources (private network + tenant Postgres) live in
+# packages/cloud-infra/cloud/terraform/hetzner/apps-shared and are managed by
+# the terraform-apps-shared.yml workflow. This module reads their outputs via
+# a `terraform_remote_state` data source — so the R2 state creds below are
+# needed for BOTH this module's state AND for the shared remote-state read.
 #
 #   pull_request touching the module -> fmt + validate (NO cloud creds, no state — safe)
 #   workflow_dispatch (manual)        -> terraform plan or apply against an
 #                                        environment (staging | production)
 #
-# Apply provisions real billed Hetzner servers (an app worker node + a tenant
-# Postgres node), so it is an explicit operator action — it never auto-runs.
-# "develop = staging" is expressed by choosing environment=staging on dispatch.
+# Apply provisions real billed Hetzner servers (the app worker node(s)), so
+# it is an explicit operator action — it never auto-runs. "develop = staging"
+# is expressed by choosing environment=staging on dispatch.
 #
 # Topology:
 #   Apps Product 2 (untrusted user containers + per-user tenant DB) lives in
@@ -69,11 +76,13 @@ permissions:
   contents: read
   pull-requests: write
 
-# Serialize plan/apply per env across branches so two operators can't apply
-# the same env concurrently. PR validation stays parallel (different group via
-# the format() fallback).
+# Serialize plan/apply across BOTH this workflow and terraform-apps-shared.yml
+# — they share the apps Hetzner project AND apps-data-plane reads the shared
+# state via `terraform_remote_state`. A shared-state rebuild of hcloud_network
+# would otherwise race a concurrent per-env app_node attach. PR validation
+# stays parallel via the format() fallback.
 concurrency:
-  group: terraform-apps-${{ github.event.inputs.environment || format('pr-{0}', github.ref) }}
+  group: ${{ github.event_name == 'workflow_dispatch' && 'terraform-apps-hetzner' || format('pr-{0}', github.ref) }}
   cancel-in-progress: false
 
 env:
@@ -179,7 +188,9 @@ jobs:
         # `replace` input is a comma-separated list of TF resource addresses to
         # force-replace this run. Empty -> normal apply. The bash loop builds
         # the -replace flags so `terraform apply` doesn't see a stray empty
-        # flag when no replace is requested.
+        # flag when no replace is requested. NOTE: tenant_db lives in
+        # apps-shared now — `-replace=hcloud_server.tenant_db` here is a no-op;
+        # use the terraform-apps-shared workflow instead.
         run: |
           REPLACE_ARGS=()
           if [ -n "${{ github.event.inputs.replace }}" ]; then

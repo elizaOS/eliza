@@ -9,11 +9,10 @@ variable "environment" {
 
 # ── Shared apps-project credentials ──────────────────────────────────────────
 # The apps data-plane lives in a SINGLE SHARED Hetzner Cloud Project (one
-# quota, one set of SSH keys, one private network) — NOT split per environment
-# like the control-plane is. The per-env scoping stays in the Terraform state
-# file key + resource names (eliza-apps-node-${env}-N, eliza-apps-tenantdb-
-# ${env}); both staging and production apply rounds land in the same Hetzner
-# project.
+# quota, one set of SSH keys, one private network). The shared network +
+# tenant Postgres node are owned by ../apps-shared/. This module is per-env
+# (one tfstate per env) and only manages app worker nodes + the wildcard
+# Cloudflare record.
 #
 # The provider picks up the token from this variable OR the HCLOUD_TOKEN env
 # var. GitHub Actions wires the REPO-LEVEL secret HCLOUD_APPS_TOKEN as
@@ -27,13 +26,13 @@ variable "hcloud_token" {
 }
 
 variable "hcloud_location" {
-  description = "Hetzner Cloud datacenter location. MUST match the control-plane + agent data plane (fsn1) so the private network and DB latency stay sane."
+  description = "Hetzner Cloud datacenter location. MUST match the apps-shared module so app nodes can attach to its private network."
   type        = string
   default     = "fsn1"
 }
 
 variable "hcloud_image" {
-  description = "Base image for the apps data-plane VMs."
+  description = "Base image for the app worker node VMs."
   type        = string
   default     = "ubuntu-24.04"
 }
@@ -55,35 +54,10 @@ variable "app_node_count" {
   }
 }
 
-# ── Tenant Postgres cluster node: thousands of DATABASE+ROLE per node ─────────
-variable "tenant_db_server_type" {
-  description = "Hetzner server type for the tenant Postgres node. cpx42 (8 shared vCPU / 16 GB AMD, ~€25/mo in fsn1) — no dedicated-CPU quota required. Postgres runs server-side (no untrusted code execution on this VM), so shared CPU is fine for isolation; the boundary is hostssl + private-network firewall + per-tenant ROLE. For prod scale or perf-sensitive workloads, override to ccx33 (dedicated 8 vCPU / 32 GB, ~€62/mo)."
-  type        = string
-  default     = "cpx42"
-}
-
-variable "tenant_db_volume_size_gb" {
-  description = "Size of the attached block-storage volume that holds all tenant databases (PGDATA lives here so the node can be rebuilt without data loss)."
-  type        = number
-  default     = 200
-}
-
 variable "ssh_public_keys" {
   description = "Operator SSH public keys allowed to log in as root. Provide via tfvars; never commit private keys."
   type        = list(string)
   default     = []
-}
-
-variable "network_cidr" {
-  description = "Private network CIDR for the apps data plane. MUST NOT overlap the agent data-plane network — apps and agents are isolated."
-  type        = string
-  default     = "10.30.0.0/16"
-}
-
-variable "subnet_cidr" {
-  description = "Subnet within network_cidr where the app nodes + tenant DB attach."
-  type        = string
-  default     = "10.30.1.0/24"
 }
 
 variable "cloudflare_zone_id" {
@@ -105,7 +79,7 @@ variable "apps_base_domain" {
 }
 
 variable "operator_ingress_cidrs" {
-  description = "CIDRs allowed to SSH the nodes (operator IPs / control-plane). No default: the workflow MUST supply a tight list — '0.0.0.0/0' is explicitly rejected by the validation below to fail closed on every apply."
+  description = "CIDRs allowed to SSH the app worker nodes (operator IPs / control-plane). No default: the workflow MUST supply a tight list — '0.0.0.0/0' is explicitly rejected by the validation below to fail closed on every apply."
   type        = list(string)
   validation {
     condition     = length(var.operator_ingress_cidrs) > 0 && alltrue([for c in var.operator_ingress_cidrs : c != "0.0.0.0/0" && c != "::/0"])

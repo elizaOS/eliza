@@ -9,14 +9,15 @@ terraform {
       source  = "hetznercloud/hcloud"
       version = "~> 1.63"
     }
-    cloudflare = {
-      source  = "cloudflare/cloudflare"
-      version = "~> 5.0"
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
     }
   }
 
-  # State backend uses Cloudflare R2 (S3-compatible), same as control-plane.
-  #   terraform init -backend-config=backend-staging.hcl
-  #   terraform init -backend-config=backend-production.hcl
+  # State backend uses Cloudflare R2 (S3-compatible), same as apps-data-plane.
+  # Single shared backend file — this module is NOT per-env (one private network +
+  # one tenant Postgres are shared across staging + production app nodes).
+  #   terraform init -backend-config=backend.hcl
   backend "s3" {}
 }
