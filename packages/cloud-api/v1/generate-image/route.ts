@@ -181,10 +181,7 @@ app.post("/", async (c) => {
         "internal_error",
       );
     }
-    if (
-      definition.billingSource === "atlascloud" &&
-      !env.ATLASCLOUD_API_KEY
-    ) {
+    if (definition.billingSource === "atlascloud" && !env.ATLASCLOUD_API_KEY) {
       return jsonError(
         c,
         503,

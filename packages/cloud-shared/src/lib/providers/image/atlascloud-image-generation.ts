@@ -58,7 +58,9 @@ async function readImageWithLimit(response: Response): Promise<Uint8Array> {
 }
 
 async function imageUrlToGeneratedImage(url: string, text = ""): Promise<GeneratedImage> {
-  const response = await fetch(url, { signal: AbortSignal.timeout(ATLAS_IMAGE_DOWNLOAD_TIMEOUT_MS) });
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(ATLAS_IMAGE_DOWNLOAD_TIMEOUT_MS),
+  });
   if (!response.ok) {
     throw new Error(`Atlas image download failed: ${response.status}`);
   }
@@ -169,7 +171,9 @@ export async function generateAtlasCloudImage(request: ImageGenRequest): Promise
     const status = (prediction.status ?? "").toLowerCase();
 
     if (TERMINAL_FAIL.has(status)) {
-      throw new Error(`Atlas image generation failed${prediction.error ? `: ${prediction.error}` : ""}`);
+      throw new Error(
+        `Atlas image generation failed${prediction.error ? `: ${prediction.error}` : ""}`,
+      );
     }
 
     if (TERMINAL_OK.has(status)) {

@@ -50,13 +50,13 @@ function buildAtlasImageEntry(
 }
 
 function buildAtlasImageSnapshotEntries(): PreparedPricingEntry[] {
-  return SUPPORTED_IMAGE_MODELS.filter(
-    (model) => model.billingSource === "atlascloud",
-  ).flatMap((model) => {
-    const unitPrice = ATLAS_IMAGE_PRICE_BY_MODEL[model.modelId];
-    if (unitPrice === undefined) return [];
-    return [buildAtlasImageEntry(model, unitPrice)];
-  });
+  return SUPPORTED_IMAGE_MODELS.filter((model) => model.billingSource === "atlascloud").flatMap(
+    (model) => {
+      const unitPrice = ATLAS_IMAGE_PRICE_BY_MODEL[model.modelId];
+      if (unitPrice === undefined) return [];
+      return [buildAtlasImageEntry(model, unitPrice)];
+    },
+  );
 }
 
 export async function fetchAtlasCloudCatalogEntries(): Promise<PreparedPricingEntry[]> {
