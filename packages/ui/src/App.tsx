@@ -362,7 +362,10 @@ function TabContentView({ children }: { children: ReactNode }) {
       testId="tab-content-view"
       chatDisabled
       main={
-        <div className="flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-hidden">
+        <div
+          data-shell-content-region="true"
+          className="eliza-continuous-chat-scroll flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-hidden pb-[var(--eliza-continuous-chat-clearance,5.25rem)]"
+        >
           {children}
         </div>
       }

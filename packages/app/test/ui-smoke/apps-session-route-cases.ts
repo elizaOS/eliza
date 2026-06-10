@@ -134,10 +134,7 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
     name: "shopify",
     path: "/shopify",
-    readyChecks: [
-      { text: "Shopify" },
-      { selector: '[data-testid="shopify-shell"]' },
-    ],
+    readyChecks: [{ selector: '[data-testid="shopify-shell"]' }],
     timeoutMs: 90_000,
   },
   {

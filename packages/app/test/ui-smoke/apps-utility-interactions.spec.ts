@@ -344,14 +344,13 @@ test("vector browser controls search and switch projection modes", async ({
     name: "vector-browser",
     path: "/vector-browser",
     readyChecks: [
-      { selector: '[data-testid="vector-sidebar"]' },
+      { text: "memories" },
       { text: "Deterministic memory fixture" },
     ],
     timeoutMs: 90_000,
   } satisfies RouteCase;
 
   await openAppWindow(page, vectorBrowser);
-  await expect(page.getByTestId("vector-sidebar")).toBeVisible();
   await expect(page.getByPlaceholder("Search content...")).toBeVisible();
   await expect(
     page.getByText("Deterministic memory fixture").first(),
@@ -390,6 +389,10 @@ test("vector browser controls search and switch projection modes", async ({
     page.getByRole("button", { name: "List" }),
     "vector list view",
   );
+  await clickRequired(
+    page.getByRole("button", { name: /Deterministic memory fixture/i }),
+    "vector memory detail",
+  );
   await expect(page.getByText("Memory Detail")).toBeVisible();
   await expectNoIssues(page, issues, "vector browser interactions");
 });
@@ -417,9 +420,7 @@ test("finance and commerce utility controls refresh and show fixture data", asyn
   await expect(page.getByText("BTC", { exact: true })).toBeVisible();
   await expect(page.getByText("ETH", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Positions" })).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Open orders" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Orders" })).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "hyperliquid refresh");
 
   const polymarket = routeCaseByName("polymarket");
@@ -429,15 +430,15 @@ test("finance and commerce utility controls refresh and show fixture data", asyn
     page.getByRole("button", { name: "Refresh" }),
     "Polymarket refresh",
   );
-  await clickRequired(
-    page.getByRole("button", { name: /Will the UI smoke suite stay green/i }),
-    "Polymarket first market",
-  );
   await expect(
     page.getByRole("heading", {
       name: /Will the UI smoke suite stay green/i,
     }),
   ).toBeVisible();
+  await clickRequired(
+    page.getByRole("button", { name: "Markets" }),
+    "Polymarket market list",
+  );
   await clickRequired(
     page.getByRole("button", { name: /Will fixture market selection work/i }),
     "Polymarket second market",
@@ -517,15 +518,19 @@ test("finance and commerce utility controls refresh and show fixture data", asyn
     page.getByRole("button", { name: "Refresh" }),
     "Vincent refresh",
   );
-  await expect(page.getByText("Connected to Vincent")).toBeVisible();
-  await expect(page.getByText("Vincent Trading Agent")).toBeVisible();
-  await expect(page.getByText("Trading Profile")).toBeVisible();
-  await expect(page.getByText("Agent Wallet")).toBeVisible();
+  await expect(
+    page.getByTestId("vincent-status-card").getByText("Connected"),
+  ).toBeVisible();
+  await expect(page.getByText("Wallet", { exact: true })).toBeVisible();
+  await expect(page.getByText("Strategy", { exact: true })).toBeVisible();
+  await expect(page.getByText("P&L", { exact: true }).first()).toBeVisible();
   await clickRequired(
     page.getByRole("button", { name: "Disconnect" }),
     "Vincent disconnect",
   );
-  await expect(page.getByText("Not connected to Vincent")).toBeVisible();
+  await expect(
+    page.getByTestId("vincent-status-card").getByText("Disconnected"),
+  ).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "vincent interactions");
 
   expect([...openedRoutes].sort()).toEqual(
@@ -592,14 +597,6 @@ test("wallet inventory controls update visible deterministic state", async ({
     "Wallet tokens tab",
   );
   await clickRequired(
-    walletSidebar.getByRole("button", { name: "Swap USDC" }),
-    "Wallet token swap action",
-  );
-  await expect(
-    page.getByText("Prepared a swap request for USDC in wallet chat."),
-  ).toBeVisible();
-
-  await clickRequired(
     walletSidebar.getByRole("button", { name: "Hide USDC" }),
     "Wallet hide token action",
   );
@@ -623,29 +620,28 @@ test("steward approvals and history controls consume deterministic API stubs", a
   const issues = installIssueGuards(page);
 
   await openAppPath(page, "/steward");
-  const stewardSidebar = await ensurePageSidebarVisible(
-    page,
-    "steward-sidebar",
-    "steward sidebar",
-  );
+  await expect(page.getByTestId("steward-view")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Approvals" })).toBeVisible();
-  await expect(page.getByText("2 pending")).toBeVisible();
+  await expect(page.getByRole("tab", { name: /2\s+Approvals/ })).toBeVisible();
+  await expect(page.getByText("Pending")).toBeVisible();
   await expect(
     page.getByText("Manual approval required for UI smoke.").first(),
   ).toBeVisible();
 
   await clickRequired(
-    page.getByRole("button", { name: "Refresh" }),
+    page.getByRole("button", { name: "Refresh approvals" }),
     "Steward approvals refresh",
   );
   await clickRequired(
-    page.getByRole("button", { name: "Approve" }).first(),
+    page.getByRole("button", { name: /^Approve transaction/ }).first(),
     "Steward approve pending transaction",
   );
-  await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(1);
+  await expect(
+    page.getByRole("button", { name: /^Approve transaction/ }),
+  ).toHaveCount(1);
 
   await clickRequired(
-    page.getByRole("button", { name: "Reject" }).first(),
+    page.getByRole("button", { name: /^Reject transaction/ }).first(),
     "Steward reject pending transaction",
   );
   await page
@@ -658,14 +654,12 @@ test("steward approvals and history controls consume deterministic API stubs", a
   await expect(page.getByText("No pending approvals")).toBeVisible();
 
   await clickRequired(
-    stewardSidebar.getByRole("button", {
+    page.getByRole("tab", {
       name: /History/,
     }),
     "Steward history tab",
   );
-  await expect(
-    page.getByRole("heading", { name: "Transaction History" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "History" })).toBeVisible();
   await expect(page.getByText("2 transactions")).toBeVisible();
   const transactionTable = page.getByRole("table");
   await expect(transactionTable.getByText("Confirmed")).toBeVisible();

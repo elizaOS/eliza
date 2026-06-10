@@ -340,7 +340,7 @@ describe("App navigate-view event wiring", () => {
     appState.tab = "apps";
     window.history.replaceState(null, "", "/apps/remote-ledger");
 
-    const { getByTestId } = render(<App />);
+    const { container, getByTestId } = render(<App />);
 
     await waitFor(() => {
       expect(dynamicViewLoaderMock.render).toHaveBeenCalledWith(
@@ -358,6 +358,11 @@ describe("App navigate-view event wiring", () => {
     );
     expect(loader.getAttribute("data-view-id")).toBe("remote-ledger");
     expect(loader.getAttribute("data-view-type")).toBe("gui");
+    expect(
+      container
+        .querySelector('[data-shell-content-region="true"]')
+        ?.className.includes("pb-[var(--eliza-continuous-chat-clearance"),
+    ).toBe(true);
   });
 
   it("renders split-view events as a live dynamic view layout", async () => {

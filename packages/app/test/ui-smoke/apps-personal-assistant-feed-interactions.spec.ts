@@ -557,11 +557,11 @@ test("Feed routes expose reachable GUI state and deterministic TUI commands", as
     page,
     "feed gui no-run state",
     [
-      { text: "Feed operator surface" },
-      { text: "@elizaos/plugin-feed dynamic view smoke surface is ready." },
       { text: "Feed" },
+      { text: "Market dashboard ready" },
+      { text: "Waiting for a Feed session" },
     ],
-    "any",
+    "all",
     90_000,
   );
 

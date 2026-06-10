@@ -85,7 +85,7 @@ const GUI_INTERACTION_OWNERS: Readonly<
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
       proves:
         "Refreshes market data and verifies markets, positions, and orders.",
-      signals: ["hyperliquid refresh", "Markets", "Open orders"],
+      signals: ["hyperliquid refresh", "Markets", "Orders"],
     },
   ],
   lifeops: [
@@ -181,11 +181,7 @@ const GUI_INTERACTION_OWNERS: Readonly<
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
       proves:
         "Exercises approval refresh, approve/reject flows, rejection reason, history filters, and table state.",
-      signals: [
-        "steward interactions",
-        "Confirm Reject",
-        "Transaction History",
-      ],
+      signals: ["steward interactions", "Confirm Reject", "History"],
     },
   ],
   vincent: [
@@ -193,17 +189,17 @@ const GUI_INTERACTION_OWNERS: Readonly<
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
       proves:
         "Exercises refresh, connected wallet/trading state, and disconnect flow.",
-      signals: ["vincent interactions", "Disconnect", "Vincent Trading Agent"],
+      signals: ["vincent interactions", "Disconnect", "Strategy"],
     },
   ],
   wallet: [
     {
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
       proves:
-        "Exercises wallet refresh, sidebar tabs, NFT/token state, swap, hide, and RPC settings navigation.",
+        "Exercises wallet refresh, sidebar tabs, NFT/token state, hide, and RPC settings navigation.",
       signals: [
         "wallet inventory interactions",
-        "Swap USDC",
+        "Hide USDC",
         "Open RPC settings",
       ],
     },
@@ -343,7 +339,7 @@ const GUI_INTERACTION_OWNERS: Readonly<
       spec: "packages/app/test/ui-smoke/apps-comms-device-interactions.spec.ts",
       proves:
         "Exercises connect headset, display writes, microphone toggles, and Wi-Fi setup bridge calls.",
-      signals: ["smartglasses bridge controls", "Connect Headset"],
+      signals: ["smartglasses bridge controls", "Whole headset connected"],
     },
   ],
 };

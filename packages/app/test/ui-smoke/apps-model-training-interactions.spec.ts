@@ -846,6 +846,8 @@ test.beforeEach(async ({ page }) => {
 test("model tester route runs deterministic visible probes", async ({
   page,
 }) => {
+  const smokePrompt =
+    "Say exactly one short sentence about the Eliza-1 model tester working.";
   const recorder = await installModelTesterInteractionRoutes(page);
   await openRouteCase(page, routeCaseByName("model tester app window"));
 
@@ -853,9 +855,7 @@ test("model tester route runs deterministic visible probes", async ({
   await expect(
     page.getByRole("heading", { name: "Model Tester" }),
   ).toBeVisible();
-  await page
-    .getByLabel("Prompt")
-    .fill("UI smoke prompt from Playwright model tester");
+  await page.getByRole("button", { name: "Smoke" }).click();
 
   const statusRequestCount = recorder.statusRequestCount();
   await clickRequired(
@@ -872,28 +872,26 @@ test("model tester route runs deterministic visible probes", async ({
     .first();
   await expect(textCard.getByText("TEXT_SMALL", { exact: true })).toBeVisible();
   await clickRequired(
-    textCard.getByRole("button", { name: "Run" }),
+    textCard.getByRole("button", { name: "Run Text" }),
     "run text probe",
   );
   await expect(
-    textCard.getByText(
-      "Text probe accepted: UI smoke prompt from Playwright model tester",
-    ),
+    textCard.getByText(`Text probe accepted: ${smokePrompt}`),
   ).toBeVisible();
   await expect
     .poll(() => recorder.runRequests().at(-1)?.test)
     .toBe("text-small");
   await expect
     .poll(() => recorder.runRequests().at(-1)?.prompt)
-    .toBe("UI smoke prompt from Playwright model tester");
+    .toBe(smokePrompt);
 
   const imageCard = page
     .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Image Generation" }) })
+    .filter({ has: page.getByRole("heading", { name: "Image" }) })
     .first();
   await expect.poll(() => recorder.runRequestCount()).toBeGreaterThanOrEqual(1);
   await clickRequired(
-    imageCard.getByRole("button", { name: "Run" }),
+    imageCard.getByRole("button", { name: "Run Image" }),
     "run image generation probe",
   );
   await expect(imageCard.getByText("image generation accepted")).toBeVisible();
