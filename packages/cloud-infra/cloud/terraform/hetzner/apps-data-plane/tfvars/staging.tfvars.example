@@ -6,9 +6,11 @@ cloudflare_zone_id = "<zone-id-for-elizacloud.ai>"
 apps_base_domain   = "apps-staging.elizacloud.ai"
 
 # Sizing — start small for the allowlist beta.
+# tenant_db_server_type omitted: inherit the module default (cpx42, shared CPU,
+# no dedicated-vCPU quota cost). Add an explicit override here when you need to
+# pin a different type for staging.
 app_node_count           = 1
 app_node_server_type     = "ccx23"
-tenant_db_server_type    = "ccx33"
 tenant_db_volume_size_gb = 200
 
 # MUST NOT overlap the agent data-plane network.
