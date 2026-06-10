@@ -24,6 +24,28 @@ const MAX_CONTEXT_MESSAGES = 6;
 const MAX_CONTEXT_CHARS = 240;
 const FETCH_TIMEOUT_MS = 6_000;
 
+// Resolved model sets, remembered across mounts and keyed by the same context
+// dimensions the fetch refreshes on. The overlay unmounts the strip on every
+// close, so without this memory each reopen would re-roll the model and show
+// different suggestions for an unchanged conversation. Bounded LRU; the module
+// scope is the right lifetime — a reload is a legitimate fresh roll.
+const MODEL_SET_CACHE_MAX = 16;
+const modelSetCache = new Map<string, string[]>();
+
+function rememberModelSet(key: string, value: string[]): void {
+  modelSetCache.delete(key);
+  modelSetCache.set(key, value);
+  if (modelSetCache.size > MODEL_SET_CACHE_MAX) {
+    const oldest = modelSetCache.keys().next().value;
+    if (oldest !== undefined) modelSetCache.delete(oldest);
+  }
+}
+
+/** Test-only: forget remembered model sets so cases stay independent. */
+export function resetPromptSuggestionMemory(): void {
+  modelSetCache.clear();
+}
+
 // Cold-start starters — the stable pool the fallback always draws from.
 const STARTERS: readonly string[] = [
   "What can you do?",
@@ -143,9 +165,10 @@ async function fetchModelSuggestions(
  * Hook: returns exactly 3 suggestions. Yields the static fallback immediately,
  * then upgrades to the model-generated set once `POST /api/suggestions`
  * resolves. The fetch runs only while `enabled` (the strip is actually
- * visible), so the small model isn't invoked for a hidden strip; it refreshes
- * when the thread gains its first line, after each new turn, or across the
- * time-of-day boundary.
+ * visible), so the small model isn't invoked for a hidden strip. The set is
+ * stable for a given context — reopening the overlay reuses the remembered
+ * model set; only a new turn, a view change, the thread's first line, or the
+ * hour rolling over produces a fresh one.
  */
 export function usePromptSuggestions(
   messages: readonly ShellMessage[],
@@ -168,16 +191,21 @@ export function usePromptSuggestions(
     [hasThread, hour],
   );
 
+  const contextKey = `${scope ?? ""}|${lastId ?? ""}|${hour}|${hasThread ? 1 : 0}`;
+  const remembered = modelSetCache.get(contextKey);
+
   const [model, setModel] = React.useState<string[] | null>(null);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: messages is read inside, but the fetch is intentionally keyed on enabled/hasThread/hour/lastId/scope (the dimensions worth a refresh); keying on the array identity would refetch on every render.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: messages is read inside, but the fetch is intentionally keyed on enabled + contextKey (scope/lastId/hour/hasThread — the dimensions worth a refresh); keying on the array identity would refetch on every render.
   React.useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || modelSetCache.has(contextKey)) return;
     const controller = new AbortController();
     let cancelled = false;
     void fetchModelSuggestions(messages, hour, scope, controller.signal)
       .then((next) => {
-        if (!cancelled && next.length >= SUGGESTION_COUNT) setModel(next);
+        if (next.length < SUGGESTION_COUNT) return;
+        rememberModelSet(contextKey, next);
+        if (!cancelled) setModel(next);
       })
       .catch(() => {
         // Keep the static fallback on any failure (offline, timeout, no API).
@@ -186,8 +214,12 @@ export function usePromptSuggestions(
       cancelled = true;
       controller.abort();
     };
-  }, [enabled, hasThread, hour, lastId, scope]);
+  }, [enabled, contextKey]);
 
-  const source = model && model.length >= SUGGESTION_COUNT ? model : fallback;
+  // Remembered set first (stable across open/close for an unchanged context),
+  // then the freshly-fetched one, then the static fallback.
+  const source =
+    remembered ??
+    (model && model.length >= SUGGESTION_COUNT ? model : fallback);
   return source.slice(0, SUGGESTION_COUNT);
 }

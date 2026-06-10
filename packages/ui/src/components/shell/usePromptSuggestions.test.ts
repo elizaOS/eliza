@@ -11,6 +11,7 @@ vi.mock("../../api/client", () => ({ client: { fetch: fetchMock } }));
 import {
   computePromptSuggestions,
   pageScopeFromLocation,
+  resetPromptSuggestionMemory,
   usePromptSuggestions,
 } from "./usePromptSuggestions";
 
@@ -20,6 +21,7 @@ const msg = (id: string, role: ShellMessage["role"], content: string) =>
 afterEach(() => {
   cleanup();
   fetchMock.mockReset();
+  resetPromptSuggestionMemory();
 });
 
 describe("computePromptSuggestions", () => {
@@ -111,6 +113,48 @@ describe("usePromptSuggestions (model-backed)", () => {
     const fallback = [...result.current];
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(result.current).toEqual(fallback);
+  });
+
+  it("is stable across overlay open/close: a remount reuses the remembered set without refetching", async () => {
+    const model = ["Check my calendar", "Reply to Sam", "Summarize the thread"];
+    fetchMock.mockResolvedValue({ suggestions: model });
+    const thread = [msg("a", "user", "hi"), msg("b", "assistant", "hey")];
+
+    const first = renderHook(() =>
+      usePromptSuggestions(thread, { enabled: true }),
+    );
+    await waitFor(() => expect(first.result.current).toEqual(model));
+    first.unmount();
+
+    // Same conversation, new mount (user closed and reopened the overlay).
+    const second = renderHook(() =>
+      usePromptSuggestions(thread, { enabled: true }),
+    );
+    // The remembered set is there synchronously — no fallback flash, no re-roll.
+    expect(second.result.current).toEqual(model);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-rolls when the conversation advances (new last message)", async () => {
+    fetchMock.mockResolvedValueOnce({ suggestions: ["A1", "A2", "A3"] });
+    const thread = [msg("a", "user", "hi")];
+    const first = renderHook(() =>
+      usePromptSuggestions(thread, { enabled: true }),
+    );
+    await waitFor(() =>
+      expect(first.result.current).toEqual(["A1", "A2", "A3"]),
+    );
+    first.unmount();
+
+    fetchMock.mockResolvedValueOnce({ suggestions: ["B1", "B2", "B3"] });
+    const grown = [...thread, msg("b", "assistant", "hey there")];
+    const second = renderHook(() =>
+      usePromptSuggestions(grown, { enabled: true }),
+    );
+    await waitFor(() =>
+      expect(second.result.current).toEqual(["B1", "B2", "B3"]),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("sends the active page scope so the server can tailor per view (#8225)", async () => {
