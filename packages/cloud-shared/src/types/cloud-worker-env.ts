@@ -29,6 +29,8 @@ export interface Bindings {
   CEREBRAS_API_KEY?: string;
   BITROUTER_API_KEY?: string;
   BITROUTER_BASE_URL?: string;
+  ATLASCLOUD_API_KEY?: string;
+  ATLASCLOUD_BASE_URL?: string;
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;
   ANTHROPIC_API_KEY?: string;
