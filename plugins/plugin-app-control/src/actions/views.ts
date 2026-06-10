@@ -1567,7 +1567,7 @@ async function runViewsClose({
 	const target = extractCloseTarget(text, options);
 	let viewId: string | null = null;
 	let label: string | null = null;
-	let resolvedViewType = viewType;
+	let resolvedViewType: ViewType | undefined;
 
 	if (!target || target.toLowerCase() === "current") {
 		const currentView = await client.getCurrentView();

@@ -25,5 +25,6 @@ def load_optimized_system_prompt() -> str:
             if text:
                 return text
     except OSError:
-        pass
+        # Override file unreadable — fall back to the default prompt.
+        return LIFEOPS_TOOL_SYSTEM_PROMPT
     return LIFEOPS_TOOL_SYSTEM_PROMPT
