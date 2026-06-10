@@ -35,13 +35,48 @@ users:
       - ${key}
 %{ endfor ~}
 
+# Skip apt upgrade — cloud-init's `packages:` install fights unattended-upgrades
+# for the dpkg lock and can leave dpkg in a half-configured state on Hetzner
+# Ubuntu 24.04 images. The bootcmd block below disables unattended-upgrades
+# before the package install runs.
 package_update: true
+package_upgrade: false
 packages:
   - postgresql
   - postgresql-contrib
   - jq
 
+bootcmd:
+  # Disable unattended-upgrades BEFORE cloud-init's package_update_upgrade_install
+  # stage runs, to avoid a dpkg lock collision: with both running concurrently,
+  # postgresql-common's postinst can hang on a needrestart interactive prompt
+  # and leave the postgresql server package unconfigured — leading to an empty
+  # /etc/postgresql and a tenant-db-init that loops "postgresql package not
+  # installed yet; deferring" forever. bootcmd runs at INIT-LOCAL, before the
+  # apt phase.
+  - systemctl stop unattended-upgrades.service 2>/dev/null || true
+  - systemctl disable unattended-upgrades.service 2>/dev/null || true
+
 write_files:
+  # Apt config: never prompt, always pick the safe default on conffile changes.
+  # Cloud-init's package install runs without a tty, so any debconf prompt
+  # silently hangs the apt run.
+  - path: /etc/apt/apt.conf.d/99-cloud-init-noninteractive
+    owner: root:root
+    permissions: '0644'
+    content: |
+      DPkg::Options { "--force-confnew"; "--force-confdef"; };
+      APT::Get::Assume-Yes "true";
+
+  # needrestart: auto-restart services without prompting (the default of
+  # "interactive" hangs cloud-init's apt run).
+  - path: /etc/needrestart/conf.d/50-cloud-init-noninteractive.conf
+    owner: root:root
+    permissions: '0644'
+    content: |
+      $nrconf{restart} = 'a';
+      $nrconf{kernelhints} = 0;
+
   - path: /usr/local/bin/tenant-db-init.sh
     owner: root:root
     permissions: '0755'
@@ -51,6 +86,12 @@ write_files:
       # once the cluster is up. Invoked by /etc/systemd/system/tenant-db-init.service
       # on every boot — so rescales, image swaps, and operator reboots all
       # converge back to the right state.
+      #
+      # `runuser -u postgres --` is used instead of `sudo -u postgres` because
+      # the Hetzner Ubuntu cloud image ships with the root password marked
+      # expired; from a systemd unit (no tty), sudo refuses to run any command
+      # until that password is reset — even with NOPASSWD in sudoers. runuser
+      # only uses PAM session, doesn't authenticate via password.
       set -euo pipefail
       log() { echo "[tenant-db-init] $*"; }
 
@@ -94,7 +135,7 @@ write_files:
         systemctl stop "postgresql@$PGVER-main" 2>/dev/null || true
         mkdir -p "$PGDATA"
         chown -R postgres:postgres /mnt/tenant-pgdata
-        sudo -u postgres "/usr/lib/postgresql/$PGVER/bin/initdb" -D "$PGDATA" --auth-host=scram-sha-256
+        runuser -u postgres -- "/usr/lib/postgresql/$PGVER/bin/initdb" -D "$PGDATA" --auth-host=scram-sha-256
       fi
 
       # 6. postgresql.conf — sed pattern matches both commented and uncommented
@@ -118,14 +159,14 @@ write_files:
       systemctl restart postgresql
       # Wait for the cluster socket so the ALTER USER below doesn't race.
       for i in 1 2 3 4 5 6 7 8 9 10; do
-        sudo -u postgres pg_isready -q && break
+        runuser -u postgres -- pg_isready -q && break
         sleep 1
       done
 
       # 9. Admin password (postgres superuser). The value is rendered from
       # random_password.tenant_db_admin in TF state, stable across reboots, so
       # this ALTER is idempotent.
-      sudo -u postgres psql -tAc "ALTER USER postgres WITH PASSWORD '${admin_password}';" >/dev/null
+      runuser -u postgres -- psql -tAc "ALTER USER postgres WITH PASSWORD '${admin_password}';" >/dev/null
 
       log "done."
 
@@ -135,7 +176,10 @@ write_files:
     content: |
       [Unit]
       Description=Tenant DB cluster init (idempotent, runs every boot)
-      After=network-online.target cloud-final.service
+      # NOTE: NO After=cloud-final.service here — that creates an ordering
+      # cycle (cloud-final's runcmd enables us, so systemd would refuse to
+      # restart us "to break ordering cycle"). network-online is enough.
+      After=network-online.target
       Wants=network-online.target
       # Run BEFORE postgresql so the script's restart isn't fighting the
       # default unit. The script itself enables + starts postgresql once
