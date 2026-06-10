@@ -1,65 +1,113 @@
 import { getAiProviderConfigurationError } from "../language-model";
 import type { GeneratedImage, ImageGenRequest, ImageProvider } from "./types";
 
-function base64ToBytes(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
+// Atlas Cloud image generation is an asynchronous predict/poll API (NOT the
+// OpenAI chat-completions surface). Submit returns a prediction id; poll the
+// prediction until status === "completed", then download outputs[0].
+const ATLAS_IMAGE_DOWNLOAD_TIMEOUT_MS = 30_000;
+const ATLAS_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
+const ATLAS_POLL_INTERVAL_MS = 2_000;
+const ATLAS_POLL_TIMEOUT_MS = 120_000;
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
+async function readImageWithLimit(response: Response): Promise<Uint8Array> {
+  const declaredLength = Number(response.headers.get("content-length") ?? "0");
+  if (declaredLength > ATLAS_IMAGE_MAX_BYTES) {
+    throw new Error("Atlas image download exceeded maximum size");
+  }
+
+  if (!response.body) {
+    const buffer = await response.arrayBuffer();
+    if (buffer.byteLength > ATLAS_IMAGE_MAX_BYTES) {
+      throw new Error("Atlas image download exceeded maximum size");
+    }
+    return new Uint8Array(buffer);
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    received += value.byteLength;
+    if (received > ATLAS_IMAGE_MAX_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      throw new Error("Atlas image download exceeded maximum size");
+    }
+    chunks.push(value);
+  }
+
+  const bytes = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
   }
   return bytes;
 }
 
-function dataUrlToImage(dataUrl: string): { bytes: Uint8Array; mimeType: string } {
-  const match = /^data:([^;,]+);base64,(.+)$/s.exec(dataUrl);
-  if (!match) {
-    throw new Error("Image provider returned an invalid image data URL");
-  }
-  return { mimeType: match[1], bytes: base64ToBytes(match[2]) };
-}
-
-function buildAtlasMessages(request: ImageGenRequest) {
-  if (!request.sourceImage) {
-    return [{ role: "user", content: request.prompt }];
+async function imageUrlToGeneratedImage(url: string, text = ""): Promise<GeneratedImage> {
+  const response = await fetch(url, { signal: AbortSignal.timeout(ATLAS_IMAGE_DOWNLOAD_TIMEOUT_MS) });
+  if (!response.ok) {
+    throw new Error(`Atlas image download failed: ${response.status}`);
   }
 
-  return [
-    {
-      role: "user",
-      content: [
-        { type: "text", text: request.prompt },
-        { type: "image_url", image_url: { url: request.sourceImage } },
-      ],
-    },
-  ];
-}
-
-function extractAtlasImage(payload: Record<string, unknown>): {
-  dataUrl: string;
-  text: string;
-} {
-  const choices = Array.isArray(payload.choices) ? payload.choices : [];
-  const message = (choices[0] as { message?: Record<string, unknown> } | undefined)?.message;
-  const images = Array.isArray(message?.images) ? message.images : [];
-  const firstImage = images[0] as { image_url?: string | { url?: string } } | undefined;
-  const imageUrl = firstImage?.image_url;
-  const dataUrl = typeof imageUrl === "string" ? imageUrl : imageUrl?.url;
-  if (!dataUrl) {
-    throw new Error("Image provider returned no image");
+  const mimeType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
+  if (!mimeType?.startsWith("image/")) {
+    throw new Error("Atlas image download returned non-image content");
   }
 
-  const content = message?.content;
-  const text = typeof content === "string" ? content : "";
-  return { dataUrl, text };
+  const bytes = await readImageWithLimit(response);
+  const dataUrl = `data:${mimeType};base64,${bytesToBase64(bytes)}`;
+  return { dataUrl, bytes, mimeType, text };
 }
 
 function atlasBaseUrl(request: ImageGenRequest): string {
-  const baseUrl = (request.apiKeys.ATLASCLOUD_BASE_URL || "https://api.atlascloud.ai/v1").replace(
-    /\/+$/,
-    "",
-  );
-  return baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
+  return (request.apiKeys.ATLASCLOUD_BASE_URL || "https://api.atlascloud.ai").replace(/\/+$/, "");
 }
+
+interface AtlasPrediction {
+  id?: string;
+  status?: string;
+  outputs?: unknown;
+  error?: string;
+  urls?: { get?: string };
+}
+
+function parsePrediction(payload: Record<string, unknown>): AtlasPrediction {
+  const data = (payload.data ?? payload) as Record<string, unknown>;
+  return {
+    id: typeof data.id === "string" ? data.id : undefined,
+    status: typeof data.status === "string" ? data.status : undefined,
+    outputs: data.outputs,
+    error: typeof data.error === "string" ? data.error : undefined,
+    urls: data.urls as { get?: string } | undefined,
+  };
+}
+
+function firstOutputUrl(outputs: unknown): string | undefined {
+  if (!Array.isArray(outputs)) return undefined;
+  const first = outputs[0];
+  if (typeof first === "string") return first;
+  if (first && typeof first === "object" && typeof (first as { url?: unknown }).url === "string") {
+    return (first as { url: string }).url;
+  }
+  return undefined;
+}
+
+const TERMINAL_OK = new Set(["completed", "succeeded", "success"]);
+const TERMINAL_FAIL = new Set(["failed", "error", "canceled", "cancelled"]);
 
 export async function generateAtlasCloudImage(request: ImageGenRequest): Promise<GeneratedImage> {
   const apiKey = request.apiKeys.ATLASCLOUD_API_KEY;
@@ -67,42 +115,73 @@ export async function generateAtlasCloudImage(request: ImageGenRequest): Promise
     throw new Error(getAiProviderConfigurationError());
   }
 
-  const response = await fetch(`${atlasBaseUrl(request)}/chat/completions`, {
+  const baseUrl = atlasBaseUrl(request);
+  const authHeader = { authorization: `Bearer ${apiKey}` };
+
+  // 1. Submit the generation request.
+  const submitResponse = await fetch(`${baseUrl}/api/v1/model/generateImage`, {
     method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json",
-    },
-    // Payload mirrors the proven BitRouter image-via-chat shape: an
-    // OpenAI-compatible chat completion with modalities including "image".
-    // Atlas exposes the same OpenAI-compatible surface, so the same request
-    // body produces an image in choices[0].message.images[0].image_url.
+    headers: { ...authHeader, "content-type": "application/json" },
     body: JSON.stringify({
       model: request.model,
-      messages: buildAtlasMessages(request),
-      modalities: ["image", "text"],
-      ...(request.aspectRatio || request.size
-        ? {
-            image_config: {
-              ...(request.aspectRatio ? { aspect_ratio: request.aspectRatio } : {}),
-              ...(request.size ? { size: request.size } : {}),
-            },
-          }
-        : {}),
+      prompt: request.prompt,
+      ...(request.sourceImage ? { image: request.sourceImage } : {}),
+      ...(request.size ? { size: request.size } : {}),
+      ...(request.aspectRatio ? { aspect_ratio: request.aspectRatio } : {}),
     }),
   });
 
-  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!response.ok) {
-    const error = payload.error as { message?: string; code?: string } | undefined;
-    const message = error?.message ?? `Atlas Cloud image generation failed: ${response.status}`;
-    const code = error?.code ? ` (${error.code})` : "";
-    throw new Error(`${message}${code}`);
+  const submitPayload = (await submitResponse.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!submitResponse.ok) {
+    const message =
+      (typeof submitPayload.msg === "string" && submitPayload.msg) ||
+      (typeof submitPayload.message === "string" && submitPayload.message) ||
+      `Atlas image generation failed: ${submitResponse.status}`;
+    throw new Error(message);
   }
 
-  const { dataUrl, text } = extractAtlasImage(payload);
-  const { bytes, mimeType } = dataUrlToImage(dataUrl);
-  return { dataUrl, bytes, mimeType, text };
+  const submitted = parsePrediction(submitPayload);
+
+  // Some models may return the image inline on submit; short-circuit if so.
+  const inlineUrl = firstOutputUrl(submitted.outputs);
+  if (inlineUrl) {
+    return await imageUrlToGeneratedImage(inlineUrl);
+  }
+
+  const predictionId = submitted.id;
+  if (!predictionId) {
+    throw new Error("Atlas image provider returned no prediction id");
+  }
+  const pollUrl = submitted.urls?.get ?? `${baseUrl}/api/v1/model/prediction/${predictionId}`;
+
+  // 2. Poll the prediction until it terminates.
+  const deadline = Date.now() + ATLAS_POLL_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, ATLAS_POLL_INTERVAL_MS));
+
+    const pollResponse = await fetch(pollUrl, { headers: authHeader });
+    const pollPayload = (await pollResponse.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!pollResponse.ok) {
+      throw new Error(`Atlas prediction poll failed: ${pollResponse.status}`);
+    }
+
+    const prediction = parsePrediction(pollPayload);
+    const status = (prediction.status ?? "").toLowerCase();
+
+    if (TERMINAL_FAIL.has(status)) {
+      throw new Error(`Atlas image generation failed${prediction.error ? `: ${prediction.error}` : ""}`);
+    }
+
+    if (TERMINAL_OK.has(status)) {
+      const url = firstOutputUrl(prediction.outputs);
+      if (!url) {
+        throw new Error("Atlas image provider completed without an output image");
+      }
+      return await imageUrlToGeneratedImage(url);
+    }
+  }
+
+  throw new Error("Atlas image generation timed out");
 }
 
 export const atlasCloudImageProvider: ImageProvider = {

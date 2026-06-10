@@ -14,10 +14,14 @@ const ATLASCLOUD_PRICING_SOURCE_URL = "https://api.atlascloud.ai/v1/models";
 // conservative manual estimates derived from Atlas public pricing; refine them
 // with account-specific pricing before relying on exact margins in production.
 const ATLAS_IMAGE_PRICE_BY_MODEL: Record<string, number> = {
-  // gpt-image-2 high quality 1024x1024 (~$5/M input tokens token-billed).
-  "openai/gpt-image-2": 0.04,
-  // gemini-3.1-flash-image (flash tier, cheaper than the pro image model).
-  "google/gemini-3.1-flash-image": 0.01,
+  // gpt-image-2 high quality 1024x1024.
+  "openai/gpt-image-2/text-to-image": 0.04,
+  // Seedream 5.0 Lite (ByteDance) — strong, cheaper text-to-image.
+  "bytedance/seedream-v5.0-lite": 0.03,
+  // Nano Banana 2 (Google) — fast, high quality.
+  "google/nano-banana-2/text-to-image": 0.03,
+  // Qwen Image 2.0 (Alibaba).
+  "qwen/qwen-image-2.0/text-to-image": 0.02,
 };
 
 function buildAtlasImageEntry(
