@@ -69,7 +69,16 @@ resource "cloudflare_dns_record" "control_plane" {
   name    = "${var.control_plane_hostname_prefix}-${var.environment}-${each.key}.elizacloud.ai"
   type    = "A"
   content = each.value.ipv4_address
-  ttl     = 60
-  proxied = false
+  # CF Workers fetch `https://eliza-${env}-N.elizacloud.ai` to proxy agent
+  # traffic to the agent-router on this VM (cloud-api Worker
+  # AGENT_ROUTER_ORIGIN_HOST). With proxied=true, CF terminates TLS with the
+  # visitor and accepts whatever cert the origin presents (zone SSL = "Full"
+  # — see cloud-init/bootstrap.yaml.tftpl which generates a self-signed
+  # *.elizacloud.ai cert at boot). With proxied=false the Worker hits the
+  # origin directly and verifies the self-signed cert — that fails, and
+  # dashboard chat bridge calls return "Sandbox bridge is unreachable".
+  # TTL must be 1 ("Auto") when proxied=true per Cloudflare API.
+  ttl     = 1
+  proxied = true
   comment = "eliza control-plane VM ${each.value.name} (managed by terraform/hetzner/control-plane)"
 }
