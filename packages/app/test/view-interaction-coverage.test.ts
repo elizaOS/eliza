@@ -235,16 +235,16 @@ const GUI_INTERACTION_OWNERS: Readonly<
     {
       spec: "packages/app/test/ui-smoke/game-apps.spec.ts",
       proves:
-        "Launches the game app, validates viewer load, command buttons, and chat message flow.",
-      signals: ["clawville", "clawville-command", "chatContent"],
+        "Launches the game app, validates viewer load, command buttons, and the suggested-prompt chat relay.",
+      signals: ["clawville", "clawville-command", "suggestedCommand"],
     },
   ],
   "defense-of-the-agents": [
     {
       spec: "packages/app/test/ui-smoke/game-apps.spec.ts",
       proves:
-        "Launches the game app, validates viewer load, command buttons, and chat message flow.",
-      signals: ["defense-of-the-agents", "defense-command", "chatContent"],
+        "Launches the game app, validates viewer load, command buttons, and the suggested-prompt chat relay.",
+      signals: ["defense-of-the-agents", "defense-command", "suggestedCommand"],
     },
   ],
   "2004scape": [

@@ -13,9 +13,8 @@ type GameFixture = {
   viewerPath: string;
   surfaceTestId: string;
   commandChecks: Array<{ testId: string; content: string }>;
-  chatInputTestId: string;
-  chatSendTestId: string;
-  chatContent: string;
+  suggestedTestId: string;
+  suggestedCommand: string;
 };
 
 const FIXTURES: GameFixture[] = [
@@ -26,13 +25,12 @@ const FIXTURES: GameFixture[] = [
     viewerPath: "/api/apps/defense-of-the-agents/viewer",
     surfaceTestId: "defense-live-operator-surface",
     commandChecks: [
-      { testId: "defense-command-lane-top", content: "Move to top lane" },
+      { testId: "defense-command-lane-mid", content: "Move to mid lane" },
       { testId: "defense-command-recall", content: "Recall to base" },
       { testId: "defense-command-autoplay", content: "Auto-play OFF" },
     ],
-    chatInputTestId: "defense-chat-input",
-    chatSendTestId: "defense-chat-send",
-    chatContent: "Reinforce mid after the next wave",
+    suggestedTestId: "defense-suggested-command",
+    suggestedCommand: "Move to top lane",
   },
   {
     appName: "@elizaos/plugin-clawville",
@@ -42,10 +40,6 @@ const FIXTURES: GameFixture[] = [
     surfaceTestId: "clawville-live-operator-surface",
     commandChecks: [
       {
-        testId: "clawville-command-move-krusty",
-        content: "Move to tool workshop",
-      },
-      {
         testId: "clawville-command-visit-nearest",
         content: "Visit the nearest building",
       },
@@ -54,9 +48,8 @@ const FIXTURES: GameFixture[] = [
         content: "Ask the nearest NPC what to learn next",
       },
     ],
-    chatInputTestId: "clawville-chat-input",
-    chatSendTestId: "clawville-chat-send",
-    chatContent: "Ask the nearest NPC about MCP tools",
+    suggestedTestId: "clawville-suggested-command",
+    suggestedCommand: "Move to Krusty Krab",
   },
 ];
 
@@ -362,21 +355,23 @@ for (const fixture of FIXTURES) {
     await expect
       .poll(() => api.viewerRequestCount(), { timeout: 15_000 })
       .toBeGreaterThanOrEqual(1);
-    await expect(page.getByTestId(fixture.surfaceTestId)).toBeVisible({
-      timeout: 60_000,
-    });
+    const surface = page.getByTestId(fixture.surfaceTestId);
+    await expect(surface).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText("Apps chat")).toHaveCount(0);
+    await expect(surface.getByText("Game chat", { exact: true })).toBeVisible();
 
     for (const check of fixture.commandChecks) {
-      const commandButton = page.getByTestId(check.testId);
+      const commandButton = surface.getByTestId(check.testId);
       await commandButton.click();
       await expect.poll(() => api.messages.at(-1)).toBe(check.content);
       await expect(commandButton).toBeEnabled();
     }
 
-    await page.getByTestId(fixture.chatInputTestId).fill(fixture.chatContent);
-    await expect(page.getByTestId(fixture.chatSendTestId)).toBeEnabled();
-    await page.getByTestId(fixture.chatSendTestId).click();
-    await expect.poll(() => api.messages.at(-1)).toBe(fixture.chatContent);
+    const suggestedButton = surface
+      .getByTestId(fixture.suggestedTestId)
+      .filter({ hasText: fixture.suggestedCommand });
+    await expect(suggestedButton).toBeEnabled();
+    await suggestedButton.click();
+    await expect.poll(() => api.messages.at(-1)).toBe(fixture.suggestedCommand);
   });
 }

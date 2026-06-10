@@ -1,9 +1,18 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
   openAppPath,
+  openSettingsSectionById,
   seedAppStorage,
 } from "./helpers";
+
+// Connector management now lives in Settings → Connectors (ConnectorsSection):
+// one inline <details data-connector="<id>"> row per connector plugin with an
+// enable/disable switch, expanding into the bespoke per-connector setup panel
+// (telegram → TelegramAccountConnectorPanel, discord →
+// DiscordLocalConnectorPanel). The old /apps/plugins connector accordion
+// (connectors-settings-content + connector-mode-* selectors) is no longer
+// mounted anywhere — /apps/plugins renders the visual plugin card grid.
 
 type ConnectorPluginFixture = {
   id: string;
@@ -208,20 +217,26 @@ async function installConnectorRoutes(
   });
 }
 
-async function openConnectors(page: Page): Promise<void> {
-  await openAppPath(page, "/apps/plugins");
-  await expect(page.getByTestId("connectors-settings-content")).toBeVisible({
+async function openConnectorsSettings(page: Page): Promise<void> {
+  await openAppPath(page, "/settings");
+  // The settings hub renders one section at a time, so the Connectors
+  // section must be opened through its hub tile.
+  await openSettingsSectionById(page, "connectors");
+  await expect(page.locator("#connectors")).toBeVisible({
     timeout: 30_000,
   });
 }
 
-async function expandConnector(page: Page, connectorId: string): Promise<void> {
-  const section = page.getByTestId(`connector-section-${connectorId}`);
-  await section.scrollIntoViewIfNeeded();
-  await section.getByTestId(`connector-card-${connectorId}`).click();
-  await expect(
-    section.getByTestId(`connector-mode-${connectorId}-bot`).first(),
-  ).toBeVisible();
+async function expandConnector(
+  page: Page,
+  connectorId: string,
+): Promise<Locator> {
+  const row = page
+    .locator("#connectors")
+    .locator(`[data-connector="${connectorId}"]`);
+  await row.scrollIntoViewIfNeeded();
+  await row.locator("summary").click();
+  return row;
 }
 
 test.beforeEach(async ({ page }) => {
@@ -229,80 +244,66 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
-test("connector modes keep developer credentials as the default path", async ({
+test("connector setup keeps developer credentials as the default path", async ({
   page,
 }) => {
   await installConnectorRoutes(page, { cloudConnected: false });
-  await openConnectors(page);
+  await openConnectorsSettings(page);
 
-  await expandConnector(page, "telegram");
-  const telegramSection = page.getByTestId("connector-section-telegram");
+  const connectors = page.locator("#connectors");
+  await expect(connectors.locator('[data-connector="telegram"]')).toBeVisible();
+  await expect(connectors.locator('[data-connector="discord"]')).toBeVisible();
   await expect(
-    telegramSection.getByTestId("connector-mode-telegram-plugin-managed"),
-  ).toHaveClass(/border-accent/);
+    connectors.getByRole("switch", { name: "Disable Telegram" }),
+  ).toBeVisible();
   await expect(
-    telegramSection.getByText(
-      /Telegram does not support bot-install OAuth for bidirectional chats\..*BotFather token/i,
-    ),
+    connectors.getByRole("switch", { name: "Disable Discord" }),
   ).toBeVisible();
 
-  await telegramSection.getByTestId("connector-mode-telegram-bot").click();
+  // Telegram expands into the personal-account login panel: the app logs in
+  // with the user's own credentials, no managed OAuth in between.
+  const telegramRow = await expandConnector(page, "telegram");
   await expect(
-    telegramSection.getByText("Connect a Telegram Bot"),
+    telegramRow.getByText("Connect your Telegram account"),
+  ).toBeVisible();
+  await expect(
+    telegramRow.getByText(/This is separate from the Telegram bot connector/),
+  ).toBeVisible();
+  await expect(telegramRow.getByPlaceholder("+15551234567")).toBeVisible();
+
+  // Discord expands into local desktop authorization — the developer path.
+  const discordRow = await expandConnector(page, "discord");
+  await expect(
+    discordRow.getByRole("button", { name: "Authorize Discord desktop" }),
   ).toBeVisible();
 
-  await telegramSection.getByTestId("connector-mode-telegram-account").click();
+  // No connection-mode selector or managed gateway is offered by default.
+  await expect(connectors.getByText("Connection mode")).toHaveCount(0);
   await expect(
-    telegramSection.getByText("Connect your Telegram account"),
-  ).toBeVisible();
-
-  await expandConnector(page, "discord");
-  const discordSection = page.getByTestId("connector-section-discord");
-  await expect(
-    discordSection.getByTestId("connector-mode-discord-bot"),
-  ).toHaveClass(/border-accent/);
-  await expect(
-    discordSection.getByTestId("connector-mode-discord-managed"),
+    connectors.getByRole("button", { name: "Use managed Discord" }),
   ).toHaveCount(0);
-  await expect(
-    discordSection.getByText(
-      /Prefer OAuth\? Connect Eliza Cloud to use the shared (?:Eliza )?Discord gateway instead of a local bot token\./,
-    ),
-  ).toBeVisible();
-
-  await discordSection.getByTestId("connector-mode-discord-local").click();
-  await expect(
-    discordSection.getByRole("button", { name: "Authorize Discord desktop" }),
-  ).toBeVisible();
 });
 
-test("Cloud-connected Discord exposes the managed gateway only when selected", async ({
+test("Cloud-connected Discord keeps the local developer path without a managed gateway", async ({
   page,
 }) => {
   await installConnectorRoutes(page, { cloudConnected: true });
-  await openConnectors(page);
+  await openConnectorsSettings(page);
 
-  await expandConnector(page, "discord");
-  const discordSection = page.getByTestId("connector-section-discord");
+  const connectors = page.locator("#connectors");
+  const discordRow = await expandConnector(page, "discord");
   await expect(
-    discordSection.getByTestId("connector-mode-discord-bot"),
-  ).toHaveClass(/border-accent/);
-  await expect(
-    discordSection.getByTestId("connector-mode-discord-managed"),
+    discordRow.getByRole("button", { name: "Authorize Discord desktop" }),
   ).toBeVisible();
   await expect(
-    discordSection.getByText(
-      /Prefer OAuth\? Managed Discord uses a shared (?:Eliza )?gateway and only works for servers owned by the linking Discord account\./,
-    ),
+    discordRow.getByText(/against the local Discord desktop app/),
+  ).toBeVisible();
+
+  // Connecting Eliza Cloud must not silently swap Discord onto a managed
+  // gateway: the connectors surface keeps the local path and never offers
+  // managed Discord OAuth.
+  await expect(
+    connectors.getByRole("button", { name: "Use managed Discord" }),
   ).toHaveCount(0);
-
-  await discordSection.getByTestId("connector-mode-discord-managed").click();
-  await expect(
-    discordSection.getByText(
-      /Prefer OAuth\? Managed Discord uses a shared (?:Eliza )?gateway and only works for servers owned by the linking Discord account\./,
-    ),
-  ).toBeVisible();
-  await expect(
-    discordSection.getByRole("button", { name: "Use managed Discord" }),
-  ).toBeVisible();
+  await expect(connectors.getByText(/managed Discord/i)).toHaveCount(0);
 });

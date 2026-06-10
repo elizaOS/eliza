@@ -3,6 +3,7 @@ import {
   installDefaultAppRoutes,
   openAppPath,
   openSettingsSection,
+  openSettingsSectionById,
   seedAppStorage,
 } from "./helpers";
 
@@ -26,6 +27,10 @@ test("settings exposes computer use capability controls", async ({ page }) => {
       /Computer Use requires Accessibility and Screen Recording permissions\./,
     ),
   ).toBeVisible();
+
+  // The settings hub renders one section at a time, so the Permissions
+  // section the hint points at must be opened through the hub.
+  await openSettingsSectionById(page, "permissions");
   await expect(page.locator("#permissions")).toBeVisible();
   await expect(
     page.locator("#permissions").getByText("Permissions", { exact: true }),

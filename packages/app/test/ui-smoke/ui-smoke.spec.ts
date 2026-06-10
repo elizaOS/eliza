@@ -3,6 +3,7 @@ import {
   assertReadyChecks,
   installDefaultAppRoutes,
   openAppPath,
+  openSettingsSectionById,
   seedAppStorage,
 } from "./helpers";
 
@@ -38,26 +39,34 @@ test("chat, apps, and settings routes render through the real shell", async ({
   await expect(
     page.getByRole("searchbox", { name: "Search views…" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", {
-      name: /^Companion(?:\s+@elizaos\/plugin-companion)?$/,
-    }),
-  ).toBeVisible();
+  // The card's accessible name now includes status chips and provider/path
+  // badges, so target the stable card testid instead of the button name.
+  const companionCard = page.getByTestId("view-card-companion");
+  await expect(companionCard).toBeVisible();
+  await companionCard
+    .locator('[data-agent-id="view-card-open-companion"]')
+    .click();
+  await expect(page).toHaveURL(/\/companion$/);
 
   await openAppPath(page, "/settings");
   await expect(page).toHaveURL(/\/settings$/);
   await expect(page.getByTestId("settings-shell")).toBeVisible();
+  // The settings hub renders one section at a time, so open each section
+  // through its hub tile and assert inside it.
+  await openSettingsSectionById(page, "capabilities");
   const capabilitiesSection = page.locator("#capabilities");
-  await capabilitiesSection.scrollIntoViewIfNeeded();
   await expect(capabilitiesSection).toBeVisible();
   await expect(
-    capabilitiesSection.getByText("Capabilities", { exact: true }),
-  ).toBeVisible();
-  await expect(page.locator("#permissions")).toBeVisible();
-  await expect(
-    page.locator("#permissions").getByText("Permissions", { exact: true }),
+    capabilitiesSection.getByRole("heading", { name: "Capabilities" }),
   ).toBeVisible();
   await expect(
     capabilitiesSection.getByRole("switch", { name: "Enable Computer Use" }),
+  ).toBeVisible();
+
+  await openSettingsSectionById(page, "permissions");
+  const permissionsSection = page.locator("#permissions");
+  await expect(permissionsSection).toBeVisible();
+  await expect(
+    permissionsSection.getByRole("heading", { name: "Permissions" }),
   ).toBeVisible();
 });

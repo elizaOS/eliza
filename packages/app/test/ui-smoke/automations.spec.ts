@@ -295,6 +295,7 @@ async function installAutomationsApi(
   const workflows = new Map<string, Workflow>();
   const conversations = new Map<string, Conversation>();
   let createdTask: Record<string, unknown> | null = null;
+  let createdTrigger: Record<string, unknown> | null = null;
   let createdWorkflow: Record<string, unknown> | null = null;
   let generatedWorkflow: Record<string, unknown> | null = null;
   const deletedConversationIds: string[] = [];
@@ -665,12 +666,20 @@ test("automations overview empty state encourages creating tasks and workflows",
 
   await openAppPath(page, "/automations");
 
-  await expect(page.getByTestId("automations-shell")).toBeVisible();
+  const shell = page.getByTestId("automations-shell");
+  await expect(shell).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Automations" }),
   ).toBeVisible();
-  await expect(page.getByText(/0 tasks? · 0 workflows?/)).toBeVisible();
-  await expect(page.getByText("No automations yet.")).toBeVisible();
+  await expect(shell.getByText(/0\s*tasks/)).toBeVisible();
+  await expect(shell.getByText(/0\s*workflows/)).toBeVisible();
+  await expect(page.getByText("Nothing scheduled yet")).toBeVisible();
+  await expect(
+    page.getByText("Tasks and workflows you create run here."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Create your first automation" }),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "New" }).click();
   await expect(page.getByText("What do you want to create?")).toBeVisible();
@@ -702,7 +711,9 @@ test("automations can list tasks, create a task, and inspect workflow JSON", asy
 
   await openAppPath(page, "/automations");
 
-  await expect(page.getByText("1 task · 1 workflow")).toBeVisible();
+  const shell = page.getByTestId("automations-shell");
+  await expect(shell.getByText(/1\s*tasks/)).toBeVisible();
+  await expect(shell.getByText(/1\s*workflows/)).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Message triage" }),
   ).toBeVisible();
@@ -734,6 +745,7 @@ test("automations can list tasks, create a task, and inspect workflow JSON", asy
       description: "Summarize inbound messages and flag urgent ones.",
     });
   await expect(page.getByText("Escalate inbound messages")).toBeVisible();
+  await expect(shell.getByText(/2\s*tasks/)).toBeVisible();
 });
 
 test("workflow editor generates a workflow from a prompt", async ({ page }) => {

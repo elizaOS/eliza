@@ -164,10 +164,18 @@ test("onboarding survives browser back and forward while runtime choices churn",
   });
   const shell = await expectFirstRunSurface(page);
   if (!(await hasDetailedFirstRunShell(page))) {
-    await expect(page.getByRole("button", { name: "Use Local" })).toBeVisible();
+    const toast = page.getByTestId("onboarding-toast");
+    await expect(toast).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Eliza Cloud" }),
+      page.getByRole("button", { name: "Tap to speak" }),
     ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Connect" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Use Local" })).toHaveCount(
+      0,
+    );
+    await expect(page.getByRole("button", { name: "Eliza Cloud" })).toHaveCount(
+      0,
+    );
     await page.goto("/?runtime=first-run&runtimeTarget=local", {
       waitUntil: "domcontentloaded",
     });
@@ -176,6 +184,14 @@ test("onboarding survives browser back and forward while runtime choices churn",
     await expectFirstRunSurface(page);
     await page.goForward({ waitUntil: "domcontentloaded" });
     await expectFirstRunSurface(page);
+    // The compact toast must survive history churn with its controls intact.
+    await expect(
+      page.getByRole("button", { name: "Tap to speak" }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Connect" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Use Local" })).toHaveCount(
+      0,
+    );
     await expectNoRenderTelemetryErrors(
       page,
       "compact runtime browser history",
