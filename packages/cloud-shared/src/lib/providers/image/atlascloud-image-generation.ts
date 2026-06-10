@@ -120,17 +120,30 @@ export async function generateAtlasCloudImage(request: ImageGenRequest): Promise
   const baseUrl = atlasBaseUrl(request);
   const authHeader = { authorization: `Bearer ${apiKey}` };
 
-  // 1. Submit the generation request.
+  // 1. Submit the generation request. Per the Atlas API:
+  //  - text-to-image models take just { model, prompt }.
+  //  - edit / image-to-image models take an `images: [...]` array of source
+  //    image urls/base64.
+  //  - `size` uses the "WIDTH*HEIGHT" form (e.g. "2048*2048"); normalise a
+  //    "WxH" input to that, otherwise pass through.
+  const body: Record<string, unknown> = {
+    model: request.model,
+    prompt: request.prompt,
+  };
+  if (request.sourceImage) {
+    body.images = [request.sourceImage];
+  }
+  if (request.size) {
+    body.size = /^\d+x\d+$/i.test(request.size) ? request.size.replace(/x/i, "*") : request.size;
+  }
+  if (request.aspectRatio) {
+    body.ratio = request.aspectRatio;
+  }
+
   const submitResponse = await fetch(`${baseUrl}/api/v1/model/generateImage`, {
     method: "POST",
     headers: { ...authHeader, "content-type": "application/json" },
-    body: JSON.stringify({
-      model: request.model,
-      prompt: request.prompt,
-      ...(request.sourceImage ? { image: request.sourceImage } : {}),
-      ...(request.size ? { size: request.size } : {}),
-      ...(request.aspectRatio ? { aspect_ratio: request.aspectRatio } : {}),
-    }),
+    body: JSON.stringify(body),
   });
 
   const submitPayload = (await submitResponse.json().catch(() => ({}))) as Record<string, unknown>;
