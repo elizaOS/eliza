@@ -37,6 +37,11 @@ name: Terraform — Apps Data Plane (Hetzner)
 #   OPERATOR_INGRESS_CIDRS          JSON array of allowed SSH CIDRs, e.g.
 #                                        ["1.2.3.4/32"] — `0.0.0.0/0` rejected
 #                                        by the module's `validation` block.
+#   PROVISION_TENANT_DB (optional)  "true" to provision the dedicated tenant
+#                                        Postgres node (ccx33 + 200 GB volume).
+#                                        Default "false" — only the volume gets
+#                                        created, no server. Flip to "true"
+#                                        when ready to host real tenant DBs.
 
 on:
   pull_request:
@@ -121,6 +126,11 @@ jobs:
       # operator_ingress_cidrs MUST be a JSON array literal; module validation
       # rejects 0.0.0.0/0. Set as a GH env var, e.g. '["1.2.3.4/32"]'.
       TF_VAR_operator_ingress_cidrs: ${{ vars.OPERATOR_INGRESS_CIDRS }}
+      # provision_tenant_db: "true"/"false" toggle for spawning the dedicated
+      # tenant Postgres ccx33 node. Default false — the volume gets created
+      # either way, but the server only when this var is "true". Flip once
+      # there's real tenant DB traffic to host.
+      TF_VAR_provision_tenant_db: ${{ vars.PROVISION_TENANT_DB || 'false' }}
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
