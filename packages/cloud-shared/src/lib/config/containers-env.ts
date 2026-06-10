@@ -210,10 +210,18 @@ export const containersEnv = {
     return pick(env.AGENT_CONTAINER_PORT) ?? "2138";
   },
 
-  /** Hetzner Cloud API token for elastic node provisioning. Optional. */
+  /**
+   * Hetzner Cloud API token for elastic node provisioning. Optional.
+   * Canonical name is `HCLOUD_TOKEN` (matches the official Hetzner CLI +
+   * Terraform provider). The legacy aliases `HETZNER_CLOUD_TOKEN` and
+   * `HETZNER_CLOUD_API_KEY` were dropped — one source of truth avoids the
+   * silent divergence we hit during the multi-project migration (one
+   * variable swapped, the other still pointing at the old project, so the
+   * autoscaler spawned a worker in the wrong Hetzner project).
+   */
   hetznerCloudToken(): string | undefined {
     const env = getCloudAwareEnv();
-    return pick(env.HCLOUD_TOKEN, env.HETZNER_CLOUD_TOKEN, env.HETZNER_CLOUD_API_KEY);
+    return pick(env.HCLOUD_TOKEN);
   },
 
   /**
