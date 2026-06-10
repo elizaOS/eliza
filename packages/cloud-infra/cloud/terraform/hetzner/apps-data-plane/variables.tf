@@ -40,7 +40,7 @@ variable "hcloud_image" {
 
 # ── App worker node(s): Docker hosts for UNTRUSTED user images ───────────────
 variable "app_node_server_type" {
-  description = "Hetzner server type for an app worker node (runs untrusted user containers). ccx23 = 4 dedicated vCPU / 16 GB — dedicated vCPU suits untrusted multi-tenant workloads (no noisy-neighbor) and is orderable in fsn1 (cpx41 was retired there). Size to expected concurrent app density."
+  description = "Hetzner server type for an app worker node (runs untrusted user containers). ccx23 = 4 dedicated vCPU / 16 GB — dedicated vCPU suits untrusted multi-tenant workloads where a co-tenant can run code (apps Product 2): no noisy-neighbor on CPU steal, mitigates side-channel risk on the host. Size to expected concurrent app density."
   type        = string
   default     = "ccx23"
 }
@@ -57,7 +57,7 @@ variable "app_node_count" {
 
 # ── Tenant Postgres cluster node: thousands of DATABASE+ROLE per node ─────────
 variable "tenant_db_server_type" {
-  description = "Hetzner server type for the tenant Postgres node. cpx41 (8 shared vCPU / 16 GB) is the alpha-stage default — no dedicated-CPU quota required, ~€16/mo. Postgres runs server-side (no untrusted code execution), so shared CPU is fine for isolation; the boundary is hostssl + private-network firewall + per-tenant ROLE. For thousands-of-DBs scale or perf-sensitive prod, upgrade to ccx33 (dedicated 8 vCPU / 32 GB) via tfvars override + Hetzner server type upgrade (rebootable, volume persists)."
+  description = "Hetzner server type for the tenant Postgres node. cpx41 (8 shared vCPU / 16 GB) is the alpha-stage default — no dedicated-CPU quota required, ~€32/mo in fsn1. Postgres runs server-side (no untrusted code execution on this VM), so shared CPU is fine for isolation; the boundary is hostssl + private-network firewall + per-tenant ROLE. For thousands-of-DBs scale or perf-sensitive prod, upgrade to ccx33 (dedicated 8 vCPU / 32 GB, ~€62/mo) via tfvars override + Hetzner server type upgrade (rebootable, volume persists)."
   type        = string
   default     = "cpx41"
 }
