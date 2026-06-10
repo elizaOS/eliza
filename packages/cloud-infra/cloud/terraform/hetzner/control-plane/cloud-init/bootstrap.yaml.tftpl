@@ -167,23 +167,50 @@ runcmd:
   - su - deploy -c 'ln -sf bun /home/deploy/.bun/bin/bunx'
 
   # Repo checkout — the GitHub deploy workflow then takes over for code updates.
-  # `--retry 3 --retry-delay 5` because the apt git install in the package phase
-  # can race with cloud-init runcmd ordering on slow Hetzner images; the bare
-  # `git clone` then bails with "fatal: repository ... does not exist" instead
-  # of a clean network retry.
+  # Retry loop: the apt git install in the package phase can race with
+  # cloud-init runcmd ordering on slow Hetzner images; the bare `git clone`
+  # then bails with "fatal: repository ... does not exist" instead of a
+  # clean network retry. The cleanup nukes BOTH dotfiles (.git) and
+  # non-dotfiles so the next attempt isn't blocked by a half-cloned `.git/`.
+  # `exit 1` on the 3rd failure surfaces in cloud-init logs (without it
+  # bootstrap-finished marker still gets written and the failure is silent).
   - mkdir -p /opt/eliza && chown deploy:deploy /opt/eliza
-  - su - deploy -c 'for i in 1 2 3; do git clone --depth 200 --branch ${deploy_branch} https://github.com/elizaOS/eliza.git /opt/eliza && break || { echo "git clone attempt $i failed, retry in 5s..."; rm -rf /opt/eliza/*; sleep 5; }; done'
+  - |
+    su - deploy -c '
+      set -e
+      for i in 1 2 3; do
+        if git clone --depth 200 --branch ${deploy_branch} https://github.com/elizaOS/eliza.git /opt/eliza; then
+          exit 0
+        fi
+        echo "git clone attempt $i failed"
+        rm -rf /opt/eliza
+        mkdir -p /opt/eliza
+        if [ "$i" = 3 ]; then
+          echo "git clone exhausted retries"
+          exit 1
+        fi
+        sleep 5
+      done
+    '
 
   # nginx vhost for agent-router subdomain routing. Self-signed cert is fine
   # because Cloudflare zone is in "Full" SSL mode (CF terminates with visitor,
-  # accepts any cert on the origin). The cert is regenerated on every boot —
-  # not persisted, no expiry to manage.
+  # accepts any cert on the origin — only "Full (Strict)" verifies). The
+  # cert is generated once at first-boot (cloud-init runcmd has per-instance
+  # semantics, not per-boot), valid 10 years; VM rebuild or `terraform taint`
+  # regenerates. If anyone flips the zone to Strict the chain breaks
+  # silently — track this as an operational gotcha.
   - install -d -m 0755 /etc/nginx/ssl
   - openssl req -x509 -nodes -newkey rsa:2048 -days 3650 -keyout /etc/nginx/ssl/eliza-agent-router.key -out /etc/nginx/ssl/eliza-agent-router.crt -subj "/CN=*.elizacloud.ai" -addext "subjectAltName=DNS:*.elizacloud.ai,DNS:elizacloud.ai"
   - chmod 600 /etc/nginx/ssl/eliza-agent-router.key
-  - rm -f /etc/nginx/sites-enabled/default
+  # Activate the new vhost FIRST, then remove the default. Split nginx -t
+  # from `systemctl reload` so a failing vhost surfaces in cloud-init logs
+  # (chained with && it silently no-ops the reload while leaving the new
+  # symlink active on disk — half-applied state).
   - ln -sf /etc/nginx/sites-available/eliza-agent-router /etc/nginx/sites-enabled/eliza-agent-router
-  - nginx -t && systemctl reload nginx
+  - rm -f /etc/nginx/sites-enabled/default
+  - nginx -t
+  - systemctl reload nginx
 
   # Final marker for the bootstrap-warn check that runs after this.
   - echo "eliza-control-plane bootstrap finished $(date -u +%Y-%m-%dT%H:%M:%SZ)" > /var/log/eliza-bootstrap.log

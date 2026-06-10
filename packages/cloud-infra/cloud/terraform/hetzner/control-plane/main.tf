@@ -51,6 +51,13 @@ resource "hcloud_server" "control_plane" {
 
   # Keep server alive across refactors: changing labels or user_data
   # shouldn't recreate the box, only update in place where possible.
+  #
+  # OPS NOTE: changes to cloud-init/bootstrap.yaml.tftpl (nginx vhost, cert
+  # generation, git clone retry, etc.) are no-ops on already-provisioned VMs
+  # because user_data is in ignore_changes. To roll a bootstrap fix onto an
+  # existing CP, run `terraform taint hcloud_server.control_plane["<idx>"]`
+  # then `apply` — recreates the VM, losing local state (headscale DB,
+  # cloudflared creds, /opt/eliza checkout). Plan that ahead of the apply.
   lifecycle {
     ignore_changes = [
       user_data,   # bootstrap runs once at first boot
