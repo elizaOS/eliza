@@ -57,9 +57,9 @@ variable "app_node_count" {
 
 # ── Tenant Postgres cluster node: thousands of DATABASE+ROLE per node ─────────
 variable "tenant_db_server_type" {
-  description = "Hetzner server type for the tenant Postgres node. ccx33 (dedicated 8 vCPU / 32 GB) is a sane start for thousands of small tenant DBs; scale up or add nodes (shards) as database_count grows."
+  description = "Hetzner server type for the tenant Postgres node. cpx41 (8 shared vCPU / 16 GB) is the alpha-stage default — no dedicated-CPU quota required, ~€16/mo. Postgres runs server-side (no untrusted code execution), so shared CPU is fine for isolation; the boundary is hostssl + private-network firewall + per-tenant ROLE. For thousands-of-DBs scale or perf-sensitive prod, upgrade to ccx33 (dedicated 8 vCPU / 32 GB) via tfvars override + Hetzner server type upgrade (rebootable, volume persists)."
   type        = string
-  default     = "ccx33"
+  default     = "cpx41"
 }
 
 variable "tenant_db_volume_size_gb" {
