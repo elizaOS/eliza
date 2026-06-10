@@ -55,6 +55,15 @@ on:
         type: choice
         default: plan
         options: [plan, apply]
+      replace:
+        description: |
+          Optional. Comma-separated TF resource addresses to force-replace on
+          this apply (e.g. "hcloud_server.tenant_db"). Threaded through as
+          `-replace=<addr>` flags. Leave empty for a normal apply. Has no
+          effect on `plan` action.
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -167,4 +176,18 @@ jobs:
       - name: terraform apply
         if: github.event.inputs.action == 'apply'
         working-directory: ${{ env.TF_DIR }}
-        run: terraform apply -auto-approve -input=false
+        # `replace` input is a comma-separated list of TF resource addresses to
+        # force-replace this run. Empty -> normal apply. The bash loop builds
+        # the -replace flags so `terraform apply` doesn't see a stray empty
+        # flag when no replace is requested.
+        run: |
+          REPLACE_ARGS=()
+          if [ -n "${{ github.event.inputs.replace }}" ]; then
+            IFS=',' read -ra ADDRS <<< "${{ github.event.inputs.replace }}"
+            for addr in "${ADDRS[@]}"; do
+              addr_trimmed="$(echo "$addr" | xargs)"
+              [ -n "$addr_trimmed" ] && REPLACE_ARGS+=("-replace=$addr_trimmed")
+            done
+            echo "::notice::forcing replacement of: ${REPLACE_ARGS[*]}"
+          fi
+          terraform apply -auto-approve -input=false "${REPLACE_ARGS[@]}"
