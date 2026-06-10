@@ -207,6 +207,7 @@ jobs:
           # per-scenario constructor (see __main__._build_agent_fn) and is
           # covered instead by the conformance test in unit-tests above.
           uv run python -m eliza_lifeops_bench \
+            --suite smoke \
             --agent wrong \
             --mode static \
             --seeds 1 \
