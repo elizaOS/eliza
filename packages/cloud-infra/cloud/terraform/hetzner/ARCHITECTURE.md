@@ -136,8 +136,8 @@ Hetzner Cloud account (one human)
 |------------------------------------------------|-------------------------------|-------------------------|
 | GitHub Environment `staging`   → `HCLOUD_TOKEN`| staging project token         | terraform plan/apply on staging |
 | GitHub Environment `production`→ `HCLOUD_TOKEN`| prod project token            | terraform plan/apply on prod    |
-| Staging control-plane `/opt/eliza/cloud/.env.local` → `HETZNER_CLOUD_API_KEY` | staging project token | provisioning-worker autoscaler   |
-| Prod control-plane `/opt/eliza/cloud/.env.local`    → `HETZNER_CLOUD_API_KEY` | prod project token    | provisioning-worker autoscaler   |
+| Staging control-plane `/opt/eliza/cloud/.env.local` → `HCLOUD_TOKEN` | staging project token | provisioning-worker autoscaler   |
+| Prod control-plane `/opt/eliza/cloud/.env.local`    → `HCLOUD_TOKEN` | prod project token    | provisioning-worker autoscaler   |
 
 Terraform's `provider "hcloud" { token = var.hcloud_token }` block accepts the
 token from either `var.hcloud_token` (tfvars / `-var`) or the `HCLOUD_TOKEN`
