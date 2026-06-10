@@ -5,8 +5,6 @@ import {
 import { getCachedExternalEntries } from "../cache";
 import { EXTERNAL_CACHE_TTL_MS, type PreparedPricingEntry } from "../types";
 
-const ATLASCLOUD_PRICING_SOURCE_URL = "https://api.atlascloud.ai/v1/models";
-
 // Atlas image models are token-billed by the provider, but image generation is
 // charged up front per image in the cloud-api generate-image flow (the cost
 // calculator resolves a `unit: "image"` / `chargeType: "generation"` row, the
