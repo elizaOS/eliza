@@ -13,6 +13,14 @@
 # baked in here. The operator copies `cloud/.env.local` to `/opt/eliza/cloud/.env.local`
 # in a follow-up step (one-shot, out-of-band) using `scp` or the existing
 # `packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs` script.
+#
+# Ingress is terminated by Cloudflare (zone elizacloud.ai, SSL mode = "Full",
+# DNS record for this VM is proxied through CF). nginx on this host accepts
+# the CF→origin connection on :80 and :443 and forwards `*.elizacloud.ai` to
+# the agent-router daemon listening on 127.0.0.1:3458. The :443 listener uses
+# a self-signed cert that's only ever seen by CF Workers — they don't verify
+# origin certs at "Full" mode (only "Full (Strict)" does). The cert subject
+# is `*.elizacloud.ai` so direct curl with `--resolve` also works for ops.
 
 hostname: ${hostname}
 manage_etc_hosts: true
@@ -63,6 +71,57 @@ write_files:
       export PATH="/home/deploy/.bun/bin:$PATH"
       export ELIZA_DEPLOY_BRANCH="${deploy_branch}"
 
+  # nginx vhost for agent-router. Replaces the default Ubuntu vhost that ships
+  # in /etc/nginx/sites-enabled/default. Matches the prod CP setup so a fresh
+  # apply on a per-env Hetzner project lands a fully-routable VM (no manual
+  # scp of nginx config post-apply).
+  - path: /etc/nginx/sites-available/eliza-agent-router
+    permissions: "0644"
+    content: |
+      server {
+        listen 80;
+        listen [::]:80;
+        server_name .elizacloud.ai;
+        client_max_body_size 50m;
+
+        location / {
+          proxy_http_version 1.1;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection "upgrade";
+          proxy_buffering off;
+          proxy_read_timeout 120s;
+          proxy_send_timeout 120s;
+          proxy_pass http://127.0.0.1:3458;
+        }
+      }
+
+      server {
+        listen 443 ssl;
+        listen [::]:443 ssl;
+        server_name .elizacloud.ai;
+        client_max_body_size 50m;
+        ssl_certificate /etc/nginx/ssl/eliza-agent-router.crt;
+        ssl_certificate_key /etc/nginx/ssl/eliza-agent-router.key;
+
+        location / {
+          proxy_http_version 1.1;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection "upgrade";
+          proxy_buffering off;
+          proxy_read_timeout 120s;
+          proxy_send_timeout 120s;
+          proxy_pass http://127.0.0.1:3458;
+        }
+      }
+
 runcmd:
   # Docker is installed via the `apt` block above using the official
   # Docker apt repo (GPG-verified keyring), not `curl get.docker.com | sh`.
@@ -108,8 +167,50 @@ runcmd:
   - su - deploy -c 'ln -sf bun /home/deploy/.bun/bin/bunx'
 
   # Repo checkout — the GitHub deploy workflow then takes over for code updates.
+  # Retry loop: the apt git install in the package phase can race with
+  # cloud-init runcmd ordering on slow Hetzner images; the bare `git clone`
+  # then bails with "fatal: repository ... does not exist" instead of a
+  # clean network retry. The cleanup nukes BOTH dotfiles (.git) and
+  # non-dotfiles so the next attempt isn't blocked by a half-cloned `.git/`.
+  # `exit 1` on the 3rd failure surfaces in cloud-init logs (without it
+  # bootstrap-finished marker still gets written and the failure is silent).
   - mkdir -p /opt/eliza && chown deploy:deploy /opt/eliza
-  - su - deploy -c 'git clone --depth 200 --branch ${deploy_branch} https://github.com/elizaOS/eliza.git /opt/eliza'
+  - |
+    su - deploy -c '
+      set -e
+      for i in 1 2 3; do
+        if git clone --depth 200 --branch ${deploy_branch} https://github.com/elizaOS/eliza.git /opt/eliza; then
+          exit 0
+        fi
+        echo "git clone attempt $i failed"
+        rm -rf /opt/eliza
+        mkdir -p /opt/eliza
+        if [ "$i" = 3 ]; then
+          echo "git clone exhausted retries"
+          exit 1
+        fi
+        sleep 5
+      done
+    '
+
+  # nginx vhost for agent-router subdomain routing. Self-signed cert is fine
+  # because Cloudflare zone is in "Full" SSL mode (CF terminates with visitor,
+  # accepts any cert on the origin — only "Full (Strict)" verifies). The
+  # cert is generated once at first-boot (cloud-init runcmd has per-instance
+  # semantics, not per-boot), valid 10 years; VM rebuild or `terraform taint`
+  # regenerates. If anyone flips the zone to Strict the chain breaks
+  # silently — track this as an operational gotcha.
+  - install -d -m 0755 /etc/nginx/ssl
+  - openssl req -x509 -nodes -newkey rsa:2048 -days 3650 -keyout /etc/nginx/ssl/eliza-agent-router.key -out /etc/nginx/ssl/eliza-agent-router.crt -subj "/CN=*.elizacloud.ai" -addext "subjectAltName=DNS:*.elizacloud.ai,DNS:elizacloud.ai"
+  - chmod 600 /etc/nginx/ssl/eliza-agent-router.key
+  # Activate the new vhost FIRST, then remove the default. Split nginx -t
+  # from `systemctl reload` so a failing vhost surfaces in cloud-init logs
+  # (chained with && it silently no-ops the reload while leaving the new
+  # symlink active on disk — half-applied state).
+  - ln -sf /etc/nginx/sites-available/eliza-agent-router /etc/nginx/sites-enabled/eliza-agent-router
+  - rm -f /etc/nginx/sites-enabled/default
+  - nginx -t
+  - systemctl reload nginx
 
   # Final marker for the bootstrap-warn check that runs after this.
   - echo "eliza-control-plane bootstrap finished $(date -u +%Y-%m-%dT%H:%M:%SZ)" > /var/log/eliza-bootstrap.log

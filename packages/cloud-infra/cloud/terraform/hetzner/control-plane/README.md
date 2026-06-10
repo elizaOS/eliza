@@ -63,6 +63,30 @@ labels, and the Cloudflare DNS record creation; `user_data` and `image`
 diffs are suppressed by `lifecycle { ignore_changes }`. One-shot — never
 re-run.
 
+## Operational notes
+
+**SSH to the CP — always by public IP, never by hostname.** The Cloudflare DNS
+record (`eliza-${env}-N.elizacloud.ai`) is proxied (orange-cloud); CF does not
+pass TCP/22, so `ssh root@eliza-staging-1.elizacloud.ai` silently fails. Get the
+IP from terraform output:
+
+```bash
+terraform output -json control_plane_vms | jq -r '."1".ipv4'
+# Or the ready-made command:
+terraform output ssh_login_commands
+```
+
+**Cloudflare zone SSL mode MUST stay on "Full"** (not "Full (Strict)"). The
+control-plane uses a self-signed `*.elizacloud.ai` cert; CF only accepts that
+on "Full". Flipping to Strict in the CF dashboard breaks every dashboard
+chat call silently with HTTP 526.
+
+**Cloud-init changes need `terraform taint`** to land on existing VMs.
+`user_data` is in `lifecycle.ignore_changes` so subsequent applies are
+no-ops for an already-provisioned CP. To roll a bootstrap fix, taint the
+VM and re-apply — but that wipes local state (headscale DB, cloudflared
+creds, /opt/eliza checkout). Plan that out before touching prod.
+
 ## What this module does NOT manage (yet)
 
 - Headscale state (preauth keys, ACLs) — manual via `headscale` CLI.

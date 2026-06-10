@@ -137,17 +137,17 @@ export class HetznerCloudClient implements ComputeProvider {
   }
 
   /**
-   * Construct a client from `HCLOUD_TOKEN`, `HETZNER_CLOUD_TOKEN`, or
-   * `HETZNER_CLOUD_API_KEY`.
-   * Throws `missing_token` if neither env var is set — callers handle
-   * the case by falling back to the static auctioned pool.
+   * Construct a client from `HCLOUD_TOKEN` (matches the official Hetzner CLI
+   * + Terraform provider convention). Throws `missing_token` if the env var
+   * is unset — callers handle the case by falling back to the static
+   * auctioned pool.
    */
   static fromEnv(): HetznerCloudClient {
     const token = containersEnv.hetznerCloudToken();
     if (!token) {
       throw new HetznerCloudError(
         "missing_token",
-        "Hetzner Cloud API token is not configured. Set HCLOUD_TOKEN or HETZNER_CLOUD_API_KEY to enable elastic node provisioning.",
+        "Hetzner Cloud API token is not configured. Set HCLOUD_TOKEN to enable elastic node provisioning.",
       );
     }
     return new HetznerCloudClient(token);

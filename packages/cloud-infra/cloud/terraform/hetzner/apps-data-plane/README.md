@@ -31,10 +31,38 @@ design (*agents share the data plane; apps get an isolated one*):
    `--internal` scratch net) before opening to users.
 
 ## Apply (after review)
+
+**One-shot setup on a fresh `apps` Hetzner project**, then every subsequent
+apply just works:
+
+1. **Generate a Hetzner API token** scoped to the `apps` project (Console →
+   Security → API Tokens). Store it as the repo-level GitHub secret
+   `HCLOUD_APPS_TOKEN` (shared across staging + production — the apps data
+   plane is one project, see `../ARCHITECTURE.md`).
+2. **Register the operator SSH public key** in the `apps` project (Console →
+   Security → SSH Keys → Add). Without this, the `eliza-op-${env}` key
+   isn't usable by the autoscaler's later `--ssh-key` references and recovery
+   paths break. cloud-init still seeds `authorized_keys` from
+   `var.ssh_public_keys` for the `deploy` user — but the hcloud-managed key
+   is the canonical fallback for root-level `hcloud server reset` flows.
+
+Then plan/apply from CI:
+
+```bash
+gh workflow run terraform-apps-data-plane.yml --ref develop \
+  -f environment=staging -f action=plan
+# Review the plan in the run logs, then:
+gh workflow run terraform-apps-data-plane.yml --ref develop \
+  -f environment=staging -f action=apply
+```
+
+Or locally for debugging:
+
 ```bash
 cd packages/cloud-infra/cloud/terraform/hetzner/apps-data-plane
 cp tfvars/staging.tfvars.example staging.tfvars   # fill in real values
-terraform init -backend-config=backend-staging.hcl # same R2 backend as control-plane
+export HCLOUD_TOKEN=...      # the HCLOUD_APPS_TOKEN value
+terraform init -backend-config=backend-staging.hcl
 terraform plan  -var-file=staging.tfvars
 terraform apply -var-file=staging.tfvars
 ```

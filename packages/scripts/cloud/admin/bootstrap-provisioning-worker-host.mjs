@@ -10,7 +10,7 @@
  *
  * Usage:
  *   HCLOUD_TOKEN=... node packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs --environment staging
- *   HETZNER_CLOUD_API_KEY=... node packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs --environment production
+ *   HCLOUD_TOKEN=... node packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs --environment production
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -74,11 +74,7 @@ const branch = String(
   values.branch ?? (environment === "production" ? "main" : "develop"),
 );
 const envFile = resolve(String(values["env-file"]));
-const hcloudToken = readFirstEnv(
-  "HCLOUD_TOKEN",
-  "HETZNER_CLOUD_TOKEN",
-  "HETZNER_CLOUD_API_KEY",
-);
+const hcloudToken = readFirstEnv("HCLOUD_TOKEN");
 const serverName = String(
   values["server-name"] ?? `eliza-provisioning-worker-${environment}`,
 );
@@ -92,7 +88,7 @@ const label = {
 };
 
 if (!hcloudToken) {
-  fail("Set HCLOUD_TOKEN or HETZNER_CLOUD_API_KEY before running this script.");
+  fail("Set HCLOUD_TOKEN before running this script.");
 }
 if (!existsSync(envFile)) {
   fail(`Env file not found: ${envFile}`);
@@ -156,7 +152,7 @@ function printHelp() {
 Bootstrap the Hetzner host used by the Eliza provisioning-worker deploy workflow.
 
 Required:
-  HCLOUD_TOKEN or HETZNER_CLOUD_API_KEY in the local environment.
+  HCLOUD_TOKEN in the local environment.
   A cloud runtime env file, defaulting to packages/cloud-shared/.env.local.
 
 Examples:
@@ -381,11 +377,7 @@ function buildRemoteEnv(raw, parsed) {
         ? "https://elizacloud.ai"
         : "https://staging.elizacloud.ai",
   };
-  if (
-    !parsed.HCLOUD_TOKEN &&
-    !parsed.HETZNER_CLOUD_TOKEN &&
-    !parsed.HETZNER_CLOUD_API_KEY
-  ) {
+  if (!parsed.HCLOUD_TOKEN) {
     overlays.HCLOUD_TOKEN = hcloudToken;
   }
 
