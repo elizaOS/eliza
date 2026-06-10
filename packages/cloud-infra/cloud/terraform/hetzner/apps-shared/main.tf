@@ -49,6 +49,13 @@ resource "hcloud_network" "apps" {
   name     = "eliza-apps"
   ip_range = var.network_cidr
   labels   = local.common_labels
+
+  # Same convention as the rest of the shared module: ignore Hetzner-side
+  # renames so the legacy `eliza-apps-staging` left over from the pre-shared
+  # layout doesn't show as a diff. Operators can rename via Console (cosmetic).
+  lifecycle {
+    ignore_changes = [name]
+  }
 }
 
 resource "hcloud_network_subnet" "apps" {
