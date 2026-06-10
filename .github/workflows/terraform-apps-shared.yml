@@ -51,10 +51,13 @@ permissions:
   contents: read
   pull-requests: write
 
-# Serialize plan/apply on the shared state across branches so two operators
-# can't apply concurrently. PR validation stays parallel.
+# Serialize plan/apply across BOTH the shared and per-env data-plane workflows
+# (same Hetzner project, same private network, cross-state remote_state read
+# in apps-data-plane). A shared apply that recreates hcloud_network.apps would
+# otherwise race a concurrent apps-data-plane apply that's mid-attach. PR
+# validation stays parallel via the format('pr-{0}', github.ref) fallback.
 concurrency:
-  group: terraform-apps-shared-${{ github.event_name == 'workflow_dispatch' && 'apply' || format('pr-{0}', github.ref) }}
+  group: ${{ github.event_name == 'workflow_dispatch' && 'terraform-apps-hetzner' || format('pr-{0}', github.ref) }}
   cancel-in-progress: false
 
 env:

@@ -66,6 +66,15 @@ resource "hcloud_volume" "tenant_db_data" {
   format    = "ext4"
   labels    = local.common_labels
   automount = false
+
+  # Volume rename via Hetzner Console is operator-cosmetic; the state-mv migration
+  # from the per-env apps-data-plane leaves the legacy `eliza-apps-tenantdb-staging`
+  # name on the Hetzner side, which a `terraform plan` would otherwise want to
+  # in-place rename. Ignoring keeps the post-migration plan a true no-op so the
+  # operator's verification gate ("plan should be clean") is honest.
+  lifecycle {
+    ignore_changes = [name]
+  }
 }
 
 # ── Firewalls ─────────────────────────────────────────────────────────────────
@@ -80,6 +89,13 @@ resource "hcloud_firewall" "tenant_db" {
     protocol   = "tcp"
     port       = "22"
     source_ips = var.operator_ingress_cidrs
+  }
+
+  # Same reason as hcloud_volume.tenant_db_data — the post-migration plan stays
+  # clean instead of showing a cosmetic rename that has nothing to do with the
+  # rule set the operator actually cares about.
+  lifecycle {
+    ignore_changes = [name]
   }
 }
 
