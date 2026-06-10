@@ -8,16 +8,19 @@ PerfectAgent — fix it; don't loosen the rubric. If WrongAgent ever scores
 above 0, the rubric is too lenient — tighten it.
 
 Coverage:
-- Iterates `ALL_SCENARIOS` from the registry. Skips (with a clear reason)
-  any scenario that references actions not in `supported_actions()`.
-- Augments with a small inline corpus of executor-targeted scenarios so
-  the invariant has real coverage even when the registry is dominated by
-  in-flight Wave 2A scenarios.
+- Runs a deterministic sample of executor-supported STATIC registry scenarios
+  by default, grouped by domain so the PR unit gate stays bounded.
+- Set LIFEOPS_CONFORMANCE_FULL=1 to run every supported STATIC registry
+  scenario, which is intended for manual or scheduled benchmark validation.
+- Augments with a small inline corpus of executor-targeted scenarios so the
+  invariant has real coverage even when the registry is dominated by in-flight
+  scenarios.
 """
 
 from __future__ import annotations
 
 import asyncio
+import os
 
 import pytest
 
@@ -45,6 +48,8 @@ from eliza_lifeops_bench.types import (
 
 
 NOW_ISO = "2026-05-10T12:00:00Z"
+_FULL_CONFORMANCE_ENV = "LIFEOPS_CONFORMANCE_FULL"
+_MAX_REGISTRY_SCENARIOS_PER_DOMAIN = 5
 
 
 # ---------------------------------------------------------------------------
@@ -407,8 +412,16 @@ CONFORMANCE_SCENARIOS: list[Scenario] = [
 # ---------------------------------------------------------------------------
 
 
-def _scenarios_to_test() -> list[Scenario]:
-    """All conformance + every executor-supported STATIC registry scenario.
+def _is_full_conformance_enabled() -> bool:
+    return os.environ.get(_FULL_CONFORMANCE_ENV, "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def _supported_static_registry_scenarios() -> list[Scenario]:
+    """Return every executor-supported STATIC registry scenario.
 
     LIVE scenarios are excluded: they intentionally have no ground-truth
     actions (the LLM judge replaces scripted scoring), so they would always
@@ -417,14 +430,38 @@ def _scenarios_to_test() -> list[Scenario]:
     well-defined for scripted scenarios.
     """
     supported = supported_actions()
-    extra: list[Scenario] = []
+    scenarios: list[Scenario] = []
     for s in ALL_SCENARIOS:
         if s.mode is not ScenarioMode.STATIC:
             continue
         gt_names = {a.name for a in s.ground_truth_actions}
         if gt_names.issubset(supported):
-            extra.append(s)
-    return CONFORMANCE_SCENARIOS + extra
+            scenarios.append(s)
+    return scenarios
+
+
+def _sample_registry_scenarios(scenarios: list[Scenario]) -> list[Scenario]:
+    """Return a stable per-domain sample of supported registry scenarios."""
+    by_domain: dict[Domain, list[Scenario]] = {}
+    for scenario in scenarios:
+        by_domain.setdefault(scenario.domain, []).append(scenario)
+
+    sampled: list[Scenario] = []
+    for domain in sorted(by_domain, key=lambda d: d.value):
+        sampled.extend(
+            sorted(by_domain[domain], key=lambda s: s.id)[
+                :_MAX_REGISTRY_SCENARIOS_PER_DOMAIN
+            ]
+        )
+    return sampled
+
+
+def _scenarios_to_test() -> list[Scenario]:
+    """Inline conformance scenarios plus full or sampled supported registry scenarios."""
+    registry_scenarios = _supported_static_registry_scenarios()
+    if not _is_full_conformance_enabled():
+        registry_scenarios = _sample_registry_scenarios(registry_scenarios)
+    return CONFORMANCE_SCENARIOS + registry_scenarios
 
 
 def _skipped_registry_scenarios() -> list[tuple[str, set[str]]]:
@@ -585,14 +622,20 @@ def test_wrong_agent_wrong_action_scores_zero(scenario: Scenario) -> None:
 def test_conformance_coverage_table(capsys: pytest.CaptureFixture[str]) -> None:
     """Print a coverage table so the gap between executor + registry is visible."""
     scenarios = _scenarios_to_test()
+    all_supported_registry_scenarios = _supported_static_registry_scenarios()
     skipped = _skipped_registry_scenarios()
     supported = sorted(supported_actions())
+    mode = "full" if _is_full_conformance_enabled() else "sampled"
 
     print("\nLifeOpsBench conformance coverage")
+    print(f"  mode: {mode}")
+    if mode == "sampled":
+        print(f"  full mode: set {_FULL_CONFORMANCE_ENV}=1")
     print(f"  supported actions ({len(supported)}): {', '.join(supported)}")
     print(f"  scenarios under conformance: {len(scenarios)}")
     print(f"  inline conformance scenarios: {len(CONFORMANCE_SCENARIOS)}")
     print(f"  registry scenarios included: {len(scenarios) - len(CONFORMANCE_SCENARIOS)}")
+    print(f"  registry scenarios supported: {len(all_supported_registry_scenarios)}")
     print(f"  registry scenarios skipped:  {len(skipped)}")
     for sid, missing in skipped:
         print(f"    skipped: {sid}  unsupported={sorted(missing)}")
