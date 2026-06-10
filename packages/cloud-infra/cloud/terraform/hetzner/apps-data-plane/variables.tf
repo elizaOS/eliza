@@ -40,7 +40,7 @@ variable "hcloud_image" {
 
 # ── App worker node(s): Docker hosts for UNTRUSTED user images ───────────────
 variable "app_node_server_type" {
-  description = "Hetzner server type for an app worker node (runs untrusted user containers). ccx23 = 4 dedicated vCPU / 16 GB — dedicated vCPU suits untrusted multi-tenant workloads (no noisy-neighbor) and is orderable in fsn1 (cpx41 was retired there). Size to expected concurrent app density."
+  description = "Hetzner server type for an app worker node (runs untrusted user containers). ccx23 = 4 dedicated vCPU / 16 GB — dedicated vCPU is required because tenants run untrusted code: no CPU steal from noisy neighbors, mitigates host side-channel risk. Size to expected concurrent app density."
   type        = string
   default     = "ccx23"
 }
@@ -57,9 +57,9 @@ variable "app_node_count" {
 
 # ── Tenant Postgres cluster node: thousands of DATABASE+ROLE per node ─────────
 variable "tenant_db_server_type" {
-  description = "Hetzner server type for the tenant Postgres node. ccx33 (dedicated 8 vCPU / 32 GB) is a sane start for thousands of small tenant DBs; scale up or add nodes (shards) as database_count grows."
+  description = "Hetzner server type for the tenant Postgres node. cpx42 (8 shared vCPU / 16 GB AMD, ~€25/mo in fsn1) — no dedicated-CPU quota required. Postgres runs server-side (no untrusted code execution on this VM), so shared CPU is fine for isolation; the boundary is hostssl + private-network firewall + per-tenant ROLE. For prod scale or perf-sensitive workloads, override to ccx33 (dedicated 8 vCPU / 32 GB, ~€62/mo)."
   type        = string
-  default     = "ccx33"
+  default     = "cpx42"
 }
 
 variable "tenant_db_volume_size_gb" {

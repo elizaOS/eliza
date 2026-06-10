@@ -7,6 +7,9 @@ apps_base_domain   = "apps.elizacloud.ai"
 
 app_node_count           = 2 # behind a load balancer (see main.tf STAN note)
 app_node_server_type     = "ccx23"
+# Production override: ccx33 = dedicated 8 vCPU / 32 GB for perf headroom on
+# the prod tenant_db. Module default (cpx42, shared) is fine for staging but
+# we pay for dedicated CPU here.
 tenant_db_server_type    = "ccx33"
 tenant_db_volume_size_gb = 500
 
