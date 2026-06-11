@@ -69,28 +69,6 @@ resource "hcloud_server" "control_plane" {
   }
 }
 
-# Control-plane A record. Two deliberate choices below:
-#
-# (a) proxied = false
-#     headscale on this VM serves WireGuard control over UDP, which the
-#     Cloudflare HTTP proxy cannot pass. HTTP egress for the agent-router /
-#     dashboard chat bridge does NOT come through this hostname — cloudflared
-#     tunnel handles that on a separate proxied hostname with its own origin
-#     cert. So we want a plain unproxied A record here: agent VMs need the raw
-#     IP for the headscale UDP handshake, and Workers that still hit this name
-#     get a direct origin connection (no CF cert-in-the-middle).
-#
-# (b) lifecycle.ignore_changes = [content]
-#     The prod migration plan revealed that creating a new VM in the same
-#     apply would atomically flip the A record `content` to the new IP before
-#     cloud-init / headscale / agent-router had converged — cutting users
-#     over to an unhealthy origin with no operator gate. Keeping the resource
-#     in state but ignoring `content` decouples DNS cutover from VM creation:
-#     `terraform apply` creates the VM and leaves the existing A record
-#     pointing at the old box. When the new CP is validated, the operator
-#     opts in to the flip with:
-#       terraform apply -replace=cloudflare_dns_record.control_plane[\"N\"]
-#     (where N is the control_plane_count index — "1", "2", ...).
 resource "cloudflare_dns_record" "control_plane" {
   for_each = hcloud_server.control_plane
 
@@ -98,14 +76,33 @@ resource "cloudflare_dns_record" "control_plane" {
   name    = "${var.control_plane_hostname_prefix}-${var.environment}-${each.key}.elizacloud.ai"
   type    = "A"
   content = each.value.ipv4_address
-  # ttl=60 is the lowest non-"Auto" value Cloudflare accepts for unproxied
-  # records. Was 1 ("Auto") only because proxied=true required it.
-  ttl     = 60
-  proxied = false
+  # CF Workers fetch `https://eliza-${env}-N.elizacloud.ai` to proxy agent
+  # traffic to the agent-router on this VM (cloud-api Worker
+  # AGENT_ROUTER_ORIGIN_HOST). With proxied=true, CF terminates TLS with the
+  # visitor and accepts whatever cert the origin presents (zone SSL = "Full"
+  # — see cloud-init/bootstrap.yaml.tftpl which generates a self-signed
+  # *.elizacloud.ai cert at boot). With proxied=false the Worker hits the
+  # origin directly and verifies the self-signed cert — that fails, and
+  # dashboard chat bridge calls return "Sandbox bridge is unreachable".
+  # TTL must be 1 ("Auto") when proxied=true per Cloudflare API.
+  ttl     = 1
+  proxied = true
   comment = "eliza control-plane VM ${each.value.name} (managed by terraform/hetzner/control-plane)"
 
+  # Decouple DNS cutover from VM creation. Without this, an apply that
+  # spawns a new VM (for_each key gets a new ipv4) would atomically flip the
+  # A record `content` to the new IP — before cloud-init / nginx / agent-
+  # router had converged on the new box. With ignore_changes = [content], TF
+  # keeps the record in state and continues to manage name/type/ttl/proxied/
+  # comment, but never touches `content`. The operator opts in to the actual
+  # cutover after validating the new VM, by either:
+  #   - editing the A record in the Cloudflare dashboard (preferred — no
+  #     destroy+create dance), OR
+  #   - `terraform apply -replace=cloudflare_dns_record.control_plane["N"]`
+  #     which causes a ~5s NXDOMAIN window during destroy+create. The TTL=1
+  #     ("Auto", proxied) edge cache mostly masks it, but not zero-risk;
+  #     prefer the dashboard edit for prod cutovers.
   lifecycle {
-    # See block comment above the resource for the why.
     ignore_changes = [content]
   }
 }
