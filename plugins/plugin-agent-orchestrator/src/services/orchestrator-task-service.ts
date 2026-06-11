@@ -18,6 +18,8 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import { AcpService } from "./acp-service.js";
 import { assignAgentName } from "./agent-name-assignment.js";
@@ -60,6 +62,8 @@ import {
   TERMINAL_TASK_STATUSES,
   type UsageState,
 } from "./orchestrator-task-types.js";
+import { PARENT_AGENT_BROKER_MANIFEST_ENTRY } from "./parent-agent-broker.js";
+import { buildSkillsManifest } from "./skill-manifest.js";
 import type { ApprovalPreset } from "./types.js";
 import {
   ensureTaskWorkdir,
@@ -1346,6 +1350,25 @@ export class OrchestratorTaskService extends Service {
       repo: opts.repo,
       ...(capabilityProfile ? { capabilityProfile } : {}),
     });
+
+    // Economics tasks drive the monetized-app loop through the parent-agent
+    // Cloud command broker. Write a SKILLS.md into the workdir that advertises
+    // the broker slug + its arg contract so the spawned agent knows how to call
+    // back (the dispatcher in SubAgentRouter executes those requests).
+    if (capabilityProfile === "economics" && workdir) {
+      try {
+        const manifest = await buildSkillsManifest(this.runtime, {
+          recommendedSlugs: ["build-monetized-app", "eliza-cloud"],
+          virtualSkills: [{ ...PARENT_AGENT_BROKER_MANIFEST_ENTRY }],
+        });
+        await writeFile(join(workdir, "SKILLS.md"), manifest.markdown, "utf8");
+      } catch (err) {
+        this.runtime.logger?.warn?.(
+          { src: "orchestrator-task-service", taskId, workdir },
+          `failed to write SKILLS.md: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
 
     const result = await acp.spawnSession({
       // Default the orchestrator's coding agent to the vendored opencode
