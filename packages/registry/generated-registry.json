@@ -134,6 +134,50 @@
       "kind": "plugin",
       "registryKind": "plugin",
       "directory": "packages/examples/plugin-echo"
+    },
+    "elizaos-plugin-neynar-search": {
+      "git": {
+        "repo": "xavier-arosemena/elizaos-plugin-neynar-search",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-neynar-search",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Farcaster engagement discovery, like, reply, and follow/unfollow actions via Neynar REST API for ElizaOS agents",
+      "homepage": null,
+      "topics": [
+        "farcaster",
+        "neynar",
+        "social",
+        "discovery"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
     }
   }
 }
