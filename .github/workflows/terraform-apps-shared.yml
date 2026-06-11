@@ -155,7 +155,11 @@ jobs:
           if [ -n "${{ github.event.inputs.replace }}" ]; then
             IFS=',' read -ra ADDRS <<< "${{ github.event.inputs.replace }}"
             for addr in "${ADDRS[@]}"; do
-              addr_trimmed="$(echo "$addr" | xargs)"
+              # See terraform-control-plane.yml for why this trims via bash
+              # parameter expansion instead of `xargs` — xargs strips the
+              # literal quotes inside for_each addresses like `hcloud_server.foo["1"]`.
+              addr_trimmed="${addr#"${addr%%[![:space:]]*}"}"
+              addr_trimmed="${addr_trimmed%"${addr_trimmed##*[![:space:]]}"}"
               [ -n "$addr_trimmed" ] && REPLACE_ARGS+=("-replace=$addr_trimmed")
             done
             echo "::notice::forcing replacement of: ${REPLACE_ARGS[*]}"
