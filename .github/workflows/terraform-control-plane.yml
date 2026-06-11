@@ -156,7 +156,13 @@ jobs:
           if [ -n "${{ github.event.inputs.replace }}" ]; then
             IFS=',' read -ra ADDRS <<< "${{ github.event.inputs.replace }}"
             for addr in "${ADDRS[@]}"; do
-              addr_trimmed="$(echo "$addr" | xargs)"
+              # Trim leading/trailing whitespace via bash parameter expansion.
+              # NOT `xargs` — that strips the literal quotes inside for_each
+              # addresses like `hcloud_server.foo["1"]`, leaving the bare
+              # `hcloud_server.foo[1]` that TF then interprets as int index
+              # against a string-keyed for_each map and silently can't match.
+              addr_trimmed="${addr#"${addr%%[![:space:]]*}"}"
+              addr_trimmed="${addr_trimmed%"${addr_trimmed##*[![:space:]]}"}"
               [ -n "$addr_trimmed" ] && REPLACE_ARGS+=("-replace=$addr_trimmed")
             done
             echo "::notice::forcing replacement of: ${REPLACE_ARGS[*]}"
