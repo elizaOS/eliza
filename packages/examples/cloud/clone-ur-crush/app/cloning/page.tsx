@@ -103,27 +103,18 @@ export default function CloningPage() {
           },
         };
 
-        // Call ElizaOS Cloud affiliate API to create character
-        // Requires Bearer API key with "affiliate:create-character" permission
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-        };
-        if (APP_CONFIG.affiliateApiKey) {
-          headers.Authorization = `Bearer ${APP_CONFIG.affiliateApiKey}`;
-        }
-
-        const response = await fetch(
-          `${APP_CONFIG.elizaCloudUrl}/api/affiliate/create-character`,
-          {
-            method: "POST",
-            headers,
-            body: JSON.stringify({
-              character: cloudCharacter,
-              affiliateId: "clone-your-crush",
-              sessionId,
-            }),
-          },
-        );
+        // Create the character through our same-origin server route, which
+        // attaches the affiliate API key server-side. The privileged key
+        // (affiliate:create-character) must never be shipped to the browser.
+        const response = await fetch("/api/affiliate/create-character", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            character: cloudCharacter,
+            affiliateId: "clone-your-crush",
+            sessionId,
+          }),
+        });
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
