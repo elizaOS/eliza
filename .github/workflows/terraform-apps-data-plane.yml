@@ -186,19 +186,18 @@ jobs:
         if: github.event.inputs.action == 'apply'
         working-directory: ${{ env.TF_DIR }}
         # `replace` input is a comma-separated list of TF resource addresses to
-        # force-replace this run. Empty -> normal apply. The bash loop builds
-        # the -replace flags so `terraform apply` doesn't see a stray empty
-        # flag when no replace is requested. NOTE: tenant_db lives in
-        # apps-shared now — `-replace=hcloud_server.tenant_db` here is a no-op;
-        # use the terraform-apps-shared workflow instead.
+        # force-replace this run. Empty -> normal apply. NOTE: tenant_db lives
+        # in apps-shared now — `-replace=hcloud_server.tenant_db` here is a
+        # no-op; use the terraform-apps-shared workflow instead.
+        # See terraform-control-plane.yml for why we thread the input via $env
+        # instead of inline `${{ ... }}` (quote handling).
+        env:
+          REPLACE_INPUT: ${{ github.event.inputs.replace }}
         run: |
           REPLACE_ARGS=()
-          if [ -n "${{ github.event.inputs.replace }}" ]; then
-            IFS=',' read -ra ADDRS <<< "${{ github.event.inputs.replace }}"
+          if [ -n "$REPLACE_INPUT" ]; then
+            IFS=',' read -ra ADDRS <<< "$REPLACE_INPUT"
             for addr in "${ADDRS[@]}"; do
-              # See terraform-control-plane.yml for why this trims via bash
-              # parameter expansion instead of `xargs` — xargs strips the
-              # literal quotes inside for_each addresses like `hcloud_server.foo["1"]`.
               addr_trimmed="${addr#"${addr%%[![:space:]]*}"}"
               addr_trimmed="${addr_trimmed%"${addr_trimmed##*[![:space:]]}"}"
               [ -n "$addr_trimmed" ] && REPLACE_ARGS+=("-replace=$addr_trimmed")
