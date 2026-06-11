@@ -148,19 +148,25 @@ jobs:
         if: github.event.inputs.action == 'apply'
         working-directory: ${{ env.TF_DIR }}
         # `replace` input is a comma-separated list of TF resource addresses
-        # to force-replace on this run. Empty -> normal apply. The bash loop
-        # builds the -replace flags so `terraform apply` doesn't see a stray
-        # empty flag when no replace is requested.
+        # to force-replace on this run. Empty -> normal apply.
+        #
+        # IMPORTANT: the input is threaded via an env var (REPLACE_INPUT), not
+        # spliced into the shell with `${{ ... }}`. GitHub Actions substitutes
+        # `${{ inputs.foo }}` at YAML-parse time as raw literal text, so any
+        # double quotes inside the input (e.g. `hcloud_server.foo["1"]`) end
+        # up being parsed by bash as quote delimiters, not as literal
+        # characters — the apply silently sees `hcloud_server.foo[1]` instead
+        # and TF treats the `[1]` as an int index against a string-keyed
+        # for_each map, so 0 changes apply with no error. Reading via $env
+        # treats the value as opaque data.
+        env:
+          REPLACE_INPUT: ${{ github.event.inputs.replace }}
         run: |
           REPLACE_ARGS=()
-          if [ -n "${{ github.event.inputs.replace }}" ]; then
-            IFS=',' read -ra ADDRS <<< "${{ github.event.inputs.replace }}"
+          if [ -n "$REPLACE_INPUT" ]; then
+            IFS=',' read -ra ADDRS <<< "$REPLACE_INPUT"
             for addr in "${ADDRS[@]}"; do
               # Trim leading/trailing whitespace via bash parameter expansion.
-              # NOT `xargs` — that strips the literal quotes inside for_each
-              # addresses like `hcloud_server.foo["1"]`, leaving the bare
-              # `hcloud_server.foo[1]` that TF then interprets as int index
-              # against a string-keyed for_each map and silently can't match.
               addr_trimmed="${addr#"${addr%%[![:space:]]*}"}"
               addr_trimmed="${addr_trimmed%"${addr_trimmed##*[![:space:]]}"}"
               [ -n "$addr_trimmed" ] && REPLACE_ARGS+=("-replace=$addr_trimmed")
