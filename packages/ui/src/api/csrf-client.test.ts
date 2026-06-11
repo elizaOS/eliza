@@ -41,6 +41,40 @@ describe("fetchWithCsrf", () => {
     expect(headers.get("Authorization")).toBe("Bearer secret-token");
   });
 
+  it("resolves relative API paths against the configured apiBase (remote mobile)", async () => {
+    bootConfigMock.getBootConfig.mockReturnValue({
+      apiToken: "secret-token",
+      apiBase: "http://127.0.0.1:41337",
+    });
+    const transport = {
+      request: vi.fn().mockResolvedValue(new Response("{}", { status: 200 })),
+    };
+    desktopTransportMock.desktopHttpTransportForUrl.mockReturnValue(transport);
+
+    await fetchWithCsrf("/api/apps/favorites");
+
+    expect(
+      desktopTransportMock.desktopHttpTransportForUrl,
+    ).toHaveBeenCalledWith("http://127.0.0.1:41337/api/apps/favorites");
+  });
+
+  it("never rewrites an already-absolute URL even with an apiBase configured", async () => {
+    bootConfigMock.getBootConfig.mockReturnValue({
+      apiToken: "secret-token",
+      apiBase: "http://127.0.0.1:41337",
+    });
+    const transport = {
+      request: vi.fn().mockResolvedValue(new Response("{}", { status: 200 })),
+    };
+    desktopTransportMock.desktopHttpTransportForUrl.mockReturnValue(transport);
+
+    await fetchWithCsrf("http://127.0.0.1:41337/api/auth/me");
+
+    expect(
+      desktopTransportMock.desktopHttpTransportForUrl,
+    ).toHaveBeenCalledWith("http://127.0.0.1:41337/api/auth/me");
+  });
+
   it("passes the long message timeout through CSRF desktop transport calls", async () => {
     bootConfigMock.getBootConfig.mockReturnValue({ apiToken: null });
     const transport = {

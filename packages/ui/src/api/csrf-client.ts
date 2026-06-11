@@ -50,8 +50,11 @@ export async function fetchWithCsrf(
   // remote mode the page origin is the bundle's asset server, which answers
   // ANY path with index.html and HTTP 200 — a relative "/api/..." fetch
   // "succeeds" and then explodes at JSON parse. No-op when no base is set
-  // (plain same-origin web), so this only changes the broken case.
-  url = resolveApiUrl(url);
+  // (plain same-origin web). Absolute and protocol-relative URLs pass through
+  // untouched — resolveApiUrl prefixes blindly and would corrupt them.
+  if (url.startsWith("/") && !url.startsWith("//")) {
+    url = resolveApiUrl(url);
+  }
   const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
 
