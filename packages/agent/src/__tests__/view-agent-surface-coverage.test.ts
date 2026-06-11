@@ -2,9 +2,6 @@
  * Coverage ratchet: every converted plugin view must register at least one
  * element with the agent surface (useAgentElement) so the floating pill can
  * address it. Guards against a view regressing to an unaddressable surface.
- *
- * lifeops is tracked as pending — its working tree currently carries an
- * unrelated refactor; it is converted separately.
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -40,7 +37,6 @@ const CONVERTED_PLUGINS = [
   "plugin-training",
   "plugin-trajectory-logger",
   "plugin-vincent",
-  "plugin-personal-assistant",
 ] as const;
 
 /** Remaining views to convert; must stay empty for the ratchet to pass. */
@@ -180,31 +176,35 @@ function isAgentControllable(pageFile: string): boolean {
 }
 
 describe("agent-surface view coverage", () => {
-  it.each(
-    CONVERTED_PLUGINS,
-  )("%s registers at least one agent-surface element", (plugin) => {
-    expect(registersAgentElement(plugin)).toBe(true);
-  });
+  it.each(CONVERTED_PLUGINS)(
+    "%s registers at least one agent-surface element",
+    (plugin) => {
+      expect(registersAgentElement(plugin)).toBe(true);
+    },
+  );
 
-  it.each(
-    CONVERTED_BUILTIN_PAGES,
-  )("builtin %s is wrapped in the agent-surface bridge", (page) => {
-    expect(wrapsInShellBridge(page)).toBe(true);
-  });
+  it.each(CONVERTED_BUILTIN_PAGES)(
+    "builtin %s is wrapped in the agent-surface bridge",
+    (page) => {
+      expect(wrapsInShellBridge(page)).toBe(true);
+    },
+  );
 
-  it.each(
-    CONVERTED_SHELL_PAGES,
-  )("shell view %s is agent-controllable (bridge or registered controls)", (page) => {
-    expect(isAgentControllable(page)).toBe(true);
-  });
+  it.each(CONVERTED_SHELL_PAGES)(
+    "shell view %s is agent-controllable (bridge or registered controls)",
+    (page) => {
+      expect(isAgentControllable(page)).toBe(true);
+    },
+  );
 
-  it.each(
-    CONVERTED_SUBCOMPONENTS,
-  )("sub-component %s registers controls into its parent surface", (file) => {
-    expect(isAgentControllable(file)).toBe(true);
-  });
+  it.each(CONVERTED_SUBCOMPONENTS)(
+    "sub-component %s registers controls into its parent surface",
+    (file) => {
+      expect(isAgentControllable(file)).toBe(true);
+    },
+  );
 
-  it("has zero unconverted plugin views (lifeops now included)", () => {
+  it("has zero unconverted plugin views", () => {
     expect(PENDING_PLUGINS).toHaveLength(0);
   });
 });
