@@ -272,6 +272,8 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         model: `elevenlabs/${modelId || "eleven_flash_v2_5"}`,
         provider: "elevenlabs",
         billingSource: "elevenlabs",
+        // Affiliate revenue-share via X-Affiliate-Code (existing billFlatUsage branch).
+        affiliateCode: request.headers.get("X-Affiliate-Code"),
         description: `TTS generation: ${text.length} chars${isCustomVoice ? " (custom voice)" : ""}`,
       },
       {
