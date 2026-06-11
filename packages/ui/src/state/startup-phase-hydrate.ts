@@ -162,6 +162,18 @@ export async function runHydrating(
     );
   };
 
+  // Per-step budget for the decorate-only loads below. Everything past
+  // conversation restore is best-effort, so no single stalled request (flaky
+  // proxy/relay, dead radio) may hold HYDRATION_COMPLETE — and with it the
+  // composer — hostage.
+  const bounded = <T>(p: Promise<T>, ms = 15_000): Promise<T> =>
+    Promise.race([
+      p,
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);
+      }),
+    ]);
+
   deps.setStartupError(null);
   // Start the WS bridge before history hydration finishes so restored-session
   // flows regain live updates without waiting for conversation restore.
@@ -176,7 +188,7 @@ export async function runHydrating(
 
   // Wallet addresses
   try {
-    deps.setWalletAddresses(await client.getWalletAddresses());
+    deps.setWalletAddresses(await bounded(client.getWalletAddresses()));
   } catch (e: unknown) {
     warn("wallet addresses", e);
   }
@@ -187,7 +199,7 @@ export async function runHydrating(
   // the config to pick up the correct avatarIndex.
   let resolvedIdx = loadAvatarIndex();
   try {
-    const cfg = await client.getConfig();
+    const cfg = await bounded(client.getConfig());
     const cfgAvatarIdx = cfg.ui?.avatarIndex;
     if (typeof cfgAvatarIdx === "number" && Number.isFinite(cfgAvatarIdx)) {
       const normalized = normalizeAvatarIndex(cfgAvatarIdx);
@@ -201,7 +213,7 @@ export async function runHydrating(
   }
   try {
     if (typeof client.getStreamSettings === "function") {
-      const stream = await client.getStreamSettings();
+      const stream = await bounded(client.getStreamSettings());
       const si = stream.settings?.avatarIndex;
       if (typeof si === "number" && Number.isFinite(si)) {
         resolvedIdx = normalizeAvatarIndex(si);
@@ -212,13 +224,17 @@ export async function runHydrating(
     warn("stream settings avatar", e);
   }
   if (resolvedIdx === 0) {
-    if (await client.hasCustomVrm())
-      deps.setCustomVrmUrl(resolveApiUrl(`/api/avatar/vrm?t=${Date.now()}`));
-    else deps.setSelectedVrmIndex(1);
-    if (await client.hasCustomBackground())
-      deps.setCustomBackgroundUrl(
-        resolveApiUrl(`/api/avatar/background?t=${Date.now()}`),
-      );
+    try {
+      if (await bounded(client.hasCustomVrm()))
+        deps.setCustomVrmUrl(resolveApiUrl(`/api/avatar/vrm?t=${Date.now()}`));
+      else deps.setSelectedVrmIndex(1);
+      if (await bounded(client.hasCustomBackground()))
+        deps.setCustomBackgroundUrl(
+          resolveApiUrl(`/api/avatar/background?t=${Date.now()}`),
+        );
+    } catch (e: unknown) {
+      warn("custom avatar probe", e);
+    }
   }
 
   // Warm the apps catalog cache so the Apps tab opens with the real
@@ -227,7 +243,11 @@ export async function runHydrating(
   void prefetchAppsCatalog();
 
   void deps.pollCloudCredits();
-  await deps.fetchAutonomyReplay();
+  try {
+    await bounded(deps.fetchAutonomyReplay());
+  } catch (e: unknown) {
+    warn("autonomy replay", e);
+  }
 
   // Tab routing
   const navPath = getWindowNavigationPath();

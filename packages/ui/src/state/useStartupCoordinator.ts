@@ -14,6 +14,7 @@
  * in a "ready" effect that only cleans up on unmount (not on phase transitions).
  */
 
+import { logger } from "@elizaos/logger";
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { client } from "../api";
 import { isElectrobunRuntime } from "../bridge";
@@ -261,7 +262,17 @@ export function useStartupCoordinator(
     if (!currentDeps) return;
     const cancelled = { current: false };
 
-    runHydrating(currentDeps, dispatch, cancelled).catch(() => {});
+    runHydrating(currentDeps, dispatch, cancelled).catch((err) => {
+      // Hydration decorates the shell (wallet, avatar, autonomy replay…);
+      // everything past conversation restore is best-effort. Completing with
+      // partial data beats stranding the composer in "connecting" forever —
+      // and the reducer no-ops HYDRATION_COMPLETE outside "hydrating", so
+      // this can only ever unlock a stalled boot, never mis-transition.
+      logger.warn(
+        `[eliza][startup:init] hydration failed; completing with partial data: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      dispatch({ type: "HYDRATION_COMPLETE" });
+    });
 
     return () => {
       cancelled.current = true;
