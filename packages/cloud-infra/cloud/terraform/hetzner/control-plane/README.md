@@ -81,6 +81,13 @@ control-plane uses a self-signed `*.elizacloud.ai` cert; CF only accepts that
 on "Full". Flipping to Strict in the CF dashboard breaks every dashboard
 chat call silently with HTTP 526.
 
+**DNS cutover is operator-gated, not automatic.** The control-plane A record
+has `lifecycle.ignore_changes = [content]` so `terraform apply` never auto-
+flips the IP when a new VM gets created. When the new CP is validated, flip
+the record manually via the Cloudflare dashboard (preferred — no NXDOMAIN
+window) or via a one-off `terraform state rm` + re-apply round-trip if you
+want the new content to land back in state.
+
 **Cloud-init changes need `terraform taint`** to land on existing VMs.
 `user_data` is in `lifecycle.ignore_changes` so subsequent applies are
 no-ops for an already-provisioned CP. To roll a bootstrap fix, taint the
