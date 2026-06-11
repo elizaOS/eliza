@@ -88,4 +88,21 @@ resource "cloudflare_dns_record" "control_plane" {
   ttl     = 1
   proxied = true
   comment = "eliza control-plane VM ${each.value.name} (managed by terraform/hetzner/control-plane)"
+
+  # Decouple DNS cutover from VM creation. Without this, an apply that
+  # spawns a new VM (for_each key gets a new ipv4) would atomically flip the
+  # A record `content` to the new IP — before cloud-init / nginx / agent-
+  # router had converged on the new box. With ignore_changes = [content], TF
+  # keeps the record in state and continues to manage name/type/ttl/proxied/
+  # comment, but never touches `content`. The operator opts in to the actual
+  # cutover after validating the new VM, by either:
+  #   - editing the A record in the Cloudflare dashboard (preferred — no
+  #     destroy+create dance), OR
+  #   - `terraform apply -replace=cloudflare_dns_record.control_plane["N"]`
+  #     which causes a ~5s NXDOMAIN window during destroy+create. The TTL=1
+  #     ("Auto", proxied) edge cache mostly masks it, but not zero-risk;
+  #     prefer the dashboard edit for prod cutovers.
+  lifecycle {
+    ignore_changes = [content]
+  }
 }
