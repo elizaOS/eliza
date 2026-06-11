@@ -70,7 +70,7 @@
   "homepage": "https://github.com/elizaos/eliza#readme",
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@linear/sdk": "^83.0.0"
+    "@linear/sdk": "^86.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
