@@ -16,3 +16,13 @@ output "ssh_login_commands" {
     for k, v in hcloud_server.control_plane : k => "ssh root@${v.ipv4_address}"
   }
 }
+
+output "data_plane_network_id" {
+  description = "Hetzner ID of the private network the autoscaler attaches workers to. Set this as CONTAINERS_HCLOUD_NETWORK_IDS in /opt/eliza/cloud/.env.local on the CP."
+  value       = hcloud_network.data_plane.id
+}
+
+output "data_plane_subnet_cidr" {
+  description = "Subnet CIDR for the data-plane network — useful when wiring static routes or firewall rules on the CP."
+  value       = hcloud_network_subnet.data_plane.ip_range
+}
