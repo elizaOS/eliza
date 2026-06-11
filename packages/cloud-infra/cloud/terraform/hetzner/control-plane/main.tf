@@ -69,6 +69,28 @@ resource "hcloud_server" "control_plane" {
   }
 }
 
+# Control-plane A record. Two deliberate choices below:
+#
+# (a) proxied = false
+#     headscale on this VM serves WireGuard control over UDP, which the
+#     Cloudflare HTTP proxy cannot pass. HTTP egress for the agent-router /
+#     dashboard chat bridge does NOT come through this hostname — cloudflared
+#     tunnel handles that on a separate proxied hostname with its own origin
+#     cert. So we want a plain unproxied A record here: agent VMs need the raw
+#     IP for the headscale UDP handshake, and Workers that still hit this name
+#     get a direct origin connection (no CF cert-in-the-middle).
+#
+# (b) lifecycle.ignore_changes = [content]
+#     The prod migration plan revealed that creating a new VM in the same
+#     apply would atomically flip the A record `content` to the new IP before
+#     cloud-init / headscale / agent-router had converged — cutting users
+#     over to an unhealthy origin with no operator gate. Keeping the resource
+#     in state but ignoring `content` decouples DNS cutover from VM creation:
+#     `terraform apply` creates the VM and leaves the existing A record
+#     pointing at the old box. When the new CP is validated, the operator
+#     opts in to the flip with:
+#       terraform apply -replace=cloudflare_dns_record.control_plane[\"N\"]
+#     (where N is the control_plane_count index — "1", "2", ...).
 resource "cloudflare_dns_record" "control_plane" {
   for_each = hcloud_server.control_plane
 
@@ -76,16 +98,14 @@ resource "cloudflare_dns_record" "control_plane" {
   name    = "${var.control_plane_hostname_prefix}-${var.environment}-${each.key}.elizacloud.ai"
   type    = "A"
   content = each.value.ipv4_address
-  # CF Workers fetch `https://eliza-${env}-N.elizacloud.ai` to proxy agent
-  # traffic to the agent-router on this VM (cloud-api Worker
-  # AGENT_ROUTER_ORIGIN_HOST). With proxied=true, CF terminates TLS with the
-  # visitor and accepts whatever cert the origin presents (zone SSL = "Full"
-  # — see cloud-init/bootstrap.yaml.tftpl which generates a self-signed
-  # *.elizacloud.ai cert at boot). With proxied=false the Worker hits the
-  # origin directly and verifies the self-signed cert — that fails, and
-  # dashboard chat bridge calls return "Sandbox bridge is unreachable".
-  # TTL must be 1 ("Auto") when proxied=true per Cloudflare API.
-  ttl     = 1
-  proxied = true
+  # ttl=60 is the lowest non-"Auto" value Cloudflare accepts for unproxied
+  # records. Was 1 ("Auto") only because proxied=true required it.
+  ttl     = 60
+  proxied = false
   comment = "eliza control-plane VM ${each.value.name} (managed by terraform/hetzner/control-plane)"
+
+  lifecycle {
+    # See block comment above the resource for the why.
+    ignore_changes = [content]
+  }
 }
