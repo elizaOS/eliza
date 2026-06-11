@@ -327,7 +327,7 @@ jobs:
           path: aab/
 
       - name: Setup Ruby
-        uses: ruby/setup-ruby@afeafc3d1ab54a631816aba4c914a0081c12ff2f
+        uses: ruby/setup-ruby@12fd324f1d0b43274fdc8130f6980590a667c455
         with:
           ruby-version: "4.0.3"
           bundler-cache: true
