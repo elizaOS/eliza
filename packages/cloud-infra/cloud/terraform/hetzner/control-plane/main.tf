@@ -9,6 +9,30 @@ locals {
   }
 }
 
+# Private network that the runtime autoscaler attaches every data-plane worker
+# to. Lives in the SAME Hetzner project as the control-plane VM, so each env's
+# workers + their CP share one private LAN — no cross-project peering hack.
+# The autoscaler reads this network's id from CONTAINERS_HCLOUD_NETWORK_IDS in
+# /opt/eliza/cloud/.env.local on the CP (see node-autoscaler.ts).
+resource "hcloud_network" "data_plane" {
+  name     = "eliza-${var.environment}-private"
+  ip_range = var.data_plane_network_cidr
+  labels   = local.common_labels
+
+  # Same convention as the apps-shared module: ignore Hetzner-side renames so
+  # legacy names left over from out-of-band creation don't show as drift.
+  lifecycle {
+    ignore_changes = [name]
+  }
+}
+
+resource "hcloud_network_subnet" "data_plane" {
+  network_id   = hcloud_network.data_plane.id
+  type         = "cloud"
+  network_zone = "eu-central"
+  ip_range     = var.data_plane_subnet_cidr
+}
+
 resource "hcloud_ssh_key" "operators" {
   # Key the map by a short SHA-256 prefix of the public key rather than the
   # list index — keeps Terraform plans stable when operators are

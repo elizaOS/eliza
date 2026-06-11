@@ -59,6 +59,19 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+# ── Data-plane private network (autoscaled workers + CP share this LAN) ──────
+variable "data_plane_network_cidr" {
+  description = "Private network CIDR for the data plane in THIS environment's Hetzner project. Each environment owns its own Hetzner project, so identical CIDRs across envs don't conflict — keeping them aligned avoids per-env static IP surprises when the autoscaler computes worker IPs."
+  type        = string
+  default     = "10.42.0.0/16"
+}
+
+variable "data_plane_subnet_cidr" {
+  description = "Subnet within data_plane_network_cidr where workers + CP attach."
+  type        = string
+  default     = "10.42.0.0/24"
+}
+
 variable "control_plane_hostname_prefix" {
   description = "DNS subdomain prefix. Final record: <prefix>-<environment>-<n>.elizacloud.ai (e.g. eliza-production-1.elizacloud.ai)"
   type        = string
