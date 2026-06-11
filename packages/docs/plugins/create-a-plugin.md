@@ -476,8 +476,8 @@ Override in `eliza.json`:
 If you have the upstream `elizaos` CLI installed globally, you can scaffold a plugin project:
 
 ```bash
-# Requires the elizaos CLI (npm i -g elizaos)
-npx elizaos create my-plugin --template plugin --language typescript
+# Requires the elizaos CLI (npm i -g elizaos@beta)
+npx elizaos@beta create my-plugin --template plugin --language typescript
 ```
 
 Alternatively, copy the manual scaffold from [Step 1](#step-1-scaffold-the-project) above — it produces the same structure.

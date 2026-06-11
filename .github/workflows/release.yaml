@@ -566,6 +566,14 @@ jobs:
           done
           echo "✅ All publish-critical packages built successfully"
 
+      # elizaOS/eliza#8000: block publishing another CLI that crashes on global
+      # install (ERR_PACKAGE_PATH_NOT_EXPORTED). npm pack -> global install under
+      # npm and bun, then run the bin under node and bun.
+      - name: elizaos global-install smoke (#8000)
+        run: |
+          bun run --cwd packages/elizaos lint:bin-exports
+          bun run --cwd packages/elizaos test:packaged
+
       # Replace workspace:* references with actual versions before publishing
       # This is required because Bun workspaces use workspace:* protocol
       # which npm doesn't understand when the packages are published
@@ -752,7 +760,7 @@ jobs:
 
             Install the CLI globally to get started:
             ```bash
-            bun i -g @elizaos/cli@${{ steps.release_type.outputs.dist_tag }}
+            bun i -g elizaos@${{ steps.release_type.outputs.dist_tag }}
             ```
 
             Or add packages to your project:
@@ -786,7 +794,7 @@ jobs:
           echo "## Quick Start" >> $GITHUB_STEP_SUMMARY
           echo "Install the CLI globally:" >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "bun i -g @elizaos/cli@${{ steps.release_type.outputs.dist_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "bun i -g elizaos@${{ steps.release_type.outputs.dist_tag }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Or add to your project:" >> $GITHUB_STEP_SUMMARY

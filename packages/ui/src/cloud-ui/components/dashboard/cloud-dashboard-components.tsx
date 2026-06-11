@@ -241,7 +241,7 @@ export function ContainersSkeleton() {
 
 export function ContainersEmptyState() {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-  const commands = ["bun i -g @elizaos/cli", "elizaos deploy"];
+  const commands = ["bun i -g elizaos", "elizaos deploy"];
 
   const handleCopy = async (text: string, index: number) => {
     await navigator.clipboard.writeText(text);

@@ -81,7 +81,7 @@ A _plugin_ sits between the two: framework-shaped (registers actions/providers/s
 **Prerequisites:** [Node.js v24+](https://nodejs.org/), [bun](https://bun.sh/docs/installation). On Windows, use [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual).
 
 ```bash
-bun add -g elizaos
+bun add -g elizaos@beta
 elizaos create my-first-agent --template project
 cd my-first-agent
 # add OPENAI_API_KEY=... to .env (or your provider's key)
