@@ -52,7 +52,7 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: ${{ matrix.timeout || 45 }}
     strategy:
       fail-fast: false
       matrix:
@@ -95,6 +95,7 @@ jobs:
           - lane: test-plugin-browser
             command: bun run --cwd plugins/plugin-browser test
           - lane: build-agent-cascade
+            timeout: 75
             command: |
               node packages/scripts/run-turbo.mjs run build --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/agent --concurrency=4
           - lane: helper-smokes
