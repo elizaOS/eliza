@@ -139,6 +139,10 @@ jobs:
       # operator_ingress_cidrs MUST be a JSON array literal; module validation
       # rejects 0.0.0.0/0. Set as a GH env var, e.g. '["1.2.3.4/32"]'.
       TF_VAR_operator_ingress_cidrs: ${{ vars.OPERATOR_INGRESS_CIDRS }}
+      # cloud-api origin for THIS env — Caddy's on-demand-TLS ask endpoint lives
+      # under it. Must be env-correct (staging api vs prod api) or cert issuance
+      # checks the wrong environment's state.
+      TF_VAR_cloud_api_origin: ${{ vars.APPS_CLOUD_API_ORIGIN }}
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v4
@@ -157,6 +161,7 @@ jobs:
           [ "$TF_VAR_ssh_public_keys" != '[""]' ] || { echo "::error::set vars.APPS_OPERATOR_SSH_KEY on the '$env' environment"; fail=1; }
           [ -n "$TF_VAR_apps_base_domain" ] || { echo "::error::set vars.APPS_BASE_DOMAIN on the '$env' environment (distinct per env — apps.elizacloud.ai prod / apps-staging.elizacloud.ai staging)"; fail=1; }
           [ -n "$TF_VAR_operator_ingress_cidrs" ] || { echo "::error::set vars.OPERATOR_INGRESS_CIDRS on the '$env' environment (JSON array of allowed SSH CIDRs, no 0.0.0.0/0)"; fail=1; }
+          [ -n "$TF_VAR_cloud_api_origin" ] || { echo "::error::set vars.APPS_CLOUD_API_ORIGIN on the '$env' environment (https://api-staging.elizacloud.ai staging / https://api.elizacloud.ai prod)"; fail=1; }
           # Defense in depth: reject 0.0.0.0/0 here too, before TF validation
           # runs — fails the workflow earlier with a clearer error.
           case "$TF_VAR_operator_ingress_cidrs" in

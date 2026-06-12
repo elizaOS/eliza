@@ -14,3 +14,6 @@ operator_ingress_cidrs = ["<operator-ip>/32"]
 ssh_public_keys = [
   # "ssh-ed25519 AAAA... operator@laptop"
 ]
+
+# cloud-api origin for this env (the on-demand-TLS ask endpoint lives under it)
+cloud_api_origin         = "https://api.elizacloud.ai"
