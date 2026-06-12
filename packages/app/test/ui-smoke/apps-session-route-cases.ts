@@ -48,7 +48,7 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   },
   {
     name: "lifeops app window",
-    path: "/apps/lifeops",
+    path: "/lifeops",
     readyChecks: [
       { text: "LifeOps" },
       { selector: '[data-testid="lifeops-nav-rail"]' },
@@ -93,7 +93,7 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   },
   {
     name: "model tester app window",
-    path: "/apps/model-tester",
+    path: "/model-tester",
     readyChecks: [
       { selector: '[data-testid="model-tester-shell"]' },
       { text: "Model Tester" },
@@ -163,7 +163,7 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   },
   {
     name: "elizamaker app window",
-    path: "/apps/elizamaker",
+    path: "/chat",
     selector:
       '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]',
     timeoutMs: 90_000,

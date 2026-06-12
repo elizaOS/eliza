@@ -413,7 +413,7 @@ test("LifeOps app supports deterministic reminders and alarm interactions", asyn
 }) => {
   const lifeOps = installLifeOpsInteractionRoutes(page);
 
-  await openAppPath(page, "/apps/lifeops");
+  await openAppPath(page, "/lifeops");
   if (await expectLifeOpsDynamicViewFallback(page)) {
     return;
   }
@@ -488,7 +488,7 @@ test("LifeOps assistant launches chat-first command prompts", async ({
 }) => {
   installLifeOpsInteractionRoutes(page);
 
-  await openAppPath(page, "/apps/lifeops");
+  await openAppPath(page, "/lifeops");
   if (await expectLifeOpsDynamicViewFallback(page)) {
     return;
   }

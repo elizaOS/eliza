@@ -82,7 +82,12 @@ async function installSensitiveRequestChatRoutes(
   const chatPostBodies: string[] = [];
   const secretsPutBodies: JsonRecord[] = [];
 
-  await page.route("**/api/conversations", async (route) => {
+  await page.route("**/api/conversations**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname !== "/api/conversations") {
+      await route.fallback();
+      return;
+    }
     if (route.request().method() === "GET") {
       await fulfillJson(route, { conversations: [conversation] });
       return;
@@ -94,20 +99,17 @@ async function installSensitiveRequestChatRoutes(
     await route.fallback();
   });
 
-  await page.route(
-    `**/api/conversations/${CONVERSATION_ID}`,
-    async (route) => {
-      if (route.request().method() === "PATCH") {
-        await fulfillJson(route, { conversation });
-        return;
-      }
-      if (route.request().method() === "GET") {
-        await fulfillJson(route, { conversation });
-        return;
-      }
-      await route.fallback();
-    },
-  );
+  await page.route(`**/api/conversations/${CONVERSATION_ID}`, async (route) => {
+    if (route.request().method() === "PATCH") {
+      await fulfillJson(route, { conversation });
+      return;
+    }
+    if (route.request().method() === "GET") {
+      await fulfillJson(route, { conversation });
+      return;
+    }
+    await route.fallback();
+  });
 
   await page.route(
     `**/api/conversations/${CONVERSATION_ID}/messages`,
@@ -280,11 +282,7 @@ test.describe("chat sensitive request — OAuth", () => {
         open: typeof window.open;
       };
       win.__sensitiveOauthOpenCalls = [];
-      win.open = ((
-        url?: string | URL,
-        target?: string,
-        features?: string,
-      ) => {
+      win.open = ((url?: string | URL, target?: string, features?: string) => {
         win.__sensitiveOauthOpenCalls.push({
           url: typeof url === "string" ? url : String(url ?? ""),
           target: typeof target === "string" ? target : "",
@@ -358,8 +356,7 @@ test.describe("chat sensitive request — OAuth", () => {
     await expect(button).toContainText(/Authorizing/i, { timeout: 5_000 });
 
     // The authorization URL must never appear in the chat DOM, before or after.
-    const chatTextAfterClick =
-      (await page.locator("body").textContent()) ?? "";
+    const chatTextAfterClick = (await page.locator("body").textContent()) ?? "";
     expect(chatTextAfterClick.includes(OAUTH_URL_SUBSTRING)).toBe(false);
 
     // It must also never have been POSTed to the chat-message endpoints.
