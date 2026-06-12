@@ -53,11 +53,52 @@ write_files:
       http_access allow allowed_dst
       http_access deny all
 
+  # Caddy front door for per-app URLs (<shortid>.<base> + verified custom
+  # domains). The contract the merged runtime code targets:
+  #   - on-demand TLS gated by cloud-api's ask endpoint
+  #     (GET /api/v1/apps-ingress/ask?domain=...) so certs are only minted for
+  #     hosts a live app owns — system shortid host (containers.public_hostname)
+  #     or a verified+active managed domain (cloud-api/v1/apps-ingress/ask);
+  #   - per-app routes managed LIVE via the admin API by the deploy flow
+  #     (cloud-shared apps-ingress-provisioner: idempotent add by @id on
+  #     provision, delete by @id on teardown) — no full reloads per deploy;
+  #   - /etc/caddy/apps.d/*.caddy imported so snapshot/reconcile tooling
+  #     (the admin ingress-map emitter) can compose additively.
+  # The admin API binds 0.0.0.0:2019; exposure is controlled by the node
+  # firewall (2019 only from operator_ingress_cidrs — the control plane),
+  # mirroring how SSH is restricted.
+  # Deliberately NO catch-all route in the base server: the deploy flow APPENDS
+  # routes (POST /config/.../routes), and a terminal catch-all would shadow
+  # every appended route. Unmatched hosts never pass the ask gate, so they
+  # never receive a cert anyway.
+  - path: /etc/caddy/Caddyfile
+    content: |
+      {
+        admin 0.0.0.0:2019
+        on_demand_tls {
+          ask ${cloud_api_origin}/api/v1/apps-ingress/ask
+        }
+      }
+
+      https:// {
+        tls {
+          on_demand
+        }
+      }
+
+      import /etc/caddy/apps.d/*.caddy
+
 runcmd:
   - systemctl enable docker && systemctl start docker
   - systemctl enable squid && systemctl restart squid
   # The tenant DB lives at ${tenant_db_host} on the private net; app containers
   # get a per-tenant DSN pointing there (injected by the deploy runner).
   - echo "tenant_db_host=${tenant_db_host}" > /etc/eliza-apps-node.env
-  # STAN: install Caddy (or reuse the existing ingress-map -> Caddyfile emitter)
-  # to terminate TLS and reverse-proxy <shortid>.<base> to the container host port.
+  # Caddy via the official repo (distro package lags). Config is written above;
+  # apps.d needs at least one importable file or `import` fails validation.
+  - mkdir -p /etc/caddy/apps.d
+  - touch /etc/caddy/apps.d/placeholder.caddy
+  - curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  - curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' > /etc/apt/sources.list.d/caddy-stable.list
+  - apt-get update && apt-get install -y caddy
+  - systemctl enable caddy && systemctl restart caddy
