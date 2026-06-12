@@ -5,6 +5,7 @@
 // hooks. Keep this facade thin so Vite never follows the server-side plugin
 // entrypoint into connector/native dependencies.
 import "./api/client-lifeops.js";
+import React from "react";
 import { AppBlockerSettingsCard as AppBlockerSettingsCardImpl } from "./components/AppBlockerSettingsCard.js";
 import { WebsiteBlockerSettingsCard as WebsiteBlockerSettingsCardImpl } from "./components/WebsiteBlockerSettingsCard.js";
 
