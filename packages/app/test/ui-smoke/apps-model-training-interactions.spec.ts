@@ -849,7 +849,18 @@ test("model tester route runs deterministic visible probes", async ({
   page,
 }) => {
   const recorder = await installModelTesterInteractionRoutes(page);
-  await openRouteCase(page, routeCaseByName("model tester app window"));
+  await openAppPath(page, "/model-tester");
+  await assertReadyChecks(
+    page,
+    "model tester shell route",
+    [
+      { selector: '[data-testid="model-tester-shell"]' },
+      { text: "Model Tester" },
+      { text: "Text" },
+    ],
+    "any",
+    90_000,
+  );
 
   await expect(page.getByTestId("model-tester-shell")).toBeVisible();
   await expect(
