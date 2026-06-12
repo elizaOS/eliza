@@ -64,6 +64,17 @@ packages:
   # this package list — we need Node 24, and Ubuntu 24.04's default nodejs is
   # older. See the NodeSource setup_24.x call in runcmd.
 
+  # headscale: VPN coordination server for the agent containers. We install
+  # the package here so a fresh VM has the binary + systemd unit + a deploy-
+  # ready /var/lib/headscale state dir (owned by the package's `headscale`
+  # user). Env-specific bits (server_url in config.yaml, the SQLite db, and
+  # noise_private.key) are an operator handoff on first deploy — same shape
+  # as cloud/.env.local. The package's default config.yaml ships fine for
+  # a fresh tailnet; the operator overlays it from the prior CP for env
+  # continuity. Stopped + masked at first boot so the package's auto-start
+  # doesn't bind to localhost before the operator copies the real config.
+  - headscale
+
 write_files:
   - path: /etc/profile.d/eliza-paths.sh
     permissions: "0644"
@@ -216,6 +227,14 @@ runcmd:
   - rm -f /etc/nginx/sites-enabled/default
   - nginx -t
   - systemctl reload nginx
+
+  # Headscale: stop the package's auto-started service so it doesn't bind
+  # to localhost with a fresh empty DB before the operator overlays the
+  # real config.yaml + state from the prior CP. Keep the unit enabled so a
+  # `systemctl start headscale` after the operator handoff brings it up
+  # cleanly. (We don't mask — masking would surprise an operator who runs
+  # `systemctl start headscale` and gets a silent "masked" no-op.)
+  - systemctl stop headscale 2>/dev/null || true
 
   # Final marker for the bootstrap-warn check that runs after this.
   - echo "eliza-control-plane bootstrap finished $(date -u +%Y-%m-%dT%H:%M:%SZ)" > /var/log/eliza-bootstrap.log
