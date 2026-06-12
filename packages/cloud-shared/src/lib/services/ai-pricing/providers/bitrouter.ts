@@ -27,8 +27,7 @@ const OPENROUTER_PRICING_SOURCE_URL = "https://openrouter.ai/openai/gpt-oss-120b
 // pricing row. Both bare and prefixed ids are emitted because plugin-elizacloud
 // sends the bare id and plugin-openrouter sends the `openai/` prefixed form.
 // Mirrors the gpt-oss-120b forced-pricing shape from PR #8307/#8319.
-const OPENAI_EMBEDDING_PRICING_SOURCE_URL =
-  "https://openai.com/api/pricing";
+const OPENAI_EMBEDDING_PRICING_SOURCE_URL = "https://openai.com/api/pricing";
 
 const FORCED_BITROUTER_PRICING: ReadonlyArray<{
   model: string;

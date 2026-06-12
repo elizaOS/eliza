@@ -301,15 +301,12 @@ describe("forced provider route pricing ids", () => {
     const previousApiKey = process.env.BITROUTER_API_KEY;
     const previousFetch = globalThis.fetch;
     process.env.BITROUTER_API_KEY = "test-bitrouter-key";
-    globalThis.fetch = async () =>
-      new Response(JSON.stringify({ data: [] }), { status: 200 });
+    globalThis.fetch = async () => new Response(JSON.stringify({ data: [] }), { status: 200 });
 
     try {
       const entries = await fetchBitRouterCatalogEntries();
       const input = entries.find(
-        (entry) =>
-          entry.model === "text-embedding-3-small" &&
-          entry.chargeType === "input",
+        (entry) => entry.model === "text-embedding-3-small" && entry.chargeType === "input",
       );
 
       expect(input?.provider).toBe("openai");
@@ -334,15 +331,12 @@ describe("forced provider route pricing ids", () => {
     const previousApiKey = process.env.BITROUTER_API_KEY;
     const previousFetch = globalThis.fetch;
     process.env.BITROUTER_API_KEY = "test-bitrouter-key";
-    globalThis.fetch = async () =>
-      new Response(JSON.stringify({ data: [] }), { status: 200 });
+    globalThis.fetch = async () => new Response(JSON.stringify({ data: [] }), { status: 200 });
 
     try {
       const entries = await fetchBitRouterCatalogEntries();
       const input = entries.find(
-        (entry) =>
-          entry.model === "openai/text-embedding-3-small" &&
-          entry.chargeType === "input",
+        (entry) => entry.model === "openai/text-embedding-3-small" && entry.chargeType === "input",
       );
 
       expect(input?.provider).toBe("openai");
@@ -371,21 +365,15 @@ describe("canonicalModelId — OpenRouter routing variants on bare model ids", (
   // never have dashes; a dashed prefix (gpt-oss-120b, claude-3-5-haiku) is a
   // bare model id that lost its `provider/` segment upstream.
   test("prepends provider for bare id with routing suffix", () => {
-    expect(canonicalModelId("gpt-oss-120b:nitro", "openai")).toBe(
-      "openai/gpt-oss-120b:nitro",
-    );
+    expect(canonicalModelId("gpt-oss-120b:nitro", "openai")).toBe("openai/gpt-oss-120b:nitro");
   });
 
   test("prepends provider for bare id with no suffix", () => {
-    expect(canonicalModelId("gpt-oss-120b", "openai")).toBe(
-      "openai/gpt-oss-120b",
-    );
+    expect(canonicalModelId("gpt-oss-120b", "openai")).toBe("openai/gpt-oss-120b");
   });
 
   test("leaves already-canonical id unchanged", () => {
-    expect(canonicalModelId("openai/gpt-oss-120b", "openai")).toBe(
-      "openai/gpt-oss-120b",
-    );
+    expect(canonicalModelId("openai/gpt-oss-120b", "openai")).toBe("openai/gpt-oss-120b");
   });
 
   test("leaves already-canonical id with routing suffix unchanged", () => {
@@ -395,9 +383,7 @@ describe("canonicalModelId — OpenRouter routing variants on bare model ids", (
   });
 
   test("preserves forced-provider id (cerebras has no dash in prefix)", () => {
-    expect(canonicalModelId("cerebras:gpt-oss-120b", "openai")).toBe(
-      "cerebras:gpt-oss-120b",
-    );
+    expect(canonicalModelId("cerebras:gpt-oss-120b", "openai")).toBe("cerebras:gpt-oss-120b");
   });
 
   test("heuristic generalizes to anthropic + :floor on dashed bare id", () => {
