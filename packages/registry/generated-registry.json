@@ -109,7 +109,7 @@
         "repo": "blackwall-eliza-guardrail",
         "v0": null,
         "v1": null,
-        "v2": "0.2.0"
+        "v2": "0.2.1"
       },
       "supports": {
         "v0": false,
