@@ -191,6 +191,12 @@ const DEFAULT_APP_STORAGE: Record<string, string> = {
   }),
 };
 
+const SMOKE_AGENT = {
+  id: "ui-smoke-agent",
+  name: "Playwright Smoke",
+  status: "running",
+} as const;
+
 export async function seedAppStorage(
   page: Page,
   overrides: Record<string, string> = {},
@@ -1287,6 +1293,27 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  await page.route("**/api/config", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        meta: { firstRunComplete: true },
+        agents: {
+          list: [SMOKE_AGENT],
+          defaults: {
+            workspace: "ui-smoke-workspace",
+            adminEntityId: "owner-ui-smoke",
+          },
+        },
+      }),
+    });
+  });
+
   await page.route("**/api/asr/local-inference/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -1942,7 +1969,7 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ agents: [] }),
+      body: JSON.stringify({ agents: [SMOKE_AGENT] }),
     });
   });
 
