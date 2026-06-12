@@ -119,10 +119,6 @@ const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
     manifestPath: "plugins/plugin-hyperliquid-app/src/plugin.ts",
   },
   {
-    pluginDir: "plugins/plugin-personal-assistant",
-    manifestPath: "plugins/plugin-personal-assistant/src/plugin.ts",
-  },
-  {
     pluginDir: "plugins/plugin-messages",
     manifestPath: "plugins/plugin-messages/src/plugin.ts",
   },

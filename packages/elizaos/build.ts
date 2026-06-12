@@ -6,7 +6,22 @@ import * as path from "node:path";
 import { copyDir } from "./safe-copy-dir.ts";
 
 const PACKAGE_DIR = import.meta.dir;
+const REPO_ROOT = path.resolve(PACKAGE_DIR, "..", "..");
 const DIST_DIR = path.join(PACKAGE_DIR, "dist");
+
+function resolveBin(name: string): string {
+  const local = path.join(REPO_ROOT, "node_modules", ".bin", name);
+  if (process.platform === "win32") {
+    const winLocal = `${local}.cmd`;
+    if (fs.existsSync(winLocal)) return winLocal;
+    if (fs.existsSync(local)) return local;
+    const winRepo = path.join(REPO_ROOT, "node_modules", ".bin", `${name}.cmd`);
+    if (fs.existsSync(winRepo)) return winRepo;
+  } else if (fs.existsSync(local)) {
+    return local;
+  }
+  return name;
+}
 const LEGACY_TEMPLATE_SOURCE_DIR = path.resolve(PACKAGE_DIR, "..", "templates");
 const TEMPLATE_DIR = path.join(PACKAGE_DIR, "templates");
 const MANIFEST_PATH = path.join(PACKAGE_DIR, "templates-manifest.json");
@@ -78,7 +93,7 @@ function prepareTemplates(): void {
         : new Date().toISOString(),
   };
   fs.writeFileSync(MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`);
-  execSync(`bunx --bun @biomejs/biome format --write ${MANIFEST_PATH}`, {
+  execSync(`${resolveBin("biome")} format --write ${MANIFEST_PATH}`, {
     cwd: PACKAGE_DIR,
     stdio: "inherit",
   });
@@ -88,7 +103,7 @@ function buildTypescript(): void {
   if (!fs.existsSync(DIST_DIR)) {
     fs.mkdirSync(DIST_DIR, { recursive: true });
   }
-  execSync("bunx --bun tsc -p tsconfig.json", {
+  execSync(`${resolveBin("tsc")} -p tsconfig.json`, {
     cwd: PACKAGE_DIR,
     stdio: "inherit",
   });

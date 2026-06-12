@@ -134,6 +134,8 @@ async function generateOneImage(request: ImageRequest): Promise<{
     apiKeys: {
       BITROUTER_API_KEY: env.BITROUTER_API_KEY,
       BITROUTER_BASE_URL: env.BITROUTER_BASE_URL,
+      ATLASCLOUD_API_KEY: env.ATLASCLOUD_API_KEY,
+      ATLASCLOUD_BASE_URL: env.ATLASCLOUD_BASE_URL,
       FAL_KEY: env.FAL_KEY,
       FAL_API_KEY: env.FAL_API_KEY,
     },
@@ -172,6 +174,14 @@ app.post("/", async (c) => {
     }
     const env = getCloudAwareEnv();
     if (definition.billingSource === "bitrouter" && !env.BITROUTER_API_KEY) {
+      return jsonError(
+        c,
+        503,
+        getAiProviderConfigurationError(),
+        "internal_error",
+      );
+    }
+    if (definition.billingSource === "atlascloud" && !env.ATLASCLOUD_API_KEY) {
       return jsonError(
         c,
         503,

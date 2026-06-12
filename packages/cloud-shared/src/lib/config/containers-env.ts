@@ -210,10 +210,35 @@ export const containersEnv = {
     return pick(env.AGENT_CONTAINER_PORT) ?? "2138";
   },
 
-  /** Hetzner Cloud API token for elastic node provisioning. Optional. */
+  /**
+   * Hetzner Cloud API token for elastic node provisioning. Optional.
+   * Canonical name is `HCLOUD_TOKEN` (matches the official Hetzner CLI +
+   * Terraform provider). The legacy aliases `HETZNER_CLOUD_TOKEN` and
+   * `HETZNER_CLOUD_API_KEY` were dropped — one source of truth avoids the
+   * silent divergence we hit during the multi-project migration (one
+   * variable swapped, the other still pointing at the old project, so the
+   * autoscaler spawned a worker in the wrong Hetzner project).
+   */
   hetznerCloudToken(): string | undefined {
     const env = getCloudAwareEnv();
-    return pick(env.HCLOUD_TOKEN, env.HETZNER_CLOUD_TOKEN, env.HETZNER_CLOUD_API_KEY);
+    return pick(env.HCLOUD_TOKEN);
+  },
+
+  /**
+   * Cloud deployment environment (`staging`, `production`, `local`, …).
+   *
+   * Stamped onto provisioned Hetzner servers via the `environment` label so
+   * the orchestrator/scheduler can scope per-env operations from the API
+   * (`?label_selector=environment=staging`) and never act on a node from a
+   * different environment.
+   *
+   * Defaults to `"local"` to match the other env-prefixed callers
+   * (cache client, a2a task store, credit-events) — same fallback, same
+   * source of truth (the `ENVIRONMENT` env var).
+   */
+  environment(): string {
+    const env = getCloudAwareEnv();
+    return pick(env.ENVIRONMENT) ?? "local";
   },
 
   /**
@@ -226,6 +251,27 @@ export const containersEnv = {
   publicBaseDomain(): string | undefined {
     const env = getCloudAwareEnv();
     return pick(env.CONTAINERS_PUBLIC_BASE_DOMAIN, env.ELIZA_CLOUD_AGENT_BASE_DOMAIN);
+  },
+
+  /**
+   * Apps-only base domain for per-app public hostnames. Reads
+   * `CONTAINERS_PUBLIC_BASE_DOMAIN` (set to e.g. `apps.elizacloud.ai` on the apps
+   * data plane by the apps-data-plane terraform) with NO fallback to the agent
+   * sandbox domain (`ELIZA_CLOUD_AGENT_BASE_DOMAIN`) — unlike
+   * {@link publicBaseDomain}. So an app never silently inherits the agent/milady
+   * domain; an unset value surfaces as "no URL" instead of a wrong-domain one.
+   */
+  appsPublicBaseDomain(): string | undefined {
+    return getCloudAwareEnv().CONTAINERS_PUBLIC_BASE_DOMAIN || undefined;
+  },
+
+  /**
+   * Caddy admin-API base URL the daemon uses to add/remove per-app ingress routes
+   * (e.g. `http://127.0.0.1:2019` over an SSH tunnel, or the app node's
+   * private-IP admin endpoint). Undefined = ingress not wired (routes are no-ops).
+   */
+  caddyAdminUrl(): string | undefined {
+    return getCloudAwareEnv().APPS_CADDY_ADMIN_URL || undefined;
   },
 
   /**
@@ -283,6 +329,33 @@ export const containersEnv = {
     const raw = pick(env.CONTAINERS_AUTOSCALE_NODE_CAPACITY);
     const parsed = raw ? Number(raw) : Number.NaN;
     return Number.isFinite(parsed) && parsed >= 1 ? Math.min(64, Math.floor(parsed)) : 8;
+  },
+
+  /**
+   * Free slots that must remain across the pool before a new node is
+   * provisioned. Also acts as the drain preservation floor: a drain is
+   * refused if it would leave the pool below this number of free slots.
+   *
+   * Default: 2 — half a 4-slot node kept hot across the pool. Bump via env
+   * for fleets where the cold-start tail matters more than node cost.
+   * Clamped to [0, 64].
+   */
+  autoscaleMinFreeSlotsBuffer(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.CONTAINERS_AUTOSCALE_MIN_FREE_SLOTS_BUFFER);
+    const parsed = raw !== undefined ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.min(64, Math.floor(parsed)) : 2;
+  },
+
+  /**
+   * Emergency floor for hot agent starts; bypasses scale-up cooldown when
+   * pool availability drops below this. Clamped to [0, 64]. Default: 1.
+   */
+  autoscaleMinHotAvailableSlots(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.CONTAINERS_AUTOSCALE_MIN_HOT_AVAILABLE_SLOTS);
+    const parsed = raw !== undefined ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.min(64, Math.floor(parsed)) : 1;
   },
 
   // ── Warm pool ───────────────────────────────────────────────────────────

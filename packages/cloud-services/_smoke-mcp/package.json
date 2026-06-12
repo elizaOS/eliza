@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.26.0",
-    "hono": "4.12.21",
+    "hono": "4.12.25",
     "mcp-handler": "^1.0.7",
     "zod": "^4.4.3"
   },

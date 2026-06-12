@@ -200,7 +200,6 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   CONTAINER_CONTROL_PLANE_URL        Node sidecar URL for container mutations + hot-pool image pre-pull
 #   CONTAINER_CONTROL_PLANE_TOKEN      Shared Worker↔sidecar secret
 #   HCLOUD_TOKEN                       Hetzner Cloud API token for elastic Docker node provisioning
-#       HETZNER_CLOUD_API_KEY is also accepted as an alias.
 #   CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY Public SSH key written to autoscaled nodes
 #   CONTAINERS_BOOTSTRAP_CALLBACK_URL  Optional docker_nodes self-registration callback URL
 #   CONTAINERS_BOOTSTRAP_SECRET        Optional docker_nodes self-registration shared secret
@@ -243,12 +242,18 @@ NODE_ENV = "production"
 NEXT_PUBLIC_APP_URL = "https://staging.elizacloud.ai"
 NEXT_PUBLIC_API_URL = "https://api-staging.elizacloud.ai"
 ELIZA_CLOUD_URL = "https://staging.elizacloud.ai"
+BITROUTER_BASE_URL = "https://bitrouter-staging.up.railway.app"
 # Per-tenant `magicLinkBaseUrl` (set in Steward Neon `tenant_configs.email_config`)
 # redirects email magic-link callbacks to staging.elizacloud.ai instead of the
 # prod fallback (www.elizacloud.ai). Tenant row provisioned manually.
 STEWARD_TENANT_ID = "elizacloud-staging"
 NEXT_PUBLIC_STEWARD_TENANT_ID = "elizacloud-staging"
 ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai"
+# Routes agent-subdomain traffic to the staging control-plane VM. Without this
+# the Worker falls back to DEFAULT_AGENT_ROUTER_ORIGIN_HOST in
+# packages/cloud-api/src/index.ts (= eliza-production-1.elizacloud.ai) so
+# staging agent requests would silently hit the prod CP.
+AGENT_ROUTER_ORIGIN_HOST = "eliza-staging-1.elizacloud.ai"
 WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
 WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
 ELIZA_APP_URL = "https://eliza.app"

@@ -113,17 +113,26 @@ export class NativeAcpClient {
       );
     });
 
-    await this.request("initialize", {
-      protocolVersion: ACP_PROTOCOL_VERSION,
-      clientCapabilities: {
-        fs: { readTextFile: true, writeTextFile: true },
-        terminal: this.opts.terminal !== false,
+    await this.request(
+      "initialize",
+      {
+        protocolVersion: ACP_PROTOCOL_VERSION,
+        clientCapabilities: {
+          fs: { readTextFile: true, writeTextFile: true },
+          terminal: this.opts.terminal !== false,
+        },
+        clientInfo: {
+          name: "@elizaos/plugin-agent-orchestrator",
+          version: "2.0.0",
+        },
       },
-      clientInfo: {
-        name: "@elizaos/plugin-agent-orchestrator",
-        version: "2.0.0",
-      },
-    });
+      // The first opencode spawn compiles its TS tree and installs the provider
+      // npm package (e.g. @ai-sdk/cerebras), which can exceed the 300s default.
+      // Honor the configured session timeout for the handshake too.
+      this.opts.timeoutMs && this.opts.timeoutMs > 0
+        ? this.opts.timeoutMs
+        : DEFAULT_TIMEOUT_MS,
+    );
   }
 
   async createSession(cwd = this.opts.cwd): Promise<NativeAcpSession> {

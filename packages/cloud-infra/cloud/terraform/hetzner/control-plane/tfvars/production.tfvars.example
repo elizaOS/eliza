@@ -1,9 +1,14 @@
 environment           = "production"
 hcloud_location       = "fsn1"
-hcloud_server_type    = "cpx21"
+# Production VM eliza-1 runs cax21 (ARM) today. Keep tfvars on x86 cpx32 for now
+# — flipping prod to cax21 via TF needs the cloud-init arm64 fix (followup).
+hcloud_server_type    = "cpx32"
 control_plane_count   = 1
 cloudflare_zone_id    = "<zone-id-for-elizacloud.ai>"
 
 ssh_public_keys = [
   # "ssh-ed25519 AAAA... operator@laptop"
 ]
+
+# Production MUST track 'main' (module validation enforces).
+deploy_branch = "main"

@@ -23,7 +23,6 @@ index.html           HTML shell (tokens replaced at build by appShellMetadataPlu
 src/
   main.tsx           React boot: plugin loading, root render, platform init
   app-config.ts      Re-exports APP_CONFIG and derived branding/namespace constants
-  plugin-loader.ts   APP_PLUGIN_SPECS map + initializeAppPlugins()
   deep-link-routing.ts  Custom URL scheme → hash route mapping
   mobile-*.ts        Capacitor bridges + app lifecycle
 vite/                Browser-bundle Vite plugins (native-module-stub-plugin.ts)

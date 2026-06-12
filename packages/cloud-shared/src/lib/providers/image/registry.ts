@@ -1,4 +1,5 @@
 import type { PricingBillingSource } from "../../services/ai-pricing-definitions";
+import { atlasCloudImageProvider } from "./atlascloud-image-generation";
 import { bitRouterImageProvider } from "./bitrouter-image-generation";
 import { falImageProvider } from "./fal-image-generation";
 import type { ImageProvider } from "./types";
@@ -19,3 +20,4 @@ export function getImageProvider(billingSource: PricingBillingSource): ImageProv
 
 registerImageProvider(bitRouterImageProvider);
 registerImageProvider(falImageProvider);
+registerImageProvider(atlasCloudImageProvider);

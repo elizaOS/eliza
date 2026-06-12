@@ -531,7 +531,7 @@ describe("HetznerCloudClient error mapping", () => {
 // ---------------------------------------------------------------------------
 
 describe("HetznerCloudClient env construction", () => {
-  const ENV_KEYS = ["HCLOUD_TOKEN", "HETZNER_CLOUD_TOKEN", "HETZNER_CLOUD_API_KEY"] as const;
+  const ENV_KEYS = ["HCLOUD_TOKEN"] as const;
   let saved: Record<string, string | undefined>;
 
   beforeEach(() => {

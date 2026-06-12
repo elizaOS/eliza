@@ -29,6 +29,8 @@ export interface Bindings {
   CEREBRAS_API_KEY?: string;
   BITROUTER_API_KEY?: string;
   BITROUTER_BASE_URL?: string;
+  ATLASCLOUD_API_KEY?: string;
+  ATLASCLOUD_BASE_URL?: string;
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;
   ANTHROPIC_API_KEY?: string;
@@ -102,8 +104,6 @@ export interface Bindings {
   HETZNER_CONTAINER_CONTROL_PLANE_URL?: string;
   CONTAINER_CONTROL_PLANE_TOKEN?: string;
   HCLOUD_TOKEN?: string;
-  HETZNER_CLOUD_TOKEN?: string;
-  HETZNER_CLOUD_API_KEY?: string;
   CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY?: string;
   CONTAINERS_AUTOSCALE_NODE_CAPACITY?: string;
   CONTAINERS_BOOTSTRAP_CALLBACK_URL?: string;

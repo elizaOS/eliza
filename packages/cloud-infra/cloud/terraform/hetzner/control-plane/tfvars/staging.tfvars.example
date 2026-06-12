@@ -2,7 +2,7 @@
 
 environment           = "staging"
 hcloud_location       = "fsn1"
-hcloud_server_type    = "cpx21"
+hcloud_server_type    = "cpx32"
 control_plane_count   = 1
 cloudflare_zone_id    = "<zone-id-for-elizacloud.ai>"
 
@@ -10,3 +10,7 @@ cloudflare_zone_id    = "<zone-id-for-elizacloud.ai>"
 ssh_public_keys = [
   # "ssh-ed25519 AAAA... operator@laptop"
 ]
+
+# Branch the host's auto-deploy follows. Staging tracks 'develop' by default;
+# production MUST be 'main' (enforced by validation).
+deploy_branch = "develop"

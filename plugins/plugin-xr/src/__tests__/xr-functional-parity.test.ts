@@ -152,12 +152,6 @@ const PLUGIN_REGISTRY: Array<{
     requiredTerms: ["HyperliquidAppView", "useState"],
   },
   {
-    pluginDir: "plugins/plugin-personal-assistant",
-    manifestPath: "plugins/plugin-personal-assistant/src/plugin.ts",
-    xrComponentSrc: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
-    requiredTerms: ["LifeOpsPageView", "useState"],
-  },
-  {
     pluginDir: "plugins/plugin-messages",
     manifestPath: "plugins/plugin-messages/src/plugin.ts",
     xrComponentSrc:
@@ -310,11 +304,6 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
       "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.interact.ts",
     capabilities: ["terminal-hyperliquid-state"],
   },
-  "plugins/plugin-personal-assistant": {
-    srcFile:
-      "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.interact.ts",
-    capabilities: ["terminal-lifeops-state", "terminal-lifeops-enable"],
-  },
   "plugins/plugin-messages": {
     srcFile:
       "plugins/plugin-messages/src/components/MessagesAppView.interact.ts",
@@ -375,7 +364,7 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("XR feature-by-feature functional parity — all 24 views", () => {
+describe("XR feature-by-feature functional parity — all 23 views", () => {
   // A. Shared bundle architecture ─────────────────────────────────────────────
 
   it("A — every XR view uses the same bundlePath as the GUI view (shared bundle = shared features)", () => {
@@ -545,11 +534,11 @@ describe("XR feature-by-feature functional parity — all 24 views", () => {
 
   // Summary assertion ─────────────────────────────────────────────────────────
 
-  it("summary — all 24 plugins have XR views that are functionally identical to their GUI views", () => {
+  it("summary — all 23 plugins have XR views that are functionally identical to their GUI views", () => {
     // This test is a logical consequence of tests A, B, C, D above all passing.
     // It explicitly states the guarantee: same bundle + same component = same features.
     const xrPluginCount = PLUGIN_REGISTRY.length;
-    expect(xrPluginCount).toBe(24);
+    expect(xrPluginCount).toBe(23);
 
     for (const { pluginDir, manifestPath } of PLUGIN_REGISTRY) {
       const source = readFile(manifestPath);

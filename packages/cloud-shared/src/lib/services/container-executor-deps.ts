@@ -21,8 +21,10 @@ import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
 import { AppContainerProvider, type AppContainerSsh } from "./app-container-provider";
 import { appContainerStore } from "./app-container-store";
+import { addAppRoute, removeAppRoute } from "./apps-ingress-provisioner";
 import type { ContainerExecutorDeps } from "./container-job-executors";
 import { DockerSSHClient } from "./docker-ssh";
+import { listVerifiedAppOrigins } from "./managed-domains";
 
 /** True when the apps-container provision backend has enough env to run. */
 export function appsContainersEnabled(): boolean {
@@ -102,6 +104,7 @@ export function buildContainerExecutorDeps(): ContainerExecutorDeps {
     );
   }
   const ssh = makeNodeSsh();
+  const nodeHost = selectNodeHost();
   const egressProxyUrl = process.env.CONTAINERS_EGRESS_PROXY_URL || undefined;
   // The DB ambassador's egress network (it reaches the tenant DB) + socat image.
   const dbEgressNetwork = process.env.APPS_DB_EGRESS_NETWORK || undefined;
@@ -112,11 +115,36 @@ export function buildContainerExecutorDeps(): ContainerExecutorDeps {
     egressProxyUrl,
     dbEgressNetwork,
     ambassadorImage,
+    nodeHost,
   });
+
+  // Ingress route hooks — wired only when a Caddy admin URL is configured.
+  // Otherwise routes are no-ops (the deploy still succeeds; the app just has no
+  // public URL until ingress is set up).
+  const caddyAdminUrl = containersEnv.caddyAdminUrl();
+  const ingress: Pick<ContainerExecutorDeps, "onRouteAdded" | "onRouteRemoved"> = caddyAdminUrl
+    ? {
+        onRouteAdded: (route) => addAppRoute({ ...route, adminBase: caddyAdminUrl }),
+        onRouteRemoved: (route) => removeAppRoute({ ...route, adminBase: caddyAdminUrl }),
+      }
+    : {};
+
   logger.info("[container-executor-deps] built apps container backend", {
-    node: selectNodeHost(),
+    node: nodeHost,
     egressProxy: Boolean(egressProxyUrl),
     dbEgressNetwork: dbEgressNetwork ?? "bridge",
+    ingress: Boolean(caddyAdminUrl),
   });
-  return { provider, store: appContainerStore };
+  return {
+    provider,
+    store: appContainerStore,
+    // Verified custom domains for the app -> bare hostnames, folded into the
+    // ingress route's host-match. Reuses the existing CORS verified-origin query
+    // (status='active' AND verified=true); only invoked when ingress is wired.
+    listVerifiedAppHostnames: (appId) =>
+      listVerifiedAppOrigins(appId).then((origins) =>
+        origins.map((origin) => origin.replace(/^https?:\/\//, "").replace(/\/+$/, "")),
+      ),
+    ...ingress,
+  };
 }

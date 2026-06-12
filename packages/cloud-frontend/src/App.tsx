@@ -337,6 +337,10 @@ const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
     preload: preloadAll(InviteAcceptLayout.preload, InviteAcceptPage.preload),
   },
   {
+    path: "/accept-invitation",
+    preload: preloadAll(InviteAcceptLayout.preload, InviteAcceptPage.preload),
+  },
+  {
     path: "/payment/app-charge/:appId/:chargeId",
     preload: preloadAll(
       AppChargePaymentLayout.preload,
@@ -628,6 +632,16 @@ function App() {
 
         <Route
           path="invite/accept"
+          element={<SuspenseRoute component={InviteAcceptLayout} />}
+        >
+          <Route
+            index
+            element={<SuspenseRoute component={InviteAcceptPage} />}
+          />
+        </Route>
+
+        <Route
+          path="accept-invitation"
           element={<SuspenseRoute component={InviteAcceptLayout} />}
         >
           <Route

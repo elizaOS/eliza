@@ -63,8 +63,8 @@ export interface AutoscalePolicy {
 }
 
 export const DEFAULT_AUTOSCALE_POLICY: AutoscalePolicy = {
-  minFreeSlotsBuffer: 4,
-  minHotAvailableSlots: 1,
+  minFreeSlotsBuffer: containersEnv.autoscaleMinFreeSlotsBuffer(),
+  minHotAvailableSlots: containersEnv.autoscaleMinHotAvailableSlots(),
   maxNodes: 12,
   scaleUpCooldownMs: 5 * 60 * 1000,
   idleNodeMinAgeMs: 30 * 60 * 1000,
@@ -244,9 +244,18 @@ export class NodeAutoscaler {
     });
 
     const client = getHetznerCloudClient();
+    // `environment` + `tier` let the orchestrator scope server lookups via
+    // Hetzner's label_selector (e.g. `environment=staging,tier=data-plane`) so
+    // staging never touches a production node, and a runaway daemon can't
+    // accidentally claim/drain a server from a sibling environment. Without
+    // these labels every API-discovered node looks identical, which is how we
+    // shipped a staging node tagged `environment=production` in the first
+    // place. Caller overrides via `request.labels` win (test seams).
     const labels = {
       "managed-by": "eliza-cloud",
       "node-id": nodeId,
+      environment: containersEnv.environment(),
+      tier: "data-plane",
       ...request.labels,
     };
 
@@ -357,7 +366,10 @@ export class NodeAutoscaler {
       await client.deleteServer(hcloudServerId);
     } catch (err) {
       if (err instanceof HetznerCloudError && err.code === "not_found") {
-        logger.info("[autoscaler] Hetzner server already gone", { nodeId, hcloudServerId });
+        logger.info("[autoscaler] Hetzner server already gone", {
+          nodeId,
+          hcloudServerId,
+        });
       } else {
         throw err;
       }

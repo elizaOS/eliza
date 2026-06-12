@@ -2,9 +2,6 @@
  * Coverage ratchet: every converted plugin view must register at least one
  * element with the agent surface (useAgentElement) so the floating pill can
  * address it. Guards against a view regressing to an unaddressable surface.
- *
- * plugin-personal-assistant now exposes a compatibility facade; its former
- * LifeOps view surface is covered by the decomposed domain plugins.
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";

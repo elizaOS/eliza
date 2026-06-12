@@ -26,7 +26,6 @@ packages/app/
     ios-runtime.ts           Re-exports IosRuntimeConfig helpers from @elizaos/ui
     mobile-bridges.ts        Capacitor bridge init helpers
     mobile-lifecycle.ts      App pause/resume, back-button, network lifecycle
-    plugin-loader.ts         Declarative plugin loader: APP_PLUGIN_SPECS map, initializeAppPlugins()
     plugin-registrations.ts  SIDE_EFFECT_APP_MODULE_LOADERS list (feed, scape, trajectory-logger, etc.)
     sw-registration.ts       Service worker registration
     url-trust-policy.ts      Validates deep-link gateway URLs
@@ -60,14 +59,13 @@ packages/app/
 ## Key internal modules
 
 - `app.config.ts` (package root) — single source of truth for app identity. `appId: "ai.elizaos.app"`, `cliName: "eliza"`, `envPrefix: "ELIZA"`, desktop `urlScheme: "elizaos"`. `src/app-config.ts` re-exports it as `APP_CONFIG` plus derived `APP_BRANDING_BASE`/`APP_LOG_PREFIX`/`APP_NAMESPACE`/`APP_URL_SCHEME`. Copy `app.config.ts` to white-label a new app.
-- `src/plugin-loader.ts` — `APP_PLUGIN_SPECS` map of `@elizaos/app-*` → dynamic import. `initializeAppPlugins()` loads all plugins in parallel and calls `setBootConfig()` on `@elizaos/ui`. This is the canonical plugin init path.
 - `src/plugin-registrations.ts` — `SIDE_EFFECT_APP_MODULE_LOADERS`: plugins imported for their self-registration side effects (feed, scape, shopify-ui, etc.), not for exported components.
-- `src/main.tsx` — React entry point. Calls `initializeAppModules()` (parallel-loads plugins, assembles `AppBootConfig`), then mounts React, then `initializePlatform()` (storage bridge, Capacitor listeners, desktop shell) concurrently after mount.
+- `src/main.tsx` — React entry point. Owns `initializeAppModules()` + `buildAppBootConfig()` inline (parallel-loads plugins, assembles `AppBootConfig`), then mounts React, then `initializePlatform()` (storage bridge, Capacitor listeners, desktop shell) concurrently after mount.
 
 ## Boot sequence
 
 1. `src/main.tsx` runs before React mounts.
-2. `initializeAppModules()` — parallel-loads all `@elizaos/app-*` / `@elizaos/plugin-*` modules, calls `registerCompanionApp()`, `registerLifeOpsApp()`, assembles `AppBootConfig`, calls `setBootConfig()`.
+2. `initializeAppModules()` — parallel-loads all `@elizaos/app-*` / `@elizaos/plugin-*` modules, calls `registerCompanionApp()`, assembles `AppBootConfig`, calls `setBootConfig()`.
 3. React `createRoot` renders `<AppProvider><App /></AppProvider>` from `@elizaos/ui`.
 4. `initializePlatform()` — per-platform init: storage bridge, keyboard, lifecycle, network, mobile device bridge, desktop shell. Runs concurrently after mount (not before).
 
@@ -142,13 +140,9 @@ All env vars use the `ELIZA_` prefix (set in `app.config.ts` → `envPrefix: "EL
 
 ### Add a new app-level plugin
 
-1. Add the import to `src/plugin-loader.ts` `APP_PLUGIN_SPECS`:
-   ```ts
-   "@elizaos/plugin-my-feature": () => import("@elizaos/plugin-my-feature"),
-   ```
-2. Add a call inside `initializeAppPlugins()` → the `Promise.all([...])` block.
-3. If the plugin exports components for `AppBootConfig`, add lazy handles and wire them into `bootConfig`.
-4. Add the package to `package.json` dependencies.
+1. Add a dynamic `import("@elizaos/plugin-my-feature")` to `initializeAppModules()` in `src/main.tsx` (Promise.all batch).
+2. If the plugin exports components for `AppBootConfig`, add lazy handles via `lazyNamedComponent()` and wire them into `buildAppBootConfig()`.
+3. Add the package to `package.json` dependencies.
 
 ### Add a side-effect-only plugin (no exported components)
 
@@ -169,8 +163,8 @@ bun run --cwd packages/app test:e2e
 
 - **No exports.** This is a private app shell. Nothing else should import from it.
 - **`app.config.ts` is the white-label seam.** To create a new branded app: copy this package, change `app.config.ts` values, update `capacitor.config.ts` if targeting mobile.
-- **Plugin module caching.** `plugin-loader.ts` uses a `Map<AppPluginId, Promise>` so each module resolves once. `React.lazy()` consumers and the boot phase share the same promise.
-- **`@elizaos/app-core` must load first** before other plugins — it owns the `AppBootConfig` singleton. `initializeAppPlugins()` awaits it before the parallel batch.
+- **Plugin module caching.** `main.tsx` resolves each plugin module exactly once via the `initializeAppModules()` Promise.all; `React.lazy()` consumers share the same promise via `lazyNamedComponent()`.
+- **`@elizaos/app-core` must load first** before other plugins — it owns the `AppBootConfig` singleton. `initializeAppModules()` awaits it before the parallel batch.
 - **Desktop API base injection.** Electrobun injects `window.__ELIZA_APP_API_BASE__` before React boots via its static server; Vite dev uses a `<script>` tag injected by `appDevWsBasePlugin()`.
 - **iOS store CSP.** When `ELIZA_BUILD_VARIANT=store` + `ELIZA_RELEASE_AUTHORITY=apple-app-store`, the build strips all `localhost`/`127.0.0.1` CSP sources and Capacitor allowNavigation entries. Do not hardcode local origins.
 - **Capacitor `ios/` and `android/` dirs are generated.** Run `bun run --cwd packages/app cap:sync` after any `capacitor.config.ts` change. Do not hand-edit the native project settings that Capacitor generates.

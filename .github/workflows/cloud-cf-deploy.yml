@@ -218,6 +218,12 @@ jobs:
           # Staging uses a separate Steward tenant (`elizacloud-staging`) so its
           # `magicLinkBaseUrl` redirects email callbacks back to staging.elizacloud.ai.
           NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
+          # Deployment-env signal baked into the SPA bundle. Read by isomorphic
+          # cloud-shared code (e.g. agent flavor catalog) to branch on env.
+          # Vite strips `process.env` for the browser, so the Worker
+          # `ENVIRONMENT` binding is invisible to the SPA — VITE_ENVIRONMENT is
+          # the only thing the bundle can see at runtime.
+          VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
 
       - name: Resolve Pages branch

@@ -18,6 +18,18 @@ const CEREBRAS_PRICING_SOURCE_URL = "https://www.cerebras.ai/pricing";
 // base id, so one base entry covers every variant.
 const OPENROUTER_PRICING_SOURCE_URL = "https://openrouter.ai/openai/gpt-oss-120b";
 
+// BitRouter has no /v1/embeddings inbound route (live 404 with valid
+// PROXY_TOKEN, confirmed in source: only 4 inbound POST routes, no
+// ApiProtocol::Embeddings). The cloud-api getTextEmbeddingModel handler falls
+// through to OpenAI Direct when the model id is `openai/text-embedding-*` or
+// the bare `text-embedding-*`, and OPENAI_API_KEY is bound on the staging
+// Worker — so the only piece missing for embeddings to bill correctly was a
+// pricing row. Both bare and prefixed ids are emitted because plugin-elizacloud
+// sends the bare id and plugin-openrouter sends the `openai/` prefixed form.
+// Mirrors the gpt-oss-120b forced-pricing shape from PR #8307/#8319.
+const OPENAI_EMBEDDING_PRICING_SOURCE_URL =
+  "https://openai.com/api/pricing";
+
 const FORCED_BITROUTER_PRICING: ReadonlyArray<{
   model: string;
   provider: string;
@@ -26,6 +38,7 @@ const FORCED_BITROUTER_PRICING: ReadonlyArray<{
   inputUnitPrice: number;
   outputUnitPrice: number;
   sourceUrl: string;
+  priority?: number;
   metadata?: Record<string, unknown>;
 }> = [
   {
@@ -65,6 +78,93 @@ const FORCED_BITROUTER_PRICING: ReadonlyArray<{
     metadata: {
       sourceNote:
         "Estimate from OpenRouter public pricing (2026-06-07). Replace once BitRouter catalog returns a priced row for openai/gpt-oss-120b.",
+    },
+  },
+  // text-embedding-3-small — $0.02 / 1M input tokens
+  {
+    model: "openai/text-embedding-3-small",
+    provider: "openai",
+    productFamily: "embedding",
+    unit: "token",
+    inputUnitPrice: 0.00000002,
+    outputUnitPrice: 0,
+    sourceUrl: OPENAI_EMBEDDING_PRICING_SOURCE_URL,
+    priority: -1,
+    metadata: {
+      sourceNote:
+        "OpenAI public pricing: text-embedding-3-small at $0.02/1M tokens. Forced row because BitRouter has no /v1/embeddings route — cloud-api falls through to OpenAI Direct.",
+    },
+  },
+  {
+    model: "text-embedding-3-small",
+    provider: "openai",
+    productFamily: "embedding",
+    unit: "token",
+    inputUnitPrice: 0.00000002,
+    outputUnitPrice: 0,
+    sourceUrl: OPENAI_EMBEDDING_PRICING_SOURCE_URL,
+    priority: -1,
+    metadata: {
+      sourceNote:
+        "OpenAI public pricing: text-embedding-3-small at $0.02/1M tokens. Bare-id variant for plugin-elizacloud, which sends the unprefixed id.",
+    },
+  },
+  // text-embedding-3-large — $0.13 / 1M input tokens
+  {
+    model: "openai/text-embedding-3-large",
+    provider: "openai",
+    productFamily: "embedding",
+    unit: "token",
+    inputUnitPrice: 0.00000013,
+    outputUnitPrice: 0,
+    sourceUrl: OPENAI_EMBEDDING_PRICING_SOURCE_URL,
+    priority: -1,
+    metadata: {
+      sourceNote:
+        "OpenAI public pricing: text-embedding-3-large at $0.13/1M tokens. Forced row because BitRouter has no /v1/embeddings route — cloud-api falls through to OpenAI Direct.",
+    },
+  },
+  {
+    model: "text-embedding-3-large",
+    provider: "openai",
+    productFamily: "embedding",
+    unit: "token",
+    inputUnitPrice: 0.00000013,
+    outputUnitPrice: 0,
+    sourceUrl: OPENAI_EMBEDDING_PRICING_SOURCE_URL,
+    priority: -1,
+    metadata: {
+      sourceNote:
+        "OpenAI public pricing: text-embedding-3-large at $0.13/1M tokens. Bare-id variant for plugin-elizacloud, which sends the unprefixed id.",
+    },
+  },
+  // text-embedding-ada-002 — $0.10 / 1M input tokens
+  {
+    model: "openai/text-embedding-ada-002",
+    provider: "openai",
+    productFamily: "embedding",
+    unit: "token",
+    inputUnitPrice: 0.0000001,
+    outputUnitPrice: 0,
+    sourceUrl: OPENAI_EMBEDDING_PRICING_SOURCE_URL,
+    priority: -1,
+    metadata: {
+      sourceNote:
+        "OpenAI public pricing: text-embedding-ada-002 at $0.10/1M tokens. Forced row because BitRouter has no /v1/embeddings route — cloud-api falls through to OpenAI Direct.",
+    },
+  },
+  {
+    model: "text-embedding-ada-002",
+    provider: "openai",
+    productFamily: "embedding",
+    unit: "token",
+    inputUnitPrice: 0.0000001,
+    outputUnitPrice: 0,
+    sourceUrl: OPENAI_EMBEDDING_PRICING_SOURCE_URL,
+    priority: -1,
+    metadata: {
+      sourceNote:
+        "OpenAI public pricing: text-embedding-ada-002 at $0.10/1M tokens. Bare-id variant for plugin-elizacloud, which sends the unprefixed id.",
     },
   },
 ];
@@ -198,6 +298,7 @@ function buildForcedBitRouterPricingEntries(): PreparedPricingEntry[] {
       inputUnitPrice,
       outputUnitPrice,
       sourceUrl,
+      priority,
       metadata,
     }) => [
       {
@@ -212,6 +313,7 @@ function buildForcedBitRouterPricingEntries(): PreparedPricingEntry[] {
         sourceUrl,
         fetchedAt,
         staleAfter,
+        ...(priority !== undefined ? { priority } : {}),
         metadata,
       },
       {
@@ -226,6 +328,7 @@ function buildForcedBitRouterPricingEntries(): PreparedPricingEntry[] {
         sourceUrl,
         fetchedAt,
         staleAfter,
+        ...(priority !== undefined ? { priority } : {}),
         metadata,
       },
     ],

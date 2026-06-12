@@ -74,11 +74,10 @@ function isImageIcon(value: string): boolean {
 
 export function ViewIcon({
   icon,
-  label,
   className = "h-5 w-5",
 }: {
   icon?: string | null;
-  label: string;
+  label?: string;
   className?: string;
 }) {
   if (icon && isImageIcon(icon)) {
@@ -98,10 +97,5 @@ export function ViewIcon({
     return <Icon className={className} aria-hidden="true" />;
   }
 
-  const fallback = label.trim().slice(0, 1).toUpperCase() || "V";
-  return (
-    <span aria-hidden="true" className="text-xs font-semibold leading-none">
-      {fallback}
-    </span>
-  );
+  return <LayoutGrid className={className} aria-hidden="true" />;
 }

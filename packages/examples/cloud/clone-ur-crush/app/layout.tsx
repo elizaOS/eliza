@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { PrivyProvider } from "@/providers/PrivyProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -51,9 +50,7 @@ export default function RootLayout({
           content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes"
         />
       </head>
-      <body className={inter.className}>
-        <PrivyProvider>{children}</PrivyProvider>
-      </body>
+      <body className={inter.className}>{children}</body>
     </html>
   );
 }

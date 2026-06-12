@@ -40,8 +40,8 @@ function makeApp(overrides: Partial<RegistryAppInfo>): RegistryAppInfo {
 
 const apps: RegistryAppInfo[] = [
   makeApp({
-    name: "@elizaos/plugin-lifeops",
-    displayName: "LifeOps",
+    name: "@elizaos/plugin-personal-assistant",
+    displayName: "Personal Assistant",
     category: "utility",
   }),
   makeApp({
@@ -74,9 +74,9 @@ const apps: RegistryAppInfo[] = [
 const runs: AppRunSummary[] = [
   {
     runId: "run-1",
-    appName: "@elizaos/plugin-lifeops",
-    displayName: "LifeOps",
-    pluginName: "@elizaos/plugin-lifeops",
+    appName: "@elizaos/plugin-personal-assistant",
+    displayName: "Personal Assistant",
+    pluginName: "@elizaos/plugin-personal-assistant",
     launchType: "iframe",
     launchUrl: null,
     viewer: null,
@@ -144,9 +144,9 @@ export const Default: Story = {};
 export const WithStarredAndActive: Story = {
   args: {
     runs,
-    activeAppNames: new Set(["@elizaos/plugin-lifeops"]),
+    activeAppNames: new Set(["@elizaos/plugin-personal-assistant"]),
     favoriteAppNames: new Set(["@elizaos/plugin-notes"]),
-    selectedAppName: "@elizaos/plugin-lifeops",
+    selectedAppName: "@elizaos/plugin-personal-assistant",
   },
 };
 

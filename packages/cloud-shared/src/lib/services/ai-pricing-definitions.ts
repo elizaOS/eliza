@@ -11,6 +11,7 @@ export type PricingProductFamily =
 export type PricingBillingSource =
   | "gateway"
   | "bitrouter"
+  | "atlascloud"
   | "groq"
   | "vast"
   | "cerebras"
@@ -91,7 +92,6 @@ export const PRICING_MODEL_ALIASES = {
   "vertex/gemini-2.0-flash-001": ["google/gemini-2.0-flash"],
   "vertex/gemini-2.0-flash-lite-001": ["google/gemini-2.0-flash-lite"],
   "google/gemini-3-pro-image": ["google/gemini-3-pro-image-preview"],
-  "openai/gpt-image-2": ["openai/gpt-5.4-image-2"],
   "xai/grok-2-1212": ["xai/grok-3"],
   "xai/grok-2-vision-1212": ["xai/grok-3"],
   "xai/grok-2": ["xai/grok-3"],
@@ -240,6 +240,43 @@ export const SUPPORTED_IMAGE_MODELS: SupportedImageModelDefinition[] = [
     label: "GPT-5 Image",
     sourceUrl: "https://api.bitrouter.ai/v1/models",
     defaultDimensions: { size: "1024x1024", quality: "high" },
+  },
+  // Atlas Cloud image models. Atlas serves images via its async predict/poll
+  // API (/api/v1/model/generateImage); model ids are task-suffixed
+  // (e.g. "openai/gpt-image-2/text-to-image"). Native, un-marked-up provider
+  // pricing. These are Atlas-only model ids so they do not collide with the
+  // BitRouter entries above (getSupportedImageModelDefinition keys on modelId).
+  {
+    modelId: "openai/gpt-image-2/text-to-image",
+    provider: "openai",
+    billingSource: "atlascloud",
+    label: "GPT Image 2",
+    sourceUrl: "https://www.atlascloud.ai/models/list",
+    defaultDimensions: { size: "1024x1024", quality: "high" },
+  },
+  {
+    modelId: "bytedance/seedream-v5.0-lite",
+    provider: "bytedance",
+    billingSource: "atlascloud",
+    label: "Seedream 5.0 Lite",
+    sourceUrl: "https://www.atlascloud.ai/models/list",
+    defaultDimensions: { size: "default" },
+  },
+  {
+    modelId: "google/nano-banana-2/text-to-image",
+    provider: "google",
+    billingSource: "atlascloud",
+    label: "Nano Banana 2",
+    sourceUrl: "https://www.atlascloud.ai/models/list",
+    defaultDimensions: { size: "default" },
+  },
+  {
+    modelId: "qwen/qwen-image-2.0/text-to-image",
+    provider: "qwen",
+    billingSource: "atlascloud",
+    label: "Qwen Image 2.0",
+    sourceUrl: "https://www.atlascloud.ai/models/list",
+    defaultDimensions: { size: "default" },
   },
   {
     modelId: "fal-ai/flux/schnell",

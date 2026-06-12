@@ -74,6 +74,14 @@ function view(
 }
 
 const views: ViewRegistryEntry[] = [
+  view("views-manager", {
+    label: "Views",
+    description: "Browse and open available views contributed by plugins",
+    path: "/views",
+    pluginName: "app-control",
+    builtin: false,
+    tags: ["views"],
+  }),
   view("local.notes", {
     label: "Local Notes",
     description: "Built-in local note board",
@@ -81,6 +89,22 @@ const views: ViewRegistryEntry[] = [
     pluginName: "core",
     builtin: true,
     tags: ["local", "notes"],
+  }),
+  view("chat", {
+    label: "Chat",
+    description: "Conversations with your agent",
+    path: "/chat",
+    pluginName: "@elizaos/builtin",
+    builtin: true,
+    tags: ["chat", "messages"],
+  }),
+  view("character", {
+    label: "Character",
+    description: "Agent identity and knowledge documents",
+    path: "/character",
+    pluginName: "@elizaos/builtin/character",
+    builtin: true,
+    tags: ["character", "identity"],
   }),
   view("remote.ledger", {
     label: "Remote Ledger",
@@ -145,6 +169,9 @@ describe("ViewCatalog", () => {
     expect(screen.getByPlaceholderText("Search views…")).toBeTruthy();
     expect(screen.getByText("Local Notes")).toBeTruthy();
     expect(screen.getByText("Remote Ledger")).toBeTruthy();
+    expect(screen.queryByTestId("view-card-views-manager")).toBeNull();
+    expect(screen.queryByTestId("view-card-chat")).toBeNull();
+    expect(screen.queryByTestId("view-card-character")).toBeNull();
     expect(screen.queryByText("Developer Trace")).toBeNull();
     expect(screen.queryByText("Internal Hidden")).toBeNull();
   });
@@ -225,7 +252,7 @@ describe("ViewCatalog", () => {
     expect(screen.queryByText("Terminal TUI")).toBeNull();
   });
 
-  it("renders cards image-forward: real hero as image, placeholder as icon, no description/tags", () => {
+  it("renders context-rich cards with real hero images, icons, and hidden raw tags", () => {
     getActiveViewModalityMock.mockReturnValue("gui");
     useAvailableViewsMock.mockReturnValue({
       views: [
@@ -234,7 +261,7 @@ describe("ViewCatalog", () => {
           path: "/apps/withhero",
           heroImageUrl: "/api/views/withhero/hero",
           hasHeroImage: true,
-          description: "hidden description",
+          description: "visible description",
           tags: ["hiddentag"],
         }),
         view("nohero", {
@@ -243,7 +270,7 @@ describe("ViewCatalog", () => {
           icon: "Wallet",
           heroImageUrl: "/api/views/nohero/hero",
           hasHeroImage: false,
-          description: "also hidden",
+          description: "also visible",
         }),
       ],
       loading: false,
@@ -261,8 +288,8 @@ describe("ViewCatalog", () => {
     expect(
       screen.getByTestId("view-card-nohero").querySelector("img"),
     ).toBeNull();
-    expect(screen.queryByText("hidden description")).toBeNull();
-    expect(screen.queryByText("also hidden")).toBeNull();
+    expect(screen.getByText("visible description")).toBeTruthy();
+    expect(screen.getByText("also visible")).toBeTruthy();
     expect(screen.queryByText("hiddentag")).toBeNull();
   });
 
@@ -323,7 +350,7 @@ describe("ViewCatalog", () => {
     window.removeEventListener("eliza:navigate:view", listener);
   });
 
-  it("shows pinned and recent views as the top eight launcher without duplicates", () => {
+  it("shows pinned and recent views as quick access without duplicates", () => {
     const manyViews = [
       ...views,
       ...Array.from({ length: 10 }, (_, index) =>
@@ -370,6 +397,7 @@ describe("ViewCatalog", () => {
     render(<ViewCatalog />);
 
     const topSection = screen.getByTestId("views-top-section");
+    expect(topSection.textContent).toContain("Quick access");
     expect(topSection.textContent).toContain("Remote Ledger");
     expect(topSection.textContent).toContain("Plugin 0");
     expect(topSection.textContent).toContain("Plugin 6");
@@ -377,6 +405,38 @@ describe("ViewCatalog", () => {
     expect(
       topSection.querySelectorAll('[data-testid^="view-card-"]'),
     ).toHaveLength(8);
+    expect(screen.getAllByText("Remote Ledger")).toHaveLength(1);
+  });
+
+  it("sorts cards alphabetically when A-Z is selected", () => {
+    useAvailableViewsMock.mockReturnValue({
+      views: [
+        view("plugin.z", {
+          label: "Zebra",
+          path: "/apps/zebra",
+          pluginName: "plugin-pack",
+        }),
+        view("plugin.a", {
+          label: "Alpha",
+          path: "/apps/alpha",
+          pluginName: "plugin-pack",
+        }),
+      ],
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    const { container } = render(<ViewCatalog />);
+
+    fireEvent.click(screen.getByRole("button", { name: "A-Z" }));
+
+    const pluginCards = Array.from(
+      container.querySelectorAll('[data-testid^="view-card-plugin."]'),
+    );
+    expect(pluginCards.map((card) => card.getAttribute("data-testid"))).toEqual(
+      ["view-card-plugin.a", "view-card-plugin.z"],
+    );
   });
 
   it("uses the search input to render server-ranked remote results", async () => {

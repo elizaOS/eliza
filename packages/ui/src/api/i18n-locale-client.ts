@@ -3,8 +3,8 @@
  * request's IP-geo country header and `Accept-Language`. Used only as a
  * first-visit fallback when the browser gives no usable language hint.
  *
- * The route handler lives in
- * `packages/app-core/src/api/i18n-locale-routes.ts`.
+ * The route handler is mounted at the cloud edge in
+ * `packages/cloud-api/src/bootstrap-app.ts`.
  */
 
 import { getBootConfig } from "../config/boot-config";

@@ -104,18 +104,9 @@ declare module "@elizaos/plugin-companion" {
   export * from "@elizaos/app-companion";
 }
 
-declare module "@elizaos/app-lifeops" {
-  export const LifeOpsPageView: EmptyComponent;
-  export const LifeOpsBrowserSetupPanel: EmptyComponent;
-  export const LifeOpsActivitySignalsEffect: EmptyComponent;
+declare module "@elizaos/plugin-personal-assistant" {
   export const AppBlockerSettingsCard: ComponentType<AppBlockerSettingsCardProps>;
   export const WebsiteBlockerSettingsCard: ComponentType<WebsiteBlockerSettingsCardProps>;
-  export function dispatchQueuedLifeOpsGithubCallbackFromUrl(url: string): void;
-  export function registerLifeOpsApp(): void;
-}
-
-declare module "@elizaos/plugin-personal-assistant" {
-  export * from "@elizaos/app-lifeops";
 }
 
 declare module "@elizaos/app-phone" {

@@ -238,12 +238,6 @@ const InferenceCloudAlertButton = lazyNamedComponent<{
 const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
 );
-const LifeOpsPageView = lazyNamedComponent<Record<string, never>>(
-  async () => (await importAppLifeOps()).LifeOpsPageView,
-);
-const LifeOpsActivitySignalsEffect = lazyNamedComponent<Record<string, never>>(
-  async () => (await importAppLifeOps()).LifeOpsActivitySignalsEffect,
-);
 const AppBlockerSettingsCard = lazyNamedComponent<AppBlockerSettingsCardProps>(
   async () => (await importAppLifeOps()).AppBlockerSettingsCard,
 );
@@ -274,7 +268,6 @@ const FineTuningView = lazyNamedComponent<FineTuningViewProps>(
 );
 
 let loadedCompanionSceneStatusHook: (() => CompanionSceneStatus) | null = null;
-let dispatchQueuedLifeOpsGithubCallback: ((url: string) => void) | null = null;
 
 function useLoadedCompanionSceneStatus(): CompanionSceneStatus {
   return (
@@ -496,7 +489,6 @@ function buildAppBootConfig({
     stewardTransactionHistory: TransactionHistory,
     characterCatalog: APP_CHARACTER_CATALOG,
     envAliases: APP_ENV_ALIASES,
-    lifeOpsPageView: LifeOpsPageView,
     appBlockerSettingsCard: AppBlockerSettingsCard,
     websiteBlockerSettingsCard: WebsiteBlockerSettingsCard,
     clientMiddleware: {
@@ -512,8 +504,9 @@ function initializeAppModules(): Promise<void> {
   appModulesInitialized ??= (async () => {
     await importAppCore();
 
-    const [companionModule, lifeOpsModule] = await Promise.all([
+    const [companionModule] = await Promise.all([
       importAppCompanion(),
+      // Side-effect import for the PA HTTP client + Blocker settings cards.
       importAppLifeOps(),
       // Imported for its self-registration side effect (Vincent overlay app).
       importAppVincent(),
@@ -527,10 +520,7 @@ function initializeAppModules(): Promise<void> {
     ]);
 
     companionModule.registerCompanionApp();
-    lifeOpsModule.registerLifeOpsApp();
     loadedCompanionSceneStatusHook = companionModule.useCompanionSceneStatus;
-    dispatchQueuedLifeOpsGithubCallback =
-      lifeOpsModule.dispatchQueuedLifeOpsGithubCallbackFromUrl;
 
     setBootConfig(
       buildAppBootConfig({
@@ -1434,11 +1424,9 @@ function handleDeepLink(url: string): void {
       break;
     case "lifeops":
       window.location.hash = "#lifeops";
-      dispatchQueuedLifeOpsGithubCallback?.(url);
       break;
     case "settings":
       window.location.hash = "#settings";
-      dispatchQueuedLifeOpsGithubCallback?.(url);
       break;
     case "connect": {
       const gatewayUrl = parsed.searchParams.get("url");
@@ -1694,7 +1682,6 @@ function mountReactApp(): void {
               <>
                 <DesktopSurfaceNavigationRuntime />
                 <DesktopTrayRuntime />
-                <LifeOpsActivitySignalsEffect />
                 <App />
               </>
             )}
