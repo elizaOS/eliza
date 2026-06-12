@@ -103,6 +103,26 @@
         "default": "https://api.openai.com/v1",
         "sensitive": false
       },
+      "EVOLINK_API_KEY": {
+        "type": "string",
+        "description": "API key used to authenticate requests to EvoLink's OpenAI-compatible API.",
+        "required": false,
+        "sensitive": true
+      },
+      "EVOLINK_BASE_URL": {
+        "type": "string",
+        "description": "Base URL for EvoLink's OpenAI-compatible API.",
+        "required": false,
+        "default": "https://direct.evolink.ai/v1",
+        "sensitive": false
+      },
+      "EVOLINK_MODEL": {
+        "type": "string",
+        "description": "Identifier of the EvoLink chat model to use when EVOLINK_API_KEY enables this plugin.",
+        "required": false,
+        "default": "gpt-5.2",
+        "sensitive": false
+      },
       "OPENAI_SMALL_MODEL": {
         "type": "string",
         "description": "Identifier of the small language model to be used (overrides SMALL_MODEL).",
