@@ -94,6 +94,30 @@ no-ops for an already-provisioned CP. To roll a bootstrap fix, taint the
 VM and re-apply — but that wipes local state (headscale DB, cloudflared
 creds, /opt/eliza checkout). Plan that out before touching prod.
 
+**Headscale handoff on a fresh CP.** Cloud-init installs the `headscale`
+package (binary, systemd unit, `/var/lib/headscale` state dir owned by the
+package user) but stops the auto-started service so it doesn't bind with a
+fresh empty DB. On first deploy the operator overlays the prior CP's
+config + state:
+```bash
+# From the prior CP
+ssh root@PRIOR_CP 'sudo tar czf /tmp/hs.tgz -C /var/lib/headscale db.sqlite noise_private.key'
+scp root@PRIOR_CP:/tmp/hs.tgz /tmp/hs.tgz
+ssh root@PRIOR_CP 'sudo cat /etc/headscale/config.yaml' > /tmp/headscale-config.yaml
+
+# Adjust server_url for the new CP's hostname
+sed -i -E 's|^server_url:.*|server_url: https://eliza-${env}-1.elizacloud.ai|' /tmp/headscale-config.yaml
+
+# Push to NEW CP
+scp /tmp/headscale-config.yaml /tmp/hs.tgz deploy@NEW_CP:/tmp/
+ssh deploy@NEW_CP '
+  sudo mv /tmp/headscale-config.yaml /etc/headscale/config.yaml
+  sudo tar xzf /tmp/hs.tgz -C /var/lib/headscale
+  sudo chown -R headscale:headscale /var/lib/headscale
+  sudo systemctl enable --now headscale
+'
+```
+
 ## What this module does NOT manage (yet)
 
 - Headscale state (preauth keys, ACLs) — manual via `headscale` CLI.
