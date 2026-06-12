@@ -217,7 +217,7 @@ async function installSeededChatRoutes(
   });
 
   await page.route(
-    `**/api/conversations/${CONVERSATION_ID}/messages`,
+    `**/api/conversations/${CONVERSATION_ID}/messages**`,
     async (route) => {
       if (route.request().method() === "GET") {
         await fulfillJson(route, { messages });

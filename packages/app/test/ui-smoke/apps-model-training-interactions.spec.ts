@@ -903,7 +903,7 @@ test("model tester route runs deterministic visible probes", async ({
 
   const imageCard = page
     .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Image Generation" }) })
+    .filter({ has: page.getByRole("heading", { name: "Image" }) })
     .first();
   await expect.poll(() => recorder.runRequestCount()).toBeGreaterThanOrEqual(1);
   await clickRequired(

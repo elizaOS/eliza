@@ -112,7 +112,7 @@ async function installSensitiveRequestChatRoutes(
   });
 
   await page.route(
-    `**/api/conversations/${CONVERSATION_ID}/messages`,
+    `**/api/conversations/${CONVERSATION_ID}/messages**`,
     async (route) => {
       const request = route.request();
       if (request.method() === "GET") {

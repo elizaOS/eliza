@@ -106,8 +106,6 @@ async function openAppWindow(page: Page, routeCase: RouteCase): Promise<void> {
         waitUntil: "domcontentloaded",
       },
     );
-  } else if (routeCase.name === "elizamaker app window") {
-    await openAppPath(page, "/chat");
   } else {
     await openAppPath(page, routeCase.path);
   }

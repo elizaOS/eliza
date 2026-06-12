@@ -384,16 +384,16 @@ function installFeedTuiRoutes(page: Page) {
 }
 
 async function expectLifeOpsDynamicViewFallback(page: Page): Promise<boolean> {
-  const smokeText = page.getByText(
-    "@elizaos/plugin-personal-assistant dynamic view smoke surface is ready.",
-  );
+  const smokeText = page.getByTestId("lifeops-dynamic-view-fallback");
   try {
     await smokeText.waitFor({ state: "visible", timeout: 5_000 });
   } catch {
     return false;
   }
 
-  await expect(page.getByRole("heading", { name: "LifeOps" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "LifeOpsPageView" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Refresh view" }).click();
   await page.getByLabel("LifeOps input").fill("lifeops-smoke");
   return true;

@@ -255,7 +255,7 @@ async function openPhoneCompanionMode(page: Page): Promise<void> {
   await assertReadyChecks(
     page,
     "phone companion",
-    [{ text: "Companion" }],
+    [{ text: "Companion" }, { text: "Pair with Eliza" }],
     "any",
     90_000,
   );
@@ -1239,13 +1239,8 @@ test.describe("Facewear and smartglasses GUI interactions", () => {
     await expect(page.getByText("even-realities")).toBeVisible();
     await page.getByRole("button", { name: "Refresh" }).click();
     await expect.poll(() => facewearStatusRequests).toBeGreaterThan(1);
-    let dialogMessage = "";
-    page.once("dialog", async (dialog) => {
-      dialogMessage = dialog.message();
-      await dialog.dismiss();
-    });
     await page.getByRole("button", { name: "Manage" }).click();
-    await expect.poll(() => dialogMessage).toContain("even-realities");
+    await expect(page).toHaveURL(/\/apps\/smartglasses/);
     await expectNoIssues(page, issues.splice(0), "facewear device controls");
 
     await openAppPath(page, "/apps/smartglasses");
