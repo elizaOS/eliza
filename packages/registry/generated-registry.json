@@ -92,6 +92,102 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "blackwall-eliza-guardrail": {
+      "git": {
+        "repo": "bluetieroperations-create/blackwall-eliza-guardrail",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "blackwall-eliza-guardrail",
+        "v0": null,
+        "v1": null,
+        "v2": "0.2.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "BLACK_WALL pre-action risk guardrail for elizaOS agents - wraps every action handler with a forecast() check so STOP-rated actions abort before they run; gateCall() adds per-call gating for multi-step handlers. Observe mode by default (zero behavior change).",
+      "homepage": "https://github.com/bluetieroperations-create/blackwall-eliza-guardrail",
+      "topics": [
+        "security",
+        "guardrails",
+        "ai-safety",
+        "risk-gate",
+        "onchain-safety"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "elizaos-plugin-coinrailz": {
+      "git": {
+        "repo": "tdnupe3/elizaos-plugin-coinrailz",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-coinrailz",
+        "v0": null,
+        "v1": null,
+        "v2": "2.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Agent Treasury + Payments: non-custodial USDC yield on Solana (Kamino, ~3.4% APY) and Base (ERC-4626 routing via Aave/Compound/Morpho), plus 65 live x402 pay-per-call services for inference, IoT data, satellite imagery, and execution.",
+      "homepage": "https://coinrailz.com",
+      "topics": [
+        "payments",
+        "x402",
+        "usdc",
+        "yield",
+        "treasury",
+        "solana",
+        "base",
+        "defi",
+        "micropayments",
+        "iot",
+        "satellite"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "elizaos-plugin-echo": {
       "git": {
         "repo": "elizaOS/eliza",
