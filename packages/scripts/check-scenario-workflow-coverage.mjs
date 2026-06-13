@@ -138,9 +138,23 @@ function workflowScenarioGlobs() {
     "scenario-matrix.yml",
   );
   const text = readFileSync(workflowPath, "utf8");
-  const matches = [...text.matchAll(/globs:\s*"([^"]+)"/g)].map(
-    (match) => match[1],
-  );
+  const matches = text
+    .split(/\r?\n/)
+    .map((line) => {
+      const match = line.match(/^\s*globs:\s*(.+?)\s*$/);
+      if (!match) return "";
+      const value = match[1].trim();
+      const quote = value[0];
+      if (
+        (quote === '"' || quote === "'") &&
+        value.length > 1 &&
+        value.at(-1) === quote
+      ) {
+        return value.slice(1, -1);
+      }
+      return value;
+    })
+    .filter(Boolean);
   return matches
     .flatMap((value) =>
       value
@@ -550,7 +564,11 @@ function main() {
     "packages-test-include-pending.txt",
     includePendingIds,
   );
-  writeList(options.reportDir, "plugin-personal-assistant.txt", pluginLifeopsIds);
+  writeList(
+    options.reportDir,
+    "plugin-personal-assistant.txt",
+    pluginLifeopsIds,
+  );
   writeList(options.reportDir, "plugin-app-control.txt", pluginAppControlIds);
   writeList(options.reportDir, "scenario-runner-test.txt", scenarioRunnerIds);
   writeList(options.reportDir, "all-scenarios.txt", allScenarioRows);
