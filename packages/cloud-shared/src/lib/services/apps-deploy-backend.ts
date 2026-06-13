@@ -24,6 +24,7 @@
  */
 
 import { logger } from "../utils/logger";
+import { setAppDbDeprovisioner } from "./app-db-deprovision-job-service";
 import { setAppDeployRunner } from "./app-deploy-job-service";
 import {
   type AppDeployRunnerDeps,
@@ -85,16 +86,20 @@ export function configureAppsDeployBackend(config: AppsDeployBackendConfig): voi
   // standard encrypted path via UserDatabaseService.
   const adminDsnFromEnv = process.env.APPS_TENANT_ADMIN_DSN;
   let runner: DefaultAppDeployRunner;
+  // Captured for the APP_DB_DEPROVISION executor below — both modes build a
+  // provisioning object whose deprovisionForApp DROPs the DB + releases the slot.
+  let tenantDbProvisioning: ReturnType<typeof makeTenantDbProvisioning>;
   if (adminDsnFromEnv) {
-    const provisioning = makeTenantDbProvisioning({ decrypt: async () => adminDsnFromEnv });
+    tenantDbProvisioning = makeTenantDbProvisioning({ decrypt: async () => adminDsnFromEnv });
     runner = makeDirectAppDeployRunner({
-      tenantDbProvisioning: provisioning,
+      tenantDbProvisioning,
       jobsWriter: containerJobsWriter,
       resolveImage,
       port: config.port,
     });
   } else {
-    const userDatabaseService = new UserDatabaseService(makeTenantDbProvisioning());
+    tenantDbProvisioning = makeTenantDbProvisioning();
+    const userDatabaseService = new UserDatabaseService(tenantDbProvisioning);
     runner = makeNodeAppDeployRunner({
       userDatabaseService,
       jobsWriter: containerJobsWriter,
@@ -108,6 +113,10 @@ export function configureAppsDeployBackend(config: AppsDeployBackendConfig): voi
   // called here (it runs on the Worker, which enqueues APP_DEPLOY).
   setAppDeployRunner(runner);
   setContainerExecutorDeps(buildContainerExecutorDeps);
+  // Daemon also runs APP_DB_DEPROVISION jobs (enqueued by the Worker on app
+  // delete): DROP the isolated DB + ROLE node-side and release the cluster slot
+  // — the Worker can't (no `pg`), so without this the DB + slot leak (#8342).
+  setAppDbDeprovisioner(tenantDbProvisioning);
 
   logger.info("[apps-deploy-backend] armed", {
     registry: config.registry ?? null,

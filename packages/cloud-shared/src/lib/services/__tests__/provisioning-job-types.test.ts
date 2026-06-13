@@ -28,9 +28,12 @@ describe("JOB_TYPES", () => {
     expect(JOB_TYPES.AGENT_WAKE).toBe("agent_wake");
     // Apps lane (Product 2): the Worker enqueues APP_DEPLOY; the daemon runs it.
     expect(JOB_TYPES.APP_DEPLOY).toBe("app_deploy");
+    // Apps lane (Product 2): the Worker enqueues APP_DB_DEPROVISION on app
+    // delete; the daemon runs the isolated tenant-DB DROP + slot release.
+    expect(JOB_TYPES.APP_DB_DEPROVISION).toBe("app_db_deprovision");
     // Lock the size so a new entry without a matching assertion above
     // fails CI instead of being silently under-covered by tests below.
-    expect(Object.keys(JOB_TYPES)).toHaveLength(17);
+    expect(Object.keys(JOB_TYPES)).toHaveLength(18);
   });
 
   test("wire values are unique (no two symbols share a string)", () => {
