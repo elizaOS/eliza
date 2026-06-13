@@ -14,13 +14,6 @@ type ReadyCheck =
 
 type RouteCase = (typeof DIRECT_ROUTE_CASES)[number];
 
-const FINANCE_COMMERCE_ROUTE_NAMES = [
-  "hyperliquid",
-  "polymarket",
-  "shopify",
-  "vincent",
-] as const;
-
 const APP_WINDOW_ROUTE_CASES = DIRECT_ROUTE_CASES.filter(
   (routeCase) =>
     !["phone", "contacts", "wifi"].includes(routeCase.name.toLowerCase()),
@@ -45,6 +38,15 @@ function routeReadyChecks(routeCase: RouteCase): readonly ReadyCheck[] {
 
 function routeTimeout(routeCase: RouteCase): number {
   return "timeoutMs" in routeCase ? routeCase.timeoutMs : 60_000;
+}
+
+function skipUnlessRoutesRegistered(names: readonly string[]) {
+  test.skip(
+    !names.every((name) =>
+      DIRECT_ROUTE_CASES.some((routeCase) => routeCase.name === name),
+    ),
+    `${names.join(", ")} app routes are not registered in this smoke stack.`,
+  );
 }
 
 function installIssueGuards(page: Page): string[] {
@@ -398,21 +400,14 @@ test("vector browser controls search and switch projection modes", async ({
   await expectNoIssues(page, issues, "vector browser interactions");
 });
 
-test("finance and commerce utility controls refresh and show fixture data", async ({
+test("market utility controls refresh and show fixture data", async ({
   page,
 }) => {
-  test.skip(
-    !FINANCE_COMMERCE_ROUTE_NAMES.every((name) =>
-      DIRECT_ROUTE_CASES.some((routeCase) => routeCase.name === name),
-    ),
-    "Finance and commerce app routes are not registered in this smoke stack.",
-  );
+  skipUnlessRoutesRegistered(["hyperliquid", "polymarket"]);
   const issues = installIssueGuards(page);
-  const openedRoutes = new Set<string>();
 
   const hyperliquid = routeCaseByName("hyperliquid");
   await openAppWindow(page, hyperliquid);
-  openedRoutes.add(hyperliquid.path);
   await clickRequired(
     page.getByRole("button", { name: "Refresh" }),
     "Hyperliquid refresh",
@@ -426,17 +421,22 @@ test("finance and commerce utility controls refresh and show fixture data", asyn
 
   const polymarket = routeCaseByName("polymarket");
   await openAppWindow(page, polymarket);
-  openedRoutes.add(polymarket.path);
   await clickRequired(
     page.getByRole("button", { name: "Refresh" }),
     "Polymarket refresh",
   );
   await expect(page.getByRole("heading", { name: "Polymarket" })).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "polymarket refresh");
+});
+
+test("shopify utility controls exercise commerce workflows", async ({
+  page,
+}) => {
+  skipUnlessRoutesRegistered(["shopify"]);
+  const issues = installIssueGuards(page);
 
   const shopify = routeCaseByName("shopify");
   await openAppWindow(page, shopify);
-  openedRoutes.add(shopify.path);
   await clickRequired(
     page.getByRole("button", { name: "Refresh" }),
     "Shopify refresh",
@@ -495,30 +495,35 @@ test("finance and commerce utility controls refresh and show fixture data", asyn
     .fill("Grace");
   await expect(page.getByText("Grace Hopper")).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "shopify interactions");
+});
+
+test("vincent utility controls refresh and disconnect deterministic state", async ({
+  page,
+}) => {
+  skipUnlessRoutesRegistered(["vincent"]);
+  const issues = installIssueGuards(page);
 
   const vincent = routeCaseByName("vincent");
   await openAppWindow(page, vincent);
-  openedRoutes.add(vincent.path);
   await clickRequired(
     page.getByRole("button", { name: "Refresh" }),
     "Vincent refresh",
   );
-  await expect(page.getByText("Connected to Vincent")).toBeVisible();
-  await expect(page.getByText("Vincent Trading Agent")).toBeVisible();
-  await expect(page.getByText("Trading Profile")).toBeVisible();
-  await expect(page.getByText("Agent Wallet")).toBeVisible();
+  await expect(page.getByTestId("vincent-status-card")).toContainText(
+    "Connected",
+  );
+  await expect(page.getByText("Wallet")).toBeVisible();
+  await expect(page.getByText("Strategy")).toBeVisible();
+  await expect(page.getByText("P&L").first()).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open Vincent" })).toBeVisible();
   await clickRequired(
     page.getByRole("button", { name: "Disconnect" }),
     "Vincent disconnect",
   );
-  await expect(page.getByText("Not connected to Vincent")).toBeVisible();
-  await expectNoIssues(page, issues.splice(0), "vincent interactions");
-
-  expect([...openedRoutes].sort()).toEqual(
-    FINANCE_COMMERCE_ROUTE_NAMES.map(
-      (name) => routeCaseByName(name).path,
-    ).sort(),
+  await expect(page.getByTestId("vincent-status-card")).toContainText(
+    "Disconnected",
   );
+  await expectNoIssues(page, issues.splice(0), "vincent interactions");
 });
 
 test("wallet inventory controls update visible deterministic state", async ({
@@ -638,7 +643,7 @@ test("steward approvals and history controls consume deterministic API stubs", a
     "Steward history tab",
   );
   await expect(
-    page.getByRole("heading", { name: "Transaction History" }),
+    stewardView.getByRole("heading", { name: "History" }),
   ).toBeVisible();
   await expect(page.getByText("2 transactions")).toBeVisible();
   const transactionTable = page.getByRole("table");

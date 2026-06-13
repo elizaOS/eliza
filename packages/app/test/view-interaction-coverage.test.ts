@@ -144,11 +144,7 @@ const GUI_INTERACTION_OWNERS: Readonly<
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
       proves:
         "Exercises approval refresh, approve/reject flows, rejection reason, history filters, and table state.",
-      signals: [
-        "steward interactions",
-        "Confirm Reject",
-        "Transaction History",
-      ],
+      signals: ["steward interactions", "Confirm Reject", "2 transactions"],
     },
   ],
   vincent: [
@@ -156,7 +152,7 @@ const GUI_INTERACTION_OWNERS: Readonly<
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
       proves:
         "Exercises refresh, connected wallet/trading state, and disconnect flow.",
-      signals: ["vincent interactions", "Disconnect", "Vincent Trading Agent"],
+      signals: ["vincent interactions", "Disconnect", "Open Vincent"],
     },
   ],
   wallet: [

@@ -1309,7 +1309,7 @@ test.describe("Facewear and smartglasses GUI interactions", () => {
     await page.getByRole("button", { name: "Android" }).click();
     await expect(page.getByText("Native bridge preferred")).toBeVisible();
     await expect(
-      page.getByText("Use the host for pairing, Wi-Fi scan, and credentials."),
+      page.getByText("Pair and configure in the host."),
     ).toBeVisible();
     await page.getByRole("button", { name: "Guided Validation" }).click();
     await expect(
