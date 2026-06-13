@@ -128,15 +128,19 @@ jobs:
           script: |
             set -euo pipefail
             F=/opt/eliza/cloud/.env.local
-            [ -f "$F" ] || { echo "env file $F not found on host"; exit 1; }
-            cp -n "$F" "$F.bak.arm-apps" 2>/dev/null || true
+            # /opt/eliza/cloud is root-owned; the deploy user has passwordless
+            # sudo (same as the worker-deploy workflow), so all writes go via
+            # sudo — `sed -i` needs to create a temp file IN the dir, not just
+            # write the file, which a non-sudo deploy user can't do there.
+            sudo test -f "$F" || { echo "env file $F not found on host"; exit 1; }
+            sudo cp -n "$F" "$F.bak.arm-apps" 2>/dev/null || true
 
             upsert() {
               # upsert KEY VALUE — delete any existing def, append the fresh one.
               local k="$1"; local v="$2"
               [ -n "$v" ] || return 0
-              sed -i "/^$k=/d" "$F"
-              printf '%s\n' "$k=\"$v\"" >> "$F"
+              sudo sed -i "/^$k=/d" "$F"
+              printf '%s\n' "$k=\"$v\"" | sudo tee -a "$F" >/dev/null
             }
 
             upsert APPS_CONTAINERS_ENABLED 1
@@ -148,7 +152,7 @@ jobs:
             upsert CONTAINERS_EGRESS_PROXY_URL "$EGRESS_PROXY"
 
             echo "--- apps env now on the box (secrets redacted) ---"
-            grep -E '^(APPS_|CONTAINERS_(DOCKER_NODES|SSH_USER|PUBLIC_BASE_DOMAIN|EGRESS_PROXY_URL))' "$F" \
+            sudo grep -E '^(APPS_|CONTAINERS_(DOCKER_NODES|SSH_USER|PUBLIC_BASE_DOMAIN|EGRESS_PROXY_URL))' "$F" \
               | sed -E 's/(DSN|KEY)=.*/\1=<redacted>/'
 
             sudo systemctl restart eliza-provisioning-worker.service
