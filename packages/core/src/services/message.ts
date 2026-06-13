@@ -3481,10 +3481,33 @@ export function messageHandlerFromFieldResult(
 		processMessage === "RESPOND" &&
 		looksLikeNonRefusalStage1HonestyViolation(replyTextRaw);
 	const requestedPlanningForRouting = requestedPlanning || forceHonestyPlanning;
+	// The model can explicitly commit to delegation: for a genuine coding-work
+	// request it routes to a non-simple context of its OWN choosing AND names a
+	// runnable coding-delegation / spawn-class action in its OWN candidate list
+	// (not the runtime backstop's inferred one). When it does, a verbose
+	// sentence-shaped ack ("On it — spawning a coding agent to build the page.")
+	// is still an ACK, not a finished answer — so the complete-direct-reply
+	// override must NOT pull it back to the simple path. Without this guard,
+	// planner-models that write fuller acks (e.g. the OAuth Claude bridge) trip
+	// looksLikeCompleteDirectReply and the sub-agent never spawns, while terse-ack
+	// models ("On it.") plan correctly. Keyed on the parsed plan shape, the action
+	// registry, and the same structural coding-work classifier used by the
+	// candidate backstop (which excludes creative-writing / explanation asks), so
+	// it is model-agnostic and regresses neither the direct-answer nor the
+	// poem-about-an-app path.
+	const modelCommittedToDelegation =
+		!preemptDirect &&
+		initialPlanningContexts.length > 0 &&
+		looksLikeCodingWorkRequest(currentMessageText) &&
+		modelProvidedRunnableDelegationCandidate(
+			rawCandidateActions,
+			runtimeContext?.actions ?? [],
+		);
 	const preferCompleteDirectReply =
 		!preemptDirect &&
 		requestedPlanning &&
 		!stage1HonestyViolation &&
+		!modelCommittedToDelegation &&
 		shouldPreferCompleteDirectReply({
 			replyText: replyTextRaw,
 			candidateActions: effectiveCandidateActions,
@@ -3697,6 +3720,29 @@ function shouldPreferCompleteDirectReply(args: {
 }): boolean {
 	if (!looksLikeCompleteDirectReply(args.replyText)) return false;
 	return hasOnlyWeakDirectReplyPlanningSignals(args);
+}
+
+// True when the MODEL itself named a runnable coding-delegation / spawn-class
+// action in its own candidate list. Resolves by registry tags
+// (CODING_DELEGATION_ACTION_TAGS) first, then the legacy name set — the same
+// resolution findCodingDelegationActionName uses — so a registered
+// TASKS_SPAWN_AGENT (or simile) counts and a bogus/unexposed name does not. Used
+// to detect that the model committed to delegation on purpose, so a verbose ack
+// is not mistaken for a finished direct reply.
+function modelProvidedRunnableDelegationCandidate(
+	candidateActions: readonly string[],
+	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
+): boolean {
+	if (candidateActions.length === 0) return false;
+	const delegationActionName = findCodingDelegationActionName(actions);
+	if (!delegationActionName) return false;
+	const wanted = new Set<string>([
+		normalizeActionIdentifier(delegationActionName),
+		...LEGACY_CODING_DELEGATION_ACTION_NAMES.map(normalizeActionIdentifier),
+	]);
+	return candidateActions.some((name) =>
+		wanted.has(normalizeActionIdentifier(name)),
+	);
 }
 
 function shouldPreferInlineCodeSnippetDirectReply(args: {
