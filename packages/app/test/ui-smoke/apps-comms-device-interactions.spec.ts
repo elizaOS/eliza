@@ -1290,7 +1290,7 @@ test.describe("Facewear and smartglasses GUI interactions", () => {
     await page.getByRole("button", { name: "Scan" }).click();
     await expect(page.getByText("Found 2 network(s)")).toBeVisible();
     await expect(page.getByText("DeviceRig")).toBeVisible();
-    await page.getByRole("button", { name: "Status" }).click();
+    await page.getByRole("button", { name: "Refresh Wi-Fi Status" }).click();
     await expect(
       page.getByText("Connected to LabNet at 192.168.4.8"),
     ).toBeVisible();

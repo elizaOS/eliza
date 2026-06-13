@@ -431,7 +431,7 @@ test("finance and commerce utility controls refresh and show fixture data", asyn
     page.getByRole("button", { name: "Refresh" }),
     "Polymarket refresh",
   );
-  await expect(page.getByText("Polymarket", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Polymarket" })).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "polymarket refresh");
 
   const shopify = routeCaseByName("shopify");
@@ -632,7 +632,7 @@ test("steward approvals and history controls consume deterministic API stubs", a
   await expect(page.getByText("No pending approvals")).toBeVisible();
 
   await clickRequired(
-    stewardView.getByRole("button", {
+    stewardView.getByRole("tab", {
       name: /History/,
     }),
     "Steward history tab",
