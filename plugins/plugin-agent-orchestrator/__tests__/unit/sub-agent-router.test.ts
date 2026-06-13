@@ -1295,6 +1295,77 @@ describe("SubAgentRouter", () => {
       }
     });
 
+    it("does not surface route-prefix or data-source URLs as the deliverable for a non-build info-fetch", async () => {
+      // Live BTC regression (2026-06-13): a "what's BTC worth?" turn routed to
+      // the agent-home apps route. The spawn task carried the route's
+      // `--- URL Path Mapping ---` hint verbatim (so `initialTask`, the verify
+      // reference text, contained the bare `https://host/apps/` prefix) plus the
+      // CoinGecko data-source URL the sub-agent was told to fetch. Both probed
+      // 200, were promoted to `subAgentVerifiedUrls`, and the bare apps prefix
+      // was surfaced as the reply — clobbering the real answer. None of these
+      // URLs is a hosted-artifact PAGE the sub-agent built, so none may surface.
+      const appsPrefixPublic = "https://example.test/apps/";
+      const appsPrefixLocal = "http://127.0.0.1:6900/apps/";
+      const dataSource =
+        "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd";
+      // Everything the verifier could probe is reachable — the bug is purely
+      // that reachable != deliverable for these URLs.
+      const fetchMock = vi.fn(async () => {
+        return new Response("ok", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        });
+      });
+      stubFetch(fetchMock as typeof fetch);
+      session = sessionWithTask(
+        [
+          "--- URL Path Mapping ---",
+          "These mappings are authoritative for hosted artifacts:",
+          `- URL prefix ${appsPrefixPublic} maps to local path data/apps. For ${appsPrefixPublic}<slug>/, write files under data/apps/<slug>/.`,
+          `- URL prefix ${appsPrefixLocal} maps to local path data/apps. For ${appsPrefixLocal}<slug>/, write files under data/apps/<slug>/.`,
+          "--- User Task ---",
+          `Use the webfetch tool to GET this exact URL: ${dataSource}`,
+          "Reply with ONLY the USD number value from the response.",
+        ].join("\n"),
+        undefined,
+        {
+          workdirRoute: {
+            id: "static-apps",
+            workdir: "/tmp/agent-home",
+            urlMappings: [
+              { urlPrefix: appsPrefixLocal, localPath: "data/apps/" },
+              { urlPrefix: appsPrefixPublic, localPath: "data/apps/" },
+            ],
+          },
+        },
+      );
+      acp = makeAcpService(session);
+      const { runtime, handleMessage, spawnSession } = makeRuntime({
+        acp: acp.service,
+      });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", {
+        response:
+          "DECISION: task complete — reporting the fetched value.\n\n**64223**",
+      });
+      await new Promise((r) => setTimeout(r, 300));
+
+      expect(spawnSession).not.toHaveBeenCalled();
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      const posted = handleMessage.mock.calls[0]?.[1];
+      const text = posted?.content?.text ?? "";
+      // The real answer is preserved; no stray URL leaks into the reply.
+      expect(text).toContain("64223");
+      expect(text).not.toContain("/apps/");
+      expect(text).not.toContain("coingecko");
+      // No URL was a built deliverable, so none is recorded as verified.
+      const verified = posted?.content?.metadata?.subAgentVerifiedUrls as
+        | unknown[]
+        | undefined;
+      expect(verified ?? []).toEqual([]);
+    });
+
     it("rejects generated app pages that reference unreachable image assets", async () => {
       const appUrl = "https://example.test/apps/permit-garden/";
       const imageUrl = "https://cdn.example.test/permit-garden/sticker.png";

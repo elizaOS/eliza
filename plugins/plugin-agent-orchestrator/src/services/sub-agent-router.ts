@@ -1749,6 +1749,46 @@ function routeRelativePathForUrl(
   return routeMatchForUrl(url, mappings)?.relativePath;
 }
 
+// A bare route-mapping prefix (the collection root, e.g. `https://host/apps/`)
+// is the route's own URL-namespace documentation stem — `taskWithResolvedRoute`
+// writes it verbatim into the spawn task's `--- URL Path Mapping ---` hint, and
+// that hint is also the `verificationReferenceText`. The `<slug>` template form
+// (`.../apps/<slug>/`) is already skipped by `collectVerifiableUrlCandidates`,
+// but the bare-prefix form ("URL prefix https://host/apps/ maps to …") is not,
+// so it leaks into the verify list, probes 200 (the index page exists), and gets
+// surfaced as a "verified deliverable" — clobbering the sub-agent's real answer
+// for a non-build info-fetch (e.g. a price). It is never a built page: a real
+// app build claims `.../apps/<slug>/`, which has a path BEYOND the prefix and is
+// unaffected. Structural — keys on the configured `urlMappings[].urlPrefix`, not
+// on prose.
+function isBareRouteMappingPrefix(
+  url: string,
+  mappings: readonly RouteUrlMapping[],
+): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  const urlPath = parsed.pathname.endsWith("/")
+    ? parsed.pathname
+    : `${parsed.pathname}/`;
+  return mappings.some((mapping) => {
+    let prefix: URL;
+    try {
+      prefix = new URL(mapping.urlPrefix);
+    } catch {
+      return false;
+    }
+    if (parsed.origin !== prefix.origin) return false;
+    const prefixPath = prefix.pathname.endsWith("/")
+      ? prefix.pathname
+      : `${prefix.pathname}/`;
+    return urlPath === prefixPath && parsed.search === "" && parsed.hash === "";
+  });
+}
+
 function routeMatchForUrl(
   url: string,
   mappings: readonly RouteUrlMapping[],
@@ -2000,6 +2040,10 @@ export async function annotateUnverifiedUrls(
   const urls = expandRouteUrlAliases(
     extractVerifiableUrls(text, 5, referenceText, ignoredUrls),
     routeVerification,
+  ).filter(
+    (url) =>
+      routeVerification === undefined ||
+      !isBareRouteMappingPrefix(url, routeVerification.mappings),
   );
   if (urls.length === 0) return { text, dead: [], verifiedUrls: [] };
   log?.(
@@ -2166,13 +2210,40 @@ export async function annotateUnverifiedUrls(
   };
 }
 
+// A reachable URL is only a user-facing *deliverable* when it is a routed
+// hosted-artifact PAGE — a route-mapped page (or a bare `/apps/<slug>/` page
+// when no route map is configured). Data-source URLs the task told the sub-agent
+// to fetch (e.g. a CoinGecko price endpoint) and any other incidental URL are
+// inputs/mentions, not deliverables: probing them 200 must never promote them to
+// the reply that the completion evaluator surfaces. Without this gate, a
+// non-build info-fetch turn ("what's BTC worth?") had its real answer ("$64,223")
+// clobbered by the input data-source (or route-prefix) URL. Bare route-mapping
+// prefixes are excluded too — they are the route's documentation stem, not a
+// built page. Structural: keys on route-mapping shape + the `/apps/<slug>/`
+// page shape, never on prose.
+function isVerifiedDeliverableUrl(
+  url: string,
+  routeVerification: RouteUrlVerification | undefined,
+): boolean {
+  if (
+    routeVerification &&
+    isBareRouteMappingPrefix(url, routeVerification.mappings)
+  ) {
+    return false;
+  }
+  return isRoutedArtifactUrl(url, routeVerification);
+}
+
 function canonicalUserFacingVerifiedUrls(
   urls: string[],
   routeVerification: RouteUrlVerification | undefined,
 ): string[] {
-  if (!routeVerification) return urls;
+  const deliverables = urls.filter((url) =>
+    isVerifiedDeliverableUrl(url, routeVerification),
+  );
+  if (!routeVerification) return deliverables;
   const canonical = new Set<string>();
-  for (const url of urls) {
+  for (const url of deliverables) {
     const pageAliases = routePageAliasesForUrl(url, routeVerification);
     if (pageAliases.length > 0) {
       for (const alias of pageAliases) canonical.add(alias);
