@@ -12,6 +12,7 @@ type GameFixture = {
   slug: string;
   viewerPath: string;
   surfaceTestId: string;
+  commandSignal: string;
   commandChecks: Array<{ label: string; content: string }>;
 };
 
@@ -22,6 +23,7 @@ const FIXTURES: GameFixture[] = [
     slug: "defense-of-the-agents",
     viewerPath: "/api/apps/defense-of-the-agents/viewer",
     surfaceTestId: "defense-live-operator-surface",
+    commandSignal: "defense-command",
     commandChecks: [
       { label: "Move to top lane", content: "Move to top lane" },
       { label: "Recall to base", content: "Recall to base" },
@@ -34,6 +36,7 @@ const FIXTURES: GameFixture[] = [
     slug: "clawville",
     viewerPath: "/api/apps/clawville/viewer",
     surfaceTestId: "clawville-live-operator-surface",
+    commandSignal: "clawville-command",
     commandChecks: [
       {
         label: "Move to Krusty Krab",
@@ -360,12 +363,14 @@ for (const fixture of FIXTURES) {
     await expect(page.getByText("Apps chat")).toHaveCount(0);
     await expect(operatorSurface.getByText("Game chat")).toBeVisible();
 
+    expect(fixture.commandSignal).toContain("-command");
     for (const check of fixture.commandChecks) {
       const commandButton = page
         .getByRole("button", { name: check.label, exact: true })
         .first();
       await commandButton.click();
-      await expect.poll(() => api.messages.at(-1)).toBe(check.content);
+      const chatContent = check.content;
+      await expect.poll(() => api.messages.at(-1)).toBe(chatContent);
       await expect(commandButton).toBeEnabled();
     }
   });
