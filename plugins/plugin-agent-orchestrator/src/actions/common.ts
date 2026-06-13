@@ -5,6 +5,7 @@ import type {
   Memory,
   State,
   StateValue,
+  UUID,
 } from "@elizaos/core";
 import type {
   AcpJsonRpcMessage,
@@ -135,6 +136,134 @@ export function messageText(message: Memory): string {
   if (typeof message.content === "string") return message.content;
   const content = contentRecord(message);
   return typeof content.text === "string" ? content.text : "";
+}
+
+/**
+ * Read the genuine user request text off a message.
+ *
+ * Connectors stamp the raw human message into `content.currentMessageText`
+ * (the discord connector does this via `extraContent.currentMessageText`)
+ * while `content.text` may be an envelope-wrapped header, a planner
+ * rephrasing, or empty. The canonical core reader (`getUserMessageText`)
+ * prefers `currentMessageText`; we inline the same precedence here to avoid a
+ * cross-package barrel/build dependency. The orchestrator's narrow
+ * `messageText()` only reads `content.text`, which is exactly why the terse
+ * claude path dropped the route keyword.
+ */
+function userRequestFromMessage(message: Memory): string {
+  const content = contentRecord(message);
+  const raw =
+    typeof content.currentMessageText === "string" &&
+    content.currentMessageText.trim().length > 0
+      ? content.currentMessageText
+      : typeof content.text === "string"
+        ? content.text
+        : "";
+  return raw.trim();
+}
+
+/**
+ * The actual conversation `Memory[]` the runtime composed into state before
+ * this action ran. `recentMessagesProvider` writes it to
+ * `state.data.providers.RECENT_MESSAGES.data.recentMessages`; this is the
+ * vetted access pattern (see core plugin-manager `relevance.ts`). Unlike a
+ * fresh `getMemories` read, this is already populated synchronously at action
+ * time, so it does not hit the "current message not yet persisted" race.
+ */
+function recentMessagesFromState(state: State | undefined): Memory[] {
+  const messages = (
+    state?.data as
+      | {
+          providers?: {
+            RECENT_MESSAGES?: { data?: { recentMessages?: unknown } };
+          };
+        }
+      | undefined
+  )?.providers?.RECENT_MESSAGES?.data?.recentMessages;
+  return Array.isArray(messages) ? (messages as Memory[]) : [];
+}
+
+/**
+ * Resolve the genuine originating user request for workdir-route matching.
+ *
+ * Workdir routes (`TASK_AGENT_WORKDIR_ROUTES`) match keyword phrases like
+ * "web page" against `${userRequest}\n${task}`. Feeding only the planner's
+ * `task` argument is unreliable: with a verbose planner (gpt-oss /
+ * TASKS_CREATE) the user's wording survives, but with a terser planner
+ * (claude / TASKS_SPAWN_AGENT) the action arrives with the planner's
+ * rephrasing — and the orchestrator's `messageText()` only reads
+ * `content.text`, which may be envelope-wrapped or empty — dropping the route
+ * keyword and silently falling the spawn back to the default ACP workspace.
+ * Builds then land in the wrong directory and never get hosted.
+ *
+ * The fix is planner-independent and reads only sources that are guaranteed
+ * populated synchronously at action time (no DB round-trip, no persistence
+ * race — the failure mode of the earlier `getMemories`-first attempt):
+ *   1. the message's own `content.currentMessageText` (the raw human request
+ *      the connector stamped), via `userRequestFromMessage`;
+ *   2. the newest non-agent message in the state-composed conversation window
+ *      (`state.data.providers.RECENT_MESSAGES.data.recentMessages`) — covers
+ *      the case where the action message is a synthetic re-plan trigger but
+ *      the user's original request is still in the dialogue;
+ *   3. a bounded `getMemories` read, kept ONLY as a last resort.
+ *
+ * Fail-open: every source is optional and the result is unioned with the
+ * action's own text, so routing never regresses below today's behavior.
+ */
+export async function resolveOriginatingRequestText(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
+  opts: { timeoutMs?: number; scanLimit?: number } = {},
+): Promise<string> {
+  // Primary: the raw request carried on the current message itself.
+  const direct = userRequestFromMessage(message);
+
+  // Secondary: the newest genuine (non-agent) request already in the
+  // state-composed conversation window. Synchronous; no persistence race.
+  const fromState = recentMessagesFromState(state)
+    .filter((m) => m.entityId && m.entityId !== runtime.agentId)
+    .map(userRequestFromMessage)
+    .filter((text) => text.length > 0 && text !== direct)
+    .at(-1);
+  if (fromState) {
+    return direct ? `${fromState}\n${direct}` : fromState;
+  }
+
+  // Last resort: a bounded room read. Demoted below the synchronous sources
+  // because at spawn time the CURRENT user message is mid-processing and not
+  // yet persisted, so this can only return older/stale messages.
+  const roomId = message.roomId;
+  if (typeof runtime.getMemories !== "function" || !roomId) {
+    return direct;
+  }
+  const timeoutMs = opts.timeoutMs ?? 2_000;
+  const scanLimit = opts.scanLimit ?? 8;
+  let recent: Memory[] = [];
+  try {
+    recent = await Promise.race([
+      runtime.getMemories({
+        roomId: roomId as UUID,
+        tableName: "messages",
+        count: scanLimit,
+        unique: false,
+        includeEmbedding: false,
+      }),
+      new Promise<Memory[]>((resolve) =>
+        setTimeout(() => resolve([]), timeoutMs),
+      ),
+    ]);
+  } catch {
+    return direct;
+  }
+  const latestUserText = recent
+    .filter((m) => m.entityId && m.entityId !== runtime.agentId)
+    .map(userRequestFromMessage)
+    .find((text) => text.length > 0);
+  if (!latestUserText || latestUserText === direct) {
+    return direct;
+  }
+  return direct ? `${latestUserText}\n${direct}` : latestUserText;
 }
 
 export function hasExplicitPayload(message: Memory, fields: string[]): boolean {
