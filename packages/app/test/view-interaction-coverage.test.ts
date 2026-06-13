@@ -313,7 +313,7 @@ const GUI_INTERACTION_OWNERS: Readonly<
       spec: "packages/app/test/ui-smoke/apps-comms-device-interactions.spec.ts",
       proves:
         "Exercises connect headset, display writes, microphone toggles, and Wi-Fi setup bridge calls.",
-      signals: ["smartglasses bridge controls", "Connect Headset"],
+      signals: ["smartglasses bridge controls", "Connect"],
     },
   ],
 };
