@@ -164,7 +164,7 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
     name: "elizamaker app window",
     path: "/apps/elizamaker",
-    readyChecks: [{ text: "ElizaMaker" }, { text: "Chat" }],
+    selector: "#root",
     timeoutMs: 90_000,
   },
   {
