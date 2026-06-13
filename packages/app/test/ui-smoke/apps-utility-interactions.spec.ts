@@ -2,7 +2,6 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
 import { DIRECT_ROUTE_CASES } from "./apps-session-route-cases";
 import {
   assertReadyChecks,
-  hideContinuousChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -189,7 +188,6 @@ function routeCaseByName(name: string) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await hideContinuousChatOverlay(page);
   await seedAppStorage(page, {
     "eliza:ui-theme": "dark",
     "elizaos:ui-theme": "dark",
@@ -346,14 +344,14 @@ test("vector browser controls search and switch projection modes", async ({
     name: "vector-browser",
     path: "/vector-browser",
     readyChecks: [
-      { selector: '[data-agent-id="vector-table"]' },
+      { selector: '[data-testid="vector-sidebar"]' },
       { text: "Deterministic memory fixture" },
     ],
     timeoutMs: 90_000,
   } satisfies RouteCase;
 
   await openAppWindow(page, vectorBrowser);
-  await expect(page.locator('[data-agent-id="vector-table"]')).toBeVisible();
+  await expect(page.getByTestId("vector-sidebar")).toBeVisible();
   await expect(page.getByPlaceholder("Search content...")).toBeVisible();
   await expect(
     page.getByText("Deterministic memory fixture").first(),
@@ -419,7 +417,9 @@ test("finance and commerce utility controls refresh and show fixture data", asyn
   await expect(page.getByText("BTC", { exact: true })).toBeVisible();
   await expect(page.getByText("ETH", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Positions" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Orders" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Open orders" }),
+  ).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "hyperliquid refresh");
 
   const polymarket = routeCaseByName("polymarket");
@@ -592,6 +592,14 @@ test("wallet inventory controls update visible deterministic state", async ({
     "Wallet tokens tab",
   );
   await clickRequired(
+    walletSidebar.getByRole("button", { name: "Swap USDC" }),
+    "Wallet token swap action",
+  );
+  await expect(
+    page.getByText("Prepared a swap request for USDC in wallet chat."),
+  ).toBeVisible();
+
+  await clickRequired(
     walletSidebar.getByRole("button", { name: "Hide USDC" }),
     "Wallet hide token action",
   );
@@ -615,8 +623,11 @@ test("steward approvals and history controls consume deterministic API stubs", a
   const issues = installIssueGuards(page);
 
   await openAppPath(page, "/steward");
-  const stewardView = visibleByTestId(page, "steward-view");
-  await expect(stewardView, "steward view should be visible").toBeVisible();
+  const stewardSidebar = await ensurePageSidebarVisible(
+    page,
+    "steward-sidebar",
+    "steward sidebar",
+  );
   await expect(page.getByRole("heading", { name: "Approvals" })).toBeVisible();
   await expect(page.getByText("2 pending")).toBeVisible();
   await expect(
@@ -647,7 +658,7 @@ test("steward approvals and history controls consume deterministic API stubs", a
   await expect(page.getByText("No pending approvals")).toBeVisible();
 
   await clickRequired(
-    stewardView.getByRole("button", {
+    stewardSidebar.getByRole("button", {
       name: /History/,
     }),
     "Steward history tab",

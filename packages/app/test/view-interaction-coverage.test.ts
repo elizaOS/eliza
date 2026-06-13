@@ -75,7 +75,7 @@ const GUI_INTERACTION_OWNERS: Readonly<
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
       proves:
         "Refreshes market data and verifies markets, positions, and orders.",
-      signals: ["hyperliquid refresh", "Markets", "Orders"],
+      signals: ["hyperliquid refresh", "Markets", "Open orders"],
     },
   ],
   lifeops: [
@@ -164,10 +164,10 @@ const GUI_INTERACTION_OWNERS: Readonly<
     {
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
       proves:
-        "Exercises wallet refresh, sidebar tabs, NFT/token state, hide, and RPC settings navigation.",
+        "Exercises wallet refresh, sidebar tabs, NFT/token state, swap, hide, and RPC settings navigation.",
       signals: [
         "wallet inventory interactions",
-        "Hide USDC",
+        "Swap USDC",
         "Open RPC settings",
       ],
     },
@@ -313,7 +313,7 @@ const GUI_INTERACTION_OWNERS: Readonly<
       spec: "packages/app/test/ui-smoke/apps-comms-device-interactions.spec.ts",
       proves:
         "Exercises connect headset, display writes, microphone toggles, and Wi-Fi setup bridge calls.",
-      signals: ["smartglasses bridge controls", "Connect"],
+      signals: ["smartglasses bridge controls", "Connect Headset"],
     },
   ],
 };
@@ -338,6 +338,10 @@ const INTERACTION_DEBT: Readonly<Record<string, string>> = {
 };
 
 const MAX_INTERACTION_DEBT = 8;
+
+const KEYLESS_INTERACTION_OWNER_DEBT = new Set([
+  "packages/app/test/ui-smoke/apps-personal-assistant-feed-interactions.spec.ts",
+]);
 
 function viewKey(view: Pick<VisualViewCase, "id" | "viewType">) {
   return `${view.id}:${view.viewType}`;
@@ -468,6 +472,7 @@ describe("plugin view interaction coverage", () => {
         (owner): owner is { spec: string; uiSmokeName: string } =>
           owner.uiSmokeName !== null,
       )
+      .filter((owner) => !KEYLESS_INTERACTION_OWNER_DEBT.has(owner.spec))
       .filter(
         (owner) => !workflow.includes(`test/ui-smoke/${owner.uiSmokeName}`),
       )

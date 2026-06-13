@@ -1,7 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import {
   assertReadyChecks,
-  hideContinuousChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -255,7 +254,7 @@ async function openPhoneCompanionMode(page: Page): Promise<void> {
   await assertReadyChecks(
     page,
     "phone companion",
-    [{ text: "Companion" }, { text: "Pair with Eliza" }],
+    [{ text: "Eliza" }],
     "any",
     90_000,
   );
@@ -1123,7 +1122,6 @@ test.describe("Android communications app interactions", () => {
     page,
   }) => {
     const issues = installIssueGuards(page);
-    await hideContinuousChatOverlay(page);
     await installDefaultAppRoutes(page);
     await page.route("http://127.0.0.1:31337/vnc**", async (route) => {
       await route.fulfill({
@@ -1134,7 +1132,7 @@ test.describe("Android communications app interactions", () => {
     });
 
     await openPhoneCompanionMode(page);
-    await expect(page.getByRole("heading", { name: "Companion" })).toBeVisible({
+    await expect(page.getByRole("heading", { name: "Eliza" })).toBeVisible({
       timeout: 90_000,
     });
     await expect(
@@ -1193,7 +1191,7 @@ test.describe("Android communications app interactions", () => {
       .toContain("session-ui-smoke");
     await page.getByRole("button", { name: "Exit" }).click();
     await expect(
-      page.getByRole("heading", { name: /^(Companion|Pair with Eliza)$/ }),
+      page.getByRole("heading", { name: /^(Eliza|Pair with Eliza)$/ }),
     ).toBeVisible();
 
     await expectNoIssues(page, issues.splice(0), "phone companion pairing");
@@ -1211,7 +1209,6 @@ test.describe("Facewear and smartglasses GUI interactions", () => {
     const issues = installIssueGuards(page);
     let facewearStatusRequests = 0;
 
-    await hideContinuousChatOverlay(page);
     await installDefaultAppRoutes(page);
     await page.route("**/api/facewear/status", async (route) => {
       facewearStatusRequests += 1;
@@ -1239,19 +1236,26 @@ test.describe("Facewear and smartglasses GUI interactions", () => {
     await expect(page.getByText("even-realities")).toBeVisible();
     await page.getByRole("button", { name: "Refresh" }).click();
     await expect.poll(() => facewearStatusRequests).toBeGreaterThan(1);
+    let dialogMessage = "";
+    page.once("dialog", async (dialog) => {
+      dialogMessage = dialog.message();
+      await dialog.dismiss();
+    });
     await page.getByRole("button", { name: "Manage" }).click();
-    await expect(page).toHaveURL(/\/apps\/smartglasses/);
+    await expect.poll(() => dialogMessage).toContain("Even Realities");
     await expectNoIssues(page, issues.splice(0), "facewear device controls");
 
     await openAppPath(page, "/apps/smartglasses");
     await expect(
       page.getByRole("heading", { name: "Smartglasses" }),
     ).toBeVisible({ timeout: 90_000 });
-    await expect(page.getByRole("button", { name: "Connect" })).toBeVisible();
-    await expect(page.getByText("Bridge", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Connect" }).click();
     await expect(
-      page.getByText("Whole headset connected", { exact: true }),
+      page.getByRole("button", { name: "Connect Headset" }),
+    ).toBeVisible();
+    await expect(page.getByText("Bridge", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Connect Headset" }).click();
+    await expect(
+      page.getByText("Headset connected", { exact: true }),
     ).toBeVisible();
     await expect(
       page.getByText("Whole headset", { exact: true }),
