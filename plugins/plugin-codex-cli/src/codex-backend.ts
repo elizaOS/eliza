@@ -74,8 +74,9 @@ interface CodexResponseBody {
   tools?: OpenAITool[];
   tool_choice?: "auto" | "none" | "required" | { type: "function"; name: string };
   text?: { format: { type: "json_object" } };
-  temperature?: number;
-  max_output_tokens?: number;
+  // NB: the ChatGPT codex backend rejects `temperature` and `max_output_tokens`
+  // (gpt-5.x reasoning models) with 400 "Unsupported parameter" — never include
+  // them in the request body.
 }
 
 const DEFAULT_MODEL = "gpt-5.5";
@@ -147,8 +148,12 @@ export class CodexBackend {
     if (tools.length > 0) body.tools = tools;
     const toolChoice = toCodexToolChoice(params.toolChoice);
     if (toolChoice !== undefined) body.tool_choice = toolChoice;
-    if (params.temperature !== undefined) body.temperature = params.temperature;
-    if (params.maxTokens !== undefined) body.max_output_tokens = params.maxTokens;
+    // The ChatGPT codex backend (gpt-5.x reasoning models on the Responses API)
+    // rejects `temperature` and `max_output_tokens` with a 400 "Unsupported
+    // parameter" — reasoning models honor neither, and the official codex CLI
+    // never sends them. The runtime's planner/response-handler calls always pass
+    // maxTokens (and often temperature), so forwarding them 400'd every codex
+    // turn → empty result → no reply. Never send them to the codex backend.
     if (isJsonResponse(params.responseFormat)) body.text = { format: { type: "json_object" } };
 
     let auth = await this.loadAuth(this.authPath);

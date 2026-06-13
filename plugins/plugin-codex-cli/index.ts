@@ -1,4 +1,9 @@
-import type { GenerateTextParams, IAgentRuntime, Plugin, TextStreamResult } from "@elizaos/core";
+import type {
+  GenerateTextParams,
+  IAgentRuntime,
+  Plugin,
+  TextStreamResult,
+} from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import {
   CodexBackend,
@@ -7,10 +12,13 @@ import {
 } from "./src/codex-backend";
 
 const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as string;
-const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM ?? "TEXT_MEDIUM") as string;
+const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM ??
+  "TEXT_MEDIUM") as string;
 const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as string;
-const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ?? "RESPONSE_HANDLER") as string;
-const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as string;
+const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ??
+  "RESPONSE_HANDLER") as string;
+const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ??
+  "ACTION_PLANNER") as string;
 
 const CODEX_SUPPORTED_MODELS = [
   "gpt-5",
@@ -52,7 +60,8 @@ function createBackend(runtime: IAgentRuntime): CodexBackend {
   if (existing) return existing;
 
   const jitterRaw = getSetting(runtime, "CODEX_JITTER_MS_MAX");
-  const jitterMaxMs = jitterRaw === undefined ? undefined : Number.parseInt(jitterRaw, 10);
+  const jitterMaxMs =
+    jitterRaw === undefined ? undefined : Number.parseInt(jitterRaw, 10);
   const backend = new CodexBackend({
     authPath: getSetting(runtime, "CODEX_AUTH_PATH"),
     baseUrl: getSetting(runtime, "CODEX_BASE_URL"),
@@ -66,9 +75,13 @@ function createBackend(runtime: IAgentRuntime): CodexBackend {
 
 function toTextReturn(
   params: GenerateTextParams,
-  result: CodexGenerateResult
+  result: CodexGenerateResult,
 ): string | TextResultWithNativeTools {
-  if (params.tools?.length || params.messages?.length || result.toolCalls.length > 0) {
+  if (
+    params.tools?.length ||
+    params.messages?.length ||
+    result.toolCalls.length > 0
+  ) {
     return {
       text: result.text,
       toolCalls: result.toolCalls,
@@ -81,7 +94,7 @@ function toTextReturn(
 
 function buildCodexGenerateParams(
   runtime: IAgentRuntime,
-  params: GenerateTextParams
+  params: GenerateTextParams,
 ): CodexGenerateParams {
   // Honor `responseSchema` natively. OpenAI-compatible Codex models accept
   // `response_format: { type: "json_schema", schema }` for guaranteed JSON
@@ -112,7 +125,10 @@ function buildCodexGenerateParams(
   };
 }
 
-function streamTextWithCodex(runtime: IAgentRuntime, params: GenerateTextParams): TextStreamResult {
+function streamTextWithCodex(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams,
+): TextStreamResult {
   const queue: string[] = [];
   let notify: (() => void) | undefined;
   let done = false;
@@ -148,9 +164,23 @@ function streamTextWithCodex(runtime: IAgentRuntime, params: GenerateTextParams)
     }
   }
 
+  // The planner streams (the Discord message handler sets onStreamChunk), so
+  // ACTION_PLANNER/RESPONSE_HANDLER go through THIS path. The runtime collapses
+  // the stream and only preserves native tool calls when `toolCalls` is present
+  // on the returned object (it duck-types `"toolCalls" in streamRaw`). Without
+  // it, a tool-only response (empty text + native toolCalls) collapses to a bare
+  // empty string and the planner never sees the tool call — it replans until the
+  // required-tool cap and gives up. Mirror plugin-openai: attach `toolCalls`
+  // whenever the call is native, and stamp the model name for trajectory pricing.
+  const shouldReturnNativeTools = Boolean(
+    params.messages?.length || params.tools?.length || params.toolChoice,
+  );
   return {
     textStream: textStream(),
     text: resultPromise.then((result) => result.text),
+    ...(shouldReturnNativeTools
+      ? { toolCalls: resultPromise.then((result) => result.toolCalls) }
+      : {}),
     usage: resultPromise.then((result) =>
       result.usage
         ? {
@@ -158,49 +188,68 @@ function streamTextWithCodex(runtime: IAgentRuntime, params: GenerateTextParams)
             completionTokens: result.usage.outputTokens,
             totalTokens: result.usage.totalTokens,
           }
-        : undefined
+        : undefined,
     ),
     finishReason: resultPromise.then((result) => result.finishReason),
+    providerMetadata: { modelName: getCodexModel(runtime) },
   };
 }
 
 async function generateTextWithCodex(
   runtime: IAgentRuntime,
   params: GenerateTextParams,
-  modelType: string
+  modelType: string,
 ): Promise<string | TextResultWithNativeTools | TextStreamResult> {
   const model = getCodexModel(runtime);
   logger.debug(`[codex-cli] Using ${modelType} model: ${model}`);
   if (params.stream) return streamTextWithCodex(runtime, params);
-  const result = await createBackend(runtime).generate(buildCodexGenerateParams(runtime, params));
+  const result = await createBackend(runtime).generate(
+    buildCodexGenerateParams(runtime, params),
+  );
   return toTextReturn(params, result);
 }
 
 const codexModels = {
-  [ModelType.TEXT_SMALL]: (runtime: IAgentRuntime, params: GenerateTextParams) =>
-    generateTextWithCodex(runtime, params, ModelType.TEXT_SMALL),
-  [TEXT_NANO_MODEL_TYPE]: (runtime: IAgentRuntime, params: GenerateTextParams) =>
-    generateTextWithCodex(runtime, params, TEXT_NANO_MODEL_TYPE),
-  [TEXT_MEDIUM_MODEL_TYPE]: (runtime: IAgentRuntime, params: GenerateTextParams) =>
-    generateTextWithCodex(runtime, params, TEXT_MEDIUM_MODEL_TYPE),
-  [ModelType.TEXT_LARGE]: (runtime: IAgentRuntime, params: GenerateTextParams) =>
-    generateTextWithCodex(runtime, params, ModelType.TEXT_LARGE),
-  [TEXT_MEGA_MODEL_TYPE]: (runtime: IAgentRuntime, params: GenerateTextParams) =>
-    generateTextWithCodex(runtime, params, TEXT_MEGA_MODEL_TYPE),
-  [RESPONSE_HANDLER_MODEL_TYPE]: (runtime: IAgentRuntime, params: GenerateTextParams) =>
-    generateTextWithCodex(runtime, params, RESPONSE_HANDLER_MODEL_TYPE),
-  [ACTION_PLANNER_MODEL_TYPE]: (runtime: IAgentRuntime, params: GenerateTextParams) =>
-    generateTextWithCodex(runtime, params, ACTION_PLANNER_MODEL_TYPE),
+  [ModelType.TEXT_SMALL]: (
+    runtime: IAgentRuntime,
+    params: GenerateTextParams,
+  ) => generateTextWithCodex(runtime, params, ModelType.TEXT_SMALL),
+  [TEXT_NANO_MODEL_TYPE]: (
+    runtime: IAgentRuntime,
+    params: GenerateTextParams,
+  ) => generateTextWithCodex(runtime, params, TEXT_NANO_MODEL_TYPE),
+  [TEXT_MEDIUM_MODEL_TYPE]: (
+    runtime: IAgentRuntime,
+    params: GenerateTextParams,
+  ) => generateTextWithCodex(runtime, params, TEXT_MEDIUM_MODEL_TYPE),
+  [ModelType.TEXT_LARGE]: (
+    runtime: IAgentRuntime,
+    params: GenerateTextParams,
+  ) => generateTextWithCodex(runtime, params, ModelType.TEXT_LARGE),
+  [TEXT_MEGA_MODEL_TYPE]: (
+    runtime: IAgentRuntime,
+    params: GenerateTextParams,
+  ) => generateTextWithCodex(runtime, params, TEXT_MEGA_MODEL_TYPE),
+  [RESPONSE_HANDLER_MODEL_TYPE]: (
+    runtime: IAgentRuntime,
+    params: GenerateTextParams,
+  ) => generateTextWithCodex(runtime, params, RESPONSE_HANDLER_MODEL_TYPE),
+  [ACTION_PLANNER_MODEL_TYPE]: (
+    runtime: IAgentRuntime,
+    params: GenerateTextParams,
+  ) => generateTextWithCodex(runtime, params, ACTION_PLANNER_MODEL_TYPE),
 } as Plugin["models"];
 
 export const codexCliPlugin: Plugin = {
   name: "codex-cli",
-  description: "ChatGPT Codex model provider using the codex CLI OAuth token cache",
+  description:
+    "ChatGPT Codex model provider using the codex CLI OAuth token cache",
   autoEnable: {
     // No env-key auto-enable; activated when an auth profile selects codex-cli
     // as its provider (e.g. via subscription onboarding).
     shouldEnable: (_env, config) => {
-      const auth = (config as { auth?: { profiles?: Record<string, unknown> } }).auth;
+      const auth = (config as { auth?: { profiles?: Record<string, unknown> } })
+        .auth;
       const profiles = auth?.profiles;
       if (!profiles || typeof profiles !== "object") return false;
       return Object.values(profiles).some((profile) => {
@@ -217,7 +266,9 @@ export const codexCliPlugin: Plugin = {
     CODEX_ORIGINATOR: readEnv("CODEX_ORIGINATOR") ?? null,
   },
   async init(): Promise<void> {
-    logger.info(`[codex-cli] initialized. Supported models: ${CODEX_SUPPORTED_MODELS.join(", ")}`);
+    logger.info(
+      `[codex-cli] initialized. Supported models: ${CODEX_SUPPORTED_MODELS.join(", ")}`,
+    );
   },
   models: codexModels,
 };
