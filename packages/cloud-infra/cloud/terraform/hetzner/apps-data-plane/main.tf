@@ -79,6 +79,14 @@ resource "hcloud_firewall" "app_node" {
     port       = "443"
     source_ips = ["0.0.0.0/0", "::/0"]
   }
+  # Caddy admin API — the control plane adds/removes per-app routes live
+  # (apps-ingress-provisioner). Same tight allowlist as SSH; never public.
+  rule {
+    direction  = "in"
+    protocol   = "tcp"
+    port       = "2019"
+    source_ips = var.operator_ingress_cidrs
+  }
 }
 
 # ── App worker node(s) ────────────────────────────────────────────────────────
@@ -99,6 +107,7 @@ resource "hcloud_server" "app_node" {
     hostname          = "eliza-apps-node-${var.environment}-${each.value}"
     operator_ssh_keys = var.ssh_public_keys
     tenant_db_host    = local.tenant_db_host
+    cloud_api_origin  = var.cloud_api_origin
   })
 
   # Allow in-place rename via Hetzner Console without TF drift (matches control-plane).

@@ -78,6 +78,15 @@ variable "apps_base_domain" {
   }
 }
 
+variable "cloud_api_origin" {
+  description = "Origin of THIS environment's cloud-api Worker (e.g. https://api-staging.elizacloud.ai staging, https://api.elizacloud.ai prod). Caddy's on-demand-TLS ask endpoint lives under it (/api/v1/apps-ingress/ask) — certs are only issued for hosts cloud-api vouches for. No default: must be the env-correct origin or staging would mint certs against prod state (and vice versa)."
+  type        = string
+  validation {
+    condition     = can(regex("^https://[^/\\s]+$", var.cloud_api_origin))
+    error_message = "cloud_api_origin must be an https:// origin with no trailing slash or path (e.g. https://api-staging.elizacloud.ai)"
+  }
+}
+
 variable "operator_ingress_cidrs" {
   description = "CIDRs allowed to SSH the app worker nodes (operator IPs / control-plane). No default: the workflow MUST supply a tight list — '0.0.0.0/0' is explicitly rejected by the validation below to fail closed on every apply."
   type        = list(string)
