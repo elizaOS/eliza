@@ -177,12 +177,16 @@ async function installSeededChatRoutes(
       id: "seed-user-1",
       role: "user" as const,
       text: "Spin up the planner task.",
+      source: "eliza",
+      roomId: ROOM_ID,
       timestamp: NOW_MS - 5_000,
     },
     {
       id: "seed-assistant-1",
       role: "assistant" as const,
       text: assistantText,
+      source: "eliza",
+      roomId: ROOM_ID,
       timestamp: NOW_MS - 2_000,
     },
   ];

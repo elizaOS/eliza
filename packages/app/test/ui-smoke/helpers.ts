@@ -1201,6 +1201,53 @@ function smokeStewardHistoryRecords() {
   ];
 }
 
+const smokeVectorRows = [
+  {
+    id: "memory-smoke-1",
+    content: "Deterministic memory fixture for UI smoke vector search.",
+    room_id: "room-smoke-vector",
+    entity_id: "entity-smoke-vector",
+    type: "message",
+    created_at: SMOKE_GENERATED_AT,
+    unique: true,
+    dim_384: "[0.1,0.2,0.3]",
+  },
+];
+
+function smokeDatabaseQuery(sql: string) {
+  const normalized = sql.replace(/\s+/g, " ").trim().toLowerCase();
+  if (normalized.includes("information_schema.columns")) {
+    return {
+      rows: [
+        { column_name: "id", data_type: "text" },
+        { column_name: "content", data_type: "text" },
+        { column_name: "room_id", data_type: "text" },
+        { column_name: "entity_id", data_type: "text" },
+        { column_name: "type", data_type: "text" },
+        { column_name: "created_at", data_type: "timestamp" },
+        { column_name: "unique", data_type: "boolean" },
+        { column_name: "dim_384", data_type: "text" },
+      ],
+      rowCount: 8,
+    };
+  }
+  if (normalized.includes("count(*)")) {
+    return {
+      rows: [
+        { cnt: normalized.includes('"unique"') ? 1 : smokeVectorRows.length },
+      ],
+      rowCount: 1,
+    };
+  }
+  if (normalized.includes('from "memories"')) {
+    return {
+      rows: smokeVectorRows,
+      rowCount: smokeVectorRows.length,
+    };
+  }
+  return { rows: [], rowCount: 0 };
+}
+
 /** Installs baseline API routes for smoke tests before flow-specific overrides. */
 export async function installDefaultAppRoutes(page: Page): Promise<void> {
   await page.route(/\/(?:brand|app-heroes)\//, async (route) => {
@@ -1484,6 +1531,37 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
         positions: [],
         source: { api: "data", endpoint: "/positions" },
       }),
+    });
+  });
+
+  await page.route("**/api/database/tables", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        tables: [
+          { name: "memories", rowCount: smokeVectorRows.length },
+          { name: "embeddings", rowCount: smokeVectorRows.length },
+        ],
+      }),
+    });
+  });
+
+  await page.route("**/api/database/query", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    const rawBody = route.request().postData() ?? "{}";
+    const body = JSON.parse(rawBody) as { sql?: string };
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(smokeDatabaseQuery(body.sql ?? "")),
     });
   });
 

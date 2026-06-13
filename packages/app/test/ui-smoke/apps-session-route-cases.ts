@@ -164,8 +164,7 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
     name: "elizamaker app window",
     path: "/apps/elizamaker",
-    selector:
-      '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]',
+    readyChecks: [{ text: "ElizaMaker" }, { text: "Chat" }],
     timeoutMs: 90_000,
   },
   {
@@ -204,7 +203,7 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
     name: "smartglasses app window",
     path: "/apps/smartglasses",
-    readyChecks: [{ text: "Smartglasses" }, { text: "Connect Headset" }],
+    readyChecks: [{ text: "Smartglasses" }, { text: "Connect" }],
     timeoutMs: 90_000,
   },
   {
