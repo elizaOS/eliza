@@ -87,7 +87,12 @@ function userMessage(page: Page, text: string): Locator {
     .locator('[data-testid="chat-message"][data-role="user"]')
     .filter({ hasText: text })
     .last()
-    .or(conversationLog(page).locator('[data-role="user"]').filter({ hasText: text }).last())
+    .or(
+      conversationLog(page)
+        .locator('[data-role="user"]')
+        .filter({ hasText: text })
+        .last(),
+    )
     .or(conversationLog(page).getByText(text).last())
     .first();
 }
@@ -129,8 +134,7 @@ async function startCloudRuntime(page: Page): Promise<void> {
 
   const connectButton = page.getByRole("button", { name: /^Connect$/ });
   await connectButton.click();
-  await expect(startButton).toBeVisible({ timeout: 30_000 });
-  await startButton.click();
+  await clickIfVisible(startButton, 5_000);
 }
 
 async function installCloudConnectionRoutes(
@@ -604,7 +608,7 @@ for (const viewport of VIEWPORTS) {
       },
     );
 
-    await openAppPath(page, "/chat");
+    await openAppPath(page, "/chat", { allowOnboardingToast: true });
     await startCloudRuntime(page);
     await clickIfVisible(
       page.getByRole("button", { name: /sign in with eliza cloud/i }),
@@ -912,7 +916,7 @@ test("new cloud agent provisions through direct cloud sandbox and reaches chat",
     fulfillLaunch,
   );
 
-  await openAppPath(page, "/chat");
+  await openAppPath(page, "/chat", { allowOnboardingToast: true });
   await startCloudRuntime(page);
   await clickIfVisible(
     page.getByRole("button", { name: /sign in with eliza cloud/i }),

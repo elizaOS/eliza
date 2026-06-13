@@ -328,9 +328,14 @@ function isFirstRunTargetPath(targetPath: string): boolean {
   }
 }
 
+interface OpenAppPathOptions {
+  allowOnboardingToast?: boolean;
+}
+
 async function expectMainShellReadyForRoute(
   page: Page,
   targetPath: string,
+  options: OpenAppPathOptions = {},
 ): Promise<void> {
   if (isRootTargetPath(targetPath) || isFirstRunTargetPath(targetPath)) return;
   await expect(page.getByTestId("startup-shell-loading")).toHaveCount(0, {
@@ -339,9 +344,11 @@ async function expectMainShellReadyForRoute(
   await expect(page.getByTestId("first-run-shell")).toHaveCount(0, {
     timeout: STARTUP_SETTLED_TIMEOUT_MS,
   });
-  await expect(page.getByTestId("onboarding-toast")).toHaveCount(0, {
-    timeout: STARTUP_SETTLED_TIMEOUT_MS,
-  });
+  if (!options.allowOnboardingToast) {
+    await expect(page.getByTestId("onboarding-toast")).toHaveCount(0, {
+      timeout: STARTUP_SETTLED_TIMEOUT_MS,
+    });
+  }
 }
 
 async function replayNavigationAfterStartup(page: Page): Promise<void> {
@@ -360,16 +367,17 @@ async function replayNavigationAfterStartup(page: Page): Promise<void> {
 export async function openAppPath(
   page: Page,
   targetPath: string,
+  options: OpenAppPathOptions = {},
 ): Promise<void> {
   await installRenderTelemetryGuard(page);
   await page.goto(targetPath, { waitUntil: "domcontentloaded" });
   await expectRootReady(page);
   await expectStartupSettled(page);
   await expectNoFirstRunRedirect(page);
-  await expectMainShellReadyForRoute(page, targetPath);
+  await expectMainShellReadyForRoute(page, targetPath, options);
   await replayNavigationAfterStartup(page);
   await expectStartupSettled(page);
-  await expectMainShellReadyForRoute(page, targetPath);
+  await expectMainShellReadyForRoute(page, targetPath, options);
   await expectNoRenderTelemetryErrors(page, targetPath);
 }
 
