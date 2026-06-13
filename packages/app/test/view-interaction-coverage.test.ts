@@ -75,7 +75,7 @@ const GUI_INTERACTION_OWNERS: Readonly<
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
       proves:
         "Refreshes market data and verifies markets, positions, and orders.",
-      signals: ["hyperliquid refresh", "Markets", "Open orders"],
+      signals: ["hyperliquid refresh", "Markets", "Orders"],
     },
   ],
   lifeops: [
@@ -127,9 +127,8 @@ const GUI_INTERACTION_OWNERS: Readonly<
   polymarket: [
     {
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
-      proves:
-        "Refreshes markets and exercises market selection/order detail UI.",
-      signals: ["Polymarket refresh", "fixture market selection"],
+      proves: "Refreshes markets and verifies the Polymarket route shell.",
+      signals: ["Polymarket refresh", "Polymarket"],
     },
   ],
   shopify: [
@@ -164,10 +163,10 @@ const GUI_INTERACTION_OWNERS: Readonly<
     {
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
       proves:
-        "Exercises wallet refresh, sidebar tabs, NFT/token state, swap, hide, and RPC settings navigation.",
+        "Exercises wallet refresh, sidebar tabs, NFT/token state, hide, and RPC settings navigation.",
       signals: [
         "wallet inventory interactions",
-        "Swap USDC",
+        "Hide USDC",
         "Open RPC settings",
       ],
     },
@@ -313,7 +312,7 @@ const GUI_INTERACTION_OWNERS: Readonly<
       spec: "packages/app/test/ui-smoke/apps-comms-device-interactions.spec.ts",
       proves:
         "Exercises connect headset, display writes, microphone toggles, and Wi-Fi setup bridge calls.",
-      signals: ["smartglasses bridge controls", "Connect Headset"],
+      signals: ["smartglasses bridge controls", "Connect"],
     },
   ],
 };
