@@ -8,26 +8,8 @@ name: Tests
 on:
   pull_request:
     branches: [main, develop]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-      - "packages/docs/**"
-      - "AGENTS.md"
-      - "CHANGELOG.md"
-      - "LICENSE"
-      - ".github/ISSUE_TEMPLATE/**"
-      - ".github/pull_request_template.md"
   push:
     branches: [main, develop]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-      - "packages/docs/**"
-      - "AGENTS.md"
-      - "CHANGELOG.md"
-      - "LICENSE"
-      - ".github/ISSUE_TEMPLATE/**"
-      - ".github/pull_request_template.md"
   workflow_dispatch:
   schedule:
     # Nightly live smoke for container-backed remote capability plugins.
@@ -51,8 +33,138 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Classify changed paths
+    runs-on: ubuntu-24.04
+    outputs:
+      server: ${{ steps.filter.outputs.server }}
+      client: ${{ steps.filter.outputs.client }}
+      plugins: ${{ steps.filter.outputs.plugins }}
+      desktop: ${{ steps.filter.outputs.desktop }}
+      zero_key: ${{ steps.filter.outputs.zero_key }}
+      cloud: ${{ steps.filter.outputs.cloud }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Determine affected test lanes
+        id: filter
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            {
+              echo "server=true"
+              echo "client=true"
+              echo "plugins=true"
+              echo "desktop=true"
+              echo "zero_key=true"
+              echo "cloud=true"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          git diff --name-only "$base" "$head" > /tmp/changed-files
+
+          server=false
+          client=false
+          plugins=false
+          desktop=false
+          zero_key=false
+          cloud=false
+
+          mark_all() {
+            server=true
+            client=true
+            plugins=true
+            desktop=true
+            zero_key=true
+            cloud=true
+          }
+
+          while IFS= read -r path; do
+            case "$path" in
+              package.json|bun.lock|turbo.json|tsconfig*.json|vitest.config.*)
+                mark_all
+                ;;
+              .github/workflows/test.yml|.github/actions/setup-bun-workspace/**)
+                mark_all
+                ;;
+              packages/core/**|packages/agent/**|packages/shared/**|packages/prompts/**|packages/test/**)
+                server=true
+                client=true
+                plugins=true
+                desktop=true
+                zero_key=true
+                ;;
+              packages/app/**|packages/ui/**)
+                client=true
+                zero_key=true
+                ;;
+              packages/app-core/**)
+                server=true
+                client=true
+                desktop=true
+                zero_key=true
+                ;;
+              packages/scenario-runner/**)
+                server=true
+                zero_key=true
+                ;;
+              packages/scripts/**)
+                server=true
+                zero_key=true
+                ;;
+              packages/cloud-sdk/**|packages/cloud-shared/**|packages/cloud-frontend/**)
+                server=true
+                client=true
+                zero_key=true
+                cloud=true
+                ;;
+              packages/security/**|packages/vault/**)
+                server=true
+                ;;
+              plugins/**)
+                plugins=true
+                zero_key=true
+                ;;
+            esac
+          done < /tmp/changed-files
+
+          {
+            echo "server=$server"
+            echo "client=$client"
+            echo "plugins=$plugins"
+            echo "desktop=$desktop"
+            echo "zero_key=$zero_key"
+            echo "cloud=$cloud"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Test lane path gate"
+            echo ""
+            echo "- server: \`$server\`"
+            echo "- client: \`$client\`"
+            echo "- plugins: \`$plugins\`"
+            echo "- desktop: \`$desktop\`"
+            echo "- zero_key: \`$zero_key\`"
+            echo "- cloud: \`$cloud\`"
+            echo ""
+            echo "<details><summary>Changed files</summary>"
+            echo ""
+            sed 's/^/- /' /tmp/changed-files
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   server-tests:
     name: Server Tests
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -126,6 +238,8 @@ jobs:
 
   client-tests:
     name: Client Tests
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.client == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -162,6 +276,8 @@ jobs:
 
   plugin-tests:
     name: Plugin Tests
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.plugins == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 95
     env:
@@ -234,6 +350,8 @@ jobs:
 
   desktop-contract:
     name: Electrobun Desktop Contract
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -262,6 +380,8 @@ jobs:
 
   zero-key-e2e:
     name: Zero-Key Deterministic E2E
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
@@ -386,6 +506,8 @@ jobs:
 
   cloud-live-e2e:
     name: Cloud Live E2E (Eliza Cloud)
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.cloud == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     outputs:
@@ -684,6 +806,7 @@ jobs:
     name: All Tests Passed
     if: always()
     needs:
+      - changes
       - server-tests
       - client-tests
       - plugin-tests
@@ -699,6 +822,7 @@ jobs:
         run: |
           set -u
           echo "=== Required test job results ==="
+          echo "changes:          ${{ needs.changes.result }}"
           echo "server-tests:     ${{ needs.server-tests.result }}"
           echo "client-tests:     ${{ needs.client-tests.result }}"
           echo "plugin-tests:     ${{ needs.plugin-tests.result }}"
@@ -711,6 +835,7 @@ jobs:
           strict_results="${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}"
           bad=0
           for pair in \
+            "changes:${{ needs.changes.result }}" \
             "server-tests:${{ needs.server-tests.result }}" \
             "client-tests:${{ needs.client-tests.result }}" \
             "plugin-tests:${{ needs.plugin-tests.result }}" \

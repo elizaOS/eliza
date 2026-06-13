@@ -36,8 +36,75 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Classify changed paths
+    runs-on: ubuntu-24.04
+    outputs:
+      run_scenario_pr: ${{ steps.filter.outputs.run_scenario_pr }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Determine affected CI surface
+        id: filter
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "run_scenario_pr=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          git diff --name-only "$base" "$head" > /tmp/changed-files
+
+          run_scenario_pr=false
+          while IFS= read -r path; do
+            case "$path" in
+              package.json|bun.lock|turbo.json|tsconfig*.json|vite.config.*|vitest.config.*)
+                run_scenario_pr=true
+                ;;
+              .github/workflows/scenario-pr.yml|.github/actions/setup-bun-workspace/**)
+                run_scenario_pr=true
+                ;;
+              packages/app/**|packages/ui/**|packages/app-core/**|packages/scenario-runner/**)
+                run_scenario_pr=true
+                ;;
+              packages/core/**|packages/agent/**|packages/shared/**|packages/scripts/**)
+                run_scenario_pr=true
+                ;;
+              packages/test/**|packages/prompts/**)
+                run_scenario_pr=true
+                ;;
+              plugins/plugin-app-control/**|plugins/plugin-computeruse/**|plugins/plugin-github/**)
+                run_scenario_pr=true
+                ;;
+              plugins/plugin-*/src/**|plugins/plugin-*/package.json|plugins/plugin-*/vite.config.*|plugins/plugin-*/vitest.config.*)
+                run_scenario_pr=true
+                ;;
+            esac
+          done < /tmp/changed-files
+
+          echo "run_scenario_pr=$run_scenario_pr" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Scenario PR E2E path gate"
+            echo ""
+            echo "- run_scenario_pr: \`$run_scenario_pr\`"
+            echo ""
+            echo "<details><summary>Changed files</summary>"
+            echo ""
+            sed 's/^/- /' /tmp/changed-files
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   deterministic-scenario:
     name: Zero-Key Deterministic E2E
+    needs: changes
+    if: needs.changes.outputs.run_scenario_pr == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
