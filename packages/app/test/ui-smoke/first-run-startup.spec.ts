@@ -100,8 +100,8 @@ test("first-run onboarding renders without a render loop and lets the runtime be
     }
   }
 
-  // Dwell so any churn-driven loop would cross the telemetry error threshold.
-  await page.waitForTimeout(4_000);
+  await expect(cloud).toBeVisible({ timeout: 15_000 });
+  await expect(cloud).toBeEnabled({ timeout: 15_000 });
 
   await expectNoRenderTelemetryErrors(page, "first-run onboarding");
   await expect(shell).toBeVisible();
