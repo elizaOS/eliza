@@ -39,10 +39,15 @@ on:
         type: string
         required: true
       tenant_admin_dsn:
-        description: "Optional env-sourced tenant DB admin DSN (leave empty to use the seeded encrypted cluster)"
+        description: "Optional env-sourced tenant DB admin DSN (leave empty to use the seeded encrypted cluster OR fetch_dsn_from_shared_state)"
         type: string
         required: false
         default: ""
+      fetch_dsn_from_shared_state:
+        description: "Read APPS_TENANT_ADMIN_DSN from the apps-shared terraform output instead of pasting it (keeps the password out of inputs/logs)"
+        type: boolean
+        required: false
+        default: false
       egress_proxy:
         description: "Optional CONTAINERS_EGRESS_PROXY_URL"
         type: string
@@ -81,6 +86,35 @@ jobs:
           echo "$NODE_IP" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::app_node must be id:ip:capacity with a valid IPv4"; fail=1; }
           echo "CADDY_ADMIN=http://$NODE_IP:2019" >> "$GITHUB_ENV"
           [ "$fail" = 0 ] || exit 1
+
+      # OPTIONAL: pull the tenant admin DSN straight from the apps-shared
+      # terraform output so the password never appears in a workflow input or in
+      # logs. `terraform output -raw` of a SENSITIVE value is auto-masked by the
+      # runner; we also ::add-mask:: it before writing to $GITHUB_ENV.
+      - name: Checkout (for terraform fetch)
+        if: ${{ github.event.inputs.fetch_dsn_from_shared_state == 'true' }}
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform (for DSN fetch)
+        if: ${{ github.event.inputs.fetch_dsn_from_shared_state == 'true' }}
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.10.5"
+
+      - name: Read DSN from apps-shared output
+        if: ${{ github.event.inputs.fetch_dsn_from_shared_state == 'true' }}
+        working-directory: packages/cloud-infra/cloud/terraform/hetzner/apps-shared
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_APPS_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATE_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATE_SECRET_ACCESS_KEY }}
+        run: |
+          terraform init -input=false -backend-config=backend.hcl >/dev/null
+          DSN="$(terraform output -raw tenant_db_admin_dsn)"
+          [ -n "$DSN" ] || { echo "::error::apps-shared has no tenant_db_admin_dsn output (is it applied?)"; exit 1; }
+          echo "::add-mask::$DSN"
+          echo "TENANT_ADMIN_DSN=$DSN" >> "$GITHUB_ENV"
+          echo "fetched tenant admin DSN from apps-shared output (masked)"
 
       - name: Upsert apps env + restart daemon
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
