@@ -1472,9 +1472,33 @@ export class ProvisioningJobService {
       // Apps lane (Product 2): tear down a deleted app's isolated tenant DB.
       // The Worker enqueues this; the daemon runs the real DROP + slot release
       // via the injected deprovisioner (wired in apps-deploy-backend). (#8342)
-      case JOB_TYPES.APP_DB_DEPROVISION:
-        await dispatchAppDbDeprovisionJob(job);
+      case JOB_TYPES.APP_DB_DEPROVISION: {
+        const outcome = await dispatchAppDbDeprovisionJob(job);
+        // Mark terminal so recoverStaleJobs() can't re-sweep this job back to
+        // `pending` after the stale threshold. A re-run would call
+        // deprovisionTenantDbForApp -> releaseSlot() a SECOND time, and
+        // releaseSlot's GREATEST(0, database_count - 1) is NOT idempotent
+        // across separate successful runs: on a multi-tenant cluster the second
+        // decrement frees a phantom slot belonging to another LIVE tenant DB
+        // (capacity over-allocation — the inverse of the #8342 leak this very
+        // job fixes). Every AGENT_* executor self-marks completed for exactly
+        // this reason; the Apps-lane dispatchers historically relied on never
+        // being re-swept, which only bites this non-idempotent deprovision path.
+        //
+        // Follow-up (deeper hardening, separate PR): make releaseSlot itself
+        // idempotent by gating it on the DROP actually removing an existing DB
+        // (needs a row-returning query seam on TenantDbSqlExecutor). That would
+        // also close the micro-window where this updateStatus throws AFTER a
+        // successful releaseSlot and the retry re-decrements.
+        await jobsRepository.updateStatus(job.id, "completed", {
+          result: {
+            deprovisioned: outcome.deprovisioned,
+            reason: outcome.reason ?? null,
+          },
+          completed_at: new Date(),
+        });
         break;
+      }
       default:
         throw new Error(`Unknown job type: ${job.type}`);
     }
