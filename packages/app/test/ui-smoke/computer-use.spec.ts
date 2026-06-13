@@ -26,9 +26,12 @@ test("settings exposes computer use capability controls", async ({ page }) => {
       /Computer Use requires Accessibility and Screen Recording permissions\./,
     ),
   ).toBeVisible();
-  await expect(page.locator("#permissions")).toBeVisible();
+  await openSettingsSection(page, /^App Permissions\b/);
+  await expect(page.locator("#app-permissions")).toBeVisible();
   await expect(
-    page.locator("#permissions").getByText("Permissions", { exact: true }),
+    page
+      .locator("#app-permissions")
+      .getByText("App Permissions", { exact: true }),
   ).toBeVisible();
 });
 

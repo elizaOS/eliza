@@ -73,7 +73,7 @@ test("first-run onboarding renders without a render loop and lets the runtime be
   // shows Cloud alone. Assert the optional cards only when present.
   const cloud = page
     .getByTestId("first-run-runtime-cloud")
-    .or(page.getByRole("button", { name: "Eliza Cloud" }));
+    .or(page.getByRole("button", { name: /^(Eliza Cloud|Connect)$/ }));
   await expect(cloud).toBeVisible({ timeout: 15_000 });
 
   const remote = page.getByTestId("first-run-runtime-remote");

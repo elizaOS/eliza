@@ -164,10 +164,12 @@ test("onboarding survives browser back and forward while runtime choices churn",
   });
   const shell = await expectFirstRunSurface(page);
   if (!(await hasDetailedFirstRunShell(page))) {
-    await expect(page.getByRole("button", { name: "Use Local" })).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Eliza Cloud" }),
+      page.getByRole("button", { name: /^(Use Local|Connect)$/ }),
     ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Eliza Cloud" })).toHaveCount(
+      0,
+    );
     await page.goto("/?runtime=first-run&runtimeTarget=local", {
       waitUntil: "domcontentloaded",
     });
