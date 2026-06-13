@@ -14,6 +14,7 @@ import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
 import { corsMiddleware } from "@/lib/cors/cloud-api-hono-cors";
 import { observeCloudRequest } from "@/lib/observability/cloud-backend-observability";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
+import { configureAppsDeprovisionTrigger } from "@/lib/services/app-db-deprovision-job-service";
 import { configureAppsDeployTrigger } from "@/lib/services/app-deploy-job-service";
 import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
 import { logger } from "@/lib/utils/logger";
@@ -148,6 +149,10 @@ export function createApp(): Hono<AppEnv> {
   // `pg` is imported here; process.env is populated on workerd via nodejs_compat.
   if (process.env.APPS_DEPLOY_ENABLED === "1") {
     configureAppsDeployTrigger();
+    // Same lane: when an app with an isolated tenant DB is deleted, enqueue an
+    // APP_DB_DEPROVISION job so the daemon DROPs the DB + frees the cluster slot
+    // (the Worker can't — no `pg`). Without it the DB + slot leak (#8342).
+    configureAppsDeprovisionTrigger();
   }
 
   const app = new Hono<AppEnv>({ strict: false });

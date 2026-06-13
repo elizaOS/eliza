@@ -60,6 +60,15 @@ export const JOB_TYPES = {
    * `pg`/SSH off the workerd request path.
    */
   APP_DEPLOY: "app_deploy",
+  /**
+   * Tear down an app's ISOLATED per-tenant DB (Apps / Product 2): DROP DATABASE
+   * + DROP ROLE and release the cluster slot. The Worker delete path enqueues
+   * this (pg-free, carrying the app's encrypted DSN) and the provisioning-worker
+   * daemon claims it and runs the real DROP node-side — because `pg` and the
+   * cluster admin DSN only exist on the daemon. Without it, a deleted isolated
+   * app strands a live DB we keep paying for and burns a finite slot (#8342).
+   */
+  APP_DB_DEPROVISION: "app_db_deprovision",
 } as const;
 
 export type ProvisioningJobType = (typeof JOB_TYPES)[keyof typeof JOB_TYPES];

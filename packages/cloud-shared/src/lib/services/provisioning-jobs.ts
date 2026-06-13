@@ -27,6 +27,7 @@ import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { jobs } from "../../db/schemas/jobs";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { logger } from "../utils/logger";
+import { dispatchAppDbDeprovisionJob } from "./app-db-deprovision-job-service";
 import { dispatchAppDeployJob } from "./app-deploy-job-service";
 import { dispatchContainerJob, getContainerExecutorDeps } from "./container-job-service";
 import { elizaProvisionAdvisoryLockSql } from "./eliza-provision-lock";
@@ -1467,6 +1468,12 @@ export class ProvisioningJobService {
       // daemon runs the real isolated provision via the injected AppDeployRunner.
       case JOB_TYPES.APP_DEPLOY:
         await dispatchAppDeployJob(job);
+        break;
+      // Apps lane (Product 2): tear down a deleted app's isolated tenant DB.
+      // The Worker enqueues this; the daemon runs the real DROP + slot release
+      // via the injected deprovisioner (wired in apps-deploy-backend). (#8342)
+      case JOB_TYPES.APP_DB_DEPROVISION:
+        await dispatchAppDbDeprovisionJob(job);
         break;
       default:
         throw new Error(`Unknown job type: ${job.type}`);

@@ -306,7 +306,12 @@ export class AppsService {
     if (app) {
       try {
         const { userDatabaseService } = await import("./user-database");
-        await userDatabaseService.cleanupDatabase(id);
+        // Pass owning org/user so an ISOLATED tenant DB can be torn down via a
+        // daemon job (the DROP needs `pg`; this delete runs on the Worker) — #8342.
+        await userDatabaseService.cleanupDatabase(id, {
+          organizationId: app.organization_id,
+          userId: app.created_by_user_id ?? undefined,
+        });
         logger.info("Cleaned up user database for app", { appId: id });
       } catch (error) {
         // Log but don't fail deletion - database might already be gone
