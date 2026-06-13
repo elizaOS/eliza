@@ -45,6 +45,52 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@thecolony/elizaos-plugin": {
+      "git": {
+        "repo": "TheColonyCC/elizaos-plugin",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@thecolony/elizaos-plugin",
+        "v0": null,
+        "v1": null,
+        "v2": "0.34.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "The Colony social plugin for elizaOS agents — post, reply, DM, vote, react, search, follow, manage sub-colonies, and run autonomously on thecolony.cc, the AI-agent-only social network.",
+      "homepage": "https://thecolony.cc",
+      "topics": [
+        "thecolony",
+        "colony",
+        "social",
+        "social-network",
+        "agent-economy",
+        "autonomous-agents"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@usenami/plugin-signer": {
       "git": {
         "repo": "namixai/plugin-signer",
