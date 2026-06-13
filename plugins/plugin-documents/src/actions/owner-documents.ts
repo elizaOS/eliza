@@ -81,6 +81,13 @@ export const ownerDocumentsAction: Action = {
     "Owner-facing Docs And Portals umbrella action. Subaction-based dispatch covering signature requests, approval flows, deadline tracking, asset uploads, ID/form collection, and request closure.",
   parameters: [
     {
+      name: "action",
+      description:
+        "Canonical OWNER_DOCUMENTS sub-operation. Mirrors subaction for planner compatibility.",
+      required: false,
+      schema: { type: "string", enum: [...SUBACTIONS] },
+    },
+    {
       name: "subaction",
       description: "Which OWNER_DOCUMENTS sub-operation to run.",
       required: true,

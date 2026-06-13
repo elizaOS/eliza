@@ -31,6 +31,7 @@ const HEALTH_SUBACTIONS = ["today", "trend", "by_metric", "status"] as const;
 type HealthSubaction = (typeof HEALTH_SUBACTIONS)[number];
 
 interface OwnerHealthParameters {
+  action?: unknown;
   subaction?: unknown;
   metric?: unknown;
   date?: unknown;
@@ -55,9 +56,15 @@ export const ownerHealthAction: Action = {
     "Owner-facing health umbrella action: surface today's health summary, multi-day trends, per-metric breakdowns, and connector status (Apple Health / Google Fit / Strava / Fitbit / Withings / Oura).",
   parameters: [
     {
-      name: "subaction",
-      description: "Which health sub-operation to run.",
+      name: "action",
+      description: "Which health operation to run.",
       required: true,
+      schema: { type: "string", enum: [...HEALTH_SUBACTIONS] },
+    },
+    {
+      name: "subaction",
+      description: "Legacy alias for action.",
+      required: false,
       schema: { type: "string", enum: [...HEALTH_SUBACTIONS] },
     },
     {
@@ -95,16 +102,16 @@ export const ownerHealthAction: Action = {
     _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const params = (options ?? {}) as OwnerHealthParameters;
-    const subaction = readString(params.subaction);
-    if (!subaction) {
-      return failure("missing_subaction", "No subaction specified.");
+    const action = readString(params.action) ?? readString(params.subaction);
+    if (!action) {
+      return failure("missing_action", "No action specified.");
     }
     const known = HEALTH_SUBACTIONS as readonly string[];
-    if (!known.includes(subaction)) {
-      return failure("unknown_subaction", `Unsupported subaction '${subaction}'.`);
+    if (!known.includes(action)) {
+      return failure("unknown_action", `Unsupported action '${action}'.`);
     }
 
-    switch (subaction as HealthSubaction) {
+    switch (action as HealthSubaction) {
       case "today":
         // TODO(migrate: plugins/plugin-lifeops/src/actions/health.ts — today branch)
         return failure(
@@ -130,10 +137,7 @@ export const ownerHealthAction: Action = {
           "OWNER_HEALTH.status is not migrated yet.",
         );
       default:
-        return failure(
-          "unknown_subaction",
-          `Unsupported subaction '${subaction}'.`,
-        );
+        return failure("unknown_action", `Unsupported action '${action}'.`);
     }
   },
   examples: [],

@@ -9,6 +9,7 @@ import { DIRECT_ROUTE_CASES, escapeRegExp } from "./apps-session-route-cases";
 import {
   assertReadyChecks,
   expectNoPageDiagnostics,
+  hideContinuousChatOverlay,
   installDefaultAppRoutes,
   installPageDiagnosticsGuard,
   openAppPath,
@@ -834,6 +835,7 @@ async function installTrajectoryViewerInteractionRoutes(page: Page) {
 
 test.beforeEach(async ({ page }) => {
   installPageDiagnosticsGuard(page);
+  await hideContinuousChatOverlay(page);
   await seedAppStorage(page, {
     "eliza:ui-theme": "dark",
     "elizaos:ui-theme": "dark",
@@ -847,15 +849,29 @@ test("model tester route runs deterministic visible probes", async ({
   page,
 }) => {
   const recorder = await installModelTesterInteractionRoutes(page);
-  await openRouteCase(page, routeCaseByName("model tester app window"));
+  await openAppPath(page, "/model-tester");
+  await assertReadyChecks(
+    page,
+    "model tester shell route",
+    [
+      { selector: '[data-testid="model-tester-shell"]' },
+      { text: "Model Tester" },
+      { text: "Text" },
+    ],
+    "any",
+    90_000,
+  );
 
   await expect(page.getByTestId("model-tester-shell")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Model Tester" }),
   ).toBeVisible();
-  await page
-    .getByLabel("Prompt")
-    .fill("UI smoke prompt from Playwright model tester");
+  const smokePrompt =
+    "Say exactly one short sentence about the Eliza-1 model tester working.";
+  await expect(page.getByRole("button", { name: "Smoke" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 
   const statusRequestCount = recorder.statusRequestCount();
   await clickRequired(
@@ -876,20 +892,18 @@ test("model tester route runs deterministic visible probes", async ({
     "run text probe",
   );
   await expect(
-    textCard.getByText(
-      "Text probe accepted: UI smoke prompt from Playwright model tester",
-    ),
+    textCard.getByText(`Text probe accepted: ${smokePrompt}`),
   ).toBeVisible();
   await expect
     .poll(() => recorder.runRequests().at(-1)?.test)
     .toBe("text-small");
   await expect
     .poll(() => recorder.runRequests().at(-1)?.prompt)
-    .toBe("UI smoke prompt from Playwright model tester");
+    .toBe(smokePrompt);
 
   const imageCard = page
     .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Image Generation" }) })
+    .filter({ has: page.getByRole("heading", { name: "Image" }) })
     .first();
   await expect.poll(() => recorder.runRequestCount()).toBeGreaterThanOrEqual(1);
   await clickRequired(

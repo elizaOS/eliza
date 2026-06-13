@@ -57,6 +57,13 @@ export const inboxAction: Action = {
   contextGate: { anyOf: [...INBOX_CONTEXTS] },
   parameters: [
     {
+      name: "action",
+      description:
+        "Canonical inbox sub-operation. Mirrors op for planner compatibility.",
+      required: false,
+      schema: { type: "string", enum: [...INBOX_ACTIONS] },
+    },
+    {
       name: "op",
       description: "Which inbox sub-operation to run.",
       required: true,

@@ -43,11 +43,7 @@ async function hmacSha256Hex(secret: string, message: string): Promise<string> {
     false,
     ["sign"],
   );
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(message),
-  );
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
   return bytesToHex(new Uint8Array(signature));
 }
 
@@ -65,18 +61,10 @@ export async function buildStewardCanonicalRequest(
   const bodyHash = await sha256Hex(body);
   const authHash = await sha256TextHex(headers.get("authorization") ?? "");
   const apiKeyHash = await sha256TextHex(headers.get("x-steward-key") ?? "");
-  const platformKeyHash = await sha256TextHex(
-    headers.get("x-steward-platform-key") ?? "",
-  );
-  const signerIdHash = await sha256TextHex(
-    headers.get("x-steward-signer-id") ?? "",
-  );
-  const signerSecretHash = await sha256TextHex(
-    headers.get("x-steward-signer-secret") ?? "",
-  );
-  const quorumIdHash = await sha256TextHex(
-    headers.get("x-steward-key-quorum-id") ?? "",
-  );
+  const platformKeyHash = await sha256TextHex(headers.get("x-steward-platform-key") ?? "");
+  const signerIdHash = await sha256TextHex(headers.get("x-steward-signer-id") ?? "");
+  const signerSecretHash = await sha256TextHex(headers.get("x-steward-signer-secret") ?? "");
+  const quorumIdHash = await sha256TextHex(headers.get("x-steward-key-quorum-id") ?? "");
   const quorumCredentialsHash = await sha256TextHex(
     headers.get("x-steward-key-quorum-credentials") ?? "",
   );
@@ -122,12 +110,7 @@ export async function signStewardMutatingRequest(
   if (!headers.get("idempotency-key")) {
     headers.set("idempotency-key", crypto.randomUUID());
   }
-  const canonical = await buildStewardCanonicalRequest(
-    method,
-    pathAndSearch,
-    headers,
-    body,
-  );
+  const canonical = await buildStewardCanonicalRequest(method, pathAndSearch, headers, body);
   const signature = await hmacSha256Hex(secret, canonical);
   headers.set("x-steward-signature", `v1=${signature}`);
 }

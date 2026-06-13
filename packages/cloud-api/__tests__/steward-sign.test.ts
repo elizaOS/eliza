@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildStewardCanonicalRequest,
   signStewardMutatingRequest,
 } from "@elizaos/cloud-shared/lib/steward/sign.ts";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 // gitleaks:allow — synthetic test value, no entropy / real-key shape needed.
 const SECRET = "test_only_steward_secret_aaaaaaaaaaaaa";

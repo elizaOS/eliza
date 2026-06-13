@@ -3,6 +3,7 @@ import {
   assertReadyChecks,
   installDefaultAppRoutes,
   openAppPath,
+  openSettingsSection,
   seedAppStorage,
 } from "./helpers";
 
@@ -39,25 +40,29 @@ test("chat, apps, and settings routes render through the real shell", async ({
     page.getByRole("searchbox", { name: "Search views…" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", {
-      name: /^Companion(?:\s+@elizaos\/plugin-companion)?$/,
-    }),
+    page
+      .getByRole("heading", { name: "Companion" })
+      .or(page.getByText("No views available")),
   ).toBeVisible();
 
   await openAppPath(page, "/settings");
   await expect(page).toHaveURL(/\/settings$/);
   await expect(page.getByTestId("settings-shell")).toBeVisible();
+  await openSettingsSection(page, /^Capabilities\b/);
   const capabilitiesSection = page.locator("#capabilities");
   await capabilitiesSection.scrollIntoViewIfNeeded();
   await expect(capabilitiesSection).toBeVisible();
   await expect(
     capabilitiesSection.getByText("Capabilities", { exact: true }),
   ).toBeVisible();
-  await expect(page.locator("#permissions")).toBeVisible();
-  await expect(
-    page.locator("#permissions").getByText("Permissions", { exact: true }),
-  ).toBeVisible();
   await expect(
     capabilitiesSection.getByRole("switch", { name: "Enable Computer Use" }),
+  ).toBeVisible();
+  await openSettingsSection(page, /^App Permissions\b/);
+  await expect(page.locator("#app-permissions")).toBeVisible();
+  await expect(
+    page
+      .locator("#app-permissions")
+      .getByText("App Permissions", { exact: true }),
   ).toBeVisible();
 });

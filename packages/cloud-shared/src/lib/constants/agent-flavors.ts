@@ -75,8 +75,7 @@ const FLAVOR_ELIZA_STABLE: AgentFlavor = {
 const FLAVOR_ELIZA_DEVELOP: AgentFlavor = {
   id: "eliza-develop",
   name: "Eliza Agent (Develop)",
-  description:
-    "Latest develop build. Use for testing new features before they hit stable.",
+  description: "Latest develop build. Use for testing new features before they hit stable.",
   dockerImage: "ghcr.io/elizaos/eliza:develop",
 };
 

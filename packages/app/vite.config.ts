@@ -2307,6 +2307,16 @@ export const INVALID_TRACER_PROVIDER = {};
           "plugins/plugin-personal-assistant/src/ui.ts",
         ),
       },
+      // Calendly is a server-side connector pulled through legacy
+      // personal-assistant service paths. The app renderer does not execute it.
+      {
+        find: /^@elizaos\/plugin-calendly$/,
+        replacement: path.join(appCoreSrcRoot, "platform/empty-node-module.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-google$/,
+        replacement: path.join(appCoreSrcRoot, "platform/empty-node-module.ts"),
+      },
       // The Steward app package root includes wallet route handlers and
       // server-side signing services. The renderer imports only these views.
       {
@@ -2346,9 +2356,12 @@ export const INVALID_TRACER_PROVIDER = {};
           "plugins/plugin-health/src/screen-time/mobile-signal-setup.ts",
         ),
       },
-      // Browser-safe aliases for local app plugin package roots.
+      // Browser-safe aliases for local app plugin package roots. Keep these
+      // before workspace aliases; Vite/Rollup uses the first matching alias, and
+      // the renderer must prefer UI facades over package root exports.
       ...createAppPluginBrowserAliases(),
-      // Dynamic aliases for local app plugin package subpaths.
+      // Dynamic aliases for local app plugin package roots that do not have a
+      // dedicated browser facade.
       ...createWorkspacePackageAliases([path.resolve(elizaRoot, "plugins")]),
       ...(() => {
         const sharedPkgPath = path.resolve(
@@ -2489,6 +2502,20 @@ export const INVALID_TRACER_PROVIDER = {};
           // those names as no-ops (see `platform/empty-node-module.ts`).
           {
             find: /^@elizaos\/plugin-elizacloud$/,
+            replacement: path.join(
+              appCoreSrcRoot,
+              "platform/empty-node-module.ts",
+            ),
+          },
+          {
+            find: /^@elizaos\/plugin-calendly$/,
+            replacement: path.join(
+              appCoreSrcRoot,
+              "platform/empty-node-module.ts",
+            ),
+          },
+          {
+            find: /^@elizaos\/plugin-google$/,
             replacement: path.join(
               appCoreSrcRoot,
               "platform/empty-node-module.ts",

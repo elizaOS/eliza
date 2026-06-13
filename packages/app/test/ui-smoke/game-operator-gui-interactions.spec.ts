@@ -538,10 +538,16 @@ for (const fixture of FIXTURES) {
       .click();
     await expect.poll(() => api.messages.at(-1)).toBe(fixture.suggestedPrompt);
 
-    const controlLocator = fixture.controlAgentId
-      ? surface.locator(`[data-agent-id="${fixture.controlAgentId}"]`)
-      : surface.getByRole("button", { name: fixture.controlButton });
-    await controlLocator.click();
+    const semanticControl = surface.locator(
+      `[data-agent-id="${fixture.controlAgentId ?? `control-${fixture.controlAction}`}"]`,
+    );
+    if ((await semanticControl.count()) > 0) {
+      await semanticControl.first().click();
+    } else {
+      await surface
+        .getByRole("button", { name: fixture.controlButton })
+        .click();
+    }
     await expect.poll(() => api.controls.at(-1)).toBe(fixture.controlAction);
   });
 }

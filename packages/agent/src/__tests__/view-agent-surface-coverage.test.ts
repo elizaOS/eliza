@@ -176,33 +176,29 @@ function isAgentControllable(pageFile: string): boolean {
 }
 
 describe("agent-surface view coverage", () => {
-  it.each(CONVERTED_PLUGINS)(
-    "%s registers at least one agent-surface element",
-    (plugin) => {
-      expect(registersAgentElement(plugin)).toBe(true);
-    },
-  );
+  it.each(
+    CONVERTED_PLUGINS,
+  )("%s registers at least one agent-surface element", (plugin) => {
+    expect(registersAgentElement(plugin)).toBe(true);
+  });
 
-  it.each(CONVERTED_BUILTIN_PAGES)(
-    "builtin %s is wrapped in the agent-surface bridge",
-    (page) => {
-      expect(wrapsInShellBridge(page)).toBe(true);
-    },
-  );
+  it.each(
+    CONVERTED_BUILTIN_PAGES,
+  )("builtin %s is wrapped in the agent-surface bridge", (page) => {
+    expect(wrapsInShellBridge(page)).toBe(true);
+  });
 
-  it.each(CONVERTED_SHELL_PAGES)(
-    "shell view %s is agent-controllable (bridge or registered controls)",
-    (page) => {
-      expect(isAgentControllable(page)).toBe(true);
-    },
-  );
+  it.each(
+    CONVERTED_SHELL_PAGES,
+  )("shell view %s is agent-controllable (bridge or registered controls)", (page) => {
+    expect(isAgentControllable(page)).toBe(true);
+  });
 
-  it.each(CONVERTED_SUBCOMPONENTS)(
-    "sub-component %s registers controls into its parent surface",
-    (file) => {
-      expect(isAgentControllable(file)).toBe(true);
-    },
-  );
+  it.each(
+    CONVERTED_SUBCOMPONENTS,
+  )("sub-component %s registers controls into its parent surface", (file) => {
+    expect(isAgentControllable(file)).toBe(true);
+  });
 
   it("has zero unconverted plugin views", () => {
     expect(PENDING_PLUGINS).toHaveLength(0);

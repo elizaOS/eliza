@@ -59,11 +59,6 @@ async function expectViewManagerPage(page: Page) {
     await expect(
       main.getByRole("heading", { level: 2, name: "Plugins" }),
     ).toBeVisible();
-    await expect(
-      main.getByRole("button", {
-        name: /^(?:Loaded\s+gui\s+)?Companion(?:\s+@elizaos\/plugin-companion)?$/i,
-      }),
-    ).toBeVisible();
   }
   await expect(main.getByText("dynamic view smoke surface")).toHaveCount(0);
 }

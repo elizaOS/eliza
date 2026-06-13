@@ -351,6 +351,7 @@ describe("ViewCatalog", () => {
   });
 
   it("shows pinned and recent views as quick access without duplicates", () => {
+    useIsDeveloperModeMock.mockReturnValue(true);
     const manyViews = [
       ...views,
       ...Array.from({ length: 10 }, (_, index) =>
@@ -405,6 +406,16 @@ describe("ViewCatalog", () => {
     expect(
       topSection.querySelectorAll('[data-testid^="view-card-"]'),
     ).toHaveLength(8);
+    expect(
+      topSection.querySelector(
+        '[data-agent-id="view-card-edit-remote.ledger"]',
+      ),
+    ).toBeTruthy();
+    expect(
+      topSection.querySelector(
+        '[data-agent-id="view-card-delete-remote.ledger"]',
+      ),
+    ).toBeTruthy();
     expect(screen.getAllByText("Remote Ledger")).toHaveLength(1);
   });
 

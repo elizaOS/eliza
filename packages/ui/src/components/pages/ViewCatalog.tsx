@@ -706,10 +706,14 @@ function TopViewsSection({
   views,
   onViewClick,
   onViewPin,
+  onViewEdit,
+  onViewDelete,
 }: {
   views: ViewRegistryEntry[];
   onViewClick: (view: ViewRegistryEntry) => void;
   onViewPin: (view: ViewRegistryEntry) => void;
+  onViewEdit?: (view: ViewRegistryEntry) => void;
+  onViewDelete?: (view: ViewRegistryEntry) => void;
 }) {
   const { t } = useTranslation();
   if (views.length === 0) return null;
@@ -730,6 +734,8 @@ function TopViewsSection({
             view={view}
             onClick={onViewClick}
             onPin={onViewPin}
+            onEdit={onViewEdit}
+            onDelete={onViewDelete}
             compact
           />
         ))}
@@ -1304,6 +1310,12 @@ export function ViewCatalog() {
                 views={sortedTopViews}
                 onViewClick={handleViewClick}
                 onViewPin={handleViewPin}
+                onViewEdit={
+                  canManageDynamicViews ? fillManagementForm : undefined
+                }
+                onViewDelete={
+                  canManageDynamicViews ? handleDeleteView : undefined
+                }
               />
               <ViewSection
                 title={t("viewmanager.section.core", { defaultValue: "Core" })}

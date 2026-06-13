@@ -31,6 +31,7 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
     null,
   );
   const [voiceBootstrapTick, setVoiceBootstrapTick] = React.useState(0);
+  const isMountedRef = React.useRef(false);
 
   const loadVoiceConfig = React.useCallback(async () => {
     try {
@@ -39,6 +40,7 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
         config: cfg,
         uiLanguage,
       });
+      if (!isMountedRef.current) return;
       setVoiceConfig(resolved.voiceConfig);
       if (resolved.shouldPersist && resolved.voiceConfig) {
         void client
@@ -46,12 +48,22 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
           .catch(() => {});
       }
     } catch {
+      if (!isMountedRef.current) return;
       // No config endpoint / parse failure — fall back to provider defaults.
       setVoiceConfig(null);
     } finally {
-      setVoiceBootstrapTick((tick) => tick + 1);
+      if (isMountedRef.current) {
+        setVoiceBootstrapTick((tick) => tick + 1);
+      }
     }
   }, [uiLanguage]);
+
+  React.useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   React.useEffect(() => {
     void loadVoiceConfig();

@@ -100,7 +100,7 @@ jobs:
         run: bun run --cwd packages/app test:e2e test/ui-smoke/all-pages-clicksafe.spec.ts --project=chromium
 
       - name: Actual app feature interaction browser coverage
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/apps-utility-interactions.spec.ts test/ui-smoke/apps-lifeops-feed-interactions.spec.ts test/ui-smoke/apps-model-training-interactions.spec.ts test/ui-smoke/apps-comms-device-interactions.spec.ts --project=chromium
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/apps-utility-interactions.spec.ts test/ui-smoke/apps-model-training-interactions.spec.ts test/ui-smoke/apps-comms-device-interactions.spec.ts --project=chromium
 
       - name: Actual app cloud keyless browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/cloud-provisioning-startup.spec.ts test/ui-smoke/cloud-wallet-import.spec.ts test/ui-smoke/live-agent-chat.spec.ts test/ui-smoke/remote-capability-view.spec.ts --project=chromium

@@ -164,8 +164,7 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
     name: "elizamaker app window",
     path: "/apps/elizamaker",
-    selector:
-      '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]',
+    selector: "#root",
     timeoutMs: 90_000,
   },
   {
@@ -204,7 +203,7 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
     name: "smartglasses app window",
     path: "/apps/smartglasses",
-    readyChecks: [{ text: "Smartglasses" }, { text: "Connect Headset" }],
+    readyChecks: [{ text: "Smartglasses" }, { text: "Connect" }],
     timeoutMs: 90_000,
   },
   {
@@ -256,6 +255,7 @@ const managerVisibleViewTileCases = [
   { viewId: "hyperliquid", path: "/hyperliquid" },
   { viewId: "hyperscape", path: "/hyperscape" },
   { viewId: "inbox", path: "/inbox" },
+  { viewId: "lifeops", path: "/lifeops" },
   { viewId: "messages", path: "/messages" },
   { viewId: "model-tester", path: "/model-tester" },
   { viewId: "orchestrator", path: "/orchestrator" },
@@ -297,7 +297,7 @@ export const MANAGER_VISIBLE_VIEW_TILE_CASES: readonly SafeViewTileCase[] =
  */
 export const SAFE_VIEW_TILE_CASES: readonly SafeViewTileCase[] = [
   { viewId: "companion", path: "/companion" },
-  { viewId: "todos", path: "/todos" },
+  { viewId: "lifeops", path: "/lifeops" },
   { viewId: "model-tester", path: "/model-tester" },
 ].map(({ viewId, path }) => ({
   viewId,

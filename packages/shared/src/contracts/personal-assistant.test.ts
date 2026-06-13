@@ -10,7 +10,7 @@ import {
   LIFEOPS_SIGNAL_CAPABILITIES,
   LIFEOPS_TELEGRAM_CAPABILITIES,
   LIFEOPS_X_CAPABILITIES,
-} from "./lifeops";
+} from "./personal-assistant";
 
 describe("LifeOps shared contracts", () => {
   it("keeps owner-side capabilities read-only", () => {

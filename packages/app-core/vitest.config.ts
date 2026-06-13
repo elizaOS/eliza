@@ -13,11 +13,15 @@ const coreSrc = path.join(monorepoRoot, "packages/core/src");
 const vaultSrc = path.join(monorepoRoot, "packages/vault/src");
 const cloudRoutingSrc = path.join(monorepoRoot, "packages/cloud-routing/src");
 const cloudSdkSrc = path.join(monorepoRoot, "packages/cloud-sdk/src");
-const appLifeopsSrc = path.join(monorepoRoot, "plugins/plugin-personal-assistant/src");
+const appLifeopsSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-personal-assistant/src",
+);
 const appTaskCoordinatorSrc = path.join(
   monorepoRoot,
   "plugins/plugin-task-coordinator/src",
 );
+const toVitePath = (value: string): string => value.replaceAll("\\", "/");
 const pluginAppManagerSrc = path.join(
   monorepoRoot,
   "plugins/plugin-app-manager/src",
@@ -151,6 +155,9 @@ export default defineConfig({
       // Uses Node.js built-in test runner (node:test), not vitest.
       "scripts/android-sms-gateway-template.test.mjs",
       "scripts/stage-android-agent.test.mjs",
+      ...(process.platform === "win32"
+        ? ["scripts/lib/apple-entitlement-audit.test.mjs"]
+        : []),
       ".claude/**",
       "test/app/memory-relationships.real.e2e.test.ts",
       "test/app/qa-checklist.real.e2e.test.ts",
@@ -303,6 +310,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-app-manager\/(.+)$/,
         replacement: path.join(pluginAppManagerSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-task-coordinator$/,
+        replacement: toVitePath(path.join(appTaskCoordinatorSrc, "index.ts")),
+      },
+      {
+        find: /^@elizaos\/plugin-task-coordinator\/(.+)$/,
+        replacement: `${toVitePath(appTaskCoordinatorSrc)}/$1`,
       },
       {
         find: /^@elizaos\/plugin-capacitor-bridge$/,

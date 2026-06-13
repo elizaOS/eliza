@@ -19,18 +19,14 @@ import { fetchBitRouterCatalogEntries } from "@/lib/services/ai-pricing/provider
 
 describe("stripVersionedSnapshotSuffix — dated and labelled suffixes", () => {
   test("strips compact 8-digit date suffix", () => {
-    expect(
-      stripVersionedSnapshotSuffix("anthropic/claude-3-5-haiku-20241022"),
-    ).toBe("anthropic/claude-3-5-haiku");
+    expect(stripVersionedSnapshotSuffix("anthropic/claude-3-5-haiku-20241022")).toBe(
+      "anthropic/claude-3-5-haiku",
+    );
   });
 
   test("strips ISO date suffix", () => {
-    expect(stripVersionedSnapshotSuffix("openai/gpt-4o-2024-11-20")).toBe(
-      "openai/gpt-4o",
-    );
-    expect(stripVersionedSnapshotSuffix("openai/gpt-4o-2024-08-06")).toBe(
-      "openai/gpt-4o",
-    );
+    expect(stripVersionedSnapshotSuffix("openai/gpt-4o-2024-11-20")).toBe("openai/gpt-4o");
+    expect(stripVersionedSnapshotSuffix("openai/gpt-4o-2024-08-06")).toBe("openai/gpt-4o");
   });
 
   test("strips -latest label", () => {
@@ -50,9 +46,7 @@ describe("stripVersionedSnapshotSuffix — dated and labelled suffixes", () => {
   });
 
   test("dated suffix bypasses the 2-segment safety check for short bases", () => {
-    expect(stripVersionedSnapshotSuffix("openai/o1-2024-12-17")).toBe(
-      "openai/o1",
-    );
+    expect(stripVersionedSnapshotSuffix("openai/o1-2024-12-17")).toBe("openai/o1");
   });
 });
 
@@ -61,18 +55,14 @@ describe("stripVersionedSnapshotSuffix — numeric snapshot suffixes", () => {
     expect(stripVersionedSnapshotSuffix("google/gemini-2.0-flash-001")).toBe(
       "google/gemini-2.0-flash",
     );
-    expect(
-      stripVersionedSnapshotSuffix("google/gemini-2.0-flash-lite-001"),
-    ).toBe("google/gemini-2.0-flash-lite");
+    expect(stripVersionedSnapshotSuffix("google/gemini-2.0-flash-lite-001")).toBe(
+      "google/gemini-2.0-flash-lite",
+    );
   });
 
   test("strips multi-digit numeric snapshot when two+ segments remain", () => {
-    expect(stripVersionedSnapshotSuffix("vendor/family-name-1234")).toBe(
-      "vendor/family-name",
-    );
-    expect(stripVersionedSnapshotSuffix("vendor/family-name-99")).toBe(
-      "vendor/family-name",
-    );
+    expect(stripVersionedSnapshotSuffix("vendor/family-name-1234")).toBe("vendor/family-name");
+    expect(stripVersionedSnapshotSuffix("vendor/family-name-99")).toBe("vendor/family-name");
   });
 
   test("does NOT strip when result would collapse to one segment after slash", () => {
@@ -84,9 +74,7 @@ describe("stripVersionedSnapshotSuffix — numeric snapshot suffixes", () => {
 describe("stripVersionedSnapshotSuffix — must-not-strip cases", () => {
   test("returns null when no suffix pattern matches", () => {
     expect(stripVersionedSnapshotSuffix("openai/gpt-4o-mini")).toBeNull();
-    expect(
-      stripVersionedSnapshotSuffix("anthropic/claude-3-5-haiku"),
-    ).toBeNull();
+    expect(stripVersionedSnapshotSuffix("anthropic/claude-3-5-haiku")).toBeNull();
     expect(stripVersionedSnapshotSuffix("google/gemini-2.5-flash")).toBeNull();
     expect(stripVersionedSnapshotSuffix("openai/gpt-4o")).toBeNull();
   });
@@ -110,9 +98,7 @@ describe("stripVersionedSnapshotSuffix — must-not-strip cases", () => {
     // A vendor suffix like -99000001 must not be silently stripped as a
     // compact date. Year-anchoring the compact-date pattern is what blocks
     // this: only -19YYMMDD / -20YYMMDD shapes are accepted as dates.
-    expect(
-      stripVersionedSnapshotSuffix("vendor/family-name-99000001"),
-    ).toBeNull();
+    expect(stripVersionedSnapshotSuffix("vendor/family-name-99000001")).toBeNull();
   });
 
   test("accepts realistic compact-date suffixes for both 19xx and 20xx years", () => {
@@ -143,22 +129,14 @@ describe("buildBitRouterPreparedEntries — exact + stripped variants", () => {
     expect(inputEntries).toHaveLength(2);
     expect(outputEntries).toHaveLength(2);
 
-    const exactInput = inputEntries.find(
-      (e) => e.model === "google/gemini-2.0-flash-001",
-    );
-    const strippedInput = inputEntries.find(
-      (e) => e.model === "google/gemini-2.0-flash",
-    );
+    const exactInput = inputEntries.find((e) => e.model === "google/gemini-2.0-flash-001");
+    const strippedInput = inputEntries.find((e) => e.model === "google/gemini-2.0-flash");
     expect(exactInput?.priority).toBeUndefined();
     expect(strippedInput?.priority).toBe(-1);
     expect(exactInput?.unitPrice).toBe(strippedInput?.unitPrice);
 
-    const exactOutput = outputEntries.find(
-      (e) => e.model === "google/gemini-2.0-flash-001",
-    );
-    const strippedOutput = outputEntries.find(
-      (e) => e.model === "google/gemini-2.0-flash",
-    );
+    const exactOutput = outputEntries.find((e) => e.model === "google/gemini-2.0-flash-001");
+    const strippedOutput = outputEntries.find((e) => e.model === "google/gemini-2.0-flash");
     expect(exactOutput?.priority).toBeUndefined();
     expect(strippedOutput?.priority).toBe(-1);
     expect(exactOutput?.unitPrice).toBe(strippedOutput?.unitPrice);
@@ -183,9 +161,7 @@ describe("buildBitRouterPreparedEntries — exact + stripped variants", () => {
       pricing: { prompt: "0.0000008" },
     });
 
-    const stripped = entries.find(
-      (e) => e.model === "anthropic/claude-3-5-haiku",
-    );
+    const stripped = entries.find((e) => e.model === "anthropic/claude-3-5-haiku");
     expect(stripped?.model).toBe("anthropic/claude-3-5-haiku");
     expect(stripped?.priority).toBe(-1);
     expect(stripped?.provider).toBe("anthropic");
@@ -213,35 +189,27 @@ describe("buildBitRouterPreparedEntries — exact + stripped variants", () => {
 
     expect(entries).toHaveLength(2);
     expect(entries.every((e) => e.chargeType === "input")).toBe(true);
-    expect(
-      entries.find((e) => e.model === "google/gemini-2.0-flash")?.priority,
-    ).toBe(-1);
+    expect(entries.find((e) => e.model === "google/gemini-2.0-flash")?.priority).toBe(-1);
   });
 });
 
 describe("forced provider route pricing ids", () => {
   test("keeps forced route ids canonical before slash-prefixed aliases", () => {
-    expect(
-      canonicalModelId("openrouter:openai/gpt-oss-120b", "openrouter"),
-    ).toBe("openrouter:openai/gpt-oss-120b");
-    expect(canonicalModelId("cerebras:gpt-oss-120b", "cerebras")).toBe(
-      "cerebras:gpt-oss-120b",
+    expect(canonicalModelId("openrouter:openai/gpt-oss-120b", "openrouter")).toBe(
+      "openrouter:openai/gpt-oss-120b",
     );
+    expect(canonicalModelId("cerebras:gpt-oss-120b", "cerebras")).toBe("cerebras:gpt-oss-120b");
   });
 
   test("infers provider from forced route prefixes", () => {
-    expect(
-      inferProviderFromCanonicalModel("openrouter:openai/gpt-oss-120b"),
-    ).toBe("openrouter");
-    expect(inferProviderFromCanonicalModel("cerebras:zai-glm-4.7")).toBe(
-      "cerebras",
-    );
+    expect(inferProviderFromCanonicalModel("openrouter:openai/gpt-oss-120b")).toBe("openrouter");
+    expect(inferProviderFromCanonicalModel("cerebras:zai-glm-4.7")).toBe("cerebras");
   });
 
   test("uses underlying catalog id as an alias for OpenRouter forced routes", () => {
-    expect(
-      expandPricingCatalogModelCandidates("openrouter:openai/gpt-oss-120b"),
-    ).toContain("openai/gpt-oss-120b");
+    expect(expandPricingCatalogModelCandidates("openrouter:openai/gpt-oss-120b")).toContain(
+      "openai/gpt-oss-120b",
+    );
   });
 
   test("adds synthetic Cerebras pricing rows to the BitRouter catalog", async () => {
@@ -259,24 +227,16 @@ describe("forced provider route pricing ids", () => {
     try {
       const entries = await fetchBitRouterCatalogEntries();
       const gptInput = entries.find(
-        (entry) =>
-          entry.model === "cerebras:gpt-oss-120b" &&
-          entry.chargeType === "input",
+        (entry) => entry.model === "cerebras:gpt-oss-120b" && entry.chargeType === "input",
       );
       const gptOutput = entries.find(
-        (entry) =>
-          entry.model === "cerebras:gpt-oss-120b" &&
-          entry.chargeType === "output",
+        (entry) => entry.model === "cerebras:gpt-oss-120b" && entry.chargeType === "output",
       );
       const glmInput = entries.find(
-        (entry) =>
-          entry.model === "cerebras:zai-glm-4.7" &&
-          entry.chargeType === "input",
+        (entry) => entry.model === "cerebras:zai-glm-4.7" && entry.chargeType === "input",
       );
       const glmOutput = entries.find(
-        (entry) =>
-          entry.model === "cerebras:zai-glm-4.7" &&
-          entry.chargeType === "output",
+        (entry) => entry.model === "cerebras:zai-glm-4.7" && entry.chargeType === "output",
       );
 
       expect(gptInput?.provider).toBe("cerebras");
@@ -305,19 +265,15 @@ describe("forced provider route pricing ids", () => {
     const previousApiKey = process.env.BITROUTER_API_KEY;
     const previousFetch = globalThis.fetch;
     process.env.BITROUTER_API_KEY = "test-bitrouter-key";
-    globalThis.fetch = async () =>
-      new Response(JSON.stringify({ data: [] }), { status: 200 });
+    globalThis.fetch = async () => new Response(JSON.stringify({ data: [] }), { status: 200 });
 
     try {
       const entries = await fetchBitRouterCatalogEntries();
       const input = entries.find(
-        (entry) =>
-          entry.model === "openai/gpt-oss-120b" && entry.chargeType === "input",
+        (entry) => entry.model === "openai/gpt-oss-120b" && entry.chargeType === "input",
       );
       const output = entries.find(
-        (entry) =>
-          entry.model === "openai/gpt-oss-120b" &&
-          entry.chargeType === "output",
+        (entry) => entry.model === "openai/gpt-oss-120b" && entry.chargeType === "output",
       );
 
       expect(input?.provider).toBe("openai");
@@ -345,15 +301,12 @@ describe("forced provider route pricing ids", () => {
     const previousApiKey = process.env.BITROUTER_API_KEY;
     const previousFetch = globalThis.fetch;
     process.env.BITROUTER_API_KEY = "test-bitrouter-key";
-    globalThis.fetch = async () =>
-      new Response(JSON.stringify({ data: [] }), { status: 200 });
+    globalThis.fetch = async () => new Response(JSON.stringify({ data: [] }), { status: 200 });
 
     try {
       const entries = await fetchBitRouterCatalogEntries();
       const input = entries.find(
-        (entry) =>
-          entry.model === "text-embedding-3-small" &&
-          entry.chargeType === "input",
+        (entry) => entry.model === "text-embedding-3-small" && entry.chargeType === "input",
       );
 
       expect(input?.provider).toBe("openai");
@@ -378,15 +331,12 @@ describe("forced provider route pricing ids", () => {
     const previousApiKey = process.env.BITROUTER_API_KEY;
     const previousFetch = globalThis.fetch;
     process.env.BITROUTER_API_KEY = "test-bitrouter-key";
-    globalThis.fetch = async () =>
-      new Response(JSON.stringify({ data: [] }), { status: 200 });
+    globalThis.fetch = async () => new Response(JSON.stringify({ data: [] }), { status: 200 });
 
     try {
       const entries = await fetchBitRouterCatalogEntries();
       const input = entries.find(
-        (entry) =>
-          entry.model === "openai/text-embedding-3-small" &&
-          entry.chargeType === "input",
+        (entry) => entry.model === "openai/text-embedding-3-small" && entry.chargeType === "input",
       );
 
       expect(input?.provider).toBe("openai");
@@ -415,21 +365,15 @@ describe("canonicalModelId — OpenRouter routing variants on bare model ids", (
   // never have dashes; a dashed prefix (gpt-oss-120b, claude-3-5-haiku) is a
   // bare model id that lost its `provider/` segment upstream.
   test("prepends provider for bare id with routing suffix", () => {
-    expect(canonicalModelId("gpt-oss-120b:nitro", "openai")).toBe(
-      "openai/gpt-oss-120b:nitro",
-    );
+    expect(canonicalModelId("gpt-oss-120b:nitro", "openai")).toBe("openai/gpt-oss-120b:nitro");
   });
 
   test("prepends provider for bare id with no suffix", () => {
-    expect(canonicalModelId("gpt-oss-120b", "openai")).toBe(
-      "openai/gpt-oss-120b",
-    );
+    expect(canonicalModelId("gpt-oss-120b", "openai")).toBe("openai/gpt-oss-120b");
   });
 
   test("leaves already-canonical id unchanged", () => {
-    expect(canonicalModelId("openai/gpt-oss-120b", "openai")).toBe(
-      "openai/gpt-oss-120b",
-    );
+    expect(canonicalModelId("openai/gpt-oss-120b", "openai")).toBe("openai/gpt-oss-120b");
   });
 
   test("leaves already-canonical id with routing suffix unchanged", () => {
@@ -439,9 +383,7 @@ describe("canonicalModelId — OpenRouter routing variants on bare model ids", (
   });
 
   test("preserves forced-provider id (cerebras has no dash in prefix)", () => {
-    expect(canonicalModelId("cerebras:gpt-oss-120b", "openai")).toBe(
-      "cerebras:gpt-oss-120b",
-    );
+    expect(canonicalModelId("cerebras:gpt-oss-120b", "openai")).toBe("cerebras:gpt-oss-120b");
   });
 
   test("heuristic generalizes to anthropic + :floor on dashed bare id", () => {
@@ -502,11 +444,7 @@ describe("chooseBestCandidatePricingEntry — tie-break when stripped variants c
     const a = buildCandidate("google/gemini-2.0-flash-001", 0.0000001);
     const b = buildCandidate("google/gemini-2.0-flash-002", 0.0000001);
 
-    const winner = chooseBestCandidatePricingEntry(
-      [a, b],
-      {},
-      "google/gemini-2.0-flash",
-    );
+    const winner = chooseBestCandidatePricingEntry([a, b], {}, "google/gemini-2.0-flash");
     expect(winner?.entry.model).toBe("google/gemini-2.0-flash");
     expect(winner?.entry.unitPrice).toBe(0.0000001);
   });

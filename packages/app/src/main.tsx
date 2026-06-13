@@ -2162,8 +2162,9 @@ async function initializeMobileAgentTunnel(): Promise<void> {
 async function stopMobileAgentTunnel(): Promise<void> {
   mobileAgentTunnelStartPromise = null;
   try {
-    const { MobileAgentBridge } =
-      await import("@elizaos/capacitor-mobile-agent-bridge");
+    const { MobileAgentBridge } = await import(
+      "@elizaos/capacitor-mobile-agent-bridge"
+    );
     await MobileAgentBridge.stopInboundTunnel();
   } catch (error) {
     console.warn(

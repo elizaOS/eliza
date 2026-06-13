@@ -56,9 +56,9 @@ describe("getSkippedAppRoutePluginIds", () => {
 
 describe("normalizeAppRoutePluginId", () => {
   it("strips the @elizaos/plugin- prefix", () => {
-    expect(normalizeAppRoutePluginId("@elizaos/plugin-personal-assistant")).toBe(
-      "lifeops",
-    );
+    expect(
+      normalizeAppRoutePluginId("@elizaos/plugin-personal-assistant"),
+    ).toBe("personal-assistant");
   });
 
   it("strips -app / -ui / -routes suffixes", () => {

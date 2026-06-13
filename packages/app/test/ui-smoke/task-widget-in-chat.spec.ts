@@ -177,17 +177,26 @@ async function installSeededChatRoutes(
       id: "seed-user-1",
       role: "user" as const,
       text: "Spin up the planner task.",
+      source: "eliza",
+      roomId: ROOM_ID,
       timestamp: NOW_MS - 5_000,
     },
     {
       id: "seed-assistant-1",
       role: "assistant" as const,
       text: assistantText,
+      source: "eliza",
+      roomId: ROOM_ID,
       timestamp: NOW_MS - 2_000,
     },
   ];
 
-  await page.route("**/api/conversations", async (route) => {
+  await page.route("**/api/conversations**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname !== "/api/conversations") {
+      await route.fallback();
+      return;
+    }
     if (route.request().method() === "GET") {
       await fulfillJson(route, { conversations: [conversation] });
       return;
@@ -199,23 +208,20 @@ async function installSeededChatRoutes(
     await route.fallback();
   });
 
-  await page.route(
-    `**/api/conversations/${CONVERSATION_ID}`,
-    async (route) => {
-      if (route.request().method() === "PATCH") {
-        await fulfillJson(route, { conversation });
-        return;
-      }
-      if (route.request().method() === "GET") {
-        await fulfillJson(route, { conversation });
-        return;
-      }
-      await route.fallback();
-    },
-  );
+  await page.route(`**/api/conversations/${CONVERSATION_ID}`, async (route) => {
+    if (route.request().method() === "PATCH") {
+      await fulfillJson(route, { conversation });
+      return;
+    }
+    if (route.request().method() === "GET") {
+      await fulfillJson(route, { conversation });
+      return;
+    }
+    await route.fallback();
+  });
 
   await page.route(
-    `**/api/conversations/${CONVERSATION_ID}/messages`,
+    `**/api/conversations/${CONVERSATION_ID}/messages**`,
     async (route) => {
       if (route.request().method() === "GET") {
         await fulfillJson(route, { messages });
@@ -260,14 +266,8 @@ async function installSeededChatRoutes(
     taskFetches += 1;
     await fulfillJson(route, detail);
   };
-  await page.route(
-    `**/api/coding-agents/tasks/${TASK_ID}`,
-    handleTaskDetail,
-  );
-  await page.route(
-    `**/api/orchestrator/tasks/${TASK_ID}`,
-    handleTaskDetail,
-  );
+  await page.route(`**/api/coding-agents/tasks/${TASK_ID}`, handleTaskDetail);
+  await page.route(`**/api/orchestrator/tasks/${TASK_ID}`, handleTaskDetail);
 
   // The orchestrator workbench, opened by the widget's navigate dispatch,
   // expects the status + tasks list endpoints to return the same task.
@@ -329,9 +329,9 @@ test.describe("chat task widget", () => {
     await openAppPath(page, "/chat");
 
     // The pre-seeded assistant turn renders. Surrounding prose is preserved.
-    await expect(
-      page.getByText("Created the task you asked for."),
-    ).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Created the task you asked for.")).toBeVisible(
+      { timeout: 30_000 },
+    );
     await expect(page.getByText("The builders are running.")).toBeVisible();
 
     // The TASK block resolves into a TaskWidget. Title is the fetched title
@@ -357,8 +357,9 @@ test.describe("chat task widget", () => {
     // shell behavior (navigation + workbench render). The event listener is
     // installed before the click so a sync dispatch is observable.
     await page.evaluate(() => {
-      (window as unknown as { __taskWidgetNavigations: string[] }).__taskWidgetNavigations =
-        [];
+      (
+        window as unknown as { __taskWidgetNavigations: string[] }
+      ).__taskWidgetNavigations = [];
       window.addEventListener("eliza:navigate:view", (event) => {
         const detail = (event as CustomEvent<{ viewPath?: string }>).detail;
         const win = window as unknown as { __taskWidgetNavigations: string[] };

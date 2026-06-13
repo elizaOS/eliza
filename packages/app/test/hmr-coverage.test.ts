@@ -78,8 +78,8 @@ describe("plugin view HMR coverage", () => {
       .filter((level) => !existsSync(path.join(REPO_ROOT, level.file)))
       .map((level) => `${level.id} ${level.file}`);
 
-    expect(guiCases.length).toBe(28);
-    expect(hmrLevels.length).toBe(28);
+    expect(guiCases.length).toBe(36);
+    expect(hmrLevels.length).toBe(36);
     expect(missing, "Add HMR source probes for new GUI views.").toEqual([]);
     expect(
       stale,

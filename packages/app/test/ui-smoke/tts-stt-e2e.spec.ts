@@ -164,14 +164,12 @@ async function installConversationStreamMock(page: Page): Promise<{
         "Always-on assistant heard the browser turn and kept listening.";
       const now = Date.now();
       messageSequence += 1;
-      messages.push(
-        {
-          id: `always-on-user-${messageSequence}`,
-          role: "user",
-          text: userText,
-          timestamp: now,
-        },
-      );
+      messages.push({
+        id: `always-on-user-${messageSequence}`,
+        role: "user",
+        text: userText,
+        timestamp: now,
+      });
       await route.fulfill({
         status: 200,
         contentType: "text/event-stream",
@@ -732,6 +730,7 @@ test("always-on chat mode starts passive browser STT and keeps capture open afte
   page,
 }) => {
   const conversations = await installConversationStreamMock(page);
+  await installTtsCloudMock(page);
   await installSpeechRecognitionShim(page);
   await forceBrowserSpeechRecognition(page);
   await page.addInitScript(() => {

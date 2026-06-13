@@ -74,6 +74,13 @@ export const calendarAction: Action = {
     "Owner-facing calendar umbrella action. Op-based dispatch over the unified Google + Apple calendar feed: read_feed, create_event, update_event, delete_event, find_slots, next_event, describe_event, travel_buffer.",
   parameters: [
     {
+      name: "action",
+      description:
+        "Canonical calendar sub-operation. Mirrors op for planner compatibility.",
+      required: false,
+      schema: { type: "string", enum: [...CALENDAR_OPS] },
+    },
+    {
       name: "op",
       description: "Which calendar sub-operation to run.",
       required: true,
@@ -81,7 +88,8 @@ export const calendarAction: Action = {
     },
     {
       name: "eventId",
-      description: "Target event id (update_event/delete_event/describe_event).",
+      description:
+        "Target event id (update_event/delete_event/describe_event).",
       schema: { type: "string" },
     },
     {

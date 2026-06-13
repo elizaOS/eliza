@@ -1,6 +1,7 @@
 import { expect, type Page, type Route, test } from "@playwright/test";
 import {
   assertReadyChecks,
+  hideContinuousChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -383,22 +384,23 @@ function installFeedTuiRoutes(page: Page) {
 }
 
 async function expectLifeOpsDynamicViewFallback(page: Page): Promise<boolean> {
-  const smokeText = page.getByText(
-    "@elizaos/plugin-personal-assistant dynamic view smoke surface is ready.",
-  );
+  const smokeText = page.getByTestId("lifeops-dynamic-view-fallback");
   try {
     await smokeText.waitFor({ state: "visible", timeout: 5_000 });
   } catch {
     return false;
   }
 
-  await expect(page.getByRole("heading", { name: "LifeOps" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "LifeOpsPageView" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Refresh view" }).click();
   await page.getByLabel("LifeOps input").fill("lifeops-smoke");
   return true;
 }
 
 test.beforeEach(async ({ page }) => {
+  await hideContinuousChatOverlay(page);
   await seedAppStorage(page, {
     "eliza:ui-theme": "dark",
     "elizaos:ui-theme": "dark",
@@ -565,7 +567,8 @@ test("Feed routes expose reachable GUI state and deterministic TUI commands", as
     90_000,
   );
 
-  await openAppPath(page, "/feed/tui");
+  await page.goto("/feed/tui", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#root")).toBeVisible({ timeout: 90_000 });
   await assertReadyChecks(
     page,
     "feed tui",

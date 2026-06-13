@@ -29,12 +29,12 @@ import {
 } from "@elizaos/shared/steward-session-client";
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
-import { signStewardMutatingRequest } from "@/lib/steward/sign";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
 import {
   type StewardVerifyEnv,
   verifyStewardTokenCached,
 } from "@/lib/auth/steward-client";
+import { signStewardMutatingRequest } from "@/lib/steward/sign";
 import { syncUserFromSteward } from "@/lib/steward-sync";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
