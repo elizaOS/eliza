@@ -50,6 +50,9 @@ jobs:
           fetch-depth: 0
           submodules: false
 
+      - name: Validate CI path gate
+        run: node packages/scripts/ci-path-gate.self-test.mjs
+
       - name: Determine affected test lanes
         id: filter
         shell: bash

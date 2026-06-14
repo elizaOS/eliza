@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 
 const CONFIGS = {
   test: {
@@ -377,7 +377,7 @@ function addLane(matchesByLane, lane, source) {
   matchesByLane.get(lane).push(source);
 }
 
-function evaluate(config, { eventName, labels, base, head }) {
+function evaluate(config, { eventName, labels, base, head, changedFilesPath }) {
   const matchesByLane = new Map(config.outputs.map((output) => [output, []]));
   let changedFiles = [];
 
@@ -391,7 +391,12 @@ function evaluate(config, { eventName, labels, base, head }) {
     return { changedFiles, matchesByLane };
   }
 
-  changedFiles = gitChangedFiles(base, head);
+  changedFiles = changedFilesPath
+    ? readFileSync(changedFilesPath, "utf8")
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+    : gitChangedFiles(base, head);
   const labelSet = new Set(
     labels
       .split(",")
@@ -498,12 +503,21 @@ function main() {
   const labels = args.labels || "";
   const base = args.base || "";
   const head = args.head || "";
+  const changedFilesPath = args["changed-files"] || "";
 
-  if (eventName === "pull_request" && (!base || !head)) {
-    throw new Error("--base and --head are required for pull_request events");
+  if (eventName === "pull_request" && !changedFilesPath && (!base || !head)) {
+    throw new Error(
+      "--base and --head are required for pull_request events unless --changed-files is provided",
+    );
   }
 
-  const result = evaluate(config, { eventName, labels, base, head });
+  const result = evaluate(config, {
+    eventName,
+    labels,
+    base,
+    head,
+    changedFilesPath,
+  });
   writeOutputs(
     args.output || process.env.GITHUB_OUTPUT,
     config,
