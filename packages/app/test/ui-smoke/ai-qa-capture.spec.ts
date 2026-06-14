@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import {
   AI_QA_ROUTES,
   type AiQaRoute,
@@ -70,7 +70,11 @@ const SELECTED_THEMES: readonly Theme[] = THEME_FILTER.split(",")
 
 test.use({ trace: "off", video: "off" });
 
-const DEFAULT_EXCLUDED_ROUTE_IDS = new Set(["desktop", "onboarding", "rolodex"]);
+const DEFAULT_EXCLUDED_ROUTE_IDS = new Set([
+  "desktop",
+  "onboarding",
+  "rolodex",
+]);
 
 const ROUTES_TO_RUN: readonly AiQaRoute[] = ROUTE_FILTER
   ? AI_QA_ROUTES.filter((route) => {
@@ -406,7 +410,9 @@ test.describe("ai-qa capture", () => {
         });
         continue;
       }
-      await page.waitForTimeout(400);
+      await expect(
+        page.locator('[data-testid="settings-shell"]').first(),
+      ).toBeVisible({ timeout: 60_000 });
       const fileName = `${section.id}__desktop__light.png`;
       const relDir = join("captures", section.id);
       const absDir = join(REPORT_DIR, relDir);

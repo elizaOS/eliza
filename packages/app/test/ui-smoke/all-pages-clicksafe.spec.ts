@@ -1461,18 +1461,30 @@ async function clickSafeAllowlist(
 ): Promise<void> {
   await probeRoute(page, coreRouteProbe("chat"));
   await clickIfVisible(page.getByTestId("header-tasks-events-toggle"));
-  await page.waitForTimeout(250);
+  await expect(
+    page.locator(
+      '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]',
+    ),
+  ).toBeVisible({ timeout: 60_000 });
   await expectNoPageIssues(issues, "chat safe toggle");
 
   await probeRoute(page, coreRouteProbe("apps catalog"));
-  await clickIfVisible(page.getByRole("button", { name: "Add to favorites" }));
-  await page.waitForTimeout(250);
+  const favoriteButton = page.getByRole("button", {
+    name: "Add to favorites",
+  });
+  if (await clickIfVisible(favoriteButton)) {
+    await expect(
+      page.getByRole("button", { name: /^(Add to|Remove from) favorites$/ }),
+    ).toBeVisible({ timeout: 60_000 });
+  }
   await expectNoPageIssues(issues, "apps favorite toggle");
 
   await probeRoute(page, coreRouteProbe("settings"));
   for (const section of SETTING_SECTIONS_TO_CLICK) {
     await openSettingsSection(page, section);
-    await page.waitForTimeout(150);
+    await expect(page.getByTestId("settings-shell")).toBeVisible({
+      timeout: 60_000,
+    });
     await expectNoPageIssues(issues, `settings section ${String(section)}`);
   }
 
