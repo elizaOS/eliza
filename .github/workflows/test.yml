@@ -283,12 +283,12 @@ jobs:
         working-directory: packages/app-core/platforms/electrobun
         run: bun run test
 
-  zero-key-e2e:
-    name: Zero-Key Deterministic E2E
+  zero-key-unit-coverage:
+    name: Zero-Key unit + UI coverage
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 30
     env:
       TEST_LANE: "pr"
       ELIZA_LIVE_TEST: "0"
@@ -346,6 +346,50 @@ jobs:
       - name: App route + ui-smoke spec coverage gates
         run: bun run --cwd packages/app test -- test/route-coverage.test.ts test/ui-smoke-coverage.test.ts test/view-interaction-coverage.test.ts
 
+  zero-key-browser:
+    name: Zero-Key app browser
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      TEST_LANE: "pr"
+      ELIZA_LIVE_TEST: "0"
+      SCENARIO_USE_LLM_PROXY: "1"
+      CEREBRAS_API_KEY: ""
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      GROQ_API_KEY: ""
+      OPENROUTER_API_KEY: ""
+      GOOGLE_GENERATIVE_AI_API_KEY: ""
+      XAI_API_KEY: ""
+      NVIDIA_API_KEY: ""
+      ELIZAOS_CLOUD_API_KEY: ""
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_REMOTE_ONLY: true
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Ensure generated shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
       - name: Install Playwright Chromium
         run: bunx playwright install --with-deps chromium
 
@@ -363,6 +407,61 @@ jobs:
 
       - name: Actual app plugin view browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/plugin-views-visual.spec.ts test/ui-smoke/orchestrator-gui-workbench.spec.ts test/ui-smoke/screenshare-gui-interactions.spec.ts test/ui-smoke/task-coordinator-gui-interactions.spec.ts test/ui-smoke/game-operator-gui-interactions.spec.ts test/ui-smoke/terminal-plugin-view-command-contract.spec.ts --project=chromium
+
+      - name: Upload zero-key browser artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: tests-zero-key-browser
+          path: |
+            packages/app/playwright-report/
+            packages/app/test-results/
+          if-no-files-found: ignore
+          retention-days: 3
+
+  zero-key-diagnostics:
+    name: Zero-Key diagnostics
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TEST_LANE: "pr"
+      ELIZA_LIVE_TEST: "0"
+      SCENARIO_USE_LLM_PROXY: "1"
+      CEREBRAS_API_KEY: ""
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      GROQ_API_KEY: ""
+      OPENROUTER_API_KEY: ""
+      GOOGLE_GENERATIVE_AI_API_KEY: ""
+      XAI_API_KEY: ""
+      NVIDIA_API_KEY: ""
+      ELIZAOS_CLOUD_API_KEY: ""
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_REMOTE_ONLY: true
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Ensure generated shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Electrobun window and dynamic-view coverage
         run: bun run --cwd packages/app-core/platforms/electrobun test src/native/desktop-window.test.ts src/rpc-handlers.test.ts src/dynamic-view-rpc-schema.test.ts src/surface-windows.test.ts src/dynamic-views/host.test.ts
@@ -384,6 +483,53 @@ jobs:
 
       - name: Cloud screenshot quality diagnostics coverage
         run: bun run --cwd packages/cloud-frontend test -- tests/e2e/screenshot-quality.test.ts
+
+  zero-key-scenario-runner:
+    name: Zero-Key scenario runner
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TEST_LANE: "pr"
+      ELIZA_LIVE_TEST: "0"
+      SCENARIO_USE_LLM_PROXY: "1"
+      CEREBRAS_API_KEY: ""
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      GROQ_API_KEY: ""
+      OPENROUTER_API_KEY: ""
+      GOOGLE_GENERATIVE_AI_API_KEY: ""
+      XAI_API_KEY: ""
+      NVIDIA_API_KEY: ""
+      ELIZAOS_CLOUD_API_KEY: ""
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_REMOTE_ONLY: true
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      # The scenario CLI imports @elizaos/core from source, which imports the
+      # gitignored ./generated/validation-keyword-data.ts. --ignore-scripts skips
+      # postinstall, so generate it explicitly before any step resolves core.
+      - name: Ensure generated shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Scenario catalog coverage gate
         run: node packages/scripts/check-scenario-workflow-coverage.mjs --report-dir reports/scenarios/catalog-inventory
@@ -408,6 +554,40 @@ jobs:
       - name: Prune deterministic E2E scratch output
         if: always()
         run: rm -rf reports/scenarios/pr-deterministic reports/scenarios/catalog-inventory packages/app/playwright-report packages/app/test-results
+
+  zero-key-e2e:
+    name: Zero-Key Deterministic E2E
+    needs:
+      - changes
+      - zero-key-unit-coverage
+      - zero-key-browser
+      - zero-key-diagnostics
+      - zero-key-scenario-runner
+    if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true')
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check zero-key slices
+        shell: bash
+        run: |
+          set -u
+          bad=0
+          for pair in \
+            "zero-key-unit-coverage:${{ needs.zero-key-unit-coverage.result }}" \
+            "zero-key-browser:${{ needs.zero-key-browser.result }}" \
+            "zero-key-diagnostics:${{ needs.zero-key-diagnostics.result }}" \
+            "zero-key-scenario-runner:${{ needs.zero-key-scenario-runner.result }}"; do
+            name="${pair%%:*}"
+            result="${pair##*:}"
+            echo "$name: $result"
+            if [ "$result" != "success" ]; then
+              echo "::error title=Tests zero-key::$name finished with $result"
+              bad=1
+            fi
+          done
+          if [ "$bad" -ne 0 ]; then
+            exit 1
+          fi
+          echo "All zero-key slices passed."
 
   cloud-live-e2e:
     name: Cloud Live E2E (Eliza Cloud)

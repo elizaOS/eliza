@@ -69,6 +69,11 @@ Maintainers can force specific lanes with labels:
 Push, scheduled, and manual runs keep their broader/default behavior; the path
 gate mainly keeps PR feedback fast and explainable.
 
+Long deterministic E2E gates are split into named parallel slices for unit/UI
+coverage, browser coverage, diagnostics, and scenario execution. The visible
+`Zero-Key Deterministic E2E` check is an aggregate status over those slices, so
+reviewers can see the failing surface without opening one giant serial log.
+
 ### Main CI (`ci.yaml`)
 
 Runs on PRs and pushes to main:
