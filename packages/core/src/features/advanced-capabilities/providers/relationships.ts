@@ -13,6 +13,16 @@ import type {
 // Get text content from centralized specs
 const spec = requireProviderSpec("RELATIONSHIPS");
 
+// Output bounds. Entity metadata is internal bookkeeping that can accumulate
+// arbitrarily large blobs (JSON state, embeddings-adjacent fields, history).
+// Dumping it verbatim for up to 30 relationships ballooned this provider to
+// 80k+ chars on busy agents, blowing the planner prompt past small-context
+// models' limits (e.g. Cerebras gpt-oss-120b's 131k ceiling). The useful
+// relationship signal is names + tags + interaction strength, not the raw
+// metadata, so cap metadata per entity and cap the provider's total output.
+const MAX_METADATA_CHARS_PER_ENTITY = 240;
+const MAX_RELATIONSHIPS_OUTPUT_CHARS = 4000;
+
 /**
  * Formats the provided relationships based on interaction strength and returns a string.
  * @param {IAgentRuntime} runtime - The runtime object to interact with the agent.
@@ -79,22 +89,35 @@ async function formatRelationships(
 	const formatMetadata = (metadata?: Metadata) => {
 		if (!metadata) return "";
 		const lines: string[] = [];
+		let used = 0;
 		for (const [key, value] of Object.entries(metadata)) {
+			let line: string;
 			if (value && typeof value === "object") {
 				try {
-					lines.push(JSON.stringify({ [key]: value }));
+					line = JSON.stringify({ [key]: value });
 				} catch {
-					lines.push(`${key}: ${String(value)}`);
+					line = `${key}: ${String(value)}`;
 				}
 			} else {
-				lines.push(`${key}: ${String(value)}`);
+				line = `${key}: ${String(value)}`;
 			}
+			// Bound per entity: skip once the cap is reached so a single
+			// metadata-heavy entity can't dominate the provider output.
+			if (used + line.length > MAX_METADATA_CHARS_PER_ENTITY) {
+				if (used < MAX_METADATA_CHARS_PER_ENTITY) {
+					lines.push(line.slice(0, MAX_METADATA_CHARS_PER_ENTITY - used));
+				}
+				break;
+			}
+			lines.push(line);
+			used += line.length + 1;
 		}
 		return lines.join("\n");
 	};
 
 	// Format relationships using the entity map
 	const formattedRelationships: string[] = [];
+	let totalChars = 0;
 	for (const rel of sortedRelationships) {
 		const counterpartEntityId = currentEntityIdSet.has(rel.sourceEntityId)
 			? (rel.targetEntityId as UUID)
@@ -109,7 +132,21 @@ async function formatRelationships(
 		const tags = rel.tags ? rel.tags.join(", ") : "";
 		const metadata = formatMetadata(entity.metadata);
 		const parts = [names, tags, metadata].filter((part) => part.length > 0);
-		formattedRelationships.push(`${parts.join("\n")}\n`);
+		const block = `${parts.join("\n")}\n`;
+		// Bound total output: stop once the cap is reached so a busy agent's
+		// relationship graph can't dominate the planner prompt. Relationships
+		// are already sorted by interaction strength, so the kept ones are the
+		// most relevant. Always keep at least the first (strongest) block so a
+		// single oversized entry never collapses output to "No relationships
+		// found."
+		if (
+			formattedRelationships.length > 0 &&
+			totalChars + block.length > MAX_RELATIONSHIPS_OUTPUT_CHARS
+		) {
+			break;
+		}
+		formattedRelationships.push(block);
+		totalChars += block.length + 1;
 	}
 
 	return formattedRelationships.join("\n");
