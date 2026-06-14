@@ -56,6 +56,14 @@ do not have to carry CI-only history.
   Parallel slices shorten wall-clock time and make the failing surface obvious
   without removing the aggregate gate reviewers already understand.
 
+- Moved `coverage-gate` dependency setup behind changed-test detection and
+  switched it to the shared Bun workspace setup.
+
+  Why: the coverage gate is advisory for changed Bun-native tests. Docs-only and
+  no-test PRs should not install the whole workspace or fail on unrelated
+  registry/install noise, while test-bearing PRs should use the same
+  lockfile-validating setup path as the rest of CI.
+
 ### Preserved
 
 - Push, scheduled, and manual runs keep broad/default behavior.
