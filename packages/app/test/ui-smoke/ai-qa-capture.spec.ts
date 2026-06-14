@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import {
   AI_QA_ROUTES,
   type AiQaRoute,
