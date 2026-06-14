@@ -8,6 +8,7 @@ name: Tests
 on:
   pull_request:
     branches: [main, develop]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
   push:
     branches: [main, develop]
   workflow_dispatch:
@@ -52,114 +53,18 @@ jobs:
       - name: Determine affected test lanes
         id: filter
         shell: bash
+        env:
+          PR_LABELS: ${{ github.event_name == 'pull_request' && join(github.event.pull_request.labels.*.name, ',') || '' }}
         run: |
           set -euo pipefail
-
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            {
-              echo "server=true"
-              echo "client=true"
-              echo "plugins=true"
-              echo "desktop=true"
-              echo "zero_key=true"
-              echo "cloud=true"
-            } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          base="${{ github.event.pull_request.base.sha }}"
-          head="${{ github.event.pull_request.head.sha }}"
-          git diff --name-only "$base" "$head" > /tmp/changed-files
-
-          server=false
-          client=false
-          plugins=false
-          desktop=false
-          zero_key=false
-          cloud=false
-
-          mark_all() {
-            server=true
-            client=true
-            plugins=true
-            desktop=true
-            zero_key=true
-            cloud=true
-          }
-
-          while IFS= read -r path; do
-            case "$path" in
-              package.json|bun.lock|turbo.json|tsconfig*.json|vitest.config.*)
-                mark_all
-                ;;
-              .github/workflows/test.yml|.github/actions/setup-bun-workspace/**)
-                mark_all
-                ;;
-              packages/core/**|packages/agent/**|packages/shared/**|packages/prompts/**|packages/test/**)
-                server=true
-                client=true
-                plugins=true
-                desktop=true
-                zero_key=true
-                ;;
-              packages/app/**|packages/ui/**)
-                client=true
-                zero_key=true
-                ;;
-              packages/app-core/**)
-                server=true
-                client=true
-                desktop=true
-                zero_key=true
-                ;;
-              packages/scenario-runner/**)
-                server=true
-                zero_key=true
-                ;;
-              packages/scripts/**)
-                server=true
-                zero_key=true
-                ;;
-              packages/cloud-sdk/**|packages/cloud-shared/**|packages/cloud-frontend/**)
-                server=true
-                client=true
-                zero_key=true
-                cloud=true
-                ;;
-              packages/security/**|packages/vault/**)
-                server=true
-                ;;
-              plugins/**)
-                plugins=true
-                zero_key=true
-                ;;
-            esac
-          done < /tmp/changed-files
-
-          {
-            echo "server=$server"
-            echo "client=$client"
-            echo "plugins=$plugins"
-            echo "desktop=$desktop"
-            echo "zero_key=$zero_key"
-            echo "cloud=$cloud"
-          } >> "$GITHUB_OUTPUT"
-
-          {
-            echo "### Test lane path gate"
-            echo ""
-            echo "- server: \`$server\`"
-            echo "- client: \`$client\`"
-            echo "- plugins: \`$plugins\`"
-            echo "- desktop: \`$desktop\`"
-            echo "- zero_key: \`$zero_key\`"
-            echo "- cloud: \`$cloud\`"
-            echo ""
-            echo "<details><summary>Changed files</summary>"
-            echo ""
-            sed 's/^/- /' /tmp/changed-files
-            echo "</details>"
-          } >> "$GITHUB_STEP_SUMMARY"
+          node packages/scripts/ci-path-gate.mjs \
+            --config test \
+            --event "${{ github.event_name }}" \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}" \
+            --labels "$PR_LABELS" \
+            --output "$GITHUB_OUTPUT" \
+            --summary "$GITHUB_STEP_SUMMARY"
 
   server-tests:
     name: Server Tests
@@ -851,7 +756,7 @@ jobs:
               continue
             fi
             if [ "$result" = "skipped" ] && [ "$strict_results" != "true" ]; then
-              echo "::warning title=Test gate::Live-only job '${name}' was skipped for this PR context."
+              echo "::notice title=Test gate::Path-gated job '${name}' was skipped for this PR context."
               continue
             fi
             if [ "$result" != "success" ]; then

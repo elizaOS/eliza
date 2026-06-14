@@ -42,6 +42,33 @@ Publishes TypeScript/JavaScript packages to NPM.
 
 ## Test Workflows
 
+### PR Path Gates
+
+PR workflows use `packages/scripts/ci-path-gate.mjs` to keep expensive lanes
+targeted. Each classifier job writes a GitHub step summary showing:
+
+- which files changed
+- which lanes will run
+- which path or label caused each lane to run
+
+Maintainers can force specific lanes with labels:
+
+| Label | Effect |
+|-------|--------|
+| `ci:full` | Run every path-gated lane in workflows that honor the shared gate |
+| `ci:e2e` / `ci:zero-key` | Run deterministic zero-key E2E lanes |
+| `ci:server` | Run server tests |
+| `ci:client` | Run client tests |
+| `ci:plugins` | Run plugin tests |
+| `ci:cloud` | Run cloud live E2E where secrets are configured |
+| `ci:docker` | Run Docker CI smoke |
+| `ci:mobile` / `ci:ios` / `ci:android` | Run mobile smoke, or one mobile platform |
+| `ci:desktop` / `ci:windows` | Run desktop and Windows smoke lanes |
+| `ci:dev-smoke` | Run the `bun run dev` onboarding smoke |
+
+Push, scheduled, and manual runs keep their broader/default behavior; the path
+gate mainly keeps PR feedback fast and explainable.
+
 ### Main CI (`ci.yaml`)
 
 Runs on PRs and pushes to main:

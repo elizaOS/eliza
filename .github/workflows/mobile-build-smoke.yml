@@ -3,15 +3,7 @@ name: Mobile Build Smoke Test
 on:
   pull_request:
     branches: [main, develop]
-    paths:
-      - "packages/agent/**"
-      - "packages/app/**"
-      - "packages/app-core/**"
-      - "packages/core/**"
-      - "packages/native/plugins/**"
-      - "packages/shared/**"
-      - "plugins/plugin-sql/**"
-      - ".github/workflows/mobile-build-smoke.yml"
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
   workflow_dispatch:
 
 concurrency:
@@ -26,8 +18,38 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Classify changed paths
+    runs-on: ubuntu-24.04
+    outputs:
+      ios: ${{ steps.filter.outputs.ios }}
+      android: ${{ steps.filter.outputs.android }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Determine affected mobile smoke surface
+        id: filter
+        shell: bash
+        env:
+          PR_LABELS: ${{ github.event_name == 'pull_request' && join(github.event.pull_request.labels.*.name, ',') || '' }}
+        run: |
+          set -euo pipefail
+          node packages/scripts/ci-path-gate.mjs \
+            --config mobile \
+            --event "${{ github.event_name }}" \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}" \
+            --labels "$PR_LABELS" \
+            --output "$GITHUB_OUTPUT" \
+            --summary "$GITHUB_STEP_SUMMARY"
+
   build-ios:
     name: iOS Simulator Build
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.ios == 'true'
     runs-on: macos-15
     timeout-minutes: 30
     steps:
@@ -159,6 +181,8 @@ jobs:
 
   build-android:
     name: Android Debug Build
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.android == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
