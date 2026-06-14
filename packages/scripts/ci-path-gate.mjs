@@ -381,6 +381,9 @@ function evaluate(config, { eventName, labels, base, head, changedFilesPath }) {
   const matchesByLane = new Map(config.outputs.map((output) => [output, []]));
   let changedFiles = [];
 
+  // PRs are the only place where this script narrows coverage by changed path.
+  // Push, scheduled, and manual runs stay broad because they protect branch
+  // health and release confidence after multiple PRs have composed.
   if (eventName !== "pull_request") {
     for (const lane of config.outputs) {
       addLane(matchesByLane, lane, {

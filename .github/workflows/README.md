@@ -69,10 +69,48 @@ Maintainers can force specific lanes with labels:
 Push, scheduled, and manual runs keep their broader/default behavior; the path
 gate mainly keeps PR feedback fast and explainable.
 
+Why this exists:
+
+- OSS contributors should get useful feedback quickly without waiting on
+  unrelated mobile, Docker, desktop, Windows, or browser-heavy lanes.
+- Maintainers should be able to see why a lane ran or skipped from the job
+  summary, without reverse-engineering shell conditionals.
+- The quality gate should stay equivalent for affected code. Path gates decide
+  which surface is relevant; they do not replace the tests for that surface.
+- Push, scheduled, and manual runs remain broad because they protect branch
+  health, release readiness, and nightly confidence rather than one PR diff.
+
+Quality contract:
+
+- Any path-gated lane must be forced by `ci:full`.
+- Every expensive lane needs a matching force label so maintainers can request
+  coverage without pushing a no-op commit.
+- Workflow, shared setup, toolchain, lockfile, and classifier changes should run
+  the affected expensive lanes because they can change CI behavior even when
+  product code did not move.
+- The classifier must be self-tested before its outputs are consumed by a
+  workflow. The self-test covers representative path matches and label forcing
+  so a future edit cannot silently weaken the gate.
+- When splitting a long lane, keep the same substantive commands unless the PR
+  explicitly documents the safety reason for removing one.
+
 Long deterministic E2E gates are split into named parallel slices for unit/UI
 coverage, browser coverage, diagnostics, and scenario execution. The visible
 `Zero-Key Deterministic E2E` check is an aggregate status over those slices, so
 reviewers can see the failing surface without opening one giant serial log.
+
+Why the aggregate stays:
+
+- Branch protection and reviewer muscle memory can keep using one stable check.
+- The underlying slices can run in parallel and fail with precise names.
+- Manual review becomes easier because a browser failure, diagnostics failure,
+  or scenario-runner failure points at the relevant log immediately.
+
+Related CI docs:
+
+- `CHANGELOG.md` records workflow policy changes and the reason they happened.
+- `ROADMAP.md` tracks future CI performance work that should preserve gate
+  quality.
 
 ### Main CI (`ci.yaml`)
 
