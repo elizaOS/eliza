@@ -995,6 +995,13 @@
       "when": 1779409100000,
       "tag": "0143_org_credit_balance_default_zero",
       "breakpoints": true
+    },
+    {
+      "idx": 142,
+      "version": "7",
+      "when": 1779409200000,
+      "tag": "0144_domain_purchase_idempotency",
+      "breakpoints": true
     }
   ]
 }
