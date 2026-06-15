@@ -327,6 +327,13 @@ __filename = '"/worker.js"'
 
 [env.production.vars]
 NODE_ENV = "production"
+# Apps deploy (Product 2): arms the Worker-side deploy trigger (configureAppsDeployTrigger,
+# bootstrap-app.ts) so POST /api/v1/apps/:id/deploy enqueues a real APP_DEPLOY job instead of
+# the no-op stub. Mirrors [env.staging.vars]. CUTOVER GATE — only effective once the prod
+# daemon is armed (arm-apps-daemon.yml -f environment=production, sets APPS_DEPLOY_ENABLED via
+# #8422) AND the prod apps data plane exists (terraform). Do NOT merge develop→main until
+# staging QA is green and the prod data plane is applied.
+APPS_DEPLOY_ENABLED = "1"
 NEXT_PUBLIC_APP_URL = "https://elizacloud.ai"
 NEXT_PUBLIC_API_URL = "https://api.elizacloud.ai"
 ELIZA_CLOUD_URL = "https://elizacloud.ai"
