@@ -43,7 +43,7 @@
     "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.16",
+    "@biomejs/biome": "2.5.0",
     "@types/pg": "^8.16.0",
     "dotenv": "^17.4.2",
     "pg": "^8.20.0",
