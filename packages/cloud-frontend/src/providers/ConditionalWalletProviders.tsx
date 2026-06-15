@@ -15,8 +15,6 @@ import { useT } from "@/providers/I18nProvider";
  * wallet flow do not need to appear here.
  */
 const WALLET_ROUTE_PATTERNS = [
-  "/login",
-  "/login/*",
   "/bsc",
   "/bsc/*",
   "/dashboard/billing",

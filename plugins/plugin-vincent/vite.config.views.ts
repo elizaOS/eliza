@@ -3,7 +3,7 @@ import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.
 export default createViewBundleConfig({
   packageName: "@elizaos/plugin-vincent",
   viewId: "vincent",
-  entry: "./src/VincentAppView.tsx",
+  entry: "./src/vincent-view-bundle.ts",
   outDir: "dist/views",
   componentExport: "VincentAppView",
   additionalExternals: ["@elizaos/app-core"],

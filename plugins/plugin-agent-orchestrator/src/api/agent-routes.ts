@@ -304,7 +304,7 @@ export async function handleAgentRoutes(
   // usage/cost/status rollup lives in OrchestratorTaskService.getStatus()/
   // getUsage() and is served at GET /api/orchestrator/status and
   // GET /api/orchestrator/tasks/:id/usage, which the UI consumes. No client
-  // calls this route; it is retained only as a 200-stub for legacy probes.
+  // calls this route; it is retained only as a 200 response for legacy probes.
   if (method === "GET" && pathname === "/api/coding-agents/metrics") {
     if (!ctx.acpService) {
       sendServiceUnavailable(res, "ACP service not available");

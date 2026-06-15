@@ -2,7 +2,7 @@
  * face_model.c — real implementations of the face_detect_* /
  * face_embed_* model entry points declared in include/face/face.h.
  *
- * Replaces the ENOSYS stub in face_stub.c. The model entries:
+ * Native CPU reference runtime. The model entries:
  *
  *   - mmap a GGUF produced by scripts/blazeface_to_gguf.py or
  *     scripts/face_embed_to_gguf.py;

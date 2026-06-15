@@ -460,7 +460,7 @@ function parseConversationBody(body: string): ParsedMessageLine[] {
  * Failure modes:
  *   - If `# Conversation Messages` is absent, returns a single user-message
  *     transcript containing the whole prompt. Downstream compaction will
- *     then no-op safely (no region to summarize).
+ *     then return safely with no region to summarize.
  */
 export function parsePromptToTranscript(prompt: string): CompactorTranscript {
   const region = locateConversationRegion(prompt);
@@ -665,8 +665,8 @@ type CompactionArtifactStats = {
 /**
  * Main entry point for runtime conversation-level compaction.
  *
- * No-ops when `currentTokens <= targetTokens`. Otherwise parses the prompt,
- * runs the selected strategy, serializes back, and returns the result.
+ * Returns the original prompt when `currentTokens <= targetTokens`. Otherwise
+ * parses the prompt, runs the selected strategy, serializes back, and returns the result.
  * Always returns; never throws on a parse-failure path (falls back to
  * the original prompt with `didCompact: false`).
  */
@@ -1158,18 +1158,21 @@ function getRecentMessagesProvider(
   return provider as RecentMessagesProviderRecord;
 }
 
+function isMemoryShaped(value: unknown): value is Memory {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    "content" in value &&
+    "roomId" in value
+  );
+}
+
 function readRecentMessageMemories(state: State): Memory[] {
   const provider = getRecentMessagesProvider(state);
   const recentMessages = provider?.data?.recentMessages;
   if (!Array.isArray(recentMessages)) return [];
-  return recentMessages.filter(
-    (memory) =>
-      memory !== null &&
-      typeof memory === "object" &&
-      !Array.isArray(memory) &&
-      "content" in memory &&
-      "roomId" in memory,
-  ) as unknown as Memory[];
+  return recentMessages.filter(isMemoryShaped);
 }
 
 function rewriteStateRecentMessages(args: {

@@ -165,7 +165,7 @@ function pruneExpiredSessions(now: number): void {
  * Encoder factory. By default the route handlers look for the bundled
  * WeSpeaker ResNet34-LM GGUF in
  * `$ELIZA_STATE_DIR/voice-profiles/models/<model>.gguf`.
- * Tests inject a stub via `setVoiceFirstRunEncoderFactory()`.
+ * Tests inject a fake encoder via `setVoiceFirstRunEncoderFactory()`.
  */
 export type EncoderFactory = () => Promise<SpeakerEncoder>;
 

@@ -58,7 +58,7 @@ The plugin has two distinct export surfaces:
 |---|---|---|
 | `MODEL_USED` | `createWaifuMeteringHandler()` | `src/utils/waifu-metering.ts` |
 
-Forwards per-inference token and USD spend to the Cloud metering endpoint when the container is a hosted agent. No-op otherwise.
+Forwards per-inference token and USD spend to the Cloud metering endpoint when the container is a hosted agent. Inactive otherwise.
 
 ### Routes (via `elizaCloudRoutePlugin`)
 
@@ -204,9 +204,9 @@ All settings are optional except `ELIZAOS_CLOUD_API_KEY` (required for any authe
 | Cloud var | Bare fallback | Default |
 |---|---|---|
 | `ELIZAOS_CLOUD_NANO_MODEL` | `NANO_MODEL` | falls back to small model |
-| `ELIZAOS_CLOUD_SMALL_MODEL` | `SMALL_MODEL` | `openai/gpt-oss-120b:nitro` |
+| `ELIZAOS_CLOUD_SMALL_MODEL` | `SMALL_MODEL` | `gpt-oss-120b` |
 | `ELIZAOS_CLOUD_MEDIUM_MODEL` | `MEDIUM_MODEL` | falls back to small model |
-| `ELIZAOS_CLOUD_LARGE_MODEL` | `LARGE_MODEL` | `deepseek/deepseek-v4-pro` |
+| `ELIZAOS_CLOUD_LARGE_MODEL` | `LARGE_MODEL` | `zai-glm-4.7` |
 | `ELIZAOS_CLOUD_MEGA_MODEL` | `MEGA_MODEL` | falls back to large |
 | `ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL` | `RESPONSE_HANDLER_MODEL` | falls back to small model |
 | `ELIZAOS_CLOUD_ACTION_PLANNER_MODEL` | `ACTION_PLANNER_MODEL` | falls back to large model |

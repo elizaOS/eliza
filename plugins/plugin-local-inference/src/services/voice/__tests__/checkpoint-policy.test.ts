@@ -1,7 +1,7 @@
 /**
  * Unit tests for `CheckpointPolicy`. The policy is a pure VAD-event →
  * checkpoint-op translator with no I/O of its own — every test injects a
- * stub `GatedCheckpointManager` and asserts on the recorded ops.
+ * fake `GatedCheckpointManager` and asserts on the recorded ops.
  *
  * NB: per the scaffold task envelope, this test must NOT spawn a real
  * llama-server or load a real model. Everything is mocked at the JS layer.
@@ -15,14 +15,14 @@ import type {
 } from "../../checkpoint-manager";
 import { CheckpointPolicy, checkpointNameFor } from "../checkpoint-policy";
 
-/** Op the stub manager recorded — flat tuple for easy `expect(...).toEqual`. */
+/** Op the fake manager recorded — flat tuple for easy `expect(...).toEqual`. */
 type RecordedOp =
 	| { kind: "save"; slotId: number; name: string }
 	| { kind: "restore"; slotId: number; nameOrHandle: string }
 	| { kind: "erase"; slotId: number; nameOrHandle: string }
 	| { kind: "cancel"; slotId: number };
 
-interface StubOptions {
+interface FakeManagerOptions {
 	flagOn?: boolean;
 	capabilityOn?: boolean;
 	saveReturns?: CheckpointHandle | null | "throw";
@@ -32,11 +32,11 @@ interface StubOptions {
 }
 
 /**
- * Build a stub `GatedCheckpointManager`. Records every call into `ops`
+ * Build a fake `GatedCheckpointManager`. Records every call into `ops`
  * and exposes the registry via `getNamedHandle`. The default behavior is
  * "happy path" — feature flag on, capability on, save returns a handle.
  */
-function makeStub(opts: StubOptions = {}): {
+function makeFakeManager(opts: FakeManagerOptions = {}): {
 	mgr: GatedCheckpointManager;
 	ops: RecordedOp[];
 	registry: Map<string, CheckpointHandle>;
@@ -54,9 +54,9 @@ function makeStub(opts: StubOptions = {}): {
 		backendRef: null,
 	});
 
-	// Cast to the real type via a structural stub — production callers only
+	// Cast to the real type via a structural fake — production callers only
 	// touch the methods listed below.
-	const stub: Partial<GatedCheckpointManager> = {
+	const fake: Partial<GatedCheckpointManager> = {
 		isFeatureFlagOn: () => flagOn,
 		isEnabled: () => flagOn && capabilityOn,
 		async save(slotId, name) {
@@ -94,7 +94,7 @@ function makeStub(opts: StubOptions = {}): {
 		getNamedHandle: (name) => registry.get(name) ?? null,
 	};
 
-	return { mgr: stub as GatedCheckpointManager, ops, registry };
+	return { mgr: fake as GatedCheckpointManager, ops, registry };
 }
 
 describe("checkpointNameFor", () => {
@@ -122,7 +122,7 @@ describe("CheckpointPolicy — gate ON", () => {
 	});
 
 	it("onSpeechPause issues save with the per-turn name", async () => {
-		const { mgr, ops } = makeStub();
+		const { mgr, ops } = makeFakeManager();
 		const policy = new CheckpointPolicy({ manager: mgr });
 		await policy.onSpeechPause("T1", 3);
 		expect(ops).toEqual([
@@ -131,7 +131,7 @@ describe("CheckpointPolicy — gate ON", () => {
 	});
 
 	it("onSpeechResume restores when speculativeFired=true", async () => {
-		const { mgr, ops } = makeStub();
+		const { mgr, ops } = makeFakeManager();
 		const policy = new CheckpointPolicy({ manager: mgr });
 		await policy.onSpeechPause("T2", 5);
 		await policy.onSpeechResume("T2", 5, { speculativeFired: true });
@@ -146,7 +146,7 @@ describe("CheckpointPolicy — gate ON", () => {
 	});
 
 	it("onSpeechResume no-ops when speculativeFired=false", async () => {
-		const { mgr, ops } = makeStub();
+		const { mgr, ops } = makeFakeManager();
 		const noopSink = vi.fn();
 		const policy = new CheckpointPolicy({
 			manager: mgr,
@@ -159,7 +159,7 @@ describe("CheckpointPolicy — gate ON", () => {
 	});
 
 	it("onSpeechResume emits onNoop=registry-miss when manager.restore returns false", async () => {
-		const { mgr, ops } = makeStub({ restoreReturns: false });
+		const { mgr, ops } = makeFakeManager({ restoreReturns: false });
 		const noopSink = vi.fn();
 		const policy = new CheckpointPolicy({
 			manager: mgr,
@@ -177,7 +177,7 @@ describe("CheckpointPolicy — gate ON", () => {
 	});
 
 	it("onSpeechEndCommit erases the per-turn checkpoint", async () => {
-		const { mgr, ops } = makeStub();
+		const { mgr, ops } = makeFakeManager();
 		const policy = new CheckpointPolicy({ manager: mgr });
 		await policy.onSpeechPause("T5", 4);
 		await policy.onSpeechEndCommit("T5", 4);
@@ -189,7 +189,7 @@ describe("CheckpointPolicy — gate ON", () => {
 	});
 
 	it("onHardStop with existing C1 restores then erases (no cancel)", async () => {
-		const { mgr, ops } = makeStub();
+		const { mgr, ops } = makeFakeManager();
 		const sse = vi.fn();
 		const policy = new CheckpointPolicy({ manager: mgr });
 		await policy.onSpeechPause("T6", 7);
@@ -200,7 +200,7 @@ describe("CheckpointPolicy — gate ON", () => {
 	});
 
 	it("onHardStop with no C1 falls through to manager.cancel", async () => {
-		const { mgr, ops } = makeStub();
+		const { mgr, ops } = makeFakeManager();
 		const sse = vi.fn();
 		const policy = new CheckpointPolicy({ manager: mgr });
 		await policy.onHardStop("T7", 9, sse);
@@ -208,7 +208,7 @@ describe("CheckpointPolicy — gate ON", () => {
 	});
 
 	it("emits onError when manager.save throws", async () => {
-		const { mgr } = makeStub({ saveReturns: "throw" });
+		const { mgr } = makeFakeManager({ saveReturns: "throw" });
 		const onError = vi.fn();
 		const policy = new CheckpointPolicy({ manager: mgr, events: { onError } });
 		await policy.onSpeechPause("T8", 1);
@@ -216,7 +216,7 @@ describe("CheckpointPolicy — gate ON", () => {
 	});
 
 	it("emits onError when manager.restore throws but policy does not rethrow", async () => {
-		const { mgr } = makeStub({ restoreReturns: "throw" });
+		const { mgr } = makeFakeManager({ restoreReturns: "throw" });
 		const onError = vi.fn();
 		const policy = new CheckpointPolicy({ manager: mgr, events: { onError } });
 		await expect(
@@ -226,7 +226,7 @@ describe("CheckpointPolicy — gate ON", () => {
 	});
 
 	it("emits onSaved with the returned handle", async () => {
-		const { mgr } = makeStub();
+		const { mgr } = makeFakeManager();
 		const onSaved = vi.fn();
 		const policy = new CheckpointPolicy({ manager: mgr, events: { onSaved } });
 		await policy.onSpeechPause("T10", 1);
@@ -239,28 +239,28 @@ describe("CheckpointPolicy — gate ON", () => {
 
 describe("CheckpointPolicy — gate OFF (no-op path)", () => {
 	it("onSpeechPause does not call manager.save", async () => {
-		const { mgr, ops } = makeStub({ flagOn: false });
+		const { mgr, ops } = makeFakeManager({ flagOn: false });
 		const policy = new CheckpointPolicy({ manager: mgr });
 		await policy.onSpeechPause("T1", 3);
 		expect(ops).toHaveLength(0);
 	});
 
 	it("onSpeechResume does not call manager.restore", async () => {
-		const { mgr, ops } = makeStub({ flagOn: false });
+		const { mgr, ops } = makeFakeManager({ flagOn: false });
 		const policy = new CheckpointPolicy({ manager: mgr });
 		await policy.onSpeechResume("T2", 3, { speculativeFired: true });
 		expect(ops).toHaveLength(0);
 	});
 
 	it("onSpeechEndCommit does not call manager.erase", async () => {
-		const { mgr, ops } = makeStub({ flagOn: false });
+		const { mgr, ops } = makeFakeManager({ flagOn: false });
 		const policy = new CheckpointPolicy({ manager: mgr });
 		await policy.onSpeechEndCommit("T3", 3);
 		expect(ops).toHaveLength(0);
 	});
 
 	it("onHardStop invokes SSE-disconnect callback synchronously", async () => {
-		const { mgr, ops } = makeStub({ flagOn: false });
+		const { mgr, ops } = makeFakeManager({ flagOn: false });
 		const sse = vi.fn();
 		const policy = new CheckpointPolicy({ manager: mgr });
 		await policy.onHardStop("T4", 11, sse);

@@ -118,7 +118,7 @@ function generateRunningBit(actorId: string, periodKey: string): string {
     candidates.push(
       "You keep asking if their argument is “benchmarkable.”",
       "You keep insisting everything is a scaling law problem.",
-      "You keep treating normal life like a product roadmap.",
+      "You keep treating normal life like a product launch plan.",
       "You keep using “just ship it” as a moral philosophy.",
     );
   }

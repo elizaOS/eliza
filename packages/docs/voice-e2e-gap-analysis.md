@@ -74,7 +74,7 @@ fixture failure, 1 parity test skipped without fixtures).
 
 ### 0.4 Corrected gap statuses
 
-- **GAP-1 (multi-speaker diarization not wired):** RESOLVED. Native pyannote forward works; the `MOCK_DIARIZATION_PIPELINE` in app-core is a separate stub, but `PyannoteDiarizer`/`DiarizerGgml` run real segmentation.
+- **GAP-1 (multi-speaker diarization not wired):** RESOLVED. Native pyannote forward works; the `MOCK_DIARIZATION_PIPELINE` in app-core is a separate test double, but `PyannoteDiarizer`/`DiarizerGgml` run real segmentation.
 - **GAP-2 (Kokoro broken):** RESOLVED. Kokoro v1.0 (`model_q4.onnx`) runs end-to-end via `KokoroOnnxRuntime` + `onnxruntime-node` (which DOES load under Bun) + the npm `phonemizer` package + `af_bella` voice pack. Verified: `verify-kokoro-agent-voice.mjs` synthesizes agent lines, ASR round-trip WER 0 on the short line / 0.375 mean (longer line truncated by ASR, not Kokoro). RTF ~7.7 on CPU (slow vs OmniVoice 0.35× — acceptable for occasional agent replies, not high-throughput). The earlier "onnxruntime-node not installed" finding was wrong. llama-server still cannot load OmniVoice GGUF (custom schema) — OmniVoice uses its CLI/FFI path.
 - **GAP-3 (VAD missing from 0_8b):** WRONG — VAD was always present (all 3 formats in `vad/`). Real issue was the resolver path (§0.2).
 - **GAP-7 (diarizer/encoder native lib unbuilt):** RESOLVED this session (§0.3).

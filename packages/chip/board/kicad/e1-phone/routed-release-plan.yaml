@@ -1,6 +1,6 @@
 schema: eliza.e1_phone_routed_release_plan.v1
 status: blocked_routed_release_requires_real_route_and_supplier_outputs
-date: '2026-05-27'
+date: '2026-06-02'
 release_target: EVT1-routed-first-article
 claim_boundary: Routed release checklist only. This is not a fabrication package, not a routed PCB, not enclosure-ready
   evidence, and not factory-test release evidence.
@@ -303,7 +303,7 @@ route_completion_requirements:
 enclosure_release_dependency:
   current_status: enclosure_placement_cross_checked_not_release_ready
   requires_routed_board_step: true
-  routed_step_blocker: enclosure fit must be rerun with routed PCB STEP and final component models
+  routed_step_blocker: enclosure fit requires approved routed PCB STEP release clearance with final component models
 power_thermal_release_dependency:
   current_status: blocked_power_thermal_requires_real_schematic_and_measurement
   requires_measurements: true

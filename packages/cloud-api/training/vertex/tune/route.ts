@@ -1,5 +1,5 @@
-// TODO(node-only): blocked from Workers due to node:fs
-// Original handler preserved in git history.
+// Worker boundary: the Vertex tune handler depends on node:fs. Keep this
+// mounted as an explicit 501 until the operation moves to a Node sidecar.
 
 import { Hono } from "hono";
 

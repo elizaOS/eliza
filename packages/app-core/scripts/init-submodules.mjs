@@ -265,7 +265,7 @@ export function runInitSubmodules({
       exists,
     });
     let needsInit = !checkoutReady;
-    let initReason = checkoutReady ? "" : "checkout is incomplete";
+    let initReason = checkoutReady ? "" : "checkout is partial";
 
     try {
       const status = exec(`git submodule status -- "${submodule.path}"`, {
@@ -362,7 +362,7 @@ export function runInitSubmodules({
         })
       ) {
         throw new Error(
-          `submodule checkout is still incomplete after update: ${submodule.path}`,
+          `submodule checkout is still partial after update: ${submodule.path}`,
         );
       }
       initialized++;

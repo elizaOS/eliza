@@ -47,7 +47,7 @@ summary:
   local_real_footprint_development_refs: 89
   local_routed_step_candidate_present: true
   local_routed_step_candidate_release_credit: false
-  local_routed_step_candidate_sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+  local_routed_step_candidate_sha256: ea98f73d805f237ed397d5b6f190b86c31a9fc4ea270ea983a472220470043d6
   local_routed_step_candidate_matches_development_source: true
   local_routed_step_candidate_footprint_envelope_count: 89
   local_routed_step_candidate_pad_contact_visual_count: 1452
@@ -64,6 +64,21 @@ summary:
   local_pattern_explicit_support_pattern_count: 11
   local_pattern_all_support_patterns_have_explicit_provenance: true
   local_pattern_all_electrical_pad_counts_match_manifest: true
+  local_instance_pin_step_status: instance_pin_pattern_step_disposition_complete_not_release
+  local_instance_pin_step_component_instance_count: 89
+  local_instance_pin_step_routed_board_footprint_count: 89
+  local_instance_pin_step_pinout_bound_instance_count: 22
+  local_instance_pin_step_support_pattern_instance_count: 67
+  local_instance_pin_step_pending_supplier_pad_map_or_order_instance_count: 13
+  local_instance_pin_step_public_candidate_package_conflict_instance_count: 3
+  local_instance_pin_step_local_step_instance_count: 89
+  local_instance_pin_step_local_step_hash_match_count: 89
+  local_instance_pin_step_local_contract_pass_count: 89
+  local_instance_pin_step_local_review_pass_count: 89
+  local_instance_pin_step_supplier_approved_instance_count: 0
+  local_instance_pin_step_release_credit_instance_count: 0
+  local_instance_pin_step_local_failure_count: 0
+  local_instance_pin_step_release_credit: false
   local_cad_connection_passing_count: 32
   local_cad_connection_terminal_marker_count: 64
   local_cad_connection_terminal_pair_count: 32

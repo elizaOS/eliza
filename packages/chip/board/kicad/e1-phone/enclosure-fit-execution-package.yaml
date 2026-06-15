@@ -29,7 +29,7 @@ source_artifacts:
 upstream_status:
   artifact_manifest_status: blocked_not_fabrication_ready
   enclosure_tolerance_status: blocked_requires_supplier_geometry_routed_step_and_physical_tolerance_evidence
-  component_height_status: blocked_requires_supplier_step_models_routed_board_step_and_clearance_rerun
+  component_height_status: blocked_requires_supplier_step_models_approved_routed_board_step_physical_clearance_and_signoff
   supplier_intake_status: blocked_supplier_drawing_intake_required_before_real_footprints_or_route
   evt1_footprint_capture_status: blocked_evt1_footprint_capture_requires_supplier_intake_reviews_and_real_kicad_libraries
   routing_acceptance_status: blocked_routing_acceptance_requires_supplier_footprints_trial_route_drc_and_outputs
@@ -313,7 +313,7 @@ selected_hardware_enclosure_clearance_gate:
             - signed 2D drawing with FPC exit, pin-1 datum, cover-lens datum, stiffener, and mated connector height
             - exact 40-pin FPC pinout, mating connector MPN, land pattern, and STEP/B-rep models
             - display/touch/backlight/bias bring-up data, sample inspection, and promotion review against CH550FH01A-CT
-            - routed board STEP clearance rerun and physical fit report against the selected enclosure
+            - approved routed board STEP clearance report and physical fit report against the selected enclosure
           enclosure_clearance_allowed: false
         - source_id: display_alternate_made_in_china_e549_amoled
           candidate: E549-HC01_RM67191_AMOLED_class
@@ -322,7 +322,7 @@ selected_hardware_enclosure_clearance_gate:
             - signed 2D drawing with AMOLED outline, FPC exit, active-area datum, touch-stack datum, and mated connector height
             - exact AMOLED FPC pinout, mating connector MPN, land pattern, and STEP/B-rep models
             - RM67191 power sequence, GT1151 touch data, burn-in/luminance/sample evidence, and promotion review
-            - routed board STEP clearance rerun and physical fit report against the selected enclosure
+            - approved routed board STEP clearance report and physical fit report against the selected enclosure
           enclosure_clearance_allowed: false
       status: blocked_display_touch_selected_hardware_missing_supplier_step_routed_clearance_and_physical_fit
     - function: rear_front_cameras
@@ -410,7 +410,7 @@ cross_checks:
   selected_hardware_enclosure_clearance_gate_blocks_final_readiness: true
   alternate_display_enclosure_branches_fail_closed: true
 release_blockers:
-  - local routed KiCad PCB candidate exists, but DRC/ERC reports are non-release and blocked by 2304 DRC rows and 366 ERC rows
+  - local routed KiCad PCB candidate exists, but DRC/ERC reports are non-release and blocked by 2201 DRC rows and 366 ERC rows
   - selected supplier response packs with enclosure datums and STEP/B-rep geometry for display, camera, USB-C/side-key, cellular, and Wi-Fi/Bluetooth are missing
   - supplier STEP or B-rep models for height-critical parts are missing
   - local routed real-footprint STEP exists for visual review only; supplier-approved routed board STEP has not passed enclosure CAD import or clearance

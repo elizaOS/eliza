@@ -6,8 +6,8 @@
  *
  * P1 ships the methods required by action / provider / event / model
  * handlers (`getService`, `useModel`, `getMemory`, `createMemory`,
- * `emitEvent`, `registerEvent`, `getSetting`, `setSetting`,
- * `composeState`) plus action callback marshalling. The remainder of the
+ * `emitEvent`, `getSetting`, `setSetting`, `composeState`) plus action
+ * callback marshalling. The remainder of the
  * runtime surface (database, routes, advanced event APIs) is added
  * incrementally as plugin authors reach for it; an `unknown method`
  * host-rpc returns a typed error rather than silently dropping the call.
@@ -17,7 +17,6 @@ import type {
   HostRpcMessage,
   HostRpcResultMessage,
   JsonValue,
-  RemoteFunctionRef,
   RemotePluginWorkerMessage,
 } from "@elizaos/plugin-remote-manifest";
 import type { WorkerChannel } from "./envelope";
@@ -31,7 +30,6 @@ export const SUPPORTED_RUNTIME_METHODS = [
   "createMemory",
   "updateMemory",
   "emitEvent",
-  "registerEvent",
   "getSetting",
   "setSetting",
   "composeState",
@@ -163,7 +161,7 @@ export interface RuntimeProxyApi {
   emitEvent(name: string, payload: JsonValue): Promise<void>;
   registerEvent(
     name: string,
-    handler: (payload: JsonValue) => Promise<void> | void,
+    handler: (payload: JsonValue) => void,
   ): Promise<void>;
   getSetting(key: string): Promise<JsonValue | null>;
   setSetting(key: string, value: JsonValue): Promise<void>;
@@ -175,17 +173,7 @@ export interface RuntimeProxyApi {
   ): Promise<JsonValue>;
 }
 
-export interface RuntimeProxyApiOptions {
-  registerDynamicEventHandler?: (
-    name: string,
-    handler: (payload: JsonValue) => Promise<void> | void,
-  ) => RemoteFunctionRef;
-}
-
-export function buildRuntimeProxyApi(
-  proxy: RuntimeProxy,
-  options: RuntimeProxyApiOptions = {},
-): RuntimeProxyApi {
+export function buildRuntimeProxyApi(proxy: RuntimeProxy): RuntimeProxyApi {
   return {
     getService: (serviceType) =>
       proxy.call("getService", { serviceType }) as Promise<never>,
@@ -203,14 +191,10 @@ export function buildRuntimeProxyApi(
     emitEvent: async (name, payload) => {
       await proxy.call("emitEvent", { name, payload });
     },
-    registerEvent: async (name, handler) => {
-      if (!options.registerDynamicEventHandler) {
-        throw new Error(
-          "runtime.registerEvent inside a remote-mode plugin requires a dynamic event handler registry.",
-        );
-      }
-      const handlerRef = options.registerDynamicEventHandler(name, handler);
-      await proxy.call("registerEvent", { name, handlerRef });
+    registerEvent: async (_name, _handler) => {
+      throw new Error(
+        "runtime.registerEvent inside a remote-mode plugin cannot serialize callbacks; declare events via Plugin.events instead.",
+      );
     },
     getSetting: (key) => proxy.call("getSetting", { key }),
     setSetting: async (key, value) => {

@@ -4,8 +4,8 @@ Research-only summary of the software toolchains that produce low-bit models
 the E1 NPU could in principle execute. The E1 RTL today implements scalar
 opcodes covering INT8 (`DOT4_S8`, `GEMM_S8`), INT4 (`DOT8_S4`, `GEMM_S4`,
 `SDOT4_S4_2_4`), INT2 (`DOT16_S2`), and FP8 E4M3 (`DOT4_FP8_E4M3`) per
-`docs/arch/npu.md`. None of these toolchains have been integrated; this is
-a map for future work.
+`docs/arch/npu.md`. These toolchains are not integrated into the current E1
+runtime; this document maps the required integration work.
 
 ## 1. INT8 PTQ / QAT
 

@@ -29,7 +29,7 @@ Commands run from `packages/chip` on 2026-05-22:
 | --- | --- | --- |
 | `make chip-os-bring-up-status` | Strict-effective blocker true; `release_blocker=false`; `PASS=51`, `BLOCKED=24`, `FAIL=0` across 75 gates. | `build/reports/chip-os-bring-up-status.json`. Linux/AOSP fork boot, launcher foreground, and agent liveness remain unproven. Strict mode remains non-releasable because BLOCKED objective gates are release-blocking for this survey. |
 | `make chip-os-boot-gap-inventory` | Exit `0`; inventory status `BLOCKED`; `nonpassing_gates=24`, `blocked_gates=24`, `failed_gates=0`, `uncovered_gates=0`, `unstructured_reports=0`, `blocker_entries=485`, `blocker_codes=456`. | `build/reports/chip-os-boot-gap-inventory.json`. This is an inventory-only report and not boot or launcher evidence. It maps every current nonpassing aggregate gate to checker scripts, matching detailed reports, known differently named report aliases, structured blocker/failure rows when present, and nonpassing reports that still lack structured closure rows. |
-| `make chip-os-gap-keyword-inventory` | Exit `0`; inventory status `BLOCKED`; `files_scanned=1959`, `findings=1858`, `paths_with_findings=492`. | `build/reports/chip-os-gap-keyword-inventory.json`. This is source-keyword inventory only. It is intentionally separate from the aggregate gate blocker inventory so TODO/stub/scaffold markers do not swamp per-gate blocker counts. |
+| `make chip-os-gap-keyword-inventory` | Exit `0`; inventory status `BLOCKED`; `files_scanned=1959`, `findings=1858`, `paths_with_findings=492`. | `build/reports/chip-os-gap-keyword-inventory.json`. This is source-keyword inventory only. It is intentionally separate from the aggregate gate blocker inventory so open-task, stub, and scaffold markers do not swamp per-gate blocker counts. |
 | `make chip-os-evidence-provenance` | Exit `0`; provenance status `BLOCKED`; `files_scanned=267`, `findings=2354`, `paths_with_findings=252`. | `build/reports/chip-os-evidence-provenance.json`. This is evidence-quality inventory only. It flags host-local paths, missing timestamps/claim boundaries, reference-only scopes, placeholder markers, and blocked/fail markers before any artifact is promoted as boot, launcher, or agent evidence. |
 | `make chip-os-optimization-gap-inventory` | Exit `0`; optimization inventory status `BLOCKED`; `artifacts=23`, `findings=64`, `areas=7`. | `build/reports/chip-os-optimization-gap-inventory.json`. This is optimization/performance inventory only. It tracks CPU/AP, NPU, memory/cache, benchmark, SOTA, power/thermal, Android launcher/agent, HAL, bridge, APK payload, release-readiness, and phone-runtime evidence that is still modeled, local-host, release-blocked, false-readiness, timeout, or otherwise not target runtime proof. |
 | `make chip-os-identity-contract` | Exit `0`; identity contract status `BLOCKED`; `findings=5`; observed packages `app.eliza`, `ai.elizaos.app`, and `com.elizaos.agent`. | `build/reports/chip-os-identity-contract.json`. This static audit tracks package IDs, HOME role targets, service components, health endpoints, Android release validation metadata, app agent plugin stubs, and stale operator docs across the app, AOSP vendor layer, and chip smoke scripts. |
@@ -125,7 +125,7 @@ The gate inventory above tracks structured checker reports. A separate source
 keyword inventory now scans chip RTL/firmware/software/docs plus the Linux
 fork image scripts, Linux agent/daemon sources, AOSP vendor layer, AOSP
 installer/scripts/system-ui surfaces, Android app native code, and shared
-launcher app sources for unfinished-work markers. It excludes generated
+launcher app sources for open implementation markers. It excludes generated
 bundles, evidence logs, build outputs, chroots, caches, and artifact
 directories.
 
@@ -136,18 +136,18 @@ Current keyword inventory summary:
 | `stub_placeholder` | 1274 | `stub`, `placeholder`, `scaffold`, `dummy`, `mock`, or `fake` markers in source/survey scope. |
 | `deferred_blocked` | 349 | `STATUS_LATER`, deferred, blocked-until, remains-blocked, or not-yet markers. |
 | `implementation_missing` | 208 | `NotImplementedError`, not-implemented, unimplemented, or unsupported markers. |
-| `todo` | 27 | `TODO`, `FIXME`, `XXX`, `HACK`, or `TBD` markers. |
+| `open_task_marker` | 27 | Open-task, fix-needed, unknown, hack, or to-be-decided markers. |
 
 Findings by scan root:
 
 | Scan root | Findings | Paths | Dominant markers |
 | --- | ---: | ---: | --- |
-| `packages/chip/scripts` | 814 | 223 | 581 stub/placeholder, 131 deferred/blocked, 88 implementation-missing, 14 TODO. |
-| `packages/chip/docs` | 759 | 187 | 491 stub/placeholder, 170 deferred/blocked, 90 implementation-missing, 8 TODO. |
-| `packages/chip/verify` | 146 | 22 | 95 stub/placeholder, 32 deferred/blocked, 16 implementation-missing, 3 TODO. |
+| `packages/chip/scripts` | 814 | 223 | 581 stub/placeholder, 131 deferred/blocked, 88 implementation-missing, 14 open-task markers. |
+| `packages/chip/docs` | 759 | 187 | 491 stub/placeholder, 170 deferred/blocked, 90 implementation-missing, 8 open-task markers. |
+| `packages/chip/verify` | 146 | 22 | 95 stub/placeholder, 32 deferred/blocked, 16 implementation-missing, 3 open-task markers. |
 | `packages/chip/sw` | 52 | 21 | 44 stub/placeholder, 4 deferred/blocked, 4 implementation-missing. |
-| `packages/chip/rtl` | 40 | 15 | 31 stub/placeholder, 8 deferred/blocked, 1 TODO. |
-| `packages/chip/fw` | 20 | 12 | 16 stub/placeholder, 1 deferred/blocked, 2 implementation-missing, 1 TODO. |
+| `packages/chip/rtl` | 40 | 15 | 31 stub/placeholder, 8 deferred/blocked, 1 open-task marker. |
+| `packages/chip/fw` | 20 | 12 | 16 stub/placeholder, 1 deferred/blocked, 2 implementation-missing, 1 open-task marker. |
 | `packages/os/linux/elizaos/scripts` | 10 | 3 | 6 stub/placeholder, 3 implementation-missing, 1 deferred/blocked. |
 | `packages/app/src` | 8 | 2 | 8 stub/placeholder. |
 | `packages/app/android/app/src/main` | 5 | 4 | 4 implementation-missing, 1 deferred/blocked. |
@@ -180,7 +180,7 @@ Selected OS/app source markers that directly affect the objective:
 
 ## Evidence Provenance
 
-The source keyword inventory finds unfinished implementation markers. A
+The source keyword inventory finds open implementation markers. A
 separate provenance audit now scans current report/evidence artifacts plus
 Linux evidence, Android installer/vendor release manifests, OS release
 manifests, confidential-release metadata, and the Android app agent plugin
@@ -194,7 +194,7 @@ Current provenance summary:
 | `blocked_marker` | 1340 | Existing artifacts still contain explicit `BLOCKED`, `FAIL`, blocked-until, or missing-required markers. |
 | `host_local_path` | 441 | Evidence contains local `/home`, `/tmp`, or similar paths that reduce reproducibility and can hide host-specific setup. |
 | `missing_timestamp` | 195 | Structured evidence lacks generated time or timestamp provenance. |
-| `placeholder_marker` | 198 | Evidence contains placeholder/stub/sentinel/TODO markers. |
+| `placeholder_marker` | 198 | Evidence contains placeholder/stub/sentinel/open-task markers. |
 | `missing_claim_boundary` | 78 | Structured evidence lacks an explicit claim boundary. |
 | `nonpassing_status` | 64 | Structured evidence reports `blocked`, `fail`, or `failed`. |
 | `weak_reference_scope` | 38 | Claim boundaries explicitly scope artifacts as reference-only or not chip/boot/runtime proof. |
@@ -318,7 +318,7 @@ static contract checks as runtime proof. Current result:
 | Proof state | Count | Meaning |
 | --- | ---: | --- |
 | `proven` | 3 | Report freshness, aggregate blocker traceability, and the current static Chipyard AP ABI detail report. |
-| `blocked` | 34 | Required environment/runtime/build/boot/launcher/agent/provenance/optimization/identity evidence is absent, stale, unfinished-marker-laden, or explicitly blocked. |
+| `blocked` | 34 | Required environment/runtime/build/boot/launcher/agent/provenance/optimization/identity evidence is absent, stale, marker-laden, or explicitly blocked. |
 | `weak_static_only` | 1 | The cross-fork agent payload static contract now passes, but runtime Linux/Android agent liveness still requires separate booted evidence. |
 | `missing` | 0 | Every matrix source report exists and is parseable. |
 
@@ -363,7 +363,7 @@ Current non-proven objective requirements:
 | Optimization runtime evidence | `build/reports/chip-os-optimization-gap-inventory.json` | `blocked` | CPU/AP, NPU, memory, cache, power, thermal, benchmark, and SOTA optimization evidence is target-specific enough to support no-issues runtime claims. |
 | OS RV64 qemu tooling | `build/reports/qemu_virt_smoke.json` | `blocked` | qemu-virt smoke `status=pass` with `boot_completed=true` and required ElizaOS markers in this environment. |
 | Evidence provenance hygiene | `build/reports/chip-os-evidence-provenance.json` | `blocked` | Evidence artifacts are portable, timestamped, claim-scoped, and free of placeholder/blocked markers before they are used for boot or launcher claims. |
-| Unfinished marker inventory | `build/reports/chip-os-gap-keyword-inventory.json` | `blocked` | TODO, stub, placeholder, mock, fake, unsupported, deferred, and blocked markers across chip, Linux, AOSP, and app paths are classified in blocker reports or removed before readiness claims. |
+| Open marker inventory | `build/reports/chip-os-gap-keyword-inventory.json` | `blocked` | Open-task, stub, placeholder, mock, fake, unsupported, deferred, and blocked markers across chip, Linux, AOSP, and app paths are classified in blocker reports or removed before readiness claims. |
 
 ## Dependency-Ranked Closure Plan
 

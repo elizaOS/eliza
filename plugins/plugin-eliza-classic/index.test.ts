@@ -1,5 +1,5 @@
-import { ModelType } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { ModelType } from "@elizaos/core";
 import {
   elizaClassicPlugin,
   generateElizaResponse,
@@ -25,13 +25,9 @@ describe("eliza-classic deterministic responses", () => {
     const handler = elizaClassicPlugin.models?.[ModelType.TEXT_SMALL];
 
     await expect(
-      handler?.(
-        {} as never,
-        {
-          prompt:
-            "System: stay deterministic\nUser: why am I tired?\nAssistant:",
-        } as never,
-      ),
+      handler?.({} as never, {
+        prompt: "System: stay deterministic\nUser: why am I tired?\nAssistant:",
+      } as never),
     ).resolves.toEqual(
       JSON.stringify({
         thought: "Responding with deterministic ELIZA pattern matching.",
@@ -43,15 +39,40 @@ describe("eliza-classic deterministic responses", () => {
     );
   });
 
-  it("registers deterministic handlers for text and planning models only", () => {
+  it("registers deterministic handlers for text, planning, and embedding models", async () => {
     expect(elizaClassicPlugin.models?.[ModelType.TEXT_NANO]).toBeTypeOf(
       "function",
     );
     expect(elizaClassicPlugin.models?.[ModelType.ACTION_PLANNER]).toBeTypeOf(
       "function",
     );
+
+    const embeddingHandler = elizaClassicPlugin.models?.[
+      ModelType.TEXT_EMBEDDING
+    ] as ((runtime: unknown, params: unknown) => Promise<number[]>) | undefined;
+
+    const embedding = await embeddingHandler?.({} as never, {
+      text: "hello world",
+    });
+    expect(embedding).toHaveLength(1536);
     expect(
-      elizaClassicPlugin.models?.[ModelType.TEXT_EMBEDDING],
-    ).toBeUndefined();
+      Math.sqrt(
+        embedding?.reduce((sum, value) => sum + value * value, 0) ?? 0,
+      ),
+    ).toBeCloseTo(1, 8);
+
+    const same = await embeddingHandler?.({} as never, "hello world");
+    const related = await embeddingHandler?.({} as never, {
+      text: "hello there",
+    });
+    const different = await embeddingHandler?.({} as never, {
+      text: "banana orange",
+    });
+    expect(same).toEqual(embedding);
+    const dot = (left: number[], right: number[]) =>
+      left.reduce((sum, value, index) => sum + value * right[index], 0);
+    expect(dot(embedding ?? [], related ?? [])).toBeGreaterThan(
+      dot(embedding ?? [], different ?? []),
+    );
   });
 });

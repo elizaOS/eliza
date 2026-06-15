@@ -220,6 +220,7 @@ index 1a942e3..ca51f40 100644
                              .x64 => "\"x64\"",
                              .arm64 => "\"arm64\"",
 +                            .riscv64 => "\"riscv64\"",
-                             .wasm => @compileError("TODO"),
+-                            .wasm => @compileError("TODO"),
++                            .wasm => @compileError("unsupported wasm compile target"),
                          },
  

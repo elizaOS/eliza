@@ -78,12 +78,26 @@ export function dimensionsAreSubset(
 export function sourcePriorityForKind(sourceKind: string): number {
   if (sourceKind === "manual_override") return 1000;
   if (sourceKind === "fal_model_page") return 250;
-  if (sourceKind === "openrouter_catalog") return 175;
+  if (sourceKind === "bitrouter_catalog") return 200;
   if (sourceKind === "elevenlabs_snapshot") return 150;
   return 100;
 }
 
 export function canonicalModelId(model: string, provider?: string | null): string {
+  const slashIndex = model.indexOf("/");
+  const colonIndex = model.indexOf(":");
+  if (colonIndex > 0 && (slashIndex === -1 || colonIndex < slashIndex)) {
+    const prefix = model.slice(0, colonIndex);
+    // Forced-provider keys (cerebras, openrouter, anthropic, openai, etc.) never
+    // contain a dash. A dashed prefix (gpt-oss-120b:nitro) means the model id lost
+    // its provider/ prefix upstream — fall through so the provider gets prepended
+    // and the slash-guarded stripBitRouterModelVariant in candidate-selection.ts
+    // can collapse :nitro / :free / :floor / :online onto the base id.
+    if (!prefix.includes("-")) {
+      return model;
+    }
+  }
+
   if (model.includes("/")) {
     return model;
   }
@@ -96,6 +110,10 @@ export function canonicalModelId(model: string, provider?: string | null): strin
     return model;
   }
 
+  if (provider === "cerebras") {
+    return `cerebras/${model.replace(/^cerebras\//, "")}`;
+  }
+
   if (provider) {
     return `${provider}/${model}`;
   }
@@ -104,8 +122,15 @@ export function canonicalModelId(model: string, provider?: string | null): strin
 }
 
 export function inferProviderFromCanonicalModel(model: string): string {
+  const slashIndex = model.indexOf("/");
+  const colonIndex = model.indexOf(":");
+  if (colonIndex > 0 && (slashIndex === -1 || colonIndex < slashIndex)) {
+    return normalizeProviderKey(model.slice(0, colonIndex));
+  }
+
   if (model.startsWith("fal-ai/") || model.startsWith("wan/")) return "fal";
   if (model.startsWith("elevenlabs/")) return "elevenlabs";
+  if (model.startsWith("cerebras/")) return "cerebras";
   if (!model.includes("/")) return "unknown";
   return normalizeProviderKey(model.split("/", 1)[0]);
 }
@@ -125,16 +150,20 @@ export function normalizeBillingSourceCandidates(
     if (provider === "fal") return ["fal"];
     if (provider === "suno") return ["suno"];
     if (provider === "vast") return ["vast"];
-    return ["openrouter"];
+    return ["bitrouter"];
   }
 
   switch (requested) {
+    case "bitrouter":
+      return ["bitrouter"];
     case "openai":
-      return ["openai", "openrouter"];
+      return ["openai", "bitrouter"];
     case "anthropic":
-      return ["anthropic", "openrouter"];
+      return ["anthropic", "bitrouter"];
     case "groq":
-      return ["groq", "openrouter"];
+      return ["groq", "bitrouter"];
+    case "cerebras":
+      return ["cerebras", "bitrouter"];
     default:
       return [requested];
   }

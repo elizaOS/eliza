@@ -72,6 +72,7 @@ SIM_ELF := $(BUILD_DIR)/pmc.sim.elf
 AON_HEX := $(BUILD_DIR)/pmc.aon.hex
 
 TEST_SPMI_BIN := $(BUILD_DIR)/test_spmi
+TEST_DVFS_BIN := $(BUILD_DIR)/test_dvfs
 
 .PHONY: all clean test elf sim-elf aon-hex sizes
 
@@ -126,11 +127,15 @@ $(SIM_ELF): $(SIM_OBJS) $(PMC_DIR)/link.sim.ld | $(BUILD_DIR)
 $(BUILD_DIR) $(RV_BUILD_DIR) $(SIM_BUILD_DIR):
 	@mkdir -p $@
 
-test: $(TEST_SPMI_BIN)
+test: $(TEST_SPMI_BIN) $(TEST_DVFS_BIN)
 	@$(TEST_SPMI_BIN)
+	@$(TEST_DVFS_BIN)
 
 $(TEST_SPMI_BIN): $(TEST_DIR)/test_spmi.c $(SRC_DIR)/spmi.c | $(BUILD_DIR)
 	$(HOST_CC) $(TEST_CFLAGS) $(TEST_DIR)/test_spmi.c $(SRC_DIR)/spmi.c -o $@
+
+$(TEST_DVFS_BIN): $(TEST_DIR)/test_dvfs.c $(SRC_DIR)/dvfs_arbiter.c | $(BUILD_DIR)
+	$(HOST_CC) $(TEST_CFLAGS) $(TEST_DIR)/test_dvfs.c $(SRC_DIR)/dvfs_arbiter.c -o $@
 
 clean:
 	@rm -rf $(BUILD_DIR)

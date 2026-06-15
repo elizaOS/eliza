@@ -21,6 +21,13 @@ export interface CatalogModel {
   pricing?: Record<string, unknown>;
   recommended?: boolean;
   free?: boolean;
+  /**
+   * Parameters the upstream provider/gateway advertises for this model. Used to
+   * detect reasoning models (those listing "reasoning"/"include_reasoning"),
+   * which spend output tokens on hidden chain-of-thought and need a response
+   * token floor. Populated verbatim from the BitRouter catalog.
+   */
+  supported_parameters?: string[];
 }
 
 export interface SelectorModel {
@@ -33,27 +40,56 @@ export interface SelectorModel {
   free?: boolean;
 }
 
-export const OPENROUTER_RECOMMENDED_TEXT_MODEL = "openai/gpt-oss-120b:nitro";
-export const OPENROUTER_DEFAULT_TEXT_MODEL = OPENROUTER_RECOMMENDED_TEXT_MODEL;
-export const OPENROUTER_DEFAULT_FREE_MODEL = "openai/gpt-oss-120b:free";
+export const BITROUTER_RECOMMENDED_TEXT_MODEL = "openai/gpt-oss-120b:nitro";
+export const BITROUTER_DEFAULT_TEXT_MODEL = BITROUTER_RECOMMENDED_TEXT_MODEL;
+export const BITROUTER_DEFAULT_FREE_MODEL = "openai/gpt-oss-120b:free";
+export const CEREBRAS_DEFAULT_TEXT_SMALL_MODEL = "gpt-oss-120b";
+export const CEREBRAS_DEFAULT_TEXT_LARGE_MODEL = "zai-glm-4.7";
 
-const OPENROUTER_RECOMMENDED_MODEL_IDS = new Set<string>([OPENROUTER_RECOMMENDED_TEXT_MODEL]);
+const BITROUTER_RECOMMENDED_MODEL_IDS = new Set<string>([BITROUTER_RECOMMENDED_TEXT_MODEL]);
 
 // Verified against the public provider catalogs on 2026-04-25:
-// - OpenRouter: https://openrouter.ai/api/v1/models
+// - BitRouter: https://bitrouter.ai/api/v1/models
 // - Groq docs: https://console.groq.com/docs/models
-const OPENROUTER_FEATURED_TEXT_MODELS: CatalogModel[] = [
+// - Cerebras: https://api.cerebras.ai/public/v1/models?format=openrouter
+const BITROUTER_FEATURED_TEXT_MODELS: CatalogModel[] = [
   {
-    id: OPENROUTER_RECOMMENDED_TEXT_MODEL,
+    id: CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
+    object: "model",
+    created: 1767744000,
+    owned_by: "cerebras",
+    name: "Z.ai GLM 4.7",
+    description:
+      "Default TEXT_LARGE model on Cerebras for coding, advanced reasoning, and tool use",
+    type: "language",
+    context_window: 131072,
+    max_tokens: 40960,
+    tags: ["recommended", "reasoning", "tool-use", "cerebras"],
+    recommended: true,
+  },
+  {
+    id: CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
+    object: "model",
+    created: 1754438400,
+    owned_by: "cerebras",
+    name: "GPT OSS 120B",
+    description: "Default TEXT_SMALL model on Cerebras for fast open-weight reasoning",
+    type: "language",
+    context_window: 131072,
+    max_tokens: 40960,
+    tags: ["recommended", "reasoning", "open-weight", "cerebras"],
+    recommended: true,
+  },
+  {
+    id: BITROUTER_RECOMMENDED_TEXT_MODEL,
     object: "model",
     created: 0,
     owned_by: "openai",
     name: "GPT OSS 120B Nitro",
-    description: "Recommended OpenRouter high-throughput open-weight reasoning model",
+    description: "BitRouter high-throughput open-weight reasoning model (gateway path)",
     type: "language",
     context_window: 131072,
-    tags: ["recommended", "reasoning", "open-weight", "nitro"],
-    recommended: true,
+    tags: ["reasoning", "open-weight", "nitro"],
   },
   {
     id: "openai/gpt-oss-120b",
@@ -61,18 +97,18 @@ const OPENROUTER_FEATURED_TEXT_MODELS: CatalogModel[] = [
     created: 0,
     owned_by: "openai",
     name: "GPT OSS 120B",
-    description: "OpenRouter open-weight reasoning model",
+    description: "BitRouter open-weight reasoning model",
     type: "language",
     context_window: 131072,
     tags: ["reasoning", "open-weight"],
   },
   {
-    id: OPENROUTER_DEFAULT_FREE_MODEL,
+    id: BITROUTER_DEFAULT_FREE_MODEL,
     object: "model",
     created: 0,
     owned_by: "openai",
     name: "GPT OSS 120B Free",
-    description: "Free OpenRouter open-weight reasoning model",
+    description: "Free BitRouter open-weight reasoning model",
     type: "language",
     context_window: 131072,
     pricing: {
@@ -81,6 +117,44 @@ const OPENROUTER_FEATURED_TEXT_MODELS: CatalogModel[] = [
     },
     tags: ["free", "reasoning", "open-weight"],
     free: true,
+  },
+];
+
+const CEREBRAS_TEXT_CATALOG_MODELS: CatalogModel[] = [
+  {
+    id: "cerebras:gpt-oss-120b",
+    object: "model",
+    created: 0,
+    owned_by: "cerebras",
+    name: "GPT OSS 120B",
+    description: "Cerebras-hosted open-weight reasoning model routed through BitRouter BYOK",
+    type: "language",
+    context_window: 131072,
+    tags: ["reasoning", "open-weight", "byok"],
+  },
+  {
+    id: "cerebras:zai-glm-4.7",
+    object: "model",
+    created: 0,
+    owned_by: "cerebras",
+    name: "ZAI GLM 4.7",
+    description: "Cerebras-hosted GLM language model routed through BitRouter BYOK",
+    type: "language",
+    tags: ["byok"],
+  },
+];
+
+const OPENROUTER_TEXT_CATALOG_MODELS: CatalogModel[] = [
+  {
+    id: "openrouter:openai/gpt-oss-120b",
+    object: "model",
+    created: 0,
+    owned_by: "openrouter",
+    name: "GPT OSS 120B",
+    description: "OpenRouter-hosted GPT OSS 120B routed through BitRouter BYOK",
+    type: "language",
+    context_window: 131072,
+    tags: ["reasoning", "open-weight", "byok"],
   },
 ];
 
@@ -175,6 +249,10 @@ function formatProviderLabel(provider: string): string {
   switch (normalizeProviderKey(provider)) {
     case "groq":
       return "Groq";
+    case "cerebras":
+      return "Cerebras";
+    case "openrouter":
+      return "OpenRouter";
     case "openai":
       return "OpenAI";
     case "anthropic":
@@ -339,7 +417,7 @@ function isFreePricing(pricing?: Record<string, unknown>): boolean {
 }
 
 export function annotateCatalogModel(model: CatalogModel): CatalogModel {
-  const recommended = model.recommended === true || OPENROUTER_RECOMMENDED_MODEL_IDS.has(model.id);
+  const recommended = model.recommended === true || BITROUTER_RECOMMENDED_MODEL_IDS.has(model.id);
   const free = model.free === true || model.id.endsWith(":free") || isFreePricing(model.pricing);
   const tags = new Set(model.tags ?? []);
 
@@ -466,7 +544,9 @@ const STATIC_TEXT_MODEL_IDS = [
 ] as const;
 
 export const STATIC_TEXT_CATALOG_MODELS: CatalogModel[] = annotateCatalogModels([
-  ...OPENROUTER_FEATURED_TEXT_MODELS,
+  ...BITROUTER_FEATURED_TEXT_MODELS,
+  ...CEREBRAS_TEXT_CATALOG_MODELS,
+  ...OPENROUTER_TEXT_CATALOG_MODELS,
   ...STATIC_TEXT_MODEL_IDS.map(buildCatalogModel),
 ]);
 
@@ -554,40 +634,44 @@ function getProviderSortIndex(provider: string): number {
   switch (normalizeProviderKey(provider)) {
     case "groq":
       return 0;
-    case "openai":
+    case "cerebras":
       return 1;
-    case "anthropic":
+    case "openrouter":
       return 2;
-    case "google":
+    case "openai":
       return 3;
-    case "deepseek":
+    case "anthropic":
       return 4;
-    case "xai":
+    case "google":
       return 5;
-    case "mistral":
+    case "deepseek":
       return 6;
-    case "alibaba":
+    case "xai":
       return 7;
-    case "minimax":
+    case "mistral":
       return 8;
-    case "zai":
+    case "alibaba":
       return 9;
-    case "moonshotai":
+    case "minimax":
       return 10;
-    case "meta":
+    case "zai":
       return 11;
-    case "bytedance":
+    case "moonshotai":
       return 12;
-    case "amazon":
+    case "meta":
       return 13;
-    case "cohere":
+    case "bytedance":
       return 14;
-    case "perplexity":
+    case "amazon":
       return 15;
-    case "inception":
+    case "cohere":
       return 16;
-    case "meituan":
+    case "perplexity":
       return 17;
+    case "inception":
+      return 18;
+    case "meituan":
+      return 19;
     default:
       return 99;
   }
@@ -636,25 +720,25 @@ export function getGroqCatalogModel(modelId: string): CatalogModel | null {
 }
 
 /**
- * OpenRouter free model equivalents for fallback scenarios.
- * Maps gateway model IDs to OpenRouter free-tier models.
+ * BitRouter free model equivalents for fallback scenarios.
+ * Maps gateway model IDs to BitRouter free-tier models.
  */
-export const OPENROUTER_FREE_MODEL_MAP: Record<string, string> = {
-  [OPENROUTER_RECOMMENDED_TEXT_MODEL]: OPENROUTER_DEFAULT_FREE_MODEL,
-  "openai/gpt-oss-120b": OPENROUTER_DEFAULT_FREE_MODEL,
-  "openai/gpt-4o": OPENROUTER_DEFAULT_FREE_MODEL,
-  "openai/gpt-5-mini": OPENROUTER_DEFAULT_FREE_MODEL,
-  "openai/gpt-5.5": OPENROUTER_DEFAULT_FREE_MODEL,
-  "anthropic/claude-sonnet-4.6": OPENROUTER_DEFAULT_FREE_MODEL,
-  "anthropic/claude-sonnet-4-6": OPENROUTER_DEFAULT_FREE_MODEL,
+export const BITROUTER_FREE_MODEL_MAP: Record<string, string> = {
+  [BITROUTER_RECOMMENDED_TEXT_MODEL]: BITROUTER_DEFAULT_FREE_MODEL,
+  "openai/gpt-oss-120b": BITROUTER_DEFAULT_FREE_MODEL,
+  "openai/gpt-4o": BITROUTER_DEFAULT_FREE_MODEL,
+  "openai/gpt-5-mini": BITROUTER_DEFAULT_FREE_MODEL,
+  "openai/gpt-5.5": BITROUTER_DEFAULT_FREE_MODEL,
+  "anthropic/claude-sonnet-4.6": BITROUTER_DEFAULT_FREE_MODEL,
+  "anthropic/claude-sonnet-4-6": BITROUTER_DEFAULT_FREE_MODEL,
   "google/gemini-2.0-flash": "google/gemini-2.0-flash-exp:free",
 };
 
 /**
- * Resolve a model ID to an OpenRouter free equivalent when falling back.
+ * Resolve a model ID to an BitRouter free equivalent when falling back.
  */
-export function getOpenRouterFreeModel(modelId: string): string {
-  return OPENROUTER_FREE_MODEL_MAP[modelId] ?? OPENROUTER_DEFAULT_FREE_MODEL;
+export function getBitRouterFreeModel(modelId: string): string {
+  return BITROUTER_FREE_MODEL_MAP[modelId] ?? BITROUTER_DEFAULT_FREE_MODEL;
 }
 
 export function formatSelectorProvider(provider: string): string {

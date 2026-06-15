@@ -44,7 +44,7 @@ export interface CloudVoiceRouteDeps {
   fetchCatalog?: (runtime: AgentRuntime) => Promise<CloudVoiceCatalogEntry[]>;
   /**
    * Auth gate; defaults to `ensureRouteAuthorized` from
-   * `./auth`. Tests pass a fake to drive 401 / pass cases.
+   * `./auth`. Tests pass a test double to drive 401 / pass cases.
    */
   ensureAuthorized?: (
     req: http.IncomingMessage,
@@ -104,9 +104,8 @@ export async function handleCloudVoiceRoutes(
     const voices = await fetchCatalog(runtime);
     sendJsonResponse(res, 200, { voices });
   } catch {
-    // The catalog already swallows per-endpoint failures and returns an
-    // empty list, but defend against any future change that lets an
-    // exception escape.
+    // The catalog already swallows per-endpoint failures and returns an empty
+    // list, but keep this route fail-closed if an exception escapes.
     const empty: CloudVoiceCatalogEntry[] = [];
     sendJsonResponse(res, 200, { voices: empty });
   }

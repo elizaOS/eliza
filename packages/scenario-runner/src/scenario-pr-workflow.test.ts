@@ -252,7 +252,6 @@ describe("scenario PR workflow contract", () => {
     expect(workflow).toContain(
       "bun run --cwd packages/app test:e2e test/ui-smoke/view-manager-actual-flow.spec.ts --project=chromium",
     );
-    expect(workflow).toContain("test/ui-smoke/homescreen-edit-mode.spec.ts");
     expect(workflow).toContain(
       "bun run --cwd packages/scenario-runner test:pr:e2e",
     );
@@ -312,7 +311,7 @@ describe("scenario PR workflow contract", () => {
       "Open the remote ledger view in a separate always on top window",
     );
     expect(deterministicPrScenario).toContain(
-      "stub local view API for deterministic shell actions",
+      "local view loopback API for deterministic shell actions",
     );
     expect(deterministicPrScenario).toContain(
       'Interacted with view "remote-ledger"',
@@ -658,16 +657,11 @@ describe("scenario PR workflow contract", () => {
 
     for (const required of [
       "shell-home-pill",
-      "Message Eliza",
-      "Send message",
-      "open wallet from the pill",
-      "06b-views-pill-closed",
-      "06c-views-pill-reopened",
-      "open terminal after reopen",
-      "06d-views-pill-second-send",
-      "06e-views-pill-reclosed",
-      "Close Eliza",
-      "Open Eliza",
+      "04-chat-pill-suppressed",
+      "05-views-with-pill",
+      "07-wallet-view-with-pill",
+      "Refresh wallet",
+      "open wallet by typing",
       "streamRequests",
       'toHaveValue("")',
       "show me my pinned views",
@@ -705,13 +699,12 @@ describe("scenario PR workflow contract", () => {
       "STT capture path fires onTranscript with the recognized string",
       "always-on chat mode starts passive browser STT and keeps capture open after a final turn",
       "chat SSE stream emits token + done events for assistant message",
-      "Voice input",
+      'getByRole("button", { name: /talk|voice input/i })',
       "VOICE_DM",
       "hello world from the STT shim",
       "always on browser turn",
       "Always-on assistant heard the browser turn",
       "eliza:voice:continuous-chat-mode",
-      "chat-view-continuous-chat-toggle",
       'voiceSource: "browser"',
       "audio/mpeg",
       'types).toEqual(["token", "done"])',
@@ -719,6 +712,7 @@ describe("scenario PR workflow contract", () => {
       "similarity_boost: 0.75",
       "installPageDiagnosticsGuard",
       "expectNoPageDiagnostics",
+      'localStorage.setItem("eliza:voice:continuous-chat-mode", "always-on")',
     ]) {
       expect(appTtsSttFlow).toContain(required);
     }

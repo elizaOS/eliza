@@ -16,7 +16,17 @@ function createRuntime(service: ShellService | null): IAgentRuntime {
   } as IAgentRuntime;
 }
 
-describe("shell plugin real local integration", () => {
+// The real-integration tests below run actual shell commands like
+// `printf "..." > file`. On Windows the default shell is PowerShell, which
+// (a) doesn't ship `printf` and (b) writes UTF-16LE BOMs into redirected
+// files — neither shape matches the asserted UTF-8 string. The shell
+// service itself is cross-platform (it spawns via cross-spawn / node-pty);
+// the assertions are POSIX-shell-shaped. Skip on Windows; the unit tests
+// in `__tests__/shell.test.ts` cover the same code paths without
+// depending on shell-output formatting.
+const describePosixShell = process.platform === "win32" ? describe.skip : describe;
+
+describePosixShell("shell plugin real local integration", () => {
   let allowedDirectory = "";
   let previousAllowedDirectory: string | undefined;
   let service: ShellService;

@@ -71,7 +71,7 @@ documented for 2025--2028:
 - Backside metal stack carries Vdd/Vss; nano-TSV-like vias land on
   source/drain pads.
 - Reported routing-congestion relief and IR-drop improvement specifically on
-  SRAM periphery. Samsung's public roadmap places BSPDN as an SF2 follow-on
+  SRAM periphery. Samsung's public process plan places BSPDN as an SF2 follow-on
   (SF2Z) and a base SF1.4 feature.
 
 ### imec Buried Power Rail + Nano-TSV
@@ -150,7 +150,7 @@ Tied to `frontside_vs_backside_power_delivery` (required_effect):
 ## E1 Path Recommendation
 
 - **Baseline:** assume frontside PDN at A14-class as the default planning
-  target for 2028. This is consistent with `tsmc_a14_roadmap` (A14 retains
+  target for 2028. This is consistent with `tsmc_a14_plan` (A14 retains
   SPR but a frontside-PDN sibling option may be offered for
   cost-sensitive mobile), and with the contract's
   `frontside_pdn_a14_class` minimum variant.

@@ -324,7 +324,7 @@ export const connectorEntrySchema = z.object({
     })
     .refine((val) => val.owner !== undefined || val.agent !== undefined, {
       message:
-        "accounts must define at least one of owner or agent — an empty {} is meaningless and likely indicates an incomplete manifest",
+        "accounts must define at least one of owner or agent — an empty {} is meaningless and indicates an invalid manifest",
     })
     .optional(),
 });

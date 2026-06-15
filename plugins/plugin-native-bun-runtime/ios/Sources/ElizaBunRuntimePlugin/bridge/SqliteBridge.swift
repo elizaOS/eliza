@@ -125,7 +125,7 @@ public final class SqliteBridge {
             sqlite3_busy_timeout(db, Int32(timeoutMs))
         }
 
-        // Activate sqlite-vec on this handle. The loader is a no-op when the
+        // Activate sqlite-vec on this handle. The loader skips registration when the
         // extension isn't statically linked.
         SqliteVecLoader.shared.register(on: db)
 

@@ -3,11 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { assertScreenshotBase64NotBlank } from "../../test/helpers/screenshot-quality.ts";
 import { useComputerAction } from "../actions/use-computer.js";
 import { windowAction } from "../actions/window.js";
 import computerUsePlugin from "../index.js";
 import { ComputerUseService } from "../services/computer-use-service.js";
-import { assertScreenshotBase64NotBlank } from "../../test/helpers/screenshot-quality.ts";
 
 function createRuntime(settings: Record<string, string> = {}): IAgentRuntime {
   return {
@@ -366,7 +366,7 @@ describe("computer-use live parity", () => {
     }
   });
 
-  it("supports window listing and rejects incomplete window move commands live", async () => {
+  it("supports window listing and rejects underspecified window move commands live", async () => {
     const listResult = await service.executeCommand("list_windows");
     expect(listResult.success).toBe(true);
     expect(Array.isArray(listResult.windows)).toBe(true);

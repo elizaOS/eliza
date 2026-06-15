@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  chooseElizaRuntime,
   parseNodeMajor,
   resolveNodeExecPath,
   resolveNodeExecPathFromCandidates,
@@ -15,6 +16,75 @@ const probe = (outputs) => (candidate) =>
   };
 
 describe("run-node-runtime node validation", () => {
+  test("defaults to Bun when both runtimes are available", () => {
+    expect(
+      chooseElizaRuntime({
+        platform: "darwin",
+        hasBun: true,
+        hasNode: true,
+      }),
+    ).toEqual({ runtime: "bun", warning: null });
+  });
+
+  test("defaults to Node when Bun is unavailable", () => {
+    expect(
+      chooseElizaRuntime({
+        platform: "darwin",
+        hasBun: false,
+        hasNode: true,
+      }),
+    ).toEqual({ runtime: "node", warning: null });
+  });
+
+  test("keeps Bun-only installs on Bun without requiring Node", () => {
+    expect(
+      chooseElizaRuntime({
+        platform: "darwin",
+        hasBun: true,
+        hasNode: false,
+      }),
+    ).toEqual({ runtime: "bun", warning: null });
+  });
+
+  test("honors explicit runtime overrides", () => {
+    expect(
+      chooseElizaRuntime({
+        requestedRuntime: "node",
+        platform: "darwin",
+        hasBun: true,
+        hasNode: true,
+      }),
+    ).toEqual({ runtime: "node", warning: null });
+    expect(
+      chooseElizaRuntime({
+        requestedRuntime: "bun",
+        platform: "darwin",
+        hasBun: true,
+        hasNode: true,
+      }),
+    ).toEqual({ runtime: "bun", warning: null });
+  });
+
+  test("falls back from unstable Bun 1.3.9 on Linux only when Node is available", () => {
+    const withNode = chooseElizaRuntime({
+      platform: "linux",
+      bunVersion: "1.3.9",
+      hasBun: true,
+      hasNode: true,
+    });
+    expect(withNode.runtime).toBe("node");
+    expect(withNode.warning).toContain("Bun 1.3.9");
+
+    expect(
+      chooseElizaRuntime({
+        platform: "linux",
+        bunVersion: "1.3.9",
+        hasBun: true,
+        hasNode: false,
+      }),
+    ).toEqual({ runtime: "bun", warning: null });
+  });
+
   test("parses Node major versions", () => {
     expect(parseNodeMajor("24.1.0")).toBe(24);
     expect(parseNodeMajor("25")).toBe(25);

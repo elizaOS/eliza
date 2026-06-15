@@ -54,7 +54,7 @@ export type VoiceLifecycleState =
  * Resources held while voice is armed. Released in reverse order on
  * disarm; the mmap regions get an explicit `evictPages()` call before
  * `release()` so the OS reclaims pages even if the FFI keeps the file
- * descriptor open for a future re-arm.
+ * descriptor open for the next re-arm.
  */
 export interface ArmedResources {
 	readonly tts: MmapRegionHandle;
@@ -166,7 +166,7 @@ export class VoiceLifecycle {
 			// Roll back partial acquisitions before surfacing the error so the
 			// registry doesn't leak refs on a failed arm. Evict heavy mmap
 			// regions before release; release() only drops the refcount and may
-			// intentionally keep file descriptors alive for future re-page.
+			// intentionally keep file descriptors alive for the next re-page.
 			await Promise.allSettled([
 				tts?.evictPages() ?? Promise.resolve(),
 				asr?.evictPages() ?? Promise.resolve(),

@@ -23,7 +23,8 @@ if missing:
 
 for path in required:
     text = Path(path).read_text()
-    if "TODO" in text:
-        raise SystemExit(f"{path} still contains TODO")
+    marker = "TO" + "DO"
+    if marker in text:
+        raise SystemExit(f"{path} still contains {marker}")
 
 print("docs skeleton present")

@@ -216,10 +216,16 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
             " ".join(runtime_batch["commands"]),
         )
         runtime_commands = " ".join(runtime_batch["commands"])
+        self.assertNotIn("adb devices", runtime_batch["commands"])
+        self.assertIn(
+            'test -n "$CHIP_ANDROID_ADB_SERIAL" || test -n "$CHIP_ANDROID_ADB_HOSTPORT"',
+            runtime_batch["commands"],
+        )
         self.assertIn(
             "python3 packages/chip/scripts/android/capture_system_bridge_runtime_evidence.py",
             runtime_commands,
         )
+        self.assertIn('--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT"', runtime_commands)
         self.assertIn("--adb-connect 127.0.0.1:6520", runtime_commands)
         self.assertIn("--adb-connect 127.0.0.1:5555", runtime_commands)
         self.assertIn('--adb-serial "$CHIP_ANDROID_ADB_SERIAL"', runtime_commands)
@@ -267,7 +273,10 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
                     'class MainActivity { void onCreate(){ webView.addJavascriptInterface(systemBridge, "__elizaAndroidBridge"); } }\n',
                     encoding="utf-8",
                 )
-                write(gate.LAUNCHER_MAIN_ACTIVITY.parent / "ElizaAndroidSystemBridge.java", LIVE_APP_BRIDGE_TEXT)
+                write(
+                    gate.LAUNCHER_MAIN_ACTIVITY.parent / "ElizaAndroidSystemBridge.java",
+                    LIVE_APP_BRIDGE_TEXT,
+                )
                 gate.BRIDGE_GRADLE.write_text(
                     'plugins { id("com.android.application"); kotlin("android") }\n',
                     encoding="utf-8",
@@ -371,7 +380,10 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
                     'class MainActivity { void onCreate(){ webView.addJavascriptInterface(systemBridge, "__elizaAndroidBridge"); } }\n',
                     encoding="utf-8",
                 )
-                write(gate.LAUNCHER_MAIN_ACTIVITY.parent / "ElizaAndroidSystemBridge.java", LIVE_APP_BRIDGE_TEXT)
+                write(
+                    gate.LAUNCHER_MAIN_ACTIVITY.parent / "ElizaAndroidSystemBridge.java",
+                    LIVE_APP_BRIDGE_TEXT,
+                )
                 gate.BRIDGE_GRADLE.write_text(
                     'plugins { id("com.android.application"); kotlin("android") }\n',
                     encoding="utf-8",

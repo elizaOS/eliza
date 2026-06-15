@@ -1,7 +1,7 @@
 /**
  * iMessage ConnectorAccountManager provider.
  *
- * Adapts the existing multi-account scaffolding in `accounts.ts` to the
+ * Adapts the account inventory helpers in `accounts.ts` to the
  * `ConnectorAccountProvider` contract from
  * `@elizaos/core/connectors/account-manager`.
  *
@@ -99,7 +99,7 @@ export function createIMessageConnectorAccountProvider(
       return { ...patch, provider: IMESSAGE_PROVIDER_ID };
     },
     deleteAccount: async (_accountId: string, _manager: ConnectorAccountManager) => {
-      // No-op: iMessage account state is the macOS Messages app; out-of-band.
+      // iMessage account state lives in the macOS Messages app, out of band.
     },
     // No OAuth — iMessage reads the local chat.db on macOS.
   };

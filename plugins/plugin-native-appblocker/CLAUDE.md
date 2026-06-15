@@ -28,7 +28,7 @@ plugins/plugin-native-appblocker/
     index.ts               JS entry — registerPlugin("ElizaAppBlocker") + lazy web fallback
     definitions.ts         All TypeScript types: AppBlockerPlugin, AppBlockerStatus,
                            BlockAppsOptions, InstalledApp, SelectAppsResult, etc.
-    web.ts                 Web stub — all methods return not-applicable/unavailable
+    web.ts                 Web fallback — all methods return not-applicable/unavailable
   android/src/main/
     AndroidManifest.xml    Declares permissions (PACKAGE_USAGE_STATS, SYSTEM_ALERT_WINDOW,
                            FOREGROUND_SERVICE, POST_NOTIFICATIONS) and ForegroundService
@@ -51,24 +51,25 @@ Only scripts that exist in `package.json`:
 
 ```bash
 bun run --cwd plugins/plugin-native-appblocker build         # tsc + rollup → dist/
+bun run --cwd plugins/plugin-native-appblocker test          # vitest web fallback contract
 bun run --cwd plugins/plugin-native-appblocker clean         # rm dist/
 ```
 
-There are no test or lint scripts in this package.
+There is no lint script in this package.
 
 ## Config / env vars
 
 This plugin reads no environment variables. It requires OS-level permissions granted at runtime by the user:
 
 - **Android**: `PACKAGE_USAGE_STATS` (Usage Access) and `SYSTEM_ALERT_WINDOW` (Draw Over Other Apps) — must both be granted for `blockApps` to succeed.
-- **iOS**: Family Controls authorization (`AuthorizationCenter.shared.requestAuthorization`) — requires a developer provisioning profile with `com.apple.developer.family-controls` entitlement. Timed blocks (`durationMinutes > 0`) are not implemented on iOS (requires a DeviceActivity extension; returns an error).
+- **iOS**: Family Controls authorization (`AuthorizationCenter.shared.requestAuthorization`) — requires a developer provisioning profile with `com.apple.developer.family-controls` entitlement. Timed blocks (`durationMinutes > 0`) require a DeviceActivity extension and return an explicit unsupported-capability error in this package.
 
 ## How to extend
 
 **Add a new method (JS → native):**
 
 1. Add the method signature to `AppBlockerPlugin` interface in `src/definitions.ts`.
-2. Add a no-op/error implementation in `src/web.ts` (`AppBlockerWeb`).
+2. Add an unavailable/error implementation in `src/web.ts` (`AppBlockerWeb`).
 3. Add `@PluginMethod fun myMethod(call: PluginCall)` to `android/.../AppBlockerPlugin.kt`.
 4. Add `@objc func myMethod(_ call: CAPPluginCall)` to `ios/.../AppBlockerPlugin.swift` and register it in `pluginMethods`.
 5. Run `bun run --cwd plugins/plugin-native-appblocker build` to rebuild `dist/`.
@@ -78,7 +79,7 @@ This plugin reads no environment variables. It requires OS-level permissions gra
 - **Capacitor plugin, not elizaOS plugin**: this has no `Plugin` object shaped for `AgentRuntime`. Do not wire it into elizaOS plugin loading. The consuming app imports and uses `AppBlocker` from JS.
 - **Android blocking engine**: a foreground service (`AppBlockerForegroundService`) polls `UsageStatsManager.queryEvents` every 500 ms and shows a full-screen system overlay when a blocked app moves to foreground. The service is `START_STICKY`; it self-terminates if the block state is cleared or the timer expires.
 - **iOS engine**: uses `ManagedSettingsStore` to set `store.shield.applications`. No polling; the OS enforces the shield. `getInstalledApps` always returns `[]` on iOS because Family Controls does not expose an app list — use `selectApps` to let the user pick via `FamilyActivityPicker`.
-- **iOS timed blocks**: not implemented. `blockApps` with `durationMinutes > 0` returns `success: false` with an explanatory error. An indefinite block + manual `unblockApps` is the current iOS path.
+- **iOS timed blocks**: require a DeviceActivity extension. `blockApps` with `durationMinutes > 0` returns `success: false` with an explanatory unsupported-capability error. An indefinite block + manual `unblockApps` is the current iOS path.
 - **Build output**: `tsc` writes to `dist/esm/`; rollup bundles that into `dist/plugin.js` (IIFE for CDN/`unpkg`) and `dist/plugin.cjs.js` (CJS for Node consumers). The `exports` field in `package.json` points directly to `src/index.ts` for Bun/development consumers.
 - **Capacitor version**: peer dep `@capacitor/core ^8.3.1`. Keep in sync with the consuming app's Capacitor version or Capacitor's JS ↔ native bridge will misroute calls.
 - **iOS deployment target**: iOS 15.0 (set in podspec). `FamilyControls` authorization API differs between iOS < 16 and >= 16; `AppBlockerPlugin.swift` handles both paths.

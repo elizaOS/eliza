@@ -1,6 +1,93 @@
 import type { MiddlewareHandler } from "hono";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const REQUEST_TTL_SECONDS = 60;
+
+function bytesToHex(bytes: Uint8Array): string {
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    out += bytes[i].toString(16).padStart(2, "0");
+  }
+  return out;
+}
+
+async function sha256Hex(input: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", input);
+  return bytesToHex(new Uint8Array(digest));
+}
+
+async function sha256TextHex(value: string): Promise<string> {
+  return sha256Hex(new TextEncoder().encode(value).buffer);
+}
+
+async function hmacSha256Hex(secret: string, message: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(message),
+  );
+  return bytesToHex(new Uint8Array(signature));
+}
+
+/**
+ * Steward's request-signature middleware HMACs this exact ordered list with a
+ * shared secret and compares against `X-Steward-Signature: v1=<hex>`. Keep
+ * this in lockstep with `canonicalRequest` in
+ * Steward-Fi/steward:packages/api/src/middleware/authorization-signature.ts —
+ * the upstream is authoritative; if it grows a new header or reorders, this
+ * proxy starts shipping 401s and Magic Link / sensitive auth flows break.
+ */
+async function buildStewardCanonicalRequest(
+  method: string,
+  pathAndSearch: string,
+  headers: Headers,
+  body: ArrayBuffer,
+): Promise<string> {
+  const bodyHash = await sha256Hex(body);
+  const authHash = await sha256TextHex(headers.get("authorization") ?? "");
+  const apiKeyHash = await sha256TextHex(headers.get("x-steward-key") ?? "");
+  const platformKeyHash = await sha256TextHex(
+    headers.get("x-steward-platform-key") ?? "",
+  );
+  const signerIdHash = await sha256TextHex(
+    headers.get("x-steward-signer-id") ?? "",
+  );
+  const signerSecretHash = await sha256TextHex(
+    headers.get("x-steward-signer-secret") ?? "",
+  );
+  const quorumIdHash = await sha256TextHex(
+    headers.get("x-steward-key-quorum-id") ?? "",
+  );
+  const quorumCredentialsHash = await sha256TextHex(
+    headers.get("x-steward-key-quorum-credentials") ?? "",
+  );
+  return [
+    "steward-request-signature-v1",
+    method.toUpperCase(),
+    pathAndSearch,
+    headers.get("x-steward-tenant") ?? "",
+    authHash,
+    apiKeyHash,
+    platformKeyHash,
+    signerIdHash,
+    signerSecretHash,
+    quorumIdHash,
+    quorumCredentialsHash,
+    headers.get("x-steward-request-timestamp") ?? "",
+    headers.get("x-steward-request-expires-at") ?? "",
+    headers.get("idempotency-key") ?? "",
+    bodyHash,
+  ].join("\n");
+}
+
 function stripStewardPrefix(pathname: string): string {
   if (pathname === "/steward") return "/";
   if (pathname.startsWith("/steward/"))
@@ -150,20 +237,76 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
 
   const upstreamUrl = new URL(`${upstream}${stripStewardPrefix(url.pathname)}`);
   upstreamUrl.search = url.search;
-  const request = new Request(upstreamUrl.toString(), c.req.raw);
-  request.headers.set("x-forwarded-host", url.host);
-  request.headers.set("x-forwarded-proto", url.protocol.replace(":", ""));
-  // Pin the tenant per-env: Steward's auth routes resolve tenant from
-  // `X-Steward-Tenant || body.tenantId || STEWARD_DEFAULT_TENANT_ID`, so
-  // forcing the header here keeps every staging request scoped to the
-  // staging tenant even when the SPA's `NEXT_PUBLIC_STEWARD_TENANT_ID`
-  // isn't inlined into the bundle.
-  const pinnedTenantId = c.env.STEWARD_TENANT_ID;
-  if (typeof pinnedTenantId === "string" && pinnedTenantId.trim().length > 0) {
-    request.headers.set("x-steward-tenant", pinnedTenantId.trim());
+
+  // The Steward backend gates mutating sensitive paths (/auth, /agents,
+  // /vault, …) on BOTH a freshness header (X-Steward-Request-Expires-At) and
+  // an HMAC-SHA256 of a canonical request string keyed by a shared secret
+  // (`X-Steward-Signature: v1=<hex>`). The SDK does not send these on
+  // browser-driven flows, so the Worker proxy signs them here on behalf of
+  // the SPA. Without this, /auth/email/send (Magic Link) returns
+  // `Request expiry header required` — see Steward
+  // packages/api/src/middleware/{request-expiry,authorization-signature}.ts.
+  const method = c.req.method.toUpperCase();
+  const isMutating = MUTATING_METHODS.has(method);
+  const rawSecret = c.env.STEWARD_REQUEST_SIGNING_SECRET;
+  const signingSecret =
+    typeof rawSecret === "string" && rawSecret.length > 0 ? rawSecret : null;
+
+  let bodyBytes: ArrayBuffer | null = null;
+  if (isMutating) {
+    bodyBytes = await c.req.raw.clone().arrayBuffer();
   }
 
-  const response = await fetch(request);
+  const init: RequestInit = {
+    method,
+    headers: new Headers(c.req.raw.headers),
+    body: bodyBytes,
+    // Don't forward cf-specific properties that confuse fetch on cross-zone calls.
+    redirect: "manual",
+  };
+  const headers = init.headers as Headers;
+  headers.set("x-forwarded-host", url.host);
+  headers.set("x-forwarded-proto", url.protocol.replace(":", ""));
+  // Strip the host header that Workers carries from the inbound request — the
+  // upstream fetch sets its own.
+  headers.delete("host");
+
+  // Pin the tenant per-env. Steward's email/passkey routes resolve tenant
+  // from `X-Steward-Tenant || body.tenantId || STEWARD_DEFAULT_TENANT_ID`
+  // (auth.ts:2171,2200,2246), so forcing the header keeps those flows scoped
+  // even when the SPA's `NEXT_PUBLIC_STEWARD_TENANT_ID` isn't inlined.
+  // OAuth `/authorize` is NOT covered: it reads tenant only from the
+  // `tenant_id` query param (auth.ts:2294), so OAuth tenant isolation still
+  // depends on the SPA building the URL with the right id — that's wired
+  // separately via `NEXT_PUBLIC_STEWARD_TENANT_ID` in cloud-frontend's
+  // wrangler.toml `[env.preview.vars]`.
+  const pinnedTenantId = c.env.STEWARD_TENANT_ID;
+  if (typeof pinnedTenantId === "string" && pinnedTenantId.trim().length > 0) {
+    headers.set("x-steward-tenant", pinnedTenantId.trim());
+  }
+
+  if (isMutating && signingSecret && bodyBytes) {
+    const expiresAt = Math.floor(Date.now() / 1000) + REQUEST_TTL_SECONDS;
+    headers.set("x-steward-request-expires-at", String(expiresAt));
+    // Steward's idempotency middleware requires Idempotency-Key on every
+    // signed mutating request. Use the SPA-supplied value when present so
+    // retries dedup, otherwise stamp a fresh UUID v4 just to satisfy the
+    // gate — without it Steward rejects with "Signed requests require an
+    // Idempotency-Key header" (packages/api/src/middleware/idempotency.ts).
+    if (!headers.get("idempotency-key")) {
+      headers.set("idempotency-key", crypto.randomUUID());
+    }
+    const canonical = await buildStewardCanonicalRequest(
+      method,
+      `${upstreamUrl.pathname}${upstreamUrl.search}`,
+      headers,
+      bodyBytes,
+    );
+    const signature = await hmacSha256Hex(signingSecret, canonical);
+    headers.set("x-steward-signature", `v1=${signature}`);
+  }
+
+  const response = await fetch(upstreamUrl.toString(), init);
   if (c.req.method === "GET" && isAuthProvidersPath(url.pathname)) {
     return patchProvidersResponse(response, c.env);
   }

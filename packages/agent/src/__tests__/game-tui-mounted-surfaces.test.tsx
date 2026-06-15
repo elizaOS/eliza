@@ -76,9 +76,9 @@ function latestRunForApp(
   return { run: matchingRuns[0] ?? null, matchingRuns };
 }
 
-function stubComponent(name: string) {
+function fixtureComponent(name: string) {
   return ({ children }: { children?: ReactTypes.ReactNode }) =>
-    React.createElement("div", { "data-stub": name }, children);
+    React.createElement("div", { "data-fixture": name }, children);
 }
 
 const uiMock = vi.hoisted(() => ({
@@ -88,12 +88,12 @@ const uiMock = vi.hoisted(() => ({
   Input: (props: ReactTypes.InputHTMLAttributes<HTMLInputElement>) =>
     React.createElement("input", props),
   client: { sendAppRunMessage, controlAppRun },
-  GameOperatorShell: stubComponent("GameOperatorShell"),
-  SurfaceBadge: stubComponent("SurfaceBadge"),
-  SurfaceCard: stubComponent("SurfaceCard"),
-  SurfaceEmptyState: stubComponent("SurfaceEmptyState"),
-  SurfaceGrid: stubComponent("SurfaceGrid"),
-  SurfaceSection: stubComponent("SurfaceSection"),
+  GameOperatorShell: fixtureComponent("GameOperatorShell"),
+  SurfaceBadge: fixtureComponent("SurfaceBadge"),
+  SurfaceCard: fixtureComponent("SurfaceCard"),
+  SurfaceEmptyState: fixtureComponent("SurfaceEmptyState"),
+  SurfaceGrid: fixtureComponent("SurfaceGrid"),
+  SurfaceSection: fixtureComponent("SurfaceSection"),
   formatDetailTimestamp: (value: unknown) => String(value ?? ""),
   selectLatestRunForApp: latestRunForApp,
   toneForHealthState: () => "neutral",
@@ -107,26 +107,16 @@ vi.mock("@elizaos/ui/agent-surface", () => uiMock);
 vi.mock("@elizaos/app-core", () => uiMock);
 vi.mock("@elizaos/app-core/ui-compat", () => uiMock);
 
-import {
-  interact as interact2004scape,
-  TwoThousandFourScapeTuiView,
-} from "../../../../plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface";
-import {
-  ClawvilleTuiView,
-  interact as interactClawville,
-} from "../../../../plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface";
-import {
-  DefenseAgentsTuiView,
-  interact as interactDefense,
-} from "../../../../plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface";
-import {
-  HyperscapeTuiView,
-  interact as interactHyperscape,
-} from "../../../../plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface";
-import {
-  interact as interactScape,
-  ScapeTuiView,
-} from "../../../../plugins/plugin-scape/src/ui/ScapeOperatorSurface";
+import { TwoThousandFourScapeTuiView } from "../../../../plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface";
+import { interact as interact2004scape } from "../../../../plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.interact";
+import { ClawvilleTuiView } from "../../../../plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface";
+import { interact as interactClawville } from "../../../../plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.interact";
+import { DefenseAgentsTuiView } from "../../../../plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface";
+import { interact as interactDefense } from "../../../../plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.interact";
+import { HyperscapeTuiView } from "../../../../plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface";
+import { interact as interactHyperscape } from "../../../../plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.interact";
+import { ScapeTuiView } from "../../../../plugins/plugin-scape/src/ui/ScapeOperatorSurface";
+import { interact as interactScape } from "../../../../plugins/plugin-scape/src/ui/ScapeOperatorSurface.interact";
 
 const baseRun = {
   runId: "run-1",

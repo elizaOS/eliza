@@ -21,7 +21,7 @@ import {
 } from "@elizaos/shared";
 import appControlPlugin from "../../../../plugins/plugin-app-control/src/index.js";
 import { handleAppsRoutes } from "../../../../plugins/plugin-app-manager/src/index.js";
-import { resetAppControlHttpStub } from "./_helpers/app-control-http-stub";
+import { resetAppControlHttpLoopback } from "./_helpers/app-control-http-loopback";
 
 const GENERATED_PACKAGE = "@scenario/app-generated-console";
 const GENERATED_SLUG = "generated-console";
@@ -597,7 +597,7 @@ async function prepareScenarioState(
     appRuns.clear();
     packageRouteLedger.length = 0;
     viewBroadcastLedger.length = 0;
-    resetAppControlHttpStub();
+    resetAppControlHttpLoopback();
     await fs.rm(SCENARIO_TEMP_ROOT, { recursive: true, force: true });
     await fs.mkdir(ACTION_APPS_ROOT, { recursive: true });
     await fs.mkdir(HTTP_APPS_ROOT, { recursive: true });

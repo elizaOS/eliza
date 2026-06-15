@@ -73,8 +73,8 @@
 #include <vector>
 
 // The fork's C++ headers. Android currently sets ELIZA_SHIM_HEADERLESS to
-// compile a no-op stub that returns "unsupported" until the real implementation
-// is ported to the current common/speculative.h API.
+// compile an unsupported-path adapter while the current common/speculative.h
+// API is not available in that build.
 #if defined(ELIZA_SHIM_HEADERLESS)
 typedef int32_t llama_token;
 struct llama_context;
@@ -1055,7 +1055,7 @@ extern "C" int32_t eliza_speculative_last_stats_json(const struct eliza_speculat
     return copy_string_to_c_buffer(h->last_stats_json, out_json, out_cap);
 }
 
-#else  // ELIZA_SHIM_HEADERLESS — syntax/ABI-only stub (no fork headers on path)
+#else  // ELIZA_SHIM_HEADERLESS — syntax/ABI-only unsupported build
 
 struct eliza_speculative_handle { int unused; };
 struct eliza_speculative_stream { int unused; };

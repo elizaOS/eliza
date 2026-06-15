@@ -52,9 +52,9 @@ int e1_litert_delegate_partition(
     size_t entries_capacity,
     size_t* entries_used);
 
-/* Invoke the delegate against the partitioned subset and write the placeholder
- * descriptor-spec blob into `blob`. On entry `*blob_size` is the buffer size;
- * on return it carries the bytes written. Returns 0 on success. */
+/* Invoke the delegate against the partitioned subset and write descriptor-spec
+ * artifact bytes into `blob`. On entry `*blob_size` is the buffer size; on
+ * return it carries the bytes written. Returns 0 on success. */
 int e1_litert_delegate_invoke(
     E1LiteRtDelegate* delegate,
     const char* module_json,

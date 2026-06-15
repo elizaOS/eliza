@@ -97,7 +97,7 @@ src/
     even-bridge.ts            EvenBridgeTransport — native Android/desktop bridge
     noble.ts                  NobleG1Transport — Node.js BLE via @abandonware/noble
     web-bluetooth.ts          WebBluetoothG1Transport — browser Web Bluetooth API
-    mock.ts                   MockSmartglassesTransport — testing stub
+    mock.ts                   MockSmartglassesTransport — deterministic test transport
     types.ts                  SmartglassesTransport interface
   ui/                         React view components (built by build:views)
 emulator/                     Device emulator CLI + WebSocket server

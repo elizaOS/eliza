@@ -26,8 +26,8 @@ Bridge methods:
 
 | Method | Platform | What it reads |
 |--------|----------|----------------|
-| `getMeteredHint()` | Android (stub on iOS/web) | `ConnectivityManager.getNetworkCapabilities(activeNetwork).hasCapability(NET_CAPABILITY_NOT_METERED)`. Returns `metered: null` when there is no active network, permission is denied, or the capability object is unavailable. |
-| `getPathHints()` | iOS (stub on Android/web) | `NWPathMonitor.currentPath.isExpensive` and `.isConstrained`. Returns `false/false` on Android. |
+| `getMeteredHint()` | Android (safe fallback on iOS/web) | `ConnectivityManager.getNetworkCapabilities(activeNetwork).hasCapability(NET_CAPABILITY_NOT_METERED)`. Returns `metered: null` when there is no active network, permission is denied, or the capability object is unavailable. |
+| `getPathHints()` | iOS (safe fallback on Android/web) | `NWPathMonitor.currentPath.isExpensive` and `.isConstrained`. Returns `false/false` on Android. |
 
 Web fallback (`src/web.ts`): reads `navigator.connection.saveData`; returns `metered: null` when `saveData` is false or unavailable — never assumes "not metered", so the policy decision falls through to `unknown → ask`.
 
@@ -78,7 +78,7 @@ None. This plugin reads no environment variables and has no elizaOS `settings` f
 
 - **Not a standard elizaOS plugin.** There is no `Plugin` object, no `actions`/`providers` array. The Capacitor bridge is the surface.
 - **Side-effect on import.** Importing `@elizaos/capacitor-network-policy` calls `installNetworkPolicyGlobal()` immediately — `globalThis.ElizaNetworkPolicy` is set as a side effect.
-- **Platform symmetry:** both methods exist on both platforms and return stub values on the non-native platform. iOS callers should use `getPathHints()`; Android callers should use `getMeteredHint()`. The consuming code in `plugin-local-inference` is the authoritative caller — match its expectations.
+- **Platform symmetry:** both methods exist on both platforms and return conservative fallback values on the non-native platform. iOS callers should use `getPathHints()`; Android callers should use `getMeteredHint()`. The consuming code in `plugin-local-inference` is the authoritative caller — match its expectations.
 - **`metered: null` means "unknown, ask the user"** — not "not metered." Do not conflate `null` with `false`.
 - **iOS monitor lifecycle:** the Swift implementation keeps one long-lived `NWPathMonitor` started in `load()`. Do not start/stop it per call.
 - **Android permission:** `ACCESS_NETWORK_STATE` is required in the app's `AndroidManifest.xml`. The plugin catches `SecurityException` and returns `metered: null` rather than crashing.

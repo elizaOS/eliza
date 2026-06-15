@@ -5,8 +5,9 @@
  * Shadow's `openclaw-routing-layer/proxy.js` v2.2.3. The constants in this
  * file split into two groups:
  *
- *   1. **Algorithm parameters** (BILLING_HASH_*, REQUIRED_BETAS, CC_TOOL_STUBS,
- *      CC_VERSION, etc.) — these are upstream-detection-bypass surface and
+ *   1. **Algorithm parameters** (BILLING_HASH_*, REQUIRED_BETAS,
+ *      CC_SYNTHETIC_TOOLS, CC_VERSION, etc.) — these are
+ *      upstream-detection-bypass surface and
  *      MUST NOT change. They produce the byte-stable identity that makes the
  *      proxy look like a real Claude Code session to Anthropic.
  *
@@ -14,7 +15,8 @@
  *      DEFAULT_PROP_RENAMES, DEFAULT_REVERSE_MAP, SYSTEM_CONFIG_PARAPHRASE) —
  *      these are *framework-shaped*. v0.2.0 ships eliza defaults derived from
  *      profiling `@elizaos/native-reasoning` outbound calls. Non-eliza users
- *      override via `config.json` (see config.json.example).
+ *      override via `config.json` or `CLAUDE_MAX_PROXY_CONFIG_PATH` (see
+ *      config.json.example).
  *
  * The OpenClaw-specific dictionary that v0.1.0 inherited from proxy.js was
  * removed in v0.2.0 — it leaked OC-specific tool names like `sessions_spawn`
@@ -53,13 +55,14 @@ export const REQUIRED_BETAS: readonly string[] = [
 ];
 
 /**
- * CC tool stubs — injected into tools array to make the tool set look more
- * like a Claude Code session. The model won't call these (schemas are minimal).
+ * Synthetic Claude Code tools injected into the tools array to make the tool
+ * set look more like a Claude Code session. The model won't call these
+ * compatibility entries because their schemas are minimal.
  *
  * NOTE: Stored as raw JSON strings (NOT objects) to match proxy.js exactly
  * which inserts these by string concatenation into the tools array.
  */
-export const CC_TOOL_STUBS: readonly string[] = [
+export const CC_SYNTHETIC_TOOLS: readonly string[] = [
   '{"name":"Glob","description":"Find files by pattern","input_schema":{"type":"object","properties":{"pattern":{"type":"string","description":"Glob pattern"}},"required":["pattern"]}}',
   '{"name":"Grep","description":"Search file contents","input_schema":{"type":"object","properties":{"pattern":{"type":"string","description":"Regex pattern"},"path":{"type":"string","description":"Search path"}},"required":["pattern"]}}',
   '{"name":"Agent","description":"Launch a subagent for complex tasks","input_schema":{"type":"object","properties":{"prompt":{"type":"string","description":"Task description"}},"required":["prompt"]}}',
@@ -71,7 +74,7 @@ export const CC_TOOL_STUBS: readonly string[] = [
 //
 // These are the dictionaries the AnthropicProxyService boots with when no
 // explicit override is supplied. Eliza-shaped by default; bring-your-own via
-// `config.json` for any other framework.
+// `config.json` or `CLAUDE_MAX_PROXY_CONFIG_PATH` for any other framework.
 //
 // See ./eliza-fingerprint.ts for the full enumeration with rationale.
 

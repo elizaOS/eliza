@@ -190,15 +190,24 @@ def library_model_blocks(footprint_name: str) -> list[str]:
 def refresh_development_model_blocks(text: str) -> str:
     replacements: list[tuple[int, int, str]] = []
     for start, end, footprint_name, block in find_dev_footprint_blocks(text):
+        original_block = block
         model_blocks = library_model_blocks(footprint_name)
+        layer = first_match(r'\(footprint\s+"[^"]+"\s+\(layer\s+"([^"]+)"\)', block, "F.Cu")
+        oriented_block = "\n".join(
+            orient_library_line_for_board_layer(line, layer) for line in block.splitlines()
+        )
+        if oriented_block != block:
+            block = oriented_block
         if not model_blocks:
+            if block != text[start:end]:
+                replacements.append((start, end, block))
             continue
         stripped = MODEL_BLOCK_RE.sub("", block)
         insert_at = stripped.rfind("\n)")
         if insert_at < 0:
             raise SystemExit(f"development footprint block missing close: {footprint_name}")
         refreshed = stripped[:insert_at] + "".join(model_blocks) + stripped[insert_at:]
-        if refreshed != block:
+        if refreshed != original_block:
             replacements.append((start, end, refreshed))
     for start, end, replacement in reversed(replacements):
         text = text[:start] + replacement + text[end:]
@@ -208,6 +217,25 @@ def refresh_development_model_blocks(text: str) -> str:
 def first_match(pattern: str, text: str, default: str = "") -> str:
     match = re.search(pattern, text, re.S)
     return match.group(1) if match else default
+
+
+def orient_library_line_for_board_layer(line: str, layer: str) -> str:
+    if layer != "B.Cu":
+        return line
+    is_effects_line = "(effects " in line
+    replacements = {
+        '"F.Cu"': '"B.Cu"',
+        '"F.Paste"': '"B.Paste"',
+        '"F.Mask"': '"B.Mask"',
+        '"F.SilkS"': '"B.SilkS"',
+        '"F.Fab"': '"B.Fab"',
+        '"F.CrtYd"': '"B.CrtYd"',
+    }
+    for source, target in replacements.items():
+        line = line.replace(source, target)
+    if is_effects_line and "(justify " not in line:
+        line = f"{line.rstrip()[:-1]} (justify mirror))"
+    return line
 
 
 def pad_records(block: str) -> list[dict[str, str]]:
@@ -1027,12 +1055,22 @@ def format_library_block(
             continue
         if stripped.startswith("(fp_text reference "):
             output_lines.append(
-                re.sub(r'\(fp_text reference "[^"]+"', f'(fp_text reference "{ref}"', line)
+                orient_library_line_for_board_layer(
+                    re.sub(r'\(fp_text reference "[^"]+"', f'(fp_text reference "{ref}"', line),
+                    layer,
+                )
             )
             continue
         if stripped.startswith("(fp_text value "):
             output_lines.append(
-                re.sub(r'\(fp_text value "[^"]+"', f'(fp_text value "{clean_label(value)}"', line)
+                orient_library_line_for_board_layer(
+                    re.sub(
+                        r'\(fp_text value "[^"]+"',
+                        f'(fp_text value "{clean_label(value)}"',
+                        line,
+                    ),
+                    layer,
+                )
             )
             continue
         if stripped.startswith("(pad "):
@@ -1040,9 +1078,9 @@ def format_library_block(
             net_name = net_map.get(pad_name, "")
             if "(net " not in line:
                 line = line[:-1] + net_clause(net_name, ids) + ")" if line.endswith(")") else line
-            output_lines.append(line)
+            output_lines.append(orient_library_line_for_board_layer(line, layer))
             continue
-        output_lines.append(line)
+        output_lines.append(orient_library_line_for_board_layer(line, layer))
     output_lines.append(
         f'  (fp_text user "development_footprint_bound_not_release" (at 0 0 0) (layer "Cmts.User") hide (uuid "{tstamp or old_name}-bound"))'
     )

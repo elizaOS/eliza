@@ -9,16 +9,33 @@
 
 import type { DraftRecord, MessageRef, MessageSource } from "./types.ts";
 
+// Process-local stores grow one entry per message/draft ever seen by triage.
+// Without a bound, a long-running agent that triages many messages leaks memory.
+// Cap with FIFO eviction (Map insertion order) — oldest refs drop once over the
+// cap; active turns reference recently-saved messages, which stay resident.
+const MAX_MESSAGES = 5000;
+const MAX_DRAFTS = 2000;
+
+function capMap<K, V>(map: Map<K, V>, max: number): void {
+	while (map.size > max) {
+		const oldest = map.keys().next().value;
+		if (oldest === undefined) break;
+		map.delete(oldest);
+	}
+}
+
 export class MessageRefStore {
 	private messages = new Map<string, MessageRef>();
 	private drafts = new Map<string, DraftRecord>();
 
 	saveMessage(ref: MessageRef): void {
 		this.messages.set(ref.id, ref);
+		capMap(this.messages, MAX_MESSAGES);
 	}
 
 	saveMessages(refs: readonly MessageRef[]): void {
 		for (const r of refs) this.messages.set(r.id, r);
+		capMap(this.messages, MAX_MESSAGES);
 	}
 
 	getMessage(id: string): MessageRef | null {
@@ -57,6 +74,7 @@ export class MessageRefStore {
 
 	saveDraft(record: DraftRecord): void {
 		this.drafts.set(record.draftId, record);
+		capMap(this.drafts, MAX_DRAFTS);
 	}
 
 	getDraft(draftId: string): DraftRecord | null {

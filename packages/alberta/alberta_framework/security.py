@@ -72,7 +72,7 @@ class SecurityRewardWeights:
 
     Positive components reward correct protection and service restoration.
     Negative components penalize operational disruption and missed threats. The
-    defaults are conservative placeholders for integration tests; production
+    defaults are conservative integration-test baselines; production
     experiments should record the exact weights in rollout metadata.
     """
 

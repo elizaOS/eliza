@@ -73,6 +73,12 @@ export class TriageService {
 		return this.store;
 	}
 
+	// adapterByMessageId grows one entry per message routed through triage(). Cap
+	// it (FIFO eviction by Map insertion order) so a long-running agent doesn't
+	// retain a routing entry for every message it has ever seen. Evicted entries
+	// fall back to the store-based lookup in getAdapterForMessage().
+	private static readonly MAX_ADAPTER_ROUTES = 5000;
+
 	private trackAdapterForMessage(
 		source: MessageSource,
 		messageId: string,
@@ -80,6 +86,11 @@ export class TriageService {
 		const adapter = this.adapters.get(source);
 		if (!adapter) return;
 		this.adapterByMessageId.set(`${source}:${messageId}`, adapter);
+		while (this.adapterByMessageId.size > TriageService.MAX_ADAPTER_ROUTES) {
+			const oldest = this.adapterByMessageId.keys().next().value;
+			if (oldest === undefined) break;
+			this.adapterByMessageId.delete(oldest);
+		}
 	}
 
 	getAdapterForMessage(messageId: string): MessageAdapter | undefined {

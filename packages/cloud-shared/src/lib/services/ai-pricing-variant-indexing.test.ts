@@ -1,5 +1,5 @@
 /**
- * Catalog-time variant indexing: OpenRouter lists models under snapshot ids
+ * Catalog-time variant indexing: BitRouter lists models under snapshot ids
  * (e.g. `google/gemini-2.0-flash-001`) but clients send the unsuffixed
  * canonical id. The ingest now emits a low-priority duplicate row under the
  * stripped base id so lookups for the canonical id resolve without
@@ -8,10 +8,14 @@
 
 import { describe, expect, test } from "bun:test";
 import {
-  buildOpenRouterPreparedEntries,
+  buildBitRouterPreparedEntries,
+  canonicalModelId,
   chooseBestCandidatePricingEntry,
+  expandPricingCatalogModelCandidates,
+  inferProviderFromCanonicalModel,
   stripVersionedSnapshotSuffix,
 } from "@/lib/services/ai-pricing";
+import { fetchBitRouterCatalogEntries } from "@/lib/services/ai-pricing/providers/bitrouter";
 
 describe("stripVersionedSnapshotSuffix — dated and labelled suffixes", () => {
   test("strips compact 8-digit date suffix", () => {
@@ -107,9 +111,9 @@ describe("stripVersionedSnapshotSuffix — must-not-strip cases", () => {
   });
 });
 
-describe("buildOpenRouterPreparedEntries — exact + stripped variants", () => {
+describe("buildBitRouterPreparedEntries — exact + stripped variants", () => {
   test("emits both exact and stripped rows for prompt and completion", () => {
-    const entries = buildOpenRouterPreparedEntries({
+    const entries = buildBitRouterPreparedEntries({
       id: "google/gemini-2.0-flash-001",
       architecture: {
         modality: "text->text",
@@ -139,7 +143,7 @@ describe("buildOpenRouterPreparedEntries — exact + stripped variants", () => {
   });
 
   test("emits only exact rows when no suffix can be stripped", () => {
-    const entries = buildOpenRouterPreparedEntries({
+    const entries = buildBitRouterPreparedEntries({
       id: "openai/gpt-4o-mini",
       architecture: { modality: "text->text" },
       pricing: { prompt: "0.00000015", completion: "0.0000006" },
@@ -151,7 +155,7 @@ describe("buildOpenRouterPreparedEntries — exact + stripped variants", () => {
   });
 
   test("propagates provider, productFamily, billingSource on stripped row", () => {
-    const entries = buildOpenRouterPreparedEntries({
+    const entries = buildBitRouterPreparedEntries({
       id: "anthropic/claude-3-5-haiku-20241022",
       architecture: { modality: "text->text" },
       pricing: { prompt: "0.0000008" },
@@ -162,12 +166,12 @@ describe("buildOpenRouterPreparedEntries — exact + stripped variants", () => {
     expect(stripped?.priority).toBe(-1);
     expect(stripped?.provider).toBe("anthropic");
     expect(stripped?.productFamily).toBe("language");
-    expect(stripped?.billingSource).toBe("openrouter");
-    expect(stripped?.sourceKind).toBe("openrouter_catalog");
+    expect(stripped?.billingSource).toBe("bitrouter");
+    expect(stripped?.sourceKind).toBe("bitrouter_catalog");
   });
 
   test("does not emit stripped row when prices are missing", () => {
-    const entries = buildOpenRouterPreparedEntries({
+    const entries = buildBitRouterPreparedEntries({
       id: "google/gemini-2.0-flash-001",
       architecture: { modality: "text->text" },
       pricing: {},
@@ -177,7 +181,7 @@ describe("buildOpenRouterPreparedEntries — exact + stripped variants", () => {
   });
 
   test("emits stripped row only for the priced direction (input-only)", () => {
-    const entries = buildOpenRouterPreparedEntries({
+    const entries = buildBitRouterPreparedEntries({
       id: "google/gemini-2.0-flash-001",
       architecture: { modality: "text->text" },
       pricing: { prompt: "0.0000001" },
@@ -189,19 +193,219 @@ describe("buildOpenRouterPreparedEntries — exact + stripped variants", () => {
   });
 });
 
+describe("forced provider route pricing ids", () => {
+  test("keeps forced route ids canonical before slash-prefixed aliases", () => {
+    expect(canonicalModelId("openrouter:openai/gpt-oss-120b", "openrouter")).toBe(
+      "openrouter:openai/gpt-oss-120b",
+    );
+    expect(canonicalModelId("cerebras:gpt-oss-120b", "cerebras")).toBe("cerebras:gpt-oss-120b");
+  });
+
+  test("infers provider from forced route prefixes", () => {
+    expect(inferProviderFromCanonicalModel("openrouter:openai/gpt-oss-120b")).toBe("openrouter");
+    expect(inferProviderFromCanonicalModel("cerebras:zai-glm-4.7")).toBe("cerebras");
+  });
+
+  test("uses underlying catalog id as an alias for OpenRouter forced routes", () => {
+    expect(expandPricingCatalogModelCandidates("openrouter:openai/gpt-oss-120b")).toContain(
+      "openai/gpt-oss-120b",
+    );
+  });
+
+  test("adds synthetic Cerebras pricing rows to the BitRouter catalog", async () => {
+    const previousApiKey = process.env.BITROUTER_API_KEY;
+    const previousFetch = globalThis.fetch;
+    process.env.BITROUTER_API_KEY = "test-bitrouter-key";
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          data: [],
+        }),
+        { status: 200 },
+      );
+
+    try {
+      const entries = await fetchBitRouterCatalogEntries();
+      const gptInput = entries.find(
+        (entry) => entry.model === "cerebras:gpt-oss-120b" && entry.chargeType === "input",
+      );
+      const gptOutput = entries.find(
+        (entry) => entry.model === "cerebras:gpt-oss-120b" && entry.chargeType === "output",
+      );
+      const glmInput = entries.find(
+        (entry) => entry.model === "cerebras:zai-glm-4.7" && entry.chargeType === "input",
+      );
+      const glmOutput = entries.find(
+        (entry) => entry.model === "cerebras:zai-glm-4.7" && entry.chargeType === "output",
+      );
+
+      expect(gptInput?.provider).toBe("cerebras");
+      expect(gptInput?.unitPrice).toBe(0.00000035);
+      expect(gptOutput?.unitPrice).toBe(0.00000075);
+      expect(glmInput?.unitPrice).toBe(0.00000225);
+      expect(glmOutput?.unitPrice).toBe(0.00000275);
+    } finally {
+      if (previousApiKey === undefined) {
+        delete process.env.BITROUTER_API_KEY;
+      } else {
+        process.env.BITROUTER_API_KEY = previousApiKey;
+      }
+      globalThis.fetch = previousFetch;
+    }
+  });
+
+  test("adds a synthetic openai/gpt-oss-120b row so :nitro / :free variants resolve", async () => {
+    // Default cloud TEXT_SMALL model is `openai/gpt-oss-120b:nitro`
+    // (packages/core/src/contracts/service-routing.ts). BitRouter's catalog
+    // doesn't currently return a priced row for the base id, so without this
+    // forced entry every credit-debiting chat request 500s with
+    // "Pricing unavailable for language:input openai/gpt-oss-120b". The
+    // variant stripper in candidate-selection collapses :nitro / :free onto
+    // the base, so one base entry covers every variant.
+    const previousApiKey = process.env.BITROUTER_API_KEY;
+    const previousFetch = globalThis.fetch;
+    process.env.BITROUTER_API_KEY = "test-bitrouter-key";
+    globalThis.fetch = async () => new Response(JSON.stringify({ data: [] }), { status: 200 });
+
+    try {
+      const entries = await fetchBitRouterCatalogEntries();
+      const input = entries.find(
+        (entry) => entry.model === "openai/gpt-oss-120b" && entry.chargeType === "input",
+      );
+      const output = entries.find(
+        (entry) => entry.model === "openai/gpt-oss-120b" && entry.chargeType === "output",
+      );
+
+      expect(input?.provider).toBe("openai");
+      expect(input?.productFamily).toBe("language");
+      expect(input?.unitPrice).toBe(0.0000001);
+      expect(output?.unitPrice).toBe(0.0000005);
+    } finally {
+      if (previousApiKey === undefined) {
+        delete process.env.BITROUTER_API_KEY;
+      } else {
+        process.env.BITROUTER_API_KEY = previousApiKey;
+      }
+      globalThis.fetch = previousFetch;
+    }
+  });
+
+  test("emits forced embedding:input row for bare text-embedding-3-small id", async () => {
+    // plugin-elizacloud sends the unprefixed id `text-embedding-3-small` to
+    // cloud-api's text embedding handler. BitRouter has no /v1/embeddings
+    // route (live 404 confirmed), so the request falls through to OpenAI
+    // Direct. Without a pricing row the cost computation 5xxs and
+    // plugin-sql writes zero-vectors. The forced row at priority -1 supplies
+    // the missing price without overriding a real BitRouter row if one
+    // ever materializes.
+    const previousApiKey = process.env.BITROUTER_API_KEY;
+    const previousFetch = globalThis.fetch;
+    process.env.BITROUTER_API_KEY = "test-bitrouter-key";
+    globalThis.fetch = async () => new Response(JSON.stringify({ data: [] }), { status: 200 });
+
+    try {
+      const entries = await fetchBitRouterCatalogEntries();
+      const input = entries.find(
+        (entry) => entry.model === "text-embedding-3-small" && entry.chargeType === "input",
+      );
+
+      expect(input?.provider).toBe("openai");
+      expect(input?.productFamily).toBe("embedding");
+      expect(input?.unitPrice).toBe(0.00000002);
+      expect(input?.priority).toBe(-1);
+    } finally {
+      if (previousApiKey === undefined) {
+        delete process.env.BITROUTER_API_KEY;
+      } else {
+        process.env.BITROUTER_API_KEY = previousApiKey;
+      }
+      globalThis.fetch = previousFetch;
+    }
+  });
+
+  test("emits forced embedding:input row for prefixed openai/text-embedding-3-small id", async () => {
+    // plugin-openrouter sends the canonical `openai/text-embedding-3-small`
+    // form. Both prefixed and bare ids are needed because the cloud-api
+    // routes by raw model id without normalizing, and the two plugins
+    // emit different shapes.
+    const previousApiKey = process.env.BITROUTER_API_KEY;
+    const previousFetch = globalThis.fetch;
+    process.env.BITROUTER_API_KEY = "test-bitrouter-key";
+    globalThis.fetch = async () => new Response(JSON.stringify({ data: [] }), { status: 200 });
+
+    try {
+      const entries = await fetchBitRouterCatalogEntries();
+      const input = entries.find(
+        (entry) => entry.model === "openai/text-embedding-3-small" && entry.chargeType === "input",
+      );
+
+      expect(input?.provider).toBe("openai");
+      expect(input?.productFamily).toBe("embedding");
+      expect(input?.unitPrice).toBe(0.00000002);
+      expect(input?.priority).toBe(-1);
+    } finally {
+      if (previousApiKey === undefined) {
+        delete process.env.BITROUTER_API_KEY;
+      } else {
+        process.env.BITROUTER_API_KEY = previousApiKey;
+      }
+      globalThis.fetch = previousFetch;
+    }
+  });
+});
+
+describe("canonicalModelId — OpenRouter routing variants on bare model ids", () => {
+  // PR #8307 added gpt-oss-120b pricing but lookup was missing it because the
+  // canonical id resolution short-circuited on the first colon. Routing-suffix
+  // ids like `gpt-oss-120b:nitro` were treated as forced-provider ids (e.g.
+  // `cerebras:gpt-oss-120b`) and returned unchanged, so the provider prefix
+  // was never prepended and the slash-guarded `:nitro` stripper in
+  // candidate-selection couldn't collapse onto the base id. The dashes-in-prefix
+  // heuristic distinguishes: real provider keys (cerebras, openrouter, anthropic)
+  // never have dashes; a dashed prefix (gpt-oss-120b, claude-3-5-haiku) is a
+  // bare model id that lost its `provider/` segment upstream.
+  test("prepends provider for bare id with routing suffix", () => {
+    expect(canonicalModelId("gpt-oss-120b:nitro", "openai")).toBe("openai/gpt-oss-120b:nitro");
+  });
+
+  test("prepends provider for bare id with no suffix", () => {
+    expect(canonicalModelId("gpt-oss-120b", "openai")).toBe("openai/gpt-oss-120b");
+  });
+
+  test("leaves already-canonical id unchanged", () => {
+    expect(canonicalModelId("openai/gpt-oss-120b", "openai")).toBe("openai/gpt-oss-120b");
+  });
+
+  test("leaves already-canonical id with routing suffix unchanged", () => {
+    expect(canonicalModelId("openai/gpt-oss-120b:nitro", "openai")).toBe(
+      "openai/gpt-oss-120b:nitro",
+    );
+  });
+
+  test("preserves forced-provider id (cerebras has no dash in prefix)", () => {
+    expect(canonicalModelId("cerebras:gpt-oss-120b", "openai")).toBe("cerebras:gpt-oss-120b");
+  });
+
+  test("heuristic generalizes to anthropic + :floor on dashed bare id", () => {
+    expect(canonicalModelId("claude-3-5-haiku:floor", "anthropic")).toBe(
+      "anthropic/claude-3-5-haiku:floor",
+    );
+  });
+});
+
 describe("chooseBestCandidatePricingEntry — tie-break when stripped variants conflict", () => {
   function buildCandidate(snapshotId: string, unitPrice: number) {
     return {
       entry: {
-        billingSource: "openrouter" as const,
+        billingSource: "bitrouter" as const,
         provider: "google",
         model: "google/gemini-2.0-flash",
         productFamily: "language" as const,
         chargeType: "input",
         unit: "token" as const,
         unitPrice,
-        sourceKind: "openrouter_catalog",
-        sourceUrl: "https://openrouter.ai/api/v1/models",
+        sourceKind: "bitrouter_catalog",
+        sourceUrl: "https://api.bitrouter.ai/v1/models",
         priority: -1,
         metadata: { snapshotId },
       },

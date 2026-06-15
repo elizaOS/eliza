@@ -139,7 +139,7 @@ release_blockers:
   - supplier land patterns and STEP models for USB-C and side-key hardware are missing
   - routed USB2/CC/VBUS/charger/side-key copper and DRC/ERC evidence are missing
   - PD attach, charger CC/CV, side-key wake/recovery, and force/travel measurements are missing
-  - routed board STEP and enclosure clearance rerun are missing
+  - routed board STEP and approved enclosure release clearance are missing
 
 forbidden_claims:
   - usb_c_schematic_ready

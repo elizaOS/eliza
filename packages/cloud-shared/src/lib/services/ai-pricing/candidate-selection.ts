@@ -1,6 +1,6 @@
 import type { PricingDimensions } from "../../../db/schemas/ai-pricing";
 import {
-  expandOpenRouterModelIdCandidates,
+  expandBitRouterModelIdCandidates,
   expandPersistedPricingProviderKeys,
 } from "../../providers/model-id-translation";
 import { PRICING_LEGACY_IDS_BY_TARGET, PRICING_MODEL_ALIASES } from "../ai-pricing-definitions";
@@ -69,7 +69,7 @@ export function chooseBestCandidatePricingEntry(
 
 /**
  * Anthropic API returns dated snapshot ids (e.g. claude-sonnet-4-5-20250929); gateway
- * and OpenRouter list stable ids (e.g. claude-sonnet-4.5). Map suffix for catalog lookup.
+ * and BitRouter list stable ids (e.g. claude-sonnet-4.5). Map suffix for catalog lookup.
  */
 function normalizeAnthropicCatalogModelSuffix(suffix: string): string {
   let s = suffix.replace(/-20\d{6,8}$/, "");
@@ -81,7 +81,7 @@ function normalizeAnthropicCatalogModelSuffix(suffix: string): string {
   return s;
 }
 
-function stripOpenRouterModelVariant(model: string): string | null {
+function stripBitRouterModelVariant(model: string): string | null {
   const slashIndex = model.indexOf("/");
   if (slashIndex === -1) {
     return null;
@@ -91,6 +91,15 @@ function stripOpenRouterModelVariant(model: string): string | null {
     return null;
   }
   return model.slice(0, variantIndex);
+}
+
+function stripForcedProviderPrefix(model: string): string | null {
+  const slashIndex = model.indexOf("/");
+  const colonIndex = model.indexOf(":");
+  if (colonIndex <= 0 || (slashIndex !== -1 && slashIndex < colonIndex)) {
+    return null;
+  }
+  return model.slice(colonIndex + 1);
 }
 
 /** Manual gateway rename map + inverse (new id → legacy ids still in DB). */
@@ -122,7 +131,7 @@ function collectGatewayPricingManualAliasCandidates(canonicalModel: string): str
 /**
  * Ordered ids to try when resolving pricing (exact first, then catalog aliases).
  *
- * **Why OpenRouter + gateway variants:** Manual alias tables and DB rows may
+ * **Why BitRouter + gateway variants:** Manual alias tables and DB rows may
  * still key off either spelling; expanding both avoids "pricing unavailable" for
  * valid models during migration.
  */
@@ -136,19 +145,23 @@ export function expandPricingCatalogModelCandidates(canonicalModel: string): str
   };
 
   const pushWithTranslations = (m: string) => {
-    for (const translated of expandOpenRouterModelIdCandidates(m)) {
+    for (const translated of expandBitRouterModelIdCandidates(m)) {
       push(translated);
     }
   };
 
   pushWithTranslations(canonicalModel);
-  const baseVariantModel = stripOpenRouterModelVariant(canonicalModel);
+  const unforcedModel = stripForcedProviderPrefix(canonicalModel);
+  if (unforcedModel) {
+    pushWithTranslations(unforcedModel);
+  }
+  const baseVariantModel = stripBitRouterModelVariant(canonicalModel);
   if (baseVariantModel) {
     pushWithTranslations(baseVariantModel);
   }
   // Alias keys are gateway-style (`xai/...`, `mistral/...`); look them up using
-  // either spelling so OpenRouter-form callers also resolve to known aliases.
-  for (const aliasKey of expandOpenRouterModelIdCandidates(canonicalModel)) {
+  // either spelling so BitRouter-form callers also resolve to known aliases.
+  for (const aliasKey of expandBitRouterModelIdCandidates(canonicalModel)) {
     for (const id of collectGatewayPricingManualAliasCandidates(aliasKey)) {
       pushWithTranslations(id);
     }

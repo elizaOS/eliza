@@ -38,6 +38,7 @@ import {
 	type UUID,
 } from "@elizaos/core";
 import type { CapacitorLlamaContext } from "../adapters/capacitor-llama/types";
+import { LocalInferenceUnavailableError } from "../provider";
 import {
 	type LocalInferenceLoader,
 	resolveLocalInferenceLoadArgs,
@@ -460,12 +461,22 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
 			return loader.generate(engineArgs);
 		}
 		if (!(await localInferenceEngine.available())) {
-			throw new Error(
+			// No native binding: signal UNAVAILABLE (typed) so the cross-provider
+			// router skips local inference and falls back to a registered cloud/API
+			// provider, instead of hard-failing the whole turn.
+			throw new LocalInferenceUnavailableError(
+				slot,
+				"backend_unavailable",
 				`[local-inference] No llama.cpp binding available for ${slot} request`,
 			);
 		}
 		if (!localInferenceEngine.hasLoadedModel()) {
-			throw new Error(
+			// No local model loaded: signal UNAVAILABLE (typed) so the router falls
+			// back to a registered cloud/API provider (e.g. Anthropic) when one
+			// exists, rather than hard-failing while a usable provider is present.
+			throw new LocalInferenceUnavailableError(
+				slot,
+				"backend_unavailable",
 				`[local-inference] No local model is active. Assign a model to ${slot} or activate one in Settings → Local models.`,
 			);
 		}
@@ -939,7 +950,7 @@ function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
 
 /**
  * AOSP / generic-FFI path: load `libllama.so` directly into the bun process
- * via `bun:ffi`. The adapter no-ops at runtime when neither
+ * via `bun:ffi`. The adapter stays inactive at runtime when neither
  * `ELIZA_LOCAL_LLAMA === "1"` nor `process.arch === "riscv64"` is true (see
  * `isAospEnabled` in `aosp-llama-adapter.ts`), so the dynamic import below
  * is safe on every platform; we only attempt registration when one of the

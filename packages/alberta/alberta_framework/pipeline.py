@@ -9,8 +9,8 @@ The production pipeline composes the existing packaged pieces conservatively:
    hidden activations become the feature vector for downstream Step 3 and
    Step 4 learners.
 3. Step 3 learns GVF/Horde predictions on those features. Cumulants are
-   either supplied through a caller-provided callable or fall back to a
-   shifted-observation placeholder used by the legacy smoke API.
+   either supplied through a caller-provided callable or fall back to the
+   observation-channel cumulant function used by the legacy smoke API.
 4. Step 4 learns control on the same features, either as discrete SARSA
    (default) or as a Horde-backed actor-critic (``HordeActorCriticAgent``).
 
@@ -605,8 +605,17 @@ class AlbertaPipelineSmokeResult:
         return payload
 
 
-def _default_cumulant_fn(n_demons: int, observation_dim: int) -> CumulantFn:
-    """Return the legacy shifted-observation placeholder cumulant function."""
+def observation_channel_cumulant_fn(
+    n_demons: int, observation_dim: int
+) -> CumulantFn:
+    """Return a cumulant function that maps demons to observation channels."""
+    if n_demons < 1:
+        msg = f"n_demons must be positive, got {n_demons}"
+        raise ValueError(msg)
+    if observation_dim < 1:
+        msg = f"observation_dim must be positive, got {observation_dim}"
+        raise ValueError(msg)
+
     indices = jnp.arange(n_demons) % max(observation_dim, 1)
 
     def cumulant_fn(
@@ -623,10 +632,10 @@ class AlbertaPipeline:
 
     See :class:`AlbertaPipelineConfig` for selecting between temporal-context
     and UPGD Step 2 featurization, and between SARSA and HordeActorCritic
-    Step 4 control. A caller-supplied ``cumulant_fn`` substitutes real Step 3
-    cumulants for the legacy shifted-observation placeholder; passing
-    ``cumulant_fn=None`` (the default) preserves the legacy smoke behavior
-    for back-compatibility.
+    Step 4 control. A caller-supplied ``cumulant_fn`` substitutes domain Step 3
+    cumulants for the default observation-channel cumulants; passing
+    ``cumulant_fn=None`` preserves the legacy smoke behavior for
+    back-compatibility.
     """
 
     def __init__(
@@ -716,7 +725,7 @@ class AlbertaPipeline:
             )
 
         observation_dim = self._observation_dim()
-        self._cumulant_fn: CumulantFn = cumulant_fn or _default_cumulant_fn(
+        self._cumulant_fn: CumulantFn = cumulant_fn or observation_channel_cumulant_fn(
             self._config.horde.n_demons, observation_dim
         )
 
@@ -920,8 +929,8 @@ class AlbertaPipeline:
             terminated: Scalar termination flag (``0.0`` or ``1.0``).
             horde_cumulants: Optional explicit Step 3 cumulants of shape
                 ``(n_demons,)``. When omitted, the configured cumulant
-                function (or the legacy shifted-observation placeholder) is
-                used.
+                function, or the default observation-channel cumulant function,
+                is used.
             upgd_targets: Optional supervised targets of shape ``(n_heads,)``
                 that drive UPGD learning when ``step2='upgd'``. NaN entries
                 mark inactive heads. When omitted, UPGD weights stay frozen

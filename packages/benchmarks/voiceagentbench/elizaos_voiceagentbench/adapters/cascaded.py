@@ -3,15 +3,15 @@
 Each factory wraps a real backend agent. The user :class:`MessageTurn`
 already carries both the STT transcript (in ``content``) and the raw
 audio bytes (in ``audio_input``). The cascaded baselines consume
-``content``; future direct-audio adapters can opt into ``audio_input``
-without further runner changes.
+``content``; direct-audio adapters can consume ``audio_input`` without
+further runner changes.
 
 The Eliza factory hits the real Eliza agent runtime HTTP API
 (``ELIZA_API_BASE``, default ``http://localhost:31337``) via
 ``/api/benchmark/message``. This is the same endpoint used by
 ``eliza_adapter.client.ElizaClient`` in every other bench in the repo.
-The previous delegation to ``cerebras-direct`` was a stub that bypassed
-the Eliza runtime entirely — it has been replaced.
+The previous delegation to ``cerebras-direct`` bypassed the Eliza runtime
+entirely; this adapter now calls the runtime endpoint directly.
 """
 
 from __future__ import annotations

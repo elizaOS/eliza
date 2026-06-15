@@ -37,7 +37,12 @@ import type {
 } from "@elizaos/core";
 import { logger as coreLogger } from "@elizaos/core";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
+import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import { normalizeRepositoryInput } from "../services/repo-input.js";
+import {
+  runDurableTask,
+  shouldUseSmithersTaskRunner,
+} from "../services/smithers-task-integration";
 import {
   type ResolvedWorkdirRoute,
   resolvePinnedAdapter,
@@ -359,7 +364,7 @@ function taskWithResolvedRoute(
         "--- URL Path Mapping ---",
         "These mappings are authoritative for hosted artifacts and override conflicting guesses in the task text:",
         ...mappingLines,
-        "For hosted deliverables, do not leave placeholder/mock external assets, TODO/placeholder comments, or unfinished sample code; create complete local assets or omit the asset.",
+        "For hosted deliverables, do not leave synthetic external assets, pending-work comments, or partial sample code; create complete local assets or omit the asset.",
         'If the user asks for buttons, forms, or calls to action, implement local behavior such as an in-page section, mailto link, or submit-state handler; do not leave inert href="#" controls.',
       );
     }
@@ -394,6 +399,43 @@ function looksLikePersonalLifeOpsTask(text: string): boolean {
   return /\b(?:add|create|make|open|save|set)\s+(?:an?\s+)?(?:to-?do|task|reminder|note)\b/i.test(
     text,
   );
+}
+
+// Durable variant of runPromptAndClose: drives the spawned session through the
+// Smithers engine (a persisted, crash-resumable run) instead of a single direct
+// prompt. Single-turn by default, so behaviour matches; enabled by default (see
+// shouldUseSmithersTaskRunner). Emits the same session events as runPromptAndClose.
+async function runPromptViaSmithers(
+  service: ReturnType<typeof getAcpService> & {},
+  session: SpawnResult,
+  task: string,
+  timeoutMs: number | undefined,
+  model: string | undefined,
+): Promise<void> {
+  const startedAt = Date.now();
+  try {
+    const { lastResponse } = await runDurableTask(service, session, task, {
+      timeoutMs,
+      model,
+    });
+    emitSessionEvent(service, session.sessionId, "task_complete", {
+      response: lastResponse ?? "",
+      durationMs: Date.now() - startedAt,
+    });
+  } catch (error) {
+    emitSessionEvent(service, session.sessionId, "error", {
+      message: failureMessage(error),
+    });
+    throw error;
+  } finally {
+    try {
+      await service.stopSession(session.sessionId);
+    } finally {
+      emitSessionEvent(service, session.sessionId, "stopped", {
+        sessionId: session.sessionId,
+      });
+    }
+  }
 }
 
 async function runPromptAndClose(
@@ -536,13 +578,23 @@ async function runCreate(
           workdirRoute: route,
         },
       });
-      await runPromptAndClose(
-        service,
-        session,
-        taskWithRouteHints,
-        timeoutMs,
-        model,
-      );
+      if (shouldUseSmithersTaskRunner()) {
+        await runPromptViaSmithers(
+          service,
+          session,
+          taskWithRouteHints,
+          timeoutMs,
+          model,
+        );
+      } else {
+        await runPromptAndClose(
+          service,
+          session,
+          taskWithRouteHints,
+          timeoutMs,
+          model,
+        );
+      }
       return { session, label, agentType };
     }),
   );
@@ -599,11 +651,83 @@ async function runCreate(
     };
   }
 
+  // Mint a durable orchestrator task thread so the chat surface can render
+  // the `[TASK:<id>]<title>[/TASK]` widget that links back to the workbench.
+  // The ACP sessions have already succeeded; a failure here is logged but
+  // never demotes the action's success — the agents are still running.
+  const taskTitle =
+    pickString(params, content, "title") ??
+    pickString(params, content, "goal") ??
+    (tasks[0] ? labelFrom(tasks[0], 0) : "Coding task");
+  const taskGoal = pickString(params, content, "goal") ?? taskTitle;
+  const taskPriority = (pickString(params, content, "priority") ?? "normal") as
+    | "low"
+    | "normal"
+    | "high"
+    | "urgent";
+  const acceptanceCriteria = pickStringArrayFromInputs(
+    params,
+    content,
+    "acceptanceCriteria",
+  );
+  const taskRoomId =
+    typeof swarmRoomMetadata.taskRoomId === "string"
+      ? swarmRoomMetadata.taskRoomId
+      : undefined;
+  let threadId: string | null = null;
+  try {
+    const taskService = runtime.getService?.(
+      OrchestratorTaskService.serviceType,
+    ) as OrchestratorTaskService | null | undefined;
+    if (taskService && typeof taskService.createTask === "function") {
+      const detail = await taskService.createTask({
+        title: taskTitle,
+        goal: taskGoal,
+        kind: "coding",
+        priority: taskPriority,
+        originalRequest: messageText(message),
+        ...(taskRoomId ? { roomId: taskRoomId, taskRoomId } : {}),
+        acceptanceCriteria,
+      });
+      threadId = detail?.id ?? null;
+    }
+  } catch (error) {
+    logger(runtime).warn(
+      `[TASKS:create] durable task thread creation failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    threadId = null;
+  }
+
+  const widgetBlock = threadId
+    ? `\n\n[TASK:${threadId}]${taskTitle}[/TASK]`
+    : "";
+  const proseText = `Created task agent${results.length > 1 ? "s" : ""}.${widgetBlock}`;
+  await callbackText(callback, proseText);
+
   return {
     success: true,
-    text: "",
-    data: { agents: results, suppressActionResultClipboard: true },
+    text: proseText,
+    data: {
+      agents: results,
+      taskId: threadId,
+      suppressActionResultClipboard: true,
+    },
   };
+}
+
+function pickStringArrayFromInputs(
+  params: Record<string, unknown>,
+  content: Record<string, unknown>,
+  name: string,
+): string[] {
+  const raw = params[name] ?? content[name];
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
 }
 
 // ── action: spawn_agent (SPAWN_AGENT) ───────────────────────────────────────

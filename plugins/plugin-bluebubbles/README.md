@@ -109,5 +109,8 @@ The plugin registers the following HTTP endpoints on the agent:
   itself can run anywhere as long as it can reach the BlueBubbles server URL.
 - **Private API.** Message editing and unsend require the BlueBubbles Private
   API to be enabled on the macOS host.
-- **Multiple servers.** Multiple BlueBubbles servers can be configured via
-  `character.settings.bluebubbles.accounts.<accountId>`.
+- **Accounts.** Multiple BlueBubbles server records can be configured via
+  `character.settings.bluebubbles.accounts.<accountId>` and listed through the
+  connector-account provider. One service instance connects to the resolved
+  default account; run separate agent instances for simultaneous independent
+  BlueBubbles servers.

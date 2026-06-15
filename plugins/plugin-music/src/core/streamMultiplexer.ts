@@ -73,8 +73,7 @@ export class StreamMultiplexer {
   private isActive = false;
   private sourceErrorHandler: ((error: Error) => void) | null = null;
   private sourceEndHandler: (() => void) | null = null;
-  private blockedConsumers: Set<string> = new Set();
-  private blockedDrainHandlers: Map<string, () => void> = new Map();
+  private blockingDrainConsumers = new Set<string>();
 
   /**
    * Ogg header cache: the first N bytes containing OpusHead + OpusTags pages.
@@ -211,15 +210,9 @@ export class StreamMultiplexer {
       consumer.stream.destroy();
     }
 
-    const drainHandler = this.blockedDrainHandlers.get(id);
-    if (drainHandler) {
-      consumer.stream.removeListener("drain", drainHandler);
-      this.blockedDrainHandlers.delete(id);
-      this.blockedConsumers.delete(id);
-      this.resumeSourceIfUnblocked();
-    }
-
     this.consumers.delete(id);
+    this.blockingDrainConsumers.delete(id);
+    this.resumeBlockedSourceIfReady();
     logger.debug(
       `[StreamMultiplexer] Removed consumer: ${id} (remaining: ${this.consumers.size})`,
     );
@@ -381,58 +374,32 @@ export class StreamMultiplexer {
           break;
 
         case "BLOCKING":
-          // Wait for drain before continuing (blocks source)
           if (!consumer.stream.write(chunk)) {
-            this.pauseSourceUntilConsumerDrains(consumer);
+            this.pauseForBlockingDrain(consumer);
+            logger.warn(
+              `[StreamMultiplexer] Consumer ${consumer.id} causing backpressure in BLOCKING mode`,
+            );
           }
           break;
       }
     }
   }
 
-  private pauseSourceUntilConsumerDrains(consumer: Consumer): void {
-    if (consumer.stream.destroyed || consumer.stream.writableEnded) {
-      return;
-    }
+  private pauseForBlockingDrain(consumer: Consumer): void {
+    if (this.blockingDrainConsumers.has(consumer.id)) return;
 
-    if (!this.blockedConsumers.has(consumer.id)) {
-      this.blockedConsumers.add(consumer.id);
-
-      const onDrain = () => {
-        this.blockedConsumers.delete(consumer.id);
-        this.blockedDrainHandlers.delete(consumer.id);
-        this.resumeSourceIfUnblocked();
-      };
-
-      this.blockedDrainHandlers.set(consumer.id, onDrain);
-      consumer.stream.once("drain", onDrain);
-
-      logger.warn(
-        `[StreamMultiplexer] Consumer ${consumer.id} causing backpressure in BLOCKING mode`,
-      );
-    }
-
+    this.blockingDrainConsumers.add(consumer.id);
     this.source?.pause();
+
+    consumer.stream.once("drain", () => {
+      this.blockingDrainConsumers.delete(consumer.id);
+      this.resumeBlockedSourceIfReady();
+    });
   }
 
-  private resumeSourceIfUnblocked(): void {
-    if (this.policy !== "BLOCKING" || this.blockedConsumers.size > 0) {
-      return;
-    }
-
-    if (this.isActive) {
-      this.source?.resume();
-    }
-  }
-
-  private clearBlockingBackpressure(): void {
-    for (const [id, drainHandler] of this.blockedDrainHandlers.entries()) {
-      const consumer = this.consumers.get(id);
-      consumer?.stream.removeListener("drain", drainHandler);
-    }
-
-    this.blockedDrainHandlers.clear();
-    this.blockedConsumers.clear();
+  private resumeBlockedSourceIfReady(): void {
+    if (this.blockingDrainConsumers.size > 0) return;
+    this.source?.resume();
   }
 
   /**
@@ -441,6 +408,7 @@ export class StreamMultiplexer {
   private handleSourceEnd(): void {
     logger.debug("[StreamMultiplexer] Source stream ended");
     this.isActive = false;
+    this.blockingDrainConsumers.clear();
 
     // End all consumer streams
     for (const consumer of this.consumers.values()) {
@@ -459,8 +427,6 @@ export class StreamMultiplexer {
     if (!this.source) {
       return;
     }
-
-    this.clearBlockingBackpressure();
 
     if (this.sourceErrorHandler) {
       this.source.removeListener("error", this.sourceErrorHandler);

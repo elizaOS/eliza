@@ -1,9 +1,10 @@
 #!/usr/bin/env -S npx tsx
+
 /**
  * Agent Router daemon.
  *
  * Resolves agent id → headscale IP / bridge port / web UI port for the nginx
- * Lua subdomain router. Routing requires a persisted headscale_ip by default;
+ * wildcard subdomain router. Routing requires a persisted headscale_ip by default;
  * legacy bridge-host fallback is opt-in because public host + dynamic port
  * metadata is not a reliable ingress target after the Hetzner/control-plane
  * split.
@@ -17,17 +18,18 @@
  *   DATABASE_URL            Postgres connection (loaded from .env.local).
  */
 
+import type { IncomingMessage, ServerResponse } from "node:http";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadLocalEnv } from "./shared/load-env";
 
 type Logger = typeof import("@elizaos/cloud-shared/lib/utils/logger").logger;
-type Repo =
-  typeof import("@elizaos/cloud-shared/db/repositories/agent-sandboxes").agentSandboxesRepository;
+type FindAgentSandboxRoutingById =
+  typeof import("@elizaos/cloud-shared/db/agent-sandbox-routing").findAgentSandboxRoutingById;
 
 interface RouterDeps {
   logger: Logger;
-  agentSandboxesRepository: Repo;
+  findAgentSandboxRoutingById: FindAgentSandboxRoutingById;
 }
 
 interface AgentRouterConfig {
@@ -37,6 +39,21 @@ interface AgentRouterConfig {
 
 const DEFAULT_PORT = 3458;
 const DEFAULT_BIND_HOST = "127.0.0.1";
+const DEFAULT_AGENT_BASE_DOMAIN = "elizacloud.ai";
+const AGENT_ID_RE =
+  /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+const HOP_BY_HOP_HEADERS = new Set([
+  "connection",
+  "content-length",
+  "expect",
+  "host",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "upgrade",
+]);
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -58,10 +75,11 @@ let depsPromise: Promise<RouterDeps> | null = null;
 async function loadDeps(): Promise<RouterDeps> {
   if (!depsPromise) {
     depsPromise = Promise.all([
-      import("@elizaos/cloud-shared/db/repositories/agent-sandboxes"),
+      import("@elizaos/cloud-shared/db/agent-sandbox-routing"),
       import("@elizaos/cloud-shared/lib/utils/logger"),
-    ]).then(([repoModule, loggerModule]) => ({
-      agentSandboxesRepository: repoModule.agentSandboxesRepository,
+    ]).then(([agentRoutingModule, loggerModule]) => ({
+      findAgentSandboxRoutingById:
+        agentRoutingModule.findAgentSandboxRoutingById,
       logger: loggerModule.logger,
     }));
   }
@@ -72,12 +90,15 @@ interface RoutingResponse {
   headscaleIp: string;
   bridgePort: number;
   webUiPort: number;
+  bridgeTarget: string;
+  webTarget: string;
   target: string;
 }
 
 interface SandboxRoutingFields {
   status: string;
   bridge_url?: string | null;
+  bridge_port?: number | null;
   headscale_ip?: string | null;
   web_ui_port?: number | null;
 }
@@ -90,11 +111,12 @@ export function resolveSandboxRouting(
   sandbox: SandboxRoutingFields | null | undefined,
   options: SandboxRoutingOptions = {},
 ): RoutingResponse | null {
-  if (!sandbox || sandbox.status !== "running" || !sandbox.web_ui_port) {
+  if (sandbox?.status !== "running" || !sandbox.web_ui_port) {
     return null;
   }
 
-  let bridgePort: number | null = null;
+  let bridgePort: number | null =
+    typeof sandbox.bridge_port === "number" ? sandbox.bridge_port : null;
   let bridgeHost: string | null = null;
   if (sandbox.bridge_url) {
     try {
@@ -102,10 +124,9 @@ export function resolveSandboxRouting(
       bridgeHost = options.allowBridgeHostFallback
         ? parsed.hostname || null
         : null;
-      bridgePort = parsed.port ? Number.parseInt(parsed.port, 10) : null;
+      bridgePort ??= parsed.port ? Number.parseInt(parsed.port, 10) : null;
     } catch {
       bridgeHost = null;
-      bridgePort = null;
     }
   }
 
@@ -116,12 +137,36 @@ export function resolveSandboxRouting(
   }
 
   const webUiPort = sandbox.web_ui_port;
+  const bridgeTarget = `${host}:${bridgePort}`;
+  const webTarget = `${host}:${webUiPort}`;
   return {
     headscaleIp: host,
     bridgePort,
     webUiPort,
-    target: `${host}:${webUiPort}`,
+    bridgeTarget,
+    webTarget,
+    target: webTarget,
   };
+}
+
+export function selectAgentProxyTarget(
+  routing: Pick<RoutingResponse, "bridgeTarget" | "webTarget">,
+  pathname: string,
+): string {
+  if (
+    pathname === "/bridge" ||
+    pathname === "/v1/chat/completions" ||
+    pathname.startsWith("/api/agents") ||
+    pathname.startsWith("/api/conversations") ||
+    pathname.startsWith("/api/messaging") ||
+    pathname.startsWith("/api/restore") ||
+    pathname.startsWith("/api/snapshot") ||
+    pathname.startsWith("/api/wallet")
+  ) {
+    return routing.bridgeTarget;
+  }
+
+  return routing.webTarget;
 }
 
 export function isBridgeHostFallbackEnabled(
@@ -136,17 +181,120 @@ export function isBridgeHostFallbackEnabled(
 export async function resolveAgentRouting(
   agentId: string,
 ): Promise<RoutingResponse | null> {
-  const { agentSandboxesRepository } = await loadDeps();
-  const sandbox = await agentSandboxesRepository.findById(agentId);
+  const { findAgentSandboxRoutingById } = await loadDeps();
+  const sandbox = await findAgentSandboxRoutingById(agentId);
   return resolveSandboxRouting(sandbox, {
     allowBridgeHostFallback: isBridgeHostFallbackEnabled(),
   });
 }
 
-const AGENT_ID_RE =
-  /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+export function extractAgentIdFromHost(
+  hostHeader: string | undefined,
+  baseDomain = process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN ??
+    DEFAULT_AGENT_BASE_DOMAIN,
+): string | null {
+  const hostname = hostHeader?.split(":")[0]?.trim().toLowerCase();
+  const normalizedBaseDomain = baseDomain.trim().toLowerCase();
+  if (!hostname || !normalizedBaseDomain) return null;
 
-async function handleRequest(url: URL): Promise<Response> {
+  const suffix = `.${normalizedBaseDomain}`;
+  if (!hostname.endsWith(suffix)) return null;
+
+  const subdomain = hostname.slice(0, -suffix.length);
+  if (!AGENT_ID_RE.test(subdomain)) return null;
+  return subdomain;
+}
+
+function headerValue(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) return value[0];
+  return value;
+}
+
+function getEffectiveHost(req: IncomingMessage): string | undefined {
+  return headerValue(req.headers["x-forwarded-host"]) ?? req.headers.host;
+}
+
+async function readIncomingBody(
+  req: IncomingMessage,
+): Promise<Uint8Array | undefined> {
+  const chunks: Uint8Array[] = [];
+  let totalLength = 0;
+  for await (const chunk of req) {
+    const bytes =
+      typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk;
+    chunks.push(bytes);
+    totalLength += bytes.byteLength;
+  }
+  if (chunks.length === 0) return undefined;
+  const body = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
+}
+
+function buildProxyHeaders(req: IncomingMessage, target: string): Headers {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (!value || HOP_BY_HOP_HEADERS.has(name.toLowerCase())) continue;
+    if (Array.isArray(value)) {
+      for (const item of value) headers.append(name, item);
+    } else {
+      headers.set(name, value);
+    }
+  }
+
+  headers.set("host", target);
+  if (req.headers.host) headers.set("x-forwarded-host", req.headers.host);
+  if (!headers.has("x-forwarded-proto"))
+    headers.set("x-forwarded-proto", "http");
+  const forwardedFor = req.socket.remoteAddress;
+  if (forwardedFor) {
+    const existing = headers.get("x-forwarded-for");
+    headers.set(
+      "x-forwarded-for",
+      existing ? `${existing}, ${forwardedFor}` : forwardedFor,
+    );
+  }
+  return headers;
+}
+
+async function proxyAgentRequest(
+  agentId: string,
+  url: URL,
+  req: IncomingMessage,
+): Promise<Response> {
+  const routing = await resolveAgentRouting(agentId);
+  if (!routing) {
+    return Response.json(
+      { error: "agent not found or not running" },
+      { status: 404 },
+    );
+  }
+
+  const target = selectAgentProxyTarget(routing, url.pathname);
+  const targetUrl = new URL(`${url.pathname}${url.search}`, `http://${target}`);
+  const method = req.method ?? "GET";
+  const init: RequestInit = {
+    method,
+    headers: buildProxyHeaders(req, target),
+    redirect: "manual",
+    signal: AbortSignal.timeout(120_000),
+  };
+  if (method !== "GET" && method !== "HEAD") {
+    const body = await readIncomingBody(req);
+    if (body) init.body = body;
+  }
+
+  return fetch(targetUrl, init);
+}
+
+async function handleRequest(
+  url: URL,
+  req?: IncomingMessage,
+): Promise<Response> {
   if (url.pathname === "/healthz") {
     return Response.json({ ok: true }, { status: 200 });
   }
@@ -156,6 +304,8 @@ async function handleRequest(url: URL): Promise<Response> {
     /^\/agents\/([^/]+)\/(headscale-ip|routing)$/,
   );
   if (!match) {
+    const agentId = req ? extractAgentIdFromHost(getEffectiveHost(req)) : null;
+    if (agentId && req) return proxyAgentRequest(agentId, url, req);
     return Response.json({ error: "not found" }, { status: 404 });
   }
   const agentId = match[1];
@@ -172,12 +322,25 @@ async function handleRequest(url: URL): Promise<Response> {
   return Response.json(routing, { status: 200 });
 }
 
+async function sendResponse(
+  res: ServerResponse,
+  response: Response,
+): Promise<void> {
+  res.statusCode = response.status;
+  response.headers.forEach((v, k) => {
+    res.setHeader(k, v);
+  });
+  const body = new Uint8Array(await response.arrayBuffer());
+  res.end(body);
+}
+
 let server: import("node:http").Server | null = null;
 let shuttingDown = false;
 
 async function main(): Promise<void> {
   loadLocalEnv(import.meta.url);
   const config = readRouterConfig();
+  await resolveAgentRouting("00000000-0000-4000-8000-000000000000");
 
   const { createServer } = await import("node:http");
   server = createServer((req, res) => {
@@ -185,17 +348,8 @@ async function main(): Promise<void> {
       req.url ?? "/",
       `http://${req.headers.host || "localhost"}`,
     );
-    handleRequest(url)
-      .then((response) => {
-        res.statusCode = response.status;
-        response.headers.forEach((v, k) => {
-          res.setHeader(k, v);
-        });
-        return response.text();
-      })
-      .then((body) => {
-        res.end(body);
-      })
+    handleRequest(url, req)
+      .then((response) => sendResponse(res, response))
       .catch((err) => {
         const error = err instanceof Error ? err.message : String(err);
         void loadDeps()

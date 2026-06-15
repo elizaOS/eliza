@@ -15,12 +15,35 @@
  * it without importing the HTTP route module.
  */
 
+/**
+ * One addressable element in the active view, as reported by the shell's
+ * agent-surface registry (POST /api/views/:id/elements). Mirrors the
+ * list-elements snapshot shape so the planner can act on an element by id
+ * (agent-click / agent-fill / agent-focus) without a list-elements round-trip.
+ */
+export interface ActiveViewElement {
+  id: string;
+  role: string;
+  label: string;
+  value?: string;
+  focused?: boolean;
+}
+
+/** Cap on elements rendered into the awareness block to bound prompt growth. */
+export const ACTIVE_VIEW_ELEMENT_RENDER_CAP = 40;
+
 /** Minimal description of the view the shell is currently showing. */
 export interface ActiveViewContext {
   viewId: string;
   viewLabel: string;
   viewType: "gui" | "tui" | "xr";
   viewPath: string | null;
+  /**
+   * Live snapshot of the view's addressable elements, when the shell has
+   * reported one. Absent until a report arrives (and re-cleared on navigation),
+   * so the awareness block degrades gracefully to "use list-elements".
+   */
+  elements?: readonly ActiveViewElement[];
 }
 
 let activeView: ActiveViewContext | null = null;
@@ -35,6 +58,21 @@ export function getActiveViewContext(): ActiveViewContext | null {
 
 export function clearActiveViewContext(): void {
   activeView = null;
+}
+
+/**
+ * Update the element snapshot for the active view. Gated on `viewId` matching
+ * the current active view so a stale or background view's report (the shell may
+ * have several mounted surfaces) can never overwrite the foreground view's
+ * elements. Returns false when no view is active or the id differs.
+ */
+export function setActiveViewElements(
+  viewId: string,
+  elements: readonly ActiveViewElement[],
+): boolean {
+  if (!activeView || activeView.viewId !== viewId) return false;
+  activeView = { ...activeView, elements };
+  return true;
 }
 
 /**
@@ -55,7 +93,7 @@ export function clearActiveViewContext(): void {
  * ViewDeclaration, action `name:` from that plugin's (or a thematically paired
  * plugin's) action source. Actions are plugin-conditional: when the owning
  * plugin is not loaded the name is simply not registered and the weighting is a
- * no-op (no error). Sources:
+ * missing-plugin skip (no error). Sources:
  *   wallet      — view plugins/plugin-wallet-ui; actions plugins/plugin-wallet
  *                 (chains/evm/actions swap+transfer, chains generated specs)
  *   polymarket  — plugins/plugin-polymarket-app/src/actions.ts (POLYMARKET_STATUS)
@@ -158,14 +196,41 @@ export function renderActiveViewContextBlock(view: ActiveViewContext): string {
       `Actions most relevant while on this view (prefer these when the request fits): ${scoped.join(", ")}.`,
     );
   }
+  const elements = view.elements ?? [];
+  if (elements.length > 0) {
+    // Focused element first, then declared order; cap to bound prompt growth.
+    const ordered = [...elements].sort(
+      (a, b) => Number(b.focused ?? false) - Number(a.focused ?? false),
+    );
+    const shown = ordered.slice(0, ACTIVE_VIEW_ELEMENT_RENDER_CAP);
+    lines.push(
+      "Addressable elements currently in this view (act on these by id — no list-elements call needed):",
+    );
+    for (const el of shown) {
+      const value =
+        typeof el.value === "string" && el.value.length > 0
+          ? ` = ${JSON.stringify(el.value)}`
+          : "";
+      const focused = el.focused ? " (focused)" : "";
+      lines.push(
+        `- ${el.id} [${el.role}] ${JSON.stringify(el.label)}${value}${focused}`,
+      );
+    }
+    if (elements.length > shown.length) {
+      lines.push(
+        `- …and ${elements.length - shown.length} more — call list-elements for the rest.`,
+      );
+    }
+  }
   return lines.join("\n");
 }
 
 /**
  * Inject the active-view awareness block into a planner prompt. Idempotent
- * (skips if the block is already present) and a no-op when no view is active.
- * Placed just before the "# Available Actions" header so view context sits next
- * to the tool catalogue; falls back to prepending when that header is absent.
+ * (skips if the block is already present) and leaves the prompt unchanged when
+ * no view is active. Placed just before the "# Available Actions" header so
+ * view context sits next to the tool catalogue; falls back to prepending when
+ * that header is absent.
  */
 export function applyActiveViewAwareness(
   prompt: string,

@@ -4,7 +4,7 @@ Deterministic ELIZA-style pattern-matching model handlers for [elizaOS](https://
 
 ## What it does
 
-This plugin registers model handlers that intercept text-inference calls an Eliza agent makes and replies with keyword-pattern responses modelled after the 1966 ELIZA chatbot. It does not register embeddings; load a real embedding provider when retrieval or knowledge search is enabled.
+This plugin registers model handlers that intercept every text-inference call an Eliza agent makes and replies with keyword-pattern responses modelled after the 1966 ELIZA chatbot. It also provides a deterministic lexical embedding handler that returns a normalized 1536-dimensional hashing vector.
 
 Use cases:
 
@@ -17,7 +17,7 @@ Use cases:
 | Capability | Detail |
 |---|---|
 | Text generation | Pattern-matches the user turn using ~16 keyword regexes (mother, feel, think, want, I am, …) and returns a reflective question. Falls back to "Please go on." |
-| Embeddings | Not registered. Use a real embedding provider for semantic retrieval. |
+| Embeddings | Returns a deterministic normalized 1536-dim lexical hashing vector. Useful for offline smoke tests and rough lexical similarity; not a neural semantic embedding. |
 
 Exported helpers:
 - `generateElizaResponse(input: string): string` — run the pattern matcher directly.
@@ -42,7 +42,7 @@ const agent = new AgentRuntime({
 });
 ```
 
-The plugin declares `priority: 200`. If loaded alongside a real LLM plugin, it will win the model-handler election for the text and planning `ModelType` variants it registers unless the other plugin declares a higher priority. To use it only as a fallback, load it before (lower index than) any real LLM plugin and ensure that plugin declares `priority > 200`.
+The plugin declares `priority: 200`. If loaded alongside a real LLM plugin, it will win the model-handler election for all `ModelType` variants unless the other plugin declares a higher priority. To use it only as a fallback, load it before (lower index than) any real LLM plugin and ensure that plugin declares `priority > 200`.
 
 ## Required configuration
 

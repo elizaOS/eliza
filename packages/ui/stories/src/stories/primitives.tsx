@@ -74,12 +74,6 @@ import {
   HoverCardTrigger,
 } from "@ui-src/components/ui/hover-card.tsx";
 import { Input } from "@ui-src/components/ui/input.tsx";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-  InputGroupText,
-} from "@ui-src/components/ui/input-group.tsx";
 import { Label } from "@ui-src/components/ui/label.tsx";
 import {
   Pagination,
@@ -106,15 +100,6 @@ import {
   SelectValue,
 } from "@ui-src/components/ui/select.tsx";
 import { Separator } from "@ui-src/components/ui/separator.tsx";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@ui-src/components/ui/sheet.tsx";
 import { Skeleton } from "@ui-src/components/ui/skeleton.tsx";
 import { Slider } from "@ui-src/components/ui/slider.tsx";
 import { Spinner } from "@ui-src/components/ui/spinner.tsx";
@@ -399,7 +384,7 @@ export const primitiveStories: StoryDefinition[] = [
     render: () => (
       <>
         <Avatar>
-          <AvatarImage src="https://elizaos.com/avatar.png" alt="" />
+          <AvatarImage src="/brand/logos/logo_orange_nobg.svg" alt="" />
           <AvatarFallback>EZ</AvatarFallback>
         </Avatar>
         <Avatar>
@@ -694,30 +679,6 @@ export const primitiveStories: StoryDefinition[] = [
     ),
   },
   {
-    id: "p-sheet",
-    name: "Sheet",
-    importPath:
-      'import { Sheet, SheetTrigger, SheetContent, ... } from "@elizaos/ui/components/ui/sheet"',
-    render: () => (
-      <Sheet>
-        <SheetTrigger asChild>
-          <Button variant="outline">Open sheet</Button>
-        </SheetTrigger>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>Agent settings</SheetTitle>
-            <SheetDescription>
-              Configure your local Eliza agent.
-            </SheetDescription>
-          </SheetHeader>
-          <SheetFooter>
-            <Button>Save</Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
-    ),
-  },
-  {
     id: "p-skeleton",
     name: "Skeleton",
     importPath: 'import { Skeleton } from "@elizaos/ui/components/ui/skeleton"',
@@ -880,23 +841,6 @@ export const primitiveStories: StoryDefinition[] = [
           action={<Button size="sm">Create agent</Button>}
         />
       </div>
-    ),
-  },
-  {
-    id: "p-input-group",
-    name: "InputGroup",
-    importPath:
-      'import { InputGroup, InputGroupInput, InputGroupAddon, InputGroupText } from "@elizaos/ui/components/ui/input-group"',
-    render: () => (
-      <InputGroup style={{ width: 260 }}>
-        <InputGroupAddon>
-          <Search />
-        </InputGroupAddon>
-        <InputGroupInput placeholder="Search models..." />
-        <InputGroupAddon align="inline-end">
-          <InputGroupText>cmd+K</InputGroupText>
-        </InputGroupAddon>
-      </InputGroup>
     ),
   },
   {

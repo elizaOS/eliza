@@ -24,14 +24,16 @@ mercy of the floating `master` and reproducibility breaks.
 ## Manifest
 
 [`compiler/aosp/manifest.xml`](../../compiler/aosp/manifest.xml) holds the
-pinned-but-empty placeholder. The `revision` attribute is
-`TODO_PIN_AOSP_RISCV_BRANCH_SHA` and the project list is empty by intent:
-either a real SHA lives there with the full project list, or the gate
-fails closed.
+pinned manifest commit. The `revision` attribute is
+`6dc9af1b583e5c6a4ab9c38e3f5646efd8079b7d`, resolved from
+`android-latest-release` on 2026-05-22. The project list is empty by intent:
+the manifest pin supports reproducible toolchain-profile work, while Android
+boot or CTS claims still require explicit project SHA capture and BSP evidence.
 
 ## Status
 
-**BLOCKED.** Refresh procedure once Google stabilizes:
+**BLOCKED for Android boot claims.** Refresh procedure once Google stabilizes
+the full AOSP RISC-V project set:
 
 1. Identify the branch (e.g. `android-15.0.0_r4-riscv64`).
 2. Run `repo init -u https://android.googlesource.com/platform/manifest -b <branch>`.

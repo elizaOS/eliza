@@ -5,8 +5,8 @@ import {
 } from "@feed/agents";
 import { calculatePortfolioBreakdown } from "@feed/engine";
 import { toISO, toISOOrNull } from "@feed/shared";
-import { getAgent0TokenIdByAgentId } from "./agent0-token-ids";
 import { getUserPositionsSnapshot } from "@/lib/markets/user-positions";
+import { getAgent0TokenIdByAgentId } from "./agent0-token-ids";
 
 function normalizeModelTier(value: string | null | undefined): "free" | "pro" {
   return value === "pro" ? "pro" : "free";
@@ -20,9 +20,13 @@ export async function getAgentSidebarSummary({
   agentId: string;
 }) {
   // `getAgent(agentId, ownerId)` is the ownership gate for the entire summary.
-  const [agent, performance, config, portfolio, positions, agent0TokenId] =
+  const agent = await agentService.getAgent(agentId, ownerId);
+  if (!agent) {
+    throw new Error(`Agent ${agentId} not found`);
+  }
+
+  const [performance, config, portfolio, positions, agent0TokenId] =
     await Promise.all([
-      agentService.getAgent(agentId, ownerId),
       agentService.getPerformance(agentId),
       getAgentConfig(agentId),
       calculatePortfolioBreakdown(agentId),
@@ -33,10 +37,6 @@ export async function getAgentSidebarSummary({
       }),
       getAgent0TokenIdByAgentId(agentId),
     ]);
-
-  if (!agent) {
-    throw new Error(`Agent ${agentId} not found`);
-  }
 
   if (!portfolio) {
     throw new Error(`Portfolio breakdown not found for agent ${agentId}`);

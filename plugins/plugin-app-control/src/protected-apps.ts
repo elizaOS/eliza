@@ -2,8 +2,7 @@
  * @module plugin-app-control/protected-apps
  *
  * Resolves the canonical set of "protected" app names that callers must not
- * be able to override via `APP load_from_directory` (or any future
- * delete/uninstall flow).
+ * be able to override via `APP load_from_directory` or delete/uninstall flows.
  *
  * The protected set is the union of two sources:
  *

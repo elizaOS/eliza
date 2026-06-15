@@ -4,7 +4,7 @@
  * When a user types the bare token `analysis` (or `as you were` to disable),
  * this module toggles a per-room debug flag and short-circuits the rest of
  * the planner pipeline so the agent never hallucinates a "performing an
- * analysis" reply. The token grammar mirrors the agent-side scaffold at
+ * analysis" reply. The token grammar mirrors the agent-side runtime hook at
  * `packages/agent/src/runtime/analysis-mode-flag.ts`. We intentionally
  * re-implement the regex + env-gate locally instead of importing from
  * `@elizaos/agent`: `core` is upstream of `agent` and cannot depend on it.
@@ -21,10 +21,9 @@
  * Sidecar attachment (the four debug payloads — thinking, planned actions,
  * simple-mode flag, evaluator output) is implemented as `appendAnalysisSidecar`
  * but is only invoked from the activation-confirmation path in this wave.
- * Wiring it at the response-emit site is intentionally PUNT until the
- * SSE event type and UI sidecar component exist; surfacing it via the
- * activation echo would silently teach users a payload format we may
- * still revise.
+ * Response-emit wiring requires a dedicated SSE event type and UI sidecar
+ * component; until those exist, activation echoes avoid exposing a debug
+ * payload format as user-facing contract.
  */
 
 const ANALYSIS_TOKEN = /^\s*analysis\s*$/i;
@@ -146,10 +145,9 @@ export interface AnalysisSidecarPayload {
 /**
  * Append a debug sidecar to the user-facing text. Only called when the
  * per-room flag is enabled. The delimiter format is intentionally
- * deterministic so a future UI sidecar component can split on it.
+ * deterministic so UI sidecar components can split on it.
  *
- * The full SSE event + UI sidecar wiring is PUNT — this helper is
- * exported for unit testing the format only.
+ * This helper is exported for unit testing the sidecar format.
  */
 export function appendAnalysisSidecar(
 	text: string,

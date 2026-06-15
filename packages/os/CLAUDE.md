@@ -36,7 +36,7 @@ packages/os/
     crates/elizad/             Rust-based elizad system daemon (gen/ only so far)
     scripts/                   build helpers (prepare-elizaos-app-overlay.mjs, usb-write.sh …)
     schemas/                   JSON schemas: model-catalog, update-manifest
-    docs/                      engineering docs (status, roadmap, security, runtime packaging …)
+    docs/                      engineering docs (status, release planning, security, runtime packaging …)
     vm/                        VM artifact scripts (output/, scripts/)
     confidential/              TEE/confidential-compute profile (Yocto scaffold, BLOCKED)
 
@@ -98,7 +98,7 @@ packages/os/
     VERIFY.md                  release verification docs
     beta-2026-05-16/manifest.json   configured default manifest path in os-release-lib.mjs (not yet created; create when cutting a release)
 
-  docs/                        Engineering notes (TEE plan, CI/CD roadmap, release plan, apt repo)
+  docs/                        Engineering notes (TEE plan, CI/CD production plan, release plan, apt repo)
 ```
 
 ## Key exports / surface

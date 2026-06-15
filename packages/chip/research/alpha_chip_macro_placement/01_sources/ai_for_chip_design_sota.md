@@ -1303,7 +1303,7 @@ power, and manufacturing preparation.
   GNN saliency for constrained I/O test-point ranking, X-source-aware
   testability prediction, and InF-ATPG-style fanout-free-region partitioning
   with ATPG-specific circuit features for QGNN/RL policy guidance.
-- E1 fit: roadmap item after conventional DFT artifacts exist; no training,
+- E1 fit: tracked requirement after conventional DFT artifacts exist; no training,
   inserted test points, generated patterns, fault waivers, backtrack-reduction
   claims, or fault-coverage claims until netlist and fault-list hashes,
   masked-I/O and X-source manifests, FFR/graph feature manifests,

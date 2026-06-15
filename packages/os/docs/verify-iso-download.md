@@ -4,7 +4,7 @@ When you download an elizaOS Live ISO from a GitHub Release, you should
 verify that the file you received is the file elizaOS actually built
 and signed — before you flash it to a USB stick and boot from it. This
 guide walks through the three checks every release publishes (once the
-release pipeline is green; see [ci-cd-prod-roadmap.md](./ci-cd-prod-roadmap.md)
+release pipeline is green; see [ci-cd-production-plan.md](./ci-cd-production-plan.md)
 for the current status).
 
 ## What ships with each release
@@ -173,7 +173,7 @@ It does **not** guarantee:
 
 ## Related
 
-- [ci-cd-prod-roadmap.md](./ci-cd-prod-roadmap.md) — why some of the
+- [ci-cd-production-plan.md](./ci-cd-production-plan.md) — why some of the
   scaffolding above doesn't yet produce releases (8+ days of nightly
   red as of 2026-05-25; PR #7950 unblocks).
 - [actions/attest-build-provenance](https://github.com/actions/attest-build-provenance)

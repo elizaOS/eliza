@@ -1,4 +1,7 @@
 import type {
+  DMEventV2,
+  GetDMEventV2Params,
+  PostDMInConversationResult,
   TTweetv2Expansion,
   TTweetv2MediaField,
   TTweetv2PlaceField,
@@ -65,6 +68,8 @@ import {
   retweet,
   type Tweet,
   type TweetQuery,
+  unlikeTweet,
+  unretweet,
 } from "./tweets";
 
 const _twUrl = "https://twitter.com";
@@ -893,6 +898,15 @@ export class Client {
   }
 
   /**
+   * Unlikes a tweet with the given tweet ID.
+   * @param tweetId The ID of the tweet to unlike.
+   * @returns A promise that resolves when the tweet is unliked.
+   */
+  public async unlikeTweet(tweetId: string): Promise<void> {
+    await unlikeTweet(tweetId, this.requireAuth());
+  }
+
+  /**
    * Retweets a tweet with the given tweet ID.
    * @param tweetId The ID of the tweet to retweet.
    * @returns A promise that resolves when the tweet is retweeted.
@@ -900,6 +914,15 @@ export class Client {
   public async retweet(tweetId: string): Promise<void> {
     // Call the retweet function from tweets.ts
     await retweet(tweetId, this.requireAuth());
+  }
+
+  /**
+   * Removes the authenticated user's retweet for the given tweet ID.
+   * @param tweetId The ID of the tweet to unretweet.
+   * @returns A promise that resolves when the tweet is unretweeted.
+   */
+  public async unretweet(tweetId: string): Promise<void> {
+    await unretweet(tweetId, this.requireAuth());
   }
 
   /**
@@ -914,34 +937,52 @@ export class Client {
 
   /**
    * Fetches direct message conversations
-   * Note: This functionality requires additional permissions and is not implemented in the current Twitter API v2 wrapper
+   * Note: This functionality requires direct message permissions on the authenticated app.
    * @param userId User ID
    * @param cursor Pagination cursor
    * @returns Array of DM conversations
    */
   public async getDirectMessageConversations(
-    _userId: string,
-    _cursor?: string,
-  ): Promise<{ conversations: unknown[] }> {
-    console.warn(
-      "Direct message conversations not implemented for Twitter API v2",
-    );
-    return { conversations: [] };
+    userId: string,
+    cursor?: string,
+  ): Promise<{ conversations: DMEventV2[] }> {
+    const client = await this.requireAuth().getV2Client();
+    const options: Partial<GetDMEventV2Params> = {
+      "dm_event.fields": [
+        "id",
+        "text",
+        "event_type",
+        "created_at",
+        "sender_id",
+        "dm_conversation_id",
+        "participant_ids",
+      ],
+      event_types: ["MessageCreate"],
+      ...(cursor ? { pagination_token: cursor } : {}),
+    };
+
+    const timeline = userId
+      ? await client.v2.listDmEventsWithParticipant(userId, options)
+      : await client.v2.listDmEvents(options);
+
+    return { conversations: timeline.events ?? [] };
   }
 
   /**
    * Sends a direct message to a user.
-   * Note: This functionality requires additional permissions and is not implemented in the current Twitter API v2 wrapper
+   * Note: This functionality requires direct message permissions on the authenticated app.
    * @param conversationId The ID of the conversation
    * @param text The text of the message
    * @returns The response from the Twitter API
    */
   public async sendDirectMessage(
-    _conversationId: string,
-    _text: string,
-  ): Promise<never> {
-    console.warn("Sending direct messages not implemented for Twitter API v2");
-    throw new Error("Direct message sending not implemented");
+    conversationId: string,
+    text: string,
+  ): Promise<{ id: string; data: PostDMInConversationResult }> {
+    const client = await this.requireAuth().getV2Client();
+    const data = await client.v2.sendDmInConversation(conversationId, { text });
+
+    return { id: data.dm_event_id, data };
   }
 
   private handleResponse<T>(res: RequestApiResult<T>): T {

@@ -1,7 +1,7 @@
 /*
  * Internal layout shared by the wakeword runtime TUs.
  *
- * Phase 2 reconciles these constants with the openWakeWord upstream
+ * These constants are reconciled with the openWakeWord upstream
  * exactly. The numbers are read from each GGUF's metadata at session
  * open and re-validated against these macros — a mismatch is hard
  * `-EINVAL`, never silently accepted (see `wakeword_runtime.c`).

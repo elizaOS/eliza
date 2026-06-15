@@ -112,7 +112,7 @@ export class AinexBridgeClient {
     return this.connectPromise;
   }
 
-  /** Close the websocket. No-op when already closed. */
+  /** Close the websocket. Returns cleanly when already closed. */
   async disconnect(): Promise<void> {
     this.closing = true;
     const ws = this.ws;
@@ -151,7 +151,9 @@ export class AinexBridgeClient {
     return new Promise<ResponseEnvelope>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(request_id);
-        reject(new Error(`bridge send timeout (command=${command}, ${timeoutMs}ms)`));
+        reject(
+          new Error(`bridge send timeout (command=${command}, ${timeoutMs}ms)`),
+        );
       }, timeoutMs);
       this.pending.set(request_id, { resolve, reject, timer });
       ws.send(JSON.stringify(envelope), (err?: Error) => {

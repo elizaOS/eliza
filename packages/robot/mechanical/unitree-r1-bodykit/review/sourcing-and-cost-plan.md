@@ -80,7 +80,7 @@ R1 base robot cost is not included above. Add the Unitree R1 cost separately: cu
 - Current face shell is a donor-derived parametric grid loft; it still needs surface-class review and final production DFM.
 - Current cost numbers are planning ranges and require supplier RFQ.
 
-## Procurement TODOs
+## Procurement Checklist
 
 - Ask Unitree for final R1 CAD/STEP or controlled mechanical envelopes for the exact purchased variant.
 - Quote one FDM prototype set from local ASA/PETG and one PA12/MJF set.

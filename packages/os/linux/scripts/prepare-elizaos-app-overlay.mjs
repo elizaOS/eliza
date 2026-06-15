@@ -267,7 +267,7 @@ export default modelTesterPlugin;
     "@elizaos/plugin-companion": `
 export const appCompanionPlugin = {
   name: "companion",
-  description: "Companion overlay placeholder for elizaOS Live. The full 3D companion bundle can be installed through app updates.",
+  description: "Live-safe companion overlay for elizaOS Live. The full 3D companion bundle can be installed through app updates.",
   actions: [],
   providers: [],
   services: [],
@@ -277,16 +277,16 @@ export const companionPlugin = appCompanionPlugin;
 export const registerCompanionApp = () => undefined;
 export default appCompanionPlugin;
 `,
-    "@elizaos/plugin-lifeops": `
-export const appLifeOpsPlugin = {
+    "@elizaos/plugin-personal-assistant": `
+export const personalAssistantPlugin = {
   name: "lifeops",
-  description: "LifeOps placeholder for elizaOS Live. Cloud connectors and proactive workflows become available after provider setup.",
+  description: "Live-safe LifeOps overlay for elizaOS Live. Cloud connectors and proactive workflows become available after provider setup.",
   actions: [],
   providers: [],
   services: [],
   routes: [],
 };
-export const lifeopsPlugin = {
+export const personalAssistantPlugin = {
   name: "lifeops-routes",
   routes: [],
 };
@@ -295,7 +295,7 @@ export const browserBridgeProvider = undefined;
 export const detectHealthBackend = () => ({ available: false, backend: "none" });
 export const handleLifeOpsRoutes = async () => false;
 export const handleWebsiteBlockerRoutes = async () => false;
-export default appLifeOpsPlugin;
+export default personalAssistantPlugin;
 `,
     "@elizaos/plugin-documents": `
 export const documentsPlugin = {
@@ -354,11 +354,11 @@ export const vincentPlugin = {
 export default vincentPlugin;
 `,
     "@elizaos/plugin-whatsapp": `
-const noop = () => undefined;
+const inert = () => undefined;
 const falseRoute = async () => false;
 
 export const WHATSAPP_MAX_PAIRING_SESSIONS = 0;
-export const applyWhatsAppQrOverride = noop;
+export const applyWhatsAppQrOverride = inert;
 export const handleWhatsAppRoute = falseRoute;
 export const sanitizeWhatsAppAccountId = (value) =>
   typeof value === "string" ? value.trim() : "";
@@ -447,7 +447,7 @@ export default undefined;
     "@elizaos/plugin-google": `
 export const googlePlugin = {
   name: "google",
-  description: "Google connector placeholder for elizaOS Live. OAuth setup can install the full connector package.",
+  description: "Live-safe Google connector shell for elizaOS Live. OAuth setup can install the full connector package.",
   actions: [],
   providers: [],
   services: [],
@@ -488,7 +488,7 @@ const forceLiveStubPackages = new Set([
   "@elizaos/plugin-documents",
   "@elizaos/plugin-google",
   "@elizaos/plugin-hyperliquid-app",
-  "@elizaos/plugin-lifeops",
+  "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-polymarket-app",
   "@elizaos/plugin-shopify-ui",
   "@elizaos/plugin-steward-app",

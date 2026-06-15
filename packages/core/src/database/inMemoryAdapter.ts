@@ -242,6 +242,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	private components = new Map<string, Component>();
 	private componentIdsByEntity = new Map<string, Set<string>>();
 	private componentIdsByNaturalKey = new Map<string, string>();
+	private relationships = new Map<string, Relationship>();
 	private rooms = new Map<string, Room>();
 	private worlds = new Map<string, World>();
 	private tasks = new Map<string, Task>();
@@ -274,6 +275,16 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			data: component.data
 				? ({ ...component.data } as Metadata)
 				: component.data,
+		};
+	}
+
+	private cloneRelationship(relationship: Relationship): Relationship {
+		return {
+			...relationship,
+			tags: [...relationship.tags],
+			metadata: relationship.metadata
+				? ({ ...relationship.metadata } as Metadata)
+				: relationship.metadata,
 		};
 	}
 
@@ -361,11 +372,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	}
 
 	async runPluginMigrations() {
-		// no-op
+		// Migration state is not persisted for process-local maps.
 	}
 
 	async runMigrations() {
-		// no-op
+		// Schema migrations are not required for process-local maps.
 	}
 
 	async isReady(): Promise<boolean> {
@@ -435,8 +446,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	}
 
 	async cleanupAgents(): Promise<void> {
-		// WHY no-op: InMemory adapter has no persistent storage, so no cleanup needed.
-		// Agents are automatically cleared when process restarts.
+		// Agent records are process-local and restart cleanup is handled by Map lifetime.
 	}
 
 	async getAgents(): Promise<Partial<Agent>[]> {
@@ -444,7 +454,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	}
 
 	async ensureEmbeddingDimension(_dimension: number): Promise<void> {
-		// no-op
+		// In-memory vectors are not schema-bound, so there is no dimension migration to apply.
 	}
 
 	async transaction<T>(
@@ -509,6 +519,18 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		let entityIds: UUID[] = [];
 		if (matchedComponentsByEntity.size > 0) {
 			entityIds = Array.from(matchedComponentsByEntity.keys()).map(asUuid);
+		} else if (!hasComponentQuery && _params.limit !== undefined) {
+			for (const entity of this.entities.values()) {
+				if (!entity.id) continue;
+				if (_params.agentId && entity.agentId !== _params.agentId) continue;
+				if (
+					_params.entityIds?.length &&
+					!_params.entityIds.includes(entity.id)
+				) {
+					continue;
+				}
+				entityIds.push(entity.id);
+			}
 		} else if (_params.entityIds?.length) {
 			entityIds = [..._params.entityIds];
 		} else {
@@ -757,7 +779,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		_updates: Array<{ componentId: UUID; ops: PatchOp[] }>,
 		_options?: { entityContext?: UUID },
 	): Promise<void> {
-		// InMemory does not persist components; no-op for compatibility.
+		// Components are already stored as whole records; patch operations are not modeled here.
 	}
 
 	async getMemories(params: {
@@ -1322,18 +1344,70 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	}
 
 	async getRelationshipsByPairs(
-		_pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>,
+		pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>,
 	): Promise<(Relationship | null)[]> {
-		return _pairs.map(() => null);
+		return pairs.map((pair) => {
+			const relationship = Array.from(this.relationships.values()).find(
+				(item) =>
+					item.sourceEntityId === pair.sourceEntityId &&
+					item.targetEntityId === pair.targetEntityId,
+			);
+			return relationship ? this.cloneRelationship(relationship) : null;
+		});
 	}
 
-	async getRelationships(_params: {
+	async getRelationships(params: {
 		entityIds?: UUID[];
+		entityId?: UUID;
 		tags?: string[];
 		limit?: number;
 		offset?: number;
 	}): Promise<Relationship[]> {
-		return [];
+		const entityIds = (
+			params.entityIds && params.entityIds.length > 0
+				? params.entityIds
+				: params.entityId
+					? [params.entityId]
+					: []
+		).filter((id): id is UUID => typeof id === "string" && id.length > 0);
+
+		if (entityIds.length === 0) {
+			return [];
+		}
+
+		const entitySet = new Set(entityIds);
+		const filtered = Array.from(this.relationships.values()).filter(
+			(relationship) => {
+				const matchesEntity =
+					entitySet.has(relationship.sourceEntityId) ||
+					entitySet.has(relationship.targetEntityId);
+				if (!matchesEntity) {
+					return false;
+				}
+
+				if (!params.tags || params.tags.length === 0) {
+					return true;
+				}
+
+				const relationshipTags = new Set(relationship.tags);
+				return params.tags.some((tag) => relationshipTags.has(tag));
+			},
+		);
+
+		const offset =
+			typeof params.offset === "number" && params.offset > 0
+				? params.offset
+				: 0;
+		const limit =
+			typeof params.limit === "number" && params.limit >= 0
+				? params.limit
+				: undefined;
+		const windowed =
+			limit === undefined
+				? filtered.slice(offset)
+				: filtered.slice(offset, offset + limit);
+
+		return windowed.map((relationship) => this.cloneRelationship(relationship));
 	}
 
 	// Batch relationship methods
@@ -1345,29 +1419,55 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			metadata?: Metadata;
 		}>,
 	): Promise<UUID[]> {
-		// WHY: InMemory adapter doesn't actually store relationships, but we return
-		// placeholder IDs to match the interface contract.
-		return relationships.map(() => {
-			const gen =
-				typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-					? crypto.randomUUID()
-					: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-			return gen as UUID;
+		return relationships.map((relationship) => {
+			const id = randomUuid();
+			this.relationships.set(id, {
+				id,
+				sourceEntityId: relationship.sourceEntityId,
+				targetEntityId: relationship.targetEntityId,
+				agentId: DEFAULT_UUID,
+				tags: relationship.tags ? [...relationship.tags] : [],
+				metadata: relationship.metadata
+					? ({ ...relationship.metadata } as Metadata)
+					: {},
+				createdAt: new Date().toISOString(),
+			});
+			return id;
 		});
 	}
 
 	async getRelationshipsByIds(
-		_relationshipIds: UUID[],
+		relationshipIds: UUID[],
 	): Promise<Relationship[]> {
-		return [];
+		return relationshipIds
+			.map((relationshipId) => this.relationships.get(String(relationshipId)))
+			.filter((relationship): relationship is Relationship =>
+				Boolean(relationship),
+			)
+			.map((relationship) => this.cloneRelationship(relationship));
 	}
 
-	async updateRelationships(_relationships: Relationship[]): Promise<void> {
-		// no-op
+	async updateRelationships(relationships: Relationship[]): Promise<void> {
+		for (const relationship of relationships) {
+			const existing = this.relationships.get(String(relationship.id));
+			this.relationships.set(String(relationship.id), {
+				...relationship,
+				tags: relationship.tags ? [...relationship.tags] : [],
+				metadata: relationship.metadata
+					? ({ ...relationship.metadata } as Metadata)
+					: {},
+				createdAt:
+					relationship.createdAt ??
+					existing?.createdAt ??
+					new Date().toISOString(),
+			});
+		}
 	}
 
-	async deleteRelationships(_relationshipIds: UUID[]): Promise<void> {
-		// no-op
+	async deleteRelationships(relationshipIds: UUID[]): Promise<void> {
+		for (const relationshipId of relationshipIds) {
+			this.relationships.delete(String(relationshipId));
+		}
 	}
 
 	// Batch cache methods

@@ -699,9 +699,9 @@ deprecated and will be removed from the runtime path once all native ports land.
 
 | Model | Gate | Owner | Est. |
 |---|---|---|---|
-| Wav2Small emotion | `voice-classifier-cpp/src/voice_emotion_*.c` returns `-ENOSYS` | K1 | 1 worker-day |
-| WeSpeaker R34-LM | `voice-classifier-cpp/src/voice_speaker_*.c` returns `-ENOSYS` | K2 | 2 worker-days |
-| pyannote-3 diarizer | `voice-classifier-cpp/src/voice_diarizer_*.c` returns `-ENOSYS`; diarizer-ggml.ts exists but C side not implemented | K3 | 1 worker-day |
+| Wav2Small emotion | scalar C forward exists in `voice-classifier-cpp/src/voice_emotion.c`; production TS still routes ONNX until GGUF binding/parity promotion | K1 | parity + pipeline promotion |
+| WeSpeaker R34-LM | scalar C forward exists in `voice-classifier-cpp/src/voice_speaker.c`; production TS still routes ONNX until GGUF binding/parity promotion | K2 | parity + pipeline promotion |
+| pyannote-3 diarizer | scalar C forward exists in `voice-classifier-cpp/src/voice_diarizer.c`; production TS still routes ONNX until GGUF binding/parity promotion | K3 | parity + pipeline promotion |
 | LiveKit EOT (ONNX last-resort) | ONNX is last-resort in engine.ts chain (Eliza1Eot → GgmlTD → OnnxTD → Heuristic); ONNX reachable when GGUF not on disk | K7/J1.d | Remove OnnxTD from chain or guarantee GGUF on all tiers |
 | Kokoro ONNX runway | `KokoroOnnxRuntime` reachable via `KOKORO_BACKEND=onnx` | K4 | Remove class after K4 GGUF lands |
 

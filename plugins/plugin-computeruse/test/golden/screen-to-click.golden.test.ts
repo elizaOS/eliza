@@ -3,16 +3,16 @@
  *
  * This test validates PLUMBING, not pixels. Every model-bearing component
  * (screen capture, OCR, VLM grounding) is replaced with a deterministic
- * stub that emits a fixed result for a known fixture. The assertion is
+ * fixture provider that emits a fixed result for a known fixture. The assertion is
  * that the orchestrated golden path produces a click coordinate inside
  * the OCR-detected bbox.
  *
  * The bottom test (`via the live cascade`) wires the WS7 Brain/Cascade/
- * Dispatch stack against an OCR-only Scene and a stubbed Brain, then
+ * Dispatch stack against an OCR-only Scene and a deterministic Brain fixture, then
  * checks the same coordinate-inside-bbox property end-to-end. That's the
  * integration anchor for WS10: once WS2 vision-arbiter is the source of
- * the IMAGE_DESCRIPTION model and WS8 produces the OCR boxes, replace
- * the stubs and the assertions still hold.
+ * the IMAGE_DESCRIPTION model and WS8 produces the OCR boxes, the same
+ * assertions remain the integration contract.
  */
 
 import { describe, expect, it } from "vitest";
@@ -29,7 +29,7 @@ import type { Scene } from "../../src/scene/scene-types.js";
 import type { DisplayDescriptor } from "../../src/types.js";
 
 /* --------------------------------------------------------------------- */
-/* Stub contracts (these mirror the WS2/WS8 expected interfaces).         */
+/* Fixture contracts (these mirror the WS2/WS8 expected interfaces).      */
 /* --------------------------------------------------------------------- */
 
 interface BBox {
@@ -64,7 +64,7 @@ interface ClickGroundingResult {
 }
 
 /* --------------------------------------------------------------------- */
-/* Deterministic stubs                                                    */
+/* Deterministic fixture providers                                        */
 /* --------------------------------------------------------------------- */
 
 // A 1-pixel PNG is enough to validate "this is a real PNG buffer". Real
@@ -139,13 +139,13 @@ const ONE_PX_PNG: Buffer = Buffer.from([
   0x82,
 ]);
 
-function stubCaptureScreen(): CapturedScreen {
+function fixtureCaptureScreen(): CapturedScreen {
   return { png: ONE_PX_PNG, width: 1920, height: 1080 };
 }
 
-function stubOcr(_screen: CapturedScreen): OcrHit[] {
+function fixtureOcr(_screen: CapturedScreen): OcrHit[] {
   // Two fixture hits: a "Save" button at (1700, 1000, 80, 32) and a
-  // "Cancel" button at (1600, 1000, 80, 32). The grounding stub uses
+  // "Cancel" button at (1600, 1000, 80, 32). The grounding fixture uses
   // exact text match to pick the right hit.
   return [
     {
@@ -161,12 +161,12 @@ function stubOcr(_screen: CapturedScreen): OcrHit[] {
   ];
 }
 
-function stubGround(req: ClickGroundingRequest): ClickGroundingResult {
+function fixtureGround(req: ClickGroundingRequest): ClickGroundingResult {
   const hit = req.ocr.find(
     (h) => h.text.toLowerCase() === req.target.toLowerCase(),
   );
   if (!hit)
-    throw new Error(`stub-ground: no OCR hit for target "${req.target}"`);
+    throw new Error(`fixture-ground: no OCR hit for target "${req.target}"`);
   return {
     hit,
     click: {
@@ -183,7 +183,7 @@ function stubGround(req: ClickGroundingRequest): ClickGroundingResult {
 
 describe("golden path: screen → OCR → click grounding", () => {
   it("captures a PNG, OCRs it, and returns a click inside the matched bbox", () => {
-    const screen = stubCaptureScreen();
+    const screen = fixtureCaptureScreen();
     expect(screen.png[0]).toBe(0x89); // PNG signature byte 0
     expect(screen.png[1]).toBe(0x50);
     expect(screen.png[2]).toBe(0x4e);
@@ -191,7 +191,7 @@ describe("golden path: screen → OCR → click grounding", () => {
     expect(screen.width).toBeGreaterThan(0);
     expect(screen.height).toBeGreaterThan(0);
 
-    const ocr = stubOcr(screen);
+    const ocr = fixtureOcr(screen);
     expect(ocr.length).toBeGreaterThan(0);
     for (const h of ocr) {
       expect(typeof h.text).toBe("string");
@@ -199,7 +199,7 @@ describe("golden path: screen → OCR → click grounding", () => {
       expect(h.bbox.h).toBeGreaterThan(0);
     }
 
-    const grounded = stubGround({ target: "Save", screen, ocr });
+    const grounded = fixtureGround({ target: "Save", screen, ocr });
     expect(grounded.hit.text).toBe("Save");
     // Click point lies strictly inside the bbox.
     expect(grounded.click.x).toBeGreaterThanOrEqual(grounded.hit.bbox.x);
@@ -214,11 +214,11 @@ describe("golden path: screen → OCR → click grounding", () => {
   });
 
   it("surfaces a deterministic failure when the target text is absent", () => {
-    const screen = stubCaptureScreen();
-    const ocr = stubOcr(screen);
-    expect(() => stubGround({ target: "DoesNotExist", screen, ocr })).toThrow(
-      /no OCR hit/,
-    );
+    const screen = fixtureCaptureScreen();
+    const ocr = fixtureOcr(screen);
+    expect(() =>
+      fixtureGround({ target: "DoesNotExist", screen, ocr }),
+    ).toThrow(/no OCR hit/);
   });
 });
 
@@ -234,7 +234,7 @@ describe("golden path: via the live cascade (WS7 wired end-to-end)", () => {
       bounds: [0, 0, 1920, 1080],
       scaleFactor: 1,
       primary: true,
-      name: "fake",
+      name: "fixture-display",
     };
     const scene: Scene = {
       timestamp: 1,
@@ -292,7 +292,7 @@ describe("golden path: via the live cascade (WS7 wired end-to-end)", () => {
     expect(cascadeResult.proposed.x).toBe(1740);
     expect(cascadeResult.proposed.y).toBe(1016);
 
-    // Now dispatch through a fake interface and assert the click point
+    // Now dispatch through a fixture interface and assert the click point
     // lands inside the Save bbox.
     let received: DisplayPoint | null = null;
     const iface: Partial<ComputerInterface> = {
@@ -309,10 +309,10 @@ describe("golden path: via the live cascade (WS7 wired end-to-end)", () => {
     expect(received).not.toBeNull();
     const click = received as DisplayPoint | null;
     expect(click).not.toBeNull();
-    const saveBox = scene.ocr[0]!.bbox;
-    expect(click!.x).toBeGreaterThanOrEqual(saveBox[0]);
-    expect(click!.x).toBeLessThanOrEqual(saveBox[0] + saveBox[2]);
-    expect(click!.y).toBeGreaterThanOrEqual(saveBox[1]);
-    expect(click!.y).toBeLessThanOrEqual(saveBox[1] + saveBox[3]);
+    const saveBox = scene.ocr[0]?.bbox;
+    expect(click?.x).toBeGreaterThanOrEqual(saveBox[0]);
+    expect(click?.x).toBeLessThanOrEqual(saveBox[0] + saveBox[2]);
+    expect(click?.y).toBeGreaterThanOrEqual(saveBox[1]);
+    expect(click?.y).toBeLessThanOrEqual(saveBox[1] + saveBox[3]);
   });
 });

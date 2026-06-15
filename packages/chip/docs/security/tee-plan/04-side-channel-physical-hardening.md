@@ -270,7 +270,7 @@ KeyMint, the signature engine) implement **first-order Boolean/arithmetic
 masking** (OpenTitan AES masking pattern): every secret-dependent intermediate
 is split into ≥2 shares with fresh randomness from the RoT entropy source, so
 first-order DPA/CPA on a single intermediate yields no key correlation. Higher-
-order masking is a roadmap item, gated separately.
+order masking is a separately gated requirement.
 
 ### 4.3 Fault detection — encrypt-after-decrypt / verify-after-sign
 

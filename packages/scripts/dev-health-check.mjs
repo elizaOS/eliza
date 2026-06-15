@@ -23,6 +23,7 @@ import {
   mkdirSync,
   writeFileSync,
 } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 
@@ -98,13 +99,18 @@ function executableExists(filePath) {
 
 function commonBunDirs() {
   const dirs = [];
-  const home = process.env.HOME;
+  // `process.env.HOME` is unset on Windows; fall back to `USERPROFILE` /
+  // `os.homedir()` so the standard bun install location is discoverable
+  // there too.
+  const home = process.env.HOME || process.env.USERPROFILE || homedir();
   if (home) {
     dirs.push(path.join(home, ".bun", "bin"));
   }
   dirs.push(path.join(process.cwd(), "node_modules", ".bin"));
-  dirs.push("/opt/homebrew/bin");
-  dirs.push("/usr/local/bin");
+  if (process.platform !== "win32") {
+    dirs.push("/opt/homebrew/bin");
+    dirs.push("/usr/local/bin");
+  }
   return [...new Set(dirs)].filter((dir) => existsSync(dir));
 }
 

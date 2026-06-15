@@ -44,7 +44,7 @@ if (existsSync(_rootModules)) {
 }
 ```
 
-**Why here:** Covers `bun run dev` (dev-server.ts imports eliza directly) and any other in-process import of eliza. The `existsSync` guard means this is a no-op in packaged apps where the repo root doesn't exist.
+**Why here:** Covers `bun run dev` (dev-server.ts imports eliza directly) and any other in-process import of eliza. The `existsSync` guard skips this branch in packaged apps where the repo root doesn't exist.
 
 **Note on `Module._initPaths()`:** It is a private Node.js API but widely used for exactly this purpose (runtime NODE_PATH mutation). Node caches resolution paths at startup; after we set `process.env.NODE_PATH` we must call it so the next `import()` sees the new paths.
 
@@ -70,7 +70,7 @@ env.NODE_PATH = ...;
 
 tsdown with `noExternal: [/.*/]` inlines most dependencies, but `@elizaos/plugin-*` packages are loaded via **runtime dynamic import** (the plugin name comes from config, not a static import). The bundler can't inline them because it doesn't know which plugins will be loaded. They must be resolvable at runtime.
 
-## Packaged app: no-op
+## Packaged App: Skipped Branch
 
 In the packaged `.app`, `eliza.js` lives at `app.asar.unpacked/eliza-dist/eliza.js`. Two levels up is `Contents/Resources/` — no `node_modules` there. The `existsSync` check in `eliza.ts` returns false, so the NODE_PATH code is skipped entirely. The packaged app instead copies runtime packages into `eliza-dist/node_modules` during the desktop build (`copy-runtime-node-modules.ts` for Electrobun) and `agent.ts` sets that packaged `node_modules` directory on `NODE_PATH`.
 
@@ -99,7 +99,7 @@ npm tarball). **`2.0.0-alpha.12`** shipped broken dist entrypoints and must be a
 
 The published npm tarball for **`2.0.0-alpha.12`** contains **truncated** JavaScript outputs for the Node ESM and browser entrypoints (`dist/node/index.node.js`, `dist/browser/index.browser.js`). Those files only include the bundled `utils/config` helpers (~80 lines). The **main plugin implementation** (the object that should be exported as `openrouterPlugin` and as `default`) is **not present** in the file, but the final `export { … }` list still names `openrouterPlugin` and `openrouterPlugin2 as default`.
 
-**Why Bun errors:** When the runtime loads the plugin, Bun builds/transpiles that entry file and fails with errors like *`openrouterPlugin` is not declared in this file* — the symbols are exported but never defined. The CommonJS build (`dist/cjs/index.node.cjs`) is incomplete in the same way (export getters reference a missing `import_plugin` chunk).
+**Why Bun errors:** When the runtime loads the plugin, Bun builds/transpiles that entry file and fails with errors like *`openrouterPlugin` is not declared in this file* — the symbols are exported but never defined. The CommonJS build (`dist/cjs/index.node.cjs`) is truncated in the same way (export getters reference a missing `import_plugin` chunk).
 
 **Why we do not postinstall-patch the dist:** The broken release is missing the
 entire plugin body, not a single wrong identifier (contrast

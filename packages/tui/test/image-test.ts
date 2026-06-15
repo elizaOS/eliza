@@ -62,7 +62,7 @@ const inputHandler: Component = {
     return [];
   },
   invalidate(): void {
-    // No-op - no cached state
+    // No cached state to invalidate.
   },
 };
 

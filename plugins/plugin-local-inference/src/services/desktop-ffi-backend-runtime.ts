@@ -21,15 +21,13 @@
  *   - The backend slot in the dispatcher is single-model — switching
  *     models calls `unload()` then `load()` on the active backend.
  *
- * Feature gaps documented in `FFI_BACKEND_WIREUP_PLAN.md`:
- *   - vision describe (mmproj) — not implemented; `dispatcher.describeImage`
- *     throws the actionable "does not implement" error when this runtime
- *     is active.
- *   - slot save/restore — same.
- *   - prewarm — same.
- *   - parallel resize — same.
- *   - speculative decoding — native MTP requires the bundled drafter GGUF
- *     resolved by the active-model coordinator.
+ * Implemented dispatcher parity:
+ *   - vision describe routes through the desktop adapter when the shim was
+ *     built with mtmd symbols and the active plan includes an mmproj GGUF.
+ *   - slot save/restore routes through the binding's KV persistence hooks.
+ *   - prewarm and parallel resize route through `FfiStreamingBackend`.
+ *   - speculative decoding uses the bundled drafter GGUF resolved by the
+ *     active-model coordinator.
  */
 
 import type { BackendPlan } from "./backend";
@@ -54,11 +52,19 @@ export class DesktopFfiBackendRuntime implements FfiBackendRuntime {
 	private poisonedError: Error | null = null;
 
 	supported(): boolean {
-		// We don't actually try to dlopen here — that would be too eager
-		// (every load() call would do it again). Just check disk presence;
-		// the dlopen + symbol resolution is `acquire()`'s job and returns
-		// null on failure.
-		return desktopLlamaDylibsPresent();
+		// Check both disk presence AND runtime bun:ffi availability. The dylibs
+		// may exist on disk from a prior build, but bun:ffi is only usable under
+		// Electrobun (or Bun with native module support). In dev mode (bun run dev),
+		// bun:ffi throws "protocol 'bun:' not supported" at import time.
+		if (!desktopLlamaDylibsPresent()) return false;
+		try {
+			// Probe bun:ffi resolvability without actually importing it. If the
+			// ESM loader rejects the scheme, the catch returns false.
+			require.resolve("bun:ffi");
+			return true;
+		} catch {
+			return false;
+		}
 	}
 
 	async acquire(plan: BackendPlan): Promise<FfiBackendSession> {

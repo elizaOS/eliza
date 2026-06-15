@@ -4,7 +4,7 @@
  *
  *  - the app's `ApiError` with `kind === "network"` and a message of
  *    "Failed to fetch" / "Request aborted" (a request that never got an HTTP
- *    response — connection reset, navigation away, server not yet up); and
+ *    response — connection reset, navigation away, server still starting); and
  *  - a raw `TypeError: Failed to fetch` / "NetworkError" / "Load failed"
  *    (fetch() rejecting before any response — same root cause, but the call
  *    site didn't wrap it in an ApiError).

@@ -13,6 +13,14 @@
 # baked in here. The operator copies `cloud/.env.local` to `/opt/eliza/cloud/.env.local`
 # in a follow-up step (one-shot, out-of-band) using `scp` or the existing
 # `packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs` script.
+#
+# Ingress is terminated by Cloudflare (zone elizacloud.ai, SSL mode = "Full",
+# DNS record for this VM is proxied through CF). nginx on this host accepts
+# the CF→origin connection on :80 and :443 and forwards `*.elizacloud.ai` to
+# the agent-router daemon listening on 127.0.0.1:3458. The :443 listener uses
+# a self-signed cert that's only ever seen by CF Workers — they don't verify
+# origin certs at "Full" mode (only "Full (Strict)" does). The cert subject
+# is `*.elizacloud.ai` so direct curl with `--resolve` also works for ops.
 
 hostname: ${hostname}
 manage_etc_hosts: true
@@ -56,12 +64,74 @@ packages:
   # this package list — we need Node 24, and Ubuntu 24.04's default nodejs is
   # older. See the NodeSource setup_24.x call in runcmd.
 
+  # headscale: VPN coordination server for the agent containers. We install
+  # the package here so a fresh VM has the binary + systemd unit + a deploy-
+  # ready /var/lib/headscale state dir (owned by the package's `headscale`
+  # user). Env-specific bits (server_url in config.yaml, the SQLite db, and
+  # noise_private.key) are an operator handoff on first deploy — same shape
+  # as cloud/.env.local. The package's default config.yaml ships fine for
+  # a fresh tailnet; the operator overlays it from the prior CP for env
+  # continuity. Stopped + masked at first boot so the package's auto-start
+  # doesn't bind to localhost before the operator copies the real config.
+  - headscale
+
 write_files:
   - path: /etc/profile.d/eliza-paths.sh
     permissions: "0644"
     content: |
       export PATH="/home/deploy/.bun/bin:$PATH"
       export ELIZA_DEPLOY_BRANCH="${deploy_branch}"
+
+  # nginx vhost for agent-router. Replaces the default Ubuntu vhost that ships
+  # in /etc/nginx/sites-enabled/default. Matches the prod CP setup so a fresh
+  # apply on a per-env Hetzner project lands a fully-routable VM (no manual
+  # scp of nginx config post-apply).
+  - path: /etc/nginx/sites-available/eliza-agent-router
+    permissions: "0644"
+    content: |
+      server {
+        listen 80;
+        listen [::]:80;
+        server_name .elizacloud.ai;
+        client_max_body_size 50m;
+
+        location / {
+          proxy_http_version 1.1;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection "upgrade";
+          proxy_buffering off;
+          proxy_read_timeout 120s;
+          proxy_send_timeout 120s;
+          proxy_pass http://127.0.0.1:3458;
+        }
+      }
+
+      server {
+        listen 443 ssl;
+        listen [::]:443 ssl;
+        server_name .elizacloud.ai;
+        client_max_body_size 50m;
+        ssl_certificate /etc/nginx/ssl/eliza-agent-router.crt;
+        ssl_certificate_key /etc/nginx/ssl/eliza-agent-router.key;
+
+        location / {
+          proxy_http_version 1.1;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection "upgrade";
+          proxy_buffering off;
+          proxy_read_timeout 120s;
+          proxy_send_timeout 120s;
+          proxy_pass http://127.0.0.1:3458;
+        }
+      }
 
 runcmd:
   # Docker is installed via the `apt` block above using the official
@@ -78,12 +148,11 @@ runcmd:
   - curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
   - apt-get install -y nodejs
 
-  # Swap: the staging cpx32 / cpx22 / cax11 shapes are too small to run
-  # `turbo run build --filter=@elizaos/...` (19+ packages in parallel)
-  # without OOM-killing one of the workspace builds. 8 GB swap is enough
-  # headroom that the build completes even under memory pressure; on
-  # bigger control-plane shapes (cax21 8 GB) this is unused. Persists
-  # across reboots via /etc/fstab.
+  # Swap as defensive headroom: cpx32 (8 GB) and cax21 (8 GB) both fit the
+  # workspace build, but a parallel `turbo run build` can spike past RSS
+  # and OOM-kill one of the packages. 8 GB swap absorbs the peak. On
+  # smaller shapes (cpx11 2 GB, cax11 4 GB) this is the only way the
+  # build completes at all. Persists across reboots via /etc/fstab.
   - test -f /swapfile || fallocate -l 8G /swapfile
   - chmod 600 /swapfile
   - mkswap /swapfile || true
@@ -97,10 +166,15 @@ runcmd:
   # PR review — we still trust GitHub's HTTPS, but the manifest commits
   # the publisher to a specific hash that an attacker can't forge mid-flight.
   - install -d -o deploy -g deploy /home/deploy/.bun /home/deploy/.bun/bin
-  - su - deploy -c 'curl -fsSL -o /tmp/bun.zip https://github.com/oven-sh/bun/releases/download/bun-v1.3.13/bun-linux-x64.zip'
+  # Download under the same filename that appears in SHASUMS256.txt so that
+  # `sha256sum -c` can find the file on disk. The previous version wrote to
+  # /tmp/bun.zip and silently failed integrity check ("bun-linux-x64.zip: No
+  # such file or directory") — sha256sum reads the path from the SHASUMS
+  # line, not from our local filename choice.
+  - su - deploy -c 'curl -fsSL -o /tmp/bun-linux-x64.zip https://github.com/oven-sh/bun/releases/download/bun-v1.3.13/bun-linux-x64.zip'
   - su - deploy -c 'curl -fsSL -o /tmp/bun-SHASUMS256.txt https://github.com/oven-sh/bun/releases/download/bun-v1.3.13/SHASUMS256.txt'
   - su - deploy -c 'cd /tmp && grep "bun-linux-x64.zip" bun-SHASUMS256.txt | sha256sum -c -'
-  - su - deploy -c 'cd /tmp && unzip -q bun.zip && install -m 0755 bun-linux-x64/bun /home/deploy/.bun/bin/bun && rm -rf /tmp/bun.zip /tmp/bun-linux-x64 /tmp/bun-SHASUMS256.txt'
+  - su - deploy -c 'cd /tmp && unzip -q bun-linux-x64.zip && install -m 0755 bun-linux-x64/bun /home/deploy/.bun/bin/bun && rm -rf /tmp/bun-linux-x64.zip /tmp/bun-linux-x64 /tmp/bun-SHASUMS256.txt'
 
   # The `bunx` invocation used by some workspace build scripts is a separate
   # binary (or symlink) alongside `bun`. Older release tarballs ship it; the
@@ -109,8 +183,58 @@ runcmd:
   - su - deploy -c 'ln -sf bun /home/deploy/.bun/bin/bunx'
 
   # Repo checkout — the GitHub deploy workflow then takes over for code updates.
+  # Retry loop: the apt git install in the package phase can race with
+  # cloud-init runcmd ordering on slow Hetzner images; the bare `git clone`
+  # then bails with "fatal: repository ... does not exist" instead of a
+  # clean network retry. The cleanup nukes BOTH dotfiles (.git) and
+  # non-dotfiles so the next attempt isn't blocked by a half-cloned `.git/`.
+  # `exit 1` on the 3rd failure surfaces in cloud-init logs (without it
+  # bootstrap-finished marker still gets written and the failure is silent).
   - mkdir -p /opt/eliza && chown deploy:deploy /opt/eliza
-  - su - deploy -c 'git clone --depth 200 --branch ${deploy_branch} https://github.com/elizaOS/eliza.git /opt/eliza'
+  - |
+    su - deploy -c '
+      set -e
+      for i in 1 2 3; do
+        if git clone --depth 200 --branch ${deploy_branch} https://github.com/elizaOS/eliza.git /opt/eliza; then
+          exit 0
+        fi
+        echo "git clone attempt $i failed"
+        rm -rf /opt/eliza
+        mkdir -p /opt/eliza
+        if [ "$i" = 3 ]; then
+          echo "git clone exhausted retries"
+          exit 1
+        fi
+        sleep 5
+      done
+    '
+
+  # nginx vhost for agent-router subdomain routing. Self-signed cert is fine
+  # because Cloudflare zone is in "Full" SSL mode (CF terminates with visitor,
+  # accepts any cert on the origin — only "Full (Strict)" verifies). The
+  # cert is generated once at first-boot (cloud-init runcmd has per-instance
+  # semantics, not per-boot), valid 10 years; VM rebuild or `terraform taint`
+  # regenerates. If anyone flips the zone to Strict the chain breaks
+  # silently — track this as an operational gotcha.
+  - install -d -m 0755 /etc/nginx/ssl
+  - openssl req -x509 -nodes -newkey rsa:2048 -days 3650 -keyout /etc/nginx/ssl/eliza-agent-router.key -out /etc/nginx/ssl/eliza-agent-router.crt -subj "/CN=*.elizacloud.ai" -addext "subjectAltName=DNS:*.elizacloud.ai,DNS:elizacloud.ai"
+  - chmod 600 /etc/nginx/ssl/eliza-agent-router.key
+  # Activate the new vhost FIRST, then remove the default. Split nginx -t
+  # from `systemctl reload` so a failing vhost surfaces in cloud-init logs
+  # (chained with && it silently no-ops the reload while leaving the new
+  # symlink active on disk — half-applied state).
+  - ln -sf /etc/nginx/sites-available/eliza-agent-router /etc/nginx/sites-enabled/eliza-agent-router
+  - rm -f /etc/nginx/sites-enabled/default
+  - nginx -t
+  - systemctl reload nginx
+
+  # Headscale: stop the package's auto-started service so it doesn't bind
+  # to localhost with a fresh empty DB before the operator overlays the
+  # real config.yaml + state from the prior CP. Keep the unit enabled so a
+  # `systemctl start headscale` after the operator handoff brings it up
+  # cleanly. (We don't mask — masking would surprise an operator who runs
+  # `systemctl start headscale` and gets a silent "masked" no-op.)
+  - systemctl stop headscale 2>/dev/null || true
 
   # Final marker for the bootstrap-warn check that runs after this.
   - echo "eliza-control-plane bootstrap finished $(date -u +%Y-%m-%dT%H:%M:%SZ)" > /var/log/eliza-bootstrap.log

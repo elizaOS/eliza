@@ -9,7 +9,7 @@ import type { Address } from "viem";
 import configData from "./public-config.json";
 
 // Re-export viem chain objects for NFT services (chains.ts was removed in Phase 1).
-// TODO: Remove these exports once NFT code is fully deleted in a future phase.
+// Remove these exports once NFT code is fully deleted in a future phase.
 const etherCurrency = {
   decimals: 18,
   name: "Ether",
@@ -21,7 +21,9 @@ export const mainnet = {
   name: "Ethereum",
   nativeCurrency: etherCurrency,
   rpcUrls: { default: { http: ["https://eth.llamarpc.com"] } },
-  blockExplorers: { default: { name: "Etherscan", url: "https://etherscan.io" } },
+  blockExplorers: {
+    default: { name: "Etherscan", url: "https://etherscan.io" },
+  },
 } as const;
 
 export const sepolia = {
@@ -39,7 +41,9 @@ export const base = {
   name: "Base",
   nativeCurrency: etherCurrency,
   rpcUrls: { default: { http: ["https://mainnet.base.org"] } },
-  blockExplorers: { default: { name: "Basescan", url: "https://basescan.org" } },
+  blockExplorers: {
+    default: { name: "Basescan", url: "https://basescan.org" },
+  },
 } as const;
 
 export const baseSepolia = {

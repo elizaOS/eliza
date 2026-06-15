@@ -54,7 +54,7 @@ def count_contact_switches(
     A genuine biped gait alternates left/right single support. Double
     support and flight phases are ignored; only transitions between
     *left-only* and *right-only* stance are counted, which is the signal a
-    standing or hopping robot cannot fake.
+    standing or hopping robot cannot satisfy.
     """
     left = np.asarray(left_contact).astype(bool)
     right = np.asarray(right_contact).astype(bool)

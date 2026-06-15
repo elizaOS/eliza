@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-facewear",
-  "version": "2.0.3-beta.0",
+  "version": "2.0.3-beta.13",
   "type": "module",
   "description": "Unified hearwear plugin — Meta Quest 3, XReal, Even Realities G1/G2, Apple Vision Pro. Bidirectional voice+camera streaming, smartglasses display, view panels, device management.",
   "main": "./dist/index.js",
@@ -46,6 +46,7 @@
     "verify:app": "BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package vitest@4.1.5 vitest --root ../.. run packages/app-core/src/registry/facewear-registry.test.ts packages/app/src/plugin-registrations.test.ts"
   },
   "dependencies": {
+    "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0",
@@ -70,7 +71,7 @@
     "react-dom": "^19.0.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
-    "vite": "7.3.2",
+    "vite": "7.3.5",
     "vitest": "^4.0.17"
   },
   "elizaos": {

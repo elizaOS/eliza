@@ -1029,7 +1029,7 @@ for (const viewport of VIEWPORTS) {
                   id: "e2e-fixture",
                   agentName: "E2E Test Agent",
                   status: "running",
-                  databaseStatus: "connected",
+                  databaseStatus: "ready",
                   lastBackupAt: null,
                   lastHeartbeatAt: new Date().toISOString(),
                   errorMessage: null,
@@ -1046,6 +1046,15 @@ for (const viewport of VIEWPORTS) {
                   walletStatus: "none",
                   adminDetails: null,
                 },
+              });
+            if (/\/compat\/agents\/[^/]+\/logs/.test(url))
+              return empty({
+                success: true,
+                data: [
+                  "[info] E2E Test Agent booted",
+                  "[info] Bridge listening on web UI",
+                  "[info] Ready for chat",
+                ].join("\n"),
               });
             if (/\/my-agents\/characters/.test(url))
               return empty({ success: true, data: { characters: [] } });

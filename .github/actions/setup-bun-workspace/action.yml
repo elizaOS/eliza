@@ -10,6 +10,14 @@ inputs:
     description: "Python version for node-gyp fallbacks"
     required: false
     default: "3.12"
+  setup-python:
+    description: "Whether to set up Python for node-gyp fallbacks"
+    required: false
+    default: "true"
+  install-protoc:
+    description: "Whether to install protoc for Rust plugin builds"
+    required: false
+    default: "true"
   install-command:
     description: "Dependency install command"
     required: false
@@ -39,11 +47,13 @@ runs:
   using: "composite"
   steps:
     - name: Setup Python
+      if: ${{ inputs.setup-python == 'true' }}
       uses: actions/setup-python@v6
       with:
         python-version: ${{ inputs.python-version }}
 
     - name: Install setuptools for distutils (Python 3.12+)
+      if: ${{ inputs.setup-python == 'true' }}
       shell: bash
       run: pip install setuptools
 
@@ -52,7 +62,7 @@ runs:
       # plugins (plugin-{discord,groq,openai,sql,whatsapp}) depend on the
       # crates.io `elizaos` crate whose build script invokes prost-build.
       # Without protoc, `cargo test` fails before any test runs.
-      if: ${{ runner.os == 'Linux' }}
+      if: ${{ inputs.install-protoc == 'true' && runner.os == 'Linux' }}
       shell: bash
       run: |
         if command -v protoc >/dev/null 2>&1; then
@@ -103,8 +113,10 @@ runs:
       uses: actions/cache@v5
       with:
         path: ~/.bun/install/cache
-        key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-        restore-keys: bun-${{ runner.os }}-
+        key: bun-${{ runner.os }}-${{ inputs.bun-version }}-${{ hashFiles('bun.lock') }}
+        restore-keys: |
+          bun-${{ runner.os }}-${{ inputs.bun-version }}-
+          bun-${{ runner.os }}-
 
     - name: Initialize submodules
       if: ${{ inputs.init-submodules == 'true' }}

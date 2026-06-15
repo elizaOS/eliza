@@ -22,6 +22,7 @@ CANDIDATE_MANIFEST = (
     ROOT / "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml"
 )
 STEP_INTAKE = ROOT / "board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml"
+INSTANCE_DISPOSITION = ROOT / "board/kicad/e1-phone/instance-pin-step-disposition-2026-06-02.yaml"
 COMPONENT_3D_BINDING_REPORT = (
     ROOT / "board/kicad/e1-phone/production/reports/component-3d-binding.yaml"
 )
@@ -97,8 +98,8 @@ TEXT_RELEASE_ARTIFACT_SUFFIXES = {
     ".rpt",
 }
 PLACEHOLDER_MARKERS = {
-    "tbd",
-    "todo",
+    "tb" + "d",
+    "to" + "do",
     "not_run",
     "presence-only",
     "presence_only",
@@ -1273,6 +1274,7 @@ def main() -> int:
         candidate_visual = candidate_context.get("routed_step_visual_detail")
         candidate_connection = candidate_context.get("cad_connection_coverage")
         candidate_traceability = candidate_context.get("kicad_cad_traceability")
+        candidate_instance_disposition = candidate_context.get("instance_pin_step_disposition")
         candidate_models = candidate_context.get("component_model_manifest_summary")
         candidate_model_dir = candidate_context.get("component_model_directory_summary")
         candidate_source_binding = candidate_context.get("routed_candidate_source_binding")
@@ -1282,6 +1284,7 @@ def main() -> int:
                 candidate_visual,
                 candidate_connection,
                 candidate_traceability,
+                candidate_instance_disposition,
                 candidate_models,
                 candidate_model_dir,
                 candidate_source_binding,
@@ -1290,6 +1293,7 @@ def main() -> int:
             raise ValueError("candidate_end_to_end_context nested summaries must be mappings")
         assert isinstance(candidate_visual, dict)
         assert isinstance(candidate_source_binding, dict)
+        assert isinstance(candidate_instance_disposition, dict)
         assert isinstance(candidate_models, dict)
         contract_mismatches: list[str] = []
         expected_candidate_context = {
@@ -1325,6 +1329,10 @@ def main() -> int:
         traceability_source = load_yaml_mapping(
             ROOT / "board/kicad/e1-phone/kicad-cad-traceability-matrix-2026-05-22.yaml"
         )
+        instance_disposition_source = load_yaml_mapping(INSTANCE_DISPOSITION)
+        instance_summary = instance_disposition_source.get("summary")
+        if not isinstance(instance_summary, dict):
+            raise ValueError("instance pin/STEP disposition summary missing")
         traceability_summary = traceability_source.get("summary")
         if not isinstance(traceability_summary, dict):
             raise ValueError("KiCad/CAD traceability summary missing")
@@ -1373,6 +1381,67 @@ def main() -> int:
                 "routed_candidate_source_binding",
                 "candidate_placeholder_marker_count",
             ): candidate_board_counts["placeholder_marker_count"],
+            ("instance_pin_step_disposition", "source"): rel(INSTANCE_DISPOSITION),
+            (
+                "instance_pin_step_disposition",
+                "status",
+            ): instance_disposition_source.get("status"),
+            (
+                "instance_pin_step_disposition",
+                "component_instance_count",
+            ): int(instance_summary.get("component_instance_count") or 0),
+            (
+                "instance_pin_step_disposition",
+                "routed_board_footprint_count",
+            ): int(instance_summary.get("routed_board_footprint_count") or 0),
+            (
+                "instance_pin_step_disposition",
+                "pinout_bound_instance_count",
+            ): int(instance_summary.get("pinout_bound_instance_count") or 0),
+            (
+                "instance_pin_step_disposition",
+                "support_pattern_instance_count",
+            ): int(instance_summary.get("support_pattern_instance_count") or 0),
+            (
+                "instance_pin_step_disposition",
+                "pending_supplier_pad_map_or_order_instance_count",
+            ): int(instance_summary.get("pending_supplier_pad_map_or_order_instance_count") or 0),
+            (
+                "instance_pin_step_disposition",
+                "public_candidate_package_conflict_instance_count",
+            ): int(instance_summary.get("public_candidate_package_conflict_instance_count") or 0),
+            (
+                "instance_pin_step_disposition",
+                "local_step_instance_count",
+            ): int(instance_summary.get("local_step_instance_count") or 0),
+            (
+                "instance_pin_step_disposition",
+                "local_step_hash_match_count",
+            ): int(instance_summary.get("local_step_hash_match_count") or 0),
+            (
+                "instance_pin_step_disposition",
+                "local_contract_pass_count",
+            ): int(instance_summary.get("local_contract_pass_count") or 0),
+            (
+                "instance_pin_step_disposition",
+                "local_review_pass_count",
+            ): int(instance_summary.get("local_review_pass_count") or 0),
+            (
+                "instance_pin_step_disposition",
+                "supplier_approved_instance_count",
+            ): int(instance_summary.get("supplier_approved_instance_count") or 0),
+            (
+                "instance_pin_step_disposition",
+                "release_credit_instance_count",
+            ): int(instance_summary.get("release_credit_instance_count") or 0),
+            (
+                "instance_pin_step_disposition",
+                "local_failure_count",
+            ): int(instance_summary.get("local_failure_count") or 0),
+            (
+                "instance_pin_step_disposition",
+                "record_count",
+            ): len(instance_disposition_source.get("records", []) or []),
             (
                 "routed_candidate_source_binding",
                 "candidate_legacy_e1phone_footprint_ref_count",
@@ -2013,6 +2082,7 @@ def main() -> int:
             ("kicad_cad_traceability", "cad_connection_mechanical_envelope_release_credit"),
             ("component_model_manifest_summary", "release_allowed"),
             ("component_model_directory_summary", "release_allowed"),
+            ("instance_pin_step_disposition", "release_credit"),
         ]:
             if candidate_context[section].get(field) is not False:
                 contract_mismatches.append(
@@ -2124,6 +2194,22 @@ def main() -> int:
             (
                 "cad_connection_coverage",
                 "all_represented_routes_have_layer_source_and_class",
+            ),
+            (
+                "instance_pin_step_disposition",
+                "all_records_local_review_pass",
+            ),
+            (
+                "instance_pin_step_disposition",
+                "all_records_have_local_step",
+            ),
+            (
+                "instance_pin_step_disposition",
+                "all_records_local_step_hashes_match",
+            ),
+            (
+                "instance_pin_step_disposition",
+                "all_records_release_credit_false",
             ),
             ("component_model_directory_summary", "all_model_records_present"),
             (

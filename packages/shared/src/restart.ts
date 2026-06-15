@@ -3,7 +3,8 @@
  *
  * The host environment (CLI, desktop, dev-server) must call
  * setRestartHandler() at startup to provide a real implementation.
- * The default is a no-op so this module can be safely imported in browsers.
+ * The default leaves restart requests unhandled so this module can be safely
+ * imported in browsers.
  *
  * @module restart
  */
@@ -19,7 +20,7 @@ export const RESTART_EXIT_CODE = 75;
  */
 export type RestartHandler = (reason?: string) => void | Promise<void>;
 
-// No-op default — safe for browser. Server hosts register a real handler.
+// Browser-safe default. Server hosts register a real handler.
 let _handler: RestartHandler = () => {};
 
 /**

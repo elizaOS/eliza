@@ -6,7 +6,7 @@ Coding-agent task coordinator and session control surface for elizaOS agents.
 
 This plugin adds a UI workbench for managing coding-agent task threads and PTY sessions. It registers view panels (standard, XR, and TUI variants) into the elizaOS app shell for both the task coordinator and the multi-agent orchestrator surfaces. It has no server-side runtime component (no actions, providers, services, or evaluators); all agent/task state is owned by `@elizaos/plugin-agent-orchestrator` — this plugin is the display and control layer only.
 
-The plugin is opt-in: it must be listed in the agent's plugin configuration. Once loaded, it registers its views into the app shell and fills the slot registry entries (`CodingAgentControlChip`, `CodingAgentSettingsSection`, `CodingAgentTasksPanel`, `PtyConsoleBase`) that `@elizaos/ui` exposes as null placeholders without this plugin.
+The plugin is opt-in: it must be listed in the agent's plugin configuration. Once loaded, it registers its views into the app shell and fills the slot registry entries (`CodingAgentControlChip`, `CodingAgentSettingsSection`, `CodingAgentTasksPanel`, `PtyConsoleBase`) that `@elizaos/ui` leaves empty without this plugin.
 
 ## Plugin surface
 
@@ -38,15 +38,21 @@ Calls `registerTaskCoordinatorSlots` from `@elizaos/ui` with:
 
 ### App shell pages (`src/register.ts`)
 
-Registers `/orchestrator` (order 70) and `/orchestrator/tui` (order 71) in the `developer` group via `registerAppShellPage` from `@elizaos/ui/app-shell-registry`.
+Registers three pages in the `developer` group via `registerAppShellPage` from `@elizaos/ui/app-shell-registry`:
+
+- `/odysseus` (order 69, `fullBleed: true`) — the `OdysseusShell` chat UI (see `src/odysseus/`).
+- `/orchestrator` (order 70, `fullBleed: true`) — the `OrchestratorWorkbench`.
+- `/orchestrator/tui` (order 71) — the TUI variant.
+
+`fullBleed: true` opts the page into edge-to-edge mounting (no host header / tab-bar / padding) — these views own their full window. The flag is defined on `AppShellPageRegistration` in `@elizaos/ui`.
 
 ## Layout
 
 ```
 src/
   index.ts                         Plugin definition — views + capabilities declared here
-  register.ts                      App-shell page registration (orchestrator routes)
-  register-slots.ts                Slot registry fills for ui null-placeholders
+  register.ts                      App-shell page registration (/odysseus, /orchestrator, /orchestrator/tui)
+  register-slots.ts                Slot registry fills for ui empty-slot defaults
   CodingAgentTasksPanel.tsx        Task thread list + PTY session panel; re-exports OrchestratorWorkbench
   OrchestratorWorkbench.tsx        Multi-agent orchestration workbench (main UI)
   CodingAgentControlChip.tsx       Header chip: active session count + stop-all
@@ -63,9 +69,24 @@ src/
   PtyTerminalPane.tsx              Full terminal pane variant
   orchestrator-stream.tsx          Conversation-view builder for orchestrator event/message records
   orchestrator-diff.tsx            Diff view component for file-change tool cards
+  orchestrator-markdown.tsx        Markdown renderer (marked) for chat prose; shared MarkdownText
+  orchestrator-plan.tsx            Plan/checklist block renderer
+  orchestrator-reasoning.tsx       Collapsible reasoning block renderer
   view-format.ts                   Pure display formatters (time, tokens, USD, ANSI-strip)
   session-hydration.ts             Re-exports mapServerTasksToSessions + TERMINAL_STATUSES from @elizaos/ui
   pty-status-dots.ts               Re-exports PULSE_STATUSES + STATUS_DOT from @elizaos/ui
+  odysseus/                        Odysseus-style orchestrator chat UI (full-bleed /odysseus page)
+    OdysseusShell.tsx              Root shell: sidebar/rail, composer, tool-window host
+    SessionSidebar.tsx IconRail.tsx  Labeled nav sidebar + its collapsed 48px icon rail
+    Composer.tsx ChatContainer.tsx ChatMessages.tsx MessageBubble.tsx ChatTopBar.tsx  Chat column
+    MemoryPanel.tsx SkillsPanel.tsx NotesPanel.tsx SettingsPanel.tsx PresetsPanel.tsx ThemeMenu.tsx  Panels
+    TasksView/ModelsView/EmailView/CalendarView/GroupChatView/AdminView/GalleryView/
+      GalleryEditorView/CompareView/ResearchView/VoiceView/CookbookView/DocumentLibraryView.tsx  Tool views
+    WindowManager.tsx MinimizedDock.tsx ResizeHandles.tsx  Cross-view window registry + minimize dock + resize
+    SearchPalette.tsx EmojiPicker.tsx Spinner.tsx BgEffect.tsx  Misc UI
+    odysseus-theme.ts              ODYSSEUS_CSS — the theme stylesheet (CSS-in-template-literal)
+    hooks/                         useWindowControls, useKeyboardShortcuts, useTaskRoom, useChatSubmit, useEscapeClose
+    util/storage.ts                Namespaced localStorage helpers
   api/
     coding-agents-auth-sanitize.ts       Sanitizes triggerAuth() responses (whitelist + URL scheme check)
     coding-agents-preflight-normalize.ts Normalizes preflight auth field to typed NormalizedPreflightAuth
@@ -125,7 +146,7 @@ These prefixes are used to build preference keys sent to the agent prefs API; th
 
 - **Two build steps.** The plugin has both a tsup JS build (`build:js`) and a Vite view-bundle build (`build:views`). The view bundle entry is `src/CodingAgentTasksPanel.tsx` and outputs `dist/views/bundle.js`. Both must be built; `build` runs them in sequence.
 - **View bundle re-exports.** `CodingAgentTasksPanel.tsx` re-exports `OrchestratorWorkbench` so a single bundle serves all `componentExport` names the view manifest declares.
-- **Slot registry is a side-effect import.** `register-slots.ts` must be imported by the host app to activate the slot fills. Without it, the UI renders null placeholders in place of the coding-agent components.
+- **Slot registry is a side-effect import.** `register-slots.ts` must be imported by the host app to activate the slot fills. Without it, the UI renders empty slot defaults in place of the coding-agent components.
 - **No server runtime.** This plugin registers zero actions, providers, services, or evaluators. All task/session state lives in `@elizaos/plugin-agent-orchestrator`. API boundary helpers in `src/api/` are utilities for route handlers in app-core, not plugin-registered routes.
 - **PTY console buffer cap.** `PtyConsoleBase` caps displayed output at 200,000 characters (`MAX_BUFFER_CHARS`). Older output is silently trimmed from the head.
 - **Live e2e test requires real Codex CLI.** `test:e2e:manual` (`test/coding-agent-codex-artifact.live.e2e.test.ts`) is skipped unless the `codex` binary is in PATH and `~/.codex/auth.json` exists.

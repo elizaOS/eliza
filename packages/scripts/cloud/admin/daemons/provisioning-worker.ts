@@ -2,8 +2,8 @@
 /**
  * Standalone provisioning worker.
  *
- * The Cloudflare cron route is a Worker-runtime stub because provisioning pulls
- * in Node-only SSH/Docker modules. This daemon runs on the Node sidecar and
+ * The Cloudflare cron route only triggers the Node sidecar because provisioning
+ * pulls in Node-only SSH/Docker modules. This daemon runs on that sidecar and
  * delegates to the same ProvisioningJobService used by the API, so enqueue,
  * claim, retry, sandbox status, webhooks, and health checks share one codepath.
  *
@@ -634,6 +634,45 @@ async function runInfraMaintenanceCycle(logger: WorkerLogger): Promise<void> {
   }
 }
 
+/**
+ * Apps (Product 2): arm the node deploy backend so the daemon runs APP_DEPLOY +
+ * CONTAINER_* jobs (provision an isolated per-tenant DB -> run an isolated
+ * container with that DSN). Gated OFF by default — only when
+ * `APPS_DEPLOY_ENABLED=1`. Additive + safe: when off, the cloud-api deploy
+ * trigger is also gated off, so no APP_DEPLOY/CONTAINER_* jobs are ever enqueued,
+ * the executor seam is never queried, and Product-1 (agents) is untouched.
+ *
+ * Defaults to the PREBUILT-image path proven on staging (no `buildExec`): images
+ * resolve from `app.metadata.imageTag` / `APP_DEFAULT_IMAGE`. The cluster admin
+ * DSN is env-sourced via `APPS_TENANT_ADMIN_DSN` (no `SECRETS_MASTER_KEY`).
+ */
+async function armAppsDeployBackendIfEnabled(
+  logger: WorkerLogger,
+): Promise<void> {
+  if (process.env.APPS_DEPLOY_ENABLED !== "1") return;
+  const { configureAppsDeployBackend } = await import(
+    "@elizaos/cloud-shared/lib/services/apps-deploy-backend"
+  );
+  const port = process.env.APPS_DEPLOY_PORT
+    ? Number(process.env.APPS_DEPLOY_PORT)
+    : undefined;
+  // When APPS_IMAGE_REGISTRY is set, the backend arms BUILD-FROM-REPO (builds the
+  // user's repo on the app node via buildx and pushes to this registry — the
+  // Vercel-like path). Unset → prebuilt images (imageTag/APP_DEFAULT_IMAGE).
+  const registry = process.env.APPS_IMAGE_REGISTRY;
+  configureAppsDeployBackend({ port, registry });
+  logger.info("[provisioning-worker] apps deploy backend armed", {
+    tenantDbAdminDsn: process.env.APPS_TENANT_ADMIN_DSN
+      ? "env-sourced"
+      : "encrypted",
+    images: registry
+      ? "build-from-repo"
+      : "prebuilt (imageTag/APP_DEFAULT_IMAGE)",
+    registry: registry ?? null,
+    port: port ?? 3000,
+  });
+}
+
 async function main(): Promise<void> {
   loadLocalEnv(import.meta.url);
 
@@ -649,6 +688,9 @@ async function main(): Promise<void> {
 
   await assertProvisioningWorkerPreflight();
   logger.info("[provisioning-worker] startup preflight passed");
+
+  // Apps (Product 2): arm the deploy backend when enabled (gated; no-op by default).
+  await armAppsDeployBackendIfEnabled(logger);
 
   if (config.runOnce) {
     await pollCycle(logger, config);

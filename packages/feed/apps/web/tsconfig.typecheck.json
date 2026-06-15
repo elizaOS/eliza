@@ -1,4 +1,62 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["src/**/*", "next.config.ts", "types/**/*.d.ts"]
+  "compilerOptions": {
+    "paths": {
+      "@feed/a2a": ["../../packages/a2a/dist/index.d.ts"],
+      "@feed/a2a/*": ["../../packages/a2a/dist/*"],
+      "@feed/agents": ["../../packages/agents/dist/index.d.ts"],
+      "@feed/agents/*": ["../../packages/agents/dist/*"],
+      "@feed/api": ["../../packages/api/dist/index.d.ts"],
+      "@feed/api/*": ["../../packages/api/dist/*"],
+      "@feed/core": ["../../packages/core/dist/markets/index.d.ts"],
+      "@feed/core/*": ["../../packages/core/dist/*"],
+      "@feed/core/markets/*": ["../../packages/core/dist/markets/*"],
+      "@feed/db": ["../../packages/db/dist/index.d.ts"],
+      "@feed/db/*": ["../../packages/db/dist/*"],
+      "@feed/engine": ["../../packages/engine/dist/index.d.ts"],
+      "@feed/engine/*": ["../../packages/engine/dist/*"],
+      "@feed/mcp": ["../../packages/mcp/dist/index.d.ts"],
+      "@feed/mcp/*": ["../../packages/mcp/dist/*"],
+      "@feed/pack-default": ["../../packages/pack-default/dist/index.d.ts"],
+      "@feed/pack-default/*": ["../../packages/pack-default/dist/*"],
+      "@feed/shared": ["../../packages/shared/dist/index.d.ts"],
+      "@feed/shared/*": ["../../packages/shared/dist/*"],
+      "@feed/testing": ["./src/types/feed-testing.d.ts"],
+      "@/components/*": ["./src/components/*"],
+      "@/lib/*": ["./src/lib/*"],
+      "@/hooks/*": ["./src/hooks/*"],
+      "@/stores/*": ["./src/stores/*"],
+      "@/app/*": ["./src/app/*"],
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "src/**/*",
+    "next.config.ts",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "types/**/*.d.ts",
+    ".next-integration-*/types/**/*.ts",
+    ".next-integration-*/dev/types/**/*.ts",
+    ".next-debug*/types/**/*.ts",
+    ".next-debug*/dev/types/**/*.ts",
+    ".next-webpack-debug*/types/**/*.ts",
+    ".next-webpack-debug*/dev/types/**/*.ts",
+    ".next-integration-3100/types/**/*.ts",
+    ".next-integration-3100/dev/types/**/*.ts",
+    ".next-integration-3101/types/**/*.ts",
+    ".next-integration-3101/dev/types/**/*.ts",
+    ".next-debug-webpack/types/**/*.ts",
+    ".next-debug-webpack/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.disabled",
+    "src/**/__tests__/**/*",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/app/sw.ts",
+    "public/sw.js"
+  ]
 }

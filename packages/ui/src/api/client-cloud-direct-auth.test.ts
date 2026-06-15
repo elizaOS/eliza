@@ -876,4 +876,68 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     expectNoLocalPersistOrStatusProbe();
   });
+
+  it("accepts shared-runtime Cloud agents when native iOS keeps the local app API", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(
+        new Error("native shared Cloud provisioning must not use fetch"),
+      );
+    capacitorMocks.request.mockImplementation(async ({ url, method }) => {
+      if (
+        url === "https://api.elizacloud.ai/api/v1/eliza/agents" &&
+        method === "POST"
+      ) {
+        return {
+          status: 201,
+          data: {
+            success: true,
+            source: "shared_runtime",
+            data: {
+              id: "shared-agent",
+              executionTier: "shared",
+            },
+          },
+        };
+      }
+      if (
+        url ===
+          "https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent/provision" &&
+        method === "POST"
+      ) {
+        return {
+          status: 200,
+          data: {
+            success: true,
+            source: "shared_runtime",
+            data: {
+              id: "shared-agent",
+              executionTier: "shared",
+            },
+          },
+        };
+      }
+      throw new Error(`Unexpected shared provision request: ${method} ${url}`);
+    });
+
+    const client = new ElizaClient("http://localhost:31337");
+    await expect(
+      client.provisionCloudSandbox({
+        cloudApiBase: "https://www.elizacloud.ai",
+        authToken: "dev-js-bearer",
+        name: "Shared Agent",
+        bio: ["Native package-mode test agent."],
+        allowSharedRuntime: true,
+      }),
+    ).resolves.toEqual({
+      agentId: "shared-agent",
+      bridgeUrl:
+        "https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent/bridge",
+      webUiUrl: null,
+      executionTier: "shared",
+    });
+    expect(capacitorMocks.request).toHaveBeenCalledTimes(2);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expectNoLocalPersistOrStatusProbe();
+  });
 });

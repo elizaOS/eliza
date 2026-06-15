@@ -41,7 +41,7 @@ src/
   first-run/                first-run-config + runtime-target resolution
   security/                 agent-vault-id, platform-secure-store (+ -node), wallet key hydration
   services/                 auth-store, steward-credentials/sidecar, vault-mirror/bootstrap, account-pool, task-host-capabilities, sensitive-requests, …
-  platform/                 capacitor-bootstrap, ios-runtime-*, native-plugin-entrypoints, empty-node-module (browser-build alias target), *-browser-stub.ts
+  platform/                 ios-runtime-*, native-plugin-entrypoints, empty-node-module (browser-build alias target), *-browser-stub.ts
   permissions/types.ts, diagnostics/integration-observability.ts, connectors/ (capacitor sqlite/jsc/quickjs)
 scripts/                    build/packaging/sms-gateway/voice scripts (namespaced in package.json scripts)
 platforms/{android,ios,electrobun}/   native shell projects + Apple Store entitlements

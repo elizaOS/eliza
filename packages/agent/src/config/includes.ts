@@ -9,8 +9,11 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { isPlainObject } from "@elizaos/shared";
 import JSON5 from "json5";
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 export const INCLUDE_KEY = "$include";
 export const MAX_INCLUDE_DEPTH = 10;

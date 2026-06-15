@@ -5,7 +5,7 @@ const pluginName = "tee";
 
 export const teePlugin: Plugin = {
   name: pluginName,
-  description: "TEE plugin (browser stub; use a server proxy)",
+  description: "TEE plugin (browser-unavailable entry; use a server proxy)",
   async init(_config, _runtime: IAgentRuntime): Promise<void> {
     logger.warn(
       `[plugin-${pluginName}] This plugin is not supported directly in browsers. Use a server proxy.`,

@@ -32,6 +32,12 @@ async function fulfillJson(
   });
 }
 
+function chatComposer(page: Page) {
+  return page
+    .locator('[data-testid="chat-composer-textarea"]')
+    .or(page.getByLabel("message"));
+}
+
 async function routeAuthStatus(
   page: Page,
   body: Record<string, unknown>,
@@ -275,7 +281,7 @@ test("cloud bootstrap exchange stores the session bearer and resumes startup", a
   await expect(
     page.getByRole("heading", { name: "Finish setting up your container" }),
   ).toHaveCount(0);
-  await expect(page.getByTestId("chat-composer-textarea")).toBeVisible();
+  await expect(chatComposer(page)).toBeVisible();
 });
 
 test("remote pairing redeem persists token and resumes startup", async ({
@@ -367,7 +373,7 @@ test("remote pairing redeem persists token and resumes startup", async ({
 
   await expect.poll(() => pairRequests).toBe(1);
   await expect(page.getByText("Pairing Required")).toHaveCount(0);
-  await expect(page.getByTestId("chat-composer-textarea")).toBeVisible();
+  await expect(chatComposer(page)).toBeVisible();
   await expect
     .poll(() =>
       page.evaluate(() => {

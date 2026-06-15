@@ -370,7 +370,7 @@ Do not blindly push every local phase into the platform convergence PR unless ma
 | plugin-imessage | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-inmemorydb | data-memory-plugin | plugin | leave-alone | no | no | no | low | Keep as a data or memory plugin. Do not duplicate storage semantics in Electrobun. |
 | plugin-instagram | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
-| plugin-lifeops | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
+| plugin-personal-assistant | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-line | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-linear | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |
 | plugin-lmstudio | model-plugin | model-pipeline-participant | connect-to-local-model | no | no | no | medium | Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers. |

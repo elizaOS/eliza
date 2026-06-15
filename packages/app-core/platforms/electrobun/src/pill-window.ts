@@ -12,6 +12,14 @@
  *  - Quitting the app closes both (handled by Electrobun's standard
  *    `exitOnLastWindowClosed` behavior firing when both windows are gone,
  *    or by the application's quit menu).
+ *
+ * WHY TWO PILL WINDOWS (pill-window.ts vs voice-pill-window.ts)?
+ *   - pill-window.ts (this file) — persistent chat-overlay pill; created at app
+ *     boot when shouldCreateDesktopPill() returns true; shellMode=chat-overlay.
+ *     This is the live production voice/chat surface the user sees every day.
+ *   - voice-pill-window.ts — ephemeral onboarding-only voice pill; spawned only
+ *     for the duration of first-run; shellMode=onboarding-voice-pill. Destroyed
+ *     when onboarding completes. This file is NOT used after first-run.
  */
 
 import { type BrowserWindow, Screen } from "electrobun/bun";

@@ -1,5 +1,5 @@
 /*
- * DBNet postprocess for doctr-cpp Phase 2.
+ * DBNet postprocess for doctr-cpp.
  *
  * The detector emits a probability map of the same spatial size as
  * the letterbox canvas (1024x1024 for db_resnet50). We:
@@ -11,11 +11,11 @@
  *   5. unscale from letterbox canvas back to source-image coords
  *
  * doctr's original postprocess uses Vatti polygon offsetting via
- * pyclipper to dilate the contour before bboxing. For Phase 2 we use
+ * pyclipper to dilate the contour before bboxing. This implementation uses
  * the simpler "axis-aligned bbox of the binary component" path —
  * this is what `bin_thresh` in doctr's reference postprocess
  * produces when shrunk-rectangle dilation is disabled. The oriented-
- * polygon path is a Phase 3 addition.
+ * polygon path is an optional accuracy upgrade.
  *
  * No external deps (no OpenCV, no pyclipper). Plain C and one
  * stack-array breadth-first labeller.
@@ -82,6 +82,7 @@ size_t doctr_dbnet_postprocess(
     cc_t *components = NULL;
     size_t n_components = 0;
     size_t cap_components = 0;
+    size_t emit = 0;
 
     for (int y = 0; y < mask_h; ++y) {
         for (int x = 0; x < mask_w; ++x) {
@@ -136,7 +137,7 @@ size_t doctr_dbnet_postprocess(
 
     if (n_total) *n_total = n_components;
 
-    size_t emit = n_components < max_detections ? n_components : max_detections;
+    emit = n_components < max_detections ? n_components : max_detections;
     for (size_t i = 0; i < emit; ++i) {
         cc_t *cc = &components[i];
         /* Convert mask coords -> canvas coords -> source coords. */

@@ -346,7 +346,14 @@ function copyRenderedTreeInternal(
       continue;
     }
 
-    const relativePath = path.relative(rootDir, destinationPath);
+    // `managedFiles` keys are serialized into `.elizaos/template.json` and
+    // consumed by `upgrade` on any host platform. Normalise to POSIX
+    // separators at the write site so a project scaffolded on Windows
+    // upgrades cleanly on macOS/Linux (and vice versa) — otherwise the
+    // diff would see "src\foo.ts" and "src/foo.ts" as different paths.
+    const relativePath = path
+      .relative(rootDir, destinationPath)
+      .replaceAll(path.sep, "/");
     const buffer = fs.readFileSync(sourcePath);
     if (isBinaryFile(sourcePath, buffer)) {
       fs.mkdirSync(path.dirname(destinationPath), { recursive: true });

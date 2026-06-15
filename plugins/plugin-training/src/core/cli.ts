@@ -45,9 +45,9 @@ import {
 import { ALL_BLUEPRINTS, BLUEPRINT_STATS } from "./scenario-blueprints.js";
 import {
   buildTrainingCollectionPreflightWithProbes,
+  type ListTrainingCollectionsResult,
   listTrainingCollections,
   runTrainingCollection,
-  type ListTrainingCollectionsResult,
   type TrainingCollectionPreflightSummary,
   type TrainingCollectionRunOptions,
   type TrainingCollectionRunResult,
@@ -110,6 +110,34 @@ function parseCerebrasVariants(
     );
   }
   return "both";
+}
+
+function parseActionBenchmarkVariant(
+  value: string | undefined,
+): "reference" | "base" | "trained" | undefined {
+  if (value === undefined) return undefined;
+  if (value === "reference" || value === "base" || value === "trained") {
+    return value;
+  }
+  throw new Error(
+    `Invalid --benchmark-variant value ${JSON.stringify(value)}; expected reference, base, or trained`,
+  );
+}
+
+function parseBenchmarkVsCerebrasBenchmark(
+  value: string,
+): "eliza_harness_action_selection" | "clawbench" | "hermes" | "all" {
+  if (
+    value === "eliza_harness_action_selection" ||
+    value === "clawbench" ||
+    value === "hermes" ||
+    value === "all"
+  ) {
+    return value;
+  }
+  throw new Error(
+    `Invalid --benchmark value ${JSON.stringify(value)}; expected eliza_harness_action_selection, clawbench, hermes, or all`,
+  );
 }
 
 function getTeacherModel(): TeacherModel {
@@ -586,10 +614,11 @@ export function buildRunCollectionOptionsFromCliArgs(
   );
   const live = values.live === true;
   const dryRun = !live;
-  const benchmark =
+  const benchmark = parseBenchmarkVsCerebrasBenchmark(
     typeof values.benchmark === "string"
       ? values.benchmark
-      : "eliza_harness_action_selection";
+      : "eliza_harness_action_selection",
+  );
   const provider =
     typeof values.provider === "string" ? values.provider : "local-llama-cpp";
   const baseUrl =
@@ -617,12 +646,11 @@ export function buildRunCollectionOptionsFromCliArgs(
         : typeof values["benchmark-model"] === "string"
           ? values["benchmark-model"]
           : undefined,
-    variant:
-      values["benchmark-variant"] === "reference" ||
-      values["benchmark-variant"] === "base" ||
-      values["benchmark-variant"] === "trained"
+    variant: parseActionBenchmarkVariant(
+      typeof values["benchmark-variant"] === "string"
         ? values["benchmark-variant"]
         : undefined,
+    ),
     filter:
       typeof values["benchmark-filter"] === "string"
         ? values["benchmark-filter"]
@@ -1193,7 +1221,9 @@ async function cmdRollbackPrompt(args: string[]) {
 
   await service.refresh();
   try {
-    const newCurrent = await service.rollback(taskName);
+    const promptTask =
+      taskName === "context_routing" ? "should_respond" : taskName;
+    const newCurrent = await service.rollback(promptTask);
     console.log(
       `[rollback-prompt] task=${taskName} now points at ${newCurrent}`,
     );

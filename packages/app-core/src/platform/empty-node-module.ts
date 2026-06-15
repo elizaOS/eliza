@@ -33,7 +33,7 @@ export const isTypedArray = falseNoop;
 
 export default new Proxy(noop, noopProxyHandler);
 
-// elizaOS server-only stubs (browser bundle reach-through)
+// elizaOS server-only browser aliases (bundle reach-through)
 export const ACCOUNT_CREDENTIAL_PROVIDER_IDS = [];
 export const AGENT_EVENT_ALLOWED_STREAMS = [];
 export const applyCanonicalFirstRunConfig = noop;
@@ -144,10 +144,10 @@ export const validatePluginConfig = () =>
   });
 export const validateMcpServerConfig = noop;
 
-// ── Extra @elizaos/agent stubs surfaced by plugin dist files ────────
+// ── Extra @elizaos/agent browser aliases surfaced by plugin dist files ────────
 // Upstream's enumeration only walked app-core/dist; the broader plugin
 // graph (app-companion, app-knowledge, etc.) static-imports additional
-// names. Append rather than edit upstream stubs to keep merge churn
+// names. Append rather than edit upstream aliases to keep merge churn
 // minimal.
 export type AccountCredentialRecord = unknown;
 export type BootElizaRuntimeOptions = unknown;

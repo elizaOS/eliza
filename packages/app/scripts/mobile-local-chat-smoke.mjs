@@ -242,12 +242,28 @@ function launchIosSimulatorApp() {
 }
 
 function writeIosDefaultsString(udid, domain, key, value) {
-  // Capacitor Preferences stores the default group as `CapacitorStorage.<key>`
-  // in iOS UserDefaults. The JS API strips that prefix; simulator pre-seed has
-  // to write the native key directly because the app is not running yet. Use
-  // the simulator's `defaults` tool so the same cfprefsd domain that the app's
-  // UserDefaults.standard reads is updated.
   const nativeKey = `CapacitorStorage.${key}`;
+  const dataContainer = tryExec(
+    "xcrun",
+    ["simctl", "get_app_container", udid, domain, "data"],
+    { allowFailure: true },
+  );
+  if (dataContainer) {
+    const prefsDomain = path.join(
+      dataContainer,
+      "Library",
+      "Preferences",
+      domain,
+    );
+    fs.mkdirSync(path.dirname(prefsDomain), { recursive: true });
+    requireExec(
+      "defaults",
+      ["write", prefsDomain, nativeKey, "-string", value],
+      `Failed to write iOS preference ${key}.`,
+    );
+    return;
+  }
+
   requireExec(
     "xcrun",
     [
@@ -308,6 +324,24 @@ function readIosDefaultsString(udid, domain, key) {
 }
 
 function deleteIosDefaultsKey(udid, domain, key) {
+  const dataContainer = tryExec(
+    "xcrun",
+    ["simctl", "get_app_container", udid, domain, "data"],
+    { allowFailure: true },
+  );
+  if (dataContainer) {
+    const prefsDomain = path.join(
+      dataContainer,
+      "Library",
+      "Preferences",
+      domain,
+    );
+    tryExec("defaults", ["delete", prefsDomain, `CapacitorStorage.${key}`], {
+      allowFailure: true,
+    });
+    return;
+  }
+
   tryExec(
     "xcrun",
     [
@@ -1477,11 +1511,10 @@ async function verifyAndroidBackgroundApi(context, baseUrl, authToken) {
   }
 
   if (!advanced) {
-    // /api/health does not yet emit `lastWakeFiredAt` until Wave 3D lands;
-    // emit a warning but don't fail the run when the field is simply absent
+    // /api/health omits `lastWakeFiredAt` until Wave 3D lands; emit a warning
+    // but don't fail the run when the field is simply absent
     // (baselineWakeMs === null AND every poll observed null too). Treat that
-    // as "wake field not implemented yet" so this script is usable before
-    // Wave 3D merges.
+    // as a missing wake field so this script is usable before Wave 3D merges.
     const fieldImplemented = baselineWakeMs !== null;
     if (fieldImplemented) {
       throw new Error(
@@ -1495,7 +1528,7 @@ async function verifyAndroidBackgroundApi(context, baseUrl, authToken) {
     );
     return {
       ok: true,
-      reason: "wake-field-not-implemented",
+      reason: "wake-field-absent",
       forceFireMethod,
       beforeAt: baselineWakeMs,
       afterAt: null,

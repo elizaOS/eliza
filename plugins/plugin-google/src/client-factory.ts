@@ -16,7 +16,9 @@ import {
   type GoogleCredentialResolver,
 } from "./types.js";
 
-function mockGoogleRootUrl(): string | undefined {
+type GoogleApiAuth = NonNullable<Parameters<typeof google.gmail>[0]>["auth"];
+
+function googleRootUrlOverride(): string | undefined {
   const raw = process.env.ELIZA_MOCK_GOOGLE_BASE?.trim();
   if (!raw) return undefined;
   try {
@@ -45,7 +47,7 @@ export class GoogleApiClientFactory {
     reason: string
   ): Promise<gmail_v1.Gmail> {
     const auth = await this.resolveAuthClient(account, capabilities, reason);
-    return google.gmail(this.apiOptions("v1", auth));
+    return google.gmail(this.apiOptions("v1", auth) as unknown as gmail_v1.Options);
   }
 
   async calendar(
@@ -54,7 +56,7 @@ export class GoogleApiClientFactory {
     reason: string
   ): Promise<calendar_v3.Calendar> {
     const auth = await this.resolveAuthClient(account, capabilities, reason);
-    return google.calendar(this.apiOptions("v3", auth));
+    return google.calendar(this.apiOptions("v3", auth) as unknown as calendar_v3.Options);
   }
 
   async drive(
@@ -63,7 +65,7 @@ export class GoogleApiClientFactory {
     reason: string
   ): Promise<drive_v3.Drive> {
     const auth = await this.resolveAuthClient(account, capabilities, reason);
-    return google.drive(this.apiOptions("v3", auth));
+    return google.drive(this.apiOptions("v3", auth) as unknown as drive_v3.Options);
   }
 
   async docs(
@@ -72,7 +74,7 @@ export class GoogleApiClientFactory {
     reason: string
   ): Promise<docs_v1.Docs> {
     const auth = await this.resolveAuthClient(account, capabilities, reason);
-    return google.docs(this.apiOptions("v1", auth));
+    return google.docs(this.apiOptions("v1", auth) as unknown as docs_v1.Options);
   }
 
   async sheets(
@@ -81,7 +83,7 @@ export class GoogleApiClientFactory {
     reason: string
   ): Promise<sheets_v4.Sheets> {
     const auth = await this.resolveAuthClient(account, capabilities, reason);
-    return google.sheets(this.apiOptions("v4", auth));
+    return google.sheets(this.apiOptions("v4", auth) as unknown as sheets_v4.Options);
   }
 
   async meet(
@@ -90,15 +92,23 @@ export class GoogleApiClientFactory {
     reason: string
   ): Promise<meet_v2.Meet> {
     const auth = await this.resolveAuthClient(account, capabilities, reason);
-    return google.meet(this.apiOptions("v2", auth));
+    return google.meet(this.apiOptions("v2", auth) as unknown as meet_v2.Options);
   }
 
+  // The `as <ns>.Options` casts at each call site bridge a TypeScript
+  // identity mismatch: bun's isolated linker installs two copies of
+  // google-auth-library (one direct, one nested under googleapis-common),
+  // so `Auth.OAuth2Client` from 'googleapis' and the `OAuth2Client` baked
+  // into each `<ns>.Options['auth']` resolve to different physical classes.
+  // Runtime is fine — the cast pins TS to the correct Options shape per
+  // method without an override or a global `any`.
   private apiOptions<TVersion extends string>(
     version: TVersion,
     auth: GoogleAuthClient
-  ): { version: TVersion; auth: GoogleAuthClient; rootUrl?: string } {
-    const rootUrl = mockGoogleRootUrl();
-    return rootUrl ? { version, auth, rootUrl } : { version, auth };
+  ): { version: TVersion; auth: GoogleApiAuth; rootUrl?: string } {
+    const rootUrl = googleRootUrlOverride();
+    const apiAuth = auth as unknown as GoogleApiAuth;
+    return rootUrl ? { version, auth: apiAuth, rootUrl } : { version, auth: apiAuth };
   }
 
   private async resolveAuthClient(

@@ -9,7 +9,7 @@ import {
 // cookies) connected to the SAME agent must converge on the same conversation
 // state: a message sent by client A must appear for client B, and vice versa.
 //
-// SKIPPED (test.fixme) — documented reason:
+// SKIPPED (test.skip) — documented reason:
 // The default ui-smoke route layer (installDefaultAppRoutes in ./helpers.ts,
 // single `page` arg) wires a deterministic *keyless* agent that echoes a fresh
 // JSON fixture per request; it does NOT maintain a shared, server-side message
@@ -24,11 +24,13 @@ import {
 //      both contexts pointed at the same agent + channel), OR extend the helper
 //      route layer to accept a shared in-memory message store both contexts
 //      mutate (see installDefaultAppRoutes in ./helpers.ts).
-//   2. Replace `test.fixme` with `test`.
+//   2. Replace `test.skip` with `test`.
 
-const READY_SELECTOR = '[data-testid="chat-composer-textarea"]';
-const COMPOSER = '[data-testid="chat-composer-textarea"]';
-const ACTION = '[data-testid="chat-composer-action"]';
+const READY_SELECTOR =
+  '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]';
+const COMPOSER = READY_SELECTOR;
+const ACTION =
+  '[data-testid="chat-composer-action"], button[aria-label="send"], button[aria-label="Send"], button[aria-label="Send message"]';
 // useMessaging polls the shared channel; give convergence comfortable headroom.
 const CONVERGE_TIMEOUT_MS = 15_000;
 
@@ -54,7 +56,7 @@ async function sendMessage(page: Page, text: string): Promise<void> {
   ).toBeVisible({ timeout: 30_000 });
 }
 
-test.fixme("two clients on the same agent converge and do not desync", async ({
+test.skip("two clients on the same agent converge and do not desync", async ({
   browser,
 }) => {
   const contextA = await browser.newContext();

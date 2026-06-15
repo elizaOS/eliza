@@ -42,18 +42,17 @@ REQUIRED_REPORTS = {
     / "build/reports/e1x_ultra_dense_stratified_full_k_repair_execution.json",
     "hyper_dense_stratified_full_k_repair_execution": ROOT
     / "build/reports/e1x_hyper_dense_stratified_full_k_repair_execution.json",
-    "full_k_repair_coverage_ladder": ROOT
-    / "build/reports/e1x_full_k_repair_coverage_ladder.json",
-    "full_k_repair_kind_coverage": ROOT
-    / "build/reports/e1x_full_k_repair_kind_coverage.json",
+    "full_k_repair_coverage_ladder": ROOT / "build/reports/e1x_full_k_repair_coverage_ladder.json",
+    "full_k_repair_kind_coverage": ROOT / "build/reports/e1x_full_k_repair_kind_coverage.json",
     "full_k_repair_route_cost": ROOT / "build/reports/e1x_full_k_repair_route_cost.json",
+    "full_k_repair_route_cost_by_kind": ROOT
+    / "build/reports/e1x_full_k_repair_route_cost_by_kind.json",
     "full_norm_real_weight_rows": ROOT / "build/reports/e1x_full_norm_real_weight_rows.json",
     "vocab_sampled_k_real_weight_rows": ROOT
     / "build/reports/e1x_vocab_sampled_k_real_weight_rows.json",
     "repaired_real_weight_execution": ROOT
     / "build/reports/e1x_repaired_real_weight_execution.json",
-    "real_weight_coverage_ladder": ROOT
-    / "build/reports/e1x_real_weight_coverage_ladder.json",
+    "real_weight_coverage_ladder": ROOT / "build/reports/e1x_real_weight_coverage_ladder.json",
     "attn_out_sampled_k_real_weight_rows": ROOT
     / "build/reports/e1x_attn_out_sampled_k_real_weight_rows.json",
     "attn_qkv_sampled_k_real_weight_rows": ROOT
@@ -377,8 +376,12 @@ def main() -> int:
     full_checksum_manifest = reports.get("full_output_checksum_manifest", {}).get("summary", {})
     expanded_real_weight = reports.get("expanded_real_weight_rows", {}).get("summary", {})
     stratified_full_k = reports.get("stratified_full_k_real_weight_rows", {}).get("summary", {})
-    stratified_full_k_repair = reports.get("stratified_full_k_repair_execution", {}).get("summary", {})
-    dense_stratified_full_k_repair = reports.get("dense_stratified_full_k_repair_execution", {}).get("summary", {})
+    stratified_full_k_repair = reports.get("stratified_full_k_repair_execution", {}).get(
+        "summary", {}
+    )
+    dense_stratified_full_k_repair = reports.get(
+        "dense_stratified_full_k_repair_execution", {}
+    ).get("summary", {})
     ultra_dense_stratified_full_k_repair = reports.get(
         "ultra_dense_stratified_full_k_repair_execution", {}
     ).get("summary", {})
@@ -388,6 +391,9 @@ def main() -> int:
     full_k_repair_ladder = reports.get("full_k_repair_coverage_ladder", {}).get("summary", {})
     full_k_repair_kind = reports.get("full_k_repair_kind_coverage", {}).get("summary", {})
     full_k_repair_route = reports.get("full_k_repair_route_cost", {}).get("summary", {})
+    full_k_repair_route_kind = reports.get("full_k_repair_route_cost_by_kind", {}).get(
+        "summary", {}
+    )
     full_norm_real_weight = reports.get("full_norm_real_weight_rows", {}).get("summary", {})
     vocab_sampled_k = reports.get("vocab_sampled_k_real_weight_rows", {}).get("summary", {})
     repaired_real_weight = reports.get("repaired_real_weight_execution", {}).get("summary", {})
@@ -449,18 +455,13 @@ def main() -> int:
             and float(e1_comparison_audit.get("e1x_local_sram_mib", 0.0)) == 8208.0
             and float(e1_comparison_audit.get("e1x_vs_e1_sram_ratio", 0.0)) == 128.25
             and float(e1_comparison_audit.get("model_required_vs_e1_sram", 0.0)) > 100.0
-            and 0.86
-            < float(e1_comparison_audit.get("model_required_vs_e1x_sram", 0.0))
-            < 0.87
+            and 0.86 < float(e1_comparison_audit.get("model_required_vs_e1x_sram", 0.0)) < 0.87
             and int(e1_comparison_audit.get("normal_total_cycles", 0)) == 47_501_642_583
             and int(e1_comparison_audit.get("high_failure_total_cycles", 0)) == 63_132_355_414
             and float(e1_comparison_audit.get("high_vs_normal_cycle_ratio", 0.0)) > 1.3
-            and 0.75
-            < float(e1_comparison_audit.get("high_vs_normal_decode_tps_ratio", 0.0))
-            < 0.76
+            and 0.75 < float(e1_comparison_audit.get("high_vs_normal_decode_tps_ratio", 0.0)) < 0.76
             and float(e1_comparison_audit.get("peak_power_density_w_per_mm2", 1.0)) < 0.1
-            and float(e1_comparison_audit.get("schedule_power_density_w_per_mm2", 1.0))
-            < 0.001
+            and float(e1_comparison_audit.get("schedule_power_density_w_per_mm2", 1.0)) < 0.001
             and e1_comparison_audit.get("comparison_tuple_sha256")
             == "1ae2297132e3a59f826898b9e5dd85cbe82f25b16c438b127a60bb53075fa082"
             and e1_comparison_audit.get("residual_blocker")
@@ -492,7 +493,9 @@ def main() -> int:
             and int(clustered_repair_stress.get("spare_cores", 0)) == 13_920
             and int(clustered_repair_stress.get("cross_stripe_remapped_cores", 0)) == 13_408
             and int(clustered_repair_stress.get("cross_stripe_spare_margin", 0)) == 512
-            and 0.96 < float(clustered_repair_stress.get("cross_stripe_spare_utilization", 0.0)) < 0.97
+            and 0.96
+            < float(clustered_repair_stress.get("cross_stripe_spare_utilization", 0.0))
+            < 0.97
             and float(clustered_repair_stress.get("cross_stripe_vs_high_failure_remap_ratio", 0.0))
             > 3.8
             and clustered_repair_stress.get("stress_case_sha256")
@@ -885,8 +888,7 @@ def main() -> int:
             and int(stratified_full_k.get("rows_per_layer_target", 0)) == 16
             and int(stratified_full_k.get("executed_stratified_full_k_output_row_count", 0))
             == 4_528
-            and int(stratified_full_k.get("executed_stratified_full_k_mac_count", 0))
-            == 22_119_696
+            and int(stratified_full_k.get("executed_stratified_full_k_mac_count", 0)) == 22_119_696
             and 0.001 < float(stratified_full_k.get("row_coverage_fraction", 0.0)) < 0.002
             and 0.001 < float(stratified_full_k.get("mac_coverage_fraction", 0.0)) < 0.002
             and float(stratified_full_k.get("mac_gain_vs_expanded_full_k_rows", 0.0))
@@ -932,13 +934,9 @@ def main() -> int:
         (
             "dense_stratified_full_k_repair_execution_preserves_outputs",
             int(dense_stratified_full_k_repair.get("executed_layer_count", 0)) == 283
-            and int(
-                dense_stratified_full_k_repair.get("executed_stratified_full_k_row_count", 0)
-            )
+            and int(dense_stratified_full_k_repair.get("executed_stratified_full_k_row_count", 0))
             == 9_056
-            and int(
-                dense_stratified_full_k_repair.get("executed_stratified_full_k_mac_count", 0)
-            )
+            and int(dense_stratified_full_k_repair.get("executed_stratified_full_k_mac_count", 0))
             == 44_239_392
             and int(dense_stratified_full_k_repair.get("touched_logical_core_count", 0)) == 6_545
             and int(dense_stratified_full_k_repair.get("output_invariant_checksum", 0))
@@ -952,9 +950,7 @@ def main() -> int:
             and int(dense_stratified_full_k_repair.get("normal_touched_remapped_rows", 0)) == 12
             and int(dense_stratified_full_k_repair.get("high_failure_touched_remapped_rows", 0))
             == 195
-            and float(
-                dense_stratified_full_k_repair.get("high_vs_normal_touched_remap_ratio", 0.0)
-            )
+            and float(dense_stratified_full_k_repair.get("high_vs_normal_touched_remap_ratio", 0.0))
             == 16.25
             and dense_stratified_full_k_repair.get("sampled_stratified_rows_sha256")
             == "e6eec1eefdfbc6d2b146a5efde1c4ba149d188fa31156f3ca394674830a12768"
@@ -967,15 +963,11 @@ def main() -> int:
             "ultra_dense_stratified_full_k_repair_execution_preserves_outputs",
             int(ultra_dense_stratified_full_k_repair.get("executed_layer_count", 0)) == 283
             and int(
-                ultra_dense_stratified_full_k_repair.get(
-                    "executed_stratified_full_k_row_count", 0
-                )
+                ultra_dense_stratified_full_k_repair.get("executed_stratified_full_k_row_count", 0)
             )
             == 18_112
             and int(
-                ultra_dense_stratified_full_k_repair.get(
-                    "executed_stratified_full_k_mac_count", 0
-                )
+                ultra_dense_stratified_full_k_repair.get("executed_stratified_full_k_mac_count", 0)
             )
             == 88_478_784
             and int(ultra_dense_stratified_full_k_repair.get("touched_logical_core_count", 0))
@@ -995,9 +987,7 @@ def main() -> int:
             )
             == 406
             and float(
-                ultra_dense_stratified_full_k_repair.get(
-                    "high_vs_normal_touched_remap_ratio", 0.0
-                )
+                ultra_dense_stratified_full_k_repair.get("high_vs_normal_touched_remap_ratio", 0.0)
             )
             == 17.652173913043477
             and ultra_dense_stratified_full_k_repair.get("sampled_stratified_rows_sha256")
@@ -1011,15 +1001,11 @@ def main() -> int:
             "hyper_dense_stratified_full_k_repair_execution_preserves_outputs",
             int(hyper_dense_stratified_full_k_repair.get("executed_layer_count", 0)) == 283
             and int(
-                hyper_dense_stratified_full_k_repair.get(
-                    "executed_stratified_full_k_row_count", 0
-                )
+                hyper_dense_stratified_full_k_repair.get("executed_stratified_full_k_row_count", 0)
             )
             == 36_224
             and int(
-                hyper_dense_stratified_full_k_repair.get(
-                    "executed_stratified_full_k_mac_count", 0
-                )
+                hyper_dense_stratified_full_k_repair.get("executed_stratified_full_k_mac_count", 0)
             )
             == 176_957_568
             and int(hyper_dense_stratified_full_k_repair.get("touched_logical_core_count", 0))
@@ -1039,9 +1025,7 @@ def main() -> int:
             )
             == 760
             and float(
-                hyper_dense_stratified_full_k_repair.get(
-                    "high_vs_normal_touched_remap_ratio", 0.0
-                )
+                hyper_dense_stratified_full_k_repair.get("high_vs_normal_touched_remap_ratio", 0.0)
             )
             == 17.272727272727273
             and hyper_dense_stratified_full_k_repair.get("sampled_stratified_rows_sha256")
@@ -1057,23 +1041,19 @@ def main() -> int:
             and int(full_k_repair_ladder.get("full_output_row_count", 0)) == 2_608_640
             and int(full_k_repair_ladder.get("full_mac_count", 0)) == 13_015_864_320
             and int(full_k_repair_ladder.get("max_repaired_full_k_row_count", 0)) == 36_224
-            and int(full_k_repair_ladder.get("max_repaired_full_k_mac_count", 0))
-            == 176_957_568
+            and int(full_k_repair_ladder.get("max_repaired_full_k_mac_count", 0)) == 176_957_568
             and 0.013
             < float(full_k_repair_ladder.get("max_repaired_full_k_row_fraction", 0.0))
             < 0.014
             and 0.013
             < float(full_k_repair_ladder.get("max_repaired_full_k_mac_fraction", 0.0))
             < 0.014
-            and int(full_k_repair_ladder.get("missing_full_k_output_row_count", 0))
-            == 2_572_416
-            and int(full_k_repair_ladder.get("missing_full_k_mac_count", 0))
-            == 12_838_906_752
+            and int(full_k_repair_ladder.get("missing_full_k_output_row_count", 0)) == 2_572_416
+            and int(full_k_repair_ladder.get("missing_full_k_mac_count", 0)) == 12_838_906_752
             and float(full_k_repair_ladder.get("row_gain_vs_first_rung", 0.0)) == 8.0
             and float(full_k_repair_ladder.get("mac_gain_vs_first_rung", 0.0)) == 8.0
             and int(full_k_repair_ladder.get("max_touched_logical_core_count", 0)) == 25_937
-            and int(full_k_repair_ladder.get("max_high_failure_touched_remapped_rows", 0))
-            == 760
+            and int(full_k_repair_ladder.get("max_high_failure_touched_remapped_rows", 0)) == 760
             and full_k_repair_ladder.get("rung_summary_sha256")
             == "d9f0a9cffa3338ba27f2f4996bd9082c6a38d5bb7ccdb9fd6ee85eb8e2f9bcd9"
             and full_k_repair_ladder.get("residual_blocker")
@@ -1087,8 +1067,7 @@ def main() -> int:
             and int(full_k_repair_kind.get("kind_count", 0)) == 8
             and int(full_k_repair_kind.get("hyper_dense_row_count", 0)) == 36_224
             and int(full_k_repair_kind.get("hyper_dense_mac_count", 0)) == 176_957_568
-            and int(full_k_repair_kind.get("hyper_dense_touched_logical_core_count", 0))
-            == 25_937
+            and int(full_k_repair_kind.get("hyper_dense_touched_logical_core_count", 0)) == 25_937
             and int(full_k_repair_kind.get("hyper_dense_normal_remapped_rows", 0)) == 44
             and int(full_k_repair_kind.get("hyper_dense_high_failure_remapped_rows", 0)) == 760
             and int(full_k_repair_kind.get("hyper_dense_embedding_rows", 0)) == 128
@@ -1108,8 +1087,7 @@ def main() -> int:
             int(full_k_repair_route.get("rung_count", 0)) == 4
             and int(full_k_repair_route.get("hyper_dense_normal_remapped_rows", 0)) == 44
             and int(full_k_repair_route.get("hyper_dense_high_failure_remapped_rows", 0)) == 760
-            and int(full_k_repair_route.get("hyper_dense_normal_total_remap_distance", 0))
-            == 6_824
+            and int(full_k_repair_route.get("hyper_dense_normal_total_remap_distance", 0)) == 6_824
             and int(full_k_repair_route.get("hyper_dense_high_failure_total_remap_distance", 0))
             == 107_180
             and int(full_k_repair_route.get("hyper_dense_high_failure_max_remap_distance", 0))
@@ -1128,6 +1106,33 @@ def main() -> int:
             == "full_output_real_weight_checksum_missing"
             and int(full_k_repair_route.get("failing_check_count", 1)) == 0,
             "full-K repair route-cost audit quantifies normal/high remap displacement for selected full-K rows",
+        ),
+        (
+            "full_k_repair_route_cost_by_kind_hotspots",
+            int(full_k_repair_route_kind.get("normal_kind_count", 0)) == 5
+            and int(full_k_repair_route_kind.get("high_failure_kind_count", 0)) == 8
+            and int(full_k_repair_route_kind.get("normal_total_kind_remapped_rows", 0)) == 44
+            and int(full_k_repair_route_kind.get("high_failure_total_kind_remapped_rows", 0)) == 760
+            and int(full_k_repair_route_kind.get("normal_total_kind_remap_distance", 0)) == 6_824
+            and int(full_k_repair_route_kind.get("high_failure_total_kind_remap_distance", 0))
+            == 107_180
+            and int(full_k_repair_route_kind.get("high_failure_norm_remapped_rows", 0)) == 256
+            and int(full_k_repair_route_kind.get("high_failure_norm_remap_distance", 0)) == 29_696
+            and int(full_k_repair_route_kind.get("high_failure_attn_qkv_remapped_rows", 0)) == 109
+            and int(full_k_repair_route_kind.get("high_failure_attn_qkv_remap_distance", 0))
+            == 17_494
+            and int(full_k_repair_route_kind.get("high_failure_mlp_down_remap_distance", 0))
+            == 14_055
+            and float(full_k_repair_route_kind.get("high_vs_normal_kind_count_ratio", 0.0)) == 1.6
+            and float(full_k_repair_route_kind.get("high_vs_normal_remapped_row_ratio", 0.0)) > 17.0
+            and float(full_k_repair_route_kind.get("high_vs_normal_remap_distance_ratio", 0.0))
+            > 15.0
+            and full_k_repair_route_kind.get("kind_route_cost_summary_sha256")
+            == "ae668566b1f994acb9c322b9d3e2b257dc69e33873e500fbc47fa5f1f9ed2703"
+            and full_k_repair_route_kind.get("residual_blocker")
+            == "full_output_real_weight_checksum_missing"
+            and int(full_k_repair_route_kind.get("failing_check_count", 1)) == 0,
+            "full-K repair route-cost by-kind audit pins high-failure displacement hotspots by layer kind",
         ),
         (
             "full_norm_real_weight_rows_execute_whole_kind",
@@ -2014,15 +2019,11 @@ def main() -> int:
         "stratified_full_k_mac_gain": float(
             stratified_full_k.get("mac_gain_vs_expanded_full_k_rows", 0.0)
         ),
-        "stratified_full_k_checksum": int(
-            stratified_full_k.get("stratified_full_k_checksum", 0)
-        ),
+        "stratified_full_k_checksum": int(stratified_full_k.get("stratified_full_k_checksum", 0)),
         "stratified_full_k_result_sha256": str(
             stratified_full_k.get("stratified_layer_result_sha256", "")
         ),
-        "stratified_full_k_residual_blocker": str(
-            stratified_full_k.get("residual_blocker", "")
-        ),
+        "stratified_full_k_residual_blocker": str(stratified_full_k.get("residual_blocker", "")),
         "stratified_full_k_repair_rows": int(
             stratified_full_k_repair.get("executed_stratified_full_k_row_count", 0)
         ),
@@ -2156,9 +2157,7 @@ def main() -> int:
         "full_k_repair_ladder_mac_gain": float(
             full_k_repair_ladder.get("mac_gain_vs_first_rung", 0.0)
         ),
-        "full_k_repair_ladder_sha256": str(
-            full_k_repair_ladder.get("rung_summary_sha256", "")
-        ),
+        "full_k_repair_ladder_sha256": str(full_k_repair_ladder.get("rung_summary_sha256", "")),
         "full_k_repair_ladder_residual_blocker": str(
             full_k_repair_ladder.get("residual_blocker", "")
         ),
@@ -2181,12 +2180,8 @@ def main() -> int:
         "full_k_repair_kind_hyper_norm_rows": int(
             full_k_repair_kind.get("hyper_dense_norm_rows", 0)
         ),
-        "full_k_repair_kind_sha256": str(
-            full_k_repair_kind.get("kind_rung_summary_sha256", "")
-        ),
-        "full_k_repair_kind_residual_blocker": str(
-            full_k_repair_kind.get("residual_blocker", "")
-        ),
+        "full_k_repair_kind_sha256": str(full_k_repair_kind.get("kind_rung_summary_sha256", "")),
+        "full_k_repair_kind_residual_blocker": str(full_k_repair_kind.get("residual_blocker", "")),
         "full_k_repair_route_rungs": int(full_k_repair_route.get("rung_count", 0)),
         "full_k_repair_route_hyper_normal_remaps": int(
             full_k_repair_route.get("hyper_dense_normal_remapped_rows", 0)
@@ -2206,11 +2201,54 @@ def main() -> int:
         "full_k_repair_route_hyper_distance_ratio": float(
             full_k_repair_route.get("hyper_dense_high_vs_normal_remap_distance_ratio", 0.0)
         ),
-        "full_k_repair_route_sha256": str(
-            full_k_repair_route.get("route_cost_ladder_sha256", "")
-        ),
+        "full_k_repair_route_sha256": str(full_k_repair_route.get("route_cost_ladder_sha256", "")),
         "full_k_repair_route_residual_blocker": str(
             full_k_repair_route.get("residual_blocker", "")
+        ),
+        "full_k_repair_route_kind_normal_kinds": int(
+            full_k_repair_route_kind.get("normal_kind_count", 0)
+        ),
+        "full_k_repair_route_kind_high_failure_kinds": int(
+            full_k_repair_route_kind.get("high_failure_kind_count", 0)
+        ),
+        "full_k_repair_route_kind_normal_remaps": int(
+            full_k_repair_route_kind.get("normal_total_kind_remapped_rows", 0)
+        ),
+        "full_k_repair_route_kind_high_failure_remaps": int(
+            full_k_repair_route_kind.get("high_failure_total_kind_remapped_rows", 0)
+        ),
+        "full_k_repair_route_kind_normal_distance": int(
+            full_k_repair_route_kind.get("normal_total_kind_remap_distance", 0)
+        ),
+        "full_k_repair_route_kind_high_failure_distance": int(
+            full_k_repair_route_kind.get("high_failure_total_kind_remap_distance", 0)
+        ),
+        "full_k_repair_route_kind_high_failure_norm_remaps": int(
+            full_k_repair_route_kind.get("high_failure_norm_remapped_rows", 0)
+        ),
+        "full_k_repair_route_kind_high_failure_norm_distance": int(
+            full_k_repair_route_kind.get("high_failure_norm_remap_distance", 0)
+        ),
+        "full_k_repair_route_kind_high_failure_attn_qkv_remaps": int(
+            full_k_repair_route_kind.get("high_failure_attn_qkv_remapped_rows", 0)
+        ),
+        "full_k_repair_route_kind_high_failure_attn_qkv_distance": int(
+            full_k_repair_route_kind.get("high_failure_attn_qkv_remap_distance", 0)
+        ),
+        "full_k_repair_route_kind_high_failure_mlp_down_distance": int(
+            full_k_repair_route_kind.get("high_failure_mlp_down_remap_distance", 0)
+        ),
+        "full_k_repair_route_kind_row_ratio": float(
+            full_k_repair_route_kind.get("high_vs_normal_remapped_row_ratio", 0.0)
+        ),
+        "full_k_repair_route_kind_distance_ratio": float(
+            full_k_repair_route_kind.get("high_vs_normal_remap_distance_ratio", 0.0)
+        ),
+        "full_k_repair_route_kind_sha256": str(
+            full_k_repair_route_kind.get("kind_route_cost_summary_sha256", "")
+        ),
+        "full_k_repair_route_kind_residual_blocker": str(
+            full_k_repair_route_kind.get("residual_blocker", "")
         ),
         "full_norm_real_weight_layers": int(
             full_norm_real_weight.get("executed_norm_layer_count", 0)
@@ -2297,9 +2335,7 @@ def main() -> int:
         "real_weight_ladder_components_sha256": str(
             real_weight_ladder.get("coverage_components_sha256", "")
         ),
-        "real_weight_ladder_residual_blocker": str(
-            real_weight_ladder.get("residual_blocker", "")
-        ),
+        "real_weight_ladder_residual_blocker": str(real_weight_ladder.get("residual_blocker", "")),
         "attn_out_sampled_k_layers": int(attn_out_sampled_k.get("executed_layer_count", 0)),
         "attn_out_sampled_k_value": int(attn_out_sampled_k.get("sampled_k", 0)),
         "attn_out_sampled_k_rows": int(

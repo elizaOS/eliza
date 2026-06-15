@@ -34,7 +34,7 @@ const actor = {
     "Fusion is the future.",
     "94% complete. (For 11 months.)",
     "Clean. Abundant. Free. (Eventually.)",
-    "Aether Energy: saving the world. Timeline: TBD.",
+    "Aether Energy: saving the world. Timeline: undisclosed.",
   ],
   settings: {
     temperature: 0.7,

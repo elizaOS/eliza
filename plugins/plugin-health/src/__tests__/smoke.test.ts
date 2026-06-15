@@ -7,8 +7,8 @@
  *   - smoke: cross-platform — non-darwin `health_signal_observed` falls back
  *     to `user_acknowledged` with logged degradation.
  *
- * Until W1-A's `ScheduledTask` runner lands, the smoke test is structural
- * (the bus and runner do not yet exist as concrete code). It verifies:
+ * This smoke test stays structural and does not depend on a concrete
+ * `ScheduledTask` runner. It verifies:
  *   - the moved sleep-wake-events deriver produces the canonical events for
  *     a circadian state transition (sleep → wake.confirmed),
  *   - the default-pack records validate against the W1-A frozen schema and
@@ -33,7 +33,7 @@ import type {
   ConnectorContribution,
   ConnectorRegistry,
   RuntimeWithHealthRegistries,
-} from "../connectors/contract-stubs.js";
+} from "../connectors/contract-types.js";
 import {
   HEALTH_ANCHORS,
   HEALTH_BUS_FAMILIES,
@@ -226,10 +226,10 @@ describe("plugin-health smoke (W1-B)", () => {
   });
 
   it("connector / anchor / bus-family registration tolerates a missing registry (Wave-1 soft-dep posture)", () => {
-    const fakeRuntime = {} as never;
-    expect(() => registerHealthConnectors(fakeRuntime)).not.toThrow();
-    expect(() => registerHealthAnchors(fakeRuntime)).not.toThrow();
-    expect(() => registerHealthBusFamilies(fakeRuntime)).not.toThrow();
+    const testRuntime = {} as never;
+    expect(() => registerHealthConnectors(testRuntime)).not.toThrow();
+    expect(() => registerHealthAnchors(testRuntime)).not.toThrow();
+    expect(() => registerHealthBusFamilies(testRuntime)).not.toThrow();
   });
 
   it("connector / anchor / bus-family registration calls registry methods when registries are present", () => {
@@ -260,15 +260,15 @@ describe("plugin-health smoke (W1-B)", () => {
       },
       list: () => busList,
     };
-    const fakeRuntime = {
+    const testRuntime = {
       connectorRegistry,
       anchorRegistry,
       busFamilyRegistry,
     } as RuntimeWithHealthRegistries as never;
 
-    registerHealthConnectors(fakeRuntime);
-    registerHealthAnchors(fakeRuntime);
-    registerHealthBusFamilies(fakeRuntime);
+    registerHealthConnectors(testRuntime);
+    registerHealthAnchors(testRuntime);
+    registerHealthBusFamilies(testRuntime);
 
     expect(connectorList.map((c) => c.kind)).toEqual([
       "apple_health",
@@ -288,7 +288,7 @@ describe("plugin-health smoke (W1-B)", () => {
     expect(busList).toHaveLength(8);
   });
 
-  it("connector dispatcher returns disconnected status (Wave-1 stub posture)", async () => {
+  it("connector dispatcher returns disconnected status (Wave-1 unavailable posture)", async () => {
     const connectorList: ConnectorContribution[] = [];
     const connectorRegistry: ConnectorRegistry = {
       register: (c) => {
@@ -299,8 +299,8 @@ describe("plugin-health smoke (W1-B)", () => {
       byCapability: (capability) =>
         connectorList.filter((c) => c.capabilities.includes(capability)),
     };
-    const fakeRuntime = { connectorRegistry } as never;
-    registerHealthConnectors(fakeRuntime);
+    const testRuntime = { connectorRegistry } as never;
+    registerHealthConnectors(testRuntime);
     const apple = connectorList.find((c) => c.kind === "apple_health");
     expect(apple).toBeDefined();
     if (!apple) throw new Error("apple_health should be registered");

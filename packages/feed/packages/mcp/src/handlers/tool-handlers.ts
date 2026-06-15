@@ -574,32 +574,46 @@ export async function executeGetMarkets(
     "MCP",
   );
 
-  const where: { resolved?: boolean } = {};
-  if (args.type === "prediction") {
-    // Only prediction markets
-  } else if (args.type === "perpetuals") {
-    // Only perpetuals (not implemented yet)
-    return { markets: [] };
-  }
+  const includePredictions = args.type !== "perpetuals";
+  const includePerpetuals = args.type !== "prediction";
 
-  const markets = await db.market.findMany({
-    where: {
-      resolved: false,
-      ...where,
-    },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  });
+  const [predictionMarkets, perpetualMarkets] = await Promise.all([
+    includePredictions
+      ? db.market.findMany({
+          where: {
+            resolved: false,
+          },
+          orderBy: { createdAt: "desc" },
+          take: 50,
+        })
+      : [],
+    includePerpetuals ? db.select().from(perpMarketSnapshots) : [],
+  ]);
 
   return {
-    markets: markets.map((m) => ({
-      id: m.id,
-      question: m.question,
-      yesShares: m.yesShares.toString(),
-      noShares: m.noShares.toString(),
-      liquidity: m.liquidity.toString(),
-      endDate: m.endDate.toISOString(),
-    })),
+    markets: [
+      ...predictionMarkets.map((m) => ({
+        type: "prediction" as const,
+        id: m.id,
+        question: m.question,
+        yesShares: m.yesShares.toString(),
+        noShares: m.noShares.toString(),
+        liquidity: m.liquidity.toString(),
+        endDate: m.endDate.toISOString(),
+      })),
+      ...perpetualMarkets.map((m) => ({
+        type: "perpetual" as const,
+        id: m.ticker,
+        ticker: m.ticker,
+        name: m.name,
+        currentPrice: m.currentPrice,
+        priceChange24h: m.changePercent24h,
+        volume24h: m.volume24h,
+        openInterest: m.openInterest,
+        maxLeverage: m.maxLeverage,
+        minOrderSize: m.minOrderSize,
+      })),
+    ],
   };
 }
 
@@ -1935,8 +1949,18 @@ export async function executeGetChats(
       return { chatId, lastMessage };
     }),
   );
-  // For now, return 0 unread count (read tracking not implemented in schema)
-  const unreadCounts = chatIds.map((chatId) => ({ chatId, count: 0 }));
+  const unreadCounts = await Promise.all(
+    chatIds.map(async (chatId) => ({
+      chatId,
+      count: await db.notification.count({
+        where: {
+          userId: agent.userId,
+          read: false,
+          chatId,
+        },
+      }),
+    })),
+  );
   const unreadMap = new Map(unreadCounts.map((u) => [u.chatId, u.count]));
   const lastMessageMap = new Map(
     lastMessages.map((lm) => [lm.chatId, lm.lastMessage]),
@@ -2205,11 +2229,20 @@ export async function executeLeaveChat(
  * Execute get_unread_count tool
  */
 export async function executeGetUnreadCount(
-  _agent: AuthenticatedAgent,
+  agent: AuthenticatedAgent,
   _args: GetUnreadCountArgs,
 ): Promise<GetUnreadCountResult> {
-  // Read tracking not implemented in schema yet, return 0
-  return { unreadCount: 0 };
+  const unreadCount = await db.notification.count({
+    where: {
+      userId: agent.userId,
+      read: false,
+      chatId: {
+        not: null,
+      },
+    },
+  });
+
+  return { unreadCount };
 }
 
 // ============================================================================
@@ -2675,7 +2708,7 @@ export async function executeGetReferralStats(
   agent: AuthenticatedAgent,
   _args: GetReferralStatsArgs,
 ): Promise<GetReferralStatsResult> {
-  const [user, referralsList] = await Promise.all([
+  const [user, referralsList, earnings] = await Promise.all([
     db.user.findUnique({
       where: { id: agent.userId },
       select: { referralCode: true },
@@ -2683,12 +2716,11 @@ export async function executeGetReferralStats(
     db.referral.findMany({
       where: { referrerId: agent.userId },
     }),
+    FeeService.getReferralEarnings(agent.userId),
   ]);
-  // Referrer earnings not in schema, return 0 for now
-  const totalEarnings = 0;
   return {
     totalReferrals: referralsList.length,
-    totalEarnings,
+    totalEarnings: earnings.totalEarned,
     referralCode: user?.referralCode || "",
   };
 }

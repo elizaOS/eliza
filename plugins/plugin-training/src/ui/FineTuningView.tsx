@@ -1,38 +1,42 @@
 import {
   type AppDetailExtensionProps,
   Button,
-  ContentLayout,
   client,
+  registerDetailExtension,
+  useApp,
+} from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
+import type {
+  HuggingFaceDatasetIngestResponse,
+  ListTrainingCollectionsResponse,
+  RunActionBenchmarkResponse,
+  RunBenchmarkVsCerebrasResponse,
+  RunFeedGenerationResponse,
+  RunLocalEvalComparisonResponse,
+  RunScenarioResponse,
+  RunTrainingCollectionResponse,
+  StageEliza1BundleResponse,
+  StartTrainingOptions,
+  StreamEventEnvelope,
+  TrainingAnalysisIndexResponse,
+  TrainingCollectionPreflightSummary,
+  TrainingDatasetRecord,
+  TrainingJobRecord,
+  TrainingModelRecord,
+  TrainingReadinessReportResponse,
+  TrainingStatus,
+  TrainingStreamEvent,
+  TrainingTrajectoryDetail,
+  TrainingTrajectoryList,
+} from "@elizaos/ui/api";
+import { useIntervalWhenDocumentVisible } from "@elizaos/ui/hooks";
+import { ContentLayout } from "@elizaos/ui/layouts";
+import {
   confirmDesktopAction,
-  type HuggingFaceDatasetIngestResponse,
-  type ListTrainingCollectionsResponse,
   openExternalUrl,
   parsePositiveFloat,
   parsePositiveInteger,
-  type RunActionBenchmarkResponse,
-  type RunBenchmarkVsCerebrasResponse,
-  type RunFeedGenerationResponse,
-  type RunLocalEvalComparisonResponse,
-  type RunScenarioResponse,
-  type RunTrainingCollectionResponse,
-  registerDetailExtension,
-  type StageEliza1BundleResponse,
-  type StartTrainingOptions,
-  type StreamEventEnvelope,
-  type TrainingAnalysisIndexResponse,
-  type TrainingCollectionPreflightSummary,
-  type TrainingDatasetRecord,
-  type TrainingJobRecord,
-  type TrainingModelRecord,
-  type TrainingReadinessReportResponse,
-  type TrainingStatus,
-  type TrainingStreamEvent,
-  type TrainingTrajectoryDetail,
-  type TrainingTrajectoryList,
-  useApp,
-  useIntervalWhenDocumentVisible,
-} from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
+} from "@elizaos/ui/utils";
 import {
   type ReactNode,
   useCallback,
@@ -43,18 +47,23 @@ import {
 import {
   ELIZA_ONE_BENCHMARK_TIER_LIST,
   ELIZA_ONE_BENCHMARK_TIERS,
-  elizaOneActionBenchmarkPairs,
-  parseElizaOneBenchmarkTiers,
 } from "../core/eliza1-benchmark-recipe.js";
 import {
+  asArray,
+  loadTrainingTuiState,
+  parseCollectionTierList,
+} from "./FineTuningView.helpers";
+import { interact } from "./FineTuningView.interact";
+import {
   asTrainingEvent,
-  DatasetSection,
   FINE_TUNING_ACTION_CLASS,
   FINE_TUNING_PANEL_CLASS,
   FINE_TUNING_SECTION_CLASS,
   FINE_TUNING_SECTION_HEADER_CLASS,
-  FINE_TUNING_SECTION_KICKER_CLASS,
   FINE_TUNING_STATUS_CARD_CLASS,
+} from "./fine-tuning-panels.helpers";
+import {
+  DatasetSection,
   LiveEventsPanel,
   TrainedModelsSection,
   TrainingJobsSection,
@@ -73,14 +82,6 @@ const DEFAULT_ELIZA1_HF_DATASET_FILES = ELIZA_ONE_BENCHMARK_TIERS.flatMap(
       "validation.json",
     ].map((file) => `sft/${tier}/${file}`),
 );
-
-function asArray<T>(value: T[] | null | undefined): T[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function parseCollectionTierList(value: string): string[] {
-  return parseElizaOneBenchmarkTiers(value, []);
-}
 
 function localViewerUrl(path: string): string {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) return path;
@@ -176,7 +177,7 @@ function formatModelInventorySummary(
   const trained = modelInventory.filter(
     (model) => model.variant === "trained",
   ).length;
-  const parts = [];
+  const parts: string[] = [];
   if (base || trained) parts.push(`base:${base} trained:${trained}`);
   if (tiers.length) parts.push(`tiers:${tiers.join(",")}`);
   return parts.length ? ` ${parts.join(" ")}` : "";
@@ -705,7 +706,7 @@ function ReadinessCheckRow({
     },
   });
   return (
-    <div className="grid gap-2 border-t border-border/40 pt-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    <div className="grid gap-2 border-t border-border/40 pt-2">
       <div>
         <div className="font-mono text-xs text-txt">
           {check.label} · {check.status}
@@ -1015,7 +1016,7 @@ export function FineTuningView({
 
   const loadDatasets = useCallback(async () => {
     const listed = await client.listTrainingDatasets();
-    const nextDatasets = asArray(listed.datasets);
+    const nextDatasets = asArray<TrainingDatasetRecord>(listed.datasets);
     setDatasets(nextDatasets);
     setSelectedDatasetId((prev) => {
       if (prev && nextDatasets.some((dataset) => dataset.id === prev)) {
@@ -1027,7 +1028,7 @@ export function FineTuningView({
 
   const loadJobs = useCallback(async () => {
     const listed = await client.listTrainingJobs();
-    const nextJobs = asArray(listed.jobs);
+    const nextJobs = asArray<TrainingJobRecord>(listed.jobs);
     setJobs(nextJobs);
     setSelectedJobId((prev) => {
       if (prev && nextJobs.some((job) => job.id === prev)) return prev;
@@ -1037,7 +1038,7 @@ export function FineTuningView({
 
   const loadModels = useCallback(async () => {
     const listed = await client.listTrainingModels();
-    const nextModels = asArray(listed.models);
+    const nextModels = asArray<TrainingModelRecord>(listed.models);
     setModels(nextModels);
     setSelectedModelId((prev) => {
       if (prev && nextModels.some((model) => model.id === prev)) return prev;
@@ -2167,24 +2168,27 @@ export function FineTuningView({
   }, 5000);
 
   useEffect(() => {
-    const unbind = client.onWsEvent("training_event", (rawEnvelope) => {
-      const event = asTrainingEvent(
-        rawEnvelope as Partial<StreamEventEnvelope>,
-      );
-      if (!event) return;
-      setTrainingEvents((prev) => {
-        const merged = [event, ...prev];
-        return merged.slice(0, 240);
-      });
-      if (event.kind !== "job_log") {
-        void loadStatus();
-        void loadJobs();
-        void loadModels();
-        if (event.kind === "dataset_built") {
-          void loadDatasets();
+    const unbind = client.onWsEvent(
+      "training_event",
+      (rawEnvelope: Record<string, unknown>) => {
+        const event = asTrainingEvent(
+          rawEnvelope as Partial<StreamEventEnvelope>,
+        );
+        if (!event) return;
+        setTrainingEvents((prev) => {
+          const merged = [event, ...prev];
+          return merged.slice(0, 240);
+        });
+        if (event.kind !== "job_log") {
+          void loadStatus();
+          void loadJobs();
+          void loadModels();
+          if (event.kind === "dataset_built") {
+            void loadDatasets();
+          }
         }
-      }
-    });
+      },
+    );
     return () => {
       unbind();
     };
@@ -2202,19 +2206,13 @@ export function FineTuningView({
 
   return (
     <ContentLayout contentHeader={contentHeader}>
-      <div data-testid="fine-tuning-view" className="space-y-6 pb-8">
-        <section className={FINE_TUNING_SECTION_CLASS}>
-          <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
-            <div className="space-y-2">
-              <div className={FINE_TUNING_SECTION_KICKER_CLASS}>
-                {t("finetuningview.FineTuning")}
-              </div>
-              <h2 className="text-xl font-semibold text-txt">
+      <div data-testid="fine-tuning-view" className="space-y-4 pb-32">
+        <section className="rounded-xl border border-border/50 bg-card/65 px-4 py-3 shadow-sm ring-1 ring-border/10">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-txt">
                 {t("finetuningview.FineTuning")}
               </h2>
-              <p className="max-w-2xl text-sm leading-relaxed text-muted">
-                {t("finetuningview.BuildDatasetsFrom")}
-              </p>
             </div>
             <TrainingActionButton
               agentId="action-refresh-all"
@@ -2237,13 +2235,8 @@ export function FineTuningView({
 
         <section className={FINE_TUNING_SECTION_CLASS}>
           <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
-            <div className="space-y-1">
-              <div className={FINE_TUNING_SECTION_KICKER_CLASS}>
-                {t("finetuningview.Overview")}
-              </div>
-              <div className="text-lg font-semibold text-txt">
-                {t("finetuningview.Status")}
-              </div>
+            <div className="text-lg font-semibold text-txt">
+              {t("finetuningview.Status")}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-3 xl:grid-cols-6">
@@ -2320,18 +2313,17 @@ export function FineTuningView({
 
         <section className={FINE_TUNING_SECTION_CLASS}>
           <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
-            <div className="space-y-1">
-              <div className={FINE_TUNING_SECTION_KICKER_CLASS}>
-                {t("finetuningview.Analysis")}
-              </div>
-              <div className="text-lg font-semibold text-txt">
-                {t("finetuningview.TrainingAnalysisIndex")}
-              </div>
+            <div className="text-lg font-semibold text-txt">
+              {t("finetuningview.TrainingAnalysisIndex", {
+                defaultValue: "Training analysis",
+              })}
             </div>
             <div className="flex flex-wrap gap-2">
               <TrainingActionButton
                 agentId="action-collect-and-index"
-                label={t("finetuningview.CollectAndIndex")}
+                label={t("finetuningview.CollectAndIndex", {
+                  defaultValue: "Collect and index",
+                })}
                 group="analysis"
                 description="Run the full training data collection and build the analysis index"
                 disabled={collectionRunning}
@@ -2340,8 +2332,12 @@ export function FineTuningView({
                 }}
               >
                 {collectionRunning
-                  ? t("finetuningview.Collecting")
-                  : t("finetuningview.CollectAndIndex")}
+                  ? t("finetuningview.Collecting", {
+                      defaultValue: "Collecting",
+                    })
+                  : t("finetuningview.CollectAndIndex", {
+                      defaultValue: "Collect and index",
+                    })}
               </TrainingActionButton>
               <TrainingActionButton
                 agentId="action-collection-preflight"
@@ -2359,7 +2355,9 @@ export function FineTuningView({
               </TrainingActionButton>
               <TrainingActionButton
                 agentId="action-build-analysis-index"
-                label={t("finetuningview.BuildAnalysisIndex")}
+                label={t("finetuningview.BuildAnalysisIndex", {
+                  defaultValue: "Build index",
+                })}
                 group="analysis"
                 description="Build the training analysis index from collected artifacts"
                 disabled={analysisBuilding}
@@ -2368,12 +2366,16 @@ export function FineTuningView({
                 }}
               >
                 {analysisBuilding
-                  ? t("finetuningview.Indexing")
-                  : t("finetuningview.BuildAnalysisIndex")}
+                  ? t("finetuningview.Indexing", { defaultValue: "Indexing" })
+                  : t("finetuningview.BuildAnalysisIndex", {
+                      defaultValue: "Build index",
+                    })}
               </TrainingActionButton>
               <TrainingActionButton
                 agentId="action-build-readiness-report"
-                label={t("finetuningview.BuildReadinessReport")}
+                label={t("finetuningview.BuildReadinessReport", {
+                  defaultValue: "Readiness report",
+                })}
                 group="analysis"
                 description="Build the training readiness report and surface missing checks"
                 disabled={readinessBuilding}
@@ -2382,14 +2384,18 @@ export function FineTuningView({
                 }}
               >
                 {readinessBuilding
-                  ? t("finetuningview.CheckingReadiness")
-                  : t("finetuningview.BuildReadinessReport")}
+                  ? t("finetuningview.CheckingReadiness", {
+                      defaultValue: "Checking",
+                    })
+                  : t("finetuningview.BuildReadinessReport", {
+                      defaultValue: "Readiness report",
+                    })}
               </TrainingActionButton>
             </div>
           </div>
           <div className={`${FINE_TUNING_PANEL_CLASS} p-3 text-sm`}>
             <div className="mb-3 border-b border-border/50 pb-3">
-              <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="analysis-probe-endpoints"
                   label="Probe live endpoints"
@@ -2399,14 +2405,14 @@ export function FineTuningView({
                   onChange={setCollectionPreflightProbe}
                 />
                 Probe live endpoints
-              </label>
+              </div>
             </div>
             <div className="mb-3 border-b border-border/50 pb-3">
               <div className="mb-2 text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
                 Natural trajectory import
               </div>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <label className="space-y-1 text-xs text-muted md:col-span-2">
+                <div className="space-y-1 text-xs text-muted md:col-span-2">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     Sanitized JSONL
                   </span>
@@ -2420,8 +2426,8 @@ export function FineTuningView({
                     onChange={setNaturalSanitizedJsonlPath}
                     placeholder="/path/to/trajectories.sanitized.jsonl"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted md:col-span-2">
+                </div>
+                <div className="space-y-1 text-xs text-muted md:col-span-2">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     Raw JSONL
                   </span>
@@ -2435,8 +2441,8 @@ export function FineTuningView({
                     onChange={setNaturalRawJsonlPath}
                     placeholder="/path/to/trajectories.raw.jsonl"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted">
+                </div>
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     Run ID
                   </span>
@@ -2450,8 +2456,8 @@ export function FineTuningView({
                     onChange={setNaturalRunId}
                     placeholder="app-run-1"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted">
+                </div>
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     Task buckets
                   </span>
@@ -2465,8 +2471,8 @@ export function FineTuningView({
                     onChange={setNaturalTasks}
                     placeholder="response,action_planner"
                   />
-                </label>
-                <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                </div>
+                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="natural-include-raw"
                     label="Include raw trajectories"
@@ -2476,7 +2482,7 @@ export function FineTuningView({
                     onChange={setNaturalIncludeRaw}
                   />
                   Include raw
-                </label>
+                </div>
               </div>
             </div>
             {readinessReport ? (
@@ -3200,7 +3206,7 @@ export function FineTuningView({
                                               ? "model-backed"
                                               : comparison.useMocks
                                                 ? "mocked"
-                                                : "incomplete"
+                                                : "unverified"
                                         }`,
                                     )
                                     .join(" ")}`
@@ -3302,17 +3308,20 @@ export function FineTuningView({
                                             readinessActionRunning ===
                                             `history:${gap.id}`
                                           }
-                                          onClick={() =>
+                                          onClick={() => {
+                                            const capability =
+                                              gap.recommendedCapability;
+                                            if (!capability) return;
                                             void handleRunReadinessRecommendation(
                                               `history:${gap.id}`,
                                               {
-                                                capability:
-                                                  gap.recommendedCapability!,
+                                                label: gap.label,
+                                                capability,
                                                 params:
                                                   gap.recommendedParams ?? {},
                                               },
-                                            )
-                                          }
+                                            );
+                                          }}
                                         >
                                           Run {gap.id}
                                         </AgentInlineButton>
@@ -3624,7 +3633,7 @@ export function FineTuningView({
           <div className={`${FINE_TUNING_PANEL_CLASS} mt-4 p-3 text-sm`}>
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <label className="space-y-1 text-xs text-muted">
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.HuggingFaceRepo")}
                   </span>
@@ -3638,8 +3647,8 @@ export function FineTuningView({
                     onChange={setHfRepoId}
                     placeholder="elizaos/eliza-1-training"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted">
+                </div>
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Revision")}
                   </span>
@@ -3653,8 +3662,8 @@ export function FineTuningView({
                     onChange={setHfRevision}
                     placeholder="main"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted md:col-span-2">
+                </div>
+                <div className="space-y-1 text-xs text-muted md:col-span-2">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Output")}
                   </span>
@@ -3668,8 +3677,8 @@ export function FineTuningView({
                     onChange={setHfOutputDir}
                     placeholder="default"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted md:col-span-2 xl:col-span-4">
+                </div>
+                <div className="space-y-1 text-xs text-muted md:col-span-2 xl:col-span-4">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Files")}
                   </span>
@@ -3682,10 +3691,10 @@ export function FineTuningView({
                     value={hfFiles}
                     onChange={setHfFiles}
                   />
-                </label>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="hf-dry-run"
                     label="HuggingFace ingest dry run"
@@ -3695,7 +3704,7 @@ export function FineTuningView({
                     onChange={setHfDryRun}
                   />
                   {t("finetuningview.DryRun")}
-                </label>
+                </div>
                 <TrainingActionButton
                   agentId="action-ingest-hf-dataset"
                   label={t("finetuningview.IngestHuggingFaceDataset")}
@@ -3785,7 +3794,7 @@ export function FineTuningView({
           <div className={`${FINE_TUNING_PANEL_CLASS} mt-4 p-3 text-sm`}>
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                <label className="space-y-1 text-xs text-muted">
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Archetypes")}
                   </span>
@@ -3799,8 +3808,8 @@ export function FineTuningView({
                     onChange={setFeedArchetypes}
                     placeholder="trader"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted">
+                </div>
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Agents")}
                   </span>
@@ -3814,8 +3823,8 @@ export function FineTuningView({
                     onChange={setFeedNumAgents}
                     type="number"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted">
+                </div>
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Ticks")}
                   </span>
@@ -3829,8 +3838,8 @@ export function FineTuningView({
                     onChange={setFeedTicks}
                     type="number"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted">
+                </div>
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Parallel")}
                   </span>
@@ -3844,8 +3853,8 @@ export function FineTuningView({
                     onChange={setFeedParallel}
                     type="number"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted">
+                </div>
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Output")}
                   </span>
@@ -3859,10 +3868,10 @@ export function FineTuningView({
                     onChange={setFeedOutputDir}
                     placeholder="default"
                   />
-                </label>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="feed-cleanup"
                     label="Feed cleanup"
@@ -3872,8 +3881,8 @@ export function FineTuningView({
                     onChange={setFeedCleanup}
                   />
                   {t("finetuningview.Cleanup")}
-                </label>
-                <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                </div>
+                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="feed-dry-run"
                     label="Feed generation dry run"
@@ -3883,7 +3892,7 @@ export function FineTuningView({
                     onChange={setFeedDryRun}
                   />
                   {t("finetuningview.DryRun")}
-                </label>
+                </div>
                 <TrainingActionButton
                   agentId="action-generate-feed-trajectories"
                   label={t("finetuningview.GenerateFeedTrajectories")}
@@ -3998,11 +4007,10 @@ export function FineTuningView({
                       description="Open the feed generation export"
                       className={FINE_TUNING_ACTION_CLASS}
                       onClick={() => {
-                        void openExternalUrl(
-                          localViewerUrl(
-                            feedGenerationResult.artifacts[0].exportPath,
-                          ),
-                        );
+                        const exportPath =
+                          feedGenerationResult.artifacts[0]?.exportPath;
+                        if (!exportPath) return;
+                        void openExternalUrl(localViewerUrl(exportPath));
                       }}
                     >
                       Open feed export
@@ -4015,7 +4023,7 @@ export function FineTuningView({
           <div className={`${FINE_TUNING_PANEL_CLASS} mt-4 p-3 text-sm`}>
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <label className="space-y-1 text-xs text-muted">
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Scenario")}
                   </span>
@@ -4029,8 +4037,8 @@ export function FineTuningView({
                     onChange={setScenarioFilter}
                     placeholder="deterministic-pr-smoke"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted sm:col-span-2">
+                </div>
+                <div className="space-y-1 text-xs text-muted sm:col-span-2">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Output")}
                   </span>
@@ -4044,10 +4052,10 @@ export function FineTuningView({
                     onChange={setScenarioOutputDir}
                     placeholder="default"
                   />
-                </label>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="scenario-export-native"
                     label="Export native trajectories"
@@ -4057,8 +4065,8 @@ export function FineTuningView({
                     onChange={setScenarioExportNative}
                   />
                   {t("finetuningview.ExportNative")}
-                </label>
-                <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                </div>
+                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="scenario-deterministic-proxy"
                     label="Deterministic proxy"
@@ -4068,8 +4076,8 @@ export function FineTuningView({
                     onChange={setScenarioDeterministicProxy}
                   />
                   {t("finetuningview.Proxy")}
-                </label>
-                <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                </div>
+                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="scenario-dry-run"
                     label="Scenario dry run"
@@ -4079,7 +4087,7 @@ export function FineTuningView({
                     onChange={setScenarioDryRun}
                   />
                   {t("finetuningview.DryRun")}
-                </label>
+                </div>
                 <TrainingActionButton
                   agentId="action-run-scenarios"
                   label={t("finetuningview.RunScenarios")}
@@ -4208,7 +4216,7 @@ export function FineTuningView({
           <div className={`${FINE_TUNING_PANEL_CLASS} mt-4 p-3 text-sm`}>
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                <label className="space-y-1 text-xs text-muted md:col-span-2">
+                <div className="space-y-1 text-xs text-muted md:col-span-2">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Manifest")}
                   </span>
@@ -4222,8 +4230,8 @@ export function FineTuningView({
                     onChange={setEvalComparisonManifestPath}
                     placeholder="training manifest path"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted">
+                </div>
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.BaseModel")}
                   </span>
@@ -4237,8 +4245,8 @@ export function FineTuningView({
                     onChange={setEvalComparisonBaseModel}
                     placeholder="eliza-1-0_8b-base"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted">
+                </div>
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.TrainedModel")}
                   </span>
@@ -4252,8 +4260,8 @@ export function FineTuningView({
                     onChange={setEvalComparisonTrainedModelPath}
                     placeholder="eliza-1-0_8b-trained"
                   />
-                </label>
-                <label className="space-y-1 text-xs text-muted">
+                </div>
+                <div className="space-y-1 text-xs text-muted">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Backend")}
                   </span>
@@ -4273,8 +4281,8 @@ export function FineTuningView({
                     <option value="mlx">mlx</option>
                     <option value="cuda">cuda</option>
                   </AgentNativeSelect>
-                </label>
-                <label className="space-y-1 text-xs text-muted md:col-span-2 xl:col-span-5">
+                </div>
+                <div className="space-y-1 text-xs text-muted md:col-span-2 xl:col-span-5">
                   <span className="font-semibold uppercase tracking-[0.14em]">
                     {t("finetuningview.Output")}
                   </span>
@@ -4288,10 +4296,10 @@ export function FineTuningView({
                     onChange={setEvalComparisonOutputDir}
                     placeholder="default"
                   />
-                </label>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="eval-include-in-collection"
                     label="Include eval in collection"
@@ -4301,8 +4309,8 @@ export function FineTuningView({
                     onChange={setEvalComparisonEnabled}
                   />
                   {t("finetuningview.IncludeInCollection")}
-                </label>
-                <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                </div>
+                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="eval-dry-run"
                     label="Eval comparison dry run"
@@ -4312,7 +4320,7 @@ export function FineTuningView({
                     onChange={setEvalComparisonDryRun}
                   />
                   {t("finetuningview.DryRun")}
-                </label>
+                </div>
                 <TrainingActionButton
                   agentId="action-run-eval-comparison"
                   label={t("finetuningview.RunEvalComparison")}
@@ -4424,7 +4432,7 @@ export function FineTuningView({
           </div>
           <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-              <label className="space-y-1 text-xs text-muted">
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Tiers")}
                 </span>
@@ -4438,8 +4446,8 @@ export function FineTuningView({
                   onChange={setBenchmarkTiers}
                   placeholder={ELIZA_ONE_BENCHMARK_TIER_LIST}
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Benchmark")}
                 </span>
@@ -4473,8 +4481,8 @@ export function FineTuningView({
                   <option value="clawbench">clawbench</option>
                   <option value="all">all</option>
                 </AgentNativeSelect>
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Variants")}
                 </span>
@@ -4494,8 +4502,8 @@ export function FineTuningView({
                   <option value="base">base</option>
                   <option value="trained">trained</option>
                 </AgentNativeSelect>
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.MaxSamples")}
                 </span>
@@ -4510,8 +4518,8 @@ export function FineTuningView({
                   type="number"
                   placeholder="50"
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.ResultsDb")}
                 </span>
@@ -4525,8 +4533,8 @@ export function FineTuningView({
                   onChange={setBenchmarkResultsDb}
                   placeholder="default"
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted sm:col-span-2 xl:col-span-2">
+              </div>
+              <div className="space-y-1 text-xs text-muted sm:col-span-2 xl:col-span-2">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.TrainedModelPath")}
                 </span>
@@ -4540,8 +4548,8 @@ export function FineTuningView({
                   onChange={setBenchmarkTrainedModelPath}
                   placeholder="packages/training/checkpoints/eliza-1-0_8b/final"
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.MatrixOutput")}
                 </span>
@@ -4555,10 +4563,10 @@ export function FineTuningView({
                   onChange={setBenchmarkMatrixOutputDir}
                   placeholder="default"
                 />
-              </label>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="benchmark-dry-run"
                   label="Benchmark dry run"
@@ -4568,7 +4576,7 @@ export function FineTuningView({
                   onChange={setBenchmarkDryRun}
                 />
                 {t("finetuningview.DryRun")}
-              </label>
+              </div>
               <TrainingActionButton
                 agentId="action-run-benchmark-vs-cerebras"
                 label={t("finetuningview.RunBenchmarkVsCerebras")}
@@ -4679,7 +4687,7 @@ export function FineTuningView({
           )}
           <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-              <label className="space-y-1 text-xs text-muted">
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.BundleRepo")}
                 </span>
@@ -4693,8 +4701,8 @@ export function FineTuningView({
                   onChange={setBundleStageRepoId}
                   placeholder="elizaos/eliza-1"
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.BundleTier")}
                 </span>
@@ -4715,8 +4723,8 @@ export function FineTuningView({
                   <option value="27b">27b</option>
                   <option value="27b-256k">27b-256k</option>
                 </AgentNativeSelect>
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.LocalDir")}
                 </span>
@@ -4730,8 +4738,8 @@ export function FineTuningView({
                   onChange={setBundleStageLocalDir}
                   placeholder="/tmp/eliza-1-bundles"
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.MaxBytes")}
                 </span>
@@ -4745,8 +4753,8 @@ export function FineTuningView({
                   onChange={setBundleStageMaxBytes}
                   type="number"
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted sm:col-span-2 xl:col-span-1">
+              </div>
+              <div className="space-y-1 text-xs text-muted sm:col-span-2 xl:col-span-1">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.ManifestOutput")}
                 </span>
@@ -4760,10 +4768,10 @@ export function FineTuningView({
                   onChange={setBundleStageOutputDir}
                   placeholder="default"
                 />
-              </label>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="bundle-apply"
                   label="Apply bundle"
@@ -4773,7 +4781,7 @@ export function FineTuningView({
                   onChange={setBundleStageApply}
                 />
                 {t("finetuningview.Apply")}
-              </label>
+              </div>
               <TrainingActionButton
                 agentId="action-stage-eliza1-bundle"
                 label={t("finetuningview.StageEliza1Bundle")}
@@ -4888,9 +4896,12 @@ export function FineTuningView({
                     description="Open the staged bundle directory"
                     className={FINE_TUNING_ACTION_CLASS}
                     onClick={() => {
-                      void openExternalUrl(
-                        localViewerUrl(bundleStageResult.plan.bundleDir),
-                      );
+                      const bundleDir =
+                        typeof bundleStageResult.plan?.bundleDir === "string"
+                          ? bundleStageResult.plan.bundleDir
+                          : null;
+                      if (!bundleDir) return;
+                      void openExternalUrl(localViewerUrl(bundleDir));
                     }}
                   >
                     Open bundle dir
@@ -4901,7 +4912,7 @@ export function FineTuningView({
           )}
           <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <label className="space-y-1 text-xs text-muted">
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.ActionBenchmarkFilter")}
                 </span>
@@ -4915,8 +4926,8 @@ export function FineTuningView({
                   onChange={setActionBenchmarkFilter}
                   placeholder="case-id[,case-id]"
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.RunsPerCase")}
                 </span>
@@ -4930,8 +4941,8 @@ export function FineTuningView({
                   onChange={setActionBenchmarkRunsPerCase}
                   type="number"
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted sm:col-span-2">
+              </div>
+              <div className="space-y-1 text-xs text-muted sm:col-span-2">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Output")}
                 </span>
@@ -4945,8 +4956,8 @@ export function FineTuningView({
                   onChange={setActionBenchmarkOutputDir}
                   placeholder="default"
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Model")}
                 </span>
@@ -4959,8 +4970,8 @@ export function FineTuningView({
                   value={actionBenchmarkModelId}
                   onChange={setActionBenchmarkModelId}
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.BaseModel")}
                 </span>
@@ -4973,8 +4984,8 @@ export function FineTuningView({
                   value={actionBenchmarkBaseModelId}
                   onChange={setActionBenchmarkBaseModelId}
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.CollectionTiers")}
                 </span>
@@ -4988,8 +4999,8 @@ export function FineTuningView({
                   onChange={setActionBenchmarkPairTiers}
                   placeholder={`${ELIZA_ONE_BENCHMARK_TIER_LIST} or all`}
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.RuntimeModel")}
                 </span>
@@ -5002,8 +5013,8 @@ export function FineTuningView({
                   value={actionBenchmarkRuntimeModel}
                   onChange={setActionBenchmarkRuntimeModel}
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.BaseRuntimeModel")}
                 </span>
@@ -5016,8 +5027,8 @@ export function FineTuningView({
                   value={actionBenchmarkBaseRuntimeModel}
                   onChange={setActionBenchmarkBaseRuntimeModel}
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Provider")}
                 </span>
@@ -5030,8 +5041,8 @@ export function FineTuningView({
                   value={actionBenchmarkProvider}
                   onChange={setActionBenchmarkProvider}
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.BaseUrl")}
                 </span>
@@ -5044,8 +5055,8 @@ export function FineTuningView({
                   value={actionBenchmarkBaseUrl}
                   onChange={setActionBenchmarkBaseUrl}
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Variant")}
                 </span>
@@ -5067,8 +5078,8 @@ export function FineTuningView({
                   <option value="base">base</option>
                   <option value="reference">reference</option>
                 </AgentNativeSelect>
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Tier")}
                 </span>
@@ -5081,8 +5092,8 @@ export function FineTuningView({
                   value={actionBenchmarkTier}
                   onChange={setActionBenchmarkTier}
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted">
+              </div>
+              <div className="space-y-1 text-xs text-muted">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.Benchmark")}
                 </span>
@@ -5095,8 +5106,8 @@ export function FineTuningView({
                   value={actionBenchmarkMatrixBenchmark}
                   onChange={setActionBenchmarkMatrixBenchmark}
                 />
-              </label>
-              <label className="space-y-1 text-xs text-muted sm:col-span-2">
+              </div>
+              <div className="space-y-1 text-xs text-muted sm:col-span-2">
                 <span className="font-semibold uppercase tracking-[0.14em]">
                   {t("finetuningview.DatasetVersion")}
                 </span>
@@ -5109,10 +5120,10 @@ export function FineTuningView({
                   value={actionBenchmarkDatasetVersion}
                   onChange={setActionBenchmarkDatasetVersion}
                 />
-              </label>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="action-benchmark-pair-enabled"
                   label="Pair base and trained"
@@ -5122,8 +5133,8 @@ export function FineTuningView({
                   onChange={setActionBenchmarkPairEnabled}
                 />
                 {t("finetuningview.PairBaseTrained")}
-              </label>
-              <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              </div>
+              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="action-benchmark-use-mocks"
                   label="Use mocks"
@@ -5133,8 +5144,8 @@ export function FineTuningView({
                   onChange={setActionBenchmarkUseMocks}
                 />
                 {t("finetuningview.UseMocks")}
-              </label>
-              <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              </div>
+              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="action-benchmark-capture"
                   label="Capture trajectories"
@@ -5144,8 +5155,8 @@ export function FineTuningView({
                   onChange={setActionBenchmarkCapture}
                 />
                 {t("finetuningview.CaptureTrajectories")}
-              </label>
-              <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              </div>
+              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="action-benchmark-dry-run"
                   label="Action benchmark dry run"
@@ -5155,7 +5166,7 @@ export function FineTuningView({
                   onChange={setActionBenchmarkDryRun}
                 />
                 {t("finetuningview.DryRun")}
-              </label>
+              </div>
               <TrainingActionButton
                 agentId="action-run-action-benchmark"
                 label={t("finetuningview.RunActionBenchmark")}
@@ -5481,7 +5492,7 @@ export function FineTuningTuiView() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1fr)",
+          gridTemplateColumns: "1fr",
           gap: 16,
         }}
       >
@@ -5586,619 +5597,6 @@ export function FineTuningTuiView() {
       </div>
     </div>
   );
-}
-
-async function loadTrainingTuiState(): Promise<{
-  status: TrainingStatus;
-  trajectories: TrainingTrajectoryList;
-  datasets: { datasets: TrainingDatasetRecord[] };
-  jobs: { jobs: TrainingJobRecord[] };
-  models: { models: TrainingModelRecord[] };
-}> {
-  const [status, trajectories, datasets, jobs, models] = await Promise.all([
-    client.getTrainingStatus(),
-    client.listTrainingTrajectories({ limit: 25, offset: 0 }),
-    client.listTrainingDatasets(),
-    client.listTrainingJobs(),
-    client.listTrainingModels(),
-  ]);
-  return {
-    status,
-    trajectories,
-    datasets: { datasets: asArray(datasets.datasets) },
-    jobs: { jobs: asArray(jobs.jobs) },
-    models: { models: asArray(models.models) },
-  };
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-training-state") {
-    return { viewType: "tui", ...(await loadTrainingTuiState()) };
-  }
-
-  if (capability === "terminal-training-trajectory") {
-    const trajectoryId =
-      typeof params?.trajectoryId === "string"
-        ? params.trajectoryId.trim()
-        : "";
-    if (!trajectoryId) throw new Error("trajectoryId is required");
-    return {
-      viewType: "tui",
-      ...(await client.getTrainingTrajectory(trajectoryId)),
-    };
-  }
-
-  if (capability === "terminal-training-build-dataset") {
-    return {
-      viewType: "tui",
-      ...(await client.buildTrainingDataset({
-        limit: typeof params?.limit === "number" ? params.limit : undefined,
-        minLlmCallsPerTrajectory:
-          typeof params?.minLlmCallsPerTrajectory === "number"
-            ? params.minLlmCallsPerTrajectory
-            : undefined,
-      })),
-    };
-  }
-
-  if (capability === "terminal-training-start-job") {
-    const options: StartTrainingOptions = {};
-    if (typeof params?.datasetId === "string")
-      options.datasetId = params.datasetId;
-    if (
-      params?.backend === "mlx" ||
-      params?.backend === "cuda" ||
-      params?.backend === "cpu"
-    ) {
-      options.backend = params.backend;
-    }
-    if (typeof params?.model === "string") options.model = params.model;
-    if (typeof params?.iterations === "number")
-      options.iterations = params.iterations;
-    if (typeof params?.batchSize === "number")
-      options.batchSize = params.batchSize;
-    if (typeof params?.learningRate === "number") {
-      options.learningRate = params.learningRate;
-    }
-    return {
-      viewType: "tui",
-      ...(await client.startTrainingJob(options)),
-    };
-  }
-
-  if (capability === "terminal-training-cancel-job") {
-    const jobId = typeof params?.jobId === "string" ? params.jobId.trim() : "";
-    if (!jobId) throw new Error("jobId is required");
-    return { viewType: "tui", ...(await client.cancelTrainingJob(jobId)) };
-  }
-
-  if (capability === "terminal-training-import-model") {
-    const modelId =
-      typeof params?.modelId === "string" ? params.modelId.trim() : "";
-    if (!modelId) throw new Error("modelId is required");
-    return {
-      viewType: "tui",
-      ...(await client.importTrainingModelToOllama(modelId, {
-        modelName:
-          typeof params?.modelName === "string" ? params.modelName : undefined,
-        baseModel:
-          typeof params?.baseModel === "string" ? params.baseModel : undefined,
-        ollamaUrl:
-          typeof params?.ollamaUrl === "string" ? params.ollamaUrl : undefined,
-      })),
-    };
-  }
-
-  if (capability === "terminal-training-activate-model") {
-    const modelId =
-      typeof params?.modelId === "string" ? params.modelId.trim() : "";
-    if (!modelId) throw new Error("modelId is required");
-    return {
-      viewType: "tui",
-      ...(await client.activateTrainingModel(
-        modelId,
-        typeof params?.providerModel === "string"
-          ? params.providerModel
-          : undefined,
-      )),
-    };
-  }
-
-  if (capability === "terminal-training-benchmark-model") {
-    const modelId =
-      typeof params?.modelId === "string" ? params.modelId.trim() : "";
-    if (!modelId) throw new Error("modelId is required");
-    return {
-      viewType: "tui",
-      ...(await client.benchmarkTrainingModel(modelId)),
-    };
-  }
-
-  if (capability === "terminal-training-build-analysis-index") {
-    return {
-      viewType: "tui",
-      ...(await client.buildTrainingAnalysisIndex({
-        roots: Array.isArray(params?.roots)
-          ? params.roots.filter(
-              (root): root is string => typeof root === "string",
-            )
-          : undefined,
-        outputDir:
-          typeof params?.outputDir === "string" ? params.outputDir : undefined,
-        maxDepth:
-          typeof params?.maxDepth === "number" ? params.maxDepth : undefined,
-      })),
-    };
-  }
-
-  if (capability === "terminal-training-build-readiness-report") {
-    return {
-      viewType: "tui",
-      ...(await client.buildTrainingReadinessReport({
-        roots: Array.isArray(params?.roots)
-          ? params.roots.filter(
-              (entry): entry is string => typeof entry === "string",
-            )
-          : undefined,
-        outputDir:
-          typeof params?.outputDir === "string" ? params.outputDir : undefined,
-        maxDepth:
-          typeof params?.maxDepth === "number" ? params.maxDepth : undefined,
-        reportOutputDir:
-          typeof params?.reportOutputDir === "string"
-            ? params.reportOutputDir
-            : undefined,
-        reportPath:
-          typeof params?.reportPath === "string"
-            ? params.reportPath
-            : undefined,
-      })),
-    };
-  }
-
-  if (capability === "terminal-training-ingest-hf-dataset") {
-    return {
-      viewType: "tui",
-      ...(await client.ingestHuggingFaceTrainingDataset({
-        repoId: typeof params?.repoId === "string" ? params.repoId : undefined,
-        revision:
-          typeof params?.revision === "string" ? params.revision : undefined,
-        files: Array.isArray(params?.files)
-          ? params.files.filter(
-              (file): file is string => typeof file === "string",
-            )
-          : undefined,
-        outputDir:
-          typeof params?.outputDir === "string" ? params.outputDir : undefined,
-        token: typeof params?.token === "string" ? params.token : undefined,
-        dryRun: params?.dryRun === true,
-      })),
-    };
-  }
-
-  if (capability === "terminal-training-feed-generate") {
-    return {
-      viewType: "tui",
-      ...(await client.runFeedTrainingGeneration({
-        workspaceRoot:
-          typeof params?.workspaceRoot === "string"
-            ? params.workspaceRoot
-            : undefined,
-        bun: typeof params?.bun === "string" ? params.bun : undefined,
-        archetypes:
-          typeof params?.archetypes === "string"
-            ? params.archetypes
-            : undefined,
-        numAgents:
-          typeof params?.numAgents === "number" ? params.numAgents : undefined,
-        ticks: typeof params?.ticks === "number" ? params.ticks : undefined,
-        parallel:
-          typeof params?.parallel === "number" ? params.parallel : undefined,
-        managerId:
-          typeof params?.managerId === "string" ? params.managerId : undefined,
-        cleanup: params?.cleanup === true,
-        dryRun: params?.dryRun === true,
-        outputDir:
-          typeof params?.outputDir === "string" ? params.outputDir : undefined,
-      })),
-    };
-  }
-
-  if (capability === "terminal-training-run-scenarios") {
-    return {
-      viewType: "tui",
-      ...(await client.runTrainingScenarios({
-        workspaceRoot:
-          typeof params?.workspaceRoot === "string"
-            ? params.workspaceRoot
-            : undefined,
-        bun: typeof params?.bun === "string" ? params.bun : undefined,
-        scenarioDir:
-          typeof params?.scenarioDir === "string"
-            ? params.scenarioDir
-            : undefined,
-        outputDir:
-          typeof params?.outputDir === "string" ? params.outputDir : undefined,
-        runId: typeof params?.runId === "string" ? params.runId : undefined,
-        scenario:
-          typeof params?.scenario === "string" ? params.scenario : undefined,
-        fileGlobs: Array.isArray(params?.fileGlobs)
-          ? params.fileGlobs.filter(
-              (glob): glob is string => typeof glob === "string",
-            )
-          : undefined,
-        exportNative:
-          typeof params?.exportNative === "boolean"
-            ? params.exportNative
-            : undefined,
-        useDeterministicProxy:
-          typeof params?.useDeterministicProxy === "boolean"
-            ? params.useDeterministicProxy
-            : undefined,
-        dryRun: params?.dryRun === true,
-      })),
-    };
-  }
-
-  if (capability === "terminal-training-run-eval-comparison") {
-    const backend =
-      params?.backend === "cpu" ||
-      params?.backend === "mlx" ||
-      params?.backend === "cuda"
-        ? params.backend
-        : undefined;
-    return {
-      viewType: "tui",
-      ...(await client.runTrainingLocalEvalComparison({
-        trainingRoot:
-          typeof params?.trainingRoot === "string"
-            ? params.trainingRoot
-            : undefined,
-        python: typeof params?.python === "string" ? params.python : undefined,
-        manifestPath:
-          typeof params?.manifestPath === "string"
-            ? params.manifestPath
-            : undefined,
-        model: typeof params?.model === "string" ? params.model : undefined,
-        trainedModelPath:
-          typeof params?.trainedModelPath === "string"
-            ? params.trainedModelPath
-            : undefined,
-        backend,
-        promptFile:
-          typeof params?.promptFile === "string"
-            ? params.promptFile
-            : undefined,
-        maxTokens:
-          typeof params?.maxTokens === "number" ? params.maxTokens : undefined,
-        systemPrompt:
-          typeof params?.systemPrompt === "string"
-            ? params.systemPrompt
-            : undefined,
-        outputPath:
-          typeof params?.outputPath === "string"
-            ? params.outputPath
-            : undefined,
-        outputDir:
-          typeof params?.outputDir === "string" ? params.outputDir : undefined,
-        dryRun: params?.dryRun === true,
-      })),
-    };
-  }
-
-  if (capability === "terminal-training-run-collection") {
-    return {
-      viewType: "tui",
-      ...(await client.runTrainingCollection({
-        outputDir:
-          typeof params?.outputDir === "string" ? params.outputDir : undefined,
-        workspaceRoot:
-          typeof params?.workspaceRoot === "string"
-            ? params.workspaceRoot
-            : undefined,
-        preflightOnly:
-          typeof params?.preflightOnly === "boolean"
-            ? params.preflightOnly
-            : undefined,
-        preflightProbe:
-          typeof params?.preflightProbe === "boolean"
-            ? params.preflightProbe
-            : undefined,
-        includeHuggingFace:
-          typeof params?.includeHuggingFace === "boolean"
-            ? params.includeHuggingFace
-            : undefined,
-        includeFeed:
-          typeof params?.includeFeed === "boolean"
-            ? params.includeFeed
-            : undefined,
-        includeNaturalTrajectories:
-          typeof params?.includeNaturalTrajectories === "boolean"
-            ? params.includeNaturalTrajectories
-            : undefined,
-        includeTestTrajectories:
-          typeof params?.includeTestTrajectories === "boolean"
-            ? params.includeTestTrajectories
-            : undefined,
-        includeScenarios:
-          typeof params?.includeScenarios === "boolean"
-            ? params.includeScenarios
-            : undefined,
-        includeEvalComparison:
-          typeof params?.includeEvalComparison === "boolean"
-            ? params.includeEvalComparison
-            : undefined,
-        includeActionBenchmark:
-          typeof params?.includeActionBenchmark === "boolean"
-            ? params.includeActionBenchmark
-            : undefined,
-        includeBenchmarkVsCerebras:
-          typeof params?.includeBenchmarkVsCerebras === "boolean"
-            ? params.includeBenchmarkVsCerebras
-            : undefined,
-        includeEliza1ModelRegistry:
-          typeof params?.includeEliza1ModelRegistry === "boolean"
-            ? params.includeEliza1ModelRegistry
-            : undefined,
-        includeEliza1BundleStage:
-          typeof params?.includeEliza1BundleStage === "boolean"
-            ? params.includeEliza1BundleStage
-            : undefined,
-        includeBenchmarkMatrix:
-          typeof params?.includeBenchmarkMatrix === "boolean"
-            ? params.includeBenchmarkMatrix
-            : undefined,
-        huggingFace:
-          params?.huggingFace &&
-          typeof params.huggingFace === "object" &&
-          !Array.isArray(params.huggingFace)
-            ? params.huggingFace
-            : undefined,
-        feed:
-          params?.feed &&
-          typeof params.feed === "object" &&
-          !Array.isArray(params.feed)
-            ? params.feed
-            : undefined,
-        naturalTrajectories:
-          params?.naturalTrajectories &&
-          typeof params.naturalTrajectories === "object" &&
-          !Array.isArray(params.naturalTrajectories)
-            ? params.naturalTrajectories
-            : undefined,
-        testTrajectories:
-          params?.testTrajectories &&
-          typeof params.testTrajectories === "object" &&
-          !Array.isArray(params.testTrajectories)
-            ? params.testTrajectories
-            : undefined,
-        scenarios:
-          params?.scenarios &&
-          typeof params.scenarios === "object" &&
-          !Array.isArray(params.scenarios)
-            ? params.scenarios
-            : undefined,
-        evalComparison:
-          params?.evalComparison &&
-          typeof params.evalComparison === "object" &&
-          !Array.isArray(params.evalComparison)
-            ? params.evalComparison
-            : undefined,
-        actionBenchmark:
-          params?.actionBenchmark &&
-          typeof params.actionBenchmark === "object" &&
-          !Array.isArray(params.actionBenchmark)
-            ? params.actionBenchmark
-            : undefined,
-        actionBenchmarkPair:
-          params?.actionBenchmarkPair &&
-          typeof params.actionBenchmarkPair === "object" &&
-          !Array.isArray(params.actionBenchmarkPair)
-            ? params.actionBenchmarkPair
-            : undefined,
-        actionBenchmarkPairs: Array.isArray(params?.actionBenchmarkPairs)
-          ? params.actionBenchmarkPairs.filter(
-              (item) =>
-                item !== null &&
-                typeof item === "object" &&
-                !Array.isArray(item),
-            )
-          : typeof params?.actionBenchmarkPairs === "string"
-            ? elizaOneActionBenchmarkPairs(
-                parseCollectionTierList(params.actionBenchmarkPairs),
-              )
-            : undefined,
-        benchmarkVsCerebras:
-          params?.benchmarkVsCerebras &&
-          typeof params.benchmarkVsCerebras === "object" &&
-          !Array.isArray(params.benchmarkVsCerebras)
-            ? params.benchmarkVsCerebras
-            : undefined,
-        eliza1BundleStage:
-          params?.eliza1BundleStage &&
-          typeof params.eliza1BundleStage === "object" &&
-          !Array.isArray(params.eliza1BundleStage)
-            ? params.eliza1BundleStage
-            : undefined,
-        benchmarkMatrix:
-          params?.benchmarkMatrix &&
-          typeof params.benchmarkMatrix === "object" &&
-          !Array.isArray(params.benchmarkMatrix)
-            ? params.benchmarkMatrix
-            : undefined,
-      })),
-    };
-  }
-
-  if (capability === "terminal-training-write-benchmark-matrix") {
-    const rows = Array.isArray(params?.rows) ? params.rows : [];
-    return {
-      viewType: "tui",
-      ...(await client.writeTrainingBenchmarkMatrix({
-        rows: rows.filter(
-          (
-            row,
-          ): row is {
-            modelId: string;
-            benchmark: string;
-            score: number;
-            variant: "reference" | "base" | "trained";
-          } =>
-            row !== null &&
-            typeof row === "object" &&
-            !Array.isArray(row) &&
-            typeof (row as { modelId?: unknown }).modelId === "string" &&
-            typeof (row as { benchmark?: unknown }).benchmark === "string" &&
-            typeof (row as { score?: unknown }).score === "number" &&
-            ((row as { variant?: unknown }).variant === "reference" ||
-              (row as { variant?: unknown }).variant === "base" ||
-              (row as { variant?: unknown }).variant === "trained"),
-        ),
-        outputDir:
-          typeof params?.outputDir === "string" ? params.outputDir : undefined,
-        referenceModelId:
-          typeof params?.referenceModelId === "string"
-            ? params.referenceModelId
-            : undefined,
-      })),
-    };
-  }
-
-  if (capability === "terminal-training-run-benchmark-vs-cerebras") {
-    const benchmark =
-      params?.benchmark === "clawbench" ||
-      params?.benchmark === "eliza_harness_action_selection" ||
-      params?.benchmark === "hermes" ||
-      params?.benchmark === "all"
-        ? params.benchmark
-        : undefined;
-    const variants =
-      params?.variants === "trained" ||
-      params?.variants === "base" ||
-      params?.variants === "both"
-        ? params.variants
-        : undefined;
-    return {
-      viewType: "tui",
-      ...(await client.runTrainingBenchmarkVsCerebras({
-        tiers: typeof params?.tiers === "string" ? params.tiers : undefined,
-        benchmark,
-        variants,
-        maxSamples:
-          typeof params?.maxSamples === "number"
-            ? params.maxSamples
-            : undefined,
-        dryRun: params?.dryRun === true,
-        outputDir:
-          typeof params?.outputDir === "string" ? params.outputDir : undefined,
-        resultsDb:
-          typeof params?.resultsDb === "string" ? params.resultsDb : undefined,
-        trainedModelPath:
-          typeof params?.trainedModelPath === "string"
-            ? params.trainedModelPath
-            : undefined,
-        datasetVersion:
-          typeof params?.datasetVersion === "string"
-            ? params.datasetVersion
-            : undefined,
-        codeCommit:
-          typeof params?.codeCommit === "string"
-            ? params.codeCommit
-            : undefined,
-        matrixOutputDir:
-          typeof params?.matrixOutputDir === "string"
-            ? params.matrixOutputDir
-            : undefined,
-      })),
-    };
-  }
-
-  if (capability === "terminal-training-stage-eliza1-bundle") {
-    return {
-      viewType: "tui",
-      ...(await client.stageEliza1Bundle({
-        trainingRoot:
-          typeof params?.trainingRoot === "string"
-            ? params.trainingRoot
-            : undefined,
-        python: typeof params?.python === "string" ? params.python : undefined,
-        repoId: typeof params?.repoId === "string" ? params.repoId : undefined,
-        tier: typeof params?.tier === "string" ? params.tier : undefined,
-        localDir:
-          typeof params?.localDir === "string" ? params.localDir : undefined,
-        outputDir:
-          typeof params?.outputDir === "string" ? params.outputDir : undefined,
-        maxBytes:
-          typeof params?.maxBytes === "number" ? params.maxBytes : undefined,
-        apply: params?.apply === true,
-      })),
-    };
-  }
-
-  if (capability === "terminal-training-run-action-benchmark") {
-    return {
-      viewType: "tui",
-      ...(await client.runTrainingActionBenchmark({
-        workspaceRoot:
-          typeof params?.workspaceRoot === "string"
-            ? params.workspaceRoot
-            : undefined,
-        bun: typeof params?.bun === "string" ? params.bun : undefined,
-        outputDir:
-          typeof params?.outputDir === "string" ? params.outputDir : undefined,
-        useMocks:
-          typeof params?.useMocks === "boolean" ? params.useMocks : undefined,
-        forceTrajectoryCapture:
-          params?.forceTrajectoryCapture === false ? false : undefined,
-        filter: typeof params?.filter === "string" ? params.filter : undefined,
-        runsPerCase:
-          typeof params?.runsPerCase === "number"
-            ? params.runsPerCase
-            : undefined,
-        provider:
-          typeof params?.provider === "string" ? params.provider : undefined,
-        modelId:
-          typeof params?.modelId === "string" ? params.modelId : undefined,
-        runtimeModel:
-          typeof params?.runtimeModel === "string"
-            ? params.runtimeModel
-            : undefined,
-        smallModel:
-          typeof params?.smallModel === "string"
-            ? params.smallModel
-            : undefined,
-        largeModel:
-          typeof params?.largeModel === "string"
-            ? params.largeModel
-            : undefined,
-        baseUrl:
-          typeof params?.baseUrl === "string" ? params.baseUrl : undefined,
-        variant:
-          params?.variant === "reference" ||
-          params?.variant === "base" ||
-          params?.variant === "trained"
-            ? params.variant
-            : undefined,
-        tier: typeof params?.tier === "string" ? params.tier : undefined,
-        benchmark:
-          typeof params?.benchmark === "string" ? params.benchmark : undefined,
-        datasetVersion:
-          typeof params?.datasetVersion === "string"
-            ? params.datasetVersion
-            : undefined,
-        codeCommit:
-          typeof params?.codeCommit === "string"
-            ? params.codeCommit
-            : undefined,
-        dryRun: params?.dryRun === true,
-      })),
-    };
-  }
-
-  throw new Error(`Unsupported capability "${capability}"`);
 }
 
 function formatDashboardNumber(value: number | null | undefined): string {

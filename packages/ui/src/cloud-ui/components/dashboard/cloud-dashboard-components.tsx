@@ -17,12 +17,13 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { EmptyState } from "../../../components/ui/empty-state";
+import { Skeleton } from "../../../components/ui/skeleton";
+import { ListSkeleton } from "../../../components/ui/skeleton-layouts";
 import { cn } from "../../lib/utils";
 import { BrandButton } from "../brand/brand-button";
 import { DashboardTableSkeleton } from "../data-list/dashboard-table-skeleton";
-import { EmptyState } from "../empty-state";
 import { DashboardRoutePage } from "../layout/dashboard-route-page";
-import { ListSkeleton } from "../list-skeleton";
 
 interface DashboardActionLinkProps {
   to: string;
@@ -173,8 +174,8 @@ export function DashboardActionCardsSkeleton() {
           key={id}
           className="flex min-h-[148px] flex-col justify-between rounded-sm border border-white/10 bg-white/5 p-5"
         >
-          <div className="h-5 w-5 animate-pulse rounded-sm bg-white/10" />
-          <div className="h-5 w-28 animate-pulse rounded-sm bg-white/10" />
+          <Skeleton className="h-5 w-5" />
+          <Skeleton className="h-5 w-28" />
         </div>
       ))}
     </div>
@@ -215,7 +216,7 @@ export function AppsEmptyState({ description, action }: AppsEmptyStateProps) {
 }
 
 export function AppsSkeleton() {
-  return <ListSkeleton rows={3} variant="card" />;
+  return <ListSkeleton rows={3} />;
 }
 
 export function ContainersSkeleton() {
@@ -240,7 +241,7 @@ export function ContainersSkeleton() {
 
 export function ContainersEmptyState() {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-  const commands = ["bun i -g @elizaos/cli", "elizaos deploy"];
+  const commands = ["bun i -g elizaos", "elizaos deploy"];
 
   const handleCopy = async (text: string, index: number) => {
     await navigator.clipboard.writeText(text);

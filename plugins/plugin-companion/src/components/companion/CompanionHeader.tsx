@@ -1,12 +1,8 @@
-import {
-  Button,
-  LanguageDropdown,
-  ThemeToggle,
-  type UiLanguage,
-  type UiTheme,
-  useMediaQuery,
-} from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { Button, LanguageDropdown, ThemeToggle } from "@elizaos/ui/components";
+import { useMediaQuery } from "@elizaos/ui/hooks";
+import type { UiLanguage } from "@elizaos/ui/i18n";
+import type { UiTheme } from "@elizaos/ui/state";
 import {
   MessageCirclePlus,
   Monitor,

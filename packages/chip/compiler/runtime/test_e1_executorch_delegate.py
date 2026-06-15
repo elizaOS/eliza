@@ -2,7 +2,7 @@
 
 The skeleton mocks the ExecuTorch partitioner / preprocess surface without
 importing ``executorch`` and consumes the dataclass subset from
-``e1_npu_stablehlo``. The placeholder backend blob is JSON-serialised
+``e1_npu_stablehlo``. The delegate artifact is JSON-serialised
 descriptor-spec metadata, not real binary kernels.
 """
 
@@ -136,7 +136,7 @@ def test_partitioner_rejects_non_module_input() -> None:
         Partitioner().partition({"op": "stablehlo.dot_general"})
 
 
-def test_backend_preprocess_returns_placeholder_descriptor_spec_blob() -> None:
+def test_backend_preprocess_returns_descriptor_spec_artifact() -> None:
     module = parse_module(_supported_payload())
     result = Backend().preprocess(module)
 

@@ -12,7 +12,7 @@ import {
   auditLogRetention,
 } from "./db-and-pii.js";
 import {
-  firmwareSigningScaffold,
+  firmwareSigningScript,
   pluginSignatureVerify,
   subagentEnvAllowlist,
 } from "./plugins.js";
@@ -22,16 +22,10 @@ import {
   noCommittedSecrets,
   workflowPermissions,
 } from "./supply-chain.js";
-import {
-  alertRulesPresent,
-  monitoringConfig,
-} from "./observability.js";
+import { alertRulesPresent, monitoringConfig } from "./observability.js";
 import { k8sSecurityContext, networkPoliciesPresent } from "./k8s.js";
 import { auditActionsComprehensive } from "./audit-actions.js";
-import {
-  modelArtifactSigning,
-  trainingConsentBasis,
-} from "./training.js";
+import { modelArtifactSigning, trainingConsentBasis } from "./training.js";
 import {
   auditDispatcherEmits,
   auditRedaction,
@@ -49,7 +43,7 @@ export const ALL_CHECKS: readonly Check[] = [
   // CC6.8 — Integrity / supply chain
   pluginSignatureVerify,
   subagentEnvAllowlist,
-  firmwareSigningScaffold,
+  firmwareSigningScript,
 
   // CC4 — Monitoring
   auditActionsComprehensive,

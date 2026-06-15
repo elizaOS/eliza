@@ -15,7 +15,7 @@ function app(overrides: Partial<RegistryAppInfo>): RegistryAppInfo {
 describe("app catalog icon helpers", () => {
   it("returns icon names instead of raw emoji glyphs for app sections", () => {
     const cases = [
-      app({ name: "@elizaos/plugin-lifeops" }),
+      app({ name: "@elizaos/plugin-personal-assistant" }),
       app({ category: "game", name: "@elizaos/plugin-clawville" }),
       app({ category: "developer", name: "@elizaos/plugin-tooling" }),
       app({ category: "finance", name: "@elizaos/plugin-wallet" }),

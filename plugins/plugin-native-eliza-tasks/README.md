@@ -24,7 +24,7 @@ await ElizaTasks.addListener("wake", (event) => {
 await ElizaTasks.scheduleNext({ earliestBeginSec: 900 });
 ```
 
-On web and non-iOS platforms the plugin returns `supported: false` and all operations are no-ops. The app should call `getStatus()` and fall back to `@capacitor/background-runner` polling when `supported` is false.
+On web and non-iOS platforms the plugin returns `supported: false`; scheduling reports no iOS wake path, and cancellation reports that no web wake requests were cancelled. The app should call `getStatus()` and fall back to `@capacitor/background-runner` polling when `supported` is false.
 
 ## Installation
 
@@ -112,5 +112,5 @@ Removes all `wake` listeners.
 | Platform | Support |
 |---|---|
 | iOS 15+ | Full — `BGTaskScheduler` + optional APNs |
-| Android | Not yet implemented |
-| Web / Electron | No-op stub (`supported: false`) |
+| Android | Unsupported in this iOS BGTaskScheduler bridge |
+| Web / Electron | Unsupported fallback (`supported: false`) |

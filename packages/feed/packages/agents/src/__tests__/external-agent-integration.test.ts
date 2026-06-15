@@ -45,10 +45,12 @@ const createChainableMock = (
     innerJoin: () => chainable,
     groupBy: () => chainable,
     having: () => chainable,
+    // biome-ignore lint/suspicious/noThenProperty: The mock intentionally emulates Drizzle's awaitable query chain.
     then: (resolve: (value: Array<Record<string, unknown>>) => void) =>
       resolve(returnValue),
     [Symbol.toStringTag]: "Promise",
   };
+  // biome-ignore lint/suspicious/noThenProperty: The mock intentionally emulates Drizzle's awaitable query chain.
   Object.defineProperty(chainable, "then", {
     value: (resolve: (value: Array<Record<string, unknown>>) => void) =>
       Promise.resolve(returnValue).then(resolve),

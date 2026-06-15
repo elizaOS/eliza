@@ -165,8 +165,10 @@ export function buildCodingContainerCreatePayload(
     image,
     port: Number(containersEnv.agentPort()),
     desired_count: 1,
-    cpu: request.container?.cpu ?? DEFAULT_CPU,
-    memory: request.container?.memory ?? DEFAULT_MEMORY_MB,
+    // The provisioning daemon uses node defaults; callers cannot override CPU
+    // or memory (the request schema no longer accepts them — see contract).
+    cpu: DEFAULT_CPU,
+    memory: DEFAULT_MEMORY_MB,
     health_check_path: "/health",
     environment_vars: environmentVars,
     persist_volume: true,
@@ -175,6 +177,47 @@ export function buildCodingContainerCreatePayload(
     volume_mount_path: workspacePath,
     ...(request.source?.files?.length ? { bootstrap_source: request.source } : {}),
   };
+}
+
+/**
+ * Returns true when `image` is permitted by the coding-container allowlist.
+ *
+ * SECURITY GATE. Coding-containers run an OUTSIDE image on our docker nodes,
+ * gated only by "any authenticated org" — so without this check any authed
+ * caller could run an arbitrary image. The allowlist is the gate.
+ *
+ * Matching rules per allowlist entry (all case-insensitive, whitespace-trimmed):
+ *  - Trailing `*`  → prefix match (entry without the `*` must be a prefix of
+ *    the image). `ghcr.io/elizaos/*` allows `ghcr.io/elizaos/eliza:stable`.
+ *  - No `*`        → exact match.
+ *  - A bare `*`    → matches anything (explicit opt-out; use with care).
+ *
+ * IMPORTANT: an EMPTY allowlist denies everything (fail-closed). The caller
+ * supplies the operator-configured / default allowlist (see
+ * `containersEnv.codingContainerImageAllowlist()`), which is never empty unless
+ * an operator explicitly sets `CODING_CONTAINER_IMAGE_ALLOWLIST=` to disable
+ * all coding-container deploys.
+ */
+export function isCodingContainerImageAllowed(
+  image: string,
+  allowlist: readonly string[],
+): boolean {
+  const normalizedImage = image.trim().toLowerCase();
+  if (!normalizedImage) return false;
+  if (allowlist.length === 0) return false; // fail-closed
+
+  for (const rawEntry of allowlist) {
+    const entry = rawEntry.trim().toLowerCase();
+    if (!entry) continue;
+    if (entry === "*") return true;
+    if (entry.endsWith("*")) {
+      const prefix = entry.slice(0, -1);
+      if (normalizedImage.startsWith(prefix)) return true;
+    } else if (normalizedImage === entry) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function readString(data: Record<string, unknown>, keys: string[]): string | undefined {

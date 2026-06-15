@@ -1,6 +1,6 @@
 import { CalendarClock, KeyRound, ShieldCheck, Signal } from "lucide-react";
 
-import { StatSummary } from "./stat-summary";
+import { type KeyMetric, KeyMetricsGrid } from "../brand/key-metrics-grid";
 
 export interface ApiKeysSummaryData {
   totalKeys: number;
@@ -20,38 +20,31 @@ const numberFormatter = new Intl.NumberFormat("en-US", {
 });
 
 export function ApiKeysSummary({ summary }: ApiKeysSummaryProps) {
-  const items = [
+  const metrics: KeyMetric[] = [
     {
-      title: "Total keys",
-      value: summary.totalKeys,
+      label: "Total keys",
+      value: numberFormatter.format(summary.totalKeys),
       icon: KeyRound,
     },
     {
-      title: "Active keys",
-      value: summary.activeKeys,
+      label: "Active keys",
+      value: numberFormatter.format(summary.activeKeys),
       icon: ShieldCheck,
     },
     {
-      title: "Monthly usage",
-      value: summary.monthlyUsage,
-      description: `Requests this month - ${summary.rateLimit.toLocaleString()} rpm`,
+      label: "Monthly usage",
+      value: numberFormatter.format(summary.monthlyUsage),
+      helper: `Requests this month - ${summary.rateLimit.toLocaleString()} rpm`,
       icon: Signal,
     },
     {
-      title: "Last generated",
+      label: "Last generated",
       value: summary.lastGeneratedAt
         ? new Date(summary.lastGeneratedAt).toLocaleDateString()
         : "Not yet",
       icon: CalendarClock,
     },
-  ] as const;
+  ];
 
-  return (
-    <StatSummary
-      items={items}
-      formatValue={(value) =>
-        typeof value === "number" ? numberFormatter.format(value) : value
-      }
-    />
-  );
+  return <KeyMetricsGrid metrics={metrics} />;
 }

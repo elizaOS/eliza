@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-model-tester",
-  "version": "2.0.3-beta.0",
+  "version": "2.0.3-beta.13",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -27,7 +27,8 @@
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
-    "lucide-react": "^1.0.0"
+    "lucide-react": "^1.0.0",
+    "react": "^19.0.0"
   },
   "elizaos": {
     "app": {

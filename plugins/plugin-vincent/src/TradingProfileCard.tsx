@@ -4,28 +4,38 @@
  * Renders P&L only when Vincent provides analytics.
  */
 
-import { TrendingUp } from "lucide-react";
+import { BadgeDollarSign, Repeat2, Target, TrendingUp } from "lucide-react";
+import type { ComponentType } from "react";
 import type { VincentTradingProfile } from "./vincent-contracts";
 
 interface TradingProfileCardProps {
   tradingProfile: VincentTradingProfile | null;
 }
 
-interface StatRowProps {
+interface StatTileProps {
   label: string;
   value: string;
-  accent?: boolean;
+  tone?: "accent" | "ok" | "muted";
+  icon: ComponentType<{ className?: string }>;
 }
 
-function StatRow({ label, value, accent = false }: StatRowProps) {
+function StatTile({ label, value, tone = "muted", icon: Icon }: StatTileProps) {
+  const toneClass =
+    tone === "ok"
+      ? "border-ok/25 bg-ok/10 text-ok"
+      : tone === "accent"
+        ? "border-accent/25 bg-accent/10 text-accent"
+        : "border-border/20 bg-card/45 text-muted";
+
   return (
-    <div className="flex items-center justify-between py-2.5 border-b border-border/10 last:border-0">
-      <span className="text-xs text-muted">{label}</span>
-      <span
-        className={`text-sm font-semibold tabular-nums ${accent ? "text-ok" : "text-txt"}`}
-      >
+    <div className={`rounded-xl border px-3 py-3 ${toneClass}`}>
+      <Icon className="h-4 w-4" />
+      <div className="mt-2 text-sm font-semibold tabular-nums text-txt">
         {value}
-      </span>
+      </div>
+      <div className="mt-0.5 text-2xs font-semibold uppercase text-muted">
+        {label}
+      </div>
     </div>
   );
 }
@@ -39,12 +49,13 @@ export function TradingProfileCard({
 }: TradingProfileCardProps) {
   if (!tradingProfile) {
     return (
-      <div className="rounded-3xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-        <div className="flex items-center gap-2">
+      <div className="rounded-2xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+        <div className="flex items-center justify-between gap-3">
           <TrendingUp className="h-4 w-4 text-muted/50" />
-          <span className="text-sm text-muted">
-            Vincent trading analytics are not available from Vincent yet.
-          </span>
+          <span
+            className="h-2 w-2 rounded-full bg-muted/50"
+            title="No analytics"
+          />
         </div>
       </div>
     );
@@ -54,58 +65,43 @@ export function TradingProfileCard({
     tradingProfile;
 
   return (
-    <div className="rounded-3xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] space-y-4">
+    <div className="space-y-3 rounded-2xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
       {/* Header */}
       <div className="flex items-center gap-2">
         <TrendingUp className="h-4 w-4 text-accent" />
-        <span className="text-sm font-semibold text-txt">Trading Profile</span>
+        <span className="text-sm font-semibold text-txt">P&amp;L</span>
       </div>
 
-      {/* Summary stats */}
-      <div className="rounded-xl border border-border/20 bg-card/40 px-4 divide-y divide-border/10">
-        <StatRow label="Total P&amp;L" value={totalPnl} accent />
-        <StatRow label="Win Rate" value={formatWinRate(winRate)} />
-        <StatRow label="Total Swaps" value={String(totalSwaps)} />
-        <StatRow label="24h Volume" value={volume24h} />
+      <div className="grid gap-2 sm:grid-cols-4">
+        <StatTile
+          icon={BadgeDollarSign}
+          label="P&L"
+          value={totalPnl}
+          tone="ok"
+        />
+        <StatTile
+          icon={Target}
+          label="Win"
+          value={formatWinRate(winRate)}
+          tone="accent"
+        />
+        <StatTile icon={Repeat2} label="Swaps" value={String(totalSwaps)} />
+        <StatTile icon={TrendingUp} label="24h" value={volume24h} />
       </div>
 
-      {/* Token breakdown */}
       {tokenBreakdown && tokenBreakdown.length > 0 && (
-        <div className="rounded-xl border border-border/20 bg-card/40 overflow-hidden">
-          <div className="border-b border-border/20 px-4 py-2.5">
-            <span className="text-xs-tight font-semibold uppercase tracking-wider text-muted/70">
-              Token Breakdown
+        <div className="flex flex-wrap gap-2">
+          {tokenBreakdown.slice(0, 8).map((tok) => (
+            <span
+              key={tok.symbol}
+              className="inline-flex items-center gap-2 rounded-full border border-border/25 bg-card/55 px-3 py-1.5 text-xs font-semibold text-muted"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-ok" />
+              <span className="text-txt">{tok.symbol}</span>
+              <span className="font-mono text-ok">{tok.pnl}</span>
+              <span className="font-mono">{tok.swaps}</span>
             </span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs font-semibold uppercase tracking-wider text-muted/70">
-                  <th className="px-4 py-2.5">Token</th>
-                  <th className="px-4 py-2.5 text-right">P&amp;L</th>
-                  <th className="px-4 py-2.5 text-right">Swaps</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/10">
-                {tokenBreakdown.map((tok) => (
-                  <tr
-                    key={tok.symbol}
-                    className="transition-colors hover:bg-accent/4"
-                  >
-                    <td className="px-4 py-2.5 text-xs font-medium text-txt">
-                      {tok.symbol}
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-xs text-ok">
-                      {tok.pnl}
-                    </td>
-                    <td className="px-4 py-2.5 text-right text-xs tabular-nums text-muted">
-                      {tok.swaps}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          ))}
         </div>
       )}
     </div>

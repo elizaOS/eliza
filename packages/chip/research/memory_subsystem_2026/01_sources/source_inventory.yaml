@@ -123,7 +123,7 @@ lpddr_vendor_announcements:
       - power-per-bit reduction targets vs LPDDR5X
       - integration with on-package PoP and CoWoS-style mobile packaging
   - id: micron_lpddr6_position
-    title: "Micron 2025-2026 mobile memory roadmap discussions"
+    title: "Micron 2025-2026 mobile memory planning discussions"
     publisher: Micron
     url: "https://www.micron.com/about/blog"
     status: announcement_only
@@ -154,7 +154,7 @@ hbm_and_advanced_dram:
     url: "https://semiconductor.samsung.com/dram/hbm/hbm3e-shinebolt/"
     relevance:
       - 9.8 Gb/s per pin Shinebolt HBM3E
-      - direct-bond Cu interconnect roadmap
+      - direct-bond Cu interconnect plan
   - id: nvidia_blackwell_arch_brief
     title: "NVIDIA Blackwell Architecture (B100/B200/GB200)"
     publisher: NVIDIA
@@ -178,11 +178,11 @@ hbm_and_advanced_dram:
     relevance:
       - 256 GB HBM3E at 6 TB/s
       - directed memory bandwidth scaling at constant compute
-  - id: nvidia_rubin_roadmap
-    title: "NVIDIA Rubin / Vera Rubin Roadmap Discussion"
+  - id: nvidia_rubin_plan
+    title: "NVIDIA Rubin / Vera Rubin Plan Discussion"
     publisher: NVIDIA GTC 2025
     url: "https://blogs.nvidia.com/blog/gtc-2025-keynote-recap/"
-    status: roadmap_only
+    status: planning_only
     relevance:
       - Rubin generation HBM4 memory claim
       - chiplet decomposition and per-die bandwidth scaling

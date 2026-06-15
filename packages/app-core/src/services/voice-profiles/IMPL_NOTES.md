@@ -1,6 +1,10 @@
 # Voice Profiles — Implementation Notes
 
-This directory is a **scaffold only**. The store interface, in-memory store, diarization pipeline interface, owner-confidence scoring, challenge service, and naive nickname evaluator are real and tested. Everything below has to land before any of this is wired into a shipping product.
+This directory contains the host-independent voice-profile primitives: the store
+interface, in-memory store, diarization pipeline interface, owner-confidence
+scoring, challenge service, and nickname evaluator. Shipping integrations still
+need durable storage, production diarization/embedding adapters, challenge
+hardening, and the threat model below.
 
 ## Diarization
 
@@ -29,7 +33,9 @@ This directory is a **scaffold only**. The store interface, in-memory store, dia
 ## Protected actions and challenges
 
 - `InMemoryChallengeService` hashes answers with SHA-256. Production must use a salted KDF (Argon2id) per-challenge and store nothing recoverable.
-- Challenge prompts should pull from the owner's private fact set (memory-resident, never logged). Open question: who owns that fact set? Almost certainly the agent's owner-facts evaluator (Workstream J extension), which is **not** in this scaffold.
+- Challenge prompts should pull from the owner's private fact set
+  (memory-resident, never logged). Open question: who owns that fact set?
+  Almost certainly the agent's owner-facts evaluator.
 - Rate-limit verify attempts. The in-memory implementation does not — production must.
 
 ## Nicknames

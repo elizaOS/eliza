@@ -11,11 +11,37 @@
  */
 
 import { Component, type ErrorInfo, type ReactNode, useMemo } from "react";
+import { UiRenderer } from "../components/config-ui/ui-renderer";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
 import { useApp } from "../state";
 import { useIsDeveloperMode } from "../state/useDeveloperMode";
 import { resolveWidgetsForSlot } from "./registry";
 import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
+import { WIDGET_UI_ACTION_EVENT } from "./WidgetHost.constants";
+
+export interface WidgetUiActionEventDetail {
+  pluginId: string;
+  widgetId: string;
+  slot: WidgetSlot;
+  action: string;
+  params?: Record<string, unknown>;
+}
+
+function dispatchWidgetUiAction(
+  declaration: PluginWidgetDeclaration,
+  action: string,
+  params?: Record<string, unknown>,
+): void {
+  if (typeof window === "undefined") return;
+  const detail: WidgetUiActionEventDetail = {
+    pluginId: declaration.pluginId,
+    widgetId: declaration.id,
+    slot: declaration.slot,
+    action,
+    ...(params ? { params } : {}),
+  };
+  window.dispatchEvent(new CustomEvent(WIDGET_UI_ACTION_EVENT, { detail }));
+}
 
 // -- Error boundary ----------------------------------------------------------
 
@@ -125,15 +151,19 @@ export function WidgetHost({
           );
         }
 
-        // Fallback: declarative uiSpec rendering (future — placeholder for now)
         if (declaration.uiSpec) {
           return (
             <WidgetErrorBoundary key={widgetKey} widgetId={widgetKey}>
               <div
-                className="rounded-sm border border-border/60 bg-bg-accent/25 px-3 py-3 text-xs text-muted"
+                className="min-w-0"
                 data-testid={`widget-uispec-${declaration.id}`}
               >
-                {declaration.label} (declarative widget)
+                <UiRenderer
+                  spec={declaration.uiSpec}
+                  onAction={(action, params) =>
+                    dispatchWidgetUiAction(declaration, action, params)
+                  }
+                />
               </div>
             </WidgetErrorBoundary>
           );

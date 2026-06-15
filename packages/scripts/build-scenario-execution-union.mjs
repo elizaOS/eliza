@@ -38,9 +38,9 @@ const ROOTS = [
     runs: ["deterministic-all", "deterministic-remainder", "deterministic-remainder-2"],
   },
   {
-    scope: "plugin-lifeops",
-    root: "plugins/plugin-lifeops/test/scenarios",
-    runs: ["plugin-lifeops-deterministic"],
+    scope: "plugin-personal-assistant",
+    root: "plugins/plugin-personal-assistant/test/scenarios",
+    runs: ["plugin-personal-assistant-deterministic"],
   },
   {
     scope: "plugin-app-control",
@@ -153,9 +153,9 @@ function catalogInventoryRows() {
       root: "packages/test/scenarios",
     })),
     ...(catalog.pluginLifeopsScenarios || []).map((id) => ({
-      scope: "plugin-lifeops",
+      scope: "plugin-personal-assistant",
       id,
-      root: "plugins/plugin-lifeops/test/scenarios",
+      root: "plugins/plugin-personal-assistant/test/scenarios",
     })),
     ...(catalog.pluginAppControlScenarios || []).map((id) => ({
       scope: "plugin-app-control",

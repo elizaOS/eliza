@@ -1,5 +1,5 @@
 /**
- * WS7 ↔ AOSP — Privileged-input actor stub.
+ * WS7 ↔ AOSP — Privileged-input actor.
  *
  * In the consumer build the cascade routes gestures through
  * `MobileComputerInterface` → `AccessibilityGestureDescription` — which is
@@ -76,10 +76,10 @@ export const MOTION_EVENT_ACTION_MOVE = 2 as const;
  *   - click / double_click / right_click → tap(s)
  *   - drag                              → DOWN at start, MOVE/UP at end
  *   - scroll                            → swipe (DOWN, MOVE, UP)
- *   - wait / finish                     → success: true (no-op)
+ *   - wait / finish                     → success: true (no input event)
  *   - type / key / hotkey               → invalid_args (use AccessibilityNodeInfo
  *                                         or a separate keymap actor; out of
- *                                         scope for this stub).
+ *                                         scope for this privileged path).
  */
 export class AospInputActor {
   readonly name = "aosp-input";
@@ -119,7 +119,13 @@ export class AospInputActor {
       action.kind === "double_click" ||
       action.kind === "right_click"
     ) {
-      if (!Number.isFinite(action.x) || !Number.isFinite(action.y)) {
+      const { x, y } = action;
+      if (
+        typeof x !== "number" ||
+        !Number.isFinite(x) ||
+        typeof y !== "number" ||
+        !Number.isFinite(y)
+      ) {
         return invalidArgs(
           action,
           "click action requires finite (x, y) coords",
@@ -128,7 +134,7 @@ export class AospInputActor {
       const times = action.kind === "double_click" ? 2 : 1;
       try {
         for (let i = 0; i < times; i += 1) {
-          await this.tap(bridge, action.x!, action.y!);
+          await this.tap(bridge, x, y);
         }
       } catch (err) {
         return driverError(err);
@@ -136,11 +142,14 @@ export class AospInputActor {
       return { success: true, issued: action };
     }
     if (action.kind === "scroll") {
+      const { x, y, dx, dy } = action;
       if (
-        !Number.isFinite(action.x) ||
-        !Number.isFinite(action.y) ||
-        typeof action.dx !== "number" ||
-        typeof action.dy !== "number"
+        typeof x !== "number" ||
+        !Number.isFinite(x) ||
+        typeof y !== "number" ||
+        !Number.isFinite(y) ||
+        typeof dx !== "number" ||
+        typeof dy !== "number"
       ) {
         return invalidArgs(
           action,
@@ -152,10 +161,10 @@ export class AospInputActor {
         // "content scrolls down", which is a physical swipe UPWARD.
         await this.swipe(
           bridge,
-          action.x!,
-          action.y!,
-          action.x! - action.dx * 200,
-          action.y! - action.dy * 200,
+          x,
+          y,
+          x - dx * 200,
+          y - dy * 200,
           DEFAULT_SWIPE_DURATION_MS,
         );
       } catch (err) {
@@ -164,21 +173,26 @@ export class AospInputActor {
       return { success: true, issued: action };
     }
     if (action.kind === "drag") {
+      const { startX, startY, x, y } = action;
       if (
-        !Number.isFinite(action.startX) ||
-        !Number.isFinite(action.startY) ||
-        !Number.isFinite(action.x) ||
-        !Number.isFinite(action.y)
+        typeof startX !== "number" ||
+        !Number.isFinite(startX) ||
+        typeof startY !== "number" ||
+        !Number.isFinite(startY) ||
+        typeof x !== "number" ||
+        !Number.isFinite(x) ||
+        typeof y !== "number" ||
+        !Number.isFinite(y)
       ) {
         return invalidArgs(action, "drag requires startX/startY and x/y");
       }
       try {
         await this.swipe(
           bridge,
-          action.startX!,
-          action.startY!,
-          action.x!,
-          action.y!,
+          startX,
+          startY,
+          x,
+          y,
           DEFAULT_SWIPE_DURATION_MS,
         );
       } catch (err) {

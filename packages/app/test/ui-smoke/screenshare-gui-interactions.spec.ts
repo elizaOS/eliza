@@ -150,22 +150,25 @@ test("screenshare GUI drives host lifecycle, copied details, remote connect, and
 
   await openAppPath(page, "/screenshare");
 
-  await expect(page.getByText("Host")).toBeVisible();
+  await expect(page.getByRole("status", { name: /^Session:/ })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Start host session" }),
+  ).toBeVisible();
   await expect(page.getByText("Capabilities")).toBeVisible();
-  await expect(page.getByText("Screenshot")).toBeVisible();
-  await expect(page.getByText("Keyboard")).toBeVisible();
-  await expect(page.getByText("Ready").first()).toBeVisible();
+  await expect(page.getByText("screenshot", { exact: true })).toBeVisible();
+  await expect(page.getByText("keyboard", { exact: true })).toBeVisible();
+  await expect(page.getByTitle("screenshot: playwright-frame")).toBeVisible();
+  await expect(page.getByTitle("keyboard: playwright-input")).toBeVisible();
 
   await page.getByRole("button", { name: "Start host session" }).click();
   await expect
     .poll(() => recorder.startRequests())
     .toEqual([{ label: "This machine" }]);
-  await expect(page.getByPlaceholder("Session").first()).toHaveValue(
-    "screen…ke-1",
-  );
-  await expect(page.getByPlaceholder("Token").first()).toHaveValue("•••• en-1");
-  await expect(page.getByText("3", { exact: true })).toBeVisible();
-  await expect(page.getByText("2", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status", { name: "Session: active" }),
+  ).toBeVisible();
+  await expect(page.getByRole("status", { name: "Frames: 3" })).toBeVisible();
+  await expect(page.getByRole("status", { name: "Inputs: 2" })).toBeVisible();
 
   await page.getByRole("button", { name: "Copy host details" }).click();
   await expect
@@ -213,8 +216,8 @@ test("screenshare GUI drives host lifecycle, copied details, remote connect, and
     );
 
   await page.getByPlaceholder("Server URL").fill("https://remote.example");
-  await page.getByPlaceholder("Session").nth(1).fill("remote-session");
-  await page.getByPlaceholder("Token").nth(1).fill("remote-token");
+  await page.getByPlaceholder("Session").fill("remote-session");
+  await page.getByPlaceholder("Token").fill("remote-token");
   await page.getByRole("button", { name: "Connect to remote" }).click();
   await expect
     .poll(() =>

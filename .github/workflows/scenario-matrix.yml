@@ -101,7 +101,7 @@ jobs:
             globs: "packages/test/scenarios/cross-cutting/**/*.scenario.ts packages/test/scenarios/gateway/**/*.scenario.ts packages/test/scenarios/remote/**/*.scenario.ts packages/test/scenarios/lifeops.*/*.scenario.ts packages/test/scenarios/lifeops.*/**/*.scenario.ts packages/test/scenarios/lifeops.sleep/*.scenario.ts packages/test/scenarios/lifeops.travel-buffer/*.scenario.ts packages/test/scenarios/lifeops.travel/*.scenario.ts packages/test/scenarios/lifeops.workflow-events/*.scenario.ts packages/test/scenarios/goals/**/*.scenario.ts packages/test/scenarios/convo/**/*.scenario.ts"
           - name: lifeops-app
             runs-on: ubuntu-24.04
-            root: plugins/plugin-lifeops/test/scenarios
+            root: plugins/plugin-personal-assistant/test/scenarios
             globs: "**/*.scenario.ts"
     runs-on: ${{ matrix.shard.runs-on }}
     timeout-minutes: 60
@@ -242,6 +242,8 @@ jobs:
         with:
           name: scenario-report-${{ matrix.shard.name }}
           path: reports/scenarios/${{ github.run_id }}-${{ matrix.shard.name }}/
+          if-no-files-found: ignore
+          retention-days: 3
 
   summary:
     name: Matrix summary

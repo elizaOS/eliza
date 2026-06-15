@@ -1,7 +1,7 @@
 /*
  * wakeword_runtime.c — real openWakeWord runtime, three-GGUF edition.
  *
- * Replaces the ENOSYS stub in `wakeword_stub.c`. Loads three GGUFs
+ * Implements the public ABI with three GGUFs
  * produced by `scripts/wakeword_to_gguf.py`:
  *
  *   1. melspec.gguf    — fp16 STFT real/imag bases (257, 1, 512) and

@@ -5,7 +5,13 @@
  */
 
 import { logger } from "@feed/shared";
-import type { BenchmarkConfig } from "../benchmark/BenchmarkDataGenerator";
+
+interface BenchmarkConfig {
+  durationMinutes: number;
+  tickInterval: number;
+  numPredictionMarkets: number;
+  numPerpetualMarkets: number;
+}
 
 export interface TrainingConfig {
   min_trajectories_per_batch: number;

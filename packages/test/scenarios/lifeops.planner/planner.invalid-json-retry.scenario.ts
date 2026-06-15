@@ -132,7 +132,7 @@ async function checkPlannerRetryRecorded(
   // fail when it didn't, because a strong model might handle a complex
   // prompt on the first pass. We still log the absence for visibility.
   if (!sawRetry) {
-    // Soft pass — informative no-op.
+    // Soft pass — informative absence.
     return undefined;
   }
   return undefined;

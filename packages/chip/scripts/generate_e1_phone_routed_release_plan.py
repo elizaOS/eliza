@@ -351,7 +351,10 @@ def main() -> int:
         "enclosure_release_dependency": {
             "current_status": enclosure["status"],
             "requires_routed_board_step": True,
-            "routed_step_blocker": "enclosure fit must be rerun with routed PCB STEP and final component models",
+            "routed_step_blocker": (
+                "enclosure fit requires approved routed PCB STEP release clearance "
+                "with final component models"
+            ),
         },
         "power_thermal_release_dependency": {
             "current_status": power_thermal["status"],

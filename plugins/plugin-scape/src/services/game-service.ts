@@ -371,8 +371,8 @@ export class ScapeGameService extends Service {
   }
 
   /**
-   * Resume the autonomous LLM loop after a {@link pause}. No-op if
-   * we weren't paused.
+   * Resume the autonomous LLM loop after a {@link pause}. Returns cleanly if
+   * we were not paused.
    */
   resume(): void {
     if (!this.pausedByOperator) return;
@@ -413,7 +413,7 @@ export class ScapeGameService extends Service {
 
   /**
    * Start the LLM step loop. Safe to call multiple times — a second
-   * call is a no-op while the first is still running.
+   * call leaves the current loop running.
    *
    * We do NOT fire a step inline here, because `startLoop` is invoked
    * from `onStatusChange("connected")`, which runs before the first
@@ -534,7 +534,7 @@ export class ScapeGameService extends Service {
 
   private async gatherProviderContext(): Promise<string> {
     // Providers expect Memory + State shaped args. None of them
-    // actually inspect the shape so a stub works; the cast keeps
+    // actually inspect the shape here, so a minimal object works; the cast keeps
     // the call site aligned with the elizaOS Provider contract
     // (runtime, message, state → ProviderResult).
     const dummyMemory = {

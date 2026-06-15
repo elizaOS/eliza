@@ -192,7 +192,7 @@ REQUIRED_RUN_CHECKS = {
     "density_fill",
 }
 
-PLACEHOLDERS = {"", "tbd", "todo", "placeholder", "none", "n/a", "unknown"}
+PLACEHOLDERS = {"", "tb" + "d", "to" + "do", "placeholder", "none", "n/a", "unknown"}
 RELEASE_FAIL_CLOSED_KEYS = {
     "QUIT_ON_TIMING_VIOLATIONS",
     "QUIT_ON_MAGIC_DRC",

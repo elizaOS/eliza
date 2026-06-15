@@ -1,7 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 import * as React from "react";
 import { client } from "../api";
-import { invokeDesktopBridgeRequest } from "../bridge";
+import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
 import { getBootConfig } from "../config/boot-config";
 import {
   canSelectLocalRuntime,
@@ -15,7 +15,7 @@ import {
   savePersistedActiveServer,
   useApp,
 } from "../state";
-import { preOpenWindow } from "../utils";
+import { isCloudStatusAuthenticated, preOpenWindow } from "../utils";
 import {
   createVoiceCapture,
   type VoiceCaptureHandle,
@@ -192,6 +192,12 @@ async function startMobileLocalAgent(): Promise<void> {
 async function startLocalRuntime(): Promise<void> {
   if (isDesktopPlatform()) {
     try {
+      const desktopRuntimeMode = await getDesktopRuntimeMode().catch(
+        () => null,
+      );
+      if (desktopRuntimeMode && desktopRuntimeMode.mode !== "local") {
+        return;
+      }
       await invokeDesktopBridgeRequest({
         rpcMethod: "agentStart",
         ipcChannel: "agent:start",
@@ -400,10 +406,12 @@ export function useFirstRunController(): FirstRunController {
     (key, value) =>
       setDraft((current) => {
         const next = { ...current, [key]: value };
-        return cloudOnly
+        const resolved = cloudOnly
           ? normalizeCloudOnlyFirstRunState({ step: "runtime", draft: next })
               .draft
           : next;
+        draftRef.current = resolved;
+        return resolved;
       }),
     [cloudOnly],
   );
@@ -554,10 +562,25 @@ export function useFirstRunController(): FirstRunController {
       setError(null);
       setState("firstRunRuntimeTarget", firstRunRuntimeTarget("cloud"));
       setState("firstRunProvider", "elizacloud");
-      if (firstRunNeedsCloudConnect(sourceDraft, elizaCloudConnected)) {
+      let cloudConnectedForFinish = elizaCloudConnected;
+      if (!cloudConnectedForFinish) {
+        const cloudStatus = await client.getCloudStatus().catch(() => null);
+        cloudConnectedForFinish = isCloudStatusAuthenticated(
+          Boolean(cloudStatus?.connected),
+          cloudStatus?.reason,
+        );
+      }
+      if (firstRunNeedsCloudConnect(sourceDraft, cloudConnectedForFinish)) {
         const authWindow = preOpenWindow();
         await handleCloudLogin(authWindow);
-        return;
+        const cloudStatus = await client.getCloudStatus().catch(() => null);
+        cloudConnectedForFinish = isCloudStatusAuthenticated(
+          Boolean(cloudStatus?.connected),
+          cloudStatus?.reason,
+        );
+        if (!cloudConnectedForFinish) {
+          return;
+        }
       }
       setBusyText("Provisioning cloud agent");
       const authToken = String(
@@ -654,8 +677,8 @@ export function useFirstRunController(): FirstRunController {
   );
 
   const finishRuntime = React.useCallback(
-    async () => finishRuntimeForDraft(draft),
-    [draft, finishRuntimeForDraft],
+    async () => finishRuntimeForDraft(draftRef.current),
+    [finishRuntimeForDraft],
   );
 
   const stopVoice = React.useCallback(async () => {

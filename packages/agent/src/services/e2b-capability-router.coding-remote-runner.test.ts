@@ -39,7 +39,7 @@ afterEach(async () => {
 function makeRuntime(): IAgentRuntime {
   const runtime: Partial<IAgentRuntime> = {
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
-    character: { name: "Remote runner Proof" },
+    character: { name: "Remote runner Evidence" },
     getSetting: () => null,
     getService: () => null,
   };
@@ -91,21 +91,21 @@ describe("E2B remote runner router with the Coding remote runner HTTP runner", (
 
     const result = await service.pty.runCommand({
       command: "sh",
-      args: ["-lc", "printf remote-coded > mobile-proof.txt"],
+      args: ["-lc", "printf remote-coded > mobile-evidence.txt"],
       cwd: "/workspace",
       timeoutMs: 10_000,
     });
-    const read = await service.fs.readText({ path: "mobile-proof.txt" });
+    const read = await service.fs.readText({ path: "mobile-evidence.txt" });
 
     expect(result.exitCode).toBe(0);
     expect(result.timedOut).toBe(false);
     expect(read).toMatchObject({
-      path: "/workspace/mobile-proof.txt",
+      path: "/workspace/mobile-evidence.txt",
       text: "remote-coded",
       truncated: false,
     });
     await expect(
-      readFile(nodePath.join(workspaceRoot, "mobile-proof.txt"), "utf8"),
+      readFile(nodePath.join(workspaceRoot, "mobile-evidence.txt"), "utf8"),
     ).resolves.toBe("remote-coded");
   });
 });

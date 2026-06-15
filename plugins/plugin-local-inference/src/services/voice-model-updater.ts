@@ -42,13 +42,13 @@ import path from "node:path";
 import {
 	compareVoiceModelSemver,
 	type Ed25519PublicKey,
-	hashFile,
 	type NetworkPolicyDecision,
 	VOICE_MODEL_VERSIONS,
 	type VoiceModelId,
 	type VoiceModelVersion,
 	verifyManifestSignatureText,
 } from "@elizaos/shared";
+import { hashFile } from "./verify";
 
 const DEFAULT_CHECK_INTERVAL_MS = 14_400_000; // 4 hours
 const DEFAULT_HTTP_TIMEOUT_MS = 8_000;

@@ -49,8 +49,9 @@ but it is not a SPEC/AOSP/JavaScript MPKI claim. It is also one reason the
 feeds a wide OoO back-end directly.
 
 **Hardening action (medium confidence):** E1 RTL is now corroborated against the
-behavioural model on the shared trace set. RTL-vs-RTL remains future work if a
-CVA6 frontend RTL replay path is added to the same cocotb MPKI harness.
+behavioural model on the shared trace set. RTL-vs-RTL becomes the next evidence
+hardening step once a CVA6 frontend RTL replay path is added to the same cocotb
+MPKI harness.
 
 ## 2. Silicon-proven frequency — **loss**
 
@@ -158,7 +159,7 @@ the little core is a feature, not a failure. Distinguish:
   branch predictor (already winning), the vector/AI datapath, and the
   cache/interconnect for an AI-phone workload.
 
-## 7. Prioritized roadmap to make E1 ≥ Ariane on every axis
+## 7. Prioritized evidence path to make E1 ≥ Ariane on every axis
 
 | # | Action | Beats axis | Evidence it produces | Ladder |
 |---|---|---|---|---|

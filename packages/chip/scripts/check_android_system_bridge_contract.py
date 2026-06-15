@@ -123,6 +123,7 @@ RECHECK_COMMAND = (
     "python3 packages/chip/scripts/check_android_system_bridge_contract.py --json-only"
 )
 ADB_CONNECT_CANDIDATES = ("127.0.0.1:6520", "127.0.0.1:5555")
+ADB_HOSTPORT_SENTINEL = "$CHIP_ANDROID_ADB_HOSTPORT"
 BRIDGE_PACKAGE = "ai.elizaos.system.bridge"
 EXPECTED_BRIDGE_MODULES = {
     "ElizaSystemBridge",
@@ -314,20 +315,18 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
                 "scope": "host_adb",
                 "claim_boundary": "operator_live_capture_commands_only_not_runtime_evidence",
                 "commands": [
-                    "adb devices",
+                    'test -n "$CHIP_ANDROID_ADB_SERIAL" || test -n "$CHIP_ANDROID_ADB_HOSTPORT"',
+                    (f'{RUNTIME_CAPTURE_BASE_COMMAND} --adb-connect "{ADB_HOSTPORT_SENTINEL}"'),
                     (
                         f"{RUNTIME_CAPTURE_BASE_COMMAND} "
                         + " ".join(f"--adb-connect {address}" for address in ADB_CONNECT_CANDIDATES)
                     ),
-                    (
-                        f"{RUNTIME_CAPTURE_BASE_COMMAND} "
-                        "--adb-serial \"$CHIP_ANDROID_ADB_SERIAL\""
-                    ),
+                    (f'{RUNTIME_CAPTURE_BASE_COMMAND} --adb-serial "$CHIP_ANDROID_ADB_SERIAL"'),
                     RECHECK_COMMAND,
                 ],
                 "requires": [
-                    "exactly one booted Android target or explicit adb serial",
-                    "set CHIP_ANDROID_ADB_SERIAL for lab targets that are already visible in adb devices",
+                    "set CHIP_ANDROID_ADB_SERIAL for lab targets or CHIP_ANDROID_ADB_HOSTPORT for emulator targets",
+                    "exactly one selected booted Android release target",
                     "sys.boot_completed=1",
                     "installed privileged system bridge app and launcher package",
                     "bridge service/log markers and live-state UI consumption",
@@ -409,7 +408,11 @@ def preferred_next_command(finding: Finding, commands: list[str]) -> str:
         for command in commands:
             if "capture_system_bridge_runtime_evidence.py" in command:
                 return command
-    if "manifest" in finding.code or "privapp" in finding.code or "product_packages" in finding.code:
+    if (
+        "manifest" in finding.code
+        or "privapp" in finding.code
+        or "product_packages" in finding.code
+    ):
         for command in commands:
             if command.startswith("m "):
                 return command
@@ -538,12 +541,15 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     missing_app_bridge_channels = sorted(
         channel for channel in required_app_bridge_channels if channel not in app_bridge_text
     )
+    app_bridge_live_state_incomplete = (
+        not app_bridge_path.is_file()
+        or bool(missing_app_bridge_channels)
+        or "AndroidSystemProvider: live-state" not in app_bridge_text
+        or "privileged_android_system_bridge_not_bound" not in app_bridge_text
+    )
     add_if(
         findings,
-        not app_bridge_path.is_file()
-        or missing_app_bridge_channels
-        or "AndroidSystemProvider: live-state" not in app_bridge_text
-        or "privileged_android_system_bridge_not_bound" not in app_bridge_text,
+        app_bridge_live_state_incomplete,
         "launcher_app_bridge_live_state_surface_incomplete",
         "launcher app-side bridge does not expose live Android state channels with a stable runtime marker and fail-closed unavailable path",
         (

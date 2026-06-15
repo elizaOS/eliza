@@ -7,14 +7,14 @@ import {
   jsonResponse,
   readAppControlHttpRequests,
   registerAppControlHttpHandler,
-  resetAppControlHttpStub,
-} from "./_helpers/app-control-http-stub";
+  resetAppControlHttpLoopback,
+} from "./_helpers/app-control-http-loopback";
 
 /**
  * End-to-end view-switching coverage for every built-in (first-party) view.
  * Each turn drives the real VIEWS action handler with action=show and an exact
  * `view` id, verifying the action resolves the view and actually navigates
- * (POST /api/views/:id/navigate against the stub). Zero LLM spend.
+ * (POST /api/views/:id/navigate against the loopback endpoint). Zero LLM spend.
  *
  * The proxy's utterance → exact (action, view) mapping is covered separately by
  * packages/test/mocks/__tests__/llm-proxy-plugin.test.ts. Here we prove the
@@ -116,9 +116,9 @@ export default scenario({
   seed: [
     {
       type: "custom",
-      name: "stub /api/views registry and per-view navigate endpoints",
+      name: "loopback /api/views registry and per-view navigate endpoints",
       apply: () => {
-        resetAppControlHttpStub();
+        resetAppControlHttpLoopback();
         registerAppControlHttpHandler((request) => {
           if (request.method === "GET" && request.pathname === "/api/views") {
             return jsonResponse({ views: registryViews });

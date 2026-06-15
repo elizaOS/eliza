@@ -144,6 +144,9 @@ export interface SandboxListAgent {
   agent_name?: string;
   databaseStatus?: string;
   errorMessage?: string;
+  dockerImage?: string | null;
+  executionTier?: "shared" | "dedicated-lazy" | "dedicated-always" | "custom";
+  webUiUrl?: string | null;
   lastHeartbeatAt?: string | null;
   createdAt?: string;
   updatedAt?: string;

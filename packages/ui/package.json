@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/ui",
-  "version": "2.0.3-beta.0",
+  "version": "2.0.3-beta.13",
   "description": "Shared UI primitives, composites, and layout utilities for elizaOS apps.",
   "type": "module",
   "license": "MIT",
@@ -41,6 +41,8 @@
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "stories:dev": "vite --config stories/vite.config.ts",
     "stories:build": "vite build --config stories/vite.config.ts",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build",
     "build:dist:unlocked": "bun run clean && bun run generate:css-strings && node ../scripts/ensure-tsc-nested-output-dir.mjs packages/ui && tsc --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.mjs packages/ui && node ../scripts/copy-package-assets.mjs packages/ui src/styles src/cloud-ui/index.css src/components/voice-pill/voice-pill.css && node ../scripts/prepare-package-dist.mjs packages/ui && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/ui && node ../scripts/verify-package-runtime-exports.mjs packages/ui"
   },
   "exports": {
@@ -76,9 +78,9 @@
       "default": "./dist/app-shell-registry.js"
     },
     "./button": {
-      "types": "./dist/cloud-ui/components/button.d.ts",
-      "import": "./dist/cloud-ui/components/button.js",
-      "default": "./dist/cloud-ui/components/button.js"
+      "types": "./dist/components/ui/button.d.ts",
+      "import": "./dist/components/ui/button.js",
+      "default": "./dist/components/ui/button.js"
     },
     "./card": {
       "types": "./dist/components/ui/card.d.ts",
@@ -86,14 +88,14 @@
       "default": "./dist/components/ui/card.js"
     },
     "./dropdown-menu": {
-      "types": "./dist/cloud-ui/components/dropdown-menu.d.ts",
-      "import": "./dist/cloud-ui/components/dropdown-menu.js",
-      "default": "./dist/cloud-ui/components/dropdown-menu.js"
+      "types": "./dist/components/ui/dropdown-menu.d.ts",
+      "import": "./dist/components/ui/dropdown-menu.js",
+      "default": "./dist/components/ui/dropdown-menu.js"
     },
     "./input": {
-      "types": "./dist/cloud-ui/components/input.d.ts",
-      "import": "./dist/cloud-ui/components/input.js",
-      "default": "./dist/cloud-ui/components/input.js"
+      "types": "./dist/components/ui/input.d.ts",
+      "import": "./dist/components/ui/input.js",
+      "default": "./dist/components/ui/input.js"
     },
     "./api/client-types-cloud": "./dist/api/client-types-cloud.js",
     "./components/character/CharacterEditor": "./dist/components/character/CharacterEditor.js",
@@ -172,6 +174,11 @@
       "types": "./dist/layouts/index.d.ts",
       "import": "./dist/layouts/index.js",
       "default": "./dist/layouts/index.js"
+    },
+    "./lib/utils": {
+      "types": "./dist/lib/utils.d.ts",
+      "import": "./dist/lib/utils.js",
+      "default": "./dist/lib/utils.js"
     },
     "./navigation": {
       "types": "./dist/navigation/index.d.ts",
@@ -297,17 +304,22 @@
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.18",
     "three": "^0.184.0",
-    "tokenlens": "^1.3.1",
-    "use-stick-to-bottom": "^1.1.1",
     "vaul": "^1.1.2",
     "ws": "^8.19.0"
   },
   "devDependencies": {
-    "@capacitor/core": "8.3.1",
+    "@capacitor/core": "8.4.0",
     "@capacitor/haptics": "8.0.2",
     "@capacitor/keyboard": "8.0.3",
     "@capacitor/preferences": "^8.0.1",
     "@pixiv/three-vrm": "^3.5.3",
+    "@storybook/addon-a11y": "^10.0.0",
+    "@storybook/addon-docs": "^10.0.0",
+    "@storybook/addon-themes": "^10.0.0",
+    "@storybook/react": "^10.0.0",
+    "@storybook/react-vite": "^10.0.0",
+    "@tailwindcss/vite": "^4.1.18",
+    "storybook": "^10.0.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",

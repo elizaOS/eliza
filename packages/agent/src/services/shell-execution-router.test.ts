@@ -99,7 +99,7 @@ describe("runShell", () => {
     const fakeManager = {
       run,
       // engineType is read by the router to label the sandbox backend.
-      engine: { engineType: "docker" },
+      engineType: "docker",
     };
 
     const result = await runShell(
@@ -111,7 +111,7 @@ describe("runShell", () => {
         timeoutMs: 12_345,
         toolName: "test:safe",
       },
-      // biome-ignore lint/suspicious/noExplicitAny: deliberate stub for unit test
+      // biome-ignore lint/suspicious/noExplicitAny: deliberate fake for unit test
       { sandboxManager: fakeManager as any },
     );
 
@@ -126,6 +126,49 @@ describe("runShell", () => {
     expect(result.sandbox).toBe("docker");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("ok");
+  });
+
+  it("local-safe routes through SandboxManager on Windows when a backend is available", async () => {
+    process.env.ELIZA_RUNTIME_MODE = "local-safe";
+    const platformSpy = vi
+      .spyOn(process, "platform", "get")
+      .mockReturnValue("win32");
+    const run = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      stdout: "windows-safe",
+      stderr: "",
+      durationMs: 9,
+      executedInSandbox: true,
+    });
+    const fakeManager = {
+      run,
+      engineType: "docker",
+    };
+
+    try {
+      const result = await runShell(
+        {
+          command: "cmd.exe",
+          args: ["/c", "echo", "safe"],
+          toolName: "test:safe-windows",
+          timeoutMs: 5_000,
+        },
+        // biome-ignore lint/suspicious/noExplicitAny: deliberate fake for unit test
+        { sandboxManager: fakeManager as any },
+      );
+
+      expect(run).toHaveBeenCalledWith({
+        cmd: "cmd.exe",
+        args: ["/c", "echo", "safe"],
+        workdir: undefined,
+        env: undefined,
+        timeoutMs: 5_000,
+      });
+      expect(result.sandbox).toBe("docker");
+      expect(result.stdout).toBe("windows-safe");
+    } finally {
+      platformSpy.mockRestore();
+    }
   });
 
   it("local-yolo rejects vfs:// cwd because it uses the normal host filesystem", async () => {
@@ -194,7 +237,7 @@ describe("runShell", () => {
       getWorkspaceRoot: () => sandboxRoot,
       getContainerWorkspacePath: (hostPath: string) =>
         `/workspace/${path.relative(sandboxRoot, hostPath).replace(/\\/g, "/")}`,
-      engine: { engineType: "docker" },
+      engineType: "docker",
     };
 
     const result = await runShell(
@@ -205,7 +248,7 @@ describe("runShell", () => {
         toolName: "test:vfs-safe",
         timeoutMs: 5_000,
       },
-      // biome-ignore lint/suspicious/noExplicitAny: deliberate stub for unit test
+      // biome-ignore lint/suspicious/noExplicitAny: deliberate fake for unit test
       { sandboxManager: fakeManager as any },
     );
 
@@ -247,7 +290,7 @@ describe("runShell", () => {
       getWorkspaceRoot: () => sandboxRoot,
       getContainerWorkspacePath: (hostPath: string) =>
         `/workspace/${path.relative(sandboxRoot, hostPath).replace(/\\/g, "/")}`,
-      engine: { engineType: "docker" },
+      engineType: "docker",
     };
 
     await runShell(
@@ -258,7 +301,7 @@ describe("runShell", () => {
         toolName: "test:vfs-delete",
         timeoutMs: 5_000,
       },
-      // biome-ignore lint/suspicious/noExplicitAny: deliberate stub for unit test
+      // biome-ignore lint/suspicious/noExplicitAny: deliberate fake for unit test
       { sandboxManager: fakeManager as any },
     );
 

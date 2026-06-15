@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   androidUsageRowsFromSignals,
   mobileScreenTimeDataSourceFromSignals,
+  mobileSignalPermissionTargetForAction,
+  mobileSignalSetupActionBadge,
+  mobileSignalSetupPrimaryActionLabel,
   type ScreenTimeMobileSignal,
 } from "./mobile-signals.js";
 
@@ -125,7 +128,7 @@ describe("screen-time mobile signals", () => {
       state: "partial",
       statusLabel: "Snapshot only",
       detail:
-        "Android currently provides rolling Usage Stats snapshots; multi-day totals exclude Android until daily exports are wired.",
+        "Android currently provides rolling Usage Stats snapshots; multi-day totals exclude Android until daily exports are available.",
     });
 
     expect(
@@ -164,7 +167,7 @@ describe("screen-time mobile signals", () => {
       state: "partial",
       statusLabel: "Export pending",
       detail:
-        "iOS Screen Time authorization is present, but usage export is not wired yet.",
+        "iOS Screen Time authorization is present, but usage export is pending.",
     });
 
     expect(
@@ -188,5 +191,66 @@ describe("screen-time mobile signals", () => {
       statusLabel: "Unsupported",
       detail: "This iOS device has not reported Screen Time support.",
     });
+  });
+
+  it("owns mobile health/screen-time permission setup presentation policy", () => {
+    const t = (_key: string, options?: { defaultValue?: string }): string =>
+      options?.defaultValue ?? "";
+
+    expect(
+      mobileSignalSetupActionBadge(
+        {
+          id: "health_permissions",
+          label: "Health",
+          status: "ready",
+          canRequest: false,
+        },
+        t,
+      ),
+    ).toEqual({ variant: "secondary", label: "Ready" });
+    expect(
+      mobileSignalSetupActionBadge(
+        {
+          id: "screen_time_authorization",
+          label: "Screen Time",
+          status: "needs_action",
+          canRequest: true,
+        },
+        t,
+      ),
+    ).toEqual({ variant: "outline", label: "Needs action" });
+    expect(
+      mobileSignalSetupPrimaryActionLabel(
+        {
+          id: "screen_time_authorization",
+          label: "Screen Time",
+          status: "needs_action",
+          canRequest: true,
+        },
+        t,
+      ),
+    ).toBe("Grant");
+    expect(
+      mobileSignalSetupPrimaryActionLabel(
+        {
+          id: "screen_time_authorization",
+          label: "Screen Time",
+          status: "needs_action",
+          canRequest: false,
+        },
+        t,
+      ),
+    ).toBe("Open Settings");
+    expect(
+      mobileSignalPermissionTargetForAction({ id: "health_permissions" }),
+    ).toBe("health");
+    expect(
+      mobileSignalPermissionTargetForAction({
+        id: "screen_time_authorization",
+      }),
+    ).toBe("screenTime");
+    expect(
+      mobileSignalPermissionTargetForAction({ id: "notification_settings" }),
+    ).toBe("notifications");
   });
 });

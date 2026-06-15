@@ -446,7 +446,7 @@ export class AudioCacheService {
           if (stats.size > 0) {
             logger.info(`[CACHE HIT] Found by URL: ${matchedFile}`);
 
-            // Verify file is complete using ffprobe before creating stream
+            // Verify file duration using ffprobe before creating stream
             try {
               const probeInfo = await this.probeAudioFile(filePath);
               if (probeInfo.duration && probeInfo.duration >= 1) {
@@ -457,7 +457,7 @@ export class AudioCacheService {
                 );
               } else {
                 logger.warn(
-                  `[CACHE] File appears incomplete (duration: ${probeInfo.duration}s): ${matchedFile}`,
+                  `[CACHE] File appears partial (duration: ${probeInfo.duration}s): ${matchedFile}`,
                 );
               }
             } catch (probeError) {
@@ -568,7 +568,7 @@ export class AudioCacheService {
         `[CACHE HIT] ${key.song} (${(stats.size / 1024 / 1024).toFixed(2)}MB)`,
       );
 
-      // Verify file is complete using ffprobe BEFORE creating stream
+      // Verify file duration using ffprobe BEFORE creating stream
       try {
         const probeInfo = await this.probeAudioFile(filePath);
         if (probeInfo.duration && probeInfo.duration >= 1) {
@@ -579,7 +579,7 @@ export class AudioCacheService {
           );
         } else {
           logger.warn(
-            `[CACHE] File appears incomplete (duration: ${probeInfo.duration}s): ${filePath}`,
+            `[CACHE] File appears partial (duration: ${probeInfo.duration}s): ${filePath}`,
           );
           // Still return the stream, but log the warning
         }
@@ -885,7 +885,7 @@ export class AudioCacheService {
 
       if (stats.size < 1024) {
         logger.warn(
-          `Downloaded file is very small (${stats.size} bytes) - might be incomplete: ${cacheFilePath}`,
+          `Downloaded file is very small (${stats.size} bytes) - might be partial: ${cacheFilePath}`,
         );
       }
 
@@ -1103,7 +1103,7 @@ export class AudioCacheService {
 
     if (stats.size < 1024) {
       logger.warn(
-        `Downloaded file is very small (${stats.size} bytes) - might be incomplete: ${filePath}`,
+        `Downloaded file is very small (${stats.size} bytes) - might be partial: ${filePath}`,
       );
     }
 

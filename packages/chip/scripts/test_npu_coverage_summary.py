@@ -27,11 +27,7 @@ class NpuCoverageSummaryTests(unittest.TestCase):
 
     def write_passing_results_xml(self, path: Path) -> None:
         names = sorted(
-            {
-                name
-                for required in self.gate.REQUIRED_DIRECTED_TESTS.values()
-                for name in required
-            }
+            {name for required in self.gate.REQUIRED_DIRECTED_TESTS.values() for name in required}
         )
         cases = "\n".join(f'    <testcase name="{name}" />' for name in names)
         path.write_text(f"<testsuite>\n{cases}\n</testsuite>\n", encoding="utf-8")

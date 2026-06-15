@@ -299,7 +299,7 @@ describe("short ↔ long name round-trip", () => {
 });
 
 describe("compilePrefillPlan + prefillPlanRequestFields — tokenization", () => {
-	const stubTokenize = (text: string): number[] => {
+	const fakeTokenize = (text: string): number[] => {
 		// Simple tokenizer: return charCodes for determinism
 		return Array.from(text).map((c) => c.charCodeAt(0));
 	};
@@ -314,18 +314,18 @@ describe("compilePrefillPlan + prefillPlanRequestFields — tokenization", () =>
 	});
 
 	it("compilePrefillPlan(skeleton, { tokenize }) → each run's tokenIds matches tokenize(run.text)", () => {
-		const plan = compilePrefillPlan(envelopeSkeleton, stubTokenize);
+		const plan = compilePrefillPlan(envelopeSkeleton, fakeTokenize);
 		expect(plan).not.toBeNull();
 		if (!plan) return;
 		for (const run of plan.runs) {
 			expect(run.tokenIds).toBeDefined();
 			// Verify that tokenIds match the tokenized form of the text
-			expect(run.tokenIds).toEqual(stubTokenize(run.text));
+			expect(run.tokenIds).toEqual(fakeTokenize(run.text));
 		}
 	});
 
 	it("prefillPlanRequestFields includes token_ids per run when present", () => {
-		const plan = compilePrefillPlan(envelopeSkeleton, stubTokenize);
+		const plan = compilePrefillPlan(envelopeSkeleton, fakeTokenize);
 		const fields = prefillPlanRequestFields(plan);
 		expect(fields.eliza_prefill_plan).toBeDefined();
 		const planObj = fields.eliza_prefill_plan as Record<string, unknown>;
@@ -349,13 +349,13 @@ describe("compilePrefillPlan + prefillPlanRequestFields — tokenization", () =>
 
 	it("plan id remains stable regardless of tokenization", () => {
 		const planWithout = compilePrefillPlan(envelopeSkeleton);
-		const planWith = compilePrefillPlan(envelopeSkeleton, stubTokenize);
+		const planWith = compilePrefillPlan(envelopeSkeleton, fakeTokenize);
 		expect(planWithout?.id).toBe(planWith?.id);
 	});
 
 	it("tokenized plan has same structure as non-tokenized (runs, freeCount, prefix all match)", () => {
 		const planWithout = compilePrefillPlan(envelopeSkeleton);
-		const planWith = compilePrefillPlan(envelopeSkeleton, stubTokenize);
+		const planWith = compilePrefillPlan(envelopeSkeleton, fakeTokenize);
 		expect(planWithout).not.toBeNull();
 		expect(planWith).not.toBeNull();
 		if (!planWithout || !planWith) return;

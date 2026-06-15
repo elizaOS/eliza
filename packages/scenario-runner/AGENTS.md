@@ -151,7 +151,7 @@ Loader discovers files recursively; entries starting with `_` are ignored. The `
 - `message` — sends text through `runtime.messageService.handleMessage`. Default kind.
 - `action` — calls a named action's `validate` + `handler` directly (bypasses LLM routing).
 - `api` — sends an HTTP request to the scenario's loopback API server (routes registered on the runtime).
-- `tick` — invokes `executeLifeOpsSchedulerTask` from `@elizaos/plugin-lifeops/plugin` (tests scheduler ticks at a logical clock time).
+- `tick` — invokes `executeLifeOpsSchedulerTask` from `@elizaos/plugin-personal-assistant/plugin` (tests scheduler ticks at a logical clock time).
 
 ## Final check types (from `schema/index.js`)
 
@@ -171,7 +171,7 @@ Loader discovers files recursively; entries starting with `_` are ignored. The `
 - **Deterministic mode.** `SCENARIO_USE_LLM_PROXY=1` swaps the live provider for the deterministic LLM proxy plugin (`packages/test/mocks/helpers/llm-proxy-plugin.ts`). With `SCENARIO_LLM_PROXY_STRICT=1`, any LLM call that has no registered fixture throws instead of falling back. Fixtures are registered programmatically per scenario via `registerStrictActionRouteFixtures` from `test/scenarios/_helpers/strict-llm-action-fixtures.ts` — not loaded from a fixtures directory. (`test/fixtures/` holds only the MCP stdio fixture.)
 - **Silent skips fail loudly.** If a scenario skips without `SKIP_REASON` set, the CLI exits 2.
 - **UPDATE_ENTITY is removed** from the runtime's action list during scenario runs. It's too broad and steals action selection from domain-specific actions under test.
-- **Embedding stub.** By default a zero-vector 1024-dim embedding stub is registered instead of `@elizaos/plugin-local-inference` (avoids gated HuggingFace downloads). Set `ELIZA_BENCH_SKIP_EMBEDDING=0` to use the real plugin.
+- **Embedding fallback.** By default a zero-vector 1024-dim embedding fallback is registered instead of `@elizaos/plugin-local-inference` (avoids gated HuggingFace downloads). Set `ELIZA_BENCH_SKIP_EMBEDDING=0` to use the real plugin.
 - **LLM judge.** Uses Cerebras `gpt-oss-120b` when `isCerebrasEvalEnabled()` returns true; falls back to the runtime's `TEXT_LARGE` model. No heuristic fallbacks — the judge call genuinely fails if neither is available.
 - **Template tokens in turn text.** `{{now}}`, `{{now+1h}}`, `{{now-2d}}`, `{{definitionId:<title>}}`, `{{occurrenceId:<title>}}` are resolved at execution time.
 - **Clock seeding.** `seed` steps of type `advanceClock` shift `ctx.now`; all subsequent template tokens are relative to the shifted clock.

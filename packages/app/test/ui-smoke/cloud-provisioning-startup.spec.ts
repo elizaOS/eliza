@@ -65,24 +65,76 @@ async function fulfillJson(
   });
 }
 
-async function clickIfVisible(locator: Locator): Promise<boolean> {
+function chatComposer(page: Page): Locator {
+  return page
+    .locator('[data-testid="chat-composer-textarea"]')
+    .or(page.getByLabel("message"));
+}
+
+function chatSendButton(page: Page): Locator {
+  return page
+    .getByTestId("chat-composer-action")
+    .or(page.getByRole("button", { name: "Send" }))
+    .or(page.getByRole("button", { name: "Send message" }));
+}
+
+function conversationLog(page: Page): Locator {
+  return page.getByRole("log", { name: /conversation history/i });
+}
+
+function userMessage(page: Page, text: string): Locator {
+  return page
+    .locator('[data-testid="chat-message"][data-role="user"]')
+    .filter({ hasText: text })
+    .last()
+    .or(
+      conversationLog(page)
+        .locator('[data-role="user"]')
+        .filter({ hasText: text })
+        .last(),
+    )
+    .or(conversationLog(page).getByText(text).last())
+    .first();
+}
+
+function assistantMessage(page: Page): Locator {
+  return page
+    .locator('[data-testid="chat-message"][data-role="assistant"]')
+    .last()
+    .or(conversationLog(page).locator('[data-role="assistant"]').last())
+    .first();
+}
+
+async function clickIfVisible(
+  locator: Locator,
+  timeoutMs = 2_000,
+): Promise<boolean> {
   const target = locator.first();
-  const visible = await target.isVisible({ timeout: 2_000 }).catch(() => false);
-  if (visible) {
-    await target.click();
-    return true;
-  }
-  return false;
+  await target.waitFor({ state: "visible", timeout: timeoutMs }).catch(() => {
+    /* absent in this first-run variant */
+  });
+  if (!(await target.isVisible().catch(() => false))) return false;
+  await target.click();
+  return true;
 }
 
 async function startCloudRuntime(page: Page): Promise<void> {
   await clickIfVisible(page.getByRole("button", { name: "Get started" }));
-  const startButton = page.getByRole("button", { name: /^Start$/ });
-  if (!(await clickIfVisible(startButton))) {
-    await page.getByRole("button", { name: /^Connect$/ }).click();
-    await expect(startButton).toBeVisible({ timeout: 30_000 });
+  const compactCloudButton = page
+    .getByTestId("first-run-runtime-cloud")
+    .or(page.locator("button").filter({ hasText: /^Eliza Cloud$/ }));
+  if (await clickIfVisible(compactCloudButton, 30_000)) {
+    return;
   }
-  await startButton.click();
+
+  const startButton = page.getByRole("button", { name: /^Start$/ });
+  if (await clickIfVisible(startButton)) {
+    return;
+  }
+
+  const connectButton = page.getByRole("button", { name: /^Connect$/ });
+  await connectButton.click();
+  await clickIfVisible(startButton, 5_000);
 }
 
 async function installCloudConnectionRoutes(
@@ -276,17 +328,10 @@ async function expectDeterministicChatTurn(
   page: Page,
   prompt: string,
 ): Promise<void> {
-  await expect(
-    page
-      .locator('[data-testid="chat-message"][data-role="user"]')
-      .filter({ hasText: prompt })
-      .last(),
-  ).toBeVisible();
-  const assistantMessage = page
-    .locator('[data-testid="chat-message"][data-role="assistant"]')
-    .last();
-  await expect(assistantMessage).toBeVisible();
-  const assistantText = (await assistantMessage.textContent())?.trim() ?? "";
+  await expect(userMessage(page, prompt)).toBeVisible();
+  const assistant = assistantMessage(page);
+  await expect(assistant).toBeVisible();
+  const assistantText = (await assistant.textContent())?.trim() ?? "";
   const parsed = parseAssistantFixtureText(assistantText);
   expect(parsed).toMatchObject({
     fixture: "ui-smoke-assistant-v1",
@@ -563,7 +608,7 @@ for (const viewport of VIEWPORTS) {
       },
     );
 
-    await openAppPath(page, "/chat");
+    await openAppPath(page, "/chat", { allowOnboardingToast: true });
     await startCloudRuntime(page);
     await clickIfVisible(
       page.getByRole("button", { name: /sign in with eliza cloud/i }),
@@ -598,11 +643,12 @@ for (const viewport of VIEWPORTS) {
       .toBe("cloud");
 
     await openAppPath(page, "/chat");
-    await expect(page.getByTestId("chat-composer-textarea")).toBeVisible();
+    const composer = chatComposer(page);
+    await expect(composer).toBeVisible();
 
     const cloudChatPrompt = `cloud provisioning smoke ${viewport.name}`;
-    await page.getByTestId("chat-composer-textarea").fill(cloudChatPrompt);
-    await page.getByTestId("chat-composer-action").click();
+    await composer.fill(cloudChatPrompt);
+    await chatSendButton(page).click();
 
     await expectDeterministicChatTurn(page, cloudChatPrompt);
   });
@@ -870,7 +916,7 @@ test("new cloud agent provisions through direct cloud sandbox and reaches chat",
     fulfillLaunch,
   );
 
-  await openAppPath(page, "/chat");
+  await openAppPath(page, "/chat", { allowOnboardingToast: true });
   await startCloudRuntime(page);
   await clickIfVisible(
     page.getByRole("button", { name: /sign in with eliza cloud/i }),
@@ -896,11 +942,10 @@ test("new cloud agent provisions through direct cloud sandbox and reaches chat",
     });
 
   await openAppPath(page, "/chat");
-  await expect(page.getByTestId("chat-composer-textarea")).toBeVisible();
-  await page
-    .getByTestId("chat-composer-textarea")
-    .fill("my name is Shaw and I want Discord");
-  await page.getByTestId("chat-composer-action").click();
+  const composer = chatComposer(page);
+  await expect(composer).toBeVisible();
+  await composer.fill("my name is Shaw and I want Discord");
+  await chatSendButton(page).click();
 
   await expectDeterministicChatTurn(page, "my name is Shaw and I want Discord");
 });

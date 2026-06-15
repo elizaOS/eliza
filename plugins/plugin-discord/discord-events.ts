@@ -66,7 +66,10 @@ export interface DiscordServiceInternals {
 	voiceManager: DiscordService["voiceManager"];
 	messageDebouncer: MessageDebouncer | undefined;
 	channelDebouncer: ChannelDebouncer | undefined;
-	discordSettings: { shouldIgnoreBotMessages: boolean };
+	discordSettings: {
+		shouldIgnoreBotMessages: boolean;
+		shouldRespondOnlyToMentions?: boolean;
+	};
 	allowedChannelIds: string[] | undefined;
 	listenChannelIds?: string[];
 	allowAllSlashCommands: Set<string>;
@@ -106,6 +109,8 @@ interface EventListenerConfig {
 	debounceMs: number;
 	channelDebounceMs: number;
 	responseCooldownMs: number;
+	recentContextTtlMs: number;
+	shouldRespondOnlyToMentions: boolean;
 }
 
 function parseEventListenerConfig(
@@ -161,7 +166,31 @@ function parseEventListenerConfig(
 				? Number.parseInt(responseCooldownMsSetting, 10) || 30000
 				: 30000;
 
-	return { listenCids, debounceMs, channelDebounceMs, responseCooldownMs };
+	// How long a recent unaddressed message stays eligible to be folded into a
+	// following pointer's "[Recent channel context]". Tunable like its siblings;
+	// the debouncer clamps it up to the channel debounce window.
+	const recentContextTtlMsSetting = service.runtime.getSetting(
+		"DISCORD_RECENT_CONTEXT_TTL_MS",
+	) as string | number | undefined;
+	const recentContextTtlMs =
+		typeof recentContextTtlMsSetting === "number"
+			? recentContextTtlMsSetting
+			: typeof recentContextTtlMsSetting === "string" &&
+					recentContextTtlMsSetting.trim()
+				? Number.parseInt(recentContextTtlMsSetting, 10) || 10000
+				: 10000;
+
+	const shouldRespondOnlyToMentions =
+		service.discordSettings.shouldRespondOnlyToMentions !== false;
+
+	return {
+		listenCids,
+		debounceMs,
+		channelDebounceMs,
+		responseCooldownMs,
+		recentContextTtlMs,
+		shouldRespondOnlyToMentions,
+	};
 }
 
 /**
@@ -175,8 +204,14 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 	channelDebouncer: ChannelDebouncer;
 } {
 	const accountId = service.accountId ?? "default";
-	const { listenCids, debounceMs, channelDebounceMs, responseCooldownMs } =
-		parseEventListenerConfig(service);
+	const {
+		listenCids,
+		debounceMs,
+		channelDebounceMs,
+		responseCooldownMs,
+		recentContextTtlMs,
+		shouldRespondOnlyToMentions,
+	} = parseEventListenerConfig(service);
 	const messageCoalesce = getDiscordMessageCoalesceConfig((key) =>
 		service.runtime.getSetting(key),
 	);
@@ -257,6 +292,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				);
 			}
 
+			const botAddressed = anchor !== undefined;
 			anchor ??= messages[messages.length - 1];
 			if (messageCoalesce.enabled) {
 				const combined = makeCoalescedDiscordMessage(
@@ -303,7 +339,14 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				void service.messageManager.handleMessage(combined as Message);
 			}
 
-			channelDebouncer?.markResponded(messages[0].channel.id);
+			// Arm the response cooldown only when the bot actually engages with
+			// this batch. A purely-unaddressed batch (channel chatter the bot is
+			// not replying to) must not start the cooldown — otherwise the next
+			// unaddressed message is dropped (debouncer cooldown gate), losing
+			// context like a question typed just before an "@bot ^^" pointer.
+			if (botAddressed || !shouldRespondOnlyToMentions) {
+				channelDebouncer?.markResponded(messages[0].channel.id);
+			}
 		},
 		{
 			debounceMs: effectiveChannelDebounceMs,
@@ -311,6 +354,8 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			getBotUserId: () => service.client?.user?.id,
 			coalesceEnabled: messageCoalesce.enabled,
 			maxBatch: messageCoalesce.maxBatch,
+			shouldRespondOnlyToMentions,
+			bufferTtlMs: recentContextTtlMs,
 		},
 	);
 

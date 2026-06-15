@@ -108,7 +108,7 @@ stop_remote_training() {
   echo "[watcher $(date -u +%FT%TZ)] Ctrl-C any remote training tmux sessions to stop GPU compute" >> "$LOG"
   # Single-run mode uses session 'elizatrain'. Multi-tier mode opens one
   # session per tier named 'elizasmoke_<tier>'. Send C-c to every matching
-  # session; the unmatched ones just no-op.
+  # session; unmatched names simply are not targeted.
   timeout 60 ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "ubuntu@$RESOLVED_IP" \
     "for s in \$(tmux ls 2>/dev/null | awk -F: '/^(elizatrain|elizasmoke_)/{print \$1}'); do tmux send-keys -t \"\$s\" C-c 2>/dev/null || true; done" \
     >> "$LOG" 2>&1 || true

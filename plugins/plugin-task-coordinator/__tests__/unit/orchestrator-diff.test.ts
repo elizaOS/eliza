@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lineDiff } from "../../src/orchestrator-diff";
+import { lineDiff } from "../../src/orchestrator-diff.helpers";
 
 const compact = (old: string, next: string) =>
   lineDiff(old, next).map(

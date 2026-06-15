@@ -22,8 +22,8 @@ import {
 	type ResponseSkeleton,
 	ResponseSkeletonStreamExtractor,
 } from "@elizaos/core";
-import { resolveKokoroEngineConfig } from "@elizaos/shared";
 import type { LocalInferenceLoadArgs } from "./active-model";
+import { readEffectiveAssignments } from "./assignments";
 import type {
 	GenerateArgs as BackendGenerateArgs,
 	BackendPlan,
@@ -61,6 +61,7 @@ import {
 	isOmniVoiceBundleAvailable,
 	VoiceStartupError,
 } from "./voice/engine-bridge";
+import { resolveKokoroEngineConfig } from "./voice/kokoro/kokoro-engine-discovery";
 import {
 	readVoiceBackendModeFromEnv,
 	selectVoiceBackend,
@@ -179,7 +180,7 @@ export type GenerateArgs = BackendGenerateArgs;
  * Resolve the active Eliza-1 bundle (root dir + tier id) from an
  * `InstalledModel`, or `null` when the model is not an Eliza-1 bundle. An
  * Eliza-1 InstalledModel carries `bundleRoot` and an `eliza-1-<tier>` id
- * (the catalog placeholder ids). Drives the local-embedding route.
+ * (the catalog seed ids). Drives the local-embedding route.
  */
 interface ActiveEliza1Bundle {
 	root: string;
@@ -415,7 +416,10 @@ interface Llama {
 }
 
 interface LlamaBindingModule {
-	getLlama(options?: { gpu?: "auto" | false }): Promise<Llama>;
+	getLlama(options?: {
+		gpu?: "auto" | false;
+		logger?: (level: string, message: string) => void;
+	}): Promise<Llama>;
 	LlamaChatSession: LlamaChatSessionCtor;
 	LlamaGrammar: LlamaGrammarCtor;
 	ChatMLChatWrapper?: ChatWrapperCtor;
@@ -442,6 +446,16 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
 	private loadedPath: string | null = null;
 	private bindingChecked = false;
 	private bindingModule: LlamaBindingModule | null = null;
+	/**
+	 * Most recent error-level message emitted by the native llama.cpp logger.
+	 * node-llama-cpp collapses every load failure into a bare
+	 * `Error("Failed to load model")`; the actionable cause (e.g.
+	 * `missing tensor 'blk.24.ssm_conv1d.weight'` for a malformed MTP graft)
+	 * only reaches the logger. We capture it here so `load()` can attach it to
+	 * the thrown error instead of leaving callers — and the nightly inference
+	 * bench — with an opaque message.
+	 */
+	private lastNativeLoadError: string | null = null;
 	/** Serialises generate calls so concurrent requests don't corrupt session state. */
 	private generationQueue: Promise<unknown> = Promise.resolve();
 	/**
@@ -513,7 +527,21 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
 		}
 
 		if (!this.llama) {
-			this.llama = await this.bindingModule.getLlama({ gpu: "auto" });
+			this.llama = await this.bindingModule.getLlama({
+				gpu: "auto",
+				logger: (level, message) => {
+					// Keep the FIRST error-level line of a failed load: llama.cpp
+					// emits the root cause (e.g. `missing tensor '…'`) before the
+					// generic `failed to load model` summary that would otherwise
+					// overwrite it. `load()` resets this to null before each attempt.
+					if (
+						(level === "error" || level === "fatal") &&
+						this.lastNativeLoadError === null
+					) {
+						this.lastNativeLoadError = message.trim();
+					}
+				},
+			});
 		}
 
 		// Catalog-driven node-llama-cpp load options. The binding only exposes
@@ -572,7 +600,19 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
 		const poolSize = resolveDefaultPoolSize(
 			process.env.ELIZA_LOCAL_SESSION_POOL_SIZE,
 		);
-		const model = await this.llama.loadModel(loadOptions);
+		this.lastNativeLoadError = null;
+		let model: LlamaModel;
+		try {
+			model = await this.llama.loadModel(loadOptions);
+		} catch (error) {
+			const detail = this.lastNativeLoadError;
+			if (detail) {
+				throw new Error(
+					`${error instanceof Error ? error.message : String(error)} (llama.cpp: ${detail}) [${modelPath}]`,
+				);
+			}
+			throw error;
+		}
 		// Reserve one sequence per pool slot. node-llama-cpp throws on
 		// `getSequence()` once `sequencesLeft` hits 0, so the context must
 		// be sized to the pool from the start.
@@ -1101,15 +1141,24 @@ export class LocalInferenceEngine {
 			this.startBackgroundManagement();
 			return;
 		} catch (err) {
-			// Only a soft catalog preference may fall back to node-llama-cpp.
-			// Kernel-required loads are the mandatory-optimization path: falling
-			// back would silently run an unoptimized bundle, which violates the
-			// Eliza-1 startup contract.
+			// Fall back to node-llama-cpp when the FFI backend is unavailable.
+			// There are two cases:
+			//   1. FFI runtime is entirely absent (no bun:ffi in dev mode) — always
+			//      fall back regardless of kernel requirements, since there's no FFI
+			//      to run the kernels on anyway.
+			//   2. FFI is available but the decision was a soft preference/default —
+			//      fall back so dev builds work without custom kernels.
+			// Only block fallback when FFI IS available but the catalog mandates
+			// specific kernels (kernel-required) — that's the production Eliza-1
+			// contract that should not be silently degraded.
 			const decision = this.dispatcher.decide(plan);
-			if (
-				decision.backend === "llama-cpp" &&
-				decision.reason === "preferred-backend"
-			) {
+			const ffiAvailable = desktopFfiBackendRuntime.supported();
+			const canFallback =
+				!ffiAvailable ||
+				(decision.backend === "llama-cpp" &&
+					(decision.reason === "preferred-backend" ||
+						decision.reason === "default"));
+			if (canFallback) {
 				console.warn(
 					"[local-inference] optimized llama.cpp backend unavailable; falling back to node-llama-cpp:",
 					err instanceof Error ? err.message : String(err),
@@ -1133,8 +1182,8 @@ export class LocalInferenceEngine {
 	/**
 	 * Vision describe via the running llama.cpp mtmd path. Requires
 	 * the optimized llama.cpp backend (the in-process node-llama-cpp adapter
-	 * does not expose mmproj yet — see `services/vision/node-llama-cpp.ts`
-	 * for the planned mtmd binding). The mmproj GGUF must have been
+	 * does not expose mmproj; see `services/vision/node-llama-cpp.ts`
+	 * for the mtmd binding path). The mmproj GGUF must have been
 	 * declared by the active catalog tier and present on disk under the
 	 * bundle root; if not, the active backend throws.
 	 *
@@ -1155,7 +1204,7 @@ export class LocalInferenceEngine {
 	}> {
 		this.markActivity();
 		// The dispatcher throws an actionable error if the active backend
-		// doesn't implement describeImage (e.g. node-llama-cpp or a future
+		// doesn't implement describeImage (e.g. node-llama-cpp or a later
 		// FFI backend without mmproj parity). No need for a pre-check.
 		return this.dispatcher.describeImage(args);
 	}
@@ -1338,7 +1387,7 @@ export class LocalInferenceEngine {
 
 	/**
 	 * Close + drop a conversation handle. Persists the final KV state to
-	 * disk so a future open with the same id can lazy-restore. Idempotent;
+	 * disk so a later open with the same id can lazy-restore. Idempotent;
 	 * closing an unknown id is a no-op.
 	 */
 	async closeConversation(handle: ConversationHandle): Promise<void> {
@@ -1500,6 +1549,31 @@ export class LocalInferenceEngine {
 	private async ensureActiveBundleVoiceReadyOnce(): Promise<EngineVoiceBridge> {
 		let bridge = this.voiceBridge;
 		if (!bridge) {
+			// If no text model is loaded yet, try to load the assigned one so
+			// the Eliza-1 bundle activates before voice needs it. This covers
+			// the boot-time warmup race where TTS fires before any text request.
+			if (!this.activeEliza1Bundle && !this.dispatcher.hasLoadedModel()) {
+				try {
+					const assignments = await readEffectiveAssignments();
+					const textModelId = assignments.TEXT_LARGE ?? assignments.TEXT_SMALL;
+					if (textModelId) {
+						const installed = await listInstalledModels();
+						const target = installed.find((m) => m.id === textModelId);
+						if (target) {
+							logger.info(
+								`[voice] Pre-loading text model ${textModelId} to activate Eliza-1 bundle for voice`,
+							);
+							await this.load(target.path);
+						}
+					}
+				} catch (err) {
+					logger.warn(
+						`[voice] Failed to pre-load text model for bundle activation: ${
+							err instanceof Error ? err.message : String(err)
+						}`,
+					);
+				}
+			}
 			const bundle = this.activeEliza1Bundle;
 			if (bundle) {
 				const bundleKokoroRoot = path.join(bundle.root, "tts", "kokoro");
@@ -1599,7 +1673,7 @@ export class LocalInferenceEngine {
 	 * `VoiceScheduler` → TTS → audio sink.
 	 *
 	 * Gated behind a complete real backend chain (AGENTS.md §3 — no silent
-	 * stub-mode "voice"):
+	 * backend-mode "voice"):
 	 *   - a `MicSource` (caller-supplied, or `DesktopMicSource` under Electrobun),
 	 *   - a Silero v5 GGML VAD (caller-supplied detector, or `createSileroVadDetector()` — runs through libelizainference's native VAD ABI),
 	 *   - a working ASR (the bridge's `createStreamingTranscriber` throws

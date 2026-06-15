@@ -199,6 +199,11 @@ async function runScript(
 		maxBuffer: EXEC_BUFFER,
 		// Ensure non-interactive child processes (no TTY prompts).
 		env: { ...process.env, CI: process.env.CI ?? "1", FORCE_COLOR: "0" },
+		// On Windows, `npm` resolves to `npm.cmd` and `bun` to `bun.exe`.
+		// Without `shell: true`, Node's execFile won't apply PATHEXT and
+		// fails with ENOENT. Enabling the shell is the standard Windows
+		// fix for invoking package-manager shims.
+		shell: process.platform === "win32",
 	};
 	try {
 		const { stdout, stderr } = await execFileAsync(file, args, opts);

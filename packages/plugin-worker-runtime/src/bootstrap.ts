@@ -20,6 +20,7 @@ import type {
   JsonObject,
   JsonValue,
   RemotePluginWorkerMessage,
+  WorkerAnnounceDynamicMessage,
   WorkerAnnouncePluginMessage,
   WorkerInitCompleteMessage,
   WorkerRpcMessage,
@@ -46,6 +47,97 @@ export interface BootstrapOptions {
   runtimeRpcTimeoutMs?: number;
   /** Optional plugin config map passed to `plugin.init` if present. */
   initConfig?: Record<string, string>;
+}
+
+type SurfaceSnapshot = {
+  actions: Set<unknown>;
+  providers: Set<unknown>;
+  services: Set<unknown>;
+  routes: Set<unknown>;
+  evaluators: Set<unknown>;
+  views: Set<unknown>;
+  widgets: Set<unknown>;
+  componentTypes: Set<unknown>;
+  modelKeys: Set<string>;
+  events: Map<string, Set<unknown>>;
+};
+
+function snapshotPluginSurfaces(plugin: WorkerPluginShape): SurfaceSnapshot {
+  return {
+    actions: new Set(plugin.actions ?? []),
+    providers: new Set(plugin.providers ?? []),
+    services: new Set(plugin.services ?? []),
+    routes: new Set(plugin.routes ?? []),
+    evaluators: new Set(plugin.evaluators ?? []),
+    views: new Set(plugin.views ?? []),
+    widgets: new Set(plugin.widgets ?? []),
+    componentTypes: new Set(plugin.componentTypes ?? []),
+    modelKeys: new Set(Object.keys(plugin.models ?? {})),
+    events: new Map(
+      Object.entries(plugin.events ?? {}).map(([eventName, handlers]) => [
+        eventName,
+        new Set(handlers),
+      ]),
+    ),
+  };
+}
+
+function appended<T>(items: T[] | undefined, seen: Set<unknown>): T[] {
+  return (items ?? []).filter((item) => !seen.has(item));
+}
+
+function buildDynamicPluginShape(
+  plugin: WorkerPluginShape,
+  snapshot: SurfaceSnapshot,
+): WorkerPluginShape | null {
+  const dynamic: WorkerPluginShape = { name: plugin.name };
+  let hasDynamicSurface = false;
+
+  const addArray = (key: string, value: unknown) => {
+    if (Array.isArray(value) && value.length > 0) {
+      (dynamic as Record<string, unknown>)[key] = value;
+      hasDynamicSurface = true;
+    }
+  };
+
+  addArray("actions", appended(plugin.actions, snapshot.actions));
+  addArray("providers", appended(plugin.providers, snapshot.providers));
+  addArray("services", appended(plugin.services, snapshot.services));
+  addArray("routes", appended(plugin.routes, snapshot.routes));
+  addArray("evaluators", appended(plugin.evaluators, snapshot.evaluators));
+  addArray("views", appended(plugin.views, snapshot.views));
+  addArray("widgets", appended(plugin.widgets, snapshot.widgets));
+  addArray(
+    "componentTypes",
+    appended(plugin.componentTypes, snapshot.componentTypes),
+  );
+
+  const models = Object.fromEntries(
+    Object.entries(plugin.models ?? {}).filter(
+      ([modelType]) => !snapshot.modelKeys.has(modelType),
+    ),
+  );
+  if (Object.keys(models).length > 0) {
+    dynamic.models = models;
+    hasDynamicSurface = true;
+  }
+
+  const events: NonNullable<WorkerPluginShape["events"]> = {};
+  for (const [eventName, handlers] of Object.entries(plugin.events ?? {})) {
+    const existingHandlers = snapshot.events.get(eventName) ?? new Set();
+    const dynamicHandlers = handlers.filter(
+      (handler) => !existingHandlers.has(handler),
+    );
+    if (dynamicHandlers.length > 0) {
+      events[eventName] = dynamicHandlers;
+    }
+  }
+  if (Object.keys(events).length > 0) {
+    dynamic.events = events;
+    hasDynamicSurface = true;
+  }
+
+  return hasDynamicSurface ? dynamic : null;
 }
 
 /**
@@ -106,9 +198,10 @@ export async function bootstrap(
   };
   channel.send(announce);
 
-  // Run author init (if any). Surface registrations made from inside init
-  // can be reported as worker-announce-dynamic in a follow-up; for now we
-  // require the static surface arrays on the Plugin object to be complete.
+  const surfaceSnapshot = snapshotPluginSurfaces(plugin);
+
+  // Run author init (if any). If init appends plugin surfaces, report the
+  // delta before init-complete so the host can register those contributions.
   if (typeof plugin.init === "function") {
     try {
       await (plugin.init as (config: unknown, runtime: unknown) => unknown)(
@@ -123,6 +216,15 @@ export async function bootstrap(
       } as RemotePluginWorkerMessage);
       throw error;
     }
+  }
+
+  const dynamicPlugin = buildDynamicPluginShape(plugin, surfaceSnapshot);
+  if (dynamicPlugin) {
+    const dynamicAnnounce: WorkerAnnounceDynamicMessage = {
+      type: "worker-announce-dynamic",
+      descriptor: buildAnnounceDescriptor(dynamicPlugin, registry),
+    };
+    channel.send(dynamicAnnounce);
   }
 
   const initComplete: WorkerInitCompleteMessage = { type: "init-complete" };

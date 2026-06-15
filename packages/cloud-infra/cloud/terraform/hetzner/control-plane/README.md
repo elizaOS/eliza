@@ -63,6 +63,61 @@ labels, and the Cloudflare DNS record creation; `user_data` and `image`
 diffs are suppressed by `lifecycle { ignore_changes }`. One-shot — never
 re-run.
 
+## Operational notes
+
+**SSH to the CP — always by public IP, never by hostname.** The Cloudflare DNS
+record (`eliza-${env}-N.elizacloud.ai`) is proxied (orange-cloud); CF does not
+pass TCP/22, so `ssh root@eliza-staging-1.elizacloud.ai` silently fails. Get the
+IP from terraform output:
+
+```bash
+terraform output -json control_plane_vms | jq -r '."1".ipv4'
+# Or the ready-made command:
+terraform output ssh_login_commands
+```
+
+**Cloudflare zone SSL mode MUST stay on "Full"** (not "Full (Strict)"). The
+control-plane uses a self-signed `*.elizacloud.ai` cert; CF only accepts that
+on "Full". Flipping to Strict in the CF dashboard breaks every dashboard
+chat call silently with HTTP 526.
+
+**DNS cutover is operator-gated, not automatic.** The control-plane A record
+has `lifecycle.ignore_changes = [content]` so `terraform apply` never auto-
+flips the IP when a new VM gets created. When the new CP is validated, flip
+the record manually via the Cloudflare dashboard (preferred — no NXDOMAIN
+window) or via a one-off `terraform state rm` + re-apply round-trip if you
+want the new content to land back in state.
+
+**Cloud-init changes need `terraform taint`** to land on existing VMs.
+`user_data` is in `lifecycle.ignore_changes` so subsequent applies are
+no-ops for an already-provisioned CP. To roll a bootstrap fix, taint the
+VM and re-apply — but that wipes local state (headscale DB, cloudflared
+creds, /opt/eliza checkout). Plan that out before touching prod.
+
+**Headscale handoff on a fresh CP.** Cloud-init installs the `headscale`
+package (binary, systemd unit, `/var/lib/headscale` state dir owned by the
+package user) but stops the auto-started service so it doesn't bind with a
+fresh empty DB. On first deploy the operator overlays the prior CP's
+config + state:
+```bash
+# From the prior CP
+ssh root@PRIOR_CP 'sudo tar czf /tmp/hs.tgz -C /var/lib/headscale db.sqlite noise_private.key'
+scp root@PRIOR_CP:/tmp/hs.tgz /tmp/hs.tgz
+ssh root@PRIOR_CP 'sudo cat /etc/headscale/config.yaml' > /tmp/headscale-config.yaml
+
+# Adjust server_url for the new CP's hostname
+sed -i -E 's|^server_url:.*|server_url: https://eliza-${env}-1.elizacloud.ai|' /tmp/headscale-config.yaml
+
+# Push to NEW CP
+scp /tmp/headscale-config.yaml /tmp/hs.tgz deploy@NEW_CP:/tmp/
+ssh deploy@NEW_CP '
+  sudo mv /tmp/headscale-config.yaml /etc/headscale/config.yaml
+  sudo tar xzf /tmp/hs.tgz -C /var/lib/headscale
+  sudo chown -R headscale:headscale /var/lib/headscale
+  sudo systemctl enable --now headscale
+'
+```
+
 ## What this module does NOT manage (yet)
 
 - Headscale state (preauth keys, ACLs) — manual via `headscale` CLI.
@@ -72,17 +127,21 @@ re-run.
   on every push.
 - The actual eliza Cloud sandbox cores (data plane) — runtime autoscale.
 
-These are tracked as TODOs in
+These are tracked as follow-ups in
 [`../ARCHITECTURE.md`](../ARCHITECTURE.md#followups).
 
 ## Cost
 
 | Component                    | Resource    | Monthly (€) |
 |------------------------------|-------------|-------------|
-| 1× cpx21 (3 vCPU / 4 GB)     | control VM  | ~5          |
+| 1× cpx32 (4 vCPU / 8 GB) x86 | control VM  | ~11         |
 | 1× IPv4 + IPv6               | floating IP | included    |
 | Cloudflare R2 state          | < 100 KB    | 0           |
-| **Total per environment**    |             | **~5**      |
+| **Total per environment**    |             | **~11**     |
+
+The default is `cpx32` since Hetzner retired `cpx21` in `fsn1`. Production VM
+`eliza-1` actually runs `cax21` (ARM, ~€7/mo, manually provisioned) — flipping
+prod via TF needs the cloud-init arm64 templating fix tracked as a followup.
 
 A 2nd control-plane VM (HA, currently unused) doubles the line. The
 **data-plane autoscale** cost is separate and elastic.

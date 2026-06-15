@@ -5,16 +5,13 @@ import {
   type MobileSignalsPermissionStatus,
   type MobileSignalsSetupAction,
 } from "../../bridge/native-plugins";
-import { useBootConfig } from "../../config/boot-config-react";
+import { useBootConfig } from "../../config/boot-config-react.hooks";
 import { isDesktopPlatform, isNative, isWebPlatform } from "../../platform";
 import { useApp } from "../../state";
 import { StreamingPermissionsSettingsView } from "../permissions/StreamingPermissions";
 import { Button } from "../ui/button";
-import {
-  CapabilityToggle,
-  PermissionRow,
-  useDesktopPermissionsState,
-} from "./permission-controls";
+import { CapabilityToggle, PermissionRow } from "./permission-controls";
+import { useDesktopPermissionsState } from "./permission-controls.hooks";
 import { CAPABILITIES, SYSTEM_PERMISSIONS } from "./permission-types";
 
 type WebsiteBlockerSettingsCardComponent = NonNullable<

@@ -174,15 +174,15 @@ export class AppFactoryService {
       });
     }
 
-    // Only send Discord notification if app has a real production URL (not draft/placeholder)
-    // This prevents alerts for undeployed apps with placeholder URLs
+    // Only send Discord notification after the app has a deployed production URL.
+    // Draft app URLs use a sentinel host and should not create launch alerts.
     const finalAppUrl = productionUrl || data.app_url;
-    const isPlaceholderUrl =
+    const isDraftSentinelUrl =
       !finalAppUrl ||
       finalAppUrl.includes("placeholder.local") ||
       finalAppUrl === "https://placeholder.local";
 
-    if (!isPlaceholderUrl && productionUrl) {
+    if (!isDraftSentinelUrl && productionUrl) {
       const appUrl = productionUrl;
       // Fetch user info to get their name (non-blocking)
       usersService

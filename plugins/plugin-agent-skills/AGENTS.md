@@ -62,7 +62,7 @@ plugins/plugin-agent-skills/
 │   ├── types.ts            # All domain types (SkillFrontmatter, OttoMetadata, etc.)
 │   ├── parser.ts           # parseFrontmatter, validateFrontmatter, generateSkillsJson, estimateTokens
 │   ├── storage.ts          # ISkillStorage, MemorySkillStore, FileSystemSkillStore, createStorage
-│   ├── agent-runtime-shim.ts  # No-op integration-telemetry span factory + resolveDefaultAgentWorkspaceDir helper
+│   ├── agent-runtime-shim.ts  # inert integration-telemetry span factory + resolveDefaultAgentWorkspaceDir helper
 │   ├── actions/
 │   │   ├── use-skill.ts    # USE_SKILL action (canonical invocation)
 │   │   ├── skill.ts        # SKILL parent action (routes to sub-actions below)

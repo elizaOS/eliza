@@ -290,7 +290,7 @@ Source: https://www.commoncircuits.org/
 Track it for E1 board/package co-optimization, KiCad/PCB data extraction, and
 manufacturability agents. Do not block the ASIC AI-EDA path on it.
 
-## Source and dataset intake TODOs
+## Source and dataset intake tasks
 
 ### Implemented metadata spine
 
@@ -1734,7 +1734,7 @@ Acceptance:
   `build/ai_eda/internal_dataset_fixtures/<run-id>/`.
 - No full external dataset is committed.
 
-## Training stack TODOs
+## Training stack implementation tasks
 
 ### P0 lane A: Macro-placement policy training
 
@@ -1763,7 +1763,7 @@ Models/baselines:
 - CORE/evolutionary RL.
 - Random/legalized and human/hand-authored baselines.
 
-Implementation TODOs:
+Implementation tasks:
 
 - Extend `scripts/ai_eda/train_macro_placement_policy.py` from deterministic
   legal-grid, target-aware-grid, and target-repair-search baselines into an
@@ -1824,7 +1824,7 @@ Models:
 - Lightweight gradient-boosted baselines for interpretability.
 - Calibrated uncertainty models.
 
-Implementation TODOs:
+Implementation tasks:
 
 - Extend `scripts/ai_eda/capture_openroad_ml_snapshot.py` into a stable dataset
   exporter for E1 OpenLane/OpenROAD runs.
@@ -1868,7 +1868,7 @@ Models/baselines:
 - GNN policy over AIG/netlist states.
 - Offline imitation from OpenABC-D recipes.
 
-Implementation TODOs:
+Implementation tasks:
 
 - Add `scripts/ai_eda/generate_e1_synthesis_recipe_corpus.py`.
 - Add `scripts/ai_eda/train_logic_synthesis_policy.py`.
@@ -1894,7 +1894,7 @@ Inputs:
 - OpenROAD Assistant / EDA Corpus.
 - Local docs and checkers.
 
-Implementation TODOs:
+Implementation tasks:
 
 - Complete `scripts/ai_eda/build_local_eda_rag_index.py` coverage for:
   `scripts/`, `pd/`, `verify/`, `docs/evidence/`, `research/`,
@@ -1925,7 +1925,7 @@ Inputs:
 - Failure logs from formal/cocotb/verilator.
 - Public SVA/assertion datasets only after license and contamination review.
 
-Implementation TODOs:
+Implementation tasks:
 
 - Replace the current `scripts/ai_eda/run_cocotb_stimulus_search.py` dry-run
   manifest validator with a real LLM4DV/CVDP-backed seed generator for the
@@ -1963,7 +1963,7 @@ Inputs:
 - MLPerf Tiny / MLPerf Mobile style networks where licensing allows.
 - Local TFLite smoke model and future ExecuTorch/IREE workloads.
 
-Implementation TODOs:
+Implementation tasks:
 
 - [x] Add a model/workload manifest for AI benchmark lanes:
   `docs/spec-db/ai-eda/e1-ai-workload-manifest.yaml` records source, license,
@@ -2325,7 +2325,7 @@ not as:
 - What is the minimum gate bundle for accepting a synthesis/netlist change?
 - How will benchmark/train/test overlap be audited for public RTL corpora?
 
-## Immediate TODO checklist
+## Immediate implementation checklist
 
 - [x] Add external asset manifest schema and checker.
 - [x] Add per-asset external intake manifest schema/checker and pin the first

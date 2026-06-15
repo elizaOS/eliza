@@ -52,7 +52,7 @@ export interface AppRegistryEntry extends ElizaCuratedAppDefinition {
 	 * Raw `elizaos.app.permissions` block as declared in the app's
 	 * `package.json`, or absent when the app declared no permissions
 	 * block. Persisted as the open shape (Record<string, unknown>) so
-	 * future Eliza versions can read namespaces this version did not
+	 * newer Eliza versions can read namespaces this version did not
 	 * validate. See parser at `../permissions.ts`.
 	 */
 	requestedPermissions?: Record<string, unknown>;
@@ -69,8 +69,8 @@ export interface AppRegistryEntry extends ElizaCuratedAppDefinition {
 	 * Execution isolation declared by the app in
 	 * `elizaos.app.isolation`. Persisted so the worker host can decide
 	 * whether to spawn a worker for this app at runtime without
-	 * re-reading the package.json. Absent on pre-Phase-2 entries —
-	 * `readPersisted` defaults those to `"none"` for back-compat.
+	 * re-reading the package.json. Absent on older entries —
+	 * `readPersisted` defaults those to `"none"` for compatibility.
 	 */
 	isolation?: AppIsolation;
 }
@@ -196,8 +196,8 @@ async function readPersisted(file: string): Promise<PersistedShape> {
 		// explicit `trust: "first-party"` at register time.
 		const trust: AppTrust =
 			candidate.trust === "first-party" ? "first-party" : "external";
-		// Default `isolation` for back-compat with pre-Phase-2 entries, then
-		// apply the same Phase 3 policy used by register(): persisted external
+		// Default `isolation` for compatibility with older entries, then
+		// apply the same external-app policy used by register(): persisted external
 		// apps cannot retain or regain the in-process fast path after restart.
 		const declaredIsolation: AppIsolation =
 			candidate.isolation === "worker" ? "worker" : "none";
@@ -318,7 +318,7 @@ export class AppRegistryService extends Service {
 	}
 
 	override async stop(): Promise<void> {
-		// no-op — persistence is sync per write.
+		// Persistence is sync per write; no shutdown work is held.
 	}
 
 	private async bootstrap(): Promise<void> {
@@ -343,14 +343,13 @@ export class AppRegistryService extends Service {
 		ctx: RegisterContext = {},
 	): Promise<void> {
 		const trust: AppTrust = ctx.trust ?? entry.trust ?? "external";
-		// Phase 3 policy: apps loaded as `trust: "external"` default to
+		// External-app policy: apps loaded as `trust: "external"` default to
 		// `isolation: "worker"` even if they did not declare it. Apps
 		// can request *more* isolation (declaring "worker" while
 		// trust:"first-party") but never *less* — an external app that
 		// declared "none" still gets promoted to "worker" here. This is
-		// the load-bearing default-tightening for the sandbox story:
-		// once Phase 1 + 2 plumbing is in place, external apps simply
-		// can't reach the in-process fast path without an explicit
+		// the load-bearing default-tightening for the sandbox story: external
+		// apps cannot reach the in-process fast path without an explicit
 		// first-party trust override.
 		const declaredIsolation: AppIsolation = entry.isolation ?? "none";
 		const isolation: AppIsolation =
@@ -396,12 +395,12 @@ export class AppRegistryService extends Service {
 			}
 		}
 
-		// Phase 2.5: if the app declared isolation:"worker", auto-spawn
-		// the sandbox worker via AppWorkerHostService. The host service
-		// is looked up by string type to avoid an import cycle between
-		// the registry and the host service modules. Spawn failures are
-		// logged but do not fail the register call — the entry still
-		// persists so the operator can inspect / re-spawn later.
+		// If the resolved policy requires isolation:"worker", auto-spawn the
+		// sandbox worker via AppWorkerHostService. The host service is looked up
+		// by string type to avoid an import cycle between the registry and the
+		// host service modules. Spawn failures are logged but do not fail the
+		// register call — the entry still persists so the operator can inspect or
+		// re-spawn later.
 		if (isolation === "worker") {
 			await this.startWorkerBestEffort(persistedEntry.slug);
 		}

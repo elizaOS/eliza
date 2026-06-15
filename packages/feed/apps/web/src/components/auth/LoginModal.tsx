@@ -1,6 +1,7 @@
 "use client";
 
 import { logger } from "@feed/shared";
+import type { StewardAuthResult, StewardMfaRequiredResult } from "@stwd/sdk";
 import { useCallback, useEffect, useState } from "react";
 import { useStewardAuthContext } from "@/components/providers/StewardAuthProvider";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,25 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+  buildStewardOAuthAuthorizeUrl,
+  createStewardPkcePair,
+  storeStewardPkceVerifier,
+  type StewardOAuthProvider,
+} from "@elizaos/shared/steward-session-client";
 import { useAuth } from "@/hooks/useAuth";
+
+type FeedStewardOAuthProvider = Extract<
+  StewardOAuthProvider,
+  "google" | "discord" | "twitter"
+>;
+
+function buildFeedOAuthRedirectUri(
+  origin: string,
+  provider: FeedStewardOAuthProvider,
+): string {
+  return `${origin}/auth/callback/${provider}`;
+}
 
 /**
  * Steward-backed login modal.
@@ -42,17 +61,31 @@ function getStewardApiUrl(): string {
 
 const STEWARD_TENANT_ID = process.env.NEXT_PUBLIC_STEWARD_TENANT_ID ?? "feed";
 
-/** Build the Steward OAuth authorize URL. Callback lands on our /auth/callback/[provider] page. */
-function oauthUrl(provider: string): string {
-  const stewardBase = getStewardApiUrl();
-  const callbackBase =
-    typeof window !== "undefined" ? window.location.origin : "";
-  const redirectUri = `${callbackBase}/auth/callback/${provider}`;
-  return (
-    `${stewardBase}/auth/oauth/${provider}/authorize` +
-    `?redirect_uri=${encodeURIComponent(redirectUri)}` +
-    `&tenant_id=${encodeURIComponent(STEWARD_TENANT_ID)}`
-  );
+function requireCompletedAuth(
+  result: StewardAuthResult | StewardMfaRequiredResult,
+): StewardAuthResult {
+  if ("mfaRequired" in result) {
+    throw new Error("MFA required is not supported in this client yet.");
+  }
+  return result;
+}
+
+async function startOAuthRedirect(
+  provider: FeedStewardOAuthProvider,
+): Promise<void> {
+  const origin = window.location.origin;
+  const redirectUri = buildFeedOAuthRedirectUri(origin, provider);
+  const pkce = await createStewardPkcePair();
+  if (!storeStewardPkceVerifier(pkce.verifier)) {
+    throw new Error(
+      "Could not start sign-in — browser storage is unavailable. Enable cookies / site data and try again.",
+    );
+  }
+  window.location.href = buildStewardOAuthAuthorizeUrl(provider, redirectUri, {
+    stewardApiUrl: getStewardApiUrl(),
+    stewardTenantId: STEWARD_TENANT_ID,
+    codeChallenge: pkce.challenge,
+  });
 }
 
 export function LoginModal({
@@ -113,8 +146,10 @@ export function LoginModal({
     setStep("loading");
     setErrorMsg("");
     try {
-      const result = await stewardAuth.signInWithPasskey(trimmed);
-      await onLoginSuccess(result.token);
+      const result = requireCompletedAuth(
+        await stewardAuth.signInWithPasskey(trimmed),
+      );
+      await onLoginSuccess(result.token, result.refreshToken);
       logger.info("Passkey login successful", { email: trimmed }, "LoginModal");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Passkey login failed";
@@ -125,8 +160,16 @@ export function LoginModal({
   }, [email, stewardAuth, onLoginSuccess]);
 
   const handleOAuth = useCallback(
-    (provider: "google" | "discord" | "twitter") => {
-      window.location.href = oauthUrl(provider);
+    (provider: FeedStewardOAuthProvider) => {
+      setStep("loading");
+      setErrorMsg("");
+      void startOAuthRedirect(provider).catch((err: unknown) => {
+        const msg =
+          err instanceof Error ? err.message : "Could not start OAuth sign-in";
+        logger.warn("OAuth redirect failed", { error: msg }, "LoginModal");
+        setErrorMsg(msg);
+        setStep("error");
+      });
     },
     [],
   );

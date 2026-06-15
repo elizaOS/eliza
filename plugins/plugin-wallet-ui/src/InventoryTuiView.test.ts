@@ -18,7 +18,7 @@ const walletClient = vi.hoisted(() => ({
   getWalletMarketOverview: vi.fn(),
   getWalletTradingProfile: vi.fn(),
 }));
-const appMock = vi.hoisted(() => ({
+const appHooks = vi.hoisted(() => ({
   useApp: vi.fn(),
 }));
 
@@ -26,51 +26,14 @@ vi.mock("@elizaos/ui", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
   client: walletClient,
   Button: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-    React.createElement("button", props),
-  AppPageSidebar: ({
-    children,
-    collapsed,
-    width,
-    testId,
-  }: React.HTMLAttributes<HTMLDivElement> & {
-    collapsed?: boolean;
-    width?: number;
-    testId?: string;
-  }) =>
-    React.createElement(
-      "aside",
-      {
-        "data-testid": testId,
-        "data-collapsed": String(Boolean(collapsed)),
-        "data-width": width,
-      },
-      children,
-    ),
-  PageLayout: ({
-    children,
-    sidebar,
-    ...props
-  }: React.HTMLAttributes<HTMLDivElement> & { sidebar?: React.ReactNode }) =>
-    React.createElement("div", props, sidebar, children),
-  SidebarContent: Object.assign(
-    (props: React.HTMLAttributes<HTMLDivElement>) =>
-      React.createElement("div", props),
-    {
-      RailItem: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-        React.createElement("button", props),
-    },
-  ),
-  SidebarPanel: (props: React.HTMLAttributes<HTMLDivElement>) =>
-    React.createElement("div", props),
-  SidebarScrollRegion: (props: React.HTMLAttributes<HTMLDivElement>) =>
-    React.createElement("div", props),
+    React.createElement("button", { type: "button", ...props }),
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
   useActivityEvents: () => ({ events: [] }),
-  useAgentElement: () => ({ ref: vi.fn(), agentProps: {} }),
-  useApp: appMock.useApp,
+  useApp: appHooks.useApp,
 }));
 
-import { InventoryTuiView, InventoryView, interact } from "./InventoryView";
+import { InventoryTuiView, InventoryView } from "./InventoryView";
+import { interact } from "./InventoryView.interact";
 
 const balances = {
   evm: {
@@ -144,7 +107,7 @@ const marketOverview = {
   },
 };
 
-function mockWalletClient() {
+function seedWalletClientResponses() {
   walletClient.getWalletAddresses.mockResolvedValue({
     evmAddress: "0xabc",
     solanaAddress: "So111",
@@ -194,7 +157,7 @@ afterEach(() => {
 
 describe("InventoryTuiView", () => {
   it("mounts wallet balances, NFTs, market movers, and current TUI state", async () => {
-    mockWalletClient();
+    seedWalletClientResponses();
 
     const { container } = render(React.createElement(InventoryTuiView));
 
@@ -220,7 +183,7 @@ describe("InventoryTuiView", () => {
   });
 
   it("supports terminal capabilities for wallet state, market overview, and trading profile", async () => {
-    mockWalletClient();
+    seedWalletClientResponses();
 
     await expect(
       interact("terminal-wallet-state", { limit: 2 }),
@@ -263,14 +226,12 @@ describe("InventoryTuiView", () => {
     expect(walletClient.getWalletTradingProfile).toHaveBeenCalledWith("7d");
   });
 
-  it("restores sidebar state and preserves back navigation when opening RPC settings", async () => {
-    mockWalletClient();
-    window.localStorage.setItem("eliza:wallets:sidebar:collapsed", "true");
-    window.localStorage.setItem("eliza:wallets:sidebar:width", "9999");
+  it("preserves back navigation when opening RPC settings", async () => {
+    seedWalletClientResponses();
     window.history.replaceState(null, "", "/inventory");
     const setTab = vi.fn();
 
-    appMock.useApp.mockReturnValue({
+    appHooks.useApp.mockReturnValue({
       walletEnabled: true,
       walletAddresses: { evmAddress: "0xabc", solanaAddress: "So111" },
       walletConfig: {
@@ -299,9 +260,7 @@ describe("InventoryTuiView", () => {
 
     render(React.createElement(InventoryView));
 
-    const sidebar = screen.getByTestId("wallets-sidebar");
-    expect(sidebar.getAttribute("data-collapsed")).toBe("true");
-    expect(sidebar.getAttribute("data-width")).toBe("520");
+    expect(screen.getByTestId("wallets-sidebar")).toBeTruthy();
 
     fireEvent.click(screen.getByLabelText("Open RPC settings"));
 

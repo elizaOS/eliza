@@ -106,16 +106,22 @@ class AndroidLauncherRuntimeEvidenceTests(unittest.TestCase):
         finding = report["findings"][0]
         self.assertIn("capture_launcher_runtime_evidence.py", finding["next_command"])
         self.assertTrue(
-            any("capture_launcher_runtime_evidence.py" in command for command in finding["next_commands"])
+            any(
+                "capture_launcher_runtime_evidence.py" in command
+                for command in finding["next_commands"]
+            )
         )
-        self.assertIn("adb devices", finding["next_commands"])
+        self.assertNotIn("adb devices", finding["next_commands"])
+        self.assertIn(
+            'test -n "$CHIP_ANDROID_ADB_SERIAL" || test -n "$CHIP_ANDROID_ADB_HOSTPORT"',
+            finding["next_commands"],
+        )
         self.assertIn(
             "capture_launcher_runtime_evidence.py",
             " ".join(report["next_command_plan"][0]["commands"]),
         )
         capture_command = report["next_command_plan"][0]["commands"][1]
-        self.assertIn("--adb-connect 127.0.0.1:6520", capture_command)
-        self.assertIn("--adb-connect 127.0.0.1:5555", capture_command)
+        self.assertIn('--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT"', capture_command)
         self.assertIn(
             "--output packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json",
             capture_command,
@@ -127,6 +133,23 @@ class AndroidLauncherRuntimeEvidenceTests(unittest.TestCase):
         self.assertIn(
             "--transcript packages/chip/docs/evidence/android/eliza_launcher_runtime_transcript.log",
             capture_command,
+        )
+        fallback_capture_command = report["next_command_plan"][0]["commands"][2]
+        self.assertIn("--adb-connect 127.0.0.1:6520", fallback_capture_command)
+        self.assertIn("--adb-connect 127.0.0.1:5555", fallback_capture_command)
+        serial_capture_command = report["next_command_plan"][0]["commands"][3]
+        self.assertIn('--adb-serial "$CHIP_ANDROID_ADB_SERIAL"', serial_capture_command)
+        self.assertIn(
+            "eliza_launcher_runtime_evidence.$CHIP_ANDROID_ADB_SERIAL.json",
+            serial_capture_command,
+        )
+        self.assertIn(
+            "eliza_launcher_runtime_logcat.$CHIP_ANDROID_ADB_SERIAL.txt",
+            serial_capture_command,
+        )
+        self.assertIn(
+            "eliza_launcher_runtime_transcript.$CHIP_ANDROID_ADB_SERIAL.log",
+            serial_capture_command,
         )
 
     def test_incomplete_evidence_reports_runtime_blockers(self) -> None:

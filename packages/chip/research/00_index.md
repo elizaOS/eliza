@@ -23,7 +23,7 @@ Each packet uses the same shape:
 
 | Area | Packet | Source count | Anchors in this repo |
 | --- | --- | ---: | --- |
-| NPU & AI accelerator microarchitecture | [npu_accelerator_2026](npu_accelerator_2026/00_index.md) | 99 | `docs/arch/npu.md`, `docs/arch/npu-microarch.md`, `docs/spec-db/npu-2028-target.yaml`, `docs/spec-db/npu-2028-roadmap.yaml`, `rtl/npu/`, `compiler/runtime/e1_npu_lowering.py` |
+| NPU & AI accelerator microarchitecture | [npu_accelerator_2026](npu_accelerator_2026/00_index.md) | 99 | `docs/arch/npu.md`, `docs/arch/npu-microarch.md`, `docs/spec-db/npu-2028-target.yaml`, NPU 2028 phase-gate spec, `rtl/npu/`, `compiler/runtime/e1_npu_lowering.py` |
 | AI compiler stack & on-device runtime | [compiler_runtime_2026](compiler_runtime_2026/00_index.md) | 87 | `compiler/runtime/`, `docs/spec-db/npu-2028-target.yaml#software_targets`, `docs/arch/npu.md` lowering sections |
 | Open RISC-V cores & CPU subsystem | [cpu_subsystem_2026](cpu_subsystem_2026/00_index.md) | 91 | `docs/arch/cpu-subsystem.md`, `docs/arch/linux-capable-cpu-contract.md`, `docs/architecture-optimization/compute-silicon.md`, `generators/chipyard/eliza-rocket-manifest.json` |
 | Memory hierarchy (DRAM, SRAM, cache, NoC) | [memory_subsystem_2026](memory_subsystem_2026/00_index.md) | 86 | `docs/arch/memory-subsystem.md`, `docs/arch/interconnect.md`, `docs/arch/memory-map.md`, `docs/spec-db/npu-2028-target.yaml` |
@@ -46,7 +46,7 @@ Total newly-captured primary sources across the ten 2026 packets: **818**.
   MICRO, HPCA, ASPLOS, DAC, ICCAD, ASP-DAC, ISPD, HotChips, MLSys, OSDI,
   ATC, USENIX Security, IEEE S&P, NeurIPS, ICLR, PLDI).
 - Press articles are accepted only when they are the sole public source for
-  a relevant product or roadmap claim; they are tagged as such in the YAML
+  a relevant product or vendor-plan claim; they are tagged as such in the YAML
   inventory and not treated as proof.
 - Vendor whitepapers and product briefs are treated as target context, not
   evidence of Eliza E1 capability.
@@ -59,7 +59,7 @@ Total newly-captured primary sources across the ten 2026 packets: **818**.
 - These packets do not establish silicon, RTL, BSP, PD, or simulator
   evidence. They are research artifacts intended to inform architectural
   decisions and validation gates.
-- Vendor or roadmap claims (TSMC A14, Samsung BSPDN, Qualcomm Hexagon NPU,
+- Vendor or planning claims (TSMC A14, Samsung BSPDN, Qualcomm Hexagon NPU,
   Apple Neural Engine, etc.) are cited for context. No packet asserts that
   Eliza E1 currently delivers any of those numbers.
 - The standing project rule applies: implementation claims must clear the
@@ -82,7 +82,7 @@ Total newly-captured primary sources across the ten 2026 packets: **818**.
 ## Reading order for a new contributor
 
 1. `docs/README.md` and `docs/arch/soc.md` — what E1 is today.
-2. `docs/spec-db/npu-2028-target.yaml`, `npu-2028-roadmap.yaml`, and
+2. `docs/spec-db/npu-2028-target.yaml`, the NPU 2028 phase-gate spec, and
    `process-14a-effects.yaml` — what E1 is aiming at.
 3. The two NPU packets (`npu_accelerator_2026`, `compiler_runtime_2026`)
    for the AI/NPU surface.

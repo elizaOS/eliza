@@ -124,13 +124,13 @@ Action:
 
 Binding: `required_effects.node_identity_and_pdk_binding`.
 
-Sources: `tsmc_a14_roadmap`, `samsung_foundry_sf2`, `intel_foundry_14a`,
+Sources: `tsmc_a14_plan`, `samsung_foundry_sf2`, `intel_foundry_14a`,
 `rapidus_2nm`.
 
 Action:
 - Keep `selected_process_option: blocked_until_foundry_pdk_and_library_selection`.
 - Candidate set above is the credible 2028 mobile-class 14A-class node set
-  by public roadmap status. No public statement justifies adding others.
+  by public process-plan status. No public statement justifies adding others.
 - Carry the foundry candidate matrix in a separate planning document if
   more detail is needed; do not unblock the contract field by guess.
 

@@ -24,15 +24,15 @@ import {
   Sparkles,
   Wand2,
 } from "lucide-react";
-import { Button } from "../button";
-import { Label } from "../label";
+import { Button } from "../../../components/ui/button";
+import { Label } from "../../../components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../select";
+} from "../../../components/ui/select";
 
 export type AspectRatio =
   | "1:1"

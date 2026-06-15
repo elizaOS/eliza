@@ -10,7 +10,7 @@
  * Per `IMPLEMENTATION_PLAN.md` §3.2 and `wave1-interfaces.md` §5.4.
  */
 
-import type { DefaultPack } from "./contract-stubs.js";
+import type { DefaultPack } from "./contract-types.js";
 
 export const wakeUpDefaultPack: DefaultPack = {
   key: "wake-up",

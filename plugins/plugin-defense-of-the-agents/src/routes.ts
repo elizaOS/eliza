@@ -2013,7 +2013,7 @@ export async function refreshRunSession(
  * auto-play game loop, the strategy-review timer, and flushes every
  * per-agent cache so a relaunch starts clean.
  *
- * Idempotent: every step is a no-op if the resource is already gone.
+ * Idempotent: each teardown step returns cleanly when its resource is already gone.
  */
 export async function stopRun(ctx: { runtime: unknown | null }): Promise<void> {
   const runtime = ctx.runtime as IAgentRuntime | null;

@@ -1,9 +1,6 @@
-import {
-  type BundledVrmAsset,
-  getBootConfig,
-  resolveAppAssetUrl,
-  type UiTheme,
-} from "@elizaos/ui";
+import { type BundledVrmAsset, getBootConfig } from "@elizaos/ui/config";
+import type { UiTheme } from "@elizaos/ui/state";
+import { resolveAppAssetUrl } from "@elizaos/ui/utils";
 
 const BUNDLED_VRM_FALLBACK_SLUG = "bundled-1";
 const COMPANION_THEME_BACKGROUND_INDEX: Record<UiTheme, number> = {

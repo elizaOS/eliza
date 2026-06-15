@@ -4,7 +4,7 @@ Health, sleep, circadian-regularity, and screen-time domain plugin for elizaOS.
 
 ## Purpose / role
 
-Provides the health and sleep domain layer for Eliza agents — connector registrations (Apple Health, Google Fit, Strava, Fitbit, Withings, Oura), sleep/circadian/regularity inference engines, screen-time type contracts, wake/bedtime anchor contributions, `ActivitySignalBus` family declarations, and default scheduled-task packs (bedtime, wake-up, sleep-recap). Loaded as `healthPlugin` (package `@elizaos/plugin-health`). Opt-in; consumed by plugins such as `@elizaos/plugin-lifeops`. All registry contributions are soft-dependency: if `connectorRegistry`, `anchorRegistry`, `busFamilyRegistry`, or `defaultPackRegistry` are absent on the runtime, the plugin logs a one-line skip and continues without error.
+Provides the health and sleep domain layer for Eliza agents — connector registrations (Apple Health, Google Fit, Strava, Fitbit, Withings, Oura), sleep/circadian/regularity inference engines, screen-time type contracts, wake/bedtime anchor contributions, `ActivitySignalBus` family declarations, and default scheduled-task packs (bedtime, wake-up, sleep-recap). Loaded as `healthPlugin` (package `@elizaos/plugin-health`). Opt-in; consumed by plugins such as `@elizaos/plugin-personal-assistant`. All registry contributions are soft-dependency: if `connectorRegistry`, `anchorRegistry`, `busFamilyRegistry`, or `defaultPackRegistry` are absent on the runtime, the plugin logs a one-line skip and continues without error.
 
 ## Plugin surface
 
@@ -46,7 +46,7 @@ src/
   connectors/
     index.ts                    registerHealthConnectors / registerHealthAnchors / registerHealthBusFamilies;
                                   HEALTH_CONNECTOR_KINDS, HEALTH_ANCHORS, HEALTH_BUS_FAMILIES constants
-    contract-stubs.ts           Local structural types for ConnectorRegistry, AnchorRegistry, BusFamilyRegistry,
+    contract-types.ts           Local structural types for ConnectorRegistry, AnchorRegistry, BusFamilyRegistry,
                                   ConnectorContribution, etc. (until W1-F registry interfaces are published)
   contracts/
     health.ts                   Re-exports all LifeOps health/sleep/screen-time types from lifeops.js;
@@ -64,7 +64,7 @@ src/
     bedtime.ts                  bedtimeDefaultPack definition
     wake-up.ts                  wakeUpDefaultPack definition
     sleep-recap.ts              sleepRecapDefaultPack definition
-    contract-stubs.ts           DefaultPack / DefaultPackRegistry structural types
+    contract-types.ts           DefaultPack / DefaultPackRegistry structural types
   health-bridge/
     index.ts                    Barrel: re-exports all health-bridge modules
     health-bridge.ts            detectHealthBackend — HealthKit (darwin) or Google Fit REST fallback
@@ -153,6 +153,6 @@ Create `src/default-packs/<name>.ts` implementing `DefaultPack`, add it to `HEAL
 - **Action registration vs action ownership.** The `actions: []` in `healthPlugin` is still intentional for runtime registration, but action metadata and planning surfaces live here. `plugin-lifeops` may register host-adapted health actions only by calling plugin-health factories.
 - **No `app-lifeops` build-time dep.** `src/util/time.ts` and `src/util/time-util.ts` are local copies of same-named helpers to avoid a circular dependency. Do not replace them with imports from `app-lifeops`.
 - **CircadianInsightContract is the canonical seam.** Any code that needs circadian state or scheduling-window inference resolves it via `getCircadianInsightContract(runtime)` — never deep-imports `src/sleep/*` from outside the plugin.
-- **screen-time aggregation is still being decoupled.** `src/screen-time/` owns taxonomy/classification, range/window helpers, mobile signal parsing/status helpers, pure summary/breakdown/metrics builders, system-inactivity filtering, and shared payload contracts. The remaining repository-backed aggregator still lives in `plugin-lifeops` pending Wave-2 (W2-D) signal-bus decoupling.
+- **screen-time aggregation ownership.** `src/screen-time/` owns taxonomy/classification, range/window helpers, mobile signal parsing/status helpers, pure summary/breakdown/metrics builders, system-inactivity filtering, and shared payload contracts. The repository-backed aggregator lives in `plugin-lifeops` while signal-bus ownership remains split across the two plugins.
 - **Token encryption.** `src/util/token-encryption.ts` encrypts OAuth tokens at rest using a per-runtime key; do not store raw tokens elsewhere.
 - See root `AGENTS.md` for global architecture rules, logger conventions, and ESM/naming requirements.

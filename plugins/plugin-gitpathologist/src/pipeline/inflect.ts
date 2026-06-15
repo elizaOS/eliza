@@ -1,5 +1,5 @@
 /**
- * Phase 4 — inflect: find peaks and drift onsets in the health timeline.
+ * Step 4 — inflect: find peaks and drift onsets in the health timeline.
  *
  * Peak = local maximum of the EMA score over a small window. We require the
  * point to dominate its neighbours strictly on both sides and to be at least

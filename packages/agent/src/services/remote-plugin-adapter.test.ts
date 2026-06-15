@@ -23,6 +23,7 @@ import {
   type Service,
   type UUID,
 } from "@elizaos/core";
+import { build as esbuild } from "esbuild";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { persistConfigEnv } from "../api/config-env.ts";
 import { dispatchRoute } from "../api/dispatch-route.ts";
@@ -3578,9 +3579,14 @@ describe("remote plugin adapter", () => {
       );
 
       const builtBundlePath = join(distDir, "remote-view.js");
-      const buildResult = await buildRemoteViewFixtures({
+      const buildResult = await esbuild({
         entryPoints: [viewSource],
         outfile: builtBundlePath,
+        target: "es2022",
+        platform: "browser",
+        format: "esm",
+        bundle: true,
+        write: true,
       });
       expect(buildResult.errors).toHaveLength(0);
 
@@ -3983,9 +3989,14 @@ export function createRouter() {
         ].join("\n"),
         "utf8",
       );
-      const buildResult = await buildRemoteViewFixtures({
+      const buildResult = await esbuild({
         entryPoints: [viewSource],
         outfile: builtBundlePath,
+        target: "es2022",
+        platform: "browser",
+        format: "esm",
+        bundle: true,
+        write: true,
       });
       expect(buildResult.errors).toHaveLength(0);
 
@@ -4191,7 +4202,9 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
       await mkdir(distDir, { recursive: true });
 
       const viewSource = join(srcDir, "docker-view.ts");
+      const _builtBundlePath = join(distDir, "docker-view.js");
       const toolsViewSource = join(srcDir, "docker-tools-view.ts");
+      const _builtToolsBundlePath = join(distDir, "docker-tools-view.js");
       await writeFile(
         viewSource,
         [
@@ -5025,7 +5038,7 @@ function makeRouter(
   const unavailable = async () => {
     throw new CapabilityError({
       code: "CAPABILITY_UNAVAILABLE",
-      message: "not implemented",
+      message: "capability unavailable in test router",
       capability: "plugin",
     });
   };

@@ -75,7 +75,7 @@ export function classifyLocalVisionError(error: unknown): {
 		message.includes("capability_unavailable") ||
 		message.includes("backend_unavailable") ||
 		message.includes("no mtmd binding") ||
-		message.includes("not implemented") ||
+		/not\s+implemented/u.test(message) ||
 		message.includes("not available") ||
 		message.includes("missing") ||
 		message.includes("dlopen")

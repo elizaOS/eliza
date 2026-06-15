@@ -37,6 +37,8 @@ from pathlib import Path
 
 import numpy as np
 
+from eliza_robot.rl.walk_proof import force_command_observation
+
 # Text instruction -> joystick command [vx (m/s), vy (m/s), yaw_rate (rad/s)].
 TEXT_COMMANDS: dict[str, tuple[float, float, float]] = {
     "walk forward": (1.0, 0.0, 0.0),
@@ -204,7 +206,6 @@ def _quat_yaw(q) -> float:
 
 def evaluate_commands(env_name: str, params_path: Path, *, eval_steps: int, seed: int, render: bool, out_dir: Path) -> dict:
     import jax
-    import jax.numpy as jp
 
     env, inference_fn = _make_inference(env_name, params_path)
     jit_reset = jax.jit(env.reset)
@@ -217,8 +218,7 @@ def evaluate_commands(env_name: str, params_path: Path, *, eval_steps: int, seed
     for text, cmd in TEXT_COMMANDS.items():
         rng = jax.random.PRNGKey(seed)
         state = jit_reset(rng)
-        cmd_arr = jp.array(cmd, dtype=jp.float32)
-        state.info["command"] = cmd_arr
+        state = force_command_observation(env, state, cmd, rng)
         q0 = np.asarray(state.data.qpos)
         x0, y0, yaw0 = float(q0[0]), float(q0[1]), _quat_yaw(q0[3:7])
         xs, ys, zs, vxs, vys, yaws = [x0], [y0], [float(q0[2])], [], [], [yaw0]
@@ -227,7 +227,6 @@ def evaluate_commands(env_name: str, params_path: Path, *, eval_steps: int, seed
             act_rng, rng = jax.random.split(rng)
             action, _ = jit_act(state.obs, act_rng)
             state = jit_step(state, action)
-            state.info["command"] = cmd_arr
             states.append(state)
             q = np.asarray(state.data.qpos)
             xs.append(float(q[0]))

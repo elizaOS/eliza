@@ -81,6 +81,12 @@ import { getPermissionManager } from "./native/permissions";
 import { getRemotePluginHost } from "./native/remote-plugin-host";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
 import {
+  submitOnboardingFirstRun,
+  waitForApiReady,
+  waitForOnboardingNotificationChoice,
+} from "./native-onboarding";
+import {
+  closeOnboardingOverlayWindow,
   createOnboardingOverlayWindow,
   getOnboardingOverlayWindow,
 } from "./onboarding-overlay-window";
@@ -1215,6 +1221,31 @@ async function openOnboardingOverlayWindow(): Promise<BrowserWindow> {
   win.webview.on("dom-ready", () => {
     injectApiBase(win);
   });
+
+  // When the overlay closes (renderer calls window.close() after the first-run
+  // API completes), transition to the main dashboard window. Without this the
+  // overlay disappears but no dashboard appears.
+  win.on("close", () => {
+    logger.info(
+      "[Main] Onboarding overlay closed — creating main dashboard window",
+    );
+    void (async () => {
+      try {
+        const { rpc: mainRpc, sendToWebview: mainSendToWebview } =
+          createDesktopRpc("main");
+        attachMainWindow(
+          await createMainWindow(mainRpc),
+          mainRpc,
+          mainSendToWebview,
+        );
+      } catch (err) {
+        logger.error(
+          `[Main] Failed to create dashboard after overlay close: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    })();
+  });
+
   return win;
 }
 
@@ -2372,15 +2403,84 @@ async function main(): Promise<void> {
   const trayFirst = shouldStartTrayFirst();
   let mainWin: BrowserWindow | null = null;
   if (onboardingOverlay) {
-    // First-run onboarding overlay (macOS, opt-in): instead of the opaque
-    // dashboard, launch a full-screen transparent click-through window that
-    // renders only the floating onboarding card. Empty (transparent) regions
-    // pass clicks through to the desktop behind; the card is interactive.
-    logger.info(
-      "[Main] Onboarding-overlay startup — transparent click-through overlay instead of dashboard",
-    );
+    // First-run onboarding (macOS, opt-in): post a native macOS notification
+    // with action buttons ("Local On-Device", "Local Cloud AI", "Eliza Cloud").
+    // The user's choice is polled via FFI. Once selected, we wait for the
+    // embedded API server to be ready, POST the first-run config, then open
+    // the dashboard. Falls back to the overlay window on FFI failure.
+    logger.info("[Main] Onboarding — posting native macOS notification");
     recordStartupPhase("creating_window", { pid: process.pid });
-    await openOnboardingOverlayWindow();
+
+    // Run notification flow async — don't block the event loop.
+    // Once the user picks and the API is ready, we create the dashboard.
+    void (async () => {
+      try {
+        const choice = await waitForOnboardingNotificationChoice();
+        if (!choice) {
+          // FFI failed or unsupported — fall back to overlay window.
+          logger.warn(
+            "[Main] Native notification unavailable — falling back to overlay",
+          );
+          await openOnboardingOverlayWindow();
+          return;
+        }
+
+        // Wait for the embedded API server to be ready before submitting.
+        // The agent manager may not have started yet, so poll until
+        // resolveLoopbackApiBase() returns a valid URL.
+        let apiBase: string | null = null;
+        const apiBaseDeadline = Date.now() + 120_000;
+        while (Date.now() < apiBaseDeadline) {
+          apiBase = resolveLoopbackApiBase();
+          if (apiBase) break;
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+        if (!apiBase) {
+          logger.error(
+            "[Main] Cannot resolve API base after 120s — falling back to overlay",
+          );
+          await openOnboardingOverlayWindow();
+          return;
+        }
+
+        logger.info(
+          `[Main] Notification choice received — waiting for API at ${apiBase}`,
+        );
+        const apiReady = await waitForApiReady(apiBase, 120_000);
+        if (!apiReady) {
+          logger.error(
+            "[Main] API server not ready after 120s — falling back to overlay",
+          );
+          await openOnboardingOverlayWindow();
+          return;
+        }
+
+        // Submit first-run config to the API.
+        const submitted = await submitOnboardingFirstRun(apiBase, choice);
+        if (!submitted) {
+          logger.error(
+            "[Main] First-run submission failed — falling back to overlay",
+          );
+          await openOnboardingOverlayWindow();
+          return;
+        }
+
+        // First-run complete — close the overlay and let its close handler
+        // create the dashboard (single handoff point). The win.on("close")
+        // handler wired in openOnboardingOverlayWindow() transitions to the
+        // main dashboard window, so we just need to trigger it.
+        logger.info(
+          "[Main] First-run complete — closing overlay to transition to dashboard",
+        );
+        closeOnboardingOverlayWindow();
+      } catch (err) {
+        logger.error(
+          `[Main] Native onboarding failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        await openOnboardingOverlayWindow();
+      }
+    })();
+
     recordStartupPhase("window_ready", {
       pid: process.pid,
     });

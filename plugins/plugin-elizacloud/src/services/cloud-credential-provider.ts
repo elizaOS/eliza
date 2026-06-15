@@ -93,7 +93,7 @@ export class CloudCredentialProvider extends Service {
   }
 
   override async stop(): Promise<void> {
-    // No-op: holds no per-instance state.
+    // Holds no per-instance state.
   }
 
   async resolve(_userId: string, credType: string): Promise<CredentialProviderResult> {

@@ -15,7 +15,7 @@ management — every signed firmware is tied to a build commit).
 | --------------------- | ------------------------------------------------------- |
 | ``sign-firmware.sh``  | Sign a vetted firmware blob with the chip-firmware key. |
 | ``verify-firmware.sh``| Verify a firmware blob + signature record.              |
-| ``README.md``         | This file — attestation chain + open TODOs.             |
+| ``README.md``         | This file — attestation chain + open security items.    |
 
 Both scripts shell out to the existing
 ``packages/security/scripts/kms-sign.ts`` /
@@ -85,7 +85,7 @@ notes.
 5. The flasher tool runs ``./verify-firmware.sh`` against the bundle
    before writing to the device.
 
-## Open TODOs (chip security)
+## Open Security Items
 
   - [ ] Burn the root-of-trust public key into a silicon mask ROM
         revision and document the fingerprint.

@@ -55,7 +55,7 @@ const actor = {
     "I'm told Trump is doing something only a small set of people would know. More details soon.",
     "Spoke to three people familiar with the matter. It's not good. It's also not simple.",
     "My phone has been ringing all day. Here's what I can share, and what I can't.",
-    "The full story is more complicated. Book details TBD. That is not a joke.",
+    "The full story is more complicated. Book details under wraps. That is not a joke.",
     "This detail will matter later. Trust me. It always does on this beat.",
     "The debate about access versus accountability is real. The beat is also real. If you want perfect morality and perfect information in real time, you will not get it. You will get sources, context, and a lot of late-night calls.",
     "Every cycle looks new to people who started paying attention yesterday. It looks familiar to people who have been covering it since 2015. The details change. The incentives do not.",

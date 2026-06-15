@@ -1,6 +1,6 @@
 {
   "name": "elizaos",
-  "version": "2.0.3-beta.0",
+  "version": "2.0.3-beta.13",
   "description": "elizaOS CLI - Create and upgrade elizaOS projects and plugins",
   "type": "module",
   "bin": {
@@ -31,7 +31,7 @@
     "test": "vitest run --passWithNoTests",
     "test:packaged": "node ./scripts/packaged-smoke.mjs",
     "lint:bin-exports": "node ./scripts/lint-bin-exports.mjs",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run build && bun run lint:bin-exports"
   },
   "dependencies": {
     "@clack/prompts": "^1.0.0",

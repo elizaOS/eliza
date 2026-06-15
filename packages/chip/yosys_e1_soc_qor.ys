@@ -23,6 +23,7 @@ read_verilog -sv rtl/top/e1_soc_pkg.sv
 read_verilog -sv rtl/peripherals/e1_mmio_decode.sv
 read_verilog -sv rtl/peripherals/e1_clint.sv
 read_verilog -sv rtl/memory/e1_behavioral_dram.sv
+read_verilog -sv rtl/dft/e1_jtag_tap.sv
 read_verilog -sv rtl/top/e1_chip_top.sv
 read_verilog -sv rtl/clock/e1_reset_sync.sv
 read_verilog -sv rtl/debug/e1_dbg_mmio_bridge.sv
@@ -36,6 +37,8 @@ read_verilog -sv rtl/cpu/e1_cva6_wrapper.sv
 read_verilog -sv rtl/cpu/e1_cpu_axi_bridge.sv
 read_verilog -sv rtl/cpu/e1_cpu_subsystem_stub.sv
 read_verilog -sv rtl/interconnect/e1_axi_lite_interconnect.sv
+read_verilog -sv rtl/interconnect/e1_axil_to_mmio.sv
+read_verilog -sv rtl/interconnect/e1_mmio_arb2.sv
 read_verilog -sv rtl/memory/e1_axi_lite_dram.sv
 read_verilog -sv rtl/memory/e1_weight_buffer_sram.sv
 read_verilog -sv rtl/interrupts/e1_interrupt_controller.sv

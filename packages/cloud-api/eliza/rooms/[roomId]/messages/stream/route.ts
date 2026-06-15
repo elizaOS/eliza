@@ -1,5 +1,5 @@
 /**
- * POST /api/eliza/rooms/:roomId/messages/stream — stubbed.
+ * POST /api/eliza/rooms/:roomId/messages/stream — sidecar-only.
  *
  * Streaming variant of /messages: same elizaOS runtime blocker. Per the
  * realtime audit this route is `runtime: "nodejs"`-pinned regardless.

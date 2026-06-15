@@ -441,7 +441,7 @@ const LandingPage: React.FC = () => {
           <ExampleTurnCard />
           <p>
             Scores are unbounded. If an LLM was resourceful enough, it could
-            recall all the no-operation programs on Solana, and iterate through
+            recall all the do-nothing programs on Solana, and iterate through
             256 different first bytes of instruction data (and one empty
             instruction), and achieve 257 points per program. Further research
             can consider filtering the reward function to only award points for

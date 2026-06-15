@@ -94,7 +94,7 @@ export interface TokenSequence {
  * whose `leafName` is the lexicographically-smallest input — the leaf-name
  * tag is informational; the constraint is the path.
  *
- * Empty `sequences` returns a root with no children (a no-op trie — every
+ * Empty `sequences` returns a root with no children (an unconstrained trie — every
  * step is unconstrained from the trie's perspective). The caller should
  * either skip the trie path entirely in that case or fall back to grammar.
  */
@@ -139,7 +139,7 @@ export function buildTokenTrie(
  * structured-decode contract (`responseSkeleton` / `grammar`). This is what
  * the harness packs into the chat-completion request body as
  * `eliza_token_tree` (or surfaces under `providerOptions.eliza.tokenTrees`
- * — naming TBD when the fork-side hook lands).
+ * — final provider-options key name follows the fork-side hook).
  *
  * One descriptor per constrained span / field. For Stage-2 planner the
  * primary entry is the `action` span; multi-value enum parameter fields

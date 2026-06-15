@@ -57,8 +57,23 @@ async function* walk(dir) {
   }
 }
 
-function hasKnownExtension(specifier) {
-  return /\.[cm]?[jt]sx?$/.test(specifier) || specifier.endsWith(".json");
+// dist only ever contains emitted .js runtime files, so a TypeScript-source
+// extension (.ts/.tsx/.mts/.cts) in a specifier is always broken at runtime
+// and must be rewritten to its .js equivalent. tsc's
+// rewriteRelativeImportExtensions normally handles this, but this step is the
+// node-ESM safety net and must not treat .ts as already-resolved.
+const TS_SOURCE_EXTENSION = /\.([cm]?)tsx?$/;
+
+function rewrittenJsExtension(specifier) {
+  const match = specifier.match(TS_SOURCE_EXTENSION);
+  if (!match) {
+    return null;
+  }
+  return specifier.replace(TS_SOURCE_EXTENSION, `.${match[1]}js`);
+}
+
+function hasKnownJsExtension(specifier) {
+  return /\.[cm]?jsx?$/.test(specifier) || specifier.endsWith(".json");
 }
 
 async function resolveRelativeSpecifier(fromFile, specifier) {
@@ -69,7 +84,12 @@ async function resolveRelativeSpecifier(fromFile, specifier) {
   ) {
     return specifier;
   }
-  if (hasKnownExtension(specifier)) {
+
+  const jsFromTs = rewrittenJsExtension(specifier);
+  if (jsFromTs !== null) {
+    return jsFromTs;
+  }
+  if (hasKnownJsExtension(specifier)) {
     return specifier;
   }
 

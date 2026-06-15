@@ -215,7 +215,7 @@ async function checkWalletStatus(): Promise<void> {
   console.log("\n🌐 Network Status:");
   console.log(`   Latest Block: ${blockNumber}`);
   console.log(
-    `   Block Time: ${new Date(block?.timestamp * 1000).toISOString()}`,
+    `   Block Time: ${block?.timestamp ? new Date(block.timestamp * 1000).toISOString() : "N/A"}`,
   );
   console.log(
     `   Base Fee: ${block?.baseFeePerGas ? ethers.formatUnits(block?.baseFeePerGas, "gwei") : "N/A"} gwei`,

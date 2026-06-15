@@ -15,9 +15,7 @@ POWER_MANIFEST = ROOT / "docs/manufacturing/evidence/power/e1-npu-power-capture-
 THERMAL_PLAN = ROOT / "docs/manufacturing/evidence/thermal/e1-npu-thermal-capture-plan.md"
 SUSTAINED_CHECKER = ROOT / "benchmarks/power/scripts/check_sustained_run_evidence.py"
 OUT = ROOT / "build/reports/power_thermal_scope.json"
-MEASURED_SUSTAINED_MANIFEST = (
-    "benchmarks/power/manifests/e1-npu-sustained-capture.measured.json"
-)
+MEASURED_SUSTAINED_MANIFEST = "benchmarks/power/manifests/e1-npu-sustained-capture.measured.json"
 POWER_THERMAL_CAPTURE_COMMANDS = (
     'test -n "$ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND"',
     (
@@ -413,14 +411,12 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         errors.append("next_capture_commands must be a mapping")
     else:
         require(
-            commands.get("sustained_power_thermal_manifest")
-            == POWER_THERMAL_CAPTURE_COMMANDS[1],
+            commands.get("sustained_power_thermal_manifest") == POWER_THERMAL_CAPTURE_COMMANDS[1],
             "next_capture_commands missing sustained power/thermal manifest capture",
             errors,
         )
         require(
-            commands.get("sustained_power_thermal_validation")
-            == POWER_THERMAL_CAPTURE_COMMANDS[2],
+            commands.get("sustained_power_thermal_validation") == POWER_THERMAL_CAPTURE_COMMANDS[2],
             "next_capture_commands missing sustained power/thermal validation",
             errors,
         )
@@ -444,7 +440,9 @@ def validate_report(data: dict[str, Any]) -> list[str]:
                 "check_sustained_run_evidence.py",
                 "check_power_thermal_scope.py",
             ):
-                require(token in command_text, f"power/thermal command plan missing {token}", errors)
+                require(
+                    token in command_text, f"power/thermal command plan missing {token}", errors
+                )
     scaffolds = data.get("current_scaffolds")
     if not isinstance(scaffolds, dict):
         errors.append("current_scaffolds must be a mapping")

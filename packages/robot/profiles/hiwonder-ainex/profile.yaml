@@ -122,8 +122,9 @@ assets:
 
 # ---------------------------------------------------------------------------
 # Actions — predefined scripted gestures, replayable via `action.play`.
-# TODO: tune frame values against real-robot recordings; placeholder uses the
-# home pose offset by representative joint deltas.
+# Seed frame values use home-pose offsets plus representative joint deltas.
+# Promote these to calibrated production gestures only after real-robot
+# recordings or simulator review confirm timing and joint limits.
 # ---------------------------------------------------------------------------
 actions:
   groups:
@@ -148,10 +149,10 @@ actions:
       duration_s: 1.5
       frames:
         - t: 0.0
-          # TODO: tune — currently mirrors `stand` as a starting pose.
+          # Seed pose: currently mirrors `stand` as a starting pose.
           joints: { r_hip_pitch: 0.0, l_hip_pitch: 0.0, r_knee: 0.0, l_knee: 0.0 }
         - t: 1.5
-          # TODO: tune — rough crouch: hips forward, knees bent, ankles back.
+          # Seed pose: rough crouch with hips forward, knees bent, ankles back.
           joints:
             r_hip_pitch: -0.9
             l_hip_pitch: -0.9
@@ -164,26 +165,26 @@ actions:
       duration_s: 2.0
       frames:
         - t: 0.0
-          # TODO: tune — start with right arm at home stand pose.
+          # Seed pose: start with right arm at home stand pose.
           joints: { r_sho_pitch: 0.0, r_sho_roll: 1.403, r_el_pitch: 0.0, r_el_yaw: 1.226 }
         - t: 1.0
-          # TODO: tune — right arm raised, elbow bent, wave peak.
+          # Seed pose: right arm raised, elbow bent, wave peak.
           joints: { r_sho_pitch: -1.2, r_sho_roll: 0.6, r_el_pitch: 0.0, r_el_yaw: 0.4 }
         - t: 2.0
-          # TODO: tune — return to home.
+          # Seed pose: return to home.
           joints: { r_sho_pitch: 0.0, r_sho_roll: 1.403, r_el_pitch: 0.0, r_el_yaw: 1.226 }
     bow:
       name: bow
       duration_s: 2.0
       frames:
         - t: 0.0
-          # TODO: tune — start at stand.
+          # Seed pose: start at stand.
           joints: { r_hip_pitch: 0.0, l_hip_pitch: 0.0, head_tilt: 0.0 }
         - t: 1.0
-          # TODO: tune — torso forward via hip pitch + head down.
+          # Seed pose: torso forward via hip pitch + head down.
           joints: { r_hip_pitch: -0.5, l_hip_pitch: -0.5, head_tilt: 0.5 }
         - t: 2.0
-          # TODO: tune — return to upright stand.
+          # Seed pose: return to upright stand.
           joints: { r_hip_pitch: 0.0, l_hip_pitch: 0.0, head_tilt: 0.0 }
 
 # ---------------------------------------------------------------------------

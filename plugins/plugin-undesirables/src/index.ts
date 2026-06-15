@@ -1,5 +1,5 @@
 /**
- * The Undesirables — ElizaOS Plugin v2.3
+ * The Undesirables — elizaOS Plugin v2.3
  * ========================================
  * Pioneers "Personality-as-Code" via verifiable soul workspaces.
  * Each of 4,444 NFTs generates a unique AI personality from its visual traits.
@@ -10,7 +10,7 @@
  * - All Users: Live TCG Oracle data via free search endpoint
  *
  * Features:
- * - 10 actions + 24 skill matchers
+ * - 9 actions + 24 skill matchers
  * - Live Oracle provider (real market data from 427K+ products)
  * - Demo soul for non-holders (drives mint conversion)
  * - Market analysis with personality-driven perspective
@@ -186,7 +186,7 @@ async function loadWorkspace(workspacePath: string): Promise<SoulWorkspace> {
           }
         }
       } catch {
-        // Silently skip malformed YAML frontmatter
+        // Ignore malformed YAML frontmatter.
       }
     }
   }
@@ -490,11 +490,13 @@ const memeMachineAction: Action = {
     }
 
     const skill = workspace.skills["meme_machine"] || "";
+    const trendService = runtime.getService<MemeTrendService>(MemeTrendService.serviceType);
+    const trendContext = trendService ? `\n\n${trendService.getTrendContext(5)}` : "";
     const context = buildSkillContext(
       skill,
       workspace,
       message.content.text || "",
-      "Create 3 meme concepts with template, text, caption, and export size."
+      `Create 3 meme concepts with template, text, caption, and export size.${trendContext}`
     );
 
     return generateResponse(runtime, context, callback, "UNDESIRABLE_MEME_MACHINE");

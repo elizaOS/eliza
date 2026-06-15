@@ -2,9 +2,6 @@
  * Coverage ratchet: every converted plugin view must register at least one
  * element with the agent surface (useAgentElement) so the floating pill can
  * address it. Guards against a view regressing to an unaddressable surface.
- *
- * lifeops is tracked as pending — its working tree currently carries an
- * unrelated refactor; it is converted separately.
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -40,10 +37,9 @@ const CONVERTED_PLUGINS = [
   "plugin-training",
   "plugin-trajectory-logger",
   "plugin-vincent",
-  "plugin-lifeops",
 ] as const;
 
-/** Views not yet converted — must be empty for the ratchet to be satisfied. */
+/** Remaining views to convert; must stay empty for the ratchet to pass. */
 const PENDING_PLUGINS: readonly string[] = [];
 
 function walkTsx(dir: string): string[] {
@@ -121,7 +117,7 @@ const CONVERTED_SHELL_PAGES = [
   "pages/HeartbeatsView",
   "pages/DocumentsView",
   "pages/ConfigPageView",
-  "pages/ViewManagerPage",
+  "pages/ViewCatalog",
 ] as const;
 
 /**
@@ -204,7 +200,7 @@ describe("agent-surface view coverage", () => {
     expect(isAgentControllable(file)).toBe(true);
   });
 
-  it("has zero unconverted plugin views (lifeops now included)", () => {
+  it("has zero unconverted plugin views", () => {
     expect(PENDING_PLUGINS).toHaveLength(0);
   });
 });

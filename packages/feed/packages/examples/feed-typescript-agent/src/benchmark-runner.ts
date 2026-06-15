@@ -74,9 +74,9 @@ async function runBenchmark(
   // 2. Dynamic import of benchmark modules
   log("🔧 Loading simulation modules...");
 
-  // TODO: Benchmark simulation modules not yet available as packages
-  // These would need to be migrated to @feed/testing or similar
-  // For now, benchmark runner is disabled
+  // Benchmark simulation modules are not available as packages.
+  // They need to be migrated to @feed/testing or similar before this runner
+  // can execute locally.
   throw new Error(
     "Benchmark runner requires simulation modules that are not yet available as packages. " +
       "Please use the main app benchmark runner instead.",
@@ -302,20 +302,6 @@ async function runBenchmark(
 
   return result;
   */
-
-  // Unreachable - return placeholder to satisfy type checker
-  return {
-    id: "disabled",
-    totalTrades: 0,
-    totalPnL: 0,
-    winRate: 0,
-    avgROI: 0,
-    metrics: {
-      totalPnl: 0,
-      predictionMetrics: { accuracy: 0 },
-      optimalityScore: 0,
-    },
-  };
 }
 
 async function runMultiple(
@@ -392,12 +378,6 @@ async function runMultiple(
   log('');
   log(`Results: ${outputDir}`);
   */
-
-  // Unreachable - return placeholder to satisfy type checker
-  return {
-    runs: [],
-    comparison: {},
-  };
 }
 
 // CLI

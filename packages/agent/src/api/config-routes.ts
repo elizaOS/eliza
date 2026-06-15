@@ -395,8 +395,8 @@ export async function handleConfigRoutes(
       const envPatch = filtered.env as Record<string, unknown>;
       // Defense-in-depth: strip step-up secrets from persisted config before
       // merge, even though BLOCKED_ENV_KEYS also blocks them during process.env
-      // sync below. Keeping both guards prevents accidental persistence if one
-      // path changes in future refactors.
+      // sync below. Keeping both guards prevents accidental persistence across
+      // the API and environment-sync paths.
       delete envPatch.ELIZA_API_TOKEN;
       delete envPatch.ELIZA_WALLET_EXPORT_TOKEN;
       delete envPatch.ELIZA_TERMINAL_RUN_TOKEN;

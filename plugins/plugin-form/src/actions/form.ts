@@ -18,21 +18,17 @@ import {
   type Action,
   type ActionResult,
   CANONICAL_SUBACTION_KEY,
-  DEFAULT_SUBACTION_KEYS,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
-  type JsonValue,
   logger,
   type Memory,
-  normalizeSubaction,
   type State,
   type UUID,
 } from "@elizaos/core";
 import type { FormService } from "../service";
 
 const FORM_SUBACTIONS = ["restore"] as const;
-type FormSubaction = (typeof FORM_SUBACTIONS)[number];
 
 const RESTORE_FIELD_LIMIT = 12;
 const RESTORE_RESPONSE_MAX_CHARS = 4_000;
@@ -41,22 +37,6 @@ function truncateRestoreResponse(text: string): string {
   return text.length <= RESTORE_RESPONSE_MAX_CHARS
     ? text
     : `${text.slice(0, RESTORE_RESPONSE_MAX_CHARS)}\n\n[truncated restored form summary]`;
-}
-
-function readFormSubaction(options: HandlerOptions | undefined): FormSubaction {
-  const params = options?.parameters as
-    | Record<string, JsonValue | undefined>
-    | undefined;
-  for (const key of DEFAULT_SUBACTION_KEYS) {
-    const normalized = normalizeSubaction(params?.[key]);
-    if (
-      normalized &&
-      (FORM_SUBACTIONS as readonly string[]).includes(normalized)
-    ) {
-      return normalized as FormSubaction;
-    }
-  }
-  return "restore";
 }
 
 async function handleRestore(
@@ -221,32 +201,18 @@ export const formAction: Action = {
   },
 
   /**
-   * Handler: dispatches by `action` to the per-verb handler. Only `restore`
-   * is implemented today.
+   * Handler: dispatches by `action` to the per-verb handler. `restore` is the
+   * only planner-owned form verb; submit, stash, and cancel belong to the
+   * post-turn evaluator while an active form is already in scope.
    */
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    options?: HandlerOptions,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const subaction = readFormSubaction(options);
-    if (subaction === "restore") {
-      return handleRestore(runtime, message, callback);
-    }
-    // No other subactions are implemented yet — readFormSubaction defaults
-    // to restore, so this branch is unreachable. Keep an explicit fallback
-    // so future subactions can be added without breaking the contract.
-    return {
-      success: false,
-      text: `FORM action=${subaction} not yet implemented`,
-      data: {
-        actionName: "FORM",
-        [CANONICAL_SUBACTION_KEY]: subaction,
-        errorCode: "not_implemented",
-      },
-    };
+    return handleRestore(runtime, message, callback);
   },
 
   // Example conversations for training/documentation

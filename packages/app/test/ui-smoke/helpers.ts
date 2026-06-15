@@ -174,6 +174,7 @@ const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
   ["Wallet & RPC", "wallet-rpc"],
   ["Permissions", "permissions"],
   ["Vault", "secrets"],
+  ["Secrets storage", "secrets"],
   ["Security", "security"],
   ["Updates", "updates"],
   ["Backup & Reset", "advanced"],
@@ -189,6 +190,12 @@ const DEFAULT_APP_STORAGE: Record<string, string> = {
     label: "This device",
   }),
 };
+
+const SMOKE_AGENT = {
+  id: "ui-smoke-agent",
+  name: "Playwright Smoke",
+  status: "running",
+} as const;
 
 export async function seedAppStorage(
   page: Page,
@@ -207,6 +214,28 @@ export async function seedAppStorage(
     },
     { entries: storage, seededKey: STORAGE_SEEDED_KEY },
   );
+}
+
+export async function hideContinuousChatOverlay(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const install = () => {
+      if (document.getElementById("ui-smoke-hide-continuous-chat-overlay")) {
+        return;
+      }
+      const style = document.createElement("style");
+      style.id = "ui-smoke-hide-continuous-chat-overlay";
+      style.textContent =
+        '[data-testid="continuous-chat-overlay"] { display: none !important; }';
+      (document.head ?? document.documentElement).appendChild(style);
+    };
+
+    if (document.head || document.documentElement) {
+      install();
+      return;
+    }
+
+    document.addEventListener("DOMContentLoaded", install, { once: true });
+  });
 }
 
 export async function installRenderTelemetryGuard(page: Page): Promise<void> {
@@ -269,8 +298,11 @@ async function expectNoFirstRunRedirect(page: Page): Promise<void> {
 
 async function expectStartupSettled(page: Page): Promise<void> {
   await page
-    .getByText("Initializing agent")
+    .getByText(/Initializing agent|Connecting to backend/i)
     .waitFor({ state: "hidden", timeout: STARTUP_SETTLED_TIMEOUT_MS });
+  await expect(page.getByTestId("startup-shell-loading")).toHaveCount(0, {
+    timeout: STARTUP_SETTLED_TIMEOUT_MS,
+  });
 }
 
 function isRootTargetPath(targetPath: string): boolean {
@@ -282,14 +314,41 @@ function isRootTargetPath(targetPath: string): boolean {
   }
 }
 
+function isFirstRunTargetPath(targetPath: string): boolean {
+  try {
+    const url = new URL(targetPath, "http://ui-smoke.local");
+    return url.pathname === "/onboarding" || url.pathname === "/first-run";
+  } catch {
+    return (
+      targetPath === "/onboarding" ||
+      targetPath.startsWith("/onboarding?") ||
+      targetPath === "/first-run" ||
+      targetPath.startsWith("/first-run?")
+    );
+  }
+}
+
+interface OpenAppPathOptions {
+  allowOnboardingToast?: boolean;
+}
+
 async function expectMainShellReadyForRoute(
   page: Page,
   targetPath: string,
+  options: OpenAppPathOptions = {},
 ): Promise<void> {
-  if (isRootTargetPath(targetPath)) return;
+  if (isRootTargetPath(targetPath) || isFirstRunTargetPath(targetPath)) return;
   await expect(page.getByTestId("startup-shell-loading")).toHaveCount(0, {
     timeout: STARTUP_SETTLED_TIMEOUT_MS,
   });
+  await expect(page.getByTestId("first-run-shell")).toHaveCount(0, {
+    timeout: STARTUP_SETTLED_TIMEOUT_MS,
+  });
+  if (!options.allowOnboardingToast) {
+    await expect(page.getByTestId("onboarding-toast")).toHaveCount(0, {
+      timeout: STARTUP_SETTLED_TIMEOUT_MS,
+    });
+  }
 }
 
 async function replayNavigationAfterStartup(page: Page): Promise<void> {
@@ -308,14 +367,17 @@ async function replayNavigationAfterStartup(page: Page): Promise<void> {
 export async function openAppPath(
   page: Page,
   targetPath: string,
+  options: OpenAppPathOptions = {},
 ): Promise<void> {
   await installRenderTelemetryGuard(page);
   await page.goto(targetPath, { waitUntil: "domcontentloaded" });
   await expectRootReady(page);
   await expectStartupSettled(page);
   await expectNoFirstRunRedirect(page);
-  await expectMainShellReadyForRoute(page, targetPath);
+  await expectMainShellReadyForRoute(page, targetPath, options);
   await replayNavigationAfterStartup(page);
+  await expectStartupSettled(page);
+  await expectMainShellReadyForRoute(page, targetPath, options);
   await expectNoRenderTelemetryErrors(page, targetPath);
 }
 
@@ -334,7 +396,32 @@ export async function openSettingsSection(
   if (!(await locatorVisible(settingsShell, 2_000))) {
     await replayNavigationAfterStartup(page);
   }
+  if (!(await locatorVisible(settingsShell, 2_000))) {
+    await openAppPath(page, "/settings");
+  }
   await expect(settingsShell).toBeVisible({ timeout: READY_CHECK_TIMEOUT_MS });
+
+  const hubSectionButton = settingsShell
+    .getByRole("button", { name: sectionName })
+    .first();
+  if (await locatorVisible(hubSectionButton, 1_000)) {
+    await hubSectionButton.click();
+    return;
+  }
+
+  const sectionBackButton = settingsShell
+    .getByRole("button", { name: /^Settings$/ })
+    .first();
+  if (await locatorVisible(sectionBackButton, 1_000)) {
+    await sectionBackButton.click();
+    const nextHubSectionButton = settingsShell
+      .getByRole("button", { name: sectionName })
+      .first();
+    if (await locatorVisible(nextHubSectionButton, READY_CHECK_TIMEOUT_MS)) {
+      await nextHubSectionButton.click();
+      return;
+    }
+  }
 
   const settingsNav = page.getByRole("navigation", { name: "Settings" });
   const sectionButton = settingsNav.getByRole("button", { name: sectionName });
@@ -416,16 +503,30 @@ async function evaluateReadyChecks(
 
   for (const check of checks) {
     if ("selector" in check) {
-      results.push({
+      const result = {
         check,
         passed: await locatorVisible(page.locator(check.selector), timeoutMs),
-      });
+      };
+      results.push(result);
+      if (mode === "any" && result.passed) {
+        return {
+          passed: true,
+          results,
+        };
+      }
       continue;
     }
-    results.push({
+    const result = {
       check,
       passed: await locatorVisible(page.getByText(check.text), timeoutMs),
-    });
+    };
+    results.push(result);
+    if (mode === "any" && result.passed) {
+      return {
+        passed: true,
+        results,
+      };
+    }
   }
 
   return {
@@ -1108,6 +1209,53 @@ function smokeStewardHistoryRecords() {
   ];
 }
 
+const smokeVectorRows = [
+  {
+    id: "memory-smoke-1",
+    content: "Deterministic memory fixture for UI smoke vector search.",
+    room_id: "room-smoke-vector",
+    entity_id: "entity-smoke-vector",
+    type: "message",
+    created_at: SMOKE_GENERATED_AT,
+    unique: true,
+    dim_384: "[0.1,0.2,0.3]",
+  },
+];
+
+function smokeDatabaseQuery(sql: string) {
+  const normalized = sql.replace(/\s+/g, " ").trim().toLowerCase();
+  if (normalized.includes("information_schema.columns")) {
+    return {
+      rows: [
+        { column_name: "id", data_type: "text" },
+        { column_name: "content", data_type: "text" },
+        { column_name: "room_id", data_type: "text" },
+        { column_name: "entity_id", data_type: "text" },
+        { column_name: "type", data_type: "text" },
+        { column_name: "created_at", data_type: "timestamp" },
+        { column_name: "unique", data_type: "boolean" },
+        { column_name: "dim_384", data_type: "text" },
+      ],
+      rowCount: 8,
+    };
+  }
+  if (normalized.includes("count(*)")) {
+    return {
+      rows: [
+        { cnt: normalized.includes('"unique"') ? 1 : smokeVectorRows.length },
+      ],
+      rowCount: 1,
+    };
+  }
+  if (normalized.includes('from "memories"')) {
+    return {
+      rows: smokeVectorRows,
+      rowCount: smokeVectorRows.length,
+    };
+  }
+  return { rows: [], rowCount: 0 };
+}
+
 /** Installs baseline API routes for smoke tests before flow-specific overrides. */
 export async function installDefaultAppRoutes(page: Page): Promise<void> {
   await page.route(/\/(?:brand|app-heroes)\//, async (route) => {
@@ -1188,6 +1336,23 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  await page.route("**/api/runtime/mode", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        mode: "local",
+        deploymentRuntime: "local",
+        isRemoteController: false,
+        remoteApiBaseConfigured: false,
+      }),
+    });
+  });
+
   await page.route("**/api/first-run/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -1197,6 +1362,27 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ complete: true, cloudProvisioned: true }),
+    });
+  });
+
+  await page.route("**/api/config", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        meta: { firstRunComplete: true },
+        agents: {
+          list: [SMOKE_AGENT],
+          defaults: {
+            workspace: "ui-smoke-workspace",
+            adminEntityId: "owner-ui-smoke",
+          },
+        },
+      }),
     });
   });
 
@@ -1353,6 +1539,37 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
         positions: [],
         source: { api: "data", endpoint: "/positions" },
       }),
+    });
+  });
+
+  await page.route("**/api/database/tables", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        tables: [
+          { name: "memories", rowCount: smokeVectorRows.length },
+          { name: "embeddings", rowCount: smokeVectorRows.length },
+        ],
+      }),
+    });
+  });
+
+  await page.route("**/api/database/query", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    const rawBody = route.request().postData() ?? "{}";
+    const body = JSON.parse(rawBody) as { sql?: string };
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(smokeDatabaseQuery(body.sql ?? "")),
     });
   });
 
@@ -1556,6 +1773,18 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  await page.route("**/api/social-alpha/leaderboard", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: [] }),
+    });
+  });
+
   await page.route("**/api/wallet/balances", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -1577,6 +1806,18 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(smokeWalletNfts()),
+    });
+  });
+
+  await page.route("**/api/social-alpha/leaderboard", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: [] }),
     });
   });
 
@@ -1744,6 +1985,14 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       });
       return;
     }
+    if (request.method() === "GET" && url.pathname.endsWith("/timeline")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [], nextCursor: null }),
+      });
+      return;
+    }
     if (request.method() === "GET" && url.pathname.endsWith("/usage")) {
       await route.fulfill({
         status: 200,
@@ -1823,7 +2072,7 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ agents: [] }),
+      body: JSON.stringify({ agents: [SMOKE_AGENT] }),
     });
   });
 

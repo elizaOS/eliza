@@ -30,11 +30,7 @@
 
 import { logger } from "@elizaos/core";
 import { captureDisplay, type DisplayCapture } from "../platform/capture.js";
-import {
-  findDisplay,
-  getPrimaryDisplay,
-  listDisplays,
-} from "../platform/displays.js";
+import { getPrimaryDisplay, listDisplays } from "../platform/displays.js";
 import {
   driverClick,
   driverDoubleClick,
@@ -332,7 +328,7 @@ export class DefaultComputerInterface implements ComputerInterface {
   }
 
   async keyUp(_args: { key: string }): Promise<void> {
-    /* paired with keyDown via the driver — no-op here. */
+    /* Already emitted by keyDown via the driver. */
   }
 
   async typeText(args: { text: string }): Promise<void> {

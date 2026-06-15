@@ -51,7 +51,7 @@ describe("paste handler utilities", () => {
       expect(result.remaining).toBe("ab");
     });
 
-    test("returns normal input before an unfinished paste as remaining input", () => {
+    test("returns normal input before an open paste as remaining input", () => {
       const handler = new PasteHandler();
       const result = handler.handleInput(`typed${PASTE_START}paste`);
       expect(result.consumed).toBe(true);

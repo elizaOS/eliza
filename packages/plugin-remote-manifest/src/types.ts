@@ -290,6 +290,7 @@ export type RemotePluginWorkerMessage =
   | WorkerInitCompleteMessage
   | WorkerRpcMessage
   | WorkerRpcResultMessage
+  | WorkerActionCallbackMessage
   | HostRpcMessage
   | HostRpcResultMessage
   | StreamChunkMessage
@@ -325,7 +326,7 @@ export interface RemoteFunctionRef extends JsonObject {
 /**
  * Sent once by the worker after `ready`. Describes the full {@link Plugin}
  * object the worker exports, with every function value replaced by a
- * {@link RemoteFunctionRef}. The host uses this to synthesise local stubs
+ * {@link RemoteFunctionRef}. The host uses this to synthesize local proxies
  * (action handlers, provider getters, service-method proxies, etc.) that
  * forward calls to the worker via {@link WorkerRpcMessage}.
  */
@@ -392,6 +393,13 @@ export interface WorkerRpcResultMessage {
     cause?: JsonValue;
     code?: string;
   };
+}
+
+/** Worker → host: action handler invoked the callback passed by the host. */
+export interface WorkerActionCallbackMessage {
+  type: "worker-action-callback";
+  callbackId: string;
+  payload: JsonValue;
 }
 
 /**

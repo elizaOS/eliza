@@ -35,7 +35,7 @@ export interface SimulatedActorV2 {
 	id: UUID;
 	username: string;
 	archetype: ActorArchetypeV2;
-	trustScore?: number; // Expected trust score for validation
+	trustScore?: number; // Expected trust score for scenario checks
 	callHistory: SimulatedCallV2[];
 	preferences: {
 		favoriteTokenTypes?: TokenScenario["type"][];
@@ -400,7 +400,7 @@ export class SimulationActorsServiceV2 {
 			elite_analyst: {
 				positive: [
 					`$${token.symbol} showing strong fundamentals. This is a long-term hold.`,
-					`Been researching $${token.symbol} - solid team and roadmap. Accumulating here.`,
+					`Been researching $${token.symbol} - solid team and execution plan. Accumulating here.`,
 					`$${token.symbol} is undervalued at current levels. Target: ${(priceHistory[priceHistory.length - 1].price * 5).toFixed(6)}`,
 				],
 				negative: [

@@ -64,7 +64,7 @@ describe("streaming text fuzz invariants", () => {
 
         expect(mergeStreamingText(existing, prefix)).toBe(existing);
         expect(resolveStreamingUpdate(existing, prefix)).toEqual({
-          kind: "noop",
+          kind: "unchanged",
           nextText: existing,
           emittedText: "",
         });
@@ -82,7 +82,7 @@ describe("streaming text fuzz invariants", () => {
         expect(update.nextText).toBe(merged);
         if (merged === existing) {
           expect(update).toEqual({
-            kind: "noop",
+            kind: "unchanged",
             nextText: existing,
             emittedText: "",
           });

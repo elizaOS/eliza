@@ -1,0 +1,19 @@
+# Copy to production.tfvars (gitignored) and fill in real values.
+
+environment        = "production"
+hcloud_location    = "fsn1"
+cloudflare_zone_id = "<zone-id-for-elizacloud.ai>"
+apps_base_domain   = "apps.elizacloud.ai"
+
+app_node_count       = 2 # behind a load balancer (see main.tf STAN note)
+app_node_server_type = "ccx23"
+
+# Production MUST be tightened to operator + control-plane IPs only.
+operator_ingress_cidrs = ["<operator-ip>/32"]
+
+ssh_public_keys = [
+  # "ssh-ed25519 AAAA... operator@laptop"
+]
+
+# cloud-api origin for this env (the on-demand-TLS ask endpoint lives under it)
+cloud_api_origin         = "https://api.elizacloud.ai"

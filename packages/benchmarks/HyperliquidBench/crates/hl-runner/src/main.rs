@@ -472,7 +472,7 @@ async fn run_demo_perp_orders(
 
     for order in &step.orders {
         if order.trigger.is_some() {
-            return Err(anyhow!("demo mode does not yet support triggered orders"));
+            return Err(anyhow!("triggered orders are outside demo runner scope"));
         }
         let mid = demo_mid_for_coin(&order.coin);
         let resolved_px = order.px.resolve_with_mid(mid);
@@ -1150,9 +1150,7 @@ fn build_client_order(order: &PerpOrder, limit_px: f64) -> Result<ClientOrderReq
         match trigger {
             hl_common::plan::OrderTrigger::None => {}
             _ => {
-                return Err(anyhow!(
-                    "trigger orders are not yet supported in the runner"
-                ));
+                return Err(anyhow!("triggered orders are outside runner scope"));
             }
         }
     }

@@ -19,7 +19,13 @@ summary:
   captured_pinout_file_count: 21
   captured_pinout_declared_pin_count_total: 1178
   captured_pinout_record_count_total: 868
-  captured_pinout_complete_table_file_count: 12
+  captured_pinout_complete_table_file_count: 16
+  captured_pinout_incomplete_table_file_count: 5
+  captured_pinout_signal_set_count_total: 131
+  captured_pinout_incomplete_table_gap_reasons:
+  - connector_numbering_captured_signal_assignment_carried_by_interconnect_flex
+  - e1_phone_relevant_subset_captured_full_public_som_table_remains_in_source_pdf
+  - supplier_signed_fpc_or_module_drawing_required_for_per_pin_order
   captured_pinout_public_source_count: 21
   pinout_bound_footprint_count: 21
   all_pinout_bound_footprints_have_terminal_contract: true
@@ -4681,9 +4687,12 @@ captured_pinouts:
   sha256: 5fa982f5e2c9045fade665cb9532b67099a314166655f46ed0af6e6cbc9ab662
   public_source_url_count: 5
   declared_pin_count: 260
-  complete_pin_table_expected_count: 0
+  complete_pin_table_expected_count: 260
+  complete_pin_table_count_basis: declared_pin_count
   captured_pin_record_count: 116
+  captured_signal_set_count: 0
   complete_pin_table_captured: false
+  complete_pin_table_gap_reason: e1_phone_relevant_subset_captured_full_public_som_table_remains_in_source_pdf
   public_source_present: true
   release_credit: false
   pass: true
@@ -4699,9 +4708,12 @@ captured_pinouts:
   sha256: 301d7190567b552e7a300f0268ba7508469ec9eca3c81052d47604a8b4666a78
   public_source_url_count: 4
   declared_pin_count: 24
-  complete_pin_table_expected_count: 0
+  complete_pin_table_expected_count: 24
+  complete_pin_table_count_basis: mechanical.positions
   captured_pin_record_count: 25
-  complete_pin_table_captured: false
+  captured_signal_set_count: 0
+  complete_pin_table_captured: true
+  complete_pin_table_gap_reason: none
   public_source_present: true
   release_credit: false
   pass: true
@@ -4718,8 +4730,11 @@ captured_pinouts:
   public_source_url_count: 3
   declared_pin_count: 204
   complete_pin_table_expected_count: 204
+  complete_pin_table_count_basis: mechanical.pin_count
   captured_pin_record_count: 204
+  captured_signal_set_count: 0
   complete_pin_table_captured: true
+  complete_pin_table_gap_reason: none
   public_source_present: true
   release_credit: false
   pass: true
@@ -4735,9 +4750,12 @@ captured_pinouts:
   sha256: cfb65d39adcc99224632a3b2e67a4ba70a9f09f3e7aa7894039cf97e6ea02e06
   public_source_url_count: 4
   declared_pin_count: 199
-  complete_pin_table_expected_count: 0
+  complete_pin_table_expected_count: 199
+  complete_pin_table_count_basis: mechanical.terminal_count
   captured_pin_record_count: 199
-  complete_pin_table_captured: false
+  captured_signal_set_count: 0
+  complete_pin_table_captured: true
+  complete_pin_table_gap_reason: none
   public_source_present: true
   release_credit: false
   pass: true
@@ -4754,8 +4772,11 @@ captured_pinouts:
   public_source_url_count: 4
   declared_pin_count: 8
   complete_pin_table_expected_count: 8
+  complete_pin_table_count_basis: mechanical.pin_count
   captured_pin_record_count: 8
+  captured_signal_set_count: 0
   complete_pin_table_captured: true
+  complete_pin_table_gap_reason: none
   public_source_present: true
   release_credit: false
   pass: true
@@ -4771,9 +4792,12 @@ captured_pinouts:
   sha256: 156ee6b71e20849860fc853e384f0bf3a9c80e3c8e5bf0bc4acbba7b716cb8bf
   public_source_url_count: 4
   declared_pin_count: 4
-  complete_pin_table_expected_count: 0
+  complete_pin_table_expected_count: 4
+  complete_pin_table_count_basis: mechanical.terminals
   captured_pin_record_count: 4
-  complete_pin_table_captured: false
+  captured_signal_set_count: 0
+  complete_pin_table_captured: true
+  complete_pin_table_gap_reason: none
   public_source_present: true
   release_credit: false
   pass: true
@@ -4789,9 +4813,12 @@ captured_pinouts:
   sha256: 9ff96a1630a8de5165ef7ccd654d15fe69eb67da98db8fa5db6c7aae87c99473
   public_source_url_count: 3
   declared_pin_count: 24
-  complete_pin_table_expected_count: 0
+  complete_pin_table_expected_count: 24
+  complete_pin_table_count_basis: mechanical.fpc_pin_count
   captured_pin_record_count: 0
+  captured_signal_set_count: 22
   complete_pin_table_captured: false
+  complete_pin_table_gap_reason: supplier_signed_fpc_or_module_drawing_required_for_per_pin_order
   public_source_present: true
   release_credit: false
   pass: true
@@ -4807,9 +4834,12 @@ captured_pinouts:
   sha256: f63c83f45ead0f9439c7429cec81bc2ece8ded416653126bb7b466f390b03176
   public_source_url_count: 5
   declared_pin_count: 30
-  complete_pin_table_expected_count: 0
+  complete_pin_table_expected_count: 30
+  complete_pin_table_count_basis: mechanical.fpc_pin_count
   captured_pin_record_count: 0
+  captured_signal_set_count: 16
   complete_pin_table_captured: false
+  complete_pin_table_gap_reason: supplier_signed_fpc_or_module_drawing_required_for_per_pin_order
   public_source_present: true
   release_credit: false
   pass: true
@@ -4825,9 +4855,12 @@ captured_pinouts:
   sha256: d8ce151cd38d05fa5f817561a766be113b27261934e5b9fee833407f5d7b89ad
   public_source_url_count: 2
   declared_pin_count: 40
-  complete_pin_table_expected_count: 0
+  complete_pin_table_expected_count: 40
+  complete_pin_table_count_basis: mechanical.fpc_pin_count
   captured_pin_record_count: 0
+  captured_signal_set_count: 27
   complete_pin_table_captured: false
+  complete_pin_table_gap_reason: supplier_signed_fpc_or_module_drawing_required_for_per_pin_order
   public_source_present: true
   release_credit: false
   pass: true
@@ -4844,9 +4877,12 @@ captured_pinouts:
   sha256: 32acd4e84756bcffdcd6fda711fb389b48959cb7cec76042fbd38c66115406c1
   public_source_url_count: 3
   declared_pin_count: 4
-  complete_pin_table_expected_count: 0
+  complete_pin_table_expected_count: 4
+  complete_pin_table_count_basis: declared_pin_count
   captured_pin_record_count: 4
-  complete_pin_table_captured: false
+  captured_signal_set_count: 4
+  complete_pin_table_captured: true
+  complete_pin_table_gap_reason: none
   public_source_present: true
   release_credit: false
   pass: true
@@ -4864,8 +4900,11 @@ captured_pinouts:
   public_source_url_count: 3
   declared_pin_count: 48
   complete_pin_table_expected_count: 48
+  complete_pin_table_count_basis: mechanical.pin_count
   captured_pin_record_count: 48
+  captured_signal_set_count: 18
   complete_pin_table_captured: true
+  complete_pin_table_gap_reason: none
   public_source_present: true
   release_credit: false
   pass: true
@@ -4883,8 +4922,11 @@ captured_pinouts:
   public_source_url_count: 2
   declared_pin_count: 24
   complete_pin_table_expected_count: 24
+  complete_pin_table_count_basis: mechanical.pin_count
   captured_pin_record_count: 24
+  captured_signal_set_count: 6
   complete_pin_table_captured: true
+  complete_pin_table_gap_reason: none
   public_source_present: true
   release_credit: false
   pass: true
@@ -4902,8 +4944,11 @@ captured_pinouts:
   public_source_url_count: 2
   declared_pin_count: 12
   complete_pin_table_expected_count: 12
+  complete_pin_table_count_basis: mechanical.pin_count
   captured_pin_record_count: 12
+  captured_signal_set_count: 6
   complete_pin_table_captured: true
+  complete_pin_table_gap_reason: none
   public_source_present: true
   release_credit: false
   pass: true
@@ -4920,8 +4965,11 @@ captured_pinouts:
   public_source_url_count: 2
   declared_pin_count: 9
   complete_pin_table_expected_count: 9
+  complete_pin_table_count_basis: mechanical.pin_count
   captured_pin_record_count: 9
+  captured_signal_set_count: 4
   complete_pin_table_captured: true
+  complete_pin_table_gap_reason: none
   public_source_present: true
   release_credit: false
   pass: true
@@ -4939,8 +4987,11 @@ captured_pinouts:
   public_source_url_count: 2
   declared_pin_count: 10
   complete_pin_table_expected_count: 10
+  complete_pin_table_count_basis: mechanical.pin_count
   captured_pin_record_count: 10
+  captured_signal_set_count: 7
   complete_pin_table_captured: true
+  complete_pin_table_gap_reason: none
   public_source_present: true
   release_credit: false
   pass: true
@@ -4958,8 +5009,11 @@ captured_pinouts:
   public_source_url_count: 2
   declared_pin_count: 32
   complete_pin_table_expected_count: 32
+  complete_pin_table_count_basis: mechanical.pin_count
   captured_pin_record_count: 32
+  captured_signal_set_count: 9
   complete_pin_table_captured: true
+  complete_pin_table_gap_reason: none
   public_source_present: true
   release_credit: false
   pass: true
@@ -4977,8 +5031,11 @@ captured_pinouts:
   public_source_url_count: 2
   declared_pin_count: 5
   complete_pin_table_expected_count: 5
+  complete_pin_table_count_basis: mechanical.pin_count
   captured_pin_record_count: 5
+  captured_signal_set_count: 3
   complete_pin_table_captured: true
+  complete_pin_table_gap_reason: none
   public_source_present: true
   release_credit: false
   pass: true
@@ -4996,8 +5053,11 @@ captured_pinouts:
   public_source_url_count: 2
   declared_pin_count: 24
   complete_pin_table_expected_count: 24
+  complete_pin_table_count_basis: mechanical.pin_count
   captured_pin_record_count: 24
+  captured_signal_set_count: 9
   complete_pin_table_captured: true
+  complete_pin_table_gap_reason: none
   public_source_present: true
   release_credit: false
   pass: true
@@ -5013,9 +5073,12 @@ captured_pinouts:
   sha256: a14a54bd4fd80a35e28b0aff48608291bdeb10ce46f2281c29484aa894460343
   public_source_url_count: 5
   declared_pin_count: 80
-  complete_pin_table_expected_count: 0
+  complete_pin_table_expected_count: 80
+  complete_pin_table_count_basis: mechanical.positions
   captured_pin_record_count: 4
+  captured_signal_set_count: 0
   complete_pin_table_captured: false
+  complete_pin_table_gap_reason: connector_numbering_captured_signal_assignment_carried_by_interconnect_flex
   public_source_present: true
   release_credit: false
   pass: true
@@ -5032,8 +5095,11 @@ captured_pinouts:
   public_source_url_count: 4
   declared_pin_count: 56
   complete_pin_table_expected_count: 59
+  complete_pin_table_count_basis: mechanical.electrical_pad_count_with_exposed_pads
   captured_pin_record_count: 59
+  captured_signal_set_count: 0
   complete_pin_table_captured: true
+  complete_pin_table_gap_reason: none
   public_source_present: true
   release_credit: false
   pass: true
@@ -5050,8 +5116,11 @@ captured_pinouts:
   public_source_url_count: 5
   declared_pin_count: 81
   complete_pin_table_expected_count: 81
+  complete_pin_table_count_basis: mechanical.bump_count
   captured_pin_record_count: 81
+  captured_signal_set_count: 0
   complete_pin_table_captured: true
+  complete_pin_table_gap_reason: none
   public_source_present: true
   release_credit: false
   pass: true

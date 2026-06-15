@@ -175,7 +175,7 @@ def stage_data(
 
     The privacy filter lives outside this package
     (``plugins/app-training/src/core/privacy-filter.ts``); we re-implement
-    the no-op invariant here as a fail-closed marker. The real Python
+    the unchanged-output invariant here as a fail-closed marker. The real Python
     bridge is the responsibility of the training driver — for the smoke
     surface we only check existence + emit a manifest.
     """
@@ -256,7 +256,7 @@ def build_pretrain_corpus(
 
        Trajectory data from the deployed runtime is the dominant signal
        once we have several hundred hours; that import lives in
-       ``prepare_voice_trajectory_data.py`` (TBD).
+       ``prepare_voice_trajectory_data.py`` (trajectory import stage).
     """
     if corpus != "dailydialog":
         raise NotImplementedError(

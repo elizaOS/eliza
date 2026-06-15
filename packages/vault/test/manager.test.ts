@@ -253,6 +253,8 @@ describe("manager — backend detection", () => {
       } else if (s.id === "1password") {
         // 1Password has two auth modes; either is acceptable when signed in.
         expect(["desktop-app", "session-token"]).toContain(s.authMode);
+      } else if (s.id === "protonpass") {
+        expect(s.authMode).toBe("desktop-app");
       }
     }
   });
@@ -282,14 +284,18 @@ describe("manager — listAllSavedLogins", () => {
       vault: v,
       // The 1Password and Bitwarden CLIs may exist on the dev machine
       // (passing isCommandAvailable inside detectBackends), so detection
-      // can land on signedIn=true via desktop integration. The STUB
-      // drives the actual list call. To assert "in-house only, no
+      // can land on signedIn=true via desktop integration. The injected
+      // executor drives the actual list call. To assert "in-house only, no
       // failures," seed empty sessions so the list adapters succeed
       // with [] rather than throw BackendNotSignedInError.
       exec: execStub(() => "[]"),
     });
-    await v.set("pm.1password.session", "stub-token", { sensitive: true });
-    await v.set("pm.bitwarden.session", "stub-token", { sensitive: true });
+    await v.set("pm.1password.session", "test-session-token", {
+      sensitive: true,
+    });
+    await v.set("pm.bitwarden.session", "test-session-token", {
+      sensitive: true,
+    });
     // NB: usernames containing `.` (e.g. "alice@example.com" → URL-encoded
     // "alice%40example.com" — still has dots) hit a pre-existing bug in
     // `parseLoginKey` that splits on the last dot. We use a dot-free

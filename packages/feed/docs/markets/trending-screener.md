@@ -94,7 +94,7 @@ Reference UIs show mcap, pool liquidity, txn splits, etc. We intentionally **do 
 
 ---
 
-## Roadmap (intended next steps)
+## Next Steps
 
 Prioritized by impact and dependency on backend work.
 

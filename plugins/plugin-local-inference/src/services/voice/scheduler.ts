@@ -85,8 +85,8 @@ export interface SchedulerDeps {
 	sink?: AudioSink;
 	phraseCache?: PhraseCache;
 	/** Optional. Required only when `config.chunkerConfig.chunkOn ===
-	 *  'phoneme-stream'`. Pass a real tokenizer in production; tests may
-	 *  pass `CharacterPhonemeStub`. */
+	 *  'phoneme-stream'`. Defaults are available from
+	 *  `createDefaultPhonemeTokenizer()`. */
 	phonemeTokenizer?: PhonemeTokenizer;
 }
 
@@ -240,8 +240,8 @@ export class VoiceScheduler {
 	}
 
 	async reject(range: RejectedTokenRange): Promise<void> {
-		// Drop draft tokens still sitting in the chunker's buffer (not yet
-		// packed into a phrase) so the verifier's correction is not glued
+		// Drop draft tokens still sitting in the chunker's buffer before
+		// phrase packing so the verifier's correction is not glued
 		// onto stale text.
 		this.chunker.dropPendingFrom(range.fromIndex);
 		this.armPhraseFlushTimer();

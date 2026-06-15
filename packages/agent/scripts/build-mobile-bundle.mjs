@@ -236,9 +236,9 @@ console.log("[build-mobile] pglite dist:", pgliteDist);
 // WebView, not node-llama-cpp.
 const nativeStubs = {
   "@elizaos/app-core": path.join(stubsDir, "app-core-runtime.cjs"),
-  // `node:sqlite` is a Node.js 22+ built-in (DatabaseSync) that Bun 1.3.x on
-  // arm64-Android does not yet implement, so an unstubbed reference bombs the
-  // bundle resolve:
+  // `node:sqlite` is a Node.js 22+ built-in (DatabaseSync). Bun 1.3.x on
+  // arm64-Android does not provide that resolver, so an unstubbed reference
+  // bombs the bundle resolve:
   //   error: Could not resolve: "node:sqlite". Maybe you need to "bun install"?
   // The local-inference voice caches (e.g.
   // `plugins/plugin-local-inference/src/services/voice/first-line-cache.ts`)
@@ -311,7 +311,7 @@ const nativeStubs = {
   // `ELIZA_VAULT_PASSPHRASE` / in-memory keys; ElizaAgentService can mint
   // a per-boot passphrase if needed. Stub keeps the bundle building.
   "@napi-rs/keyring": path.join(stubsDir, "null-plugin.cjs"),
-  // React + react-dom stubs: workspace plugins (`@elizaos/plugin-lifeops`,
+  // React + react-dom stubs: workspace plugins (`@elizaos/plugin-personal-assistant`,
   // `@elizaos/plugin-companion`, etc.) re-export their UI subtree from
   // `src/index.ts` for the host app to consume. The agent only loads each
   // package's runtime plugin object, but Bun.build still has to resolve
@@ -377,7 +377,7 @@ if (TARGET === "ios-jsc") {
 // closure pulls in `@elizaos/core@2.0.0-alpha.3` or `2.0.0-alpha.223`.
 //
 // Other packages — including `@elizaos/plugin-task-coordinator`,
-// `@elizaos/plugin-companion`, `@elizaos/plugin-lifeops`, `@elizaos/plugin-training`
+// `@elizaos/plugin-companion`, `@elizaos/plugin-personal-assistant`, `@elizaos/plugin-training`
 // — are imported by `api/server.ts` as named functions (e.g.
 // `wireCoordinatorBridgesWhenReady`). Stubbing them with a Proxy doesn't
 // satisfy Bun's `__toESM` namespace builder (it iterates `ownKeys`), so we

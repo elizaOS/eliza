@@ -140,7 +140,15 @@ export async function mintAgentToken(
   const expiresAtSeconds = issuedAt + ttlSeconds;
   const privateKey = await getAgentTokenPrivateKey();
 
-  const token = await new SignJWT({ agent_id: normalizedAgentId })
+  // Steward gates the trade-order endpoint on a `trade:order` scope claim.
+  // Cloud-provisioned agents are trading agents, so mint the token with that
+  // scope (Steward still enforces per-agent policy caps + owner-authorized
+  // trade sessions on top of this; the scope only permits reaching the route).
+  const token = await new SignJWT({
+    agent_id: normalizedAgentId,
+    scope: "agent",
+    scopes: ["trade:order"],
+  })
     .setProtectedHeader({ alg: ALGORITHM, typ: "JWT", kid: await getAgentTokenKeyId() })
     .setSubject(`agent:${normalizedAgentId}`)
     .setIssuer(ISSUER)

@@ -9,7 +9,7 @@
 import { Bot, ExternalLink, Loader2, Plus, Trash2 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { useAgentElement } from "../../../agent-surface";
-import { useTranslation } from "../../../state/TranslationContext";
+import { useTranslation } from "../../../state/TranslationContext.hooks";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";

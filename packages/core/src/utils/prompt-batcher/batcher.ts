@@ -208,7 +208,7 @@ export class PromptBatcher {
 
 	/**
 	 * Buffer a message for batching and optionally trigger drains for message-relevant affinities (default, room:X, audit:X).
-	 * No-arg tick() is a no-op. WHY: no background timer; only message cadence or task-driven drains run. Autonomy is not drained here (task-driven only).
+	 * No-arg tick() returns immediately. WHY: no background timer; only message cadence or task-driven drains run. Autonomy is not drained here (task-driven only).
 	 */
 	tick(message?: Memory): void {
 		if (this.disposed) return;
@@ -973,7 +973,7 @@ export class PromptBatcher {
 						sectionId: section.id,
 						error,
 					},
-					"Prompt batcher contextBuilder failed; using placeholder context",
+					"Prompt batcher contextBuilder failed; using unavailable-context marker",
 				);
 				pieces.push("[context unavailable]");
 			}
@@ -1007,7 +1007,7 @@ export class PromptBatcher {
 							slug,
 							error,
 						},
-						"Prompt batcher context resolver failed; using placeholder context",
+						"Prompt batcher context resolver failed; using unavailable-context marker",
 					);
 					resolvedText = "[context unavailable]";
 				}

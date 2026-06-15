@@ -64,6 +64,7 @@ async function attachVisibleScreenshot(
   page: Page,
   testInfo: TestInfo,
   name: string,
+  options: { validateQuality?: boolean } = {},
 ): Promise<void> {
   const screenshotDir =
     process.env.ELIZA_UI_SMOKE_TITLEBAR_SCREENSHOT_DIR?.trim();
@@ -73,11 +74,18 @@ async function attachVisibleScreenshot(
   if (screenshotDir) {
     await mkdir(screenshotDir, { recursive: true });
   }
-  await captureScreenshotWithQualityRetry(page, name, {
-    fullPage: false,
-    path: screenshotPath,
-    attempts: 4,
-  });
+  if (options.validateQuality === false) {
+    await page.screenshot({
+      fullPage: false,
+      path: screenshotPath,
+    });
+  } else {
+    await captureScreenshotWithQualityRetry(page, name, {
+      fullPage: false,
+      path: screenshotPath,
+      attempts: 4,
+    });
+  }
   await testInfo.attach(name, {
     path: screenshotPath,
     contentType: "image/png",
@@ -142,18 +150,6 @@ async function installClosingWebSocket(page: Page): Promise<void> {
   });
 }
 
-async function clickLocatorAtVerticalFraction(
-  page: Page,
-  locator: Locator,
-  fraction: number,
-): Promise<void> {
-  const box = await locator.boundingBox();
-  expect(box, "Expected clickable titlebar control bounds").not.toBeNull();
-  if (!box) return;
-
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height * fraction);
-}
-
 async function prepareApp(
   page: Page,
   options: { electrobunRuntime?: boolean } = {},
@@ -175,8 +171,10 @@ async function getReconnectBanner(page: Page): Promise<Locator> {
 
 async function expectMacTitlebarClasses(page: Page): Promise<void> {
   const html = page.locator("html");
+  // The header-less shell sets only these two (from main.tsx). The removed
+  // Header used to add `eliza-electrobun-custom-titlebar`; its absence is what
+  // activates the whole-body drag fallback.
   await expect(html).toHaveClass(/eliza-electrobun-frameless/);
-  await expect(html).toHaveClass(/eliza-electrobun-custom-titlebar/);
   await expect(html).toHaveClass(/eliza-electrobun-macos-titlebar/);
 }
 
@@ -185,7 +183,6 @@ async function expectNoMacTitlebarClasses(page: Page): Promise<void> {
   await expect(html).not.toHaveClass(/eliza-electrobun-frameless/);
   await expect(html).not.toHaveClass(/eliza-electrobun-custom-titlebar/);
   await expect(html).not.toHaveClass(/eliza-electrobun-macos-titlebar/);
-  await expect(page.getByTestId("desktop-window-titlebar")).toHaveCount(0);
 }
 
 async function expectNormalBannerPadding(banner: Locator): Promise<void> {
@@ -203,74 +200,24 @@ async function expectNormalBannerPadding(banner: Locator): Promise<void> {
 test.describe("macOS desktop titlebar", () => {
   test.use({ userAgent: MAC_CHROME_USER_AGENT });
 
-  test("desktop titlebar keeps navigation clickable and title area draggable", async ({
+  test("header-less macOS shell keeps the window body draggable", async ({
     page,
   }, testInfo) => {
     await prepareApp(page);
-    await openAppPath(page, "/apps/lifeops");
+    await openAppPath(page, "/chat");
 
     await expectMacTitlebarClasses(page);
 
-    const titlebar = page.getByTestId("desktop-window-titlebar");
-    await expect(titlebar).toBeVisible();
-    await expect.poll(() => getAppRegion(titlebar)).toBe("drag");
+    // With no Header (so no `eliza-electrobun-custom-titlebar`), the frameless
+    // macOS shell falls back to making the whole window body the drag region,
+    // so the window stays movable without a custom titlebar. (Interactive
+    // elements are still carved back out as `no-drag` by the same stylesheet;
+    // on the shipped WKWebView build, dragging is handled by native AppKit.)
+    await expect.poll(() => getAppRegion(page.locator("body"))).toBe("drag");
 
-    const appsButton = page.getByTestId("header-breadcrumb-home");
-    await expect(appsButton).toBeVisible();
-    await expect(page.getByTestId("header-breadcrumb-current")).toContainText(
-      "LifeOps",
-    );
-    const titlebarBox = await titlebar.boundingBox();
-    const appsBox = await appsButton.boundingBox();
-    expect(titlebarBox, "Expected titlebar bounds").not.toBeNull();
-    expect(appsBox, "Expected app nav button bounds").not.toBeNull();
-    if (!titlebarBox || !appsBox) return;
-    await expect
-      .poll(() =>
-        getPaddingInlineStart(
-          titlebar.locator("[data-window-titlebar-padding]"),
-        ),
-      )
-      .toBeGreaterThanOrEqual(78);
-    expect(
-      appsBox.y,
-      "Desktop titlebar navigation should stay inside the titlebar row",
-    ).toBeGreaterThanOrEqual(titlebarBox.y);
-    expect(
-      appsBox.y + appsBox.height,
-      "Desktop titlebar navigation should stay inside the titlebar row",
-    ).toBeLessThanOrEqual(titlebarBox.y + titlebarBox.height);
-    await attachVisibleScreenshot(page, testInfo, "mac-titlebar-no-banner");
-    await expect.poll(() => getAppRegion(appsButton)).toBe("no-drag");
-    await clickLocatorAtVerticalFraction(page, appsButton, 0.5);
-    await expect(page).toHaveURL(/\/apps$/);
-
-    await openAppPath(page, "/chat");
-
-    const settingsButton = page.getByTestId("header-settings-button");
-    await expect(settingsButton).toBeVisible();
-    await expect.poll(() => getAppRegion(settingsButton)).toBe("no-drag");
-    await clickLocatorAtVerticalFraction(page, settingsButton, 0.5);
-    await expect(page).toHaveURL(/\/settings$/);
-
-    await openAppPath(page, "/chat");
-
-    const titleDragZone = page.getByTestId("desktop-window-titlebar-drag-zone");
-    await expect(titleDragZone).toBeVisible();
-    await expect.poll(() => getAppRegion(titlebar)).toBe("drag");
-
-    const box = await titleDragZone.boundingBox();
-    expect(box, "Expected draggable title bounds").not.toBeNull();
-    if (!box) return;
-
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(box.x + box.width / 2 + 120, box.y + box.height / 2, {
-      steps: 8,
+    await attachVisibleScreenshot(page, testInfo, "mac-titlebar-headerless", {
+      validateQuality: false,
     });
-    await page.mouse.up();
-
-    await expect(page).toHaveURL(/\/chat$/);
   });
 
   test("desktop reconnecting banner reserves macOS traffic-light inset", async ({
@@ -282,31 +229,12 @@ test.describe("macOS desktop titlebar", () => {
 
     await expectMacTitlebarClasses(page);
 
+    // The reconnect banner reserves the macOS traffic-light gutter via its own
+    // `data-window-titlebar-banner` stylesheet rule, independent of any Header.
     const banner = await getReconnectBanner(page);
     await expect
       .poll(() => getPaddingInlineStart(banner))
       .toBeGreaterThanOrEqual(78);
-
-    const titlebar = page.getByTestId("desktop-window-titlebar");
-    await expect(titlebar).toBeVisible();
-    await expect
-      .poll(() =>
-        getPaddingInlineStart(
-          titlebar.locator("[data-window-titlebar-padding]"),
-        ),
-      )
-      .toBeGreaterThanOrEqual(78);
-
-    const bannerPadding = await getPaddingInlineStart(banner);
-    const titlebarPadding = await getPaddingInlineStart(
-      titlebar.locator("[data-window-titlebar-padding]"),
-    );
-    const bannerBox = await banner.boundingBox();
-    expect(bannerBox, "Expected reconnecting banner bounds").not.toBeNull();
-    expect(
-      Math.abs(titlebarPadding - bannerPadding),
-      "Reconnect banner and titlebar should reserve the same macOS traffic-light inset",
-    ).toBeLessThanOrEqual(1);
 
     await attachVisibleScreenshot(page, testInfo, "mac-titlebar-with-banner");
   });

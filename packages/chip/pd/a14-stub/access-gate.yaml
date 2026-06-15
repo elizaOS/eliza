@@ -10,7 +10,7 @@ reason:
   - TSMC OIP / NDA agreement at A14 is not in place.
   - A14 HVM begins 2028; mobile-mature mid-cycle 2028-2029.
   - No commercial signoff EDA seat at A14 is held.
-  - LPDDR5X / LPDDR6 PHY licensing at A14 is on vendor roadmaps but not all
+  - LPDDR5X / LPDDR6 PHY licensing at A14 is in vendor delivery plans but not all
     units are taped out yet.
   - High-NA EUV is explicitly NOT used at A14 per TSMC; this is not a 14A
     blocker but it is a process-technical difference.

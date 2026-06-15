@@ -1,7 +1,7 @@
 /**
  * /api/eliza/rooms/:roomId — agent room details + messages.
  *
- * Workers stub: depends on the elizaOS agent runtime and `@elizaos/core`
+ * Workers sidecar boundary: depends on the elizaOS agent runtime and `@elizaos/core`
  * (Memory type, agentsService). Agent runtime lives on the Node sidecar
  * (`services/agent-server`); the sidecar serves this URL. See
  * cloud/INFRA.md "Long-running services NOT migrated".
@@ -15,7 +15,7 @@ app.all("/", (c) =>
   c.json(
     {
       success: false,
-      error: "Not implemented on Workers (agent-server sidecar handles this)",
+      error: "Unsupported on Workers (agent-server sidecar handles this)",
     },
     501,
   ),

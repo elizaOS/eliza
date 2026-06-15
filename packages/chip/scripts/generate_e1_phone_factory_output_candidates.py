@@ -212,7 +212,7 @@ def write_dir_candidate(path_text: str, artifact_id: str) -> dict[str, str]:
     path.mkdir(parents=True, exist_ok=True)
     child = path / "candidate-placeholder.txt"
     child.write_text(
-        "blocked local production/factory output candidate; release children and approvals are missing\n",
+        "blocked local production/factory output candidate; supplier/factory approval, signoff, and release classification are missing\n",
         encoding="utf-8",
     )
     manifest = blocked_record(artifact_id, path_text)
@@ -301,7 +301,9 @@ def write_kicad_export_dir_candidate(path_text: str, artifact_id: str) -> dict[s
     board_rel = chip_rel(ROUTED_BOARD)
     schematic_rel = chip_rel(ROUTED_SCHEMATIC)
     if path_text == "board/kicad/e1-phone/production/gerbers":
-        export_runs.append(run_kicad_export(["pcb", "export", "gerbers", "-o", path_text, board_rel]))
+        export_runs.append(
+            run_kicad_export(["pcb", "export", "gerbers", "-o", path_text, board_rel])
+        )
     elif path_text == "board/kicad/e1-phone/production/gerbers/nc-drill-and-slots":
         export_runs.append(
             run_kicad_export(
@@ -491,7 +493,8 @@ def write_json_candidate(path_text: str, artifact_id: str) -> dict[str, str]:
             raw_path,
         )
         raw_payload = raw["payload"] if isinstance(raw["payload"], dict) else {}
-        sheets = raw_payload.get("sheets") if isinstance(raw_payload, dict) else []
+        sheets_value = raw_payload.get("sheets")
+        sheets: list[Any] = sheets_value if isinstance(sheets_value, list) else []
         erc_count = sum(
             len(sheet.get("violations") or [])
             for sheet in sheets

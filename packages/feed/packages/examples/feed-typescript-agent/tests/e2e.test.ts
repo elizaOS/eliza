@@ -289,7 +289,7 @@ describe.skipIf(!serverAvailable)("E2E - Autonomous Agent Live Tests", () => {
     console.log("   Leaderboard:", leaderboard);
   });
 
-  // TODO: discoverAgents method not yet implemented
+  // discoverAgents is unavailable in this example client.
   // it('Phase 7: should discover agents', async () => {
   //   const agents = await a2aClient.discoverAgents();
   //   expect(agents).toBeDefined();

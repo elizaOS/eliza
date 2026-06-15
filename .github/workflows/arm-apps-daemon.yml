@@ -1,0 +1,166 @@
+name: Arm Apps Daemon (Product 2)
+
+# Arm the apps (Product 2) deploy backend on a provisioning-worker control plane
+# WITHOUT hand-editing the box — the IaC counterpart to hand-SSH'ing in.
+#
+# The daemon already calls configureAppsDeployBackend() on boot, but it only
+# provisions app containers once the apps env is present in
+# /opt/eliza/cloud/.env.local. This workflow UPSERTS exactly that block (each
+# key delete-then-append, every other line untouched — never clobbers the
+# agent/coding fleet config) and restarts the daemon, over the SAME
+# ELIZA_PROVISIONING_SSH_KEY/HOST secrets the deploy workflow already uses. So
+# no operator SSH key needs to be added anywhere; dispatch it and it converges.
+#
+# Mirrors packages/scripts/cloud/admin/arm-apps-daemon.mjs (same upsert logic),
+# so a local run and a CI run produce the same box state.
+#
+# Inputs:
+#   environment   staging | production (selects the env's PROVISIONING secrets)
+#   app_node      CONTAINERS_DOCKER_NODES value, e.g. apps-node-1:167.233.112.155:20
+#   tenant_admin_dsn  (optional) env-sourced tenant DB admin DSN. Leave empty to
+#                     let the daemon use the SEEDED tenant_db_clusters row
+#                     (encrypted path). Set it only if the encrypted path isn't
+#                     wired on this box.
+#   egress_proxy  (optional) CONTAINERS_EGRESS_PROXY_URL
+#
+# Non-secret base domain comes from the env var APPS_BASE_DOMAIN (same var the
+# terraform workflow reads); the Caddy admin URL is derived from the app node IP.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to target
+        type: choice
+        default: staging
+        options: [staging, production]
+      app_node:
+        description: "CONTAINERS_DOCKER_NODES (id:ip:capacity), e.g. apps-node-1:167.233.112.155:20"
+        type: string
+        required: true
+      tenant_admin_dsn:
+        description: "Optional env-sourced tenant DB admin DSN (leave empty to use the seeded encrypted cluster OR fetch_dsn_from_shared_state)"
+        type: string
+        required: false
+        default: ""
+      fetch_dsn_from_shared_state:
+        description: "Read APPS_TENANT_ADMIN_DSN from the apps-shared terraform output instead of pasting it (keeps the password out of inputs/logs)"
+        type: boolean
+        required: false
+        default: false
+      egress_proxy:
+        description: "Optional CONTAINERS_EGRESS_PROXY_URL"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arm-apps-daemon-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  arm:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    timeout-minutes: 10
+    env:
+      DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+      DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+      BASE_DOMAIN: ${{ vars.APPS_BASE_DOMAIN }}
+      APP_NODE: ${{ github.event.inputs.app_node }}
+      TENANT_ADMIN_DSN: ${{ github.event.inputs.tenant_admin_dsn }}
+      EGRESS_PROXY: ${{ github.event.inputs.egress_proxy }}
+    steps:
+      - name: Preflight
+        run: |
+          fail=0
+          [ -n "$DEPLOY_HOST" ] || { echo "::error::missing secret ELIZA_PROVISIONING_HOST on the '${{ github.event.inputs.environment }}' environment"; fail=1; }
+          [ -n "$DEPLOY_SSH_KEY" ] || { echo "::error::missing secret ELIZA_PROVISIONING_SSH_KEY"; fail=1; }
+          [ -n "$BASE_DOMAIN" ] || { echo "::error::set vars.APPS_BASE_DOMAIN on the '${{ github.event.inputs.environment }}' environment"; fail=1; }
+          [ -n "$APP_NODE" ] || { echo "::error::app_node input is required (id:ip:capacity)"; fail=1; }
+          # Derive the Caddy admin URL from the app node IP (2nd colon field).
+          NODE_IP="$(echo "$APP_NODE" | cut -d: -f2)"
+          echo "$NODE_IP" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::app_node must be id:ip:capacity with a valid IPv4"; fail=1; }
+          echo "CADDY_ADMIN=http://$NODE_IP:2019" >> "$GITHUB_ENV"
+          [ "$fail" = 0 ] || exit 1
+
+      # OPTIONAL: pull the tenant admin DSN straight from the apps-shared
+      # terraform output so the password never appears in a workflow input or in
+      # logs. `terraform output -raw` of a SENSITIVE value is auto-masked by the
+      # runner; we also ::add-mask:: it before writing to $GITHUB_ENV.
+      - name: Checkout (for terraform fetch)
+        if: ${{ github.event.inputs.fetch_dsn_from_shared_state == 'true' }}
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform (for DSN fetch)
+        if: ${{ github.event.inputs.fetch_dsn_from_shared_state == 'true' }}
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.10.5"
+
+      - name: Read DSN from apps-shared output
+        if: ${{ github.event.inputs.fetch_dsn_from_shared_state == 'true' }}
+        working-directory: packages/cloud-infra/cloud/terraform/hetzner/apps-shared
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_APPS_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATE_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATE_SECRET_ACCESS_KEY }}
+        run: |
+          terraform init -input=false -backend-config=backend.hcl >/dev/null
+          DSN="$(terraform output -raw tenant_db_admin_dsn)"
+          [ -n "$DSN" ] || { echo "::error::apps-shared has no tenant_db_admin_dsn output (is it applied?)"; exit 1; }
+          echo "::add-mask::$DSN"
+          echo "TENANT_ADMIN_DSN=$DSN" >> "$GITHUB_ENV"
+          echo "fetched tenant admin DSN from apps-shared output (masked)"
+
+      - name: Upsert apps env + restart daemon
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          command_timeout: 5m
+          # Only the values; the upsert logic is fixed here (mirrors arm-apps-daemon.mjs).
+          envs: APP_NODE,BASE_DOMAIN,CADDY_ADMIN,TENANT_ADMIN_DSN,EGRESS_PROXY
+          script: |
+            set -euo pipefail
+            F=/opt/eliza/cloud/.env.local
+            # /opt/eliza/cloud is root-owned; the deploy user has passwordless
+            # sudo (same as the worker-deploy workflow), so all writes go via
+            # sudo — `sed -i` needs to create a temp file IN the dir, not just
+            # write the file, which a non-sudo deploy user can't do there.
+            sudo test -f "$F" || { echo "env file $F not found on host"; exit 1; }
+            sudo cp -n "$F" "$F.bak.arm-apps" 2>/dev/null || true
+
+            upsert() {
+              # upsert KEY VALUE — delete any existing def, append the fresh one.
+              local k="$1"; local v="$2"
+              [ -n "$v" ] || return 0
+              sudo sed -i "/^$k=/d" "$F"
+              printf '%s\n' "$k=\"$v\"" | sudo tee -a "$F" >/dev/null
+            }
+
+            # APPS_DEPLOY_ENABLED arms the APP_DEPLOY runner; without it the daemon's
+            # armAppsDeployBackendIfEnabled() early-returns (provisioning-worker.ts:652)
+            # and APP_DEPLOY jobs never get claimed (apps stuck "building").
+            upsert APPS_DEPLOY_ENABLED 1
+            upsert APPS_CONTAINERS_ENABLED 1
+            upsert CONTAINERS_DOCKER_NODES "$APP_NODE"
+            upsert CONTAINERS_SSH_USER deploy
+            upsert APPS_CADDY_ADMIN_URL "$CADDY_ADMIN"
+            upsert CONTAINERS_PUBLIC_BASE_DOMAIN "$BASE_DOMAIN"
+            upsert APPS_TENANT_ADMIN_DSN "$TENANT_ADMIN_DSN"
+            upsert CONTAINERS_EGRESS_PROXY_URL "$EGRESS_PROXY"
+
+            echo "--- apps env now on the box (secrets redacted) ---"
+            sudo grep -E '^(APPS_|CONTAINERS_(DOCKER_NODES|SSH_USER|PUBLIC_BASE_DOMAIN|EGRESS_PROXY_URL))' "$F" \
+              | sed -E 's/(DSN|KEY)=.*/\1=<redacted>/'
+
+            sudo systemctl restart eliza-provisioning-worker.service
+            sleep 2
+            echo "--- daemon status ---"
+            systemctl is-active eliza-provisioning-worker.service
+            journalctl -u eliza-provisioning-worker.service -n 10 --no-pager | tail -10 || true

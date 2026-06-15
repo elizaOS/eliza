@@ -3,23 +3,23 @@
  *
  * Sits between a `RemotePluginHost`-managed worker (or any
  * `BridgeChannel`-shaped transport) and an `IAgentRuntime`. On
- * `worker-announce-plugin` it walks the descriptor, synthesises stub
+ * `worker-announce-plugin` it walks the descriptor, synthesises proxy
  * Plugin contributions (actions, providers, events, models) whose
  * handlers proxy back to the worker over `worker-rpc`, and registers
  * the resulting Plugin with `runtime.registerPlugin(...)`.
  *
  * Inbound `host-rpc` messages from the worker are dispatched to the
  * real runtime (`getService`, `useModel`, `getMemory`, `emitEvent`,
- * `composeState`, action callbacks, etc.) and the result is shipped back as
+ * `composeState`, etc.) and the result is shipped back as
  * `host-rpc-result`.
  *
- * P1 wires: actions, providers, events, models, evaluators, action callbacks.
- * Deferred: services, routes, views (P2), streaming model tokens (P2).
+ * Wired: actions, providers, events, models, evaluators, action callbacks,
+ * services, routes, and views. Streaming model token forwarding remains a
+ * separate bridge capability.
  */
 
 import type {
   Action,
-  Content,
   IAgentRuntime,
   Memory,
   Plugin,
@@ -35,6 +35,7 @@ import type {
   JsonValue,
   RemoteFunctionRef,
   RemotePluginWorkerMessage,
+  WorkerAnnounceDynamicMessage,
   WorkerAnnouncePluginMessage,
   WorkerRpcMessage,
   WorkerRpcResultMessage,
@@ -66,7 +67,11 @@ interface PendingRequest {
   timer: ReturnType<typeof setTimeout> | undefined;
 }
 
-type ActionCallback = NonNullable<Parameters<Action["handler"]>[4]>;
+interface WorkerActionCallbackEnvelope {
+  type: "worker-action-callback";
+  callbackId: string;
+  payload: JsonValue;
+}
 
 /** rpc-id → live handler function on the worker side. */
 type RpcId = string;
@@ -74,11 +79,18 @@ type RpcId = string;
 /** What the bridge tracks per attached worker. */
 interface AttachedState {
   pluginName: string | null;
+  plugin: Plugin | null;
   pending: Map<number, PendingRequest>;
-  actionCallbacks: Map<string, ActionCallback>;
+  actionCallbacks: Map<string, NonNullable<Parameters<Action["handler"]>[4]>>;
   nextRequestId: () => number;
-  nextCallbackId: () => string;
   unsubscribe: (() => void) | undefined;
+}
+
+function isWorkerActionCallbackEnvelope(
+  message: RemotePluginWorkerMessage,
+): message is RemotePluginWorkerMessage & WorkerActionCallbackEnvelope {
+  const candidate = message as { type?: unknown };
+  return candidate.type === "worker-action-callback";
 }
 
 export class RemotePluginBridge {
@@ -93,6 +105,7 @@ export class RemotePluginBridge {
     this.rpcTimeoutMs = options.rpcTimeoutMs ?? 60_000;
     this.state = {
       pluginName: null,
+      plugin: null,
       pending: new Map(),
       actionCallbacks: new Map(),
       nextRequestId: (() => {
@@ -100,13 +113,6 @@ export class RemotePluginBridge {
         return () => {
           n = (n + 1) >>> 0;
           return n;
-        };
-      })(),
-      nextCallbackId: (() => {
-        let n = 0;
-        return () => {
-          n = (n + 1) >>> 0;
-          return `action-callback-${n}`;
         };
       })(),
       unsubscribe: undefined,
@@ -131,6 +137,7 @@ export class RemotePluginBridge {
       slot.reject(rejection);
     }
     this.state.pending.clear();
+    this.state.actionCallbacks.clear();
     if (this.state.pluginName) {
       await this.runtime.unloadPlugin(this.state.pluginName).catch(() => {
         // ignore unload failures during tear-down
@@ -140,9 +147,22 @@ export class RemotePluginBridge {
   }
 
   private async onMessage(message: RemotePluginWorkerMessage): Promise<void> {
+    // Keep this staged callback envelope source-typed here so the bridge does
+    // not depend on ignored plugin-remote-manifest dist declarations being
+    // regenerated before every workspace typecheck.
+    if (isWorkerActionCallbackEnvelope(message)) {
+      await this.handleActionCallback(message);
+      return;
+    }
+
     switch (message.type) {
       case "worker-announce-plugin":
         await this.handleAnnounce(message as WorkerAnnouncePluginMessage);
+        return;
+      case "worker-announce-dynamic":
+        await this.handleDynamicAnnounce(
+          message as WorkerAnnounceDynamicMessage,
+        );
         return;
       case "worker-rpc-result":
         this.handleRpcResult(message as WorkerRpcResultMessage);
@@ -162,7 +182,27 @@ export class RemotePluginBridge {
   ): Promise<void> {
     const plugin = this.materialisePlugin(message.descriptor);
     this.state.pluginName = plugin.name;
+    this.state.plugin = plugin;
     await this.runtime.registerPlugin(plugin);
+  }
+
+  private async handleDynamicAnnounce(
+    message: WorkerAnnounceDynamicMessage,
+  ): Promise<void> {
+    const registeredPlugin = this.state.plugin;
+    if (!registeredPlugin || !this.state.pluginName) {
+      throw new Error(
+        "worker-announce-dynamic received before plugin announce",
+      );
+    }
+    const dynamicPlugin = this.materialisePlugin(message.descriptor);
+    if (dynamicPlugin.name !== this.state.pluginName) {
+      throw new Error(
+        `worker-announce-dynamic plugin mismatch: expected ${this.state.pluginName}, got ${dynamicPlugin.name}`,
+      );
+    }
+
+    await this.applyDynamicContributions(registeredPlugin, dynamicPlugin);
   }
 
   private materialisePlugin(descriptor: JsonObject): Plugin {
@@ -190,6 +230,132 @@ export class RemotePluginBridge {
     return plugin;
   }
 
+  private async applyDynamicContributions(
+    registeredPlugin: Plugin,
+    dynamicPlugin: Plugin,
+  ): Promise<void> {
+    if (dynamicPlugin.actions?.length) {
+      registeredPlugin.actions = [
+        ...(registeredPlugin.actions ?? []),
+        ...dynamicPlugin.actions,
+      ];
+      for (const action of dynamicPlugin.actions) {
+        this.runtime.registerAction(action);
+      }
+    }
+
+    if (dynamicPlugin.providers?.length) {
+      registeredPlugin.providers = [
+        ...(registeredPlugin.providers ?? []),
+        ...dynamicPlugin.providers,
+      ];
+      for (const provider of dynamicPlugin.providers) {
+        this.runtime.registerProvider(provider);
+      }
+    }
+
+    if (dynamicPlugin.evaluators?.length) {
+      registeredPlugin.evaluators = [
+        ...(registeredPlugin.evaluators ?? []),
+        ...dynamicPlugin.evaluators,
+      ];
+      for (const evaluator of dynamicPlugin.evaluators) {
+        this.runtime.registerEvaluator(evaluator);
+      }
+    }
+
+    if (dynamicPlugin.models) {
+      registeredPlugin.models = {
+        ...(registeredPlugin.models ?? {}),
+        ...dynamicPlugin.models,
+      };
+      for (const [modelType, handler] of Object.entries(dynamicPlugin.models)) {
+        this.runtime.registerModel(
+          modelType,
+          handler as Parameters<IAgentRuntime["registerModel"]>[1],
+          registeredPlugin.name,
+          registeredPlugin.priority,
+        );
+      }
+    }
+
+    if (dynamicPlugin.events) {
+      registeredPlugin.events = {
+        ...(registeredPlugin.events ?? {}),
+      } as NonNullable<Plugin["events"]>;
+      for (const [eventName, handlers] of Object.entries(
+        dynamicPlugin.events,
+      )) {
+        const existingHandlers =
+          (registeredPlugin.events as Record<string, unknown[]>)[eventName] ??
+          [];
+        (registeredPlugin.events as Record<string, unknown[]>)[eventName] = [
+          ...existingHandlers,
+          ...handlers,
+        ];
+        const registerEvent = this.runtime.registerEvent as (
+          event: string,
+          handler: (params: unknown) => Promise<void>,
+        ) => void;
+        for (const handler of handlers) {
+          registerEvent(
+            eventName,
+            handler as (params: unknown) => Promise<void>,
+          );
+        }
+      }
+    }
+
+    if (dynamicPlugin.services?.length) {
+      registeredPlugin.services = [
+        ...(registeredPlugin.services ?? []),
+        ...dynamicPlugin.services,
+      ] as Plugin["services"];
+      for (const service of dynamicPlugin.services) {
+        await this.runtime.registerService(service);
+      }
+    }
+
+    if (dynamicPlugin.routes?.length) {
+      registeredPlugin.routes = [
+        ...(registeredPlugin.routes ?? []),
+        ...dynamicPlugin.routes,
+      ];
+      const runtimeRoutes = (this.runtime as { routes?: unknown[] }).routes;
+      if (Array.isArray(runtimeRoutes)) {
+        for (const route of dynamicPlugin.routes) {
+          const rawPath = (route as { rawPath?: boolean }).rawPath === true;
+          const routePath = route.path.startsWith("/")
+            ? route.path
+            : `/${route.path}`;
+          runtimeRoutes.push({
+            ...route,
+            path: rawPath ? routePath : `/${registeredPlugin.name}${routePath}`,
+          });
+        }
+      }
+    }
+
+    if (dynamicPlugin.views?.length) {
+      registeredPlugin.views = [
+        ...(registeredPlugin.views ?? []),
+        ...dynamicPlugin.views,
+      ] as Plugin["views"];
+    }
+    if (dynamicPlugin.widgets?.length) {
+      registeredPlugin.widgets = [
+        ...(registeredPlugin.widgets ?? []),
+        ...dynamicPlugin.widgets,
+      ] as Plugin["widgets"];
+    }
+    if (dynamicPlugin.componentTypes?.length) {
+      registeredPlugin.componentTypes = [
+        ...(registeredPlugin.componentTypes ?? []),
+        ...dynamicPlugin.componentTypes,
+      ] as Plugin["componentTypes"];
+    }
+  }
+
   private attachFunctionContributions(
     plugin: Plugin,
     descriptor: JsonObject,
@@ -198,7 +364,7 @@ export class RemotePluginBridge {
       | Array<JsonObject & { name: string; handler: RemoteFunctionRef }>
       | undefined;
     if (actions?.length) {
-      plugin.actions = actions.map((action) => this.makeActionStub(action));
+      plugin.actions = actions.map((action) => this.makeActionProxy(action));
     }
 
     const providers = descriptor.providers as
@@ -206,7 +372,7 @@ export class RemotePluginBridge {
       | undefined;
     if (providers?.length) {
       plugin.providers = providers.map((provider) =>
-        this.makeProviderStub(provider),
+        this.makeProviderProxy(provider),
       );
     }
 
@@ -216,7 +382,7 @@ export class RemotePluginBridge {
     if (events) {
       const eventMap: NonNullable<Plugin["events"]> = {};
       for (const [eventName, refs] of Object.entries(events)) {
-        const handlers = refs.map((ref) => this.makeEventHandlerStub(ref));
+        const handlers = refs.map((ref) => this.makeEventHandlerProxy(ref));
         (eventMap as Record<string, unknown[]>)[eventName] = handlers;
       }
       plugin.events = eventMap;
@@ -231,7 +397,7 @@ export class RemotePluginBridge {
       >;
       for (const [modelType, ref] of Object.entries(models)) {
         (modelMap as Record<string, unknown>)[modelType] =
-          this.makeModelHandlerStub(ref);
+          this.makeModelHandlerProxy(ref);
       }
       plugin.models = modelMap;
     }
@@ -255,7 +421,7 @@ export class RemotePluginBridge {
       | undefined;
     if (services?.length) {
       plugin.services = services.map((svc) =>
-        this.makeServiceClassStub(svc),
+        this.makeServiceClassProxy(svc),
       ) as Plugin["services"];
     }
   }
@@ -272,7 +438,7 @@ export class RemotePluginBridge {
       | undefined;
     if (routes?.length) {
       plugin.routes = routes
-        .map((r) => this.makeRouteStub(r))
+        .map((r) => this.makeRouteProxy(r))
         .filter((r): r is NonNullable<Plugin["routes"]>[number] => r !== null);
     }
   }
@@ -294,7 +460,7 @@ export class RemotePluginBridge {
     }
   }
 
-  private makeActionStub(
+  private makeActionProxy(
     descriptor: JsonObject & { name: string; handler: RemoteFunctionRef },
   ): Action {
     const name = descriptor.name;
@@ -311,12 +477,13 @@ export class RemotePluginBridge {
       message,
       state,
       options,
-      _callback,
+      callback,
       responses,
     ) => {
-      const callbackId = _callback ? this.state.nextCallbackId() : undefined;
-      if (callbackId && _callback) {
-        this.state.actionCallbacks.set(callbackId, _callback);
+      let callbackId: string | undefined;
+      if (callback) {
+        callbackId = `action-callback:${this.state.nextRequestId()}`;
+        this.state.actionCallbacks.set(callbackId, callback);
       }
       try {
         const result = await this.workerRpc<JsonValue>(
@@ -327,7 +494,7 @@ export class RemotePluginBridge {
             state: this.normalize(state),
             options: this.normalize(options ?? null),
             responses: this.normalize(responses ?? null),
-            callbackId: callbackId ?? null,
+            ...(callbackId ? { callbackId } : {}),
           },
         );
         return result as unknown as ReturnType<Action["handler"]>;
@@ -363,7 +530,7 @@ export class RemotePluginBridge {
     return action;
   }
 
-  private makeProviderStub(
+  private makeProviderProxy(
     descriptor: JsonObject & { name: string; get: RemoteFunctionRef },
   ): Provider {
     const name = descriptor.name;
@@ -404,7 +571,7 @@ export class RemotePluginBridge {
   }
 
   /**
-   * Build a {@link ServiceClass} stub from a service descriptor. The
+   * Build a {@link ServiceClass} proxy from a service descriptor. The
    * returned class has the announced serviceType and a static `start`
    * factory that constructs an instance whose declared rpcMethods
    * worker-rpc into the worker's service trampoline.
@@ -413,7 +580,7 @@ export class RemotePluginBridge {
    * private worker methods from the host, which is the whole point of
    * the opt-in.
    */
-  private makeServiceClassStub(descriptor: {
+  private makeServiceClassProxy(descriptor: {
     serviceType: string;
     rpcMethods: string[];
     capabilityDescription?: string;
@@ -460,11 +627,11 @@ export class RemotePluginBridge {
   }
 
   /**
-   * Build a route stub. The agent's plugin-route registration code
+   * Build a route proxy. The agent's plugin-route registration code
    * picks up `plugin.routes[i]` exactly as for direct plugins; the
    * `routeHandler` here forwards via worker-rpc.
    */
-  private makeRouteStub(descriptor: {
+  private makeRouteProxy(descriptor: {
     path: string;
     routeHandler?: RemoteFunctionRef;
     type?: unknown;
@@ -492,7 +659,7 @@ export class RemotePluginBridge {
     return route;
   }
 
-  private makeEventHandlerStub(ref: RemoteFunctionRef) {
+  private makeEventHandlerProxy(ref: RemoteFunctionRef) {
     return async (payload: unknown): Promise<void> => {
       await this.workerRpc<JsonValue>(
         "event",
@@ -502,7 +669,7 @@ export class RemotePluginBridge {
     };
   }
 
-  private makeModelHandlerStub(ref: RemoteFunctionRef) {
+  private makeModelHandlerProxy(ref: RemoteFunctionRef) {
     return async (
       _runtime: IAgentRuntime,
       params: JsonValue,
@@ -563,6 +730,14 @@ export class RemotePluginBridge {
         ),
       );
     }
+  }
+
+  private async handleActionCallback(
+    message: WorkerActionCallbackEnvelope,
+  ): Promise<void> {
+    const callback = this.state.actionCallbacks.get(message.callbackId);
+    if (!callback) return;
+    await callback(message.payload as never);
   }
 
   private async handleHostRpc(message: HostRpcMessage): Promise<void> {
@@ -640,28 +815,6 @@ export class RemotePluginBridge {
         );
         return null;
       }
-      case "registerEvent": {
-        const eventName = String(args.name ?? "");
-        if (!eventName) {
-          throw new Error("runtime.registerEvent requires an event name.");
-        }
-        const handlerRef = args.handlerRef as unknown as
-          | RemoteFunctionRef
-          | undefined;
-        if (!handlerRef?.rpc || !handlerRef.id) {
-          throw new Error(
-            "runtime.registerEvent requires a remote handler reference.",
-          );
-        }
-        const handler = this.makeEventHandlerStub(handlerRef);
-        (
-          this.runtime.registerEvent as (
-            event: string,
-            handler: (payload: unknown) => Promise<void>,
-          ) => void
-        )(eventName, handler as (payload: unknown) => Promise<void>);
-        return null;
-      }
       case "getSetting": {
         const key = String(args.key);
         const value = this.runtime.getSetting(key);
@@ -681,21 +834,9 @@ export class RemotePluginBridge {
         const result = await this.runtime.composeState(memory);
         return (result ?? null) as unknown as JsonValue;
       }
-      case "actionCallback": {
-        const callbackId = String(args.callbackId ?? "");
-        const callback = this.state.actionCallbacks.get(callbackId);
-        if (!callback) {
-          throw new Error(`Unknown remote action callback id: ${callbackId}`);
-        }
-        const response = args.response as unknown as Content;
-        const actionName =
-          typeof args.actionName === "string" ? args.actionName : undefined;
-        const result = await callback(response, actionName);
-        return this.normalize(result ?? null);
-      }
       default:
         throw new Error(
-          `Unsupported host-rpc method: ${message.method}. P1 supports getService, useModel, getMemory, createMemory, updateMemory, emitEvent, registerEvent, getSetting, setSetting, composeState, actionCallback.`,
+          `Unsupported host-rpc method: ${message.method}. P1 supports getService, useModel, getMemory, createMemory, updateMemory, emitEvent, getSetting, setSetting, composeState.`,
         );
     }
   }

@@ -1,5 +1,3 @@
-export const DESKTOP_TRAY_MENU_ITEMS = [] as const;
-
 export function DesktopSurfaceNavigationRuntime(): null {
   return null;
 }

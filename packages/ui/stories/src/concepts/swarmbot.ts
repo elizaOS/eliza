@@ -128,7 +128,8 @@ function build(
         const jitterZ: number = Math.sin(t * 1.3 + jz) * jitterAmt;
 
         // Radius per-instance: base shell + jitter radial offset.
-        const radialJitter: number = Math.sin(t * 0.7 + ph) * 0.012 * (1 + energy);
+        const radialJitter: number =
+          Math.sin(t * 0.7 + ph) * 0.012 * (1 + energy);
         const r: number = shellR + radialJitter;
 
         dummy.position.set(

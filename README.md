@@ -22,7 +22,7 @@ For complete guides and API references, visit our official **[documentation](htt
 - 🛠️ **Highly Extensible**: Build your own functionality with a powerful plugin system.
 - 📦 **It Just Works**: A seamless setup and development experience from day one.
 
-> **Looking for plugins?** Browse the community plugin registry at **[elizaOS-plugins/registry](https://github.com/elizaOS-plugins/registry)** for a full list of available ElizaOS plugins.
+> **Looking for plugins?** Browse the public plugin catalog at **[plugins.elizacloud.ai](https://plugins.elizacloud.ai)**. Community registry entries are maintained in this monorepo under [`packages/registry`](packages/registry), and npm packages with the `elizaos` keyword are discoverable without a registry entry.
 
 ## Framework, Projects, And App Plugins
 
@@ -62,7 +62,7 @@ plugins/         ← runtime plugins and app plugins
 packages/elizaos/templates/   ← CLI scaffolds + min-project / min-plugin for APP/PLUGIN create
 ```
 
-A _plugin_ sits between the two: framework-shaped (registers actions/providers/services with the runtime) but shipped and consumed like a product. Community plugins are listed at [elizaOS-plugins/registry](https://github.com/elizaOS-plugins/registry).
+A _plugin_ sits between the two: framework-shaped (registers actions/providers/services with the runtime) but shipped and consumed like a product. Community plugins are discovered from npm metadata and curated through the in-repo [`packages/registry`](packages/registry) catalog.
 
 ## Pick your starting point
 
@@ -81,7 +81,7 @@ A _plugin_ sits between the two: framework-shaped (registers actions/providers/s
 **Prerequisites:** [Node.js v24+](https://nodejs.org/), [bun](https://bun.sh/docs/installation). On Windows, use [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual).
 
 ```bash
-bun add -g elizaos
+bun add -g elizaos@beta
 elizaos create my-first-agent --template project
 cd my-first-agent
 # add OPENAI_API_KEY=... to .env (or your provider's key)
@@ -163,7 +163,7 @@ bun run build
 
 Or copy [`packages/elizaos/templates/min-plugin/`](packages/elizaos/templates/min-plugin) directly. See [`packages/elizaos/templates/min-plugin/SCAFFOLD.md`](packages/elizaos/templates/min-plugin/SCAFFOLD.md) for the contract.
 
-Once typecheck, lint, and tests pass, publish to npm. Community plugins are listed in [elizaOS-plugins/registry](https://github.com/elizaOS-plugins/registry).
+Once typecheck, lint, and tests pass, publish to npm with the `elizaos` keyword. To request a curated listing, add an entry to [`packages/registry/entries/third-party`](packages/registry/entries/third-party) and open a pull request.
 
 ## Examples
 

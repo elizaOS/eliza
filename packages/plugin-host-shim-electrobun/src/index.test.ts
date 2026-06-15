@@ -4,7 +4,7 @@ import { installElectrobunShim, resetElectrobunShimForTests } from "./index";
 
 type Listener = (data: unknown) => void;
 
-class FakeBridge {
+class TestBridge {
   readonly listeners = new Map<string, Set<Listener>>();
   readonly postMessage = mock(() => {});
 
@@ -29,7 +29,7 @@ class FakeBridge {
   }
 }
 
-function installFakeBridge(bridge = new FakeBridge()): FakeBridge {
+function installTestBridge(bridge = new TestBridge()): TestBridge {
   globalThis.__elizaosElectrobunBridge = bridge;
   return bridge;
 }
@@ -50,7 +50,7 @@ describe("installElectrobunShim", () => {
   });
 
   it("posts request envelopes and resolves matching bridge responses", async () => {
-    const bridge = installFakeBridge();
+    const bridge = installTestBridge();
     const shim = installElectrobunShim();
 
     const request = shim.request("provider.foo", { ok: true });
@@ -72,7 +72,7 @@ describe("installElectrobunShim", () => {
   });
 
   it("rejects error responses and ignores malformed or unrelated bridge traffic", async () => {
-    const bridge = installFakeBridge();
+    const bridge = installTestBridge();
     const shim = installElectrobunShim();
     const request = shim.request("provider.fail", null);
 
@@ -113,7 +113,7 @@ describe("installElectrobunShim", () => {
   });
 
   it("keeps concurrent requests correlated when responses arrive out of order", async () => {
-    const bridge = installFakeBridge();
+    const bridge = installTestBridge();
     const shim = installElectrobunShim();
 
     const first = shim.request("provider.first", null);
@@ -137,7 +137,7 @@ describe("installElectrobunShim", () => {
   });
 
   it("uses default success and error payload semantics", async () => {
-    const bridge = installFakeBridge();
+    const bridge = installTestBridge();
     const shim = installElectrobunShim();
 
     const success = shim.request("provider.empty", null);
@@ -158,7 +158,7 @@ describe("installElectrobunShim", () => {
   });
 
   it("rejects immediately when bridge postMessage throws", async () => {
-    const bridge = installFakeBridge();
+    const bridge = installTestBridge();
     bridge.postMessage.mockImplementationOnce(() => {
       throw new Error("bridge down");
     });
@@ -185,7 +185,7 @@ describe("installElectrobunShim", () => {
   });
 
   it("rejects requests that never receive a bridge response", async () => {
-    installFakeBridge();
+    installTestBridge();
     const shim = installElectrobunShim({ requestTimeoutMs: 1 });
 
     await expect(shim.request("provider.never", null)).rejects.toThrow(
@@ -194,7 +194,7 @@ describe("installElectrobunShim", () => {
   });
 
   it("delivers events to subscribers and stops after unsubscribe", () => {
-    const bridge = installFakeBridge();
+    const bridge = installTestBridge();
     const shim = installElectrobunShim();
     const handler = mock(() => {});
 
@@ -218,7 +218,7 @@ describe("installElectrobunShim", () => {
   });
 
   it("is idempotent and does not register duplicate bridge listeners", () => {
-    const bridge = installFakeBridge();
+    const bridge = installTestBridge();
     const first = installElectrobunShim();
     const second = installElectrobunShim();
 
@@ -229,7 +229,7 @@ describe("installElectrobunShim", () => {
   });
 
   it("reset removes bridge listeners and permits a clean reinstall", () => {
-    const bridge = installFakeBridge();
+    const bridge = installTestBridge();
     const first = installElectrobunShim();
     resetElectrobunShimForTests();
 
@@ -243,7 +243,7 @@ describe("installElectrobunShim", () => {
   });
 
   it("encodes plugin and asset path segments and rejects unsafe relative paths", () => {
-    installFakeBridge();
+    installTestBridge();
     const shim = installElectrobunShim();
 
     expect(

@@ -166,6 +166,9 @@ def candidate_end_to_end_context(
         source_binding = {}
     connection = candidate_manifest.get("cad_connection_coverage", {})
     traceability = candidate_manifest.get("kicad_cad_traceability", {})
+    instance_disposition = candidate_manifest.get("instance_pin_step_disposition", {})
+    if not isinstance(instance_disposition, dict):
+        instance_disposition = {}
     connection_records = [
         item for item in connection.get("connection_records", []) if isinstance(item, dict)
     ]
@@ -483,6 +486,61 @@ def candidate_end_to_end_context(
                 traceability.get("incomplete_cad_connection_count", 0) or 0
             ),
             "release_credit": bool(traceability.get("release_credit") is True),
+        },
+        "instance_pin_step_disposition": {
+            "source": instance_disposition.get("source", ""),
+            "status": instance_disposition.get("status", ""),
+            "component_instance_count": int(
+                instance_disposition.get("component_instance_count", 0) or 0
+            ),
+            "routed_board_footprint_count": int(
+                instance_disposition.get("routed_board_footprint_count", 0) or 0
+            ),
+            "pinout_bound_instance_count": int(
+                instance_disposition.get("pinout_bound_instance_count", 0) or 0
+            ),
+            "support_pattern_instance_count": int(
+                instance_disposition.get("support_pattern_instance_count", 0) or 0
+            ),
+            "pending_supplier_pad_map_or_order_instance_count": int(
+                instance_disposition.get("pending_supplier_pad_map_or_order_instance_count", 0) or 0
+            ),
+            "public_candidate_package_conflict_instance_count": int(
+                instance_disposition.get("public_candidate_package_conflict_instance_count", 0) or 0
+            ),
+            "local_step_instance_count": int(
+                instance_disposition.get("local_step_instance_count", 0) or 0
+            ),
+            "local_step_hash_match_count": int(
+                instance_disposition.get("local_step_hash_match_count", 0) or 0
+            ),
+            "local_contract_pass_count": int(
+                instance_disposition.get("local_contract_pass_count", 0) or 0
+            ),
+            "local_review_pass_count": int(
+                instance_disposition.get("local_review_pass_count", 0) or 0
+            ),
+            "supplier_approved_instance_count": int(
+                instance_disposition.get("supplier_approved_instance_count", 0) or 0
+            ),
+            "release_credit_instance_count": int(
+                instance_disposition.get("release_credit_instance_count", 0) or 0
+            ),
+            "local_failure_count": int(instance_disposition.get("local_failure_count", 0) or 0),
+            "record_count": int(instance_disposition.get("record_count", 0) or 0),
+            "all_records_local_review_pass": bool(
+                instance_disposition.get("all_records_local_review_pass", False)
+            ),
+            "all_records_have_local_step": bool(
+                instance_disposition.get("all_records_have_local_step", False)
+            ),
+            "all_records_local_step_hashes_match": bool(
+                instance_disposition.get("all_records_local_step_hashes_match", False)
+            ),
+            "all_records_release_credit_false": bool(
+                instance_disposition.get("all_records_release_credit_false", False)
+            ),
+            "release_credit": bool(instance_disposition.get("release_credit") is True),
         },
         "component_model_manifest_summary": {
             "status": component_manifest.get("status", ""),

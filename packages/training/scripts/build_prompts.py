@@ -625,8 +625,8 @@ def main() -> None:
     plugin_entries = build_plugin_entries()
     lifeops_entries = build_lifeops_entries()
 
-    # For core prompts, prefer v1 entries (they are hand-curated), but fill in any
-    # core txt files not yet in v1.
+    # For core prompts, prefer hand-curated v1 entries, then append discovered
+    # core .txt prompts that are absent from v1.
     merged_core: list[dict[str, Any]] = []
     seen_core: set[str] = set()
     for v1e in v1_entries:

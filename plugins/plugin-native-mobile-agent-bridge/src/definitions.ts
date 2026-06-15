@@ -74,7 +74,7 @@ export interface MobileAgentTunnelStateEvent {
  * MobileAgentBridge plugin surface.
  *
  * Implementations:
- *   - Web stub: returns `{ available: false }` plus a no-op tunnel.
+ *   - Web fallback: reports tunnel startup as unavailable.
  *   - iOS: URLSessionWebSocketTask + WebView IPC dispatch into the
  *     in-process local-agent bridge.
  *   - Android: OkHttp WebSocket + foreground-service local-agent request
@@ -83,7 +83,7 @@ export interface MobileAgentTunnelStateEvent {
 export interface MobileAgentBridgePlugin {
   /**
    * Start (or restart) the inbound tunnel. Idempotent; calling with
-   * the same options while already registered is a no-op.
+   * the same options while already registered leaves the tunnel unchanged.
    */
   startInboundTunnel(options: MobileAgentBridgeStartOptions): Promise<MobileAgentTunnelStatus>;
 

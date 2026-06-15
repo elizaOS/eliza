@@ -16,14 +16,14 @@ import {
 	Service,
 	type UUID,
 } from "@elizaos/core";
-import { DEFAULT_ACCOUNT_ID as BLUEBUBBLES_DEFAULT_ACCOUNT_ID } from "./accounts";
+import {
+	DEFAULT_ACCOUNT_ID as BLUEBUBBLES_DEFAULT_ACCOUNT_ID,
+	resolveBlueBubblesAccount,
+	resolveDefaultBlueBubblesAccountId,
+} from "./accounts";
 import { BlueBubblesClient } from "./client";
 import { BLUEBUBBLES_SERVICE_NAME, DEFAULT_WEBHOOK_PATH } from "./constants";
-import {
-	getConfigFromRuntime,
-	isHandleAllowed,
-	normalizeHandle,
-} from "./environment";
+import { isHandleAllowed, normalizeHandle } from "./environment";
 import type {
 	BlueBubblesChat,
 	BlueBubblesChatState,
@@ -484,6 +484,7 @@ export class BlueBubblesService extends Service {
 
 	private client: BlueBubblesClient | null = null;
 	private blueBubblesConfig: BlueBubblesConfig | null = null;
+	private accountId: string = BLUEBUBBLES_DEFAULT_ACCOUNT_ID;
 	private knownChats: Map<string, BlueBubblesChat> = new Map();
 	private entityCache: Map<string, UUID> = new Map();
 	private roomCache: Map<string, UUID> = new Map();
@@ -493,11 +494,13 @@ export class BlueBubblesService extends Service {
 	constructor(runtime?: IAgentRuntime) {
 		super(runtime);
 		if (!runtime) return;
-		this.blueBubblesConfig = getConfigFromRuntime(runtime);
+		this.accountId = resolveDefaultBlueBubblesAccountId(runtime);
+		const account = resolveBlueBubblesAccount(runtime, this.accountId);
+		this.blueBubblesConfig = account.config;
 
 		if (!this.blueBubblesConfig) {
 			logger.warn(
-				"BlueBubbles configuration not provided - BlueBubbles functionality will be unavailable",
+				`BlueBubbles account ${this.accountId} is not configured - BlueBubbles functionality will be unavailable`,
 			);
 			return;
 		}
@@ -754,6 +757,7 @@ export class BlueBubblesService extends Service {
 					memory.createdAt = result.dateCreated;
 					memory.metadata = {
 						...(memory.metadata ?? {}),
+						accountId: service.accountId,
 						bluebubblesChatGuid: chatGuid,
 						bluebubblesMessageGuid: result.guid,
 						messageIdFull: result.guid,
@@ -812,6 +816,7 @@ export class BlueBubblesService extends Service {
 										roomId,
 										source,
 										config: service.blueBubblesConfig,
+										accountId: service.accountId,
 									}),
 								)
 								.sort(
@@ -1016,6 +1021,10 @@ export class BlueBubblesService extends Service {
 	 */
 	getConfig(): BlueBubblesConfig | null {
 		return this.blueBubblesConfig;
+	}
+
+	getAccountId(): string {
+		return this.accountId;
 	}
 
 	/**
@@ -1228,7 +1237,7 @@ export class BlueBubblesService extends Service {
 			// Top-level accountId per MessageMetadata contract. Inbound connector
 			// stamps this so outbound resolution can route replies back through
 			// the same connector account.
-			accountId: BLUEBUBBLES_DEFAULT_ACCOUNT_ID,
+			accountId: this.accountId,
 			timestamp: message.dateCreated,
 			entityName: message.handle?.address ?? senderHandle,
 			entityUserName: senderHandle,
@@ -1426,6 +1435,7 @@ export class BlueBubblesService extends Service {
 			responseMemory.createdAt = Date.now();
 			responseMemory.metadata = {
 				...(responseMemory.metadata ?? {}),
+				accountId: this.accountId,
 				bluebubblesChatGuid: chatGuid,
 				bluebubblesMessageGuid: sent.guid,
 			};

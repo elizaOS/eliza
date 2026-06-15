@@ -11,7 +11,7 @@ Computes WER + RTF against a corpus of WAV+transcript pairs and writes
 - **Gate enforcement**: exits non-zero when gates fail, unless
   ``--allow-gate-fail "<reason>"`` is given.
 
-Synthetic-smoke mode (``--synthetic-smoke``): writes a stub eval.json so
+Synthetic-smoke mode (``--synthetic-smoke``): writes a synthetic eval.json so
 downstream tooling (publish scripts, manifest steps) can be tested without
 a real model.
 
@@ -121,7 +121,7 @@ def _build_comparison(metrics: dict[str, float], baseline_path: Path) -> dict[st
 
 
 def _run_synthetic_smoke(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
-    """Write a stub eval.json without real model inference."""
+    """Write a synthetic eval.json without real model inference."""
     log.info("synthetic-smoke: ASR eval pipeline shape (no model inference)")
     run_dir = Path(args.run_dir).resolve()
     run_dir.mkdir(parents=True, exist_ok=True)

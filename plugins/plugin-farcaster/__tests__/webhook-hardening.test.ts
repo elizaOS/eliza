@@ -7,10 +7,9 @@ const handler = farcasterWebhookRoutes[0].handler;
 
 function response() {
   const res = {
-    status: vi.fn(),
+    status: vi.fn(() => res),
     json: vi.fn(),
   };
-  res.status.mockReturnValue(res);
   return res as unknown as RouteResponse & typeof res;
 }
 

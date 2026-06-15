@@ -142,7 +142,7 @@ function resolveDefaultVoiceId(voicesDir: string): string | null {
 	if (fallbackPack && existsSync(path.join(voicesDir, fallbackPack.file))) {
 		// eslint-disable-next-line no-console -- this is the one place where
 		// the runtime must surface the fallback to the operator console; the
-		// structured logger is not yet bound at discovery time.
+		// structured logger is unavailable at discovery time.
 		console.warn(
 			`[kokoro] default voice ${KOKORO_DEFAULT_VOICE_ID} preset not staged at ${path.join(voicesDir, defaultPack?.file ?? `${KOKORO_DEFAULT_VOICE_ID}.bin`)} — falling back to ${KOKORO_FALLBACK_VOICE_ID}. Run packages/training/scripts/voice/samantha_lora/RUNBOOK.md to produce a real Samantha preset, or regenerate via plugins/plugin-local-inference/scripts/regenerate-samantha-preset.mjs.`,
 		);

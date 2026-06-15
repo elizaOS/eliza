@@ -162,7 +162,7 @@ function cancelFirstRun(): never {
 /**
  * Read whether the runtime config holds cached cloud-wallet descriptors.
  * Uses defensive accessors because `wallet.cloud` is introduced by the
- * cloud-wallet module (Phase 3) and may not exist in older configs.
+ * cloud-wallet config block and may not exist in older configs.
  */
 function hasCloudWalletBinding(config: ElizaConfig): boolean {
   const walletSection = config.wallet;
@@ -230,7 +230,7 @@ function readUserPrimarySelection(config: ElizaConfig): {
  * local as primary for that chain. This preserves user-made primary selection
  * changes across restarts.
  *
- * No-ops if `ENABLE_CLOUD_WALLET` is off or if the cache is empty.
+ * Returns without binding if `ENABLE_CLOUD_WALLET` is off or if the cache is empty.
  */
 export async function bindCloudProvider(config: ElizaConfig): Promise<void> {
   if (!isCloudWalletEnabled()) return;

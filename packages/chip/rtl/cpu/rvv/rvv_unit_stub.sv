@@ -12,7 +12,7 @@
 // fixed-point, floating-point, masking, permutation). It returns zeros and
 // must NOT be claimed as a real RVV unit. The canonical status is in
 //   docs/evidence/cpu_ap/rvv-1-0-execution.yaml
-// and the full integration roadmap in docs/arch/rvv-integration-plan.md.
+// and the full integration plan in docs/arch/rvv-integration-plan.md.
 //
 // Functional ISA-level vector evidence (RVV 1.0 on QEMU rva23u64, scalar-vs-
 // vector dynamic instruction reduction) is recorded separately in

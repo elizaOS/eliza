@@ -202,6 +202,7 @@ jobs:
             $RUNNER_TEMP/Eliza.xcarchive
             $RUNNER_TEMP/export/*.ipa
           if-no-files-found: warn
+          retention-days: ${{ env.IOS_CERTIFICATE_BASE64 != '' && 30 || 7 }}
         env:
           IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
 

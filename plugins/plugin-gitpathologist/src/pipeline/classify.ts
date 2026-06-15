@@ -1,10 +1,10 @@
 /**
- * Phase 2 — classify: per-commit triage.
+ * Step 2 — classify: per-commit triage.
  *
  * Rules-first (cheap, deterministic). Anything matching a conventional commit
  * prefix or obvious revert/merge/WIP signal is classified directly. The
- * remainder are marked "other" by rules; a future LLM batching call can refine
- * those if a model is available — kept out of v1 to avoid LLM coupling here.
+ * remainder are marked "other" by rules. Optional LLM batching can refine
+ * those if a model is available; it stays out of the default path to avoid LLM coupling here.
  * Score+inflect work fine with "other".
  */
 

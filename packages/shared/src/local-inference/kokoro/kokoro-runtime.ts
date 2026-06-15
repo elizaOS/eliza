@@ -11,8 +11,8 @@
  *      `onnxruntime-web` in the browser. The session is reused across
  *      synthesis calls — voice swap is just rebinding the `style` tensor.
  *
- *   2. GGUF via llama-server. Upstream `ggml-org/llama.cpp` does NOT yet
- *      have a Kokoro head; our `packages/inference/llama.cpp` fork carries
+ *   2. GGUF via llama-server. Upstream `ggml-org/llama.cpp` does not ship
+ *      a Kokoro head; our `packages/inference/llama.cpp` fork carries
  *      a WIP port. When the host llama-server advertises a Kokoro-capable
  *      build and exposes `/v1/audio/speech`, we POST text in and stream
  *      PCM out. This keeps voice work on the same process as text gen on
@@ -320,8 +320,8 @@ export class KokoroMockRuntime implements KokoroRuntime {
 }
 
 // ---------------------------------------------------------------------------
-// KokoroOnnxRuntime — legacy ONNX path stub. Real implementation lives in
-// the AOSP build pipeline; this stub keeps the symbol exported so callers
+// KokoroOnnxRuntime — legacy ONNX compatibility path. Real implementation
+// lives in the AOSP build pipeline; this class keeps the symbol exported so callers
 // that conditionally reference it (plugin-aosp-local-inference) compile.
 // ---------------------------------------------------------------------------
 

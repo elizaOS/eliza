@@ -354,7 +354,7 @@ export function isFeatureConfigured(feature: string): boolean {
       return !!process.env.CRON_SECRET;
     case "ai":
       return !!(
-        process.env.OPENROUTER_API_KEY ||
+        process.env.BITROUTER_API_KEY ||
         process.env.OPENAI_API_KEY ||
         process.env.ANTHROPIC_API_KEY ||
         process.env.GROQ_API_KEY

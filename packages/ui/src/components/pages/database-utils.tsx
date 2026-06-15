@@ -9,7 +9,7 @@ export type DbView = "tables" | "query";
 export type SortDir = "asc" | "desc" | null;
 
 /** Format a cell value for display. */
-export function formatCell(val: unknown): string {
+function formatCell(val: unknown): string {
   if (val === null || val === undefined) return "NULL";
   if (typeof val === "boolean") return val ? "true" : "false";
   if (typeof val === "object") {
@@ -23,7 +23,7 @@ export function formatCell(val: unknown): string {
 }
 
 /** Abbreviated type label for column badges. */
-export function typeLabel(type: string): string {
+function typeLabel(type: string): string {
   const t = type.toLowerCase();
   if (t.includes("int")) return "int";
   if (t.includes("serial")) return "serial";
@@ -47,7 +47,7 @@ export function typeLabel(type: string): string {
 }
 
 /** Color for column type badge. */
-export function typeBadgeColor(type: string): string {
+function typeBadgeColor(type: string): string {
   const t = type.toLowerCase();
   if (
     t.includes("int") ||

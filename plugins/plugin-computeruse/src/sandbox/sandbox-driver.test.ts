@@ -4,15 +4,14 @@
  *   - `SandboxDriver` proxies every Driver op through `SandboxBackend.invoke`
  *     using the right tagged envelope.
  *   - `DockerBackend` runs `docker run` + `docker cp` + `docker exec` against
- *     the injected stubs and round-trips one op through the helper stdio.
- *   - `QemuBackend` always throws `SandboxBackendUnavailableError` (Phase 2).
+ *     the injected fakes and round-trips one op through the helper stdio.
  *   - `createSandboxDriver` selects the right backend by name.
  *   - `getCurrentDriver` consults the service config and returns either null
  *     (yolo) or a SandboxDriver (sandbox), and is loud about misconfig.
  *   - `resolveModeFromEnv` defaults to yolo for unknown values.
  *
  * No actual `child_process.spawn` happens — tests inject `spawnExec` and
- * `runShell` stubs.
+ * `runShell` fakes.
  */
 
 import { EventEmitter } from "node:events";
@@ -23,7 +22,6 @@ import {
   getCurrentDriver,
   resolveModeFromEnv,
 } from "./index.js";
-import { QemuBackend } from "./qemu-backend.js";
 import { SandboxDriver } from "./sandbox-driver.js";
 import {
   type SandboxBackend,
@@ -61,7 +59,7 @@ function makeRecordingBackend(
   } as RecordingBackend;
 }
 
-// Minimal child-process-shaped stub for `spawnExec`. We only need stdout +
+// Minimal child-process-shaped fake for `spawnExec`. We only need stdout +
 // stdin + stderr; the backend reads `.stdout.on('data', ...)` and writes
 // to `.stdin.write(...)`.
 class FakeChildProcess extends EventEmitter {
@@ -170,7 +168,7 @@ describe("SandboxDriver", () => {
   });
 });
 
-// ── DockerBackend — start + invoke + stop with stubbed spawn ───────────────
+// ── DockerBackend — start + invoke + stop with fake spawn ───────────────
 
 describe("DockerBackend", () => {
   it("runs docker run + cp + exec on start, round-trips a JSON op, and rm on stop", async () => {
@@ -203,12 +201,14 @@ describe("DockerBackend", () => {
     expect(startCommands).toContain("run");
     expect(startCommands).toContain("cp");
 
-    const runArgs = shellCalls.find((c) => c.args[0] === "run")!.args;
+    const runArgs = shellCalls.find((c) => c.args[0] === "run")?.args;
+    expect(runArgs).toBeDefined();
     expect(runArgs).toContain("cua/linux:latest");
     expect(runArgs).toContain("-e");
     expect(runArgs).toContain("DISPLAY=:99");
 
-    const cpArgs = shellCalls.find((c) => c.args[0] === "cp")!.args;
+    const cpArgs = shellCalls.find((c) => c.args[0] === "cp")?.args;
+    expect(cpArgs).toBeDefined();
     expect(cpArgs[2]).toBe("container-abc:/tmp/computeruse-sandbox-helper.py");
 
     const invokePromise = backend.invoke<{ base64Png: string }>({
@@ -284,22 +284,6 @@ describe("DockerBackend", () => {
 // TypeScript happy without importing node-internal types here.
 declare function spawnExecSentinel(): import("node:child_process").ChildProcessWithoutNullStreams;
 
-// ── QemuBackend — Phase 2 stub ─────────────────────────────────────────────
-
-describe("QemuBackend", () => {
-  it("constructor throws SandboxBackendUnavailableError", () => {
-    expect(() => new QemuBackend({ image: "anything" })).toThrowError(
-      SandboxBackendUnavailableError,
-    );
-  });
-
-  it("createSandboxDriver({ backend: 'qemu' }) propagates the unavailable error", () => {
-    expect(() =>
-      createSandboxDriver({ backend: "qemu", image: "anything" }),
-    ).toThrowError(SandboxBackendUnavailableError);
-  });
-});
-
 // ── createSandboxDriver — backend selection ────────────────────────────────
 
 describe("createSandboxDriver", () => {
@@ -344,7 +328,7 @@ describe("createSandboxDriver", () => {
 interface FakeService {
   getConfig(): {
     mode: "yolo" | "sandbox";
-    sandbox?: { backend: "docker" | "qemu"; image: string };
+    sandbox?: { backend: "docker"; image: string };
   };
 }
 
@@ -379,20 +363,6 @@ describe("getCurrentDriver", () => {
   it("throws SandboxBackendUnavailableError if mode='sandbox' but no sandbox config", () => {
     const runtime = fakeRuntime({
       getConfig: () => ({ mode: "sandbox" }),
-    });
-    expect(() =>
-      getCurrentDriver(
-        runtime as unknown as Parameters<typeof getCurrentDriver>[0],
-      ),
-    ).toThrowError(SandboxBackendUnavailableError);
-  });
-
-  it("throws SandboxBackendUnavailableError when sandbox backend='qemu' (Phase 2)", () => {
-    const runtime = fakeRuntime({
-      getConfig: () => ({
-        mode: "sandbox",
-        sandbox: { backend: "qemu", image: "qemu/x" },
-      }),
     });
     expect(() =>
       getCurrentDriver(

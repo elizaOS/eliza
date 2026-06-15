@@ -1,6 +1,7 @@
 # Debug Authentication Policy
 
-Status: pre-silicon specification. JTAG/SWD gating logic is not implemented.
+Status: pre-silicon specification. JTAG/SWD gating logic remains a hardware
+bring-up requirement.
 
 ## 1. Goals
 

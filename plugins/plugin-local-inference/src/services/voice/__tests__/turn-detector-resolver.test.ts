@@ -47,7 +47,7 @@ describe("turnDetectorRevisionForTier — tier ↔ revision mapping", () => {
 		expect(turnDetectorRevisionForTier(tier)).toBe(expected);
 	});
 
-	it("unknown / future tier falls back to the multilingual revision", () => {
+	it("unknown tier falls back to the multilingual revision", () => {
 		expect(turnDetectorRevisionForTier("999b")).toBe(
 			LIVEKIT_TURN_DETECTOR_INTL_REVISION,
 		);

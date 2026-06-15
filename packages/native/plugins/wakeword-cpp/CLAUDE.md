@@ -39,7 +39,7 @@ are not present.
   `scripts/wakeword_to_gguf.py::OPENWAKEWORD_UPSTREAM_COMMIT`. The
   runtime reads `wakeword.upstream_commit` from each GGUF and refuses
   loads when the three GGUFs disagree among themselves.
-- The placeholder head bundled in eliza-1 today
+- The temporary head bundled in eliza-1 today
   (`hey-eliza-int8.onnx`) is the upstream `hey_jarvis_v0.1` weights
   re-rendered through the int8 path under the eliza-1 head name. A
   real "hey eliza" head is trained by
@@ -202,7 +202,7 @@ packages/native/plugins/wakeword-cpp/
 ├── CMakeLists.txt
 ├── README.md                       # 1-paragraph summary
 ├── include/wakeword/wakeword.h     # frozen C ABI
-├── scripts/wakeword_to_gguf.py     # the converter (real, not a stub)
+├── scripts/wakeword_to_gguf.py     # the converter
 ├── src/
 │   ├── wakeword_internal.h         # shared dimensions & melspec API
 │   ├── wakeword_melspec.c          # streaming log-mel (GGUF + legacy modes)

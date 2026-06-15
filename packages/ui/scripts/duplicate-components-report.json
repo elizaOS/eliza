@@ -1,0 +1,3953 @@
+{
+  "scanned": 981,
+  "components": 565,
+  "exactDuplicates": [
+    {
+      "name": "themetoggle",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\cloud-ui\\components\\theme\\theme-toggle.tsx",
+          "name": "ThemeToggle"
+        },
+        {
+          "file": "src\\components\\shared\\ThemeToggle.tsx",
+          "name": "ThemeToggle"
+        }
+      ]
+    },
+    {
+      "name": "chatpanellayout",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\pages\\ChatPanelLayout.tsx",
+          "name": "ChatPanelLayout"
+        },
+        {
+          "file": "src\\layouts\\chat-panel-layout\\chat-panel-layout.tsx",
+          "name": "ChatPanelLayout"
+        }
+      ]
+    }
+  ],
+  "partialClusters": [
+    {
+      "token": "sidebar",
+      "count": 26,
+      "entries": [
+        {
+          "file": "src\\components\\composites\\search\\searchbar.tsx",
+          "name": "SidebarSearchBar",
+          "tokens": [
+            "sidebar",
+            "search",
+            "bar"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-body.tsx",
+          "name": "SidebarBody",
+          "tokens": [
+            "sidebar",
+            "body"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-collapsed-rail.tsx",
+          "name": "SidebarCollapsedRail",
+          "tokens": [
+            "sidebar",
+            "collapsed",
+            "rail"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-collapsed-rail.tsx",
+          "name": "SidebarCollapsedActionButton",
+          "tokens": [
+            "sidebar",
+            "collapsed",
+            "action",
+            "button"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-content.tsx",
+          "name": "SidebarSectionLabel",
+          "tokens": [
+            "sidebar",
+            "section",
+            "label"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-content.tsx",
+          "name": "SidebarSectionHeader",
+          "tokens": [
+            "sidebar",
+            "section",
+            "header"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-content.tsx",
+          "name": "SidebarEmptyState",
+          "tokens": [
+            "sidebar",
+            "empty",
+            "state"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-content.tsx",
+          "name": "SidebarNotice",
+          "tokens": [
+            "sidebar",
+            "notice"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-content.tsx",
+          "name": "SidebarToolbar",
+          "tokens": [
+            "sidebar",
+            "toolbar"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-content.tsx",
+          "name": "SidebarToolbarPrimary",
+          "tokens": [
+            "sidebar",
+            "toolbar",
+            "primary"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-content.tsx",
+          "name": "SidebarToolbarActions",
+          "tokens": [
+            "sidebar",
+            "toolbar",
+            "actions"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-content.tsx",
+          "name": "SidebarItemIcon",
+          "tokens": [
+            "sidebar",
+            "item",
+            "icon"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-content.tsx",
+          "name": "SidebarItemBody",
+          "tokens": [
+            "sidebar",
+            "item",
+            "body"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-content.tsx",
+          "name": "SidebarItemTitle",
+          "tokens": [
+            "sidebar",
+            "item",
+            "title"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-content.tsx",
+          "name": "SidebarItemDescription",
+          "tokens": [
+            "sidebar",
+            "item",
+            "description"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-content.tsx",
+          "name": "SidebarRailMedia",
+          "tokens": [
+            "sidebar",
+            "rail",
+            "media"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-content.tsx",
+          "name": "SidebarItemAction",
+          "tokens": [
+            "sidebar",
+            "item",
+            "action"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-content.tsx",
+          "name": "SidebarItem",
+          "tokens": [
+            "sidebar",
+            "item"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-content.tsx",
+          "name": "SidebarItemButton",
+          "tokens": [
+            "sidebar",
+            "item",
+            "button"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-content.tsx",
+          "name": "SidebarRailItem",
+          "tokens": [
+            "sidebar",
+            "rail",
+            "item"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-content.tsx",
+          "name": "SidebarContent",
+          "tokens": [
+            "sidebar",
+            "content"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-header-stack.tsx",
+          "name": "SidebarHeaderStack",
+          "tokens": [
+            "sidebar",
+            "header",
+            "stack"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-header.tsx",
+          "name": "SidebarHeader",
+          "tokens": [
+            "sidebar",
+            "header"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-panel.tsx",
+          "name": "SidebarPanel",
+          "tokens": [
+            "sidebar",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-root.tsx",
+          "name": "Sidebar",
+          "tokens": [
+            "sidebar"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\sidebar\\sidebar-scroll-region.tsx",
+          "name": "SidebarScrollRegion",
+          "tokens": [
+            "sidebar",
+            "scroll",
+            "region"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "dashboard",
+      "count": 24,
+      "entries": [
+        {
+          "file": "src\\cloud-ui\\components\\brand\\dashboard-section.tsx",
+          "name": "DashboardSection",
+          "tokens": [
+            "dashboard",
+            "section"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\brand\\dashboard-stat-card.tsx",
+          "name": "DashboardStatCard",
+          "tokens": [
+            "dashboard",
+            "stat",
+            "card"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\dashboard\\cloud-dashboard-components.tsx",
+          "name": "DashboardActionCards",
+          "tokens": [
+            "dashboard",
+            "action",
+            "cards"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\dashboard\\cloud-dashboard-components.tsx",
+          "name": "DashboardActionCardsSkeleton",
+          "tokens": [
+            "dashboard",
+            "action",
+            "cards",
+            "skeleton"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\dashboard\\cloud-dashboard-components.tsx",
+          "name": "DashboardPageWrapper",
+          "tokens": [
+            "dashboard",
+            "page",
+            "wrapper"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\dashboard\\dashboard-route-error.tsx",
+          "name": "DashboardRouteError",
+          "tokens": [
+            "dashboard",
+            "route",
+            "error"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\dashboard\\route-placeholders.tsx",
+          "name": "DashboardLoadingState",
+          "tokens": [
+            "dashboard",
+            "loading",
+            "state"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\dashboard\\route-placeholders.tsx",
+          "name": "DashboardErrorState",
+          "tokens": [
+            "dashboard",
+            "error",
+            "state"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\data-list\\dashboard-data-list.tsx",
+          "name": "DashboardDataList",
+          "tokens": [
+            "dashboard",
+            "data",
+            "list"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\data-list\\dashboard-data-list.tsx",
+          "name": "DashboardDataListMobile",
+          "tokens": [
+            "dashboard",
+            "data",
+            "list",
+            "mobile"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\data-list\\dashboard-data-list.tsx",
+          "name": "DashboardDataListDesktop",
+          "tokens": [
+            "dashboard",
+            "data",
+            "list",
+            "desktop"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\data-list\\dashboard-data-list.tsx",
+          "name": "DashboardDataListCard",
+          "tokens": [
+            "dashboard",
+            "data",
+            "list",
+            "card"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\data-list\\dashboard-data-list.tsx",
+          "name": "DashboardDataListFilteredCount",
+          "tokens": [
+            "dashboard",
+            "data",
+            "list",
+            "filtered",
+            "count"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\data-list\\dashboard-table-skeleton.tsx",
+          "name": "DashboardTableSkeleton",
+          "tokens": [
+            "dashboard",
+            "table",
+            "skeleton"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\layout\\dashboard-header.tsx",
+          "name": "DashboardHeader",
+          "tokens": [
+            "dashboard",
+            "header"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\layout\\dashboard-page.tsx",
+          "name": "DashboardPageContainer",
+          "tokens": [
+            "dashboard",
+            "page",
+            "container"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\layout\\dashboard-page.tsx",
+          "name": "DashboardPageStack",
+          "tokens": [
+            "dashboard",
+            "page",
+            "stack"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\layout\\dashboard-page.tsx",
+          "name": "DashboardToolbar",
+          "tokens": [
+            "dashboard",
+            "toolbar"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\layout\\dashboard-page.tsx",
+          "name": "DashboardStatGrid",
+          "tokens": [
+            "dashboard",
+            "stat",
+            "grid"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\layout\\dashboard-route-page.tsx",
+          "name": "DashboardRoutePage",
+          "tokens": [
+            "dashboard",
+            "route",
+            "page"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\layout\\dashboard-shell.tsx",
+          "name": "DashboardShellLayout",
+          "tokens": [
+            "dashboard",
+            "shell",
+            "layout"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\layout\\dashboard-sidebar-item.tsx",
+          "name": "DashboardSidebarNavigationItem",
+          "tokens": [
+            "dashboard",
+            "sidebar",
+            "navigation",
+            "item"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\layout\\dashboard-sidebar-section.tsx",
+          "name": "DashboardSidebarNavigationSection",
+          "tokens": [
+            "dashboard",
+            "sidebar",
+            "navigation",
+            "section"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\layout\\dashboard-sidebar.tsx",
+          "name": "DashboardSidebar",
+          "tokens": [
+            "dashboard",
+            "sidebar"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "chat",
+      "count": 20,
+      "entries": [
+        {
+          "file": "src\\components\\composites\\chat\\chat-attachment-strip.tsx",
+          "name": "ChatAttachmentStrip",
+          "tokens": [
+            "chat",
+            "attachment",
+            "strip"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\chat\\chat-bubble.tsx",
+          "name": "ChatBubble",
+          "tokens": [
+            "chat",
+            "bubble"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\chat\\chat-composer-shell.tsx",
+          "name": "ChatComposerShell",
+          "tokens": [
+            "chat",
+            "composer",
+            "shell"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\chat\\chat-composer.tsx",
+          "name": "ChatComposer",
+          "tokens": [
+            "chat",
+            "composer"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\chat\\chat-conversation-item.tsx",
+          "name": "ChatConversationItem",
+          "tokens": [
+            "chat",
+            "conversation",
+            "item"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\chat\\chat-conversation-rename-dialog.tsx",
+          "name": "ChatConversationRenameDialog",
+          "tokens": [
+            "chat",
+            "conversation",
+            "rename",
+            "dialog"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\chat\\chat-empty-state.tsx",
+          "name": "ChatEmptyState",
+          "tokens": [
+            "chat",
+            "empty",
+            "state"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\chat\\chat-message-actions.tsx",
+          "name": "ChatMessageActions",
+          "tokens": [
+            "chat",
+            "message",
+            "actions"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\chat\\chat-message.tsx",
+          "name": "ChatMessage",
+          "tokens": [
+            "chat",
+            "message"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\chat\\chat-source.tsx",
+          "name": "ChatSourceIcon",
+          "tokens": [
+            "chat",
+            "source",
+            "icon"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\chat\\chat-source.tsx",
+          "name": "ChatVoiceSpeakerBadge",
+          "tokens": [
+            "chat",
+            "voice",
+            "speaker",
+            "badge"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\chat\\chat-thread-layout.tsx",
+          "name": "ChatThreadLayout",
+          "tokens": [
+            "chat",
+            "thread",
+            "layout"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\chat\\chat-transcript.tsx",
+          "name": "ChatTranscript",
+          "tokens": [
+            "chat",
+            "transcript"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\chat\\ChatVoiceStatusBar.tsx",
+          "name": "ChatVoiceStatusBar",
+          "tokens": [
+            "chat",
+            "voice",
+            "status",
+            "bar"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\ChatPanelLayout.tsx",
+          "name": "ChatPanelLayout",
+          "tokens": [
+            "chat",
+            "panel",
+            "layout"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\ChatView.tsx",
+          "name": "ChatView",
+          "tokens": [
+            "chat",
+            "view"
+          ]
+        },
+        {
+          "file": "src\\components\\shell\\ChatSurface.tsx",
+          "name": "ChatSurface",
+          "tokens": [
+            "chat",
+            "surface"
+          ]
+        },
+        {
+          "file": "src\\layouts\\chat-panel-layout\\chat-panel-layout.tsx",
+          "name": "ChatPanelLayout",
+          "tokens": [
+            "chat",
+            "panel",
+            "layout"
+          ]
+        },
+        {
+          "file": "src\\state\\ChatComposerContext.hooks.ts",
+          "name": "ChatComposerCtx",
+          "tokens": [
+            "chat",
+            "composer",
+            "ctx"
+          ]
+        },
+        {
+          "file": "src\\state\\ChatComposerContext.hooks.ts",
+          "name": "ChatInputRefCtx",
+          "tokens": [
+            "chat",
+            "input",
+            "ref",
+            "ctx"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "page",
+      "count": 15,
+      "entries": [
+        {
+          "file": "src\\cloud-ui\\components\\layout\\page-header-context.hooks.ts",
+          "name": "PageHeaderContext",
+          "tokens": [
+            "page",
+            "header",
+            "context"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\layout\\page-header-context.tsx",
+          "name": "PageHeaderProvider",
+          "tokens": [
+            "page",
+            "header",
+            "provider"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\layout\\page-transition.tsx",
+          "name": "PageTransition",
+          "tokens": [
+            "page",
+            "transition"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\page-panel\\page-panel-collapsible-section.tsx",
+          "name": "PagePanelCollapsibleSection",
+          "tokens": [
+            "page",
+            "panel",
+            "collapsible",
+            "section"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\page-panel\\page-panel-empty.tsx",
+          "name": "PageEmptyState",
+          "tokens": [
+            "page",
+            "empty",
+            "state"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\page-panel\\page-panel-feature-empty.tsx",
+          "name": "PagePanelFeatureEmpty",
+          "tokens": [
+            "page",
+            "panel",
+            "feature",
+            "empty"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\page-panel\\page-panel-frame.tsx",
+          "name": "PagePanelFrame",
+          "tokens": [
+            "page",
+            "panel",
+            "frame"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\page-panel\\page-panel-frame.tsx",
+          "name": "PagePanelContentArea",
+          "tokens": [
+            "page",
+            "panel",
+            "content",
+            "area"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\page-panel\\page-panel-header.tsx",
+          "name": "PageActionRail",
+          "tokens": [
+            "page",
+            "action",
+            "rail"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\page-panel\\page-panel-loading.tsx",
+          "name": "PageLoadingState",
+          "tokens": [
+            "page",
+            "loading",
+            "state"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\page-panel\\page-panel-root.tsx",
+          "name": "PagePanelRoot",
+          "tokens": [
+            "page",
+            "panel",
+            "root"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\page-panel\\page-panel-toolbar.tsx",
+          "name": "PagePanelToolbar",
+          "tokens": [
+            "page",
+            "panel",
+            "toolbar"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\PageScopedChatPane.tsx",
+          "name": "PageScopedChatPane",
+          "tokens": [
+            "page",
+            "scoped",
+            "chat",
+            "pane"
+          ]
+        },
+        {
+          "file": "src\\layouts\\page-layout\\page-layout-header.tsx",
+          "name": "PageLayoutHeader",
+          "tokens": [
+            "page",
+            "layout",
+            "header"
+          ]
+        },
+        {
+          "file": "src\\layouts\\page-layout\\page-layout-mobile-drawer.tsx",
+          "name": "PageLayoutMobileDrawer",
+          "tokens": [
+            "page",
+            "layout",
+            "mobile",
+            "drawer"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "relationships",
+      "count": 14,
+      "entries": [
+        {
+          "file": "src\\components\\pages\\relationships\\RelationshipsActivityFeed.tsx",
+          "name": "RelationshipsActivityFeed",
+          "tokens": [
+            "relationships",
+            "activity",
+            "feed"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\relationships\\RelationshipsCandidateMergesPanel.tsx",
+          "name": "RelationshipsCandidateMergesPanel",
+          "tokens": [
+            "relationships",
+            "candidate",
+            "merges",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\relationships\\RelationshipsPersonPanels.tsx",
+          "name": "RelationshipsPersonSummaryPanel",
+          "tokens": [
+            "relationships",
+            "person",
+            "summary",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\relationships\\RelationshipsPersonPanels.tsx",
+          "name": "RelationshipsFactsPanel",
+          "tokens": [
+            "relationships",
+            "facts",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\relationships\\RelationshipsPersonPanels.tsx",
+          "name": "RelationshipsConnectionsPanel",
+          "tokens": [
+            "relationships",
+            "connections",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\relationships\\RelationshipsPersonPanels.tsx",
+          "name": "RelationshipsConversationsPanel",
+          "tokens": [
+            "relationships",
+            "conversations",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\relationships\\RelationshipsPersonPanels.tsx",
+          "name": "RelationshipsRelevantMemoriesPanel",
+          "tokens": [
+            "relationships",
+            "relevant",
+            "memories",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\relationships\\RelationshipsPersonPanels.tsx",
+          "name": "RelationshipsUserPreferencesPanel",
+          "tokens": [
+            "relationships",
+            "user",
+            "preferences",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\relationships\\RelationshipsPersonPanels.tsx",
+          "name": "RelationshipsDocumentsPanel",
+          "tokens": [
+            "relationships",
+            "documents",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\relationships\\RelationshipsSidebar.tsx",
+          "name": "RelationshipsSidebar",
+          "tokens": [
+            "relationships",
+            "sidebar"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\relationships\\RelationshipsWorkspaceView.tsx",
+          "name": "RelationshipsWorkspaceView",
+          "tokens": [
+            "relationships",
+            "workspace",
+            "view"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\RelationshipsGraphPanel.tsx",
+          "name": "RelationshipsGraphPanel",
+          "tokens": [
+            "relationships",
+            "graph",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\RelationshipsIdentityCluster.tsx",
+          "name": "RelationshipsIdentityCluster",
+          "tokens": [
+            "relationships",
+            "identity",
+            "cluster"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\RelationshipsView.tsx",
+          "name": "RelationshipsView",
+          "tokens": [
+            "relationships",
+            "view"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "app",
+      "count": 13,
+      "entries": [
+        {
+          "file": "src\\App.tsx",
+          "name": "App",
+          "tokens": [
+            "app"
+          ]
+        },
+        {
+          "file": "src\\components\\apps\\app-identity.tsx",
+          "name": "AppIdentityTile",
+          "tokens": [
+            "app",
+            "identity",
+            "tile"
+          ]
+        },
+        {
+          "file": "src\\components\\apps\\app-identity.tsx",
+          "name": "AppHero",
+          "tokens": [
+            "app",
+            "hero"
+          ]
+        },
+        {
+          "file": "src\\components\\apps\\AppWindowRenderer.tsx",
+          "name": "AppWindowRenderer",
+          "tokens": [
+            "app",
+            "window",
+            "renderer"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\AppDetailsView.tsx",
+          "name": "AppDetailsView",
+          "tokens": [
+            "app",
+            "details",
+            "view"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\AppPermissionsSection.tsx",
+          "name": "AppPermissionsSection",
+          "tokens": [
+            "app",
+            "permissions",
+            "section"
+          ]
+        },
+        {
+          "file": "src\\components\\shared\\AppPageSidebar.tsx",
+          "name": "AppPageSidebar",
+          "tokens": [
+            "app",
+            "page",
+            "sidebar"
+          ]
+        },
+        {
+          "file": "src\\components\\workspace\\AppWorkspaceChrome.hooks.ts",
+          "name": "AppWorkspaceChatChromeContext",
+          "tokens": [
+            "app",
+            "workspace",
+            "chat",
+            "chrome",
+            "context"
+          ]
+        },
+        {
+          "file": "src\\components\\workspace\\AppWorkspaceChrome.tsx",
+          "name": "AppWorkspaceChatCollapseButton",
+          "tokens": [
+            "app",
+            "workspace",
+            "chat",
+            "collapse",
+            "button"
+          ]
+        },
+        {
+          "file": "src\\components\\workspace\\AppWorkspaceChrome.tsx",
+          "name": "AppWorkspaceChrome",
+          "tokens": [
+            "app",
+            "workspace",
+            "chrome"
+          ]
+        },
+        {
+          "file": "src\\config\\boot-config-react.hooks.ts",
+          "name": "AppBootContext",
+          "tokens": [
+            "app",
+            "boot",
+            "context"
+          ]
+        },
+        {
+          "file": "src\\state\\AppContext.tsx",
+          "name": "AppProvider",
+          "tokens": [
+            "app",
+            "provider"
+          ]
+        },
+        {
+          "file": "src\\state\\useApp.ts",
+          "name": "AppContext",
+          "tokens": [
+            "app",
+            "context"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "connector",
+      "count": 12,
+      "entries": [
+        {
+          "file": "src\\components\\chat\\ConnectorAccountPicker.tsx",
+          "name": "ConnectorAccountPicker",
+          "tokens": [
+            "connector",
+            "account",
+            "picker"
+          ]
+        },
+        {
+          "file": "src\\components\\connectors\\ConnectorAccountAuditList.tsx",
+          "name": "ConnectorAccountAuditList",
+          "tokens": [
+            "connector",
+            "account",
+            "audit",
+            "list"
+          ]
+        },
+        {
+          "file": "src\\components\\connectors\\ConnectorAccountCard.tsx",
+          "name": "ConnectorAccountCard",
+          "tokens": [
+            "connector",
+            "account",
+            "card"
+          ]
+        },
+        {
+          "file": "src\\components\\connectors\\ConnectorAccountList.tsx",
+          "name": "ConnectorAccountList",
+          "tokens": [
+            "connector",
+            "account",
+            "list"
+          ]
+        },
+        {
+          "file": "src\\components\\connectors\\ConnectorAccountPrivacySelector.tsx",
+          "name": "ConnectorAccountPrivacySelector",
+          "tokens": [
+            "connector",
+            "account",
+            "privacy",
+            "selector"
+          ]
+        },
+        {
+          "file": "src\\components\\connectors\\ConnectorAccountPurposeSelector.tsx",
+          "name": "ConnectorAccountPurposeSelector",
+          "tokens": [
+            "connector",
+            "account",
+            "purpose",
+            "selector"
+          ]
+        },
+        {
+          "file": "src\\components\\connectors\\ConnectorAccountSetupScope.tsx",
+          "name": "ConnectorAccountSetupScope",
+          "tokens": [
+            "connector",
+            "account",
+            "setup",
+            "scope"
+          ]
+        },
+        {
+          "file": "src\\components\\connectors\\ConnectorModeSelector.tsx",
+          "name": "ConnectorModeSelector",
+          "tokens": [
+            "connector",
+            "mode",
+            "selector"
+          ]
+        },
+        {
+          "file": "src\\components\\connectors\\ConnectorQrPairingOverlay.tsx",
+          "name": "ConnectorQrPairingOverlay",
+          "tokens": [
+            "connector",
+            "qr",
+            "pairing",
+            "overlay"
+          ]
+        },
+        {
+          "file": "src\\components\\connectors\\ConnectorSetupPanel.tsx",
+          "name": "ConnectorSetupPanel",
+          "tokens": [
+            "connector",
+            "setup",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\plugin-view-connectors.tsx",
+          "name": "ConnectorPluginGroups",
+          "tokens": [
+            "connector",
+            "plugin",
+            "groups"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\plugin-view-sidebar.tsx",
+          "name": "ConnectorSidebar",
+          "tokens": [
+            "connector",
+            "sidebar"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "voice",
+      "count": 11,
+      "entries": [
+        {
+          "file": "src\\api\\client-voice-profiles.ts",
+          "name": "VoiceProfilesUnavailableError",
+          "tokens": [
+            "voice",
+            "profiles",
+            "unavailable",
+            "error"
+          ]
+        },
+        {
+          "file": "src\\api\\client-voice-profiles.ts",
+          "name": "VoiceProfilesClient",
+          "tokens": [
+            "voice",
+            "profiles",
+            "client"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\voice\\voice-audio-player.tsx",
+          "name": "VoiceAudioPlayer",
+          "tokens": [
+            "voice",
+            "audio",
+            "player"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\voice\\voice-empty-state.tsx",
+          "name": "VoiceEmptyState",
+          "tokens": [
+            "voice",
+            "empty",
+            "state"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\voice\\voice-status-badge.tsx",
+          "name": "VoiceStatusBadge",
+          "tokens": [
+            "voice",
+            "status",
+            "badge"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\VoiceConfigView.tsx",
+          "name": "VoiceConfigView",
+          "tokens": [
+            "voice",
+            "config",
+            "view"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\VoiceProfileSection.tsx",
+          "name": "VoiceProfileSection",
+          "tokens": [
+            "voice",
+            "profile",
+            "section"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\VoiceSection.tsx",
+          "name": "VoiceSection",
+          "tokens": [
+            "voice",
+            "section"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\VoiceSectionMount.tsx",
+          "name": "VoiceSectionMount",
+          "tokens": [
+            "voice",
+            "section",
+            "mount"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\VoiceTierBanner.tsx",
+          "name": "VoiceTierBanner",
+          "tokens": [
+            "voice",
+            "tier",
+            "banner"
+          ]
+        },
+        {
+          "file": "src\\components\\voice-pill\\VoicePill.tsx",
+          "name": "VoicePill",
+          "tokens": [
+            "voice",
+            "pill"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "apps",
+      "count": 10,
+      "entries": [
+        {
+          "file": "src\\cloud-ui\\components\\dashboard\\cloud-dashboard-components.tsx",
+          "name": "AppsPageWrapper",
+          "tokens": [
+            "apps",
+            "page",
+            "wrapper"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\dashboard\\cloud-dashboard-components.tsx",
+          "name": "AppsEmptyState",
+          "tokens": [
+            "apps",
+            "empty",
+            "state"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\dashboard\\cloud-dashboard-components.tsx",
+          "name": "AppsSkeleton",
+          "tokens": [
+            "apps",
+            "skeleton"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\data-list\\apps-list-view.tsx",
+          "name": "AppsListView",
+          "tokens": [
+            "apps",
+            "list",
+            "view"
+          ]
+        },
+        {
+          "file": "src\\components\\apps\\AppsCatalogGrid.tsx",
+          "name": "AppsCatalogGrid",
+          "tokens": [
+            "apps",
+            "catalog",
+            "grid"
+          ]
+        },
+        {
+          "file": "src\\components\\apps\\AppsSidebar.tsx",
+          "name": "AppsSidebar",
+          "tokens": [
+            "apps",
+            "sidebar"
+          ]
+        },
+        {
+          "file": "src\\components\\chat\\AppsSection.tsx",
+          "name": "AppsSection",
+          "tokens": [
+            "apps",
+            "section"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\AppsPageView.tsx",
+          "name": "AppsPageView",
+          "tokens": [
+            "apps",
+            "page",
+            "view"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\AppsView.tsx",
+          "name": "AppsView",
+          "tokens": [
+            "apps",
+            "view"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\AppsManagementSection.tsx",
+          "name": "AppsManagementSection",
+          "tokens": [
+            "apps",
+            "management",
+            "section"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "character",
+      "count": 10,
+      "entries": [
+        {
+          "file": "src\\components\\character\\CharacterEditor.tsx",
+          "name": "CharacterEditor",
+          "tokens": [
+            "character",
+            "editor"
+          ]
+        },
+        {
+          "file": "src\\components\\character\\CharacterEditorPanels.tsx",
+          "name": "CharacterIdentityPanel",
+          "tokens": [
+            "character",
+            "identity",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\character\\CharacterEditorPanels.tsx",
+          "name": "CharacterStylePanel",
+          "tokens": [
+            "character",
+            "style",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\character\\CharacterEditorPanels.tsx",
+          "name": "CharacterExamplesPanel",
+          "tokens": [
+            "character",
+            "examples",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\character\\CharacterExperienceWorkspace.tsx",
+          "name": "CharacterExperienceWorkspace",
+          "tokens": [
+            "character",
+            "experience",
+            "workspace"
+          ]
+        },
+        {
+          "file": "src\\components\\character\\CharacterHubView.tsx",
+          "name": "CharacterHubView",
+          "tokens": [
+            "character",
+            "hub",
+            "view"
+          ]
+        },
+        {
+          "file": "src\\components\\character\\CharacterLearnedSkillsSection.tsx",
+          "name": "CharacterLearnedSkillsSection",
+          "tokens": [
+            "character",
+            "learned",
+            "skills",
+            "section"
+          ]
+        },
+        {
+          "file": "src\\components\\character\\CharacterOverviewSection.tsx",
+          "name": "CharacterOverviewSection",
+          "tokens": [
+            "character",
+            "overview",
+            "section"
+          ]
+        },
+        {
+          "file": "src\\components\\character\\CharacterPersonalityTimeline.tsx",
+          "name": "CharacterPersonalityTimeline",
+          "tokens": [
+            "character",
+            "personality",
+            "timeline"
+          ]
+        },
+        {
+          "file": "src\\components\\character\\CharacterRoster.tsx",
+          "name": "CharacterRoster",
+          "tokens": [
+            "character",
+            "roster"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "settings",
+      "count": 10,
+      "entries": [
+        {
+          "file": "src\\components\\pages\\SettingsView.tsx",
+          "name": "SettingsView",
+          "tokens": [
+            "settings",
+            "view"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\settings-control-primitives.tsx",
+          "name": "SettingsField",
+          "tokens": [
+            "settings",
+            "field"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\settings-control-primitives.tsx",
+          "name": "SettingsFieldLabel",
+          "tokens": [
+            "settings",
+            "field",
+            "label"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\settings-control-primitives.tsx",
+          "name": "SettingsFieldDescription",
+          "tokens": [
+            "settings",
+            "field",
+            "description"
+          ]
+        },
+        {
+          "file": "src\\components\\ui\\settings-controls.tsx",
+          "name": "SettingsInput",
+          "tokens": [
+            "settings",
+            "input"
+          ]
+        },
+        {
+          "file": "src\\components\\ui\\settings-controls.tsx",
+          "name": "SettingsTextarea",
+          "tokens": [
+            "settings",
+            "textarea"
+          ]
+        },
+        {
+          "file": "src\\components\\ui\\settings-controls.tsx",
+          "name": "SettingsSegmentedGroup",
+          "tokens": [
+            "settings",
+            "segmented",
+            "group"
+          ]
+        },
+        {
+          "file": "src\\components\\ui\\settings-controls.tsx",
+          "name": "SettingsMutedText",
+          "tokens": [
+            "settings",
+            "muted",
+            "text"
+          ]
+        },
+        {
+          "file": "src\\components\\ui\\settings-controls.tsx",
+          "name": "SettingsSelectTrigger",
+          "tokens": [
+            "settings",
+            "select",
+            "trigger"
+          ]
+        },
+        {
+          "file": "src\\components\\ui\\settings-controls.tsx",
+          "name": "SettingsControls",
+          "tokens": [
+            "settings",
+            "controls"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "cloud",
+      "count": 9,
+      "entries": [
+        {
+          "file": "src\\cloud-ui\\runtime\\image.tsx",
+          "name": "CloudImage",
+          "tokens": [
+            "cloud",
+            "image"
+          ]
+        },
+        {
+          "file": "src\\components\\cloud\\CloudSourceControls.tsx",
+          "name": "CloudSourceModeToggle",
+          "tokens": [
+            "cloud",
+            "source",
+            "mode",
+            "toggle"
+          ]
+        },
+        {
+          "file": "src\\components\\cloud\\CloudSourceControls.tsx",
+          "name": "CloudConnectionStatus",
+          "tokens": [
+            "cloud",
+            "connection",
+            "status"
+          ]
+        },
+        {
+          "file": "src\\components\\cloud\\CloudStatusBadge.tsx",
+          "name": "CloudStatusBadge",
+          "tokens": [
+            "cloud",
+            "status",
+            "badge"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\config-page-sections.tsx",
+          "name": "CloudRpcStatus",
+          "tokens": [
+            "cloud",
+            "rpc",
+            "status"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\config-page-sections.tsx",
+          "name": "CloudServicesSection",
+          "tokens": [
+            "cloud",
+            "services",
+            "section"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\ElizaCloudDashboard.tsx",
+          "name": "CloudDashboard",
+          "tokens": [
+            "cloud",
+            "dashboard"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\CloudInstancePanel.tsx",
+          "name": "CloudInstancePanel",
+          "tokens": [
+            "cloud",
+            "instance",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\ProviderPanels.tsx",
+          "name": "CloudPanel",
+          "tokens": [
+            "cloud",
+            "panel"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "trajectory",
+      "count": 8,
+      "entries": [
+        {
+          "file": "src\\components\\composites\\trajectories\\trajectory-cache-stats.tsx",
+          "name": "TrajectoryCacheStats",
+          "tokens": [
+            "trajectory",
+            "cache",
+            "stats"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\trajectories\\trajectory-code-block.tsx",
+          "name": "TrajectoryCodeBlock",
+          "tokens": [
+            "trajectory",
+            "code",
+            "block"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\trajectories\\trajectory-context-diff-list.tsx",
+          "name": "TrajectoryContextDiffList",
+          "tokens": [
+            "trajectory",
+            "context",
+            "diff",
+            "list"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\trajectories\\trajectory-event-timeline.tsx",
+          "name": "TrajectoryEventTimeline",
+          "tokens": [
+            "trajectory",
+            "event",
+            "timeline"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\trajectories\\trajectory-llm-call-card.tsx",
+          "name": "TrajectoryLlmCallCard",
+          "tokens": [
+            "trajectory",
+            "llm",
+            "call",
+            "card"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\trajectories\\trajectory-pipeline-graph.tsx",
+          "name": "TrajectoryPipelineGraph",
+          "tokens": [
+            "trajectory",
+            "pipeline",
+            "graph"
+          ]
+        },
+        {
+          "file": "src\\components\\composites\\trajectories\\trajectory-sidebar-item.tsx",
+          "name": "TrajectorySidebarItem",
+          "tokens": [
+            "trajectory",
+            "sidebar",
+            "item"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\TrajectoryDetailView.tsx",
+          "name": "TrajectoryDetailView",
+          "tokens": [
+            "trajectory",
+            "detail",
+            "view"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "agent",
+      "count": 7,
+      "entries": [
+        {
+          "file": "src\\agent-surface\\AgentElementOverlay.tsx",
+          "name": "AgentElementOverlay",
+          "tokens": [
+            "agent",
+            "element",
+            "overlay"
+          ]
+        },
+        {
+          "file": "src\\agent-surface\\AgentSurfaceContext.hooks.ts",
+          "name": "AgentSurfaceContext",
+          "tokens": [
+            "agent",
+            "surface",
+            "context"
+          ]
+        },
+        {
+          "file": "src\\agent-surface\\AgentSurfaceContext.tsx",
+          "name": "AgentSurfaceProvider",
+          "tokens": [
+            "agent",
+            "surface",
+            "provider"
+          ]
+        },
+        {
+          "file": "src\\agent-surface\\components.tsx",
+          "name": "AgentButton",
+          "tokens": [
+            "agent",
+            "button"
+          ]
+        },
+        {
+          "file": "src\\agent-surface\\components.tsx",
+          "name": "AgentInput",
+          "tokens": [
+            "agent",
+            "input"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\brand\\brand-card.tsx",
+          "name": "AgentCard",
+          "tokens": [
+            "agent",
+            "card"
+          ]
+        },
+        {
+          "file": "src\\components\\chat\\AgentActivityBox.tsx",
+          "name": "AgentActivityBox",
+          "tokens": [
+            "agent",
+            "activity",
+            "box"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "eliza",
+      "count": 7,
+      "entries": [
+        {
+          "file": "src\\api\\client-base.ts",
+          "name": "ElizaClient",
+          "tokens": [
+            "eliza",
+            "client"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\ai-elements\\eliza-avatar.tsx",
+          "name": "ElizaAvatar",
+          "tokens": [
+            "eliza",
+            "avatar"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\brand\\eliza-cloud-lockup.tsx",
+          "name": "ElizaCloudLockup",
+          "tokens": [
+            "eliza",
+            "cloud",
+            "lockup"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\brand\\eliza-logo.tsx",
+          "name": "ElizaLogo",
+          "tokens": [
+            "eliza",
+            "logo"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\dashboard\\cloud-dashboard-components.tsx",
+          "name": "ElizaAgentsPageWrapper",
+          "tokens": [
+            "eliza",
+            "agents",
+            "page",
+            "wrapper"
+          ]
+        },
+        {
+          "file": "src\\genui\\actions.ts",
+          "name": "ElizaGenUiActionError",
+          "tokens": [
+            "eliza",
+            "gen",
+            "ui",
+            "action",
+            "error"
+          ]
+        },
+        {
+          "file": "src\\genui\\renderer.tsx",
+          "name": "ElizaGenUiRenderer",
+          "tokens": [
+            "eliza",
+            "gen",
+            "ui",
+            "renderer"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "api",
+      "count": 7,
+      "entries": [
+        {
+          "file": "src\\api\\client-types-core.ts",
+          "name": "ApiError",
+          "tokens": [
+            "api",
+            "error"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\api-key-empty-state.tsx",
+          "name": "ApiKeyEmptyState",
+          "tokens": [
+            "api",
+            "key",
+            "empty",
+            "state"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\data-list\\api-keys-table.tsx",
+          "name": "ApiKeysTable",
+          "tokens": [
+            "api",
+            "keys",
+            "table"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\docs\\api-parameter-select.tsx",
+          "name": "ApiParameterSelect",
+          "tokens": [
+            "api",
+            "parameter",
+            "select"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\docs\\api-route-explorer-client.tsx",
+          "name": "ApiRouteExplorerClient",
+          "tokens": [
+            "api",
+            "route",
+            "explorer",
+            "client"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\ApiKeyConfig.tsx",
+          "name": "ApiKeyConfig",
+          "tokens": [
+            "api",
+            "key",
+            "config"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\ProviderPanels.tsx",
+          "name": "ApiKeyPanel",
+          "tokens": [
+            "api",
+            "key",
+            "panel"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "telegram",
+      "count": 5,
+      "entries": [
+        {
+          "file": "src\\cloud-ui\\components\\icons.tsx",
+          "name": "TelegramIcon",
+          "tokens": [
+            "telegram",
+            "icon"
+          ]
+        },
+        {
+          "file": "src\\components\\connectors\\TelegramAccountConnectorPanel.tsx",
+          "name": "TelegramAccountConnectorPanel",
+          "tokens": [
+            "telegram",
+            "account",
+            "connector",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\connectors\\TelegramBotSetupPanel.tsx",
+          "name": "TelegramBotSetupPanel",
+          "tokens": [
+            "telegram",
+            "bot",
+            "setup",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\PluginConfigForm.tsx",
+          "name": "TelegramChatModeToggle",
+          "tokens": [
+            "telegram",
+            "chat",
+            "mode",
+            "toggle"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\PluginConfigForm.tsx",
+          "name": "TelegramPluginConfig",
+          "tokens": [
+            "telegram",
+            "plugin",
+            "config"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "desktop",
+      "count": 5,
+      "entries": [
+        {
+          "file": "src\\components\\apps\\GameView.tsx",
+          "name": "DesktopGameWindowControls",
+          "tokens": [
+            "desktop",
+            "game",
+            "window",
+            "controls"
+          ]
+        },
+        {
+          "file": "src\\components\\desktop\\DesktopTabBar.tsx",
+          "name": "DesktopTabBar",
+          "tokens": [
+            "desktop",
+            "tab",
+            "bar"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\DesktopWorkspaceDisplay.tsx",
+          "name": "DesktopWorkspaceDisplay",
+          "tokens": [
+            "desktop",
+            "workspace",
+            "display"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\DesktopWorkspaceSection.tsx",
+          "name": "DesktopWorkspaceSection",
+          "tokens": [
+            "desktop",
+            "workspace",
+            "section"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\VoiceConfigView.tsx",
+          "name": "DesktopTalkModePanel",
+          "tokens": [
+            "desktop",
+            "talk",
+            "mode",
+            "panel"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "plugin",
+      "count": 5,
+      "entries": [
+        {
+          "file": "src\\components\\pages\\plugin-view-dialogs.tsx",
+          "name": "PluginSettingsDialog",
+          "tokens": [
+            "plugin",
+            "settings",
+            "dialog"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\plugin-view-modal.tsx",
+          "name": "PluginGameModal",
+          "tokens": [
+            "plugin",
+            "game",
+            "modal"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\PluginCard.tsx",
+          "name": "PluginCard",
+          "tokens": [
+            "plugin",
+            "card"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\PluginConfigForm.tsx",
+          "name": "PluginConfigForm",
+          "tokens": [
+            "plugin",
+            "config",
+            "form"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\PluginVisual.tsx",
+          "name": "PluginVisual",
+          "tokens": [
+            "plugin",
+            "visual"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "shell",
+      "count": 5,
+      "entries": [
+        {
+          "file": "src\\components\\shell\\ShellControllerContext.hooks.ts",
+          "name": "ShellControllerContext",
+          "tokens": [
+            "shell",
+            "controller",
+            "context"
+          ]
+        },
+        {
+          "file": "src\\components\\shell\\ShellControllerContext.tsx",
+          "name": "ShellControllerProvider",
+          "tokens": [
+            "shell",
+            "controller",
+            "provider"
+          ]
+        },
+        {
+          "file": "src\\components\\shell\\ShellHeaderControls.tsx",
+          "name": "ShellHeaderControls",
+          "tokens": [
+            "shell",
+            "header",
+            "controls"
+          ]
+        },
+        {
+          "file": "src\\components\\shell\\ShellOverlays.tsx",
+          "name": "ShellOverlays",
+          "tokens": [
+            "shell",
+            "overlays"
+          ]
+        },
+        {
+          "file": "src\\components\\views\\ShellViewAgentSurface.tsx",
+          "name": "ShellViewAgentSurface",
+          "tokens": [
+            "shell",
+            "view",
+            "agent",
+            "surface"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "theme",
+      "count": 4,
+      "entries": [
+        {
+          "file": "src\\cloud-ui\\components\\theme\\theme-provider.hooks.ts",
+          "name": "ThemeContext",
+          "tokens": [
+            "theme",
+            "context"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\theme\\theme-provider.tsx",
+          "name": "ThemeProvider",
+          "tokens": [
+            "theme",
+            "provider"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\theme\\theme-toggle.tsx",
+          "name": "ThemeToggle",
+          "tokens": [
+            "theme",
+            "toggle"
+          ]
+        },
+        {
+          "file": "src\\components\\shared\\ThemeToggle.tsx",
+          "name": "ThemeToggle",
+          "tokens": [
+            "theme",
+            "toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "render",
+      "count": 4,
+      "entries": [
+        {
+          "file": "src\\cloud-ui\\runtime\\render-telemetry.tsx",
+          "name": "RenderTelemetryProfiler",
+          "tokens": [
+            "render",
+            "telemetry",
+            "profiler"
+          ]
+        },
+        {
+          "file": "src\\components\\config-ui\\config-field.helpers.tsx",
+          "name": "RenderSelectField",
+          "tokens": [
+            "render",
+            "select",
+            "field"
+          ]
+        },
+        {
+          "file": "src\\components\\config-ui\\config-field.helpers.tsx",
+          "name": "RenderFileField",
+          "tokens": [
+            "render",
+            "file",
+            "field"
+          ]
+        },
+        {
+          "file": "src\\components\\config-ui\\config-field.helpers.tsx",
+          "name": "RenderCustomField",
+          "tokens": [
+            "render",
+            "custom",
+            "field"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "config",
+      "count": 4,
+      "entries": [
+        {
+          "file": "src\\components\\config-ui\\config-control-primitives.tsx",
+          "name": "ConfigFieldErrors",
+          "tokens": [
+            "config",
+            "field",
+            "errors"
+          ]
+        },
+        {
+          "file": "src\\components\\config-ui\\config-field.tsx",
+          "name": "ConfigField",
+          "tokens": [
+            "config",
+            "field"
+          ]
+        },
+        {
+          "file": "src\\components\\config-ui\\config-renderer.tsx",
+          "name": "ConfigRenderer",
+          "tokens": [
+            "config",
+            "renderer"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\ConfigPageView.tsx",
+          "name": "ConfigPageView",
+          "tokens": [
+            "config",
+            "page",
+            "view"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "custom",
+      "count": 4,
+      "entries": [
+        {
+          "file": "src\\components\\custom-actions\\CustomActionEditor.tsx",
+          "name": "CustomActionEditor",
+          "tokens": [
+            "custom",
+            "action",
+            "editor"
+          ]
+        },
+        {
+          "file": "src\\components\\custom-actions\\CustomActionsPanel.tsx",
+          "name": "CustomActionsPanel",
+          "tokens": [
+            "custom",
+            "actions",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\custom-actions\\CustomActionsView.tsx",
+          "name": "CustomActionsView",
+          "tokens": [
+            "custom",
+            "actions",
+            "view"
+          ]
+        },
+        {
+          "file": "src\\components\\local-inference\\CustomModelSearch.tsx",
+          "name": "CustomModelSearch",
+          "tokens": [
+            "custom",
+            "model",
+            "search"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "local",
+      "count": 4,
+      "entries": [
+        {
+          "file": "src\\components\\local-inference\\LocalInferencePanel.tsx",
+          "name": "LocalInferencePanel",
+          "tokens": [
+            "local",
+            "inference",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\ProviderPanels.tsx",
+          "name": "LocalProviderPanel",
+          "tokens": [
+            "local",
+            "provider",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\services\\local-inference\\engine.ts",
+          "name": "LocalInferenceEngine",
+          "tokens": [
+            "local",
+            "inference",
+            "engine"
+          ]
+        },
+        {
+          "file": "src\\services\\local-inference\\service.ts",
+          "name": "LocalInferenceService",
+          "tokens": [
+            "local",
+            "inference",
+            "service"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "secrets",
+      "count": 4,
+      "entries": [
+        {
+          "file": "src\\components\\pages\\SecretsView.tsx",
+          "name": "SecretsView",
+          "tokens": [
+            "secrets",
+            "view"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\SecretsManagerSection.tsx",
+          "name": "SecretsManagerSection",
+          "tokens": [
+            "secrets",
+            "manager",
+            "section"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\SecretsManagerSection.tsx",
+          "name": "SecretsManagerModalRoot",
+          "tokens": [
+            "secrets",
+            "manager",
+            "modal",
+            "root"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\vault-tabs\\SecretsTab.tsx",
+          "name": "SecretsTab",
+          "tokens": [
+            "secrets",
+            "tab"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "status",
+      "count": 4,
+      "entries": [
+        {
+          "file": "src\\components\\release-center\\shared.tsx",
+          "name": "StatusPill",
+          "tokens": [
+            "status",
+            "pill"
+          ]
+        },
+        {
+          "file": "src\\components\\stream\\StatusBar.tsx",
+          "name": "StatusBar",
+          "tokens": [
+            "status",
+            "bar"
+          ]
+        },
+        {
+          "file": "src\\components\\ui\\status-badge.tsx",
+          "name": "StatusBadge",
+          "tokens": [
+            "status",
+            "badge"
+          ]
+        },
+        {
+          "file": "src\\components\\ui\\status-badge.tsx",
+          "name": "StatusDot",
+          "tokens": [
+            "status",
+            "dot"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "view",
+      "count": 3,
+      "entries": [
+        {
+          "file": "src\\agent-surface\\registry.ts",
+          "name": "ViewAgentRegistry",
+          "tokens": [
+            "view",
+            "agent",
+            "registry"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\ViewCatalog.tsx",
+          "name": "ViewCatalog",
+          "tokens": [
+            "view",
+            "catalog"
+          ]
+        },
+        {
+          "file": "src\\components\\views\\ViewIcon.tsx",
+          "name": "ViewIcon",
+          "tokens": [
+            "view",
+            "icon"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "prompt",
+      "count": 3,
+      "entries": [
+        {
+          "file": "src\\cloud-ui\\components\\brand\\prompt-card.tsx",
+          "name": "PromptCard",
+          "tokens": [
+            "prompt",
+            "card"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\brand\\prompt-card.tsx",
+          "name": "PromptCardGrid",
+          "tokens": [
+            "prompt",
+            "card",
+            "grid"
+          ]
+        },
+        {
+          "file": "src\\components\\ui\\confirm-dialog.tsx",
+          "name": "PromptDialog",
+          "tokens": [
+            "prompt",
+            "dialog"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "account",
+      "count": 3,
+      "entries": [
+        {
+          "file": "src\\components\\accounts\\AccountCard.tsx",
+          "name": "AccountCard",
+          "tokens": [
+            "account",
+            "card"
+          ]
+        },
+        {
+          "file": "src\\components\\accounts\\AccountList.tsx",
+          "name": "AccountList",
+          "tokens": [
+            "account",
+            "list"
+          ]
+        },
+        {
+          "file": "src\\components\\chat\\AccountRequiredCard.tsx",
+          "name": "AccountRequiredCard",
+          "tokens": [
+            "account",
+            "required",
+            "card"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "game",
+      "count": 3,
+      "entries": [
+        {
+          "file": "src\\components\\apps\\GameView.tsx",
+          "name": "GameView",
+          "tokens": [
+            "game",
+            "view"
+          ]
+        },
+        {
+          "file": "src\\components\\apps\\GameViewOverlay.tsx",
+          "name": "GameViewOverlay",
+          "tokens": [
+            "game",
+            "view",
+            "overlay"
+          ]
+        },
+        {
+          "file": "src\\components\\apps\\surfaces\\GameOperatorShell.tsx",
+          "name": "GameOperatorShell",
+          "tokens": [
+            "game",
+            "operator",
+            "shell"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "form",
+      "count": 3,
+      "entries": [
+        {
+          "file": "src\\components\\chat\\widgets\\form-request.tsx",
+          "name": "FormRequest",
+          "tokens": [
+            "form",
+            "request"
+          ]
+        },
+        {
+          "file": "src\\components\\ui\\form-select.tsx",
+          "name": "FormSelect",
+          "tokens": [
+            "form",
+            "select"
+          ]
+        },
+        {
+          "file": "src\\components\\ui\\form-select.tsx",
+          "name": "FormSelectItem",
+          "tokens": [
+            "form",
+            "select",
+            "item"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "widget",
+      "count": 3,
+      "entries": [
+        {
+          "file": "src\\components\\chat\\widgets\\shared.tsx",
+          "name": "WidgetSection",
+          "tokens": [
+            "widget",
+            "section"
+          ]
+        },
+        {
+          "file": "src\\components\\chat\\WidgetVisibilityPanel.tsx",
+          "name": "WidgetVisibilityEditor",
+          "tokens": [
+            "widget",
+            "visibility",
+            "editor"
+          ]
+        },
+        {
+          "file": "src\\widgets\\WidgetHost.tsx",
+          "name": "WidgetHost",
+          "tokens": [
+            "widget",
+            "host"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "permission",
+      "count": 3,
+      "entries": [
+        {
+          "file": "src\\components\\composites\\chat\\permission-card.tsx",
+          "name": "PermissionCard",
+          "tokens": [
+            "permission",
+            "card"
+          ]
+        },
+        {
+          "file": "src\\components\\permissions\\PermissionIcon.tsx",
+          "name": "PermissionIcon",
+          "tokens": [
+            "permission",
+            "icon"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\permission-controls.tsx",
+          "name": "PermissionRow",
+          "tokens": [
+            "permission",
+            "row"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "model",
+      "count": 3,
+      "entries": [
+        {
+          "file": "src\\components\\local-inference\\ModelCard.tsx",
+          "name": "ModelCard",
+          "tokens": [
+            "model",
+            "card"
+          ]
+        },
+        {
+          "file": "src\\components\\local-inference\\ModelHubView.tsx",
+          "name": "ModelHubView",
+          "tokens": [
+            "model",
+            "hub",
+            "view"
+          ]
+        },
+        {
+          "file": "src\\components\\local-inference\\ModelUpdatesPanel.tsx",
+          "name": "ModelUpdatesPanel",
+          "tokens": [
+            "model",
+            "updates",
+            "panel"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "release",
+      "count": 3,
+      "entries": [
+        {
+          "file": "src\\components\\pages\\ReleaseCenterView.tsx",
+          "name": "ReleaseCenterView",
+          "tokens": [
+            "release",
+            "center",
+            "view"
+          ]
+        },
+        {
+          "file": "src\\components\\release-center\\sections.tsx",
+          "name": "ReleaseStatusSection",
+          "tokens": [
+            "release",
+            "status",
+            "section"
+          ]
+        },
+        {
+          "file": "src\\components\\release-center\\sections.tsx",
+          "name": "ReleaseNotesSection",
+          "tokens": [
+            "release",
+            "notes",
+            "section"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "advanced",
+      "count": 3,
+      "entries": [
+        {
+          "file": "src\\components\\settings\\AdvancedSection.tsx",
+          "name": "AdvancedSection",
+          "tokens": [
+            "advanced",
+            "section"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\AdvancedToggle.tsx",
+          "name": "AdvancedToggle",
+          "tokens": [
+            "advanced",
+            "toggle"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\settings-control-primitives.tsx",
+          "name": "AdvancedSettingsDisclosure",
+          "tokens": [
+            "advanced",
+            "settings",
+            "disclosure"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "provider",
+      "count": 3,
+      "entries": [
+        {
+          "file": "src\\components\\settings\\ProviderCard.tsx",
+          "name": "ProviderCard",
+          "tokens": [
+            "provider",
+            "card"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\ProviderRoutingPanel.tsx",
+          "name": "ProviderRoutingPanel",
+          "tokens": [
+            "provider",
+            "routing",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\ProviderSwitcher.tsx",
+          "name": "ProviderSwitcher",
+          "tokens": [
+            "provider",
+            "switcher"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "confirm",
+      "count": 3,
+      "entries": [
+        {
+          "file": "src\\components\\shared\\confirm-delete-control.tsx",
+          "name": "ConfirmDeleteControl",
+          "tokens": [
+            "confirm",
+            "delete",
+            "control"
+          ]
+        },
+        {
+          "file": "src\\components\\ui\\confirm-delete.tsx",
+          "name": "ConfirmDelete",
+          "tokens": [
+            "confirm",
+            "delete"
+          ]
+        },
+        {
+          "file": "src\\components\\ui\\confirm-dialog.tsx",
+          "name": "ConfirmDialog",
+          "tokens": [
+            "confirm",
+            "dialog"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "bug",
+      "count": 3,
+      "entries": [
+        {
+          "file": "src\\components\\shell\\BugReportModal.tsx",
+          "name": "BugReportModal",
+          "tokens": [
+            "bug",
+            "report",
+            "modal"
+          ]
+        },
+        {
+          "file": "src\\hooks\\BugReportProvider.tsx",
+          "name": "BugReportProvider",
+          "tokens": [
+            "bug",
+            "report",
+            "provider"
+          ]
+        },
+        {
+          "file": "src\\hooks\\useBugReport.hooks.ts",
+          "name": "BugReportContext",
+          "tokens": [
+            "bug",
+            "report",
+            "context"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "connection",
+      "count": 3,
+      "entries": [
+        {
+          "file": "src\\components\\shell\\ConnectionFailedBanner.tsx",
+          "name": "ConnectionFailedBanner",
+          "tokens": [
+            "connection",
+            "failed",
+            "banner"
+          ]
+        },
+        {
+          "file": "src\\components\\shell\\ConnectionLostOverlay.tsx",
+          "name": "ConnectionLostOverlay",
+          "tokens": [
+            "connection",
+            "lost",
+            "overlay"
+          ]
+        },
+        {
+          "file": "src\\components\\ui\\connection-status.tsx",
+          "name": "ConnectionStatus",
+          "tokens": [
+            "connection",
+            "status"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "startup",
+      "count": 3,
+      "entries": [
+        {
+          "file": "src\\components\\shell\\StartupFailureView.tsx",
+          "name": "StartupFailureView",
+          "tokens": [
+            "startup",
+            "failure",
+            "view"
+          ]
+        },
+        {
+          "file": "src\\components\\shell\\StartupScreen.tsx",
+          "name": "StartupScreen",
+          "tokens": [
+            "startup",
+            "screen"
+          ]
+        },
+        {
+          "file": "src\\components\\shell\\StartupShell.tsx",
+          "name": "StartupShell",
+          "tokens": [
+            "startup",
+            "shell"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "icon",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\agent-surface\\components.tsx",
+          "name": "IconTag",
+          "tokens": [
+            "icon",
+            "tag"
+          ]
+        },
+        {
+          "file": "src\\components\\ui\\tooltip-extended.tsx",
+          "name": "IconTooltip",
+          "tokens": [
+            "icon",
+            "tooltip"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "cost",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\cloud-ui\\components\\analytics\\cost-alerts.tsx",
+          "name": "CostAlerts",
+          "tokens": [
+            "cost",
+            "alerts"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\analytics\\cost-insights-card.tsx",
+          "name": "CostInsightsCard",
+          "tokens": [
+            "cost",
+            "insights",
+            "card"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "brand",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\cloud-ui\\components\\brand\\brand-card.tsx",
+          "name": "BrandCard",
+          "tokens": [
+            "brand",
+            "card"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\brand\\brand-tabs-responsive.tsx",
+          "name": "BrandTabsResponsive",
+          "tokens": [
+            "brand",
+            "tabs",
+            "responsive"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "code",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\cloud-ui\\components\\code\\code-display.tsx",
+          "name": "CodeDisplay",
+          "tokens": [
+            "code",
+            "display"
+          ]
+        },
+        {
+          "file": "src\\components\\ui\\code-block.tsx",
+          "name": "CodeBlock",
+          "tokens": [
+            "code",
+            "block"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "list",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\cloud-ui\\components\\data-list\\list-action-menu.tsx",
+          "name": "ListActionMenu",
+          "tokens": [
+            "list",
+            "action",
+            "menu"
+          ]
+        },
+        {
+          "file": "src\\components\\ui\\skeleton-layouts.tsx",
+          "name": "ListSkeleton",
+          "tokens": [
+            "list",
+            "skeleton"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "discord",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\cloud-ui\\components\\icons.tsx",
+          "name": "DiscordIcon",
+          "tokens": [
+            "discord",
+            "icon"
+          ]
+        },
+        {
+          "file": "src\\components\\connectors\\DiscordLocalConnectorPanel.tsx",
+          "name": "DiscordLocalConnectorPanel",
+          "tokens": [
+            "discord",
+            "local",
+            "connector",
+            "panel"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "whats",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\cloud-ui\\components\\icons.tsx",
+          "name": "WhatsAppIcon",
+          "tokens": [
+            "whats",
+            "app",
+            "icon"
+          ]
+        },
+        {
+          "file": "src\\components\\connectors\\WhatsAppQrOverlay.tsx",
+          "name": "WhatsAppQrOverlay",
+          "tokens": [
+            "whats",
+            "app",
+            "qr",
+            "overlay"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "i",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\cloud-ui\\components\\icons.tsx",
+          "name": "IMessageIcon",
+          "tokens": [
+            "i",
+            "message",
+            "icon"
+          ]
+        },
+        {
+          "file": "src\\components\\connectors\\IMessageStatusPanel.tsx",
+          "name": "IMessageStatusPanel",
+          "tokens": [
+            "i",
+            "message",
+            "status",
+            "panel"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "image",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\cloud-ui\\components\\image-gen\\empty-state.tsx",
+          "name": "ImageEmptyState",
+          "tokens": [
+            "image",
+            "empty",
+            "state"
+          ]
+        },
+        {
+          "file": "src\\cloud-ui\\components\\image-gen\\prompt-input.tsx",
+          "name": "ImagePromptInput",
+          "tokens": [
+            "image",
+            "prompt",
+            "input"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "loading",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\cloud-ui\\components\\image-gen\\loading-state.tsx",
+          "name": "LoadingState",
+          "tokens": [
+            "loading",
+            "state"
+          ]
+        },
+        {
+          "file": "src\\components\\shell\\LoadingScreen.tsx",
+          "name": "LoadingScreen",
+          "tokens": [
+            "loading",
+            "screen"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "companion",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\companion\\desktop-bar\\CompanionBar.tsx",
+          "name": "CompanionBar",
+          "tokens": [
+            "companion",
+            "bar"
+          ]
+        },
+        {
+          "file": "src\\state\\CompanionSceneConfigContext.hooks.ts",
+          "name": "CompanionSceneConfigCtx",
+          "tokens": [
+            "companion",
+            "scene",
+            "config",
+            "ctx"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "music",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\character\\MusicLibraryCharacterWidget.tsx",
+          "name": "MusicLibraryCharacterWidget",
+          "tokens": [
+            "music",
+            "library",
+            "character",
+            "widget"
+          ]
+        },
+        {
+          "file": "src\\components\\chat\\widgets\\music-player.tsx",
+          "name": "MusicPlayerSidebarWidget",
+          "tokens": [
+            "music",
+            "player",
+            "sidebar",
+            "widget"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "save",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\chat\\SaveCommandModal.tsx",
+          "name": "SaveCommandModal",
+          "tokens": [
+            "save",
+            "command",
+            "modal"
+          ]
+        },
+        {
+          "file": "src\\components\\ui\\save-footer.tsx",
+          "name": "SaveFooter",
+          "tokens": [
+            "save",
+            "footer"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "tasks",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\chat\\TasksEventsPanel.tsx",
+          "name": "TasksEventsPanel",
+          "tokens": [
+            "tasks",
+            "events",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\TasksPageView.tsx",
+          "name": "TasksPageView",
+          "tokens": [
+            "tasks",
+            "page",
+            "view"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "browser",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\chat\\widgets\\browser-status.tsx",
+          "name": "BrowserStatusSidebarWidget",
+          "tokens": [
+            "browser",
+            "status",
+            "sidebar",
+            "widget"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\BrowserWorkspaceView.tsx",
+          "name": "BrowserWorkspaceView",
+          "tokens": [
+            "browser",
+            "workspace",
+            "view"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "empty",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\chat\\widgets\\shared.tsx",
+          "name": "EmptyWidgetState",
+          "tokens": [
+            "empty",
+            "widget",
+            "state"
+          ]
+        },
+        {
+          "file": "src\\components\\ui\\empty-state.tsx",
+          "name": "EmptyState",
+          "tokens": [
+            "empty",
+            "state"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "continuous",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\composites\\chat\\ContinuousChatToggle.tsx",
+          "name": "ContinuousChatToggle",
+          "tokens": [
+            "continuous",
+            "chat",
+            "toggle"
+          ]
+        },
+        {
+          "file": "src\\components\\shell\\ContinuousChatOverlay.tsx",
+          "name": "ContinuousChatOverlay",
+          "tokens": [
+            "continuous",
+            "chat",
+            "overlay"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "owner",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\composites\\OwnerBadge.tsx",
+          "name": "OwnerBadge",
+          "tokens": [
+            "owner",
+            "badge"
+          ]
+        },
+        {
+          "file": "src\\components\\connectors\\OwnerAgentConnectorSetupPanel.tsx",
+          "name": "OwnerAgentConnectorSetupPanel",
+          "tokens": [
+            "owner",
+            "agent",
+            "connector",
+            "setup",
+            "panel"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "x",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\connectors\\XRPairingPanel.tsx",
+          "name": "XRPairingPanel",
+          "tokens": [
+            "x",
+            "r",
+            "pairing",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\XRSettingsSection.tsx",
+          "name": "XRSettingsSection",
+          "tokens": [
+            "x",
+            "r",
+            "settings",
+            "section"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "active",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\local-inference\\ActiveModelBar.tsx",
+          "name": "ActiveModelBar",
+          "tokens": [
+            "active",
+            "model",
+            "bar"
+          ]
+        },
+        {
+          "file": "src\\services\\local-inference\\active-model.ts",
+          "name": "ActiveModelCoordinator",
+          "tokens": [
+            "active",
+            "model",
+            "coordinator"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "device",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\local-inference\\DeviceBridgeStatus.tsx",
+          "name": "DeviceBridgeStatusBar",
+          "tokens": [
+            "device",
+            "bridge",
+            "status",
+            "bar"
+          ]
+        },
+        {
+          "file": "src\\services\\local-inference\\device-bridge.ts",
+          "name": "DeviceBridge",
+          "tokens": [
+            "device",
+            "bridge"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "download",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\local-inference\\DownloadProgress.tsx",
+          "name": "DownloadProgress",
+          "tokens": [
+            "download",
+            "progress"
+          ]
+        },
+        {
+          "file": "src\\components\\local-inference\\DownloadQueue.tsx",
+          "name": "DownloadQueue",
+          "tokens": [
+            "download",
+            "queue"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "first",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\local-inference\\FirstRunOffer.tsx",
+          "name": "FirstRunOffer",
+          "tokens": [
+            "first",
+            "run",
+            "offer"
+          ]
+        },
+        {
+          "file": "src\\components\\shell\\FirstRunShell.tsx",
+          "name": "FirstRunShell",
+          "tokens": [
+            "first",
+            "run",
+            "shell"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "routing",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\local-inference\\RoutingMatrix.tsx",
+          "name": "RoutingMatrix",
+          "tokens": [
+            "routing",
+            "matrix"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\vault-tabs\\RoutingTab.tsx",
+          "name": "RoutingTab",
+          "tokens": [
+            "routing",
+            "tab"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "terminal",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\pages\\ChatView.tsx",
+          "name": "TerminalChannelPanel",
+          "tokens": [
+            "terminal",
+            "channel",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\views\\TerminalPluginView.tsx",
+          "name": "TerminalPluginView",
+          "tokens": [
+            "terminal",
+            "plugin",
+            "view"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "database",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\pages\\DatabasePageView.tsx",
+          "name": "DatabasePageView",
+          "tokens": [
+            "database",
+            "page",
+            "view"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\DatabaseView.tsx",
+          "name": "DatabaseView",
+          "tokens": [
+            "database",
+            "view"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "memory",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\pages\\MemoryDetailPanel.tsx",
+          "name": "MemoryDetailPanel",
+          "tokens": [
+            "memory",
+            "detail",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\MemoryViewerView.tsx",
+          "name": "MemoryViewerView",
+          "tokens": [
+            "memory",
+            "viewer",
+            "view"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "plugins",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\pages\\PluginsPageView.tsx",
+          "name": "PluginsPageView",
+          "tokens": [
+            "plugins",
+            "page",
+            "view"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\PluginsView.tsx",
+          "name": "PluginsView",
+          "tokens": [
+            "plugins",
+            "view"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "runtime",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\pages\\RuntimeView.tsx",
+          "name": "RuntimeView",
+          "tokens": [
+            "runtime",
+            "view"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\RuntimeSettingsSection.tsx",
+          "name": "RuntimeSettingsSection",
+          "tokens": [
+            "runtime",
+            "settings",
+            "section"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "skills",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\pages\\skill-detail-panel.tsx",
+          "name": "SkillsModalView",
+          "tokens": [
+            "skills",
+            "modal",
+            "view"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\SkillsView.tsx",
+          "name": "SkillsView",
+          "tokens": [
+            "skills",
+            "view"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "install",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\pages\\skill-marketplace.tsx",
+          "name": "InstallModal",
+          "tokens": [
+            "install",
+            "modal"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\vault-tabs\\OverviewTab.tsx",
+          "name": "InstallSheet",
+          "tokens": [
+            "install",
+            "sheet"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "workflow",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\pages\\WorkflowEditor.tsx",
+          "name": "WorkflowEditor",
+          "tokens": [
+            "workflow",
+            "editor"
+          ]
+        },
+        {
+          "file": "src\\components\\pages\\WorkflowGraphViewer.tsx",
+          "name": "WorkflowGraphViewer",
+          "tokens": [
+            "workflow",
+            "graph",
+            "viewer"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "policy",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\policy-controls\\PolicyToggle.tsx",
+          "name": "PolicyToggle",
+          "tokens": [
+            "policy",
+            "toggle"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\PolicyControlsView.tsx",
+          "name": "PolicyControlsView",
+          "tokens": [
+            "policy",
+            "controls",
+            "view"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "subscription",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\settings\\ProviderPanels.tsx",
+          "name": "SubscriptionPanel",
+          "tokens": [
+            "subscription",
+            "panel"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\SubscriptionStatus.tsx",
+          "name": "SubscriptionStatus",
+          "tokens": [
+            "subscription",
+            "status"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "vault",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\settings\\SecretsManagerSection.tsx",
+          "name": "VaultModal",
+          "tokens": [
+            "vault",
+            "modal"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\VaultInventoryPanel.tsx",
+          "name": "VaultInventoryPanel",
+          "tokens": [
+            "vault",
+            "inventory",
+            "panel"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "wallet",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\settings\\WalletKeysSection.tsx",
+          "name": "WalletKeysSection",
+          "tokens": [
+            "wallet",
+            "keys",
+            "section"
+          ]
+        },
+        {
+          "file": "src\\components\\settings\\WalletRpcSection.tsx",
+          "name": "WalletRpcSection",
+          "tokens": [
+            "wallet",
+            "rpc",
+            "section"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "setup",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\setup\\setup-form-primitives.tsx",
+          "name": "SetupField",
+          "tokens": [
+            "setup",
+            "field"
+          ]
+        },
+        {
+          "file": "src\\components\\setup\\setup-step-chrome.tsx",
+          "name": "SetupStepDivider",
+          "tokens": [
+            "setup",
+            "step",
+            "divider"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "pairing",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\components\\shell\\PairingCommandHint.tsx",
+          "name": "PairingCommandHint",
+          "tokens": [
+            "pairing",
+            "command",
+            "hint"
+          ]
+        },
+        {
+          "file": "src\\components\\shell\\PairingView.tsx",
+          "name": "PairingView",
+          "tokens": [
+            "pairing",
+            "view"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "content",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\content-packs\\load-pack.ts",
+          "name": "ContentPackLoadError",
+          "tokens": [
+            "content",
+            "pack",
+            "load",
+            "error"
+          ]
+        },
+        {
+          "file": "src\\layouts\\content-layout\\content-layout.tsx",
+          "name": "ContentLayout",
+          "tokens": [
+            "content",
+            "layout"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "workspace",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\layouts\\workspace-layout\\workspace-layout.tsx",
+          "name": "WorkspaceLayout",
+          "tokens": [
+            "workspace",
+            "layout"
+          ]
+        },
+        {
+          "file": "src\\layouts\\workspace-layout\\workspace-mobile-sidebar-controls.hooks.ts",
+          "name": "WorkspaceMobileSidebarControlsContext",
+          "tokens": [
+            "workspace",
+            "mobile",
+            "sidebar",
+            "controls",
+            "context"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "pty",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\slots\\task-coordinator-slots.tsx",
+          "name": "PtyConsoleBase",
+          "tokens": [
+            "pty",
+            "console",
+            "base"
+          ]
+        },
+        {
+          "file": "src\\state\\PtySessionsContext.hooks.ts",
+          "name": "PtySessionsCtx",
+          "tokens": [
+            "pty",
+            "sessions",
+            "ctx"
+          ]
+        }
+      ]
+    },
+    {
+      "token": "translation",
+      "count": 2,
+      "entries": [
+        {
+          "file": "src\\state\\TranslationContext.hooks.ts",
+          "name": "TranslationCtx",
+          "tokens": [
+            "translation",
+            "ctx"
+          ]
+        },
+        {
+          "file": "src\\state\\TranslationProvider.tsx",
+          "name": "TranslationProvider",
+          "tokens": [
+            "translation",
+            "provider"
+          ]
+        }
+      ]
+    }
+  ],
+  "suffixSiblings": [
+    {
+      "base": "PromptCard",
+      "variant": "PromptCardGrid",
+      "file": "src\\cloud-ui\\components\\brand\\prompt-card.tsx",
+      "suffix": "grid"
+    },
+    {
+      "base": "DashboardDataList",
+      "variant": "DashboardDataListMobile",
+      "file": "src\\cloud-ui\\components\\data-list\\dashboard-data-list.tsx",
+      "suffix": "mobile"
+    },
+    {
+      "base": "DashboardDataList",
+      "variant": "DashboardDataListCard",
+      "file": "src\\cloud-ui\\components\\data-list\\dashboard-data-list.tsx",
+      "suffix": "card"
+    },
+    {
+      "base": "Sidebar",
+      "variant": "SidebarBody",
+      "file": "src\\components\\composites\\sidebar\\sidebar-body.tsx",
+      "suffix": "body"
+    },
+    {
+      "base": "SidebarItem",
+      "variant": "SidebarItemBody",
+      "file": "src\\components\\composites\\sidebar\\sidebar-content.tsx",
+      "suffix": "body"
+    },
+    {
+      "base": "Sidebar",
+      "variant": "SidebarHeader",
+      "file": "src\\components\\composites\\sidebar\\sidebar-header.tsx",
+      "suffix": "header"
+    },
+    {
+      "base": "Sidebar",
+      "variant": "SidebarPanel",
+      "file": "src\\components\\composites\\sidebar\\sidebar-panel.tsx",
+      "suffix": "panel"
+    },
+    {
+      "base": "AdminDialog",
+      "variant": "AdminDialogHeader",
+      "file": "src\\components\\ui\\admin-dialog.tsx",
+      "suffix": "header"
+    },
+    {
+      "base": "AdminSegmentedTab",
+      "variant": "AdminSegmentedTabList",
+      "file": "src\\components\\ui\\admin-dialog.tsx",
+      "suffix": "list"
+    }
+  ]
+}

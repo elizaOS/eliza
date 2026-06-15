@@ -55,7 +55,7 @@ describe("submitPluginToRegistry", () => {
         skipValidation: true,
         yes: true,
       }),
-    ).rejects.toThrow(/packages\/registry/);
+    ).rejects.toThrow(/community registry lives in the elizaOS monorepo/);
   });
 
   it("rejects malformed explicit registry repositories", async () => {

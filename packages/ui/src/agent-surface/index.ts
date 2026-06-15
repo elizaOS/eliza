@@ -6,11 +6,13 @@
 
 export { AgentElementOverlay } from "./AgentElementOverlay";
 export {
-  AgentSurfaceContext,
   AgentSurfaceProvider,
   type AgentSurfaceProviderProps,
-  useAgentSurface,
 } from "./AgentSurfaceContext";
+export {
+  AgentSurfaceContext,
+  useAgentSurface,
+} from "./AgentSurfaceContext.hooks";
 export {
   handleAgentSurfaceCapability,
   isAgentSurfaceCapability,
@@ -23,6 +25,8 @@ export {
   IconTag,
   type IconTagProps,
 } from "./components";
+export { AgentSurfaceElementReporter } from "./element-reporter";
+export { useAgentSurfaceElementReporter } from "./element-reporter.hooks";
 export {
   getOrCreateViewRegistry,
   getViewRegistry,

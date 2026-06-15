@@ -41,6 +41,8 @@
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
+      "@elizaos/vault": ["../../packages/vault/src/index.ts"],
+      "@elizaos/vault/*": ["../../packages/vault/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
       "@elizaos/plugin-app-manager": [
@@ -53,6 +55,10 @@
       "@elizaos/plugin-computeruse": [
         "../../plugins/plugin-computeruse/src/index.ts"
       ],
+      "@elizaos/plugin-registry": [
+        "../../plugins/plugin-registry/src/index.ts"
+      ],
+      "@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/src/*"],
       "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
       "@elizaos/plugin-task-coordinator": [
         "../../plugins/plugin-task-coordinator/src/index.ts"

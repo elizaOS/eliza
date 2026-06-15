@@ -1,9 +1,8 @@
 /**
  * Admin Docker Container Logs API
  *
- * TODO(node-only): blocked from Workers due to `ssh2` (DockerSSHClient).
- * Move to a Node sidecar or replace SSH with a Workers-friendly Docker control
- * plane before re-enabling.
+ * Worker boundary: DockerSSHClient depends on `ssh2`, which workerd cannot
+ * load. Logs remain on the Node sidecar / Docker control-plane path.
  */
 
 import { Hono } from "hono";

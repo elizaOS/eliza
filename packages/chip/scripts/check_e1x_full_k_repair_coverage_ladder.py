@@ -75,7 +75,11 @@ def main() -> int:
         "missing inputs: " + ", ".join(missing),
     )
     checks.append(
-        {"id": "e1x_full_k_repair_coverage_ladder_inputs_present", "status": status, "detail": detail}
+        {
+            "id": "e1x_full_k_repair_coverage_ladder_inputs_present",
+            "status": status,
+            "detail": detail,
+        }
     )
 
     workplan = load_json(FULL_OUTPUT_WORKPLAN) if FULL_OUTPUT_WORKPLAN.is_file() else {}
@@ -97,22 +101,24 @@ def main() -> int:
         "full-K repair coverage ladder dependency mismatch",
     )
     checks.append(
-        {"id": "e1x_full_k_repair_coverage_ladder_dependencies_pass", "status": status, "detail": detail}
+        {
+            "id": "e1x_full_k_repair_coverage_ladder_dependencies_pass",
+            "status": status,
+            "detail": detail,
+        }
     )
 
     rungs: list[dict[str, int | float | str]] = []
     for name, rows_per_layer, path, expected_sha in RUNG_REPORTS:
         report = load_json(path) if path.is_file() else {}
         summary = report.get("summary", {})
-        rung = {
+        rung: dict[str, int | float | str] = {
             "name": name,
             "rows_per_layer": rows_per_layer,
             "row_count": int(summary.get("executed_stratified_full_k_row_count", 0)),
             "mac_count": int(summary.get("executed_stratified_full_k_mac_count", 0)),
             "touched_logical_core_count": int(summary.get("touched_logical_core_count", 0)),
-            "normal_touched_remapped_rows": int(
-                summary.get("normal_touched_remapped_rows", 0)
-            ),
+            "normal_touched_remapped_rows": int(summary.get("normal_touched_remapped_rows", 0)),
             "high_failure_touched_remapped_rows": int(
                 summary.get("high_failure_touched_remapped_rows", 0)
             ),
@@ -157,8 +163,12 @@ def main() -> int:
     monotonic_ok = (
         row_counts == expected_rows
         and mac_counts == expected_macs
-        and all(row_counts[index] == row_counts[index - 1] * 2 for index in range(1, len(row_counts)))
-        and all(mac_counts[index] == mac_counts[index - 1] * 2 for index in range(1, len(mac_counts)))
+        and all(
+            row_counts[index] == row_counts[index - 1] * 2 for index in range(1, len(row_counts))
+        )
+        and all(
+            mac_counts[index] == mac_counts[index - 1] * 2 for index in range(1, len(mac_counts))
+        )
         and all(
             int(rungs[index]["touched_logical_core_count"])
             > int(rungs[index - 1]["touched_logical_core_count"])
@@ -172,7 +182,11 @@ def main() -> int:
         "repair-aware full-K coverage ladder is not monotonic",
     )
     checks.append(
-        {"id": "e1x_full_k_repair_coverage_ladder_monotonic_gain", "status": status, "detail": detail}
+        {
+            "id": "e1x_full_k_repair_coverage_ladder_monotonic_gain",
+            "status": status,
+            "detail": detail,
+        }
     )
 
     max_rows = row_counts[-1] if row_counts else 0
@@ -191,7 +205,11 @@ def main() -> int:
         "full-K repair ladder blocker boundary mismatch",
     )
     checks.append(
-        {"id": "e1x_full_k_repair_coverage_ladder_preserves_blocker", "status": status, "detail": detail}
+        {
+            "id": "e1x_full_k_repair_coverage_ladder_preserves_blocker",
+            "status": status,
+            "detail": detail,
+        }
     )
 
     failures = [check for check in checks if check["status"] != "pass"]

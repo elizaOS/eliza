@@ -27,7 +27,6 @@ export {
   BrandTabsResponsive,
   BrandTabsTrigger,
   brandButtonVariants,
-  CloudSkyBackground,
   CornerBrackets,
   DashboardSection,
   DashboardStatCard,
@@ -44,8 +43,6 @@ export {
 export {
   CodeDisplay,
   type CodeDisplayProps,
-  JsonEditorWithHighlight,
-  JsonSyntaxHighlighter,
   MonacoEditorSkeleton,
 } from "../cloud-ui/components/code";
 export {
@@ -78,12 +75,6 @@ export {
   ListActionMenu,
   type ListActionMenuItem,
   type ListActionMenuProps,
-  ResponsiveEntityList,
-  type ResponsiveEntityListColumn,
-  type ResponsiveEntityListProps,
-  StatSummary,
-  type StatSummaryItem,
-  type StatSummaryProps,
 } from "../cloud-ui/components/data-list";
 export {
   type ApiEndpointCardEndpoint,
@@ -174,8 +165,10 @@ export * from "../utils/trajectory-format";
 export * from "./accounts/EditableAccountLabel";
 export * from "./apps/extensions/registry";
 export * from "./apps/extensions/surface";
+export * from "./apps/extensions/surface.helpers";
 export * from "./apps/extensions/types";
 export * from "./apps/GameView";
+export * from "./apps/GameView.helpers";
 export * from "./apps/GameViewOverlay";
 export * from "./apps/overlay-app-api";
 export * from "./apps/overlay-app-registry";
@@ -184,6 +177,7 @@ export * from "./apps/surfaces/registry";
 export * from "./apps/surfaces/types";
 export * from "./character/CharacterEditor";
 export * from "./character/CharacterRoster";
+export * from "./character/CharacterRoster.helpers";
 export * from "./character/character-greeting";
 export * from "./chat/AccountRequiredCard";
 export * from "./chat/AgentActivityBox";
@@ -195,6 +189,9 @@ export * from "./chat/TasksEventsPanel";
 export * from "./chat/widgets/shared";
 export * from "./chat/widgets/types";
 export * from "./cloud/CloudSourceControls";
+export { SidebarContent } from "./composites/sidebar/sidebar-content";
+export { SidebarPanel } from "./composites/sidebar/sidebar-panel";
+export { SidebarScrollRegion } from "./composites/sidebar/sidebar-scroll-region";
 export * from "./config-ui";
 export * from "./connectors/BlueBubblesStatusPanel";
 export * from "./connectors/ConnectorAccountAuditList";
@@ -204,6 +201,7 @@ export * from "./connectors/ConnectorAccountPrivacySelector";
 export * from "./connectors/ConnectorAccountPurposeSelector";
 export * from "./connectors/ConnectorAccountSetupScope";
 export * from "./connectors/ConnectorSetupPanel";
+export * from "./connectors/ConnectorSetupPanel.helpers";
 export * from "./connectors/DiscordLocalConnectorPanel";
 export * from "./connectors/OwnerAgentConnectorSetupPanel";
 export * from "./connectors/SignalQrOverlay";
@@ -224,6 +222,7 @@ export * from "./pages/ElizaCloudDashboard";
 export * from "./pages/HeartbeatsView";
 export * from "./pages/LogsView";
 export * from "./pages/MediaGalleryView";
+export * from "./pages/MemoryDetailPanel";
 export * from "./pages/MemoryViewerView";
 export * from "./pages/PageScopedChatPane";
 export * from "./pages/PluginsPageView";
@@ -232,16 +231,15 @@ export * from "./pages/RelationshipsView";
 export * from "./pages/ReleaseCenterView";
 export * from "./pages/RuntimeView";
 export * from "./pages/SecretsView";
-// SettingsView, StreamView omitted — App.tsx lazy-loads them.
-export * from "./pages/SkillsView";
+// SettingsView, SkillsView, StreamView, TrajectoriesView omitted — App.tsx
+// lazy-loads them, and exporting them here folds those route chunks into main.
 export * from "./pages/TaskEditor";
 export * from "./pages/TasksPageView";
-export * from "./pages/TrajectoriesView";
 export * from "./pages/TrajectoryDetailView";
-// VectorBrowserView omitted — it is a heavy three.js (WebGL) surface lazy-loaded
-// inside DatabasePageView so neither it nor three ship in the always-loaded
-// @elizaos/ui barrel. Import it directly from ./pages/VectorBrowserView if a
-// caller genuinely needs it.
+// VectorBrowserView lives in @elizaos/plugin-vector-browser — it is a heavy
+// three.js (WebGL) surface loaded dynamically so neither it nor three ship in
+// the always-loaded @elizaos/ui barrel. Its pure layout/parse helpers remain
+// here in ./pages/vector-browser-utils (re-exported from the root barrel).
 export * from "./pages/WorkflowEditor";
 export * from "./pages/workflow-graph-events";
 export * from "./settings/ApiKeyConfig";
@@ -252,9 +250,11 @@ export * from "./settings/ProviderSwitcher";
 export * from "./settings/permission-types";
 export * from "./settings/SubscriptionStatus";
 export * from "./settings/VoiceConfigView";
+export * from "./settings/VoiceConfigView.helpers";
 export * from "./shared/AppPageSidebar";
 export * from "./shared/confirm-delete-control";
 export * from "./shared/LanguageDropdown";
+export * from "./shared/LanguageDropdown.helpers";
 export * from "./shared/ThemeToggle";
 export * from "./shell/BugReportModal";
 export * from "./shell/CommandPalette";
@@ -302,15 +302,18 @@ export { SaveFooter as ConfigSaveFooter } from "./ui/save-footer";
 export * from "./ui/scroll-area";
 export * from "./ui/select";
 export * from "./ui/separator";
-export * from "./ui/sheet";
 export * from "./ui/skeleton";
+export * from "./ui/skeleton-layouts";
 export * from "./ui/slider";
 export * from "./ui/status-badge";
+export * from "./ui/status-badge.helpers";
 export * from "./ui/switch";
 export * from "./ui/table";
 export * from "./ui/tabs";
 export * from "./ui/textarea";
 export * from "./ui/toggle";
 export * from "./ui/tooltip";
+export * from "./ui/tooltip-extended";
 export * from "./voice-pill";
 export * from "./workspace/AppWorkspaceChrome";
+export * from "./workspace/AppWorkspaceChrome.hooks";

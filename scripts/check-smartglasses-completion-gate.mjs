@@ -1407,19 +1407,19 @@ function runSelfTest() {
   ) {
     failures.push("stale smartglasses reference fixture failed");
   }
-  const staleIncomplete = {
+  const staleFailureReport = {
     ...completeReport,
     ok: false,
     finishedAt: "2026-05-20T00:00:00Z",
     audio: [],
   };
-  const incompleteFailures = hardwareFailures(staleIncomplete, 1);
+  const reportFailures = hardwareFailures(staleFailureReport, 1);
   for (const expected of [
     "missingRightLensAudioChunk",
     "reportNotMarkedOk",
     "reportStale",
   ]) {
-    if (!incompleteFailures.includes(expected)) {
+    if (!reportFailures.includes(expected)) {
       failures.push(`missing fixture failure ${expected}`);
     }
   }

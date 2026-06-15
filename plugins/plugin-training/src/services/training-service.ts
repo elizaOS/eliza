@@ -43,7 +43,7 @@ interface TrajectoryServiceLike {
  * `trajectories` DB service and builds privacy-filtered export bundles via
  * `buildTrajectoryExportBundle`. GPU fine-tunes, Ollama import, model
  * activation, and benchmarking are handled by other surfaces — this service
- * does not stub them.
+ * does not emulate them.
  */
 export class TrainingService implements TrainingServiceWithRuntime {
   private readonly listeners = new Set<(event: unknown) => void>();

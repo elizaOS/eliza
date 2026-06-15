@@ -53,7 +53,7 @@ const DEFAULT_APP_ROUTE_PLUGIN_MODULES = [
   "@elizaos/plugin-vincent",
   "@elizaos/plugin-shopify-ui",
   "@elizaos/plugin-steward-app",
-  "@elizaos/plugin-lifeops",
+  "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-github",
   "@elizaos/plugin-computeruse",
   "@elizaos/plugin-elizacloud",

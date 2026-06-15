@@ -5,12 +5,10 @@
  * llama.cpp path used by Eliza-1 on desktop and mobile.
  *
  * What this class deliberately does NOT do:
- *   - Own the FFI context. The `ElizaInferenceFfi` handle is created by the
- *     voice lifecycle service today; the runtime provider passed to this
- *     class is the seam where ownership gets resolved.
- *   - Route vision describe, slot save/restore, and parallel-slot resize
- *     through the dispatcher. These still live on `mtpLlamaServer` and are
- *     called from `engine.ts` directly until the FFI runner gains parity.
+ *   - Own the FFI context. The runtime provider passed to this class owns
+ *     native load/unload and hands back the binding, context, and tokenizer.
+ *   - Decode image bytes or call mtmd directly. Vision requests are validated
+ *     here, then forwarded to runtimes that expose `describeImage`.
  */
 
 import type {
@@ -38,11 +36,11 @@ import type {
  *      `generate()` against the requested model, plus a tokenizer that
  *      matches that model's vocab. `release()` tears everything down.
  *
- * Two production implementations are expected:
+ * Production runtime implementations:
  *   - libelizainference path → wraps `ElizaInferenceFfi` via
  *     `wrapElizaInferenceFfi()` from `services/llm-streaming-binding.ts`.
- *   - desktop libllama+shim path → mirrors the AOSP adapter pattern.
- *     Pending — see `FFI_BACKEND_WIREUP_PLAN.md` Step B.
+ *   - desktop libllama+shim path → mirrors the AOSP adapter pattern and is
+ *     provided by `desktop-ffi-backend-runtime.ts`.
  */
 export interface FfiBackendRuntime {
 	supported(): boolean;
@@ -52,7 +50,7 @@ export interface FfiBackendRuntime {
 	 * Optional parallel-slot pool surface. When the runtime exposes a
 	 * ctx pool (the desktop libllama path does), `parallelSlots()`
 	 * reports the live count and `resizeParallel(N)` grows/shrinks it.
-	 * Runtimes without a pool report 1 and treat resize as no-op.
+	 * Runtimes without a pool report 1 and ignore resize requests.
 	 */
 	parallelSlots?(): number;
 	resizeParallel?(target: number): Promise<boolean>;
@@ -208,14 +206,14 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		conversationId: string,
 		slotId: number,
 	): Promise<void> {
-		if (!this.session) return; // no-op when not loaded
+		if (!this.session) return; // no active session to persist
 		const { binding } = this.session;
 		if (!binding.llmStreamSaveSlot) return; // adapter doesn't support save
 		const filename = slotFilename(conversationId, slotId);
 		// llmStreamSaveSlot is per-stream in the binding API; the desktop
 		// adapter currently saves the ctx-wide seq=0 state, so the stream
 		// handle is informational. We pass the runner's most recent
-		// stream id when available — empty-bigint placeholder otherwise.
+		// stream id when available; 0n is the binding-level sentinel.
 		binding.llmStreamSaveSlot({ stream: 0n, filename });
 	}
 
@@ -280,7 +278,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 	/**
 	 * Grow or shrink the runtime's ctx pool to `target` slots. Returns
 	 * false when the runtime has no pool surface (in which case parallel
-	 * resize is silently a no-op — the conversation registry tolerates
+	 * resize is ignored — the conversation registry tolerates
 	 * fixed 1-slot operation).
 	 */
 	async resizeParallel(target: number): Promise<boolean> {
@@ -330,7 +328,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		};
 		if (!runtime.describeImage) {
 			throw new Error(
-				"[ffi-streaming-backend] runtime does not implement describeImage",
+				"[ffi-streaming-backend] runtime lacks describeImage support",
 			);
 		}
 		return runtime.describeImage({

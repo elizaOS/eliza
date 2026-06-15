@@ -1,5 +1,5 @@
 import type http from "node:http";
-// === Phase 4F ===
+// Consolidated from packages/agent/src/api/plugin-routes.ts.
 // Moved from packages/agent/src/api/plugin-routes.ts into the
 // @elizaos/plugin-registry plugin. Agent-internal helpers now reach this
 // handler via the @elizaos/agent public package surface, so the file no
@@ -609,9 +609,8 @@ export async function handlePluginRoutes(
       }
     }
 
-    // Attach widget declarations: prefer each plugin instance's own
-    // `widgets` field (canonical), fall back to the static map for plugins
-    // that have not migrated yet.
+    // Attach widget declarations from each plugin instance's own `widgets`
+    // field, with the agent compatibility map as a final empty fallback.
     const runtimePlugins = state.runtime?.plugins ?? [];
     const normalizeId = (value: string): string => {
       let v = value.trim();

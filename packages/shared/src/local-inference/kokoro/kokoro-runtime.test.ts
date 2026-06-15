@@ -75,7 +75,7 @@ describe("KokoroGgufRuntime", () => {
     ).rejects.toThrow("503");
   });
 
-  it("dispose is a no-op (stateless adapter)", () => {
+  it("dispose leaves the stateless adapter unchanged", () => {
     const runtime = new KokoroGgufRuntime({
       serverUrl: "http://127.0.0.1:18789",
       modelId: "kokoro-v1.0",

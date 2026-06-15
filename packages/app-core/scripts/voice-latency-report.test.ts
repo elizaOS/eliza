@@ -76,8 +76,8 @@ describe("renderVoiceLatencyReport", () => {
     expect(text).toContain("150ms"); // p50 of ttftMs is 200, but ttapMs trace shows 380; min ttft is 150
     // The empty histogram prints — not 0 for percentiles.
     expect(text).toMatch(/ttapMs.*—/);
-    // Incomplete trace flagged + missing list shown.
-    expect(text).toContain("[incomplete]");
+    // Incomplete/partial trace flagged + missing list shown.
+    expect(text).toMatch(/\[(?:incomplete|partial)\]/);
     expect(text).toContain("missing: tts-first-audio-chunk");
     expect(text).toContain("anomaly: duplicate mark");
     // Complete trace shows derived values.

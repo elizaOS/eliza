@@ -153,7 +153,7 @@ export function normalizeDiscordToken(raw?: string | null): string | undefined {
 }
 
 /**
- * Gets the multi-account configuration from runtime settings
+ * Gets the account configuration records from runtime settings
  */
 export function getMultiAccountConfig(
 	runtime: IAgentRuntime,
@@ -384,7 +384,7 @@ export function listEnabledDiscordAccounts(
 }
 
 /**
- * Checks if multi-account mode is enabled
+ * Checks whether more than one enabled account is configured
  */
 export function isMultiAccountEnabled(runtime: IAgentRuntime): boolean {
 	const accounts = listEnabledDiscordAccounts(runtime);

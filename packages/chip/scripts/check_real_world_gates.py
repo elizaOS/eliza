@@ -234,9 +234,9 @@ def validate_gap_manifest(manifest: dict, failures: list[str]) -> None:
             elif not all(isinstance(item, str) and item.strip() for item in commands):
                 failures.append(f"{gap_id}: future_cli_evidence_commands must be non-empty strings")
             claim_boundary = gap.get("claim_boundary")
-            if not isinstance(claim_boundary, str) or "not implemented" not in claim_boundary:
+            if not isinstance(claim_boundary, str) or "not available" not in claim_boundary:
                 failures.append(
-                    f"{gap_id}: claim_boundary must state the feature is not implemented"
+                    f"{gap_id}: claim_boundary must state the product evidence is not available"
                 )
 
     missing_ids = sorted(REQUIRED_GAP_IDS - seen_ids)

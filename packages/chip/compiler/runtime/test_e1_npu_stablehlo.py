@@ -6,9 +6,11 @@ from e1_npu_stablehlo import (
     OP_BATCH_MATMUL,
     OP_BIAS_ADD,
     OP_CONVOLUTION,
+    OP_DECODER_BLOCK,
     OP_DOT,
     OP_DOT_GENERAL,
     OP_MLP,
+    OP_TRANSFORMER_BLOCK,
     SUPPORTED_PRECISIONS,
     Add,
     AttentionAv,
@@ -19,9 +21,11 @@ from e1_npu_stablehlo import (
     Dot,
     DotGeneral,
     Mlp,
+    ModernDecoderBlock,
     StableHloParseError,
     StableHloValidationError,
     TensorType,
+    TransformerBlock,
     materialize_lowering_graph,
     materialize_module_lowering_graphs,
     materialize_op_lowering_graph,
@@ -174,6 +178,57 @@ def _attention_av_payload(precision: str = "int8") -> dict:
     }
 
 
+def _transformer_block_payload(precision: str = "int8") -> dict:
+    return {
+        "schema": "eliza.e1_npu_stablehlo_subset.v1",
+        "name": f"{precision}_transformer_block_smoke",
+        "ops": [
+            {
+                "op": OP_TRANSFORMER_BLOCK,
+                "name": "tx0",
+                "input_type": {"shape": [2, 2], "dtype": precision},
+                "attention_weights_type": {"shape": [1, 1, 2, 2], "dtype": precision},
+                "value_type": {"shape": [1, 1, 2, 2], "dtype": precision},
+                "output_proj_type": {"shape": [2, 2], "dtype": precision},
+                "bias_type": {"shape": [2], "dtype": precision},
+                "mlp_up_type": {"shape": [2, 3], "dtype": precision},
+                "mlp_down_type": {"shape": [3, 2], "dtype": precision},
+                "result_type": {"shape": [2, 2], "dtype": precision},
+                "activation": "relu",
+                "precision": precision,
+            }
+        ],
+    }
+
+
+def _decoder_block_payload(precision: str = "int8") -> dict:
+    return {
+        "schema": "eliza.e1_npu_stablehlo_subset.v1",
+        "name": f"{precision}_decoder_block_smoke",
+        "ops": [
+            {
+                "op": OP_DECODER_BLOCK,
+                "name": "decoder0",
+                "input_type": {"shape": [2, 2], "dtype": precision},
+                "norm1_type": {"shape": [2], "dtype": precision},
+                "norm2_type": {"shape": [2], "dtype": precision},
+                "q_weight_type": {"shape": [2, 2], "dtype": precision},
+                "k_weight_type": {"shape": [2, 2], "dtype": precision},
+                "v_weight_type": {"shape": [2, 2], "dtype": precision},
+                "attention_bias_type": {"shape": [2], "dtype": precision},
+                "cos_type": {"shape": [1], "dtype": precision},
+                "sin_type": {"shape": [1], "dtype": precision},
+                "swiglu_up_type": {"shape": [2, 2], "dtype": precision},
+                "swiglu_gate_type": {"shape": [2, 2], "dtype": precision},
+                "swiglu_down_type": {"shape": [2, 2], "dtype": precision},
+                "result_type": {"shape": [2, 2], "dtype": precision},
+                "swiglu_activation": "linear_gate",
+                "precision": precision,
+            }
+        ],
+    }
+
+
 def test_stablehlo_subset_accepts_low_precision_rank2_dot_smoke_precisions():
     expected = {
         "int8",
@@ -219,6 +274,18 @@ def test_stablehlo_subset_accepts_attention_qk_and_av_smoke_records():
         assert isinstance(av_module.ops[0], AttentionAv)
         assert serialize_module(qk_module)["ops"][0]["precision"] == precision
         assert serialize_module(av_module)["ops"][0]["precision"] == precision
+
+
+def test_stablehlo_subset_accepts_fused_transformer_and_decoder_block_records():
+    transformer_module = parse_module(_transformer_block_payload())
+    decoder_module = parse_module(_decoder_block_payload())
+
+    assert validate_module(transformer_module) == []
+    assert validate_module(decoder_module) == []
+    assert isinstance(transformer_module.ops[0], TransformerBlock)
+    assert isinstance(decoder_module.ops[0], ModernDecoderBlock)
+    assert serialize_module(transformer_module)["ops"][0]["op"] == OP_TRANSFORMER_BLOCK
+    assert serialize_module(decoder_module)["ops"][0]["op"] == OP_DECODER_BLOCK
 
 
 def test_stablehlo_subset_rejects_unsupported_dot_precision_and_tile_overflow():
@@ -421,6 +488,52 @@ def test_stablehlo_subset_plans_attention_qk_and_av_runtime_lowering():
         assert av_plan.output_shape == (1, 2, 2, 3)
         assert av_plan.required_graph_fields == ("attention", "value")
         assert "attention_av_context_smoke_only" in av_plan.claim_boundary
+
+
+def test_stablehlo_subset_plans_fused_block_runtime_lowerings():
+    transformer_plan = plan_module_lowerings(parse_module(_transformer_block_payload()))[0]
+    decoder_plan = plan_module_lowerings(parse_module(_decoder_block_payload()))[0]
+
+    assert transformer_plan.runtime_api == "lower_transformer_block_smoke"
+    assert transformer_plan.schema == "eliza.e1_npu_transformer_block_smoke.v1"
+    assert transformer_plan.lowering_precision == "int8"
+    assert transformer_plan.input_shape == (2, 2)
+    assert transformer_plan.output_shape == (2, 2)
+    assert transformer_plan.required_graph_fields == (
+        "input",
+        "attention",
+        "value",
+        "attention_bias",
+        "mlp_up_weight",
+        "mlp_down_weight",
+    )
+    assert transformer_plan.static_graph_fields == {"requant_shift": 0}
+    assert "single_head_transformer_block_smoke_only" in transformer_plan.claim_boundary
+
+    assert decoder_plan.runtime_api == "lower_modern_decoder_block_smoke"
+    assert decoder_plan.schema == "eliza.e1_npu_modern_decoder_block_smoke.v1"
+    assert decoder_plan.lowering_precision == "int8"
+    assert decoder_plan.input_shape == (2, 2)
+    assert decoder_plan.output_shape == (2, 2)
+    assert decoder_plan.required_graph_fields == (
+        "input",
+        "norm1_weight",
+        "norm2_weight",
+        "q_weight",
+        "k_weight",
+        "v_weight",
+        "attention_bias",
+        "cos",
+        "sin",
+        "swiglu_up_weight",
+        "swiglu_gate_weight",
+        "swiglu_down_weight",
+    )
+    assert decoder_plan.static_graph_fields["attention_mask_mode"] == "full"
+    assert decoder_plan.static_graph_fields["swiglu_activation"] == "linear_gate"
+    assert "modern_decoder_block_single_head_exp2_softmax_smoke_only" in (
+        decoder_plan.claim_boundary
+    )
 
 
 def test_stablehlo_subset_rejects_batch_matmul_unsupported_precision_and_shape():
@@ -690,6 +803,88 @@ def test_stablehlo_subset_materializes_attention_qk_and_av_smoke_graphs_from_pla
     assert av_graph["op"] == OP_ATTENTION_AV
     assert av_graph["precision"] == "int8"
     assert set(av_graph) == {"schema", "dialect", "op", "precision", "attention", "value"}
+
+
+def test_stablehlo_subset_materializes_fused_block_graphs_from_plan():
+    transformer_plan = plan_module_lowerings(parse_module(_transformer_block_payload()))[0]
+    decoder_plan = plan_module_lowerings(parse_module(_decoder_block_payload()))[0]
+
+    transformer_graph = materialize_lowering_graph(
+        transformer_plan,
+        {
+            "input": [[1, -2], [3, 4]],
+            "attention": [[[[1, 0], [0, 1]]]],
+            "value": [[[[2, -1], [-3, 5]]]],
+            "attention_bias": [1, -2],
+            "mlp_up_weight": [[2, -1, 3], [-2, 1, 0]],
+            "mlp_down_weight": [[1, -2], [-3, 4], [2, 1]],
+        },
+    )
+    decoder_graph = materialize_lowering_graph(
+        decoder_plan,
+        {
+            "input": [[3, 4], [5, 12]],
+            "norm1_weight": [64, 64],
+            "norm2_weight": [64, 64],
+            "q_weight": [[1, 0], [0, 1]],
+            "k_weight": [[1, 0], [0, 1]],
+            "v_weight": [[1, 0], [0, 1]],
+            "attention_bias": [0, 0],
+            "cos": [127],
+            "sin": [0],
+            "swiglu_up_weight": [[1, 0], [0, 1]],
+            "swiglu_gate_weight": [[1, 0], [0, 1]],
+            "swiglu_down_weight": [[1, 0], [0, 1]],
+        },
+    )
+
+    assert transformer_graph["schema"] == "eliza.e1_npu_transformer_block_smoke.v1"
+    assert transformer_graph["op"] == OP_TRANSFORMER_BLOCK
+    assert transformer_graph["requant_shift"] == 0
+    assert set(transformer_graph) == {
+        "schema",
+        "dialect",
+        "op",
+        "precision",
+        "requant_shift",
+        "input",
+        "attention",
+        "value",
+        "attention_bias",
+        "mlp_up_weight",
+        "mlp_down_weight",
+    }
+    assert decoder_graph["schema"] == "eliza.e1_npu_modern_decoder_block_smoke.v1"
+    assert decoder_graph["op"] == OP_DECODER_BLOCK
+    assert decoder_graph["attention_mask_mode"] == "full"
+    assert decoder_graph["swiglu_activation"] == "linear_gate"
+    assert set(decoder_graph) == {
+        "schema",
+        "dialect",
+        "op",
+        "precision",
+        "attention_mask_mode",
+        "projection_shift",
+        "rms_epsilon",
+        "rms_inv_shift",
+        "rms_output_shift",
+        "rope_scale_shift",
+        "swiglu_activation",
+        "swiglu_requant_shift",
+        "swiglu_gate_shift",
+        "input",
+        "norm1_weight",
+        "norm2_weight",
+        "q_weight",
+        "k_weight",
+        "v_weight",
+        "attention_bias",
+        "cos",
+        "sin",
+        "swiglu_up_weight",
+        "swiglu_gate_weight",
+        "swiglu_down_weight",
+    }
 
 
 def test_stablehlo_subset_materializes_metadata_backed_runtime_graphs():

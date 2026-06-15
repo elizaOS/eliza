@@ -10,12 +10,19 @@ import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useMediaQuery } from "../../hooks";
-import { isAppsToolTab, titleForTab } from "../../navigation";
+import {
+  type DynamicNavTab,
+  getTabGroups,
+  isAppsToolTab,
+  type TabGroup,
+  titleForTab,
+} from "../../navigation";
 import {
   isDetachedWindowShell,
   resolveWindowShellRoute,
 } from "../../platform/window-shell";
 import { useApp } from "../../state";
+import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import { getOverlayApp } from "../apps/overlay-app-registry";
 import { CloudStatusBadge } from "../cloud/CloudStatusBadge";
 import { OwnerBadge } from "../composites/OwnerBadge";
@@ -26,6 +33,7 @@ import { Button } from "../ui/button";
 import { HEADER_BUTTON_STYLE } from "./ShellHeaderControls";
 
 const MOBILE_HEADER_MEDIA_QUERY = "(max-width: 819px)";
+
 const NAV_LABEL_I18N_KEY: Record<string, string> = {
   Apps: "nav.apps",
   Automations: "nav.automations",
@@ -40,6 +48,17 @@ const NAV_LABEL_I18N_KEY: Record<string, string> = {
   Settings: "nav.settings",
   Stream: "nav.stream",
   Wallet: "nav.wallet",
+};
+
+const NAV_DESCRIPTION_I18N_KEY: Record<string, string> = {
+  Apps: "nav.description.apps",
+  Automations: "nav.description.automations",
+  Browser: "nav.description.browser",
+  Character: "nav.description.character",
+  Chat: "nav.description.chat",
+  Settings: "nav.description.settings",
+  Stream: "nav.description.stream",
+  Wallet: "nav.description.wallet",
 };
 
 const TOPBAR_ICON_BUTTON_CLASSNAME =
@@ -63,12 +82,6 @@ interface HeaderProps {
   hideCloudCredits?: boolean;
   tasksEventsPanelOpen?: boolean;
   onToggleTasksPanel?: () => void;
-  /**
-   * When true, the mobile bottom nav bar is hidden. Used on the chat tab to
-   * create a chat-first experience with no nav visible by default — the nav
-   * reappears when the user navigates to any other tab.
-   */
-  hideNav?: boolean;
 }
 
 function shouldShowMacDesktopTitleBar(): boolean {
@@ -88,12 +101,12 @@ export function Header({
   hideCloudCredits = false,
   tasksEventsPanelOpen = false,
   onToggleTasksPanel,
-  hideNav: _hideNav = false,
 }: HeaderProps) {
   const {
     activeGameRunId,
     activeOverlayApp,
     appRuns,
+    browserEnabled,
     elizaCloudAuthRejected,
     elizaCloudConnected,
     elizaCloudCredits,
@@ -102,6 +115,7 @@ export function Header({
     elizaCloudCreditsLow,
     loadDropStatus,
     ownerName,
+    plugins,
     setState,
     setTab,
     setUiLanguage,
@@ -110,6 +124,7 @@ export function Header({
     t,
     uiLanguage,
     uiTheme,
+    walletEnabled,
   } = useApp();
 
   const isMobileViewport = useMediaQuery(MOBILE_HEADER_MEDIA_QUERY);
@@ -160,18 +175,6 @@ export function Header({
       return;
     }
 
-    document.documentElement.classList.remove("eliza-mobile-bottom-nav");
-
-    return () => {
-      document.documentElement.classList.remove("eliza-mobile-bottom-nav");
-    };
-  }, []);
-
-  useEffect(() => {
-    if (typeof document === "undefined") {
-      return;
-    }
-
     const rootClassList = document.documentElement.classList;
     if (showMacDesktopTitleBar) {
       rootClassList.add(
@@ -193,10 +196,58 @@ export function Header({
     };
   }, [showMacDesktopTitleBar]);
 
+  const streamingEnabled = useMemo(
+    () => plugins.some((plugin) => plugin.id === "streaming" && plugin.enabled),
+    [plugins],
+  );
+  const developerModeEnabled = useIsDeveloperMode();
+
+  // Plugin-contributed nav tabs from each loaded plugin's `app.navTabs`.
+  // Filter out developer-only tabs unless Developer Mode is enabled.
+  const dynamicNavTabs = useMemo<DynamicNavTab[]>(() => {
+    const out: DynamicNavTab[] = [];
+    for (const plugin of plugins) {
+      if (!plugin.enabled) continue;
+      const navTabs = plugin.app?.navTabs;
+      if (!navTabs?.length) continue;
+      const appDeveloperOnly = plugin.app?.developerOnly === true;
+      for (const navTab of navTabs) {
+        const isDeveloperOnly =
+          appDeveloperOnly || navTab.developerOnly === true;
+        if (isDeveloperOnly && !developerModeEnabled) continue;
+        out.push({
+          tabId: navTab.id,
+          label: navTab.label,
+          navGroup: navTab.group,
+        });
+      }
+    }
+    return out;
+  }, [plugins, developerModeEnabled]);
+
   const hideMobileLocalAutomations =
     isMobileViewport &&
     mobileRuntimeMode === "local" &&
     Capacitor.isNativePlatform();
+
+  const tabGroups = useMemo(
+    () =>
+      getTabGroups(
+        streamingEnabled,
+        walletEnabled,
+        browserEnabled,
+        dynamicNavTabs,
+        undefined,
+        !hideMobileLocalAutomations,
+      ),
+    [
+      browserEnabled,
+      hideMobileLocalAutomations,
+      streamingEnabled,
+      walletEnabled,
+      dynamicNavTabs,
+    ],
+  );
 
   useEffect(() => {
     if (
@@ -207,6 +258,10 @@ export function Header({
     }
   }, [hideMobileLocalAutomations, setTab, tab]);
 
+  const settingsTabGroup = useMemo(
+    () => tabGroups.find((group) => group.label === "Settings") ?? null,
+    [tabGroups],
+  );
   const localizeNavLabel = useCallback(
     (label: string) =>
       t(NAV_LABEL_I18N_KEY[label] ?? label, { defaultValue: label }),
@@ -282,6 +337,19 @@ export function Header({
     setTab("apps");
   }, [breadcrumbSourceIsApp, setState, setTab]);
 
+  const localizeTabGroup = useCallback(
+    (group: TabGroup) => ({
+      description:
+        group.description && NAV_DESCRIPTION_I18N_KEY[group.label]
+          ? t(NAV_DESCRIPTION_I18N_KEY[group.label], {
+              defaultValue: group.description,
+            })
+          : group.description,
+      label: localizeNavLabel(group.label),
+    }),
+    [localizeNavLabel, t],
+  );
+
   const breadcrumbNode = useMemo(() => {
     if (!activeAppCrumbLabel) return null;
     const appsLabel = localizeNavLabel("Apps");
@@ -332,8 +400,10 @@ export function Header({
     setTab("settings");
   }, [setState, setTab]);
 
-  const settingsButtonLabel = t("nav.settings", { defaultValue: "Settings" });
-  const isSettingsActive = tab === "settings";
+  const settingsButtonLabel = settingsTabGroup
+    ? localizeTabGroup(settingsTabGroup).label
+    : t("nav.settings", { defaultValue: "Settings" });
+  const isSettingsActive = settingsTabGroup?.tabs.includes(tab) ?? false;
 
   const desktopTaskToggle = onToggleTasksPanel ? (
     <Button
@@ -363,7 +433,7 @@ export function Header({
       className={`${TOPBAR_RIGHT_ICON_BUTTON_CLASSNAME} ${
         isSettingsActive ? TOPBAR_RIGHT_ICON_BUTTON_ACTIVE_CLASSNAME : ""
       }`}
-      onClick={() => setTab("settings")}
+      onClick={() => setTab(settingsTabGroup?.tabs[0] ?? "settings")}
       onPointerDown={stopHeaderPointerPropagation}
       aria-label={settingsButtonLabel}
       title={settingsButtonLabel}
@@ -374,8 +444,6 @@ export function Header({
       <Settings className="pointer-events-none h-4 w-4" />
     </Button>
   );
-
-  const mobileBottomNav = null;
 
   const rightDesktopControls = (
     <div
@@ -427,109 +495,102 @@ export function Header({
   );
 
   return (
-    <>
-      <header
-        className="sticky top-0 z-30 w-full select-none border-b border-border/50 bg-bg/88 "
-        style={{ WebkitUserSelect: "none", userSelect: "none" }}
+    <header
+      className="sticky top-0 z-30 w-full select-none border-b border-border/50 bg-bg/88 "
+      style={{ WebkitUserSelect: "none", userSelect: "none" }}
+    >
+      <div
+        className={showMacDesktopTitleBar ? "pointer-events-auto" : undefined}
+        data-window-titlebar={showMacDesktopTitleBar ? "true" : undefined}
+        data-testid={
+          showMacDesktopTitleBar ? "desktop-window-titlebar" : undefined
+        }
       >
         <div
-          className={showMacDesktopTitleBar ? "pointer-events-auto" : undefined}
-          data-window-titlebar={showMacDesktopTitleBar ? "true" : undefined}
-          data-testid={
-            showMacDesktopTitleBar ? "desktop-window-titlebar" : undefined
+          className={
+            isMobileViewport
+              ? `grid ${
+                  mobileLeft || breadcrumbNode || pageRightExtras
+                    ? "min-h-[2.75rem]"
+                    : "min-h-0"
+                } grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-2`
+              : "grid min-h-[2.375rem] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-3"
           }
+          data-window-titlebar-padding={
+            showMacDesktopTitleBar ? "true" : undefined
+          }
+          style={titlebarPaddingStyle}
         >
-          <div
-            className={
-              isMobileViewport
-                ? `grid ${
-                    mobileLeft || breadcrumbNode || pageRightExtras
-                      ? "min-h-[2.75rem]"
-                      : "min-h-0"
-                  } grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-2`
-                : "grid min-h-[2.375rem] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-3"
-            }
-            data-window-titlebar-padding={
-              showMacDesktopTitleBar ? "true" : undefined
-            }
-            style={titlebarPaddingStyle}
-          >
-            {isMobileViewport ? (
-              <>
-                {/*
-                 * Mobile header — single canonical row that sits directly
-                 * below the system status bar (the body has
-                 * padding-top: env(safe-area-inset-top), so this row's
-                 * sticky `top: 0` lands just under the iPhone notch /
-                 * Dynamic Island and the Android status icons). Buttons at
-                 * the left and right edges naturally bracket the notch.
-                 */}
+          {isMobileViewport ? (
+            <>
+              {/*
+               * Mobile header — single canonical row that sits directly
+               * below the system status bar (the body has
+               * padding-top: env(safe-area-inset-top), so this row's
+               * sticky `top: 0` lands just under the iPhone notch /
+               * Dynamic Island and the Android status icons). Buttons at
+               * the left and right edges naturally bracket the notch.
+               */}
+              <div
+                className="flex min-w-0 items-center justify-start"
+                data-no-camera-drag="true"
+              >
+                {mobileLeft}
+              </div>
+              <div
+                className={
+                  breadcrumbNode
+                    ? "flex h-[2.375rem] min-w-0 items-center justify-center gap-2"
+                    : "pointer-events-none min-w-0"
+                }
+                data-testid={
+                  showMacDesktopTitleBar
+                    ? "desktop-window-titlebar-drag-zone"
+                    : undefined
+                }
+                data-no-camera-drag={breadcrumbNode ? "true" : undefined}
+                aria-hidden={breadcrumbNode ? undefined : "true"}
+              >
+                {breadcrumbNode}
+              </div>
+              <div
+                className="flex min-w-0 items-center justify-end"
+                data-no-camera-drag="true"
+              >
+                {pageRightExtras}
+              </div>
+            </>
+          ) : (
+            <>
+              <div aria-hidden="true" />
+              {breadcrumbNode ? (
                 <div
-                  className="flex min-w-0 items-center justify-start"
-                  data-no-camera-drag="true"
-                >
-                  {mobileLeft}
-                </div>
-                <div
-                  className={
-                    breadcrumbNode
-                      ? "flex h-[2.375rem] min-w-0 items-center justify-center gap-2"
-                      : "pointer-events-none min-w-0"
-                  }
+                  className="flex h-[2.375rem] min-w-0 items-center justify-center"
                   data-testid={
                     showMacDesktopTitleBar
                       ? "desktop-window-titlebar-drag-zone"
                       : undefined
                   }
-                  data-no-camera-drag={breadcrumbNode ? "true" : undefined}
-                  aria-hidden={breadcrumbNode ? undefined : "true"}
+                  data-no-camera-drag="true"
                 >
                   {breadcrumbNode}
                 </div>
+              ) : (
                 <div
-                  className="flex min-w-0 items-center justify-end"
-                  data-no-camera-drag="true"
-                >
-                  {pageRightExtras}
-                </div>
-              </>
-            ) : (
-              <>
-                <div
-                  className="h-[2.375rem] min-w-0"
-                  data-testid="header-nav-suppressed"
-                  data-no-camera-drag="true"
+                  className="pointer-events-none h-[2.375rem] w-[clamp(3rem,8vw,8rem)] min-w-0"
+                  data-testid={
+                    showMacDesktopTitleBar
+                      ? "desktop-window-titlebar-drag-zone"
+                      : undefined
+                  }
+                  aria-hidden="true"
                 />
-                {breadcrumbNode ? (
-                  <div
-                    className="flex h-[2.375rem] min-w-0 items-center justify-center"
-                    data-testid={
-                      showMacDesktopTitleBar
-                        ? "desktop-window-titlebar-drag-zone"
-                        : undefined
-                    }
-                    data-no-camera-drag="true"
-                  >
-                    {breadcrumbNode}
-                  </div>
-                ) : (
-                  <div
-                    className="pointer-events-none h-[2.375rem] w-[clamp(3rem,8vw,8rem)] min-w-0"
-                    data-testid={
-                      showMacDesktopTitleBar
-                        ? "desktop-window-titlebar-drag-zone"
-                        : undefined
-                    }
-                    aria-hidden="true"
-                  />
-                )}
-                {rightDesktopControls}
-              </>
-            )}
-          </div>
+              )}
+              {rightDesktopControls}
+            </>
+          )}
         </div>
-      </header>
-      {mobileBottomNav}
-    </>
+      </div>
+    </header>
   );
 }

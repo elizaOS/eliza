@@ -88,7 +88,7 @@ class MuJocoBackend(BridgeBackend):
         self._last_telemetry = self._env.reset()
         # Lazy-construct the bezier gait controller. Failure here is loud:
         # without the controller the MuJoCo backend can still serve head/servo
-        # but `walk.command:start` will be a no-op (logged).
+        # commands, while `walk.command:start` is ignored and logged.
         try:
             from eliza_robot.sim.mujoco.gait.controller import BezierGaitController
 
@@ -240,7 +240,7 @@ class MuJocoBackend(BridgeBackend):
             if action == "start":
                 self._walk.is_walking = True
                 # Spawn / re-spawn the gait loop. The controller must exist
-                # (constructed in connect()); if not, walking is a no-op.
+                # (constructed in connect()); otherwise walking stays idle.
                 if (
                     self._gait_controller is not None
                     and (self._gait_task is None or self._gait_task.done())

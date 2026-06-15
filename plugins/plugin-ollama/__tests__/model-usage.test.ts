@@ -155,6 +155,6 @@ describe.skipIf(skipReason !== null)("ollama MODEL_USED events (live)", () => {
   }, 60_000);
 
   afterAll(() => {
-    // No-op: runtime is in-memory and the harness has no resources to release.
+    // The runtime is in-memory and the harness has no resources to release.
   });
 });

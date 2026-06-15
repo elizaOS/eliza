@@ -45,7 +45,12 @@ describe("Instagram account config", () => {
 
 describe("Instagram connector accounts", () => {
   it("registers account-scoped connectors and routes sends through the requested account", async () => {
-    const registerMessageConnector = vi.fn();
+    const messageRegistrations: Array<
+      Parameters<NonNullable<IAgentRuntime["registerMessageConnector"]>>[0]
+    > = [];
+    const registerMessageConnector = vi.fn((registration) => {
+      messageRegistrations.push(registration);
+    });
     const registerPostConnector = vi.fn();
     const rt = {
       agentId: "agent-1",
@@ -84,11 +89,12 @@ describe("Instagram connector accounts", () => {
 
     expect(registerMessageConnector).toHaveBeenCalledTimes(2);
     expect(registerPostConnector).toHaveBeenCalledTimes(2);
-    expect(
-      registerMessageConnector.mock.calls.map(([registration]) => registration.accountId)
-    ).toEqual(["owner", "brand"]);
+    expect(messageRegistrations.map((registration) => registration.accountId)).toEqual([
+      "owner",
+      "brand",
+    ]);
 
-    const brandRegistration = registerMessageConnector.mock.calls[1][0];
+    const brandRegistration = messageRegistrations[1];
     await brandRegistration.sendHandler(
       rt,
       {
@@ -101,5 +107,25 @@ describe("Instagram connector accounts", () => {
 
     expect(brandSend).toHaveBeenCalledWith("thread-brand", "hello");
     expect(ownerSend).not.toHaveBeenCalled();
+  });
+
+  it("fails API operations explicitly instead of returning synthetic Instagram data", async () => {
+    const service = Object.create(InstagramService.prototype) as InstagramService;
+    Object.assign(service, {
+      isRunning: true,
+    });
+
+    await expect(service.sendDirectMessage("thread-1", "hello")).rejects.toThrow(
+      "requires a configured Instagram API client"
+    );
+    await expect(service.postComment(123, "hello")).rejects.toThrow(
+      "requires a configured Instagram API client"
+    );
+    await expect(service.getUserInfo(456)).rejects.toThrow(
+      "requires a configured Instagram API client"
+    );
+    await expect(service.getThreads()).rejects.toThrow(
+      "requires a configured Instagram API client"
+    );
   });
 });

@@ -27,7 +27,6 @@
       "@elizaos/shared/steward-session-client": [
         "../shared/src/steward-session-client/index.ts"
       ],
-      "@elizaos/ui": ["../ui/src/backgrounds/CloudVideoBackground.tsx"],
       "@elizaos/ui/button": ["../ui/src/cloud-ui/components/button.tsx"],
       "@elizaos/ui/card": ["../ui/src/components/ui/card.tsx"],
       "@elizaos/ui/i18n/region": ["../ui/src/i18n/region.ts"],

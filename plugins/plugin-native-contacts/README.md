@@ -1,6 +1,6 @@
 # @elizaos/capacitor-contacts
 
-Capacitor plugin providing an Android `ContactsContract` bridge for elizaOS agents. Enables reading, creating, and importing contacts on Android from TypeScript/JavaScript code. On web and Node.js the plugin provides a no-op fallback.
+Capacitor plugin providing an Android `ContactsContract` bridge for elizaOS agents. Enables reading, creating, and importing contacts on Android from TypeScript/JavaScript code. On web and Node.js the plugin provides an explicit fallback that returns empty contact lists and rejects writes.
 
 ## What it does
 
@@ -107,4 +107,3 @@ bun run --cwd plugins/plugin-native-contacts build
 ```
 
 Runs TypeScript compilation and Rollup to produce `dist/esm/` (ESM) and `dist/plugin.cjs.js` (CJS).
-

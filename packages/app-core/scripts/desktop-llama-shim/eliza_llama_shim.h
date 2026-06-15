@@ -136,7 +136,7 @@ struct eliza_mtp_stats {
 };
 
 // Legacy 4-int32 telemetry getter (kept for ABI compatibility with the
-// earlier Phase-A stub surface). Writes:
+// earlier Phase-A unsupported surface). Writes:
 //   [0] drafted_tokens
 //   [1] accepted_tokens
 //   [2] rejected_tokens
@@ -231,14 +231,16 @@ void* eliza_llama_sampler_init_prefill_plan(const uint8_t* plan_bytes, size_t pl
 //
 // Flow on the adapter side:
 //   1. mtmd_init (loads the mmproj GGUF, binds to the loaded text model)
-//   2. decode image bytes → RGB on the JS side (sharp / equivalent)
-//   3. mtmd_bitmap_init_rgb (wraps raw RGB)
-//   4. mtmd_input_chunks_init + mtmd_tokenize (text + bitmaps → chunks)
-//   5. mtmd_encode_chunk per chunk; mtmd_get_output_embd → feed
-//      llama_decode with an embedding-batch
-//   6. standard text generate loop on top
+//   2. mtmd_helper_bitmap_init_from_buf decodes image bytes into a bitmap
+//   3. mtmd_input_chunks_init + mtmd_tokenize (text + bitmaps → chunks)
+//   4. mtmd_helper_eval_chunks drives text decode, media encode, embedding
+//      decode, M-RoPE positioning, and non-causal attention handling
+//   5. standard text generate loop on top
 
 #ifdef ELIZA_ENABLE_VISION
+// Default marker that must appear once per bitmap in the tokenized prompt.
+const char* eliza_mtmd_default_marker(void);
+
 // Construct an mtmd context bound to a loaded text model. `mmproj_path`
 // is the multimodal projector GGUF. Returns NULL on failure.
 void* eliza_mtmd_init(const char* mmproj_path, void* text_model, bool use_gpu, int n_threads);
@@ -250,6 +252,9 @@ void eliza_mtmd_free(void* ctx);
 // Returns NULL on failure. The caller is expected to have already
 // decoded image bytes (PNG/JPEG/WebP) into RGB on the JS side.
 void* eliza_mtmd_bitmap_init_rgb(uint32_t nx, uint32_t ny, const uint8_t* rgb);
+// Decode an image buffer (PNG/JPEG/BMP/GIF/etc. supported by mtmd/stb_image)
+// into an mtmd_bitmap. Returns NULL on failure.
+void* eliza_mtmd_bitmap_init_from_buf(void* ctx, const uint8_t* buf, size_t len);
 void  eliza_mtmd_bitmap_free(void* bm);
 
 // Allocate / free an opaque input-chunks container that
@@ -259,7 +264,7 @@ void  eliza_mtmd_input_chunks_free(void* c);
 
 // Tokenize a text prompt + N bitmaps into the chunks container. Returns
 // 0 on success, negative on failure. `bitmaps` is an array of pointers
-// returned by `eliza_mtmd_bitmap_init_rgb`.
+// returned by an `eliza_mtmd_bitmap_*` initializer.
 int32_t eliza_mtmd_tokenize(void* ctx, void* out_chunks,
                             const char* text, bool add_special, bool parse_special,
                             void* const* bitmaps, size_t n_bitmaps);
@@ -277,6 +282,13 @@ int32_t eliza_mtmd_encode_chunk(void* ctx, void* chunk);
 // Returns the float* embedding buffer for the most recently encoded
 // chunk (owned by the mtmd context — do NOT free).
 const float* eliza_mtmd_output_embd(void* ctx);
+
+// Evaluate tokenized chunks into the llama KV cache. This wraps
+// mtmd_helper_eval_chunks so the adapter does not duplicate media embedding
+// batching, M-RoPE positioning, or non-causal attention handling.
+int32_t eliza_mtmd_eval_chunks(void* ctx, void* lctx, const void* chunks,
+                               int32_t n_past, int32_t seq_id, int32_t n_batch,
+                               bool logits_last, int32_t* new_n_past);
 #endif  // ELIZA_ENABLE_VISION
 
 #ifdef __cplusplus

@@ -1,6 +1,6 @@
 # @elizaos/plugin-hyperliquid-app
 
-Adds native [Hyperliquid](https://hyperliquid.xyz) perpetual-market integration to elizaOS agents. Eliza agents can query market listings, credential readiness, account positions, and open orders through both conversational actions and HTTP routes. Order placement is not exposed as an agent action until signed execution is implemented.
+Adds native [Hyperliquid](https://hyperliquid.xyz) perpetual-market integration to elizaOS agents. Eliza agents can query market listings, credential readiness, account positions, and open orders through both conversational actions and HTTP routes. Order placement is disabled by design — the plugin is read-only.
 
 ## Capabilities
 
@@ -20,7 +20,7 @@ Conversational action that routes to the Hyperliquid provider. Recognized when t
 
 | Parameter | Values | Description |
 |---|---|---|
-| `action` | `read` | Operation type. |
+| `action` | `read`, `place_order` | Operation type. `place_order` returns a disabled-execution notice. |
 | `kind` | `status`, `markets`, `market`, `positions`, `funding` | Sub-kind for `action=read`. |
 | `coin` | e.g. `BTC`, `ETH` | Asset symbol for `kind=market`. |
 | `target` | `hyperliquid` (default) | Provider selector; only Hyperliquid is registered today. |
@@ -52,7 +52,7 @@ No env vars are required for public market reads. To enable account-specific rea
 | `HYPERLIQUID_ACCOUNT_ADDRESS` or `HL_ACCOUNT_ADDRESS` | EVM address for positions/orders reads. Must be `0x`-prefixed 40-char hex. |
 | `STEWARD_EVM_ADDRESS` or `ELIZA_MANAGED_EVM_ADDRESS` | Managed-vault EVM address (takes priority over the explicit env account). |
 
-Optional signing credentials (not needed for reads; order execution is not yet implemented):
+Optional signing credentials (reported in status only; this app keeps order execution disabled by design):
 
 | Env var | Description |
 |---|---|
@@ -84,6 +84,6 @@ The plugin also self-registers as an elizaOS overlay app and route-plugin loader
 
 ## Notes
 
-- Order placement (POST routes) is intentionally disabled in this version and returns 501. No order-placement agent action is exposed until signed Hyperliquid execution is implemented.
-- Funding-rate reads (`kind=funding`) are not wired to a live endpoint; the action returns a static explanation.
+- Order placement (POST routes) is intentionally disabled in this version. The `place_order` action op reports the blocked-execution reason rather than submitting any transaction.
+- Funding-rate reads (`kind=funding`) use Hyperliquid's live `metaAndAssetCtxs` Info API response.
 - Market data is fetched from `https://api.hyperliquid.xyz/info` (the public Hyperliquid Info API). No API key is required.

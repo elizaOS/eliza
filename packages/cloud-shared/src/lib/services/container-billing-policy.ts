@@ -80,3 +80,27 @@ export function computeContainerBillingPlan(
     earningsEligible,
   };
 }
+
+/** The billing window a single charge covers. */
+export interface ContainerBillingPeriod {
+  /** Inclusive start of the period (UTC midnight of the run day). */
+  periodStart: Date;
+  /** Exclusive end of the period (the next UTC midnight). */
+  periodEnd: Date;
+}
+
+/**
+ * Normalize a billing run timestamp to a deterministic, calendar-day-aligned
+ * period. Container billing is a daily model, so the period a charge covers is
+ * the UTC day it runs in — independent of the exact minute the cron fired.
+ *
+ * This determinism is load-bearing for idempotency: re-running the cron on the
+ * same UTC day yields the same `periodStart`, so the earnings-conversion
+ * idempotency key and the `container_billing_records(container_id,
+ * billing_period_start)` unique index both collide and prevent a double-debit.
+ */
+export function computeContainerBillingPeriod(now: Date): ContainerBillingPeriod {
+  const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const periodEnd = new Date(periodStart.getTime() + 24 * 60 * 60 * 1000);
+  return { periodStart, periodEnd };
+}

@@ -1,7 +1,15 @@
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
+import path from "node:path";
 import { Writable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// The ACP implementation runs every workdir through `path.resolve`, which on
+// Windows turns `/tmp/acp-test` into `C:\tmp\acp-test`. Tests pass the
+// POSIX-style string in and compare the spawn cwd against the resolved
+// form so the same source compares correctly on both POSIX and Windows.
+const RESOLVED_ACP_WORKDIR = path.resolve("/tmp/acp-test");
+
 import type {
   AcpJsonRpcMessage,
   ApprovalPreset,
@@ -326,7 +334,7 @@ describe("AcpService", () => {
         "--name",
         "s1",
       ]),
-      expect.objectContaining({ cwd: "/tmp/acp-test" }),
+      expect.objectContaining({ cwd: RESOLVED_ACP_WORKDIR }),
     );
     const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
     expect(args).not.toContain("--no-terminal");
@@ -504,9 +512,18 @@ describe("AcpService", () => {
     const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
     const agentArgIndex = args?.indexOf("--agent") ?? -1;
     expect(agentArgIndex).toBeGreaterThanOrEqual(0);
-    expect(args?.[agentArgIndex + 1]).toMatch(
-      /plugin-agent-orchestrator\/bin.*opencode.* acp$/,
-    );
+    // The shim script lives at `<plugin>/bin/opencode*` and is referenced
+    // with platform-native path separators (`\` on Windows, `/` on POSIX).
+    // On Windows the spawn target is wrapped in double quotes (paths can
+    // contain spaces) and uses the `.cmd` shim, so accept either
+    // separator after `plugin-agent-orchestrator`, any extension on the
+    // opencode shim, and tolerate surrounding quotes / trailing tokens
+    // around the trailing `acp` subcommand.
+    const shimArg = args?.[agentArgIndex + 1];
+    expect(shimArg).toBeDefined();
+    expect(shimArg).toContain("plugin-agent-orchestrator");
+    expect(shimArg).toContain("opencode");
+    expect(shimArg).toMatch(/\sacp(\s|$)/);
     expect(args).not.toContain("opencode");
 
     const env = spawnMock.mock.calls[0]?.[2]?.env as
@@ -573,18 +590,20 @@ describe("AcpService", () => {
     );
     await service.start();
 
+    const nativeWorkdir = "/tmp/acp-native-test";
+    const resolvedNativeWorkdir = path.resolve(nativeWorkdir);
     const spawned = service.spawnSession({
       name: "native-codex",
       agentType: "codex",
-      workdir: "/tmp/acp-native-test",
+      workdir: nativeWorkdir,
     });
     const session = await spawned;
     const client = firstNativeClient();
 
     expect(spawnMock).not.toHaveBeenCalled();
     expect(client?.opts.command).toBe("codex-acp --stdio");
-    expect(client?.opts.cwd).toBe("/tmp/acp-native-test");
-    expect(client?.createSession).toHaveBeenCalledWith("/tmp/acp-native-test");
+    expect(client?.opts.cwd).toBe(resolvedNativeWorkdir);
+    expect(client?.createSession).toHaveBeenCalledWith(resolvedNativeWorkdir);
     expect(session.status).toBe("ready");
     expect(session.acpxSessionId).toBe("protocol-session");
     expect(events.some(([event]) => event === "ready")).toBe(true);
@@ -681,8 +700,16 @@ describe("AcpService", () => {
     const service = new AcpService(runtime());
     const events: string[] = [];
     const taskCompletePayloads: Array<{ response?: string }> = [];
+    const toolPayloads: Array<{
+      toolCall?: { status?: string; output?: string; title?: string };
+    }> = [];
     service.onSessionEvent((_sid, event, payload) => {
       events.push(event);
+      if (event === "tool_running") {
+        toolPayloads.push(
+          payload as { toolCall?: { status?: string; output?: string } },
+        );
+      }
       if (event === "task_complete") {
         taskCompletePayloads.push(payload as { response?: string });
       }
@@ -749,6 +776,30 @@ describe("AcpService", () => {
     expect(result.response).not.toContain('"metadata"');
     expect(taskCompletePayloads[0]?.response).toBe(result.response);
     expect(result.stopReason).toBe("end_turn");
+    expect(toolPayloads).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          toolCall: expect.objectContaining({
+            status: "in_progress",
+            title: "Running tool",
+          }),
+        }),
+        expect.objectContaining({
+          toolCall: expect.objectContaining({
+            status: "completed",
+            title: "Running tool",
+            output: expect.stringContaining("/dev/root        45G"),
+          }),
+        }),
+        expect.objectContaining({
+          toolCall: expect.objectContaining({
+            status: "completed",
+            title: "Read home usage",
+            output: expect.stringContaining("/home            387G"),
+          }),
+        }),
+      ]),
+    );
     // A clean exit with captured output emits exactly one terminal event
     // (`task_complete`); the redundant `stopped` was dropped to avoid
     // double-processing downstream.
@@ -795,6 +846,106 @@ describe("AcpService", () => {
     expect(result.finalText).toBe("final answer");
     expect(taskCompletePayloads[0]?.response).toBe("final answer");
     expect((await service.getSession(sessionId))?.status).toBe("ready");
+  });
+
+  it("native sendPrompt re-spaces word-split terminal result text blocks", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-wordsplit",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    client.prompt.mockImplementationOnce(async () => {
+      client.emit({
+        jsonrpc: "2.0",
+        id: "prompt",
+        sessionId: "protocol-session",
+        result: {
+          stopReason: "end_turn",
+          content: [
+            { type: "text", text: "the change" },
+            { type: "text", text: "is" },
+            { type: "text", text: "proven and" },
+            { type: "text", text: "received" },
+            { type: "text", text: "at runtime" },
+          ],
+        },
+      } as AcpJsonRpcMessage);
+      return { stopReason: "end_turn" };
+    });
+
+    const result = await service.sendPrompt(sessionId, "answer");
+
+    expect(result.response).toBe(
+      "the change is proven and received at runtime",
+    );
+    expect(result.finalText).toBe(
+      "the change is proven and received at runtime",
+    );
+  });
+
+  it("native sendPrompt forwards sanitized ACP plan updates", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const planPayloads: Array<{ entries?: unknown }> = [];
+    service.onSessionEvent((_sid, event, payload) => {
+      if (event === "plan") planPayloads.push(payload as { entries?: unknown });
+    });
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-plan",
+      agentType: "opencode",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    client.prompt.mockImplementationOnce(async () => {
+      client.emit({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: "protocol-session",
+          update: {
+            sessionUpdate: "plan",
+            entries: [
+              {
+                content: "Write the file",
+                status: "in_progress",
+                priority: "medium",
+                ignored: "not forwarded",
+              },
+              {
+                content: "Read it back",
+                status: "pending",
+                priority: "low",
+              },
+              {
+                content: "Defaults apply",
+                status: "",
+                priority: 1,
+              },
+              { content: "", status: "pending", priority: "medium" },
+              "not an entry",
+            ],
+          },
+        },
+      } as AcpJsonRpcMessage);
+      client.emit({
+        jsonrpc: "2.0",
+        id: "prompt",
+        result: { stopReason: "end_turn" },
+      } as AcpJsonRpcMessage);
+      return { stopReason: "end_turn" };
+    });
+
+    await service.sendPrompt(sessionId, "go");
+
+    expect(planPayloads).toHaveLength(1);
+    expect(planPayloads[0]?.entries).toEqual([
+      { content: "Write the file", status: "in_progress", priority: "medium" },
+      { content: "Read it back", status: "pending", priority: "low" },
+      { content: "Defaults apply", status: "pending", priority: "medium" },
+    ]);
   });
 
   it("native sendPrompt rejects overlapping prompts before swapping event handlers", async () => {
@@ -1243,9 +1394,11 @@ describe("AcpService", () => {
 
   it("honors public env aliases for workspace, approval, and prompt timeout", async () => {
     const create = nextProc();
+    const workspaceRoot = "/tmp/acp-workspace-root";
+    const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
     const service = new AcpService(
       runtime({
-        ELIZA_ACP_WORKSPACE_ROOT: "/tmp/acp-workspace-root",
+        ELIZA_ACP_WORKSPACE_ROOT: workspaceRoot,
         ELIZA_ACP_DEFAULT_APPROVAL: "read-only",
         ELIZA_ACP_PROMPT_TIMEOUT_MS: "123000",
       }),
@@ -1262,12 +1415,8 @@ describe("AcpService", () => {
 
     expect(spawnMock).toHaveBeenCalledWith(
       "acpx",
-      expect.arrayContaining([
-        "--cwd",
-        "/tmp/acp-workspace-root",
-        "--deny-all",
-      ]),
-      expect.objectContaining({ cwd: "/tmp/acp-workspace-root" }),
+      expect.arrayContaining(["--cwd", resolvedWorkspaceRoot, "--deny-all"]),
+      expect.objectContaining({ cwd: resolvedWorkspaceRoot }),
     );
 
     const prompt = nextProc();
@@ -1285,7 +1434,7 @@ describe("AcpService", () => {
     expect(spawnMock).toHaveBeenLastCalledWith(
       "acpx",
       expect.arrayContaining(["--timeout", "123"]),
-      expect.objectContaining({ cwd: "/tmp/acp-workspace-root" }),
+      expect.objectContaining({ cwd: resolvedWorkspaceRoot }),
     );
   });
 

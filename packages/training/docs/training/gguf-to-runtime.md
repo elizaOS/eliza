@@ -114,7 +114,7 @@ state-dir + mode):
   mirror (catalog only; doesn't affect local files).
 - `ELIZA_LOCAL_SESSION_POOL_SIZE` — desktop in-process KV-slot pool size.
 
-## C. No eval gate / rollback before activation — TODO
+## C. No eval gate / rollback before activation
 
 There is currently **no eval-gate or automatic-rollback step between
 "GGUF produced" and "model active as `TEXT_LARGE`"** in the runtime.
@@ -124,10 +124,11 @@ of this package *does* have eval gates (`scripts/eval_gates.py`, wired
 into the benchmark suite — and `packages/training/AGENTS.md` §6 is
 explicit: green eval + green kernels, then publish), but nothing
 re-runs them or compares against a baseline at the moment the runtime
-swaps the active model. **TODO:** add a runtime-side pre-activation
-smoke / eval check (and a "revert to previous active model" path) so a
-bad fine-tune can't silently become the default. Until then, run the
-offline eval gates before publishing and before assigning a new GGUF.
+swaps the active model. The required follow-up is a runtime-side
+pre-activation smoke / eval check, plus a "revert to previous active
+model" path, so a bad fine-tune can't silently become the default.
+Until then, run the offline eval gates before publishing and before
+assigning a new GGUF.
 
 ## D. Adding the catalog entry (the shipping path)
 

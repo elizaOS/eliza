@@ -21,7 +21,7 @@ const EXPECTED_BLOG_URL =
 const EXPECTED_GITHUB_URL = "https://github.com/FeedSocial/feed";
 
 test.describe("Landing Page Blog Links", () => {
-  // Landing page with blog links not yet implemented - app redirects to /feed
+  // Landing page redirects to /feed; blog links are not exposed on that route.
   test.skip();
 
   test.beforeEach(async ({ page }) => {

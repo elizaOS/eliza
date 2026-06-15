@@ -6,9 +6,8 @@
  * `FfiStreamingRunner` expects) over the `LlamaCpp.xcframework` Swift
  * bridge that ships with the iOS shell.
  *
- * Status (2026-05-12): the XCFramework currently ships as a shim — it
- * compiles a header-only `llama.h` and exports a `dlopen`-safe stub for
- * the bridge.  The real Swift implementation against
+ * Status (2026-05-12): the XCFramework currently ships without streaming-LLM
+ * support. The Swift implementation against
  * `libelizainference.dylib` (built by `build-llama-cpp-mtp.mjs` with
  * the `darwin-arm64-metal-fused` target) is the gating item; until then
  * `loadIosStreamingLlmBinding` returns `null` and the runtime falls
@@ -25,7 +24,7 @@
  *     `llama-cpp-capacitor` plugin already uses this pattern for the
  *     non-streaming surface.
  *
- * The Swift glue (NOT in this repo yet — gating item) needs to:
+ * The Swift glue gating this binding needs to:
  *   1. Re-export the streaming-LLM symbols from `ffi-streaming-llm.h`
  *      under the Swift module name `LlamaCpp.Streaming.*`.
  *   2. Expose an Objective-C-bridgeable wrapper class
@@ -122,7 +121,7 @@ interface CapacitorLlamaStreamingPlugin {
 	 * Iteration is event-based on the native side — Capacitor plugin
 	 * `addListener("llmStreamStep", cb)` fires for each step.  The JS
 	 * binding shape we want is synchronous-ish for symmetry with bun:ffi;
-	 * the adapter in `buildIosBinding` (TODO when the Swift bridge ships)
+	 * the adapter in `buildIosBinding`
 	 * will turn the listener stream into a `next()`-like queue.
 	 */
 	cancel(args: { streamHandle: string }): Promise<void>;
@@ -203,17 +202,16 @@ export async function loadIosStreamingLlmBinding(): Promise<IosStreamingLlmBindi
  * queue keyed by stream handle, then having `llmStreamNext` block on a
  * `Promise<step>`.
  *
- * THIS IS A STUB.  Until the Swift bridge lands, this code path is
- * unreachable (the loader returns null first).  The shape is here so
- * the runtime can compile against the real binding when it lands
- * without touching app-core wiring.
+ * Unavailable adapter body. Until the Swift bridge reports streaming support,
+ * this code path is unreachable because the loader returns null first. The
+ * shape is here so app-core wiring compiles against the platform contract.
  */
 function buildIosBinding(
 	_plugin: CapacitorLlamaStreamingPlugin,
 ): IosStreamingLlmBinding {
 	throw new Error(
-		"[ios-llama-streaming] buildIosBinding is a stub. " +
-			"The Swift bridge (LlamaStreaming Capacitor plugin) is not yet wired. " +
+		"[ios-llama-streaming] buildIosBinding is unavailable. " +
+			"The Swift bridge (LlamaStreaming Capacitor plugin) is not wired. " +
 			"See docs/eliza-1-ios-streaming-status.md for the rollout plan.",
 	);
 }

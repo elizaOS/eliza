@@ -1,4 +1,4 @@
-"""Compatibility stubs for the removed Python MINT trajectory integration.
+"""Compatibility no-ops for the removed Python MINT trajectory integration.
 
 MINT no longer instruments a Python Eliza runtime. Real Eliza runs go through
 the TypeScript benchmark bridge, which owns runtime-side trajectory logging.
@@ -17,7 +17,7 @@ class TrajectoryLoggingConfig:
 
 
 def instrument_runtime_for_trajectory_logging(runtime: object, logger_service: object) -> None:
-    """No-op retained for older callers."""
+    """Retained for older callers; runtime-side logging lives in the TS bridge."""
     _ = (runtime, logger_service)
 
 
@@ -27,5 +27,5 @@ def export_benchmark_trajectories(
     trajectory_ids: list[str],
     config: TrajectoryLoggingConfig,
 ) -> None:
-    """No-op retained for older callers."""
+    """Retained for older callers; trajectory export lives in the TS bridge."""
     _ = (logger_service, trajectory_ids, config)

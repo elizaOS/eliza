@@ -93,7 +93,7 @@ No runtime configuration keys or agent settings are read by this plugin.
 ```ts
 import { getDeviceFilesystemBridge } from "@elizaos/plugin-device-filesystem";
 const bridge = getDeviceFilesystemBridge(runtime);
-const content = await bridge.read("notes/todo.md");
+const content = await bridge.read("notes/checklist.md");
 ```
 
 ## Conventions / gotchas

@@ -1,4 +1,5 @@
-import { type ComponentType, lazy, Suspense, useEffect, useMemo } from "react";
+import { type ComponentType, Suspense, useEffect, useMemo } from "react";
+import { getOverlayAppLazyComponent } from "./AppWindowRenderer.helpers";
 import { getAppSlug } from "./helpers";
 import type { OverlayApp, OverlayAppContext } from "./overlay-app-api";
 import { getAvailableOverlayApps } from "./overlay-app-registry";
@@ -12,22 +13,6 @@ function resolveOverlayAppBySlug(slug: string): OverlayApp | undefined {
   return getAvailableOverlayApps().find(
     (app) => getAppSlug(app.name).toLowerCase() === normalizedSlug,
   );
-}
-
-const lazyComponentCache = new WeakMap<
-  NonNullable<OverlayApp["loader"]>,
-  ComponentType<OverlayAppContext>
->();
-
-export function getOverlayAppLazyComponent(
-  app: OverlayApp,
-): ComponentType<OverlayAppContext> | null {
-  if (!app.loader) return null;
-  const existing = lazyComponentCache.get(app.loader);
-  if (existing) return existing;
-  const created = lazy(app.loader);
-  lazyComponentCache.set(app.loader, created);
-  return created;
 }
 
 function getLazyComponentForApp(

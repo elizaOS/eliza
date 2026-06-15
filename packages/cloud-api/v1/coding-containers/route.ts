@@ -1,147 +1,405 @@
+/**
+ * POST /api/v1/coding-containers
+ *
+ * Request a cloud coding container for an agent.
+ *
+ * HISTORY: this route used to HTTP-forward to a standalone
+ * `container-control-plane` service (`${CONTAINER_CONTROL_PLANE_URL}/api/v1/containers`).
+ * That origin was retired in the cloud migration (orphan service on :8791,
+ * pointed at the decommissioned .246 node) and now returns 521. Node
+ * autoscaling + warm pool already migrated to the `eliza-provisioning-worker`
+ * daemon (jobs table + Redis); only this route never did.
+ *
+ * NOW: a coding container is just an `agent_sandboxes` row with a custom
+ * `docker_image` + coding env vars, provisioned through the SAME healthy
+ * daemon path used for normal agents. The daemon's `AGENT_PROVISION` job
+ * (`elizaSandboxService.provision()`) already docker-runs an arbitrary image
+ * via the provider (node-SSH + `docker run`) — see eliza-sandbox.ts where
+ * `provision()` forwards `docker_image` into `provider.create()`. So we:
+ *   1. allowlist-gate the requested image (SECURITY — see below),
+ *   2. check for existing running/pending sandbox (idempotency),
+ *   3. create the sandbox row (`createAgent({ dockerImage, environmentVars })`),
+ *   4. enqueue the existing provision job + trigger the daemon immediately,
+ *   5. poll the job for a synchronous result and return the session.
+ *
+ * SECURITY: coding-containers let an authenticated org run an OUTSIDE image
+ * (e.g. ghcr.io/dexploarer/bnancy:latest). The image was previously taken raw
+ * with ZERO validation. We now require it to match
+ * `CODING_CONTAINER_IMAGE_ALLOWLIST` (default ghcr.io/{dexploarer,elizaos,
+ * waifufun}/*) and reject others with 403.
+ *
+ * DATABASE_URL: provision() injects a per-agent managed (Neon) DB URL, but it
+ * no longer clobbers a caller-supplied DATABASE_URL. A self-contained image
+ * that ships its OWN database keeps its `DATABASE_URL`; the managed URL is then
+ * exposed under `ELIZA_MANAGED_DATABASE_URL` for opt-in. Only when the caller
+ * supplies no DATABASE_URL does the managed one land as `DATABASE_URL` (the
+ * normal managed-agent path). See eliza-sandbox.ts `provision()`.
+ *
+ * KNOWN GAPS vs the old control-plane path (tracked as follow-ups):
+ *   1. `bootstrap_source` (source.files) is NOT hydrated — a VFS-promoted
+ *      workspace would start empty. The `agent_sandboxes` schema has no
+ *      bootstrap/volume columns, so honoring this needs daemon + schema work.
+ *   2. The browser coding-IDE URL (if any) is a separate concern the daemon
+ *      does not yet surface; the returned `url` is the per-agent public HTTPS
+ *      URL (https://<id>.<agent-domain>).
+ *
+ * PUBLIC_BASE_URL: before provisioning we inject `https://<id>.<agent-domain>`
+ * into the container's env (unless the caller pinned one) so a self-contained
+ * agent like Nancy boots knowing its own public URL — needed for webhooks, deep
+ * links, and signing pages. The sandbox id exists pre-provision and the
+ * per-agent gateway serves that host, so there is no chicken-and-egg.
+ */
+
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { containersEnv } from "@/lib/config/containers-env";
+import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import {
   buildCodingContainerCreatePayload,
   buildCodingContainerSessionResponse,
   type CodingContainerCreatePayload,
+  isCodingContainerImageAllowed,
   type RequestCodingAgentContainerRequest,
   RequestCodingAgentContainerRequestSchema,
 } from "@/lib/services/coding-containers";
+import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+import {
+  checkProvisioningWorkerHealth,
+  provisioningWorkerFailureBody,
+} from "@/lib/services/provisioning-worker-health";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv, AuthedUser } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-const CONTROL_PLANE_URL_KEYS = [
-  "CONTAINER_CONTROL_PLANE_URL",
-  "CONTAINER_SIDECAR_URL",
-  "HETZNER_CONTAINER_CONTROL_PLANE_URL",
-] as const;
+// How long to wait for the daemon to provision the container before returning
+// a 202 "still working" to the caller (the job keeps running; the caller can
+// poll `/api/v1/jobs/{jobId}`). Container cold-start (image pull + boot) is
+// slower than a normal agent, so we give it generous headroom.
+const MAX_WAIT_MS = 110_000;
+const POLL_INTERVAL_MS = 2_500;
 
-function readStringEnv(c: AppContext, keys: readonly string[]): string | null {
-  const env = c.env ?? {};
-  for (const key of keys) {
-    const value = env[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return null;
-}
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function validationError(c: AppContext, message: string): Response {
   return c.json({ success: false, error: message }, 400);
 }
 
-async function forwardContainerCreate(
+/**
+ * Per-agent public HTTPS URL (`https://<id>.<agent-domain>`), resolving the base
+ * domain from the container control-plane config (`containersEnv`, which reads
+ * the Worker's bindings) — NOT `process.env`. This route runs in the Cloudflare
+ * Worker, where `process.env` is not populated, so calling
+ * `getElizaAgentPublicWebUiUrl` without an explicit domain would silently fall
+ * back to the default brand domain and yield an unreachable host. Returns null
+ * when no base domain is configured.
+ */
+function resolveAgentPublicUrl(sandbox: {
+  id: string;
+  headscale_ip: string | null;
+}): string | null {
+  const baseDomain = containersEnv.publicBaseDomain();
+  return getElizaAgentPublicWebUiUrl(sandbox, baseDomain ? { baseDomain } : {});
+}
+
+/**
+ * Build the session response from a running sandbox row. Mirrors the upstream
+ * shape the old control-plane returned, sourced from the daemon-provisioned
+ * sandbox instead of the dead HTTP origin.
+ */
+function buildSessionFromSandbox(
+  request: RequestCodingAgentContainerRequest,
+  createPayload: CodingContainerCreatePayload,
+  sandbox: {
+    id: string;
+    status: string;
+    bridge_url: string | null;
+    health_url: string | null;
+    headscale_ip: string | null;
+    created_at?: Date | string | null;
+  },
+) {
+  return buildCodingContainerSessionResponse({
+    request,
+    createPayload,
+    upstreamData: {
+      id: sandbox.id,
+      status: sandbox.status,
+      // Prefer the reachable per-agent HTTPS URL (https://<id>.<domain>) so the
+      // session reports where the container is actually served; fall back to the
+      // internal bridge/health URL.
+      publicUrl: resolveAgentPublicUrl(sandbox) ?? undefined,
+      url: sandbox.bridge_url ?? sandbox.health_url ?? null,
+      createdAt:
+        sandbox.created_at instanceof Date
+          ? sandbox.created_at.toISOString()
+          : (sandbox.created_at ?? undefined),
+    },
+  });
+}
+
+async function createCodingContainer(
   c: AppContext,
   user: Pick<AuthedUser, "id"> & { organization_id: string },
   request: RequestCodingAgentContainerRequest,
   payload: CodingContainerCreatePayload,
 ): Promise<Response> {
-  const baseUrl = readStringEnv(c, CONTROL_PLANE_URL_KEYS);
-  if (!baseUrl) {
+  // ── SECURITY: image allowlist gate ───────────────────────────────────
+  const allowlist = containersEnv.codingContainerImageAllowlist();
+  if (!isCodingContainerImageAllowed(payload.image, allowlist)) {
+    logger.warn("[CodingContainers API] image rejected by allowlist", {
+      orgId: user.organization_id,
+      image: payload.image,
+    });
+    // Humanized error: tell the caller which namespaces ARE permitted (from the
+    // live, operator-configured allowlist) and how to widen it, instead of a
+    // bare "not permitted". The machine-readable `code` is preserved so clients
+    // can still branch on it.
+    const permitted =
+      allowlist.length > 0 ? allowlist.join(", ") : "(none configured)";
     return c.json(
       {
         success: false,
-        code: "CONTAINER_CONTROL_PLANE_NOT_CONFIGURED",
-        error: "Container control plane URL is not configured",
+        code: "CODING_CONTAINER_IMAGE_NOT_ALLOWED",
+        error:
+          `Image '${payload.image}' is not in the coding-container allowlist. ` +
+          `Permitted images: ${permitted}. ` +
+          `To run another image, ask an operator to add its GHCR namespace to ` +
+          `CODING_CONTAINER_IMAGE_ALLOWLIST.`,
+        permittedImages: allowlist,
       },
-      503,
+      403,
     );
   }
 
-  const target = new URL(baseUrl);
-  target.pathname = "/api/v1/containers";
-  target.search = "";
-
-  const sourceUrl = new URL(c.req.url);
-  const headers = new Headers();
-  headers.set("content-type", "application/json");
-  headers.set("x-forwarded-host", sourceUrl.host);
-  headers.set("x-forwarded-proto", sourceUrl.protocol.replace(":", ""));
-  headers.set("x-eliza-user-id", user.id);
-  headers.set("x-eliza-organization-id", user.organization_id);
-
-  const internalToken = readStringEnv(c, ["CONTAINER_CONTROL_PLANE_TOKEN"]);
-  if (internalToken)
-    headers.set("x-container-control-plane-token", internalToken);
-
-  const databaseUrl = readStringEnv(c, ["DATABASE_URL"]);
-  if (databaseUrl) headers.set("x-eliza-cloud-database-url", databaseUrl);
-
-  try {
-    const upstream = await fetch(target, {
-      body: JSON.stringify(payload),
-      headers,
-      method: "POST",
-      redirect: "manual",
+  // ── Gate on the provisioning daemon being healthy (same as agent provision) ──
+  const workerHealth = await checkProvisioningWorkerHealth();
+  if (!workerHealth.ok) {
+    logger.warn("[CodingContainers API] provisioning worker unavailable", {
+      orgId: user.organization_id,
+      code: workerHealth.code,
     });
-    const text = await upstream.text();
-    let json: unknown = null;
-    if (text.trim()) {
-      try {
-        json = JSON.parse(text);
-      } catch {
-        json = null;
-      }
-    }
+    return c.json(
+      provisioningWorkerFailureBody(workerHealth),
+      workerHealth.status,
+    );
+  }
 
-    if (!upstream.ok) {
-      return new Response(
-        text ||
-          JSON.stringify({
-            success: false,
-            error:
-              "Container control plane rejected the coding-container request",
-          }),
-        {
-          status: upstream.status,
-          statusText: upstream.statusText,
-          headers: {
-            "content-type":
-              upstream.headers.get("content-type") ?? "application/json",
-          },
-        },
-      );
-    }
-
-    const body =
-      json && typeof json === "object" ? (json as Record<string, unknown>) : {};
+  // ── Idempotency: serialize by (organization, image) and return the active row.
+  // The service takes a transaction-scoped advisory lock before checking for a
+  // pending/provisioning/running sandbox, closing retry races without applying a
+  // broad schema constraint that would collide with warm-pool rows.
+  const createResult = await elizaSandboxService.createCodingContainerAgent({
+    organizationId: user.organization_id,
+    userId: user.id,
+    agentName: payload.name || payload.project_name,
+    environmentVars: payload.environment_vars,
+    dockerImage: payload.image,
+    executionTier: "custom",
+  });
+  if (createResult.idempotent) {
+    const existing = createResult.agent;
+    logger.info(
+      "[CodingContainers API] returning existing active sandbox (idempotency)",
+      {
+        orgId: user.organization_id,
+        sandboxId: existing.id,
+        status: existing.status,
+        image: payload.image,
+      },
+    );
     return c.json(
       {
         success: true,
-        data: buildCodingContainerSessionResponse({
-          request,
-          createPayload: payload,
-          upstreamData:
-            body.data && typeof body.data === "object"
-              ? (body.data as Record<string, unknown>)
-              : body,
-        }),
-        controlPlane: {
-          status: upstream.status,
-          polling:
-            body.polling && typeof body.polling === "object"
-              ? body.polling
-              : undefined,
-        },
+        data: buildSessionFromSandbox(request, payload, existing),
+        idempotent: true,
       },
-      201,
+      200,
     );
-  } catch (error) {
-    logger.error("[CodingContainers API] control-plane forward failed", {
-      target: target.origin,
-      error: error instanceof Error ? error.message : String(error),
+  }
+
+  // ── Use the newly-created sandbox row carrying the custom image + coding env vars ──
+  const sandbox = createResult.agent;
+
+  // ── Inject the container's own public URL as PUBLIC_BASE_URL ──────────────
+  // The sandbox id exists now (pre-provision) and the per-agent gateway serves
+  // `https://<id>.<agent-domain>`, so we can set the agent's public URL before
+  // the daemon docker-runs it — `provision()` forwards `environment_vars` into
+  // the container (eliza-sandbox.ts). A self-contained image like Nancy needs
+  // this for webhooks / deep links / signing pages. We never override a
+  // PUBLIC_BASE_URL the caller pinned explicitly.
+  let provisionRow = sandbox;
+  const publicWebUrl = resolveAgentPublicUrl(sandbox);
+  if (publicWebUrl && !payload.environment_vars.PUBLIC_BASE_URL) {
+    payload.environment_vars.PUBLIC_BASE_URL = publicWebUrl;
+    const updated = await elizaSandboxService.updateAgentEnvironment(
+      sandbox.id,
+      user.organization_id,
+      payload.environment_vars,
+    );
+    if (updated) provisionRow = updated;
+  }
+
+  // ── Enqueue the (existing, image-capable) provision job + kick the daemon ──
+  // Enqueue against `provisionRow` — updateAgentEnvironment bumps `updated_at`,
+  // and enqueueAgentProvisionOnce gates on `expectedUpdatedAt`.
+  let enqueue: Awaited<
+    ReturnType<typeof provisioningJobService.enqueueAgentProvisionOnce>
+  >;
+  try {
+    enqueue = await provisioningJobService.enqueueAgentProvisionOnce({
+      agentId: provisionRow.id,
+      organizationId: user.organization_id,
+      userId: user.id,
+      agentName: provisionRow.agent_name ?? provisionRow.id,
+      expectedUpdatedAt: provisionRow.updated_at,
     });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error("[CodingContainers API] failed to enqueue provision job", {
+      orgId: user.organization_id,
+      sandboxId: sandbox.id,
+      error: message,
+    });
+    // ── BLOCKING FIX: orphan cleanup on enqueue failure ──────────────────
+    // Delete the sandbox row we just created to prevent accumulating
+    // pending/unknown rows on transient failures (e.g. DB contention,
+    // job table unavailable). Best-effort — log but don't mask the original error.
+    try {
+      await elizaSandboxService.deleteAgent(sandbox.id, user.organization_id);
+    } catch (deleteError) {
+      logger.warn(
+        "[CodingContainers API] orphan cleanup failed after enqueue error",
+        {
+          sandboxId: sandbox.id,
+          orgId: user.organization_id,
+          error:
+            deleteError instanceof Error
+              ? deleteError.message
+              : String(deleteError),
+        },
+      );
+    }
     return c.json(
       {
         success: false,
-        code: "CONTAINER_CONTROL_PLANE_UNREACHABLE",
-        error: "Container control plane is unreachable",
+        code: "CODING_CONTAINER_ENQUEUE_FAILED",
+        error: "Failed to start coding container provisioning",
+        retryable: true,
       },
       503,
     );
   }
+
+  const { job } = enqueue;
+  void provisioningJobService.triggerImmediate(c.env).catch(() => {
+    // Logged inside the service; the cron is the safety net.
+  });
+
+  // ── Poll the job for a synchronous result (best-effort within timeout) ──
+  const deadline = Date.now() + MAX_WAIT_MS;
+  while (Date.now() < deadline) {
+    await sleep(POLL_INTERVAL_MS);
+    const current = await provisioningJobService.getJobForOrg(
+      job.id,
+      user.organization_id,
+    );
+    if (!current) continue;
+
+    if (current.status === "completed") {
+      const running = await elizaSandboxService.getAgent(
+        sandbox.id,
+        user.organization_id,
+      );
+      if (!running) {
+        return c.json(
+          {
+            success: false,
+            code: "CODING_CONTAINER_MISSING_AFTER_PROVISION",
+            error: "Coding container provisioned but sandbox row was not found",
+            jobId: job.id,
+          },
+          500,
+        );
+      }
+      return c.json(
+        {
+          success: true,
+          data: buildSessionFromSandbox(request, payload, running),
+          jobId: job.id,
+        },
+        201,
+      );
+    }
+
+    if (current.status === "failed") {
+      const result = (current.result ?? {}) as Record<string, unknown>;
+      const errMsg =
+        typeof result.error === "string"
+          ? result.error
+          : "coding container provisioning failed";
+      logger.warn("[CodingContainers API] provision job failed", {
+        sandboxId: sandbox.id,
+        jobId: job.id,
+        error: errMsg,
+      });
+      // Humanized error: a provisioning failure caused by an empty/low credit
+      // balance is actionable by the user, not a server fault. Surface it as a
+      // 402 with the machine-readable `insufficient_credits` code and a concrete
+      // next step, instead of an opaque 502.
+      if (/insufficient[\s_]?credit/i.test(errMsg)) {
+        return c.json(
+          {
+            success: false,
+            code: "insufficient_credits",
+            error: "Add $0.10 to launch this coding container.",
+            jobId: job.id,
+          },
+          402,
+        );
+      }
+      return c.json(
+        {
+          success: false,
+          code: "CODING_CONTAINER_PROVISION_FAILED",
+          error: errMsg,
+          jobId: job.id,
+        },
+        502,
+      );
+    }
+  }
+
+  // ── Timed out waiting. The job keeps running; return 202 so the caller can
+  // poll the job endpoint and then re-request / fetch the container by id. ──
+  logger.info("[CodingContainers API] provision still running at timeout", {
+    sandboxId: sandbox.id,
+    jobId: job.id,
+  });
+  return c.json(
+    {
+      success: true,
+      pending: true,
+      message:
+        "Coding container provisioning is in progress. Poll the job endpoint for status.",
+      data: {
+        containerId: sandbox.id,
+        status: "pending",
+        agent: request.agent,
+        // Known pre-provision (id-derived); lets the caller wire up the URL now.
+        url: publicWebUrl ?? undefined,
+      },
+      jobId: job.id,
+      polling: {
+        endpoint: `/api/v1/jobs/${job.id}`,
+        intervalMs: 5000,
+        expectedDurationMs: 120000,
+      },
+    },
+    202,
+  );
 }
 
 app.post("/", async (c) => {
@@ -157,7 +415,7 @@ app.post("/", async (c) => {
     }
 
     const createPayload = buildCodingContainerCreatePayload(parsed.data);
-    return forwardContainerCreate(c, user, parsed.data, createPayload);
+    return await createCodingContainer(c, user, parsed.data, createPayload);
   } catch (error) {
     logger.error("[CodingContainers API] request error:", error);
     return failureResponse(c, error);

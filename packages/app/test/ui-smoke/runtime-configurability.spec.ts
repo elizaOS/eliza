@@ -63,6 +63,21 @@ async function injectFullCapabilityHost(page: Page): Promise<void> {
   });
 }
 
+async function expectFirstRunSurface(page: Page) {
+  const surface = page
+    .getByTestId("first-run-shell")
+    .or(page.getByTestId("onboarding-toast"));
+  await expect(surface).toBeVisible({ timeout: 20_000 });
+  return surface;
+}
+
+async function hasDetailedFirstRunShell(page: Page): Promise<boolean> {
+  return page
+    .getByTestId("first-run-shell")
+    .isVisible({ timeout: 500 })
+    .catch(() => false);
+}
+
 test("onboarding exposes local, cloud, and remote runtimes and each is configurable", async ({
   page,
 }) => {
@@ -74,8 +89,28 @@ test("onboarding exposes local, cloud, and remote runtimes and each is configura
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  const shell = page.getByTestId("first-run-shell");
-  await expect(shell).toBeVisible({ timeout: 20_000 });
+  const shell = await expectFirstRunSurface(page);
+
+  if (!(await hasDetailedFirstRunShell(page))) {
+    const toast = page.getByTestId("onboarding-toast");
+    await expect(toast).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Tap to speak" }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Connect" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Use Local" })).toHaveCount(
+      0,
+    );
+    await expect(page.getByRole("button", { name: "Eliza Cloud" })).toHaveCount(
+      0,
+    );
+    await expect(toast).toBeVisible();
+    await expectNoRenderTelemetryErrors(
+      page,
+      "compact runtime configurability",
+    );
+    return;
+  }
 
   // All three runtimes must be offered out of the box on a full-capability host.
   const cloud = page.getByTestId("first-run-runtime-cloud");
@@ -127,8 +162,28 @@ test("onboarding survives browser back and forward while runtime choices churn",
   await page.goto("/?runtime=first-run&runtimeTarget=remote", {
     waitUntil: "domcontentloaded",
   });
-  const shell = page.getByTestId("first-run-shell");
-  await expect(shell).toBeVisible({ timeout: 20_000 });
+  const shell = await expectFirstRunSurface(page);
+  if (!(await hasDetailedFirstRunShell(page))) {
+    await expect(
+      page.getByRole("button", { name: /^(Use Local|Connect)$/ }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Eliza Cloud" })).toHaveCount(
+      0,
+    );
+    await page.goto("/?runtime=first-run&runtimeTarget=local", {
+      waitUntil: "domcontentloaded",
+    });
+    await expectFirstRunSurface(page);
+    await page.goBack({ waitUntil: "domcontentloaded" });
+    await expectFirstRunSurface(page);
+    await page.goForward({ waitUntil: "domcontentloaded" });
+    await expectFirstRunSurface(page);
+    await expectNoRenderTelemetryErrors(
+      page,
+      "compact runtime browser history",
+    );
+    return;
+  }
   await expect(page.getByRole("button", { name: /runtime/i })).toBeVisible({
     timeout: 10_000,
   });

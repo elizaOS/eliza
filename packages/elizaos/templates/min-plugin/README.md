@@ -1,8 +1,8 @@
 # __PLUGIN_DISPLAY_NAME__
 
-Scaffolded from `packages/elizaos/templates/min-plugin`. This is a minimal Eliza runtime plugin: one provider, no UI.
+Generated from `packages/elizaos/templates/min-plugin`. This is a minimal Eliza runtime plugin: one provider, no UI.
 
-The scaffold copy step replaces these placeholders:
+The template copy step replaces these tokens:
 
 - `__PLUGIN_NAME__` → npm-style package name (e.g. `@elizaos/plugin-foo`)
 - `__PLUGIN_DISPLAY_NAME__` → human-readable display name

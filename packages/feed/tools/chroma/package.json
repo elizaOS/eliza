@@ -5,13 +5,13 @@
   "scripts": {
     "test": "sh -c 'if [ \"$RUN_FEED_E2E\" != \"1\" ]; then echo \"[skip] @feed/chroma-e2e browser E2E requires the MetaMask extension + app on :3100 + anvil :8545 + deployed contracts. Provision the stack, then set RUN_FEED_E2E=1.\" >&2; exit 0; fi; playwright test --config=playwright.config.ts'",
     "test:headed": "playwright test --config=playwright.config.ts --headed",
-    "typecheck": "echo skip (feed) >&2"
+    "typecheck": "bun run tsc -p . --noEmit"
   },
   "devDependencies": {
-    "@playwright/test": "1.60.0",
+    "@playwright/test": "1.61.0",
     "@types/node": "24.12.0",
     "dotenv": "^16.4.5",
-    "playwright": "1.60.0",
+    "playwright": "1.61.0",
     "typescript": "^5.9.3"
   }
 }

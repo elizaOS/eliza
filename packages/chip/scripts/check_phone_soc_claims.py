@@ -269,7 +269,7 @@ def check_existing_fail_closed_controls(errors: list[str]) -> None:
             errors.append(f"benchmark plan missing AI claim guard: {term}")
 
     real_world = (ROOT / "docs/manufacturing/real-world-verification-gaps.yaml").read_text()
-    for term in ("wifi_bluetooth_gnss_nfc_stack", "not implemented", "release_gate"):
+    for term in ("wifi_bluetooth_gnss_nfc_stack", "not available", "release_gate"):
         if term not in real_world:
             errors.append(f"real-world gap manifest missing WiFi/product claim guard: {term}")
 

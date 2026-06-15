@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/robot",
-  "version": "2.0.3-beta.0",
+  "version": "2.0.3-beta.13",
   "description": "Python robotics stack (MuJoCo sim, Alberta continual-RL training, Brax/MJX baselines, websocket bridge, perception, trajectory DB) with a thin TS surface for re-exports and shared schemas. Drives simulated and real robots via profile-driven configuration; first profile is Hiwonder AiNex.",
   "type": "module",
   "main": "dist/index.js",

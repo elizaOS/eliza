@@ -6,7 +6,7 @@
 # exercised periodically it never expires. This reads the `expiresAt` field in
 # ~/.claude/.credentials.json and only calls `claude auth status` (which hits
 # the auth endpoint and rolls the refresh token) when fewer than
-# ELIZA_OAUTH_REFRESH_THRESHOLD_SECS remain. Otherwise it is a no-op. It never
+# ELIZA_OAUTH_REFRESH_THRESHOLD_SECS remain. Otherwise it skips refresh. It never
 # invokes a model.
 #
 # If the refresh token itself has expired (bot offline for a long time), this
@@ -54,7 +54,7 @@ if (( remaining_s < THRESHOLD )); then
   log "token expires in ${remaining_s}s (< ${THRESHOLD}s); refreshing."
   refresh
 else
-  log "token healthy (${remaining_s}s remaining); no-op."
+  log "token healthy (${remaining_s}s remaining); skipping refresh."
 fi
 
 # Refreshing is best-effort (any hiccup is logged inside refresh()); exit clean

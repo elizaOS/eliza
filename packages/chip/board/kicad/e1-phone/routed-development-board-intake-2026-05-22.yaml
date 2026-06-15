@@ -8,14 +8,14 @@ source_board: board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-develop
 development_board: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed-development.kicad_pcb
 development_step: board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
 development_step_source: board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
-development_step_sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
-development_step_size_bytes: 33644081
+development_step_sha256: ea98f73d805f237ed397d5b6f190b86c31a9fc4ea270ea983a472220470043d6
+development_step_size_bytes: 33644627
 development_step_visual_source_intake: board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml
 development_step_visual_detail:
   footprint_envelopes: 89
   pad_contacts: 1452
   route_segments: 306
-  source_step_sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+  source_step_sha256: ea98f73d805f237ed397d5b6f190b86c31a9fc4ea270ea983a472220470043d6
 evidence_class: development_routing_visualization_not_release
 route_count: 153
 segment_count: 306

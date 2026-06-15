@@ -13,69 +13,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Switch } from "../ui/switch";
-
-export const ADVANCED_TOGGLE_STORAGE_KEY = "eliza:settings-advanced";
-
-type Listener = (enabled: boolean) => void;
-const listeners = new Set<Listener>();
-
-function readPersistedAdvancedFlag(): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    return window.localStorage.getItem(ADVANCED_TOGGLE_STORAGE_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function writePersistedAdvancedFlag(enabled: boolean): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(
-      ADVANCED_TOGGLE_STORAGE_KEY,
-      enabled ? "1" : "0",
-    );
-  } catch {
-    // localStorage may be unavailable (e.g. iframe with denied storage).
-    // Silently fall through — the in-memory listener cascade still works.
-  }
-}
-
-function publish(enabled: boolean): void {
-  for (const listener of listeners) listener(enabled);
-}
-
-/**
- * Hook: subscribe to the persisted advanced-settings flag. Reads from
- * `localStorage` on mount and updates whenever any `<AdvancedToggle />`
- * elsewhere on the page flips state.
- */
-export function useAdvancedSettingsEnabled(): boolean {
-  const [enabled, setEnabled] = useState<boolean>(readPersistedAdvancedFlag);
-
-  useEffect(() => {
-    setEnabled(readPersistedAdvancedFlag());
-    listeners.add(setEnabled);
-
-    const onStorage = (event: StorageEvent) => {
-      if (event.key === ADVANCED_TOGGLE_STORAGE_KEY) {
-        setEnabled(event.newValue === "1");
-      }
-    };
-    if (typeof window !== "undefined") {
-      window.addEventListener("storage", onStorage);
-    }
-
-    return () => {
-      listeners.delete(setEnabled);
-      if (typeof window !== "undefined") {
-        window.removeEventListener("storage", onStorage);
-      }
-    };
-  }, []);
-
-  return enabled;
-}
+import {
+  advancedToggleListeners,
+  publishAdvancedFlag,
+  readPersistedAdvancedFlag,
+  writePersistedAdvancedFlag,
+} from "./AdvancedToggle.hooks";
 
 export interface AdvancedToggleProps {
   /**
@@ -99,9 +42,9 @@ export function AdvancedToggle(props: AdvancedToggleProps) {
   // Stay in sync with any other AdvancedToggle on the page.
   useEffect(() => {
     setEnabled(readPersistedAdvancedFlag());
-    listeners.add(setEnabled);
+    advancedToggleListeners.add(setEnabled);
     return () => {
-      listeners.delete(setEnabled);
+      advancedToggleListeners.delete(setEnabled);
     };
   }, []);
 
@@ -109,7 +52,7 @@ export function AdvancedToggle(props: AdvancedToggleProps) {
     (next: boolean) => {
       setEnabled(next);
       writePersistedAdvancedFlag(next);
-      publish(next);
+      publishAdvancedFlag(next);
       onChange?.(next);
     },
     [onChange],

@@ -41,14 +41,19 @@ src/
   state/                      React contexts + stores (AppContext, ChatComposerContext,
                               ui-preferences, useWalletState, PtySessionsContext, ...)
   components/                 All React components, grouped by surface:
-    primitives/  ui/          Base primitives (button, switch, tabs, textarea, ...)
+    primitives/  ui/          Base primitives (button, switch, tabs, textarea, ...).
+                              components/ui/ is the ONLY primitive layer in the
+                              package — nothing else may re-implement a base element.
     composites/               Higher-level pieces (sidebar, page-panel, ...)
     shell/                    ChatSurface, AssistantOverlay, HomePill, shell-state reducer
     apps/                     Overlay/game app surfaces + registries + AppWindowRenderer
     character/ chat/ config-ui/ pages/ settings/ steward/ voice/ voice-pill/ ...
   cloud-ui/                   Cloud-frontend component set (@elizaos/ui/cloud-ui):
-                              dashboard, docs, data-list, monetization, analytics, ai-elements,
-                              theme provider, runtime shims (dynamic/Image/navigation). Own index.css
+                              dashboard, docs, data-list, monetization, analytics,
+                              theme provider, runtime shims (dynamic/Image/navigation). Own index.css.
+                              Contains NO primitives — its barrel re-exports
+                              components/ui/* and adds cloud-only skins (brand/) and
+                              compositions on top of them.
   config/                     Boot config, branding, plugin-config UI-spec engine
                               (buildPluginConfigUiSpec, evaluateVisibility, validators, catalogs)
   genui/                      Agent-generated UI (A2UI-compatible subset): validator,
@@ -58,8 +63,9 @@ src/
   services/                   Client-side services: local-inference (model catalog,
                               downloader, engine, assignments), app-updates
   homescreen/                 Homescreen canvas + scene apply/history + face-rig
-  backgrounds/                Static solid background host (BackgroundHost). CloudVideoBackground
-                              is retained for marketing/landing pages only, not the agent shell.
+  backgrounds/                Static solid background host (BackgroundHost) for the
+                              agent shell. Marketing/landing/login pages use a solid theme
+                              background directly — no animated/video background.
   companion/                  Companion bar (desktop) — CompanionBar, push-to-talk
   views/                      View event bus + interact protocol (STANDARD_CAPABILITIES)
   hooks/                      ~35 hooks (useMediaQuery, useActivityEvents, useRenderGuard, ...);
@@ -75,7 +81,7 @@ src/
   utils/  lib/                Formatters, SQL helpers, rate limiters, cn(), floating-layers z-index
   slots/                      Plugin slot components (task-coordinator-slots)
   styles/  stories/             CSS modules, story fixtures
-test/                           Test stubs (top-level, not under src/)
+test/                           Test doubles (top-level, not under src/)
 ```
 
 ## Key exports / surface
@@ -90,9 +96,13 @@ entries (see `exports` in package.json) so importers avoid the giant barrel:
 - `@elizaos/ui/components`, `@elizaos/ui/components/*`, `@elizaos/ui/config`
 - `@elizaos/ui/hooks`, `@elizaos/ui/layouts`, `@elizaos/ui/navigation`
 - `@elizaos/ui/genui`, `@elizaos/ui/voice`, `@elizaos/ui/widgets`, `@elizaos/ui/events`
+- `@elizaos/ui/lib/utils` — just `cn()` (browser-safe; use this instead of the
+  `./utils` barrel when bundling the kit, since `./utils` re-exports Node-side
+  helpers from `@elizaos/shared`)
 - `@elizaos/ui/platform`, `@elizaos/ui/providers`, `@elizaos/ui/types`, `@elizaos/ui/utils`
 - `@elizaos/ui/app-shell-registry`, `@elizaos/ui/button`, `@elizaos/ui/card`,
   `@elizaos/ui/input`, `@elizaos/ui/dropdown-menu` — direct-component shortcuts
+  (all resolve to the canonical `components/ui/*` primitives)
 
 Registries plugins/hosts call at runtime: `registerAppShellPage` (nav tabs),
 `registerProviderLogo` (provider logos), the overlay-app and game-surface
@@ -134,8 +144,10 @@ This package mostly reads config injected by the host, not raw env vars:
 - **Add a component:** put it in the right `components/<surface>/` dir, then export
   it from that surface's `index.ts` (and `src/index.ts` only if broadly shared).
   Prefer a subpath export over bloating the root barrel.
-- **Add a primitive:** add under `components/primitives/` or `components/ui/`,
-  re-export via `components/primitives/index` / the existing barrel.
+- **Add a primitive:** add under `components/ui/` (the single primitive layer),
+  re-export via `components/primitives/index` / the existing barrel. Never add a
+  second implementation of a base element elsewhere (cloud-ui included) — add a
+  variant to the canonical component, or a composition on top of it.
 - **Add a nav tab at runtime:** call `registerAppShellPage(registration)`
   (`app-shell-registry.ts`) from the host/plugin; the shell + `navigation/`
   pick it up.
@@ -143,6 +155,8 @@ This package mostly reads config injected by the host, not raw env vars:
   `src/agent-surface/README.md` for ids/roles/controlled-component rules.
 - **Add a cloud-frontend component:** add under `cloud-ui/components/` and export
   from `cloud-ui/index.ts`; it ships under the `@elizaos/ui/cloud-ui` subpath.
+  Import primitives from `../../components/ui/*` — do not create re-export shims
+  or local copies of base elements inside `cloud-ui/`.
 
 ## Conventions / gotchas
 

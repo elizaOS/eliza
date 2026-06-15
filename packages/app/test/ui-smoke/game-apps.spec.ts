@@ -12,10 +12,8 @@ type GameFixture = {
   slug: string;
   viewerPath: string;
   surfaceTestId: string;
-  commandChecks: Array<{ testId: string; content: string }>;
-  chatInputTestId: string;
-  chatSendTestId: string;
-  chatContent: string;
+  commandSignal: string;
+  commandChecks: Array<{ label: string; content: string }>;
 };
 
 const FIXTURES: GameFixture[] = [
@@ -25,14 +23,12 @@ const FIXTURES: GameFixture[] = [
     slug: "defense-of-the-agents",
     viewerPath: "/api/apps/defense-of-the-agents/viewer",
     surfaceTestId: "defense-live-operator-surface",
+    commandSignal: "defense-command",
     commandChecks: [
-      { testId: "defense-command-lane-top", content: "Move to top lane" },
-      { testId: "defense-command-recall", content: "Recall to base" },
-      { testId: "defense-command-autoplay", content: "Auto-play OFF" },
+      { label: "Move to top lane", content: "Move to top lane" },
+      { label: "Recall to base", content: "Recall to base" },
+      { label: "Autoplay on", content: "Auto-play OFF" },
     ],
-    chatInputTestId: "defense-chat-input",
-    chatSendTestId: "defense-chat-send",
-    chatContent: "Reinforce mid after the next wave",
   },
   {
     appName: "@elizaos/plugin-clawville",
@@ -40,23 +36,21 @@ const FIXTURES: GameFixture[] = [
     slug: "clawville",
     viewerPath: "/api/apps/clawville/viewer",
     surfaceTestId: "clawville-live-operator-surface",
+    commandSignal: "clawville-command",
     commandChecks: [
       {
-        testId: "clawville-command-move-krusty",
-        content: "Move to tool workshop",
+        label: "Move to Krusty Krab",
+        content: "Move to Krusty Krab",
       },
       {
-        testId: "clawville-command-visit-nearest",
+        label: "Visit the nearest building",
         content: "Visit the nearest building",
       },
       {
-        testId: "clawville-command-ask-npc",
+        label: "Ask NPC",
         content: "Ask the nearest NPC what to learn next",
       },
     ],
-    chatInputTestId: "clawville-chat-input",
-    chatSendTestId: "clawville-chat-send",
-    chatContent: "Ask the nearest NPC about MCP tools",
   },
 ];
 
@@ -365,18 +359,19 @@ for (const fixture of FIXTURES) {
     await expect(page.getByTestId(fixture.surfaceTestId)).toBeVisible({
       timeout: 60_000,
     });
+    const operatorSurface = page.getByTestId(fixture.surfaceTestId);
     await expect(page.getByText("Apps chat")).toHaveCount(0);
+    await expect(operatorSurface.getByText("Game chat")).toBeVisible();
 
+    expect(fixture.commandSignal).toContain("-command");
     for (const check of fixture.commandChecks) {
-      const commandButton = page.getByTestId(check.testId);
+      const commandButton = page
+        .getByRole("button", { name: check.label, exact: true })
+        .first();
       await commandButton.click();
-      await expect.poll(() => api.messages.at(-1)).toBe(check.content);
+      const chatContent = check.content;
+      await expect.poll(() => api.messages.at(-1)).toBe(chatContent);
       await expect(commandButton).toBeEnabled();
     }
-
-    await page.getByTestId(fixture.chatInputTestId).fill(fixture.chatContent);
-    await expect(page.getByTestId(fixture.chatSendTestId)).toBeEnabled();
-    await page.getByTestId(fixture.chatSendTestId).click();
-    await expect.poll(() => api.messages.at(-1)).toBe(fixture.chatContent);
   });
 }

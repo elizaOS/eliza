@@ -28,6 +28,14 @@ function pick(...candidates: (string | undefined)[]): string | undefined {
   return undefined;
 }
 
+function parsePositiveIntList(value: string | undefined): number[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((item) => Number.parseInt(item.trim(), 10))
+    .filter((item) => Number.isFinite(item) && item > 0);
+}
+
 export const containersEnv = {
   /** Base64-encoded SSH private key for connecting to Docker nodes. */
   sshKey(): string | undefined {
@@ -102,6 +110,44 @@ export const containersEnv = {
     );
   },
 
+  /**
+   * Allowlist of image refs/prefixes permitted for coding-container deploys.
+   *
+   * SECURITY: coding-containers let an authenticated org run an OUTSIDE
+   * image (e.g. `ghcr.io/dexploarer/bnancy:latest`). Without an allowlist any
+   * authed org could run an arbitrary image on our nodes. This is the gate.
+   *
+   * Format: comma-separated glob prefixes, e.g.
+   *   `ghcr.io/dexploarer/*,ghcr.io/elizaos/*,ghcr.io/waifufun/*`
+   * A trailing `*` matches any suffix (repo path, tag, digest). An entry with
+   * no `*` must match the image exactly. Matching is case-insensitive on the
+   * registry/repo and ignores surrounding whitespace.
+   *
+   * Returns the parsed, normalized list. Empty list = allowlist disabled
+   * (handled at the call site so an unset env doesn't silently open the gate;
+   * see `isCodingContainerImageAllowed`).
+   *
+   * NOTE: the default entries (ghcr.io/dexploarer/*, ghcr.io/elizaos/*,
+   * ghcr.io/waifufun/*) are first-party namespaces. Review these if GitHub org
+   * access changes for any of those organizations.
+   */
+  codingContainerImageAllowlist(): string[] {
+    const env = getCloudAwareEnv();
+    const raw = pick(
+      env.CODING_CONTAINER_IMAGE_ALLOWLIST,
+      env.ELIZA_CODING_CONTAINER_IMAGE_ALLOWLIST,
+      env.CONTAINERS_CODING_IMAGE_ALLOWLIST,
+    );
+    if (raw === undefined) {
+      // Secure-by-default starter set. Operators override via env.
+      return ["ghcr.io/dexploarer/*", "ghcr.io/elizaos/*", "ghcr.io/waifufun/*"];
+    }
+    return raw
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  },
+
   /** Explicit operator-pinned agent image, without the hardcoded fallback. */
   defaultAgentImageOverride(): string | undefined {
     const env = getCloudAwareEnv();
@@ -164,10 +210,35 @@ export const containersEnv = {
     return pick(env.AGENT_CONTAINER_PORT) ?? "2138";
   },
 
-  /** Hetzner Cloud API token for elastic node provisioning. Optional. */
+  /**
+   * Hetzner Cloud API token for elastic node provisioning. Optional.
+   * Canonical name is `HCLOUD_TOKEN` (matches the official Hetzner CLI +
+   * Terraform provider). The legacy aliases `HETZNER_CLOUD_TOKEN` and
+   * `HETZNER_CLOUD_API_KEY` were dropped — one source of truth avoids the
+   * silent divergence we hit during the multi-project migration (one
+   * variable swapped, the other still pointing at the old project, so the
+   * autoscaler spawned a worker in the wrong Hetzner project).
+   */
   hetznerCloudToken(): string | undefined {
     const env = getCloudAwareEnv();
-    return pick(env.HCLOUD_TOKEN, env.HETZNER_CLOUD_TOKEN, env.HETZNER_CLOUD_API_KEY);
+    return pick(env.HCLOUD_TOKEN);
+  },
+
+  /**
+   * Cloud deployment environment (`staging`, `production`, `local`, …).
+   *
+   * Stamped onto provisioned Hetzner servers via the `environment` label so
+   * the orchestrator/scheduler can scope per-env operations from the API
+   * (`?label_selector=environment=staging`) and never act on a node from a
+   * different environment.
+   *
+   * Defaults to `"local"` to match the other env-prefixed callers
+   * (cache client, a2a task store, credit-events) — same fallback, same
+   * source of truth (the `ENVIRONMENT` env var).
+   */
+  environment(): string {
+    const env = getCloudAwareEnv();
+    return pick(env.ENVIRONMENT) ?? "local";
   },
 
   /**
@@ -180,6 +251,27 @@ export const containersEnv = {
   publicBaseDomain(): string | undefined {
     const env = getCloudAwareEnv();
     return pick(env.CONTAINERS_PUBLIC_BASE_DOMAIN, env.ELIZA_CLOUD_AGENT_BASE_DOMAIN);
+  },
+
+  /**
+   * Apps-only base domain for per-app public hostnames. Reads
+   * `CONTAINERS_PUBLIC_BASE_DOMAIN` (set to e.g. `apps.elizacloud.ai` on the apps
+   * data plane by the apps-data-plane terraform) with NO fallback to the agent
+   * sandbox domain (`ELIZA_CLOUD_AGENT_BASE_DOMAIN`) — unlike
+   * {@link publicBaseDomain}. So an app never silently inherits the agent/milady
+   * domain; an unset value surfaces as "no URL" instead of a wrong-domain one.
+   */
+  appsPublicBaseDomain(): string | undefined {
+    return getCloudAwareEnv().CONTAINERS_PUBLIC_BASE_DOMAIN || undefined;
+  },
+
+  /**
+   * Caddy admin-API base URL the daemon uses to add/remove per-app ingress routes
+   * (e.g. `http://127.0.0.1:2019` over an SSH tunnel, or the app node's
+   * private-IP admin endpoint). Undefined = ingress not wired (routes are no-ops).
+   */
+  caddyAdminUrl(): string | undefined {
+    return getCloudAwareEnv().APPS_CADDY_ADMIN_URL || undefined;
   },
 
   /**
@@ -215,6 +307,11 @@ export const containersEnv = {
     return pick(env.CONTAINERS_HCLOUD_SERVER_TYPE, env.HCLOUD_SERVER_TYPE) ?? "ccx33";
   },
 
+  defaultHcloudNetworkIds(): number[] {
+    const env = getCloudAwareEnv();
+    return parsePositiveIntList(pick(env.CONTAINERS_HCLOUD_NETWORK_IDS, env.HCLOUD_NETWORK_IDS));
+  },
+
   /**
    * Per-node agent capacity for newly autoscaled Hetzner Cloud nodes. The
    * autoscaler stamps this onto a node's `capacity` at creation; the
@@ -234,11 +331,38 @@ export const containersEnv = {
     return Number.isFinite(parsed) && parsed >= 1 ? Math.min(64, Math.floor(parsed)) : 8;
   },
 
+  /**
+   * Free slots that must remain across the pool before a new node is
+   * provisioned. Also acts as the drain preservation floor: a drain is
+   * refused if it would leave the pool below this number of free slots.
+   *
+   * Default: 2 — half a 4-slot node kept hot across the pool. Bump via env
+   * for fleets where the cold-start tail matters more than node cost.
+   * Clamped to [0, 64].
+   */
+  autoscaleMinFreeSlotsBuffer(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.CONTAINERS_AUTOSCALE_MIN_FREE_SLOTS_BUFFER);
+    const parsed = raw !== undefined ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.min(64, Math.floor(parsed)) : 2;
+  },
+
+  /**
+   * Emergency floor for hot agent starts; bypasses scale-up cooldown when
+   * pool availability drops below this. Clamped to [0, 64]. Default: 1.
+   */
+  autoscaleMinHotAvailableSlots(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.CONTAINERS_AUTOSCALE_MIN_HOT_AVAILABLE_SLOTS);
+    const parsed = raw !== undefined ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.min(64, Math.floor(parsed)) : 1;
+  },
+
   // ── Warm pool ───────────────────────────────────────────────────────────
 
   /**
    * Whether the agent warm pool is enabled. When false, claim flow always
-   * falls through to the cold-start async path; replenish/drain crons no-op.
+   * falls through to the cold-start async path; replenish/drain crons stay inactive.
    * Default: false (opt-in).
    */
   warmPoolEnabled(): boolean {

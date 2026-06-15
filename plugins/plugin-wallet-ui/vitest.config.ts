@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const elizaRoot = path.resolve(here, "../..");
 const require = createRequire(import.meta.url);
 
 export default defineConfig({
@@ -25,6 +26,17 @@ export default defineConfig({
       {
         find: /^react-dom\/client$/,
         replacement: require.resolve("react-dom/client"),
+      },
+      {
+        find: /^@elizaos\/ui\/(agent-surface|api|components(?:\/.*)?|hooks|layouts|state|utils)$/,
+        replacement: "@elizaos/ui",
+      },
+      {
+        find: /^@elizaos\/plugin-health\/screen-time\/mobile-signal-setup$/,
+        replacement: path.resolve(
+          elizaRoot,
+          "plugins/plugin-health/src/screen-time/mobile-signal-setup.ts",
+        ),
       },
     ],
   },

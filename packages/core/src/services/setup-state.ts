@@ -740,7 +740,7 @@ export class SetupStateMachine {
 
 			case "oauth":
 				if (!data.oauthCallback?.code || !data.oauthCallback.state) {
-					return { valid: false, error: "OAuth callback data is incomplete" };
+					return { valid: false, error: "OAuth callback data is partial" };
 				}
 				break;
 

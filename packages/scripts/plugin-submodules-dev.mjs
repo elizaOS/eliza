@@ -7,7 +7,7 @@
  * adjusts workspaces and self-deps for local development (sql, ollama, local-ai).
  *
  *   DEV (default — no flag, or `--dev`):
- *     1. `git submodule update --init` for each configured path (no-op when trees exist)
+ *     1. `git submodule update --init` for each configured path (skips existing trees)
  *     2. Append `plugins/...` entries to root package.json workspaces
  *     3. Remove self-dependencies on the package name (e.g. @elizaos/plugin-sql → itself)
  *        so bun does not hit a workspace dependency loop

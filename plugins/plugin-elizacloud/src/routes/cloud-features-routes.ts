@@ -4,7 +4,7 @@ import type { CloudProxyConfigLike } from "../lib/config-like";
 import { sendJsonError } from "../lib/http";
 
 const LIFEOPS_CLOUD_FEATURES_MODULE: string =
-  "@elizaos/plugin-lifeops";
+  "@elizaos/plugin-personal-assistant/routes/cloud-features-routes";
 
 export interface CloudFeaturesRouteState {
   config: CloudProxyConfigLike;

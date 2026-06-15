@@ -92,6 +92,21 @@ export interface ContinuousChatState {
   latency: ContinuousChatLatency;
   /** Speaker attribution mirror. */
   speaker: VoiceSpeakerMetadata | null;
+  /**
+   * Mirror of `voice.needsAudioUnlock`: assistant audio was blocked by the
+   * browser autoplay policy and a user gesture is required to enable sound.
+   */
+  needsAudioUnlock: boolean;
+  /**
+   * Mirror of `voice.micReconnected`: a transient pulse set when browser speech
+   * recognition silently auto-restarted mid-session.
+   */
+  micReconnected: boolean;
+  /**
+   * Mirror of `voice.unlockAudio`: warm/resume the AudioContext in response to a
+   * user gesture, clearing `needsAudioUnlock`. Safe to call when already unlocked.
+   */
+  unlockAudio: () => void;
   /** Start a new optimistic turn (R11 cancellation contract surface). */
   startTurn: () => ContinuousChatCancellationToken;
   /** Manually stop continuous capture without resetting `mode`. */
@@ -107,7 +122,18 @@ const EMPTY_LATENCY: ContinuousChatLatency = {
   firstSegmentCached: null,
 };
 
+const NOOP_UNLOCK_AUDIO = () => {};
+
 const INTERRUPT_PULSE_MS = 600;
+
+/**
+ * Safety ceiling for the `thinking` status. If the runtime never resolves the
+ * generation (relay drop, aborted stream that left `assistantGenerating`
+ * stuck), the status bar would otherwise show "thinking" forever. After this
+ * window we stop surfacing `thinking` and fall back to listening/idle so the
+ * mic UI is usable again. Tuned well above any realistic first-token latency.
+ */
+const THINKING_TIMEOUT_MS = 30_000;
 
 let cancellationTokenCounter = 0;
 
@@ -150,7 +176,9 @@ export function useContinuousChat(
   } = options;
 
   const [interrupting, setInterrupting] = useState(false);
+  const [thinkingTimedOut, setThinkingTimedOut] = useState(false);
   const interruptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const thinkingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeTokenRef = useRef<ContinuousChatCancellationToken | null>(null);
   const lastModeRef = useRef<VoiceContinuousMode>(
     DEFAULT_VOICE_CONTINUOUS_MODE,
@@ -229,12 +257,40 @@ export function useContinuousChat(
     }
   }, [voice.isListening, voice.isSpeaking]);
 
+  // Thinking-timeout guard: a generation that never resolves must not pin the
+  // status bar to "thinking". While `assistantGenerating` is true (and the
+  // assistant is not yet speaking), arm a timer; if it fires, latch
+  // `thinkingTimedOut` so the status derivation drops back to listening/idle.
+  // Any state change that ends the thinking window (generation finished,
+  // playback started) clears the timer and the latch.
+  const isThinking = Boolean(assistantGenerating) && !voice.isSpeaking;
+  useEffect(() => {
+    if (!isThinking) {
+      if (thinkingTimerRef.current !== null) {
+        clearTimeout(thinkingTimerRef.current);
+        thinkingTimerRef.current = null;
+      }
+      setThinkingTimedOut(false);
+      return;
+    }
+    // Already thinking and timer running — keep the existing deadline.
+    if (thinkingTimerRef.current !== null) return;
+    thinkingTimerRef.current = setTimeout(() => {
+      thinkingTimerRef.current = null;
+      setThinkingTimedOut(true);
+    }, THINKING_TIMEOUT_MS);
+  }, [isThinking]);
+
   // Clear pending timer on unmount; cancel any active token.
   useEffect(() => {
     return () => {
       if (interruptTimerRef.current !== null) {
         clearTimeout(interruptTimerRef.current);
         interruptTimerRef.current = null;
+      }
+      if (thinkingTimerRef.current !== null) {
+        clearTimeout(thinkingTimerRef.current);
+        thinkingTimerRef.current = null;
       }
       const token = activeTokenRef.current;
       if (token) {
@@ -272,7 +328,9 @@ export function useContinuousChat(
   const status: VoiceContinuousStatus = useMemo(() => {
     if (interrupting) return "interrupting";
     if (voice.isSpeaking) return "speaking";
-    if (assistantGenerating) return "thinking";
+    // Suppress a stuck "thinking" once the safety timeout has fired so the bar
+    // falls through to listening/idle instead of pulsing forever.
+    if (assistantGenerating && !thinkingTimedOut) return "thinking";
     if (voice.isListening && voice.captureMode === "passive")
       return "listening";
     if (mode === "off") return "idle";
@@ -281,6 +339,7 @@ export function useContinuousChat(
     assistantGenerating,
     interrupting,
     mode,
+    thinkingTimedOut,
     voice.captureMode,
     voice.isListening,
     voice.isSpeaking,
@@ -294,6 +353,9 @@ export function useContinuousChat(
     interrupting,
     latency: latency ?? EMPTY_LATENCY,
     speaker: speaker ?? null,
+    needsAudioUnlock: voice.needsAudioUnlock ?? false,
+    micReconnected: voice.micReconnected ?? false,
+    unlockAudio: voice.unlockAudio ?? NOOP_UNLOCK_AUDIO,
     startTurn,
     pause,
     resume,

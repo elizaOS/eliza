@@ -2,12 +2,12 @@
  * @module plugin-app-control/services/app-worker-host-service
  *
  * Spawns one Bun `node:worker_threads` Worker per registered app that
- * declares `isolation: "worker"` in its manifest. Phase 2.2 surface:
- * a thin lifecycle owner + typed RPC client that the rest of the
- * Phase 2 work (action invocation, FS/net gating) builds on.
+ * declares `isolation: "worker"` in its manifest. Owns worker lifecycle,
+ * typed RPC, action invocation, and gated runtime bridge calls for sandboxed
+ * apps.
  *
  * - `start(slug)` spawns the worker if the registered entry declares
- *   `isolation: "worker"`. No-op for `"none"`.
+ *   `isolation: "worker"`. Entries with `"none"` stay in-process.
  * - `invoke(slug, method, params)` sends a typed message and awaits
  *   the worker's response. The wire format is documented in
  *   `../workers/app-worker-entry.ts`.
@@ -18,14 +18,14 @@
  *   diagnostics.
  *
  * The service is registered alongside `AppRegistryService` in
- * `plugin-app-control/src/index.ts`. It does not auto-start workers
- * during bootstrap — Phase 2.5 wires that.
+ * `plugin-app-control/src/index.ts`. On service start it asks the registry for
+ * persisted worker-isolated apps and best-effort spawns them.
  */
 
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import {
 	type IAgentRuntime,
@@ -66,6 +66,13 @@ interface PendingCall {
 	startedAt: number;
 }
 
+interface RuntimeBridgeRequest {
+	id: number;
+	bridge: "runtime";
+	method: string;
+	params?: unknown;
+}
+
 interface SpawnedWorker {
 	slug: string;
 	worker: Worker;
@@ -79,6 +86,8 @@ interface SpawnedWorker {
 interface RuntimeWithServiceLoadPromise {
 	getServiceLoadPromise?: (serviceType: string) => Promise<Service>;
 }
+
+type RuntimeGetMemoriesParams = Parameters<IAgentRuntime["getMemories"]>[0];
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -110,6 +119,27 @@ function readStringFromExports(value: unknown): string | null {
 		readString(record.default) ??
 		readString(record.require)
 	);
+}
+
+function isRuntimeBridgeRequest(raw: unknown): raw is RuntimeBridgeRequest {
+	return (
+		typeof raw === "object" &&
+		raw !== null &&
+		(raw as RuntimeBridgeRequest).bridge === "runtime" &&
+		typeof (raw as RuntimeBridgeRequest).id === "number" &&
+		typeof (raw as RuntimeBridgeRequest).method === "string"
+	);
+}
+
+function readGetMemoriesParams(params: unknown): RuntimeGetMemoriesParams {
+	if (!params || typeof params !== "object" || Array.isArray(params)) {
+		throw new Error("runtime.getMemories params must be an object");
+	}
+	const record = params as Record<string, unknown>;
+	if (typeof record.tableName !== "string" || record.tableName.length === 0) {
+		throw new Error("runtime.getMemories params must include tableName");
+	}
+	return record as RuntimeGetMemoriesParams;
 }
 
 async function resolvePluginEntryPath(
@@ -158,8 +188,8 @@ async function resolvePluginEntryPath(
 /**
  * Internal helper so tests can construct a worker without going
  * through the registry lookup path. Exposed via the service for the
- * Phase 2.2 fixture test that doesn't need a full registry to prove
- * the bridge round-trip.
+ * worker-host fixture test that doesn't need a full registry to prove the
+ * bridge round-trip.
  */
 export interface SpawnOptions {
 	slug: string;
@@ -181,7 +211,7 @@ export class AppWorkerHostService extends Service {
 	static override serviceType = APP_WORKER_HOST_SERVICE_TYPE;
 
 	override capabilityDescription =
-		"Spawns and manages Bun workers for apps declaring isolation:'worker'. Phase 2 enforcement substrate.";
+		"Spawns and manages Bun workers for apps declaring isolation:'worker'.";
 
 	private readonly workers = new Map<string, SpawnedWorker>();
 	private readonly stateDir: string;
@@ -209,7 +239,7 @@ export class AppWorkerHostService extends Service {
 	/**
 	 * Look up the registered entry and spawn a worker if the entry
 	 * declares isolation:"worker". Returns the spawn snapshot or a
-	 * structured reason if the spawn was a no-op.
+	 * structured reason if no worker was spawned.
 	 */
 	async startForRegisteredApp(
 		slug: string,
@@ -269,13 +299,22 @@ export class AppWorkerHostService extends Service {
 			return this.snapshot(existing);
 		}
 
-		const worker = new Worker(WORKER_ENTRY, {
+		// On Windows the absolute path WORKER_ENTRY looks like `C:\...`,
+		// which Node's URL parser treats as scheme `c:` and rejects with
+		// "Only URLs with a scheme in: file, data, and node". Pass a
+		// `file://` URL on every platform.
+		const workerEntryUrl = pathToFileURL(WORKER_ENTRY);
+		const worker = new Worker(workerEntryUrl, {
 			execArgv: WORKER_ENTRY.endsWith(".ts")
 				? ["--experimental-strip-types"]
 				: [],
 			workerData: {
 				slug: options.slug,
 				isolation: options.isolation,
+				agentId:
+					typeof this.runtime?.agentId === "string"
+						? this.runtime.agentId
+						: null,
 				statePath: options.statePath ?? null,
 				requestedPermissions: options.requestedPermissions ?? null,
 				grantedNamespaces: options.grantedNamespaces ?? [],
@@ -294,7 +333,12 @@ export class AppWorkerHostService extends Service {
 		};
 		spawned.readyPromise = new Promise<void>((resolve, reject) => {
 			const onMessage = (raw: unknown) => {
+				if (isRuntimeBridgeRequest(raw)) {
+					void this.handleRuntimeBridgeRequest(spawned, raw);
+					return;
+				}
 				if (typeof raw !== "object" || raw === null) return;
+				if ((raw as { bridge?: unknown }).bridge === "runtime") return;
 				const msg = raw as {
 					id: number;
 					ok: boolean;
@@ -361,6 +405,40 @@ export class AppWorkerHostService extends Service {
 			throw error;
 		}
 		return this.snapshot(spawned);
+	}
+
+	private async handleRuntimeBridgeRequest(
+		spawned: SpawnedWorker,
+		req: RuntimeBridgeRequest,
+	): Promise<void> {
+		try {
+			const result = await this.dispatchRuntimeBridgeRequest(req);
+			spawned.worker.postMessage({
+				id: req.id,
+				bridge: "runtime",
+				ok: true,
+				result,
+			});
+		} catch (error) {
+			spawned.worker.postMessage({
+				id: req.id,
+				bridge: "runtime",
+				ok: false,
+				reason: error instanceof Error ? error.message : String(error),
+			});
+		}
+	}
+
+	private async dispatchRuntimeBridgeRequest(
+		req: RuntimeBridgeRequest,
+	): Promise<unknown> {
+		if (req.method !== "getMemories") {
+			throw new Error(`runtime.${req.method} is not exposed to app workers`);
+		}
+		if (typeof this.runtime?.getMemories !== "function") {
+			throw new Error("runtime.getMemories is unavailable on the host runtime");
+		}
+		return this.runtime.getMemories(readGetMemoriesParams(req.params));
 	}
 
 	/**

@@ -298,7 +298,7 @@ export type AgentDefaultsConfig = {
   /** Human-like delay between block replies. */
   humanDelay?: HumanDelayConfig;
   timeoutSeconds?: number;
-  /** Max inbound media size in MB for agent-visible attachments (text note or future image attach). */
+  /** Max inbound media size in MB for agent-visible attachments (text note or image attach). */
   mediaMaxMb?: number;
   typingIntervalSeconds?: number;
   /** Typing indicator start mode (never|instant|thinking|message). */

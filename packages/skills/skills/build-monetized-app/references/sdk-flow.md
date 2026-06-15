@@ -51,9 +51,9 @@ image must:
 
 - Listen on `$PORT` (cloud sets this at runtime)
 - Expose a `GET /health` endpoint that returns 200 quickly (the cloud's deploy step polls it before flipping the load balancer)
-- For chat-style apps, expose a server route that forwards user-bearing requests upstream to cloud's `/api/v1/apps/<appId>/chat` with the user's bearer token
+- For chat-style apps, expose a server route that forwards user-bearing requests upstream to cloud's `/api/v1/messages` with the user's bearer token and an `x-app-id: <appId>` header (debits the user's org balance and records creator earnings)
 
-The canonical reference for this shape is [`apps/edad-chat/server.ts` and `apps/edad-chat/api/proxy.ts`](https://github.com/elizaOS/cloud-mini-apps/tree/main/apps/edad-chat) in `elizaOS/cloud-mini-apps`. Copy that pattern when your app is a chat shell.
+The canonical reference for this shape is [`packages/examples/cloud/edad/server.ts`](https://github.com/elizaos/eliza/blob/develop/packages/examples/cloud/edad/server.ts). Copy that pattern when your app is a chat shell.
 
 If you want the inline minimal version — a Next.js or Hono handler is equivalent — the shape is:
 
@@ -69,13 +69,14 @@ export async function handleChat(req: Request): Promise<Response> {
 
   const body = await req.json();
 
-  // Forward to the app-scoped chat endpoint with the user's token.
-  // The user's app balance is debited; the app's configured markup credits us.
+  // Forward to /api/v1/messages with the user's token + x-app-id.
+  // The user's ORG credit balance is debited; the app's configured markup
+  // credits the creator via recordCreatorEarnings; x-affiliate-code is honored.
   const appId = process.env.ELIZA_APP_ID!;
-  const upstream = await cloud.routes.postApiV1AppsByIdChatRaw({
-    pathParams: { id: appId },
+  const upstream = await cloud.routes.postApiV1MessagesRaw({
     headers: {
       authorization: userToken.startsWith("Bearer ") ? userToken : `Bearer ${userToken}`,
+      "x-app-id": appId,
       ...(AFFILIATE ? { "x-affiliate-code": AFFILIATE } : {}),
     },
     json: body,
@@ -102,31 +103,28 @@ The frontend can be served by the same container or by any static host pointing 
 ## 3. Deploy the container
 
 ```ts
-const created = await cloud.routes.postApiV1Containers({
-  json: {
-    name: input.name,
-    project_name: input.slug,
-    image: `<registry>/<repo>:<tag>`,
-    port: 3000,
-    desired_count: 1,
-    cpu: 256,
-    memory: 512,
-    health_check_path: "/health",
-    environment_vars: {
-      PORT: "3000",
-      ELIZA_APP_ID: appId,
-      ELIZA_CLOUD_URL: process.env.ELIZA_CLOUD_PUBLIC_URL ?? "https://www.elizacloud.ai",
-      ELIZA_AFFILIATE_CODE: process.env.ELIZA_AFFILIATE_CODE ?? "",
-    },
+const { data: container } = await cloud.createContainer({
+  name: input.name,
+  project_name: input.slug,
+  image: `<registry>/<repo>:<tag>`,
+  port: 3000,
+  desired_count: 1,
+  cpu: 256,
+  memory: 512,
+  health_check_path: "/health",
+  environment_vars: {
+    PORT: "3000",
+    ELIZA_APP_ID: appId,
+    ELIZA_CLOUD_URL: process.env.ELIZA_CLOUD_PUBLIC_URL ?? "https://www.elizacloud.ai",
+    ELIZA_AFFILIATE_CODE: process.env.ELIZA_AFFILIATE_CODE ?? "",
   },
 });
-const container = created.data;
 ```
 
-After `postApiV1Containers` returns, poll `getApiV1ContainersById(container.id)`
+After `createContainer` returns, poll `cloud.getContainer(container.id)`
 until the response has a usable `load_balancer_url` / `publicUrl`, then verify
 `GET <url>/health`. Health-check failures here mean the image's server doesn't
-bind to `$PORT` correctly — pull `cloud.routes.getApiV1ContainersByIdLogs` when
+bind to `$PORT` correctly — pull `cloud.getContainerLogs(container.id, tail?)` when
 the sidecar is available and surface the logs to the human.
 
 ## 4. Set markup

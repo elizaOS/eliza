@@ -139,7 +139,7 @@ export function computeStreamingDelta(
 }
 
 export type StreamingUpdateResult = {
-  kind: "append" | "replace" | "noop";
+  kind: "append" | "replace" | "unchanged";
   nextText: string;
   emittedText: string;
 };
@@ -151,7 +151,7 @@ export function resolveStreamingUpdate(
   const merged = mergeStreamingText(existing, incoming);
 
   if (merged === existing) {
-    return { kind: "noop", nextText: existing, emittedText: "" };
+    return { kind: "unchanged", nextText: existing, emittedText: "" };
   }
 
   if (merged.startsWith(existing)) {

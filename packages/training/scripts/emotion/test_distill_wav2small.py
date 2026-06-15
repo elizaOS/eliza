@@ -110,45 +110,45 @@ class ProvenanceTests(unittest.TestCase):
 
 class BudgetTests(unittest.TestCase):
     def test_in_budget_passes(self) -> None:
-        class Fake:
+        class ParamModule:
             def parameters(self):  # noqa: D401 — match torch.nn.Module API
-                # Fake tensors with `.numel()` and `.requires_grad`.
-                class T:
+                # Minimal tensor-like objects with `.numel()` and `.requires_grad`.
+                class ParameterTensor:
                     requires_grad = True
 
                     def numel(self) -> int:
                         return dw.TARGET_PARAM_COUNT // 2
 
-                return [T(), T()]
+                return [ParameterTensor(), ParameterTensor()]
 
         # Two tensors of half-target each → exactly target. Within tolerance.
-        dw.assert_student_param_budget(Fake())
+        dw.assert_student_param_budget(ParamModule())
 
     def test_out_of_budget_fails(self) -> None:
-        class Fake:
+        class ParamModule:
             def parameters(self):
-                class T:
+                class ParameterTensor:
                     requires_grad = True
 
                     def numel(self) -> int:
                         return dw.TARGET_PARAM_COUNT * 4
 
-                return [T()]
+                return [ParameterTensor()]
 
         with self.assertRaisesRegex(RuntimeError, "outside target"):
-            dw.assert_student_param_budget(Fake())
+            dw.assert_student_param_budget(ParamModule())
 
 
 class HeavyPhasesTests(unittest.TestCase):
     """The heavy phases are now implemented. They still require torch +
     onnxruntime + a teacher checkpoint for the full run, but the contracts
-    below are enforced in pure Python: empty inputs no-op, missing teachers
+    below are enforced in pure Python: empty inputs return empty results, missing teachers
     fail loudly with the license-checked path, and the export rejects bad
     output paths before touching ONNX.
     """
 
     def test_teacher_pseudo_labels_empty_clips_returns_empty(self) -> None:
-        # No-op when staging incomplete — operator gets a friendly path through.
+        # Empty staging input gives the operator a friendly path through.
         self.assertEqual(dw.teacher_pseudo_labels(teacher=None, clips=[]), [])
 
     def test_teacher_pseudo_labels_rejects_unlicensed_teacher(self) -> None:
@@ -168,7 +168,7 @@ class HeavyPhasesTests(unittest.TestCase):
             )
 
     def test_train_student_rejects_empty_labels(self) -> None:
-        """No labels means no-op — operator should be told loudly to
+        """No labels means training cannot proceed — operator should be told loudly to
         run `teacher_pseudo_labels` first."""
         with self.assertRaisesRegex(RuntimeError, "empty teacher_labels"):
             dw.train_student(

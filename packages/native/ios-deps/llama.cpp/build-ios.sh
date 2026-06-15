@@ -77,7 +77,7 @@ if [[ "$cmd" == "all" && "${ELIZA_LLAMA_FORCE_REBUILD:-0}" != "1" ]] && xcframew
 fi
 
 if [[ "$cmd" == "all" && "${ELIZA_LLAMA_BUILD_IOS:-0}" != "1" ]]; then
-  printf '\033[33m[build-ios]\033[0m skipping iOS xcframework build: set ELIZA_LLAMA_BUILD_IOS=1 to compile llama.cpp locally.\n'
+  printf '\033[33m[build-ios]\033[0m iOS xcframework build not requested: set ELIZA_LLAMA_BUILD_IOS=1 to compile llama.cpp locally.\n'
   exit 0
 fi
 
@@ -90,17 +90,17 @@ fi
 
 # iOS cross-builds require a macOS host with Xcode (xcodebuild + xcrun).
 # When invoked on a non-Darwin host (Linux CI, Linux dev box) this build is
-# physically impossible — there's no iOS SDK to link against. Skip cleanly
+# physically impossible — there's no iOS SDK to link against. Return cleanly
 # so workspace-wide 'bun run build' / turbo build pipelines aren't blocked
 # by an unbuildable target on the wrong host. The package.json declares
 # `"os": ["darwin"]` but bun/turbo don't enforce that yet.
 if [[ "$(uname -s)" != "Darwin" ]]; then
-  printf '\033[33m[build-ios]\033[0m skipping iOS xcframework build: requires macOS host (uname=%s); workspace targets that need LlamaCpp.xcframework will lack it.\n' "$(uname -s)"
+  printf '\033[33m[build-ios]\033[0m iOS xcframework build unavailable: requires macOS host (uname=%s); workspace targets that need LlamaCpp.xcframework will lack it.\n' "$(uname -s)"
   exit 0
 fi
 
 if ! xcodebuild -version >/dev/null 2>&1 || ! xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1; then
-  printf '\033[33m[build-ios]\033[0m skipping iOS xcframework build: requires full Xcode with the iOS SDK; active developer tools are insufficient.\n'
+  printf '\033[33m[build-ios]\033[0m iOS xcframework build unavailable: requires full Xcode with the iOS SDK; active developer tools are insufficient.\n'
   exit 0
 fi
 
@@ -110,7 +110,7 @@ LLAMA_CPP_VERSION_FILE="$ROOT_DIR/../VERSIONS"
 if [[ -f "$LLAMA_CPP_VERSION_FILE" ]]; then
   PINNED_REF="$(awk -F= '$1 == "llama.cpp" { print $2; exit }' "$LLAMA_CPP_VERSION_FILE")"
 fi
-[[ -n "${PINNED_REF:-}" && "$PINNED_REF" != PLACEHOLDER* ]] \
+[[ -n "${PINNED_REF:-}" && "$PINNED_REF" != excluded-* ]] \
   || die "missing llama.cpp pin in $LLAMA_CPP_VERSION_FILE"
 
 # Source repo. Defaults to the elizaOS-controlled fork (carries the
@@ -383,6 +383,6 @@ if ! main "$@"; then
   if [[ "${ELIZA_LLAMA_IOS_REQUIRED:-0}" == "1" ]]; then
     die "iOS llama.cpp build failed"
   fi
-  printf '\033[33m[build-ios]\033[0m skipping iOS xcframework build: local Xcode toolchain failed; set ELIZA_LLAMA_IOS_REQUIRED=1 to make this fatal.\n'
+  printf '\033[33m[build-ios]\033[0m iOS xcframework build unavailable: local Xcode toolchain failed; set ELIZA_LLAMA_IOS_REQUIRED=1 to make this fatal.\n'
   exit 0
 fi

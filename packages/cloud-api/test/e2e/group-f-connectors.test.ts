@@ -12,9 +12,9 @@
  *   /api/eliza-app/webhook/telegram      (forwards to webhook gateway)
  *   /api/eliza-app/webhook/twilio        (forwards to webhook gateway)
  *   /api/eliza-app/webhook/whatsapp      (forwards to webhook gateway)
- *   /api/eliza/rooms/:roomId             (stubbed — 501)
- *   /api/eliza/rooms/:roomId/messages    (stubbed — 501)
- *   /api/eliza/rooms/:roomId/messages/stream (stubbed — 501)
+ *   /api/eliza/rooms/:roomId             (legacy room route — 501)
+ *   /api/eliza/rooms/:roomId/messages    (legacy room route — 501)
+ *   /api/eliza/rooms/:roomId/messages/stream (legacy room route — 501)
  *   /api/eliza/rooms/:roomId/welcome
  *   /api/webhooks/blooio/:orgId
  *   /api/webhooks/twilio/:orgId
@@ -381,25 +381,25 @@ describe("POST /api/eliza-app/webhook/whatsapp", () => {
 });
 
 // ---------------------------------------------------------------------------
-// /api/eliza/rooms/:roomId — stubbed
+// /api/eliza/rooms/:roomId — legacy route contract
 // ---------------------------------------------------------------------------
 
-describe("GET/POST /api/eliza/rooms/:roomId (stubbed)", () => {
-  test("any request → 501 not implemented", async () => {
+describe("GET/POST /api/eliza/rooms/:roomId (legacy route)", () => {
+  test("any request → 501 unsupported route contract", async () => {
     const res = await api.get("/api/eliza/rooms/room-test-001");
     expect(res.status).toBe(501);
     const body = (await res.json()) as { error?: string; success?: boolean };
-    // Handler returns { success: false, error: "Not implemented..." }
+    // Handler returns the legacy unsupported-route body.
     expect(body.success).toBe(false);
   });
 });
 
 // ---------------------------------------------------------------------------
-// /api/eliza/rooms/:roomId/messages — stubbed
+// /api/eliza/rooms/:roomId/messages — legacy route contract
 // ---------------------------------------------------------------------------
 
-describe("POST /api/eliza/rooms/:roomId/messages (stubbed)", () => {
-  test("any request → 501 not_yet_migrated", async () => {
+describe("POST /api/eliza/rooms/:roomId/messages (legacy route)", () => {
+  test("any request → 501 unsupported route contract", async () => {
     const res = await api.post("/api/eliza/rooms/room-test-001/messages", {
       text: "hello",
     });
@@ -410,11 +410,11 @@ describe("POST /api/eliza/rooms/:roomId/messages (stubbed)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// /api/eliza/rooms/:roomId/messages/stream — stubbed
+// /api/eliza/rooms/:roomId/messages/stream — legacy route contract
 // ---------------------------------------------------------------------------
 
-describe("POST /api/eliza/rooms/:roomId/messages/stream (stubbed)", () => {
-  test("any request → 501 not_yet_migrated", async () => {
+describe("POST /api/eliza/rooms/:roomId/messages/stream (legacy route)", () => {
+  test("any request → 501 unsupported route contract", async () => {
     const res = await api.post(
       "/api/eliza/rooms/room-test-001/messages/stream",
       {
@@ -428,7 +428,7 @@ describe("POST /api/eliza/rooms/:roomId/messages/stream (stubbed)", () => {
 
   test("GET without auth (public path) → not 401", async () => {
     // The /api/eliza prefix is public — global auth does not block it.
-    // The handler itself stubs all methods as 501.
+    // The handler itself returns the legacy 501 contract for all methods.
     const res = await api.get("/api/eliza/rooms/room-test-001/messages/stream");
     // Should not be 401 (public path), but may be 404 or 501 depending on method registration.
     expect(res.status).not.toBe(401);

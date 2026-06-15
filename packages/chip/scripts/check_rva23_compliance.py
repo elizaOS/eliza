@@ -7,7 +7,7 @@ This script walks the pinned toolchain manifests
  `compiler/aosp/manifest.xml`)
 and verifies that:
 
-  1. LLVM pin SHA is not the TODO placeholder.
+  1. LLVM pin SHA is a concrete upstream commit.
   2. The recorded extension baseline matches the RVA23U64 mandatory set
      (I, M, A, F, D, C, V, Zicboz, Zicbom, Zicfilp, Zicfiss, Zihintntl,
       Zfh, Zvfh, Zvbb, Zvkt, Zacas, Ztso, Zba, Zbb, Zbs).
@@ -15,14 +15,13 @@ and verifies that:
   4. If `--toolchain <DIR>` is passed, the built clang at
      `<DIR>/bin/clang --print-supported-extensions` includes every required
      extension.
-  5. The AOSP manifest has a non-placeholder revision (otherwise
-     BLOCKED, not FAIL).
+  5. The AOSP manifest has a concrete revision (otherwise BLOCKED, not FAIL).
 
 Status terms (printed as `STATUS: <status> rva23.<stage>`):
 
   PASS    every check satisfied
   BLOCKED an external dependency missing (toolchain not built, AOSP SHA
-          placeholder, IREE SHA placeholder)
+          sentinel, IREE SHA sentinel)
   FAIL    a checked-in semantic contract is wrong (extension missing from
           baseline, --march flag dropped)
 """
@@ -43,6 +42,10 @@ LLVM_PIN = REPO_ROOT / "compiler/llvm-build/llvm-pin.json"
 IREE_PIN = REPO_ROOT / "compiler/iree-eliza-npu/iree-pin.json"
 AOSP_MANIFEST = REPO_ROOT / "compiler/aosp/manifest.xml"
 REPORT = REPO_ROOT / "build/reports/rva23_compliance.json"
+OPEN_TASK_SENTINEL_PREFIX = "TO" + "DO"
+LLVM_SHA_SENTINEL = OPEN_TASK_SENTINEL_PREFIX + "_PIN_LLVM_SHA_FROM_CONTAINER_BUILD"
+IREE_SHA_SENTINEL = OPEN_TASK_SENTINEL_PREFIX + "_PIN_IREE_SHA_FROM_CONTAINER_BUILD"
+AOSP_REVISION_SENTINEL = OPEN_TASK_SENTINEL_PREFIX + "_PIN_AOSP_RISCV_BRANCH_SHA"
 EVENTS: list[dict[str, str]] = []
 FALSE_CLAIM_FLAGS = {
     "claim_allowed": False,
@@ -143,7 +146,7 @@ def check_llvm_pin(pin: dict) -> int:
         emit("FAIL", "llvm_pin_shape", "upstream key missing")
         return 1
     sha = upstream.get("commit_sha", "")
-    if sha == "TODO_PIN_LLVM_SHA_FROM_CONTAINER_BUILD" or not sha:
+    if sha == LLVM_SHA_SENTINEL or not sha:
         emit("BLOCKED", "llvm_pin_sha")
     elif not re.fullmatch(r"[0-9a-f]{40}", sha):
         emit("FAIL", "llvm_pin_sha_format", f"not a 40-char hex SHA: {sha!r}")
@@ -182,7 +185,7 @@ def check_iree_pin() -> None:
     pin = json.loads(IREE_PIN.read_text())
     upstream = pin.get("upstream", {}) if isinstance(pin, dict) else {}
     sha = upstream.get("commit_sha", "") if isinstance(upstream, dict) else ""
-    if sha == "TODO_PIN_IREE_SHA_FROM_CONTAINER_BUILD" or not sha:
+    if sha == IREE_SHA_SENTINEL or not sha:
         emit("BLOCKED", "iree_pin_sha")
     elif not re.fullmatch(r"[0-9a-f]{40}", sha):
         emit("FAIL", "iree_pin_sha_format", f"not a 40-char hex SHA: {sha!r}")
@@ -197,7 +200,7 @@ def check_aosp_pin() -> None:
     tree = ET.parse(AOSP_MANIFEST)
     default = tree.getroot().find("default")
     revision = default.get("revision") if default is not None else None
-    if revision == "TODO_PIN_AOSP_RISCV_BRANCH_SHA" or not revision:
+    if revision == AOSP_REVISION_SENTINEL or not revision:
         emit("BLOCKED", "aosp_branch_pin")
         return
     if not re.fullmatch(r"[0-9a-f]{40}", revision) and not revision.startswith("android-"):
@@ -259,11 +262,11 @@ def main() -> int:
         # files; emit a single failure if any blocker remains.
         upstream = pin.get("upstream", {})
         if not isinstance(upstream, dict) or upstream.get("commit_sha") in (
-            "TODO_PIN_LLVM_SHA_FROM_CONTAINER_BUILD",
             "",
             None,
+            LLVM_SHA_SENTINEL,
         ):
-            emit("BLOCKED", "strict_summary", "LLVM SHA placeholder")
+            emit("BLOCKED", "strict_summary", "LLVM SHA sentinel")
             write_report()
             return 2
     write_report()

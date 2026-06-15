@@ -83,7 +83,7 @@ const BREAKING_EVENT_TYPES = ["scandal", "leak", "revelation"] as const;
  * Rolling window of recently-generated event types.
  * Used to penalize repeated types and enforce variety.
  *
- * TODO: In-memory state resets on server restart and is per-instance.
+ * In-memory state resets on server restart and is per-instance.
  * Move to Redis or DB if horizontal scaling requires coordinated diversity.
  */
 const recentEventTypes: string[] = [];
@@ -157,7 +157,7 @@ function generateDescription(
  * Module-level cooldown tracker: prevents the same actor from appearing
  * in back-to-back events. Keyed by actorId → last-selected timestamp.
  *
- * TODO: In-memory state resets on server restart and is per-instance.
+ * In-memory state resets on server restart and is per-instance.
  * Move to Redis or DB if horizontal scaling requires coordinated cooldowns.
  */
 const actorEventCooldown = new Map<string, number>();

@@ -1,8 +1,8 @@
 # __APP_DISPLAY_NAME__
 
-Scaffolded from `packages/elizaos/templates/min-project`. This is a minimal Eliza app: a Vite + React UI plus an empty runtime `Plugin` placeholder.
+Generated from `packages/elizaos/templates/min-project`. This is a minimal Eliza app: a Vite + React UI plus a starter runtime `Plugin`.
 
-The scaffold copy step replaces these placeholders:
+The template copy step replaces these tokens:
 
 - `__APP_NAME__` → npm-style package name (e.g. `@elizaos/app-foo` or `@user/foo-app`)
 - `__APP_DISPLAY_NAME__` → human-readable display name shown in the dashboard

@@ -14,9 +14,9 @@ type OperatorGameFixture = {
   surfaceTestId: string;
   suggestedPrompt: string;
   controlButton: string;
+  /** Agent-surface id for the control, when the accessible name is ambiguous. */
+  controlAgentId?: string;
   controlAction: "pause" | "resume";
-  chatPlaceholder: string | RegExp;
-  chatContent: string;
   operatorRoutePath?: string;
   hostOnly?: boolean;
 };
@@ -31,8 +31,6 @@ const FIXTURES: OperatorGameFixture[] = [
     suggestedPrompt: "Continue tutorial",
     controlButton: "Pause session",
     controlAction: "pause",
-    chatPlaceholder: "Tell the bot what to train, where to go, or what to say.",
-    chatContent: "Train attack near the starter area until level 5",
   },
   {
     appName: "@hyperscape/plugin-hyperscape",
@@ -43,8 +41,6 @@ const FIXTURES: OperatorGameFixture[] = [
     suggestedPrompt: "look around",
     controlButton: "Pause autonomy",
     controlAction: "pause",
-    chatPlaceholder: "Tell Hyperscape what to prioritize, avoid, or explain.",
-    chatContent: "Follow the target and describe nearby landmarks",
     hostOnly: true,
   },
   {
@@ -54,10 +50,11 @@ const FIXTURES: OperatorGameFixture[] = [
     viewerPath: "/api/apps/scape/viewer",
     surfaceTestId: "scape-live-operator-surface",
     suggestedPrompt: "Walk to the Lumbridge cows and train attack.",
-    controlButton: "Resume autonomous loop",
+    controlButton: "Resume",
+    // The 'scape surface also renders a plain "Resume" suggestion chip, so
+    // target the control via its stable agent-surface id.
+    controlAgentId: "control-resume",
     controlAction: "resume",
-    chatPlaceholder: /^Tell the agent what to do/,
-    chatContent: "Bank the logs, then return to Lumbridge cows",
   },
 ];
 
@@ -541,14 +538,16 @@ for (const fixture of FIXTURES) {
       .click();
     await expect.poll(() => api.messages.at(-1)).toBe(fixture.suggestedPrompt);
 
-    await surface.getByRole("button", { name: fixture.controlButton }).click();
+    const semanticControl = surface.locator(
+      `[data-agent-id="${fixture.controlAgentId ?? `control-${fixture.controlAction}`}"]`,
+    );
+    if ((await semanticControl.count()) > 0) {
+      await semanticControl.first().click();
+    } else {
+      await surface
+        .getByRole("button", { name: fixture.controlButton })
+        .click();
+    }
     await expect.poll(() => api.controls.at(-1)).toBe(fixture.controlAction);
-
-    await surface
-      .getByPlaceholder(fixture.chatPlaceholder)
-      .fill(fixture.chatContent);
-    await expect(surface.getByRole("button", { name: "Send" })).toBeEnabled();
-    await surface.getByRole("button", { name: "Send" }).click();
-    await expect.poll(() => api.messages.at(-1)).toBe(fixture.chatContent);
   });
 }

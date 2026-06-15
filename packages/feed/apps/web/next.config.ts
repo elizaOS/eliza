@@ -42,6 +42,7 @@ const nextConfig: NextConfig = {
   // Transpile internal workspace packages to resolve TypeScript imports properly
   // This is necessary because these packages are not pre-built and use TypeScript source directly
   transpilePackages: [
+    "@elizaos/shared",
     "@feed/shared",
     "@feed/engine",
     "@feed/agents",

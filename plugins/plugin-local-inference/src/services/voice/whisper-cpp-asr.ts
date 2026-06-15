@@ -83,16 +83,10 @@ function resolveLibraryPath(): string | null {
 	const libName = platformLibName();
 	return firstExisting([
 		// Repo-local host build via plugin-local-inference/native/build-whisper.mjs.
-		path.resolve(
-			here,
-			"..",
-			"..",
-			"..",
-			"..",
-			"native",
-			"build-whisper",
-			libName,
-		),
+		// This file ships at <plugin>/src/services/voice (local mode) and
+		// <plugin>/dist/services/voice (packages mode) — both three levels under
+		// the plugin root, so three "../" reach it before native/build-whisper.
+		path.resolve(here, "..", "..", "..", "native", "build-whisper", libName),
 		// User-installed location populated by ensure-whisper-gguf.sh / installer.
 		path.join(resolveStateDir(), "local-inference", "bin", "whisper", libName),
 		// Linux per-host packaged location.

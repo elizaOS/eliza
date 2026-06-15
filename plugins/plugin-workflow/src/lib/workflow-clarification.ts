@@ -457,7 +457,7 @@ export function pruneResolvedClarifications(
 
 /**
  * Subset of `ElizaConnectorTargetCatalog` used by the route. Declared here
- * (vs. imported from the service) so route tests can stub it without
+ * (vs. imported from the service) so route tests can provide it without
  * spinning up the full service.
  */
 export interface CatalogLike {

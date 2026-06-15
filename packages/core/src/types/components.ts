@@ -723,7 +723,7 @@ export interface ActionContext {
  * signature was inlined in 8+ locations across runtime, model, message-service,
  * and streaming-context types — with inconsistent return types (`Promise<void>`
  * vs `void | Promise<void>`). Adding data (e.g. `accumulated`) required editing
- * every copy. A single alias eliminates drift and makes future extensions
+ * every copy. A single alias eliminates drift and makes additional fields
  * (field name, token index, session handle) a one-line additive change.
  *
  * WHY `accumulated`: Two independent stream extractors in `useModel`
@@ -783,7 +783,7 @@ export interface HandlerOptions {
 	parameters?: ActionParameters;
 
 	/**
-	 * Parameter validation errors, if the action defined parameters but extraction/validation was incomplete.
+	 * Parameter validation errors, if the action defined parameters but extraction/validation was partial.
 	 *
 	 * Actions SHOULD handle these errors gracefully (e.g. ask the user for missing required values,
 	 * or infer from context when safe).

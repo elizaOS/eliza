@@ -2,7 +2,7 @@ import { strict as assert } from "node:assert";
 import type { IAgentRuntime, TestSuite } from "@elizaos/core";
 import { sendMessageAndWaitForResponse, setupScenario } from "./test-utils.ts";
 
-// Mock services are registered in setupScenario; this stub is called for backward compatibility.
+// Mock services are registered in setupScenario; this hook is called for backward compatibility.
 async function setupMockLpData(_runtime: IAgentRuntime) {}
 
 /**

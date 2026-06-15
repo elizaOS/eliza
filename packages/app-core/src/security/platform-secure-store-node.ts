@@ -339,8 +339,8 @@ class NonePlatformSecureStore implements PlatformSecureStore {
 }
 
 /**
- * Node-side factory: macOS Keychain, Linux `secret-tool`, or unavailable placeholder.
- * Windows Credential Manager is not wired yet (`none`).
+ * Node-side factory: macOS Keychain, Linux `secret-tool`, or the explicit
+ * unavailable backend on platforms without an OS credential-store adapter.
  */
 export function createNodePlatformSecureStore(): PlatformSecureStore {
   if (isDarwin()) {

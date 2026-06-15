@@ -1064,7 +1064,7 @@ export async function handleLocalInferenceChatCommand(
 				activeModelId: activeModelState.modelId,
 				provider: "elizacloud",
 			},
-			"Future chat model calls will prefer Eliza Cloud.",
+			"Subsequent chat model calls will prefer Eliza Cloud.",
 		);
 	}
 
@@ -1178,6 +1178,14 @@ export async function handleLocalInferenceRoutes(
 			"./routes/family-member-route.js"
 		);
 		if (await handleFamilyMemberRoute(req, res)) return true;
+	}
+	// Speaker voice-profile binding routes (bind/unbind a recognized voice to
+	// an elizaOS entity) live under /v1/voice/speaker-profiles.
+	if (pathname.startsWith("/v1/voice/speaker-profiles")) {
+		const { handleVoiceSpeakerProfileRoutes } = await import(
+			"./routes/voice-speaker-profile-routes.js"
+		);
+		if (await handleVoiceSpeakerProfileRoutes(req, res)) return true;
 	}
 	if (!pathname.startsWith("/api/local-inference/")) return false;
 

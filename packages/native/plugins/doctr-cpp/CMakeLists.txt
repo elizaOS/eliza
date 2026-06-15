@@ -9,31 +9,41 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-include_directories(include)
+include_directories(include src)
 
-# Stub-only build for now. The real implementation will add db_resnet50
-# detection + crnn_vgg16_bn recognition translation units that link
-# against the elizaOS/llama.cpp fork's ggml dispatcher; see AGENTS.md
-# for the port plan.
+# Current runtime: pure-C scalar reference detector + recognizer behind
+# the public C ABI. ggml/SIMD dispatch can replace the internal kernels
+# behind this source list without changing callers.
 #
 # Architecture portability: every TU below is plain scalar C with no
 # x86/ARM/RVV intrinsics, so the same source list builds on x86_64,
 # aarch64, and riscv64 without any CMAKE_SYSTEM_PROCESSOR branching.
-# When SIMD TUs are added (Phase 3 ggml dispatch), mirror the qjl-cpu
+# When SIMD or ggml-dispatch TUs are added, mirror the qjl-cpu
 # pattern: separate per-arch TUs (avx2/neon/rvv), each compiled only
 # for its own arch via a CMAKE_SYSTEM_PROCESSOR conditional, and
 # runtime dispatch via cpuid/hwcap/riscv_hwprobe.
 set(DOCTR_SRCS
-    src/doctr_stub.c
+    src/doctr_runtime.c
+    src/doctr_gguf.c
+    src/doctr_image.c
+    src/doctr_kernels.c
+    src/doctr_polygon.c
+    src/doctr_ctc.c
+    src/doctr_detector_ref.c
+    src/doctr_recognizer_ref.c
 )
 
 add_library(doctr STATIC ${DOCTR_SRCS})
 target_include_directories(doctr PUBLIC include)
 target_compile_options(doctr PRIVATE -O3 -Wall -Wextra -Wno-unused-parameter)
+find_library(M_LIB m)
+if(M_LIB)
+    target_link_libraries(doctr PUBLIC ${M_LIB})
+endif()
 
 enable_testing()
 
-add_executable(doctr_stub_smoke test/doctr_stub_smoke.c)
-target_link_libraries(doctr_stub_smoke PRIVATE doctr)
-target_compile_options(doctr_stub_smoke PRIVATE -O2 -Wall -Wextra)
-add_test(NAME doctr_stub_smoke COMMAND doctr_stub_smoke)
+add_executable(doctr_abi_smoke test/doctr_abi_smoke.c)
+target_link_libraries(doctr_abi_smoke PRIVATE doctr)
+target_compile_options(doctr_abi_smoke PRIVATE -O2 -Wall -Wextra)
+add_test(NAME doctr_abi_smoke COMMAND doctr_abi_smoke)

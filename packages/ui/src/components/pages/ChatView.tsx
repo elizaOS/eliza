@@ -10,10 +10,7 @@ import {
   useState,
 } from "react";
 import { type CodingAgentSession, client } from "../../api/client";
-import type {
-  ConversationMessage,
-  ImageAttachment,
-} from "../../api/client-types-chat";
+import type { ConversationMessage } from "../../api/client-types-chat";
 import { fetchWithCsrf } from "../../api/csrf-client";
 import { isRoutineCodingAgentMessage } from "../../chat";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
@@ -25,8 +22,8 @@ import {
   CodingAgentControlChip,
   PtyConsoleBase,
 } from "../../slots/task-coordinator-slots.js";
-import { useChatComposer } from "../../state/ChatComposerContext";
-import { usePtySessions } from "../../state/PtySessionsContext";
+import { useChatComposer } from "../../state/ChatComposerContext.hooks";
+import { usePtySessions } from "../../state/PtySessionsContext.hooks";
 import {
   loadContinuousChatMode,
   saveContinuousChatMode,
@@ -34,6 +31,10 @@ import {
 import { useApp } from "../../state/useApp";
 import { getVrmPreviewUrl } from "../../state/vrm";
 import type { TranslateFn } from "../../types";
+import {
+  filesToImageAttachments,
+  MAX_CHAT_IMAGES,
+} from "../../utils/image-attachment";
 import type { VoiceContinuousMode } from "../../voice/voice-chat-types";
 import { AccountRequiredCard } from "../chat/AccountRequiredCard";
 import { AgentActivityBox } from "../chat/AgentActivityBox";
@@ -60,10 +61,10 @@ import {
   useGameModalMessages,
 } from "./chat-view-hooks";
 
-export { __resetCompanionSpeechMemoryForTests } from "./chat-view-hooks";
-
 const CHAT_INPUT_MIN_HEIGHT_PX = 46;
 const CHAT_INPUT_MAX_HEIGHT_PX = 200;
+/** Hide the typing indicator if no first token arrives within this window. */
+const TYPING_INDICATOR_STALL_MS = 30_000;
 const fallbackTranslate: TranslateFn = (key, options) =>
   typeof options?.defaultValue === "string" ? options.defaultValue : key;
 
@@ -83,6 +84,12 @@ interface ChatViewProps {
   variant?: ChatViewVariant;
   /** Override click handler for agent activity box sessions. */
   onPtySessionClick?: (sessionId: string) => void;
+  /**
+   * Hide the in-view composer. Used on the chat tab when the always-present
+   * ContinuousChatOverlay provides the (single, shared) input instead, so there
+   * is no duplicate composer. The transcript and side panels still render.
+   */
+  hideComposer?: boolean;
 }
 
 function normalizeInboxChatSelection(
@@ -127,6 +134,7 @@ function normalizeInboxChatSelection(
 export function ChatView({
   variant = "default",
   onPtySessionClick,
+  hideComposer = false,
 }: ChatViewProps) {
   const app = useApp();
   const isGameModal = variant === "game-modal";
@@ -200,6 +208,10 @@ export function ChatView({
   const composerRef = useRef<HTMLDivElement>(null);
   const [composerHeight, setComposerHeight] = useState(0);
   const [imageDragOver, setImageDragOver] = useState(false);
+  // Guards the "thinking" typing indicator: if the first token never arrives,
+  // we hide the dots after a timeout rather than spinning forever. Reset
+  // whenever a new send starts or the first token lands (normal stream path).
+  const [typingStalled, setTypingStalled] = useState(false);
   const [continuousChatMode, setContinuousChatMode] =
     useState<VoiceContinuousMode>(loadContinuousChatMode);
   const handleContinuousChatModeChange = useCallback(
@@ -476,6 +488,23 @@ export function ChatView({
     return () => ro.disconnect();
   }, []);
 
+  // Typing-indicator stall guard. While a send is in flight with no first token
+  // yet, arm a timer; if it fires, the request is stuck (e.g. provider hang) so
+  // we drop the indicator. Once the first token lands or the send settles the
+  // gate clears, the timer is torn down, and the flag resets — the normal
+  // streaming path never trips it.
+  useEffect(() => {
+    if (!chatSending || chatFirstTokenReceived) {
+      setTypingStalled(false);
+      return;
+    }
+    const timer = setTimeout(
+      () => setTypingStalled(true),
+      TYPING_INDICATOR_STALL_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [chatSending, chatFirstTokenReceived]);
+
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (isComposerLocked) return;
     if (e.key === "Enter" && !e.shiftKey) {
@@ -486,37 +515,12 @@ export function ChatView({
 
   const addImageFiles = useCallback(
     (files: FileList | File[]) => {
-      const imageFiles = Array.from(files).filter((f) =>
-        f.type.startsWith("image/"),
-      );
-      if (!imageFiles.length) return;
-
-      const readers = imageFiles.map(
-        (file) =>
-          new Promise<ImageAttachment>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-              const result = reader.result as string;
-              // result is "data:<mime>;base64,<data>" — strip the prefix
-              const commaIdx = result.indexOf(",");
-              const data = commaIdx >= 0 ? result.slice(commaIdx + 1) : result;
-              resolve({ data, mimeType: file.type, name: file.name });
-            };
-            reader.onerror = () =>
-              reject(reader.error ?? new Error("Failed to read file"));
-            reader.onabort = () => reject(new Error("File read aborted"));
-            reader.readAsDataURL(file);
-          }),
-      );
-
-      void Promise.all(readers)
+      void filesToImageAttachments(files)
         .then((attachments) => {
-          setChatPendingImages((prev) => {
-            const combined = [...prev, ...attachments];
-            // Mirror the server-side MAX_CHAT_IMAGES=4 limit so the user gets
-            // immediate feedback rather than a 400 after upload.
-            return combined.slice(0, 4);
-          });
+          if (!attachments.length) return;
+          setChatPendingImages((prev) =>
+            [...prev, ...attachments].slice(0, MAX_CHAT_IMAGES),
+          );
         })
         .catch((err: unknown) => {
           // A failed image read leaves nothing attached; tell the user rather
@@ -602,7 +606,7 @@ export function ChatView({
           />
         )}
         typingIndicator={
-          chatSending && !chatFirstTokenReceived ? (
+          chatSending && !chatFirstTokenReceived && !typingStalled ? (
             isGameModal ? (
               <TypingIndicator variant="game-modal" agentName={agentName} />
             ) : (
@@ -634,6 +638,9 @@ export function ChatView({
           interimTranscript={continuous.interimTranscript}
           speaker={voiceSpeaker}
           latency={continuous.latency}
+          needsAudioUnlock={continuous.needsAudioUnlock}
+          onUnlockAudio={continuous.unlockAudio}
+          micReconnected={continuous.micReconnected}
           visible
           className={`mb-1 relative${isGameModal ? " pointer-events-auto" : ""}`}
           data-testid="chat-view-voice-status-bar"
@@ -709,7 +716,7 @@ export function ChatView({
       "calc(var(--safe-area-bottom, 0px) + var(--eliza-mobile-nav-offset, 0px) + 0.375rem)",
   } as const;
 
-  const composerNode = isGameModal ? (
+  const composerNode = hideComposer ? null : isGameModal ? (
     <ChatComposerShell
       variant="game-modal"
       shellRef={composerRef}
@@ -1144,73 +1151,79 @@ function InboxChatPanel({
     [reconnectAccount],
   );
 
-  const handleReplySend = useCallback(async () => {
-    const text = replyText.trim();
-    if (!text || sending || activeInboxChat.canSend === false) {
-      return;
-    }
-    if (blockingAccountReason) {
-      setReplyError(blockingAccountReason);
-      return;
-    }
-    if (showWriteConfirmation) {
-      setReplyError("Confirm the send-as account before sending.");
-      return;
-    }
-
-    setSending(true);
-    setReplyError(null);
-    try {
-      const response = await client.sendInboxMessage({
-        ...(sendAsSelectedAccount?.id
-          ? { accountId: sendAsSelectedAccount.id }
-          : {}),
-        channel: activeInboxChat.id,
-        metadata: mergeConnectorSendAsMetadata(undefined, sendAsMetadata),
-        roomId: activeInboxChat.id,
-        source: transportSource,
-        text,
-      });
-
-      if (response.message) {
-        setMessages((current) => [
-          ...current,
-          response.message as ConversationMessage,
-        ]);
+  const handleReplySend = useCallback(
+    async (options?: { force?: boolean }) => {
+      const text = replyText.trim();
+      if (!text || sending || activeInboxChat.canSend === false) {
+        return;
+      }
+      // `force` is set by the account-required auto-retry after a successful
+      // reconnect: the captured `blockingAccountReason` closure is stale (still
+      // truthy), but the account is now connected, so bypass the guard.
+      if (!options?.force && blockingAccountReason) {
+        setReplyError(blockingAccountReason);
+        return;
+      }
+      if (showWriteConfirmation) {
+        setReplyError("Confirm the send-as account before sending.");
+        return;
       }
 
-      setReplyText("");
-      setAccountRequiredReason(null);
-    } catch (error) {
-      if (isLikelyAccountRequiredError(error)) {
-        setAccountRequiredReason(
+      setSending(true);
+      setReplyError(null);
+      try {
+        const response = await client.sendInboxMessage({
+          ...(sendAsSelectedAccount?.id
+            ? { accountId: sendAsSelectedAccount.id }
+            : {}),
+          channel: activeInboxChat.id,
+          metadata: mergeConnectorSendAsMetadata(undefined, sendAsMetadata),
+          roomId: activeInboxChat.id,
+          source: transportSource,
+          text,
+        });
+
+        if (response.message) {
+          setMessages((current) => [
+            ...current,
+            response.message as ConversationMessage,
+          ]);
+        }
+
+        setReplyText("");
+        setAccountRequiredReason(null);
+      } catch (error) {
+        if (isLikelyAccountRequiredError(error)) {
+          setAccountRequiredReason(
+            error instanceof Error
+              ? error.message
+              : "Choose a connector account before sending.",
+          );
+        }
+        setReplyError(
           error instanceof Error
             ? error.message
-            : "Choose a connector account before sending.",
+            : t("inboxview.SendFailed", {
+                defaultValue: "Failed to send message.",
+              }),
         );
+      } finally {
+        setSending(false);
       }
-      setReplyError(
-        error instanceof Error
-          ? error.message
-          : t("inboxview.SendFailed", {
-              defaultValue: "Failed to send message.",
-            }),
-      );
-    } finally {
-      setSending(false);
-    }
-  }, [
-    activeInboxChat.canSend,
-    activeInboxChat.id,
-    blockingAccountReason,
-    replyText,
-    sendAsMetadata,
-    sendAsSelectedAccount,
-    sending,
-    showWriteConfirmation,
-    t,
-    transportSource,
-  ]);
+    },
+    [
+      activeInboxChat.canSend,
+      activeInboxChat.id,
+      blockingAccountReason,
+      replyText,
+      sendAsMetadata,
+      sendAsSelectedAccount,
+      sending,
+      showWriteConfirmation,
+      t,
+      transportSource,
+    ],
+  );
 
   const handleReplyKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1314,6 +1327,9 @@ function InboxChatPanel({
               onConnectAccount={handleConnectSendAsAccount}
               onReconnectAccount={handleReconnectSendAsAccount}
               onSelectAccount={handleSelectSendAsAccount}
+              retryAction={async () => {
+                await handleReplySend({ force: true });
+              }}
             />
           ) : showWriteConfirmation ? (
             <AccountRequiredCard

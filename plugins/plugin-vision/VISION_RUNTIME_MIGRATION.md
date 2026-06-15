@@ -122,7 +122,7 @@ plugin. Three candidate codebases meet that bar:
   fully lands (otherwise leave the ONNX path running and remove in a
   follow-up — never half-remove a runtime).
 
-### Phase 3 (documented, not started this run)
+### Phase 3 (documented pending work)
 - MoveNet pose port (`native/movenet.cpp/`).
 - RetinaFace + MobileFaceNet face port (`native/retinaface.cpp/`,
   `native/mobilefacenet.cpp/`).

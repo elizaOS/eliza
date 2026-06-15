@@ -24,8 +24,8 @@
  *
  * Activation: only fires when `ELIZA_LOCAL_LLAMA === "1"`, which is
  * the AOSP build flag set by `ElizaAgentService.java` before
- * `Runtime.exec`'ing the bun process. On every other build the call is
- * a logged no-op.
+ * `Runtime.exec`'ing the bun process. On every other build the call logs that
+ * local registration was skipped.
  */
 
 import {
@@ -889,8 +889,8 @@ async function callRegisterAndCaptureLoader(
  * `$ELIZA_STATE_DIR/local-inference/models/`. Both files are staged by
  * the AOSP build (`scripts/elizaos/stage-default-models.mjs`) and
  * extracted by `ElizaAgentService.extractAssetsIfNeeded` before bun
- * starts. We pick the role from the sibling `manifest.json` so a future
- * model swap doesn't need a code change.
+ * starts. We pick the role from the sibling `manifest.json` so model bundle
+ * swaps do not need code changes.
  */
 interface BundledModelManifestEntry {
   // The build-time staging script (`scripts/elizaos/stage-default-models.mjs`)
@@ -1942,10 +1942,7 @@ export function makeAospFusedOmnivoiceTextToSpeechHandler(): TextToSpeechHandler
 }
 
 export function makeAospTextToSpeechHandler(
-  opts: {
-    omnivoice?: TextToSpeechHandler;
-    onForegroundUse?: () => void;
-  } = {},
+  opts: { omnivoice?: TextToSpeechHandler; onForegroundUse?: () => void } = {},
 ): TextToSpeechHandler {
   const omnivoice =
     opts.omnivoice ?? makeAospFusedOmnivoiceTextToSpeechHandler();

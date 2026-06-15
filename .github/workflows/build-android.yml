@@ -151,6 +151,8 @@ jobs:
         with:
           name: eliza-android-debug
           path: ${{ env.ANDROID_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Upload release artifacts
         if: github.event_name == 'release'
@@ -161,6 +163,8 @@ jobs:
             ${{ env.ANDROID_DIR }}/app/build/outputs/apk/release/*.apk
             ${{ env.ANDROID_DIR }}/app/build/outputs/bundle/release/*.aab
             ${{ env.ANDROID_DIR }}/app/build/outputs/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Upload to GitHub Release
         if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.upload_to_release)

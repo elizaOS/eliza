@@ -1,5 +1,5 @@
 /*
- * Minimal GGUF v3 reader for face-cpp Phase 2.
+ * Minimal GGUF v3 reader for face-cpp.
  *
  * Mirrors `packages/native-plugins/doctr-cpp/src/doctr_gguf.c` but adds
  * F16 tensor support since the BlazeFace + face-embed converters write
@@ -305,7 +305,10 @@ face_gguf *face_gguf_open(const char *path, int *err) {
         size_t esz;
         if (g->tensors[i].dtype == GGML_TYPE_F32) esz = 4;
         else if (g->tensors[i].dtype == GGML_TYPE_F16) esz = 2;
-        else { if (err) *err = -EINVAL; goto fail; }
+        else {
+            if (err) *err = -EINVAL;
+            goto fail;
+        }
         g->tensors[i].n_bytes = elems * esz;
     }
 
@@ -316,7 +319,8 @@ face_gguf *face_gguf_open(const char *path, int *err) {
     for (uint64_t i = 0; i < n_tensors; ++i) {
         g->tensors[i].data_off += g->tensor_data_off;
         if (g->tensors[i].data_off + g->tensors[i].n_bytes > map_size) {
-            if (err) *err = -EINVAL; goto fail;
+            if (err) *err = -EINVAL;
+            goto fail;
         }
     }
 

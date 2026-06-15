@@ -2,10 +2,10 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import {
-  CapabilityError,
-  getCapabilityRouter,
   type ActionResult,
+  CapabilityError,
   logger as coreLogger,
+  getCapabilityRouter,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
@@ -154,7 +154,9 @@ export async function writeFileHandler(
 
   await fileState.recordWrite(conversationId, resolved);
   const bytes =
-    routed.ok === true ? routed.bytesWritten : Buffer.byteLength(content, "utf8");
+    routed.ok === true
+      ? routed.bytesWritten
+      : Buffer.byteLength(content, "utf8");
   coreLogger.debug(
     `${CODING_TOOLS_LOG_PREFIX} WRITE ${resolved} bytes=${bytes}`,
   );

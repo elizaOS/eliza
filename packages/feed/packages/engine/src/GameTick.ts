@@ -291,8 +291,7 @@ export class GameTick {
   private async generateContent(
     _time: GameTime,
   ): Promise<{ posts: number; events: number; articles: number }> {
-    // Content generation would be implemented by specific adapters
-    // This is a placeholder for the core interface
+    // Core ticks do not own content adapters; hosts can wire generation services.
     return { posts: 0, events: 0, articles: 0 };
   }
 

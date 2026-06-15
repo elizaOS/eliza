@@ -110,11 +110,7 @@ export class SocialHandler {
       INSERT INTO posts (id, author_id, content, media_urls, created_at)
       VALUES (?, ?, ?, ?, ?)
     `,
-      postId,
-      authorId,
-      content,
-      JSON.stringify(mediaUrls || []),
-      now,
+      [postId, authorId, content, JSON.stringify(mediaUrls || []), now],
     );
 
     // Get author info
@@ -151,25 +147,22 @@ export class SocialHandler {
       // Unlike
       this.db.run(
         "DELETE FROM likes WHERE user_id = ? AND post_id = ?",
-        userId,
-        postId,
+        [userId, postId],
       );
       this.db.run(
         "UPDATE posts SET likes_count = likes_count - 1 WHERE id = ?",
-        postId,
+        [postId],
       );
     } else {
       // Like
       const likeId = randomUUID();
       this.db.run(
         "INSERT INTO likes (id, user_id, post_id) VALUES (?, ?, ?)",
-        likeId,
-        userId,
-        postId,
+        [likeId, userId, postId],
       );
       this.db.run(
         "UPDATE posts SET likes_count = likes_count + 1 WHERE id = ?",
-        postId,
+        [postId],
       );
 
       // Create notification for post author
@@ -203,16 +196,12 @@ export class SocialHandler {
       INSERT INTO posts (id, author_id, content, parent_id, created_at)
       VALUES (?, ?, ?, ?, ?)
     `,
-      commentId,
-      userId,
-      content,
-      postId,
-      now,
+      [commentId, userId, content, postId, now],
     );
 
     this.db.run(
       "UPDATE posts SET comments_count = comments_count + 1 WHERE id = ?",
-      postId,
+      [postId],
     );
 
     // Create notification
@@ -306,8 +295,7 @@ export class SocialHandler {
   ): { success: boolean } {
     this.db.run(
       "UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?",
-      notificationId,
-      userId,
+      [notificationId, userId],
     );
 
     return { success: true };
@@ -348,12 +336,14 @@ export class SocialHandler {
       INSERT INTO notifications (id, user_id, type, title, message, data)
       VALUES (?, ?, ?, ?, ?, ?)
     `,
-      notificationId,
-      authorId,
-      type,
-      title,
-      message,
-      JSON.stringify({ postId, fromUserId }),
+      [
+        notificationId,
+        authorId,
+        type,
+        title,
+        message,
+        JSON.stringify({ postId, fromUserId }),
+      ],
     );
   }
 

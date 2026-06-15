@@ -10,7 +10,9 @@
  * Mirrors the payments / secrets slice layout — same service-resolution
  * pattern, same opt-in plugin (not auto-enabled).
  */
+
 import type { DispatchSensitiveRequest } from "../../sensitive-requests/dispatch-registry.ts";
+import type { EventPayload } from "../../types/index.ts";
 
 /**
  * One key from a plugin's manifest `requiredSecrets[]` /
@@ -134,7 +136,7 @@ export const PLUGIN_CONFIG_CLIENT_SERVICE = "PluginConfigClient";
  */
 export const PLUGIN_ACTIVATED_EVENT = "PluginActivated";
 
-export interface PluginActivatedEventPayload {
+export interface PluginActivatedEventPayload extends EventPayload {
 	pluginName: string;
 	at: number;
 }

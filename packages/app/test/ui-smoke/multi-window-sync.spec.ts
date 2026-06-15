@@ -12,7 +12,7 @@ import {
 // made in window A without a manual reload.
 //
 // This spec is intentionally written against the DESIRED behavior and skipped
-// via test.fixme so it activates automatically once the cross-window sync layer
+// via test.skip so it activates explicitly once the cross-window sync layer
 // (packages/ui/src/state/useTabSync.ts — another agent is adding it) ships.
 //
 // Activation checklist when useTabSync lands:
@@ -20,10 +20,11 @@ import {
 //      aria-pressed reflection (or update the selectors below to match the real
 //      synced control + its reflected state), and that toggling it broadcasts
 //      across windows via BroadcastChannel.
-//   2. Replace `test.fixme` with `test`.
+//   2. Replace `test.skip` with `test`.
 
 const SYNC_TIMEOUT_MS = 10_000;
-const READY_SELECTOR = '[data-testid="chat-composer-textarea"]';
+const READY_SELECTOR =
+  '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]';
 
 async function openSyncedWindow(context: BrowserContext): Promise<Page> {
   const page = await context.newPage();
@@ -34,7 +35,7 @@ async function openSyncedWindow(context: BrowserContext): Promise<Page> {
   return page;
 }
 
-test.fixme("a synced preference toggled in window A propagates to window B", async ({
+test.skip("a synced preference toggled in window A propagates to window B", async ({
   browser,
 }) => {
   // Two windows = two pages in the SAME browser context so they share the

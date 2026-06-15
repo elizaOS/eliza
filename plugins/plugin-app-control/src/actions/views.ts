@@ -863,7 +863,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				{
 					name: "{{agentName}}",
 					content: {
-						text: 'Are you sure you want to delete the LifeOps view (@elizaos/plugin-lifeops)? Reply "yes" to confirm or "cancel" to abort.',
+						text: 'Are you sure you want to delete the LifeOps view (@elizaos/plugin-personal-assistant)? Reply "yes" to confirm or "cancel" to abort.',
 						action: "VIEWS",
 					},
 				},

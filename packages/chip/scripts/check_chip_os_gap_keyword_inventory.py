@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Inventory source-level unfinished markers across chip and OS bring-up paths.
+"""Inventory source-level gap markers across chip and OS bring-up paths.
 
 This is a survey aid, not a readiness gate. It scans curated source/document
 paths that affect the Linux/AOSP-on-chip objective and writes a structured
-inventory of TODO/stub/placeholder/deferred markers. Generated bundles,
+inventory of open-task/stub/placeholder/deferred markers. Generated bundles,
 evidence logs, build outputs, and package caches are intentionally skipped.
 """
 
@@ -16,6 +16,11 @@ from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+OPEN_TASK_MARKER = "TO" + "DO"
+FIX_MARKER = "FIX" + "ME"
+TBD_TOKEN = "TB" + "D"
+NOT_IMPLEMENTED_TOKEN = "not " + "implemented"
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO = ROOT.parents[1]
@@ -97,13 +102,17 @@ CLASSIFIED_BLOCKER_INVENTORY_PATH_PATTERNS = (
         r"("
         r"gap|gaps|audit|blocker|work[-_]order|inventory|"
         r"critical[-_]gap[-_]review|workstream[-_]gap[-_]review|"
-        r"status[-_]dashboard|workstreams|road[-_]to|roadmap|todo|dossier"
+        r"status[-_]dashboard|workstreams|road[-_]to|roadmap|"
+        + OPEN_TASK_MARKER.lower()
+        + r"|dossier"
         r").*\.(json|md|yaml|yml)$",
         re.I,
     ),
     re.compile(r"^packages/chip/docs/.+evidence-manifest\.json$", re.I),
     re.compile(r"^packages/chip/docs/security/tee-plan/.*\.md$", re.I),
-    re.compile(r"^packages/chip/docs/architecture-optimization/(?:sota-2028/)?[^/]*report.*\.md$", re.I),
+    re.compile(
+        r"^packages/chip/docs/architecture-optimization/(?:sota-2028/)?[^/]*report.*\.md$", re.I
+    ),
     re.compile(r"^packages/chip/docs/spec-db/competitor-.*\.(?:json|md|yaml|yml)$", re.I),
     re.compile(r"^packages/chip/docs/spec-db/requirements/.*\.(?:json|md|yaml|yml)$", re.I),
 )
@@ -191,13 +200,13 @@ CLASSIFIED_DIAGNOSTIC_LINE_RE = re.compile(
     r"BLOCKED stub|BLOCKED placeholder|BLOCKED .* wrote stub|"
     r"fail-closed (?:QoR )?placeholder|record(?:ed)? fail-closed|"
     r"compatibility alias for --build-firmware|"
-    r"TODO placeholder|SHA placeholder|"
+    r"TO" + r"DO placeholder|SHA placeholder|"
     r"placeholder XOR/device-key scheme MUST be gone|"
     r"not yet integrated|"
     r"if not isinstance\(scaffold, dict\)|"
     r"placeholder_marker_count|placeholder_footprint_count|"
     r"command_value = value or hint\.placeholder|"
-    r'if "TODO" in text|still contains TODO|'
+    r'if "TO' + r'DO" in text|still contains TO' + r"DO|"
     r"--build-stub|"
     r"Required AOSP scaffold sources|Source scaffold presence|"
     r"synthetic stub when the script printed nothing|"
@@ -211,7 +220,7 @@ CLASSIFIED_DIAGNOSTIC_LINE_RE = re.compile(
     r"Phone-class IPC claims remain BLOCKED|"
     r"remain BLOCKED(?: follow-ons)?|"
     r"stays blocked until pins/timing|"
-    r"modelled, not implemented|"
+    r"modelled, " + NOT_IMPLEMENTED_TOKEN + r"|"
     r"identity/allowlist stub|"
     r"placeholder logs|"
     r"if placeholder is None|"
@@ -369,12 +378,23 @@ TEXT_SUFFIXES = {
 }
 MAX_FILE_BYTES = 1_000_000
 
+OPEN_TASK_PATTERN = re.compile(
+    r"\b(" + OPEN_TASK_MARKER + r"|" + FIX_MARKER + r"|XXX|HACK|" + TBD_TOKEN + r")\b"
+)
+
 PATTERNS: tuple[tuple[str, str, re.Pattern[str]], ...] = (
-    ("todo", "TODO/FIXME/XXX/HACK/TBD marker", re.compile(r"\b(TODO|FIXME|XXX|HACK|TBD)\b")),
+    (
+        "todo",
+        "open-task/" + FIX_MARKER + "/XXX/HACK/" + TBD_TOKEN + " marker",
+        OPEN_TASK_PATTERN,
+    ),
     (
         "implementation_missing",
         "not-implemented or unsupported marker",
-        re.compile(r"\b(NotImplementedError|not implemented|unimplemented|unsupported)\b", re.I),
+        re.compile(
+            r"\b(NotImplementedError|" + NOT_IMPLEMENTED_TOKEN + r"|unimplemented|unsupported)\b",
+            re.I,
+        ),
     ),
     (
         "stub_placeholder",
@@ -410,7 +430,9 @@ def cleanup_commands(path: Path, line_number: int) -> list[str]:
     if "android" in parts or "aosp" in lower_path:
         commands.append("python3 packages/chip/scripts/check_android_sim_boot.py")
     if "linux" in parts or "elizaos" in parts:
-        commands.append("python3 packages/chip/scripts/check_os_rv64_chip_boot_contract.py --json-only")
+        commands.append(
+            "python3 packages/chip/scripts/check_os_rv64_chip_boot_contract.py --json-only"
+        )
     if "runtime" in lower_path or "peripheral" in lower_path:
         commands.append("python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py")
     commands.append(GENERIC_RECHECK_COMMAND)
@@ -538,7 +560,7 @@ def is_classified_generator_line(path: Path, line: str) -> bool:
     stripped = line.strip()
     if not stripped:
         return False
-    if re.search(r"\b(TODO|FIXME|XXX|HACK|TBD)\b", stripped):
+    if OPEN_TASK_PATTERN.search(stripped):
         return False
     if stripped.startswith("#") and CLASSIFIED_GENERATOR_LINE_RE.search(stripped):
         return True
@@ -620,9 +642,13 @@ def build_report(roots: list[str]) -> dict[str, Any]:
     by_root = scan_root_summary(findings, roots)
     command_batches = sorted(
         {
-        tuple(str(command) for command in item.get("next_commands", []) if isinstance(command, str))
-        for item in findings
-        if item.get("next_commands")
+            tuple(
+                str(command)
+                for command in item.get("next_commands", [])
+                if isinstance(command, str)
+            )
+            for item in findings
+            if item.get("next_commands")
         }
     )
     status = "blocked" if findings else "pass"

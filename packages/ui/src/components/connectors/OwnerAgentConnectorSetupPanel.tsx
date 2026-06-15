@@ -14,7 +14,7 @@
  *
  * Falls back to a single-section list when a side is explicitly disabled
  * (`enableOwner: false` or `enableAgent: false`), so a plugin can also use
- * this component as a "AGENT-only with the future-proof shape" placeholder.
+ * this component for an AGENT-only flow while keeping the dual-role shape.
  */
 
 import { useConnectorAccounts } from "../../hooks/useConnectorAccounts";

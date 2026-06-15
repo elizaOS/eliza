@@ -104,7 +104,7 @@ export function normalizeAccountId(accountId?: string | null): string {
 }
 
 /**
- * Gets the multi-account configuration from runtime settings
+ * Gets the account inventory configuration from runtime settings
  */
 export function getMultiAccountConfig(runtime: IAgentRuntime): IMessageMultiAccountConfig {
   const characterIMessage = runtime.character.settings?.imessage as
@@ -260,7 +260,7 @@ export function listEnabledIMessageAccounts(runtime: IAgentRuntime): ResolvedIMe
 }
 
 /**
- * Checks if multi-account mode is enabled
+ * Checks whether more than one enabled account record is configured
  */
 export function isMultiAccountEnabled(runtime: IAgentRuntime): boolean {
   const accounts = listEnabledIMessageAccounts(runtime);

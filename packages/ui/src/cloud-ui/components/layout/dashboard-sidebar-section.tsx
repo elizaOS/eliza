@@ -2,12 +2,12 @@
 
 import { ChevronDown } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { cn } from "../../lib/utils";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "../collapsible";
+} from "../../../components/ui/collapsible";
+import { cn } from "../../lib/utils";
 import { DashboardSidebarNavigationItem } from "./dashboard-sidebar-item";
 import type {
   DashboardSidebarItem,

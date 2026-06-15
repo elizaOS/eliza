@@ -23,7 +23,10 @@ import {
   CONTAINER_PRICING,
   calculateDailyContainerCost,
 } from "@/lib/constants/pricing";
-import { computeContainerBillingPlan } from "@/lib/services/container-billing-policy";
+import {
+  computeContainerBillingPeriod,
+  computeContainerBillingPlan,
+} from "@/lib/services/container-billing-policy";
 import { emailService } from "@/lib/services/email";
 import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
 import { logger } from "@/lib/utils/logger";
@@ -73,6 +76,7 @@ async function processContainerBilling(
     earnings_available: number;
   },
   appUrl: string,
+  now: Date,
 ): Promise<BillingResult> {
   const containerId = container.id;
   const containerName = container.name;
@@ -94,7 +98,9 @@ async function processContainerBilling(
   });
   const earningsAvailable = plan.earningsEligible;
   const totalAvailable = plan.totalAvailable;
-  const now = new Date();
+  // Day-aligned period this charge covers. Deterministic across same-day
+  // re-runs, so the idempotency key and unique indexes below all collide.
+  const { periodStart, periodEnd } = computeContainerBillingPeriod(now);
 
   logger.info(`[Container Billing] Processing ${containerName}`, {
     containerId,
@@ -182,8 +188,8 @@ async function processContainerBilling(
         containerId,
         organizationId,
         amount: dailyCost,
-        billingPeriodStart: now,
-        billingPeriodEnd: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+        billingPeriodStart: periodStart,
+        billingPeriodEnd: periodEnd,
         errorMessage: `Insufficient funds: required $${dailyCost.toFixed(2)}, available $${totalAvailable.toFixed(4)} (credits $${currentBalance.toFixed(4)} + earnings $${earningsAvailable.toFixed(4)})`,
       });
 
@@ -211,27 +217,49 @@ async function processContainerBilling(
   // credits. Earnings → org credits conversion goes through
   // redeemableEarningsService so we get a credit_conversion ledger entry
   // for the audit trail.
-  const { fromEarnings, fromCredits } = plan;
+  let fromEarnings = plan.fromEarnings;
+  let fromCredits = plan.fromCredits;
 
   if (fromEarnings > 0 && org.earnings_source_user_id) {
-    const conversion = await redeemableEarningsService.convertToCredits({
-      userId: org.earnings_source_user_id,
-      amount: fromEarnings,
-      organizationId,
-      description: `Container hosting: ${containerName}`,
-      metadata: {
-        container_id: containerId,
-        container_name: containerName,
-        billing_type: "daily_container",
-        billing_period: now.toISOString().split("T")[0],
-      },
-    });
-    if (!conversion.success) {
+    try {
+      const conversion = await redeemableEarningsService.convertToCredits({
+        userId: org.earnings_source_user_id,
+        amount: fromEarnings,
+        organizationId,
+        description: `Container hosting: ${containerName}`,
+        // Stable per container+period so a same-day cron re-run does not
+        // debit the owner's earnings twice.
+        idempotencyKey: `container:${containerId}:${periodStart.toISOString()}`,
+        metadata: {
+          container_id: containerId,
+          container_name: containerName,
+          billing_type: "daily_container",
+          billing_period: periodStart.toISOString().split("T")[0],
+        },
+      });
+      if (!conversion.success) {
+        throw new Error("earnings conversion returned success=false");
+      }
+    } catch (conversionError) {
+      // convertToCredits debits the earnings ledger and THROWS on
+      // insufficient/contended earnings (it never returns success=false). The
+      // earnings were not debited, so do NOT spare credits by fromEarnings —
+      // charge the full day to credits. Previously this threw out of the whole
+      // handler, leaving the container unbilled (free hosting) for the day, and
+      // the unconditional `+ fromEarnings` below would have inflated the balance
+      // by undebited earnings.
       logger.error(
-        `[Container Billing] Earnings convert failed for ${containerName}`,
-        conversion,
+        `[Container Billing] Earnings convert failed for ${containerName}; charging full cost to credits`,
+        {
+          containerId,
+          error:
+            conversionError instanceof Error
+              ? conversionError.message
+              : String(conversionError),
+        },
       );
-      // Fall through: try to charge full cost to credits below.
+      fromEarnings = 0;
+      fromCredits = dailyCost;
     }
   }
 
@@ -250,7 +278,26 @@ async function processContainerBilling(
       fromEarnings,
       fromCredits,
       now,
+      billingPeriodStart: periodStart,
+      billingPeriodEnd: periodEnd,
     });
+
+  // The row-lock guard found this period already billed (e.g. an overlapping
+  // cron run committed first). Earnings were not converted here either — the
+  // idempotency key short-circuited convertToCredits — so nothing was charged.
+  if (billingResult.alreadyBilled) {
+    logger.info(
+      `[Container Billing] Skipped ${containerName}: already billed this period`,
+      { containerId },
+    );
+    return {
+      containerId,
+      containerName,
+      organizationId,
+      action: "skipped",
+      error: "Already billed this period",
+    };
+  }
 
   logger.info(
     `[Container Billing] Billed ${containerName}: $${dailyCost.toFixed(4)} (earnings $${fromEarnings.toFixed(4)} + credits $${fromCredits.toFixed(4)})`,
@@ -296,11 +343,14 @@ async function handleContainerBilling(c: AppContext): Promise<Response> {
   try {
     requireCronSecret(c);
     const appUrl = c.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
+    // One timestamp for the whole run: the due-gate, the period, and the
+    // row-lock idempotency guard must all agree on "now".
+    const runNow = new Date();
 
     logger.info("[Container Billing] Starting daily container billing run");
-    // Get all running containers that need billing
+    // Get all running containers that need billing (and are actually due).
     const runningContainers =
-      await containerBillingRepository.listBillableContainers();
+      await containerBillingRepository.listBillableContainers(runNow);
 
     if (runningContainers.length === 0) {
       logger.info("[Container Billing] No running containers to bill");
@@ -384,7 +434,12 @@ async function handleContainerBilling(c: AppContext): Promise<Response> {
       }
 
       try {
-        const result = await processContainerBilling(container, org, appUrl);
+        const result = await processContainerBilling(
+          container,
+          org,
+          appUrl,
+          runNow,
+        );
         results.push(result);
 
         if (result.action === "billed" && result.amount) {

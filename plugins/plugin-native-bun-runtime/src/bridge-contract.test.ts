@@ -3,7 +3,7 @@
  *
  * These tests exercise the JS-side contract only — no native plugin is
  * loaded. They verify:
- *   - The web fallback returns the correct no-op shapes so callers can
+ *   - The web fallback returns the correct unavailable shapes so callers can
  *     detect the unavailable-on-web case without throwing.
  *   - `StartOptions` and `StartResult` shapes are correct at the type level.
  *   - Malformed / missing required fields produce clear rejections in the
@@ -13,7 +13,7 @@
 import { describe, expect, it } from "vitest";
 import { ElizaBunRuntimeWeb } from "./web";
 
-describe("ElizaBunRuntimeWeb — happy-path no-ops", () => {
+describe("ElizaBunRuntimeWeb — unavailable-on-web returns", () => {
   const web = new ElizaBunRuntimeWeb();
 
   it("start() resolves with ok:false and an error string", async () => {

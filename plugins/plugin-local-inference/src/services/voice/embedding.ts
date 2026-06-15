@@ -5,7 +5,7 @@
  *   - On the `0_8b` and `2b` tiers the **embedding model IS the text backbone**,
  *     served with `--pooling last` — there is no separate `embedding/`
  *     GGUF and no duplicate parameters in the mobile/default tiers.
- *   - On `4b` and any future larger tier, a dedicated
+ *   - On `4b` and larger tiers, a dedicated
  *     `embedding/` GGUF region (Apache-2.0,
  *     1024-dim Matryoshka, 32k ctx) is acquired lazily through the same
  *     engine / `SharedResourceRegistry`. **Do not collapse it to pooled

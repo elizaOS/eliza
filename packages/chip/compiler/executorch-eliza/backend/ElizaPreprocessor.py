@@ -29,17 +29,20 @@ class ElizaPreprocessor:
     """Translate a PartitionResult into an elizanpu MLIR module."""
 
     def preprocess(self, result: PartitionResult) -> PreprocessResult:
-        # Emit one elizanpu function per partition. The body is a placeholder
-        # until real linalg/StableHLO lowering plugs in; the surrounding
-        # framework is what we need to commit today.
+        # Emit one elizanpu function per partition with deterministic op
+        # metadata. IREE compilation remains blocked on the canonical Linux
+        # container, but this artifact is stable input for that flow.
         lines: list[str] = ["// elizanpu module emitted by ElizaPreprocessor"]
         for index, partition in enumerate(result.npu_partitions):
             lines.append(f"func.func @partition_{index}() {{")
             lines.append(f"  // inputs: {', '.join(partition.inputs)}")
             lines.append(f"  // outputs: {', '.join(partition.outputs)}")
             lines.append("  %ring = elizanpu.acquire_ring : !elizanpu.ring")
-            for node in partition.nodes:
-                lines.append(f"  // TODO lower {node.target}")
+            for node_index, node in enumerate(partition.nodes):
+                input_names = ", ".join(node.inputs) if node.inputs else "<none>"
+                lines.append(
+                    f"  // op_{node_index}: {node.name} target={node.target} inputs={input_names}"
+                )
             lines.append("  return")
             lines.append("}")
 

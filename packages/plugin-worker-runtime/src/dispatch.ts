@@ -14,6 +14,7 @@ import type {
   JsonValue,
   PluginSurfaceKind,
   RemotePluginPermissionGrant,
+  WorkerActionCallbackMessage,
   WorkerRpcMessage,
   WorkerRpcResultMessage,
 } from "@elizaos/plugin-remote-manifest";
@@ -215,8 +216,7 @@ async function invokeBySurface(
     }
     case "action": {
       // Action handler(runtime, message, state, options, callback, responses)
-      // `callback` is replaced by a proxy that round-trips to the host
-      // through host-rpc `actionCallback` when the host supplied a callback id.
+      // `callback` round-trips back to the host when callbackId is provided.
       const params = args as {
         message: JsonValue;
         state: JsonValue;
@@ -225,7 +225,7 @@ async function invokeBySurface(
         /** Identifier for the host-side callback channel. */
         callbackId?: string;
       };
-      const callback = makeCallbackProxy(context.runtime, params.callbackId);
+      const callback = makeActionCallback(context.channel, params.callbackId);
       const result = await (entry.handler as ActionHandler)(
         context.runtime,
         params.message,
@@ -286,10 +286,7 @@ type ActionHandler = (
   message: JsonValue,
   state: JsonValue,
   options: JsonValue,
-  callback: (
-    data: JsonValue,
-    actionName?: string,
-  ) => Promise<JsonValue> | JsonValue,
+  callback: (data: JsonValue) => Promise<void> | void,
   responses: JsonValue,
 ) => Promise<JsonValue | undefined> | JsonValue | undefined;
 type EvaluatorHandler = (
@@ -367,13 +364,17 @@ function checkPermission(
   }
 }
 
-function makeCallbackProxy(
-  runtime: RuntimeProxyApi,
+function makeActionCallback(
+  channel: WorkerChannel,
   callbackId?: string,
-): (data: JsonValue, actionName?: string) => Promise<JsonValue> {
-  if (!callbackId) {
-    return async () => null;
-  }
-  return async (data, actionName) =>
-    runtime.actionCallback(callbackId, data, actionName);
+): (data: JsonValue) => Promise<void> {
+  return async (data) => {
+    if (!callbackId) return;
+    const message: WorkerActionCallbackMessage = {
+      type: "worker-action-callback",
+      callbackId,
+      payload: (data ?? null) as JsonValue,
+    };
+    channel.send(message);
+  };
 }

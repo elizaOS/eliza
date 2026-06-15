@@ -61,7 +61,7 @@ mock.module("ai", () => ({
   generateText,
   jsonSchema: mock((schema: unknown) => schema),
   streamText: mock(() => {
-    throw new Error("streamText is not implemented in onboarding-chat tests");
+    throw new Error("streamText is outside this onboarding-chat test fixture");
   }),
 }));
 

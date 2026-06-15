@@ -55,7 +55,7 @@ export interface ImageGenRuntimeProfile {
 	/**
 	 * sd-cpp binary capability evidence gathered from the first-run probe,
 	 * bundle manifest, or a loader-side help/version check. GPU vendor alone
-	 * is not proof that the installed `sd` binary was built with CUDA.
+	 * is not evidence that the installed `sd` binary was built with CUDA.
 	 */
 	sdCpp?: {
 		accelerators?: readonly string[];

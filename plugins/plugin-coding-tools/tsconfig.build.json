@@ -4,7 +4,10 @@
   "include": ["src/**/*"],
   "compilerOptions": {
     "rootDir": "./src",
-    "paths": {},
+    "paths": {
+      "@elizaos/shared": ["../../packages/shared/dist/index.d.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/dist/*"]
+    },
     "types": ["node", "bun-types"]
   }
 }

@@ -18,6 +18,7 @@ import type {
 	Memory,
 	Provider,
 	ProviderResult,
+	Service,
 	State,
 } from "../types/index.ts";
 
@@ -44,9 +45,9 @@ export const pluginConfigurationCompletenessProvider: Provider = {
 		_message: Memory,
 		_state?: State,
 	): Promise<ProviderResult> => {
-		const client = runtime.getService(
+		const client = runtime.getService<Service & PluginConfigClient>(
 			PLUGIN_CONFIG_CLIENT_SERVICE,
-		) as unknown as PluginConfigClient | null;
+		);
 		if (!client) {
 			return {
 				text: "",

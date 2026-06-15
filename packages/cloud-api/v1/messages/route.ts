@@ -572,7 +572,7 @@ app.post("/", async (c) => {
   const estimatedOutputTokens = request.max_tokens;
   const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
   const billingSource: PricingBillingSource =
-    resolveAiProviderSource(model) ?? "openrouter";
+    resolveAiProviderSource(model) ?? "bitrouter";
 
   let reservation: CreditReservation;
   let appCreditsInfo: AppCreditsInfo | undefined;
@@ -598,7 +598,7 @@ app.post("/", async (c) => {
     if (!balanceCheck.sufficient) {
       return anthropicError(
         "rate_limit_error",
-        `Insufficient app credits. Required: $${costWithMarkup.totalCost.toFixed(4)}`,
+        `Insufficient cloud credits. Required: $${costWithMarkup.totalCost.toFixed(4)}`,
         429,
       );
     }

@@ -107,7 +107,8 @@ export function diversifyForYouStories(
     const scanLimit = Math.min(remaining.length, MAX_SCAN_AHEAD);
 
     for (let index = 0; index < scanLimit; index++) {
-      const story = remaining[index]!;
+      const story = remaining[index];
+      if (!story) continue;
       let adjustedScore = story.finalRankScore ?? story.storyScore;
       const authorId = getPrimaryAuthorId(story);
       const clusterId = getClusterId(story);
@@ -171,7 +172,8 @@ export function ensureArticleSpacing(
   // Collect indices of all articles in original order
   const articleIndices: number[] = [];
   for (let i = 0; i < stories.length; i++) {
-    if (isArticleStory(stories[i]!)) articleIndices.push(i);
+    const story = stories[i];
+    if (story && isArticleStory(story)) articleIndices.push(i);
   }
   if (articleIndices.length === 0) return [...stories];
 
@@ -182,12 +184,13 @@ export function ensureArticleSpacing(
   let nextArticlePtr = 0; // pointer into articleIndices
 
   for (let i = 0; i < stories.length; i++) {
-    if (isArticleStory(stories[i]!)) {
+    const story = stories[i];
+    if (story && isArticleStory(story)) {
       lastArticlePos = i;
       // advance pointer past any articles at or before i
       while (
         nextArticlePtr < articleIndices.length &&
-        articleIndices[nextArticlePtr]! <= i
+        (articleIndices[nextArticlePtr] ?? Number.POSITIVE_INFINITY) <= i
       ) {
         nextArticlePtr++;
       }
@@ -198,12 +201,12 @@ export function ensureArticleSpacing(
       // Find next unpulled article after current position
       while (
         nextArticlePtr < articleIndices.length &&
-        pulled.has(articleIndices[nextArticlePtr]!)
+        pulled.has(articleIndices[nextArticlePtr] ?? -1)
       ) {
         nextArticlePtr++;
       }
-      if (nextArticlePtr < articleIndices.length) {
-        const srcIdx = articleIndices[nextArticlePtr]!;
+      const srcIdx = articleIndices[nextArticlePtr];
+      if (srcIdx !== undefined) {
         pulled.add(srcIdx);
         insertions.push({ before: i, fromIndex: srcIdx });
         lastArticlePos = i; // this position will hold the article
@@ -220,12 +223,18 @@ export function ensureArticleSpacing(
   for (let i = 0; i < stories.length; i++) {
     // Insert any articles scheduled before this index
     while (insPtr < insertions.length && insertions[insPtr]?.before === i) {
-      result.push(stories[insertions[insPtr]?.fromIndex]!);
+      const insertion = insertions[insPtr];
+      const insertedStory =
+        insertion === undefined ? undefined : stories[insertion.fromIndex];
+      if (insertedStory) {
+        result.push(insertedStory);
+      }
       insPtr++;
     }
     // Skip items that were pulled forward
     if (pulled.has(i)) continue;
-    result.push(stories[i]!);
+    const story = stories[i];
+    if (story) result.push(story);
   }
   return result;
 }

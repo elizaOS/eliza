@@ -123,7 +123,7 @@ function getRuntimeServiceRegistry(runtime: IAgentRuntime): RuntimeServiceRegist
  * Concurrent dispatches that race past the lookup are still safely
  * coalesced because the embedded service persists the idempotency key on
  * the execution row, so the second-to-write completes but is detectable
- * as a duplicate on future lookups.
+ * as a duplicate on later lookups.
  */
 export function createWorkflowDispatchService(runtime: IAgentRuntime): WorkflowDispatchService {
   // Track in-flight executions by `(workflowId, idempotencyKey)` so that

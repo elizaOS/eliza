@@ -8,9 +8,288 @@ import {
   useApp,
 } from "@elizaos/app-core/ui-compat";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { type CSSProperties, useCallback, useMemo, useState } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useCallback,
+  useMemo,
+  useState,
+} from "react";
 
-const LANES = ["top", "mid", "bot"] as const;
+const DEFENSE_HERO_URL = "/api/views/defense-of-the-agents/hero";
+const DEFENSE_ACCENT = "#ff5800";
+
+type ChipState = "live" | "attention" | "idle";
+
+const CHIP_DOT_COLOR: Record<ChipState, string> = {
+  live: "#22c55e",
+  attention: DEFENSE_ACCENT,
+  idle: "rgba(125,125,125,0.55)",
+};
+
+function HeroStatusChip({ state, label }: { state: ChipState; label: string }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 12px",
+        borderRadius: 999,
+        background: "rgba(0,0,0,0.5)",
+        backdropFilter: "blur(8px)",
+        border: "1px solid rgba(255,255,255,0.16)",
+        color: "#fff",
+        fontSize: 12,
+        fontWeight: 700,
+        letterSpacing: "0.04em",
+        textTransform: "uppercase",
+      }}
+    >
+      <span
+        style={{
+          width: 9,
+          height: 9,
+          borderRadius: 999,
+          background: CHIP_DOT_COLOR[state],
+          boxShadow: `0 0 0 4px ${CHIP_DOT_COLOR[state]}33`,
+        }}
+      />
+      {label}
+    </span>
+  );
+}
+
+function HeroHeader({
+  title,
+  state,
+  statusText,
+  cta,
+}: {
+  title: string;
+  state: ChipState;
+  statusText: string;
+  cta?: { label: string; onClick: () => void; disabled?: boolean } | null;
+}) {
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "34vh",
+        minHeight: 220,
+        maxHeight: 380,
+        overflow: "hidden",
+        borderRadius: 20,
+        backgroundColor: "#0b0b0f",
+        backgroundImage: `url(${DEFENSE_HERO_URL})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "linear-gradient(to bottom, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.12) 45%, rgba(0,0,0,0.72) 100%)",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          left: 24,
+          right: 24,
+          bottom: 22,
+          display: "flex",
+          alignItems: "flex-end",
+          justifyContent: "space-between",
+          gap: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <HeroStatusChip state={state} label={statusText} />
+          <div
+            style={{
+              color: "#fff",
+              fontSize: 34,
+              fontWeight: 800,
+              lineHeight: 1.05,
+              letterSpacing: "-0.01em",
+              textShadow: "0 2px 18px rgba(0,0,0,0.55)",
+            }}
+          >
+            {title}
+          </div>
+        </div>
+        {cta ? (
+          <button
+            type="button"
+            onClick={cta.onClick}
+            disabled={cta.disabled}
+            style={{
+              padding: "12px 22px",
+              borderRadius: 999,
+              border: "none",
+              background: DEFENSE_ACCENT,
+              color: "#fff",
+              fontSize: 14,
+              fontWeight: 700,
+              letterSpacing: "0.01em",
+              cursor: cta.disabled ? "default" : "pointer",
+              opacity: cta.disabled ? 0.55 : 1,
+              boxShadow: "0 8px 24px rgba(255,88,0,0.35)",
+            }}
+          >
+            {cta.label}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function StatusStripCard({
+  icon,
+  label,
+  value,
+  state,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  state: ChipState;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        flex: "1 1 160px",
+        minWidth: 150,
+        padding: "12px 14px",
+        borderRadius: 14,
+        border: "1px solid var(--border, rgba(0,0,0,0.12))",
+        background: "var(--card, rgba(255,255,255,0.8))",
+      }}
+    >
+      <div
+        aria-hidden
+        style={{
+          display: "grid",
+          placeItems: "center",
+          width: 38,
+          height: 38,
+          borderRadius: 11,
+          fontSize: 18,
+          background: "var(--surface, rgba(0,0,0,0.04))",
+        }}
+      >
+        {icon}
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 10.5,
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            color: "var(--muted, rgba(0,0,0,0.58))",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: 999,
+              background: CHIP_DOT_COLOR[state],
+            }}
+          />
+          {label}
+        </div>
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 700,
+            color: "var(--foreground, var(--text, #111))",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {value}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HeroFrame({
+  children,
+  variant,
+}: {
+  children: ReactNode;
+  variant: AppOperatorSurfaceProps["variant"];
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 16,
+        padding: variant === "live" ? 12 : 16,
+        maxWidth: 1100,
+        margin: "0 auto",
+        width: "100%",
+        boxSizing: "border-box",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function DefenseWaitingZone() {
+  return (
+    <div
+      style={{
+        flex: "1 1 auto",
+        minHeight: 160,
+        display: "grid",
+        placeItems: "center",
+        borderRadius: 16,
+        border: "1px dashed var(--border, rgba(0,0,0,0.12))",
+        background:
+          "radial-gradient(120% 120% at 50% 0%, var(--surface, rgba(0,0,0,0.04)) 0%, transparent 70%)",
+        padding: "28px 16px",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 10,
+          color: "var(--muted, rgba(0,0,0,0.58))",
+          textAlign: "center",
+        }}
+      >
+        <div style={{ fontSize: 30, opacity: 0.85 }}>🛡</div>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>
+          Waiting for a match
+        </div>
+        <div style={{ fontSize: 12, opacity: 0.8 }}>
+          Launch Defense to deploy the agent's hero into a lane.
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function readString(
   source: Record<string, unknown> | null,
@@ -182,7 +461,6 @@ export function DefenseAgentsOperatorSurface({
         )[0] ?? null,
     [appName, appRuns],
   );
-  const [draft, setDraft] = useState("");
   const [localEvents, setLocalEvents] = useState<GameOperatorEvent[]>([]);
   const [sendingCommand, setSendingCommand] = useState<string | null>(null);
 
@@ -199,7 +477,7 @@ export function DefenseAgentsOperatorSurface({
     .filter((prompt) => !/^auto[- ]?play/i.test(prompt));
 
   const sendCommand = useCallback(
-    async (content: string, clearDraftOnSuccess = false) => {
+    async (content: string) => {
       const trimmed = content.trim();
       if (!run?.runId || !trimmed || sendingCommand) return;
 
@@ -221,9 +499,6 @@ export function DefenseAgentsOperatorSurface({
           response.run?.session ?? response.session ?? null;
         if (response.run) {
           setState("appRuns", replaceRun(appRuns, response.run));
-        }
-        if (clearDraftOnSuccess) {
-          setDraft((current) => (current.trim() === trimmed ? "" : current));
         }
         if (persistedSession) {
           setLocalEvents([]);
@@ -267,13 +542,35 @@ export function DefenseAgentsOperatorSurface({
 
   if (!run) {
     return (
-      <section
-        className={variant === "live" ? "p-3" : ""}
-        data-testid="defense-operator-empty"
-      >
-        <div className="rounded-2xl border border-border/35 bg-card/74 p-4 text-xs text-muted-strong">
-          Launch Defense of the Agents to open game chat.
-        </div>
+      <section data-testid="defense-operator-empty">
+        <HeroFrame variant={variant}>
+          <HeroHeader
+            title="Defense of the Agents"
+            state="idle"
+            statusText="Tactical surface ready"
+          />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+            <StatusStripCard
+              icon="🛡"
+              label="Hero"
+              value="Deploys on launch"
+              state="live"
+            />
+            <StatusStripCard
+              icon="⚔"
+              label="Tactics"
+              value="Move · recall · reinforce"
+              state="attention"
+            />
+            <StatusStripCard
+              icon="▶"
+              label="Autoplay"
+              value="Toggle in session"
+              state="idle"
+            />
+          </div>
+          <DefenseWaitingZone />
+        </HeroFrame>
       </section>
     );
   }
@@ -292,68 +589,95 @@ export function DefenseAgentsOperatorSurface({
       command: "Recall to base",
       testId: "defense-command-recall",
     },
-    ...LANES.map((lane) => ({
-      id: `lane-${lane}`,
-      label: heroLane ? `Move ${lane}` : `Deploy ${lane}`,
+    {
+      id: `lane-${heroLane ?? "mid"}`,
+      label: heroLane ? `Move ${heroLane}` : "Deploy mid",
       command: heroLane
-        ? `Move to ${lane} lane`
-        : `Deploy as ${heroClass} in ${lane} lane`,
-      active: heroLane === lane,
-      testId: `defense-command-lane-${lane}`,
-    })),
+        ? `Move to ${heroLane} lane`
+        : `Deploy as ${heroClass} in mid lane`,
+      active: Boolean(heroLane),
+      testId: `defense-command-lane-${heroLane ?? "mid"}`,
+    },
   ];
 
-  const suggestedActions = tacticalPrompts.map((prompt) => ({
+  const suggestedActions = tacticalPrompts.slice(0, 2).map((prompt) => ({
     id: prompt,
     label: prompt,
     command: prompt,
     testId: "defense-suggested-command",
   }));
 
-  const events = collectRunEvents(run, telemetry, localEvents);
+  const events = collectRunEvents(run, telemetry, localEvents).slice(0, 3);
 
+  const heroState = statusTone(run.status);
+  const recallAction = primaryActions.find((action) => action.id === "recall");
   return (
     <>
       <DefenseOperatorRegistrar
         primaryActions={primaryActions}
         suggestedActions={suggestedActions}
-        getDraft={() => draft}
-        onDraftChange={setDraft}
-        onCommand={(command) => void sendCommand(command)}
-        onSendDraft={() => void sendCommand(draft, true)}
-      />
-      <GameOperatorShell
-        surfaceTestId={
-          variant === "live"
-            ? "defense-live-operator-surface"
-            : "defense-detail-operator-surface"
-        }
-        title="Defense command"
-        statusLabel={statusLabel(run.status)}
-        statusTone={statusTone(run.status)}
-        objective={
-          run.session?.goalLabel ?? run.session?.summary ?? run.summary
-        }
-        detailItems={[
-          { label: "Hero", value: formatHeroLine(telemetry) },
-          { label: "Mode", value: autoPlay ? "Autoplay" : "Manual" },
-        ]}
-        primaryActions={primaryActions}
-        suggestedActions={suggestedActions}
-        events={events}
-        emptyEventsLabel="Commands and match events will appear here. Start with a lane move, recall, or a strategy note."
-        draft={draft}
-        inputPlaceholder="Command the hero..."
-        canSend={canSend}
-        sending={Boolean(sendingCommand)}
-        chatInputTestId="defense-chat-input"
-        chatSendTestId="defense-chat-send"
-        noticeTestId="defense-command-notice"
-        variant={variant}
-        onDraftChange={setDraft}
-        onSendDraft={() => void sendCommand(draft, true)}
         onCommand={(command) => void sendCommand(command)}
       />
+      <HeroFrame variant={variant}>
+        <HeroHeader
+          title="Defense of the Agents"
+          state={heroState}
+          statusText={statusLabel(run.status)}
+          cta={
+            canSend && recallAction
+              ? {
+                  label: recallAction.label,
+                  onClick: () => void sendCommand(recallAction.command),
+                  disabled: Boolean(sendingCommand),
+                }
+              : null
+          }
+        />
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+          <StatusStripCard
+            icon="🛡"
+            label="Hero"
+            value={formatHeroLine(telemetry)}
+            state="live"
+          />
+          <StatusStripCard
+            icon="▶"
+            label="Mode"
+            value={autoPlay ? "Autoplay" : "Manual"}
+            state={autoPlay ? "live" : "idle"}
+          />
+          <StatusStripCard
+            icon="⚡"
+            label="Relay"
+            value={canSend ? "Ready" : "Syncing"}
+            state={canSend ? "live" : "attention"}
+          />
+        </div>
+        <GameOperatorShell
+          surfaceTestId={
+            variant === "live"
+              ? "defense-live-operator-surface"
+              : "defense-detail-operator-surface"
+          }
+          title="Defense command"
+          statusLabel={statusLabel(run.status)}
+          statusTone={statusTone(run.status)}
+          objective={run.session?.goalLabel ?? run.summary}
+          detailItems={[
+            { label: "Hero", value: formatHeroLine(telemetry) },
+            { label: "Mode", value: autoPlay ? "Autoplay" : "Manual" },
+          ]}
+          primaryActions={primaryActions}
+          suggestedActions={suggestedActions}
+          events={events}
+          emptyEventsLabel="No match events yet."
+          canSend={canSend}
+          sending={Boolean(sendingCommand)}
+          noticeTestId="defense-command-notice"
+          variant={variant}
+          onCommand={(command) => void sendCommand(command)}
+        />
+      </HeroFrame>
     </>
   );
 }
@@ -409,62 +733,20 @@ function DefenseSuggestedActionRegistrar({
   return null;
 }
 
-function DefenseDraftInputRegistrar({
-  getDraft,
-  onDraftChange,
-}: {
-  getDraft: () => string;
-  onDraftChange: (value: string) => void;
-}) {
-  useAgentElement<HTMLInputElement>({
-    id: "chat-command-input",
-    role: "text-input",
-    label: "Defense command",
-    group: "defense-chat",
-    description: "Type a command for the hero, then send it",
-    getValue: getDraft,
-    onFill: onDraftChange,
-  });
-  return null;
-}
-
-function DefenseSendDraftRegistrar({
-  onSendDraft,
-}: {
-  onSendDraft: () => void;
-}) {
-  useAgentElement<HTMLButtonElement>({
-    id: "chat-send",
-    role: "button",
-    label: "Send command",
-    group: "defense-chat",
-    description: "Send the typed command to the hero",
-    onActivate: onSendDraft,
-  });
-  return null;
-}
-
 /**
  * Registers the operator surface's interactive controls with the agent surface.
  * GameOperatorShell renders these controls and does not forward refs, so each is
  * registered as a callback-driven element wired to the same handlers the shell
- * invokes (primary lane/recall/autoplay commands, suggested commands, the chat
- * input, and the send button).
+ * invokes (primary lane/recall/autoplay commands and suggested commands).
  */
 function DefenseOperatorRegistrar({
   primaryActions,
   suggestedActions,
-  getDraft,
-  onDraftChange,
   onCommand,
-  onSendDraft,
 }: {
   primaryActions: GameOperatorAction[];
   suggestedActions: GameOperatorAction[];
-  getDraft: () => string;
-  onDraftChange: (value: string) => void;
   onCommand: (command: string) => void;
-  onSendDraft: () => void;
 }) {
   return (
     <>
@@ -483,11 +765,6 @@ function DefenseOperatorRegistrar({
           onCommand={onCommand}
         />
       ))}
-      <DefenseDraftInputRegistrar
-        getDraft={getDraft}
-        onDraftChange={onDraftChange}
-      />
-      <DefenseSendDraftRegistrar onSendDraft={onSendDraft} />
     </>
   );
 }
@@ -750,35 +1027,3 @@ const tuiInputStyle: CSSProperties = {
   padding: "8px",
   fontFamily: "inherit",
 };
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-defense-state") {
-    return {
-      viewType: "tui",
-      appName: "@elizaos/plugin-defense-of-the-agents",
-      lanes: [...LANES],
-      primaryCommands: [
-        "review strategy",
-        "move to top",
-        "move to mid",
-        "move to bot",
-        "recall",
-      ],
-    };
-  }
-  if (capability === "terminal-defense-command") {
-    const runId = typeof params?.runId === "string" ? params.runId.trim() : "";
-    const content =
-      typeof params?.content === "string" ? params.content.trim() : "";
-    if (!runId) throw new Error("runId is required");
-    if (!content) throw new Error("content is required");
-    return {
-      viewType: "tui",
-      command: await client.sendAppRunMessage(runId, content),
-    };
-  }
-  throw new Error(`Unsupported Defense TUI capability: ${capability}`);
-}

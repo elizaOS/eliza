@@ -103,7 +103,7 @@ export function tierActionResults(
 
 	// Narrow before the cap: if the candidate parent is the 9th-best
 	// tier-A entry and maxTierAParents=8, running the cap first would push
-	// it to tier-B and the no-op safety would fire, leaving FILE/BASH in
+	// it to tier-B and the safety fallback would fire, leaving FILE/BASH in
 	// tier-A. By narrowing first we collapse tier-A to only the candidates,
 	// and the cap then applies to that smaller set.
 	const narrowSet = normalizeCandidateSet(input.narrowToCandidateActions);

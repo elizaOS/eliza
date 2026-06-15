@@ -7,14 +7,15 @@
  */
 
 import { registerAppRoutePluginLoader } from "@elizaos/core";
-import { registerAppShellPage, registerBuiltinWidgets } from "@elizaos/ui";
+import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
+import { registerBuiltinWidgets } from "@elizaos/ui/widgets";
 import { InventoryView } from "./InventoryView.tsx";
 // These were previously dynamic imports, but `./index.ts` re-exports both as
 // static bindings so the dynamic import never produced a separate chunk
 // (INEFFECTIVE_DYNAMIC_IMPORT). Collapse to static imports to silence the
 // warning; bundle size is unchanged because the static path was already used.
 import { walletAppPlugin } from "./plugin.ts";
-import { WALLET_STATUS_WIDGET } from "./widgets/wallet-status.tsx";
+import { WALLET_STATUS_WIDGET } from "./widgets/wallet-status.helpers.ts";
 
 registerAppRoutePluginLoader(
   "@elizaos/plugin-wallet-ui",

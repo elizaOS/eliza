@@ -2157,7 +2157,7 @@ entries:
     model_status: no_model
     e1_fit: >
       Useful taxonomy for separating circuit encoders, EDA LLMs, multimodal
-      netlist/layout models, and task-specific predictors in the E1 roadmap.
+      netlist/layout models, and task-specific predictors in the E1 requirement set.
     integration_action: >
       Use as review context for a dry-run foundation-model target lane; do not
       treat model embeddings or paper benchmarks as E1 evidence.
@@ -9458,7 +9458,7 @@ entries:
       Relevant to future MLIR-to-RVV lowering gaps for E1 CPU fallback kernels,
       but current E1 compiler work is IREE/NPU descriptor oriented.
     integration_action: >
-      Track as compiler roadmap context until code/assets and RVV tests are
+      Track as compiler planning context until code/assets and RVV tests are
       available.
     evidence_gate: >
       Lowering changes require MLIR test hashes, generated RVV assembly,
@@ -16284,7 +16284,7 @@ entries:
     code_status: available_to_review
     model_status: no_model
     e1_fit: >
-      Lightweight DNN fault-injection reference for future workload-level NPU
+      Lightweight DNN fault-injection reference for later workload-level NPU
       resilience triage.
     integration_action: >
       Track as external project only; do not run against E1 workloads until

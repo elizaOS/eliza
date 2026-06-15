@@ -273,7 +273,7 @@ export async function ensureElectrobunCore({
   missing = findMissingElectrobunCoreFiles(packageDir, target);
   if (missing.length > 0) {
     fail(
-      `Electrobun core extraction incomplete for ${target.id}; still missing: ${missing.join(", ")}`,
+      `Electrobun core extraction missing files for ${target.id}: ${missing.join(", ")}`,
     );
   }
 

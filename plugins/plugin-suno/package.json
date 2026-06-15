@@ -1,6 +1,6 @@
 {
     "name": "@elizaos/plugin-suno",
-    "version": "2.0.3-beta.0",
+    "version": "2.0.3-beta.13",
     "description": "Suno AI Music Generation Plugin for Eliza",
     "main": "dist/index.js",
     "type": "module",
@@ -10,9 +10,9 @@
         ".": {
             "types": "./dist/index.d.ts",
             "eliza-source": {
-              "types": "./src/index.ts",
-              "import": "./src/index.ts",
-              "default": "./src/index.ts"
+                "types": "./src/index.ts",
+                "import": "./src/index.ts",
+                "default": "./src/index.ts"
             },
             "import": "./dist/index.js",
             "default": "./dist/index.js"
@@ -21,9 +21,9 @@
         "./*": {
             "types": "./dist/*.d.ts",
             "eliza-source": {
-              "types": "./src/*.ts",
-              "import": "./src/*.ts",
-              "default": "./src/*.ts"
+                "types": "./src/*.ts",
+                "import": "./src/*.ts",
+                "default": "./src/*.ts"
             },
             "import": "./dist/*.js",
             "default": "./dist/*.js"
@@ -44,13 +44,13 @@
     "scripts": {
         "build": "tsup --format esm",
         "dev": "tsup --format esm --watch",
-        "lint": "echo \"Lint skipped for release\"",
+        "lint": "bunx @biomejs/biome check .",
         "lint:check": "bun run lint",
         "lint:fix": "bunx @biomejs/biome check --write ./src",
         "format": "bunx @biomejs/biome format --write ./src",
         "format:check": "bunx @biomejs/biome format ./src",
         "test": "vitest run --config vitest.config.ts",
-        "typecheck": "echo \"Typecheck skipped for release\""
+        "typecheck": "tsgo --noEmit -p tsconfig.json"
     },
     "devDependencies": {
         "@biomejs/biome": "^2.4.14",

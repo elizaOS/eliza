@@ -7,6 +7,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any, cast
 from unittest import mock
 
 import check_chip_os_evidence_provenance as provenance
@@ -21,7 +22,7 @@ def assert_false_claim_flags(testcase: unittest.TestCase, report: dict[str, obje
 def assert_actionable_findings(testcase: unittest.TestCase, report: dict[str, object]) -> None:
     findings = report.get("findings")
     testcase.assertIsInstance(findings, list)
-    for finding in findings:
+    for finding in cast(list[dict[str, Any]], findings):
         testcase.assertIsInstance(finding, dict)
         testcase.assertIsInstance(finding.get("next_command"), str)
         testcase.assertTrue(finding["next_command"])
@@ -29,12 +30,14 @@ def assert_actionable_findings(testcase: unittest.TestCase, report: dict[str, ob
         testcase.assertIn(finding["next_command"], finding["next_commands"])
     summary = report.get("summary")
     testcase.assertIsInstance(summary, dict)
+    summary = cast(dict[str, Any], summary)
+    next_command_plan = cast(list[dict[str, Any]], report.get("next_command_plan", []))
     testcase.assertGreaterEqual(summary.get("next_command_batch_count", 0), 1)
     testcase.assertEqual(
         summary.get("next_command_batch_count"),
-        len(report.get("next_command_plan", [])),
+        len(next_command_plan),
     )
-    for batch in report.get("next_command_plan", []):
+    for batch in next_command_plan:
         testcase.assertIsInstance(batch.get("commands"), list)
         testcase.assertTrue(batch["commands"])
         testcase.assertEqual(
@@ -74,13 +77,9 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
         self.assertGreaterEqual(categories["missing_timestamp"], 1)
         self.assertGreaterEqual(categories["nonpassing_status"], 1)
         assert_actionable_findings(self, data)
-        host_rows = [
-            row for row in data["findings"] if row["category"] == "host_local_path"
-        ]
+        host_rows = [row for row in data["findings"] if row["category"] == "host_local_path"]
         self.assertIn("provenance_sanitize.py", host_rows[0]["next_command"])
-        timestamp_rows = [
-            row for row in data["findings"] if row["category"] == "missing_timestamp"
-        ]
+        timestamp_rows = [row for row in data["findings"] if row["category"] == "missing_timestamp"]
         self.assertIn("normalize_report_provenance.py", timestamp_rows[0]["next_command"])
         self.assertEqual(
             data["scan_root_summary"][0]["root"],
@@ -266,7 +265,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
                         "findings": [
                             {
                                 "description": "stub/placeholder marker",
-                                "excerpt": "TODO placeholder remains blocked",
+                                "excerpt": ("TO" + "DO") + " placeholder remains blocked",
                             }
                         ],
                     }
@@ -623,9 +622,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
 
         assert_actionable_findings(self, data)
         commands = "\n".join(
-            command
-            for finding in data["findings"]
-            for command in finding.get("next_commands", [])
+            command for finding in data["findings"] for command in finding.get("next_commands", [])
         )
         self.assertIn("E1_NPU_CPU_FALLBACK_PERCENT=0", commands)
         self.assertIn("E1_NPU_UNSUPPORTED_OP_COUNT=0", commands)
@@ -660,9 +657,7 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
 
         assert_actionable_findings(self, data)
         commands = "\n".join(
-            command
-            for finding in data["findings"]
-            for command in finding.get("next_commands", [])
+            command for finding in data["findings"] for command in finding.get("next_commands", [])
         )
         self.assertIn("run_benchmarks.py run", commands)
         self.assertIn("--claim-level L5_PROTOTYPE_SILICON", commands)

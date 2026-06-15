@@ -188,6 +188,8 @@ jobs:
           path: |
             packages/computeruse/packages/computeruse-ts/npm/*/
             !packages/computeruse/packages/computeruse-ts/npm/*/*.tgz
+          if-no-files-found: error
+          retention-days: 30
 
   publish:
     name: Publish to npm

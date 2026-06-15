@@ -998,7 +998,8 @@ export function clearResponseGrammarCache(): void {
  * the Stage-2 planner — those are the calls that always carry a forced skeleton.
  * Set `ELIZA_LOCAL_GUIDED_DECODE=0` (`false` / `off` / `no`) to disable.
  * Cloud adapters ignore
- * `providerOptions.eliza.guidedDecode` entirely, so this is a no-op for them.
+ * `providerOptions.eliza.guidedDecode` entirely, so this setting only affects
+ * the local engine.
  */
 function guidedDecodeEnabledByDefault(): boolean {
 	const raw = (process.env.ELIZA_LOCAL_GUIDED_DECODE ?? "")
@@ -1015,8 +1016,8 @@ function guidedDecodeEnabledByDefault(): boolean {
  * fewer `decode()` calls (the fork-side fast-forward consumes the plan; without
  * it the runtime degrades to grammar-only / byte-identical output). Idempotent;
  * returns the same object reference with `eliza.guidedDecode` set. When the
- * operator opted out via `ELIZA_LOCAL_GUIDED_DECODE=0` this is a no-op so an
- * existing `providerOptions.eliza.guidedDecode` (likely absent) is left alone.
+ * operator opted out via `ELIZA_LOCAL_GUIDED_DECODE=0`, an existing
+ * `providerOptions.eliza.guidedDecode` (likely absent) is left alone.
  */
 export function withGuidedDecodeProviderOptions<
 	T extends Record<string, unknown>,

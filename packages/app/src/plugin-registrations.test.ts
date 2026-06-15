@@ -15,6 +15,7 @@ const EXPECTED_SIDE_EFFECT_MODULES = [
   "@elizaos/plugin-polymarket-app",
   "@elizaos/plugin-wallet-ui",
   "@elizaos/app-model-tester",
+  "@elizaos/plugin-vector-browser/register",
   "@elizaos/plugin-contacts/register",
   "@elizaos/plugin-device-settings/register",
   "@elizaos/plugin-messages/register",

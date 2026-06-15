@@ -8,8 +8,7 @@ const exec = promisify(execFile);
  * Resolve a password-manager reference at use time.
  *
  * 1Password: shells out to `op read op://<vault>/<item>/<field>`.
- * Proton Pass: scaffolded; the vendor's CLI/SDK isn't stable enough
- * to wire in v1.
+ * Proton Pass: shells out to `pass-cli item view pass://<vault>/<item>/<field>`.
  *
  * The reference contents are never copied to disk by the vault; only
  * the reference itself (`{ source, path }`) is stored.
@@ -65,9 +64,34 @@ async function resolve1Password(path: string): Promise<string> {
   }
 }
 
-async function resolveProtonPass(_path: string): Promise<string> {
-  throw new PasswordManagerError(
-    "protonpass",
-    "Proton Pass integration is scaffolded; vendor CLI / SDK is not yet stable. File a request to prioritize.",
-  );
+async function resolveProtonPass(path: string): Promise<string> {
+  const uri = path.startsWith("pass://") ? path : `pass://${path}`;
+  try {
+    const { stdout } = await exec("pass-cli", ["item", "view", uri], {
+      encoding: "utf8",
+      timeout: 5000,
+    });
+    const value = stdout.trim();
+    if (value.length === 0) {
+      throw new PasswordManagerError("protonpass", `${uri} is empty`);
+    }
+    return value;
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException;
+    if (e.code === "ENOENT") {
+      throw new PasswordManagerError(
+        "protonpass",
+        "`pass-cli` not found. Install Proton Pass CLI from https://protonpass.github.io/pass-cli/.",
+      );
+    }
+    if (err instanceof PasswordManagerError) throw err;
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/not signed in|not authenticated|not logged in|login required/i.test(msg)) {
+      throw new PasswordManagerError(
+        "protonpass",
+        "`pass-cli` is not signed in. Authenticate with Proton Pass CLI before resolving vault references.",
+      );
+    }
+    throw new PasswordManagerError("protonpass", msg);
+  }
 }

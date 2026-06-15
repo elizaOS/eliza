@@ -17,17 +17,18 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { logger, type Plugin } from "@elizaos/core";
+import { formatError, isMobilePlatform } from "@elizaos/shared";
 import {
   applyAppManifestDefaults,
+  filterCandidatesByAppManifest,
+  readAppManifest,
+} from "@elizaos/shared/config/app-manifest";
+import {
   applyPluginManifestVerdicts,
   evaluatePluginManifests,
-  filterCandidatesByAppManifest,
-  formatError,
-  isMobilePlatform,
   type PluginManifestCandidate,
   type PluginManifestVerdict,
-  readAppManifest,
-} from "@elizaos/shared";
+} from "@elizaos/shared/config/plugin-manifest";
 
 import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
@@ -81,7 +82,7 @@ const RUNTIME_APP_PLUGIN_SUBPATHS = new Set([
   "@elizaos/plugin-companion",
   "@elizaos/plugin-contacts",
   "@elizaos/plugin-elizamaker",
-  "@elizaos/plugin-lifeops",
+  "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-phone",
   "@elizaos/plugin-polymarket-app",
   "@elizaos/plugin-shopify-ui",
@@ -538,10 +539,9 @@ function resolveWorkspaceRoots(): string[] {
     return uniquePaths([envRoot]);
   }
 
-  // Phase 3: only search cwd — parent-directory and module-relative fallbacks
-  // removed. Repo-local ./eliza submodule + setup:upstreams symlinks handle
-  // plugin resolution for development. Set ELIZA_WORKSPACE_ROOT explicitly
-  // for external override scenarios.
+  // Search cwd by default. Repo-local ./eliza submodule +
+  // setup:upstreams symlinks handle plugin resolution for development. Set
+  // ELIZA_WORKSPACE_ROOT explicitly for external override scenarios.
   return uniquePaths([process.cwd()]);
 }
 
@@ -1434,7 +1434,8 @@ async function discoverPluginCandidatesUncached(): Promise<
   }
 
   // 2. workspace `plugins/` dir — covers cases where the plugin is in the
-  //    repo but not yet symlinked into node_modules. Cheap fall-through.
+  //    repo source tree without a matching node_modules link. Cheap
+  //    fall-through.
   for (const root of resolveWorkspaceRoots()) {
     const pluginsDir = path.join(root, "plugins");
     let entries: import("node:fs").Dirent[];
@@ -1761,7 +1762,9 @@ export async function resolvePlugins(
         // registry is the normal fast path, but use a literal import fallback
         // so Bun can still inline the required SQL plugin if module init order
         // leaves the registry empty.
-        const sqlPluginModule = await import("@elizaos/plugin-sql");
+        const sqlPluginModule = await import(
+          /* @vite-ignore */ "@elizaos/plugin-sql"
+        );
         mod = Object.fromEntries(
           Object.entries(sqlPluginModule),
         ) as PluginModuleShape;
@@ -2018,8 +2021,8 @@ export async function resolvePlugins(
     }
   }
 
-  // Persist repaired install records so future startups do not keep trying
-  // to import from stale install directories.
+  // Persist repaired install records so subsequent startups stop importing
+  // from stale install directories.
   if (repairedInstallRecords.size > 0) {
     try {
       saveElizaConfig(config);

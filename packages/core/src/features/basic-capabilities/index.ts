@@ -1322,7 +1322,7 @@ export const basicServices: ServiceClass[] = [
 	// from the on-disk store (<stateDir>/optimized-prompts/<task>). Cheap
 	// in-memory cache; registering it on every runtime so the planner-loop
 	// can pick up artifacts produced by `bun run train -- --backend native`.
-	OptimizedPromptService as unknown as ServiceClass,
+	OptimizedPromptService,
 ];
 
 /**
@@ -1452,7 +1452,7 @@ export function createBasicCapabilitiesPlugin(
 			: {}),
 		async dispose(runtime) {
 			// Stop all services that may have been registered based on config.
-			// Each call is a no-op when the service was not started.
+			// Optional chaining skips services that were not started.
 			await runtime.getService(TaskService.serviceType)?.stop();
 			await runtime.getService(EmbeddingGenerationService.serviceType)?.stop();
 			await runtime.getService(EvaluatorService.serviceType)?.stop();

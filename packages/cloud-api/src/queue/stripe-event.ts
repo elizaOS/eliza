@@ -28,10 +28,14 @@
  *     promotes the message to stripe-events:dlq for manual reconciliation.
  */
 
+import { createHmac } from "node:crypto";
+import { eq } from "drizzle-orm";
 import type Stripe from "stripe";
 
+import { dbRead } from "@/db/helpers";
 import { organizationsRepository } from "@/db/repositories/organizations";
 import { usersRepository } from "@/db/repositories/users";
+import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
 import type { DrainResult } from "@/lib/queue/redis-queue";
 import { appChargeCallbacksService } from "@/lib/services/app-charge-callbacks";
 import { appChargeSettlementService } from "@/lib/services/app-charge-settlement";
@@ -154,6 +158,7 @@ async function handleCheckoutSessionCompleted(
   const purchaseSource = session.metadata?.source;
   const appId = session.metadata?.app_id;
   const chargeRequestId = session.metadata?.charge_request_id;
+  const agentId = session.metadata?.agent_id;
 
   const isAppPurchase = purchaseSource === "miniapp_app" && appId && userId;
 
@@ -195,8 +200,11 @@ async function handleCheckoutSessionCompleted(
       stripePaymentIntentId: paymentIntentId,
     });
 
+    // processPurchase credits the org ledger directly (with this
+    // paymentIntentId on the credit transaction), so no separate
+    // marker transaction is needed here (#8253).
     logger.info(
-      `[Stripe Queue] App credits added: ${result.creditsAdded} to app ${appId} for user ${userId}`,
+      `[Stripe Queue] App credits added: ${result.creditsAdded} to org ${organizationId} for app ${appId} / user ${userId}`,
       {
         creditsAdded: result.creditsAdded,
         platformOffset: result.platformOffset,
@@ -204,24 +212,6 @@ async function handleCheckoutSessionCompleted(
         newBalance: result.newBalance,
       },
     );
-
-    await creditsService.addCredits({
-      organizationId,
-      amount: 0,
-      description: `App credit purchase (App: ${appId}) - $${credits.toFixed(2)}`,
-      metadata: {
-        user_id: userId,
-        app_id: appId,
-        payment_intent_id: paymentIntentId,
-        session_id: session.id,
-        type: purchaseType,
-        source: purchaseSource,
-        credits_to_app_balance: credits,
-        platform_offset: result.platformOffset,
-        creator_earnings: result.creatorEarnings,
-      },
-      stripePaymentIntentId: paymentIntentId,
-    });
 
     invalidateOrgTierCache(organizationId).catch((err) =>
       logger.warn("[Stripe Queue] Failed to invalidate org tier cache", {
@@ -238,6 +228,7 @@ async function handleCheckoutSessionCompleted(
         payment_intent_id: paymentIntentId,
         session_id: session.id,
         type: purchaseType,
+        ...(agentId ? { agent_id: agentId } : {}),
       },
       stripePaymentIntentId: paymentIntentId,
     });
@@ -246,11 +237,29 @@ async function handleCheckoutSessionCompleted(
       `[Stripe Queue] Credits added: ${credits} to org ${organizationId}`,
     );
 
+    if (agentId) {
+      await notifyWaifuCreditsToppedUp({
+        agentId,
+        eventId: `stripe:${event.id}:credits.topped_up:${agentId}`,
+        credits,
+        paymentIntentId,
+        sessionId: session.id,
+      });
+    }
+
     invalidateOrgTierCache(organizationId).catch((err) =>
       logger.warn("[Stripe Queue] Failed to invalidate org tier cache", {
         error: err instanceof Error ? err.message : String(err),
       }),
     );
+  } else if (agentId) {
+    await notifyWaifuCreditsToppedUp({
+      agentId,
+      eventId: `stripe:${event.id}:credits.topped_up:${agentId}:already_applied`,
+      credits,
+      paymentIntentId,
+      sessionId: session.id,
+    });
   }
 
   if (isAppPurchase && appId && userId && chargeRequestId) {
@@ -388,6 +397,7 @@ async function handleCheckoutSessionCompleted(
             type: purchaseType,
             session_id: session.id,
             ...(appId && { app_id: appId }),
+            ...(agentId && { agent_id: agentId }),
           },
           paid_at: new Date(),
         });
@@ -409,6 +419,117 @@ async function handleCheckoutSessionCompleted(
       );
     }
   }
+}
+
+async function notifyWaifuCreditsToppedUp(params: {
+  agentId: string;
+  eventId: string;
+  credits: number;
+  paymentIntentId: string;
+  sessionId: string;
+}): Promise<void> {
+  const [sandbox] = await dbRead
+    .select({
+      id: agentSandboxes.id,
+      organizationId: agentSandboxes.organization_id,
+      agent_config: agentSandboxes.agent_config,
+      status: agentSandboxes.status,
+      billing_status: agentSandboxes.billing_status,
+    })
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, params.agentId))
+    .limit(1);
+  if (!sandbox) return;
+
+  const config = recordFromUnknown(sandbox.agent_config);
+  const waifuWebhook = recordFromUnknown(config.waifuWebhook);
+  const webhookUrl =
+    stringField(config, "webhookUrl") ?? stringField(waifuWebhook, "url");
+  const webhookSecret =
+    stringField(config, "webhookSecret") ??
+    stringField(waifuWebhook, "secret") ??
+    process.env.WAIFU_WEBHOOK_SECRET;
+  if (!webhookUrl || !webhookSecret) return;
+
+  const timestamp = new Date().toISOString();
+  const account = recordFromUnknown(config.account);
+  const body = JSON.stringify({
+    event: "credits.topped_up",
+    timestamp,
+    eventId: params.eventId,
+    elizaCloudAgentId: sandbox.id,
+    agentId: sandbox.id,
+    organizationId: sandbox.organizationId,
+    tokenContractAddress: stringField(config, "tokenContractAddress"),
+    tokenAddress: stringField(config, "tokenContractAddress"),
+    tokenChain: stringField(config, "chain"),
+    chain: stringField(config, "chain"),
+    chainId: numberField(config, "chainId"),
+    primaryWalletAddress: stringField(account, "primaryWalletAddress"),
+    walletKeyRef: stringField(account, "walletKeyRef"),
+    amount: params.credits,
+    amountUsd: params.credits,
+    paymentIntentId: params.paymentIntentId,
+    sessionId: params.sessionId,
+    billingStatus: sandbox.billing_status,
+    status: sandbox.status,
+  });
+  const signature = `sha256=${createHmac("sha256", webhookSecret)
+    .update(`${timestamp}.${body}`)
+    .digest("hex")}`;
+
+  try {
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Waifu-Webhook-Signature": signature,
+      },
+      body,
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) {
+      logger.warn("[Stripe Queue] Waifu credit top-up webhook failed", {
+        agentId: params.agentId,
+        status: response.status,
+      });
+    }
+  } catch (error) {
+    logger.warn("[Stripe Queue] Waifu credit top-up webhook error", {
+      agentId: params.agentId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+function recordFromUnknown(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function stringField(
+  data: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = data[key];
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+function numberField(
+  data: Record<string, unknown>,
+  key: string,
+): number | null {
+  const value = data[key];
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 // ---------------------------------------------------------------------------

@@ -9,6 +9,7 @@ import {
 } from "../i18n";
 import { detectClientLanguage } from "../i18n/region";
 import type { Tab } from "../navigation";
+import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../voice/local-asr-capture";
 import type {
   CompanionHalfFramerateMode,
   CompanionVrmPowerMode,
@@ -744,6 +745,52 @@ export function saveContinuousChatMode(mode: ContinuousChatModeValue): void {
   }, undefined);
 }
 
+/* ── VAD auto-stop persistence ──────────────────────────────────────────── */
+// Local mirror of the `vadAutoStop` voice setting (source of truth is the agent
+// config under `messages.voice`). Stored here too so the capture hot path
+// (`useShellController.startCapture`) can read it synchronously on the user
+// gesture without an async config fetch — mirrors how continuous-chat-mode is
+// dual-stored above.
+const VAD_AUTO_STOP_KEY = "eliza:voice:vad-auto-stop";
+
+export interface VadAutoStopValue {
+  /** Trailing silence (ms) that ends a turn in local-ASR capture. */
+  silenceMs: number;
+  /** RMS amplitude (0–1) above which audio is treated as speech. */
+  speechRmsThreshold: number;
+}
+
+const DEFAULT_VAD_AUTO_STOP: VadAutoStopValue = {
+  silenceMs: DEFAULT_LOCAL_ASR_AUTO_STOP.silenceMs,
+  speechRmsThreshold: DEFAULT_LOCAL_ASR_AUTO_STOP.speechRmsThreshold,
+};
+
+export function loadVadAutoStop(): VadAutoStopValue {
+  return tryLocalStorage(() => {
+    const raw = localStorage.getItem(VAD_AUTO_STOP_KEY);
+    if (!raw) return DEFAULT_VAD_AUTO_STOP;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      silenceMs:
+        typeof parsed.silenceMs === "number" &&
+        Number.isFinite(parsed.silenceMs)
+          ? parsed.silenceMs
+          : DEFAULT_VAD_AUTO_STOP.silenceMs,
+      speechRmsThreshold:
+        typeof parsed.speechRmsThreshold === "number" &&
+        Number.isFinite(parsed.speechRmsThreshold)
+          ? parsed.speechRmsThreshold
+          : DEFAULT_VAD_AUTO_STOP.speechRmsThreshold,
+    };
+  }, DEFAULT_VAD_AUTO_STOP);
+}
+
+export function saveVadAutoStop(value: VadAutoStopValue): void {
+  tryLocalStorage(() => {
+    localStorage.setItem(VAD_AUTO_STOP_KEY, JSON.stringify(value));
+  }, undefined);
+}
+
 /* ── Browser enabled persistence ────────────────────────────────────── */
 const BROWSER_ENABLED_KEY = "eliza:browser:enabled";
 
@@ -897,6 +944,7 @@ function isElizaCloudControlPlaneApiBase(value: unknown): boolean {
 
 export function createPersistedActiveServer(args: {
   kind: PersistedActiveServer["kind"];
+  id?: string;
   apiBase?: string;
   accessToken?: string;
   label?: string;
@@ -917,7 +965,7 @@ export function createPersistedActiveServer(args: {
       };
     case "cloud":
       return {
-        id: `cloud:${apiBase ?? "managed"}`,
+        id: trimPersistedValue(args.id) ?? `cloud:${apiBase ?? "managed"}`,
         kind: "cloud",
         label: explicitLabel ?? "Eliza Cloud",
         ...(apiBase ? { apiBase } : {}),

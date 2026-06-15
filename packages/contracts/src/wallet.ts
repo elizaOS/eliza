@@ -131,7 +131,7 @@ export type WalletNetworkMode = 'mainnet' | 'testnet';
 /**
  * Paths through which plugin-wallet can produce a signature.
  *
- * - "local":             EVM_PRIVATE_KEY env var (non-placeholder)
+ * - "local":             real EVM_PRIVATE_KEY env var
  * - "steward-self":      self-hosted Steward vault
  * - "steward-cloud":     cloud-provisioned Steward sidecar
  * - "cloud-view-only":   cloud-custodied address known, but no signing path

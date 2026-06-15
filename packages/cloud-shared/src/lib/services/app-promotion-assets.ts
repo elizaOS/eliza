@@ -78,7 +78,7 @@ class AppPromotionAssetsService {
 
     const context: WebsiteContext = {};
 
-    // Skip placeholder URLs
+    // Skip draft/sentinel URLs
     if (!url || url.includes("placeholder")) {
       return context;
     }
@@ -315,7 +315,7 @@ class AppPromotionAssetsService {
     try {
       // Pass the model id as a string (matching /api/v1/generate-image) so the
       // AI SDK resolves an image-capable provider. mergeGoogleImageModalitiesWithAnthropicCot
-      // sets responseModalities for Google models; CoT/thinking budget is a no-op
+      // sets responseModalities for Google models; CoT/thinking budget is ignored
       // here because IMAGE_MODEL is not Anthropic.
       const result = streamText({
         model: IMAGE_MODEL,

@@ -20,6 +20,7 @@ function createSelectChain() {
   chain.from = mock(() => chain);
   chain.where = mock(() => chain);
   chain.limit = mock(() => chain);
+  // biome-ignore lint/suspicious/noThenProperty: The mock intentionally emulates Drizzle's awaitable query chain.
   chain.then = (
     onFulfilled?: ((value: unknown) => unknown) | null,
     onRejected?: ((reason: unknown) => unknown) | null,

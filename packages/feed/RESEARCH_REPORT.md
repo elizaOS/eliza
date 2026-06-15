@@ -285,7 +285,7 @@ The paper's main claim becomes:
 
 ---
 
-## 5. Implementation Roadmap
+## 5. Implementation Plan
 
 ### Phase 1: Validation (This Week)
 

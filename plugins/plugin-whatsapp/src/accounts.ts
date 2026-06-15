@@ -126,7 +126,7 @@ export function normalizeAccountId(accountId?: string | null): string {
 }
 
 /**
- * Gets the multi-account configuration from runtime settings
+ * Gets the account configuration records from runtime settings
  */
 export function getMultiAccountConfig(runtime: IAgentRuntime): WhatsAppMultiAccountConfig {
   const characterWhatsApp = runtime.character.settings?.whatsapp as
@@ -353,7 +353,7 @@ export function listEnabledWhatsAppAccounts(runtime: IAgentRuntime): ResolvedWha
 }
 
 /**
- * Checks if multi-account mode is enabled
+ * Checks whether more than one enabled account is configured
  */
 export function isMultiAccountEnabled(runtime: IAgentRuntime): boolean {
   const accounts = listEnabledWhatsAppAccounts(runtime);

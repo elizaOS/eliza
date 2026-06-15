@@ -86,5 +86,4 @@ Explicit `cacheTypeK`/`cacheTypeV` fields on `LoadOptions` take precedence over 
   (`@LlamaCpp_onToken`). Subscribe via `capacitorLlama.onToken(listener)`.
 - The `buun-llama-cpp` fork exposes optional `setCacheType`, `setSpecType`,
   and `getNativeKernels` bridge methods for TurboQuant KV caches and MTP
-  speculative decoding. Stock builds warn-and-no-op on those calls.
-
+  speculative decoding. Stock builds warn and skip unsupported calls.

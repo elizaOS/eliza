@@ -13,7 +13,9 @@
  *     `/api/auth/steward-session`).
  *  4. Sets new HttpOnly cookies (`steward-token`, `steward-refresh-token`)
  *     and the non-HttpOnly `steward-authed=1` marker.
- *  5. Returns `{ ok, expiresAt }` — **no tokens in the response body**.
+ *  5. Returns `{ ok, expiresAt }`. Trusted first-party browser origins also
+ *     receive the short-lived access token so the SPA can hydrate its
+ *     localStorage mirror while route auth remains synchronous.
  *
  * Origin/Referer CSRF check mirrors `/api/auth/steward-session`.
  *
@@ -33,6 +35,7 @@ import {
   type StewardVerifyEnv,
   verifyStewardTokenCached,
 } from "@/lib/auth/steward-client";
+import { signStewardMutatingRequest } from "@/lib/steward/sign";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -102,6 +105,21 @@ function checkOrigin(
   };
 }
 
+function shouldReturnClientToken(
+  c: { req: { header: (name: string) => string | undefined } },
+  isProduction: boolean,
+): boolean {
+  const origin =
+    originHost(c.req.header("origin")) ?? originHost(c.req.header("referer"));
+  const host = (c.req.header("host") ?? "").split(":")[0]?.toLowerCase() ?? "";
+  if (!origin) return false;
+  // The SPA still uses a localStorage access-token mirror for synchronous
+  // route auth. Cookie refresh must hydrate that mirror for every origin the
+  // CSRF check already accepts, otherwise valid HttpOnly-cookie sessions can
+  // bounce back to /login on previews/custom same-origin hosts.
+  return isPermittedOrigin(origin, host, isProduction);
+}
+
 function stewardSecretConfigured(env: StewardVerifyEnv): boolean {
   return Boolean(env.STEWARD_SESSION_SECRET || env.STEWARD_JWT_SECRET);
 }
@@ -154,20 +172,46 @@ interface StewardRefreshErr {
 async function callStewardRefresh(
   baseUrl: string,
   refreshToken: string,
+  pinnedTenantId?: string,
+  signingSecret?: string,
 ): Promise<
   | { kind: "ok"; data: StewardRefreshOk }
   | { kind: "error"; status: number; data: StewardRefreshErr }
   | { kind: "transport"; message: string }
 > {
+  const headers = new Headers({
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  });
+  // Pin the tenant per-env: this route bypasses the /steward/* proxy in
+  // bootstrap-app.ts and would otherwise hit Steward without scoping,
+  // letting a staging refresh land against the prod tenant.
+  if (typeof pinnedTenantId === "string" && pinnedTenantId.trim().length > 0) {
+    headers.set("X-Steward-Tenant", pinnedTenantId.trim());
+  }
+  const bodyText = JSON.stringify({ refreshToken });
+  const bodyBytes = new TextEncoder().encode(bodyText);
+  const refreshUrl = new URL(`${baseUrl}/auth/refresh`);
+  // Steward's authorization-signature middleware gates mutating sensitive
+  // paths (incl. /auth/refresh) on the signed-request contract. The
+  // /steward/* embedded proxy signs automatically; this bypass route must
+  // sign the same way or Steward 502s with "Request expiry header required",
+  // which kicks the SPA back to /login after every magic-link verify.
+  if (typeof signingSecret === "string" && signingSecret.length > 0) {
+    await signStewardMutatingRequest(
+      signingSecret,
+      "POST",
+      `${refreshUrl.pathname}${refreshUrl.search}`,
+      headers,
+      bodyBytes,
+    );
+  }
   let response: Response;
   try {
-    response = await fetch(`${baseUrl}/auth/refresh`, {
+    response = await fetch(refreshUrl.toString(), {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({ refreshToken }),
+      headers,
+      body: bodyText,
     });
   } catch (err) {
     return {
@@ -241,7 +285,12 @@ app.post("/", async (c) => {
     );
   }
 
-  const refresh = await callStewardRefresh(stewardBaseUrl, refreshToken);
+  const refresh = await callStewardRefresh(
+    stewardBaseUrl,
+    refreshToken,
+    c.env.STEWARD_TENANT_ID,
+    c.env.STEWARD_REQUEST_SIGNING_SECRET,
+  );
 
   if (refresh.kind === "transport") {
     logRefresh("upstream-transport-error");
@@ -321,6 +370,7 @@ app.post("/", async (c) => {
     ok: true,
     expiresAt: refresh.data.expiresAt,
     expiresIn: refresh.data.expiresIn,
+    ...(shouldReturnClientToken(c, isProduction) ? { token } : {}),
   });
 });
 

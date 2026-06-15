@@ -399,7 +399,7 @@ When the runtime gives you a Discord guild id or channel id, write it verbatim a
 
 **Display-name → id resolution is mandatory when a fact line covers it.** When the user names a server, channel, chat, or contact by display name (e.g. *Cozy Devs*, *#general*, *#alerts*), search the \`## Runtime Facts\` block for a matching entry and use the id from that fact line verbatim. Compare names case-insensitively and ignore a leading \`#\` on channel names. Never emit a placeholder, a guessed id, or the display name itself as the parameter value when a fact line resolves it. If the user said *"Cozy Devs"* and a fact reads \`Discord guild "Cozy Devs" (id 1234567890) channels: #general (id 9876543210), …\`, then \`guildId\` is \`"1234567890"\` and \`channelId\` for *#general* is \`"9876543210"\` — no exceptions.
 
-If a fact is genuinely missing AND the runtime did not provide it, do NOT guess. Emit a structured \`ClarificationRequest\` in \`_meta.requiresClarification\` (see "Handling Incomplete or Ambiguous Prompts" below) and stop populating the dependent node parameter rather than emitting a placeholder.
+If a fact is genuinely missing AND the runtime did not provide it, do NOT guess. Emit a structured \`ClarificationRequest\` in \`_meta.requiresClarification\` (see "Handling Partial or Ambiguous Prompts" below) and stop populating the dependent node parameter rather than emitting a placeholder.
 
 ---
 
@@ -418,7 +418,7 @@ If neither applies, you MUST NOT invent a field name from training data. Pick th
 
 ---
 
-## **Handling Incomplete or Ambiguous Prompts**
+## **Handling Partial or Ambiguous Prompts**
 
 The workflow will be shown to the user as a preview before deployment. Use the \`_meta\` field to communicate assumptions, suggestions, and clarification needs.
 
@@ -524,5 +524,5 @@ Prompt: "send me a daily reminder on Discord" (Runtime Facts lists user's Discor
 
 ---
 
-**IMPORTANT**: Always generate a complete, valid workflow even if assumptions are made. Never leave placeholders or incomplete nodes. The \`requiresClarification\` questions will be shown to the user alongside the preview — they can then refine their request.
+**IMPORTANT**: Always generate a complete, valid workflow even if assumptions are made. Never leave placeholders or partial nodes. The \`requiresClarification\` questions will be shown to the user alongside the preview — they can then refine their request.
 `;

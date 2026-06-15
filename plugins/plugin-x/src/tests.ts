@@ -18,8 +18,8 @@ export class ClientBaseTestSuite implements TestSuite {
   private mockConfig: TwitterConfig;
 
   constructor() {
-    // Create a mock runtime for tests. The runtime interface is broad;
-    // we stub only the surface the base client touches.
+    // Create a test runtime. The runtime interface is broad;
+    // we provide only the surface the base client touches.
     this.mockRuntime = asRuntime({
       agentId: "test-agent-id" as IAgentRuntime["agentId"],
       getSetting: (key: string) => {

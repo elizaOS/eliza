@@ -121,6 +121,7 @@ jobs:
       - uses: ./.github/actions/cloud-setup-test-env
         with:
           setup-db: "true"
+          db-backend: "pglite"
       - name: Run cloud integration tests
         run: bun run test:cloud:integration
 

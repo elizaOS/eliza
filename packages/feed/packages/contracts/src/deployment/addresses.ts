@@ -76,14 +76,18 @@ export function getContractAddresses(): DeployedContracts {
   }
 
   if (chainId === 84532) {
-    // Note: FeedGameOracle needs to be deployed to Sepolia
-    // Currently using oracleFacet as placeholder until deployed
+    const feedOracle = (
+      baseSepoliaDeployment.contracts as Record<string, string>
+    ).feedOracle as Address | undefined;
+    if (!feedOracle) {
+      throw new Error(
+        "Base Sepolia FeedGameOracle is not recorded in deployments/base-sepolia. Deploy FeedGameOracle and add contracts.feedOracle before using prediction oracle reads.",
+      );
+    }
+
     return {
       diamond: baseSepoliaDeployment.contracts.diamond as Address,
-      feedOracle:
-        ((baseSepoliaDeployment.contracts as Record<string, string>)
-          .feedOracle as Address) ||
-        (baseSepoliaDeployment.contracts.oracleFacet as Address),
+      feedOracle,
       predictionMarketFacet: baseSepoliaDeployment.contracts
         .predictionMarketFacet as Address,
       identityRegistry: baseSepoliaDeployment.contracts

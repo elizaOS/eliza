@@ -151,10 +151,10 @@ export function useAdmin(): UseAdminResult {
   const mountedRef = useRef(true);
   const fetchCountRef = useRef(0);
 
-  // TODO(steward): external wallet-connect (MetaMask / Phantom / WalletConnect)
-  // is a Steward gap; admin checks currently rely on the wallet that the user
-  // signed-in-with-Steward already linked. Once Steward exposes connected
-  // wallets via the SDK, prefer those here.
+  // Steward external wallet-connect support (MetaMask / Phantom / WalletConnect)
+  // is not exposed through the SDK yet; admin checks currently rely on the
+  // wallet the user signed in with through Steward. Prefer SDK-connected wallets
+  // here once Steward surfaces them.
   const walletAddress =
     user && "walletAddress" in user && typeof user.walletAddress === "string"
       ? user.walletAddress

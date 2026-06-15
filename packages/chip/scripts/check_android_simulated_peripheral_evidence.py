@@ -46,6 +46,7 @@ RECHECK_COMMAND = (
     "python3 packages/chip/scripts/check_android_simulated_peripheral_evidence.py --json-only"
 )
 ADB_CONNECT_CANDIDATES = ("127.0.0.1:6520", "127.0.0.1:5555")
+ADB_HOSTPORT_SENTINEL = "$CHIP_ANDROID_ADB_HOSTPORT"
 REQUIRED_COMPONENTS = {
     "rear_camera",
     "front_camera",
@@ -330,9 +331,7 @@ def check_log(component: str, path: Path, markers: list[str], findings: list[Fin
             )
         )
     pass_claim = "RESULT=0" in text and "eliza-evidence: status=PASS" in text
-    if pass_claim and (
-        "SELECTED_ADB_SERIAL=" not in text or "SELECTED_ADB_SERIAL=<none>" in text
-    ):
+    if pass_claim and ("SELECTED_ADB_SERIAL=" not in text or "SELECTED_ADB_SERIAL=<none>" in text):
         findings.append(
             Finding(
                 f"peripheral_pass_log_adb_target_not_validated:{component}",
@@ -466,12 +465,16 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
                     "adb devices",
                     (
                         f"{CAPTURE_SCRIPT} "
+                        f'--adb-connect "{ADB_HOSTPORT_SENTINEL}" ' + " ".join(components)
+                    ),
+                    (
+                        f"{CAPTURE_SCRIPT} "
                         + " ".join(f"--adb-connect {address}" for address in ADB_CONNECT_CANDIDATES)
                         + " "
                         + " ".join(components)
                     ),
                     (
-                        f"{CAPTURE_SCRIPT} --adb-serial \"$CHIP_ANDROID_ADB_SERIAL\" "
+                        f'{CAPTURE_SCRIPT} --adb-serial "$CHIP_ANDROID_ADB_SERIAL" '
                         + " ".join(components)
                     ),
                     RECHECK_COMMAND,
@@ -526,12 +529,16 @@ def finding_command_batches(
 ) -> list[dict[str, object]]:
     if ":" in finding.code:
         _, component = finding.code.split(":", 1)
-        return [
-            batch
-            for batch in command_plan
-            if batch.get("id") == "capture_android_simulated_peripheral_evidence"
-            and component in batch.get("components", [])
-        ]
+
+        def has_component(batch: dict[str, object]) -> bool:
+            components = batch.get("components")
+            return (
+                batch.get("id") == "capture_android_simulated_peripheral_evidence"
+                and isinstance(components, list)
+                and component in components
+            )
+
+        return [batch for batch in command_plan if has_component(batch)]
     if finding.code in {
         "peripheral_capture_probe_wifi_disabled",
         "aosp_chip_product_declares_no_audio_hal",

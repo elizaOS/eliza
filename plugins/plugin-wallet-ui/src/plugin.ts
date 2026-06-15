@@ -63,11 +63,11 @@ export const walletAppPlugin: Plugin = {
   widgets: [
     {
       id: "wallet.status",
-      pluginId: "app-wallet",
+      pluginId: "wallet",
       slot: "chat-sidebar",
       label: "Wallet Status",
       icon: "Wallet",
-      order: 80,
+      order: 70,
       defaultEnabled: true,
     },
   ],

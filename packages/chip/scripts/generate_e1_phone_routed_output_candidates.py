@@ -39,6 +39,7 @@ CAD_CONNECTION_COVERAGE = ROOT / "mechanical/e1-phone/review/cad-connection-cove
 ASSEMBLY_MANIFEST = ROOT / "mechanical/e1-phone/out/assembly-manifest.json"
 KICAD_CAD_TRACEABILITY = ROOT / "board/kicad/e1-phone/kicad-cad-traceability-matrix-2026-05-22.yaml"
 PAD_AUDIT = ROOT / "board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml"
+INSTANCE_DISPOSITION = ROOT / "board/kicad/e1-phone/instance-pin-step-disposition-2026-06-02.yaml"
 COMPONENT_MODEL_DIR = ROOT / "board/kicad/e1-phone/production/step/component-models"
 SUPPLIER_SOURCING_DIR = ROOT / "board/kicad/e1-phone/production/sourcing"
 COMPONENT_3D_BINDING_REPORT = (
@@ -694,6 +695,50 @@ def kicad_cad_traceability_summary() -> dict[str, Any]:
     }
 
 
+def instance_pin_step_disposition_summary() -> dict[str, Any]:
+    disposition = load_yaml_if_present(INSTANCE_DISPOSITION)
+    summary = disposition.get("summary", {}) if isinstance(disposition, dict) else {}
+    records = disposition.get("records", []) if isinstance(disposition, dict) else []
+    if not isinstance(summary, dict):
+        summary = {}
+    if not isinstance(records, list):
+        records = []
+    record_maps = [record for record in records if isinstance(record, dict)]
+    return {
+        "source": chip_rel(INSTANCE_DISPOSITION) if INSTANCE_DISPOSITION.is_file() else "",
+        "status": disposition.get("status", ""),
+        "component_instance_count": int(summary.get("component_instance_count") or 0),
+        "routed_board_footprint_count": int(summary.get("routed_board_footprint_count") or 0),
+        "pinout_bound_instance_count": int(summary.get("pinout_bound_instance_count") or 0),
+        "support_pattern_instance_count": int(summary.get("support_pattern_instance_count") or 0),
+        "pending_supplier_pad_map_or_order_instance_count": int(
+            summary.get("pending_supplier_pad_map_or_order_instance_count") or 0
+        ),
+        "public_candidate_package_conflict_instance_count": int(
+            summary.get("public_candidate_package_conflict_instance_count") or 0
+        ),
+        "local_step_instance_count": int(summary.get("local_step_instance_count") or 0),
+        "local_step_hash_match_count": int(summary.get("local_step_hash_match_count") or 0),
+        "local_contract_pass_count": int(summary.get("local_contract_pass_count") or 0),
+        "local_review_pass_count": int(summary.get("local_review_pass_count") or 0),
+        "supplier_approved_instance_count": int(
+            summary.get("supplier_approved_instance_count") or 0
+        ),
+        "release_credit_instance_count": int(summary.get("release_credit_instance_count") or 0),
+        "local_failure_count": int(summary.get("local_failure_count") or 0),
+        "record_count": len(record_maps),
+        "all_records_local_review_pass": bool(record_maps)
+        and all(record.get("local_review_pass") is True for record in record_maps),
+        "all_records_have_local_step": bool(record_maps)
+        and all(record.get("local_step_exists") is True for record in record_maps),
+        "all_records_local_step_hashes_match": bool(record_maps)
+        and all(record.get("local_step_sha256_matches") is True for record in record_maps),
+        "all_records_release_credit_false": bool(record_maps)
+        and all(record.get("release_credit") is False for record in record_maps),
+        "release_credit": disposition.get("release_credit") is True,
+    }
+
+
 def supplier_lane_for_model(model: dict[str, Any]) -> str:
     reference = str(model.get("reference", ""))
     footprint = str(model.get("footprint", ""))
@@ -775,10 +820,7 @@ def public_step_overlay_for_model(model: dict[str, Any]) -> dict[str, Any]:
         "J_REAR_CAMERA": {
             "record": "hirose_bm28b0_6_24dp_2_0_35v_53",
             "expected_footprints": {"CAMERA_24P_0P50_DEV"},
-            "path": (
-                "hirose_bm28b0_6_24dp_2_0_35v_53/"
-                "BM28B0.6-24DP_2-0.35V_3d_stp.stp"
-            ),
+            "path": ("hirose_bm28b0_6_24dp_2_0_35v_53/BM28B0.6-24DP_2-0.35V_3d_stp.stp"),
             "missing_status": "expected_hirose_bm28_24dp_step_missing",
         },
         "J_TOP_BOTTOM_FLEX_TOP": {
@@ -805,7 +847,8 @@ def public_step_overlay_for_model(model: dict[str, Any]) -> dict[str, Any]:
             "public_cad_step_overlay_release_credit": False,
         }
     step_path = (
-        ROOT / "board/kicad/e1-phone/production/sourcing/public-cad-downloads/"
+        ROOT
+        / "board/kicad/e1-phone/production/sourcing/public-cad-downloads/"
         / str(overlay["path"])
     )
     if not step_path.is_file():
@@ -993,7 +1036,7 @@ def write_dir_manifest(path: Path, artifact_id: str, source_requirement_id: str)
     path.mkdir(parents=True, exist_ok=True)
     child = path / "candidate-placeholder.txt"
     child.write_text(
-        "blocked routed-output candidate directory; release children and approvals are missing\n",
+        "blocked routed-output candidate directory; supplier/factory approval, signoff, and release classification are missing\n",
         encoding="utf-8",
     )
     manifest = blocked_metadata(artifact_id, source_requirement_id, child)
@@ -1108,7 +1151,8 @@ def write_json_report(path: Path, artifact_id: str, source_requirement_id: str) 
             raw_path,
         )
         raw_payload = raw["payload"] if isinstance(raw["payload"], dict) else {}
-        sheets = raw_payload.get("sheets") if isinstance(raw_payload, dict) else []
+        sheets_value = raw_payload.get("sheets")
+        sheets: list[Any] = sheets_value if isinstance(sheets_value, list) else []
         erc_count = sum(
             len(sheet.get("violations") or [])
             for sheet in sheets
@@ -1128,9 +1172,7 @@ def write_json_report(path: Path, artifact_id: str, source_requirement_id: str) 
                     "board/kicad/e1-phone/schematic/e1-phone.kicad_sch"
                 ),
                 "kicad_cli_version": raw_payload.get("kicad_version", ""),
-                "source_schematic_sha256": sha256(
-                    ROUTED_SCHEMATIC
-                )
+                "source_schematic_sha256": sha256(ROUTED_SCHEMATIC)
                 if ROUTED_SCHEMATIC.is_file()
                 else "",
                 "tool_exit_code": raw["run"].get("returncode"),
@@ -2923,6 +2965,7 @@ def generate() -> dict[str, Any]:
         "routed_step_visual_detail": routed_visual_detail(),
         "cad_connection_coverage": cad_connection_summary(),
         "kicad_cad_traceability": kicad_cad_traceability_summary(),
+        "instance_pin_step_disposition": instance_pin_step_disposition_summary(),
         "artifact_count": len(artifacts),
         "release_credit": False,
         "artifacts": artifacts,

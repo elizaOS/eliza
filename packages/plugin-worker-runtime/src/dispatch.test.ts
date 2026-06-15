@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type {
+  RemotePluginWorkerMessage,
   WorkerRpcMessage,
   WorkerRpcResultMessage,
 } from "@elizaos/plugin-remote-manifest";
@@ -30,15 +31,20 @@ function makeRegistry(entry?: HandlerEntry): HandlerRegistry {
   };
 }
 
-function mockChannel(): {
-  send: (m: WorkerRpcResultMessage) => void;
-  outbox: WorkerRpcResultMessage[];
+function createTestChannel(): {
+  send: (m: RemotePluginWorkerMessage) => void;
+  outbox: RemotePluginWorkerMessage[];
 } {
-  const outbox: WorkerRpcResultMessage[] = [];
+  const outbox: RemotePluginWorkerMessage[] = [];
   return {
     send: (m) => outbox.push(m),
     outbox,
   };
+}
+
+function rpcResult(message: RemotePluginWorkerMessage): WorkerRpcResultMessage {
+  expect(message.type).toBe("worker-rpc-result");
+  return message as WorkerRpcResultMessage;
 }
 
 describe("dispatcher HMAC enforcement", () => {
@@ -46,7 +52,7 @@ describe("dispatcher HMAC enforcement", () => {
     const kms = new MemoryKmsAdapter();
     const keyId = systemKey("plugin-rpc-test");
     await kms.getOrCreateKey(keyId);
-    const channel = mockChannel();
+    const channel = createTestChannel();
     const registry = makeRegistry({
       id: "a",
       surface: "provider",
@@ -66,15 +72,16 @@ describe("dispatcher HMAC enforcement", () => {
       args: { message: null, state: null },
     } as WorkerRpcMessage);
     expect(channel.outbox).toHaveLength(1);
-    expect(channel.outbox[0]?.ok).toBe(false);
-    expect(channel.outbox[0]?.error?.code).toBe("RPC_AUTH_FAILED");
+    const result = rpcResult(channel.outbox[0] as RemotePluginWorkerMessage);
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe("RPC_AUTH_FAILED");
   });
 
   it("accepts messages with a valid MAC", async () => {
     const kms = new MemoryKmsAdapter();
     const keyId = systemKey("plugin-rpc-test");
     await kms.getOrCreateKey(keyId);
-    const channel = mockChannel();
+    const channel = createTestChannel();
     const registry = makeRegistry({
       id: "a",
       surface: "provider",
@@ -105,7 +112,9 @@ describe("dispatcher HMAC enforcement", () => {
       mac: hexEncode(tagBytes),
     } as WorkerRpcMessage);
     expect(channel.outbox).toHaveLength(1);
-    expect(channel.outbox[0]?.ok).toBe(true);
+    expect(rpcResult(channel.outbox[0] as RemotePluginWorkerMessage).ok).toBe(
+      true,
+    );
   });
 
   it("rejects hostile MAC strings without invoking handlers", async () => {
@@ -117,7 +126,7 @@ describe("dispatcher HMAC enforcement", () => {
       fc.asyncProperty(fc.string({ maxLength: 128 }), async (mac) => {
         fc.pre(mac.length === 0 || !/^[a-fA-F0-9]{64}$/.test(mac));
         let invoked = false;
-        const channel = mockChannel();
+        const channel = createTestChannel();
         const registry = makeRegistry({
           id: "a",
           surface: "provider",
@@ -158,7 +167,7 @@ describe("dispatcher permission gating", () => {
   it("denies action surface when no host or bun:run permission granted", async () => {
     const sink = new InMemorySink();
     const auditDispatcher = new AuditDispatcher({ sinks: [sink] });
-    const channel = mockChannel();
+    const channel = createTestChannel();
     const registry = makeRegistry({
       id: "a",
       surface: "action",
@@ -181,8 +190,9 @@ describe("dispatcher permission gating", () => {
       target: "a",
       args: { message: null, state: null, options: null, responses: null },
     } as WorkerRpcMessage);
-    expect(channel.outbox[0]?.ok).toBe(false);
-    expect(channel.outbox[0]?.error?.code).toBe("PERMISSION_DENIED");
+    const result = rpcResult(channel.outbox[0] as RemotePluginWorkerMessage);
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe("PERMISSION_DENIED");
     expect(sink.snapshot()).toHaveLength(1);
     expect(sink.snapshot()[0]?.action).toBe("plugin.denied");
   });
@@ -190,7 +200,7 @@ describe("dispatcher permission gating", () => {
   it("allows action surface when bun:run is granted", async () => {
     const sink = new InMemorySink();
     const auditDispatcher = new AuditDispatcher({ sinks: [sink] });
-    const channel = mockChannel();
+    const channel = createTestChannel();
     const registry = makeRegistry({
       id: "a",
       surface: "action",
@@ -213,11 +223,60 @@ describe("dispatcher permission gating", () => {
       target: "a",
       args: { message: null, state: null, options: null, responses: null },
     } as WorkerRpcMessage);
-    expect(channel.outbox[0]?.ok).toBe(true);
+    expect(rpcResult(channel.outbox[0] as RemotePluginWorkerMessage).ok).toBe(
+      true,
+    );
+  });
+});
+
+describe("dispatcher action callbacks", () => {
+  it("sends callback payloads back to the host callback channel", async () => {
+    const channel = createTestChannel();
+    const registry = makeRegistry({
+      id: "a",
+      surface: "action",
+      target: "doStuff",
+      handler: async (_runtime, _message, _state, _options, callback) => {
+        await (callback as (data: { text: string }) => Promise<void>)({
+          text: "progress",
+        });
+        return { ok: true };
+      },
+    } as HandlerEntry);
+    const dispatch = createWorkerRpcDispatcher(registry, {
+      runtime: {} as never,
+      channel: { send: channel.send } as never,
+    });
+
+    await dispatch({
+      type: "worker-rpc",
+      requestId: 1,
+      surface: "action",
+      target: "a",
+      args: {
+        message: null,
+        state: null,
+        options: null,
+        responses: null,
+        callbackId: "callback-1",
+      },
+    } as WorkerRpcMessage);
+
+    expect(channel.outbox[0]).toEqual({
+      type: "worker-action-callback",
+      callbackId: "callback-1",
+      payload: { text: "progress" },
+    });
+    expect(rpcResult(channel.outbox[1] as RemotePluginWorkerMessage)).toEqual({
+      type: "worker-rpc-result",
+      requestId: 1,
+      ok: true,
+      payload: { ok: true },
+    });
   });
 
   it("allows provider surface with bun:read and passes runtime/message/state to the handler", async () => {
-    const channel = mockChannel();
+    const channel = createTestChannel();
     const runtime = { marker: "runtime-proxy" };
     const calls: unknown[][] = [];
     const registry = makeRegistry({
@@ -323,7 +382,7 @@ describe("dispatcher permission gating", () => {
   it("denies provider surface when grants exist but no read/run/host grant is present", async () => {
     const sink = new InMemorySink();
     const auditDispatcher = new AuditDispatcher({ sinks: [sink] });
-    const channel = mockChannel();
+    const channel = createTestChannel();
     const registry = makeRegistry({
       id: "provider-1",
       surface: "provider",
@@ -363,7 +422,7 @@ describe("dispatcher permission gating", () => {
 
   it("rejects a message whose declared surface does not match the registered target", async () => {
     let invoked = false;
-    const channel = mockChannel();
+    const channel = createTestChannel();
     const registry = makeRegistry({
       id: "action-1",
       surface: "action",
@@ -405,7 +464,7 @@ describe("dispatcher permission gating", () => {
 
 describe("dispatcher target and handler errors", () => {
   it("returns UNKNOWN_TARGET when no handler is registered for the rpc target", async () => {
-    const channel = mockChannel();
+    const channel = createTestChannel();
     const dispatch = createWorkerRpcDispatcher(makeRegistry(), {
       runtime: {} as never,
       channel: { send: channel.send } as never,
@@ -431,7 +490,7 @@ describe("dispatcher target and handler errors", () => {
   });
 
   it("serializes handler exceptions into failed worker-rpc results", async () => {
-    const channel = mockChannel();
+    const channel = createTestChannel();
     const registry = makeRegistry({
       id: "route-1",
       surface: "route",

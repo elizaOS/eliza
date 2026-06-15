@@ -3,7 +3,7 @@
  * registration helper.
  *
  * Adapter coverage (Wave A):
- * - `dm` — provided by `plugin-discord` and (future) other connector plugins.
+ * - `dm` — provided by `plugin-discord` and other connector plugins.
  *   Not registered here.
  * - `owner_app_inline` — Eliza app private chat inline form.
  * - `cloud_authenticated_link` — cloud-hosted page (cloud paired).
@@ -16,6 +16,7 @@ import { logger, type SensitiveRequestDeliveryAdapter } from "@elizaos/core";
 import { cloudLinkSensitiveRequestAdapter } from "./cloud-link-adapter";
 import { instructDmOnlySensitiveRequestAdapter } from "./instruct-dm-only-adapter";
 import { ownerAppInlineSensitiveRequestAdapter } from "./owner-app-inline-adapter";
+import { ownerAppOAuthSensitiveRequestAdapter } from "./owner-app-oauth-adapter";
 import { publicLinkSensitiveRequestAdapter } from "./public-link-adapter";
 import { tunnelLinkSensitiveRequestAdapter } from "./tunnel-link-adapter";
 
@@ -25,6 +26,7 @@ export {
 } from "./cloud-link-adapter";
 export { instructDmOnlySensitiveRequestAdapter } from "./instruct-dm-only-adapter";
 export { ownerAppInlineSensitiveRequestAdapter } from "./owner-app-inline-adapter";
+export { ownerAppOAuthSensitiveRequestAdapter } from "./owner-app-oauth-adapter";
 export { publicLinkSensitiveRequestAdapter } from "./public-link-adapter";
 export {
   createTunnelLinkSensitiveRequestAdapter,
@@ -60,11 +62,12 @@ export function registerCoreSensitiveRequestAdapters(runtime: unknown): void {
     return;
   }
   registry.register(ownerAppInlineSensitiveRequestAdapter);
+  registry.register(ownerAppOAuthSensitiveRequestAdapter);
   registry.register(cloudLinkSensitiveRequestAdapter);
   registry.register(tunnelLinkSensitiveRequestAdapter);
   registry.register(instructDmOnlySensitiveRequestAdapter);
   registry.register(publicLinkSensitiveRequestAdapter);
   logger.debug(
-    "[sensitive-requests] registered 5 first-party delivery adapters",
+    "[sensitive-requests] registered 6 first-party delivery adapters",
   );
 }

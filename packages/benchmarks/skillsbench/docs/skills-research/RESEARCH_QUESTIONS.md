@@ -31,10 +31,10 @@ Skills—procedural knowledge encoded in SKILL.md files—should improve agent p
 
 | Metric | With Skills | Without Skills | Delta |
 |--------|-------------|----------------|-------|
-| Task completion rate | TBD | TBD | TBD |
-| Time to completion | TBD | TBD | TBD |
-| Error rate | TBD | TBD | TBD |
-| Output quality score | TBD | TBD | TBD |
+| Task completion rate | Not yet measured | Not yet measured | Not yet measured |
+| Time to completion | Not yet measured | Not yet measured | Not yet measured |
+| Error rate | Not yet measured | Not yet measured | Not yet measured |
+| Output quality score | Not yet measured | Not yet measured | Not yet measured |
 
 ### Existing Evidence (External Sources)
 

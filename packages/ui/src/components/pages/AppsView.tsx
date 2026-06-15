@@ -37,9 +37,8 @@ import {
   resolveEmbeddedViewerUrl,
   shouldUseEmbeddedAppViewer,
 } from "../apps/viewer-auth";
-import { AppDetailsView, appNeedsDetailsPage } from "./AppDetailsView";
-
-export { shouldShowAppInAppsView } from "../apps/helpers";
+import { AppDetailsView } from "./AppDetailsView";
+import { appNeedsDetailsPage } from "./AppDetailsView.helpers";
 
 /** Max items retained in launch history. */
 const RECENT_APPS_LIMIT = 10;

@@ -167,6 +167,7 @@ class AndroidSimulatedPeripheralEvidenceTests(unittest.TestCase):
             " ".join(capture_batch["commands"]),
         )
         capture_commands = " ".join(capture_batch["commands"])
+        self.assertIn('--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT"', capture_commands)
         self.assertIn("--adb-connect 127.0.0.1:6520", capture_commands)
         self.assertIn("--adb-connect 127.0.0.1:5555", capture_commands)
         self.assertIn('--adb-serial "$CHIP_ANDROID_ADB_SERIAL"', capture_commands)

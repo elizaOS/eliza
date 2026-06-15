@@ -4,7 +4,7 @@ declare global {
   }
 }
 
-import { resolveAppAssetUrl } from "@elizaos/ui";
+import { resolveAppAssetUrl } from "@elizaos/ui/utils";
 import {
   MToonMaterialLoaderPlugin,
   type VRM,
@@ -275,10 +275,16 @@ function callMeshoptFunction(name: string, ...args: unknown[]): unknown {
 const compatibleMeshoptDecoder: NonNullable<CompatibleMeshoptDecoder> = {
   supported: MeshoptDecoder.supported,
   ready: MeshoptDecoder.ready,
-  useWorkers(count) {
+  useWorkers(count: number) {
     callMeshoptFunction("useWorkers", count);
   },
-  decodeVertexBuffer(target, count, size, source, filter) {
+  decodeVertexBuffer(
+    target: Uint8Array,
+    count: number,
+    size: number,
+    source: Uint8Array,
+    filter?: string,
+  ) {
     callMeshoptFunction(
       "decodeVertexBuffer",
       target,
@@ -288,13 +294,30 @@ const compatibleMeshoptDecoder: NonNullable<CompatibleMeshoptDecoder> = {
       filter,
     );
   },
-  decodeIndexBuffer(target, count, size, source) {
+  decodeIndexBuffer(
+    target: Uint8Array,
+    count: number,
+    size: number,
+    source: Uint8Array,
+  ) {
     callMeshoptFunction("decodeIndexBuffer", target, count, size, source);
   },
-  decodeIndexSequence(target, count, size, source) {
+  decodeIndexSequence(
+    target: Uint8Array,
+    count: number,
+    size: number,
+    source: Uint8Array,
+  ) {
     callMeshoptFunction("decodeIndexSequence", target, count, size, source);
   },
-  decodeGltfBuffer(target, count, size, source, mode, filter) {
+  decodeGltfBuffer(
+    target: Uint8Array,
+    count: number,
+    size: number,
+    source: Uint8Array,
+    mode: string,
+    filter?: string,
+  ) {
     callMeshoptFunction(
       "decodeGltfBuffer",
       target,
@@ -305,7 +328,13 @@ const compatibleMeshoptDecoder: NonNullable<CompatibleMeshoptDecoder> = {
       filter,
     );
   },
-  async decodeGltfBufferAsync(count, size, source, mode, filter) {
+  async decodeGltfBufferAsync(
+    count: number,
+    size: number,
+    source: Uint8Array,
+    mode: string,
+    filter?: string,
+  ) {
     const decoded = await callMeshoptFunction(
       "decodeGltfBufferAsync",
       count,

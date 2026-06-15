@@ -357,7 +357,7 @@ export async function handleVoiceProfileRoutes(
 		if (existingEntry) {
 			existingEntry.active = false;
 		} else {
-			// Profile exists in bundle but not yet in catalog — add as inactive.
+			// Profile exists in bundle but is absent from catalog — add as inactive.
 			const profiles = await listProfiles(voiceModelsDir, bundleRoot, catalog);
 			const target = profiles.find((p) => p.id === profileId);
 			if (!target) {

@@ -1,8 +1,8 @@
 /**
  * @module plugin-app-control/services/__tests__/app-worker-host
  *
- * Phase 2.2 integration test for AppWorkerHostService. Proves the
- * three load-bearing things for the rest of Phase 2:
+ * Integration coverage for AppWorkerHostService. Proves the three
+ * load-bearing worker-host contracts:
  *
  *   1. The host can spawn a Bun worker_threads Worker with the
  *      app-worker-entry.ts file.
@@ -14,9 +14,8 @@
  *
  * The test uses no agent runtime; AppWorkerHostService.spawn() is
  * called directly with a fixture SpawnOptions. The
- * `startForRegisteredApp` path that pulls from AppRegistryService is
- * exercised by Phase 2.5's end-to-end test once the registry plumbing
- * lands.
+ * `startForRegisteredApp` path that pulls from AppRegistryService is covered
+ * by the registry-to-worker end-to-end test.
  */
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -24,6 +23,7 @@ import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AppWorkerHostService } from "../app-worker-host-service.js";
 
@@ -33,7 +33,7 @@ const FIXTURE_PLUGIN_PATH = path.resolve(
 	"../../../test/fixtures/sandbox-plugin/plugin.ts",
 );
 
-describe("AppWorkerHostService — Phase 2.2 bridge", () => {
+describe("AppWorkerHostService worker bridge", () => {
 	let service: AppWorkerHostService;
 
 	beforeEach(() => {
@@ -152,7 +152,7 @@ describe("AppWorkerHostService — Phase 2.2 bridge", () => {
 		expect(second.bootedAt).toBe(first.bootedAt);
 	});
 
-	describe("Phase 2.3 — plugin loading + action dispatch", () => {
+	describe("plugin loading + action dispatch", () => {
 		it("loads the fixture plugin and reports its actions in ping", async () => {
 			await service.spawn({
 				slug: "fixture-plugin-load",
@@ -191,20 +191,40 @@ describe("AppWorkerHostService — Phase 2.2 bridge", () => {
 			expect(reply.result).toEqual({ echoed: { msg: "hi from host" } });
 		});
 
-		it("invokeAction surfaces the runtime stub's failure when an action touches IAgentRuntime", async () => {
-			await service.spawn({
+		it("invokeAction bridges runtime.getMemories to the host runtime", async () => {
+			const calls: unknown[] = [];
+			const runtimeBackedService = new AppWorkerHostService({
+				agentId: "00000000-0000-0000-0000-000000000001",
+				getMemories: async (params: unknown) => {
+					calls.push(params);
+					return [
+						{
+							id: "memory-1",
+							content: { text: "from host runtime" },
+						},
+					];
+				},
+			} as unknown as IAgentRuntime);
+			await runtimeBackedService.spawn({
 				slug: "fixture-invoke-probe",
 				isolation: "worker",
 				pluginEntryPath: FIXTURE_PLUGIN_PATH,
 			});
-			const reply = await service.invoke(
+			const reply = await runtimeBackedService.invoke(
 				"fixture-invoke-probe",
 				"invokeAction",
 				{ actionName: "RUNTIME_PROBE" },
 			);
-			expect(reply.ok).toBe(false);
-			if (reply.ok) return;
-			expect(reply.reason).toContain("worker sandbox");
+			await runtimeBackedService.stop();
+			expect(reply.ok).toBe(true);
+			if (!reply.ok) return;
+			expect(calls).toEqual([{ tableName: "messages", limit: 2 }]);
+			expect(reply.result).toEqual([
+				{
+					id: "memory-1",
+					content: { text: "from host runtime" },
+				},
+			]);
 		});
 
 		it("invokeAction returns a structured failure for unknown actions", async () => {
@@ -237,7 +257,7 @@ describe("AppWorkerHostService — Phase 2.2 bridge", () => {
 		});
 	});
 
-	describe("Phase 2.4 — fs + net capability gates", () => {
+	describe("fs + net capability gates", () => {
 		let httpServer: http.Server;
 		let httpServerUrl: string;
 		let stateRoot: string;

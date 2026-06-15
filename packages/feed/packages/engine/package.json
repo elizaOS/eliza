@@ -23,8 +23,8 @@
     }
   },
   "scripts": {
-    "lint": "echo skip (feed) >&2",
-    "typecheck": "echo skip (feed) >&2"
+    "lint": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/engine/package.json packages/engine/tsconfig.json packages/engine/src",
+    "typecheck": "cd ../.. && bun run tsc -p packages/engine --noEmit"
   },
   "dependencies": {
     "@feed/core": "workspace:*",
@@ -32,7 +32,7 @@
     "@feed/pack-default": "workspace:*",
     "@feed/shared": "workspace:*",
     "@fal-ai/client": "^1.8.1",
-    "hono": "4.12.18",
+    "hono": "4.12.25",
     "xml2js": "^0.6.2"
   },
   "peerDependencies": {

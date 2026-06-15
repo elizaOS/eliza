@@ -24,8 +24,8 @@ import {
 } from "../api/wallet-routes";
 
 function ensureWalletKeysInEnvAndConfig(_config: ElizaConfig): boolean {
-  // Stub — auto-provisioning is disabled by default; the wallet generate
-  // route handles this explicitly.
+  // Auto-provisioning is disabled by default; the wallet generate route handles
+  // key creation explicitly.
   return false;
 }
 

@@ -1,47 +1,32 @@
-as_of: 2026-05-19
-blocked_reason: 'Google removed RISC-V from the Android Common Kernel as primary branch
-  in
-
-  April 2024, reinstated as Tier 1 late 2025; no major OEM has shipped
-
-  Android RISC-V at Pixel scale; CTS coverage on RVA23 silicon is
-
-  incomplete. As of 2026-05-19 a probe of
-
-  https://android.googlesource.com/platform/manifest finds NO branch matching
-
-  `refs/heads/.*riscv.*`. A separate kernel branch
-
-  `refs/heads/android-mainline-riscv64` exists on the AOSP common kernel at
-
-  https://android.googlesource.com/kernel/common (HEAD 365b87b792fed44f4306abcea6f0c9c245a79b04
-
-  observed 2026-05-19), but that is the kernel only; userland CTS support is
-
-  still missing.
-
+as_of: 2026-05-22
+blocked_reason: 'The platform manifest is pinned to android-latest-release commit
+  6dc9af1b583e5c6a4ab9c38e3f5646efd8079b7d for reproducible toolchain-profile
+  work, but the checked-in manifest does not yet enumerate the complete AOSP
+  project SHA set and no e1 Android boot or CTS evidence is archived. A separate
+  kernel branch `refs/heads/android-mainline-riscv64` exists on the AOSP common
+  kernel at https://android.googlesource.com/kernel/common (HEAD
+  365b87b792fed44f4306abcea6f0c9c245a79b04 observed 2026-05-19), but that is
+  kernel evidence only; userland CTS support remains outside the current
+  release claim boundary.
   '
 blocked_until:
 - Google publishes an `android-1[6-9]\\..*-riscv64` platform manifest branch with
   passing CTS
-- that branch SHA is pinned in compiler/aosp/manifest.xml
 - compiler/aosp/manifest.xml lists at least the AOSP build-tools, libcore, bionic,
   art, and external/llvm-project projects with explicit sha1
 - scripts/check_rva23_compliance.py reports `PASS rva23.aosp_branch_pin`
 claim_boundary: 'AOSP RISC-V branch SHA pin is mandatory before any Android boot claim.
 
-  As of 2026-05-19 no single AOSP RISC-V branch with stable Tier 1 CTS is
-
-  safe to pin; the placeholder is rejected by
-
-  scripts/check_rva23_compliance.py.
+  The pinned manifest SHA is accepted by scripts/check_rva23_compliance.py, but
+  the empty project list and missing BSP evidence keep Android boot claims
+  blocked.
 
   '
 forbidden_claims_without_required_evidence:
 - Android RISC-V boot reproducible
 - AOSP RVA23 image pinned
 - Cuttlefish RISC-V image bootable
-generated_utc: '2026-05-20T10:12:30Z'
+generated_utc: '2026-05-22T19:43:29Z'
 required_artifacts:
 - path: compiler/aosp/manifest.xml
   purpose: pinned `repo` manifest with branch SHA and per-project sha1
@@ -51,15 +36,17 @@ schema: eliza.compiler.aosp_branch_pin.v1
 status: BLOCKED
 upstream_probe:
   android_platform_release_observed:
-    name: refs/heads/android-16.0.0_r4
-    note: most-recent platform release tag; does NOT include Tier-1 RISC-V CTS evidence
-    sha: 15128c9e27cfa599c48d294babd39286ee8f1426
-  as_of_utc: 2026-05-19 10:15:30+00:00
+    name: refs/heads/android-latest-release
+    note: pinned platform manifest branch for reproducible toolchain-profile work; does NOT include e1 boot or Tier-1 RISC-V CTS evidence
+    sha: 6dc9af1b583e5c6a4ab9c38e3f5646efd8079b7d
+  as_of_utc: 2026-05-22 19:43:29+00:00
   common_kernel_riscv_branch:
     name: refs/heads/android-mainline-riscv64
     purpose: AOSP common kernel RISC-V mainline; insufficient on its own for Android
       boot
     sha: 365b87b792fed44f4306abcea6f0c9c245a79b04
-  platform_manifest_riscv_branches: []
+  platform_manifest_pinned_branch:
+    name: refs/heads/android-latest-release
+    sha: 6dc9af1b583e5c6a4ab9c38e3f5646efd8079b7d
 verification_commands:
 - scripts/check_rva23_compliance.py --strict

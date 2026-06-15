@@ -151,9 +151,9 @@ function makeDefaultApplyProviderEnv(
  * config record (already attached to the plugin instance) and the runtime —
  * matching the elizaOS Plugin contract.
  *
- * If no plugin defines `applyConfig`, this is a no-op log: env has been set
- * and plugins will resolve the new values on their next call into the
- * provider client.
+ * If no plugin defines `applyConfig`, this records that env has been set and
+ * plugins will resolve the new values on their next call into the provider
+ * client.
  */
 async function defaultNotifyConfigChanged(
   runtime: AgentRuntime,

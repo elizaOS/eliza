@@ -78,7 +78,7 @@ export class DexInteractionService
   }
 
   async stop(): Promise<void> {
-    // No-op; protocol providers are owned by LpManagementService.
+    // Protocol providers are owned by LpManagementService.
   }
 
   rediscoverServices(): void {

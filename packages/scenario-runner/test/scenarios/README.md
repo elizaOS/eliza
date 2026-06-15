@@ -69,8 +69,8 @@ The direct action scenarios assert handler parameters, `ActionResult` fields,
 and exact loopback request/response ledgers. The natural-language scenario
 asserts the same handler side effects after strict `RESPONSE_HANDLER` and
 `ACTION_PLANNER` fixture JSON routes the message through the real runtime. The
-shared `_helpers/app-control-http-stub.ts` wrapper prevents one scenario's
-loopback stubs from leaking into the next.
+shared `_helpers/app-control-http-loopback.ts` wrapper prevents one scenario's
+loopback handlers from leaking into the next.
 
 Live-mode scenario execution remains separate:
 
@@ -94,7 +94,7 @@ requires a real provider key for live natural-language planner runs.
   `runtime.actions`, so entity-update realism is intentionally lower than a
   production runtime until action-selection ambiguity is resolved.
 - `GENERATE_MEDIA` and `PLAY_EMOTE` are covered at the action-contract layer
-  with deterministic model/API stubs; they still do not render real model
+  with deterministic model/API doubles; they still do not render real model
   output or animate an actual companion scene in the zero-key PR catalog.
 - MCP resource reads and tool calls are keyless-covered with a real stdio MCP
   fixture; the tool-call path uses strict LLM JSON fixtures for selection and

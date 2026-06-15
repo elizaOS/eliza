@@ -985,10 +985,9 @@ export class AgentServiceV2 {
     const messages = hasMore ? results.slice(0, limit) : results;
 
     // Get the cursor for the next page (oldest message's createdAt)
+    const oldestMessage = messages.at(-1);
     const nextCursor =
-      hasMore && messages.length > 0
-        ? messages[messages.length - 1]?.createdAt.toISOString()
-        : null;
+      hasMore && oldestMessage ? oldestMessage.createdAt.toISOString() : null;
 
     return { messages, hasMore, nextCursor };
   }

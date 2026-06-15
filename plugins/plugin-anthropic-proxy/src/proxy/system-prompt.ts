@@ -14,10 +14,10 @@
  * Anchored to the system array so it can never match conversation history
  * by accident.
  *
- * For non-eliza framework agents, the strip silently no-ops (the marker
- * isn't present) — the rest of the pipeline still runs. To strip a
- * different framework's recurring section, override the system-prompt
- * anchors via plugin config (future work).
+ * For non-eliza framework agents, the strip leaves the payload unchanged when
+ * the marker isn't present — the rest of the pipeline still runs. To strip a
+ * different framework's recurring section, override the `start` / `end` anchors
+ * and `paraphrase` via {@link SystemPromptStripConfig}.
  */
 
 import { SYSTEM_CONFIG_PARAPHRASE } from "./constants.js";
@@ -28,13 +28,45 @@ import {
 
 const MIN_STRIP_LEN = 200;
 
-export function stripSystemConfig(m: string): {
+/**
+ * Anchors and replacement text for the system-prompt strip. Defaults target
+ * eliza's CHANNEL_GAG_HARD_RULE block; override every field to strip a
+ * different framework's recurring section.
+ */
+export interface SystemPromptStripConfig {
+  /** Marker that opens the recurring block. */
+  start: string;
+  /** Marker that closes the recurring block (inclusive). */
+  end: string;
+  /** Replacement text inserted in place of the stripped block. */
+  paraphrase: string;
+  /**
+   * Minimum stripped span (chars); shorter runs are left unchanged.
+   * Defaults to {@link MIN_STRIP_LEN} when omitted.
+   */
+  minStripLen?: number;
+}
+
+const DEFAULT_STRIP_CONFIG: SystemPromptStripConfig = {
+  start: ELIZA_IDENTITY_MARKER,
+  end: ELIZA_BOUNDARY_END,
+  paraphrase: SYSTEM_CONFIG_PARAPHRASE,
+  minStripLen: MIN_STRIP_LEN,
+};
+
+export function stripSystemConfig(
+  m: string,
+  config: SystemPromptStripConfig = DEFAULT_STRIP_CONFIG,
+): {
   body: string;
   stripped: number;
 } {
+  const { start, end, paraphrase } = config;
+  const minStripLen = config.minStripLen ?? MIN_STRIP_LEN;
+
   const sysArrayStart = m.indexOf('"system":[');
   const searchFrom = sysArrayStart !== -1 ? sysArrayStart : 0;
-  const configStart = m.indexOf(ELIZA_IDENTITY_MARKER, searchFrom);
+  const configStart = m.indexOf(start, searchFrom);
   if (configStart === -1) return { body: m, stripped: 0 };
 
   let stripFrom = configStart;
@@ -42,18 +74,15 @@ export function stripSystemConfig(m: string): {
     stripFrom -= 2;
   }
 
-  const boundaryStart = m.indexOf(
-    ELIZA_BOUNDARY_END,
-    configStart + ELIZA_IDENTITY_MARKER.length,
-  );
+  const boundaryStart = m.indexOf(end, configStart + start.length);
   if (boundaryStart === -1) return { body: m, stripped: 0 };
 
-  const configEnd = boundaryStart + ELIZA_BOUNDARY_END.length;
+  const configEnd = boundaryStart + end.length;
   const strippedLen = configEnd - stripFrom;
-  if (strippedLen <= MIN_STRIP_LEN) return { body: m, stripped: 0 };
+  if (strippedLen <= minStripLen) return { body: m, stripped: 0 };
 
   return {
-    body: m.slice(0, stripFrom) + SYSTEM_CONFIG_PARAPHRASE + m.slice(configEnd),
+    body: m.slice(0, stripFrom) + paraphrase + m.slice(configEnd),
     stripped: strippedLen,
   };
 }

@@ -19,6 +19,7 @@ type ReadyCheck =
 type RouteProbe = {
   name: string;
   path: string;
+  expectedUrl?: RegExp;
   readyChecks: readonly ReadyCheck[];
   mode?: "any" | "all";
   timeoutMs?: number;
@@ -89,16 +90,23 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "assistant home",
     path: "/",
-    readyChecks: [{ selector: '[data-testid="home-view"]' }],
+    expectedUrl: /\/(?:chat)?$/,
+    readyChecks: [
+      {
+        selector:
+          '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]',
+      },
+    ],
     timeoutMs: 60_000,
   },
   {
     name: "chat",
     path: "/chat",
     readyChecks: [
-      { selector: '[data-testid="conversations-sidebar"]' },
-      { selector: '[data-testid="chat-composer-textarea"]' },
-      { selector: '[data-testid="chat-widgets-bar"]' },
+      {
+        selector:
+          '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]',
+      },
     ],
     mode: "all",
   },
@@ -161,7 +169,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "rolodex",
     path: "/rolodex",
-    readyChecks: [{ selector: "#root" }],
+    readyChecks: [{ text: "Views" }],
     timeoutMs: 60_000,
   },
   {
@@ -270,7 +278,12 @@ const DESKTOP_PROBE: ViewportProbe = {
 
 const MOBILE_CHAT_ROUTE_PROBE: RouteProbe = {
   ...coreRouteProbe("chat"),
-  readyChecks: [{ selector: '[data-testid="chat-composer-textarea"]' }],
+  readyChecks: [
+    {
+      selector:
+        '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]',
+    },
+  ],
   mode: "all",
 };
 
@@ -306,9 +319,8 @@ const SETTING_SECTIONS_TO_CLICK: readonly RegExp[] = [
   /^Remote Plugins$/,
   /^Connectors$/,
   /^App Permissions$/,
-  /^Wallet & RPC$/,
   /^Permissions$/,
-  /^Vault$/,
+  /^Secrets storage$/,
   /^Security$/,
   /^Updates$/,
   /^Backup & Reset$/,
@@ -367,12 +379,12 @@ function formatPageIssue(kind: string, value: unknown): string {
   return `${kind}: ${String(value)}`;
 }
 
-// In keyless stub mode the stub stack answers 501 (Not Implemented) for any
+// In keyless loopback mode the local stack answers 501 for any
 // dev-only or optional endpoint it does not model (e.g. /api/dev/stack,
 // /api/dev/console-log, /api/update/status). The renderer already degrades
 // gracefully on those — the page still mounts and the ready checks still pass —
-// but the browser emits a "Failed to load resource: ... 501 (Not Implemented)"
-// console error for the failed request. That is a stub-environment artifact,
+// but the browser emits a failed-resource console error for the request. That
+// is a loopback-environment artifact,
 // not a product defect (these endpoints return 200 in a real desktop runtime),
 // so it must not fail the render smoke. Every other console.error, every
 // pageerror, and every non-501 resource failure still gates the page.
@@ -1361,8 +1373,14 @@ async function expectNoPageIssues(
 
 async function expectMainShell(page: Page, route: RouteProbe): Promise<void> {
   await expect(page.locator("#root")).toBeVisible();
-  await expect(page.locator("body")).not.toContainText(/404|not found/i);
-  if (route.path === "/chat" || route.path === "/apps/elizamaker") {
+  await expect(page.locator("body")).not.toContainText(
+    /(?:404\s+not\s+found|page not found|route not found)/i,
+  );
+  if (
+    route.path === "/" ||
+    route.path === "/chat" ||
+    route.path === "/apps/elizamaker"
+  ) {
     return;
   }
   if (route.path === "/apps/companion") {
@@ -1374,7 +1392,7 @@ async function expectMainShell(page: Page, route: RouteProbe): Promise<void> {
   await expect(
     page
       .locator(
-        "main, [data-testid='home-view'], [role='main'], h1, [role='region']",
+        "main, [data-testid='home-view'], [data-testid='lifeops-shell'], [role='main'], h1, [role='region'], [aria-label='Chat workspace']",
       )
       .first(),
   ).toBeVisible({
@@ -1383,11 +1401,9 @@ async function expectMainShell(page: Page, route: RouteProbe): Promise<void> {
 }
 
 async function probeRoute(page: Page, route: RouteProbe): Promise<void> {
-  await openAppPath(page, route.path);
-  await expect(page).toHaveURL(new RegExp(`${escapeRegExp(route.path)}$`), {
-    timeout: route.timeoutMs,
-  });
-  await expectMainShell(page, route);
+  const expectedUrl =
+    route.expectedUrl ?? new RegExp(`${escapeRegExp(route.path)}$`);
+  await openRouteAndExpectUrl(page, route, expectedUrl);
   await assertReadyChecks(
     page,
     route.name,
@@ -1395,6 +1411,39 @@ async function probeRoute(page: Page, route: RouteProbe): Promise<void> {
     route.mode ?? "any",
     route.timeoutMs,
   );
+  await expectMainShell(page, route);
+}
+
+async function openRouteAndExpectUrl(
+  page: Page,
+  route: RouteProbe,
+  expectedUrl: RegExp,
+): Promise<void> {
+  const timeoutMs = route.timeoutMs ?? 60_000;
+  const firstAttemptTimeoutMs = Math.min(timeoutMs, 15_000);
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await openAppPath(page, route.path);
+    await expect(page)
+      .toHaveURL(expectedUrl, {
+        timeout: attempt === 0 ? firstAttemptTimeoutMs : timeoutMs,
+      })
+      .then(
+        () => undefined,
+        async (error: unknown) => {
+          if (attempt > 0) throw error;
+          await page
+            .goto("about:blank", {
+              waitUntil: "domcontentloaded",
+              timeout: 5_000,
+            })
+            .catch(() => {
+              /* best-effort reset before retrying a missed navigation */
+            });
+        },
+      );
+    if (expectedUrl.test(page.url())) return;
+  }
 }
 
 async function clickIfVisible(locator: Locator): Promise<boolean> {
@@ -1412,18 +1461,30 @@ async function clickSafeAllowlist(
 ): Promise<void> {
   await probeRoute(page, coreRouteProbe("chat"));
   await clickIfVisible(page.getByTestId("header-tasks-events-toggle"));
-  await page.waitForTimeout(250);
+  await expect(
+    page.locator(
+      '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]',
+    ),
+  ).toBeVisible({ timeout: 60_000 });
   await expectNoPageIssues(issues, "chat safe toggle");
 
   await probeRoute(page, coreRouteProbe("apps catalog"));
-  await clickIfVisible(page.getByRole("button", { name: "Add to favorites" }));
-  await page.waitForTimeout(250);
+  const favoriteButton = page.getByRole("button", {
+    name: "Add to favorites",
+  });
+  if (await clickIfVisible(favoriteButton)) {
+    await expect(
+      page.getByRole("button", { name: /^(Add to|Remove from) favorites$/ }),
+    ).toBeVisible({ timeout: 60_000 });
+  }
   await expectNoPageIssues(issues, "apps favorite toggle");
 
   await probeRoute(page, coreRouteProbe("settings"));
   for (const section of SETTING_SECTIONS_TO_CLICK) {
     await openSettingsSection(page, section);
-    await page.waitForTimeout(150);
+    await expect(page.getByTestId("settings-shell")).toBeVisible({
+      timeout: 60_000,
+    });
     await expectNoPageIssues(issues, `settings section ${String(section)}`);
   }
 
@@ -1449,6 +1510,15 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
+test.afterEach(async ({ page }) => {
+  if (page.isClosed()) return;
+  await page
+    .goto("about:blank", { waitUntil: "domcontentloaded", timeout: 5_000 })
+    .catch(() => {
+      /* best-effort cleanup before Playwright closes the context */
+    });
+});
+
 for (const viewport of [DESKTOP_PROBE, MOBILE_PROBE]) {
   for (const route of viewport.routes) {
     test(`route renders without console failures: ${viewport.name} ${route.name}`, async ({
@@ -1465,6 +1535,7 @@ for (const viewport of [DESKTOP_PROBE, MOBILE_PROBE]) {
 test("visible safe app tiles and allowlisted buttons are click-safe", async ({
   page,
 }) => {
+  test.setTimeout(420_000);
   const issues = installPageIssueGuards(page);
   await page.setViewportSize(DESKTOP_PROBE.size);
 

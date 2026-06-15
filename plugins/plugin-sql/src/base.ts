@@ -69,6 +69,49 @@ interface GetOAuthFlowStateParams {
   now?: number | Date;
 }
 
+function applyPatchOp(target: Record<string, unknown>, op: PatchOp): void {
+  if (!op.path) return;
+  const parts = op.path.split(".");
+  const last = parts.pop();
+  if (last === undefined) return;
+
+  let parent: Record<string, unknown> = target;
+  for (const segment of parts) {
+    const next = parent[segment];
+    if (next === null || typeof next !== "object") {
+      const created: Record<string, unknown> = {};
+      parent[segment] = created;
+      parent = created;
+    } else {
+      parent = next as Record<string, unknown>;
+    }
+  }
+
+  switch (op.op) {
+    case "set":
+      parent[last] = op.value;
+      break;
+    case "remove":
+      delete parent[last];
+      break;
+    case "push": {
+      const existing = parent[last];
+      if (Array.isArray(existing)) {
+        existing.push(op.value);
+      } else {
+        parent[last] = [op.value];
+      }
+      break;
+    }
+    case "increment": {
+      const existing = parent[last];
+      const delta = typeof op.value === "number" ? op.value : 1;
+      parent[last] = typeof existing === "number" ? existing + delta : delta;
+      break;
+    }
+  }
+}
+
 interface UpdateOAuthFlowStateParams {
   state?: string;
   stateHash?: string;
@@ -460,28 +503,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async ensureEmbeddingDimension(dimension: number) {
     return this.withDatabase(async () => {
-      const existingMemory = await this.db
-        .select()
-        .from(memoryTable)
-        .innerJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
-        .where(eq(memoryTable.agentId, this.agentId))
-        .limit(1);
-
-      if (existingMemory.length > 0) {
-        // The join result includes both memoryTable and embeddingTable columns
-        // Access embedding columns directly from the joined result
-        interface JoinedMemoryResult {
-          memories: typeof memoryTable.$inferSelect;
-          embeddings: typeof embeddingTable.$inferSelect;
-        }
-        const joinedResult = existingMemory[0] as JoinedMemoryResult;
-        Object.entries(DIMENSION_MAP).find(([_, colName]) => {
-          const embeddingCol = colName as keyof typeof embeddingTable.$inferSelect;
-          return joinedResult.embeddings[embeddingCol] !== null;
-        });
-        // We don't actually need to use usedDimension for now, but it's good to know it's there.
-      }
-
       const resolvedDimension = DIMENSION_MAP[dimension as keyof typeof DIMENSION_MAP];
       if (!resolvedDimension) {
         logger.warn(
@@ -2327,7 +2348,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       }
     }
 
-    // Ensure we always pass a JSON string to the SQL placeholder – if we pass an
+    // Ensure we always pass a JSON string to the SQL bind parameter; if we pass an
     // object directly PG sees `[object Object]` and fails the `::jsonb` cast.
     const contentToInsert =
       typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content);
@@ -2354,19 +2375,39 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ]);
 
       if (memory.embedding && Array.isArray(memory.embedding)) {
-        const embeddingValues: Record<string, unknown> = {
-          id: v4(),
-          memoryId: memoryId,
-          createdAt: memory.createdAt !== undefined ? new Date(memory.createdAt) : new Date(),
-        };
+        const expectedDimension = Number(this.embeddingDimension.replace(/^dim/, ""));
+        if (memory.embedding.length !== expectedDimension) {
+          // The runtime's TEXT_EMBEDDING provider returned a vector whose width
+          // does not match the column this agent is configured to write to —
+          // typically because a fallback provider (e.g. cloud at 1536 dims) ran
+          // before the configured local model finished warmup. Persist the
+          // memory itself; skip the embedding so a later write with the right
+          // model can supply one.
+          logger.warn(
+            {
+              src: "plugin:sql",
+              agentId: this.agentId,
+              expectedDimension,
+              receivedDimension: memory.embedding.length,
+              column: this.embeddingDimension,
+            },
+            "Skipping embedding insert: dimension mismatch with configured column"
+          );
+        } else {
+          const embeddingValues: Record<string, unknown> = {
+            id: v4(),
+            memoryId: memoryId,
+            createdAt: memory.createdAt !== undefined ? new Date(memory.createdAt) : new Date(),
+          };
 
-        const cleanVector = memory.embedding.map((n) =>
-          Number.isFinite(n) ? Number(n.toFixed(6)) : 0
-        );
+          const cleanVector = memory.embedding.map((n) =>
+            Number.isFinite(n) ? Number(n.toFixed(6)) : 0
+          );
 
-        embeddingValues[this.embeddingDimension] = cleanVector;
+          embeddingValues[this.embeddingDimension] = cleanVector;
 
-        await tx.insert(embeddingTable).values([embeddingValues]);
+          await tx.insert(embeddingTable).values([embeddingValues]);
+        }
       }
     });
 
@@ -2420,35 +2461,50 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
           // Update embedding if provided
           if (memory.embedding && Array.isArray(memory.embedding)) {
-            const cleanVector = memory.embedding.map((n) =>
-              Number.isFinite(n) ? Number(n.toFixed(6)) : 0
-            );
-
-            // Check if embedding exists
-            const existingEmbedding = await tx
-              .select({ id: embeddingTable.id })
-              .from(embeddingTable)
-              .where(eq(embeddingTable.memoryId, memory.id))
-              .limit(1);
-
-            if (existingEmbedding.length > 0) {
-              // Update existing embedding
-              const updateValues: Record<string, unknown> = {};
-              updateValues[this.embeddingDimension] = cleanVector;
-
-              await tx
-                .update(embeddingTable)
-                .set(updateValues)
-                .where(eq(embeddingTable.memoryId, memory.id));
+            const expectedDimension = Number(this.embeddingDimension.replace(/^dim/, ""));
+            if (memory.embedding.length !== expectedDimension) {
+              logger.warn(
+                {
+                  src: "plugin:sql",
+                  agentId: this.agentId,
+                  memoryId: memory.id,
+                  expectedDimension,
+                  receivedDimension: memory.embedding.length,
+                  column: this.embeddingDimension,
+                },
+                "Skipping embedding update: dimension mismatch with configured column"
+              );
             } else {
-              // Create new embedding
-              const embeddingValues: Record<string, unknown> = {
-                id: v4(),
-                memoryId: memory.id,
-              };
-              embeddingValues[this.embeddingDimension] = cleanVector;
+              const cleanVector = memory.embedding.map((n) =>
+                Number.isFinite(n) ? Number(n.toFixed(6)) : 0
+              );
 
-              await tx.insert(embeddingTable).values([embeddingValues]);
+              // Check if embedding exists
+              const existingEmbedding = await tx
+                .select({ id: embeddingTable.id })
+                .from(embeddingTable)
+                .where(eq(embeddingTable.memoryId, memory.id))
+                .limit(1);
+
+              if (existingEmbedding.length > 0) {
+                // Update existing embedding
+                const updateValues: Record<string, unknown> = {};
+                updateValues[this.embeddingDimension] = cleanVector;
+
+                await tx
+                  .update(embeddingTable)
+                  .set(updateValues)
+                  .where(eq(embeddingTable.memoryId, memory.id));
+              } else {
+                // Create new embedding
+                const embeddingValues: Record<string, unknown> = {
+                  id: v4(),
+                  memoryId: memory.id,
+                };
+                embeddingValues[this.embeddingDimension] = cleanVector;
+
+                await tx.insert(embeddingTable).values([embeddingValues]);
+              }
             }
           }
         });
@@ -4772,11 +4828,28 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   }
 
   async patchComponents(
-    _updates: Array<{ componentId: UUID; ops: PatchOp[] }>,
+    updates: Array<{ componentId: UUID; ops: PatchOp[] }>,
     _options?: { entityContext?: UUID }
   ): Promise<void> {
-    // No-op stub: patch operations require JSON patch support.
-    // Individual adapters (Postgres) can override with jsonb_set-based implementation.
+    for (const update of updates) {
+      const rows = await this.withDatabase(async () =>
+        this.db.select().from(componentTable).where(eq(componentTable.id, update.componentId))
+      );
+      const row = rows[0];
+      if (!row) continue;
+
+      const data = { ...((row.data ?? {}) as Record<string, unknown>) };
+      for (const op of update.ops) {
+        applyPatchOp(data, op);
+      }
+
+      await this.withDatabase(async () => {
+        await this.db
+          .update(componentTable)
+          .set({ data })
+          .where(eq(componentTable.id, update.componentId));
+      });
+    }
   }
 
   // ── Entity batch methods ──────────────────────────────────────────────

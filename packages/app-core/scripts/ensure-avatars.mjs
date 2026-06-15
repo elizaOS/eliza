@@ -204,7 +204,7 @@ export function runEnsureAvatars({
   }
 
   log(
-    `${TAG} Avatar assets missing or incomplete — cloning from ${AVATARS_REPO} @ ${AVATARS_COMMIT.slice(0, 8)}...`,
+    `${TAG} Avatar assets missing or partial — cloning from ${AVATARS_REPO} @ ${AVATARS_COMMIT.slice(0, 8)}...`,
   );
 
   const tmpDir = join(ROOT, ".avatar-clone-tmp");

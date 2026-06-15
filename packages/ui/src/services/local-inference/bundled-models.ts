@@ -13,7 +13,7 @@
  * TEXT_EMBEDDING slots without needing the user to download anything.
  *
  * Idempotent: re-running with the registry already populated is a
- * no-op for unchanged entries (`upsertElizaModel` overwrites entries
+ * metadata-preserving pass for unchanged entries (`upsertElizaModel` overwrites entries
  * with the same id, so updated sha256s on a future re-bundle replace
  * the old metadata cleanly).
  *

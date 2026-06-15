@@ -40,14 +40,14 @@ describe("PersonDetector", () => {
   });
 });
 
-describe("MediaPipeFaceDetector (deprecated stub)", () => {
-  it("constructs and reports unavailable until RetinaFace ggml port lands", async () => {
+describe("MediaPipeFaceDetector compatibility surface", () => {
+  it("constructs and reports unavailable without the removed ONNX backend", async () => {
     const det = new MediaPipeFaceDetector();
     expect(det).toBeInstanceOf(MediaPipeFaceDetector);
     expect(await MediaPipeFaceDetector.isAvailable()).toBe(false);
   });
 
-  it("initialize() throws a migration-in-progress error", async () => {
+  it("initialize() throws a backend-unavailable error", async () => {
     const det = new MediaPipeFaceDetector();
     await expect(det.initialize()).rejects.toBeInstanceOf(Error);
   });

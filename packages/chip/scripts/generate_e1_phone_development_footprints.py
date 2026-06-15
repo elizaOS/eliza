@@ -12,6 +12,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 LIB = ROOT / "board/kicad/e1-phone/e1-phone-dev.pretty"
 FP_LIB_TABLE = ROOT / "board/kicad/e1-phone/fp-lib-table"
+PCB_FP_LIB_TABLE = ROOT / "board/kicad/e1-phone/pcb/fp-lib-table"
 MANIFEST = ROOT / "board/kicad/e1-phone/development-footprint-library-manifest-2026-05-22.yaml"
 
 MODEL_MAP = {
@@ -1127,6 +1128,16 @@ def main() -> int:
             [
                 "(fp_lib_table",
                 '  (lib (name "e1-phone-dev")(type "KiCad")(uri "${KIPRJMOD}/e1-phone-dev.pretty")(options "")(descr "E1 phone non-release development footprints with CAD envelope STEP bindings"))',
+                ")",
+                "",
+            ]
+        )
+    )
+    PCB_FP_LIB_TABLE.write_text(
+        "\n".join(
+            [
+                "(fp_lib_table",
+                '  (lib (name "e1-phone-dev")(type "KiCad")(uri "${KIPRJMOD}/../e1-phone-dev.pretty")(options "")(descr "E1 phone non-release development footprints with CAD envelope STEP bindings"))',
                 ")",
                 "",
             ]

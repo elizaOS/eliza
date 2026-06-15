@@ -1,5 +1,5 @@
-// Browser-side stub for @elizaos/agent. Server-only runtime — every export
-// resolves to a noop/empty value so the renderer graph can statically
+// Browser-side inert alias for @elizaos/agent. Server-only runtime — every export
+// resolves to an inert/empty value so the renderer graph can statically
 // satisfy named imports from app-core dist files without pulling in any
 // Node-only code.
 

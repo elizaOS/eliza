@@ -4,7 +4,7 @@
  * Two cases cover the contract:
  *
  *  A. A square (640×640) all-white image. Letterbox-with-pad-zero is a
- *     no-op resize at scale 1.0; the entire output plane should be
+ *     identity resize at scale 1.0; the entire output plane should be
  *     1.0 (255/255), with zero-pad on no edge. Verifies the
  *     no-rescale identity path and the [0,1] normalization.
  *

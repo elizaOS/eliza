@@ -36,8 +36,8 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
     assert report["status"] == "PASS"
     assert report["summary"]["failing_check_count"] == 0
     assert report["summary"]["missing_evidence_path_count"] == 0
-    assert report["summary"]["evidence_path_check_count"] == 68
-    assert report["summary"]["freshness_check_count"] == 68
+    assert report["summary"]["evidence_path_check_count"] == 69
+    assert report["summary"]["freshness_check_count"] == 69
     assert report["summary"]["real_graph_model_required_vs_e1_sram"] > 100
     assert 0.0 < report["summary"]["real_graph_model_required_vs_e1x_sram"] < 1.0
     assert report["summary"]["e1_comparison_audit_sram_ratio"] == 128.25
@@ -193,8 +193,7 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
     assert report["summary"]["stratified_full_k_repair_macs"] == 22_119_696
     assert report["summary"]["stratified_full_k_repair_touched_cores"] == 3_313
     assert (
-        report["summary"]["stratified_full_k_repair_output_checksum"]
-        == 1_101_709_542_541_624_471
+        report["summary"]["stratified_full_k_repair_output_checksum"] == 1_101_709_542_541_624_471
     )
     assert (
         report["summary"]["stratified_full_k_repair_normal_route_checksum"]
@@ -253,8 +252,7 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
         == 13_035_249_012_885_092_373
     )
     assert (
-        report["summary"]["ultra_dense_stratified_full_k_repair_high_failure_remapped_rows"]
-        == 406
+        report["summary"]["ultra_dense_stratified_full_k_repair_high_failure_remapped_rows"] == 406
     )
     assert (
         report["summary"]["ultra_dense_stratified_full_k_repair_rows_sha256"]
@@ -280,8 +278,7 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
         == 8_497_411_527_252_241_509
     )
     assert (
-        report["summary"]["hyper_dense_stratified_full_k_repair_high_failure_remapped_rows"]
-        == 760
+        report["summary"]["hyper_dense_stratified_full_k_repair_high_failure_remapped_rows"] == 760
     )
     assert (
         report["summary"]["hyper_dense_stratified_full_k_repair_rows_sha256"]
@@ -338,6 +335,27 @@ def test_e1x_evidence_bundle_gate_is_actionable() -> None:
     )
     assert (
         report["summary"]["full_k_repair_route_residual_blocker"]
+        == "full_output_real_weight_checksum_missing"
+    )
+    assert report["summary"]["full_k_repair_route_kind_normal_kinds"] == 5
+    assert report["summary"]["full_k_repair_route_kind_high_failure_kinds"] == 8
+    assert report["summary"]["full_k_repair_route_kind_normal_remaps"] == 44
+    assert report["summary"]["full_k_repair_route_kind_high_failure_remaps"] == 760
+    assert report["summary"]["full_k_repair_route_kind_normal_distance"] == 6_824
+    assert report["summary"]["full_k_repair_route_kind_high_failure_distance"] == 107_180
+    assert report["summary"]["full_k_repair_route_kind_high_failure_norm_remaps"] == 256
+    assert report["summary"]["full_k_repair_route_kind_high_failure_norm_distance"] == 29_696
+    assert report["summary"]["full_k_repair_route_kind_high_failure_attn_qkv_remaps"] == 109
+    assert report["summary"]["full_k_repair_route_kind_high_failure_attn_qkv_distance"] == 17_494
+    assert report["summary"]["full_k_repair_route_kind_high_failure_mlp_down_distance"] == 14_055
+    assert report["summary"]["full_k_repair_route_kind_row_ratio"] > 17.0
+    assert report["summary"]["full_k_repair_route_kind_distance_ratio"] > 15.0
+    assert (
+        report["summary"]["full_k_repair_route_kind_sha256"]
+        == "ae668566b1f994acb9c322b9d3e2b257dc69e33873e500fbc47fa5f1f9ed2703"
+    )
+    assert (
+        report["summary"]["full_k_repair_route_kind_residual_blocker"]
         == "full_output_real_weight_checksum_missing"
     )
     assert report["summary"]["full_norm_real_weight_layers"] == 81

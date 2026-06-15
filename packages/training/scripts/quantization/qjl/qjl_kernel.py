@@ -175,8 +175,8 @@ def qjl_quantize_pytorch(
 
             key_quant:           (B, H, N, group_size, sketch_dim/8) uint8
             key_outlier_quant:   (B, H, N, group_size, outlier_sketch_dim/8) uint8
-                                 -- zero-filled in this fallback (outlier
-                                 branch not implemented in pure PyTorch).
+                                 -- zero-filled by this inlier-only
+                                 pure-PyTorch fallback.
             key_outliers_norm:   (B, H, N, outlier_count) float32 -- the
                                  per-coordinate L2 norm across the group.
     """
@@ -229,8 +229,8 @@ def qjl_quantize_pytorch(
     ).view(1, 1, 1, 1, 1, 8)
     key_quant = (bits * enc).sum(dim=-1).to(torch.uint8)
 
-    # Outlier branch is not implemented in the pure-PyTorch reference. Return
-    # zero-filled tensors with the right shape so callers can still slot in.
+    # This pure-PyTorch reference is inlier-only. Return zero-filled outlier
+    # tensors with the right shape so callers can still slot in.
     key_outlier_quant = torch.zeros(
         B, H, N, group_size, outlier_sketch_dim // 8,
         device=keys.device, dtype=torch.uint8,

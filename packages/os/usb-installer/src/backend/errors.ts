@@ -146,7 +146,7 @@ export class WriteIncompleteError extends Error {
   public readonly actualBytes: number;
   constructor(expectedBytes: number, actualBytes: number) {
     super(
-      `Write incomplete: expected ${expectedBytes} bytes, wrote ${actualBytes}.`,
+      `Partial write: expected ${expectedBytes} bytes, wrote ${actualBytes}.`,
     );
     this.expectedBytes = expectedBytes;
     this.actualBytes = actualBytes;

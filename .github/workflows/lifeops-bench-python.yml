@@ -34,7 +34,7 @@ on:
       - "packages/benchmarks/eliza-adapter/eliza_adapter/client.py"
       - "packages/app-core/src/benchmark/lifeops-bench-handler.ts"
       - "packages/app-core/src/benchmark/lifeops-fake-backend.ts"
-      - "plugins/plugin-lifeops/src/actions/**"
+      - "plugins/plugin-personal-assistant/src/actions/**"
       - ".github/workflows/lifeops-bench-python.yml"
   workflow_dispatch:
     inputs:
@@ -231,7 +231,7 @@ jobs:
 
       - name: Annotate PR with smoke summary
         if: always() && github.event_name == 'pull_request'
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         env:
           BENCH_DIR: ${{ env.BENCH_DIR }}
         with:

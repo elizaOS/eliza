@@ -1,7 +1,7 @@
 # `@elizaos/plugin-health`
 
 Owns the health, sleep, circadian-regularity, and screen-time domain for
-elizaOS. Extracted from `@elizaos/plugin-lifeops` so the same domain can serve
+elizaOS. Extracted from `@elizaos/plugin-personal-assistant` so the same domain can serve
 other apps without bringing the LifeOps runtime along.
 
 ## What this plugin owns
@@ -18,10 +18,10 @@ Six connector contributions registered against the LifeOps
 - `withings`
 - `oura`
 
-`src/connectors/index.ts` registers the `ConnectorContribution`s (Wave-1
-stub dispatchers whose `send`/`read` return typed `DispatchResult`, not
-booleans). The concrete OAuth pair/disconnect, credential storage, and
-provider readers live under `src/health-bridge/`.
+`src/connectors/index.ts` registers the `ConnectorContribution`s. The Wave-1
+registry adapter returns typed disconnected / transport-error results while
+the concrete OAuth pair/disconnect, credential storage, and provider readers
+live under `src/health-bridge/`.
 
 ### Anchors
 
@@ -65,7 +65,7 @@ single skip line and contributes nothing.
 ### Domain logic
 
 - `src/sleep/` — sleep / circadian / regularity engines.
-- `src/screen-time/` — type-only exports (`LifeOpsScreenTimePerAppUsage`, `LifeOpsScreenTimeSummaryPayload`); the aggregator lives in `plugins/plugin-lifeops/src/lifeops/service-mixin-screentime.ts` pending Wave-2 (W2-D) decoupling.
+- `src/screen-time/` — type-only exports (`LifeOpsScreenTimePerAppUsage`, `LifeOpsScreenTimeSummaryPayload`); the aggregator lives in `plugins/plugin-personal-assistant/src/lifeops/service-mixin-screentime.ts` pending Wave-2 (W2-D) decoupling.
 - `src/health-bridge/` — `detectHealthBackend` (HealthKit on darwin, Google
   Fit REST fallback), the Strava/Fitbit/Withings/Oura OAuth-bridged readers,
   the per-provider OAuth flow, and the `createLifeOpsHealth*` record
@@ -84,7 +84,7 @@ LifeOps does not import internal modules. Consumption goes through:
 4. **Default packs** — registered via `registerHealthDefaultPacks(runtime)`.
 5. **Public exports** — `detectHealthBackend`, sleep utilities, screen-time
    helpers exported from `@elizaos/plugin-health` and re-exported by
-   `@elizaos/plugin-lifeops` only where the surface is part of the LifeOps
+   `@elizaos/plugin-personal-assistant` only where the surface is part of the LifeOps
    public API.
 
 If the LifeOps runtime registries are not available at boot, the plugin
@@ -93,7 +93,7 @@ posture.
 
 ## Soft-dependency posture
 
-`plugin-health` does not require `@elizaos/plugin-lifeops`. Other apps can
+`plugin-health` does not require `@elizaos/plugin-personal-assistant`. Other apps can
 consume the plugin by registering their own implementations of:
 
 - `ConnectorRegistry` (with `register` / `list` / `get` / `byCapability`)
@@ -102,12 +102,12 @@ consume the plugin by registering their own implementations of:
 - `DefaultPackRegistry` (with `register` / `list` / `get`)
 
 The structural contracts the plugin builds against live in
-`src/connectors/contract-stubs.ts`, `src/default-packs/contract-stubs.ts`,
+`src/connectors/contract-types.ts`, `src/default-packs/contract-types.ts`,
 and `src/contracts/health.ts`.
 
 ## Where to look next
 
 - Plugin entry: `src/index.ts`.
-- LifeOps consumption: `plugins/plugin-lifeops/README.md`.
-- Frozen contracts: see `plugins/plugin-lifeops/AGENTS.md` for the connector /
+- LifeOps consumption: `plugins/plugin-personal-assistant/README.md`.
+- Frozen contracts: see `plugins/plugin-personal-assistant/AGENTS.md` for the connector /
   channel / transport contracts this plugin implements.

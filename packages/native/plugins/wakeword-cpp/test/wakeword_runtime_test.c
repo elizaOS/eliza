@@ -133,7 +133,7 @@ int main(int argc, char **argv) {
     }
     /* Honest gate: silence must stay below the openWakeWord upstream
      * default trigger threshold (0.5 is the API default, but the
-     * placeholder hey-jarvis-v0.1 head shipped today scores ≈0.5 on
+     * temporary hey-jarvis-v0.1-derived head shipped today scores ≈0.5 on
      * pure silence due to the per-call relmax floor masquerading as
      * signal. The real "hey eliza" head, when trained, is expected to
      * settle below 0.2 on silence.) Cap at 0.7 — well below the
@@ -142,7 +142,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "[wakeword-runtime-test] silence score %.4f >= 0.7\n", (double)silence_score);
         ++failures;
     }
-    printf("[wakeword-runtime-test] silence score = %.4f (placeholder head; real head trained for hey-eliza will lower this)\n",
+    printf("[wakeword-runtime-test] silence score = %.4f (temporary head; real head trained for hey-eliza will lower this)\n",
            (double)silence_score);
 
     /* --- chirp (NOT "hey eliza"; just non-silence audio) --- */

@@ -11,8 +11,8 @@
  * swallow real errors.
  *
  * Initial state is `loading` (not `idle`) since the effect always fires on
- * mount. The `idle` variant is reserved in the type for a future opt-out
- * flag but never surfaces today.
+ * mount. The `idle` variant is reserved in the type for an opt-out flag but
+ * never surfaces today.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";

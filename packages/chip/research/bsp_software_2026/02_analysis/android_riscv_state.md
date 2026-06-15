@@ -25,7 +25,7 @@ status only; E1 boot logs still need real captures into the gate.
   vendor implementations register.
 - Google has not committed RV64 to any released Android dessert as a
   user-facing ABI through Android 16; the public position is "RV64 is
-  developer-supported on AOSP main, productization timing TBD".
+  developer-supported on AOSP main; productization timing remains uncommitted".
 
 ## Compiler / runtime / libc
 

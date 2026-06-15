@@ -11,7 +11,7 @@
  * Invariants:
  *   - One token per `runId` (one utterance).
  *   - `abort()` is idempotent. The first reason wins; subsequent calls are
- *     no-ops.
+ *     ignored and leave the recorded reason unchanged.
  *   - `signal.aborted === true` after the first `abort()`.
  *   - Token is forward-compatible with the legacy `BargeInCancelToken`
  *     shape (`cancelled`, `reason`, `signal`) so existing voice pipeline
@@ -60,7 +60,7 @@ export interface VoiceCancellationToken {
   readonly signal: AbortSignal;
   /**
    * Trip the token. Idempotent. First call wins; subsequent calls are
-   * no-ops. Fires every registered `onAbort` listener synchronously.
+   * ignored. Fires every registered `onAbort` listener synchronously.
    */
   abort(reason: VoiceCancellationReason): void;
   /**
@@ -225,7 +225,7 @@ export class VoiceCancellationRegistry {
 
   /**
    * Abort the active token for `roomId`. Returns true if a live token was
-   * aborted. No-op when there is no active token or it's already aborted.
+   * aborted. Returns false when there is no active token or it's already aborted.
    */
   abort(roomId: string, reason: VoiceCancellationReason): boolean {
     const token = this.byRoom.get(roomId);

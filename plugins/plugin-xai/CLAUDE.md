@@ -60,6 +60,7 @@ bun run --cwd plugins/plugin-xai build        # compile to dist/
 bun run --cwd plugins/plugin-xai dev          # watch build (bun --hot)
 bun run --cwd plugins/plugin-xai test         # vitest run
 bun run --cwd plugins/plugin-xai typecheck    # tsgo --noEmit
+bun run --cwd plugins/plugin-xai lint         # biome check
 bun run --cwd plugins/plugin-xai format       # biome format --write
 bun run --cwd plugins/plugin-xai format:check # biome format (check only)
 bun run --cwd plugins/plugin-xai clean        # rm -rf dist .turbo

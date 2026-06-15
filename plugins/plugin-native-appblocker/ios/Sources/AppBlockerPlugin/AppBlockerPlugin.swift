@@ -97,7 +97,7 @@ public class ElizaAppBlockerPlugin: CAPPlugin, CAPBridgedPlugin {
             call.resolve([
                 "success": false,
                 "endsAt": NSNull(),
-                "error": "Timed iPhone app blocking still needs a DeviceActivity extension. Start an indefinite block for now and unblock it manually.",
+                "error": "Timed iPhone app blocking requires a DeviceActivity extension. Omit durationMinutes for an indefinite block, then call unblockApps when the block should end.",
                 "blockedCount": 0,
             ])
             return

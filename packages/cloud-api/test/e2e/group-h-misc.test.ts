@@ -8,7 +8,7 @@
  *      inside the handler, the handler's own error code).
  *   2. Happy path — with the appropriate credential (Bearer eliza_*, cron
  *      secret, etc.) the response is reachable past auth and matches the
- *      documented contract or migration stub.
+ *      documented contract or migration fallback.
  *   3. Validation — malformed body / bad query / wrong shape returns the
  *      expected 400 (or the route's documented error status when the route
  *      validates differently).
@@ -638,7 +638,7 @@ for (const {
 describe("Group H — POST /api/invites/accept", () => {
   test("auth gate: missing credentials → 401", async () => {
     if (!reachableOnly()) return;
-    const res = await api.post("/api/invites/accept", { token: "stub" });
+    const res = await api.post("/api/invites/accept", { token: "test-token" });
     expect(res.status).toBe(401);
   });
 
@@ -646,7 +646,7 @@ describe("Group H — POST /api/invites/accept", () => {
     if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/invites/accept",
-      { token: `stub-${Date.now()}` },
+      { token: `test-${Date.now()}` },
       { headers: bearerHeaders() },
     );
     expect(res.status).not.toBe(401);

@@ -208,6 +208,9 @@ app.post("/", async (c) => {
         model,
         provider,
         billingSource,
+        // Affiliate revenue-share: when the calling app sets X-Affiliate-Code,
+        // activate the existing billUsage affiliate branch (same as /v1/messages).
+        affiliateCode: c.req.header("X-Affiliate-Code") ?? null,
       },
       { inputTokens: actualTokens, outputTokens: 0 },
       reservation,

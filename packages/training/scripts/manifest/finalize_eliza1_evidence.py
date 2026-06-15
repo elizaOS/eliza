@@ -976,7 +976,7 @@ def finalize(bundle_dir: Path, repo_root: Path) -> dict[str, Any]:
             + "; ".join(platform_plan_errors[:6])
         )
     if not final["licenses"]:
-        blocking.append("licenses/ set incomplete: " + "; ".join(license_problems))
+        blocking.append("licenses/ set partial: " + "; ".join(license_problems))
     if not final["evals"]:
         blocking.append(
             "eval gates not green for the staged bytes: " + "; ".join(eval_failures[:6])

@@ -417,7 +417,8 @@ export function paramsToSchema(
       delete (prop as Record<string, unknown>).__jsonHint;
     }
 
-    // Model name fields — helpful placeholder (overridden by server-provided model options via configUiHints)
+    // Model name fields get helpful input hints, overridden by server-provided
+    // model options via configUiHints.
     if (
       keyUpper.includes("MODEL") &&
       prop.type === "string" &&
@@ -597,6 +598,46 @@ export function iconImageSource(icon: string): string | null {
     return resolveAppAssetUrl(value);
   }
   return null;
+}
+
+/* ── Visual identity (logos, monograms, gradients) ─────────────────── */
+
+/** Stable 32-bit hash of a string (FNV-1a), used to derive deterministic hues. */
+function hashString(input: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+/** One- or two-character monogram for a plugin (skips leading punctuation). */
+export function pluginMonogram(plugin: PluginInfo): string {
+  const source = (plugin.name ?? plugin.id ?? "?").replace(/^[^a-z0-9]+/i, "");
+  const words = source.split(/[\s_\-./]+/).filter(Boolean);
+  if (words.length >= 2) {
+    return (words[0][0] + words[1][0]).toUpperCase();
+  }
+  const single = words[0] ?? source;
+  return single.slice(0, 2).toUpperCase() || "·";
+}
+
+/**
+ * Deterministic monogram-tile gradient derived from the plugin name hash.
+ * Hues are pulled from a warm, accent-adjacent band (oranges, ambers, magentas,
+ * violets, teals) and deliberately exclude the blue range to honor the brand
+ * "no blue" rule. Returns an inline `background` value built from HSL stops so
+ * it adapts without needing extra theme tokens.
+ */
+export function pluginTileGradient(plugin: PluginInfo): string {
+  // Allowed hue anchors (degrees). No blue band (≈200–260).
+  const HUE_BANDS = [18, 30, 42, 152, 168, 286, 310, 332];
+  const hash = hashString(plugin.id || plugin.name || "plugin");
+  const base = HUE_BANDS[hash % HUE_BANDS.length];
+  const second = (base + 22) % 360;
+  const angle = 120 + (hash % 6) * 12;
+  return `linear-gradient(${angle}deg, hsl(${base} 82% 56%), hsl(${second} 78% 47%))`;
 }
 
 export type TranslateFn = AppTranslateFn;

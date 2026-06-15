@@ -6,8 +6,8 @@
   "scripts": {
     "agent": "bun run src/index.ts",
     "agent:local": "bun run src/local-agent.ts",
-    "lint": "echo skip (feed) >&2",
-    "typecheck": "echo skip (feed) >&2",
+    "lint": "cd ../../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/examples/feed-typescript-agent/package.json packages/examples/feed-typescript-agent/tsconfig.json packages/examples/feed-typescript-agent/src packages/examples/feed-typescript-agent/tests",
+    "typecheck": "bun run tsc -p . --noEmit",
     "test": "bun test tests/",
     "test:integration": "bun test tests/integration.test.ts",
     "test:e2e": "bun test tests/e2e.test.ts",

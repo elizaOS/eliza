@@ -78,6 +78,8 @@ import {
   type UpsertAffiliateCodeRequest,
   type UserProfileResponse,
   type VerifyAppCreditsCheckoutResponse,
+  type VoiceSttRequest,
+  type VoiceSttResponse,
   type WithdrawAppEarningsRequest,
   type WithdrawAppEarningsResponse,
   type X402FacilitatorPaymentRequest,
@@ -113,6 +115,23 @@ function browserBaseUrlForCliLogin(baseUrl: string): string {
 
 function encodePathParam(value: string | number): string {
   return encodeURIComponent(String(value));
+}
+
+/** Per-call options for the inference methods (chat/responses/embeddings/image). */
+export interface InferenceCallOptions {
+  /**
+   * Bill this request to a registered Eliza Cloud app's credits by sending the
+   * `X-App-Id` header. The app owner earns the configured markup. Omit to bill
+   * the caller's own org/personal credits.
+   */
+  appId?: string;
+}
+
+/** Build the request options that carry the `X-App-Id` header, if an app id is set. */
+function appIdRequestOptions(appId?: string): {
+  headers?: Record<string, string>;
+} {
+  return appId ? { headers: { "X-App-Id": appId } } : {};
 }
 
 function withPathParams(
@@ -249,6 +268,49 @@ export class ElizaCloudClient {
     );
   }
 
+  /**
+   * Poll a CLI/web login session until it resolves. Returns the authenticated
+   * response (with `apiKey`/`userId`) as soon as the user authorizes, or throws
+   * on expiry/error/timeout. Saves every web integration from re-implementing
+   * the deadline + interval + terminal-status loop around {@link pollCliLogin}.
+   *
+   * Typical web flow:
+   * ```ts
+   * const { sessionId, browserUrl } = await cloud.startCliLogin();
+   * window.open(browserUrl, "_blank");
+   * const { apiKey } = await cloud.waitForCliLogin(sessionId);
+   * cloud.setApiKey(apiKey!);
+   * ```
+   */
+  async waitForCliLogin(
+    sessionId: string,
+    options: {
+      timeoutMs?: number;
+      intervalMs?: number;
+      signal?: AbortSignal;
+    } = {},
+  ): Promise<CliLoginPollResponse> {
+    const timeoutMs = options.timeoutMs ?? 300_000;
+    const intervalMs = options.intervalMs ?? 2_000;
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      if (options.signal?.aborted) {
+        throw new Error("Eliza Cloud sign-in was cancelled");
+      }
+      const result = await this.pollCliLogin(sessionId);
+      if (result.status === "authenticated") {
+        return result;
+      }
+      if (result.status === "expired" || result.status === "error") {
+        throw new Error(result.error ?? `Eliza Cloud sign-in ${result.status}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+
+    throw new Error("Timed out waiting for Eliza Cloud sign-in");
+  }
+
   pairWithToken(token: string, origin: string): Promise<AuthPairResponse> {
     return this.request<AuthPairResponse>("POST", "/api/auth/pair", {
       json: { token },
@@ -263,22 +325,70 @@ export class ElizaCloudClient {
 
   createResponse(
     request: ResponsesCreateRequest,
+    options: InferenceCallOptions = {},
   ): Promise<ResponsesCreateResponse> {
-    return this.v1.post<ResponsesCreateResponse>("/responses", request);
+    return this.v1.post<ResponsesCreateResponse>(
+      "/responses",
+      request,
+      appIdRequestOptions(options.appId),
+    );
   }
 
   createChatCompletion(
     request: ChatCompletionRequest,
+    options: InferenceCallOptions = {},
   ): Promise<ChatCompletionResponse> {
-    return this.v1.post<ChatCompletionResponse>("/chat/completions", request);
+    return this.v1.post<ChatCompletionResponse>(
+      "/chat/completions",
+      request,
+      appIdRequestOptions(options.appId),
+    );
   }
 
-  createEmbeddings(request: EmbeddingsRequest): Promise<EmbeddingsResponse> {
-    return this.v1.post<EmbeddingsResponse>("/embeddings", request);
+  createEmbeddings(
+    request: EmbeddingsRequest,
+    options: InferenceCallOptions = {},
+  ): Promise<EmbeddingsResponse> {
+    return this.v1.post<EmbeddingsResponse>(
+      "/embeddings",
+      request,
+      appIdRequestOptions(options.appId),
+    );
   }
 
-  generateImage(request: GenerateImageRequest): Promise<GenerateImageResponse> {
-    return this.v1.post<GenerateImageResponse>("/generate-image", request);
+  generateImage(
+    request: GenerateImageRequest,
+    options: InferenceCallOptions = {},
+  ): Promise<GenerateImageResponse> {
+    return this.v1.post<GenerateImageResponse>(
+      "/generate-image",
+      request,
+      appIdRequestOptions(options.appId),
+    );
+  }
+
+  /**
+   * Transcribe audio to text via POST /api/v1/voice/stt (multipart/form-data).
+   *
+   * Mirrors {@link createEmbeddings}/{@link generateImage}: routed through the
+   * v1 client with auth headers applied automatically, and `options.appId`
+   * bills a registered app's credits via the `X-App-Id` header. The audio is
+   * sent as a FormData `audio` field; Content-Type is intentionally left unset
+   * so the runtime fetch fills in the multipart boundary.
+   */
+  transcribeAudio(
+    request: VoiceSttRequest,
+    options: InferenceCallOptions = {},
+  ): Promise<VoiceSttResponse> {
+    const form = new FormData();
+    form.append("audio", request.audio, request.filename ?? "audio");
+    if (request.languageCode !== undefined) {
+      form.append("languageCode", request.languageCode);
+    }
+    return this.v1.request<VoiceSttResponse>("POST", "/voice/stt", {
+      ...appIdRequestOptions(options.appId),
+      body: form,
+    });
   }
 
   getCreditsBalance(

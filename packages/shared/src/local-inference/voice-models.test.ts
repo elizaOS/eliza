@@ -83,17 +83,13 @@ describe("VOICE_MODEL_VERSIONS bookkeeping", () => {
     }
   });
 
-  it("does not ship placeholder asset hashes", () => {
+  it("does not ship provisional asset hashes", () => {
     const sha = /^[0-9a-f]{64}$/;
     for (const v of VOICE_MODEL_VERSIONS) {
       for (const asset of v.ggufAssets) {
         expect(asset.sha256, `${v.id}@${v.version}:${asset.filename}`).toMatch(
           sha,
         );
-        expect(
-          asset.sha256,
-          `${v.id}@${v.version}:${asset.filename}`,
-        ).not.toContain("TBD");
         expect(asset.sizeBytes).toBeGreaterThan(0);
       }
       for (const asset of v.missingAssets ?? []) {

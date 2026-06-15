@@ -329,7 +329,7 @@ def build_parser() -> argparse.ArgumentParser:
              "(validate VRAM with `memory_calc.py --shape qwen3.5-4b` first)."
     )
     ap.add_argument("--full-finetune", action="store_true",
-                    help="Compatibility no-op; this entrypoint is always full-parameter APOLLO SFT.")
+                    help="Compatibility flag; this entrypoint is always full-parameter APOLLO SFT.")
     ap.add_argument(
         "--preflight-only",
         action="store_true",
@@ -415,7 +415,7 @@ def apply_resolved_defaults(args: argparse.Namespace) -> None:
         ):
             raise SystemExit(
                 f"--registry-key {args.registry_key!r} → hf_id {entry.hf_id!r} "
-                "is an UNVERIFIED placeholder with no published checkpoint as of "
+                "is an UNVERIFIED registry entry with no published checkpoint as of "
                 "2026-05; loading it will fail. Use a real key "
                 "(qwen3.5-0.8b / qwen3.5-2b / qwen3.5-4b → eliza-1-0_8b / eliza-1-2b / "
                 "eliza-1-4b), pass an explicit --model <real-hf-id>, or set "

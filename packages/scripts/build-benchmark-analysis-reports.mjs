@@ -177,7 +177,7 @@ const STEPS = [
   {
     id: "manual-review-workspace",
     script: "packages/scripts/build-benchmark-manual-review-workspace.mjs",
-    description: "Create durable per-item manual-review note stubs for the review queue.",
+    description: "Create durable per-item manual-review notes for the review queue.",
   },
   {
     id: "benchmark-review-packs",

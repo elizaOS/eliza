@@ -3,7 +3,7 @@
  *
  * `handleTextToSpeech` lives at `src/models/speech.ts` and uses the cloud
  * SDK via `createElizaCloudClient(runtime).routes.postApiV1VoiceTts`. We
- * stub that with `setCloudTtsClientFactoryForTesting` so the tests never
+ * replace that with `setCloudTtsClientFactoryForTesting` so the tests never
  * hit the network and never need a configured SDK client.
  *
  * Coverage:

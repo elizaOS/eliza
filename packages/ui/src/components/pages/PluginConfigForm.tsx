@@ -1,9 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { PluginInfo, PluginParamDef } from "../../api";
-import {
-  ConfigRenderer,
-  defaultRegistry,
-} from "../../components/config-ui/config-renderer";
+import { ConfigRenderer } from "../../components/config-ui/config-renderer";
+import { defaultRegistry } from "../../components/config-ui/config-renderer.helpers";
 import { useApp } from "../../state";
 import type { ConfigUiHint } from "../../types";
 import { Switch } from "../ui/switch";
@@ -17,7 +15,7 @@ import { paramsToSchema, TELEGRAM_ALLOW_ALL_HIDDEN } from "./plugin-list-utils";
  * doesn't flip the toggle. Returns the mode, a toggle handler, and
  * hiddenKeys for PluginConfigForm.
  */
-export function useTelegramChatMode(
+function useTelegramChatMode(
   plugin: PluginInfo,
   pluginConfigs: Record<string, Record<string, string>>,
   onParamChange: (pluginId: string, paramKey: string, value: string) => void,

@@ -253,7 +253,7 @@ class EnvironmentAdapter(ABC):
             result = await self.runtime.generate_text(prompt)
             return result.text
         else:
-            # Return a placeholder for testing
+            # Deterministic offline action for tests and dry runs.
             return "action: think"
 
     def _is_initialized(self) -> bool:

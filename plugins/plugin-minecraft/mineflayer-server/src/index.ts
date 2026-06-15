@@ -526,8 +526,4 @@ wss.on("connection", (ws) => {
       send(ws, fail(request, message));
     }
   });
-
-  ws.on("close", () => {
-    // no-op; bots are long-lived until destroyed
-  });
 });

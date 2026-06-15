@@ -128,6 +128,21 @@ function normalizeResponse(query: string, response: unknown): SearchResponse {
     };
 }
 
+function uniqueResultTitles(response: SearchResponse, limit: number): string[] {
+    const seen = new Set<string>();
+    const titles: string[] = [];
+    for (const result of response.results) {
+        const title = result.title.trim();
+        if (!title || title === "Untitled") continue;
+        const key = title.toLocaleLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        titles.push(title);
+        if (titles.length >= limit) break;
+    }
+    return titles;
+}
+
 function freshnessToDays(freshness: NewsSearchOptions["freshness"]): number {
     switch (freshness) {
         case "day":
@@ -225,15 +240,31 @@ export class WebSearchService extends IWebSearchService {
     }
 
     async searchVideos(query: string, options?: VideoSearchOptions): Promise<SearchResponse> {
-        return this.search(query, options);
+        const normalizedQuery = validateSearchQuery(query);
+        return this.search(`${normalizedQuery} video`, {
+            ...options,
+            includeImages: true,
+        });
     }
 
-    async getSuggestions(_query: string): Promise<string[]> {
-        return [];
+    async getSuggestions(query: string): Promise<string[]> {
+        const response = await this.search(validateSearchQuery(query), {
+            includeAnswer: false,
+            limit: 5,
+            searchDepth: "basic",
+        });
+        return uniqueResultTitles(response, 5);
     }
 
-    async getTrendingSearches(_region?: string): Promise<string[]> {
-        return [];
+    async getTrendingSearches(region?: string): Promise<string[]> {
+        const normalizedRegion = typeof region === "string" ? region.trim() : "";
+        const query = normalizedRegion ? `trending news in ${normalizedRegion}` : "trending news";
+        const response = await this.searchNews(query, {
+            freshness: "day",
+            limit: 5,
+            region: normalizedRegion || undefined,
+        });
+        return uniqueResultTitles(response, 5);
     }
 
     async getPageInfo(url: string): Promise<{

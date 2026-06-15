@@ -62,11 +62,11 @@ plugins/plugin-discord/**/*.d.ts.map
 packages/core/src/**/*.js
 packages/core/src/**/*.js.map
 
-# Accidental test-helper emit next to TS in plugin-lifeops (build output is dist/)
-plugins/plugin-lifeops/test/helpers/*.d.ts
-plugins/plugin-lifeops/test/helpers/*.d.ts.map
-plugins/plugin-lifeops/test/helpers/*.js
-plugins/plugin-lifeops/test/helpers/*.js.map
+# Accidental test-helper emit next to TS in plugin-personal-assistant (build output is dist/)
+plugins/plugin-personal-assistant/test/helpers/*.d.ts
+plugins/plugin-personal-assistant/test/helpers/*.d.ts.map
+plugins/plugin-personal-assistant/test/helpers/*.js
+plugins/plugin-personal-assistant/test/helpers/*.js.map
 
 # Accidental declaration emit next to TS in @elizaos/contracts (build output is dist/)
 packages/contracts/src/**/*.d.ts
@@ -294,6 +294,9 @@ tasks/
 !packages/benchmarks/app-eval/tasks/*_evaluator.py
 !packages/benchmarks/eliza-1/src/tasks/
 !packages/benchmarks/eliza-1/src/tasks/*.ts
+!packages/benchmarks/HyperliquidBench/dataset/tasks/
+!packages/benchmarks/HyperliquidBench/dataset/tasks/README.md
+!packages/benchmarks/HyperliquidBench/dataset/tasks/*.jsonl
 !plugins/plugin-agent-skills/src/tasks/
 # Vendored benchmark task fixtures — these ARE the benchmark, not generated.
 # We own all benchmark code in-tree; no submodules (only llama.cpp is a submodule).

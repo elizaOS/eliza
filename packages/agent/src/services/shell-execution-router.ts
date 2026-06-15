@@ -89,12 +89,8 @@ export function resolveShellExecutionMode(
 function backendForSandboxManager(
   manager: SandboxManager,
 ): ShellSandboxBackend {
-  // SandboxManager keeps its engine private; reach in only to label the
-  // backend in ShellResult. If the shape ever changes, the fallback is the
-  // safe "none" value and callers still see a well-formed result.
-  const engine = (manager as unknown as { engine?: { engineType?: string } })
-    .engine;
-  const engineType = engine?.engineType;
+  // "auto" only appears in config; a constructed engine is always concrete.
+  const engineType = manager.engineType;
   if (engineType === "docker") return "docker";
   if (engineType === "apple-container") return "apple-container";
   return "none";
@@ -381,8 +377,8 @@ function assertShellCapability(
  *                    fall back to the host.
  *   - `local-yolo` → direct host exec via child_process.spawn.
  *
- * On Windows, `local-safe` currently throws because no Windows sandbox
- * backend is wired up yet; callers must opt in to `local-yolo` explicitly.
+ * Platform support is determined by the resolved SandboxManager backend; the
+ * router does not silently downgrade `local-safe` to host execution.
  */
 export async function runShell(
   req: ShellRequest,
@@ -431,11 +427,6 @@ export async function runShell(
 
   if (mode === "local-safe") {
     assertShellCapability(req, mode, `sandbox.${req.toolName}`);
-    if (process.platform === "win32") {
-      throw new Error(
-        "[shell-router] Windows local-safe sandbox not yet implemented",
-      );
-    }
     const manager = await resolveSandboxManager(ctx);
     if (!manager) {
       throw new Error(

@@ -326,7 +326,7 @@ describe("EngineVoiceBridge direct synthesis guard", () => {
 		rmSync(bundleRoot, { recursive: true, force: true });
 	});
 
-	it("rejects direct WAV synthesis on the stub backend", async () => {
+	it("rejects direct WAV synthesis on the silent backend", async () => {
 		const bridge = EngineVoiceBridge.start({
 			bundleRoot,
 			useFfiBackend: false,

@@ -83,10 +83,10 @@ async function cloneLocalElizaIfMissing(env) {
     // A complete clone has a .git directory. A clone that was interrupted
     // mid-transfer (the network reset this guards against) can leave a partial
     // tree behind; reusing it would silently build against a broken checkout,
-    // so treat an incomplete directory as missing and re-clone.
+    // so treat a partial directory as missing and re-clone.
     if (fs.existsSync(path.join(elizaRoot, ".git"))) return;
     console.log(
-      "[eliza-source-mode] removing incomplete eliza/ checkout before re-clone",
+      "[eliza-source-mode] removing partial eliza/ checkout before re-clone",
     );
     fs.rmSync(elizaRoot, { recursive: true, force: true });
   }

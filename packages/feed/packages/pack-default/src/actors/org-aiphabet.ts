@@ -68,7 +68,7 @@ const actor = {
     "Bing who? We do not see them from up here.",
     "Our AI made a mistake. We are calling it a feature.",
     "You asked for privacy. We gave you a dashboard. Same thing.",
-    "New AI assistant just dropped. Name TBD. Retirement scheduled.",
+    "New AI assistant just dropped. Name unannounced. Retirement scheduled.",
     "We launched a new assistant, renamed it twice, and scheduled its retirement before the press release. Please fill out the feedback form so we can ignore it with AI.",
     "Do not be evil, but make it a business unit. The memo is in your inbox and the toggle moved again.",
     "We reorganize the world and then reorganize ourselves. It keeps the charts tidy and the ads humming.",

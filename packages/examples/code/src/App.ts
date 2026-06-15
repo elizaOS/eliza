@@ -15,17 +15,150 @@ import { getCwd, setCwd } from "./lib/cwd.js";
 import { FilteringTerminal } from "./lib/filtering-terminal.js";
 import { getCodeTaskService } from "./lib/get-code-task-service.js";
 import { useStore } from "./lib/store.js";
+import type {
+  CodeTask,
+  CodeTaskService,
+  SubAgentType,
+  TaskEvent,
+  TaskPaneVisibility,
+} from "./types.js";
 
-// handleTaskSlashCommand was removed with the legacy orchestrator service.
-// The /task slash command handler below is a stub until task management is rewired.
-async function handleTaskSlashCommand(
-  _args: string,
-  _deps: Record<string, unknown>,
-): Promise<boolean> {
-  return false;
+interface TaskSlashCommandDeps {
+  service: CodeTaskService | null | undefined;
+  currentRoomId: string;
+  addMessage: (
+    roomId: string,
+    role: "system",
+    content: string,
+    taskId?: string,
+  ) => unknown;
+  setCurrentTaskId: (taskId: string | null) => void;
+  setTaskPaneVisibility: (visibility: TaskPaneVisibility) => void;
+  taskPaneVisibility: TaskPaneVisibility;
+  showTaskPane: boolean;
 }
 
-import type { CodeTask, SubAgentType, TaskEvent } from "./types.js";
+async function handleTaskSlashCommand(
+  args: string,
+  deps: TaskSlashCommandDeps,
+): Promise<boolean> {
+  const { currentRoomId, addMessage, service } = deps;
+  if (!service) {
+    addMessage(currentRoomId, "system", "Task service is unavailable.");
+    return true;
+  }
+
+  const [subcommandRaw, ...rest] = args.trim().split(/\s+/).filter(Boolean);
+  const subcommand = (subcommandRaw ?? "list").toLowerCase();
+  const query = rest.join(" ").trim();
+
+  if (subcommand === "help") {
+    addMessage(
+      currentRoomId,
+      "system",
+      [
+        "Task commands:",
+        "/task list",
+        "/task current",
+        "/task switch <number|id|name>",
+        "/task pause [number|id|name]",
+        "/task resume [number|id|name]",
+        "/task cancel [number|id|name]",
+        "/task pane show|hide|auto|toggle",
+      ].join("\n"),
+    );
+    return true;
+  }
+
+  if (subcommand === "pane") {
+    const next = resolveTaskPaneVisibility(
+      query,
+      deps.taskPaneVisibility,
+      deps.showTaskPane,
+    );
+    if (!next) {
+      addMessage(
+        currentRoomId,
+        "system",
+        "Usage: /task pane show|hide|auto|toggle",
+      );
+      return true;
+    }
+    deps.setTaskPaneVisibility(next);
+    addMessage(currentRoomId, "system", `Task pane: ${next}`);
+    return true;
+  }
+
+  const tasks = await refreshTaskStore(service);
+
+  if (subcommand === "list") {
+    addMessage(currentRoomId, "system", formatTaskList(tasks));
+    return true;
+  }
+
+  if (subcommand === "current") {
+    const current = await service.getCurrentTask();
+    addMessage(
+      currentRoomId,
+      "system",
+      current ? formatTaskDetails(current) : "No current task selected.",
+    );
+    return true;
+  }
+
+  if (subcommand === "switch") {
+    const task = resolveTaskQuery(tasks, query);
+    const taskId = task ? getTaskId(task) : null;
+    if (!task || !taskId) {
+      addMessage(
+        currentRoomId,
+        "system",
+        "Usage: /task switch <number|id|name>",
+      );
+      return true;
+    }
+    service.setCurrentTask(taskId);
+    deps.setCurrentTaskId(taskId);
+    addMessage(currentRoomId, "system", `Current task: ${task.name}`);
+    return true;
+  }
+
+  if (["pause", "resume", "cancel"].includes(subcommand)) {
+    const task = query
+      ? resolveTaskQuery(tasks, query)
+      : await service.getCurrentTask();
+    const taskId = task ? getTaskId(task) : null;
+    if (!task || !taskId) {
+      addMessage(
+        currentRoomId,
+        "system",
+        `No task found. Usage: /task ${subcommand} [number|id|name]`,
+      );
+      return true;
+    }
+
+    if (subcommand === "pause") {
+      await service.pauseTask(taskId);
+      addMessage(currentRoomId, "system", `Paused task: ${task.name}`);
+    } else if (subcommand === "resume") {
+      await service.resumeTask(taskId);
+      await service.startTaskExecution(taskId);
+      addMessage(currentRoomId, "system", `Resumed task: ${task.name}`);
+    } else {
+      await service.cancelTask(taskId);
+      addMessage(currentRoomId, "system", `Cancelled task: ${task.name}`);
+    }
+    await refreshTaskStore(service);
+    return true;
+  }
+
+  addMessage(
+    currentRoomId,
+    "system",
+    `Unknown task command: ${subcommand}\nUse /task help.`,
+  );
+  return true;
+}
 
 function parseYesNo(text: string): "yes" | "no" | null {
   const normalized = text.trim().toLowerCase();
@@ -84,6 +217,83 @@ function normalizeSubAgentType(input: string | undefined): SubAgentType | null {
     return "elizaos-native";
 
   return null;
+}
+
+async function refreshTaskStore(service: CodeTaskService): Promise<CodeTask[]> {
+  const tasks = await service.getTasks();
+  const currentTaskId = service.getCurrentTaskId();
+  useStore.getState().setTasks(tasks);
+  useStore.getState().setCurrentTaskId(currentTaskId);
+  return tasks;
+}
+
+function resolveTaskPaneVisibility(
+  input: string,
+  current: TaskPaneVisibility,
+  visible: boolean,
+): TaskPaneVisibility | null {
+  const mode = input.trim().toLowerCase();
+  if (mode === "show" || mode === "shown") return "shown";
+  if (mode === "hide" || mode === "hidden") return "hidden";
+  if (mode === "auto") return "auto";
+  if (mode === "toggle") return visible ? "hidden" : "shown";
+  if (!mode) return current;
+  return null;
+}
+
+function resolveTaskQuery(tasks: CodeTask[], query: string): CodeTask | null {
+  const trimmed = query.trim();
+  if (!trimmed) return null;
+
+  const numeric = Number(trimmed);
+  if (Number.isInteger(numeric) && numeric >= 1 && numeric <= tasks.length) {
+    return tasks[numeric - 1] ?? null;
+  }
+
+  const lower = trimmed.toLowerCase();
+  return (
+    tasks.find((task) => task.id === trimmed) ??
+    tasks.find((task) => task.id?.startsWith(trimmed)) ??
+    tasks.find((task) => task.name.toLowerCase() === lower) ??
+    tasks.find((task) => task.name.toLowerCase().includes(lower)) ??
+    null
+  );
+}
+
+function getTaskId(task: CodeTask): string | null {
+  return task.id ?? null;
+}
+
+function formatTaskList(tasks: CodeTask[]): string {
+  if (tasks.length === 0) return "No tasks.";
+
+  const currentTaskId = useStore.getState().currentTaskId;
+  const lines = tasks.map((task, index) => {
+    const marker = task.id === currentTaskId ? "->" : "  ";
+    const status = task.metadata?.status ?? "pending";
+    const progress = task.metadata?.progress ?? 0;
+    const id = task.id ? task.id.slice(0, 8) : "no-id";
+    return `${marker} ${index + 1}. ${task.name} [${status}, ${progress}%] ${id}`;
+  });
+  return `Tasks:\n${lines.join("\n")}`;
+}
+
+function formatTaskDetails(task: CodeTask): string {
+  const status = task.metadata?.status ?? "pending";
+  const progress = task.metadata?.progress ?? 0;
+  const subAgent = task.metadata?.subAgentType ?? "(default)";
+  const output = task.metadata?.output ?? [];
+  const tail = output.slice(-3).join("\n");
+  return [
+    `Task: ${task.name}`,
+    `ID: ${task.id}`,
+    `Status: ${status}`,
+    `Progress: ${progress}%`,
+    `Agent: ${subAgent}`,
+    tail ? `Recent output:\n${tail}` : null,
+  ]
+    .filter((line): line is string => Boolean(line))
+    .join("\n");
 }
 
 // Slash command autocomplete items

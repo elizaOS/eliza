@@ -89,7 +89,7 @@ export interface MockRule {
 export interface MockAdapterOptions {
   rules?: MockRule[];
   defaultResponse?: string;
-  /** Optional usage stub returned with every response. */
+  /** Optional usage fixture returned with every response. */
   usage?: UsageInfo;
   /** Records every call for assertion in tests. */
   log?: GenerateArgs[];

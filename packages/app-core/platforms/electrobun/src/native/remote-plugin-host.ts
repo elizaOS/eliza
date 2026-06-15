@@ -1371,7 +1371,7 @@ export class RemotePluginHost {
       }
       default:
         throw new Error(
-          `Host request method not implemented: ${method} (caller=${callerId})`,
+          `Unsupported host request method: ${method} (caller=${callerId})`,
         );
     }
   }

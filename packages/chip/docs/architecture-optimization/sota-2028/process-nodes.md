@@ -14,7 +14,7 @@ The 2025-2028 leading-edge logic cohort consolidates four shifts: (1) FinFET →
 | A16 | TSMC | 2027 (slipped from 2H 2026) | GAA NanoSheet | yes (Super Power Rail) | no | ~1.07-1.10× N2P | minor | 8-10% perf @ iso-power or 15-20% power @ iso-perf, +7-10% density vs N2P | not public | HPC / AI first (NVIDIA), then mobile |
 | A14 | TSMC | 2028 (ahead of plan) | 2nd-gen GAA (NanoFlex Pro) | A14 baseline frontside; A14P (SPR) 2029 | **no** (TSMC explicit) | >1.20× N2 logic | scaling resumed at N2 family | **+15% speed @ iso-power, or -30% power @ iso-speed, +20% logic density vs N2** | est. $40-45 k | Apple, NVIDIA, AMD; mobile mid-cycle 2028-2029 |
 | A14P | TSMC | 2029 | 2nd-gen GAA + SPR BSPDN | yes | no | A14 + density gain | minor | additional perf @ iso-power over A14 baseline | est. $45 k+ | HPC, AI, then flagship mobile |
-| A13 / N2U | TSMC | 2029 | optical shrink of A14 / DTCO refresh of N2 | inherits | no | ~+6% over A14 (A13) | minor | N2U: +3-4% perf or 8-10% power, +2-3% density | TBD | cost-down follow-on |
+| A13 / N2U | TSMC | 2029 | optical shrink of A14 / DTCO refresh of N2 | inherits | no | ~+6% over A14 (A13) | minor | N2U: +3-4% perf or 8-10% power, +2-3% density | unpublished | cost-down follow-on |
 | 18A | Intel | HVM Dec 2025 | RibbonFET GAA | **yes (PowerVia, 1st-gen)** | no | **238 (HD)** | competitive, less than N2 | PowerVia ~30% IR drop reduction, +6% Fmax, +5-10% std-cell utilisation vs frontside; ~10% perf / 25% power vs Intel 3 | private | Intel Panther Lake; foundry ramping |
 | 18A-PT | Intel | 2026 | RibbonFET + 3D stacking | yes | no | similar | similar | enables Foveros / hybrid-bond stacking | private | Intel HPC, foundry |
 | 14A | Intel | risk 2027, HVM 2028+ | RibbonFET 2nd gen | **yes, 2nd-gen PowerVia** | **yes — industry first** | not public; targets > N2/A16 | n/a | Intel claim: ~15-20% perf @ iso-power, ~25-30% power @ iso-perf vs 18A | private | DARPA, US gov, hyperscaler diversification |
@@ -140,7 +140,7 @@ What we cannot do without commercial PDK:
 2. **NRE economics.** $250-400 M single N2/N2P tapeout, possibly $300-500 M at A14. Open-source funding models don't reach this scale.
 3. **EUV / High-NA scarcity.** Only ASML ships High-NA scanners; first units reserved for Intel and TSMC. Even if 14A nominally accessible, scanner-allocation isn't.
 4. **BSPDN test/debug.** Two-sided power changes probe/test access; boundary-scan, thermal-IR camera methods, rework all need new methodology. Multi-quarter learning curve even with PDK in hand.
-5. **Hard-IP-availability-vs-node coupling.** Synopsys LPDDR5X PHY shown at 3 nm and N2; LPDDR6 at N2P/A14 on roadmap, not all available. A project picking A14 in 2028 may be PHY-limited even with logic PDK.
+5. **Hard-IP-availability-vs-node coupling.** Synopsys LPDDR5X PHY shown at 3 nm and N2; LPDDR6 at N2P/A14 appears in vendor plans, but not all combinations are available. A project picking A14 in 2028 may be PHY-limited even with logic PDK.
 6. **SRAM density realism.** N3-family SRAM did not scale (bitcell 0.021 µm² ≈ N5). N2 resumes via macro-level density (38.1 Mb/mm²), not bitcell shrink, requiring redesigned assist circuitry. Cache/NPU-SRAM area estimate at N2P/A14 must use macro density, not bitcell shrink, or will under-budget area by 10-20%.
 7. **Yield + defect-density curves.** D0 at new 2 nm-class node in early ramp ~0.20-0.30/cm²; improves slowly. 100-130 mm² mobile AP die at D0 = 0.25 has yield 55-65% during 2025-2027 ramp.
 8. **Open-silicon pipeline ends at Sky130/GF180/IHP SG13.** 130 nm open-PDK frontier was real achievement. Not moving up the node ladder fast enough — Efabless shut down March 2025, taking ChipIgnite shuttle. Tiny Tapeout migrating onto IHP SG13G2 (130 nm) via SwissChips. ASAP7 exists as predictive academic PDK but not manufacturable. No path from open PDKs to flagship-class mobile AP that does not go through commercial foundry NDA.
@@ -156,15 +156,15 @@ What we cannot do without commercial PDK:
 
 ## Sources
 
-- [TSMC roadmap through 2029 — A12, A13, N2U; A16 to 2027 (Tom's Hardware)](https://www.tomshardware.com/tech-industry/semiconductors/tsmc-unveils-process-technology-roadmap-through-2029-a12-a13-n2u-announced-a16-slips-to-2027)
+- Tom's Hardware: TSMC process-node plan through 2029 — A12, A13, N2U; A16 to 2027
 - [TSMC Tech Symposium 2025](https://semiengineering.com/tsmc-tech-symposium-2025/)
 - [TSMC unveils 1.4 nm A14 — 2nd-gen GAA, 2028](https://www.tomshardware.com/tech-industry/tsmc-unveils-1-4nm-technology-2nd-gen-gaa-transistors-full-node-advantages-coming-in-2028)
 - [TSMC A14 process announcement (TSMC ESG)](https://esg.tsmc.com/en-US/articles/366)
 - [TSMC reiterates no High-NA EUV for A14](https://www.tomshardware.com/tech-industry/semiconductors/tsmc-reiterates-it-doesnt-need-high-na-euv-for-1-4nm-class-process-technology)
 - [Intel 18A vs TSMC N2 density](https://www.tomshardware.com/tech-industry/intels-18a-and-tsmcs-n2-process-nodes-compared-intel-is-faster-but-tsmc-is-denser)
 - [Intel 18A HVM Dec 2025](https://business.thepilotnews.com/thepilotnews/article/tokenring-2025-12-29-intel-reclaims-the-silicon-throne-18a-process-enters-high-volume-manufacturing)
-- [Intel Foundry roadmap — 18A-PT, 14A](https://www.tomshardware.com/pc-components/cpus/intel-foundry-roadmap-update-new-18a-pt-variant-that-enables-3d-die-stacking-14a-process-node-enablement)
-- [Samsung SF2 / SF2Z roadmap](https://www.tomshardware.com/tech-industry/samsungs-new-roadmap-unveils-its-2nm-process-nodes-and-outlines-backside-power-delivery-plans)
+- Tom's Hardware: Intel Foundry process-node update — 18A-PT, 14A
+- Tom's Hardware: Samsung SF2 / SF2Z process-node plan
 - [Samsung SF1.4 delayed to 2028-2029](https://www.design-reuse.com/news/202528931-samsung-reportedly-prioritizes-2nm-4nm-improvements-with-1-4nm-unlikely-before-2028-29/)
 - [TSMC 2 nm 38.1 Mb/mm² SRAM (TSMC Research)](https://research.tsmc.com/page/memory/4.html)
 - [N3 SRAM scaling stall — WikiChip](https://fuse.wikichip.org/news/7048/n3e-replaces-n3-comes-in-many-flavors/)

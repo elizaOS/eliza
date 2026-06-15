@@ -192,8 +192,8 @@ export function installCanvasShims(): void {
 }
 
 /**
- * Install HTMLMediaElement and Audio shims to avoid jsdom "Not implemented"
- * warnings when tests exercise preview or playback flows.
+ * Install HTMLMediaElement and Audio shims to avoid jsdom media warnings when
+ * tests exercise preview or playback flows.
  */
 export function installMediaElementShims(): void {
 	if (typeof globalThis.HTMLMediaElement === "undefined") return;

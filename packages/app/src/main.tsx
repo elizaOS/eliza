@@ -178,8 +178,8 @@ function importAppCompanion() {
 
 function importAppLifeOps() {
   return cachedDynamicImport(
-    "@elizaos/plugin-lifeops",
-    () => import("@elizaos/plugin-lifeops"),
+    "@elizaos/plugin-personal-assistant",
+    () => import("@elizaos/plugin-personal-assistant"),
   );
 }
 
@@ -238,15 +238,6 @@ const InferenceCloudAlertButton = lazyNamedComponent<{
 const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
 );
-const LifeOpsPageView = lazyNamedComponent<Record<string, never>>(
-  async () => (await importAppLifeOps()).LifeOpsPageView,
-);
-const BrowserBridgeSetupPanel = lazyNamedComponent<Record<string, never>>(
-  async () => (await importAppLifeOps()).LifeOpsBrowserSetupPanel,
-);
-const LifeOpsActivitySignalsEffect = lazyNamedComponent<Record<string, never>>(
-  async () => (await importAppLifeOps()).LifeOpsActivitySignalsEffect,
-);
 const AppBlockerSettingsCard = lazyNamedComponent<AppBlockerSettingsCardProps>(
   async () => (await importAppLifeOps()).AppBlockerSettingsCard,
 );
@@ -277,7 +268,6 @@ const FineTuningView = lazyNamedComponent<FineTuningViewProps>(
 );
 
 let loadedCompanionSceneStatusHook: (() => CompanionSceneStatus) | null = null;
-let dispatchQueuedLifeOpsGithubCallback: ((url: string) => void) | null = null;
 
 function useLoadedCompanionSceneStatus(): CompanionSceneStatus {
   return (
@@ -363,6 +353,7 @@ const IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS = 300_000;
 const IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS = 600_000;
 const IOS_FULL_BUN_SMOKE_CHAT_TEXT =
   "In one short sentence, confirm the iOS full Bun local backend is running.";
+const CLOUD_PAIR_SESSION_TOKEN_KEY = "eliza:cloud-pair:api-token";
 
 let mobileDeviceBridgeClient: DeviceBridgeClient | null = null;
 let mobileDeviceBridgeStartPromise: Promise<void> | null = null;
@@ -396,6 +387,19 @@ function getWindowUrlSearchParams(): URLSearchParams {
   return new URLSearchParams(search || hashSearch);
 }
 
+function applyCloudPairSessionToken(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const token = window.sessionStorage
+      .getItem(CLOUD_PAIR_SESSION_TOKEN_KEY)
+      ?.trim();
+    if (!token) return;
+    client.setToken(token);
+  } catch {
+    // sessionStorage can be unavailable in hardened browser contexts.
+  }
+}
+
 /**
  * Adds `eliza-electrobun-frameless` for CSS `-webkit-app-region` (Chromium/CEF).
  * macOS WKWebView move/resize are still driven by native overlays in
@@ -424,6 +428,7 @@ if (shouldInstallMainWindowFirstRunPatches(windowShellRoute)) {
 }
 installLocalProviderCloudPreferencePatch(client);
 installDesktopPermissionsClientPatch(client);
+applyCloudPairSessionToken();
 
 if (isElizaOS() && !hasFirstRunRuntimeOverride()) {
   preSeedAndroidLocalRuntimeIfFresh();
@@ -484,8 +489,6 @@ function buildAppBootConfig({
     stewardTransactionHistory: TransactionHistory,
     characterCatalog: APP_CHARACTER_CATALOG,
     envAliases: APP_ENV_ALIASES,
-    lifeOpsPageView: LifeOpsPageView,
-    lifeOpsBrowserSetupPanel: BrowserBridgeSetupPanel,
     appBlockerSettingsCard: AppBlockerSettingsCard,
     websiteBlockerSettingsCard: WebsiteBlockerSettingsCard,
     clientMiddleware: {
@@ -501,8 +504,9 @@ function initializeAppModules(): Promise<void> {
   appModulesInitialized ??= (async () => {
     await importAppCore();
 
-    const [companionModule, lifeOpsModule] = await Promise.all([
+    const [companionModule] = await Promise.all([
       importAppCompanion(),
+      // Side-effect import for the PA HTTP client + Blocker settings cards.
       importAppLifeOps(),
       // Imported for its self-registration side effect (Vincent overlay app).
       importAppVincent(),
@@ -516,10 +520,7 @@ function initializeAppModules(): Promise<void> {
     ]);
 
     companionModule.registerCompanionApp();
-    lifeOpsModule.registerLifeOpsApp();
     loadedCompanionSceneStatusHook = companionModule.useCompanionSceneStatus;
-    dispatchQueuedLifeOpsGithubCallback =
-      lifeOpsModule.dispatchQueuedLifeOpsGithubCallbackFromUrl;
 
     setBootConfig(
       buildAppBootConfig({
@@ -1351,9 +1352,9 @@ function initializeAppLifecycle(): void {
  * the WebSocket reconnect scheduler in `client-base.ts`) can stop burning
  * backoff attempts during airplane mode.
  *
- * Idempotent: HMR or repeated `initializePlatform()` invocations no-op past
- * the first call (each Capacitor listener fires its handler N times if added
- * N times).
+ * Idempotent: HMR or repeated `initializePlatform()` invocations return after
+ * the first registration (each Capacitor listener fires its handler N times if
+ * added N times).
  */
 async function initializeNetworkListener(): Promise<void> {
   if (networkStatusListenerRegistered) return;
@@ -1423,11 +1424,9 @@ function handleDeepLink(url: string): void {
       break;
     case "lifeops":
       window.location.hash = "#lifeops";
-      dispatchQueuedLifeOpsGithubCallback?.(url);
       break;
     case "settings":
       window.location.hash = "#settings";
-      dispatchQueuedLifeOpsGithubCallback?.(url);
       break;
     case "connect": {
       const gatewayUrl = parsed.searchParams.get("url");
@@ -1683,7 +1682,6 @@ function mountReactApp(): void {
               <>
                 <DesktopSurfaceNavigationRuntime />
                 <DesktopTrayRuntime />
-                <LifeOpsActivitySignalsEffect />
                 <App />
               </>
             )}
@@ -1857,8 +1855,40 @@ function validateAndSetApiBase(apiBase: string): void {
 }
 
 function injectPopoutApiBase(): void {
-  const apiBase = getWindowUrlSearchParams().get("apiBase");
+  const params = getWindowUrlSearchParams();
+  const apiBase = params.get("apiBase");
   if (apiBase) validateAndSetApiBase(apiBase);
+}
+
+function injectWaifuChatAccessToken(): void {
+  const params = getWindowUrlSearchParams();
+  const waifuAccessToken = params.get("waifu_access_token")?.trim();
+  if (waifuAccessToken) {
+    setBootConfig({ ...getBootConfig(), apiToken: waifuAccessToken });
+    window.history.replaceState(
+      window.history.state,
+      "",
+      removeUrlParameter(window.location.href, "waifu_access_token"),
+    );
+  }
+}
+
+function removeUrlParameter(href: string, parameter: string): URL {
+  const nextUrl = new URL(href);
+  nextUrl.searchParams.delete(parameter);
+  const hashQueryIndex = nextUrl.hash.indexOf("?");
+  if (hashQueryIndex >= 0) {
+    const hashPath = nextUrl.hash.slice(0, hashQueryIndex);
+    const hashParams = new URLSearchParams(
+      nextUrl.hash.slice(hashQueryIndex + 1),
+    );
+    hashParams.delete(parameter);
+    const serializedHashParams = hashParams.toString();
+    nextUrl.hash = serializedHashParams
+      ? `${hashPath}?${serializedHashParams}`
+      : hashPath;
+  }
+  return nextUrl;
 }
 
 function injectDetachedShellApiBase(): void {
@@ -2219,6 +2249,8 @@ async function main(): Promise<void> {
       err instanceof Error ? err.message : err,
     );
   }
+
+  injectWaifuChatAccessToken();
 
   if (isPopoutWindow()) {
     injectPopoutApiBase();

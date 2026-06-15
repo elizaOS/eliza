@@ -1,7 +1,9 @@
 import type { PreparedPricingEntry, PriceLookupSource } from "../types";
+import { fetchAtlasCloudCatalogEntries } from "./atlascloud";
+import { fetchBitRouterCatalogEntries } from "./bitrouter";
+import { fetchCerebrasPublicCatalogEntries } from "./cerebras";
 import { fetchElevenLabsEntries } from "./elevenlabs";
 import { fetchFalCatalogEntries } from "./fal";
-import { fetchOpenRouterCatalogEntries } from "./openrouter";
 import { fetchSunoEntries } from "./suno";
 import { fetchVastSnapshotEntries } from "./vast";
 
@@ -9,12 +11,17 @@ export async function fetchEntriesForSource(
   source: PriceLookupSource,
 ): Promise<PreparedPricingEntry[]> {
   switch (source) {
+    case "bitrouter":
+      return await fetchBitRouterCatalogEntries();
+    case "atlascloud":
+      return await fetchAtlasCloudCatalogEntries();
     case "gateway":
-    case "openrouter":
     case "openai":
     case "anthropic":
     case "groq":
-      return await fetchOpenRouterCatalogEntries();
+      return await fetchBitRouterCatalogEntries();
+    case "cerebras":
+      return await fetchCerebrasPublicCatalogEntries();
     case "fal":
       return await fetchFalCatalogEntries();
     case "elevenlabs":
@@ -24,6 +31,8 @@ export async function fetchEntriesForSource(
     case "vast":
       return await fetchVastSnapshotEntries();
     case "seed":
+      return [];
+    default:
       return [];
   }
 }

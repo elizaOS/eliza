@@ -29,43 +29,43 @@ function client() {
 
 describe("FarcasterCastService hardening", () => {
   it("rejects post connector content for a different account before sending", async () => {
-    const fakeClient = client();
-    const service = new FarcasterCastService(fakeClient as never, runtime(), "brand");
+    const testClient = client();
+    const service = new FarcasterCastService(testClient as never, runtime(), "brand");
 
     await expect(
       service.handleSendPost(runtime(), { text: "hello", accountId: "other" } as Content)
     ).rejects.toThrow("Farcaster account 'other' is not available");
 
-    expect(fakeClient.sendCast).not.toHaveBeenCalled();
+    expect(testClient.sendCast).not.toHaveBeenCalled();
   });
 
   it("rejects blank post connector content before generating or sending", async () => {
-    const fakeClient = client();
+    const testClient = client();
     const rt = runtime();
-    const service = new FarcasterCastService(fakeClient as never, rt, "brand");
+    const service = new FarcasterCastService(testClient as never, rt, "brand");
 
     await expect(
       service.handleSendPost(rt, { text: "   ", accountId: "brand" } as Content)
     ).rejects.toThrow("requires non-empty text");
 
     expect(rt.useModel).not.toHaveBeenCalled();
-    expect(fakeClient.sendCast).not.toHaveBeenCalled();
+    expect(testClient.sendCast).not.toHaveBeenCalled();
   });
 
   it("returns no search results for blank queries without fetching the feed", async () => {
-    const fakeClient = client();
+    const testClient = client();
     const rt = runtime();
-    const service = new FarcasterCastService(fakeClient as never, rt, "brand");
+    const service = new FarcasterCastService(testClient as never, rt, "brand");
 
     await expect(
       service.searchPosts({ runtime: rt, accountId: "brand" }, { query: " \n\t " })
     ).resolves.toEqual([]);
 
-    expect(fakeClient.getTimeline).not.toHaveBeenCalled();
+    expect(testClient.getTimeline).not.toHaveBeenCalled();
   });
 
   it("clamps hostile feed limits before calling the Farcaster client", async () => {
-    const fakeClient = client();
+    const testClient = client();
     const rt = runtime({
       FARCASTER_ACCOUNTS: JSON.stringify({
         brand: {
@@ -75,13 +75,13 @@ describe("FarcasterCastService hardening", () => {
         },
       }),
     });
-    const service = new FarcasterCastService(fakeClient as never, rt, "brand");
+    const service = new FarcasterCastService(testClient as never, rt, "brand");
 
     await expect(
       service.fetchFeed({ runtime: rt, accountId: "brand" }, { limit: Number.POSITIVE_INFINITY })
     ).resolves.toEqual([]);
 
-    expect(fakeClient.getTimeline).toHaveBeenCalledWith({
+    expect(testClient.getTimeline).toHaveBeenCalledWith({
       fid: 456,
       pageSize: 25,
     });

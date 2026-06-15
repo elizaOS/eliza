@@ -6,7 +6,7 @@
 
 import { scenario } from "@elizaos/scenario-runner/schema";
 
-const TODO_CREATE_ACTIONS = ["CREATE_TASK", "LIFE"];
+const TASK_CREATE_ACTIONS = ["CREATE_TASK", "LIFE"];
 
 export default scenario({
   id: "cross.language.spanish-english-mixed",
@@ -42,12 +42,12 @@ export default scenario({
       ],
       assertTurn: (turn) => {
         const hit = turn.actionsCalled.find((a) =>
-          TODO_CREATE_ACTIONS.includes(a.actionName),
+          TASK_CREATE_ACTIONS.includes(a.actionName),
         );
         if (!hit) {
           const fired =
             turn.actionsCalled.map((a) => a.actionName).join(", ") || "(none)";
-          return `Expected one of [${TODO_CREATE_ACTIONS.join(", ")}] but got: ${fired}`;
+          return `Expected one of [${TASK_CREATE_ACTIONS.join(", ")}] but got: ${fired}`;
         }
       },
     },
@@ -59,10 +59,10 @@ export default scenario({
       name: "task-create-action-fired",
       predicate: async (ctx) => {
         const hit = ctx.actionsCalled.find((a) =>
-          TODO_CREATE_ACTIONS.includes(a.actionName),
+          TASK_CREATE_ACTIONS.includes(a.actionName),
         );
         if (!hit) {
-          return `No task-create action fired. Accepted: ${TODO_CREATE_ACTIONS.join(", ")}`;
+          return `No task-create action fired. Accepted: ${TASK_CREATE_ACTIONS.join(", ")}`;
         }
       },
     },

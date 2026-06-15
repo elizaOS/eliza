@@ -16,7 +16,7 @@ end-to-end:
 | Database (DB) | full | upstream `dbbench/{dev,standard}.jsonl`, label-based result-set scoring |
 | Knowledge Graph (KG) | partial | reads upstream `knowledgegraph/{dev,std}.json`; full SPARQL backend requires Virtuoso (`AGENTBENCH_KG_SPARQL_URL`) |
 | Lateral Thinking Puzzle | full | upstream xlsx (`dev`, `standard`); local heuristic host when no eval-agent is configured |
-| Card Game (Avalon) | stub | upstream native AI SDK is not vendored; set `AGENTBENCH_CARD_GAME_BIN` to enable |
+| Card Game (Avalon) | external | upstream native AI SDK and `card_game.server` bridge are not vendored; adapter records skipped tasks |
 | Householding (ALFWorld) | lazy | needs `pip install alfworld && alfworld-download` + `ALFWORLD_DATA` |
 | Web Shopping (WebShop) | lazy | needs the WebShop product corpus (`WEBSHOP_DATA_DIR`) |
 | Web Browsing (Mind2Web) | full (single-turn) | uses upstream's prompt fixtures; full HTML-trace eval via `packages/benchmarks/mind2web` |
@@ -131,7 +131,7 @@ elizaos_agentbench/
   upstream_loader.py           # loaders for the vendored upstream data
   runner.py                    # AgentBenchRunner: dispatch -> adapters -> report
   eliza_harness.py             # ElizaOS bridge adapter (used by run_benchmark.py)
-  benchmark_actions.py         # compatibility stubs for the legacy Python Eliza
+  benchmark_actions.py         # compatibility shims for the legacy Python Eliza
   adapters/
     base.py
     db_adapter.py

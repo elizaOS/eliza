@@ -47,9 +47,14 @@ describe("LocalFileStorageService", () => {
       "nested//dir"
     );
 
+    // The URL format is platform-aware: POSIX uses two slashes
+    // (`file:///abs/path`), Windows uses three plus drive letter
+    // (`file:///C:/abs/path`). `pathToFileURL` produces the right shape on
+    // either host, which is what the service now returns.
+    const { pathToFileURL } = await import("node:url");
     expect(result).toEqual({
       success: true,
-      url: `file://${path.join(root, "nested/dir/sample.bin")}`,
+      url: pathToFileURL(path.join(root, "nested/dir/sample.bin")).href,
     });
     await expect(service.exists("ignored", "nested/dir/sample.bin")).resolves.toBe(true);
     await expect(service.downloadBytes("ignored", "nested/dir/sample.bin")).resolves.toEqual(
@@ -70,7 +75,8 @@ describe("LocalFileStorageService", () => {
 
     const result = await service.uploadFile(source, "uploads");
 
-    expect(result.url).toBe(`file://${path.join(root, "uploads/1767323045000-input.txt")}`);
+    const { pathToFileURL: toUrl1 } = await import("node:url");
+    expect(result.url).toBe(toUrl1(path.join(root, "uploads/1767323045000-input.txt")).href);
     await service.downloadFile("ignored", "uploads/1767323045000-input.txt", destination);
     expect(readFileSync(destination, "utf8")).toBe("hello");
     vi.useRealTimers();
@@ -79,10 +85,11 @@ describe("LocalFileStorageService", () => {
   it("uploads pretty JSON and rejects missing JSON data", async () => {
     const service = await LocalFileStorageService.start(runtime({ LOCAL_STORAGE_PATH: root }));
 
+    const { pathToFileURL: toUrl2 } = await import("node:url");
     await expect(service.uploadJson({ ok: true }, "data.json", "json")).resolves.toEqual({
       success: true,
       key: "json/data.json",
-      url: `file://${path.join(root, "json/data.json")}`,
+      url: toUrl2(path.join(root, "json/data.json")).href,
     });
     expect(readFileSync(path.join(root, "json/data.json"), "utf8")).toBe(
       JSON.stringify({ ok: true }, null, 2)

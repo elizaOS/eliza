@@ -2,13 +2,10 @@
  * silero-vad-cpp — LSTM hidden/cell state management.
  *
  * Pure C, no external dependencies. The public ABI only exposes
- * `silero_vad_reset_state(handle)` — once the ggml-backed port lands
- * it will call `silero_vad_state_reset` against the state struct that
- * lives inside its `silero_vad_session`. Until then this TU is also
- * the source of the unit-test-visible behaviour: the test
+ * `silero_vad_reset_state(handle)`, which calls `silero_vad_state_reset`
+ * against the state struct inside `silero_vad_session`. The unit test
  * (`test/silero_vad_state_test.c`) exercises `reset`, `promote`, and
- * `is_zero` directly so the contract is validated even while the
- * model surface is stubbed.
+ * `is_zero` directly.
  */
 
 #include "silero_vad_state.h"

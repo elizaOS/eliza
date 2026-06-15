@@ -14,6 +14,17 @@ import { LocalStewardAuthContext } from "../../../../providers/StewardProvider";
 
 type CallbackStatus = "verifying" | "success" | "error";
 
+function isMfaRequiredAuthResult(
+  result: unknown,
+): result is { mfaRequired: true } {
+  return (
+    typeof result === "object" &&
+    result !== null &&
+    "mfaRequired" in result &&
+    result.mfaRequired === true
+  );
+}
+
 export default function StewardEmailCallbackPage() {
   const t = useT();
   const [searchParams] = useSearchParams();
@@ -39,23 +50,19 @@ export default function StewardEmailCallbackPage() {
       return;
     }
 
-    if (!returnTo) {
-      setStatus("error");
-      setError(
-        t("cloud.emailCallback.noRequest", {
-          defaultValue:
-            "Could not find the app authorization request. Start sign-in again from the app.",
-        }),
-      );
-      return;
-    }
+    // `returnTo` is set when the email flow was kicked off from the
+    // /app-auth/authorize page (third-party app integration). For a regular
+    // dashboard sign-in (e.g. magic link triggered from /login with a tenant
+    // whose `magicLinkBaseUrl` points back to this SPA), localStorage is
+    // empty and we fall back to /dashboard.
+    const destination = returnTo ?? "/dashboard";
 
     let redirectTimer: ReturnType<typeof setTimeout> | null = null;
     const finishSuccess = () => {
       clearStoredAppAuthorizeReturnTo();
       setStatus("success");
       redirectTimer = setTimeout(() => {
-        window.location.replace(returnTo);
+        window.location.replace(destination);
       }, 1500);
     };
 
@@ -81,6 +88,14 @@ export default function StewardEmailCallbackPage() {
     void (async () => {
       try {
         const result = await auth.verifyEmailCallback(token, email);
+        if (isMfaRequiredAuthResult(result)) {
+          throw new Error(
+            t("cloud.emailCallback.mfaNotSupported", {
+              defaultValue:
+                "This account requires multi-factor authentication, which isn't supported here yet. Use a different sign-in method.",
+            }),
+          );
+        }
         await syncStewardSessionCookie(result.token, result.refreshToken);
         finishSuccess();
       } catch (err) {

@@ -44,9 +44,7 @@ import { feedPlugin } from "../plugins/feed";
 import { enhanceRuntimeWithFeed } from "../plugins/feed/integration";
 import { groqPlugin } from "../plugins/groq";
 import { agentCorePlugin } from "../plugins/plugin-agent-core/src";
-// TODO: experiencePlugin disabled due to missing plugin implementation
-// Re-enable when plugin-experience is properly implemented and exports valid Plugin
-// import { experiencePlugin } from '../plugins/plugin-experience/src';
+import { experiencePlugin } from "../plugins/plugin-experience/src";
 import { trajectoryLoggerPlugin } from "../plugins/plugin-trajectory-logger/src";
 import {
   wrapPluginActions,
@@ -97,9 +95,7 @@ const CONTEXT_REFRESH_INTERVAL_MS = (() => {
   return DEFAULT_CONTEXT_REFRESH_HOURS * MS_PER_HOUR;
 })();
 
-async function loadOptionalPlugin(
-  packageName: string,
-): Promise<Plugin | null> {
+async function loadOptionalPlugin(packageName: string): Promise<Plugin | null> {
   try {
     const pluginModule = await import(packageName);
     return (pluginModule.default ?? pluginModule) as Plugin;
@@ -1130,7 +1126,7 @@ export class AgentRuntimeManager {
     // Type cast plugins to ensure compatibility across different @elizaos/core versions
     const plugins: Plugin[] = [
       agentCorePlugin as Plugin,
-      // experiencePlugin as Plugin,
+      experiencePlugin as Plugin,
       trajectoryLoggerPlugin as Plugin,
       // Conditionally add LLM plugins based on available API keys
       ...(hasGroqAccess ? [groqPlugin as Plugin] : []),

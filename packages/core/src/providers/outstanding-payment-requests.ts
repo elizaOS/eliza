@@ -18,6 +18,7 @@ import type {
 	Memory,
 	Provider,
 	ProviderResult,
+	Service,
 	State,
 } from "../types/index.ts";
 
@@ -53,9 +54,9 @@ export const outstandingPaymentRequestsProvider: Provider = {
 		message: Memory,
 		_state?: State,
 	): Promise<ProviderResult> => {
-		const client = runtime.getService(
-			PAYMENT_REQUESTS_CLIENT_SERVICE,
-		) as unknown as OutstandingPaymentRequestsClient | null;
+		const client = runtime.getService<
+			Service & OutstandingPaymentRequestsClient
+		>(PAYMENT_REQUESTS_CLIENT_SERVICE);
 		const identityId =
 			typeof message.entityId === "string" ? message.entityId : undefined;
 

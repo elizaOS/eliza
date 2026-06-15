@@ -72,6 +72,7 @@ describe("BirdeyeService market data caching", () => {
             priceInNative: 0.02,
             liquidity: 150,
             priceChange24h: -1.25,
+            mc: 12345,
           },
         },
       }),
@@ -94,6 +95,7 @@ describe("BirdeyeService market data caching", () => {
       priceSol: 0.02,
       liquidity: 150,
       priceChange24h: -1.25,
+      marketCapUsd: 12345,
     });
     expect(service.runtime.setCache).toHaveBeenCalledWith(
       "birdeye_tokens_base_0xabc",

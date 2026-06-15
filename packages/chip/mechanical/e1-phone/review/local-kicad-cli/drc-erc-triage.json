@@ -5,26 +5,28 @@
     "drc": "mechanical/e1-phone/review/local-kicad-cli/routed-drc.json",
     "erc": "mechanical/e1-phone/review/local-kicad-cli/e1-phone-erc.json"
   },
+  "kicad_config_home": "mechanical/e1-phone/review/local-kicad-cli/config",
+  "kicad_fp_lib_table": "mechanical/e1-phone/review/local-kicad-cli/config/9.0/fp-lib-table",
+  "kicad_fp_lib_table_sha256": "4cc067ea82c3df5b4c9d02b2a73a04156c8bab9fd16028180fe9123331d902d6",
   "source_hashes": {
-    "drc_sha256": "93dc1d605b924db690ebf4be40a16079e6f08bf12fb06f58c01c018918e3aa0e",
-    "erc_sha256": "a5e371458da5a377b1fa694e2b83729c59ef291feafb3849ebae85863a26e77d"
+    "drc_sha256": "8646c9c360add3c53cd4798f430b0a3096f0c6291cf459dc4767f8f5250a1d92",
+    "erc_sha256": "df324cd474bc568a2b326e7232de228725bce849a4c2ecff5b81d23d5fd919c3"
   },
   "status": "blocked_local_kicad_drc_erc_violations_present",
   "drc": {
-    "total_count": 2304,
+    "total_count": 2201,
     "by_type": {
       "clearance": 499,
-      "unconnected_items": 441,
-      "solder_mask_bridge": 201,
+      "unconnected_items": 446,
+      "solder_mask_bridge": 200,
       "copper_edge_clearance": 199,
       "items_not_allowed": 199,
-      "shorting_items": 197,
+      "shorting_items": 192,
       "tracks_crossing": 134,
-      "lib_footprint_issues": 89,
-      "courtyards_overlap": 85,
+      "courtyards_overlap": 81,
       "hole_clearance": 67,
-      "silk_overlap": 58,
-      "silk_over_copper": 56,
+      "silk_overlap": 54,
+      "silk_over_copper": 51,
       "drill_out_of_range": 24,
       "starved_thermal": 22,
       "via_diameter": 20,
@@ -34,8 +36,8 @@
       "via_dangling": 1
     },
     "by_severity": {
-      "error": 2088,
-      "warning": 216
+      "error": 2083,
+      "warning": 118
     },
     "examples_by_type": [
       {
@@ -95,12 +97,12 @@
       {
         "type": "shorting_items",
         "severity": "error",
-        "description": "Items shorting two nets (nets ESIM_CLK and PWR_KEY_N)",
+        "description": "Items shorting two nets (nets  and GND)",
         "source_bucket": "violations",
         "sheet_path": "",
         "item_descriptions": [
-          "Track [ESIM_CLK] on F.Cu, length 42.5022 mm",
-          "Track [PWR_KEY_N] on F.Cu, length 26.0768 mm"
+          "Pad 1 [<no net>] of FID_BR on F.Cu",
+          "Track [GND] on F.Cu, length 30.0000 mm"
         ]
       },
       {
@@ -112,16 +114,6 @@
         "item_descriptions": [
           "Track [DISP_AVDD_5V5] on F.Cu, length 19.3093 mm",
           "Track [DSI_D1_N] on F.Cu, length 8.0623 mm"
-        ]
-      },
-      {
-        "type": "lib_footprint_issues",
-        "severity": "warning",
-        "description": "The current configuration does not include the footprint library 'e1-phone-dev'.",
-        "source_bucket": "violations",
-        "sheet_path": "",
-        "item_descriptions": [
-          "Footprint J_USB_C"
         ]
       },
       {

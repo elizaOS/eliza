@@ -54,13 +54,13 @@
  * ```
  */
 
+import { automationPipeline } from "@feed/agents/training";
 import {
   getClientIp,
   logAdminView,
   requireAdmin,
   withErrorHandling,
 } from "@feed/api";
-import { automationPipeline } from "@feed/training";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 

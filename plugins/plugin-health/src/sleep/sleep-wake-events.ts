@@ -95,12 +95,12 @@ function isAwakeState(state: LifeOpsCircadianState): boolean {
  * - `wake.confirmed` fires on waking -> awake transitions (paired with sleep.ended).
  * - `sleep.onset_candidate` fires on awake/winding_down -> (onset) transitions
  *   when the state machine starts the SLEEP_ONSET_WINDOW. For this interim
- *   adapter we fire it alongside sleep.detected since the scorer rewrite
- *   (scorer_rewrite todo) is where the dedicated onset candidate state lives.
+ *   adapter we fire it alongside sleep.detected; the scorer rewrite is where
+ *   the dedicated onset candidate state lives.
  * - `sleep.detected` fires on any -> sleeping transition.
  * - `nap.detected` fires on any -> napping transition.
  * - `bedtime.imminent` fires once when minutesUntilBedtimeTarget crosses
- *   from >30 to <=30 with a future target.
+ *   from >30 to <=30 with a target after the current time.
  * - `regularity.changed` fires on regularityClass transitions.
  */
 export function deriveSleepWakeEvents(args: {

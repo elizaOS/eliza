@@ -58,7 +58,7 @@ const APPS_VIEW_HIDDEN_APP_NAME_SET = new Set<string>(
 );
 
 const FEATURED_APP_NAMES = new Set<string>([
-  "@elizaos/plugin-lifeops",
+  "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-companion",
   "@elizaos/plugin-defense-of-the-agents",
   "@elizaos/plugin-clawville",
@@ -277,8 +277,6 @@ export function filterAppsForCatalog(
       return false;
     }
     // Developer-only apps are hidden unless Developer Mode is on.
-    // TODO: server-side population pending — `developerOnly` and `visibleInAppStore`
-    // are declared in PluginApp but not yet plumbed through `RegistryAppInfo` API responses.
     if (app.developerOnly && !developerMode) {
       return false;
     }

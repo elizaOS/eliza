@@ -24,7 +24,7 @@ const agent = {
 };
 ```
 
-The service skips initialization unless both `ROBLOX_API_KEY` and
+The service is unavailable unless both `ROBLOX_API_KEY` and
 `ROBLOX_UNIVERSE_ID` are set, and the `ROBLOX` action only validates when both are
 present.
 
@@ -35,7 +35,7 @@ present.
 | `ROBLOX_API_KEY`         | Yes      | —              | Roblox Open Cloud API key            |
 | `ROBLOX_UNIVERSE_ID`     | Yes      | —              | Universe ID of the experience        |
 | `ROBLOX_PLACE_ID`        | No       | —              | Specific place ID                    |
-| `ROBLOX_WEBHOOK_SECRET`  | No       | —              | Webhook validation secret (unused)   |
+| `ROBLOX_WEBHOOK_SECRET`  | No       | —              | Secret exposed in config for external inbound bridges |
 | `ROBLOX_MESSAGING_TOPIC` | No       | `eliza-agent`  | Messaging Service topic              |
 | `ROBLOX_DRY_RUN`         | No       | `false`        | `"true"` suppresses publish calls    |
 

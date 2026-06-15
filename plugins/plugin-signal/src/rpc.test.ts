@@ -77,7 +77,7 @@ describe("Signal RPC helpers", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(
-      signalRpcRequest("noop", undefined, { baseUrl: "http://localhost" })
+      signalRpcRequest("methodWithoutResult", undefined, { baseUrl: "http://localhost" })
     ).resolves.toBeUndefined();
     await expect(
       signalRpcRequest("empty", undefined, { baseUrl: "http://localhost" })

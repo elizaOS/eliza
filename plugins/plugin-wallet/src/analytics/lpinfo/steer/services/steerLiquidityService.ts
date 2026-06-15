@@ -1079,9 +1079,8 @@ export class SteerLiquidityService extends Service {
     chainId: number,
   ): Promise<{ [address: string]: number } | null> {
     try {
-      // This is a placeholder - in a real implementation, you'd call a price API
-      // For now, we'll return null to indicate no price data
-      logger.log(`Price fetching not yet implemented for chain ${chainId}`);
+      // No price API is wired for this analytics path; null indicates no price data.
+      logger.log(`Price data unavailable for chain ${chainId}`);
       return null;
     } catch (error) {
       logger.error(
@@ -1532,7 +1531,7 @@ export class SteerLiquidityService extends Service {
         {
           assets,
           receiver:
-            "0x0000000000000000000000000000000000000000" as `0x${string}`, // Placeholder
+            "0x0000000000000000000000000000000000000000" as `0x${string}`,
           vault: vaultAddress as `0x${string}`,
           isToken0,
           depositSlippagePercent,

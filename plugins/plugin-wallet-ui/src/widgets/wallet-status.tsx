@@ -1,8 +1,6 @@
-import type {
-  ChatSidebarWidgetDefinition,
-  ChatSidebarWidgetProps,
-} from "@elizaos/ui";
-import { EmptyWidgetState, useApp, WidgetSection } from "@elizaos/ui";
+import type { ChatSidebarWidgetProps } from "@elizaos/ui/components";
+import { EmptyWidgetState, WidgetSection } from "@elizaos/ui/components";
+import { useApp } from "@elizaos/ui/state";
 import { Check, Copy, Wallet } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -336,11 +334,3 @@ export function WalletStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
     </WidgetSection>
   );
 }
-
-export const WALLET_STATUS_WIDGET: ChatSidebarWidgetDefinition = {
-  id: "wallet.status",
-  pluginId: "wallet",
-  order: 70,
-  defaultEnabled: true,
-  Component: WalletStatusSidebarWidget,
-};

@@ -1,2 +1,2 @@
 export * from "./branding-base";
-export { BrandingContext, useBranding } from "./branding-react";
+export { BrandingContext, useBranding } from "./branding-react.hooks";

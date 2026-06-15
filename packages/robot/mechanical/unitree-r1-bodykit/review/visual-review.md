@@ -123,7 +123,7 @@ judged directly against the bodykit.
   STEP; the donor face is now a parametric fixed-grid loft and exports as STEP. Shin armor
   has moved closer to the concept direction but still needs production
   surfacing and real split-line CAD. The face/wrist stress rows are
-  now also captured in `head-keepout-policy.json` so future work can protect
+  now also captured in `head-keepout-policy.json` so later CAD passes can protect
   the donor-derived face with pose limits instead of flattening it further. The
   face alignment report now separates 2D proportion alignment from face-volume
   quality: proportions pass, and `face_shell_depth_check` now passes at

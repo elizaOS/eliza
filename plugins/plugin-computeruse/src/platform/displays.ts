@@ -396,32 +396,6 @@ export function parseDarwinDisplays(output: string): DisplayInfo[] {
   return ensurePrimary(displays);
 }
 
-const DARWIN_JXA = `
-ObjC.import("CoreGraphics");
-const max = 16;
-const idsPtr = Ref();
-const countPtr = Ref();
-const arr = $.CGDisplayCreateActiveDisplayList ? null : null; // placeholder
-const ids = [];
-const count = Ref();
-// Use CGGetActiveDisplayList — fill into a typed array.
-const maxDisplays = 16;
-const buf = $.malloc(maxDisplays * 4);
-const result = $.CGGetActiveDisplayList(maxDisplays, buf, count);
-const total = count[0];
-const mainId = $.CGMainDisplayID();
-const out = [];
-for (let i = 0; i < total; i++) {
-  const id = $.CFArrayGetCount ? 0 : 0;
-  // Read uint32 at offset i*4
-  const dv = $.NSData.dataWithBytesLength(buf + i * 4, 4);
-  const arrBytes = dv.bytes;
-  // Fall back to reading via Ref — simpler with JXA helpers:
-}
-$.free(buf);
-JSON.stringify(out);
-`;
-
 function enumerateDarwin(): DisplayInfo[] {
   // JXA's pointer manipulation for CGGetActiveDisplayList is brittle. Use a
   // simpler shell-out path: `system_profiler SPDisplaysDataType -json` lists

@@ -12,11 +12,11 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
-import { createWriteStream, type WriteStream } from "node:fs";
+import { createWriteStream, existsSync, type WriteStream } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { type AddressInfo, createConnection, createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   type RunningControlPlaneMock,
@@ -29,6 +29,30 @@ import {
 
 import { buildSharedEnv } from "./env";
 
+/**
+ * Resolve the bun executable for `child_process.spawn`. On Windows, Node cannot
+ * spawn the extensionless npm `bun` shim (spawn ENOENT) nor a `.cmd` without
+ * `shell: true`, so probe the native `bun.exe` first. POSIX uses plain `bun`.
+ */
+function resolveBun(): string {
+  if (process.env.BUN && existsSync(process.env.BUN)) return process.env.BUN;
+  const names = process.platform === "win32" ? ["bun.exe", "bun"] : ["bun"];
+  const home = process.env.HOME || process.env.USERPROFILE || "";
+  const dirs = [
+    resolve(home, ".bun/bin"),
+    ...(process.env.PATH?.split(delimiter) ?? []),
+  ];
+  for (const dir of dirs) {
+    for (const name of names) {
+      const candidate = resolve(dir, name);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return process.platform === "win32" ? "bun.exe" : "bun";
+}
+
+const BUN = resolveBun();
+
 const REPO_ROOT = resolve(import.meta.dirname, "../../../../..");
 const LOG_DIR = resolve(import.meta.dirname, "../../.logs");
 
@@ -36,6 +60,7 @@ export interface StackHandle {
   stop: () => Promise<void>;
   urls: {
     api: string;
+    /** Empty string when the stack was started with `frontend: false`. */
     frontend: string;
     hetzner: string;
     controlPlane: string;
@@ -205,6 +230,12 @@ export interface StartCloudStackOptions {
   apiPort?: number;
   /** Override frontend port. Default: free port. */
   frontendPort?: number;
+  /**
+   * Boot the cloud-frontend Vite dev server. Defaults to true. Set to false for
+   * API-only stacks (e.g. the monetized-app loop) that never drive a browser —
+   * skips the Vite spawn + health wait, and leaves `urls.frontend` empty.
+   */
+  frontend?: boolean;
 }
 
 /**
@@ -265,7 +296,7 @@ export async function startCloudStack(
   procs.push(
     spawnLogged(
       "pglite",
-      "bun",
+      BUN,
       ["run", "packages/scripts/cloud/admin/dev/pglite-server.ts"],
       {
         env: pgliteEnv,
@@ -293,7 +324,7 @@ export async function startCloudStack(
   if (!opts.skipMigrate) {
     await runLoggedStep(
       "cloud-migrate",
-      "bun",
+      BUN,
       ["run", "--cwd", "packages/cloud-shared", "db:migrate"],
       {
         env: stackEnv,
@@ -303,11 +334,19 @@ export async function startCloudStack(
     );
   }
 
+  // Boot cloud-api through its wrangler dev launcher — the same entrypoint the
+  // cloud:mock stack uses (`bun run --cwd packages/cloud-api dev`). The earlier
+  // no-wrangler "e2e-server" adapter imported cloud-api straight from TypeScript
+  // source, which neither node (it can't load the extensionless `.ts` relative
+  // imports) nor bun (cloud-api's `@/…` path aliases need a tsconfig `baseUrl`
+  // that tsgo forbids) can resolve — only wrangler/esbuild bundling does. The
+  // `stripBunAncestryEnv` in env.ts exists precisely so wrangler starts from a
+  // bun-spawned context. wrangler pre-bundles, so requests are fast.
   procs.push(
     spawnLogged(
       "cloud-api",
-      "node",
-      ["packages/scripts/cloud/admin/dev/cloud-api-e2e-server.mjs"],
+      BUN,
+      ["run", "--cwd", "packages/cloud-api", "dev"],
       {
         env: stackEnv,
         cwd: REPO_ROOT,
@@ -322,32 +361,35 @@ export async function startCloudStack(
     label: "cloud-api",
   });
 
-  // 3. cloud-frontend Vite dev
-  const frontendEnv = {
-    ...stackEnv,
-    PORT: String(frontendPort),
-    VITE_API_BASE_URL: apiUrl,
-    VITE_API_PROXY_TARGET: apiUrl,
-    NEXT_PUBLIC_API_BASE_URL: apiUrl,
-  };
-  procs.push(
-    spawnLogged(
-      "cloud-frontend",
-      "bun",
-      ["run", "dev", "--", "--host", "127.0.0.1"],
-      {
-        env: frontendEnv,
-        cwd: join(REPO_ROOT, "packages", "cloud-frontend"),
-        logFile: join(LOG_DIR, "cloud-frontend.log"),
-      },
-    ),
-  );
+  // 3. cloud-frontend Vite dev (skipped for API-only stacks)
+  let frontendUrl = "";
+  if (opts.frontend !== false) {
+    const frontendEnv = {
+      ...stackEnv,
+      PORT: String(frontendPort),
+      VITE_API_BASE_URL: apiUrl,
+      VITE_API_PROXY_TARGET: apiUrl,
+      NEXT_PUBLIC_API_BASE_URL: apiUrl,
+    };
+    procs.push(
+      spawnLogged(
+        "cloud-frontend",
+        BUN,
+        ["run", "dev", "--", "--host", "127.0.0.1"],
+        {
+          env: frontendEnv,
+          cwd: join(REPO_ROOT, "packages", "cloud-frontend"),
+          logFile: join(LOG_DIR, "cloud-frontend.log"),
+        },
+      ),
+    );
 
-  const frontendUrl = `http://127.0.0.1:${frontendPort}`;
-  await waitForHttpOk(frontendUrl, {
-    timeoutMs: 120_000,
-    label: "cloud-frontend",
-  });
+    frontendUrl = `http://127.0.0.1:${frontendPort}`;
+    await waitForHttpOk(frontendUrl, {
+      timeoutMs: 120_000,
+      label: "cloud-frontend",
+    });
+  }
 
   let stopped = false;
   const stop = async () => {

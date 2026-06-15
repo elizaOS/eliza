@@ -114,7 +114,7 @@ specific physical target being claimed.
 | Stub/scaffold | WiFi/Bluetooth is product-scaffold only and not bonded into e1 chip. | SDIO host, Bluetooth transport, firmware loading, regulatory path, DTS, and driver tests exist or remain excluded. | WiFi interface gate |
 | Complete gap | Camera/ISP has no CSI/MIPI, sensor power/reset/I2C, tuning, calibration, image-quality, or HAL3 evidence. | A camera non-implementation contract is added, or a real camera workstream defines sensor, board, drivers, HAL, and IQ gates. | Camera scope gate |
 | Untested | Display has scaffold registers and pattern behavior but lacks release-grade scanout validation. | Framebuffer fetch, pixel formats, vsync, underflow, panel init, DSI/PHY bridge, color/gamma, and driver tests pass. | Display validation gate |
-| Complete gap | Sensor hub, modem, power management, security, and production peripheral policies are not implemented. | Each enters scope only with architecture contract, owner, tests, and release blockers. | Risk gate |
+| Complete gap | Sensor hub, modem, power management, security, and production peripheral policies are not available as product evidence. | Each enters scope only with architecture contract, owner, tests, and release blockers. | Risk gate |
 | LARP risk | Product interface YAML can look like implemented peripheral support. | Status fields stay scaffold/excluded until hardware and driver evidence exists. | Product check |
 
 Done means an interface has hardware, software, and validation evidence, or is
@@ -178,7 +178,7 @@ The scoped docs and checks do not treat informal deferred-work markers as
 acceptable release evidence. Existing not-implemented areas are intentionally
 named as Complete gap, Stub, Scaffold, Untested, LARP risk, or Blocked rows. The
 locally closable stale blocker cleanup is to keep every blocker tied to a next
-command and evidence artifact rather than vague future work.
+command and evidence artifact rather than vague deferred work.
 
 | Blocker class | Current evidence | Required unblock artifact |
 |---|---|---|
@@ -231,7 +231,7 @@ command and evidence artifact rather than vague future work.
 
 - Each workstream has at least one executable or explicit blocked gate.
 - Every stub, scaffold, placeholder, to-do marker, and not-implemented area is
-  either owned by a future workstream or kept out of release claims.
+  either owned by a later workstream or kept out of release claims.
 - QEMU/Renode, docs-only, and metadata checks are never used as hardware proof.
 - Android boot, Android compatibility, and complete phone behavior are tracked
   as separate claim levels.

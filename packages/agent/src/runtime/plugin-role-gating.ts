@@ -3,7 +3,8 @@
  *
  * Action access is declared on each action's `roleGate` and enforced by core
  * execution paths. This module only keeps provider redaction for legacy
- * providers that do not yet run through the context catalog.
+ * providers that still use direct provider registration instead of the
+ * context catalog.
  *
  * @module plugin-role-gating
  */

@@ -15,7 +15,7 @@
  *
  * - **`normalizeNativeTools`** — Array → `ToolSet` with `jsonSchema(...)`; object → pass-through
  *   so advanced callers can supply a pre-built `ToolSet`. **Why both:** core usually sends
- *   `ToolDefinition[]`, but tests and future code paths may send an SDK-native object.
+ *   `ToolDefinition[]`, while test harnesses and SDK-native callers can pass an object.
  * - **`normalizeNativeMessages`** — Maps Eliza/chat-shaped records into `ModelMessage[]` so
  *   assistant tool calls and tool results round-trip. **Why:** v5 Stage 1 is not a single flat
  *   `prompt` string; dropping this step would flatten or drop tool history incorrectly.

@@ -1,13 +1,34 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { MobileCameraSource } from "./capacitor-camera";
 import {
-  CapacitorCameraStub,
+  CapacitorCameraSource,
   clearMobileCameraSource,
   getMobileCameraSource,
   registerMobileCameraSource,
+  UnavailableMobileCameraSource,
 } from "./capacitor-camera";
 
+interface TestCapacitorHost {
+  Capacitor?: {
+    Plugins?: {
+      ElizaVision?: {
+        listCameras?: () => Promise<
+          Array<{ id: string; name: string; connected: boolean }>
+        >;
+        open?: () => Promise<void>;
+        captureJpeg?: () => Promise<string>;
+        close?: () => Promise<void>;
+      };
+    };
+  };
+}
+
 describe("MobileCameraSource registry", () => {
+  afterEach(() => {
+    clearMobileCameraSource();
+    delete (globalThis as unknown as TestCapacitorHost).Capacitor;
+  });
+
   it("returns null when no source is registered", () => {
     clearMobileCameraSource();
     expect(getMobileCameraSource()).toBeNull();
@@ -15,7 +36,7 @@ describe("MobileCameraSource registry", () => {
 
   it("retains the most recent registration", () => {
     clearMobileCameraSource();
-    const first = new CapacitorCameraStub();
+    const first = new UnavailableMobileCameraSource();
     const second: MobileCameraSource = {
       listCameras: async () => [
         { id: "back", name: "Back camera", connected: true },
@@ -61,11 +82,34 @@ describe("MobileCameraSource registry", () => {
     expect(getMobileCameraSource()).toBeNull();
   });
 
-  it("stub refuses captures cleanly", async () => {
-    const stub = new CapacitorCameraStub();
-    await expect(stub.listCameras()).resolves.toEqual([]);
-    await expect(stub.open()).rejects.toBeInstanceOf(Error);
-    await expect(stub.captureJpeg()).rejects.toBeInstanceOf(Error);
-    await expect(stub.close()).resolves.toBeUndefined();
+  it("unavailable source refuses captures cleanly", async () => {
+    const source = new UnavailableMobileCameraSource();
+    await expect(source.listCameras()).resolves.toEqual([]);
+    await expect(source.open()).rejects.toBeInstanceOf(Error);
+    await expect(source.captureJpeg()).rejects.toBeInstanceOf(Error);
+    await expect(source.close()).resolves.toBeUndefined();
+  });
+
+  it("auto-discovers a Capacitor ElizaVision bridge", async () => {
+    (globalThis as unknown as TestCapacitorHost).Capacitor = {
+      Plugins: {
+        ElizaVision: {
+          listCameras: async () => [
+            { id: "back", name: "Back camera", connected: true },
+          ],
+          open: async () => {},
+          captureJpeg: async () => Buffer.from("jpeg").toString("base64"),
+          close: async () => {},
+        },
+      },
+    };
+
+    const source = getMobileCameraSource();
+
+    expect(source).toBeInstanceOf(CapacitorCameraSource);
+    await expect(source?.listCameras()).resolves.toEqual([
+      { id: "back", name: "Back camera", connected: true },
+    ]);
+    await expect(source?.captureJpeg()).resolves.toEqual(Buffer.from("jpeg"));
   });
 });

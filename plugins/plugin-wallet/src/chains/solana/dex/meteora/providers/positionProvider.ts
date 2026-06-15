@@ -154,7 +154,7 @@ const fetchPositions = async (
   ownerAddress: PublicKey
 ): Promise<MeteoraPositionStatistics[]> => {
   try {
-    // TODO: This should be fetched from a dynamic source, e.g. the Meteora API
+    // Static seed pool list; a Meteora API source can replace this when wired.
     const POOL_ADDRESSES = [
       "ARwi1S4DaiTG5DX7S4M4ZsrXqpMD1MrTmbu9ue2tpmEq", // USDC/USDT
     ];

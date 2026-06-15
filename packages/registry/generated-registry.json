@@ -1,5 +1,193 @@
 {
   "registry": {
+    "@1claw/plugin-elizaos": {
+      "git": {
+        "repo": "1clawAI/1claw-elizaos-plugin",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@1claw/plugin-elizaos",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "HSM-backed secrets + multi-chain signing for elizaOS agents via 1Claw — vault access and EVM/Solana/BTC/XRP/Cardano/Tron signing without the agent ever holding private keys; optional Shroud TEE LLM proxy.",
+      "homepage": "https://github.com/1clawAI/1claw-elizaos-plugin",
+      "topics": [
+        "security",
+        "secrets",
+        "vault",
+        "signing",
+        "multi-chain"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "@usenami/plugin-signer": {
+      "git": {
+        "repo": "namixai/plugin-signer",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@usenami/plugin-signer",
+        "v0": null,
+        "v1": null,
+        "v2": "0.2.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Keyless CEX/DEX perp order signing for elizaOS agents — HMAC/EIP-712 signatures are computed inside an AWS Nitro Enclave, so the venue API key never enters the agent process. Covers 6 venues: Binance, OKX, Asterdex, KuCoin, Bybit, Hyperliquid.",
+      "homepage": "https://usenami.io/signer",
+      "topics": [
+        "trading",
+        "perpetuals",
+        "cex",
+        "dex",
+        "signing",
+        "security",
+        "nitro-enclave"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "blackwall-eliza-guardrail": {
+      "git": {
+        "repo": "bluetieroperations-create/blackwall-eliza-guardrail",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "blackwall-eliza-guardrail",
+        "v0": null,
+        "v1": null,
+        "v2": "0.2.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "BLACK_WALL pre-action risk guardrail for elizaOS agents - wraps every action handler with a forecast() check so STOP-rated actions abort before they run; gateCall() adds per-call gating for multi-step handlers. Observe mode by default (zero behavior change).",
+      "homepage": "https://github.com/bluetieroperations-create/blackwall-eliza-guardrail",
+      "topics": [
+        "security",
+        "guardrails",
+        "ai-safety",
+        "risk-gate",
+        "onchain-safety"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "elizaos-plugin-coinrailz": {
+      "git": {
+        "repo": "tdnupe3/elizaos-plugin-coinrailz",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-coinrailz",
+        "v0": null,
+        "v1": null,
+        "v2": "2.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Agent Treasury + Payments: non-custodial USDC yield on Solana (Kamino, ~3.4% APY) and Base (ERC-4626 routing via Aave/Compound/Morpho), plus 65 live x402 pay-per-call services for inference, IoT data, satellite imagery, and execution.",
+      "homepage": "https://coinrailz.com",
+      "topics": [
+        "payments",
+        "x402",
+        "usdc",
+        "yield",
+        "treasury",
+        "solana",
+        "base",
+        "defi",
+        "micropayments",
+        "iot",
+        "satellite"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "elizaos-plugin-echo": {
       "git": {
         "repo": "elizaOS/eliza",
@@ -42,6 +230,50 @@
       "kind": "plugin",
       "registryKind": "plugin",
       "directory": "packages/examples/plugin-echo"
+    },
+    "elizaos-plugin-neynar-search": {
+      "git": {
+        "repo": "xavier-arosemena/elizaos-plugin-neynar-search",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-neynar-search",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Farcaster engagement discovery, like, reply, and follow/unfollow actions via Neynar REST API for ElizaOS agents",
+      "homepage": null,
+      "topics": [
+        "farcaster",
+        "neynar",
+        "social",
+        "discovery"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
     }
   }
 }

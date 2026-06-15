@@ -166,7 +166,7 @@ BASE_REPORTS: tuple[ReportSpec, ...] = (
         "keyword_inventory",
         "packages/chip/build/reports/chip-os-gap-keyword-inventory.json",
         ("packages/chip/scripts/check_chip_os_gap_keyword_inventory.py",),
-        "source-level unfinished marker inventory",
+        "source-level gap marker inventory",
     ),
     ReportSpec(
         "evidence_provenance",

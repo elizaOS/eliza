@@ -115,7 +115,7 @@ function assertBundleInstallable(
 ): void {
 	// Schema version is enforced upstream by `parseManifestOrThrow` — the Zod
 	// schema only accepts the current `$schema` URL, so a manifest with a
-	// future schema version is rejected before we get here.
+	// non-current schema version is rejected before we get here.
 	if (manifest.ramBudgetMb.min > device.ramMb) {
 		throw new BundleIncompatibleError(
 			`Eliza-1 bundle ${manifest.id} needs at least ${manifest.ramBudgetMb.min} MB RAM; this device has ${device.ramMb} MB`,

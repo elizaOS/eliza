@@ -8,7 +8,7 @@
 #   - "store"  — Microsoft Store flavor. Uses AppxManifest.store.xml (AppContainer-
 #                sandboxed, no runFullTrust). Local-agent execution is gated off at
 #                runtime; cloud hosting only. Sign with the Microsoft Store certificate
-#                (env var ELIZA_MSIX_STORE_CERT_PATH) — see TODO below.
+#                (env var ELIZA_MSIX_STORE_CERT_PATH) — see store certificate note below.
 #   - "direct" — Default. Uses AppxManifest.xml (full-trust desktop). Distributed via
 #                NSIS/MSI; supports local agents.
 #
@@ -40,7 +40,7 @@ $timestampUrl = if ($env:WINDOWS_SIGN_TIMESTAMP_URL) { $env:WINDOWS_SIGN_TIMESTA
 $azureSigning = $env:AZURE_TENANT_ID -or $env:AZURE_CLIENT_ID -or $env:SKIP_MSIX_SIGN -or $env:SKIP_WINDOWS_SIGNING
 
 if ($buildVariant -eq "store") {
-  # TODO(store-cert): When Microsoft Partner Center registration is finalized, set
+  # Store certificate note: When Microsoft Partner Center registration is finalized, set
   #   ELIZA_MSIX_STORE_CERT_PATH (path to the .pfx issued for the registered Identity Name)
   #   and ELIZA_MSIX_STORE_CERT_PASSWORD. Until then, store builds run unsigned and the
   #   Partner Center upload pipeline re-signs server-side. The Identity Publisher in

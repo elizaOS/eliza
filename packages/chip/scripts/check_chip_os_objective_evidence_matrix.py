@@ -337,12 +337,12 @@ REQUIREMENTS: tuple[Requirement, ...] = (
         closure_evidence="Evidence provenance audit status=pass with no host-local paths, missing timestamps, missing claim boundaries, reference-only scope leaks, placeholders, or blocked/fail markers in the surveyed evidence surface.",
     ),
     Requirement(
-        "unfinished_marker_inventory",
+        "gap_marker_inventory",
         "workflow",
-        "Source-level TODO, stub, placeholder, unsupported, deferred, and blocked markers across chip, Linux, AOSP, and app paths are classified or removed before readiness claims.",
+        "Source-level open-task, stub, placeholder, unsupported, deferred, and blocked markers across chip, Linux, AOSP, and app paths are classified or removed before readiness claims.",
         "chip-os-gap-keyword-inventory.json",
         proof_kind="workflow",
-        closure_evidence="Gap keyword inventory status=pass with no unclassified TODO/stub/placeholder/mock/fake/unsupported/deferred/blocked markers in the surveyed chip, OS, Android vendor, and launcher/agent source paths.",
+        closure_evidence="Gap keyword inventory status=pass with no unclassified open-task/stub/placeholder/mock/fake/unsupported/deferred/blocked markers in the surveyed chip, OS, Android vendor, and launcher/agent source paths.",
     ),
     Requirement(
         "report_freshness_hygiene",

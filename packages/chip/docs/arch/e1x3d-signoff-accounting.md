@@ -37,7 +37,7 @@ risks are `docs/risks/e1x3d-risks.md`.
 > The hard truth this ledger encodes: a production foundry 3D PDK (and the
 > commercial 3D signoff stack built on it) is NDA-gated intellectual property.
 > It cannot be vendored, reproduced, or "completed" here. The BLOCKED-external
-> lines below are not unfinished work — they are work that is structurally
+> lines below are not locally finishable work — they are work that is structurally
 > outside an open-PDK / architecture-simulation repository.
 
 All numeric values in the table are reproduced from the model on
@@ -57,7 +57,7 @@ All numeric values in the table are reproduced from the model on
 | **Stacked electrothermal (planning-grade vertical theta network + leakage fixed point)** | `scripts/generate_e1x3d_stacked_thermal.py` (`eliza.e1x3d.stacked_electrothermal.v1`); gate `scripts/check_e1x3d_stacked_thermal.py` (`build/reports/e1x3d_stacked_thermal.json`) | architecture-simulation (`draft_local_evidence`, `prohibited_until_external_review`) | calibrated package thermal model + foundry leakage model + measured silicon. Commercial: Ansys RedHawk-SC Electrothermal / Cadence Celsius. Always records this BLOCKED dependency. | `.venv/bin/python scripts/check_e1x3d_stacked_thermal.py` |
 | **Multiplicative stack-yield gate: 0.9985 stack bond yield (0.9995^3); fails closed when spares can't cover defects or bond yield < target** | `e1x3d_wafer_model.py` (`stack_yield_model`); `eliza.e1x3d.stack_yield_model.v1` (`stack_bond_yield=0.998501`) | architecture-simulation | measured wafer-sort / KGD electrical yield (silicon). The 0.9995 per-**interface** figure is a post-optimization D2W/SoIC-HVM assumption (published whole-interface D2W e-yields are 75-90%), not a measured number for this design. | `.venv/bin/python scripts/check_e1x3d_benchmark.py` |
 | **13B W4A8 memory-residency under normal / high-failure / dead-tier-region defects** (`model_loaded`/`model_run_successful=1`) | `compiler/runtime/e1x_wafer_model.py` (`model_load_plan`, `model_execution_plan`); `eliza.e1x3d.scaled_model_load.v1` | architecture-simulation (capacity/sharding feasibility + analytic prefill/decode; **not** a functional inference run or measured throughput) | measured throughput on RTL sim / FPGA / silicon. | `.venv/bin/python scripts/check_e1x3d_benchmark.py` |
-| **Inter-tier via budget: block SRAM-on-logic fits production hybrid bond (~6 um) at 24,000 vias/mm2 geometric** | `e1x3d_placement_model.py` (`evaluate_split`, `BONDING_CATALOG`); `eliza.e1x3d.placement_feasibility.v1` | architecture-simulation (analytic via-density vs catalog) | **density honesty caveat (internal):** 24,000/mm2 is the *geometric* budget; TSMC's realizable **F2F SoIC signal density is ~14,000 signals/mm2** at 6 um HVM. The fine-fold path's "1 um hybrid" is roadmap/research (imec W2W 1 um in production for image sensors / 3D NAND only), not 2025 general-logic HVM. The real flow still BLOCKS on the commercial 3D-signoff line. | `.venv/bin/python scripts/check_e1x3d_placement.py` |
+| **Inter-tier via budget: block SRAM-on-logic fits production hybrid bond (~6 um) at 24,000 vias/mm2 geometric** | `e1x3d_placement_model.py` (`evaluate_split`, `BONDING_CATALOG`); `eliza.e1x3d.placement_feasibility.v1` | architecture-simulation (analytic via-density vs catalog) | **density honesty caveat (internal):** 24,000/mm2 is the *geometric* budget; TSMC's realizable **F2F SoIC signal density is ~14,000 signals/mm2** at 6 um HVM. The fine-fold path's "1 um hybrid" is research-track vendor guidance (imec W2W 1 um in production for image sensors / 3D NAND only), not 2025 general-logic HVM. The real flow still BLOCKS on the commercial 3D-signoff line. | `.venv/bin/python scripts/check_e1x3d_placement.py` |
 | **Tier-split manifest (logic tier 0 vs memory tier 1) + per-tier open-PDK status** | `scripts/generate_e1x3d_tier_split_manifest.py` (`eliza.e1x3d.tier_split_manifest.v1`); gate `scripts/check_e1x3d_3d_split.py` (`build/reports/e1x3d_3d_split.json`) | architecture-simulation (split feasibility); the gate records cross-tier 3D-DRC/LVS as a BLOCKED escalation | cross-tier 3D DRC/LVS over the bonded interface is commercial-only (Siemens Calibre 3D-LVS/3D-DRC, Cadence Integrity 3D-IC); the current logic-tier open-PDK router run is completed but not clean (see next line). | `.venv/bin/python scripts/check_e1x3d_3d_split.py` |
 | **Single-tier E1X3D logic-tier PD on Sky130 (planar 2D RTL-to-GDS proxy of one wafer-mesh logic slice)** | `pd/openlane/config.e1x3d-router.sky130.json`; gate `scripts/check_e1x3d_pd_signoff.py` (`build/reports/e1x3d_pd_signoff.json`) | open-PDK physical (Sky130) DRC/LVS/STA — **target level; currently BLOCKED by clean-signoff violations** | a completed OpenLane2 `e1x3d_router7` run exists with GDS/DEF/netlist and clean DRC/LVS/hold/setup counts, but the gate fails closed on antenna and max-slew violations (`build/reports/e1x3d_pd_signoff.json`: 71 antenna nets, 72 antenna pins, 71 route antenna violations, 222 max-slew violations). This is a planar logic-tier proxy — it is **not** the 3D stack. | `OPENLANE_CONFIG=pd/openlane/config.e1x3d-router.sky130.json scripts/run_openlane.sh --config pd/openlane/config.e1x3d-router.sky130.json && .venv/bin/python scripts/check_e1x3d_pd_signoff.py` |
 | **Single-tier E1X3D tile PD on ASAP7 (predictive 7nm finfet-shape-only proxy)** | `pd/openlane/config.e1x3d-tile.asap7.json`; `pd/constraints/e1x3d_tile.asap7.sdc` | open-PDK physical (ASAP7) — predictive, finfet-shape-only; **not signoff** | ASAP7 is a predictive academic PDK (no manufacturable signoff); numbers route only through `scripts/project_ppa_to_n2p.py`. | `OPENLANE_CONFIG=pd/openlane/config.e1x3d-tile.asap7.json scripts/run_openlane.sh --config pd/openlane/config.e1x3d-tile.asap7.json` |
@@ -105,7 +105,7 @@ not be restated elsewhere:
 Density-honesty caveats carried forward (consistent with the source artifacts,
 not overclaims): the 24,000 vias/mm2 block-split figure is the *geometric* via
 budget — realizable F2F SoIC **signal** density is ~14,000 signals/mm2 at 6 um
-HVM (TSMC); and the fine-fold "1 um hybrid" path is roadmap/research (imec W2W
+HVM (TSMC); and the fine-fold "1 um hybrid" path is research-track vendor guidance (imec W2W
 1 um is in production for image sensors / 3D NAND, not general-logic HVM), which
 is exactly why fine folding BLOCKS on the M3D-PDK line above.
 
@@ -150,7 +150,7 @@ consistency fixes runnable with the native toolchain. Both are now closed:
   cooling.** Validates `thermal_max_logic_tiers = 4`; the default `logical_tiers
   = 2` is well within it.
 - **Hybrid-bond pitch = 6 um SoIC HVM (2025-2026).** Validates
-  `inter_tier_via_pitch_um = 6.0` as current high-volume manufacturing; roadmap
+  `inter_tier_via_pitch_um = 6.0` as current high-volume manufacturing; vendor target
   4.5 um (2029); imec W2W 1 um in production for image sensors / 3D NAND only.
 - **F2F SoIC signal density = ~14,000 signals/mm2** (TSMC; vs ~1,500 signals/mm2
   for F2B TSV). This — not the 28,000/mm2 geometric figure — is the realizable

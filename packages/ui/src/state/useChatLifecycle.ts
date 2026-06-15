@@ -980,7 +980,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
 
       // Mobile (iOS + Android) runs the agent in-process via the native IPC
       // bridge. There is no separate process to restart, so the desktop bridge
-      // and HTTP restart paths below are no-ops that hang/time out. The reset
+      // and HTTP restart paths below are inactive and would hang/time out. The reset
       // POST already cleared the in-process runtime + DB; wiping local state
       // above marked first-run, so the UI returns to onboarding from here.
       const isMobileLocalInProcessReset =
@@ -1061,7 +1061,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
 
       if (!embeddedRestartedOk) {
         logResetInfo(
-          "handleReset: calling client.restartAndWait(120s) — external API or bridge no-op",
+          "handleReset: calling client.restartAndWait(120s) — external API or bridge inactive",
         );
         try {
           postResetAgentStatus = await client.restartAndWait(120_000);

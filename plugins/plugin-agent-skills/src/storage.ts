@@ -95,7 +95,7 @@ export class MemorySkillStore implements ISkillStorage {
 	}
 
 	async initialize(): Promise<void> {
-		// No-op for memory storage
+		// Memory storage is ready immediately.
 	}
 
 	async listSkills(): Promise<string[]> {

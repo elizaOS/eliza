@@ -6,8 +6,8 @@
  * runs at boot.
  *
  * Solution: On every message, if the current world has an ownerId but no
- * OWNER role entry, backfill it. This is idempotent -- running it multiple
- * times on the same world is a no-op after the first backfill.
+ * OWNER role entry, backfill it. This is idempotent -- after the first backfill,
+ * later runs on the same world have nothing to update.
  *
  * Runs as a lightweight provider with a high position number (early/low
  * priority) so it does not add latency to prompt construction. Produces no
@@ -79,7 +79,7 @@ export const roleBackfillProvider: Provider = {
           )
         : false;
 
-      // Already has OWNER role -- no-op
+      // Already has OWNER role; nothing to update.
       if (
         currentOwnerRole === "OWNER" &&
         !needsOwnershipSync &&

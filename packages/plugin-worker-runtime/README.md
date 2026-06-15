@@ -46,6 +46,10 @@ Plugin handlers receive a `runtime` argument that is a `RuntimeProxyApi` — a s
 - `composeState(message, options?)`
 
 Methods not in this list are absent by design. Accessing live-object properties of the runtime (e.g. `databaseAdapter`) is not supported in remote mode.
+Event handlers are declared statically on `Plugin.events`, where bootstrap can
+announce stable RPC handler ids to the host. Dynamic `runtime.registerEvent`
+callbacks cannot cross the worker boundary because function values are not
+serialisable host-RPC payloads.
 
 ### Services
 
@@ -76,8 +80,6 @@ This package is part of the elizaOS monorepo. It is `private: true` and consumed
 "@elizaos/plugin-worker-runtime": "workspace:*"
 ```
 
-## Known limitations (P1)
+## Boundary rules
 
-- **Action callbacks are proxied.** When the host invokes an action with a callback, the bridge passes a callback id to the worker and `callback(...)` round-trips over `host-rpc actionCallback`.
-- **`runtime.registerEvent` is proxied.** Static `Plugin.events` is still preferred for known event surfaces, but handlers may register additional event listeners at runtime; the host registers a local event stub that forwards payloads back to the worker handler.
-- **Dynamic surface announcement is not implemented.** Surfaces must be present on the `Plugin` object before `bootstrap()` is called; anything added inside `init()` is not sent to the host.
+- **Init-time dynamic additions are append-only.** Surfaces appended to the plugin object during `init()` are announced with `worker-announce-dynamic`; replacements, removals, and later runtime mutations are not announced.

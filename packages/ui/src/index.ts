@@ -137,15 +137,7 @@ export {
 export { default as dynamic } from "./cloud-ui/runtime/dynamic";
 export { default as Image } from "./cloud-ui/runtime/image";
 export * from "./cloud-ui/runtime/navigation";
-export {
-  type AnyRenderTelemetryEvent,
-  type ProfilerRenderTelemetryEvent,
-  RENDER_TELEMETRY_EVENT,
-  type RenderTelemetryEvent,
-  RenderTelemetryProfiler,
-  type RenderTelemetrySeverity,
-  setRenderTelemetrySink,
-} from "./cloud-ui/runtime/render-telemetry";
+export { RenderTelemetryProfiler } from "./cloud-ui/runtime/render-telemetry";
 export {
   type ChatMediaAttachment,
   ContentType,
@@ -165,8 +157,10 @@ export {
   maybeCompressDocumentUploadImage,
 } from "./components";
 export * from "./components/apps/AppWindowRenderer";
+export * from "./components/apps/AppWindowRenderer.helpers";
 export * from "./components/apps/extensions/registry";
 export * from "./components/apps/extensions/surface";
+export * from "./components/apps/extensions/surface.helpers";
 export * from "./components/apps/extensions/types";
 export * from "./components/apps/overlay-app-api";
 export * from "./components/apps/overlay-app-registry";
@@ -238,6 +232,13 @@ export {
   type UseShellStateResult,
   useShellState,
 } from "./components/shell/useShellState";
+export {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from "./components/ui/select";
+export { SettingsControls } from "./components/ui/settings-controls";
 export { Switch } from "./components/ui/switch";
 export {
   Tabs,
@@ -403,12 +404,22 @@ export * from "./genui/index";
 export * from "./hooks/index";
 export type { ActivityEvent } from "./hooks/useActivityEvents";
 export { useActivityEvents } from "./hooks/useActivityEvents";
+export { useIntervalWhenDocumentVisible } from "./hooks/useDocumentVisibility";
 export { useMediaQuery } from "./hooks/useMediaQuery";
-export { useRenderGuard } from "./hooks/useRenderGuard";
+export {
+  type AnyRenderTelemetryEvent,
+  type ProfilerRenderTelemetryEvent,
+  RENDER_TELEMETRY_EVENT,
+  type RenderTelemetryEvent,
+  type RenderTelemetrySeverity,
+  setRenderTelemetrySink,
+  useRenderGuard,
+} from "./hooks/useRenderGuard";
 export { useTimeout } from "./hooks/useTimeout";
 export type { UiLanguage } from "./i18n/index";
 export * from "./i18n/index";
 export * from "./i18n/messages";
+export { ContentLayout } from "./layouts/content-layout/content-layout";
 export * from "./layouts/index";
 export { PageLayout } from "./layouts/page-layout/page-layout";
 export * from "./lib/floating-layers";
@@ -421,6 +432,7 @@ export * from "./platform/index";
 export * from "./providers/index";
 export * from "./shell-params";
 export * from "./slots/task-coordinator-slots";
+export * from "./slots/task-coordinator-slots.helpers";
 export type {
   ActionNotice,
   CompanionHalfFramerateMode,
@@ -522,7 +534,9 @@ export {
   ttsDebug,
   ttsDebugTextPreview,
 } from "./utils";
+export { confirmDesktopAction } from "./utils/desktop-dialogs";
 export type { DesktopPowerState } from "./utils/desktop-workspace";
+export { openExternalUrl } from "./utils/openExternalUrl";
 export * from "./views/view-event-bus";
 export * from "./views/view-event-types";
 export * from "./voice";

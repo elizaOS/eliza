@@ -15,8 +15,8 @@ option(DOCTR_WITH_CUDA    "Use CUDA backend"               OFF)
 # The runtime depends on ggml. The expected layout is:
 #   plugins/plugin-local-inference/native/llama.cpp/ggml/  (existing submodule)
 # We point at that to avoid pinning a second copy. If the path is missing the
-# build still produces libdoctr.<ext> as a stub (DOCTR_HAVE_GGML undefined) so
-# the FFI surface exists for the JS layer to call into — it will throw a
+# build still produces libdoctr.<ext> with a fallback ABI (DOCTR_HAVE_GGML
+# undefined) so the FFI surface exists for the JS layer to call into — it will throw a
 # clear "GGUF not ready" at runtime.
 
 set(DOCTR_GGML_DIR "" CACHE PATH "Path to a ggml source tree (defaults to llama.cpp's vendored copy)")

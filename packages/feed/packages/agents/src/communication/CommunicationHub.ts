@@ -152,12 +152,13 @@ export class CommunicationHub {
       from,
     );
 
-    return response;
     // Add route to history
     this.routeHistory.push(route);
     if (this.routeHistory.length > this.maxHistorySize) {
       this.routeHistory.shift();
     }
+
+    return response;
   }
 
   /**

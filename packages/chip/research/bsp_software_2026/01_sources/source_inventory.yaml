@@ -99,7 +99,7 @@ online_sources:
     captured_points:
       - founded Aug 2023; member-funded upstream work on toolchain, kernel,
         Android, distros, LLVM, glibc, GCC, V8, OpenJDK
-      - 2025 RISE roadmap names AOSP main RV branch readiness as P0
+      - 2025 RISE plan names AOSP main RV branch readiness as P0
   - id: riscv_android_sig
     title: "riscv-android-sig (RISC-V International SIG)"
     url: "https://github.com/riscv-non-isa/riscv-android-sig"

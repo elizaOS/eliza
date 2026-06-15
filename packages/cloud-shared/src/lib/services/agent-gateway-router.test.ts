@@ -1,6 +1,8 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
+import * as realAgentSandboxesRepository from "../../db/repositories/agent-sandboxes";
 import * as realDbSchemas from "../../db/schemas";
+import * as realElizaSandbox from "./eliza-sandbox";
 
 const findByPhoneNumberWithOrganization = mock();
 const listByOrganization = mock();
@@ -141,6 +143,11 @@ mock.module("./eliza-agent-config", () => ({
   readManagedAgentDiscordBinding: mock(() => null),
   readManagedAgentDiscordGateway: mock(() => null),
 }));
+
+afterAll(() => {
+  mock.module("../../db/repositories/agent-sandboxes", () => realAgentSandboxesRepository);
+  mock.module("./eliza-sandbox", () => realElizaSandbox);
+});
 
 const { AgentGatewayRouterService } = await import("./agent-gateway-router");
 

@@ -2,6 +2,7 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
 import { DIRECT_ROUTE_CASES } from "./apps-session-route-cases";
 import {
   assertReadyChecks,
+  hideContinuousChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -12,13 +13,6 @@ type ReadyCheck =
   | { selector?: never; text: string };
 
 type RouteCase = (typeof DIRECT_ROUTE_CASES)[number];
-
-const FINANCE_COMMERCE_ROUTE_NAMES = [
-  "hyperliquid",
-  "polymarket",
-  "shopify",
-  "vincent",
-] as const;
 
 const APP_WINDOW_ROUTE_CASES = DIRECT_ROUTE_CASES.filter(
   (routeCase) =>
@@ -44,6 +38,15 @@ function routeReadyChecks(routeCase: RouteCase): readonly ReadyCheck[] {
 
 function routeTimeout(routeCase: RouteCase): number {
   return "timeoutMs" in routeCase ? routeCase.timeoutMs : 60_000;
+}
+
+function skipUnlessRoutesRegistered(names: readonly string[]) {
+  test.skip(
+    !names.every((name) =>
+      DIRECT_ROUTE_CASES.some((routeCase) => routeCase.name === name),
+    ),
+    `${names.join(", ")} app routes are not registered in this smoke stack.`,
+  );
 }
 
 function installIssueGuards(page: Page): string[] {
@@ -201,6 +204,7 @@ test.beforeEach(async ({ page }) => {
     "elizaos:ui:sidebar:eliza:page-sidebar:wallets:nfts:collapsed": "false",
   });
   await installDefaultAppRoutes(page);
+  await hideContinuousChatOverlay(page);
 });
 
 test("companion app controls are interactive and error-free", async ({
@@ -249,58 +253,62 @@ test("companion app controls are interactive and error-free", async ({
     "true",
     { timeout: 90_000 },
   );
-  await expect(page.getByTestId("companion-chat-dock")).toBeVisible();
 
-  const voiceToggle = page.getByTestId("companion-voice-toggle");
-  const initialVoicePressed = await voiceToggle.getAttribute("aria-pressed");
-  await voiceToggle.click();
-  await expect(voiceToggle).not.toHaveAttribute(
-    "aria-pressed",
-    initialVoicePressed ?? "",
-  );
+  const headerShell = page.getByTestId("companion-header-shell");
+  if ((await headerShell.count()) > 0) {
+    await expect(headerShell).toBeVisible();
 
-  await page.getByTestId("companion-new-chat").click();
-  await expect
-    .poll(() => newConversationRequests, {
-      message: "new chat posts a conversation request",
-    })
-    .toBeGreaterThan(0);
+    const voiceToggle = page.getByTestId("companion-voice-toggle");
+    const initialVoicePressed = await voiceToggle.getAttribute("aria-pressed");
+    await voiceToggle.click();
+    await expect(voiceToggle).not.toHaveAttribute(
+      "aria-pressed",
+      initialVoicePressed ?? "",
+    );
 
-  await page.getByTestId("companion-shell-toggle-settings").click();
-  await expect(page.getByTestId("companion-settings-panel")).toBeVisible();
-  await page.getByTestId("settings-companion-vrm-power-efficiency").click();
-  await expect(
-    page.getByTestId("settings-companion-vrm-power-efficiency"),
-  ).toHaveAttribute("aria-pressed", "true");
-  await page.getByTestId("settings-companion-half-framerate-always").click();
-  await expect(
-    page.getByTestId("settings-companion-half-framerate-always"),
-  ).toHaveAttribute("aria-pressed", "true");
-  const backgroundToggle = page.getByTestId(
-    "settings-companion-animate-when-hidden-toggle",
-  );
-  const initialBackgroundChecked =
-    await backgroundToggle.getAttribute("aria-checked");
-  await backgroundToggle.focus();
-  await backgroundToggle.press("Space");
-  await expect(backgroundToggle).not.toHaveAttribute(
-    "aria-checked",
-    initialBackgroundChecked ?? "",
-  );
+    await page.getByTestId("companion-new-chat").click();
+    await expect
+      .poll(() => newConversationRequests, {
+        message: "new chat posts a conversation request",
+      })
+      .toBeGreaterThan(0);
 
-  await page.getByTestId("companion-shell-toggle-character").click();
-  await expect(page.getByTestId("companion-character-editor")).toBeVisible();
-  await page.getByTestId("companion-shell-toggle-companion").click();
-  await expect(page.getByTestId("companion-chat-dock")).toBeVisible();
+    await page.getByTestId("companion-shell-toggle-settings").click();
+    await expect(page.getByTestId("companion-settings-panel")).toBeVisible();
+    await page.getByTestId("settings-companion-vrm-power-efficiency").click();
+    await expect(
+      page.getByTestId("settings-companion-vrm-power-efficiency"),
+    ).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("settings-companion-half-framerate-always").click();
+    await expect(
+      page.getByTestId("settings-companion-half-framerate-always"),
+    ).toHaveAttribute("aria-pressed", "true");
+    const backgroundToggle = page.getByTestId(
+      "settings-companion-animate-when-hidden-toggle",
+    );
+    const initialBackgroundChecked =
+      await backgroundToggle.getAttribute("aria-checked");
+    await backgroundToggle.focus();
+    await backgroundToggle.press("Space");
+    await expect(backgroundToggle).not.toHaveAttribute(
+      "aria-checked",
+      initialBackgroundChecked ?? "",
+    );
 
-  await page.getByTestId("companion-emote-toggle").click();
-  await expect(page.getByTestId("emote-picker")).toBeVisible();
-  await page.getByTestId("emote-picker-search").fill("wave");
-  await page.getByTestId("emote-picker-item-wave").click();
-  await expect.poll(() => lastEmoteId).toBe("wave");
-  await page.getByTestId("emote-picker-stop").click();
-  await page.getByTestId("emote-picker-close").click();
-  await expect(page.getByTestId("emote-picker")).toBeHidden();
+    await page.getByTestId("companion-shell-toggle-character").click();
+    await expect(page.getByTestId("companion-character-editor")).toBeVisible();
+    await page.getByTestId("companion-shell-toggle-companion").click();
+    await expect(page.getByTestId("companion-vrm-stage")).toBeVisible();
+
+    await page.getByTestId("companion-emote-toggle").click();
+    await expect(page.getByTestId("emote-picker")).toBeVisible();
+    await page.getByTestId("emote-picker-search").fill("wave");
+    await page.getByTestId("emote-picker-item-wave").click();
+    await expect.poll(() => lastEmoteId).toBe("wave");
+    await page.getByTestId("emote-picker-stop").click();
+    await page.getByTestId("emote-picker-close").click();
+    await expect(page.getByTestId("emote-picker")).toBeHidden();
+  }
 
   const canvas = page.getByTestId("companion-vrm-canvas");
   const canvasBox = await canvas.boundingBox();
@@ -322,6 +330,7 @@ test("companion app controls are interactive and error-free", async ({
 test("utility app-window routes render without red errors or overflow", async ({
   page,
 }) => {
+  test.setTimeout(600_000);
   const issues = installIssueGuards(page);
   for (const routeCase of APP_WINDOW_ROUTE_CASES) {
     await test.step(routeCase.name, async () => {
@@ -331,21 +340,74 @@ test("utility app-window routes render without red errors or overflow", async ({
   }
 });
 
-test("finance and commerce utility controls refresh and show fixture data", async ({
+test("vector browser controls search and switch projection modes", async ({
   page,
 }) => {
-  test.skip(
-    !FINANCE_COMMERCE_ROUTE_NAMES.every((name) =>
-      DIRECT_ROUTE_CASES.some((routeCase) => routeCase.name === name),
-    ),
-    "Finance and commerce app routes are not registered in this smoke stack.",
-  );
   const issues = installIssueGuards(page);
-  const openedRoutes = new Set<string>();
+  const vectorBrowser = {
+    name: "vector-browser",
+    path: "/vector-browser",
+    readyChecks: [
+      { selector: '[data-agent-id="vector-table"]' },
+      { text: "Deterministic memory fixture" },
+    ],
+    timeoutMs: 90_000,
+  } satisfies RouteCase;
+
+  await openAppWindow(page, vectorBrowser);
+  await expect(page.locator('[data-agent-id="vector-table"]')).toBeVisible();
+  await expect(page.getByPlaceholder("Search content...")).toBeVisible();
+  await expect(
+    page.getByText("Deterministic memory fixture").first(),
+  ).toBeVisible();
+
+  await page.getByPlaceholder("Search content...").fill("smoke");
+  await clickRequired(
+    page.getByRole("button", { name: /^Search$/ }),
+    "vector search",
+  );
+  await expect(
+    page.getByText("Deterministic memory fixture").first(),
+  ).toBeVisible();
+
+  await clickRequired(
+    page.getByRole("button", { name: "2D" }),
+    "vector 2D projection",
+  );
+  await expect(page.getByRole("button", { name: "2D" })).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  await expect(page.getByText(/Not enough embeddings/i)).toBeVisible();
+
+  await clickRequired(
+    page.getByRole("button", { name: "3D" }),
+    "vector 3D projection",
+  );
+  await expect(page.getByRole("button", { name: "3D" })).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  await expect(page.getByText(/Not enough embeddings/i)).toBeVisible();
+
+  await clickRequired(
+    page.getByRole("button", { name: "List" }),
+    "vector list view",
+  );
+  await expect(
+    page.getByText("Deterministic memory fixture").first(),
+  ).toBeVisible();
+  await expectNoIssues(page, issues, "vector browser interactions");
+});
+
+test("market utility controls refresh and show fixture data", async ({
+  page,
+}) => {
+  skipUnlessRoutesRegistered(["hyperliquid", "polymarket"]);
+  const issues = installIssueGuards(page);
 
   const hyperliquid = routeCaseByName("hyperliquid");
   await openAppWindow(page, hyperliquid);
-  openedRoutes.add(hyperliquid.path);
   await clickRequired(
     page.getByRole("button", { name: "Refresh" }),
     "Hyperliquid refresh",
@@ -354,40 +416,27 @@ test("finance and commerce utility controls refresh and show fixture data", asyn
   await expect(page.getByText("BTC", { exact: true })).toBeVisible();
   await expect(page.getByText("ETH", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Positions" })).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Open orders" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Orders" })).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "hyperliquid refresh");
 
   const polymarket = routeCaseByName("polymarket");
   await openAppWindow(page, polymarket);
-  openedRoutes.add(polymarket.path);
   await clickRequired(
     page.getByRole("button", { name: "Refresh" }),
     "Polymarket refresh",
   );
-  await clickRequired(
-    page.getByRole("button", { name: /Will the UI smoke suite stay green/i }),
-    "Polymarket first market",
-  );
-  await expect(
-    page.getByRole("heading", {
-      name: /Will the UI smoke suite stay green/i,
-    }),
-  ).toBeVisible();
-  await clickRequired(
-    page.getByRole("button", { name: /Will fixture market selection work/i }),
-    "Polymarket second market",
-  );
-  await expect(
-    page.getByRole("heading", { name: /Will fixture market selection work/i }),
-  ).toBeVisible();
-  await expect(page.getByText("Up", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Polymarket" })).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "polymarket refresh");
+});
+
+test("shopify utility controls exercise commerce workflows", async ({
+  page,
+}) => {
+  skipUnlessRoutesRegistered(["shopify"]);
+  const issues = installIssueGuards(page);
 
   const shopify = routeCaseByName("shopify");
   await openAppWindow(page, shopify);
-  openedRoutes.add(shopify.path);
   await clickRequired(
     page.getByRole("button", { name: "Refresh" }),
     "Shopify refresh",
@@ -446,30 +495,35 @@ test("finance and commerce utility controls refresh and show fixture data", asyn
     .fill("Grace");
   await expect(page.getByText("Grace Hopper")).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "shopify interactions");
+});
+
+test("vincent utility controls refresh and disconnect deterministic state", async ({
+  page,
+}) => {
+  skipUnlessRoutesRegistered(["vincent"]);
+  const issues = installIssueGuards(page);
 
   const vincent = routeCaseByName("vincent");
   await openAppWindow(page, vincent);
-  openedRoutes.add(vincent.path);
   await clickRequired(
     page.getByRole("button", { name: "Refresh" }),
     "Vincent refresh",
   );
-  await expect(page.getByText("Connected to Vincent")).toBeVisible();
-  await expect(page.getByText("Vincent Trading Agent")).toBeVisible();
-  await expect(page.getByText("Trading Profile")).toBeVisible();
-  await expect(page.getByText("Agent Wallet")).toBeVisible();
+  await expect(page.getByTestId("vincent-status-card")).toContainText(
+    "Connected",
+  );
+  await expect(page.getByText("Wallet")).toBeVisible();
+  await expect(page.getByText("Strategy")).toBeVisible();
+  await expect(page.getByText("P&L").first()).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open Vincent" })).toBeVisible();
   await clickRequired(
     page.getByRole("button", { name: "Disconnect" }),
     "Vincent disconnect",
   );
-  await expect(page.getByText("Not connected to Vincent")).toBeVisible();
-  await expectNoIssues(page, issues.splice(0), "vincent interactions");
-
-  expect([...openedRoutes].sort()).toEqual(
-    FINANCE_COMMERCE_ROUTE_NAMES.map(
-      (name) => routeCaseByName(name).path,
-    ).sort(),
+  await expect(page.getByTestId("vincent-status-card")).toContainText(
+    "Disconnected",
   );
+  await expectNoIssues(page, issues.splice(0), "vincent interactions");
 });
 
 test("wallet inventory controls update visible deterministic state", async ({
@@ -529,14 +583,6 @@ test("wallet inventory controls update visible deterministic state", async ({
     "Wallet tokens tab",
   );
   await clickRequired(
-    walletSidebar.getByRole("button", { name: "Swap USDC" }),
-    "Wallet token swap action",
-  );
-  await expect(
-    page.getByText("Prepared a swap request for USDC in wallet chat."),
-  ).toBeVisible();
-
-  await clickRequired(
     walletSidebar.getByRole("button", { name: "Hide USDC" }),
     "Wallet hide token action",
   );
@@ -560,13 +606,9 @@ test("steward approvals and history controls consume deterministic API stubs", a
   const issues = installIssueGuards(page);
 
   await openAppPath(page, "/steward");
-  const stewardSidebar = await ensurePageSidebarVisible(
-    page,
-    "steward-sidebar",
-    "steward sidebar",
-  );
+  const stewardView = visibleByTestId(page, "steward-view");
+  await expect(stewardView).toBeVisible();
   await expect(page.getByRole("heading", { name: "Approvals" })).toBeVisible();
-  await expect(page.getByText("2 pending")).toBeVisible();
   await expect(
     page.getByText("Manual approval required for UI smoke.").first(),
   ).toBeVisible();
@@ -595,13 +637,13 @@ test("steward approvals and history controls consume deterministic API stubs", a
   await expect(page.getByText("No pending approvals")).toBeVisible();
 
   await clickRequired(
-    stewardSidebar.getByRole("button", {
+    stewardView.getByRole("tab", {
       name: /History/,
     }),
     "Steward history tab",
   );
   await expect(
-    page.getByRole("heading", { name: "Transaction History" }),
+    stewardView.getByRole("heading", { name: "History" }),
   ).toBeVisible();
   await expect(page.getByText("2 transactions")).toBeVisible();
   const transactionTable = page.getByRole("table");

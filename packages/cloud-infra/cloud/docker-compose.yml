@@ -21,9 +21,9 @@
 # from the Steward credential proxy (see deploy/k8s/networkpolicies/README.md
 # and deploy/RUNBOOK-DR.md).
 #
-# TODO(soc2): wire Steward -> ESO ClusterSecretStore once the proxy is
-# reachable from the production GKE cluster. Until then operators must
-# create K8s Secrets manually from sealed-secrets manifests.
+# Production boundary: Steward -> ESO ClusterSecretStore wiring still requires
+# the credential proxy to be reachable from the production GKE cluster. Until
+# then operators must create K8s Secrets manually from sealed-secrets manifests.
 # ---------------------------------------------------------------------------
 
 services:
@@ -64,9 +64,9 @@ services:
       FILE_SIZE_LIMIT: "524288000"
       STORAGE_BACKEND: file
       FILE_STORAGE_BACKEND_PATH: /var/lib/storage
-      TENANT_ID: stub
+      TENANT_ID: local-dev
       REGION: local
-      GLOBAL_S3_BUCKET: stub
+      GLOBAL_S3_BUCKET: local-dev-storage
       ENABLE_IMAGE_TRANSFORMATION: "false"
       S3_PROTOCOL_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:?STORAGE_ACCESS_KEY_ID required, see .env.example}
       S3_PROTOCOL_ACCESS_KEY_SECRET: ${STORAGE_SECRET_ACCESS_KEY:?STORAGE_SECRET_ACCESS_KEY required, see .env.example}

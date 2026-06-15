@@ -153,11 +153,15 @@ def main() -> int:
         "full-K repair kind coverage inputs present",
         "missing inputs: " + ", ".join(missing),
     )
-    checks.append({"id": "e1x_full_k_repair_kind_coverage_inputs_present", "status": status, "detail": detail})
+    checks.append(
+        {"id": "e1x_full_k_repair_kind_coverage_inputs_present", "status": status, "detail": detail}
+    )
 
     placement = load_json(PLACEMENT) if PLACEMENT.is_file() else {}
     ladder = load_json(FULL_K_REPAIR_LADDER) if FULL_K_REPAIR_LADDER.is_file() else {}
-    normal_report, normal_remap = load_remap(NORMAL_REPAIR) if NORMAL_REPAIR.is_file() else ({}, set())
+    normal_report, normal_remap = (
+        load_remap(NORMAL_REPAIR) if NORMAL_REPAIR.is_file() else ({}, set())
+    )
     high_report, high_remap = (
         load_remap(HIGH_FAILURE_REPAIR) if HIGH_FAILURE_REPAIR.is_file() else ({}, set())
     )
@@ -179,7 +183,13 @@ def main() -> int:
         "placement, full-K ladder, and normal/high repair manifests are linked",
         "full-K repair kind coverage dependency mismatch",
     )
-    checks.append({"id": "e1x_full_k_repair_kind_coverage_dependencies_pass", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_full_k_repair_kind_coverage_dependencies_pass",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     rungs = []
     for name, rows_per_layer, path in RUNG_REPORTS:
@@ -207,7 +217,9 @@ def main() -> int:
             f"{name} selected rows cover all layer kinds and match repair report totals",
             f"{name} kind/remap totals do not match repair report",
         )
-        checks.append({"id": f"e1x_full_k_repair_kind_coverage_{name}", "status": status, "detail": detail})
+        checks.append(
+            {"id": f"e1x_full_k_repair_kind_coverage_{name}", "status": status, "detail": detail}
+        )
 
     monotonic_kind_ok = all(
         int(rungs[index]["kind_row_counts"][kind])
@@ -220,7 +232,13 @@ def main() -> int:
         "every layer kind doubles selected full-K rows at each ladder rung",
         "kind row counts are not monotonic by rung",
     )
-    checks.append({"id": "e1x_full_k_repair_kind_coverage_monotonic_by_kind", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_full_k_repair_kind_coverage_monotonic_by_kind",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     final = rungs[-1] if rungs else {}
     final_high_remaps = final.get("high_failure_kind_remapped_rows", {})
@@ -241,7 +259,13 @@ def main() -> int:
         "hyper-dense rung covers all kinds and high-failure remaps span the graph",
         "hyper-dense kind/remap coverage mismatch",
     )
-    checks.append({"id": "e1x_full_k_repair_kind_coverage_hyper_dense_distribution", "status": status, "detail": detail})
+    checks.append(
+        {
+            "id": "e1x_full_k_repair_kind_coverage_hyper_dense_distribution",
+            "status": status,
+            "detail": detail,
+        }
+    )
 
     failures = [check for check in checks if check["status"] != "pass"]
     final_kind_rows = final.get("kind_row_counts", {})
@@ -254,7 +278,9 @@ def main() -> int:
         "hyper_dense_row_count": int(final.get("row_count", 0)),
         "hyper_dense_mac_count": int(final.get("mac_count", 0)),
         "hyper_dense_touched_logical_core_count": int(final.get("touched_logical_core_count", 0)),
-        "hyper_dense_normal_remapped_rows": sum(int(value) for value in final_normal_remaps.values()),
+        "hyper_dense_normal_remapped_rows": sum(
+            int(value) for value in final_normal_remaps.values()
+        ),
         "hyper_dense_high_failure_remapped_rows": sum(
             int(value) for value in final_high_remaps.values()
         ),

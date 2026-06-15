@@ -38,7 +38,7 @@ __filename = '"/worker.js"'
 # accidental runtime instantiation throws a clear error.
 "ssh2" = "./src/stubs/ssh2.ts"
 # undici is Node's fetch impl; references node:net, MessagePort, perf_hooks
-# that don't exist on Workers. Re-export runtime globals + stub the
+# that don't exist on Workers. Re-export runtime globals + map the
 # Agent/Pool/Dispatcher classes.
 "undici" = "./src/stubs/undici.ts"
 
@@ -98,7 +98,7 @@ NODE_ENV = "production"
 NEXT_PUBLIC_APP_URL = "https://elizacloud.ai"
 NEXT_PUBLIC_API_URL = "https://api.elizacloud.ai"
 ELIZA_CLOUD_URL = "https://elizacloud.ai"
-ELIZA_CLOUD_AGENT_BASE_DOMAIN = "waifu.fun"
+ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai"
 WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
 WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
 ELIZA_APP_URL = "https://eliza.app"
@@ -140,6 +140,7 @@ SQL_HEAVY_PAYLOAD_STORAGE = "r2"
 SQL_HEAVY_PAYLOAD_MIN_BYTES = "0"
 SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES = "512"
 LLM_TRAJECTORY_STORAGE = "r2"
+BITROUTER_BASE_URL = "https://bitrouter-production.up.railway.app"
 HEADSCALE_PUBLIC_URL = "https://headscale.elizacloud.ai"
 HEADSCALE_API_URL = "https://headscale.elizacloud.ai"
 HEADSCALE_USER = "tunnel"
@@ -165,17 +166,22 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   STEWARD_DEFAULT_TENANT_KEY         Embedded Steward default tenant API key hash/source
 #   STEWARD_PLATFORM_KEYS              Server-only platform key (server-wallets, tenant ops)
 #   STEWARD_TENANT_API_KEY             Server-only tenant API key
+#   STEWARD_REQUEST_SIGNING_SECRET     HMAC secret for signed Steward mutating requests
+#   STEWARD_REQUEST_SIGNING_SECRETS    Comma-separated Steward HMAC secrets; first is used for signing
+#   STEWARD_REQUEST_SIGNING_KEY_ID     Optional Steward tenant signing-key id
 #   STRIPE_SECRET_KEY                  Stripe billing
 #   STRIPE_WEBHOOK_SECRET              Stripe webhook signing
 #   STRIPE_SMALL_PACK_PRICE_ID         (and MEDIUM/LARGE *_PRICE_ID/_PRODUCT_ID)
 #   KV_REST_API_URL                    Upstash Redis (rate-limit/cache fallback)
 #   KV_REST_API_TOKEN                  Upstash auth
 #   KV_REST_API_READ_ONLY_TOKEN        Upstash read-only token
+#   BITROUTER_API_KEY                 BitRouter proxy bearer token
+#   BITROUTER_BASE_URL                 BitRouter proxy base URL (Railway service or BitRouter Cloud)
 #   ANTHROPIC_API_KEY                  Claude
 #   OPENAI_API_KEY                     OpenAI direct
 #   AI_GATEWAY_API_KEY
 #   GROQ_API_KEY                       Groq
-#   CEREBRAS_API_KEY                   Cerebras — ultra-fast inference for provisioning placeholder agent
+#   CEREBRAS_API_KEY                   Cerebras — ultra-fast inference for provisioning chat agent
 #   FAL_KEY                            Fal.ai video gen
 #   ELEVENLABS_API_KEY                 ElevenLabs TTS
 #   VAST_API_KEY                       Vast.ai Serverless endpoint API token (Bearer)
@@ -194,7 +200,6 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   CONTAINER_CONTROL_PLANE_URL        Node sidecar URL for container mutations + hot-pool image pre-pull
 #   CONTAINER_CONTROL_PLANE_TOKEN      Shared Worker↔sidecar secret
 #   HCLOUD_TOKEN                       Hetzner Cloud API token for elastic Docker node provisioning
-#       HETZNER_CLOUD_API_KEY is also accepted as an alias.
 #   CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY Public SSH key written to autoscaled nodes
 #   CONTAINERS_BOOTSTRAP_CALLBACK_URL  Optional docker_nodes self-registration callback URL
 #   CONTAINERS_BOOTSTRAP_SECRET        Optional docker_nodes self-registration shared secret
@@ -234,15 +239,27 @@ __filename = '"/worker.js"'
 
 [env.staging.vars]
 NODE_ENV = "production"
+# Apps (Product 2): wire the real deploy trigger so POST /api/v1/apps/:id/deploy
+# enqueues an APP_DEPLOY job the provisioning-worker daemon runs (instead of the
+# legacy status-only stub). Staging only — the apps data plane (tenant DB +
+# Caddy app node + armed daemon) is live on staging. Gates configureAppsDeployTrigger
+# in bootstrap-app.ts; no effect on Product-1 / agent paths.
+APPS_DEPLOY_ENABLED = "1"
 NEXT_PUBLIC_APP_URL = "https://staging.elizacloud.ai"
 NEXT_PUBLIC_API_URL = "https://api-staging.elizacloud.ai"
 ELIZA_CLOUD_URL = "https://staging.elizacloud.ai"
+BITROUTER_BASE_URL = "https://bitrouter-staging.up.railway.app"
 # Per-tenant `magicLinkBaseUrl` (set in Steward Neon `tenant_configs.email_config`)
 # redirects email magic-link callbacks to staging.elizacloud.ai instead of the
 # prod fallback (www.elizacloud.ai). Tenant row provisioned manually.
 STEWARD_TENANT_ID = "elizacloud-staging"
 NEXT_PUBLIC_STEWARD_TENANT_ID = "elizacloud-staging"
-ELIZA_CLOUD_AGENT_BASE_DOMAIN = "waifu.fun"
+ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai"
+# Routes agent-subdomain traffic to the staging control-plane VM. Without this
+# the Worker falls back to DEFAULT_AGENT_ROUTER_ORIGIN_HOST in
+# packages/cloud-api/src/index.ts (= eliza-production-1.elizacloud.ai) so
+# staging agent requests would silently hit the prod CP.
+AGENT_ROUTER_ORIGIN_HOST = "eliza-staging-1.elizacloud.ai"
 WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
 WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
 ELIZA_APP_URL = "https://eliza.app"
@@ -293,7 +310,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 # blocks — they must be re-declared per-env. Same physical resources.
 [[env.staging.r2_buckets]]
 binding = "BLOB"
-bucket_name = "eliza-cloud-blob"
+bucket_name = "eliza-cloud-blob-staging"
 
 [env.production]
 name = "eliza-cloud-api-prod"
@@ -301,6 +318,7 @@ workers_dev = false
 routes = [
   { pattern = "api.elizacloud.ai/*", zone_name = "elizacloud.ai" },
   { pattern = "x402.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+  { pattern = "*.elizacloud.ai/*", zone_name = "elizacloud.ai" },
 ]
 
 [env.production.define]
@@ -312,7 +330,8 @@ NODE_ENV = "production"
 NEXT_PUBLIC_APP_URL = "https://elizacloud.ai"
 NEXT_PUBLIC_API_URL = "https://api.elizacloud.ai"
 ELIZA_CLOUD_URL = "https://elizacloud.ai"
-ELIZA_CLOUD_AGENT_BASE_DOMAIN = "waifu.fun"
+ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai"
+AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.elizacloud.ai"
 WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
 WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
 ELIZA_APP_URL = "https://eliza.app"
@@ -354,6 +373,7 @@ SQL_HEAVY_PAYLOAD_STORAGE = "r2"
 SQL_HEAVY_PAYLOAD_MIN_BYTES = "0"
 SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES = "512"
 LLM_TRAJECTORY_STORAGE = "r2"
+BITROUTER_BASE_URL = "https://bitrouter-production.up.railway.app"
 HEADSCALE_PUBLIC_URL = "https://headscale.elizacloud.ai"
 HEADSCALE_API_URL = "https://headscale.elizacloud.ai"
 HEADSCALE_USER = "tunnel"

@@ -163,7 +163,7 @@ class IdentityVerificationGatekeeperImpl implements IdentityVerificationGatekeep
   private readonly verifyEd25519: NonNullable<
     IdentityVerificationGatekeeperDeps["verifyEd25519Signature"]
   >;
-  // TODO(Wave H): replace with a persistent session-bindings repository.
+  // Fallback for callers that do not inject a persistent session-binding repository.
   private readonly inMemoryBindings = new Map<string, string>();
 
   constructor(deps: IdentityVerificationGatekeeperDeps) {

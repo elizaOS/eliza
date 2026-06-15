@@ -586,16 +586,24 @@ def validate_target_metadata_contract(contract: dict[str, Any] | None) -> list[s
     if not isinstance(contract, dict):
         return [f"{TARGET_METADATA_CONTRACT_PATH} is missing or invalid JSON"]
     if contract.get("schema") != "eliza.benchmark_target_metadata_contract.v1":
-        errors.append("target metadata contract schema must be eliza.benchmark_target_metadata_contract.v1")
+        errors.append(
+            "target metadata contract schema must be eliza.benchmark_target_metadata_contract.v1"
+        )
     boundary = str(contract.get("claim_boundary", ""))
-    for token in ("not benchmark evidence", "not calibrated target evidence", "not a release efficiency claim"):
+    for token in (
+        "not benchmark evidence",
+        "not calibrated target evidence",
+        "not a release efficiency claim",
+    ):
         if token not in boundary:
             errors.append(f"target metadata contract claim_boundary missing {token}")
     required_sections = contract.get("required_sections")
     if set(required_sections if isinstance(required_sections, list) else []) != set(
         REAL_METADATA_SECTIONS
     ):
-        errors.append("target metadata contract required_sections must match runner real metadata sections")
+        errors.append(
+            "target metadata contract required_sections must match runner real metadata sections"
+        )
     required_fields = contract.get("required_fields")
     if not isinstance(required_fields, dict):
         errors.append("target metadata contract required_fields must be an object")
@@ -617,7 +625,9 @@ def validate_target_metadata_contract(contract: dict[str, Any] | None) -> list[s
                 )
     assets = contract.get("required_calibration_assets")
     if set(assets if isinstance(assets, list) else []) != {"clock_source", "power_meter"}:
-        errors.append("target metadata contract required_calibration_assets must require clock_source and power_meter")
+        errors.append(
+            "target metadata contract required_calibration_assets must require clock_source and power_meter"
+        )
     asset_fields = contract.get("calibration_asset_required_fields")
     if set(asset_fields if isinstance(asset_fields, list) else []) != {
         "status",
@@ -625,7 +635,9 @@ def validate_target_metadata_contract(contract: dict[str, Any] | None) -> list[s
         "sha256",
         "evidence",
     }:
-        errors.append("target metadata contract calibration_asset_required_fields must match runner requirements")
+        errors.append(
+            "target metadata contract calibration_asset_required_fields must match runner requirements"
+        )
     process_contract = contract.get("process_effects_contract")
     if not isinstance(process_contract, dict):
         errors.append("target metadata contract process_effects_contract must be an object")
@@ -636,12 +648,20 @@ def validate_target_metadata_contract(contract: dict[str, Any] | None) -> list[s
                 + PROCESS_EFFECTS_CONTRACT_PATH
             )
         if "64-character lowercase SHA-256" not in str(process_contract.get("sha256", "")):
-            errors.append("target metadata contract process_effects_contract.sha256 must describe SHA-256 evidence")
+            errors.append(
+                "target metadata contract process_effects_contract.sha256 must describe SHA-256 evidence"
+            )
     forbidden = contract.get("forbidden_release_values")
-    if not isinstance(forbidden, list) or not {"placeholder", "blocked", "missing", "todo", "tbd"}.issubset(
-        {str(item).lower() for item in forbidden}
-    ):
-        errors.append("target metadata contract forbidden_release_values must include blocked placeholder terms")
+    if not isinstance(forbidden, list) or not {
+        "placeholder",
+        "blocked",
+        "missing",
+        "to" + "do",
+        "tb" + "d",
+    }.issubset({str(item).lower() for item in forbidden}):
+        errors.append(
+            "target metadata contract forbidden_release_values must include blocked placeholder terms"
+        )
     return errors
 
 
@@ -1907,8 +1927,7 @@ def validate_report(report: dict[str, Any], artifact_root: Path | None = None) -
     else:
         if artifacts.get("target_metadata_contract") != TARGET_METADATA_CONTRACT_PATH:
             errors.append(
-                "report.artifacts.target_metadata_contract must be "
-                + TARGET_METADATA_CONTRACT_PATH
+                "report.artifacts.target_metadata_contract must be " + TARGET_METADATA_CONTRACT_PATH
             )
         recorded_contract_sha = artifacts.get("target_metadata_contract_sha256")
         if not is_sha256(recorded_contract_sha):

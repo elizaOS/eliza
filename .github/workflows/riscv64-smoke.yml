@@ -69,6 +69,7 @@ jobs:
           name: riscv64-artifacts-report
           path: build/reports/riscv64_artifacts.json
           if-no-files-found: warn
+          retention-days: 7
 
       - name: Print summary
         if: always()

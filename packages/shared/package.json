@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/shared",
-  "version": "2.0.3-beta.0",
+  "version": "2.0.3-beta.13",
   "description": "Shared code for Eliza agent and app-core.",
   "type": "module",
   "sideEffects": false,
@@ -82,6 +82,16 @@
       "types": "./dist/local-inference/index.d.ts",
       "import": "./dist/local-inference/index.js",
       "default": "./dist/local-inference/index.js"
+    },
+    "./local-inference/routing-preferences": {
+      "types": "./dist/local-inference/routing-preferences.d.ts",
+      "import": "./dist/local-inference/routing-preferences.js",
+      "default": "./dist/local-inference/routing-preferences.js"
+    },
+    "./local-inference/verify": {
+      "types": "./dist/local-inference/verify.d.ts",
+      "import": "./dist/local-inference/verify.js",
+      "default": "./dist/local-inference/verify.js"
     },
     "./character-presets": {
       "types": "./dist/character-presets.d.ts",

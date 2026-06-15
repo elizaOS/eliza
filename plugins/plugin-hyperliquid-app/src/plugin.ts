@@ -63,6 +63,12 @@ const hyperliquidRoutes: Route[] = [
   },
   {
     type: "GET",
+    path: "/api/hyperliquid/funding",
+    rawPath: true,
+    handler: hyperliquidRouteHandler("/api/hyperliquid/funding"),
+  },
+  {
+    type: "GET",
     path: "/api/hyperliquid/positions",
     rawPath: true,
     handler: hyperliquidRouteHandler("/api/hyperliquid/positions"),

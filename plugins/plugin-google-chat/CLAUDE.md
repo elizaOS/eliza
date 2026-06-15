@@ -19,7 +19,7 @@ Auto-enabled when a `connectors.googlechat` block is present in agent config and
 
 ### Actions / Providers / Evaluators
 
-None registered directly. Messaging routes entirely through the `MessageConnector` registered by `GoogleChatService` using `source: "google-chat"`. The `actions/index.ts` and `providers/index.ts` stubs exist but are empty by design.
+None registered directly. Messaging routes entirely through the `MessageConnector` registered by `GoogleChatService` using `source: "google-chat"`. The `actions/index.ts` and `providers/index.ts` modules exist but are empty by design.
 
 ### Events emitted (via `runtime.emitEvent`)
 
@@ -46,8 +46,8 @@ plugins/plugin-google-chat/
     connector-account-provider.ts  ConnectorAccountManager adapter (lists/patches accounts)
     config.ts                      GoogleChatConfig / GoogleChatAccountConfig / GoogleChatSpaceConfig types
     types.ts                       Core interfaces, enums, error classes, utility functions
-    actions/index.ts               Empty stub (messaging routes through MessageConnector)
-    providers/index.ts             Empty stub
+    actions/index.ts               Empty module (messaging routes through MessageConnector)
+    providers/index.ts             Empty module
     connector.test.ts              Vitest tests for connector behavior
   auto-enable.ts                   shouldEnable() — checked by plugin-auto-enable-engine at boot
   package.json

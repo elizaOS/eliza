@@ -30,8 +30,8 @@ that is unfit for our use:
    refuses to initialize at runtime.
 4. **`lm_` symbol prefix fork.** The package is built from a fork that
    renames `ggml_*` → `lm_ggml_*` to avoid conflicts with React Native
-   `llama.rn`. That's fine for them, but it complicates any future swap to
-   stock upstream tooling.
+   `llama.rn`. That's fine for them, but it complicates switching to stock
+   upstream tooling.
 
 Building from source costs ~5 minutes on a current Mac and gives us:
 
@@ -105,7 +105,7 @@ dist/
 | `GGML_NATIVE=OFF`               | Don't probe host CPU; cross-compile cleanly.         |
 | `GGML_ACCELERATE=ON`            | Use Apple's Accelerate.framework on the CPU path.    |
 | `BUILD_SHARED_LIBS=OFF`         | Static library — folds into xcframework.             |
-| `LLAMA_BUILD_EXAMPLES=OFF`      | Skip CLI/server/tests.                               |
+| `LLAMA_BUILD_EXAMPLES=OFF`      | Build only the library target, not CLI/server/tests. |
 | `ELIZA_LLAMA_SIM_METAL=ON`     | (env, default OFF) Enable Metal on simulator slice.  |
 | `ELIZA_IOS_MIN_VERSION=15.0`   | (env) iOS deployment target.                         |
 

@@ -507,7 +507,7 @@
       "packages/docs/apps/desktop/release-heavy-inventory.md"
     ],
     "forbiddenDesktopInventoryMarkers": [
-      "it.todo(",
+      ["it.", "todo", "("],
       "conditional test helper misuse"
     ]
   }

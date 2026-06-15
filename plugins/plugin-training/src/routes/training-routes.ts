@@ -72,8 +72,8 @@ function resolveBooleanSetting(value: unknown): boolean | undefined {
 
 /**
  * Map a thrown service error onto an HTTP status. `NotImplementedError` (the
- * training service no longer fakes GPU fine-tunes / model ops) becomes a 501
- * with the error's own message; anything else falls back to `status`.
+ * training service does not synthesize GPU fine-tunes or model ops) becomes a
+ * 501 with the error's own message; anything else falls back to `status`.
  */
 function sendServiceError<R>(
   error: (res: R, message: string, status?: number) => void,
@@ -282,7 +282,7 @@ export async function handleTrainingRoutes(
     return true;
   }
 
-  // ── Auto-training trigger surface (Phase 4) ─────────────────────────────
+  // ── Auto-training trigger surface ───────────────────────────────────────
   if (method === "GET" && pathname === "/api/training/auto/status") {
     const trigger = getTriggerEntry(runtime);
     if (!trigger) {

@@ -4,7 +4,6 @@ import { logger } from "@elizaos/core";
 import type { ElizaConfig } from "@elizaos/shared";
 import {
   isElizaSettingsDebugEnabled,
-  isPlainObject,
   migrateLegacyRuntimeConfig,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
@@ -23,6 +22,10 @@ import {
 } from "./paths.ts";
 
 export type { ElizaConfig } from "@elizaos/shared";
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function resolveConfigWritePath(env: NodeJS.ProcessEnv = process.env): string {
   const persistPath = env.ELIZA_PERSIST_CONFIG_PATH?.trim();

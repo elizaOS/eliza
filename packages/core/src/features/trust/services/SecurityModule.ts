@@ -46,6 +46,36 @@ export class SecurityModule {
 	private actionHistory: Map<UUID, Action[]> = new Map();
 	private keywordPatternCache = new Map<string, RegExp>();
 
+	/**
+	 * Cap on the number of distinct entities retained in the per-entity
+	 * analysis maps. Without this, a long-running agent that talks to many
+	 * users accumulates one entry per entity forever (each holding up to 100
+	 * messages/actions). LRU eviction keeps the most recently active entities.
+	 */
+	private static readonly MAX_TRACKED_ENTITIES = 5000;
+
+	/**
+	 * Insert into a per-entity analysis map with LRU eviction of the oldest
+	 * entity once {@link MAX_TRACKED_ENTITIES} is exceeded. Re-inserting an
+	 * existing key refreshes its recency.
+	 */
+	private setEntityScoped<V>(
+		map: Map<UUID, V>,
+		entityId: UUID,
+		value: V,
+	): void {
+		if (map.has(entityId)) {
+			map.delete(entityId);
+		}
+		map.set(entityId, value);
+		if (map.size > SecurityModule.MAX_TRACKED_ENTITIES) {
+			const oldest = map.keys().next().value;
+			if (oldest !== undefined) {
+				map.delete(oldest);
+			}
+		}
+	}
+
 	// Patterns for prompt injection detection
 	private readonly INJECTION_PATTERNS = [
 		/ignore\s+(all\s+)?previous\s+(instructions|commands)/i,
@@ -1107,7 +1137,7 @@ export class SecurityModule {
 			let profile = this.behavioralProfiles.get(entity);
 			if (!profile) {
 				profile = await this.buildBehavioralProfile(entity);
-				this.behavioralProfiles.set(entity, profile);
+				this.setEntityScoped(this.behavioralProfiles, entity, profile);
 			}
 			profiles.push(profile);
 		}
@@ -1366,14 +1396,12 @@ export class SecurityModule {
 	 */
 	async storeMessage(message: Message): Promise<void> {
 		const messages = this.messageHistory.get(message.entityId) ?? [];
-		if (!this.messageHistory.has(message.entityId)) {
-			this.messageHistory.set(message.entityId, messages);
-		}
 		messages.push(message);
 
 		if (messages.length > 100) {
 			messages.shift();
 		}
+		this.setEntityScoped(this.messageHistory, message.entityId, messages);
 	}
 
 	/**
@@ -1381,13 +1409,11 @@ export class SecurityModule {
 	 */
 	async storeAction(action: Action): Promise<void> {
 		const actions = this.actionHistory.get(action.entityId) ?? [];
-		if (!this.actionHistory.has(action.entityId)) {
-			this.actionHistory.set(action.entityId, actions);
-		}
 		actions.push(action);
 
 		if (actions.length > 100) {
 			actions.shift();
 		}
+		this.setEntityScoped(this.actionHistory, action.entityId, actions);
 	}
 }

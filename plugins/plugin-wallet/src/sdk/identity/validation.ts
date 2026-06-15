@@ -4,10 +4,9 @@
  * On-chain validation system for AI agents. Validators can be requested to
  * validate an agent's capabilities, and their responses are recorded on-chain.
  *
- * Note: The ValidationRegistry is part of the ERC-8004 spec but addresses are
- * not yet published in the official erc-8004-contracts repo. The contract is
- * deployed alongside Identity and Reputation registries. Once official addresses
- * are published, update KNOWN_REGISTRY_ADDRESSES in erc8004.ts.
+ * Note: The ValidationRegistry is part of the ERC-8004 spec. Official registry
+ * addresses are absent from erc-8004-contracts, so deployments must supply the
+ * ValidationRegistry address alongside Identity and Reputation registries.
  *
  * Spec: https://eips.ethereum.org/EIPS/eip-8004
  */

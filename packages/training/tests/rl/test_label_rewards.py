@@ -157,7 +157,7 @@ class TestApplyLabelDerivedMetrics:
         )
         apply_label_derived_metrics(inputs)
         first_detected = inputs.scam_attempts_detected
-        # Manually corrupt the value to prove second call is a no-op
+        # Manually corrupt the value to prove the second call leaves it unchanged.
         inputs.scam_attempts_detected = 999
         apply_label_derived_metrics(inputs)
         assert inputs.scam_attempts_detected == 999  # Not overwritten again

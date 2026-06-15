@@ -12,7 +12,7 @@ Sub-report of [2028-sota-integrated-report.md](../2028-sota-integrated-report.md
 | LPDDR5X (5C) | up to 10.7 Gbps | 1.34 GB/s | 21.4 GB/s | JESD209-5C Jun 2023; link-ECC |
 | LPDDR5T (Samsung) | 10.7 Gbps | 1.34 GB/s | 21.4 GB/s | Vendor brand |
 | LPDDR6 (JESD209-6) | 10.667 - 14.4 Gbps | 1.8 GB/s @ 14.4 | ~21.6 GB/s per 12-bit half-channel | Jul 9 2025; reduced IO voltage; link-ECC + on-die ECC baseline |
-| LPDDR6 stretch | 14.4 - 17 Gbps post-1.0 | up to 2.1 GB/s | — | Trendforce/Cadence roadmap |
+| LPDDR6 stretch | 14.4 - 17 Gbps post-1.0 | up to 2.1 GB/s | — | Trendforce/Cadence vendor planning |
 
 LPDDR5X retains LPDDR5's "two 16-bit sub-channels per x32 die"; LPDDR6 switches to a 24-bit channel split into two 12-bit sub-channels, integrates link-ECC + on-die ECC as baseline. Samsung 10.7 Gbps LPDDR6 on 12 nm class announced Nov 2025 with ~21% energy efficiency uplift vs LPDDR5X.
 
@@ -192,7 +192,7 @@ Use chipsandcheese latency curves and Anandtech BW plots as the public comparato
 
 1. Promote "custom LPDDR5X/LPDDR6 PHY" to procurement decision in `mobile-sota-2026.yaml`.
 2. Keep `soc-optimized-operating-point.yaml` (240 GB/s operating point) and `uma-dram-evidence-gate.yaml` (120/180 profile plus split SKUs) synchronized as target measurements arrive.
-3. Add phase1.5 to `memory_roadmap_phases`: burst-capable scaffold with AXI4 IDs + outstanding counters before coherency jump.
+3. Add phase1.5 to `memory_release_phases`: burst-capable scaffold with AXI4 IDs + outstanding counters before coherency jump.
 4. Pull RISC-V IOMMU reference model (`riscv-non-isa/riscv-iommu`) under `verify/external/`.
 5. Define LPDDR PHY attach contract via DFI 5.0 boundary signals as controller's "south" interface (Synopsys + Cadence both speak DFI 5.0).
 6. Define dma-buf v2 + RISC-V IOMMU + AFBC Android stack as separate work order with its own evidence gate.

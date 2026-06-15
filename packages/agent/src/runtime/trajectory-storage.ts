@@ -313,7 +313,7 @@ interface TrainingTriggerEntry {
  *
  * Registered by `@elizaos/app-core` when `@elizaos/plugin-training` is installed
  * (see `runtime/eliza.ts` → `registerTrackCTrainingCrons`). Slim installs
- * never register the service and this resolves to a no-op.
+ * never register the service and this resolves without work.
  *
  * Errors are logged at debug level only — auto-train counter increments
  * must never block or break trajectory persistence.
@@ -717,8 +717,9 @@ export async function installDatabaseTrajectoryLogger(
         });
 
         // Notify the auto-train trigger service (registered by app-core when
-        // app-training is installed). Optional — the chain is a no-op if the
-        // service was never registered, which is the case for slim installs.
+        // app-training is installed). Optional — the chain resolves without
+        // work if the service was never registered, which is the case for slim
+        // installs.
         if (status === "completed") {
           notifyTrainingTrigger(runtime, stepIdOrTrajectoryId);
         }

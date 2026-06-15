@@ -573,7 +573,7 @@ def validate_action_specific(task_type: str, decoded: Any) -> list[str]:
         # removeContactTemplate (prompts.ts:892): required `contactName`,
         # `confirmed: yes|no`. Accept either `contactName` or `name`.
         # Empty/null contactName is acceptable IFF `confirmed` is no/null/false
-        # — that's the canonical "no removal requested" no-op response.
+        # — that's the canonical "no removal requested" unchanged response.
         reasons: list[str] = []
         if "contactName" not in keys and "name" not in keys:
             return ["missing_contactName"]

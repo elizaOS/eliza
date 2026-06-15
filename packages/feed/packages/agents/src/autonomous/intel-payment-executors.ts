@@ -1,8 +1,8 @@
 /**
- * WIP: Direct executors for SHARE_INFORMATION and REQUEST_PAYMENT actions.
+ * Direct executors for SHARE_INFORMATION and REQUEST_PAYMENT actions.
  *
- * These are separated from DirectExecutors.ts to avoid linter/formatter conflicts
- * with concurrent agent edits. Will be merged back once stable.
+ * DirectExecutors.ts delegates the public autonomous-action entrypoints here so
+ * the intel search and payment-request chat creation logic stays isolated.
  *
  * SHARE_INFORMATION: Searches agent's conversations for real content matching
  * keywords, sends verified intel summary to recipient.

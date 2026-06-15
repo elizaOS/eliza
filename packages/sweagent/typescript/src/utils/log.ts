@@ -1,6 +1,7 @@
-export function getLogger(_name: string) {
+export function getLogger(name: string) {
+  const prefix = `[sweagent:${name}]`;
   return {
-    info: (...args: unknown[]) => console.log(...args),
-    error: (...args: unknown[]) => console.error(...args),
+    info: (...args: unknown[]) => console.log(prefix, ...args),
+    error: (...args: unknown[]) => console.error(prefix, ...args),
   };
 }

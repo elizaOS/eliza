@@ -31,6 +31,9 @@ import {
 import { logger } from "../shared/logger";
 import { isPromptLoggingEnabled, logPrompt } from "../utils/prompt-logger";
 
+const OBJECT_SMALL_MODEL_TYPE = "OBJECT_SMALL";
+const OBJECT_LARGE_MODEL_TYPE = "OBJECT_LARGE";
+
 function getStringSetting(
   runtime: IAgentRuntime,
   key: string,
@@ -266,19 +269,19 @@ export const groqPlugin: Plugin = {
   },
   models: {
     [ModelType.TEXT_TOKENIZER_ENCODE]: async (
-      _runtime,
+      _runtime: IAgentRuntime,
       { prompt, modelType = ModelType.TEXT_LARGE }: TokenizeTextParams,
     ) => {
       return await tokenizeText(modelType ?? ModelType.TEXT_LARGE, prompt);
     },
     [ModelType.TEXT_TOKENIZER_DECODE]: async (
-      _runtime,
+      _runtime: IAgentRuntime,
       { tokens, modelType = ModelType.TEXT_LARGE }: DetokenizeTextParams,
     ) => {
       return await detokenizeText(modelType ?? ModelType.TEXT_LARGE, tokens);
     },
     [ModelType.TEXT_SMALL]: async (
-      runtime,
+      runtime: IAgentRuntime,
       {
         prompt,
         stopSequences = [],
@@ -305,7 +308,7 @@ export const groqPlugin: Plugin = {
       const modelVersion = extendedRuntime.currentModelVersion;
 
       return await generateGroqText(groq, model, {
-        prompt,
+        prompt: prompt ?? "",
         system: runtime.character.system ?? undefined,
         temperature,
         maxTokens,
@@ -318,7 +321,7 @@ export const groqPlugin: Plugin = {
       });
     },
     [ModelType.TEXT_LARGE]: async (
-      runtime,
+      runtime: IAgentRuntime,
       {
         prompt,
         stopSequences = [],
@@ -356,7 +359,7 @@ export const groqPlugin: Plugin = {
       );
 
       return await generateGroqText(groq, model, {
-        prompt,
+        prompt: prompt ?? "",
         system: runtime.character.system ?? undefined,
         temperature,
         maxTokens,
@@ -368,8 +371,8 @@ export const groqPlugin: Plugin = {
         runtime,
       });
     },
-    [ModelType.OBJECT_SMALL]: async (
-      runtime,
+    [OBJECT_SMALL_MODEL_TYPE]: async (
+      runtime: IAgentRuntime,
       params: ObjectGenerationParams,
     ) => {
       const baseURL = getBaseURL(runtime);
@@ -385,8 +388,8 @@ export const groqPlugin: Plugin = {
         JsonValue
       >;
     },
-    [ModelType.OBJECT_LARGE]: async (
-      runtime,
+    [OBJECT_LARGE_MODEL_TYPE]: async (
+      runtime: IAgentRuntime,
       params: ObjectGenerationParams,
     ) => {
       const baseURL = getBaseURL(runtime);
@@ -402,5 +405,5 @@ export const groqPlugin: Plugin = {
         JsonValue
       >;
     },
-  },
+  } as unknown as Plugin["models"],
 };

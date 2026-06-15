@@ -6,6 +6,7 @@ export const DEFAULT_LARGE_MODEL = "google/gemini-2.5-flash";
 export const DEFAULT_IMAGE_MODEL = "x-ai/grok-2-vision-1212";
 export const DEFAULT_IMAGE_GENERATION_MODEL = "google/gemini-2.5-flash-image-preview";
 export const DEFAULT_EMBEDDING_MODEL = "openai/text-embedding-3-small";
+export const DEFAULT_TRANSCRIPTION_MODEL = "openai/whisper-large-v3";
 export const DEFAULT_EMBEDDING_DIMENSIONS = 1536;
 
 function getEnvValue(key: string): string | undefined {
@@ -125,6 +126,14 @@ export function getEmbeddingModel(runtime: IAgentRuntime): string {
     getSetting(runtime, "OPENROUTER_EMBEDDING_MODEL") ??
     getSetting(runtime, "EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL) ??
     DEFAULT_EMBEDDING_MODEL
+  );
+}
+
+export function getTranscriptionModel(runtime: IAgentRuntime): string {
+  return (
+    getSetting(runtime, "OPENROUTER_TRANSCRIPTION_MODEL") ??
+    getSetting(runtime, "TRANSCRIPTION_MODEL", DEFAULT_TRANSCRIPTION_MODEL) ??
+    DEFAULT_TRANSCRIPTION_MODEL
   );
 }
 

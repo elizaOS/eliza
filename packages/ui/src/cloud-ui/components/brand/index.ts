@@ -3,10 +3,6 @@
  * Exports all reusable brand components
  */
 
-export {
-  CloudVideoBackground,
-  type CloudVideoBackgroundProps,
-} from "../../../backgrounds/CloudVideoBackground";
 export type { BrandButtonProps } from "./brand-button";
 export { BrandButton, brandButtonVariants } from "./brand-button";
 export { AgentCard, BrandCard } from "./brand-card";
@@ -19,7 +15,6 @@ export {
 } from "./brand-tabs";
 export type { TabItem } from "./brand-tabs-responsive";
 export { BrandTabsResponsive } from "./brand-tabs-responsive";
-export { CloudSkyBackground } from "./cloud-sky-background";
 export { CornerBrackets } from "./corner-brackets";
 export { DashboardSection } from "./dashboard-section";
 export { DashboardStatCard } from "./dashboard-stat-card";
@@ -30,7 +25,8 @@ export { HUDContainer } from "./hud-container";
 export type { KeyMetric } from "./key-metrics-grid";
 export { KeyMetricsGrid } from "./key-metrics-grid";
 export type { LockOnButtonProps } from "./lock-on-button";
-export { LockOnButton, lockOnButtonVariants } from "./lock-on-button";
+export { LockOnButton } from "./lock-on-button";
+export { lockOnButtonVariants } from "./lock-on-button.variants";
 export { MiniStatCard } from "./mini-stat-card";
 export { PromptCard, PromptCardGrid } from "./prompt-card";
 export { SectionHeader, SectionLabel } from "./section-header";

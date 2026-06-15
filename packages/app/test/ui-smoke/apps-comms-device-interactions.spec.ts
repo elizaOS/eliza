@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import {
   assertReadyChecks,
+  hideContinuousChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -92,10 +93,16 @@ const BENIGN_CONSOLE_PATTERNS = [
   /\[Eliza\] StatusBar plugin not available/i,
   /\[eliza\]\[startup:init\] Device bridge unavailable/i,
   /\[eliza\]\[startup:init\] Mobile agent tunnel/i,
+  /WebSocket connection to 'ws:\/\/127\.0\.0\.1:31337\/api\/local-inference\/device-bridge\?token=ui-smoke-local-agent-token' failed/i,
   /Web Bluetooth is not available/i,
 ];
 const BENIGN_PAGEERROR_PATTERNS = [
   /Cannot read properties of undefined \(reading 'catch'\)/i,
+];
+const GENERIC_RESOURCE_404 =
+  /Failed to load resource: the server responded with a status of 404 \(Not Found\)/i;
+const BENIGN_HTTP_ERROR_PATTERNS = [
+  /\/apps\/assets\/[^/]+\.(?:js|css|woff2?|map)$/i,
 ];
 
 const PLUGIN_HEADERS: NativePluginHeader[] = [
@@ -180,6 +187,7 @@ function installIssueGuards(page: Page): string[] {
   page.on("console", (message) => {
     const text = message.text();
     if (BENIGN_CONSOLE_PATTERNS.some((pattern) => pattern.test(text))) return;
+    if (GENERIC_RESOURCE_404.test(text)) return;
     if (message.type() === "error" || RED_ERROR_TEXT.test(text)) {
       issues.push(`console ${message.type()}: ${text}`);
     }
@@ -198,6 +206,14 @@ function installIssueGuards(page: Page): string[] {
     const failureText = request.failure()?.errorText ?? "";
     if (failureText === "net::ERR_ABORTED") return;
     issues.push(`requestfailed: ${url} ${failureText}`);
+  });
+  page.on("response", (response) => {
+    const status = response.status();
+    if (status < 400) return;
+    const url = response.url();
+    if (url.startsWith("data:") || url.startsWith("blob:")) return;
+    if (BENIGN_HTTP_ERROR_PATTERNS.some((pattern) => pattern.test(url))) return;
+    issues.push(`response ${status}: ${url}`);
   });
   return issues;
 }
@@ -239,7 +255,7 @@ async function openPhoneCompanionMode(page: Page): Promise<void> {
   await assertReadyChecks(
     page,
     "phone companion",
-    [{ text: "Eliza" }],
+    [{ text: "Companion" }, { text: "Pair with Eliza" }],
     "any",
     90_000,
   );
@@ -995,6 +1011,7 @@ test.describe("Android communications app interactions", () => {
     page,
   }) => {
     const issues = installIssueGuards(page);
+    await hideContinuousChatOverlay(page);
     await installDefaultAppRoutes(page);
 
     await openAppWindow(page, "phone", "/apps/phone", [
@@ -1117,7 +1134,7 @@ test.describe("Android communications app interactions", () => {
     });
 
     await openPhoneCompanionMode(page);
-    await expect(page.getByRole("heading", { name: "Eliza" })).toBeVisible({
+    await expect(page.getByRole("heading", { name: "Companion" })).toBeVisible({
       timeout: 90_000,
     });
     await expect(
@@ -1137,10 +1154,30 @@ test.describe("Android communications app interactions", () => {
     await expect(
       page.getByRole("heading", { name: "Pair with Eliza" }),
     ).toBeVisible();
-    await page.getByLabel("Or enter code").fill("123456");
+    const manualPairingPayload = Buffer.from(
+      JSON.stringify({
+        agentId: "agent-ui-smoke-manual",
+        pairingCode: "manual-ui-smoke",
+        ingressUrl: "ws://127.0.0.1:31337/input",
+        sessionToken: "session-ui-smoke-manual",
+      }),
+    ).toString("base64");
+    await page.getByLabel("Or paste payload").fill(manualPairingPayload);
     await page.getByRole("button", { name: "Pair device" }).click();
+    await expect(page.getByRole("button", { name: "Exit" })).toBeVisible();
+    await expect(page.getByTitle("Remote desktop")).toHaveAttribute(
+      "src",
+      /session-ui-smoke-manual/,
+    );
+    await expect
+      .poll(
+        async () =>
+          (await readFixture(page))?.remoteSession.openedUrls.at(-1) ?? "",
+      )
+      .toContain("session-ui-smoke-manual");
+    await page.getByRole("button", { name: "Exit" }).click();
     await expect(
-      page.getByText("Manual code requires the pairing handshake"),
+      page.getByRole("heading", { name: "Pair with Eliza" }),
     ).toBeVisible();
     await page.getByRole("button", { name: "Scan QR code" }).click();
     await expect(page.getByRole("button", { name: "Exit" })).toBeVisible();
@@ -1155,7 +1192,9 @@ test.describe("Android communications app interactions", () => {
       )
       .toContain("session-ui-smoke");
     await page.getByRole("button", { name: "Exit" }).click();
-    await expect(page.getByRole("heading", { name: "Eliza" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /^(Companion|Pair with Eliza)$/ }),
+    ).toBeVisible();
 
     await expectNoIssues(page, issues.splice(0), "phone companion pairing");
   });
@@ -1171,6 +1210,7 @@ test.describe("Facewear and smartglasses GUI interactions", () => {
   }) => {
     const issues = installIssueGuards(page);
     let facewearStatusRequests = 0;
+    await hideContinuousChatOverlay(page);
 
     await installDefaultAppRoutes(page);
     await page.route("**/api/facewear/status", async (route) => {
@@ -1199,32 +1239,24 @@ test.describe("Facewear and smartglasses GUI interactions", () => {
     await expect(page.getByText("even-realities")).toBeVisible();
     await page.getByRole("button", { name: "Refresh" }).click();
     await expect.poll(() => facewearStatusRequests).toBeGreaterThan(1);
-    let dialogMessage = "";
-    page.once("dialog", async (dialog) => {
-      dialogMessage = dialog.message();
-      await dialog.dismiss();
-    });
     await page.getByRole("button", { name: "Manage" }).click();
-    await expect.poll(() => dialogMessage).toContain("Even Realities");
+    await expect(page).toHaveURL(/\/apps\/smartglasses/);
     await expectNoIssues(page, issues.splice(0), "facewear device controls");
 
     await openAppPath(page, "/apps/smartglasses");
     await expect(
       page.getByRole("heading", { name: "Smartglasses" }),
     ).toBeVisible({ timeout: 90_000 });
-    await expect(
-      page.getByRole("button", { name: "Connect Headset" }),
-    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Connect" })).toBeVisible();
     await expect(page.getByText("Bridge", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Connect Headset" }).click();
+    await page.getByRole("button", { name: "Connect" }).click();
     await expect(
-      page.getByText("Headset connected", { exact: true }),
+      page.getByText("Whole headset connected", { exact: true }),
     ).toBeVisible();
     await expect(
       page.getByText("Whole headset", { exact: true }),
     ).toBeVisible();
 
-    await page.locator("textarea").fill("Deterministic smartglasses display.");
     await page.getByRole("button", { name: "Run Check" }).click();
     await expect
       .poll(async () => (await readFixture(page))?.smartglasses.writes.length)
@@ -1258,7 +1290,7 @@ test.describe("Facewear and smartglasses GUI interactions", () => {
     await page.getByRole("button", { name: "Scan" }).click();
     await expect(page.getByText("Found 2 network(s)")).toBeVisible();
     await expect(page.getByText("DeviceRig")).toBeVisible();
-    await page.getByRole("button", { name: "Status" }).click();
+    await page.getByRole("button", { name: "Refresh Wi-Fi Status" }).click();
     await expect(
       page.getByText("Connected to LabNet at 192.168.4.8"),
     ).toBeVisible();
@@ -1269,12 +1301,15 @@ test.describe("Facewear and smartglasses GUI interactions", () => {
         (await readFixture(page))?.smartglasses.wifiCredentials.at(-1),
       )
       .toEqual({ ssid: "LabNet", password: "correct horse" });
-    await page.getByRole("button", { name: "Native Setup" }).click();
+    await page
+      .getByRole("button", { name: /^(Native Setup|Native Wi-Fi Setup)$/ })
+      .click();
     await expect(page.getByText("Native Wi-Fi setup requested")).toBeVisible();
 
     await page.getByRole("button", { name: "Android" }).click();
+    await expect(page.getByText("Native bridge preferred")).toBeVisible();
     await expect(
-      page.getByText("native bridge for headset pairing"),
+      page.getByText("Pair and configure in the host."),
     ).toBeVisible();
     await page.getByRole("button", { name: "Guided Validation" }).click();
     await expect(

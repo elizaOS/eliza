@@ -94,7 +94,7 @@ Character-file override path: `character.settings.nostr` — same fields as `Nos
 ## Conventions / gotchas
 
 - **Multi-account:** `NostrService` spawns child `NostrService` instances (one per enabled account). Public methods like `sendDm` / `getPublicKey` on the root instance delegate to the default child. When working on multi-account routing, trace through `accountServices: Map<string, NostrService>`.
-- **NIP-04 only:** Encryption uses `nostr-tools/nip04` (AES-256-CBC over an ECDH shared secret). NIP-44 is not implemented. DM content is always decrypted in-process; plaintext is never persisted by this plugin directly.
+- **NIP-04 only:** Encryption uses `nostr-tools/nip04` (AES-256-CBC over an ECDH shared secret). NIP-44 is outside this plugin's current protocol surface. DM content is always decrypted in-process; plaintext is never persisted by this plugin directly.
 - **`@noble/hashes` pin:** `package.json` has a hard override to `@noble/hashes@2.2.0`. Do not change this without verifying `nostr-tools` cryptography still works end-to-end.
 - **Relay errors are non-fatal:** `publishNote` / `sendDm` / `publishProfile` loop over relays and succeed if any relay accepts the event. Failure on all relays returns `success: false`.
 - **No Markdown in Nostr content:** The `contentShaping` hints passed to both connector registrations disable Markdown. Keep note/DM text plain.

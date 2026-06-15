@@ -6,7 +6,7 @@
  * at a time; switching models disposes the previous context first so we
  * never double-allocate VRAM.
  *
- * On web this package falls back to an "unavailable" stub. Mobile builds
+ * On web this package falls back to an unavailable adapter. Mobile builds
  * should call `registerCapacitorLlamaLoader(runtime)` during bootstrap to
  * wire this adapter in as the runtime's `localInferenceLoader` service.
  */

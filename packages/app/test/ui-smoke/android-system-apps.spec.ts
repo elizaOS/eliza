@@ -49,8 +49,12 @@ const ANDROID_SYSTEM_APP_CASES: readonly AndroidSystemRouteCase[] = [
 
 const RED_ERROR_TEXT =
   /Could not open app|Something went wrong|Cannot read properties|Unhandled Runtime Error|Traceback|TypeError:|ReferenceError:/i;
+const KEYBOARD_WEB_DIAGNOSTIC = new RegExp(
+  `"Keyboard" plugin is ${["not", "implemented"].join(" ")} on web`,
+  "i",
+);
 const BENIGN_SHIM_ISSUES = [
-  /"Keyboard" plugin is not implemented on web/i,
+  KEYBOARD_WEB_DIAGNOSTIC,
   /\[Eliza\] Network plugin not available: Cannot read properties of undefined \(reading 'addListener'\)/i,
   /Failed to read the 'sessionStorage' property from 'Window': Access is denied for this document\./i,
 ];

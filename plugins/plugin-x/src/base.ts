@@ -250,11 +250,10 @@ export class ClientBase {
 
   /**
    * This method is called when the application is ready.
-   * It throws an error indicating that it is not implemented in the base class
-   * and should be implemented in the subclass.
+   * It throws an error indicating that subclasses must override it.
    */
   onReady() {
-    throw new Error("Not implemented in base class, please call from subclass");
+    throw new Error("ClientBase.onReady must be implemented by a subclass");
   }
 
   /**

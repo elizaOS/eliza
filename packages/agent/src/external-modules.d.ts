@@ -291,7 +291,7 @@ declare module "@elizaos/plugin-video" {
   const plugin: Plugin;
   export default plugin;
 }
-// @elizaos/plugin-commands is a workspace package with full types — no stub needed.
+// @elizaos/plugin-commands is a workspace package with full types; no ambient shim needed.
 declare module "@elizaos/plugin-signal" {
   export type SignalPairingStatus =
     | "idle"
@@ -534,15 +534,15 @@ declare module "three/examples/jsm/libs/meshopt_decoder.module.js" {
 // device bridge. Marked `--external` in the tsup build; declare a loose
 // surface so transitive type-checking can resolve it.
 declare module "ws" {
-  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for an optional dep
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient shim for an optional dep
   export const WebSocket: any;
-  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for an optional dep
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient shim for an optional dep
   export const WebSocketServer: any;
-  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for an optional dep
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient shim for an optional dep
   export type WebSocket = any;
-  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for an optional dep
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient shim for an optional dep
   export type WebSocketServer = any;
-  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for an optional dep
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient shim for an optional dep
   const ws: any;
   export default ws;
 }
@@ -598,13 +598,13 @@ declare module "isomorphic-git" {
     | { username?: string; password?: string }
     | undefined
     | Promise<{ username?: string; password?: string } | undefined>;
-  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for optional dep
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient shim for optional dep
   const git: any;
   export default git;
 }
 
 declare module "isomorphic-git/http/node" {
-  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for optional dep
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient shim for optional dep
   const http: any;
   export default http;
 }

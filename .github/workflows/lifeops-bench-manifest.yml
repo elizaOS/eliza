@@ -22,7 +22,7 @@ on:
   pull_request:
     branches: [main, develop]
     paths:
-      - "plugins/plugin-lifeops/**"
+      - "plugins/plugin-personal-assistant/**"
       - "plugins/plugin-contacts/**"
       - "plugins/plugin-phone/**"
       - "plugins/plugin-bluebubbles/**"

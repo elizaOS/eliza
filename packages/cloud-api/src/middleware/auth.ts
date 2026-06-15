@@ -22,13 +22,18 @@ import { getAuditDispatcher } from "../services/audit-dispatcher-singleton";
 
 const publicPathPrefixes = [
   "/api/health",
+  "/api/i18n/locale",
   "/api/og",
   "/api/openapi.json",
   "/api/eliza",
   "/api/fal/proxy",
   "/api/public",
+  // Caddy on-demand-TLS `ask` for the apps front door — called by app nodes
+  // without a session; side-effect-free existence check (see route doc).
+  "/api/v1/apps-ingress/ask",
   "/api/auth/pair",
   "/api/auth/cli-session",
+  "/api/v1/cli-auth",
   "/api/auth/siwe",
   "/api/auth/siws",
   "/api/auth/steward-session",
@@ -205,4 +210,7 @@ export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
 // route imports (`@/api-app/middleware/auth`) continue to work, while tests
 // and new code can import from the standalone file without pulling in the
 // full auth-gate transitive deps.
-export { requireApiKeyPermission } from "./api-key-permission";
+export {
+  enforceApiKeyPermission,
+  requireApiKeyPermission,
+} from "./api-key-permission";

@@ -101,4 +101,4 @@ const wav = pcmFloatToWavBuffer(result.samples, result.sampleRate, result.channe
 
 ## Browser
 
-The plugin exports a browser-safe stub. Any TTS call in a browser context throws `OmnivoiceNotInstalled`. Load the plugin only in Node/Bun agents.
+The plugin exports a browser-safe unavailable entry. Any TTS call in a browser context throws `OmnivoiceNotInstalled`. Load the plugin only in Node/Bun agents.

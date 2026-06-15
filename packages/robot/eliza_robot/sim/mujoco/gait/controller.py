@@ -33,9 +33,6 @@ import numpy as np
 from .bezier import advance_gait_phase, get_rz
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    # The RobotProfile abstraction is being introduced by W1.4 and may
-    # not yet exist on disk. Importing under TYPE_CHECKING keeps mypy
-    # happy without forcing a runtime dependency on the profile module.
     from eliza_robot.profiles import RobotProfile  # noqa: F401
 
 
@@ -57,7 +54,6 @@ HEAD_PAN, HEAD_TILT = 12, 13
 
 # Nominal AiNex link lengths (meters) — these match the
 # ``ainex_primitives.xml`` capsule lengths within a few millimeters.
-# TODO: read from RobotProfile once the schema lands (W1.4).
 _THIGH_LENGTH = 0.10   # hip pitch -> knee
 _SHIN_LENGTH = 0.10    # knee -> ankle
 _LEG_LENGTH = _THIGH_LENGTH + _SHIN_LENGTH  # 0.20 m fully extended
@@ -149,7 +145,7 @@ def _two_link_ik(target_z: float) -> tuple[float, float, float]:
 
 
 def _gait_value(gait_cfg: Any, names: tuple[str, ...], default: float) -> float:
-    """Read gait config from either a dict-like stub or a real profile model."""
+    """Read gait config from either a mapping fixture or a profile model."""
     if isinstance(gait_cfg, dict):
         for name in names:
             if name in gait_cfg:
@@ -160,6 +156,34 @@ def _gait_value(gait_cfg: Any, names: tuple[str, ...], default: float) -> float:
         if value is not None:
             return float(value)
     return float(default)
+
+
+def _profile_home_pose(profile: Any) -> np.ndarray | None:
+    """Build a neutral joint vector from ``RobotProfile.kinematics.joints``."""
+
+    kinematics = getattr(profile, "kinematics", None)
+    joints = getattr(kinematics, "joints", None)
+    if joints is None:
+        return None
+    if len(joints) != NUM_JOINTS:
+        raise ValueError(
+            f"profile.kinematics.joints has {len(joints)} joints, "
+            f"expected {NUM_JOINTS}"
+        )
+
+    pose = np.zeros(NUM_JOINTS, dtype=np.float64)
+    seen: set[int] = set()
+    for joint in joints:
+        index = int(joint.index)
+        if index < 0 or index >= NUM_JOINTS:
+            raise ValueError(
+                f"profile joint index {index} is outside 0..{NUM_JOINTS - 1}"
+            )
+        if index in seen:
+            raise ValueError(f"profile joint index {index} appears more than once")
+        seen.add(index)
+        pose[index] = float(joint.home_rad)
+    return pose
 
 
 class BezierGaitController:
@@ -205,9 +229,6 @@ class BezierGaitController:
             foot_offset = float(
                 _gait_value(gait_cfg, ("foot_offset_m", "foot_offset"), foot_offset)
             )
-        # TODO: once W1.4 ships, also pull link lengths and the neutral
-        # standing pose from the profile instead of the hard-coded
-        # constants at the top of this file.
 
         self.swing_height = float(swing_height)
         self.cycle_hz = float(cycle_hz)
@@ -331,6 +352,10 @@ class BezierGaitController:
         to the hard-coded ``stand_bent_knees``-style pose.
         """
         if self._profile is not None:
+            profile_home = _profile_home_pose(self._profile)
+            if profile_home is not None:
+                return profile_home
+
             pose = getattr(self._profile, "neutral_pose", None)
             if pose is not None:
                 arr = np.asarray(pose, dtype=np.float64)

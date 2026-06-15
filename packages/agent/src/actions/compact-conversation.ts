@@ -164,7 +164,7 @@ export const compactConversationAction: Action = {
     "COMPRESS_CONVERSATION",
   ],
   description:
-    "Compact the current existing conversation into a persisted hybrid ledger and prune old raw turns from future prompt context. Use only when the user explicitly asks to compact this session/history.",
+    "Compact the current existing conversation into a persisted hybrid ledger and prune old raw turns from subsequent prompt context. Use only when the user explicitly asks to compact this session/history.",
   descriptionCompressed:
     "owner-only manual conversation compaction for existing sessions",
   suppressPostActionContinuation: true,

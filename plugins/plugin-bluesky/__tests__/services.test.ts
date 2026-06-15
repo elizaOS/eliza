@@ -223,7 +223,7 @@ describe("BlueskyWorkflowCredentialProvider", () => {
 		);
 	});
 
-	it("returns null for unsupported or incomplete workflow credentials", async () => {
+	it("returns null for unsupported or missing workflow credential data", async () => {
 		const provider = new BlueskyWorkflowCredentialProvider(
 			runtime({
 				BLUESKY_HANDLE: "agent.example.com",

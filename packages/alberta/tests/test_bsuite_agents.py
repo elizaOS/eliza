@@ -15,11 +15,11 @@ from dm_env import specs  # noqa: E402
 from benchmarks.bsuite.wrappers import ContinuingWrapper  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# Minimal stub environment for unit tests (no bsuite import needed)
+# Minimal deterministic environment for unit tests.
 # ---------------------------------------------------------------------------
 
 
-class StubEpisodicEnv(dm_env.Environment):
+class TestEpisodicEnv(dm_env.Environment):
     """Minimal episodic environment for testing wrappers.
 
     Runs for `episode_length` steps then terminates. Observation is a
@@ -62,7 +62,7 @@ class TestContinuingWrapper:
 
     def test_continuing_never_produces_last(self) -> None:
         """In continuing mode, the wrapper should never return a LAST timestep."""
-        env = ContinuingWrapper(StubEpisodicEnv(episode_length=3), mode="continuing")
+        env = ContinuingWrapper(TestEpisodicEnv(episode_length=3), mode="continuing")
         ts = env.reset()
         assert ts.step_type == dm_env.StepType.MID
 
@@ -74,7 +74,7 @@ class TestContinuingWrapper:
 
     def test_continuing_discount_zero_at_boundary(self) -> None:
         """At episode boundaries, discount should be 0.0."""
-        inner = StubEpisodicEnv(episode_length=3)
+        inner = TestEpisodicEnv(episode_length=3)
         env = ContinuingWrapper(inner, mode="continuing")
         env.reset()
 
@@ -90,7 +90,7 @@ class TestContinuingWrapper:
 
     def test_continuing_discount_nonzero_between_boundaries(self) -> None:
         """Between boundaries, discount should be the configured value."""
-        inner = StubEpisodicEnv(episode_length=3)
+        inner = TestEpisodicEnv(episode_length=3)
         env = ContinuingWrapper(inner, mode="continuing", continuing_discount=0.99)
         env.reset()
 
@@ -107,7 +107,7 @@ class TestContinuingWrapper:
 
     def test_standard_mode_passthrough(self) -> None:
         """Standard mode should pass through timesteps unchanged."""
-        inner = StubEpisodicEnv(episode_length=3)
+        inner = TestEpisodicEnv(episode_length=3)
         env = ContinuingWrapper(inner, mode="standard")
         ts = env.reset()
         assert ts.first()
@@ -121,7 +121,7 @@ class TestContinuingWrapper:
 
     def test_continuing_observation_from_new_episode(self) -> None:
         """At boundary, the observation should come from the new episode's reset."""
-        inner = StubEpisodicEnv(episode_length=3)
+        inner = TestEpisodicEnv(episode_length=3)
         env = ContinuingWrapper(inner, mode="continuing")
         env.reset()
 
@@ -135,7 +135,7 @@ class TestContinuingWrapper:
 
     def test_continuing_reward_from_terminal_step(self) -> None:
         """At boundary, the reward should come from the terminal step."""
-        inner = StubEpisodicEnv(episode_length=3)
+        inner = TestEpisodicEnv(episode_length=3)
         env = ContinuingWrapper(inner, mode="continuing")
         env.reset()
 
@@ -148,7 +148,7 @@ class TestContinuingWrapper:
 
     def test_specs_passthrough(self) -> None:
         """Observation and action specs should be passed through."""
-        inner = StubEpisodicEnv()
+        inner = TestEpisodicEnv()
         env = ContinuingWrapper(inner, mode="continuing")
         assert env.observation_spec().shape == (3,)
         assert env.action_spec().num_values == 3
@@ -156,7 +156,7 @@ class TestContinuingWrapper:
     def test_invalid_mode_raises(self) -> None:
         """Invalid mode should raise ValueError."""
         with pytest.raises(ValueError, match="mode must be"):
-            ContinuingWrapper(StubEpisodicEnv(), mode="invalid")
+            ContinuingWrapper(TestEpisodicEnv(), mode="invalid")
 
 
 # ---------------------------------------------------------------------------
@@ -560,11 +560,11 @@ class TestIntegration:
     """Integration tests running agents on wrapped environments."""
 
     def test_smoke_continuing_100_steps(self) -> None:
-        """Run an agent for 100 steps on a continuing stub env."""
+        """Run an agent for 100 steps on a continuing test env."""
         from alberta_framework import MultiHeadMLPLearner, ObGDBounding
         from benchmarks.bsuite.agents.base import AlbertaAgent
 
-        inner = StubEpisodicEnv(episode_length=5)
+        inner = TestEpisodicEnv(episode_length=5)
         env = ContinuingWrapper(inner, mode="continuing")
 
         learner = MultiHeadMLPLearner(
@@ -590,11 +590,11 @@ class TestIntegration:
         assert agent.step_count == 100
 
     def test_smoke_standard_1_episode(self) -> None:
-        """Run an agent for 1 episode in standard mode on stub env."""
+        """Run an agent for 1 episode in standard mode on a test env."""
         from alberta_framework import MultiHeadMLPLearner
         from benchmarks.bsuite.agents.base import AlbertaAgent
 
-        inner = StubEpisodicEnv(episode_length=5)
+        inner = TestEpisodicEnv(episode_length=5)
         env = ContinuingWrapper(inner, mode="standard")
 
         learner = MultiHeadMLPLearner(
@@ -620,10 +620,10 @@ class TestIntegration:
         assert agent.step_count == 5
 
     def test_adam_dqn_smoke_100_steps(self) -> None:
-        """Run Adam DQN agent for 100 steps on continuing stub env."""
+        """Run Adam DQN agent for 100 steps on continuing test env."""
         from benchmarks.bsuite.agents import adam_dqn
 
-        inner = StubEpisodicEnv(episode_length=5)
+        inner = TestEpisodicEnv(episode_length=5)
         env = ContinuingWrapper(inner, mode="continuing")
 
         agent = adam_dqn.default_agent(
@@ -643,10 +643,10 @@ class TestIntegration:
         assert agent.step_count == 100
 
     def test_horde_ac_smoke_100_steps(self) -> None:
-        """Run Horde actor-critic adapter for 100 steps on continuing stub env."""
+        """Run Horde actor-critic adapter for 100 steps on continuing test env."""
         from benchmarks.bsuite.agents import horde_actor_critic
 
-        inner = StubEpisodicEnv(episode_length=5)
+        inner = TestEpisodicEnv(episode_length=5)
         env = ContinuingWrapper(inner, mode="continuing")
 
         agent = horde_actor_critic.default_agent(
@@ -670,7 +670,7 @@ class TestIntegration:
         """Horde actor-critic with history features survives episode boundaries."""
         from benchmarks.bsuite.agents import horde_actor_critic
 
-        inner = StubEpisodicEnv(episode_length=5)
+        inner = TestEpisodicEnv(episode_length=5)
         env = ContinuingWrapper(inner, mode="continuing")
 
         agent = horde_actor_critic.default_agent(

@@ -6,12 +6,12 @@ export const elizaOSCloudPlugin: Plugin = {
     "ElizaOS Cloud browser facade. Node-only routes and services are exported from the node entry.",
 };
 
-// Browser-side no-op stubs for the named exports that ship from the Node
+// Browser-side unavailable facades for the named exports that ship from the Node
 // entry. The renderer needs the names to statically resolve so the bundler
 // doesn't fail with MISSING_EXPORT. These functions are never executed in
 // the browser since the consumers are server-side routes; in eliza local-mode
 // the bundled `app-core/dist/api/server.js` imports them at module-load time.
-const _noop = (): undefined => undefined;
+const unavailableBrowserExport = (): undefined => undefined;
 
 export function getCloudSecret(
   _key?: "ELIZAOS_CLOUD_API_KEY" | "ELIZAOS_CLOUD_ENABLED",
@@ -21,14 +21,14 @@ export function getCloudSecret(
 
 export function clearCloudSecrets(): void {}
 
-export const ensureCloudTtsApiKeyAlias = _noop;
-export const handleCloudTtsPreviewRoute = _noop;
-export const mirrorCompatHeaders = _noop;
-export const normalizeCloudSiteUrl = _noop;
-export const scrubCloudSecretsFromEnv = _noop;
-export const __resetCloudBaseUrlCache = _noop;
-export const resolveCloudTtsBaseUrl = _noop;
-export const resolveElevenLabsApiKeyForCloudMode = _noop;
+export const ensureCloudTtsApiKeyAlias = unavailableBrowserExport;
+export const handleCloudTtsPreviewRoute = unavailableBrowserExport;
+export const mirrorCompatHeaders = unavailableBrowserExport;
+export const normalizeCloudSiteUrl = unavailableBrowserExport;
+export const scrubCloudSecretsFromEnv = unavailableBrowserExport;
+export const __resetCloudBaseUrlCache = unavailableBrowserExport;
+export const resolveCloudTtsBaseUrl = unavailableBrowserExport;
+export const resolveElevenLabsApiKeyForCloudMode = unavailableBrowserExport;
 // `resolveCloudApiBaseUrl` is referenced statically by plugin-wallet's
 // browser bundle (the cloud-routing fallback path). The renderer doesn't
 // run the Node-side resolver; the consumer just needs the name to bind

@@ -1,7 +1,7 @@
 /**
  * BlueBubbles ConnectorAccountManager provider.
  *
- * Adapts the existing multi-account scaffolding in `accounts.ts` to the
+ * Adapts the account resolution helpers in `accounts.ts` to the
  * `ConnectorAccountProvider` contract from
  * `@elizaos/core/connectors/account-manager`.
  *
@@ -109,7 +109,7 @@ export function createBlueBubblesConnectorAccountProvider(
 			_accountId: string,
 			_manager: ConnectorAccountManager,
 		) => {
-			// No-op: BlueBubbles credentials live in character settings / env.
+			// BlueBubbles credentials live in character settings / env.
 		},
 		// No OAuth — BlueBubbles uses server URL + password.
 	};

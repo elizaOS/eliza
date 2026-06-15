@@ -10,6 +10,11 @@ import type {
 } from "@elizaos/core";
 import { Service } from "@elizaos/core";
 import type { AcpService } from "./acp-service.js";
+import {
+  dispatchParentAgentDirective,
+  extractParentAgentDirective,
+  parentAgentMarkerIndex,
+} from "./parent-agent-dispatch.js";
 import { SsrfBlockedError, safeFetch } from "./ssrf-guard.js";
 import type { SessionEventName, SessionInfo } from "./types.js";
 import {
@@ -320,6 +325,11 @@ export class SubAgentRouter extends Service {
   private unsubscribe: (() => void) | undefined;
   private readonly delivered = new Set<string>();
   private readonly roundTripCounts = new Map<string, number>();
+  // Per-session accumulation of streamed child text, scanned for
+  // `USE_SKILL parent-agent <json>` directives. Kept tiny (only a tail, or
+  // from the marker onward) so it never grows with normal task output.
+  private readonly parentAgentBuffers = new Map<string, string>();
+  private readonly parentAgentDispatchCounts = new Map<string, number>();
   private readonly capExceededSessions = new Set<string>();
   private readonly verifyRetryHandedOffSessions = new Set<string>();
   // Backstop for the cross-session "state lost -> spawn a fresh sub-agent"
@@ -473,6 +483,8 @@ export class SubAgentRouter extends Service {
     this.started = false;
     this.delivered.clear();
     this.roundTripCounts.clear();
+    this.parentAgentBuffers.clear();
+    this.parentAgentDispatchCounts.clear();
     this.capExceededSessions.clear();
     this.verifyRetryHandedOffSessions.clear();
     this.completionFirstPostedSession.clear();
@@ -485,6 +497,13 @@ export class SubAgentRouter extends Service {
     event: SessionEventName,
     data: unknown,
   ): Promise<void> {
+    // Streamed child output: intercept `USE_SKILL parent-agent <json>` and
+    // bridge it to the parent-agent broker. `message` chunks are not injected
+    // into the parent (shouldInject excludes them), so this is the only place
+    // the directive is observed; the marker guard keeps it inert otherwise.
+    if (event === "message") {
+      await this.maybeDispatchParentAgent(sessionId, data);
+    }
     if (!shouldInject(event)) return;
     const acp = this.acp;
     if (!acp) return;
@@ -673,7 +692,7 @@ export class SubAgentRouter extends Service {
     // Capture the real git change set the sub-agent produced, scoped to the
     // baseline recorded at spawn. This is ground truth — it replaces the
     // model's raw step transcript in the completion narration (which leaked
-    // verbatim to the user and read as unfinished work to the planner) and
+    // verbatim to the user and read as pending work to the planner) and
     // is persisted so "what did you change / show me the diff" can be
     // answered from the actual change set instead of a confabulated edit.
     let changeSet: WorkspaceChangeSet | undefined;
@@ -690,7 +709,7 @@ export class SubAgentRouter extends Service {
           this.acp.getChangedPaths(sessionId),
           baselineDirty,
         );
-        // Persist only a real change set. A no-op completion stores nothing,
+        // Persist only a real change set. An unchanged completion stores nothing,
         // so the provider — which selects the most-recently-completed session
         // and reads ITS change set — can't bleed an older task's diff.
         if (changeSet) {
@@ -1209,6 +1228,94 @@ Do not report done until every referenced URL in the final page resolves without
     return sessions.some((candidate) =>
       isNewerContinuationSession(candidate, session, origin, currentCreatedAt),
     );
+  }
+
+  /**
+   * Accumulate streamed child text and, when a complete
+   * `USE_SKILL parent-agent <json>` directive appears, bridge it to the broker
+   * and stream the reply back into the session. Synchronous up to the point a
+   * complete directive is found (the buffer is trimmed before any await), so
+   * out-of-order `message` chunks cannot re-dispatch or corrupt the buffer.
+   */
+  private async maybeDispatchParentAgent(
+    sessionId: string,
+    data: unknown,
+  ): Promise<void> {
+    const acp = this.acp;
+    if (!acp) return;
+    const chunk =
+      typeof (data as { text?: unknown } | null)?.text === "string"
+        ? (data as { text: string }).text
+        : "";
+    if (!chunk) return;
+
+    const MAX_BUFFER = 16_384;
+    const TAIL = 64; // ≥ marker length, to catch a marker split across chunks
+    let buf = (this.parentAgentBuffers.get(sessionId) ?? "") + chunk;
+
+    const markerAt = parentAgentMarkerIndex(buf);
+    if (markerAt < 0) {
+      this.parentAgentBuffers.set(sessionId, buf.slice(-TAIL));
+      return;
+    }
+    buf = buf.slice(markerAt);
+    if (buf.length > MAX_BUFFER) buf = buf.slice(-MAX_BUFFER);
+
+    const directive = extractParentAgentDirective(buf);
+    if (!directive) {
+      // Marker present but the JSON is still streaming (or malformed). If it is
+      // malformed the extractor returns null; drop the dead marker so we do not
+      // re-scan it forever, keeping only a tail.
+      this.parentAgentBuffers.set(
+        sessionId,
+        buf.length > MAX_BUFFER ? buf.slice(-TAIL) : buf,
+      );
+      return;
+    }
+    // Consume the directive BEFORE awaiting so a concurrent chunk cannot
+    // re-dispatch it.
+    this.parentAgentBuffers.set(sessionId, buf.slice(directive.endIndex));
+
+    const nextCount = (this.parentAgentDispatchCounts.get(sessionId) ?? 0) + 1;
+    this.parentAgentDispatchCounts.set(sessionId, nextCount);
+    if (nextCount > this.roundTripCap) {
+      this.log(
+        "warn",
+        "parent-agent dispatch cap exceeded; dropping directive",
+        {
+          sessionId,
+          count: nextCount,
+          cap: this.roundTripCap,
+        },
+      );
+      await acp
+        .sendToSession(
+          sessionId,
+          `parent-agent bridge: round-trip cap (${this.roundTripCap}) reached for this session; not running further USE_SKILL parent-agent requests.`,
+        )
+        .catch(() => undefined);
+      return;
+    }
+
+    const session = (await acp.getSession(sessionId)) ?? undefined;
+    this.log("info", "dispatching parent-agent directive", {
+      sessionId,
+      mode:
+        typeof directive.args.mode === "string" ? directive.args.mode : "ask",
+      command:
+        typeof directive.args.command === "string"
+          ? directive.args.command
+          : undefined,
+      count: nextCount,
+    });
+    await dispatchParentAgentDirective({
+      runtime: this.runtime,
+      acp,
+      sessionId,
+      session,
+      args: directive.args,
+      log: this.runtime.logger,
+    });
   }
 
   private log(
@@ -1785,7 +1892,7 @@ function composeNarration(
     // Build the completion narration from the real git change set, not the
     // sub-agent's raw step transcript. For weak coding models that transcript
     // is a dump of tool plans + tool outputs that (a) leaked verbatim to the
-    // user and (b) read as unfinished work to the planner, driving respawns.
+    // user and (b) read as pending work to the planner, driving respawns.
     // Preserve any deployed URL the sub-agent claimed so the downstream
     // reachability verification still runs.
     const urls = collectVerifiableUrlCandidates(response ?? "");
@@ -1804,7 +1911,7 @@ function composeNarration(
   // produced no change set: never narrate its raw step prose. On weak coding
   // models that prose is tool-loop reasoning ("I need to call read properly.
   // Seems stuck. Let's retry.") that leaks verbatim to the user and reads as
-  // unfinished work to the planner. Surface only the public URL(s) it claimed
+  // pending work to the planner. Surface only the public URL(s) it claimed
   // (loopback dropped, verified downstream); a genuine failure is covered by
   // the separate build-incomplete report.
   const retryCount = (session.metadata as Record<string, unknown> | undefined)

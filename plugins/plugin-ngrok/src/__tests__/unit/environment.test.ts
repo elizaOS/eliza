@@ -57,7 +57,7 @@ class TestSuite<TContext> {
   }
 
   run() {
-    // No-op, bun:test handles execution
+    // bun:test handles execution.
   }
 }
 

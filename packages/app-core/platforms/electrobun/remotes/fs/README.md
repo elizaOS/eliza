@@ -56,7 +56,7 @@ Environment overrides:
 - `fs.search`
 - `fs.writeText`
 
-`fs.writeText` is implemented but disabled by default. Set `ELIZA_FS_ENABLE_WRITES=1` to enable safe text writes under an allowed root. Delete operations are not implemented in Phase 5.
+`fs.writeText` is implemented but disabled by default. Set `ELIZA_FS_ENABLE_WRITES=1` to enable safe text writes under an allowed root. Delete operations are outside the Phase 5 remote command set.
 
 ## Commands
 

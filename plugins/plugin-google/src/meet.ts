@@ -428,7 +428,7 @@ function summarizeTranscript(entries: readonly GoogleMeetTranscript[]): {
   const summary = sentences.slice(0, 3).join(" ") || plainText.slice(0, 500);
   const keyPoints = lines.filter((line) => line.length >= 20).slice(0, 6);
   const actionItems = lines
-    .filter((line) => /\b(action item|todo|follow up|need to|will|should)\b/i.test(line))
+    .filter((line) => /\b(action item|to[- ]?do|follow up|need to|will|should)\b/i.test(line))
     .slice(0, 6)
     .map((line) => ({
       description: line,

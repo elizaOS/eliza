@@ -1,7 +1,7 @@
 /**
  * Matrix ConnectorAccountManager provider.
  *
- * Adapts the multi-account scaffolding in `accounts.ts` to the
+ * Adapts the multi-account resolution helpers in `accounts.ts` to the
  * `ConnectorAccountProvider` contract from
  * `@elizaos/core/connectors/account-manager`.
  *
@@ -96,7 +96,7 @@ export function createMatrixConnectorAccountProvider(
       return { ...patch, provider: MATRIX_PROVIDER_ID };
     },
     deleteAccount: async (_accountId: string, _manager: ConnectorAccountManager) => {
-      // No-op at provider layer — runtime credentials live in character
+      // Provider-layer deletion returns cleanly; runtime credentials live in character
       // settings; deletion of those is out of band.
     },
   };

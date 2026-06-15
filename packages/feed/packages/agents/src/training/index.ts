@@ -12,6 +12,12 @@
 // Automation pipeline
 export type { AutomationConfig } from "./AutomationPipeline";
 export { AutomationPipeline, automationPipeline } from "./AutomationPipeline";
+export type { BenchmarkResults, ComparisonResults } from "./BenchmarkService";
+export { BenchmarkService, benchmarkService } from "./BenchmarkService";
+export {
+  HuggingFaceIntegration,
+  huggingFaceIntegration,
+} from "./HuggingFaceIntegration";
 export { logRLConfigOnStartup } from "./logRLConfig";
 export { MarketOutcomesTracker } from "./MarketOutcomesTracker";
 export type { DeploymentOptions, DeploymentResult } from "./ModelDeployer";
@@ -19,6 +25,10 @@ export { ModelDeployer, modelDeployer } from "./ModelDeployer";
 // Model lifecycle
 export type { ModelArtifact } from "./ModelFetcher";
 export { getLatestRLModel } from "./ModelFetcher";
+export {
+  ModelSelectionService,
+  modelSelectionService,
+} from "./ModelSelectionService";
 // Reward backprop / market outcomes
 export {
   RewardBackpropagationService,
@@ -49,16 +59,32 @@ export {
   isTierAvailable,
   logRLModelConfig,
 } from "./RLModelConfig";
+export {
+  RulerScoringService,
+  rulerScoringService,
+} from "./RulerScoringService";
 // Reward computation
 export {
   computeDeterministicRewardJudgment,
   upsertRewardJudgment,
 } from "./reward-judgments";
-export { rulerScoringService, RulerScoringService } from "./RulerScoringService";
+// Shared types
+export type {
+  BenchmarkGameSnapshot,
+  SimulationConfig,
+  SimulationResult,
+} from "./SimulationBenchmark";
+export {
+  MetricsVisualizer,
+  SimulationA2AInterface,
+  SimulationEngine,
+} from "./SimulationBenchmark";
+export {
+  ModelStorageService,
+  modelStorage,
+} from "./storage/ModelStorageService";
 // Trajectory data archival
 export { TrainingDataArchiver } from "./storage/TrainingDataArchiver";
 // Trajectory capture
 export { TrajectoryRecorder, trajectoryRecorder } from "./TrajectoryRecorder";
-
-// Shared types
 export type { TrajectoryStep } from "./types";

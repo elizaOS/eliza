@@ -2,8 +2,12 @@
 
 import { Lock } from "lucide-react";
 import type { CSSProperties } from "react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../../../components/ui/tooltip";
 import { cn } from "../../lib/utils";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import type {
   DashboardSidebarItem,
   DashboardSidebarLinkRenderer,

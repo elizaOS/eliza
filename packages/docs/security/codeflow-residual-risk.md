@@ -37,7 +37,7 @@ SVG is sanitized by DOMPurify (added in PR 3) and Mermaid is configured
 with `securityLevel: "strict"`. Replacing `innerHTML` with
 `dangerouslySetInnerHTML` does not reduce risk — it is the same primitive.
 A React-native renderer for Mermaid SVG (e.g. via `react-svg` fetch
-pattern) is possible future work.
+pattern) is a possible follow-up.
 
 ### `apps/app/test/setup.ts` — `patchedEmit`
 Installed as a side-effect into jsdom's window; not imported elsewhere.

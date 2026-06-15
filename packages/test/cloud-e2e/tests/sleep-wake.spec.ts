@@ -4,13 +4,8 @@ import {
   listBackups,
   pollSandboxStatus,
   startAgentProvisioning,
-  tickProvisioning,
 } from "../src/helpers/provisioning";
 import { expect, test } from "../src/helpers/test-fixtures";
-
-const onTick = (apiUrl: string) => async () => {
-  await tickProvisioning({ apiUrl });
-};
 
 test.describe("sleep / wake", () => {
   test("running agent sleeps (durable backup + freed compute) then wakes back to running", async ({
@@ -18,20 +13,25 @@ test.describe("sleep / wake", () => {
     seededUser,
   }) => {
     const api = { apiUrl: stack.urls.api };
+    const processJobs = async () => {
+      const result = await stack.mocks.controlPlane.processDbBackedJobs(
+        stack.urls.pglite,
+      );
+      expect(result.failed, JSON.stringify(result.errors)).toBe(0);
+    };
 
-    // Provision to running.
     const sandboxId = await createCloudAgent(
       api,
       seededUser.apiKey,
       "e2e-sleep-wake",
+      { alwaysOn: true, autoProvision: false },
     );
     await startAgentProvisioning(api, seededUser.apiKey, sandboxId);
     await pollSandboxStatus(api, seededUser.apiKey, sandboxId, "running", {
       timeoutMs: 30_000,
-      onTick: onTick(stack.urls.api),
+      onTick: processJobs,
     });
 
-    // Sleep: a durable backup is taken, the container is removed, status → sleeping.
     await agentLifecycleAction(
       api,
       seededUser.apiKey,
@@ -41,7 +41,7 @@ test.describe("sleep / wake", () => {
     );
     await pollSandboxStatus(api, seededUser.apiKey, sandboxId, "sleeping", {
       timeoutMs: 30_000,
-      onTick: onTick(stack.urls.api),
+      onTick: processJobs,
     });
 
     const backups = await listBackups(api, seededUser.apiKey, sandboxId);
@@ -50,7 +50,6 @@ test.describe("sleep / wake", () => {
       "sleep must leave at least one restore point",
     ).toBeGreaterThanOrEqual(1);
 
-    // Wake: a fresh container is provisioned and state restored, status → running.
     await agentLifecycleAction(
       api,
       seededUser.apiKey,
@@ -60,7 +59,7 @@ test.describe("sleep / wake", () => {
     );
     await pollSandboxStatus(api, seededUser.apiKey, sandboxId, "running", {
       timeoutMs: 30_000,
-      onTick: onTick(stack.urls.api),
+      onTick: processJobs,
     });
   });
 
@@ -69,15 +68,22 @@ test.describe("sleep / wake", () => {
     seededUser,
   }) => {
     const api = { apiUrl: stack.urls.api };
+    const processJobs = async () => {
+      const result = await stack.mocks.controlPlane.processDbBackedJobs(
+        stack.urls.pglite,
+      );
+      expect(result.failed, JSON.stringify(result.errors)).toBe(0);
+    };
     const sandboxId = await createCloudAgent(
       api,
       seededUser.apiKey,
       "e2e-sleep-idem",
+      { alwaysOn: true, autoProvision: false },
     );
     await startAgentProvisioning(api, seededUser.apiKey, sandboxId);
     await pollSandboxStatus(api, seededUser.apiKey, sandboxId, "running", {
       timeoutMs: 30_000,
-      onTick: onTick(stack.urls.api),
+      onTick: processJobs,
     });
 
     await agentLifecycleAction(
@@ -89,10 +95,9 @@ test.describe("sleep / wake", () => {
     );
     await pollSandboxStatus(api, seededUser.apiKey, sandboxId, "sleeping", {
       timeoutMs: 30_000,
-      onTick: onTick(stack.urls.api),
+      onTick: processJobs,
     });
 
-    // Second sleep on a sleeping agent short-circuits with 200 (no new job).
     const { body } = await agentLifecycleAction(
       api,
       seededUser.apiKey,
@@ -108,15 +113,22 @@ test.describe("sleep / wake", () => {
     seededUser,
   }) => {
     const api = { apiUrl: stack.urls.api };
+    const processJobs = async () => {
+      const result = await stack.mocks.controlPlane.processDbBackedJobs(
+        stack.urls.pglite,
+      );
+      expect(result.failed, JSON.stringify(result.errors)).toBe(0);
+    };
     const sandboxId = await createCloudAgent(
       api,
       seededUser.apiKey,
       "e2e-wake-noop",
+      { alwaysOn: true, autoProvision: false },
     );
     await startAgentProvisioning(api, seededUser.apiKey, sandboxId);
     await pollSandboxStatus(api, seededUser.apiKey, sandboxId, "running", {
       timeoutMs: 30_000,
-      onTick: onTick(stack.urls.api),
+      onTick: processJobs,
     });
 
     const { body } = await agentLifecycleAction(

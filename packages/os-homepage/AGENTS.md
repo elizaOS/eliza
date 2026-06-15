@@ -47,7 +47,6 @@ The app imports from workspace packages via Vite aliases (not workspace exports 
 - `@elizaos/shared/hardware-catalog` → `../shared/src/hardware-catalog/index.ts` — `HARDWARE_PRODUCTS`, `Product` type
 - `@elizaos/shared/checkout` → `../shared/src/checkout/index.ts` — `startStripeCheckout`, `StripeCheckoutError`
 - `@elizaos/shared/steward-session-client` → `../shared/src/steward-session-client/index.ts` — session helpers, constants
-- `@elizaos/ui` → `../ui/src/backgrounds/CloudVideoBackground.tsx` — `CloudVideoBackground`
 - `@elizaos/ui/i18n/region` → `../ui/src/i18n/region.ts` — `detectClientLanguage`
 - `@stwd/sdk` — `StewardAuth` class for magic-link email auth
 
@@ -110,7 +109,7 @@ Language preference is stored in `localStorage` under the key `os.lang`. The `?l
 - **No router library.** Routing is plain `window.location.pathname` checks in `App.tsx`. Keep routes simple; add a redirect in `public/_redirects` for Cloudflare Pages if a new route needs SPA fallback.
 - **Asset sync is required before dev/build.** The `predev`/`prebuild` hooks run automatically with `bun run dev` or `bun run build`, but not with raw `vite` commands. If `public/brand/` is empty, run `node packages/shared/scripts/sync-to-public.mjs packages/os-homepage/public --logos --ogembeds --concepts --background --background-videos` manually.
 - **Vite aliases resolve workspace source directly** rather than workspace package exports. Adding a new `@elizaos/shared/*` sub-path import requires a corresponding alias entry in `vite.config.ts`.
-- **`@elizaos/ui` alias only exposes `CloudVideoBackground`.** The alias `@elizaos/ui` points to one specific file. Other UI components use fully-qualified sub-path aliases (`@elizaos/ui/button`, etc.).
+- **No bare `@elizaos/ui` alias.** UI imports use fully-qualified sub-path aliases only (`@elizaos/ui/button`, `@elizaos/ui/card`, `@elizaos/ui/product-switcher`, `@elizaos/ui/i18n/region`).
 - **`public/_redirects` handles SPA routing.** The Vite build also copies `index.html` to `404.html` via the `spa404Fallback` plugin for Cloudflare Pages compatibility.
 - **Build prunes heavy assets.** The `pruneStaticAssets` Vite plugin removes low-resolution cloud textures and redundant concept images from `dist/` after build to reduce deploy size.
 - **Checkout uses Steward (Eliza Cloud auth).** The `CheckoutPage` authenticates via OAuth (Google/GitHub/Discord) or magic-link email through the `@stwd/sdk` `StewardAuth` class and then initiates a Stripe session via `startStripeCheckout` from `@elizaos/shared/checkout`. The Stripe session is created server-side by the Eliza Cloud API.

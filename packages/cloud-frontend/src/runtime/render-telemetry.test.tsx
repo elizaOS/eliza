@@ -1,19 +1,23 @@
+import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
 import {
   type AnyRenderTelemetryEvent,
-  RenderTelemetryProfiler,
   setRenderTelemetrySink,
   useRenderGuard,
-} from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
+} from "@elizaos/ui/hooks/useRenderGuard";
 import { act, render } from "@testing-library/react";
 import { useEffect, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+// The guard/profiler only fire past INFO_THRESHOLD (60) renders/commits
+// within WINDOW_MS, so the fixtures must re-render well past that threshold.
+const RENDER_BURST = 70;
 
 function GuardedRerenderer() {
   useRenderGuard("GuardedRerenderer");
   const [count, setCount] = useState(0);
 
   useEffect(() => {
-    if (count < 2) {
+    if (count < RENDER_BURST) {
       setCount((value) => value + 1);
     }
   }, [count]);
@@ -25,7 +29,7 @@ function ProfiledRerenderer() {
   const [count, setCount] = useState(0);
 
   useEffect(() => {
-    if (count < 2) {
+    if (count < RENDER_BURST) {
       setCount((value) => value + 1);
     }
   }, [count]);

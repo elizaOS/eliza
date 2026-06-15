@@ -66,9 +66,7 @@ class BootromPositiveHandoffTests(unittest.TestCase):
         self.assertEqual(report["capture_preflight"]["status"], "blocked")
         self.assertFalse(report["capture_preflight"]["command_configured"])
         self.assertEqual(report["summary"]["next_command_batch_count"], 1)
-        self.assertEqual(
-            report["next_command_plan"][0]["id"], "capture_bootrom_positive_handoff"
-        )
+        self.assertEqual(report["next_command_plan"][0]["id"], "capture_bootrom_positive_handoff")
         self.assertIn(
             "ELIZA_BOOTROM_POSITIVE_HANDOFF_CMD",
             " ".join(report["next_command_plan"][0]["commands"]),

@@ -45,6 +45,6 @@
            revision="6dc9af1b583e5c6a4ab9c38e3f5646efd8079b7d"
            sync-j="8" />
 
-  <!-- The full project list is intentionally empty: any non-placeholder
-       entry implies a tested branch SHA that does not yet exist. -->
+  <!-- The full project list is intentionally empty: any project entry implies
+       a tested branch SHA that does not yet exist. -->
 </manifest>

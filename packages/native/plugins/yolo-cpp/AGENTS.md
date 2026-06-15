@@ -35,7 +35,7 @@ the forward pass**:
 
 CMake builds `libyolo.a` (static) PLUS `libyolo.so` (shared, for
 `bun:ffi` from `plugins/plugin-vision/src/yolo-detector-ggml.ts`) plus
-five test binaries: `yolo_stub_smoke` (ABI link probe + lifecycle
+five test binaries: `yolo_abi_smoke` (ABI link probe + lifecycle
 contract), `yolo_nms_test` (NMS behaviour), `yolo_classes_test`
 (class table), `yolo_letterbox_test` (preprocessor identity + center-
 pad + grey-pad assertions), `yolo_runtime_test` (open / metadata
@@ -88,8 +88,8 @@ schedule. The on-disk GGUF carries the variant tag in
 
 ## C ABI (frozen by `include/yolo/yolo.h`)
 
-The stub already implements this surface; the real port must match
-it byte-for-byte:
+The Phase 2 runtime implements this surface; the forward pass remains
+staged but the ABI must stay byte-for-byte stable:
 
 - `yolo_open(const char *gguf_path, yolo_handle *out)` — load a
   yolo GGUF produced by `scripts/yolo_to_gguf.py`. Refuses any GGUF
@@ -102,8 +102,9 @@ it byte-for-byte:
   overflow so callers can resize and re-call.
 - `yolo_close(handle)` — release the ggml graph, scratch buffers,
   GGUF mapping. NULL-safe; returns 0 on a NULL handle.
-- `yolo_active_backend()` — diagnostics only. Stub returns `"stub"`;
-  real impl returns `"ggml-cpu"`, `"ggml-vulkan"`, `"ggml-metal"`.
+- `yolo_active_backend()` — diagnostics only. Phase 2 returns
+  `"cpu-ref"`; ggml production paths return `"ggml-cpu"`,
+  `"ggml-vulkan"`, `"ggml-metal"`.
 - `yolo_class_name(class_id)` — COCO-80 lookup (real today).
 
 Coordinate convention: every detection's `(x, y, w, h)` is in
@@ -114,9 +115,10 @@ callers do not see the 640×640 input space.
 Threading: reentrant against distinct `yolo_handle` values; sharing
 one handle across threads is the caller's mutex problem.
 
-Error codes: `errno`-style negatives. `-ENOSYS` from the stub,
-`-ENOENT` for missing GGUF, `-EINVAL` for shape / version mismatch,
-`-ENOSPC` for caller-buffer overflow. No silent fallbacks.
+Error codes: `errno`-style negatives. `-ENOSYS` from the staged
+forward path, `-ENOENT` for missing GGUF, `-EINVAL` for shape /
+version mismatch, `-ENOSPC` for caller-buffer overflow. No silent
+fallbacks.
 
 ## GGUF conversion (`scripts/yolo_to_gguf.py`)
 
@@ -131,8 +133,8 @@ and `packages/native/plugins/doctr-cpp/scripts/doctr_to_gguf.py`:
   yolov11n)`);
 - pinned upstream commit recorded both in code and in the GGUF
   metadata key — runtime refuses unknown commits;
-- `NotImplementedError` in every TODO block so a half-built converter
-  cannot pass for working.
+- strict checkpoint-key validation so a half-built or wrong-family
+  converter run cannot pass for working.
 
 The first conversion pass packs Conv2d weights as fp16 and BN running
 stats as fp32 sidecar tensors (gamma, beta, running_mean,
@@ -201,10 +203,11 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-Output: `libyolo.a` plus three test binaries — `yolo_stub_smoke`,
-`yolo_nms_test`, `yolo_classes_test`. All three pass on the dev host;
-that's the contract the port preserves while it grows real
-implementations behind the same ABI.
+Output: `libyolo.a`, `libyolo.so`, plus five test binaries —
+`yolo_abi_smoke`, `yolo_nms_test`, `yolo_classes_test`,
+`yolo_letterbox_test`, `yolo_runtime_test`. All five pass on the dev
+host; that's the contract the port preserves while it wires the
+forward schedule behind the same ABI.
 
 ## What's done vs. still missing
 

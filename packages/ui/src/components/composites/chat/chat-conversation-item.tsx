@@ -184,8 +184,8 @@ export function ChatConversationItem({
             }`
           : `group relative flex w-full items-center gap-2 px-2.5 py-1 text-left transition-colors duration-100 ${
               isActive
-                ? "text-txt"
-                : "text-[color:color-mix(in_srgb,var(--text-strong)_78%,var(--text)_22%)] hover:text-txt"
+                ? "rounded-sm border border-accent/35 bg-[color:color-mix(in_srgb,var(--accent-subtle)_70%,var(--bg)_30%)] text-txt"
+                : "rounded-sm border border-transparent bg-[color:color-mix(in_srgb,var(--card)_82%,var(--text)_10%)] text-[color:color-mix(in_srgb,var(--text-strong)_78%,var(--text)_22%)] hover:border-border/45 hover:bg-[color:color-mix(in_srgb,var(--card)_76%,var(--text)_16%)] hover:text-txt"
             }`
       }
     >

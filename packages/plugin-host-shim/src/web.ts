@@ -36,7 +36,7 @@ interface ParentEvent {
 
 /**
  * Build and install the web shim. Idempotent — calling twice is a
- * no-op. Returns the installed shim for callers that want to keep a
+ * single-install operation. Returns the installed shim for callers that want to keep a
  * reference (most just use {@link getHostShim}).
  */
 export function installWebShim(

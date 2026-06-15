@@ -14,7 +14,7 @@ import { creditsService } from "./credits";
 import { organizationsService } from "./organizations";
 import { usersService } from "./users";
 
-const INITIAL_FREE_CREDITS = ((): number => {
+export const INITIAL_FREE_CREDITS = ((): number => {
   const v = process.env.INITIAL_FREE_CREDITS;
   if (v === undefined || v === "") return 5;
   const n = Number.parseFloat(v);
@@ -24,6 +24,62 @@ const INITIAL_FREE_CREDITS = ((): number => {
 export interface FindOrCreateWalletOptions {
   /** When true (default), grant INITIAL_FREE_CREDITS to new orgs. Set false for x402 topup so payment-only flows don't double-grant. */
   grantInitialCredits?: boolean;
+  /** When true, fail signup if the initial free-credit grant cannot be confirmed. */
+  requireInitialCredits?: boolean;
+}
+
+async function grantWalletSignupCredits(params: {
+  organizationId: string;
+  amount: number;
+  chain: "evm" | "solana";
+  idempotencyKey: string;
+  requireInitialCredits: boolean;
+}): Promise<boolean> {
+  if (params.amount <= 0) return false;
+  try {
+    await creditsService.addCredits({
+      organizationId: params.organizationId,
+      amount: params.amount,
+      description: "Wallet sign-up bonus",
+      stripePaymentIntentId: params.idempotencyKey,
+      metadata: { type: "wallet_signup", chain: params.chain },
+    });
+    return true;
+  } catch (err) {
+    logger.error("[WalletSignup] Failed to grant initial credits:", err);
+    if (params.requireInitialCredits) {
+      throw err;
+    }
+    return false;
+  }
+}
+
+export async function grantInitialCreditsToWalletAccount(params: {
+  organizationId: string;
+  walletAddress: string;
+  chain?: "evm";
+  requireInitialCredits?: boolean;
+}): Promise<{
+  initialCreditsGranted: boolean;
+  initialFreeCreditsUsd: number;
+}> {
+  const address = getAddress(params.walletAddress);
+  const normalized = address.toLowerCase();
+  const granted =
+    INITIAL_FREE_CREDITS > 0
+      ? await grantWalletSignupCredits({
+          organizationId: params.organizationId,
+          amount: INITIAL_FREE_CREDITS,
+          chain: params.chain ?? "evm",
+          idempotencyKey: `wallet-signup:evm:${normalized}`,
+          requireInitialCredits: params.requireInitialCredits === true,
+        })
+      : false;
+
+  return {
+    initialCreditsGranted: granted,
+    initialFreeCreditsUsd: granted ? INITIAL_FREE_CREDITS : 0,
+  };
 }
 
 /**
@@ -34,10 +90,16 @@ export interface FindOrCreateWalletOptions {
 export async function findOrCreateUserByWalletAddress(
   walletAddress: string,
   options?: FindOrCreateWalletOptions,
-): Promise<{ user: UserWithOrganization; isNewAccount: boolean }> {
+): Promise<{
+  user: UserWithOrganization;
+  isNewAccount: boolean;
+  initialCreditsGranted?: boolean;
+  initialFreeCreditsUsd?: number;
+}> {
   const address = getAddress(walletAddress);
   const normalized = address.toLowerCase();
   const grantInitialCredits = options?.grantInitialCredits !== false;
+  const requireInitialCredits = options?.requireInitialCredits === true;
 
   const existing = await usersService.getByWalletAddressWithOrganization(address);
   if (existing) {
@@ -54,22 +116,6 @@ export async function findOrCreateUserByWalletAddress(
         slug,
         credit_balance: "0.00",
       });
-
-      // Important: Only grant initial credits if we successfully created the org
-      // This ensures only one credit grant happens even with concurrent requests
-      if (grantInitialCredits && INITIAL_FREE_CREDITS > 0) {
-        try {
-          await creditsService.addCredits({
-            organizationId: org.id,
-            amount: INITIAL_FREE_CREDITS,
-            description: "Wallet sign-up bonus",
-            metadata: { type: "wallet_signup" },
-          });
-        } catch (err) {
-          // Log but don't fail if credit grant fails - org is still usable
-          logger.error("[WalletSignup] Failed to grant initial credits:", err);
-        }
-      }
     } catch (e) {
       // Note: Handle race condition where two concurrent requests try to create the same org
       const isUniqueViolation =
@@ -85,6 +131,16 @@ export async function findOrCreateUserByWalletAddress(
       // Note: Skip initial credits for raced org - first creator already granted them
     }
   }
+  const initialCreditsGranted =
+    grantInitialCredits && INITIAL_FREE_CREDITS > 0
+      ? await grantWalletSignupCredits({
+          organizationId: org.id,
+          amount: INITIAL_FREE_CREDITS,
+          chain: "evm",
+          idempotencyKey: `wallet-signup:evm:${normalized}`,
+          requireInitialCredits,
+        })
+      : false;
 
   try {
     const created = await usersRepository.create({
@@ -95,7 +151,12 @@ export async function findOrCreateUserByWalletAddress(
       organization_id: org.id,
     });
     const user: UserWithOrganization = { ...created, organization: org };
-    return { user, isNewAccount: true };
+    return {
+      user,
+      isNewAccount: true,
+      initialCreditsGranted,
+      initialFreeCreditsUsd: initialCreditsGranted ? INITIAL_FREE_CREDITS : 0,
+    };
   } catch (e) {
     /* WHY handle unique violation: two concurrent signups for same wallet; second should see the first's user. */
     const isUniqueViolation =
@@ -115,12 +176,18 @@ export async function findOrCreateUserByWalletAddress(
 export async function findOrCreateSolanaUserByWalletAddress(
   walletAddress: string,
   options?: FindOrCreateWalletOptions,
-): Promise<{ user: UserWithOrganization; isNewAccount: boolean }> {
+): Promise<{
+  user: UserWithOrganization;
+  isNewAccount: boolean;
+  initialCreditsGranted?: boolean;
+  initialFreeCreditsUsd?: number;
+}> {
   const address = walletAddress.trim();
   if (!address) {
     throw new Error("Wallet address is required");
   }
   const grantInitialCredits = options?.grantInitialCredits !== false;
+  const requireInitialCredits = options?.requireInitialCredits === true;
 
   const existing = await usersRepository.findBySolanaWalletAddressWithOrganization(address);
   if (existing) {
@@ -136,19 +203,6 @@ export async function findOrCreateSolanaUserByWalletAddress(
         slug,
         credit_balance: "0.00",
       });
-
-      if (grantInitialCredits && INITIAL_FREE_CREDITS > 0) {
-        try {
-          await creditsService.addCredits({
-            organizationId: org.id,
-            amount: INITIAL_FREE_CREDITS,
-            description: "Wallet sign-up bonus",
-            metadata: { type: "wallet_signup", chain: "solana" },
-          });
-        } catch (err) {
-          logger.error("[WalletSignup] Failed to grant initial Solana credits:", err);
-        }
-      }
     } catch (e) {
       const isUniqueViolation =
         e instanceof Error && (e.message.includes("unique") || e.message.includes("duplicate"));
@@ -160,6 +214,16 @@ export async function findOrCreateSolanaUserByWalletAddress(
       }
     }
   }
+  const initialCreditsGranted =
+    grantInitialCredits && INITIAL_FREE_CREDITS > 0
+      ? await grantWalletSignupCredits({
+          organizationId: org.id,
+          amount: INITIAL_FREE_CREDITS,
+          chain: "solana",
+          idempotencyKey: `wallet-signup:solana:${address}`,
+          requireInitialCredits,
+        })
+      : false;
 
   try {
     const created = await usersRepository.create({
@@ -170,7 +234,12 @@ export async function findOrCreateSolanaUserByWalletAddress(
       organization_id: org.id,
     });
     const user: UserWithOrganization = { ...created, organization: org };
-    return { user, isNewAccount: true };
+    return {
+      user,
+      isNewAccount: true,
+      initialCreditsGranted,
+      initialFreeCreditsUsd: initialCreditsGranted ? INITIAL_FREE_CREDITS : 0,
+    };
   } catch (e) {
     const isUniqueViolation =
       e instanceof Error && (e.message.includes("unique") || e.message.includes("duplicate"));

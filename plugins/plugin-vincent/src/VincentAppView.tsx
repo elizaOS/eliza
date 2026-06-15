@@ -11,29 +11,23 @@
  * Implements the OverlayApp Component contract.
  */
 
-import type { WalletAddresses, WalletBalancesResponse } from "@elizaos/shared";
+import type { WalletAddresses } from "@elizaos/shared";
 import type { OverlayAppContext } from "@elizaos/ui";
 import { Button, PagePanel, Spinner, useApp } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   ArrowLeft,
+  KeyRound,
   RefreshCw,
   ShieldCheck,
-  TrendingUp,
   Wallet,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { vincentClient } from "./client";
 import { TradingProfileCard } from "./TradingProfileCard";
 import { TradingStrategyPanel } from "./TradingStrategyPanel";
 import { useVincentDashboard } from "./useVincentDashboard";
+import { loadVincentTuiState } from "./VincentAppView.helpers";
 import { VincentConnectionCard } from "./VincentConnectionCard";
-import type {
-  VincentStatusResponse,
-  VincentStrategyResponse,
-  VincentStrategyUpdateRequest,
-  VincentTradingProfileResponse,
-} from "./vincent-contracts";
 import { WalletStatusCard } from "./WalletStatusCard";
 
 export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
@@ -129,7 +123,7 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
       </div>
 
       {/* Scrollable content */}
-      <div className="chat-native-scrollbar flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+      <div className="chat-native-scrollbar flex-1 overflow-y-auto px-4 pb-32 pt-4 sm:px-6 sm:pb-36">
         <div className="mx-auto max-w-5xl">
           {/* Error banner */}
           {error && <PagePanel.Notice tone="danger">{error}</PagePanel.Notice>}
@@ -142,107 +136,58 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
             </div>
           )}
 
-          {/* Two-column grid: main cards left, wallet summary top-right */}
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_minmax(280px,340px)] gap-4 items-start">
-            {/* Left column — main cards */}
+          <div className="flex flex-col gap-4">
             <div className="space-y-4">
               <VincentConnectionCard setActionNotice={setActionNotice} t={t} />
 
               {vincentConnected && (
                 <>
+                  <WalletStatusCard
+                    walletAddresses={walletAddresses}
+                    walletBalances={walletBalances}
+                    setActionNotice={setActionNotice}
+                  />
+
                   <TradingStrategyPanel strategy={strategy} />
 
                   <TradingProfileCard tradingProfile={tradingProfile} />
                 </>
               )}
 
-              {/* Not-connected informational card */}
               {!vincentConnected && !loading && (
-                <div className="rounded-3xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-7 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-accent/25 bg-accent/12 text-accent">
-                    <ShieldCheck className="h-7 w-7" />
+                <div className="grid gap-3 rounded-lg border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:grid-cols-3">
+                  <div className="flex items-center gap-3 rounded-xl border border-accent/20 bg-accent/10 px-3 py-3">
+                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-accent/25 bg-accent/12 text-accent">
+                      <ShieldCheck className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 text-sm font-semibold text-txt">
+                      Vincent
+                    </div>
                   </div>
-                  <div className="mt-4 text-sm font-medium text-txt">
-                    {t("vincent.connectPrompt", {
-                      defaultValue:
-                        "Connect your Vincent account to get started",
-                    })}
+                  <div className="flex items-center gap-3 rounded-xl border border-border/20 bg-card/45 px-3 py-3">
+                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-border/25 bg-bg/50 text-muted">
+                      <Wallet className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 text-sm font-semibold text-txt">
+                      Wallet
+                    </div>
                   </div>
-                  <div className="mt-5 grid gap-2 sm:grid-cols-3">
-                    {[
-                      { label: "Wallet", icon: Wallet, tone: "text-info" },
-                      { label: "Rules", icon: ShieldCheck, tone: "text-ok" },
-                      { label: "PnL", icon: TrendingUp, tone: "text-warning" },
-                    ].map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <div
-                          key={item.label}
-                          className="rounded-xl border border-border/24 bg-bg/45 px-3 py-3"
-                        >
-                          <Icon className={`mx-auto h-4 w-4 ${item.tone}`} />
-                          <div className="mt-2 text-xs font-semibold text-muted">
-                            {item.label}
-                          </div>
-                        </div>
-                      );
-                    })}
+                  <div className="flex items-center gap-3 rounded-xl border border-border/20 bg-card/45 px-3 py-3">
+                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-border/25 bg-bg/50 text-muted">
+                      <KeyRound className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 text-sm font-semibold text-txt">
+                      OAuth
+                    </div>
                   </div>
                 </div>
               )}
             </div>
-
-            {/* Right column — wallet status (top-right, sticky on desktop) */}
-            {vincentConnected && (
-              <div
-                data-testid="vincent-wallet-status-area"
-                className="lg:sticky lg:top-4"
-              >
-                <WalletStatusCard
-                  walletAddresses={walletAddresses}
-                  walletBalances={walletBalances}
-                  setActionNotice={setActionNotice}
-                />
-              </div>
-            )}
           </div>
         </div>
       </div>
     </div>
   );
-}
-
-async function loadVincentTuiState(): Promise<{
-  status: VincentStatusResponse;
-  walletAddresses: WalletAddresses | null;
-  walletBalances: WalletBalancesResponse | null;
-  strategy: VincentStrategyResponse;
-  tradingProfile: VincentTradingProfileResponse;
-}> {
-  const status = await vincentClient.vincentStatus();
-  const [walletAddresses, walletBalances, strategy, tradingProfile] =
-    await Promise.allSettled([
-      vincentClient.getWalletAddresses(),
-      vincentClient.getWalletBalances(),
-      vincentClient.vincentStrategy(),
-      vincentClient.vincentTradingProfile(),
-    ]);
-
-  return {
-    status,
-    walletAddresses:
-      walletAddresses.status === "fulfilled" ? walletAddresses.value : null,
-    walletBalances:
-      walletBalances.status === "fulfilled" ? walletBalances.value : null,
-    strategy:
-      strategy.status === "fulfilled"
-        ? strategy.value
-        : { connected: status.connected, strategy: null },
-    tradingProfile:
-      tradingProfile.status === "fulfilled"
-        ? tradingProfile.value
-        : { connected: status.connected, profile: null },
-  };
 }
 
 export function VincentTuiView() {
@@ -337,7 +282,7 @@ export function VincentTuiView() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1fr)",
+          gridTemplateColumns: "1fr",
           gap: 16,
         }}
       >
@@ -412,7 +357,8 @@ export function VincentTuiView() {
         >
           <strong style={{ color: "#e2e8f0" }}>strategy</strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: state | start-login | disconnect | update-strategy
+            {strategy?.running ? "running" : "idle"} /{" "}
+            {strategy?.dryRun ? "dry-run" : "live"}
           </div>
           <div>
             <span style={{ color: "#64748b" }}>name</span>{" "}
@@ -450,52 +396,4 @@ export function VincentTuiView() {
       </div>
     </div>
   );
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-vincent-state") {
-    return { viewType: "tui", ...(await loadVincentTuiState()) };
-  }
-
-  if (capability === "terminal-vincent-start-login") {
-    return {
-      viewType: "tui",
-      login: await vincentClient.vincentStartLogin(
-        typeof params?.appName === "string" ? params.appName : "Eliza",
-      ),
-    };
-  }
-
-  if (capability === "terminal-vincent-disconnect") {
-    return {
-      viewType: "tui",
-      disconnected: await vincentClient.vincentDisconnect(),
-    };
-  }
-
-  if (capability === "terminal-vincent-update-strategy") {
-    const request: VincentStrategyUpdateRequest = {};
-    if (typeof params?.strategy === "string") {
-      request.strategy =
-        params.strategy as VincentStrategyUpdateRequest["strategy"];
-    }
-    if (params?.params && typeof params.params === "object") {
-      request.params = params.params as Record<string, unknown>;
-    }
-    if (typeof params?.intervalSeconds === "number") {
-      request.intervalSeconds = params.intervalSeconds;
-    }
-    if (typeof params?.dryRun === "boolean") {
-      request.dryRun = params.dryRun;
-    }
-    return {
-      viewType: "tui",
-      update: await vincentClient.vincentUpdateStrategy(request),
-    };
-  }
-
-  throw new Error(`Unsupported capability "${capability}"`);
 }

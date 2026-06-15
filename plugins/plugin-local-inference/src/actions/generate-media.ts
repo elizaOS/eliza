@@ -8,7 +8,7 @@
  *
  *   - image  → `ModelType.IMAGE`            (WS3 arbiter, returns PNG bytes)
  *   - audio  → `ModelType.TEXT_TO_SPEECH`   (Eliza-1 / local TTS, returns PCM/WAV/MP3)
- *   - video  → not yet supported; refuses with a clean message
+ *   - video  → unavailable in the local backend; refuses with a clean message
  *
  * Intent classification is keyword-first (cheap, deterministic) with an
  * optional `ModelType.TEXT_SMALL` JSON fallback for ambiguous prompts. The
@@ -119,7 +119,7 @@ type ClassifierFn = (prompt: string) => Promise<MediaKind | null>;
 export interface IntentDetectorOptions {
 	/**
 	 * Optional override for the text-classifier fallback. Tests inject a
-	 * deterministic stub; in production this is bound to
+	 * deterministic classifier; in production this is bound to
 	 * `runtime.useModel(ModelType.TEXT_SMALL, ...)`.
 	 */
 	classifier?: ClassifierFn;
@@ -448,7 +448,8 @@ export function buildGenerateMediaHandler(
 		}
 
 		if (intent.kind === "video") {
-			const errText = "Video generation is not yet supported. Coming soon.";
+			const errText =
+				"Video generation is unavailable in the local inference backend.";
 			await callback?.({ text: errText });
 			return {
 				success: false,
@@ -555,7 +556,7 @@ async function validate(
 	_runtime: IAgentRuntime,
 	message: Memory,
 ): Promise<boolean> {
-	// Cheap pre-validation: any non-empty text message is a candidate. The
+	// Cheap pre-check: any non-empty text message is a candidate. The
 	// keyword + classifier run inside the handler so the planner can pick
 	// GENERATE_MEDIA without paying the classifier cost upfront.
 	return extractMessageText(message).trim().length > 0;
@@ -579,9 +580,9 @@ export const generateMediaAction: Action = {
 		"GENERATE_VIDEO",
 	],
 	description:
-		"Generate an image, audio (TTS), or video from a natural-language prompt. Routes to the appropriate local model via the runtime model registry. Video is not yet supported and is refused cleanly.",
+		"Generate an image, audio (TTS), or video from a natural-language prompt. Routes to the appropriate local model via the runtime model registry. Video is unavailable in the local backend and is refused cleanly.",
 	descriptionCompressed:
-		"GENERATE_MEDIA image|audio|future-video prompt; routes IMAGE|TEXT_TO_SPEECH",
+		"GENERATE_MEDIA image|audio|video-refusal prompt; routes IMAGE|TEXT_TO_SPEECH",
 	routingHint:
 		"explicit ask to draw/picture/photo/say/speak/read-aloud/animate -> GENERATE_MEDIA; not for general text replies",
 	suppressPostActionContinuation: true,
@@ -635,7 +636,7 @@ export const generateMediaAction: Action = {
 			{
 				name: "{{agent}}",
 				content: {
-					text: "Video generation is not yet supported. Coming soon.",
+					text: "Video generation is unavailable in the local inference backend.",
 					actions: ["GENERATE_MEDIA"],
 				},
 			},

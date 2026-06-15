@@ -444,7 +444,7 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
     return "chat";
   }
 
-  // /views — the views tab (ViewManagerPage)
+  // /views — the views tab (ViewCatalog)
   if (normalized === "/views" || normalized.startsWith("/views/")) {
     return "views";
   }

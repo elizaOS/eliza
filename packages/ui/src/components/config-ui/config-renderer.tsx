@@ -1,4 +1,5 @@
-import React, {
+import type React from "react";
+import {
   forwardRef,
   useCallback,
   useImperativeHandle,
@@ -13,14 +14,13 @@ import type {
   ResolvedField,
 } from "../../config/config-catalog";
 import {
-  defaultCatalog,
-  defineRegistry,
   evaluateVisibility,
   resolveFields,
   runValidation,
 } from "../../config/config-catalog";
 import { useApp } from "../../state";
 import type { ConfigUiHint, PluginUiTheme } from "../../types";
+import { Button } from "../ui/button";
 import { ConfigField } from "./config-field";
 
 // ── Props ──────────────────────────────────────────────────────────────
@@ -681,45 +681,4 @@ function AdvancedSectionToggle({
       <span className="flex-1 h-px bg-border opacity-50 ml-1" />
     </Button>
   );
-}
-
-// ── Default registry ───────────────────────────────────────────────────
-
-import { Button } from "../ui/button";
-// Import actual field renderers
-import { defaultRenderers } from "./config-field";
-
-/** The default registry wiring defaultCatalog → defaultRenderers. */
-export const defaultRegistry: FieldRegistry = defineRegistry(
-  defaultCatalog,
-  defaultRenderers,
-);
-
-// ── useConfigValidation hook ────────────────────────────────────────────
-
-/**
- * Convenience hook that creates a ref for ConfigRenderer and exposes
- * a `validateAll()` function the parent can call before submitting.
- *
- * @example
- * ```tsx
- * const { configRef, validateAll } = useConfigValidation();
- *
- * const handleSave = () => {
- *   if (!validateAll()) return; // form has errors
- *   // proceed with save
- * };
- *
- * return <ConfigRenderer ref={configRef} ... />;
- * ```
- */
-export function useConfigValidation() {
-  const configRef = React.useRef<ConfigRendererHandle>(null);
-
-  const validateAll = useCallback((): boolean => {
-    if (!configRef.current) return true;
-    return configRef.current.validateAll();
-  }, []);
-
-  return { configRef, validateAll };
 }

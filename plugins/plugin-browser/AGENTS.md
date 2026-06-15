@@ -104,7 +104,7 @@ bun run --cwd plugins/plugin-browser clean       # rm -rf dist
 | `ELIZA_BROWSER_STAGEHAND_COMMAND_URL` | no | Full URL to the Stagehand command endpoint; activates the `stagehand` target |
 | `STAGEHAND_SERVER_URL` | no | Base URL for Stagehand; commands go to `<url>/api/browser-command` |
 | `ELIZA_BROWSER_STAGEHAND_URL` | no | Alias for `STAGEHAND_SERVER_URL` |
-| `ELIZA_BROWSER_STAGEHAND_AUTO_SETUP` | no | Set `false` to skip automatic `bun install` + build for the stagehand-server dir |
+| `ELIZA_BROWSER_STAGEHAND_AUTO_SETUP` | no | Set `false` to disable automatic `bun install` + build for the stagehand-server dir |
 | `ELIZA_BROWSER_ALLOW_STAGEHAND_ON_MOBILE` | no | Set `true` to allow stagehand target on mobile runtimes |
 | `ELIZA_MOBILE_PLATFORM` / `ELIZA_PLATFORM` / `CAPACITOR_PLATFORM` | no | Platform hint (`ios`/`android`/`mobile`) — changes target scoring |
 
@@ -117,7 +117,7 @@ Plugin activation: `config.features.browser` must be truthy (object with `enable
 
 **Add a new browser target** (e.g. a Playwright-based target):
 1. Create `src/targets/my-target.ts` exporting a factory that returns a `BrowserTarget` (interface in `src/browser-service.ts`).
-2. Implement `id`, `name`, `description`, `kind`, `priority`, `available()`, and `execute(command)`. Throw a clear `Error` for unsupported subactions — never silently no-op.
+2. Implement `id`, `name`, `description`, `kind`, `priority`, `available()`, and `execute(command)`. Throw a clear `Error` for unsupported subactions instead of silently ignoring them.
 3. Register in `BrowserService.start` (in `src/browser-service.ts`) or let another plugin call `browserService.registerTarget(myTarget)` at init.
 
 **Add a new action**:
@@ -136,6 +136,6 @@ Plugin activation: `config.features.browser` must be truthy (object with `enable
 - **Autofill-login is vault-gated.** The agent cannot bypass the `creds.<domain>.:autoallow` flag. Do not add fallback flows that prompt the user interactively — the action is designed for autonomous use only when pre-authorized.
 - **Companion auth headers.** Companion-scoped routes require `X-Browser-Bridge-Companion-Id` and `Authorization: Bearer <pairing-token>`. Legacy header names (`X-LifeOps-Browser-Companion-Id`, `x-eliza-browser-companion-id`) are not accepted.
 - **Schema is in `browser` pg schema.** Do not use the `public` schema — the runtime migrator issues `CREATE SCHEMA IF NOT EXISTS browser` automatically.
-- **Bundle-safety guard in `src/index.ts`.** The double-import pattern (re-export + local binding in `__bundle_safety_*`) prevents Bun's tree-shaker from collapsing barrel `init` functions to no-ops on mobile. Do not remove it.
+- **Bundle-safety guard in `src/index.ts`.** The double-import pattern (re-export + local binding in `__bundle_safety_*`) prevents Bun's tree-shaker from collapsing barrel `init` functions into empty functions on mobile. Do not remove it.
 - **`auto-enable.ts` must stay import-free.** The elizaOS auto-enable engine loads this module for every plugin at boot; it must not transitively import the plugin runtime.
 - See the repo root AGENTS.md for global architecture rules (logger-only, ESM, dependency direction, etc.).

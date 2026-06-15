@@ -12,9 +12,8 @@
  * This module is the runtime-side counterpart to that entitlement. Every
  * call site that touches `bun:ffi.dlopen()` (or a wrapper around it) MUST
  * call {@link assertDlopenPathAllowed} immediately before the load. The
- * gate is a **hard assertion** in store builds — it throws — and a no-op
- * in direct builds where the user owns the install and we trust the
- * filesystem.
+ * gate is a **hard assertion** in store builds — it throws — and is bypassed
+ * in direct builds where the user owns the install and we trust the filesystem.
  *
  * What "bundle-local" means on macOS: the resolved absolute library path
  * must live under `<...>/<Name>.app/Contents/` (covers
@@ -27,9 +26,9 @@
  *   not through `bun:ffi`. They are governed separately by the Node
  *   loader's own search path and by signing on the bundled `.node`
  *   artifacts.
- * - Non-darwin platforms — only macOS App Sandbox imposes the
- *   library-validation rule. Linux/Windows store variants will get their
- *   own enforcement when those distribution targets land.
+ * - Non-darwin platforms — this gate enforces the macOS App Sandbox
+ *   library-validation rule only. Linux/Windows distribution constraints use
+ *   their own loader and signing policies.
  */
 
 import { existsSync } from "node:fs";
@@ -38,7 +37,7 @@ import { isStoreBuild } from "../build-variant.ts";
 
 /**
  * Cached bundle root once we've resolved it from `process.execPath`.
- * `undefined` = not yet resolved (next call probes execPath).
+ * `undefined` = cache empty (next call probes execPath).
  * `null` = probed and no `.app` bundle context exists (dev run, source
  * checkout, plain `bun` invocation).
  * `string` = resolved `<...>/<Name>.app/Contents` path.
@@ -112,13 +111,13 @@ export function isPathInsideAppBundle(libraryPath: string): boolean {
 /**
  * Hard assertion gate for `bun:ffi.dlopen()` calls.
  *
- * - **Direct build (any platform):** no-op. The user owns the install; we
+ * - **Direct build (any platform):** bypassed. The user owns the install; we
  *   trust the filesystem and the library's own signing/integrity story.
- * - **Store build on non-darwin:** no-op for this iteration. macOS App
+ * - **Store build on non-darwin:** bypassed for this iteration. macOS App
  *   Sandbox is the only platform whose library-validation policy this
  *   module enforces today. Linux/Windows store variants will get their
  *   own enforcement when those distribution targets land.
- * - **Store build on darwin, no resolvable bundle:** no-op. Treated as a
+ * - **Store build on darwin, no resolvable bundle:** bypassed. Treated as a
  *   dev/source-tree run; the gate does not break unbundled execution.
  * - **Store build on darwin, bundle resolved:** throws unless
  *   `libraryPath` is an absolute path inside the running `.app` bundle.

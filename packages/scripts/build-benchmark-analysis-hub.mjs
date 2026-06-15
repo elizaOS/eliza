@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,7 +11,11 @@ const REPO_ROOT = path.resolve(
   "..",
 );
 const DEFAULT_REPORT_DIR = path.join(REPO_ROOT, "reports", "benchmark-analysis");
-const HOME_DIR = process.env.HOME || "";
+// `process.env.HOME` is unset on Windows; fall back so report-path
+// redaction (`/Users/foo/...` → `~/...`) still strips the local home dir
+// when the script runs there.
+const HOME_DIR =
+  process.env.HOME || process.env.USERPROFILE || homedir() || "";
 
 function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, "utf8"));
@@ -690,7 +695,7 @@ function main() {
             ? "warn"
             : "ok",
         title: "Broader benchmark-results corpus has publication warnings",
-        evidence: `${benchmarkResultsCorpus.summary.rowCount} latest rows across ${benchmarkResultsCorpus.summary.benchmarkCount} benchmark families; ${benchmarkResultsCorpus.summary.insufficientLatestRows} latest rows carry insufficient-* warnings; ${benchmarkResultsCorpus.summary.incompleteBenchmarkCount} benchmark family is incomplete in the matrix contract.`,
+        evidence: `${benchmarkResultsCorpus.summary.rowCount} latest rows across ${benchmarkResultsCorpus.summary.benchmarkCount} benchmark families; ${benchmarkResultsCorpus.summary.insufficientLatestRows} latest rows carry insufficient-* warnings; ${benchmarkResultsCorpus.summary.incompleteBenchmarkCount} benchmark family is partial in the matrix contract.`,
         nextAction:
           "Open the benchmark results corpus viewer to inspect non-code-agent benchmark rows, warning counts, and SQLite trajectory records.",
       },

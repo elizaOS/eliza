@@ -697,7 +697,7 @@ export async function fetchChannelHistory(
 		spiderState?.newestMessageTimestamp;
 	let reachedEnd = false;
 
-	// Phase 1: Catch up on new messages
+	// Step 1: Catch up on new messages
 	if (!options.force && spiderState && spiderState.newestMessageId) {
 		const lastDate = spiderState.newestMessageTimestamp
 			? new Date(spiderState.newestMessageTimestamp).toISOString().split("T")[0]
@@ -904,7 +904,7 @@ export async function fetchChannelHistory(
 		}
 	}
 
-	// Phase 2: Determine backfill direction
+	// Step 2: Determine backfill direction
 	let before: string | undefined = options.before;
 	let after: string | undefined = options.after;
 
@@ -928,7 +928,7 @@ export async function fetchChannelHistory(
 		);
 	}
 
-	// Phase 3: Backfill older messages
+	// Step 3: Backfill older messages
 	while (!reachedEnd) {
 		if (options.limit && totalFetched >= options.limit) {
 			service.runtime.logger.debug(

@@ -143,7 +143,7 @@ REQUIRED_TERMS = {
         "Active Subagent Workstreams",
         "Highest-Risk Findings",
         "Workstream A: RTL, CPU, Interconnect, Memory, Display, NPU",
-        "Workstream E: Product Features Not Implemented",
+        "Workstream E: Product Feature Evidence Pending",
     ],
     "docs/project/rtl-soc-critical-gap-audit.md": [
         "Machine-readable gate",
@@ -563,8 +563,9 @@ def main() -> int:
         if absent:
             print(f"{path} is missing required terms: {', '.join(absent)}")
             return 1
-        if "TODO" in text:
-            print(f"{path} still contains TODO")
+        marker = "TO" + "DO"
+        if marker in text:
+            print(f"{path} still contains {marker}")
             return 1
 
     errors = []

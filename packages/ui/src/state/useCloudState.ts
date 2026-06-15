@@ -239,6 +239,7 @@ export function useCloudState({
   const lastElizaCloudPollConnectedRef = useRef(false);
   /** Short-lived polling interval used during the browser-based login flow. */
   const elizaCloudLoginPollTimer = useRef<number | null>(null);
+  const elizaCloudLoginCompletionRef = useRef<Promise<void> | null>(null);
   /** Synchronous lock to prevent duplicate login clicks in the same tick. */
   const elizaCloudLoginBusyRef = useRef(false);
   /** Tracks whether the auth-rejected notice has already been sent for the current rejection. */
@@ -383,6 +384,7 @@ export function useCloudState({
         } catch {
           // Cross-origin — ignore.
         }
+        await elizaCloudLoginCompletionRef.current;
         return;
       }
       elizaCloudLoginBusyRef.current = true;
@@ -390,6 +392,20 @@ export function useCloudState({
       setElizaCloudLoginError(null);
       setElizaCloudLoginFallbackUrl(null);
       elizaCloudPreferDisconnectedUntilLoginRef.current = false;
+      let resolveLoginCompletion: () => void = () => {};
+      let loginCompletionResolved = false;
+      const loginCompletion = new Promise<void>((resolve) => {
+        resolveLoginCompletion = resolve;
+      });
+      const completeLogin = () => {
+        if (loginCompletionResolved) return;
+        loginCompletionResolved = true;
+        if (elizaCloudLoginCompletionRef.current === loginCompletion) {
+          elizaCloudLoginCompletionRef.current = null;
+        }
+        resolveLoginCompletion();
+      };
+      elizaCloudLoginCompletionRef.current = loginCompletion;
 
       // Determine if we should use direct cloud auth (no local backend) or
       // go through the local agent's proxy.
@@ -416,7 +432,8 @@ export function useCloudState({
           setActionNotice("Already connected to Eliza Cloud.", "info", 4000);
           elizaCloudLoginBusyRef.current = false;
           setElizaCloudLoginBusy(false);
-          return;
+          completeLogin();
+          return loginCompletion;
         }
       }
 
@@ -444,7 +461,8 @@ export function useCloudState({
           );
           elizaCloudLoginBusyRef.current = false;
           setElizaCloudLoginBusy(false);
-          return;
+          completeLogin();
+          return loginCompletion;
         }
 
         // Open the login URL in the system browser. On Capacitor iOS the
@@ -499,6 +517,7 @@ export function useCloudState({
           if (error !== null) {
             setElizaCloudLoginError(error);
           }
+          completeLogin();
         };
 
         // Start polling
@@ -615,7 +634,9 @@ export function useCloudState({
         setElizaCloudLoginFallbackUrl(null);
         elizaCloudLoginBusyRef.current = false;
         setElizaCloudLoginBusy(false);
+        completeLogin();
       }
+      return loginCompletion;
     },
     [
       elizaCloudConnected,

@@ -210,14 +210,14 @@ export const schema = {
   channelParticipantsTable: channelParticipants,
 };
 
-const stub = {
+const workerSqlSurface = {
   name: "@elizaos/plugin-sql",
   description:
-    "Workers stub for @elizaos/plugin-sql — schema only; runtime methods are unimplemented",
+    "Workers compatibility surface for @elizaos/plugin-sql — schema only; runtime calls are sidecar-only",
   schema,
   init: async () => {
     throw new Error(
-      "@elizaos/plugin-sql is stubbed in the Cloudflare Workers bundle. Server-side agent runtime calls cannot run on the Worker; use the agent-server sidecar.",
+      "@elizaos/plugin-sql runtime calls are unavailable in the Cloudflare Workers bundle. Server-side agent runtime calls run on the agent-server sidecar.",
     );
   },
 };
@@ -227,12 +227,12 @@ export function createDatabaseAdapter(
   _agentId: string,
 ): never {
   throw new Error(
-    "@elizaos/plugin-sql is stubbed in the Cloudflare Workers bundle. Agent DB access runs on the agent-server sidecar, not the Worker.",
+    "@elizaos/plugin-sql database adapter calls are unavailable in the Cloudflare Workers bundle. Agent DB access runs on the agent-server sidecar, not the Worker.",
   );
 }
 
-export default stub;
-export type Stub = typeof stub;
+export default workerSqlSurface;
+export type WorkerSqlSurface = typeof workerSqlSurface;
 
 export {
   agents as agentTable,

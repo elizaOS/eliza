@@ -110,8 +110,9 @@ reviewed.
 
   - Pulls from the env by default.
   - Optionally calls a Steward credential-proxy endpoint when
-    ``ELIZA_STEWARD_CREDS_URL`` is set (contract TBD; tracked in
-    ``/tmp/soc2-audit/STEWARD-KMS-SPEC.md``).
+    ``ELIZA_STEWARD_CREDS_URL`` is set. The helper requests
+    ``GET /v1/creds/:name`` and treats a ``200`` plaintext body as the
+    credential; non-200, timeout, or network failure falls back to env.
   - Emits a ``creds.access`` audit log line on every resolution with the
     credential's last-4 + sha256 prefix — never the value.
 
@@ -135,13 +136,12 @@ audit-log line shows the new ``sha256_prefix``.
      not yet shipped in the desktop app. Until then, ``eliza-nightly-*``
      sources may only be used for internal dogfooding and the
      ``consent_proof_uri`` MUST be updated when the production UI lands.
-  2. **Real consent-proof URIs.** Replace the placeholder
+  2. **Archive-grade consent-proof URIs.** Replace the temporary
      ``SECURITY.md#...`` anchors with permanent, archive-grade URIs once
      the legal review of the trajectory-collection DPA completes.
   3. **Steward credential-proxy.** Implement
      ``GET /v1/creds/:name`` against Steward and point production
-     ``ELIZA_STEWARD_CREDS_URL`` at it. See the open question appended
-     to ``STEWARD-KMS-SPEC.md``.
+     ``ELIZA_STEWARD_CREDS_URL`` at it.
   4. **Firmware signing.** Scaffolding lives in
      ``packages/chip/fw/signing/`` but no firmware blob has been signed
      yet; that needs the hardware-backed signing key to be provisioned.

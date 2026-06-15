@@ -1,11 +1,10 @@
-import {
-  Button,
-  type CompanionHalfFramerateMode,
-  type CompanionVrmPowerMode,
-  Switch,
-  useApp,
-} from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { Button, Switch } from "@elizaos/ui/components";
+import type {
+  CompanionHalfFramerateMode,
+  CompanionVrmPowerMode,
+} from "@elizaos/ui/state";
+import { useApp } from "@elizaos/ui/state";
 import {
   COMPANION_HALF_FRAMERATE_OPTIONS,
   COMPANION_VRM_POWER_OPTIONS,

@@ -4,7 +4,7 @@ Tailscale tunnel backend plugin for elizaOS — exposes a local agent port throu
 
 ## Purpose / role
 
-This plugin adds a Tailscale-backed `serviceType="tunnel"` implementation to an Eliza agent. It registers no actions of its own; user-facing tunnel operations go through the canonical `TUNNEL` action from `@elizaos/plugin-tunnel`. Backend selection (local CLI vs. cloud) happens at `init()` time via `selectTunnelBackend`. The plugin is opt-in — add `@elizaos/plugin-tailscale` to the agent's plugin list to enable it. If another plugin has already claimed the `"tunnel"` slot (`tunnelSlotIsFree` returns false), this plugin logs a warning and skips service registration.
+This plugin adds a Tailscale-backed `serviceType="tunnel"` implementation to an Eliza agent. It registers no actions of its own; user-facing tunnel operations go through the canonical `TUNNEL` action from `@elizaos/plugin-tunnel`. Backend selection (local CLI vs. cloud) happens at `init()` time via `selectTunnelBackend`. The plugin is opt-in — add `@elizaos/plugin-tailscale` to the agent's plugin list to enable it. If another plugin has already claimed the `"tunnel"` slot (`tunnelSlotIsFree` returns false), this plugin logs a warning and leaves the existing tunnel service in place.
 
 ## Plugin surface
 
@@ -92,7 +92,7 @@ Config resolution order for each key: account record in `character.settings.tail
 
 ## Conventions / gotchas
 
-- **First-active-wins tunnel slot.** Only one service can hold `serviceType="tunnel"`. If another plugin (e.g. `@elizaos/plugin-ngrok`) registers first, this plugin's `init()` skips registration silently. Enable only one tunnel plugin at a time.
+- **First-active-wins tunnel slot.** Only one service can hold `serviceType="tunnel"`. If another plugin (e.g. `@elizaos/plugin-ngrok`) registers first, this plugin's `init()` logs the conflict and leaves the existing tunnel service in place. Enable only one tunnel plugin at a time.
 - **`tailscale` binary required at runtime.** `LocalTailscaleService.start()` throws if `which tailscale` fails. The cloud backend also requires the local CLI for `tailscale up`/`serve`/`funnel`/`logout`.
 - **No actions registered here.** All start/stop/status user interactions go through `@elizaos/plugin-tunnel`'s canonical `TUNNEL` action.
 - **Cloud backend billing.** Each `startTunnel()` call on `CloudTailscaleService` makes a POST to Eliza Cloud that debits org credits. `getLastProvisioningBilling()` returns the billing payload from the last provision.

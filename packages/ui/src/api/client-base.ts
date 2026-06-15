@@ -759,7 +759,7 @@ export class ElizaClient {
       wsProtocol = parsed.protocol === "https:" ? "wss:" : "ws:";
     } else {
       // In non-HTTP environments (electrobun://, file://, etc.)
-      // window.location.host may be empty or a non-routable placeholder like "-".
+      // window.location.host may be empty or a non-routable value like "-".
       const loc = window.location;
       if (loc.protocol !== "http:" && loc.protocol !== "https:") return;
       host = loc.host;
@@ -769,7 +769,7 @@ export class ElizaClient {
     if (!host) return;
 
     // On Capacitor native (iosScheme/androidScheme = "https"), the origin host
-    // is a dummy bundle host (e.g. "localhost" with no server behind it).
+    // is a synthetic bundle host (e.g. "localhost" with no server behind it).
     // Skip WS if we have no explicit baseUrl and the host doesn't look like a
     // real backend (no port, not an IP, not a known API domain).
     if (!this.baseUrl && typeof host === "string") {
@@ -781,6 +781,13 @@ export class ElizaClient {
 
     let url = `${wsProtocol}//${host}/ws`;
     const params = new URLSearchParams({ clientId: this.clientId });
+    // Browsers cannot set Authorization on `new WebSocket(url)`. Pass the same
+    // token HTTP uses as a query param; cloud servers (ELIZA_ALLOW_WS_QUERY_TOKEN=1)
+    // honor it during the upgrade handshake. Self-hosted servers without that
+    // flag will ignore the query token and fall back to the post-open
+    // `{type:"auth"}` message below.
+    const token = this.apiToken;
+    if (token) params.set("token", token);
     url += `?${params.toString()}`;
 
     this.ws = new WebSocket(url);
@@ -911,8 +918,8 @@ export class ElizaClient {
 
   /**
    * Arms a one-shot network-status listener that re-runs `connectWs()` the
-   * moment the device reports connectivity again. Calling twice is a noop
-   * — the existing listener stays in place.
+   * moment the device reports connectivity again. Calling twice has no
+   * additional effect; the existing listener stays in place.
    */
   private armNetworkStatusWake(): void {
     if (this.networkStatusUnsubscribe) return;

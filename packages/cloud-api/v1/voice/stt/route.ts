@@ -232,6 +232,8 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         model: "elevenlabs/scribe_v1",
         provider: "elevenlabs",
         billingSource: "elevenlabs",
+        // Affiliate revenue-share via X-Affiliate-Code (existing billFlatUsage branch).
+        affiliateCode: request.headers.get("X-Affiliate-Code"),
         description: `STT transcription: ${estimatedDurationMinutes.toFixed(2)} min`,
       },
       sttCost,

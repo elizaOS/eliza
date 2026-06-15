@@ -1,9 +1,6 @@
 "use client";
 
-import {
-  STEWARD_AUTHED_COOKIE,
-  STEWARD_TOKEN_KEY,
-} from "@elizaos/shared/steward-session-client";
+import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { useContext, useEffect, useState } from "react";
 import { LocalStewardAuthContext } from "@/providers/StewardProvider";
 
@@ -98,9 +95,6 @@ function decodeStewardToken(token: string): {
 function readStewardSessionFromStorage(): StewardSessionUser {
   if (typeof window === "undefined") return null;
   try {
-    if (!hasCookie(STEWARD_AUTHED_COOKIE, "1")) {
-      return null;
-    }
     const token = localStorage.getItem(STEWARD_TOKEN_KEY);
     if (!token) return null;
     const decoded = decodeStewardToken(token);

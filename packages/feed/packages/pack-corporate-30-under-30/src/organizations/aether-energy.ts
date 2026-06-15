@@ -16,7 +16,7 @@ const organization = {
     "Fusion is the future.",
     "94% complete. (For 11 months.)",
     "Clean. Abundant. Free. (Eventually.)",
-    "Aether Energy: saving the world. Timeline: TBD.",
+    "Aether Energy: saving the world. Timeline: undisclosed.",
   ],
   pfpDescription:
     "A glowing orb logo in warm gold and white, suggesting contained energy. Beautiful, promising, and not yet functional \u2014 like the company.",

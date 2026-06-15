@@ -9,11 +9,11 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { bedtimeDefaultPack } from "./bedtime.js";
-import type { DefaultPack, DefaultPackRegistry } from "./contract-stubs.js";
+import type { DefaultPack, DefaultPackRegistry } from "./contract-types.js";
 import { sleepRecapDefaultPack } from "./sleep-recap.js";
 import { wakeUpDefaultPack } from "./wake-up.js";
 
-export * from "./contract-stubs.js";
+export * from "./contract-types.js";
 export { bedtimeDefaultPack, sleepRecapDefaultPack, wakeUpDefaultPack };
 
 export const HEALTH_DEFAULT_PACKS: readonly DefaultPack[] = [
@@ -32,7 +32,7 @@ export function registerHealthDefaultPacks(runtime: IAgentRuntime): void {
   if (!registry) {
     logger.info(
       { src: "plugin:health" },
-      "Skipping plugin-health default-pack registration (registry not yet available)",
+      "Skipping plugin-health default-pack registration (registry unavailable)",
     );
     return;
   }

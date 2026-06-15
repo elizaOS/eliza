@@ -27,12 +27,19 @@
 
 import { logger } from "../utils/logger";
 
+// biome-ignore lint/complexity/useRegexLiterals: Keep control-character escapes out of regex literal source.
+const UNSAFE_CONTROL_CHARACTERS = new RegExp(
+  "[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]",
+  "g",
+);
+
 /**
  * Content Validator Class
  *
  * @description Static class providing validation methods for various content
  * types. Uses type assertions to ensure type safety after validation.
  */
+// biome-ignore lint/complexity/noStaticOnlyClass: Keep the existing ContentValidator.validate* API stable for callers.
 export class ContentValidator {
   /**
    * Maximum post content length (5000 characters)
@@ -334,9 +341,6 @@ export class ContentValidator {
    * @returns {string} Sanitized content
    */
   static sanitizeContent(content: string): string {
-    return content
-      .trim()
-      .replace(/\u0000/g, "") // Remove null bytes
-      .replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F]/g, ""); // Remove control characters
+    return content.trim().replace(UNSAFE_CONTROL_CHARACTERS, "");
   }
 }

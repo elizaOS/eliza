@@ -75,7 +75,7 @@ export function createAppleFoundationAdapter(
 			}
 			// Synchronous semantics: return false until the probe resolves; this
 			// matches the rest of the local-inference availability pattern, which
-			// is allowed to return a slightly stale "not yet available" until the
+			// is allowed to return a slightly stale "unavailable" state until the
 			// first async probe completes.
 			return probedAvailable === true;
 		},

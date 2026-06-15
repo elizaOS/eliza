@@ -626,9 +626,10 @@ def is_setup_only_command(command: str) -> bool:
 
 
 def is_substantive_capture_command(command: str) -> bool:
-    return any(token in command for token in SUBSTANTIVE_COMMAND_TOKENS) or re.search(
-        r"\b(capture|collect)-[A-Za-z0-9_.:/=-]+", command
-    ) is not None
+    return (
+        any(token in command for token in SUBSTANTIVE_COMMAND_TOKENS)
+        or re.search(r"\b(capture|collect)-[A-Za-z0-9_.:/=-]+", command) is not None
+    )
 
 
 def preferred_next_command(commands: list[str]) -> str:

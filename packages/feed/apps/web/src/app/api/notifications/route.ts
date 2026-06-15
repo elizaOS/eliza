@@ -30,6 +30,13 @@
  *           default: 50
  *         description: Notifications per page
  *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number
+ *       - in: query
  *         name: unreadOnly
  *         schema:
  *           type: boolean
@@ -108,7 +115,7 @@
  * Results are cached for 10 seconds to balance freshness with performance.
  *
  * @query {number} limit - Notifications per page (1-100, default: 50)
- * @query {number} page - Page number (default: 1, currently not implemented)
+ * @query {number} page - Page number (default: 1)
  * @query {boolean} unreadOnly - Show only unread notifications
  * @query {string} type - Filter by notification type
  *
@@ -224,7 +231,7 @@ const ClearNotificationsSchema = z
     },
   );
 
-export function serializeNotificationForApi(
+function serializeNotificationForApi(
   n: Record<string, unknown> & {
     actor?: Record<string, unknown> | null;
   },
@@ -311,11 +318,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   if (type) queryParams.type = type;
 
   const validated = NotificationsQuerySchema.parse(queryParams);
-  const {
-    limit: validatedLimit,
-    unreadOnly: validatedUnreadOnly,
-    type: validatedType,
-  } = validated;
+  const { unreadOnly: validatedUnreadOnly, type: validatedType } = validated;
+  const validatedLimit = Math.max(1, Math.trunc(validated.limit));
+  const validatedPage = Math.max(1, Math.trunc(validated.page));
+  const pageOffset = (validatedPage - 1) * validatedLimit;
+  const pageEnd = pageOffset + validatedLimit;
 
   // Build where conditions
   const conditions = [eq(notifications.userId, authUser.userId)];
@@ -329,7 +336,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   }
 
   // OPTIMIZED: Cache notifications with short TTL (high-frequency polling endpoint)
-  const cacheKey = `notifications:${authUser.userId}:${validatedUnreadOnly}:${validatedType}:${validatedLimit}`;
+  const cacheKey = `notifications:${authUser.userId}:${validatedUnreadOnly}:${validatedType}:${validatedPage}:${validatedLimit}`;
 
   // Keep moderation failures visible; only the notification-schema reads degrade.
   const [blockedIds, mutedIds, blockedByIds] = await Promise.all([
@@ -360,7 +367,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
             .from(notifications)
             .where(and(...conditions))
             .orderBy(desc(notifications.createdAt))
-            .limit(validatedLimit * 2); // Fetch more to account for filtering
+            .limit(pageEnd * 2); // Fetch more to account for filtering
 
           // Get unread count
           const [unreadCountResult] = await db
@@ -426,7 +433,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         // Filter out notifications from blocked/muted users and add actor info
         const notificationsList = rows
           .filter((n) => !n.actorId || !excludedUserIds.has(n.actorId))
-          .slice(0, validatedLimit) // Limit to requested amount after filtering
+          .slice(pageOffset, pageEnd) // Apply pagination after visibility filtering
           .map((n) => ({
             ...n,
             actor: n.actorId ? actorMap.get(n.actorId) || null : null,

@@ -13,8 +13,8 @@
     }
   },
   "scripts": {
-    "lint": "echo skip (feed) >&2",
-    "typecheck": "echo skip (feed) >&2"
+    "lint": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/shared/package.json packages/shared/tsconfig.json packages/shared/src",
+    "typecheck": "cd ../.. && bun run scripts/typecheck-workspace.ts packages/shared"
   },
   "dependencies": {
     "clsx": "^2.1.1",

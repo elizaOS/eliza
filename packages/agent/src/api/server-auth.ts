@@ -568,12 +568,13 @@ export function resolveWebSocketUpgradeRejection(
       : null;
   }
 
-  if (
-    process.env.ELIZA_ALLOW_WS_QUERY_TOKEN !== "1" &&
-    hasWsQueryToken(wsUrl)
-  ) {
-    return { status: 401, reason: "Unauthorized" };
-  }
+  // Note: we used to reject upgrades when a query token was present but
+  // ELIZA_ALLOW_WS_QUERY_TOKEN was not "1". That veto was actively harmful —
+  // browsers cannot set Authorization on `new WebSocket(url)`, so SPAs have no
+  // option but to pass the token in the URL. extractWsQueryToken() already
+  // returns null when the flag is off, so handshakeToken simply falls through
+  // to header-or-null and the post-open `{type:"auth"}` fallback covers
+  // self-hosted setups behind header-aware upstream proxies.
 
   const handshakeToken = extractWebSocketHandshakeToken(req, wsUrl);
   if (handshakeToken && !tokenMatches(expected, handshakeToken)) {

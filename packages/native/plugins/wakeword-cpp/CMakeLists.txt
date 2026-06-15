@@ -11,7 +11,7 @@ endif()
 
 include_directories(include src)
 
-# Phase 2: real runtime (`wakeword_runtime.c`) replaces the ENOSYS stub.
+# Phase 2: real runtime (`wakeword_runtime.c`) owns the public ABI.
 # The melspec + window TUs are pure-C utilities the runtime uses.
 #
 # Architecture portability: every TU below is plain scalar C with no

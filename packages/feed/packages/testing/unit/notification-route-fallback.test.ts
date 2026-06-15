@@ -180,6 +180,7 @@ mock.module("@feed/shared", () => ({
   NotificationsQuerySchema: {
     parse: (input: Record<string, string>) => ({
       limit: Number(input.limit ?? "50"),
+      page: Number(input.page ?? "1"),
       unreadOnly: input.unreadOnly === "true",
       type: input.type ?? undefined,
     }),
@@ -302,6 +303,55 @@ describe("notification route fallbacks", () => {
     expect(body.notifications).toBeUndefined();
     expect(mockGetCacheOrFetch).not.toHaveBeenCalled();
     expect(mockLoggerWarn).not.toHaveBeenCalled();
+  });
+
+  test("applies notification pagination after visibility filtering", async () => {
+    notificationRows = [
+      {
+        id: "notif-1",
+        type: "follow",
+        title: "New follower",
+        actorId: null,
+        postId: null,
+        commentId: null,
+        chatId: null,
+        groupId: null,
+        inviteId: null,
+        message: "Alpha followed you",
+        data: null,
+        read: false,
+        createdAt: new Date("2026-03-19T10:00:00.000Z"),
+      },
+      {
+        id: "notif-2",
+        type: "like",
+        title: "New like",
+        actorId: null,
+        postId: null,
+        commentId: null,
+        chatId: null,
+        groupId: null,
+        inviteId: null,
+        message: "Beta liked your post",
+        data: null,
+        read: true,
+        createdAt: new Date("2026-03-19T09:00:00.000Z"),
+      },
+    ];
+
+    const response = await getNotifications(
+      makeRequest("/api/notifications?page=2&limit=1"),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.notifications.map((n: { id: string }) => n.id)).toEqual([
+      "notif-2",
+    ]);
+    expect(mockGetCacheOrFetch.mock.calls[0][0]).toBe(
+      "notifications:user-1:false:undefined:2:1",
+    );
+    expect(mockNotificationLimit).toHaveBeenCalledWith(4);
   });
 
   test("returns default digest settings when digest columns are missing", async () => {

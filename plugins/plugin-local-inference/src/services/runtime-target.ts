@@ -11,11 +11,9 @@
  *                        app's own address space.
  *   - `"native-bridge"`— delegate to a Capacitor / JNI-side native runtime
  *                        plugin (e.g. a Swift / Kotlin host wrapping
- *                        llama.cpp directly). Reserved for future builds
- *                        where the FFI layer cannot be used (e.g. a build
- *                        that disables `bun:ffi`); the actual implementation
- *                        of this branch is a separate work-stream. Today
- *                        only the env-override path can select it.
+ *                        llama.cpp directly). Reserved for builds where the
+ *                        FFI layer cannot be used (e.g. a build that disables
+ *                        `bun:ffi`); only the env-override path selects it.
  *
  * This module is the single source of truth for the platform → runtime
  * mapping.

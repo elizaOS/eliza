@@ -12,6 +12,7 @@ import type {
 import { Service } from "@elizaos/core";
 import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
 import type {
+  PolymarketDisabledResponse,
   PolymarketMarket,
   PolymarketMarketResponse,
   PolymarketMarketsResponse,
@@ -29,6 +30,7 @@ const POLYMARKET_ACTION_CONTEXTS = [
 ] as const;
 const POLYMARKET_ACTION_NAME = "PREDICTION_MARKET";
 const POLYMARKET_READ_COMPAT_NAME = "POLYMARKET_READ";
+const POLYMARKET_PLACE_ORDER_COMPAT_NAME = "POLYMARKET_PLACE_ORDER";
 
 function toCallbackData(data: ProviderDataRecord): Content["data"] {
   return data as unknown as Content["data"];
@@ -60,6 +62,33 @@ const POLYMARKET_READ_KEYWORDS = [
   "예측 시장",
   "배당",
 ] as const;
+const POLYMARKET_TRADE_KEYWORDS = [
+  ...POLYMARKET_READ_KEYWORDS,
+  "buy",
+  "sell",
+  "trade",
+  "order",
+  "comprar",
+  "vender",
+  "orden",
+  "acheter",
+  "vendre",
+  "ordre",
+  "kaufen",
+  "verkaufen",
+  "auftrag",
+  "comprare",
+  "vendere",
+  "注文",
+  "買う",
+  "売る",
+  "买入",
+  "卖出",
+  "订单",
+  "매수",
+  "매도",
+] as const;
+
 const READ_KINDS = [
   "status",
   "markets",
@@ -68,7 +97,7 @@ const READ_KINDS = [
   "positions",
 ] as const;
 type PolymarketReadKind = (typeof READ_KINDS)[number];
-const POLYMARKET_OPS = ["read"] as const;
+const POLYMARKET_OPS = ["read", "place_order"] as const;
 type PolymarketOp = (typeof POLYMARKET_OPS)[number];
 const POLYMARKET_READ_COMPAT_SIMILES = [
   POLYMARKET_READ_COMPAT_NAME,
@@ -89,9 +118,22 @@ const POLYMARKET_READ_COMPAT_SIMILES = [
   "POLYMARKET_POSITIONS",
   "POLYMARKET_WALLET_POSITIONS",
 ] as const;
+const POLYMARKET_PLACE_ORDER_COMPAT_SIMILES = [
+  POLYMARKET_PLACE_ORDER_COMPAT_NAME,
+  "POLYMARKET_TRADE",
+  "POLYMARKET_BUY",
+  "POLYMARKET_SELL",
+] as const;
 const POLYMARKET_READ_OP_ALIASES = new Set([
   ...READ_KINDS,
   ...POLYMARKET_READ_COMPAT_SIMILES.map((name) => name.toLowerCase()),
+]);
+const POLYMARKET_PLACE_ORDER_OP_ALIASES = new Set([
+  ...POLYMARKET_PLACE_ORDER_COMPAT_SIMILES.map((name) => name.toLowerCase()),
+  "trade",
+  "order",
+  "buy",
+  "sell",
 ]);
 
 function getApiBase(): string {
@@ -163,6 +205,9 @@ function normalizeOp(value: unknown): PolymarketOp | null {
   if (POLYMARKET_READ_OP_ALIASES.has(normalized)) {
     return "read";
   }
+  if (POLYMARKET_PLACE_ORDER_OP_ALIASES.has(normalized)) {
+    return "place_order";
+  }
   return null;
 }
 
@@ -178,6 +223,14 @@ function readOp(
   const explicit = normalizeOp(rawOp);
   if (explicit) return explicit;
   if (readKind(options)) return "read";
+  if (
+    readStringParam(options, "side") ||
+    readStringParam(options, "marketId") ||
+    readStringParam(options, "market_id") ||
+    readParam(options, "amount") !== undefined
+  ) {
+    return "place_order";
+  }
   return null;
 }
 
@@ -504,6 +557,35 @@ async function handleReadOperation(
   }
 }
 
+async function handlePlaceOrderOperation(
+  callback: HandlerCallback | undefined,
+): Promise<ActionResult> {
+  const response = await fetchPolymarketJson<PolymarketDisabledResponse>(
+    "/api/polymarket/orders",
+    { allowErrorStatus: true },
+  ).catch((error) => ({
+    enabled: false,
+    reason: error instanceof Error ? error.message : String(error),
+    requiredForTrading: [],
+  }));
+  const text = `Polymarket order placement is disabled.\nReason: ${
+    response.reason
+  }${
+    response.requiredForTrading.length
+      ? `\nRequired env vars: ${response.requiredForTrading.join(", ")}`
+      : ""
+  }`;
+  return {
+    ...(await emit(callback, text, {
+      op: "place_order" satisfies PolymarketOp,
+      compatActionName: POLYMARKET_PLACE_ORDER_COMPAT_NAME,
+      trading: response,
+    })),
+    success: false,
+    error: response.reason,
+  };
+}
+
 interface PredictionMarketProviderMetadata {
   readonly name: string;
   readonly aliases: readonly string[];
@@ -540,13 +622,15 @@ function createPolymarketProvider(): PredictionMarketProvider {
   return {
     name: "polymarket",
     aliases: ["poly-market", "clob"],
-    supportedSubactions: ["read"],
+    supportedSubactions: ["read", "place_order"],
     description:
       "Polymarket public market reads, orderbook data, positions, and trading readiness.",
     execute: async ({ options, op, callback }) => {
       switch (op) {
         case "read":
           return await handleReadOperation(options, callback);
+        case "place_order":
+          return await handlePlaceOrderOperation(callback);
       }
     },
   };
@@ -659,11 +743,14 @@ export const polymarketAction: Action = {
   contexts: [...POLYMARKET_ACTION_CONTEXTS],
   contextGate: { anyOf: [...POLYMARKET_ACTION_CONTEXTS] },
   roleGate: { minRole: "USER" },
-  similes: [...POLYMARKET_READ_COMPAT_SIMILES],
+  similes: [
+    ...POLYMARKET_READ_COMPAT_SIMILES,
+    ...POLYMARKET_PLACE_ORDER_COMPAT_SIMILES,
+  ],
   description:
-    "Use registered prediction market providers. target selects the provider; Polymarket is registered today. action=read reads public state with kind: status, markets, market, orderbook, or positions.",
+    "Use registered prediction market providers. target selects the provider; Polymarket is registered today. action=read reads public state with kind: status, markets, market, orderbook, or positions. action=place_order reports trading readiness; signed order placement is disabled in this app integration.",
   descriptionCompressed:
-    "Prediction market router: target polymarket; action read.",
+    "Prediction market router: target polymarket; action read or place_order.",
   parameters: [
     {
       name: "target",
@@ -673,15 +760,16 @@ export const polymarketAction: Action = {
     },
     {
       name: "action",
-      description: "Prediction market operation: read.",
+      description: "Prediction market operation: read or place_order.",
       required: false,
       schema: { type: "string", enum: [...POLYMARKET_OPS] },
     },
     {
       name: "subaction",
-      description: "Legacy alias for action.",
+      description:
+        "Legacy alias for action. Accepts place-order as place_order.",
       required: false,
-      schema: { type: "string", enum: [...POLYMARKET_OPS] },
+      schema: { type: "string", enum: [...POLYMARKET_OPS, "place-order"] },
     },
     {
       name: "kind",
@@ -726,15 +814,34 @@ export const polymarketAction: Action = {
       required: false,
       schema: { type: "string" },
     },
+    {
+      name: "side",
+      description: "place_order only: intended side, buy or sell.",
+      required: false,
+      schema: { type: "string", enum: ["buy", "sell"] },
+    },
+    {
+      name: "marketId",
+      description: "place_order only: Polymarket market id or condition id.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "amount",
+      description: "place_order only: intended order amount.",
+      required: false,
+      schema: { type: "number" },
+    },
   ],
   validate: async (_runtime, message: Memory, state?: State) =>
     hasSelectedContext(state) ||
-    hasKeywordIntent(message, state, POLYMARKET_READ_KEYWORDS),
+    hasKeywordIntent(message, state, POLYMARKET_READ_KEYWORDS) ||
+    hasKeywordIntent(message, state, POLYMARKET_TRADE_KEYWORDS),
   handler: async (runtime, _message, _state, options, callback) => {
     const op = readOp(options);
     if (!op) {
       const text =
-        "Provide action: read and kind: status | markets | market | orderbook | positions.";
+        "Provide action: read | place_order. For read, also provide kind: status | markets | market | orderbook | positions.";
       return emitFailure(callback, text, "missing_or_invalid_op", {
         actionName: POLYMARKET_ACTION_NAME,
         availableActions: [...POLYMARKET_OPS],

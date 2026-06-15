@@ -263,15 +263,20 @@ export const ValidationStrategies: Record<string, CustomValidator> = {
 	},
 
 	/**
-	 * Custom validation placeholder
+	 * Dispatch to a validator registered under the secret key, or to a shared
+	 * validator registered as "custom".
 	 */
-	custom: async (_key: string, _value: string): Promise<ValidationResult> => {
-		// Custom validation should be registered separately
-		return {
-			isValid: true,
-			details: "Custom validation not implemented",
-			validatedAt: Date.now(),
-		};
+	custom: async (key: string, value: string): Promise<ValidationResult> => {
+		const validator =
+			customValidators.get(key) ?? customValidators.get("custom");
+		if (!validator) {
+			return {
+				isValid: false,
+				error: `No custom validator registered for ${key}`,
+				validatedAt: Date.now(),
+			};
+		}
+		return validator(key, value);
 	},
 };
 

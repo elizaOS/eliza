@@ -15,19 +15,11 @@ include_directories(include)
 # Source files
 # ---------------------------------------------------------------------------
 #
-# One library, three model heads. Each head lives in its own translation
-# unit so the J1.a/J1.b/J1.c real GGML graphs can replace them
-# independently without touching the others. The shared utilities
-# (class-name table, cosine distance helper, mel front-end,
-# diagnostics) stay in their own TUs.
-#
-# Today the per-head TUs are GGUF-aware loaders that validate the
-# bundle's metadata block and return `-ENOSYS` from the forward-pass
-# entry points (real graphs come in J1.a / J1.b / J1.c). The TS GGML
-# surfaces (`*-ggml.ts`) can still dlopen the SHARED library, call
-# `*_open(gguf_path, &h)` to validate that the GGUF parses, and surface
-# a structured error (rather than the bare construction-time exception
-# they raise today) when the forward graph is missing.
+# One library, four classifier heads. Emotion, speaker, and diarizer now
+# have scalar C forward paths; the audio EOT TU validates GGUF metadata and
+# returns `-ENOSYS` from `voice_eot_score` until an upstream audio-turn graph
+# is pinned. The shared utilities (class-name table, cosine distance helper,
+# mel front-end, diagnostics) stay in their own TUs.
 #
 # Architecture portability: every TU below is plain scalar C with no
 # x86/ARM/RVV intrinsics, so the same source list builds on x86_64,
@@ -78,10 +70,10 @@ target_link_libraries(voice_classifier PUBLIC m)
 
 enable_testing()
 
-add_executable(voice_classifier_stub_smoke test/voice_classifier_stub_smoke.c)
-target_link_libraries(voice_classifier_stub_smoke PRIVATE voice_classifier)
-target_compile_options(voice_classifier_stub_smoke PRIVATE -O2 -Wall -Wextra)
-add_test(NAME voice_classifier_stub_smoke COMMAND voice_classifier_stub_smoke)
+add_executable(voice_classifier_abi_smoke test/voice_classifier_abi_smoke.c)
+target_link_libraries(voice_classifier_abi_smoke PRIVATE voice_classifier)
+target_compile_options(voice_classifier_abi_smoke PRIVATE -O2 -Wall -Wextra)
+add_test(NAME voice_classifier_abi_smoke COMMAND voice_classifier_abi_smoke)
 
 add_executable(voice_emotion_classes_test test/voice_emotion_classes_test.c)
 target_link_libraries(voice_emotion_classes_test PRIVATE voice_classifier)

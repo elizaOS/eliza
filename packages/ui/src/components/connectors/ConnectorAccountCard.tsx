@@ -10,7 +10,7 @@ import { cn } from "../../lib/utils";
 import {
   type TranslationContextValue,
   useTranslation,
-} from "../../state/TranslationContext";
+} from "../../state/TranslationContext.hooks";
 import { EditableAccountLabel } from "../accounts/EditableAccountLabel";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";

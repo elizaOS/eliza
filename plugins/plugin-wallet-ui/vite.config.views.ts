@@ -3,7 +3,7 @@ import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.
 export default createViewBundleConfig({
   packageName: "@elizaos/plugin-wallet-ui",
   viewId: "wallet",
-  entry: "./src/InventoryView.tsx",
+  entry: "./src/wallet-view-bundle.ts",
   outDir: "dist/views",
   componentExport: "InventoryView",
 });

@@ -379,7 +379,7 @@
         "@capacitor/haptics",
         "@capacitor/keyboard",
         "@capacitor/push-notifications",
-        "@elizaos/plugin-lifeops",
+        "@elizaos/plugin-personal-assistant",
         "@elizaos/plugin-shopify-ui",
         "@elizaos/plugin-vincent",
         "@elizaos/plugin-browser",
@@ -507,9 +507,6 @@
         "examples/**/plugin.json"
       ],
       "ignore": ["dist/**"]
-    },
-    "scripts/generate-registry": {
-      "ignore": ["site/**"]
     },
     "packages/browser-bridge-extension": {
       "entry": [
@@ -804,7 +801,7 @@
       ],
       "ignoreBinaries": ["make"]
     },
-    "plugins/plugin-lifeops": {
+    "plugins/plugin-personal-assistant": {
       "entry": [
         "src/**/*.{ts,tsx}",
         "scripts/**/*.{mjs,ts}",
@@ -819,7 +816,7 @@
       ],
       "ignoreBinaries": [
         "tsc",
-        "plugins/plugin-lifeops/scripts/work-thread-benchmark.ts"
+        "plugins/plugin-personal-assistant/scripts/work-thread-benchmark.ts"
       ]
     },
     "plugins/plugin-health": {

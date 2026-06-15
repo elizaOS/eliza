@@ -5,7 +5,7 @@
  * Without this, "ocplatform" can split as "ocp"+"latform" and leak through.
  * TAIL_SIZE >= longest reverseMap pattern.
  *
- * Also uses StringDecoder to buffer incomplete UTF-8 sequences across TCP
+ * Also uses StringDecoder to buffer partial UTF-8 sequences across TCP
  * chunks. chunk.toString() would emit U+FFFD whenever a multi-byte char
  * (中文, emoji, etc.) lands on a chunk boundary.
  *

@@ -174,11 +174,11 @@ def load_policy(checkpoint_dir: str) -> tuple[InferenceFn, dict]:
         (inference_fn, config) where inference_fn maps obs (numpy) -> action (numpy).
     """
     policy_fn, config, _ = _load_checkpoint(checkpoint_dir)
-    dummy_rng = jax.random.PRNGKey(0)
+    inference_rng = jax.random.PRNGKey(0)
 
     @jax.jit
     def _jit_policy(obs: jax.Array) -> jax.Array:
-        action, _ = policy_fn(obs, dummy_rng)
+        action, _ = policy_fn(obs, inference_rng)
         return action
 
     def inference_fn(obs: np.ndarray) -> np.ndarray:
@@ -247,11 +247,11 @@ def main():
 
     print(f"Loading policy from {args.checkpoint}...")
     jax_policy, config, env = _load_checkpoint(args.checkpoint)
-    dummy_rng = jax.random.PRNGKey(0)
+    inference_rng = jax.random.PRNGKey(0)
 
     @jax.jit
     def _jit(obs):
-        action, _ = jax_policy(obs, dummy_rng)
+        action, _ = jax_policy(obs, inference_rng)
         return action
 
     def policy_fn(obs):

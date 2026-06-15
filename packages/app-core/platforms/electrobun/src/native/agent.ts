@@ -239,15 +239,21 @@ export function prependDesktopChildPathDirectory(
   childEnv: Record<string, string | undefined>,
   directory: string,
 ): boolean {
-  const existingPath = childEnv.PATH?.trim();
+  const existingPathKey =
+    childEnv.PATH !== undefined
+      ? "PATH"
+      : childEnv.Path !== undefined
+        ? "Path"
+        : "PATH";
+  const existingPath = childEnv[existingPathKey]?.trim();
   if (!existingPath) {
-    childEnv.PATH = directory;
+    childEnv[existingPathKey] = directory;
     return true;
   }
   if (existingPath.split(path.delimiter).includes(directory)) {
     return false;
   }
-  childEnv.PATH = `${directory}${path.delimiter}${existingPath}`;
+  childEnv[existingPathKey] = `${directory}${path.delimiter}${existingPath}`;
   return true;
 }
 

@@ -50,7 +50,7 @@ const actor = {
     "Our models are aligned. By aligned I mean they follow Constitutional AI guidelines. By guidelines I mean... it's a long document.",
     "I worry about AI every day. Which is why I spend every day building more capable AI. This is consistent.",
     "We left OpenAGI because we had concerns. We then started a company to build the same thing, with concerns.",
-    "Existential risk from AI is real. Anthropic is here to responsibly navigate toward or away from it, TBD.",
+    "Existential risk from AI is real. Anthropic is here to responsibly navigate toward or away from it, unclear.",
     "Claude 3 Opus is very capable. Please use responsibly. We trust you. (We have logged this interaction)",
     "Helpful, harmless, honest. In that order. Actually, safety first. Helpful, but safely. Harmless primarily. It's complicated.",
     "I am often asked if AI will destroy humanity. My answer is nuanced and spans 47 pages.",

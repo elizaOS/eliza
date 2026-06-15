@@ -42,7 +42,9 @@ describe("blocked object key sanitization", () => {
   it("fuzzes JSON-compatible values with blocked keys injected at arbitrary leaves", () => {
     fc.assert(
       fc.property(
-        fc.jsonValue(),
+        // The "legit" value must not itself contain blocked keys, otherwise the
+        // sanitizer correctly strips them and clean !== the original value.
+        fc.jsonValue().filter((v) => !hasBlockedObjectKeyDeep(v)),
         fc.constantFrom("__proto__", "constructor", "prototype"),
         (value, blockedKey) => {
           const payload = {
@@ -52,9 +54,10 @@ describe("blocked object key sanitization", () => {
 
           expect(hasBlockedObjectKeyDeep(payload)).toBe(true);
           const clean = cloneWithoutBlockedObjectKeys(payload);
+          const cleanValue = cloneWithoutBlockedObjectKeys(value);
           expect(hasBlockedObjectKeyDeep(clean)).toBe(false);
           expect(clean).toEqual({
-            value,
+            value: cleanValue,
             wrapper: [{}],
           });
         },

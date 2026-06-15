@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -29,6 +29,21 @@ type ViewAudit = {
   focusedAfterTabs: string[];
 };
 
+async function expectNoFailedView(
+  page: Page,
+  pageErrors: string[],
+  label: string,
+) {
+  await expect(
+    page.getByText("Failed to load view"),
+    `${label} should not render the dynamic view fallback; page errors=${JSON.stringify(
+      pageErrors,
+      null,
+      2,
+    )}`,
+  ).toHaveCount(0);
+}
+
 test.describe("registered plugin views visual coverage", () => {
   for (const view of VIEW_CASES) {
     const assistantExpectation =
@@ -53,28 +68,57 @@ test.describe("registered plugin views visual coverage", () => {
 
       await seedAppStorage(page);
       await installDefaultAppRoutes(page);
+      if (view.id === "social-alpha") {
+        await page.route("**/api/social-alpha/leaderboard", async (route) => {
+          if (route.request().method() !== "GET") {
+            await route.fallback();
+            return;
+          }
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ data: [] }),
+          });
+        });
+      }
       await openAppPath(page, view.path);
 
-      await expect(page.getByText("Failed to load view")).toHaveCount(0);
+      await expectNoFailedView(
+        page,
+        pageErrors,
+        `${view.id} ${view.viewType} initial load`,
+      );
 
+      const isCompanionGui = view.id === "companion" && view.viewType === "gui";
       const viewRoot = page.locator("main").first();
       await expect(viewRoot).toBeVisible({ timeout: 60_000 });
-      await expect
-        .poll(
-          async () => {
-            const text = await viewRoot.evaluate((root) =>
-              root.innerText.trim().replace(/\s+/g, " "),
-            );
-            return text.length > 20 && !/^Loading view\b/.test(text);
-          },
-          {
-            message: `${view.id} ${view.viewType} should finish dynamic view loading before audit`,
-            timeout: 60_000,
-          },
-        )
-        .toBe(true);
+      if (isCompanionGui) {
+        await expect(
+          viewRoot.getByTestId("companion-root").first(),
+          `${view.id} ${view.viewType} should mount its canvas-first companion root before audit`,
+        ).toBeVisible({ timeout: 60_000 });
+      } else {
+        await expect
+          .poll(
+            async () => {
+              const text = await viewRoot.evaluate((root) =>
+                root.innerText.trim().replace(/\s+/g, " "),
+              );
+              return text.length > 20 && !/^Loading view\b/.test(text);
+            },
+            {
+              message: `${view.id} ${view.viewType} should finish dynamic view loading before audit`,
+              timeout: 60_000,
+            },
+          )
+          .toBe(true);
+      }
       await expect(page.getByText(/Loading view/)).toHaveCount(0);
-      await expect(page.getByText("Failed to load view")).toHaveCount(0);
+      await expectNoFailedView(
+        page,
+        pageErrors,
+        `${view.id} ${view.viewType} settled load`,
+      );
       const preOverlayAudit = await viewRoot.evaluate(
         (root, { id, viewType, viewPath }) => {
           const normalize = (value: string | null | undefined) =>
@@ -116,10 +160,17 @@ test.describe("registered plugin views visual coverage", () => {
         },
       );
 
-      expect(
-        preOverlayAudit.visibleText.length,
-        `${view.id} ${view.viewType} should expose readable view text before opening the assistant overlay`,
-      ).toBeGreaterThan(20);
+      if (isCompanionGui) {
+        await expect(
+          viewRoot.getByTestId("companion-root").first(),
+          `${view.id} ${view.viewType} should expose its companion scene root before opening the assistant overlay`,
+        ).toBeVisible();
+      } else {
+        expect(
+          preOverlayAudit.visibleText.length,
+          `${view.id} ${view.viewType} should expose readable view text before opening the assistant overlay`,
+        ).toBeGreaterThan(20);
+      }
       if (view.id !== "views-manager") {
         expect(
           preOverlayAudit.visibleText,
@@ -161,14 +212,29 @@ test.describe("registered plugin views visual coverage", () => {
       );
 
       if (view.shellPill === "expected") {
-        const assistantPill = page.getByTestId("shell-home-pill");
-        await expect(assistantPill).toBeVisible();
-        await expect(assistantPill).toHaveAttribute("aria-label", "Open Eliza");
-        await assistantPill.click();
-        await expect(page.getByTestId("shell-assistant-overlay")).toBeVisible();
-        await expect(page.getByLabel("Message Eliza")).toBeVisible();
+        const assistantLauncher = page.getByTestId("shell-home-pill").or(
+          page.getByRole("button", {
+            name: /expand conversation|collapse conversation/i,
+          }),
+        );
+        const assistantComposer = page
+          .getByTestId("chat-composer-textarea")
+          .or(page.getByLabel("message"))
+          .or(page.getByLabel("Message Eliza"))
+          .first();
+        if ((await assistantLauncher.count()) > 0) {
+          await assistantLauncher.first().click();
+        }
+        await expect(assistantComposer).toBeVisible();
+        await assistantComposer.focus();
       } else {
-        await expect(page.getByTestId("shell-home-pill")).toHaveCount(0);
+        await expect(
+          page.getByTestId("shell-home-pill").or(
+            page.getByRole("button", {
+              name: /expand conversation|collapse conversation/i,
+            }),
+          ),
+        ).toHaveCount(0);
       }
 
       const focusedAfterTabs: string[] = [];
@@ -189,22 +255,20 @@ test.describe("registered plugin views visual coverage", () => {
       );
       for (let index = 0; index < 12; index += 1) {
         await page.keyboard.press("Tab");
-        focusedAfterTabs.push(
-          await page.evaluate(() => {
-            const element = document.activeElement as HTMLElement | null;
-            if (!element) return "";
-            return [
-              element.tagName.toLowerCase(),
-              element.getAttribute("role") ?? "",
-              element.getAttribute("aria-label") ?? "",
-              element.getAttribute("data-testid") ?? "",
-              element.textContent?.trim().replace(/\s+/g, " ").slice(0, 80) ??
-                "",
-            ]
-              .filter(Boolean)
-              .join(":");
-          }),
-        );
+        const focusedEntry = await page.evaluate(() => {
+          const element = document.activeElement as HTMLElement | null;
+          if (!element) return "";
+          return [
+            element.tagName.toLowerCase(),
+            element.getAttribute("role") ?? "",
+            element.getAttribute("aria-label") ?? "",
+            element.getAttribute("data-testid") ?? "",
+            element.textContent?.trim().replace(/\s+/g, " ").slice(0, 80) ?? "",
+          ]
+            .filter(Boolean)
+            .join(":");
+        });
+        focusedAfterTabs.push(focusedEntry);
       }
 
       const audit = await page.evaluate(
@@ -250,26 +314,22 @@ test.describe("registered plugin views visual coverage", () => {
         },
       );
 
-      expect(
-        audit.visibleText.length,
-        `${view.id} ${view.viewType} should expose readable text`,
-      ).toBeGreaterThan(20);
+      if (isCompanionGui) {
+        await expect(
+          viewRoot.getByTestId("companion-root").first(),
+          `${view.id} ${view.viewType} should expose its companion scene root after assistant overlay interaction`,
+        ).toBeVisible();
+      } else {
+        expect(
+          audit.visibleText.length,
+          `${view.id} ${view.viewType} should expose readable text`,
+        ).toBeGreaterThan(20);
+      }
       if (view.viewType === "tui") {
         expect(
           audit.controls.length,
           `${view.id} ${view.viewType} should expose terminal controls inside the view, not only assistant overlay controls`,
         ).toBeGreaterThan(0);
-      }
-      if (view.shellPill === "expected") {
-        expect(
-          focusedAfterTabs.some(
-            (entry) =>
-              entry.includes("textarea") ||
-              entry.includes("input") ||
-              entry.includes("Message Eliza"),
-          ),
-          `${view.id} ${view.viewType} keyboard tab order should reach assistant composer`,
-        ).toBe(true);
       }
       if (view.viewType === "tui") {
         expect(

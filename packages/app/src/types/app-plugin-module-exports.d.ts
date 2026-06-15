@@ -19,28 +19,15 @@ declare module "@elizaos/plugin-companion" {
   export function useCompanionSceneStatus(): import("@elizaos/ui").CompanionSceneStatus;
 }
 
-declare module "@elizaos/plugin-lifeops" {
+declare module "@elizaos/plugin-personal-assistant" {
   export const AppBlockerSettingsCard: import("react").ComponentType<
     import("@elizaos/ui").AppBlockerSettingsCardProps
-  >;
-  export const LifeOpsActivitySignalsEffect: import("react").ComponentType<
-    Record<string, never>
-  >;
-  export const LifeOpsBrowserSetupPanel: import("react").ComponentType<
-    Record<string, never>
-  >;
-  export const LifeOpsPageView: import("react").ComponentType<
-    Record<string, never>
   >;
   export const WebsiteBlockerSettingsCard: import("react").ComponentType<
     import("@elizaos/ui").WebsiteBlockerSettingsCardProps
   >;
-  export function dispatchQueuedLifeOpsGithubCallbackFromUrl(
-    url: string,
-  ): void | Promise<void>;
-  export function registerLifeOpsApp(): void;
-  export const lifeOpsPlugin: unknown;
-  export default lifeOpsPlugin;
+  export const personalAssistantPlugin: unknown;
+  export default personalAssistantPlugin;
 }
 
 declare module "@elizaos/plugin-phone" {

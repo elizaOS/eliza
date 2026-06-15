@@ -120,10 +120,10 @@ route_phases:
       - factory probe coordinates and limits generated from routed board and fixture CAD
       - routed board STEP exported with supplier 3D models
     current_status: blocked_no_production_outputs
-  - phase: 5_enclosure_routed_step_rerun
+  - phase: 5_routed_step_release_clearance
     exit_criteria:
       - mechanical/e1-phone/review/board-step-readiness.json passes with production STEP
-      - mechanical/e1-phone/review/routed-board-clearance.json rerun with measured routed-board clearances
+      - mechanical/e1-phone/review/routed-board-clearance.json completed with measured routed-board release clearances
       - no routed component intersects display, battery, USB-C aperture, side buttons, acoustic paths, antennas, or interconnect
     current_status: blocked_waiting_for_physical_routed_board_clearance_result
 
@@ -236,7 +236,7 @@ selected_hardware_route_sequence:
       required_before_route:
         - fixture-access review for rails, USB-C, display, cameras, radios, buttons, audio, and split interconnect
         - routed STEP export with supplier models and no placeholder footprints
-        - routed-board enclosure clearance rerun and full CAD boolean release
+        - routed-board release-clearance result and full CAD boolean release
       required_release_evidence:
         - board/kicad/e1-phone/production/test/probe-coordinates.csv
         - board/kicad/e1-phone/production/step/routed-board-with-components.step
@@ -302,7 +302,7 @@ release_blockers:
   - RF antenna coexistence closure is blocked until tuned feeds, VNA, conducted RF, coexistence, firmware/regulatory, carrier, and SAR evidence exist
   - fabricator stackup and impedance coupon geometry are not selected
   - production Gerber or IPC-2581, drill, position, BOM/AVL, assembly drawing, and STEP outputs are missing
-  - routed board STEP has not been imported into mechanical CAD for enclosure clearance rerun
+  - routed board STEP has not been imported into mechanical CAD for routed-board release clearance
   - post-route SI/PI/RF/power/thermal and factory first-article evidence is missing
 
 forbidden_claims:

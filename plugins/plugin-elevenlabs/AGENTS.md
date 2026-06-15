@@ -84,7 +84,7 @@ To add an action, provider, or service (not currently present), add an `actions`
 
 ## Conventions / gotchas
 
-- **Browser builds:** `ELEVENLABS_BROWSER_URL` redirects requests to a server-side proxy that injects the API key. In browser mode with no `ELEVENLABS_BROWSER_URL`, the API key falls back to the placeholder `"sk-proxy"` — the call will fail unless a proxy is configured.
+- **Browser builds:** `ELEVENLABS_BROWSER_URL` redirects requests to a server-side proxy that injects the API key. In browser mode, configure either `ELEVENLABS_BROWSER_URL` or a real `ELEVENLABS_API_KEY`; otherwise model calls fail before contacting the SDK.
 - **Output format:** The default output format is `mp3_44100_128` (browser-safe). Avoid `pcm_*` formats in browser contexts; PCM is fine for Node/server deployments. Pass an explicit `format` field in the `useModel` input object to override per-call.
 - **TTS input shape:** `runtime.useModel(ModelType.TEXT_TO_SPEECH, ...)` accepts either a plain string or `{ text, model?, voiceId?, format?, instructions? }`.
 - **STT input shape:** Accepts a URL string, a `Buffer`, or `{ audioUrl: string; prompt?: string }`.

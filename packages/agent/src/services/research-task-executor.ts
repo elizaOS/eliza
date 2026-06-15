@@ -153,6 +153,5 @@ export class ResearchTaskExecutor implements TaskExecutor {
 
   async abort(_taskId: string): Promise<void> {
     // Research tasks are sequential LLM calls — no persistent process to abort.
-    // Could add cancellation token support in the future.
   }
 }

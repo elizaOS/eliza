@@ -55,7 +55,11 @@ SUPPORTED_REWARD_KEYS = {
     "alternating_contact_weight",
     "locomotion_no_progress_penalty",
     "late_hold_progress_start",
+    "late_hold_instability_weight",
+    "late_hold_speed_weight",
     "goal_hold_progress_start",
+    "goal_hold_brake_weight",
+    "goal_hold_slip_weight",
     "no_support_weight",
     "double_support_weight",
     "foot_slip_weight",
@@ -335,8 +339,8 @@ def _dataset_report() -> dict[str, Any]:
         "imitation_training_ready": bool(dataset_files),
         "offline_datasets_block_current_plan": False,
         "training_source": (
-            "RL-from-simulation; trajectory_db tooling is not wired into the "
-            "Alberta/PPO text-conditioned policy trainers."
+            "RL-from-simulation; trajectory_db tooling is separate from the "
+            "Alberta/PPO text-conditioned policy trainer inputs."
         ),
     }
 

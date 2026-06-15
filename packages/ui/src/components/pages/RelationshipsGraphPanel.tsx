@@ -10,6 +10,7 @@ import {
   Smile,
 } from "lucide-react";
 import {
+  type ComponentPropsWithRef,
   type CSSProperties,
   type MouseEvent,
   type ReactNode,
@@ -29,7 +30,7 @@ import type {
 import {
   type TranslationContextValue,
   useTranslation,
-} from "../../state/TranslationContext";
+} from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import {
   Tooltip,
@@ -591,7 +592,7 @@ function GraphIconButton({
   disabled?: boolean;
   onClick: () => void;
   children: ReactNode;
-  agentRef?: React.Ref<HTMLButtonElement>;
+  agentRef?: ComponentPropsWithRef<typeof Button>["ref"];
   agentProps?: Record<string, string | undefined>;
 }) {
   return (

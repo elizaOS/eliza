@@ -199,7 +199,9 @@ export async function ensureUserForAuth(
     .select(canonicalUserSelect)
     .from(users)
     .where(
-      stewardId ? eq(users.stewardId, stewardId) : eq(users.id, canonicalUserId),
+      stewardId
+        ? eq(users.stewardId, stewardId)
+        : eq(users.id, canonicalUserId),
     )
     .limit(1);
 

@@ -46,7 +46,7 @@ function fieldsToContent(fields: Record<string, unknown>): Content {
 		}
 		return [];
 	})();
-	// WHY: Empty actions should still produce a safe no-op.
+	// WHY: Empty actions should still produce the safe IGNORE action.
 	const finalActions =
 		normalizedActions.length > 0 ? normalizedActions : ["IGNORE"];
 

@@ -5,10 +5,17 @@ const mockGetPerformance = mock();
 const mockGetAgentConfig = mock();
 const mockIsAutonomousTradingEnabled = mock();
 const mockLoggerWarn = mock();
-let mockAgentRegistryRows: Array<{
+const mockAgentRegistryRows: Array<{
   agentId: string;
   agent0TokenId: string | null;
 }> = [];
+const mockAgentRegistryWhere = mock(async () => mockAgentRegistryRows);
+const mockAgentRegistryFrom = mock(() => ({ where: mockAgentRegistryWhere }));
+const mockDbSelect = mock(() => ({ from: mockAgentRegistryFrom }));
+const agentRegistriesTable = {
+  agentId: "AgentRegistry.agentId",
+  agent0TokenId: "AgentRegistry.agent0TokenId",
+};
 
 mock.module("@feed/agents", () => ({
   agentService: {
@@ -29,21 +36,14 @@ mock.module("@feed/shared", () => ({
 }));
 
 mock.module("@feed/db", () => ({
-  agentRegistries: {
-    agentId: "agentId",
-    agent0TokenId: "agent0TokenId",
-  },
+  agentRegistries: agentRegistriesTable,
   db: {
-    select: mock(() => ({
-      from: mock(() => ({
-        where: mock(async () => mockAgentRegistryRows),
-      })),
-    })),
+    select: mockDbSelect,
   },
-  inArray: mock((column: unknown, values: unknown[]) => ({
+  inArray: (column: unknown, values: unknown[]) => ({
     column,
     values,
-  })),
+  }),
 }));
 
 const { listOwnedAgentSummaries } = await import("./owned-agent-summaries");
@@ -55,7 +55,10 @@ describe("listOwnedAgentSummaries", () => {
     mockGetAgentConfig.mockReset();
     mockIsAutonomousTradingEnabled.mockReset();
     mockLoggerWarn.mockReset();
-    mockAgentRegistryRows = [];
+    mockAgentRegistryRows.length = 0;
+    mockDbSelect.mockClear();
+    mockAgentRegistryFrom.mockClear();
+    mockAgentRegistryWhere.mockClear();
     mockIsAutonomousTradingEnabled.mockImplementation(
       (config: { autonomousTrading?: boolean } | null) =>
         config?.autonomousTrading ?? false,
@@ -91,10 +94,10 @@ describe("listOwnedAgentSummaries", () => {
         updatedAt: new Date("2026-03-02T00:00:00.000Z"),
       },
     ]);
-    mockAgentRegistryRows = [
+    mockAgentRegistryRows.push(
       { agentId: "agent-1", agent0TokenId: "101" },
       { agentId: "agent-2", agent0TokenId: null },
-    ];
+    );
     mockGetPerformance
       .mockRejectedValueOnce(new Error("broken trade row"))
       .mockResolvedValueOnce({

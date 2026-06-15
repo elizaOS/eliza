@@ -57,7 +57,7 @@ routing_summary:
     2_placement_and_escape: blocked_placeholder_footprints
     3_high_speed_rf_power_route: blocked_no_tracks_or_zones
     4_manufacturing_outputs: blocked_no_production_outputs
-    5_enclosure_routed_step_rerun: blocked_waiting_for_physical_routed_board_clearance_result
+    5_routed_step_release_clearance: blocked_waiting_for_physical_routed_board_clearance_result
   route_feasibility_status: blocked_requires_supplier_footprints_escape_analysis_and_trial_route
   evt1_routing_status: blocked_requires_supplier_pinouts_routed_pcb_and_post_route_evidence
   supplier_to_kicad_status: blocked_supplier_evidence_not_ready_for_kicad_capture

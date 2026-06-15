@@ -180,6 +180,8 @@ export interface OpenAIModel {
   pricing?: Record<string, unknown>;
   recommended?: boolean;
   free?: boolean;
+  /** Provider/gateway-advertised parameters (e.g. "reasoning"). */
+  supported_parameters?: string[];
 }
 
 /**
@@ -192,7 +194,7 @@ export interface OpenAIModelsResponse {
 
 /**
  * Structured error envelope thrown by every direct HTTP provider
- * (OpenRouter, OpenAI direct, Anthropic direct, Groq) when the upstream
+ * (BitRouter, OpenAI direct, Anthropic direct, Groq) when the upstream
  * call fails, times out, or is aborted. The failover layer matches on
  * `status` to decide retryability; routes surface `error.message` to
  * callers verbatim.

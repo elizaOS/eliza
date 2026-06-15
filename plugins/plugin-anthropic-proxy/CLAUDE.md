@@ -12,7 +12,7 @@ The plugin applies a 7-layer bidirectional transformation pipeline that makes ou
 
 | Kind | Name | What it does |
 |---|---|---|
-| Service | `AnthropicProxyService` (`"anthropic-proxy"`) | Owns the HTTP proxy lifecycle (start/stop). Inline mode: binds a local server. Shared mode: validates upstream URL. Off: no-op. |
+| Service | `AnthropicProxyService` (`"anthropic-proxy"`) | Owns the HTTP proxy lifecycle (start/stop). Inline mode: binds a local server. Shared mode: validates upstream URL. Off: runs without a proxy. |
 | Action | `PROXY_STATUS` | Returns proxy mode, bound URL, listening state, request count, token expiry, upstream reachability to a chat surface. Similes: `ANTHROPIC_PROXY_STATUS`, `CLAUDE_MAX_PROXY_STATUS`, `CHECK_PROXY`. |
 | Route | `GET /api/anthropic-proxy/status` | Same diagnostic data as `PROXY_STATUS`, exposed over HTTP for external tooling. |
 | `init()` | — | Sets `ANTHROPIC_BASE_URL` after the service starts (skipped if already set to a non-`auto` value). |
@@ -26,7 +26,7 @@ No providers or evaluators.
 plugins/plugin-anthropic-proxy/
 ├── index.ts                        # Plugin definition + init(); re-exports public API
 ├── index.node.ts                   # Node-specific entry (imports from index.ts)
-├── index.browser.ts                # Browser no-op entry
+├── index.browser.ts                # Browser-unavailable entry
 ├── auto-enable.ts                  # shouldEnable() — lightweight, no transitive imports
 ├── config.json.example             # Custom fingerprint dictionary shape
 ├── src/
@@ -37,7 +37,7 @@ plugins/plugin-anthropic-proxy/
 │   │   ├── sanitize.ts             # Layer 2: string find/replace helpers
 │   │   ├── tool-rename.ts          # Layer 3/6: quoted token renames
 │   │   ├── system-prompt.ts        # Layer 4: system prompt strip + paraphrase
-│   │   ├── cc-tool-stubs.ts        # Layer 5: CC stub tool injection
+│   │   ├── cc-tool-injection.ts    # Layer 5: synthetic CC tool injection
 │   │   ├── sse-rewrite.ts          # SSE stream line parser + reverse-map application
 │   │   ├── stainless-headers.ts    # Stainless SDK headers to emulate CC user-agent
 │   │   ├── process-body.ts         # Forward pipeline: layers 1-6 applied to request body
@@ -104,7 +104,7 @@ Drop a `config.json` (shape: `config.json.example`) next to the agent root. Any 
 
 ## Conventions / gotchas
 
-- **Node-only.** The `index.browser.ts` entry is a no-op; `package.json` guards with `"eliza.platforms": ["node"]`.
+- **Node-only.** The `index.browser.ts` entry is browser-unavailable; `package.json` guards with `"eliza.platforms": ["node"]`.
 - **`auto-enable.ts` must stay lightweight.** The manifest engine loads it for every plugin at boot. No transitive imports; env reads only.
 - **`ANTHROPIC_BASE_URL` side-effect.** The service sets this process-level env var on start. If another plugin or the agent shell already set it to a real value, the proxy will not override it (only overrides unset or `"auto"`).
 - **Credentials are re-read per request.** A fresh `claude auth login` is picked up immediately with no agent restart.

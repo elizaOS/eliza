@@ -188,7 +188,7 @@ If the private key leaks:
 - PR #7976 (this PR's prerequisite) — makes the secrets optional in
   `publish-apt-repo.yml` so a fresh repo doesn't startup_failure
   before this admin work is done.
-- [packages/os/docs/ci-cd-prod-roadmap.md](./ci-cd-prod-roadmap.md) —
+- [packages/os/docs/ci-cd-production-plan.md](./ci-cd-production-plan.md) —
   broader release pipeline status.
 - [packages/os/docs/verify-iso-download.md](./verify-iso-download.md)
   — end-user side of the same release pipeline (ISO verification, not

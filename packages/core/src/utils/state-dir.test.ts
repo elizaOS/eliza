@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, resolve, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	getElizaNamespace,
@@ -10,14 +10,24 @@ import {
 	resolveUserPath,
 } from "./state-dir.ts";
 
-const FAKE_HOME = "/fake/home";
+// Use a platform-portable fake home so `path.resolve()` and `path.join()`
+// produce identical-shaped strings on POSIX and Windows. On POSIX this is
+// `/fake/home`; on Windows `path.resolve` on a leading-`/` path attaches
+// the current drive letter, so we anchor with `resolve()` here and compare
+// against `resolve()`-shaped expected values below.
+const FAKE_HOME = resolve("/fake/home");
 const fakeHomedir = () => FAKE_HOME;
+
+const STATE_CANONICAL = resolve("/tmp/canonical");
+const STATE_STATE = resolve("/tmp/state");
+const STATE_FOO = resolve("/tmp/foo");
+const STATE_OAUTH_ELSEWHERE = resolve("/tmp/oauth-elsewhere");
 
 describe("resolveStateDir", () => {
 	it("honors ELIZA_STATE_DIR", () => {
 		expect(
 			resolveStateDir({ ELIZA_STATE_DIR: "/tmp/canonical" }, fakeHomedir),
-		).toBe("/tmp/canonical");
+		).toBe(STATE_CANONICAL);
 	});
 
 	it("uses the namespace default when ELIZA_STATE_DIR is unset", () => {
@@ -45,12 +55,17 @@ describe("resolveStateDir", () => {
 	});
 
 	it("honors XDG_STATE_HOME when ELIZA_STATE_DIR is unset", () => {
+		// XDG_STATE_HOME is treated as-is when absolute (`isAbsolute("/tmp/state")`
+		// is true on both POSIX and Windows — Node considers `/`-rooted paths
+		// absolute even when no drive letter is attached). The implementation
+		// uses `path.join` rather than `path.resolve`, so on Windows the result
+		// keeps the drive-less leading separator.
 		expect(
 			resolveStateDir(
 				{ XDG_STATE_HOME: "/tmp/state", ELIZA_NAMESPACE: "custom" },
 				fakeHomedir,
 			),
-		).toBe("/tmp/state/custom");
+		).toBe(join("/tmp/state", "custom"));
 	});
 
 	it("resolves a relative XDG_STATE_HOME under the user home", () => {
@@ -64,8 +79,8 @@ describe("resolveStateDir", () => {
 
 	it("expands a leading ~ in env overrides via the real homedir", () => {
 		const result = resolveStateDir({ ELIZA_STATE_DIR: "~/custom" });
-		expect(result.endsWith("/custom")).toBe(true);
-		expect(result.startsWith("/")).toBe(true);
+		expect(result.endsWith(`${sep}custom`)).toBe(true);
+		expect(isAbsolute(result)).toBe(true);
 	});
 });
 
@@ -82,7 +97,7 @@ describe("getElizaNamespace", () => {
 describe("resolveOAuthDir", () => {
 	it("defaults to <state-dir>/credentials", () => {
 		expect(resolveOAuthDir({ ELIZA_STATE_DIR: "/tmp/foo" })).toBe(
-			"/tmp/foo/credentials",
+			join(STATE_FOO, "credentials"),
 		);
 	});
 
@@ -92,7 +107,7 @@ describe("resolveOAuthDir", () => {
 				ELIZA_STATE_DIR: "/tmp/foo",
 				ELIZA_OAUTH_DIR: "/tmp/oauth-elsewhere",
 			}),
-		).toBe("/tmp/oauth-elsewhere");
+		).toBe(STATE_OAUTH_ELSEWHERE);
 	});
 });
 
@@ -103,8 +118,8 @@ describe("resolveUserPath", () => {
 
 	it("expands a leading ~", () => {
 		const result = resolveUserPath("~/foo");
-		expect(result.endsWith("/foo")).toBe(true);
-		expect(result.startsWith("/")).toBe(true);
+		expect(result.endsWith(`${sep}foo`)).toBe(true);
+		expect(isAbsolute(result)).toBe(true);
 	});
 
 	it("resolves a relative path to absolute", () => {

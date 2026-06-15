@@ -134,7 +134,8 @@ function ensureGradleMtpContract(pkgDir) {
   // GradleResolveVisitor NPE ("source is null") and break every Android
   // build. If we see more than one copy, collapse the entire region between
   // the ext{} block and `buildscript {` back to a single canonical block.
-  const repoRootCount = (next.match(/def resolveElizaRepoRoot\b/g) || []).length;
+  const repoRootCount = (next.match(/def resolveElizaRepoRoot\b/g) || [])
+    .length;
   if (repoRootCount > 1) {
     next = next.replace(
       /(ext\s*\{[\s\S]*?\n\}\n)[\s\S]*?(\nbuildscript \{)/,
@@ -217,33 +218,33 @@ function ensureCmakeMtpContract(pkgDir) {
     next.includes("ELIZA_REPO_ROOT is required") &&
     !next.includes("ELIZA_SKIP_MTP_ANDROID_LIB")
   ) {
-    const smokeStubBlock =
-      `\noption(ELIZA_SKIP_MTP_ANDROID_LIB "Build a no-op JNI library for Android smoke builds without MTP libs" OFF)\n` +
+    const smokeLibraryBlock =
+      `\noption(ELIZA_SKIP_MTP_ANDROID_LIB "Build a minimal JNI library for Android smoke builds without MTP libs" OFF)\n` +
       `\n` +
       `find_library(LOG_LIB log)\n` +
       `find_library(ANDROID_LIB android)\n` +
       `\n` +
       `if(ELIZA_SKIP_MTP_ANDROID_LIB)\n` +
       `    if(ANDROID_ABI STREQUAL "riscv64")\n` +
-      `        set(ELIZA_STUB_OUTPUT_NAME "llama-cpp-riscv64")\n` +
+      `        set(ELIZA_SMOKE_OUTPUT_NAME "llama-cpp-riscv64")\n` +
       `    else()\n` +
-      `        set(ELIZA_STUB_OUTPUT_NAME "llama-cpp-arm64")\n` +
+      `        set(ELIZA_SMOKE_OUTPUT_NAME "llama-cpp-arm64")\n` +
       `    endif()\n` +
-      `    file(WRITE "\${CMAKE_CURRENT_BINARY_DIR}/eliza-mtp-stub.cpp" "extern \\"C\\" int eliza_mtp_stub() { return 0; }\\n")\n` +
-      `    add_library(\${ELIZA_STUB_OUTPUT_NAME} SHARED "\${CMAKE_CURRENT_BINARY_DIR}/eliza-mtp-stub.cpp")\n` +
-      `    target_link_libraries(\${ELIZA_STUB_OUTPUT_NAME} PRIVATE \${LOG_LIB} \${ANDROID_LIB})\n` +
+      `    file(WRITE "\${CMAKE_CURRENT_BINARY_DIR}/eliza-mtp-smoke.cpp" "extern \\"C\\" int eliza_mtp_smoke() { return 0; }\\n")\n` +
+      `    add_library(\${ELIZA_SMOKE_OUTPUT_NAME} SHARED "\${CMAKE_CURRENT_BINARY_DIR}/eliza-mtp-smoke.cpp")\n` +
+      `    target_link_libraries(\${ELIZA_SMOKE_OUTPUT_NAME} PRIVATE \${LOG_LIB} \${ANDROID_LIB})\n` +
       `    set_target_properties(\n` +
-      `        \${ELIZA_STUB_OUTPUT_NAME}\n` +
+      `        \${ELIZA_SMOKE_OUTPUT_NAME}\n` +
       `        PROPERTIES\n` +
-      `        OUTPUT_NAME "\${ELIZA_STUB_OUTPUT_NAME}"\n` +
+      `        OUTPUT_NAME "\${ELIZA_SMOKE_OUTPUT_NAME}"\n` +
       `        LIBRARY_OUTPUT_DIRECTORY "\${CMAKE_CURRENT_SOURCE_DIR}/jniLibs/\${ANDROID_ABI}"\n` +
       `    )\n` +
-      `    message(STATUS "Building Eliza MTP JNI smoke stub for Android \${ANDROID_ABI}")\n` +
+      `    message(STATUS "Building Eliza MTP JNI smoke library for Android \${ANDROID_ABI}")\n` +
       `    return()\n` +
       `endif()\n`;
     next = next.replace(
       /(set\(CMAKE_CXX_STANDARD_REQUIRED ON\)\n)/,
-      `$1${smokeStubBlock}`,
+      `$1${smokeLibraryBlock}`,
     );
   }
 

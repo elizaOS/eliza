@@ -106,9 +106,8 @@ const requiredWorkflowSnippets = [
   "bun run release:check",
   "build-browser-companions:",
   "name: Build Agent Browser Bridge companions",
-  "if bun run browser-bridge:package:release; then",
+  "bun run browser-bridge:package:release",
   'echo "packaged=true" >> "$GITHUB_OUTPUT"',
-  "Agent Browser Bridge packaging failed; desktop release will continue without browser companion bundles.",
   "name: Upload Agent Browser Bridge release artifacts",
   "name: browser-bridge-store-bundles",
   "publish-browser-companions:",
@@ -202,8 +201,7 @@ const requiredWorkflowSnippets = [
   "ELIZA_TEST_WINDOWS_INSTALL_DIR: $" + "{{ runner.temp }}\\el",
   "name: Run Windows clean installer proof",
   "verify-windows-installer-proof.ps1",
-  "ELIZA_TEST_WINDOWS_PROOF_INSTALL_DIR: $" +
-    "{{ runner.temp }}\\el-proof",
+  "ELIZA_TEST_WINDOWS_PROOF_INSTALL_DIR: $" + "{{ runner.temp }}\\el-proof",
   "name: Upload Windows installer proof artifact",
   "path: packages/app-core/platforms/electrobun/artifacts/windows-installer-proof/**",
   "if: always() && matrix.platform.os == 'windows'",
@@ -292,23 +290,13 @@ const forbiddenElectrobunPrWorkflowSnippets = [
   "test:release:contract --help",
 ];
 const requiredRootPackageScriptSnippets: Record<string, readonly string[]> = {
-  "audit:apple-store-sandbox": [
-    "bun run --cwd packages/app-core audit:apple-store-sandbox",
-  ],
-  "test:apple-entitlements": [
-    "bun run --cwd packages/app-core test:apple-entitlements",
-  ],
-  "release:check": ["packages/app-core/scripts/release-check.ts"],
-  "test:release:contract": [
-    "bun run audit:apple-store-sandbox",
-    "bun run test:apple-entitlements",
-    "packages/app-core/scripts/run-release-contract-suite.mjs",
-  ],
+  "release:check": ["scripts/run-release-check.mjs"],
+  "test:release:contract": ["scripts/run-release-contract-suite.mjs"],
   "test:regression-matrix:release": [
-    "packages/app-core/scripts/validate-regression-matrix.mjs --workflow release",
+    "scripts/run-eliza-app-core-script.mjs validate-regression-matrix.mjs --workflow release",
   ],
   "test:regression-matrix:release-contract": [
-    "packages/app-core/scripts/validate-regression-matrix.mjs --workflow release-contract",
+    "scripts/run-eliza-app-core-script.mjs validate-regression-matrix.mjs --workflow release-contract",
   ],
 };
 const requiredElectrobunConfigSnippets = [
@@ -816,7 +804,7 @@ function assertOrchestratorVersionPinned() {
     }
     return;
   }
-  if (!isExactVersion(version)) {
+  if (!isExactVersion(version) && !["beta", "beta"].includes(version)) {
     console.error(
       `release-check: @elizaos/plugin-agent-orchestrator must either use workspace:* for the local checkout, use a release dist tag, or be pinned to an exact version, but found "${version}".`,
     );
@@ -993,8 +981,19 @@ function assertRequiredRootPackageScripts() {
 }
 
 function assertAppleStoreSandboxAuditPasses() {
+  const auditScriptPath = resolveExistingPath([
+    "packages/app-core/scripts/audit-apple-store-sandbox.mjs",
+    "eliza/packages/app-core/scripts/audit-apple-store-sandbox.mjs",
+  ]);
+  if (!auditScriptPath) {
+    console.error(
+      "release-check: Apple store sandbox audit script is missing.",
+    );
+    process.exit(1);
+  }
+
   try {
-    execSync("node packages/app-core/scripts/audit-apple-store-sandbox.mjs", {
+    execSync(`node ${JSON.stringify(auditScriptPath)}`, {
       stdio: "inherit",
       env: process.env,
     });
@@ -1447,15 +1446,12 @@ function assertHomepageReleaseDataUsesCurrentAssetRoot() {
     !releaseDataSource.includes("/packages/homepage/public/")
   ) {
     console.error(
-      "release-check: generated homepage release data must point homepageAssetBaseUrl at /apps/homepage/public/.",
+      "release-check: generated homepage release data must point homepageAssetBaseUrl at /packages/homepage/public/.",
     );
     process.exit(1);
   }
 
-  if (
-    releaseDataSource.includes("/apps/web/public/") ||
-    releaseDataSource.includes("/apps/homepage/public/")
-  ) {
+  if (releaseDataSource.includes("/apps/web/public/")) {
     console.error(
       "release-check: generated homepage release data still points at legacy /apps/web/public/. Regenerate it with node scripts/write-homepage-release-data.mjs.",
     );

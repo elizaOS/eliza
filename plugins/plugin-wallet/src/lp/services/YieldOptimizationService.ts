@@ -1,5 +1,5 @@
 import { type IAgentRuntime, Service } from "@elizaos/core";
-import { LAMPORTS_PER_SOL } from "@solana/web3.js"; // For SOL price placeholder
+import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import type {
   IDexInteractionService,
   IUserLpProfileService,
@@ -11,12 +11,10 @@ import type {
 import type { DexInteractionService } from "./DexInteractionService.ts";
 import type { UserLpProfileService } from "./UserLpProfileService.ts";
 
-// Placeholder constants - should be configurable or dynamically fetched
 const _AVG_SOL_TX_FEE_LAMPORTS = BigInt(5000); // Average fee for a simple Solana transaction
 const AVG_SWAP_TX_FEE_LAMPORTS = BigInt(10000); // Potentially higher for swaps involving more accounts/CUs
 const AVG_LP_ADD_REMOVE_TX_FEE_LAMPORTS = BigInt(15000); // LP operations can be more complex
-const PLACEHOLDER_SOL_PRICE_USD = 150; // Placeholder for SOL price in USD
-const _PLACEHOLDER_SWAP_FEE_BPS = 30; // Placeholder for swap fee in basis points (0.3%)
+const DEFAULT_SOL_PRICE_USD = 150;
 
 /**
  * Interface for the YieldOptimizationService.
@@ -73,6 +71,22 @@ export interface IYieldOptimizationService extends Service {
   ): Promise<OptimizationOpportunity[]>;
 }
 
+function readPositiveNumberSetting(
+  runtime: IAgentRuntime,
+  key: string,
+  fallback: number,
+): number {
+  const fromSetting =
+    typeof runtime.getSetting === "function"
+      ? runtime.getSetting(key)
+      : undefined;
+  const raw =
+    (typeof fromSetting === "string" && fromSetting) ||
+    (typeof process !== "undefined" ? process.env?.[key] : undefined);
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export class YieldOptimizationService
   extends Service
   implements IYieldOptimizationService
@@ -83,6 +97,7 @@ export class YieldOptimizationService
 
   private dexInteractionService!: IDexInteractionService;
   private userLpProfileService!: IUserLpProfileService;
+  private solPriceUsdForCosting = DEFAULT_SOL_PRICE_USD;
 
   // Static methods required by ElizaOS Service architecture
   static async start(
@@ -110,10 +125,15 @@ export class YieldOptimizationService
     }
     this.dexInteractionService = dexInteractionService;
     this.userLpProfileService = userLpProfileService;
+    this.solPriceUsdForCosting = readPositiveNumberSetting(
+      runtime,
+      "LP_SOL_PRICE_USD",
+      DEFAULT_SOL_PRICE_USD,
+    );
   }
 
   async stop(): Promise<void> {
-    // No-op
+    // Collaborating services own their own lifecycles.
   }
 
   async fetchAllPoolData(): Promise<PoolInfo[]> {
@@ -204,7 +224,7 @@ export class YieldOptimizationService
     }
     const allAvailablePools = await this.fetchAllPoolData();
     const opportunities: OptimizationOpportunity[] = [];
-    const solPriceUsdForCosting = PLACEHOLDER_SOL_PRICE_USD;
+    const solPriceUsdForCosting = this.solPriceUsdForCosting;
 
     for (const position of currentPositions) {
       const { underlyingTokens } = position;

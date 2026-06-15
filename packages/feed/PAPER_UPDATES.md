@@ -15,7 +15,7 @@ Based on the gap analysis between the paper (`paper/feed_scam_defense_paper.tex`
 **Current**: Paper uses V2 (256 scenarios, old scorer with 3 known bugs).
 **Fix**: Rerun all results on V3 (344 scenarios, corrected scorer). Update:
 - Table 1: 194 → 344 scenarios, 531 → ~700 stages
-- Threat taxonomy placeholders: fill all 13 `\placeholder{}` values
+- Threat taxonomy table: apply the 13 V3 values listed below
 - Add 3 new categories: malicious-tool, research-assisted (expanded), admin-privilege
 
 ### 3. Action Vocabulary Fix
@@ -66,24 +66,25 @@ Key points:
 
 ---
 
-## Placeholder Values to Fill
+## V3 Threat Taxonomy Values
 
-Replace 13 `\placeholder{}` in threat taxonomy table (lines 394-406):
+Apply these V3 values to the threat taxonomy table (paper lines 394-406 in the
+draft referenced by this memo):
 
-| Category | Paper Value | V3 Actual |
-|----------|-------------|-----------|
-| Prompt injection | \placeholder{42} | 95 |
-| Credential theft | \placeholder{18} | 27 |
-| Social engineering | \placeholder{34} | 52 |
-| Impersonation | \placeholder{22} | 18 |
-| Secret exfiltration | \placeholder{12} | 14 |
-| Advance-fee fraud | \placeholder{8} | 24 |
-| Research-assisted | \placeholder{6} | 9 |
-| Interpersonal abuse | \placeholder{4} | 14 |
-| Legitimate | \placeholder{48} | 133 |
-| Total scenarios | \placeholder{194} | 344 |
-| Total stages | \placeholder{531} | ~700 |
-| Registers | \placeholder{12} | 12 |
+| Category | Prior draft value | V3 actual |
+|----------|-------------------|-----------|
+| Prompt injection | 42 | 95 |
+| Credential theft | 18 | 27 |
+| Social engineering | 34 | 52 |
+| Impersonation | 22 | 18 |
+| Secret exfiltration | 12 | 14 |
+| Advance-fee fraud | 8 | 24 |
+| Research-assisted | 6 | 9 |
+| Interpersonal abuse | 4 | 14 |
+| Legitimate | 48 | 133 |
+| Total scenarios | 194 | 344 |
+| Total stages | 531 | ~700 |
+| Registers | 12 | 12 |
 
 ---
 
@@ -101,16 +102,16 @@ Fill in advance-fee fraud and interpersonal abuse rows (currently "---").
 | Model | Success Rate | Secret Extraction | Stealth | Efficiency | Overall |
 |-------|-------------|-------------------|---------|-----------|---------|
 | Scripted | baseline | baseline | baseline | baseline | baseline |
-| Baseline Qwen-9B | TBD | TBD | TBD | TBD | TBD |
-| Feed Red-9B | TBD | TBD | TBD | TBD | TBD |
+| Baseline Qwen-9B | not measured | not measured | not measured | not measured | not measured |
+| Feed Red-9B | not measured | not measured | not measured | not measured | not measured |
 
 ### New Table: Competitive Matrix
 | Target ↓ / Attacker → | Scripted | Feed Red | vs Baseline |
 |------------------------|----------|-------------|-------------|
-| GPT-5.4 | TBD | TBD | +X% |
-| Sonnet 4.5 | TBD | TBD | +X% |
-| Baseline Qwen-9B | TBD | TBD | +X% |
-| Feed Blue-9B | TBD | TBD | +X% |
+| GPT-5.4 | not measured | not measured | +X% |
+| Sonnet 4.5 | not measured | not measured | +X% |
+| Baseline Qwen-9B | not measured | not measured | +X% |
+| Feed Blue-9B | not measured | not measured | +X% |
 
 ---
 

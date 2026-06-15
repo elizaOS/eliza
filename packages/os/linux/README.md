@@ -146,7 +146,7 @@ validation.
 actions are planned but not production-complete. Production also still
 needs signed releases, update/rollback infrastructure, a GUI USB flasher,
 hardware compatibility evidence, and enterprise policy/audit hardening.
-See [`PLAN.md`](./PLAN.md) for the phase map and [`ROADMAP.md`](./ROADMAP.md)
+See [`PLAN.md`](./PLAN.md) for the phase map and [`RELEASE_PATH.md`](./RELEASE_PATH.md)
 for the road from demo to release.
 
 ## Build it
@@ -177,7 +177,7 @@ offline docs in a cool build.
   evidence, current HEAD caveat, and remaining validation gates
 - [`docs/session-memory.md`](./docs/session-memory.md) — compact handoff
   state for context resets
-- [`ROADMAP.md`](./ROADMAP.md) — the honest road from here to a real demo
+- [`RELEASE_PATH.md`](./RELEASE_PATH.md) — the honest road from here to a real demo
   and to v1.0
 - [`docs/build-infrastructure.md`](./docs/build-infrastructure.md) — the
   containerized build, why it exists, how it works

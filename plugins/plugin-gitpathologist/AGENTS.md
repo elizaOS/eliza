@@ -34,11 +34,11 @@ src/
   services/
     git-pathology-service.ts GitPathologyService class; coordinates pipeline
   pipeline/
-    scan.ts                  Phase 1 — git log parsing (deterministic, no LLM)
-    classify.ts              Phase 2 — rule-based commit type + risk-flag tagging
-    score.ts                 Phase 3 — per-commit health delta + EMA scoring
-    inflect.ts               Phase 4 — peak and drift inflection detection
-    narrate.ts               Phase 5 — LLM narration for drift commits (optional)
+    scan.ts                  Step 1 — git log parsing (deterministic, no LLM)
+    classify.ts              Step 2 — rule-based commit type + risk-flag tagging
+    score.ts                 Step 3 — per-commit health delta + EMA scoring
+    inflect.ts               Step 4 — peak and drift inflection detection
+    narrate.ts               Step 5 — LLM narration for drift commits (optional)
   cache/
     report-cache.ts          Disk-backed JSON cache keyed by sha256(surface + '\0' + since)
 ```

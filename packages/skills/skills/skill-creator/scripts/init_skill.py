@@ -22,18 +22,18 @@ ALLOWED_RESOURCES = {"scripts", "references", "assets"}
 
 SKILL_TEMPLATE = """---
 name: {skill_name}
-description: [TODO: Complete and informative explanation of what the skill does and when to use it. Include WHEN to use this skill - specific scenarios, file types, or tasks that trigger it.]
+description: [Fill in: Complete and informative explanation of what the skill does and when to use it. Include WHEN to use this skill - specific scenarios, file types, or tasks that trigger it.]
 ---
 
 # {skill_title}
 
 ## Overview
 
-[TODO: 1-2 sentences explaining what this skill enables]
+[Fill in: 1-2 sentences explaining what this skill enables]
 
 ## Structuring This Skill
 
-[TODO: Choose the structure that best fits this skill's purpose. Common patterns:
+[Choose the structure that best fits this skill's purpose. Common patterns:
 
 **1. Workflow-Based** (best for sequential processes)
 - Works well when there are clear step-by-step procedures
@@ -59,9 +59,9 @@ Patterns can be mixed and matched as needed. Most skills combine patterns (e.g.,
 
 Delete this entire "Structuring This Skill" section when done - it's just guidance.]
 
-## [TODO: Replace with the first main section based on chosen structure]
+## [Replace with the first main section based on chosen structure]
 
-[TODO: Add content here. See examples in existing skills:
+[Add content here. See examples in existing skills:
 - Code samples for technical skills
 - Decision trees for complex workflows
 - Concrete examples with realistic user requests
@@ -111,7 +111,7 @@ EXAMPLE_SCRIPT = '''#!/usr/bin/env python3
 """
 Example helper script for {skill_name}
 
-This is a placeholder script that can be executed directly.
+This is a starter example script that can be executed directly.
 Replace with actual implementation or delete if not needed.
 
 Example real scripts from other skills:
@@ -121,7 +121,7 @@ Example real scripts from other skills:
 
 def main():
     print("This is an example script for {skill_name}")
-    # TODO: Add actual script logic here
+    # Add actual script logic here.
     # This could be data processing, file conversion, API calls, etc.
 
 if __name__ == "__main__":
@@ -130,7 +130,7 @@ if __name__ == "__main__":
 
 EXAMPLE_REFERENCE = """# Reference Documentation for {skill_title}
 
-This is a placeholder for detailed reference documentation.
+This is a starter example for detailed reference documentation.
 Replace with actual reference content or delete if not needed.
 
 Example real reference docs from other skills:
@@ -166,7 +166,7 @@ Reference docs are ideal for:
 
 EXAMPLE_ASSET = """# Example Asset File
 
-This placeholder represents where asset files would be stored.
+This starter example represents where asset files would be stored.
 Replace with actual asset files (templates, images, fonts, etc.) or delete if not needed.
 
 Asset files are NOT intended to be loaded into context, but rather used within
@@ -187,7 +187,7 @@ Example asset files from other skills:
 - Icons: .ico, .svg
 - Data files: .csv, .json, .xml, .yaml
 
-Note: This is a text placeholder. Actual assets can be any file type.
+Note: This is a text example. Actual assets can be any file type.
 """
 
 
@@ -304,7 +304,7 @@ def init_skill(skill_name, path, resources, include_examples):
     # Print next steps
     print(f"\n[OK] Skill '{skill_name}' initialized successfully at {skill_dir}")
     print("\nNext steps:")
-    print("1. Edit SKILL.md to complete the TODO items and update the description")
+    print("1. Edit SKILL.md to complete the starter prompts and update the description")
     if resources:
         if include_examples:
             print("2. Customize or delete the example files in scripts/, references/, and assets/")

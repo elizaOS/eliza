@@ -11,8 +11,8 @@
     "declaration": false,
     "noEmit": true,
     "paths": {
-      "@elizaos/plugin-lifeops-browser": [
-        "../../plugins/plugin-lifeops-browser/src/index.ts"
+      "@elizaos/plugin-personal-assistant-browser": [
+        "../../plugins/plugin-personal-assistant-browser/src/index.ts"
       ],
       "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
       "@elizaos/plugin-streaming": [
@@ -27,6 +27,7 @@
       "@elizaos/plugin-registry": [
         "../../plugins/plugin-registry/src/index.ts"
       ],
+      "@elizaos/logger": ["../logger/src/index.ts"],
       "@elizaos/app-core": ["./src/index.ts"],
       "@elizaos/app-core/*": ["./src/*"],
       "@elizaos/plugin-wallet-ui": [

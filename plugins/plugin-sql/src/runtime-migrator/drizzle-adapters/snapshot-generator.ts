@@ -424,7 +424,8 @@ export function hasChanges(
     return Object.keys(currentSnapshot.tables).length > 0;
   }
 
-  // Simple comparison for now - in production, use deep comparison
+  // Hash normalized snapshot payloads so nested schema changes are covered
+  // without walking every table/column field by hand.
   const prevHash = hashSnapshot(previousSnapshot);
   const currHash = hashSnapshot(currentSnapshot);
 

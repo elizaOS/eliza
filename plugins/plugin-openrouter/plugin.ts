@@ -8,9 +8,11 @@ import {
   type Plugin,
   type ProcessEnvLike,
   type TextEmbeddingParams,
+  type TranscriptionParams,
 } from "@elizaos/core";
 
 import { initializeOpenRouter } from "./init";
+import { handleTranscription } from "./models/audio";
 import { handleTextEmbedding } from "./models/embedding";
 import { handleImageDescription, handleImageGeneration } from "./models/image";
 import {
@@ -59,6 +61,7 @@ export const openrouterPlugin: Plugin = {
     OPENROUTER_IMAGE_MODEL: env.OPENROUTER_IMAGE_MODEL ?? null,
     OPENROUTER_IMAGE_GENERATION_MODEL: env.OPENROUTER_IMAGE_GENERATION_MODEL ?? null,
     OPENROUTER_EMBEDDING_MODEL: env.OPENROUTER_EMBEDDING_MODEL ?? null,
+    OPENROUTER_TRANSCRIPTION_MODEL: env.OPENROUTER_TRANSCRIPTION_MODEL ?? null,
     OPENROUTER_EMBEDDING_DIMENSIONS: env.OPENROUTER_EMBEDDING_DIMENSIONS ?? null,
     OPENROUTER_AUTO_CLEANUP_IMAGES: env.OPENROUTER_AUTO_CLEANUP_IMAGES ?? null,
     NANO_MODEL: env.NANO_MODEL ?? null,
@@ -73,6 +76,7 @@ export const openrouterPlugin: Plugin = {
     IMAGE_MODEL: env.IMAGE_MODEL ?? null,
     IMAGE_GENERATION_MODEL: env.IMAGE_GENERATION_MODEL ?? null,
     EMBEDDING_MODEL: env.EMBEDDING_MODEL ?? null,
+    TRANSCRIPTION_MODEL: env.TRANSCRIPTION_MODEL ?? null,
     EMBEDDING_DIMENSIONS: env.EMBEDDING_DIMENSIONS ?? null,
   },
 
@@ -126,6 +130,13 @@ export const openrouterPlugin: Plugin = {
       params: TextEmbeddingParams | string | null
     ) => {
       return handleTextEmbedding(runtime, params);
+    },
+
+    [ModelType.TRANSCRIPTION]: async (
+      runtime: IAgentRuntime,
+      params: TranscriptionParams | Buffer | Blob | File | string
+    ) => {
+      return handleTranscription(runtime, params);
     },
   },
 

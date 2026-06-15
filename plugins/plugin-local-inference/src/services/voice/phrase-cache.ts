@@ -19,7 +19,7 @@ export interface CachedPhraseAudio {
  *     phrases with their PCM, which `PhraseCache.seed(...)` loads at startup.
  *   - the idle-time auto-prewarm hook (`EngineVoiceBridge.prewarmIdlePhrases`),
  *     which only runs when a real TTS backend is present — never against the
- *     stub (caching zeros is not a phrase cache).
+ *     silent backend (caching zeros is not a phrase cache).
  *   - the first-audio filler (`FIRST_AUDIO_FILLERS` is a subset).
  *
  * Entries are kept here in canonical form (lowercase, single-spaced, trimmed)

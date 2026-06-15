@@ -4,9 +4,9 @@
  * quick-pick servers, channels, recipients, and chats without making the
  * end-user paste raw IDs.
  *
- * Discord is the only wired source in slice 2. Slack, Telegram, and Gmail
- * are placeholders so the host can stack them onto this framework without
- * a route or UI rewrite.
+ * Discord is the wired source in this catalog. Slack, Telegram, and Gmail keep
+ * typed config slots so host integrations can add enumerators without a route
+ * or UI rewrite.
  *
  * The Discord enumeration shares its 5-minute REST cache with the workflow
  * runtime-context provider when the host wires both with the same

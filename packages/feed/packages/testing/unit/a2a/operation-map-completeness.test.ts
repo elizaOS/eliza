@@ -33,9 +33,7 @@ const filePath = resolve(
 const fileContent = readFileSync(filePath, "utf-8");
 
 function expectOperationMapping(action: string, operation: string) {
-  expect(fileContent).toMatch(
-    new RegExp(`${action}:\\s*["']${operation}["']`),
-  );
+  expect(fileContent).toMatch(new RegExp(`${action}:\\s*["']${operation}["']`));
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────

@@ -296,6 +296,6 @@ class WiFiPlugin : Plugin() {
             upper.contains("SAE")
     }
 
-    /** No-op callback for the `requestNetwork` call — connection state is queried separately. */
+    /** Empty callback for the `requestNetwork` call — connection state is queried separately. */
     private object NoOpNetworkCallback : ConnectivityManager.NetworkCallback()
 }

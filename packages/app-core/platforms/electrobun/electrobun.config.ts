@@ -173,7 +173,17 @@ export function resolveElectrobunRepoRoot(startDir: string): string {
 }
 
 const repoRoot = resolveElectrobunRepoRoot(electrobunDir);
-const sharedSourceDir = path.join(repoRoot, "packages/shared/src");
+const workspacePackagesRoot = fs.existsSync(
+  path.join(repoRoot, "packages", "shared", "src"),
+)
+  ? path.join(repoRoot, "packages")
+  : path.join(repoRoot, "eliza", "packages");
+const sharedSourceDir = path.join(workspacePackagesRoot, "shared", "src");
+const coreNodeEntry = fs.existsSync(
+  path.join(workspacePackagesRoot, "core", "dist", "node", "index.node.js"),
+)
+  ? path.join(workspacePackagesRoot, "core", "dist", "node", "index.node.js")
+  : path.join(workspacePackagesRoot, "core", "src", "index.node.ts");
 const rendererDistDir = path.relative(
   electrobunDir,
   fs.existsSync(path.join(repoRoot, "packages/app/package.json"))
@@ -190,6 +200,12 @@ function hasBrokenSymlink(filePath: string): boolean {
 
 function resolveRuntimeBundleSourcePath(rootDir: string): string {
   const runtimeDistPath = path.join(rootDir, "dist");
+  // The runtime dist only exists in packaged/build contexts. In tests and other
+  // import-time consumers it may be absent; bail out before any fs scan so
+  // importing this config never throws ENOENT.
+  if (!fs.existsSync(runtimeDistPath)) {
+    return runtimeDistPath;
+  }
   const runtimeNodeModulesPath = path.join(runtimeDistPath, "node_modules");
   if (!hasBrokenSymlink(runtimeNodeModulesPath)) {
     return runtimeDistPath;
@@ -352,6 +368,9 @@ function createElectrobunWorkspaceResolvePlugin() {
           return resolved ? { path: resolved } : undefined;
         },
       );
+      build.onResolve({ filter: /^@elizaos\/core$/ }, () => ({
+        path: coreNodeEntry,
+      }));
     },
   };
 }
@@ -376,7 +395,21 @@ export function resolveElectrobunCopyMap({
   };
 
   if (buildVariant !== "store" && embedRuntime) {
-    copy[runtimeBundleDistDir] = runtimeDistDir;
+    // The runtime bundle dist is produced by the build pipeline before
+    // Electrobun packaging runs. Enumerate its top-level entries when present;
+    // when it is absent (e.g. config imported outside a build, as in tests),
+    // the unconditional package.json + remotes mappings below still encode the
+    // embedded-runtime contract.
+    const runtimeBundleEntries = fs.existsSync(runtimeBundleSourcePath)
+      ? fs.readdirSync(runtimeBundleSourcePath)
+      : [];
+    for (const entry of runtimeBundleEntries) {
+      if (entry === "node_modules" || entry === "package.json") {
+        continue;
+      }
+      copy[path.join(runtimeBundleDistDir, entry)] =
+        `${runtimeDistDir}/${entry}`;
+    }
     if (fs.existsSync(runtimeBundleNodeModulesPath)) {
       copy[runtimeBundleNodeModulesDir] = `${runtimeDistDir}/node_modules`;
     }
@@ -384,7 +417,7 @@ export function resolveElectrobunCopyMap({
       copy[repoPluginsJsonPath] = `${runtimeDistDir}/plugins.json`;
     }
     if (fs.existsSync(path.join(electrobunDir, "remotes"))) {
-      copy["remotes"] = "remotes";
+      copy.remotes = "remotes";
     }
     copy[repoPackageJsonPath] = `${runtimeDistDir}/package.json`;
   }

@@ -3,8 +3,7 @@
  *
  * The `Driver` interface is the single dispatch surface that both the yolo
  * (host) path and the sandbox path implement. Anything that wants to drive a
- * machine — host, Docker container, QEMU VM, future Lume/macOS image —
- * implements this one shape. The mode-selection seam in
+ * machine — host path or Docker container — implements this one shape. The mode-selection seam in
  * `services/computer-use-service.ts` picks an instance once at start; nothing
  * downstream branches on `mode`.
  */
@@ -70,7 +69,7 @@ export interface Driver {
 
 /**
  * Backend-internal contract: the smallest surface a sandbox backend
- * (Docker / QEMU / Lume / ...) must expose. The `SandboxDriver` proxies every
+ * (Docker) must expose. The `SandboxDriver` proxies every
  * `Driver` method through this. Keeping this separate from `Driver` lets the
  * driver implement coordinate normalisation, screenshot decoding, etc. once
  * for all backends.
@@ -122,8 +121,8 @@ export type SandboxOp =
   | { kind: "write_file"; path: string; content: string };
 
 /**
- * Thrown when a backend cannot be constructed (e.g. QEMU stub, missing
- * docker binary). Callers should bubble this to the operator so the
+ * Thrown when a backend cannot be constructed (for example, missing docker
+ * binary). Callers should bubble this to the operator so the
  * misconfiguration is loud, never silent.
  */
 export class SandboxBackendUnavailableError extends Error {

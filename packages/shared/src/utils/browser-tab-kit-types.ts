@@ -16,8 +16,8 @@
  *
  * Synthetic events have `isTrusted === false` (not forge-able from script).
  * That's acceptable for React-driven sites and most Web3 UIs; sites that
- * specifically gate on `isTrusted` (rare) cannot be driven this way and need
- * the real CDP path (deferred future work).
+ * specifically gate on `isTrusted` cannot be driven by this kit; callers must
+ * use a CDP-backed browser automation path for those pages.
  */
 
 export interface BrowserTabKitCursorPoint {

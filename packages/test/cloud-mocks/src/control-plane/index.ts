@@ -1,6 +1,6 @@
+import { startFetchServer } from "../fetch-server";
 import { buildControlPlaneApp, type ControlPlaneMockOptions } from "./server";
 import type { ControlPlaneStore } from "./store";
-import { startFetchServer } from "../fetch-server";
 
 export type { ControlPlaneMockOptions } from "./server";
 export { buildControlPlaneApp } from "./server";
@@ -27,6 +27,15 @@ export interface RunningControlPlaneMock {
   tick(
     limit?: number,
   ): Promise<{ processed: number; failed: number; skipped: number }>;
+  processDbBackedJobs(
+    databaseUrl: string,
+    limit?: number,
+  ): Promise<{
+    claimed: number;
+    succeeded: number;
+    failed: number;
+    errors: Array<{ jobId: string; error: string }>;
+  }>;
   cleanupStuck(): Promise<{ failed: number }>;
 }
 
@@ -38,10 +47,11 @@ export async function startControlPlaneMock(
     process.env.HCLOUD_API_BASE_URL ??
     "https://api.hetzner.cloud/v1";
 
-  const { app, store, tick, cleanupStuck } = buildControlPlaneApp({
-    ...options,
-    hetznerUrl,
-  });
+  const { app, store, tick, processDbBackedJobs, cleanupStuck } =
+    buildControlPlaneApp({
+      ...options,
+      hetznerUrl,
+    });
 
   const server = await startFetchServer(app.fetch, {
     port: options.port ?? 0,
@@ -71,6 +81,12 @@ export async function startControlPlaneMock(
     port,
     store,
     tick,
+    processDbBackedJobs: (databaseUrl, limit = 1000) =>
+      processDbBackedJobs(
+        databaseUrl,
+        `http://${server.hostname}:${port}`,
+        limit,
+      ),
     cleanupStuck,
   };
 }

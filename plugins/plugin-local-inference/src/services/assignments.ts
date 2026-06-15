@@ -62,8 +62,8 @@ function pickLargestInstalledModel(
  * through explicit search/manual selection; they are NOT auto-assigned to
  * any agent slot.
  *
- * Why: external blobs may use newer architectures or quant formats
- * the bundled `capacitor-llama` binding does not yet support. Auto-loading
+ * Why: external blobs may use newer architectures or quant formats outside
+ * the bundled `capacitor-llama` binding's supported set. Auto-loading
  * an external blob the user never selected silently breaks PROACTIVE_AGENT
  * and other background tasks at boot. The user opted into the external
  * tool, not into Eliza loading those weights through llama.cpp.
@@ -134,8 +134,8 @@ export async function setAssignment(
  * `chat | code | tools | tiny | reasoning` and `bucket` ∈
  * `small | mid | large | xl` — no explicit "embedding" tag, because the
  * default catalog ships only generative models. The defensive check below
- * still recognizes an "embedding" category/bucket for future catalog
- * additions and for external-scan models whose ids contain a recognizable
+ * still recognizes an "embedding" category/bucket for catalog additions and
+ * for external-scan models whose ids contain a recognizable
  * embedding-family marker (`nomic-embed`, `bge`, `all-minilm`, `gte`,
  * `e5-`). External GGUFs without a catalog entry default to generative.
  */

@@ -22,7 +22,7 @@ function hasRoutePath(routes: { path: string }[], segment: string): boolean {
 
 /**
  * Returns a plugin shaped like the agent-skills plugin:
- * multiple actions, multiple providers, one service placeholder (omitted to
+ * multiple actions, multiple providers, one omitted service (to
  * avoid DB dependency), and a dispose hook.
  */
 function makeSyntheticSkillsPlugin(): Plugin {
@@ -81,7 +81,7 @@ function makeSyntheticSkillsPlugin(): Plugin {
       },
     ],
     dispose: async () => {
-      // Placeholder: would stop background sync task in production
+      // Production variant would stop a background sync task here.
     },
   };
 }

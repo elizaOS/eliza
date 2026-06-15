@@ -140,10 +140,10 @@ That means a reloaded conversation shows the same **status trail + final outcome
 
 ---
 
-## Future / roadmap
+## Follow-ups
 
 Possible follow-ups:
 
 - Optional metadata to distinguish **replace** vs **append** callback semantics if a real plugin needs both within one turn.
 
-See `docs/roadmap.md` in the repository for high-level product direction.
+See the repository docs for high-level product direction.

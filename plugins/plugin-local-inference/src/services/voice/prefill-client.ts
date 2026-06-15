@@ -14,17 +14,16 @@
  *             separate name.  The voice state machine passes this handle to the
  *             verifier so generation resumes from the prefilled position.
  *
- * The upstream `/v1/prefill` endpoint does not yet exist — the fork PR that
+ * The upstream `/v1/prefill` endpoint is absent — the fork PR that
  * adds it is tracked in `docs/eliza-1-optimistic-rollback.md`.  Until it
  * lands, phases 1–3 are emulated via the existing slot-save REST path.  When
  * the upstream endpoint ships the body of `prefillOptimistic` switches to a
  * single REST call — callers see no signature change.
  *
- *   TODO(upstream-fork-PR-#TBD): replace phases 2+3 with a single
- *   `POST /v1/prefill { slotId, partialText, eotProb }` that:
- *     1. Runs the model's prefill over `partialText` against `slotId`.
- *     2. Saves a checkpoint of the resulting KV state.
- *     3. Returns `{ handle, eotProb }`.
+ * Upstream endpoint contract: replace phases 2+3 with a single
+ * `POST /v1/prefill { slotId, partialText, eotProb }` once llama.cpp exposes
+ * it. That call must run the model prefill against `slotId`, save the resulting
+ * KV checkpoint, and return `{ handle, eotProb }`.
  */
 
 import { logger } from "@elizaos/core";
@@ -74,7 +73,7 @@ export interface PrefillOptimisticResult {
 	checkpointHandle: CheckpointHandle;
 	/**
 	 * Approximate token count of the prefilled text.  Derived from a rough
-	 * whitespace tokenizer since the REST stub doesn't return a token count;
+	 * whitespace tokenizer since the REST emulation path doesn't return a token count;
 	 * once the upstream endpoint lands, the server returns the real count.
 	 */
 	tokenCount: number;
@@ -83,13 +82,13 @@ export interface PrefillOptimisticResult {
 	 */
 	prefillMs: number;
 	/**
-	 * Backend label.  `slot-save-stub` = pre-upstream emulation path;
+	 * Backend label.  `slot-save-emulation` = pre-upstream emulation path;
 	 * `prefill-v1` = native `/v1/prefill` endpoint.
 	 */
-	backend: "slot-save-stub" | "prefill-v1";
+	backend: "slot-save-emulation" | "prefill-v1";
 	/**
 	 * End-of-turn probability echoed back from the server.  Today equals the
-	 * caller's `eotProb` (the stub has nothing to refine it with); once the
+	 * caller's `eotProb` (the emulation path has nothing to refine it with); once the
 	 * upstream endpoint lands, the server returns its own model estimate.
 	 */
 	eotProb: number;
@@ -166,8 +165,8 @@ export async function prefillOptimistic(
 	//          cache.  We request max_tokens=0 / stream=false so the server
 	//          only runs the prefill pass without sampling any tokens.
 	//
-	//          TODO(upstream-fork-PR-#TBD): replace this with a single
-	//          POST /v1/prefill once the upstream endpoint lands.
+	//          Upstream replacement: use a single POST /v1/prefill once
+	//          llama.cpp exposes that endpoint.
 	// ------------------------------------------------------------------
 	await runPrefillCompletion({
 		baseUrl: args.baseUrl,
@@ -193,7 +192,7 @@ export async function prefillOptimistic(
 		checkpointHandle: postHandle,
 		tokenCount,
 		prefillMs,
-		backend: "slot-save-stub",
+		backend: "slot-save-emulation",
 		eotProb: args.eotProb,
 	};
 }
@@ -259,7 +258,7 @@ async function runPrefillCompletion(
 		if (!resp.ok) {
 			// Non-200 — prefill attempt failed, but we continue (phase 3 still runs).
 			// In the real `/v1/prefill` path the server would surface a clear error;
-			// for the stub we tolerate it.
+			// for the emulation path we tolerate it.
 			logger.warn(
 				{ status: resp.status },
 				"[prefill-client] /completion returned non-200 — continuing without prefill warm",

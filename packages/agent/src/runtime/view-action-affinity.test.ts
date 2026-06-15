@@ -7,11 +7,13 @@ import {
   compactActionsForIntent,
 } from "./prompt-compaction.ts";
 import {
+  ACTIVE_VIEW_ELEMENT_RENDER_CAP,
   applyActiveViewAwareness,
   clearActiveViewContext,
   getActiveViewContext,
   renderActiveViewContextBlock,
   setActiveViewContext,
+  setActiveViewElements,
   VIEW_ACTION_MAP,
   validateViewActionMap,
   viewScopedActionNames,
@@ -110,6 +112,73 @@ describe("view-action-affinity", () => {
   });
 });
 
+describe("active-view element snapshot", () => {
+  const VIEW = {
+    viewId: "wallet",
+    viewLabel: "Wallet",
+    viewType: "gui" as const,
+    viewPath: "/wallet",
+  };
+
+  it("only accepts elements for the active view (gates stale reports)", () => {
+    setActiveViewContext(VIEW);
+    // A background/stale view's report is dropped.
+    expect(
+      setActiveViewElements("some-other-view", [
+        { id: "x", role: "button", label: "X" },
+      ]),
+    ).toBe(false);
+    expect(getActiveViewContext()?.elements).toBeUndefined();
+    // The active view's report sticks.
+    expect(
+      setActiveViewElements("wallet", [
+        { id: "send", role: "button", label: "Send" },
+      ]),
+    ).toBe(true);
+    expect(getActiveViewContext()?.elements).toHaveLength(1);
+  });
+
+  it("no-ops when no view is active", () => {
+    expect(
+      setActiveViewElements("wallet", [
+        { id: "send", role: "button", label: "Send" },
+      ]),
+    ).toBe(false);
+  });
+
+  it("renders elements into the awareness block, focused-first, by id", () => {
+    const block = renderActiveViewContextBlock({
+      ...VIEW,
+      elements: [
+        { id: "amount", role: "text-input", label: "Amount", value: "5" },
+        { id: "send", role: "button", label: "Send", focused: true },
+      ],
+    });
+    expect(block).toContain("Addressable elements currently in this view");
+    // Focused element is listed first.
+    const sendIdx = block.indexOf("- send [button]");
+    const amountIdx = block.indexOf("- amount [text-input]");
+    expect(sendIdx).toBeGreaterThan(-1);
+    expect(amountIdx).toBeGreaterThan(sendIdx);
+    expect(block).toContain('"Send" (focused)');
+    expect(block).toContain('"Amount" = "5"');
+  });
+
+  it("caps the rendered element list and notes the remainder", () => {
+    const many = Array.from(
+      { length: ACTIVE_VIEW_ELEMENT_RENDER_CAP + 5 },
+      (_unused, i) => ({ id: `el-${i}`, role: "button", label: `E${i}` }),
+    );
+    const block = renderActiveViewContextBlock({ ...VIEW, elements: many });
+    expect(block).toContain("…and 5 more — call list-elements for the rest.");
+  });
+
+  it("omits the elements section when none are reported", () => {
+    const block = renderActiveViewContextBlock(VIEW);
+    expect(block).not.toContain("Addressable elements currently in this view");
+  });
+});
+
 // Drift guard: every action name in VIEW_ACTION_MAP must still exist as a
 // declared `name: "X"` in source. Catches an upstream rename/removal turning a
 // mapped action into a silent no-op (the runtime validator is advisory-only and
@@ -121,25 +190,40 @@ describe("VIEW_ACTION_MAP names resolve to declared actions in source", () => {
     ...new Set(Object.values(VIEW_ACTION_MAP).flatMap((a) => [...a])),
   ];
 
-  it.each(names)("action %s is declared somewhere in source", (name) => {
-    let found = "";
+  // One `git grep` pass for every name (tracked files only, so node_modules /
+  // dist are never crawled — a per-name recursive grep took minutes per run).
+  const declaredNames = (() => {
+    const escaped = names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    let out = "";
     try {
-      found = execFileSync(
-        "grep",
-        ["-rlF", `name: "${name}"`, "plugins", "packages/agent/src"],
+      out = execFileSync(
+        "git",
+        [
+          "grep",
+          "-hoE",
+          `name: "(${escaped.join("|")})"`,
+          "--",
+          "plugins",
+          "packages/agent/src",
+        ],
         {
           cwd: repoRoot,
           encoding: "utf8",
           stdio: ["ignore", "pipe", "ignore"],
         },
-      ).trim();
+      );
     } catch {
-      // grep exits 1 (no match) → found stays empty → assertion fails below.
+      // git grep exits 1 (no match) → declaredNames stays empty → each
+      // assertion below fails with its per-name message.
     }
+    return new Set([...out.matchAll(/name: "([^"]+)"/g)].map((m) => m[1]));
+  })();
+
+  it.each(names)("action %s is declared somewhere in source", (name) => {
     expect(
-      found,
+      declaredNames.has(name),
       `no \`name: "${name}"\` found under plugins/ or packages/agent/src`,
-    ).not.toBe("");
+    ).toBe(true);
   });
 });
 
@@ -157,7 +241,7 @@ describe("compactActionsForIntent with view-scoped actions", () => {
     "12:00 User: hello there",
   ].join("\n");
 
-  it("stubs an action's params when neither intent nor view keeps it", () => {
+  it("summarizes an action's params when neither intent nor view keeps it", () => {
     const out = compactActionsForIntent(PROMPT);
     // PLAY_EMOTE param schema is dropped for plain chat with no active view…
     expect(out).toContain("- PLAY_EMOTE: play an avatar emote");
@@ -173,7 +257,7 @@ describe("compactActionsForIntent with view-scoped actions", () => {
     );
     // The companion view scopes PLAY_EMOTE → its params survive compaction.
     expect(out).toContain("emote: string, intensity: number");
-    // The unrelated action is still stubbed.
+    // The unrelated action still loses param detail.
     expect(out).not.toContain("foo: string");
   });
 
@@ -198,7 +282,7 @@ describe("compactActionsForIntent with view-scoped actions", () => {
     }
     // Weighting: the companion view's PLAY_EMOTE keeps full params…
     expect(prompt).toContain("emote: string, intensity: number");
-    // …unrelated action stays stubbed…
+    // …unrelated action stays summarized…
     expect(prompt).not.toContain("foo: string");
     // …and awareness is injected once, before the action catalogue.
     expect(prompt).toContain("# Active View");

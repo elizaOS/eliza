@@ -16,9 +16,14 @@ const ENV_KEYS = [
 ] as const;
 
 let savedEnv: Record<string, string | undefined>;
+let savedPlatformDescriptor: PropertyDescriptor | undefined;
 
 beforeEach(() => {
   savedEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
+  savedPlatformDescriptor = Object.getOwnPropertyDescriptor(
+    process,
+    "platform",
+  );
 });
 
 afterEach(() => {
@@ -26,6 +31,9 @@ afterEach(() => {
     const value = savedEnv[key];
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
+  }
+  if (savedPlatformDescriptor) {
+    Object.defineProperty(process, "platform", savedPlatformDescriptor);
   }
 });
 
@@ -119,5 +127,51 @@ describe("plugin-coding-tools runShell mobile routing", () => {
     ).rejects.toThrow(
       "Local coding tools are unavailable on iOS because the runtime does not expose shell, coding, or orchestrator subprocess capabilities.",
     );
+  });
+});
+
+describe("plugin-coding-tools runShell local-safe sandbox routing", () => {
+  it("routes Windows local-safe commands through the runtime sandbox manager", async () => {
+    Object.defineProperty(process, "platform", {
+      value: "win32",
+      configurable: true,
+    });
+    process.env.ELIZA_RUNTIME_MODE = "local-safe";
+
+    const exec = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: "sandboxed\n",
+      stderr: "",
+      durationMs: 7,
+      executedInSandbox: true,
+    }));
+    const runtime = {
+      getService: () => null,
+      getSandboxManager: () => ({
+        engine: { engineType: "docker" },
+        exec,
+      }),
+    } as unknown as IAgentRuntime;
+
+    const result = await runShell(runtime, {
+      command: "echo sandboxed",
+      cwd: process.cwd(),
+      timeoutMs: 10_000,
+    });
+
+    expect(exec).toHaveBeenCalledWith({
+      command: "echo sandboxed",
+      workdir: "/workspace",
+      timeoutMs: 10_000,
+    });
+    expect(result).toEqual({
+      exitCode: 0,
+      signal: null,
+      stdout: "sandboxed\n",
+      stderr: "",
+      durationMs: 7,
+      sandbox: "docker",
+      timedOut: false,
+    });
   });
 });

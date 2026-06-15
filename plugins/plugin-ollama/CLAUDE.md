@@ -24,7 +24,7 @@ This plugin registers **model handlers only** — no actions, providers, service
 All text handlers share `models/text.ts:handleTextWithModelType`. Routing logic:
 - `stream: true` + tools → `streamText` with tool set (Ollama v2 streaming `/api/chat`).
 - `stream: true`, no tools, no schema, no `toolChoice` → `streamText` returning `TextStreamResult` for SSE.
-- `stream: true` + `responseSchema` only → `generateText` (structured `format` not on `streamText` path; logs at debug).
+- `stream: true` + `responseSchema` only → `generateText` (structured `format` stays on the completion path; logs at debug).
 - All other cases → `generateText`.
 
 ## Layout
@@ -90,7 +90,7 @@ All vars are read by `utils/config.ts` via `runtime.getSetting(key)` first, then
 3. Register it in `plugin.ts` inside the `models` map: `[ModelType.NEW_TYPE]: async (runtime, params) => handleNewType(runtime, params)`.
 
 **Add a new config resolver:**
-1. Add a `getXxxModel(runtime)` function in `utils/config.ts` following the same `getSetting(runtime, "OLLAMA_XXX_MODEL") || getSetting(runtime, "XXX_MODEL") || fallback` pattern.
+1. Add a `get<Type>Model(runtime)` function in `utils/config.ts` following the same `getSetting(runtime, "OLLAMA_<TYPE>_MODEL") || getSetting(runtime, "<TYPE>_MODEL") || fallback` pattern.
 2. Import and call it from the handler in `models/text.ts`.
 
 **No actions or services exist in this plugin.** If you need an action or service, add it in a separate plugin or in `packages/agent`.

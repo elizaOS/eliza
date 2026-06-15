@@ -5,7 +5,7 @@
  * `ttsSynthesizeStream` emits the same PCM as two chunks (one body + one
  * `isFinal` tail) and honours `onChunk` returning `true` as a cancel.
  * The ABI-v2 streaming-ASR symbols report "no working decoder" by
- * default (the same as the C stub) so the pipeline routes through the v1
+ * default (the same as the C unsupported-build path) so the pipeline routes through the v1
  * batch path unless a test opts into `asrStreamSupported`. Everything
  * else is a no-op / identity so a test can wire a "fused" FFI without a
  * real `.dylib`.

@@ -46,7 +46,7 @@ export type OutgoingContentSource =
 	| (string & {});
 
 export interface OutgoingContentContext {
-	/** Lets plugins no-op for terminal payloads (`excluded`) or apply different rules per pipeline leg. */
+	/** Lets plugins skip terminal payloads (`excluded`) or apply different rules per pipeline leg. */
 	source: OutgoingContentSource;
 	roomId: UUID;
 	message?: Memory;
@@ -197,7 +197,7 @@ export type PipelineHookContext =
 	| ({ phase: "model_stream_chunk" } & ModelStreamHookCorrelation & {
 				chunk: string;
 				accumulated?: string;
-				/** When the delta comes from DPE / structured streaming (future). */
+				/** Field path for deltas produced by DPE / structured streaming. */
 				field?: string;
 			})
 	| ({ phase: "model_stream_end" } & ModelStreamHookCorrelation & {

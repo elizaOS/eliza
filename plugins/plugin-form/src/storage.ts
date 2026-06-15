@@ -35,17 +35,19 @@
  * - One autofill record per user per form
  * - Updated on each submission
  *
- * ## Limitations
+ * ## Component-store tradeoffs
  *
- * The current implementation has limitations:
+ * The component-backed implementation has two important scaling properties:
  *
  * 1. **No Cross-Entity Queries**: Can't efficiently find all stale
  *    sessions across all users. This affects nudge system.
  *
  * 2. **No Indexes**: Component queries are sequential scans.
- *    For high-volume usage, consider database-level optimizations.
+ *    High-volume deployments should add database-level optimizations.
  *
- * These are acceptable for v1 but noted for future improvement.
+ * These tradeoffs keep the plugin self-contained on the elizaOS component
+ * store while preserving a clear path for deployments that need indexed
+ * operational queries.
  */
 
 import type { Component, IAgentRuntime, JsonValue, UUID } from "@elizaos/core";
@@ -91,6 +93,7 @@ const RESTORABLE_SESSION_STATUSES: FormSession["status"][] = [
   "ready",
   "stashed",
 ];
+const RESTORABLE_SESSION_SCAN_LIMIT = 100;
 
 const isFormSubmission = (data: JsonValue | object): data is FormSubmission => {
   if (!isRecord(data)) return false;
@@ -117,12 +120,14 @@ const getRestorableSessions = async (
   runtime: IAgentRuntime,
 ): Promise<FormSession[]> => {
   const sessionsById = new Map<string, FormSession>();
+  let offset = 0;
 
-  for (const status of RESTORABLE_SESSION_STATUSES) {
+  while (true) {
     const entities = await runtime.queryEntities({
       agentId: runtime.agentId,
-      componentDataFilter: { status },
       includeAllComponents: true,
+      limit: RESTORABLE_SESSION_SCAN_LIMIT,
+      offset,
     });
 
     for (const entity of entities) {
@@ -132,12 +137,20 @@ const getRestorableSessions = async (
         }
         if (component.data && isFormSession(component.data)) {
           const session = component.data;
-          if (isLiveSession(session) && session.status === status) {
+          if (
+            isLiveSession(session) &&
+            RESTORABLE_SESSION_STATUSES.includes(session.status)
+          ) {
             sessionsById.set(session.id, session);
           }
         }
       }
     }
+
+    if (entities.length < RESTORABLE_SESSION_SCAN_LIMIT) {
+      break;
+    }
+    offset += RESTORABLE_SESSION_SCAN_LIMIT;
   }
 
   return [...sessionsById.values()];
@@ -559,7 +572,8 @@ export async function saveAutofillData(
  *
  * WHY this is here:
  * - Finds active/ready/stashed sessions across users
- * - Uses component data filters to avoid a full entity scan
+ * - Uses a bounded entity scan so remote runtimes do not need to support
+ *   component-data filtering
  * - Filters by the typed session payload so unrelated components with
  *   matching status values are ignored
  *
@@ -580,6 +594,8 @@ export async function getStaleSessions(
 
 /**
  * Get sessions expiring within a time window.
+ *
+ * Same bounded-scan limitation as getStaleSessions.
  *
  * @param runtime - Agent runtime for database access
  * @param withinMs - Time window in milliseconds

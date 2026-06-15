@@ -37,7 +37,13 @@ import {
   Wrench,
   Zap,
 } from "lucide-react";
-import { startTransition, useEffect, useMemo, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { client, type RegistryAppInfo } from "../../../api";
 import type { AppRunSummary } from "../../../api/client-types-cloud";
 import type { ActivityEvent } from "../../../hooks/useActivityEvents";
@@ -198,9 +204,11 @@ function formatIsoTime(
 function ActivityItemsContent({
   events,
   t,
+  onSelectEvent,
 }: {
   events: ActivityEvent[];
   t: TranslateFn;
+  onSelectEvent: (event: ActivityEvent) => void;
 }) {
   if (events.length === 0) {
     return (
@@ -222,11 +230,19 @@ function ActivityItemsContent({
         const eventLabel = t(eventTypeMeta.labelKey, {
           defaultValue: eventTypeMeta.defaultLabel,
         });
+        const openLabel = event.sessionId
+          ? t("agentorchestrator.openSession", {
+              defaultValue: "Open session",
+            })
+          : t("agentorchestrator.openTasks", { defaultValue: "Open tasks" });
 
         return (
-          <div
+          <button
             key={event.id}
-            className="flex items-start gap-1.5 rounded-sm px-1.5 py-1 transition-colors hover:bg-bg-hover/40"
+            type="button"
+            onClick={() => onSelectEvent(event)}
+            aria-label={`${openLabel}: ${event.summary}`}
+            className="flex w-full items-start gap-1.5 rounded-sm px-1.5 py-1 text-left transition-colors hover:bg-bg-hover/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
           >
             <span className="shrink-0 whitespace-nowrap pt-0.5 text-3xs font-medium tabular-nums text-muted">
               {relativeDuration(event.timestamp)}
@@ -242,7 +258,7 @@ function ActivityItemsContent({
             <span className="min-w-0 flex-1 break-words pt-0.5 text-2xs leading-4 text-txt">
               {event.summary}
             </span>
-          </div>
+          </button>
         );
       })}
     </div>
@@ -582,6 +598,24 @@ function OrchestratorActivityWidget({
 }: ChatSidebarWidgetProps) {
   const app = useApp() as ReturnType<typeof useApp> | undefined;
   const t = app?.t ?? fallbackTranslate;
+  const setState = app?.setState;
+  const setTab = app?.setTab;
+
+  // A click navigates to the activity's origin: a sessionId routes into the
+  // terminal channel (mirrors ChatView.focusTerminalSession — clear the inbox
+  // selection, then focus the PTY session); everything else opens the Tasks
+  // tab (mirrors AppRunsWidget's setTab navigation).
+  const onSelectEvent = useCallback(
+    (event: ActivityEvent) => {
+      if (event.sessionId) {
+        setState?.("activeInboxChat", null);
+        setState?.("activeTerminalSessionId", event.sessionId);
+        return;
+      }
+      setTab?.("tasks");
+    },
+    [setState, setTab],
+  );
 
   if (events.length === 0) {
     return null;
@@ -606,7 +640,11 @@ function OrchestratorActivityWidget({
       }
       testId="chat-widget-events"
     >
-      <ActivityItemsContent events={events} t={t} />
+      <ActivityItemsContent
+        events={events}
+        t={t}
+        onSelectEvent={onSelectEvent}
+      />
     </WidgetSection>
   );
 }

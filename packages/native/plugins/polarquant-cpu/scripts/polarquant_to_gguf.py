@@ -288,7 +288,7 @@ def convert(
         writer.add_tensor_info(
             name=name,
             tensor_shape=shape,
-            tensor_dtype=np.dtype(np.float16),  # placeholder; overridden by raw_dtype
+            tensor_dtype=np.dtype(np.float16),  # writer default; raw_dtype carries Q4_POLAR
             tensor_nbytes=len(packed),
             raw_dtype=_Q4PolarType.Q4_POLAR,
         )

@@ -30,8 +30,10 @@ const ASSIGNMENTS_KEY = `${STORAGE_PREFIX}:assignments:v1`;
 const BROWSER_WORKSPACE_KEY = `${STORAGE_PREFIX}:browser-workspace:v1`;
 const WALLET_MARKET_OVERVIEW_KEY = `${STORAGE_PREFIX}:wallet-market-overview:v1`;
 const BUNDLE_INDEX_KEY = `${STORAGE_PREFIX}:eliza-1-bundles:v1`;
+const ACTIVE_SERVER_STORAGE_KEY = "elizaos:active-server";
 const AGENT_NAME = "Eliza";
 const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
+const DIRECT_CLOUD_API_BASE = "https://api.elizacloud.ai";
 const DEFAULT_SYSTEM_PROMPT =
   "You are Eliza, a private on-device assistant. Answer directly and concisely.";
 const DEFAULT_CLOUD_MARKET_PREVIEW_BASE_URL = "https://www.elizacloud.ai";
@@ -335,6 +337,50 @@ function writeJson(key: string, value: unknown): void {
   } catch {
     // localStorage can be unavailable in embedded shells.
   }
+}
+
+type IosCloudPairing = {
+  paired: boolean;
+  agentId: string | null;
+  token: string | null;
+  apiBase: string;
+  label: string | null;
+};
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function readIosCloudPairing(): IosCloudPairing {
+  const fallback: IosCloudPairing = {
+    paired: false,
+    agentId: null,
+    token: null,
+    apiBase: DIRECT_CLOUD_API_BASE,
+    label: null,
+  };
+  const activeServer = readJson<Record<string, unknown> | null>(
+    ACTIVE_SERVER_STORAGE_KEY,
+    null,
+  );
+  if (activeServer?.kind !== "cloud") {
+    return fallback;
+  }
+  const id = stringValue(activeServer.id);
+  const agentId = id?.startsWith("cloud:") ? id.slice("cloud:".length) : null;
+  const storedToken = stringValue(activeServer.accessToken);
+  const globalToken = stringValue(
+    (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__,
+  );
+  const token = storedToken ?? globalToken;
+  const label = stringValue(activeServer.label);
+  return {
+    paired: Boolean(agentId && token),
+    agentId,
+    token,
+    apiBase: DIRECT_CLOUD_API_BASE,
+    label,
+  };
 }
 
 function readBundleIndex(): Record<string, IosBundleRecord> {
@@ -653,13 +699,15 @@ async function capacitorLlamaProviderStatus(): Promise<ProviderStatus> {
 }
 
 function localConfig(): Record<string, unknown> {
+  const cloud = readIosCloudPairing();
   return {
     meta: { firstRunComplete: true },
     ui: {},
     cloud: {
-      enabled: false,
-      connectionStatus: "disconnected",
-      cloudProvisioned: false,
+      enabled: cloud.paired,
+      connectionStatus: cloud.paired ? "connected" : "disconnected",
+      cloudProvisioned: cloud.paired,
+      activeAgentId: cloud.agentId,
     },
   };
 }
@@ -2000,6 +2048,85 @@ interface CloudForwardResult {
   modelId?: string;
 }
 
+function cloudBridgeResultText(result: unknown): string | null {
+  const record = asRecord(result);
+  if (!record) return null;
+  return (
+    stringValue(record.text) ??
+    stringValue(record.reply) ??
+    stringValue(record.message)
+  );
+}
+
+async function sendPromptToIosCloud(
+  prompt: string,
+): Promise<CloudForwardResult> {
+  const pairing = readIosCloudPairing();
+  if (!pairing.paired || !pairing.agentId || !pairing.token) {
+    throw new Error("Eliza Cloud is not paired.");
+  }
+
+  const response = await fetch(
+    `${pairing.apiBase}/api/v1/eliza/agents/${encodeURIComponent(pairing.agentId)}/bridge`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+        authorization: `Bearer ${pairing.token}`,
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: randomId("cloud"),
+        method: "message.send",
+        params: { text: prompt },
+      }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Cloud bridge failed: HTTP ${response.status}`);
+  }
+
+  const body = asRecord(await response.json().catch(() => null));
+  if (!body) {
+    throw new Error("Cloud bridge returned a non-object response.");
+  }
+  const error = asRecord(body.error);
+  if (error) {
+    throw new Error(
+      stringValue(error.message) ?? "Cloud bridge returned an error.",
+    );
+  }
+  const result = asRecord(body.result);
+  const text = cloudBridgeResultText(result);
+  if (!text) {
+    throw new Error("Cloud bridge response missing text.");
+  }
+  const modelId = stringValue(result?.model);
+  return {
+    text,
+    promptTokens: 0,
+    completionTokens: 0,
+    ...(modelId ? { modelId } : {}),
+  };
+}
+
+async function handleIosCloudChat(request: Request): Promise<Response> {
+  const body = await requestJson(request);
+  const prompt =
+    stringValue(body.prompt) ??
+    stringValue(body.text) ??
+    stringValue(body.message);
+  if (!prompt) return json({ error: "prompt is required" }, 400);
+
+  try {
+    return json(await sendPromptToIosCloud(prompt));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return json({ error: message }, message.includes("not paired") ? 409 : 502);
+  }
+}
+
 /**
  * Forward a prompt to the paired Eliza Cloud agent. The local agent's
  * `/api/cloud/chat` proxy already understands how to relay this to the
@@ -2058,6 +2185,21 @@ async function generateLocalReply(
   conversation: LocalConversation,
   text: string,
 ): Promise<LocalReply> {
+  const cloudProbe = await probeAgentCloudPaired();
+  if (cloudProbe.kind === "paired") {
+    const prompt = buildPrompt(conversation.messages, text);
+    const cloud = await forwardToAgentCloudChat(prompt);
+    return {
+      text: cloud.text.trim() || "Cloud returned an empty response.",
+      usage: {
+        promptTokens: cloud.promptTokens,
+        completionTokens: cloud.completionTokens,
+        totalTokens: cloud.promptTokens + cloud.completionTokens,
+        ...(cloud.modelId ? { model: cloud.modelId } : {}),
+      },
+    };
+  }
+
   const statusReply = await localModelStatusReply(text);
   if (statusReply) return statusReply;
   await ensureActiveModelLoaded();
@@ -2100,7 +2242,7 @@ async function generateLocalReply(
     // for cloud-paired state via `/api/auth/status`; if paired, forward
     // the prompt to the agent's cloud proxy and return its response. If
     // NOT paired, surface an honest, actionable error — silently inventing
-    // a fake response is a bigger bug than telling the user "pair cloud
+    // a synthetic response is a bigger bug than telling the user "pair cloud
     // or use a smaller model".
     const probe = await probeAgentCloudPaired();
     if (probe.kind === "paired") {
@@ -2683,6 +2825,7 @@ export async function handleIosLocalAgentRequest(
   }
 
   if (method === "GET" && pathname === "/api/status") {
+    const cloud = readIosCloudPairing();
     return json({
       state: running ? "running" : "not_started",
       agentName: AGENT_NAME,
@@ -2690,10 +2833,10 @@ export async function handleIosLocalAgentRequest(
       startedAt,
       uptime: Date.now() - startedAt,
       cloud: {
-        connectionStatus: "disconnected",
-        activeAgentId: null,
-        cloudProvisioned: false,
-        hasApiKey: false,
+        connectionStatus: cloud.paired ? "connected" : "disconnected",
+        activeAgentId: cloud.agentId,
+        cloudProvisioned: cloud.paired,
+        hasApiKey: Boolean(cloud.token),
       },
       pendingRestart: false,
       pendingRestartReasons: [],
@@ -2708,6 +2851,7 @@ export async function handleIosLocalAgentRequest(
   if (method === "POST" && pathname === "/api/agent/restart") {
     running = true;
     startedAt = Date.now();
+    const cloud = readIosCloudPairing();
     return json({
       status: {
         state: "running",
@@ -2716,10 +2860,10 @@ export async function handleIosLocalAgentRequest(
         startedAt,
         uptime: 0,
         cloud: {
-          connectionStatus: "disconnected",
-          activeAgentId: null,
-          cloudProvisioned: false,
-          hasApiKey: false,
+          connectionStatus: cloud.paired ? "connected" : "disconnected",
+          activeAgentId: cloud.agentId,
+          cloudProvisioned: cloud.paired,
+          hasApiKey: Boolean(cloud.token),
         },
         pendingRestart: false,
         pendingRestartReasons: [],
@@ -2742,7 +2886,15 @@ export async function handleIosLocalAgentRequest(
   }
 
   if (method === "GET" && pathname === "/api/auth/status") {
-    return json({ required: false, pairingEnabled: false, expiresAt: null });
+    const cloud = readIosCloudPairing();
+    return json({
+      required: false,
+      pairingEnabled: false,
+      expiresAt: null,
+      cloudProvisioned: cloud.paired,
+      cloudAgentId: cloud.agentId,
+      cloudConnectionStatus: cloud.paired ? "connected" : "disconnected",
+    });
   }
 
   if (method === "GET" && pathname === "/api/auth/me") {
@@ -2762,10 +2914,11 @@ export async function handleIosLocalAgentRequest(
   }
 
   if (method === "GET" && pathname === "/api/first-run/status") {
+    const cloud = readIosCloudPairing();
     return json({
       complete: true,
-      cloudProvisioned: false,
-      deploymentTarget: "local",
+      cloudProvisioned: cloud.paired,
+      deploymentTarget: cloud.paired ? "cloud" : "local",
     });
   }
 
@@ -2775,6 +2928,10 @@ export async function handleIosLocalAgentRequest(
 
   if (method === "PUT" && pathname === "/api/config") {
     return json(localConfig());
+  }
+
+  if (method === "POST" && pathname === "/api/cloud/chat") {
+    return handleIosCloudChat(request);
   }
 
   if (method === "GET" && pathname === "/api/config/schema") {

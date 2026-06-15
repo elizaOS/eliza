@@ -334,7 +334,7 @@ def write_markdown(report: dict[str, Any], path: Path) -> None:
     lines = [
         "# Nebius Training Artifact Inventory",
         "",
-        f"Result: `{'complete' if report.get('ok') else 'incomplete'}`",
+        f"Result: `{'complete' if report.get('ok') else 'not-complete'}`",
         f"Present: `{report.get('present_count')}` / `{report.get('required_count')}`",
         f"Generated: `{report.get('generated_at')}`",
         "",

@@ -44,7 +44,7 @@ export const REQUIRED_OMNIVOICE_SYMBOLS = Object.freeze([
 
 const STUB_MARKERS = Object.freeze([
   "libelizainference-stub",
-  "not implemented in stub",
+  "unsupported in ABI-only build",
 ]);
 
 function pickToolForPlatform(target) {
@@ -335,8 +335,8 @@ function verifyFusedSymbolsInner({ outDir, target }) {
   const llamaReexported = isIos
     ? true
     : target.startsWith("darwin-")
-    ? hasDarwinReexportedLlama(lib)
-    : !target.startsWith("windows-") && hasElfNeededLlama(lib);
+      ? hasDarwinReexportedLlama(lib)
+      : !target.startsWith("windows-") && hasElfNeededLlama(lib);
 
   if (!isIos && llamaCount === 0 && !llamaReexported) {
     throw new Error(

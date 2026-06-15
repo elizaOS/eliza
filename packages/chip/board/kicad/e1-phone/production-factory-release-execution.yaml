@@ -314,7 +314,7 @@ release_blockers:
   - fixture coordinates, factory limits, RF calibration procedure, and first-article transcript are missing
   - selected display, camera, USB-C/power/side-key, cellular, and Wi-Fi/Bluetooth production traceability evidence is missing
   - parseable 055WU01 and E549/RM67191 display alternates cannot enter production release until BOM/AVL, assembly, fixture limits, first-article traceability, and promotion evidence exist
-  - local routed board STEP candidate exists for review only; supplier-approved routed STEP and enclosure clearance rerun are missing
+  - local routed board STEP candidate exists for review only; supplier-approved routed STEP and approved enclosure release clearance are missing
 forbidden_claims:
   - production_factory_release_ready
   - fabrication_ready

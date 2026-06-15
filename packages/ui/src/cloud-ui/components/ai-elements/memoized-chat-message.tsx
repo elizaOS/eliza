@@ -8,9 +8,9 @@
 import { Check, Copy, Loader2, Square, Volume2 } from "lucide-react";
 import { memo } from "react";
 import { Streamdown } from "streamdown";
+import { Button } from "../../../components/ui/button";
 import Image from "../../runtime/image";
 import { type ChatMediaAttachment, ContentType } from "../../types/chat-media";
-import { Button } from "../button";
 import { ElizaAvatar } from "./eliza-avatar";
 import {
   useReasoningTypewriter,

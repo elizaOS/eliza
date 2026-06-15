@@ -29,7 +29,7 @@ src/
   testing.ts         — createTestVault(): in-memory master key, real encryption, temp dir auto-cleanup
   store.ts           — readStore(): reads legacy vault.json for one-shot migration
   internal-utils.ts  — assertKey(), optsCaller()
-  password-managers.ts — resolveReference(): resolves 1Password/ProtonPass references via CLI
+  password-managers.ts — resolveReference(): resolves 1Password/Proton Pass references via CLI
 test/               — vitest test files matching each src module
 ```
 
@@ -152,6 +152,6 @@ await test.dispose(); // removes temp dir
 - **Audit log records keys, never values.** `reveal(key, caller)` is the designated "show plaintext" affordance; the caller id appears in the JSONL so users can see who requested a reveal.
 - **Sensitive vs non-sensitive split**: `{ sensitive: true }` → AES-256-GCM ciphertext in PGlite, master key from OS keychain. Omit → plaintext `value` column in PGlite. The same `set/get` API handles both.
 - **Non-sensitive values never go to external password managers.** `SecretsManager.set()` enforces this unconditionally, regardless of user preferences routing config.
-- **External backend direct writes are not yet supported.** `ManagerImpl.set()` only writes when the resolved target backend is `"in-house"`; any other resolved backend (`"1password"`, `"protonpass"`, `"bitwarden"`) throws. For 1Password / Proton Pass, store a reference with `vault.setReference()` after creating the item in the vendor tool (references are resolved by `resolveReference()` at use time).
+- **External backend direct writes are not yet supported.** `ManagerImpl.set()` only writes when the resolved target backend is `"in-house"`; any other resolved backend (`"1password"`, `"protonpass"`, `"bitwarden"`) throws. For 1Password / Proton Pass, store a reference with `vault.setReference()` after creating the item in the vendor tool. 1Password references resolve through `op read`; Proton Pass references resolve through `pass-cli item view`.
 - **`VaultMissError`** is thrown (not null-returned) on a missing key by `get()`. Use `has()` or catch `VaultMissError` when a key may be absent.
 - **Ciphertext wire format**: `v1:<nonce_b64>:<tag_b64>:<ct_b64>`. The vault key string is bound as AES-GCM AAD, so a ciphertext cannot be moved to a different key slot without failing decryption.

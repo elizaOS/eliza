@@ -6,16 +6,15 @@
  *      micropayments, autonomous agents, and scenarios requiring on-chain audit trails.
  *   2. **MPP** (Managed Payment Protocol / Stripe) — fiat-based payments with dispute resolution.
  *      Optimal for larger amounts, supervised agents, and high-frequency session batching.
- *   3. **Google AP2** (Agent Payment Protocol) — Google's managed agent payment rail combining
- *      identity verification and payment in a single flow. Roadmap; activates when Google
- *      publishes the full AP2 spec. Settlement on Base.
+ *   3. **Google AP2** (Agent Payment Protocol) — reserved rail for Google's managed agent
+ *      payment flow. Settlement on Base when explicitly marked live by configuration.
  *
  * Routing criteria:
  *   - Transaction amount (micropayments → x402, high-frequency → MPP)
  *   - Session context (ongoing session → MPP for batching efficiency)
  *   - Agent autonomy level (autonomous → x402, supervised → MPP)
  *   - Chain/ecosystem preference (Google ecosystem → AP2, Solana → x402-solana)
- *   - Rail availability (live vs. roadmap)
+ *   - Rail availability
  *
  * @module router/PaymentRouter
  */
@@ -24,7 +23,7 @@
 
 export type PaymentRail = "x402" | "mpp" | "x402-solana" | "google-ap2";
 
-export type RailStatus = "live" | "roadmap" | "disabled";
+export type RailStatus = "live" | "planned" | "disabled";
 
 export interface RailConfig {
   rail: PaymentRail;
@@ -76,11 +75,11 @@ const DEFAULT_RAILS: RailConfig[] = [
   },
   {
     rail: "x402-solana",
-    status: "roadmap",
+    status: "planned",
   },
   {
     rail: "google-ap2",
-    status: "roadmap",
+    status: "planned",
     minAmount: 1_000, // $0.001 minimum (aligned with x402)
     maxAmount: 50_000_000, // $50 max per tx (conservative until spec finalized)
   },
@@ -117,9 +116,7 @@ export class PaymentRouter {
       preferredChain,
     } = context;
 
-    // If Google AP2 rail is live and context indicates Google ecosystem preference
-    // Google AP2 (Agent Payment Protocol) — Google's native agent payment rail
-    // Currently roadmap; will activate when Google publishes the full AP2 spec
+    // Google AP2 only routes after configuration explicitly marks it live.
     const googleRail = this.getRail("google-ap2");
     if (googleRail?.status === "live" && preferredChain === "base") {
       // Google AP2 routes through Base for on-chain settlement
@@ -143,7 +140,7 @@ export class PaymentRouter {
           isLive: true,
         };
       }
-      // Solana not yet live — fall through to other rails
+      // Solana rail is unavailable, so fall through to other rails.
     }
 
     // Rule 1: High-frequency session context → MPP (batching efficiency)

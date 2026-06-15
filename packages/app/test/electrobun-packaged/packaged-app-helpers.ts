@@ -489,7 +489,7 @@ export class PackagedDesktopHarness {
   }
 
   async relaunch(options: PackagedStartOptions = {}): Promise<void> {
-    // Trigger a no-op eval to give WKWebView a chance to flush localStorage
+    // Trigger an empty eval to give WKWebView a chance to flush localStorage
     // to disk before the process is killed. Without this, SIGKILL after the
     // 5-second grace period can prevent the WebKit persistence layer from
     // writing seeded state, leaving localStorage empty on the next launch.

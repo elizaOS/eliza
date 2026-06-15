@@ -110,24 +110,24 @@ export const BACKEND_INSTALL_SPECS: Readonly<
         {
           kind: "manual",
           instructions:
-            "Proton Pass CLI is in closed beta. Track Proton's roadmap or use the desktop app.",
-          url: "https://proton.me/pass",
+            "Install Proton Pass CLI (`pass-cli`) using Proton's official installation instructions.",
+          url: "https://protonpass.github.io/pass-cli/",
         },
       ],
       linux: [
         {
           kind: "manual",
           instructions:
-            "Proton Pass CLI is in closed beta. Track Proton's roadmap or use the desktop app.",
-          url: "https://proton.me/pass",
+            "Install Proton Pass CLI (`pass-cli`) using Proton's official installation instructions.",
+          url: "https://protonpass.github.io/pass-cli/",
         },
       ],
       win32: [
         {
           kind: "manual",
           instructions:
-            "Proton Pass CLI is in closed beta. Track Proton's roadmap or use the desktop app.",
-          url: "https://proton.me/pass",
+            "Install Proton Pass CLI (`pass-cli`) using Proton's official installation instructions.",
+          url: "https://protonpass.github.io/pass-cli/",
         },
       ],
     },

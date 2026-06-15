@@ -146,17 +146,14 @@ function cancelScenarioOnlyLazyServiceStarts(runtime: AgentRuntime): void {
   const runtimeInternals = runtime as unknown as {
     startingServices?: Map<string, Promise<unknown>>;
     servicePromises?: Map<string, Promise<unknown>>;
-    servicePromiseHandlers?: Map<
-      string,
-      { reject: (error: Error) => void }
-    >;
+    servicePromiseHandlers?: Map<string, { reject: (error: Error) => void }>;
   };
   const serviceType = "AGENT_SKILLS_SERVICE";
   if (!runtimeInternals.startingServices?.has(serviceType)) {
     return;
   }
   const error = new Error(
-    "[scenario-runner] cancelled unfinished agent-skills lazy service start during cleanup",
+    "[scenario-runner] cancelled pending agent-skills lazy service start during cleanup",
   );
   runtimeInternals.servicePromiseHandlers?.get(serviceType)?.reject(error);
   runtimeInternals.servicePromiseHandlers?.delete(serviceType);
@@ -291,13 +288,11 @@ export async function createScenarioRuntime(
     process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
   const prevElizaDisableLifeOpsScheduler =
     process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
-  const prevSkillsSyncCatalogOnStart =
-    process.env.SKILLS_SYNC_CATALOG_ON_START;
+  const prevSkillsSyncCatalogOnStart = process.env.SKILLS_SYNC_CATALOG_ON_START;
   const prevSkillsDir = process.env.SKILLS_DIR;
-  const scenarioSkillsRoot =
-    prevSkillsDir?.trim()
-      ? null
-      : fs.mkdtempSync(path.join(os.tmpdir(), "scenario-runner-skills-"));
+  const scenarioSkillsRoot = prevSkillsDir?.trim()
+    ? null
+    : fs.mkdtempSync(path.join(os.tmpdir(), "scenario-runner-skills-"));
   let scenarioHostsRoot: string | null = null;
   process.env.PGLITE_DATA_DIR = pgliteDir;
   process.env.ELIZA_DISABLE_ACTIVITY_TRACKER = "1";
@@ -348,9 +343,7 @@ export async function createScenarioRuntime(
     settings: {
       SKILLS_SYNC_CATALOG_ON_START:
         process.env.SKILLS_SYNC_CATALOG_ON_START ?? "false",
-      ...(process.env.SKILLS_DIR
-        ? { SKILLS_DIR: process.env.SKILLS_DIR }
-        : {}),
+      ...(process.env.SKILLS_DIR ? { SKILLS_DIR: process.env.SKILLS_DIR } : {}),
     },
   });
 
@@ -370,12 +363,12 @@ export async function createScenarioRuntime(
   );
 
   // Skip @elizaos/plugin-local-inference by default and register a
-  // deterministic zero-vector TEXT_EMBEDDING stub instead. The bundled
+  // deterministic zero-vector TEXT_EMBEDDING fallback instead. The bundled
   // `eliza-1-0_8b-32k.gguf` is fetched from a gated HuggingFace repo on
   // first generation; without HF credentials each turn produces a fresh
   // 401-spam burst (LFS URL + Standard URL × ±GGUF suffix × every retry). The
   // scenario runner doesn't score on semantic retrieval, so a zero vector is
-  // the right stub. Match the bench server's dimension (1024 — see
+  // the right deterministic fallback. Match the bench server's dimension (1024 — see
   // `packages/app-core/src/benchmark/server.ts`) so downstream code that
   // assumes that shape (vector columns sized at boot) still works.
   // Opt back into the real plugin with `ELIZA_BENCH_SKIP_EMBEDDING=0`.
@@ -383,8 +376,8 @@ export async function createScenarioRuntime(
     (process.env.ELIZA_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
   if (skipEmbeddingPlugin) {
     const EMBEDDING_DIMENSIONS = 1024;
-    const stubEmbeddingPlugin: Plugin = {
-      name: "scenario-runner-stub-embedding",
+    const embeddingFallbackPlugin: Plugin = {
+      name: "scenario-runner-embedding-fallback",
       description:
         "Scenario-runner zero-vector TEXT_EMBEDDING handler. Replaces " +
         "@elizaos/plugin-local-inference so we never download the gated " +
@@ -396,9 +389,9 @@ export async function createScenarioRuntime(
           new Array<number>(EMBEDDING_DIMENSIONS).fill(0),
       },
     };
-    await runtime.registerPlugin(stubEmbeddingPlugin);
+    await runtime.registerPlugin(embeddingFallbackPlugin);
     logger.info(
-      `[scenario-runner] Registered zero-vector TEXT_EMBEDDING stub (dim=${EMBEDDING_DIMENSIONS}); ` +
+      `[scenario-runner] Registered zero-vector TEXT_EMBEDDING fallback (dim=${EMBEDDING_DIMENSIONS}); ` +
         "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-inference instead.",
     );
   } else {
@@ -461,15 +454,15 @@ export async function createScenarioRuntime(
   await runtime.registerPlugin(agentSkillsPlugin);
 
   const lifeOpsModule = (await import(
-    "@elizaos/plugin-lifeops/plugin"
+    "@elizaos/plugin-personal-assistant/plugin"
   )) as Record<string, unknown>;
   const lifeOpsPlugin = extractPlugin(lifeOpsModule, [
     "default",
-    "appLifeOpsPlugin",
+    "personalAssistantPlugin",
   ]);
   if (!lifeOpsPlugin) {
     throw new Error(
-      "[scenario-runner] @elizaos/plugin-lifeops did not export a Plugin",
+      "[scenario-runner] @elizaos/plugin-personal-assistant did not export a Plugin",
     );
   }
   await runtime.registerPlugin(lifeOpsPlugin);
@@ -562,8 +555,7 @@ export async function createScenarioRuntime(
       delete process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
     }
     if (prevSkillsSyncCatalogOnStart !== undefined) {
-      process.env.SKILLS_SYNC_CATALOG_ON_START =
-        prevSkillsSyncCatalogOnStart;
+      process.env.SKILLS_SYNC_CATALOG_ON_START = prevSkillsSyncCatalogOnStart;
     } else {
       delete process.env.SKILLS_SYNC_CATALOG_ON_START;
     }

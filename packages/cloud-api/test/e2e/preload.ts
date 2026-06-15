@@ -175,10 +175,30 @@ const member = await ensureTestUser({
   stewardUserId: "playwright-e2e-member",
   role: "member",
 });
+const affiliate = await ensureTestUser({
+  slug: "playwright-e2e-affiliate-org",
+  email: "playwright-affiliate@example.test",
+  stewardUserId: "playwright-e2e-affiliate",
+  role: "admin",
+});
+
+await apiKeysService.deactivateUserKeysByName(
+  affiliate.user.id,
+  "playwright-e2e-affiliate",
+);
+const { plainKey: affiliatePlainKey } = await apiKeysService.create({
+  name: "playwright-e2e-affiliate",
+  description: "Local cloud API affiliate e2e test key",
+  organization_id: affiliate.organization.id,
+  user_id: affiliate.user.id,
+  permissions: ["read", "write", "affiliate:create-character"],
+  rate_limit: 10_000,
+  is_active: true,
+});
 
 process.env.TEST_API_KEY = owner.plainKey;
 process.env.TEST_MEMBER_API_KEY = member.plainKey;
-process.env.TEST_AFFILIATE_API_KEY = owner.plainKey;
+process.env.TEST_AFFILIATE_API_KEY = affiliatePlainKey;
 process.env.TEST_USER_ID = owner.user.id;
 process.env.TEST_USER_EMAIL =
   owner.user.email ?? "playwright-owner@example.test";

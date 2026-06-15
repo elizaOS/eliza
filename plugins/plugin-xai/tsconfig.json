@@ -11,7 +11,8 @@
     "strict": true,
     "allowImportingTsExtensions": true,
     "paths": {
-      "@elizaos/core": ["../../packages/core/src/index.node.ts"]
+      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/logger": ["../../packages/logger/src/index.ts"]
     }
   },
   "include": ["**/*.ts"],

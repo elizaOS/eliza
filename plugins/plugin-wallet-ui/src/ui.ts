@@ -1,6 +1,6 @@
 import "./register-routes.ts";
 
-export { useWalletState } from "@elizaos/ui";
+export { useWalletState } from "@elizaos/ui/state";
 export { InventoryView } from "./InventoryView.tsx";
 export { ChainIcon } from "./inventory/ChainIcon.tsx";
 export {
@@ -33,7 +33,5 @@ export {
   buildWalletRpcUpdateRequest,
   resolveInitialWalletRpcSelections,
 } from "./wallet-rpc.ts";
-export {
-  WALLET_STATUS_WIDGET,
-  WalletStatusSidebarWidget,
-} from "./widgets/wallet-status.tsx";
+export { WALLET_STATUS_WIDGET } from "./widgets/wallet-status.helpers.ts";
+export { WalletStatusSidebarWidget } from "./widgets/wallet-status.tsx";

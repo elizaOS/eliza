@@ -3,7 +3,6 @@ import {
   HARDWARE_PRODUCTS as hardwareProducts,
   type Product,
 } from "@elizaos/shared/hardware-catalog";
-import { CloudVideoBackground } from "@elizaos/ui";
 import { ArrowRight, Download, ShoppingBag } from "lucide-react";
 import { lazy, type ReactNode, Suspense, useEffect, useState } from "react";
 import { useT } from "./providers/I18nProvider";
@@ -203,15 +202,6 @@ function ReleaseDownloads() {
 function CloudHero({ children }: { children: ReactNode }) {
   return (
     <section className="band hero-cloud" data-hero="cloud">
-      <CloudVideoBackground
-        className="cloud-background"
-        style={{
-          position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
-        }}
-      />
       <div className="cloud-scrim" aria-hidden="true" />
       <div className="band-inner hero-cloud-inner">{children}</div>
     </section>

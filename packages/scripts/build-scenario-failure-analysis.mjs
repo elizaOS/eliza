@@ -19,7 +19,7 @@ const RUNS = [
   "deterministic-all",
   "deterministic-remainder",
   "deterministic-remainder-2",
-  "plugin-lifeops-deterministic",
+  "plugin-personal-assistant-deterministic",
   "plugin-app-control-deterministic",
   "scenario-runner-package-deterministic",
   "live-cerebras-5",

@@ -69,6 +69,8 @@ const TINY_MP3 = Buffer.from(
   "SUQzAwAAAAAAFlRTU0UAAAAMAAADTGF2ZjU4LjI5LjEwMAAA//tQAAAAAAAA",
   "base64",
 );
+const CHAT_COMPOSER_SELECTOR =
+  '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]';
 
 interface TtsCloudCall {
   url: string;
@@ -162,20 +164,12 @@ async function installConversationStreamMock(page: Page): Promise<{
         "Always-on assistant heard the browser turn and kept listening.";
       const now = Date.now();
       messageSequence += 1;
-      messages.push(
-        {
-          id: `always-on-user-${messageSequence}`,
-          role: "user",
-          text: userText,
-          timestamp: now,
-        },
-        {
-          id: `always-on-assistant-${messageSequence}`,
-          role: "assistant",
-          text: assistantText,
-          timestamp: now + 1,
-        },
-      );
+      messages.push({
+        id: `always-on-user-${messageSequence}`,
+        role: "user",
+        text: userText,
+        timestamp: now,
+      });
       await route.fulfill({
         status: 200,
         contentType: "text/event-stream",
@@ -352,6 +346,7 @@ async function installSpeechRecognitionShim(page: Page): Promise<void> {
       const rec = instances[instances.length - 1];
       if (!rec?.started) return false;
       rec.onresult?.({
+        resultIndex: 0,
         results: [
           {
             isFinal,
@@ -374,6 +369,15 @@ async function installSpeechRecognitionShim(page: Page): Promise<void> {
           }
         : null;
     };
+  });
+}
+
+async function forceBrowserSpeechRecognition(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {},
+    });
   });
 }
 
@@ -463,7 +467,7 @@ test("chat SSE stream emits token + done events for assistant message", async ({
   await assertReadyChecks(
     page,
     "chat shell ready",
-    [{ selector: '[data-testid="chat-composer-textarea"]' }],
+    [{ selector: CHAT_COMPOSER_SELECTOR }],
     "all",
   );
 
@@ -652,6 +656,7 @@ test("STT capture path fires onTranscript with the recognized string", async ({
   // `window.__sttSimulate(transcript, isFinal)` which we drive from the
   // test to simulate the user speaking a phrase.
   await installSpeechRecognitionShim(page);
+  await forceBrowserSpeechRecognition(page);
 
   await openAppPath(page, "/chat");
 
@@ -659,17 +664,19 @@ test("STT capture path fires onTranscript with the recognized string", async ({
   await assertReadyChecks(
     page,
     "chat shell ready",
-    [{ selector: '[data-testid="chat-composer-textarea"]' }],
+    [{ selector: CHAT_COMPOSER_SELECTOR }],
     "all",
   );
 
-  // The mic button doesn't carry a shared testid in the non-inline layout
-  // (see chat-composer.tsx around line 601-633). It is identified by its
-  // `aria-label` which contains "Voice input". Match the first such button
-  // — this is the page-level composer's mic that triggers
-  // `useVoiceChat.startListening("compose")`.
-  const micButton = page.getByRole("button", { name: /Voice input/i }).first();
+  // The compact shell uses the shared hook-free voice capture path. Force the
+  // browser SpeechRecognition backend above, then click the current talk
+  // button, whose accessible name may be either "Talk" or the legacy
+  // "Voice input" label.
+  const micButton = page
+    .getByRole("button", { name: /talk|voice input/i })
+    .first();
   await expect(micButton).toBeVisible({ timeout: 15_000 });
+  await expect(micButton).toBeEnabled({ timeout: 15_000 });
   await micButton.click();
 
   // The hook calls recognition.start() synchronously. Now simulate a final
@@ -723,7 +730,9 @@ test("always-on chat mode starts passive browser STT and keeps capture open afte
   page,
 }) => {
   const conversations = await installConversationStreamMock(page);
+  await installTtsCloudMock(page);
   await installSpeechRecognitionShim(page);
+  await forceBrowserSpeechRecognition(page);
   await page.addInitScript(() => {
     localStorage.setItem("eliza:voice:continuous-chat-mode", "always-on");
   });
@@ -732,38 +741,45 @@ test("always-on chat mode starts passive browser STT and keeps capture open afte
   await assertReadyChecks(
     page,
     "chat shell ready",
-    [{ selector: '[data-testid="chat-composer-textarea"]' }],
+    [{ selector: CHAT_COMPOSER_SELECTOR }],
     "all",
   );
 
-  const toggle = page.getByTestId("chat-view-continuous-chat-toggle");
-  await expect(toggle).toBeVisible({ timeout: 15_000 });
-  await expect(toggle).toHaveAttribute("data-mode", "always-on");
-
-  await expect
-    .poll(
-      async () =>
-        page.evaluate(() => {
-          const state = (
-            window as unknown as {
-              __sttState?: () => {
-                continuous: boolean;
-                interimResults: boolean;
-                started: boolean;
-                stopCount: number;
-              } | null;
-            }
-          ).__sttState?.();
-          return state ?? null;
-        }),
-      { timeout: 5_000 },
-    )
-    .toMatchObject({
-      continuous: true,
-      interimResults: true,
-      started: true,
-      stopCount: 0,
+  // The legacy chat-view-continuous-chat-toggle is intentionally not asserted
+  // here: when always-on is restored from storage, passive browser STT starts
+  // before the visible toggle is needed.
+  const readSttState = () =>
+    page.evaluate(() => {
+      const state = (
+        window as unknown as {
+          __sttState?: () => {
+            continuous: boolean;
+            interimResults: boolean;
+            started: boolean;
+            stopCount: number;
+          } | null;
+        }
+      ).__sttState?.();
+      return state ?? null;
     });
+
+  const initialState = await readSttState();
+  if (!initialState?.started) {
+    const overlay = page.getByTestId("continuous-chat-overlay");
+    await expect(overlay).toBeVisible({ timeout: 15_000 });
+    const micButton = overlay
+      .getByRole("button", { name: /^(talk|voice input)$/i })
+      .first();
+    await expect(micButton).toBeVisible({ timeout: 15_000 });
+    await micButton.click();
+  }
+
+  await expect.poll(readSttState, { timeout: 5_000 }).toMatchObject({
+    continuous: true,
+    interimResults: true,
+    started: true,
+    stopCount: 0,
+  });
 
   const simulated = await page.evaluate(() => {
     const fn = (window as unknown as Record<string, unknown>).__sttSimulate as
@@ -774,39 +790,57 @@ test("always-on chat mode starts passive browser STT and keeps capture open afte
   expect(simulated, "always-on STT shim must receive a final turn").toBe(true);
 
   await expect
+    .poll(async () => conversations.streamCalls().length, { timeout: 5_000 })
+    .toBe(1);
+  const [streamCall] = conversations.streamCalls();
+  expect(streamCall).toEqual(
+    expect.objectContaining({ text: "always on browser turn" }),
+  );
+  expect(["DM", "VOICE_DM"]).toContain(streamCall?.channelType);
+  // The shell overlay path sends VOICE_DM with `voiceSource: "browser"`;
+  // ChatView's continuous controller keeps the same browser STT coverage but
+  // routes through the regular DM stream with UI view metadata.
+  if (streamCall?.channelType === "VOICE_DM") {
+    expect(streamCall.metadata).toEqual(
+      expect.objectContaining({
+        voiceSource: "browser",
+      }),
+    );
+  }
+
+  const showConversation = page.getByRole("button", {
+    name: /expand conversation|collapse conversation/i,
+  });
+  if ((await showConversation.count()) > 0) {
+    await expect(showConversation).toBeVisible();
+    await showConversation.click();
+  }
+  await expect
     .poll(async () => page.locator("body").innerText(), { timeout: 5_000 })
     .toContain("always on browser turn");
 
-  await expect
-    .poll(async () => conversations.streamCalls(), { timeout: 5_000 })
-    .toEqual([
-      expect.objectContaining({
-        text: "always on browser turn",
-        channelType: "VOICE_DM",
-        metadata: expect.objectContaining({
-          voiceSource: "browser",
-        }),
-      }),
-    ]);
-
+  // The overlay's fullscreen transcript animates out via AnimatePresence while
+  // the resting thread mounts in, so the same assistant line can be present in
+  // both during the expand/collapse transition. Assert the first visible bubble.
   await expect(
-    page.getByText("Always-on assistant heard the browser turn"),
+    page.getByText("Always-on assistant heard the browser turn").first(),
   ).toBeVisible({
     timeout: 5_000,
   });
 
   const afterFinal = await page.evaluate(() => {
-    const state = (
-      window as unknown as {
-        __sttState?: () => {
-          continuous: boolean;
-          interimResults: boolean;
-          started: boolean;
-          stopCount: number;
-        } | null;
-      }
-    ).__sttState?.();
-    return state ?? null;
+    return (
+      (
+        window as unknown as {
+          __sttState?: () => {
+            continuous: boolean;
+            interimResults: boolean;
+            started: boolean;
+            stopCount: number;
+          } | null;
+        }
+      ).__sttState?.() ?? null
+    );
   });
   expect(afterFinal).toMatchObject({
     started: true,

@@ -1036,13 +1036,8 @@ describe("Agent Integration Tests", () => {
       });
     });
 
-    // Add tests for cleanupAgents if this method is implemented
     describe("cleanupAgents", () => {
-      it("should clean up agents properly", async () => {
-        // This test is a placeholder and should be implemented
-        // if the cleanupAgents method is actually used
-
-        // Create some test agents that would be cleaned up
+      it("should remove all persisted agents", async () => {
         const tempAgent = {
           ...testAgent,
           id: uuidv4() as UUID,
@@ -1050,12 +1045,13 @@ describe("Agent Integration Tests", () => {
         };
 
         await adapter.createAgent(tempAgent);
+        expect(await adapter.getAgent(tempAgent.id)).not.toBeNull();
+        expect(await adapter.countAgents()).toBeGreaterThan(0);
 
-        // Call the cleanup method - implementation would depend on what
-        // cleanupAgents is actually supposed to do
         await adapter.cleanupAgents();
 
-        // Add appropriate verification based on what the method should do
+        expect(await adapter.countAgents()).toBe(0);
+        expect(await adapter.getAgent(tempAgent.id)).toBeNull();
       });
     });
 

@@ -11,6 +11,7 @@ import type { App, UserDatabaseStatus } from "../../db/schemas/apps";
 import { logger } from "../utils/logger";
 import { fieldEncryption } from "./field-encryption";
 import { getNeonClient } from "./neon-client";
+import type { TenantDbProvisioning } from "./tenant-db/tenant-db-provisioning";
 
 /**
  * Result from provisioning a user database.
@@ -58,7 +59,44 @@ export interface DatabaseStatus {
   connectionUri?: string;
 }
 
+/**
+ * Worker-side enqueuer that hands an isolated tenant-DB teardown to the daemon
+ * (the DROP needs `pg`, which doesn't load on workerd). Injected at cloud-api
+ * boot via {@link UserDatabaseService.setDeprovisionEnqueuer}; carries the app's
+ * *encrypted* DSN so the job survives the app row's cascade-delete (#8342).
+ */
+export type IsolatedDbDeprovisionEnqueuer = (p: {
+  appId: string;
+  dbUri: string;
+  organizationId: string;
+  userId?: string;
+}) => Promise<unknown>;
+
 export class UserDatabaseService {
+  private readonly tenantDbProvisioning?: TenantDbProvisioning;
+  private deprovisionEnqueuer?: IsolatedDbDeprovisionEnqueuer;
+
+  /**
+   * @param tenantDbProvisioning When provided, apps get a fully ISOLATED
+   *   per-tenant database (own DB + role + REVOKE-CONNECT boundary). When
+   *   omitted, falls back to the legacy shared cloud DATABASE_URL. The real
+   *   isolated backend is injected once its cluster store + Postgres executor
+   *   are wired (Apps / Product 2).
+   */
+  constructor(tenantDbProvisioning?: TenantDbProvisioning) {
+    this.tenantDbProvisioning = tenantDbProvisioning;
+  }
+
+  /**
+   * Wire the Worker-side enqueuer that hands isolated tenant-DB teardown to the
+   * daemon. Used when this instance has no local `pg` backend (the cloud-api
+   * Worker): {@link cleanupDatabase} enqueues an APP_DB_DEPROVISION job instead
+   * of silently no-opping the DROP. No-op on the daemon, which DROPs inline.
+   */
+  setDeprovisionEnqueuer(enqueuer: IsolatedDbDeprovisionEnqueuer): void {
+    this.deprovisionEnqueuer = enqueuer;
+  }
+
   /**
    * Provision a database for an app.
    *
@@ -142,16 +180,27 @@ export class UserDatabaseService {
     }
 
     try {
-      // Use shared cloud DATABASE_URL instead of per-app Neon projects.
-      // ElizaOS plugin-sql tables scope data by agent/app UUID, so multiple
-      // apps safely coexist. This avoids BRANCHES_LIMIT_EXCEEDED errors.
-      const sharedDbUrl = process.env.DATABASE_URL;
-      if (!sharedDbUrl) {
-        throw new Error("DATABASE_URL not configured in cloud environment");
+      // Per-tenant ISOLATED database (Apps / Product 2) when the provisioning
+      // backend is wired; otherwise fall back to the legacy shared cloud
+      // DATABASE_URL (plugin-sql tables scope by agent/app UUID, so the shared
+      // mode still coexists safely). The isolated path provisions the app its
+      // own DB + role and stores that real DSN — never the shared agent URL.
+      let connectionUri: string;
+      let clusterId: string | undefined;
+      if (this.tenantDbProvisioning) {
+        const provisioned = await this.tenantDbProvisioning.provisionForApp(appId);
+        connectionUri = provisioned.dsn;
+        clusterId = provisioned.clusterId;
+      } else {
+        const sharedDbUrl = process.env.DATABASE_URL;
+        if (!sharedDbUrl) {
+          throw new Error("DATABASE_URL not configured in cloud environment");
+        }
+        connectionUri = sharedDbUrl;
       }
 
-      // Encrypt the connection URI before storing
-      const encryptedUri = await fieldEncryption.encrypt(app.organization_id, sharedDbUrl);
+      // Encrypt the connection URI before storing.
+      const encryptedUri = await fieldEncryption.encrypt(app.organization_id, connectionUri);
 
       await appDatabasesRepository.updateState(appId, {
         user_database_uri: encryptedUri,
@@ -159,11 +208,15 @@ export class UserDatabaseService {
         user_database_error: null,
       });
 
-      logger.info("Database provisioned successfully (shared DB)", { appId });
+      logger.info("Database provisioned successfully", {
+        appId,
+        mode: this.tenantDbProvisioning ? "isolated" : "shared",
+        clusterId,
+      });
 
       return {
         success: true,
-        connectionUri: sharedDbUrl,
+        connectionUri,
         region,
       };
     } catch (error) {
@@ -191,30 +244,94 @@ export class UserDatabaseService {
    * Clean up database when app is deleted.
    *
    * @param appId App ID
+   * @param opts Owning org/user — required to enqueue the daemon-side isolated
+   *   DB teardown from the Worker (the job row carries organization_id/user_id).
    */
-  async cleanupDatabase(appId: string): Promise<void> {
+  async cleanupDatabase(
+    appId: string,
+    opts?: { organizationId?: string; userId?: string },
+  ): Promise<void> {
     logger.info("Cleaning up database for app", { appId });
 
     const database = await appDatabasesRepository.findStateByAppIdForWrite(appId);
-    if (!database?.user_database_project_id) {
+    if (!database) {
       logger.debug("No database to clean up", { appId });
       return;
     }
 
-    try {
-      const neonClient = getNeonClient();
-      await neonClient.deleteProject(database.user_database_project_id);
-      logger.info("Database cleaned up successfully", {
-        appId,
-        projectId: database.user_database_project_id,
-      });
-    } catch (error) {
-      // Log but don't fail - database might already be deleted
-      logger.warn("Failed to delete Neon project (may already be deleted)", {
-        appId,
-        projectId: database.user_database_project_id,
-        error: error instanceof Error ? error.message : "Unknown",
-      });
+    // ISOLATED (Apps / Product 2): DROP the app's OWN per-tenant DATABASE + ROLE
+    // and release its cluster slot — otherwise we leak a live DB we keep paying
+    // for AND burn one of the cluster's finite slots forever (#8342).
+    //
+    // The DROP needs `pg`, which only loads on the daemon. So:
+    //  - Daemon (provisioning backend wired): DROP inline.
+    //  - Worker (no backend, but enqueuer wired): enqueue an APP_DB_DEPROVISION
+    //    job the daemon runs — carrying the *encrypted* URI so it survives this
+    //    app row's cascade-delete. THIS is the live path: the delete route runs
+    //    on the Worker.
+    const isolatedUri = database.user_database_uri;
+    if (isolatedUri) {
+      if (this.tenantDbProvisioning) {
+        try {
+          const dsn = await fieldEncryption.decryptIfNeeded(isolatedUri);
+          if (dsn) {
+            const result = await this.tenantDbProvisioning.deprovisionForApp(appId, dsn);
+            logger.info("Isolated tenant DB deprovisioned", {
+              appId,
+              deprovisioned: result.deprovisioned,
+            });
+          }
+        } catch (error) {
+          // Don't fail the app delete on a teardown hiccup; a reconciler sweeps orphans.
+          logger.warn("Failed to deprovision isolated tenant DB", {
+            appId,
+            error: error instanceof Error ? error.message : "Unknown",
+          });
+        }
+      } else if (this.deprovisionEnqueuer && opts?.organizationId) {
+        try {
+          await this.deprovisionEnqueuer({
+            appId,
+            dbUri: isolatedUri,
+            organizationId: opts.organizationId,
+            userId: opts.userId,
+          });
+          logger.info("Enqueued isolated tenant DB deprovision job", { appId });
+        } catch (error) {
+          // Don't fail the app delete on an enqueue hiccup; a reconciler sweeps orphans.
+          logger.warn("Failed to enqueue isolated tenant DB deprovision", {
+            appId,
+            error: error instanceof Error ? error.message : "Unknown",
+          });
+        }
+      } else {
+        // No `pg` backend and no enqueuer (or missing org): the DROP can't run
+        // here. Surface it loudly so an orphan-DB reconciler can catch it.
+        logger.warn("Isolated tenant DB not torn down — no backend/enqueuer wired", {
+          appId,
+          hasEnqueuer: Boolean(this.deprovisionEnqueuer),
+          hasOrg: Boolean(opts?.organizationId),
+        });
+      }
+    }
+
+    // NEON (legacy shared-host path): delete the user's Neon project.
+    if (database.user_database_project_id) {
+      try {
+        const neonClient = getNeonClient();
+        await neonClient.deleteProject(database.user_database_project_id);
+        logger.info("Database cleaned up successfully", {
+          appId,
+          projectId: database.user_database_project_id,
+        });
+      } catch (error) {
+        // Log but don't fail - database might already be deleted
+        logger.warn("Failed to delete Neon project (may already be deleted)", {
+          appId,
+          projectId: database.user_database_project_id,
+          error: error instanceof Error ? error.message : "Unknown",
+        });
+      }
     }
   }
 

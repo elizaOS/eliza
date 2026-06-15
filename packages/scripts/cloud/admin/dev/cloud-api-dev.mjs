@@ -26,15 +26,24 @@ const pollIntervalMs = 500;
 
 function bunExecutable() {
   if (process.env.BUN && existsSync(process.env.BUN)) return process.env.BUN;
-  const homeBun = path.resolve(process.env.HOME || "", ".bun/bin/bun");
-  if (existsSync(homeBun)) return homeBun;
-  const pathBun = process.env.PATH?.split(path.delimiter)
-    .map((entry) => path.resolve(entry, "bun"))
-    .find((candidate) => existsSync(candidate));
-  if (pathBun) return pathBun;
+  // On Windows, Node can spawn `bun.exe` directly but NOT the extensionless npm
+  // shim (`spawn ENOENT`) nor a `.cmd` without `shell: true`. Probe the native
+  // `.exe` first so the npm shim never wins. On POSIX the binary is just `bun`.
+  const names = process.platform === "win32" ? ["bun.exe", "bun"] : ["bun"];
+  const home = process.env.HOME || process.env.USERPROFILE || "";
+  const dirs = [
+    path.resolve(home, ".bun/bin"),
+    ...(process.env.PATH?.split(path.delimiter) ?? []),
+  ];
+  for (const dir of dirs) {
+    for (const name of names) {
+      const candidate = path.resolve(dir, name);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
   if (process.env.npm_execpath?.includes("bun"))
     return process.env.npm_execpath;
-  return "bun";
+  return process.platform === "win32" ? "bun.exe" : "bun";
 }
 
 function isRealNodeExecutable(candidate) {
@@ -193,12 +202,18 @@ async function main() {
   // routes to return 2xx with a working in-memory key store.
   const isE2eTestMode =
     process.env.NODE_ENV === "test" || process.env.CLOUD_E2E === "1";
+  // In e2e/test mode, also stub the Cloudflare registrar/DNS by default so the
+  // domain buy/check routes never hit the real Cloudflare API (overridable via
+  // ELIZA_CF_REGISTRAR_DEV_STUB).
+  const registrarStub = process.env.ELIZA_CF_REGISTRAR_DEV_STUB ?? "1";
   const testModeVars = isE2eTestMode
     ? [
         "--var",
         "NODE_ENV:test",
         "--var",
         "ELIZA_KMS_BACKEND:memory",
+        "--var",
+        `ELIZA_CF_REGISTRAR_DEV_STUB:${registrarStub}`,
       ]
     : [];
 

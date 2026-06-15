@@ -7,7 +7,7 @@ macOS Apple Reminders native bridge policy helpers for elizaOS host runtimes.
 This package owns reusable native Apple Reminders bridge policy. It is not an
 elizaOS runtime `Plugin` object and does not register actions, providers,
 services, routes, or views. Higher-level packages such as
-`@elizaos/plugin-lifeops` import its helpers when they need to resolve the
+`@elizaos/plugin-personal-assistant` import its helpers when they need to resolve the
 macOS EventKit dylib used to create, update, or delete Apple Reminders.
 
 LifeOps may own the personal-assistant reminder workflow, DTO projection,

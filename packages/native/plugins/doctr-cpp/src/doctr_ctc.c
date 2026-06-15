@@ -1,5 +1,5 @@
 /*
- * CTC greedy decoder for doctr-cpp Phase 2.
+ * CTC greedy decoder for doctr-cpp.
  *
  * Logits matrix is (timesteps, alphabet_size) where alphabet_size ==
  * vocab_len + 1 and position 0 is the CTC blank. Greedy decoding:
@@ -8,9 +8,8 @@
  *   - drop blanks
  *
  * Confidences: per emitted character, take the mean softmax
- * probability across the timesteps that voted for it. For Phase 2
- * this is good enough; Phase 3 can switch to a beam decoder with
- * proper per-character probs.
+ * probability across the timesteps that voted for it. A beam decoder can
+ * provide sharper per-character probabilities if needed.
  *
  * Vocab is a UTF-8 string passed in by the caller (read from the GGUF
  * by the session ctor). UTF-8 codepoints are walked byte-aware so

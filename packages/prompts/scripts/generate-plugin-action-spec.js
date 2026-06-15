@@ -127,7 +127,7 @@ function expandDescriptionTemplateLiterals(description, actionFilePath) {
   const emotesPath = path.join(path.dirname(actionFilePath), "emotes.ts");
   if (!fs.existsSync(emotesPath)) {
     console.warn(
-      `[generate-plugin-action-spec] VALID_EMOTE_IDS placeholder but missing ${emotesPath}`,
+      `[generate-plugin-action-spec] VALID_EMOTE_IDS template expression but missing ${emotesPath}`,
     );
     return description;
   }

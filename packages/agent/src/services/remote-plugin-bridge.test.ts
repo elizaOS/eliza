@@ -1,211 +1,169 @@
-import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import type { Action, IAgentRuntime, Plugin } from "@elizaos/core";
 import type {
   RemotePluginWorkerMessage,
   WorkerRpcMessage,
 } from "@elizaos/plugin-remote-manifest";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { type BridgeChannel, RemotePluginBridge } from "./remote-plugin-bridge";
 
-function createBridgeChannel(): BridgeChannel & {
-  outbox: RemotePluginWorkerMessage[];
-  emitFromWorker(message: RemotePluginWorkerMessage): void;
-} {
-  const handlers = new Set<(message: RemotePluginWorkerMessage) => void>();
-  return {
-    outbox: [],
-    send(message) {
-      this.outbox.push(message);
-    },
-    onMessage(handler) {
-      handlers.add(handler);
-      return () => handlers.delete(handler);
-    },
-    close() {},
-    emitFromWorker(message) {
-      for (const handler of handlers) {
-        handler(message);
-      }
-    },
-  };
+class TestChannel implements BridgeChannel {
+  sent: RemotePluginWorkerMessage[] = [];
+  private handler: ((message: RemotePluginWorkerMessage) => void) | null = null;
+
+  send(message: RemotePluginWorkerMessage): void {
+    this.sent.push(message);
+  }
+
+  onMessage(handler: (message: RemotePluginWorkerMessage) => void): () => void {
+    this.handler = handler;
+    return () => {
+      this.handler = null;
+    };
+  }
+
+  close(): void {}
+
+  async emit(message: RemotePluginWorkerMessage): Promise<void> {
+    this.handler?.(message);
+    await Promise.resolve();
+  }
 }
 
-const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-
 describe("RemotePluginBridge action callbacks", () => {
-  it("marshals remote action callbacks back to the host callback", async () => {
-    const channel = createBridgeChannel();
+  it("routes worker callback payloads to the action callback", async () => {
+    const channel = new TestChannel();
+    let registeredActions: Action[] = [];
     const runtime = {
-      registerPlugin: vi.fn(async (_registered: Plugin) => undefined),
-      unloadPlugin: vi.fn(async () => undefined),
+      registerPlugin: async (plugin: Plugin) => {
+        registeredActions = plugin.actions ?? [];
+      },
+      unloadPlugin: async () => {},
     } as unknown as IAgentRuntime;
-
-    const bridge = new RemotePluginBridge({
-      channel,
-      runtime,
-      rpcTimeoutMs: 1_000,
-    });
+    const bridge = new RemotePluginBridge({ channel, runtime });
     bridge.attach();
 
-    channel.emitFromWorker({
+    await channel.emit({
       type: "worker-announce-plugin",
       descriptor: {
         name: "remote-test",
         actions: [
           {
-            name: "REMOTE_TEST",
-            description: "Remote test action",
-            handler: { rpc: true, id: "action-1" },
+            name: "REMOTE_ACTION",
+            description: "Remote action",
+            handler: { rpc: true, id: "action:remote:handler" },
           },
         ],
       },
     });
-    await flush();
 
-    expect(runtime.registerPlugin).toHaveBeenCalledOnce();
-    const plugin = vi.mocked(runtime.registerPlugin).mock.calls[0]?.[0] as
-      | Plugin
-      | undefined;
-    if (!plugin) throw new Error("expected registered plugin");
-    const callback = vi.fn(async () => [
-      {
-        id: "00000000-0000-4000-8000-000000000001",
-        entityId: "00000000-0000-4000-8000-000000000002",
-        roomId: "00000000-0000-4000-8000-000000000003",
-        content: { text: "from worker" },
-      },
-    ]);
-    const actionPromise = plugin?.actions?.[0]?.handler(
+    const action = registeredActions[0];
+    expect(action?.name).toBe("REMOTE_ACTION");
+    const callbacks: unknown[] = [];
+    const actionPromise = action?.handler(
       runtime,
-      { id: "message-1", content: { text: "run" } } as never,
+      { content: { text: "run" } } as never,
       undefined,
-      {},
-      callback,
+      undefined,
+      async (payload) => {
+        callbacks.push(payload);
+        return [];
+      },
       [],
     );
 
-    await flush();
-    const workerRpc = channel.outbox.find(
-      (message): message is WorkerRpcMessage => message.type === "worker-rpc",
-    );
-    expect(workerRpc?.args).toMatchObject({
-      callbackId: expect.any(String),
+    const rpc = channel.sent[0] as WorkerRpcMessage;
+    expect(rpc.type).toBe("worker-rpc");
+    expect(rpc.surface).toBe("action");
+    expect(rpc.args).toMatchObject({
+      callbackId: expect.stringMatching(/^action-callback:/),
     });
-    const callbackId = (workerRpc?.args as { callbackId: string }).callbackId;
 
-    channel.emitFromWorker({
-      type: "host-rpc",
-      requestId: 100,
-      api: "runtime",
-      method: "actionCallback",
-      args: {
-        callbackId,
-        response: { text: "from worker" },
-        actionName: "REMOTE_TEST",
-      },
+    const callbackId = (rpc.args as { callbackId: string }).callbackId;
+    await channel.emit({
+      type: "worker-action-callback",
+      callbackId,
+      payload: { text: "progress" },
     });
-    await flush();
-
-    expect(callback).toHaveBeenCalledWith(
-      { text: "from worker" },
-      "REMOTE_TEST",
-    );
-    expect(channel.outbox).toContainEqual(
-      expect.objectContaining({
-        type: "host-rpc-result",
-        requestId: 100,
-        ok: true,
-        payload: [
-          expect.objectContaining({
-            id: "00000000-0000-4000-8000-000000000001",
-          }),
-        ],
-      }),
-    );
-
-    if (!workerRpc) throw new Error("expected worker-rpc");
-    channel.emitFromWorker({
+    await channel.emit({
       type: "worker-rpc-result",
-      requestId: workerRpc.requestId,
+      requestId: rpc.requestId,
       ok: true,
       payload: { success: true },
     });
 
     await expect(actionPromise).resolves.toEqual({ success: true });
-    await bridge.detach();
+    expect(callbacks).toEqual([{ text: "progress" }]);
   });
-});
 
-describe("RemotePluginBridge dynamic event registration", () => {
-  it("registers host runtime events that proxy back to worker handlers", async () => {
-    const channel = createBridgeChannel();
+  it("registers dynamically announced actions with the runtime", async () => {
+    const channel = new TestChannel();
+    let registeredPlugin: Plugin | null = null;
+    const dynamicActions: Action[] = [];
     const runtime = {
-      registerPlugin: vi.fn(async (_registered: Plugin) => undefined),
-      unloadPlugin: vi.fn(async () => undefined),
-      registerEvent: vi.fn(),
+      registerPlugin: async (plugin: Plugin) => {
+        registeredPlugin = plugin;
+      },
+      registerAction: (action: Action) => {
+        dynamicActions.push(action);
+      },
+      registerProvider: () => {},
+      registerEvaluator: () => {},
+      registerModel: () => {},
+      registerEvent: () => {},
+      registerService: async () => {},
+      unloadPlugin: async () => {},
     } as unknown as IAgentRuntime;
-
-    const bridge = new RemotePluginBridge({
-      channel,
-      runtime,
-      rpcTimeoutMs: 1_000,
-    });
+    const bridge = new RemotePluginBridge({ channel, runtime });
     bridge.attach();
 
-    channel.emitFromWorker({
-      type: "host-rpc",
-      requestId: 200,
-      api: "runtime",
-      method: "registerEvent",
-      args: {
-        name: "REMOTE_DYNAMIC_EVENT",
-        handlerRef: { rpc: true, id: "event-dynamic-1" },
+    await channel.emit({
+      type: "worker-announce-plugin",
+      descriptor: {
+        name: "remote-dynamic",
       },
     });
-    await flush();
+    await channel.emit({
+      type: "worker-announce-dynamic",
+      descriptor: {
+        name: "remote-dynamic",
+        actions: [
+          {
+            name: "DYNAMIC_ACTION",
+            handler: { rpc: true, id: "action:dynamic:handler" },
+          },
+        ],
+      },
+    });
 
-    expect(runtime.registerEvent).toHaveBeenCalledWith(
-      "REMOTE_DYNAMIC_EVENT",
-      expect.any(Function),
+    expect(dynamicActions.map((action) => action.name)).toEqual([
+      "DYNAMIC_ACTION",
+    ]);
+    const pluginAfterDynamic = registeredPlugin as Plugin | null;
+    expect(pluginAfterDynamic?.actions?.map((action) => action.name)).toEqual([
+      "DYNAMIC_ACTION",
+    ]);
+
+    const resultPromise = dynamicActions[0]?.handler(
+      runtime,
+      { content: { text: "run dynamic" } } as never,
+      undefined,
+      undefined,
+      undefined,
+      [],
     );
-    expect(channel.outbox).toContainEqual(
-      expect.objectContaining({
-        type: "host-rpc-result",
-        requestId: 200,
-        ok: true,
-        payload: null,
-      }),
-    );
-
-    const registeredHandler = vi.mocked(runtime.registerEvent).mock
-      .calls[0]?.[1] as ((payload: unknown) => Promise<void>) | undefined;
-    if (!registeredHandler)
-      throw new Error("expected registered event handler");
-
-    const eventPromise = registeredHandler({ value: "payload" });
-    await flush();
-
-    const workerRpc = channel.outbox.find(
-      (message): message is WorkerRpcMessage =>
-        message.type === "worker-rpc" &&
-        message.surface === "event" &&
-        message.target === "event-dynamic-1",
-    );
-    expect(workerRpc).toMatchObject({
+    const rpc = channel.sent[0] as WorkerRpcMessage;
+    expect(rpc).toMatchObject({
       type: "worker-rpc",
-      surface: "event",
-      target: "event-dynamic-1",
-      args: { value: "payload" },
+      surface: "action",
+      target: "action:dynamic:handler",
     });
-
-    if (!workerRpc) throw new Error("expected worker-rpc");
-    channel.emitFromWorker({
+    await channel.emit({
       type: "worker-rpc-result",
-      requestId: workerRpc.requestId,
+      requestId: rpc.requestId,
       ok: true,
-      payload: null,
+      payload: { success: true },
     });
 
-    await expect(eventPromise).resolves.toBeUndefined();
-    await bridge.detach();
+    await expect(resultPromise).resolves.toEqual({ success: true });
   });
 });

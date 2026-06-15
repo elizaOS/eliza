@@ -6,6 +6,13 @@ import type {
 } from "@elizaos/core";
 import { requireConfirmation } from "@elizaos/core";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
+import {
+  addSessionSpendUsd,
+  decideSpendAuthorization,
+  getSessionSpendUsd,
+  readSpendCapUsd,
+  stripSpendHints,
+} from "./spend-allowance.js";
 import type { SessionInfo } from "./types.js";
 
 const LOG_PREFIX = "[ParentAgentBroker]";
@@ -23,7 +30,7 @@ export const PARENT_AGENT_BROKER_MANIFEST_ENTRY = {
   description:
     "Task-scoped bridge for asking the running parent Eliza agent to use its loaded capabilities, actions, providers, connectors, and confirmation flow.",
   guidance:
-    'Use when workspace context is not enough and the parent agent should do something with its own capabilities. Examples: `USE_SKILL parent-agent {"request":"Find the next free 30 minute slot on my calendar"}`, `USE_SKILL parent-agent {"mode":"list-actions","query":"github"}`, `USE_SKILL parent-agent {"mode":"list-cloud-commands"}`, or `USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.list"}`. Mutating, paid, or destructive Cloud commands require an explicit user yes on a follow-up turn (not LLM `confirmed`).',
+    'Use when workspace context is not enough and the parent agent should do something with its own capabilities. Examples: `USE_SKILL parent-agent {"request":"Find the next free 30 minute slot on my calendar"}`, `USE_SKILL parent-agent {"mode":"list-actions","query":"github"}`, `USE_SKILL parent-agent {"mode":"list-cloud-commands"}`, or `USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.list"}`. Mutating, paid, or destructive Cloud commands require an explicit user yes on a follow-up turn (not LLM `confirmed`). For paid self-spend commands (e.g. `domains.buy`, `containers.create`), pass `params.spendEstimateUsd` (such as the price from `domains.check`) so they auto-authorize within the configured agent spend cap instead of stalling.',
 } as const;
 
 type ParentAgentMode =
@@ -1002,6 +1009,8 @@ async function runCloudCommand(args: {
   command: string | undefined;
   params?: Record<string, unknown>;
   confirmationMessage: Memory;
+  /** Child session id — keys the per-session self-spend ledger. */
+  sessionId: string;
 }): Promise<{
   success: boolean;
   text: string;
@@ -1032,12 +1041,76 @@ async function runCloudCommand(args: {
     };
   }
 
-  const needsConfirmation =
-    definition.risk === "mutating" ||
-    definition.risk === "paid" ||
-    definition.risk === "destructive";
-  if (needsConfirmation) {
-    const preview = `${definition.command} is a ${definition.risk} Eliza Cloud command. Proceed?`;
+  // Capped self-spend allowance. With no cap configured this resolves to the
+  // original "confirm every mutating/paid/destructive command" behavior; with a
+  // cap set, the agent self-authorizes within budget (see spend-allowance.ts).
+  const log = getLogger(args.runtime);
+  const params = args.params ?? {};
+  const capUsd = readSpendCapUsd();
+  const spendDecision = decideSpendAuthorization({
+    command: definition.command,
+    risk: definition.risk,
+    capUsd,
+    alreadySpentUsd: getSessionSpendUsd(args.sessionId),
+    params,
+  });
+
+  if (spendDecision.autoAuthorize) {
+    if (spendDecision.estimatedCostUsd && spendDecision.estimatedCostUsd > 0) {
+      const runningTotalUsd = addSessionSpendUsd(
+        args.sessionId,
+        spendDecision.estimatedCostUsd,
+      );
+      log?.info?.(
+        {
+          src: LOG_PREFIX,
+          event: "spend_auto_authorized",
+          sessionId: args.sessionId,
+          command: definition.command,
+          risk: definition.risk,
+          estimatedCostUsd: spendDecision.estimatedCostUsd,
+          runningTotalUsd,
+          capUsd,
+          reason: spendDecision.reason,
+        },
+        `${LOG_PREFIX} self-authorized ${definition.command} (~$${spendDecision.estimatedCostUsd.toFixed(2)}; $${runningTotalUsd.toFixed(2)} of $${capUsd.toFixed(2)} cap)`,
+      );
+    } else if (definition.risk !== "read" && definition.risk !== "dry-run") {
+      // Auto-authorized without a metered cost (a mutating state change or a
+      // revenue op the payer funds). Record it for the audit trail.
+      log?.info?.(
+        {
+          src: LOG_PREFIX,
+          event: "command_auto_authorized",
+          sessionId: args.sessionId,
+          command: definition.command,
+          risk: definition.risk,
+          reason: spendDecision.reason,
+        },
+        `${LOG_PREFIX} auto-authorized ${definition.command} (${definition.risk})`,
+      );
+    }
+  } else {
+    // Not auto-authorized → require an explicit human yes. Enrich the prompt
+    // when the spend cap is the blocker so the user sees the cost vs. budget.
+    const remainingUsd = Math.max(
+      0,
+      capUsd - getSessionSpendUsd(args.sessionId),
+    );
+    let preview: string;
+    if (
+      spendDecision.reason === "over-cap" &&
+      spendDecision.estimatedCostUsd != null
+    ) {
+      preview = `${definition.command} would spend ~$${spendDecision.estimatedCostUsd.toFixed(2)}, exceeding your remaining $${remainingUsd.toFixed(2)} self-spend allowance. Proceed?`;
+    } else if (spendDecision.reason === "unknown-cost") {
+      // Self-spend command with no cost hint. Give an autonomous agent an
+      // actionable path: fetch a quote and retry with the estimate so it can
+      // self-authorize within the cap instead of waiting on a human "yes".
+      preview = `${definition.command} is a paid Eliza Cloud command with an unknown cost. To self-authorize within your remaining $${remainingUsd.toFixed(2)} allowance, first fetch a quote (e.g. domains.check) and retry with params.spendEstimateUsd set to that price.`;
+    } else {
+      preview = `${definition.command} is a ${definition.risk} Eliza Cloud command. Proceed?`;
+    }
     const decision = await requireConfirmation({
       runtime: args.runtime,
       message: args.confirmationMessage,
@@ -1078,8 +1151,9 @@ async function runCloudCommand(args: {
     };
   }
 
-  const params = args.params ?? {};
-  const built = buildCloudUrl(args.runtime, definition, params);
+  // Drop the reserved spend-hint param so it never reaches the Cloud API.
+  const requestParams = stripSpendHints(params) ?? {};
+  const built = buildCloudUrl(args.runtime, definition, requestParams);
   if (!built.url) {
     return {
       success: false,
@@ -1092,7 +1166,7 @@ async function runCloudCommand(args: {
     };
   }
 
-  const body = cloudBody(definition, params);
+  const body = cloudBody(definition, requestParams);
   const response = await fetch(built.url, {
     method: definition.method,
     headers: {
@@ -1274,6 +1348,7 @@ export async function runParentAgentBroker(
         command: args.command,
         params: args.params,
         confirmationMessage: brokerConfirmationMemory(request),
+        sessionId: request.sessionId,
       });
     } catch (error) {
       const message =

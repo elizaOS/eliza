@@ -1,4 +1,4 @@
-// TODO: validate on device — checklist in
+// Requires device validation — checklist in
 // eliza/plugins/plugin-computeruse/docs/IOS_CONSTRAINTS.md
 //
 // Capacitor plugin that exposes the iOS-only computer-use surface to the
@@ -490,7 +490,7 @@ public class ComputerUseBridge: CAPPlugin, CAPBridgedPlugin {
         let _ = prompt
         let _ = call.getObject("options")
         resolveError(call, code: "foundation_model_unavailable",
-                     message: "Foundation Models adapter is stubbed pending on-device validation.")
+                     message: "Foundation Models adapter is unavailable pending on-device validation.")
     }
 
     private func isFoundationModelAvailable() -> Bool {

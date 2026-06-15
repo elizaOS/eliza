@@ -19,8 +19,7 @@
 import type { CallLogEntry, CallLogType } from "@elizaos/capacitor-phone";
 import { Phone } from "@elizaos/capacitor-phone";
 import type { OverlayAppContext } from "@elizaos/ui";
-import { Button } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { Button, useAgentElement } from "@elizaos/ui";
 import {
   Tabs,
   TabsContent,
@@ -39,6 +38,11 @@ import {
   Voicemail,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  callLabelFor,
+  loadPhoneState,
+  normalizeNumber,
+} from "./PhoneAppView.helpers.ts";
 
 interface ContactRow {
   id: string;
@@ -62,8 +66,6 @@ const DIAL_KEYS: readonly string[] = [
 ];
 
 type PhoneTab = "dialer" | "recent" | "contacts";
-const DEFAULT_CALL_LOG_LIMIT = 50;
-const MAX_CALL_LOG_LIMIT = 200;
 
 function defaultOverlayContext(): OverlayAppContext {
   return {
@@ -104,7 +106,7 @@ function callIconFor(type: CallLogType) {
     case "answered_externally":
       return <PhoneIncoming className="h-4 w-4 text-ok" aria-hidden />;
     case "outgoing":
-      return <PhoneOutgoing className="h-4 w-4 text-info" aria-hidden />;
+      return <PhoneOutgoing className="h-4 w-4 text-accent" aria-hidden />;
     case "missed":
     case "rejected":
     case "blocked":
@@ -114,47 +116,6 @@ function callIconFor(type: CallLogType) {
     default:
       return <PhoneIcon className="h-4 w-4 text-muted" aria-hidden />;
   }
-}
-
-function callLabelFor(entry: CallLogEntry): string {
-  if (entry.cachedName && entry.cachedName.trim().length > 0) {
-    return entry.cachedName.trim();
-  }
-  if (entry.number && entry.number.trim().length > 0) {
-    return entry.number.trim();
-  }
-  return "Unknown";
-}
-
-/** Strip whitespace and visual separators while keeping leading + and digits. */
-function normalizeNumber(input: string): string {
-  const trimmed = input.trim();
-  if (!trimmed) return "";
-  const leadingPlus = trimmed.startsWith("+") ? "+" : "";
-  return `${leadingPlus}${trimmed.replace(/[^0-9]/g, "")}`;
-}
-
-function normalizeCallLogLimit(limit: unknown): number {
-  if (!Number.isFinite(limit) || typeof limit !== "number") {
-    return DEFAULT_CALL_LOG_LIMIT;
-  }
-  return Math.min(MAX_CALL_LOG_LIMIT, Math.max(1, Math.trunc(limit)));
-}
-
-async function loadPhoneState(options?: { limit?: unknown; number?: string }) {
-  const normalizedNumber =
-    typeof options?.number === "string" ? normalizeNumber(options.number) : "";
-  const [status, recent] = await Promise.all([
-    Phone.getStatus().catch(() => null),
-    Phone.listRecentCalls({
-      limit: normalizeCallLogLimit(options?.limit),
-      ...(normalizedNumber ? { number: normalizedNumber } : {}),
-    }),
-  ]);
-  return {
-    status,
-    calls: recent.calls,
-  };
 }
 
 interface ContactsModule {
@@ -211,6 +172,12 @@ function PhoneTabTrigger({
       value={tab}
       disabled={disabled}
       aria-current={active ? "true" : undefined}
+      className="rounded-full font-semibold transition-colors"
+      style={{
+        background: active ? "var(--accent-subtle)" : "transparent",
+        color: active ? "var(--accent)" : "var(--muted)",
+        border: active ? "1px solid var(--accent)" : "1px solid transparent",
+      }}
       {...agentProps}
     >
       {label}
@@ -236,7 +203,12 @@ function PhoneDialKey({
     <button
       ref={ref}
       type="button"
-      className="h-16 rounded-full border border-border bg-bg-accent text-2xl font-semibold text-txt transition active:scale-95 hover:bg-bg-accent/70 sm:h-20"
+      className="h-16 rounded-full text-2xl font-semibold transition active:scale-95 sm:h-20"
+      style={{
+        background: "var(--surface)",
+        color: "var(--text)",
+        border: "1px solid var(--border)",
+      }}
       onClick={() => onPress(digit)}
       aria-label={`Dial ${digit}`}
       data-testid={`phone-dial-key-${digit}`}
@@ -272,10 +244,14 @@ function RecentCallButton({
       ref={ref}
       type="button"
       onClick={() => onCall(entry.number)}
-      className="flex w-full items-center gap-3 rounded-xl border border-transparent bg-bg-accent/40 px-3 py-2.5 text-left transition hover:border-border hover:bg-bg-accent active:scale-[0.99]"
+      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition active:scale-[0.99]"
+      style={{ background: "var(--surface)", border: "1px solid transparent" }}
       {...agentProps}
     >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg-accent">
+      <span
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+        style={{ background: "var(--accent-subtle)" }}
+      >
         {callIconFor(entry.type)}
       </span>
       <span className="min-w-0 flex-1">
@@ -318,11 +294,19 @@ function ContactButton({
       type="button"
       onClick={() => onCall(primary)}
       disabled={primary.length === 0}
-      className="flex w-full items-center gap-3 rounded-xl border border-transparent bg-bg-accent/40 px-3 py-2.5 text-left transition hover:border-border hover:bg-bg-accent active:scale-[0.99] disabled:opacity-50"
+      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition active:scale-[0.99] disabled:opacity-50"
+      style={{ background: "var(--surface)", border: "1px solid transparent" }}
       {...agentProps}
     >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg-accent">
-        <UserIcon className="h-4 w-4 text-muted" aria-hidden />
+      <span
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+        style={{ background: "var(--accent-subtle)" }}
+      >
+        <UserIcon
+          className="h-4 w-4"
+          style={{ color: "var(--accent)" }}
+          aria-hidden
+        />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-semibold text-txt">
@@ -694,7 +678,10 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
         className="flex flex-1 min-h-0 flex-col"
       >
         <div className="shrink-0 border-b border-border/20 bg-bg/60 px-3 py-2">
-          <TabsList className="grid w-full max-w-sm grid-cols-3">
+          <TabsList
+            className="grid w-full max-w-sm grid-cols-3 gap-1"
+            style={{ background: "var(--surface)" }}
+          >
             <PhoneTabTrigger
               tab="dialer"
               label={t("phone.tabs.dialer", { defaultValue: "Dialer" })}
@@ -719,10 +706,15 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
           value="dialer"
           className="flex-1 overflow-y-auto focus-visible:outline-none"
         >
-          <div className="flex min-h-full flex-col items-center justify-between px-4 py-6">
+          <div className="flex min-h-full flex-col items-center px-4 pb-32 pt-6">
             <div className="flex w-full max-w-sm flex-col items-center gap-3 pt-2">
               <output
-                className="block min-h-[3rem] w-full select-text rounded-xl border border-border bg-bg-accent px-4 py-3 text-center font-mono text-2xl text-txt"
+                className="block min-h-[3rem] w-full select-text rounded-xl px-4 py-3 text-center font-mono text-2xl"
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  color: "var(--text)",
+                }}
                 aria-live="polite"
                 aria-label={t("phone.dialer.display", {
                   defaultValue: "Number being dialed",
@@ -755,7 +747,12 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
               <button
                 ref={plusAgent.ref}
                 type="button"
-                className="h-12 rounded-full border border-border bg-bg-accent text-lg font-semibold text-txt active:scale-95"
+                className="h-12 rounded-full text-lg font-semibold active:scale-95"
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  color: "var(--text)",
+                }}
                 onClick={appendPlus}
                 data-testid="phone-dial-plus"
                 aria-label={intlLabel}
@@ -763,21 +760,37 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
               >
                 +
               </button>
-              <Button
+              <button
                 ref={callAgent.ref}
+                type="button"
                 onClick={onDialerCall}
                 disabled={calling || dialed.length === 0}
-                className="h-14 rounded-full bg-ok text-bg hover:bg-ok/90 disabled:opacity-50"
+                className="flex h-14 items-center justify-center rounded-full transition-colors active:scale-95 disabled:opacity-50"
+                style={{
+                  background: "var(--accent)",
+                  color: "var(--accent-foreground)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "var(--accent-hover)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "var(--accent)";
+                }}
                 aria-label={callLabel}
                 data-testid="phone-dial-call"
                 {...callAgent.agentProps}
               >
                 <PhoneIcon className="h-6 w-6" aria-hidden />
-              </Button>
+              </button>
               <button
                 ref={backspaceAgent.ref}
                 type="button"
-                className="flex h-12 items-center justify-center rounded-full border border-border bg-bg-accent text-txt active:scale-95 disabled:opacity-50"
+                className="flex h-12 items-center justify-center rounded-full active:scale-95 disabled:opacity-50"
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  color: "var(--text)",
+                }}
                 onClick={backspace}
                 disabled={dialed.length === 0}
                 aria-label={backspaceLabel}
@@ -795,7 +808,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
           value="recent"
           className="flex-1 overflow-hidden focus-visible:outline-none"
         >
-          <div className="chat-native-scrollbar h-full overflow-y-auto px-4 py-3">
+          <div className="chat-native-scrollbar h-full overflow-y-auto px-4 pb-32 pt-3">
             {callsError ? (
               <p className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
                 {callsError}
@@ -862,7 +875,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
           value="contacts"
           className="flex-1 overflow-hidden focus-visible:outline-none"
         >
-          <div className="chat-native-scrollbar h-full overflow-y-auto px-4 py-3">
+          <div className="chat-native-scrollbar h-full overflow-y-auto px-4 pb-32 pt-3">
             {!contactsAvailable ? (
               <div className="flex h-full items-center justify-center px-6 text-center">
                 <div className="max-w-sm">
@@ -1135,7 +1148,7 @@ export function PhoneTuiView() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(260px, 0.9fr) minmax(320px, 1.1fr)",
+          gridTemplateColumns: "1fr",
           gap: 16,
         }}
       >
@@ -1403,7 +1416,7 @@ export function PhoneTuiView() {
           {!loading && !error && calls.length === 0 && (
             <div style={{ color: "#64748b" }}>no recent calls</div>
           )}
-          {calls.map((call, index) => (
+          {calls.slice(0, 12).map((call, index) => (
             <TuiRecentCallButton
               key={call.id}
               call={call}
@@ -1415,68 +1428,4 @@ export function PhoneTuiView() {
       </div>
     </div>
   );
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-phone-state") {
-    const state = await loadPhoneState({
-      limit: params?.limit,
-      number: typeof params?.number === "string" ? params.number : undefined,
-    });
-    return {
-      viewType: "tui",
-      status: state.status,
-      calls: state.calls.map((call) => ({
-        id: call.id,
-        number: call.number,
-        cachedName: call.cachedName,
-        label: callLabelFor(call),
-        date: call.date,
-        durationSeconds: call.durationSeconds,
-        type: call.type,
-        isNew: call.isNew,
-        agentSummary: call.agentSummary,
-        agentTranscript: call.agentTranscript,
-      })),
-    };
-  }
-
-  if (capability === "terminal-place-call") {
-    const number = normalizeNumber(
-      typeof params?.number === "string" ? params.number : "",
-    );
-    if (!number) throw new Error("number is required");
-    await Phone.placeCall({ number });
-    return { placed: true, number, viewType: "tui" };
-  }
-
-  if (capability === "terminal-open-dialer") {
-    const number = normalizeNumber(
-      typeof params?.number === "string" ? params.number : "",
-    );
-    await Phone.openDialer(number ? { number } : undefined);
-    return { opened: true, number: number || null, viewType: "tui" };
-  }
-
-  if (capability === "terminal-save-call-transcript") {
-    const callId =
-      typeof params?.callId === "string" ? params.callId.trim() : "";
-    const transcript =
-      typeof params?.transcript === "string" ? params.transcript.trim() : "";
-    const summary =
-      typeof params?.summary === "string" ? params.summary.trim() : "";
-    if (!callId) throw new Error("callId is required");
-    if (!transcript) throw new Error("transcript is required");
-    const result = await Phone.saveCallTranscript({
-      callId,
-      transcript,
-      ...(summary ? { summary } : {}),
-    });
-    return { saved: true, updatedAt: result.updatedAt, viewType: "tui" };
-  }
-
-  throw new Error(`Unsupported capability "${capability}"`);
 }

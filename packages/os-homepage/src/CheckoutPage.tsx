@@ -8,12 +8,17 @@ import {
   type Product,
 } from "@elizaos/shared/hardware-catalog";
 import {
+  buildStewardOAuthAuthorizeUrl,
+  consumeStewardPkceVerifier,
+  createStewardPkcePair,
   exchangeStewardCode,
   hasStewardAuthedCookie,
   readStoredStewardToken,
   STEWARD_NONCE_EXCHANGE_ENDPOINT,
   STEWARD_SESSION_ENDPOINT,
   STEWARD_TENANT_ID,
+  type StewardOAuthProvider,
+  storeStewardPkceVerifier,
   syncStewardSession,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
@@ -56,16 +61,6 @@ function buildCheckoutPath(product: Product) {
 
 function buildOAuthRedirectUri(product: Product): string {
   return `${window.location.origin}${buildCheckoutPath(product)}`;
-}
-
-function buildOAuthUrl(provider: "google" | "discord" | "github") {
-  const product = getCheckoutProduct();
-  const params = new URLSearchParams({
-    redirect_uri: buildOAuthRedirectUri(product),
-    tenant_id: stewardTenantId,
-    response_type: "code",
-  });
-  return `${stewardApiUrl}/auth/oauth/${provider}/authorize?${params.toString()}`;
 }
 
 function getStoredStewardToken() {
@@ -286,6 +281,9 @@ export function CheckoutPage() {
   >("idle");
   const [isAuthed, setIsAuthed] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [oauthLoading, setOauthLoading] = useState<StewardOAuthProvider | null>(
+    null,
+  );
   const auth = useMemo(
     () =>
       new StewardAuth({ baseUrl: stewardApiUrl, tenantId: stewardTenantId }),
@@ -296,10 +294,12 @@ export function CheckoutPage() {
     const code = consumeStewardCodeFromQuery();
     if (code) {
       setStatus("syncing");
+      const codeVerifier = consumeStewardPkceVerifier() ?? undefined;
       exchangeStewardCode(code, {
         endpoint: stewardNonceExchangeEndpoint,
         redirectUri: buildOAuthRedirectUri(product),
         tenantId: stewardTenantId,
+        codeVerifier,
       })
         .then((session) => {
           if (session.token) {
@@ -399,6 +399,40 @@ export function CheckoutPage() {
           ? error.message
           : t("homepage_os.checkout.errorMagicLink", {
               defaultValue: "Could not send magic link.",
+            }),
+      );
+    }
+  }
+
+  async function beginOAuth(provider: StewardOAuthProvider) {
+    setOauthLoading(provider);
+    setMessage(null);
+    try {
+      const pkce = await createStewardPkcePair();
+      if (!storeStewardPkceVerifier(pkce.verifier)) {
+        throw new Error(
+          t("homepage_os.checkout.errorStorage", {
+            defaultValue:
+              "Could not start sign-in — browser storage is unavailable.",
+          }),
+        );
+      }
+      window.location.href = buildStewardOAuthAuthorizeUrl(
+        provider,
+        buildOAuthRedirectUri(product),
+        {
+          stewardApiUrl,
+          stewardTenantId,
+          codeChallenge: pkce.challenge,
+        },
+      );
+    } catch (error) {
+      setOauthLoading(null);
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : t("homepage_os.checkout.errorSignIn", {
+              defaultValue: "Could not complete Eliza Cloud sign-in.",
             }),
       );
     }
@@ -577,21 +611,33 @@ export function CheckoutPage() {
                     </button>
                   </div>
                   <div className="oauth-row">
-                    <a href={buildOAuthUrl("google")}>
+                    <button
+                      type="button"
+                      onClick={() => beginOAuth("google")}
+                      disabled={oauthLoading !== null}
+                    >
                       {t("homepage_os.checkout.oauthGoogle", {
                         defaultValue: "Google",
                       })}
-                    </a>
-                    <a href={buildOAuthUrl("github")}>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => beginOAuth("github")}
+                      disabled={oauthLoading !== null}
+                    >
                       {t("homepage_os.checkout.oauthGitHub", {
                         defaultValue: "GitHub",
                       })}
-                    </a>
-                    <a href={buildOAuthUrl("discord")}>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => beginOAuth("discord")}
+                      disabled={oauthLoading !== null}
+                    >
                       {t("homepage_os.checkout.oauthDiscord", {
                         defaultValue: "Discord",
                       })}
-                    </a>
+                    </button>
                   </div>
                 </div>
               )}

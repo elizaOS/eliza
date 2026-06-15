@@ -25,7 +25,7 @@
 // THR write, then writes the character.  We hold THRE/TEMT permanently set
 // (the model never back-pressures), so every THR write is accepted and the
 // byte is emitted on `tx_byte_o`/`tx_valid_o` for the testbench to scrape.
-// The full bit-level UART line model is intentionally not implemented — this
+// The full bit-level UART line model is deliberately outside this block — this
 // is the register-level console subset OpenSBI's uart8250 driver requires, and
 // it is clearly a CONSOLE-SINK model, not a wire-level serializer.  (The
 // wire-level 8N1 serializer lives in e1_uart.sv for the GPIO-class UART.)

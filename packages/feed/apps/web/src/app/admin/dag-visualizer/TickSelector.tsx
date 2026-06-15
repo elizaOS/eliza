@@ -24,9 +24,11 @@ export function TickSelector({
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <button
+        type="button"
         onClick={() => {
-          if (currentIdx < traces.length - 1) {
-            onSelect(traces[currentIdx + 1]?.dirName);
+          const older = traces[currentIdx + 1]?.dirName;
+          if (currentIdx < traces.length - 1 && older) {
+            onSelect(older);
           }
         }}
         disabled={currentIdx >= traces.length - 1}
@@ -67,9 +69,11 @@ export function TickSelector({
       </select>
 
       <button
+        type="button"
         onClick={() => {
-          if (currentIdx > 0) {
-            onSelect(traces[currentIdx - 1]?.dirName);
+          const newer = traces[currentIdx - 1]?.dirName;
+          if (currentIdx > 0 && newer) {
+            onSelect(newer);
           }
         }}
         disabled={currentIdx <= 0}

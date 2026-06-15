@@ -1,8 +1,30 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { DockerNode } from "../../../db/repositories/docker-nodes";
+
+// Bun runs every cloud-shared test file in a single process, and `mock.module`
+// overrides are process-global with no built-in per-file teardown. Without an
+// explicit restore, these stubs leak into later files that import the real
+// modules (e.g. `compute-provider-characterization.test.ts` reading
+// `HetznerCloudError.status`), producing order-dependent failures. Capture the
+// real modules up front and re-install them in `afterAll`.
+import * as realDockerNodesNs from "../../../db/repositories/docker-nodes";
+import * as realDockerNodeWorkloadsNs from "../docker-node-workloads";
+import * as realHetznerCloudApiNs from "./hetzner-cloud-api";
+import * as realNodeBootstrapNs from "./node-bootstrap";
+
+// Snapshot the real exports into plain objects *before* the `mock.module` calls
+// below run. The `import * as` namespaces are live bindings — once `mock.module`
+// replaces a module record, the namespace reflects the stub — so we copy the
+// exports eagerly at module-evaluation time (imports are hoisted above the
+// `mock.module` statements) and restore from these snapshots in `afterAll`.
+const realDockerNodes = { ...realDockerNodesNs };
+const realDockerNodeWorkloads = { ...realDockerNodeWorkloadsNs };
+const realHetznerCloudApi = { ...realHetznerCloudApiNs };
+const realNodeBootstrap = { ...realNodeBootstrapNs };
 
 const AGENT_IMAGE = "ELIZA_AGENT_IMAGE";
 const AGENT_IMAGE_PLATFORM = "ELIZA_AGENT_IMAGE_PLATFORM";
+const HCLOUD_NETWORK_IDS = "CONTAINERS_HCLOUD_NETWORK_IDS";
 
 function restoreEnv(key: string, value: string | undefined): void {
   if (value === undefined) {
@@ -60,6 +82,13 @@ mock.module("./node-bootstrap", () => ({
   buildContainerNodeUserData: mocks.buildUserData,
 }));
 
+afterAll(() => {
+  mock.module("../../../db/repositories/docker-nodes", () => realDockerNodes);
+  mock.module("../docker-node-workloads", () => realDockerNodeWorkloads);
+  mock.module("./hetzner-cloud-api", () => realHetznerCloudApi);
+  mock.module("./node-bootstrap", () => realNodeBootstrap);
+});
+
 import { type AutoscalePolicy, NodeAutoscaler } from "./node-autoscaler";
 
 const policy: AutoscalePolicy = {
@@ -77,12 +106,15 @@ const policy: AutoscalePolicy = {
 describe("NodeAutoscaler Hetzner provisioning", () => {
   let originalAgentImage: string | undefined;
   let originalAgentImagePlatform: string | undefined;
+  let originalHcloudNetworkIds: string | undefined;
 
   beforeEach(() => {
     originalAgentImage = process.env[AGENT_IMAGE];
     originalAgentImagePlatform = process.env[AGENT_IMAGE_PLATFORM];
+    originalHcloudNetworkIds = process.env[HCLOUD_NETWORK_IDS];
     process.env[AGENT_IMAGE] = "ghcr.io/elizaos/eliza:latest";
     process.env[AGENT_IMAGE_PLATFORM] = "linux/arm64";
+    delete process.env[HCLOUD_NETWORK_IDS];
     mocks.createNode.mockClear();
     mocks.findAllNodes.mockClear();
     mocks.createServer.mockClear();
@@ -113,6 +145,7 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
   afterEach(() => {
     restoreEnv(AGENT_IMAGE, originalAgentImage);
     restoreEnv(AGENT_IMAGE_PLATFORM, originalAgentImagePlatform);
+    restoreEnv(HCLOUD_NETWORK_IDS, originalHcloudNetworkIds);
   });
 
   test("creates a Hetzner server and registers the autoscaled docker node", async () => {
@@ -147,9 +180,12 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
       location: "fsn1",
       image: "ubuntu-24.04",
       userData: "#cloud-config\n",
+      networkIds: [],
       labels: {
         "managed-by": "eliza-cloud",
         "node-id": "node-test",
+        environment: "local",
+        tier: "data-plane",
         purpose: "onboarding-e2e",
       },
     });
@@ -178,6 +214,27 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
       hcloudServerId: 4242,
       rootPassword: "root-secret",
     });
+  });
+
+  test("passes configured Hetzner private network ids to new nodes", async () => {
+    process.env[HCLOUD_NETWORK_IDS] = "12305703";
+    const autoscaler = new NodeAutoscaler(policy);
+
+    await autoscaler.provisionNode(
+      { nodeId: "node-networked" },
+      {
+        controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+        registrationUrl: "https://cloud.example.test/register",
+        registrationSecret: "secret",
+      },
+    );
+
+    expect(mocks.createServer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "node-networked",
+        networkIds: [12305703],
+      }),
+    );
   });
 
   test("fails before calling hcloud when Hetzner is not configured", async () => {

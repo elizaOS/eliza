@@ -1,5 +1,6 @@
+import { Link2, MonitorUp, QrCode, Radio } from "lucide-react";
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { agentUrl as configuredAgentUrl, logger } from "../services";
 
 interface ChatProps {
@@ -9,17 +10,9 @@ interface ChatProps {
   remoteSessionAvailable: boolean;
 }
 
-interface MirroredMessage {
-  id: string;
-  author: "user" | "agent";
-  text: string;
-  timestampIso: string;
-}
-
 /**
- * Chat mirror view. SSE stream + composer land with T9a (data plane) — this
- * view renders the resolved agent URL, the paired-session entry point when
- * a session-start intent is live, and a placeholder empty state.
+ * Overlay-chat-friendly companion home. Chat streaming lives in the host chat;
+ * this view only exposes pairing and remote-session state.
  */
 export function Chat({
   pairedAgentUrl,
@@ -28,7 +21,7 @@ export function Chat({
   remoteSessionAvailable,
 }: ChatProps): React.JSX.Element {
   const resolvedAgentUrl = pairedAgentUrl ?? configuredAgentUrl();
-  const [messages] = useState<MirroredMessage[]>([]);
+  const paired = resolvedAgentUrl !== null;
 
   useEffect(() => {
     logger.info("[Chat] mount", {
@@ -40,44 +33,72 @@ export function Chat({
   return (
     <main style={styles.root}>
       <header style={styles.header}>
-        <div style={styles.headerRow}>
-          <h2 style={styles.title}>Eliza</h2>
-          <div style={styles.actions}>
-            {remoteSessionAvailable ? (
-              <button
-                type="button"
-                onClick={onOpenRemoteSession}
-                style={styles.primaryAction}
-              >
-                Open remote session
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={onOpenPairing}
-              style={styles.secondaryAction}
-            >
-              {resolvedAgentUrl === null ? "Pair" : "Re-pair"}
-            </button>
-          </div>
+        <h2 style={styles.title}>Companion</h2>
+        <div style={styles.statusGrid}>
+          <StatusTile
+            icon={<Radio size={18} />}
+            active={paired}
+            value={paired ? "Paired" : "Offline"}
+          />
+          <StatusTile
+            icon={<MonitorUp size={18} />}
+            active={remoteSessionAvailable}
+            value={remoteSessionAvailable ? "Live" : "Idle"}
+          />
         </div>
-        <span style={styles.url}>{resolvedAgentUrl ?? "no agent URL"}</span>
       </header>
+
       <section style={styles.body}>
-        {messages.length === 0 ? (
-          <p style={styles.empty}>
-            No messages yet. Chat streaming is delivered by T9a (data plane).
-          </p>
-        ) : (
-          messages.map((message) => (
-            <article key={message.id} style={styles.message}>
-              <strong>{message.author}</strong>
-              <span>{message.text}</span>
-            </article>
-          ))
-        )}
+        <div style={styles.agentCard}>
+          <Link2 size={18} color={paired ? "#22c55e" : "#6b7280"} />
+          <span style={styles.url}>{resolvedAgentUrl ?? "No agent"}</span>
+        </div>
+
+        <div style={styles.actions}>
+          <button
+            type="button"
+            onClick={onOpenPairing}
+            style={paired ? styles.secondaryAction : styles.primaryAction}
+          >
+            <QrCode size={18} />
+            <span>{paired ? "Re-pair" : "Pair"}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenRemoteSession}
+            disabled={!remoteSessionAvailable}
+            style={
+              remoteSessionAvailable
+                ? styles.primaryAction
+                : styles.disabledAction
+            }
+          >
+            <MonitorUp size={18} />
+            <span>Remote</span>
+          </button>
+        </div>
       </section>
     </main>
+  );
+}
+
+function StatusTile({
+  icon,
+  active,
+  value,
+}: {
+  icon: React.ReactNode;
+  active: boolean;
+  value: string;
+}) {
+  return (
+    <div style={styles.statusTile}>
+      <span style={active ? styles.statusIconActive : styles.statusIcon}>
+        {icon}
+      </span>
+      <span style={styles.statusValue}>{value}</span>
+    </div>
   );
 }
 
@@ -86,40 +107,35 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     height: "100%",
+    background: "#0b0f14",
+    color: "#f8fafc",
   },
   header: {
-    padding: "16px 20px",
-    borderBottom: "1px solid #1f2937",
+    padding: 20,
     display: "flex",
     flexDirection: "column",
+    gap: 12,
+    borderBottom: "1px solid #1f2937",
+  },
+  title: { margin: 0, fontSize: 20, fontWeight: 650 },
+  statusGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
     gap: 8,
   },
-  headerRow: {
+  statusTile: {
+    minHeight: 68,
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
+    justifyContent: "center",
+    gap: 10,
+    border: "1px solid #1f2937",
+    borderRadius: 8,
+    background: "#111827",
   },
-  title: { margin: 0, fontSize: 20 },
-  actions: { display: "flex", gap: 8 },
-  primaryAction: {
-    padding: "8px 12px",
-    background: "#4f46e5",
-    color: "#fff",
-    border: "none",
-    borderRadius: 999,
-    fontSize: 13,
-    fontWeight: 600,
-  },
-  secondaryAction: {
-    padding: "8px 12px",
-    background: "#111",
-    color: "#e5e7eb",
-    border: "1px solid #374151",
-    borderRadius: 999,
-    fontSize: 13,
-  },
-  url: { opacity: 0.6, fontSize: 12, fontFamily: "ui-monospace, monospace" },
+  statusIcon: { display: "flex", color: "#6b7280" },
+  statusIconActive: { display: "flex", color: "#22c55e" },
+  statusValue: { fontSize: 14, fontWeight: 650 },
   body: {
     flex: 1,
     padding: 20,
@@ -128,13 +144,67 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 12,
   },
-  empty: { opacity: 0.6, margin: 0 },
-  message: {
+  agentCard: {
+    minHeight: 56,
     display: "flex",
-    flexDirection: "column",
-    gap: 4,
-    background: "#111",
-    padding: 12,
-    borderRadius: 12,
+    alignItems: "center",
+    gap: 10,
+    border: "1px solid #1f2937",
+    borderRadius: 8,
+    background: "#111827",
+    padding: "0 14px",
+  },
+  actions: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 8,
+  },
+  primaryAction: {
+    minHeight: 52,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    background: "#f97316",
+    color: "#111827",
+    border: "none",
+    borderRadius: 8,
+    fontSize: 14,
+    fontWeight: 700,
+  },
+  secondaryAction: {
+    minHeight: 52,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    background: "#111827",
+    color: "#e5e7eb",
+    border: "1px solid #374151",
+    borderRadius: 8,
+    fontSize: 14,
+    fontWeight: 650,
+  },
+  disabledAction: {
+    minHeight: 52,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    background: "#111827",
+    color: "#6b7280",
+    border: "1px solid #1f2937",
+    borderRadius: 8,
+    fontSize: 14,
+    fontWeight: 650,
+  },
+  url: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    opacity: 0.75,
+    fontSize: 12,
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
   },
 };

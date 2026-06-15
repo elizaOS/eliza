@@ -14,9 +14,10 @@ See [mmmc-scenario-db.md](mmmc-scenario-db.md) for the scenario schema, the
 OCV/LVF derate model, and the signoff handoff seam.
 
 POCV/SOCV with LVF Liberty, path-based STA, and any ML corner pruning are
-**not implemented** here — they require commercial LVF Liberty and a path-based
-signoff tool (PrimeTime SI / Tempus). The advanced-node section below describes
-what that would require; it is BLOCKED on the commercial-EDA gate.
+**outside this open-flow evidence path** — they require commercial LVF Liberty
+and a path-based signoff tool (PrimeTime SI / Tempus). The advanced-node section
+below describes what that would require; it is BLOCKED on the commercial-EDA
+gate.
 
 ## MVP (open PDKs): manifest-driven scenarios
 
@@ -80,8 +81,9 @@ At N3/N2 the multi-corner space is **fundamentally bigger**:
 The full Cartesian product is 100-200 corners. The industry approach is LVF
 Liberty (statistical POCV/SOCV instead of worst-case + derate), path-based STA
 on the violating paths, and corner pruning to keep the path-based pass
-tractable. None of these are implemented here: they require commercial LVF
-Liberty and a path-based signoff tool (PrimeTime SI / Tempus).
+tractable. This open-flow evidence path excludes those features because they
+require commercial LVF Liberty and a path-based signoff tool (PrimeTime SI /
+Tempus).
 
 This is **all** BLOCKED on the commercial-EDA gate
 (`docs/evidence/pd/commercial-eda-gate.yaml`). The advanced-node corner

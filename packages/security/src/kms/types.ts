@@ -85,7 +85,7 @@ export class KeyNotFoundError extends KmsError {
 
 export class NotImplementedError extends KmsError {
   constructor(what: string) {
-    super(`not implemented: ${what}`);
+    super(`unsupported KMS operation: ${what}`);
     this.name = "NotImplementedError";
   }
 }

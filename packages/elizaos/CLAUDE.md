@@ -19,9 +19,9 @@ src/
     info.ts            `info` — list templates (text or --json)
     version.ts         `version` — print CLI version from package.json
     plugins.ts         `registerPluginsCommand` + `submitPluginToRegistry` — generate registry metadata and open an explicit registry PR via git/gh
-    deploy.ts          `deploy` / `runDeploy` — Eliza Cloud deploy keel (experimental: --dry-run prints plan only)
+    deploy.ts          `deploy` / `runDeploy` — Eliza Cloud app deploy trigger + status polling (`--dry-run` prints plan only)
     capability-router.ts  `capabilityRouterConnect` — POST agent API /api/capability-router/connect
-    DEPLOY_DESIGN.md   Design doc for the not-yet-implemented real deploy pipeline
+    DEPLOY_DESIGN.md   Design notes and follow-up boundaries for the deploy pipeline
     capability-router.test.ts
   scaffold.ts          Core engine: template-value builders, ${...} token replacement, renderTemplateTree,
                        managed-file diff (updateManagedFiles), git submodule init/update/hydrate
@@ -65,7 +65,7 @@ bun run --cwd packages/elizaos lint:check     # biome check (no write)
 
 - `ELIZAOS_UPSTREAM_REPO` / `ELIZAOS_UPSTREAM_BRANCH` — override a template's `upstream` git-submodule repo/branch in `resolveTemplateUpstream` (`scaffold.ts`). Used by `create` and `upgrade`; the smoke test sets these to point the project template's upstream at the local checkout.
 - `capability-router connect` reads `ELIZA_API_BASE_URL` / `ELIZA_API_BASE` (else `http://127.0.0.1:<ELIZA_API_PORT|ELIZA_PORT|2138>`) and `ELIZA_API_TOKEN` for the agent API call.
-- `ELIZACLOUD_API_KEY` is referenced only in `DEPLOY_DESIGN.md`; the current `deploy` keel performs no auth and never reads it.
+- `deploy` reads `ELIZAOS_CLOUD_API_KEY`, `ELIZA_CLOUD_API_KEY`, `ELIZACLOUD_API_KEY`, or `~/.elizaos/credentials.json`; `ELIZA_CLOUD_API_BASE_URL` / `ELIZAOS_CLOUD_API_BASE_URL` / `ELIZACLOUD_API_BASE_URL` / `ELIZA_CLOUD_BASE_URL` override the default cloud API base.
 - `packaged-smoke.mjs` honors `ELIZAOS_SMOKE_*` flags (`KEEP_TEMP`, `EJECT`, `REMOTE_UPSTREAM`, `SKIP_GLOBAL_INSTALL`, `FULLSTACK_INSTALL`, `TMPDIR`).
 
 Generated projects record state in `.elizaos/template.json` (`ProjectTemplateMetadata`): `cliVersion`, `templateId`, `templateVersion`, `values`, and a `managedFiles` map of relative-path → sha256. `upgrade` uses these hashes to classify each file as updated / created / deleted / unchanged / conflict; locally-modified files become conflicts and are left untouched.
@@ -81,5 +81,5 @@ Generated projects record state in `.elizaos/template.json` (`ProjectTemplateMet
 - `cli.ts` ends with top-level `await program.parseAsync()`; the bin shebang is `#!/usr/bin/env node` (re-applied by `ensureCliShebang` in `build.ts`).
 - Commands that interact with the user use `@clack/prompts` and call `process.exit(...)` directly on cancel/error; `deploy`/`capabilityRouterConnect` split a pure `run*` function (returns exit code) from the thin `process.exit` wrapper for testability.
 - `plugins submit --dry-run` prints the generated `entries/third-party/<pkg>.json` metadata. Opening a PR requires an explicit `--registry owner/repo`; no public default registry repository is configured. `@elizaos/*` names are rejected (reserved for first-party).
-- `deploy` is experimental: only `--dry-run` works (prints the planned sequence); a real run prints a not-implemented notice and exits 1.
+- `deploy` is experimental: real runs queue `POST /api/v1/apps/:id/deploy`, optionally attach `--domain`, and poll `GET /api/v1/apps/:id/deploy/status` until `READY` or `ERROR`; `--dry-run` prints the planned sequence without network calls.
 - This package is intentionally runtime-free — do NOT add `@elizaos/core` or other runtime deps. Keep it to the three production dependencies.

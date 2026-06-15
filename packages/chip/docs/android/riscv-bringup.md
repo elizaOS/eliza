@@ -78,7 +78,7 @@ sudo reboot
 ## AOSP riscv64 Cuttlefish Runbook
 
 Use this track first because it exercises Android userspace, ART, framework
-services, adb, and Tradefed without depending on the unfinished e1_soc CPU
+services, adb, and Tradefed without depending on the incomplete e1_soc CPU
 and GPU story.
 
 ```sh
@@ -158,7 +158,7 @@ m vendorimage
 ```
 
 The first expected result is a useful build failure if a required Android
-surface is not implemented. A successful `m vendorimage` only means the scaffold
+surface is absent. A successful `m vendorimage` only means the scaffold
 is syntactically integrated; it does not mean Android boots on e1_soc.
 
 Use the repo capture commands for archived evidence:

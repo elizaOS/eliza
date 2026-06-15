@@ -10,7 +10,7 @@ resulting route-table model reproduces the manifest's sampled routes.
 
 SILICON BOUNDARY: this proves the boot-time read/parse/MMIO-program logic and
 route-table semantics against the real ROM image format. Fuse burning and the
-OTP read port require silicon and are modelled, not implemented.
+OTP read port require silicon and are modeled only in this harness.
 
 Emits build/reports/e1x_boot_repair_fw.json (schema eliza.gate_status.v1).
 """
@@ -66,7 +66,7 @@ CLAIM_BOUNDARY = (
     "eliza.e1x.repair_rom.v1 image and a software model of the MMIO programmer "
     "register file; route-table semantics match e1x_repair_rom_loader.sv. Fuse "
     "burning, the OTP read port, wafer-scale programming, PD, DFT, package, and "
-    "silicon are out of scope and are modelled, not implemented."
+    "silicon are out of scope and are modeled only in this harness."
 )
 EVIDENCE_PATHS = [
     "fw/e1x/e1x_repair_boot.h",

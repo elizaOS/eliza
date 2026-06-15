@@ -141,7 +141,9 @@ def next_command_plan(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "source": "packages/chip/build/reports/e1_npu_android_proof_manifest_assembly.json",
                 "claim_boundary": "operator_commands_only_not_android_npu_or_release_evidence",
                 "commands": commands,
-                "expected_output_files": [finding.get("evidence")] if finding.get("evidence") else [],
+                "expected_output_files": [finding.get("evidence")]
+                if finding.get("evidence")
+                else [],
                 "requires": [
                     "booted Android target or compatibility harness for the named e1-NPU proof artifact",
                     "template-listed markers present in the captured artifact",

@@ -125,9 +125,8 @@ export async function generateAgentMonkeyProfileImage(
     const result = (await fal.subscribe("fal-ai/nano-banana-2", {
       input: {
         prompt: buildTextToImagePrompt(params),
-        image_size: "square",
+        aspect_ratio: "1:1",
         num_images: 1,
-        num_inference_steps: 4,
       },
       logs: false,
     })) as FalT2IResponse;

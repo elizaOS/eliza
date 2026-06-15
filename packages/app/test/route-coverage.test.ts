@@ -67,15 +67,24 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-companion/src/plugin.ts",
   "plugins/plugin-contacts/src/plugin.ts",
   "plugins/plugin-hyperliquid-app/src/plugin.ts",
-  "plugins/plugin-lifeops/src/plugin.ts",
   "plugins/plugin-messages/src/plugin.ts",
+  "plugins/plugin-personal-assistant/src/plugin.ts",
   "plugins/app-model-tester/src/plugin.ts",
+  "plugins/plugin-blocker/src/plugin.ts",
+  "plugins/plugin-calendar/src/plugin.ts",
+  "plugins/plugin-documents/src/plugin.ts",
+  "plugins/plugin-finances/src/plugin.ts",
+  "plugins/plugin-goals/src/plugin.ts",
+  "plugins/plugin-health/src/index.ts",
+  "plugins/plugin-inbox/src/plugin.ts",
+  "plugins/plugin-todos/src/index.ts",
   "plugins/plugin-phone/src/plugin.ts",
   "plugins/plugin-polymarket-app/src/plugin.ts",
   "plugins/plugin-shopify-ui/src/plugin.ts",
   "plugins/plugin-steward-app/src/plugin.ts",
   "plugins/plugin-vincent/src/plugin.ts",
   "plugins/plugin-wallet-ui/src/plugin.ts",
+  "plugins/plugin-vector-browser/src/plugin.ts",
   "plugins/plugin-2004scape/src/index.ts",
   "plugins/plugin-feed/src/index.ts",
   "plugins/plugin-app-control/src/index.ts",
@@ -84,6 +93,7 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-hyperscape/src/index.ts",
   "plugins/plugin-scape/src/index.ts",
   "plugins/plugin-screenshare/src/index.ts",
+  "plugins/plugin-social-alpha/src/index.ts",
   "plugins/plugin-task-coordinator/src/index.ts",
   "plugins/plugin-trajectory-logger/src/index.ts",
   "plugins/plugin-training/src/setup-routes.ts",
@@ -100,8 +110,26 @@ const APP_SHELL_REGISTRATION_SOURCES = [
 const NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: Readonly<Record<string, string>> = {
   "plugins/plugin-app-control/src/index.ts":
     "View manager routes are built into the app shell and tested through /views; this plugin supplies agent actions plus the manager view declaration.",
+  "plugins/plugin-blocker/src/plugin.ts":
+    "Focus is a decomposed personal-assistant domain view; it is discoverable through the View Manager but not yet a boot-loaded renderer module.",
+  "plugins/plugin-calendar/src/plugin.ts":
+    "Calendar is a decomposed personal-assistant domain view; it is discoverable through the View Manager but not yet a boot-loaded renderer module.",
+  "plugins/plugin-documents/src/plugin.ts":
+    "Documents is a decomposed personal-assistant domain view; it is discoverable through the View Manager but not yet a boot-loaded renderer module.",
+  "plugins/plugin-finances/src/plugin.ts":
+    "Finances is a decomposed personal-assistant domain view; it is discoverable through the View Manager but not yet a boot-loaded renderer module.",
+  "plugins/plugin-goals/src/plugin.ts":
+    "Goals is a decomposed personal-assistant domain view; it is discoverable through the View Manager but not yet a boot-loaded renderer module.",
+  "plugins/plugin-health/src/index.ts":
+    "Health is a decomposed personal-assistant domain view; it is discoverable through the View Manager but not yet a boot-loaded renderer module.",
+  "plugins/plugin-inbox/src/plugin.ts":
+    "Inbox is a decomposed personal-assistant domain view; it is discoverable through the View Manager but not yet a boot-loaded renderer module.",
   "plugins/plugin-screenshare/src/index.ts":
     "Screenshare is registered by runtime capability loading, not the app boot side-effect loader.",
+  "plugins/plugin-social-alpha/src/index.ts":
+    "Social Alpha is an opt-in agent runtime plugin; its leaderboard view registers when the agent enables the plugin, not via the app boot loader.",
+  "plugins/plugin-todos/src/index.ts":
+    "Todos is a decomposed personal-assistant domain view; it is discoverable through the View Manager but not yet a boot-loaded renderer module.",
 };
 
 const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
@@ -118,7 +146,8 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-hyperliquid-app":
     "plugins/plugin-hyperliquid-app/src/plugin.ts",
   "@elizaos/plugin-hyperscape": "plugins/plugin-hyperscape/src/index.ts",
-  "@elizaos/plugin-lifeops": "plugins/plugin-lifeops/src/plugin.ts",
+  "@elizaos/plugin-personal-assistant":
+    "plugins/plugin-personal-assistant/src/plugin.ts",
   "@elizaos/plugin-messages/register": "plugins/plugin-messages/src/plugin.ts",
   "@elizaos/plugin-phone": "plugins/plugin-phone/src/plugin.ts",
   "@elizaos/plugin-phone/register": "plugins/plugin-phone/src/plugin.ts",
@@ -134,6 +163,8 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-training": "plugins/plugin-training/src/setup-routes.ts",
   "@elizaos/plugin-trajectory-logger":
     "plugins/plugin-trajectory-logger/src/index.ts",
+  "@elizaos/plugin-vector-browser/register":
+    "plugins/plugin-vector-browser/src/plugin.ts",
   "@elizaos/plugin-vincent": "plugins/plugin-vincent/src/plugin.ts",
   "@elizaos/plugin-wallet-ui": "plugins/plugin-wallet-ui/src/plugin.ts",
   "@elizaos/plugin-wifi/register": null,
@@ -160,16 +191,16 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     path: "/hyperliquid",
   },
   {
-    manifestPath: "plugins/plugin-lifeops/src/plugin.ts",
-    id: "lifeops",
-    viewType: "xr",
-    path: "/lifeops",
-  },
-  {
     manifestPath: "plugins/plugin-messages/src/plugin.ts",
     id: "messages",
     viewType: "xr",
     path: "/messages",
+  },
+  {
+    manifestPath: "plugins/plugin-personal-assistant/src/plugin.ts",
+    id: "lifeops",
+    viewType: "xr",
+    path: "/lifeops",
   },
   {
     manifestPath: "plugins/app-model-tester/src/plugin.ts",

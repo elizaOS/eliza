@@ -16,11 +16,11 @@ export class UserLpProfileService
   private profiles: Map<string, UserLpProfile> = new Map();
 
   async start(_runtime?: IAgentRuntime): Promise<void> {
-    // No-op
+    // In-memory profiles are ready immediately.
   }
 
   async stop(_runtime?: IAgentRuntime): Promise<void> {
-    // No-op
+    // No external resources to release.
   }
 
   // Static methods required by ElizaOS Service architecture

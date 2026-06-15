@@ -157,6 +157,9 @@ async function runLoadTest(args: ReturnType<typeof parseArgs>): Promise<void> {
 
   const scenarioKey = scenario.toUpperCase() as keyof typeof TEST_SCENARIOS;
   const config = TEST_SCENARIOS[scenarioKey];
+  if (!config) {
+    throw new Error(`Unknown load-test scenario: ${scenario}`);
+  }
 
   console.log(`Concurrent Users: ${config.concurrentUsers}`);
   console.log(`Duration: ${config.durationSeconds}s`);
@@ -255,6 +258,9 @@ async function runA2AStressTest(
     .toUpperCase()
     .replace("-", "_") as keyof typeof A2A_TEST_SCENARIOS;
   const config = A2A_TEST_SCENARIOS[scenarioKey];
+  if (!config) {
+    throw new Error(`Unknown A2A load-test scenario: ${scenario}`);
+  }
 
   console.log(`Concurrent Agents: ${config.concurrentUsers}`);
   console.log(`Duration: ${config.durationSeconds}s`);

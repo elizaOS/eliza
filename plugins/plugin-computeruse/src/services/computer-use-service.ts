@@ -1435,11 +1435,6 @@ export class ComputerUseService extends Service {
       : `Computer-use approval rejected for "${command}".`;
   }
 
-  private async captureScreenshotBase64(): Promise<string> {
-    const buf = await driverCaptureScreenshot();
-    return buf.toString("base64");
-  }
-
   /**
    * Capture a specific display's frame as base64 PNG. Falls back to the
    * legacy single-display path if the per-display capture throws.
@@ -1750,11 +1745,7 @@ export class ComputerUseService extends Service {
       const image =
         getSetting("COMPUTERUSE_SANDBOX_IMAGE") ??
         getSetting("COMPUTER_USE_SANDBOX_IMAGE");
-      if (
-        (backend === "docker" || backend === "qemu") &&
-        image &&
-        image.trim().length > 0
-      ) {
+      if (backend === "docker" && image && image.trim().length > 0) {
         this.cuConfig.sandbox = {
           backend,
           image: image.trim(),

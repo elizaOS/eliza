@@ -466,7 +466,7 @@ is *enforcing the optional fields* in the production profile.
 
 ---
 
-## 7. Sequenced roadmap
+## 7. Sequenced Plan
 
 Effort in person-weeks (PW). Every blocked item names its dependency and stays
 fail-closed.

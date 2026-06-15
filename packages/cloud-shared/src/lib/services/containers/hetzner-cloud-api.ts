@@ -14,6 +14,16 @@
 
 import { containersEnv } from "../../config/containers-env";
 import { logger } from "../../utils/logger";
+import type {
+  ComputeProvider,
+  CreateServerInput,
+  CreateVolumeInput,
+  ProvisionedServer,
+} from "./compute-provider";
+
+// Re-export the canonical input/result types so existing importers of these
+// names from `hetzner-cloud-api` keep resolving after the seam extraction.
+export type { CreateServerInput, CreateVolumeInput, ProvisionedServer } from "./compute-provider";
 
 const HCLOUD_API_BASE = process.env.HCLOUD_API_BASE_URL ?? "https://api.hetzner.cloud/v1";
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -112,51 +122,14 @@ export interface HetznerVolume {
   created: string;
 }
 
-export interface CreateVolumeInput {
-  name: string;
-  /** Volume size in GiB (Hetzner allocates whole GiB). */
-  sizeGb: number;
-  /** Hetzner location code (must match the server it will attach to). */
-  location: string;
-  /** Filesystem format applied at creation time. Default `ext4`. */
-  format?: "ext4" | "xfs";
-  /** Optional server id to attach to immediately on create. */
-  serverId?: number;
-  /** Whether Hetzner should attempt automatic mount via cloud-init helpers. */
-  automount?: boolean;
-  labels?: Record<string, string>;
-}
-
-export interface CreateServerInput {
-  name: string;
-  serverType: string;
-  /** Datacenter / location shorthand (e.g. "fsn1", "nbg1", "hel1", "ash"). */
-  location: string;
-  /** Image id or canonical name (e.g. "ubuntu-24.04"). */
-  image: string;
-  /**
-   * Cloud-init / user_data script. Must be ≤32 KiB. The default node
-   * bootstrap script is provided by `buildContainerNodeUserData()`.
-   */
-  userData: string;
-  /** SSH key IDs (numeric). The control plane's deploy key should be one of these. */
-  sshKeyIds?: number[];
-  /** Network IDs to attach the server to (private networking). */
-  networkIds?: number[];
-  /** Hetzner Cloud labels — free-form key/value map. */
-  labels?: Record<string, string>;
-}
-
-export interface ProvisionedServer {
-  server: HetznerServer;
-  rootPassword: string | null;
-}
+// `CreateServerInput`, `CreateVolumeInput`, and `ProvisionedServer` now live
+// canonically in `./compute-provider` and are re-exported above.
 
 // ---------------------------------------------------------------------------
 // HetznerCloudClient
 // ---------------------------------------------------------------------------
 
-export class HetznerCloudClient {
+export class HetznerCloudClient implements ComputeProvider {
   private readonly token: string;
 
   private constructor(token: string) {
@@ -164,17 +137,17 @@ export class HetznerCloudClient {
   }
 
   /**
-   * Construct a client from `HCLOUD_TOKEN`, `HETZNER_CLOUD_TOKEN`, or
-   * `HETZNER_CLOUD_API_KEY`.
-   * Throws `missing_token` if neither env var is set — callers handle
-   * the case by falling back to the static auctioned pool.
+   * Construct a client from `HCLOUD_TOKEN` (matches the official Hetzner CLI
+   * + Terraform provider convention). Throws `missing_token` if the env var
+   * is unset — callers handle the case by falling back to the static
+   * auctioned pool.
    */
   static fromEnv(): HetznerCloudClient {
     const token = containersEnv.hetznerCloudToken();
     if (!token) {
       throw new HetznerCloudError(
         "missing_token",
-        "Hetzner Cloud API token is not configured. Set HCLOUD_TOKEN or HETZNER_CLOUD_API_KEY to enable elastic node provisioning.",
+        "Hetzner Cloud API token is not configured. Set HCLOUD_TOKEN to enable elastic node provisioning.",
       );
     }
     return new HetznerCloudClient(token);
@@ -208,7 +181,7 @@ export class HetznerCloudClient {
     }
   }
 
-  async createServer(input: CreateServerInput): Promise<ProvisionedServer> {
+  async createServer(input: CreateServerInput): Promise<ProvisionedServer<HetznerServer>> {
     if (input.userData.length > 32 * 1024) {
       throw new HetznerCloudError(
         "invalid_input",

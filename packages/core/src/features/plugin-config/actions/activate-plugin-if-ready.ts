@@ -9,11 +9,11 @@
 import { logger } from "../../../logger.ts";
 import type {
 	Action,
-	EventPayload,
 	HandlerCallback,
 	HandlerOptions,
 	IAgentRuntime,
 	Memory,
+	Service,
 	State,
 } from "../../../types/index.ts";
 import {
@@ -86,9 +86,9 @@ export const activatePluginIfReadyAction: Action = {
 			};
 		}
 
-		const client = runtime.getService(
+		const client = runtime.getService<Service & PluginConfigClient>(
 			PLUGIN_CONFIG_CLIENT_SERVICE,
-		) as unknown as PluginConfigClient | null;
+		);
 		if (!client) {
 			return {
 				success: false,
@@ -110,7 +110,7 @@ export const activatePluginIfReadyAction: Action = {
 			logger.info(
 				`[ActivatePluginIfReady] plugin=${pluginName} not_ready missing=${status.missing.length}`,
 			);
-			const text = `Plugin '${pluginName}' is not yet ready. Missing: ${status.missing.join(", ")}.`;
+			const text = `Plugin '${pluginName}' is not ready. Missing: ${status.missing.join(", ")}.`;
 			if (callback) {
 				await callback({ text, action: "ACTIVATE_PLUGIN_IF_READY" });
 			}
@@ -143,13 +143,11 @@ export const activatePluginIfReadyAction: Action = {
 		}
 
 		const payload: PluginActivatedEventPayload = {
+			runtime,
 			pluginName,
 			at: Date.now(),
 		};
-		await runtime.emitEvent(
-			PLUGIN_ACTIVATED_EVENT,
-			payload as unknown as EventPayload,
-		);
+		await runtime.emitEvent(PLUGIN_ACTIVATED_EVENT, payload);
 
 		logger.info(`[ActivatePluginIfReady] plugin=${pluginName} activated`);
 

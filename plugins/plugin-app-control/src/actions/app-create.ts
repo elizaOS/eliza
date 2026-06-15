@@ -147,8 +147,8 @@ function renderChoiceBlock(
 }
 
 /**
- * Recursive copy that preserves directories and rewrites placeholder
- * tokens in every file's contents (UTF-8 only).
+ * Recursive copy that preserves directories and rewrites template tokens in
+ * every file's contents (UTF-8 only).
  */
 async function copyTemplate(
 	src: string,
@@ -173,7 +173,7 @@ async function copyTemplate(
 		} else if (stat.isFile()) {
 			const raw = await fs.readFile(from);
 			let buffer: Buffer | string = raw;
-			// Best-effort placeholder rewrite: only treat as text if utf8 round-trip
+			// Best-effort template-token rewrite: only treat as text if utf8 round-trip
 			// is lossless (skip binaries like images).
 			const text = raw.toString("utf8");
 			if (Buffer.byteLength(text, "utf8") === raw.length) {

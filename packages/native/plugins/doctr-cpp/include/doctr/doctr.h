@@ -6,10 +6,8 @@
  * Upstream:
  *   https://github.com/mindee/doctr
  *
- * This header is the *interface* that the eventual ggml-backed
- * implementation must satisfy. The companion stub in
- * `src/doctr_stub.c` returns ENOSYS for every entry point so callers
- * can compile and link against this library while the real port lands.
+ * This header is the interface implemented by the native CPU reference
+ * runtime. Dispatcher-backed builds must preserve the same ABI.
  *
  * Two heads are exposed:
  *   1. db_resnet50 — differentiable-binarization text detection. Input
@@ -30,8 +28,7 @@
  * the caller's own mutex.
  *
  * Error handling: all entry points return `int` — zero on success,
- * negative `errno`-style codes on failure. The stub returns `-ENOSYS`
- * so callers can probe for "real" availability with a single call.
+ * negative `errno`-style codes on failure.
  */
 
 #ifndef DOCTR_DOCTR_H
@@ -97,7 +94,7 @@ typedef struct doctr_session doctr_session;
  * `scripts/doctr_to_gguf.py`. The GGUF must declare both the detector
  * and recognizer variants this header is dimensioned around (see
  * macros above). Returns 0 on success and writes the new handle into
- * `*out`. Returns `-ENOSYS` from the stub.
+ * `*out`.
  */
 int doctr_open(const char *gguf_path, doctr_session **out);
 
@@ -139,9 +136,8 @@ int doctr_recognize_word(doctr_session *session,
 /* ---------------- diagnostics ---------------- */
 
 /*
- * Capability string of the active backend, e.g. "ggml-cpu",
- * "ggml-metal", "stub". Reflects the *runtime*-selected path. The stub
- * returns "stub".
+ * Capability string of the active backend, e.g. "cpu-ref", "ggml-cpu",
+ * "ggml-metal". Reflects the runtime-selected path.
  */
 const char *doctr_active_backend(void);
 

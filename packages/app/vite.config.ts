@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
@@ -39,6 +40,10 @@ const _require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../..");
 const nativePluginsRoot = path.join(elizaRoot, "plugins");
+const bunLinkedPackageCacheRoot = path.join(
+  os.homedir(),
+  ".bun/install/cache/links",
+);
 
 // Authoritative PascalCase-icon-name → kebab-file map, parsed from lucide's own
 // ESM barrel so there is zero name-guessing. Used to rewrite the app's
@@ -176,9 +181,38 @@ function _tryResolve(id: string): string | undefined {
     return undefined;
   }
 }
+function _tryResolveFrom(id: string, fromFile: string): string | undefined {
+  try {
+    return createRequire(fromFile).resolve(id);
+  } catch {
+    return undefined;
+  }
+}
 function tryResolvePackageModuleEntry(id: string): string | undefined {
   try {
     const packageJsonPath = _require.resolve(`${id}/package.json`);
+    const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as {
+      module?: unknown;
+      main?: unknown;
+    };
+    const entry =
+      typeof pkg.module === "string"
+        ? pkg.module
+        : typeof pkg.main === "string"
+          ? pkg.main
+          : undefined;
+    return entry ? path.join(path.dirname(packageJsonPath), entry) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+function tryResolvePackageModuleEntryFrom(
+  id: string,
+  fromFile: string,
+): string | undefined {
+  try {
+    const packageJsonPath = _tryResolveFrom(`${id}/package.json`, fromFile);
+    if (!packageJsonPath) return undefined;
     const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as {
       module?: unknown;
       main?: unknown;
@@ -205,6 +239,118 @@ const json5EsmEntry = path.join(
   path.dirname(_require.resolve("json5/package.json")),
   "dist/index.mjs",
 );
+const markedEntry = path.join(
+  elizaRoot,
+  "plugins/plugin-task-coordinator/node_modules/marked/lib/marked.esm.js",
+);
+const streamdownEntry = path.join(
+  uiPkgRoot,
+  "node_modules/streamdown/dist/index.js",
+);
+const rechartsEntry = path.join(
+  uiPkgRoot,
+  "node_modules/recharts/es6/index.js",
+);
+const nprogressEntry = path.join(
+  uiPkgRoot,
+  "node_modules/nprogress/nprogress.js",
+);
+// react-router-dom is a direct UI package dependency, not an app dependency.
+// With optimizeDeps.noDiscovery enabled, Vite cannot discover/pre-bundle it
+// from packages/app, so its raw react-router dev chunk serves the CJS `cookie`
+// package to the browser and blanks the dev shell. Resolve this graph from the
+// package scopes that actually own each import.
+const uiPackageJsonPath = path.join(uiPkgRoot, "package.json");
+const reactRouterDomEntry = tryResolvePackageModuleEntryFrom(
+  "react-router-dom",
+  uiPackageJsonPath,
+);
+const reactRouterEntry = reactRouterDomEntry
+  ? tryResolvePackageModuleEntryFrom("react-router", reactRouterDomEntry)
+  : undefined;
+const reactRouterDomExportEntry = reactRouterEntry
+  ? _tryResolveFrom("react-router/dom", reactRouterEntry)
+  : undefined;
+const reactRouterCookieEntry = reactRouterEntry
+  ? tryResolvePackageModuleEntryFrom("cookie", reactRouterEntry)
+  : undefined;
+// yaml / uuid / adze are transitive deps (logger, core, plugin-documents) that
+// are listed in optimizeDeps.include but are not direct deps of packages/app,
+// so bun workspace hoisting leaves them unresolvable from the app's optimizer
+// root. Vite then logs "Failed to resolve dependency … present in optimizeDeps
+// .include", skips pre-bundling, and serves the bare specifiers raw — which 504s
+// in the browser and blanks the dev shell so the chat composer never mounts.
+// Resolve each browser entry from the app scope and alias the bare specifier so
+// the dep is resolvable and pre-bundlable. `default` is the browser condition
+// for yaml/uuid; adze is plain ESM via its `main` field.
+// Resolution is best-effort: precisely because these are transitive deps,
+// a fresh install (CI) may not expose them to the app scope at all — a thrown
+// resolve here kills config load and with it the whole production build, which
+// doesn't need these dev-server pre-bundle aliases in the first place.
+const yamlBrowserEntry = (() => {
+  try {
+    return path.join(
+      path.dirname(_require.resolve("yaml/package.json")),
+      "browser/index.js",
+    );
+  } catch {
+    return undefined;
+  }
+})();
+const uuidBrowserEntry = (() => {
+  try {
+    return path.join(
+      path.dirname(_require.resolve("uuid/package.json")),
+      "dist/index.js",
+    );
+  } catch {
+    return undefined;
+  }
+})();
+const adzeEntry = (() => {
+  try {
+    return _require.resolve("adze");
+  } catch {
+    return undefined;
+  }
+})();
+// react-day-picker (transitive via @elizaos/ui's calendar) statically imports
+// `date-fns/locale` — the barrel re-exporting ~700 per-locale modules — and
+// `date-fns` from 150+ call sites. date-fns is hoisted into the bun store where
+// packages/app cannot resolve the bare specifier, so with optimizeDeps.noDiscovery
+// on it could never be pre-bundled and Vite served the whole locale tree raw:
+// 700+ cold module round-trips on every load and every HMR full-reload, which
+// stalled the dev server until the dev-ui supervisor health-check SIGTERM+restarted
+// it ("[vite] server connection lost. Polling for restart…" + ERR_CONNECTION_REFUSED).
+// Resolve each ESM entry through react-day-picker's scope and alias the bare
+// specifiers so they resolve from the app optimizer root and pre-bundle into a
+// single chunk. date-fns is `type: module`, so `index.js`/`locale.js` are the
+// browser entries; date-fns-jalali mirrors it (react-day-picker imports it for
+// the Persian calendar path).
+const reactDayPickerEntry = tryResolvePackageModuleEntryFrom(
+  "react-day-picker",
+  uiPackageJsonPath,
+);
+const resolveDateFnsDir = (id: string): string | undefined => {
+  if (!reactDayPickerEntry) return undefined;
+  const packageJson = _tryResolveFrom(
+    `${id}/package.json`,
+    reactDayPickerEntry,
+  );
+  return packageJson ? path.dirname(packageJson) : undefined;
+};
+const dateFnsDir = resolveDateFnsDir("date-fns");
+const dateFnsEntry = dateFnsDir ? path.join(dateFnsDir, "index.js") : undefined;
+const dateFnsLocaleEntry = dateFnsDir
+  ? path.join(dateFnsDir, "locale.js")
+  : undefined;
+const dateFnsJalaliDir = resolveDateFnsDir("date-fns-jalali");
+const dateFnsJalaliEntry = dateFnsJalaliDir
+  ? path.join(dateFnsJalaliDir, "index.js")
+  : undefined;
+const dateFnsJalaliLocaleEntry = dateFnsJalaliDir
+  ? path.join(dateFnsJalaliDir, "locale.js")
+  : undefined;
 // @opentelemetry/api is a transitive runtime dep of @elizaos/core's browser
 // bundle (StackContextManager / streaming-context tracing) but is not hoisted
 // where packages/app can resolve the bare specifier, so Vite served its ~46
@@ -659,7 +805,7 @@ const DEFAULT_APP_ROUTE_PLUGIN_MODULES = [
   "@elizaos/plugin-vincent",
   "@elizaos/plugin-shopify-ui",
   "@elizaos/plugin-steward-app",
-  "@elizaos/plugin-lifeops",
+  "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-github",
   "@elizaos/plugin-computeruse",
   "@elizaos/plugin-elizacloud",
@@ -1475,6 +1621,149 @@ function workspaceJsxInJsPlugin(): Plugin {
   };
 }
 
+const DEV_CJS_INTEROP_SHIM_ALIASES: Array<[RegExp, string]> = [
+  [/^cookie$/, "src/shims/cookie.ts"],
+  [
+    /^set-cookie-parser(?:\/lib\/set-cookie(?:\.js)?)?$/,
+    "src/shims/set-cookie-parser.ts",
+  ],
+  [
+    /^use-sync-external-store\/(?:shim\/)?with-selector(?:\.js)?$/,
+    "src/shims/use-sync-external-store-with-selector.ts",
+  ],
+  [/^style-to-js(?:\/cjs\/index(?:\.js)?)?$/, "src/shims/style-to-js.ts"],
+  [/^debug(?:\/src\/browser(?:\.js)?)?$/, "src/shims/debug.ts"],
+  [/^extend(?:\/index(?:\.js)?)?$/, "src/shims/extend.ts"],
+  [/^es-toolkit\/compat\/get(?:\.js)?$/, "src/shims/es-toolkit-compat-get.ts"],
+  [
+    /^es-toolkit\/compat\/uniqBy(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-uniqBy.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/sortBy(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-sortBy.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/throttle(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-throttle.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/last(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-last.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/maxBy(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-maxBy.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/minBy(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-minBy.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/range(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-range.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/omit(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-omit.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/sumBy(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-sumBy.ts",
+  ],
+  [
+    /^es-toolkit\/compat\/isPlainObject(?:\.js)?$/,
+    "src/shims/es-toolkit-compat-isPlainObject.ts",
+  ],
+  [
+    /^decimal\.js-light(?:\/decimal(?:\.(?:js|mjs))?)?$/,
+    "src/shims/decimal-js-light.ts",
+  ],
+  [/^eventemitter3$/, "src/shims/eventemitter3.ts"],
+  [/^react-is$/, "src/shims/react-is.ts"],
+  [/^nprogress(?:\/nprogress(?:\.js)?)?$/, "src/shims/nprogress.ts"],
+];
+
+function devCjsInteropShimAliasesPlugin(): Plugin {
+  return {
+    name: "dev-cjs-interop-shim-aliases",
+    apply: "serve",
+    enforce: "pre",
+    resolveId(source) {
+      const sourceWithoutQuery = source.split("?")[0] ?? source;
+      for (const [find, replacement] of DEV_CJS_INTEROP_SHIM_ALIASES) {
+        if (find.test(sourceWithoutQuery)) {
+          return path.resolve(here, replacement);
+        }
+      }
+      return null;
+    },
+  };
+}
+
+// Builds a Vite/Rolldown plugin that resolves `es-toolkit/compat/<name>` to
+// its ESM `dist/compat/**/<name>.mjs` and re-exports the named binding as
+// default, bypassing the CJS-only export map. Must be registered in both
+// `plugins` (raw-serve path) and `optimizeDeps.rolldownOptions.plugins`
+// (dep-optimizer path) so neither path touches the broken CJS entry.
+function makeEsToolkitCompatEsmPlugin(
+  pluginName: string,
+  isRaw = false,
+): Plugin {
+  const PREFIX = `\0estk-${pluginName}:`;
+  return {
+    name: `es-toolkit-compat-esm-${pluginName}`,
+    enforce: isRaw ? ("pre" as const) : undefined,
+    resolveId(source, importer) {
+      const m = /^es-toolkit\/compat\/([A-Za-z0-9_]+)(?:\.js)?$/.exec(source);
+      if (!m) return null;
+      let dir: string | null = null;
+      try {
+        const req = createRequire(
+          importer || path.join(elizaRoot, "node_modules", "x.js"),
+        );
+        dir = path.dirname(req.resolve("es-toolkit/package.json"));
+      } catch {
+        return null;
+      }
+      const stack = [path.join(dir, "dist", "compat")];
+      let mjs: string | null = null;
+      while (stack.length) {
+        const d = stack.pop();
+        if (d === undefined) break;
+        let entries: fs.Dirent[];
+        try {
+          entries = fs.readdirSync(d, { withFileTypes: true });
+        } catch {
+          continue;
+        }
+        for (const ent of entries) {
+          const full = path.join(d, ent.name);
+          if (ent.isDirectory()) stack.push(full);
+          else if (ent.name === `${m[1]}.mjs`) {
+            mjs = full;
+            break;
+          }
+        }
+        if (mjs) break;
+      }
+      if (!mjs) return null;
+      return `${PREFIX}${m[1]}\0${mjs}`;
+    },
+    load(id) {
+      if (!id.startsWith(PREFIX)) return null;
+      const rest = id.slice(PREFIX.length);
+      const sep = rest.indexOf("\0");
+      const name = rest.slice(0, sep);
+      const spec = JSON.stringify(rest.slice(sep + 1));
+      return (
+        `export { ${name} as default } from ${spec};\n` +
+        `export * from ${spec};\n`
+      );
+    },
+  };
+}
+
 export default defineConfig({
   root: here,
   customLogger: viteLogger,
@@ -1512,6 +1801,14 @@ export default defineConfig({
     ),
   },
   plugins: [
+    // es-toolkit@1.47's `./compat/*` export map exposes only a CJS condition
+    // (no ESM `import`), so `import get from "es-toolkit/compat/get"` (recharts
+    // default-imports 11 such subpaths) resolves to a CJS shim Vite can't
+    // surface a `default` for when served raw -> blank app. Rewrite each to the
+    // real ESM `dist/compat/**/<name>.mjs` (resolved relative to the importer)
+    // and re-export the named binding as default. Mirrors the optimizer-path
+    // plugin in optimizeDeps.rolldownOptions so both serve paths are covered.
+    makeEsToolkitCompatEsmPlugin("raw", true),
     {
       // lucide-react ships ~1500 icons but the app uses ~130. The barrel is not
       // tree-shaken (the directory alias hides the package's sideEffects:false,
@@ -1623,18 +1920,18 @@ export default defineConfig({
     // and Vite emits a hard "Rollup failed to resolve" error for node_modules
     // imports before the rolldownOptions plugin layer can intercept them.
     // This top-level Vite plugin intercepts the specifier unconditionally so
-    // the alias (when present) or the no-op stub (when absent) always wins.
+    // the alias (when present) or the browser telemetry fallback (when absent) always wins.
     {
       name: "otel-api-resolver",
       enforce: "pre" as const,
       resolveId(id: string) {
         if (id !== "@opentelemetry/api") return null;
         if (otelApiEntry) return otelApiEntry;
-        return "\0otel-api-stub";
+        return "\0otel-api-fallback";
       },
       load(id: string) {
-        if (id !== "\0otel-api-stub") return null;
-        // Minimal no-op stub satisfying the named exports that `ai` reads at
+        if (id !== "\0otel-api-fallback") return null;
+        // Minimal browser telemetry fallback satisfying the named exports that `ai` reads at
         // import time: trace, context, propagation, metrics, diag,
         // SpanStatusCode, SpanKind, ROOT_CONTEXT, createContextKey,
         // defaultTextMapPropagator, isSpanContextValid, INVALID_SPAN_CONTEXT,
@@ -1659,6 +1956,7 @@ export const INVALID_TRACER_PROVIDER = {};
     iosLocalAgentKernelEsbuildPlugin(),
     watchWorkspacePackagesPlugin(),
     workspaceJsxInJsPlugin(),
+    devCjsInteropShimAliasesPlugin(),
     tailwindcss(),
     react(),
     desktopCorsPlugin(),
@@ -1680,6 +1978,8 @@ export const INVALID_TRACER_PROVIDER = {};
     dedupe: [
       "react",
       "react-dom",
+      "react-router",
+      "react-router-dom",
       "three",
       "@capacitor/core",
       "@elizaos/app-core",
@@ -1704,6 +2004,26 @@ export const INVALID_TRACER_PROVIDER = {};
       {
         find: /^picocolors$/,
         replacement: path.resolve(here, "src/shims/picocolors.ts"),
+      },
+      {
+        find: /^cookie$/,
+        replacement: path.resolve(here, "src/shims/cookie.ts"),
+      },
+      {
+        find: /^set-cookie-parser$/,
+        replacement: path.resolve(here, "src/shims/set-cookie-parser.ts"),
+      },
+      {
+        find: /^style-to-js(?:\/cjs\/index\.js)?$/,
+        replacement: path.resolve(here, "src/shims/style-to-js.ts"),
+      },
+      {
+        find: /^debug(?:\/src\/browser(?:\.js)?)?$/,
+        replacement: path.resolve(here, "src/shims/debug.ts"),
+      },
+      {
+        find: /^extend$/,
+        replacement: path.resolve(here, "src/shims/extend.ts"),
       },
       {
         find: /^mammoth$/,
@@ -1736,7 +2056,72 @@ export const INVALID_TRACER_PROVIDER = {};
         find: /^use-sync-external-store\/shim$/,
         replacement: path.resolve(here, "src/shims/use-sync-external-store.ts"),
       },
+      {
+        find: /^use-sync-external-store\/(?:shim\/)?with-selector(?:\.js)?$/,
+        replacement: path.resolve(
+          here,
+          "src/shims/use-sync-external-store-with-selector.ts",
+        ),
+      },
       { find: /^json5$/, replacement: json5EsmEntry },
+      ...(yamlBrowserEntry
+        ? [{ find: /^yaml$/, replacement: yamlBrowserEntry }]
+        : []),
+      ...(uuidBrowserEntry
+        ? [{ find: /^uuid$/, replacement: uuidBrowserEntry }]
+        : []),
+      ...(adzeEntry ? [{ find: /^adze$/, replacement: adzeEntry }] : []),
+      ...(reactDayPickerEntry
+        ? [{ find: /^react-day-picker$/, replacement: reactDayPickerEntry }]
+        : []),
+      // Order matters: the `/locale` subpaths must precede the bare-package
+      // aliases so `^date-fns$` does not shadow `^date-fns/locale$`.
+      ...(dateFnsLocaleEntry
+        ? [{ find: /^date-fns\/locale$/, replacement: dateFnsLocaleEntry }]
+        : []),
+      ...(dateFnsEntry
+        ? [{ find: /^date-fns$/, replacement: dateFnsEntry }]
+        : []),
+      ...(dateFnsJalaliLocaleEntry
+        ? [
+            {
+              find: /^date-fns-jalali\/locale$/,
+              replacement: dateFnsJalaliLocaleEntry,
+            },
+          ]
+        : []),
+      ...(dateFnsJalaliEntry
+        ? [{ find: /^date-fns-jalali$/, replacement: dateFnsJalaliEntry }]
+        : []),
+      ...(fs.existsSync(streamdownEntry)
+        ? [{ find: /^streamdown$/, replacement: streamdownEntry }]
+        : []),
+      ...(fs.existsSync(rechartsEntry)
+        ? [{ find: /^recharts$/, replacement: rechartsEntry }]
+        : []),
+      ...(fs.existsSync(nprogressEntry)
+        ? [{ find: /^nprogress$/, replacement: nprogressEntry }]
+        : []),
+      ...(reactRouterDomEntry
+        ? [{ find: /^react-router-dom$/, replacement: reactRouterDomEntry }]
+        : []),
+      ...(reactRouterEntry
+        ? [{ find: /^react-router$/, replacement: reactRouterEntry }]
+        : []),
+      ...(reactRouterDomExportEntry
+        ? [
+            {
+              find: /^react-router\/dom$/,
+              replacement: reactRouterDomExportEntry,
+            },
+          ]
+        : []),
+      ...(reactRouterCookieEntry
+        ? [{ find: /^cookie$/, replacement: reactRouterCookieEntry }]
+        : []),
+      ...(fs.existsSync(markedEntry)
+        ? [{ find: /^marked$/, replacement: markedEntry }]
+        : []),
       {
         // Per-icon deep imports (emitted by the lucide-per-icon-imports plugin)
         // resolve here — the exact alias below only matches the bare specifier.
@@ -1845,6 +2230,16 @@ export const INVALID_TRACER_PROVIDER = {};
           "@elizaos/plugin-facewear/register",
           "plugins/plugin-facewear/src/register.ts",
         ],
+        // plugin-calendar subpaths consumed by plugin-personal-assistant in the renderer
+        // bundle. Resolve from source so the app build does not require
+        // plugin-calendar to be built first (its dist is absent during the
+        // renderer build in CI). client-calendar is a side-effect import that
+        // augments ElizaClient.prototype with the calendar feed methods.
+        [
+          "@elizaos/plugin-calendar/api/client-calendar",
+          "plugins/plugin-calendar/src/api/client-calendar.ts",
+        ],
+        ["@elizaos/plugin-calendar/ui", "plugins/plugin-calendar/src/ui.ts"],
       ].map(([pkgName, relativeEntry]) => ({
         find: new RegExp(`^${escapeRegExp(pkgName)}$`),
         replacement: path.resolve(elizaRoot, relativeEntry),
@@ -1898,14 +2293,29 @@ export const INVALID_TRACER_PROVIDER = {};
           "packages/shared/src/brand/index.ts",
         ),
       },
-      // The LifeOps package root also exports server/service internals.
-      // The renderer only needs the UI facade; keep it off Discord/native deps.
+      // plugin-personal-assistant no longer ships a renderer view (the
+      // legacy /lifeops dashboard was killed in the lifeops decomposition);
+      // domain views live in plugin-todos/inbox/goals/health/calendar/etc.
+      // src/ui.ts is the browser-safe facade — it imports the side-effectful
+      // HTTP client and re-exports the surviving settings-card components,
+      // without dragging discord/health/phone/calendly/native deps into the
+      // browser bundle (those are pulled in by src/index.ts / src/plugin.ts).
       {
-        find: /^@elizaos\/plugin-lifeops$/,
+        find: /^@elizaos\/plugin-personal-assistant$/,
         replacement: path.resolve(
           elizaRoot,
-          "plugins/plugin-lifeops/src/ui.ts",
+          "plugins/plugin-personal-assistant/src/ui.ts",
         ),
+      },
+      // Calendly is a server-side connector pulled through legacy
+      // personal-assistant service paths. The app renderer does not execute it.
+      {
+        find: /^@elizaos\/plugin-calendly$/,
+        replacement: path.join(appCoreSrcRoot, "platform/empty-node-module.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-google$/,
+        replacement: path.join(appCoreSrcRoot, "platform/empty-node-module.ts"),
       },
       // The Steward app package root includes wallet route handlers and
       // server-side signing services. The renderer imports only these views.
@@ -1936,9 +2346,22 @@ export const INVALID_TRACER_PROVIDER = {};
           "plugins/plugin-health/src/ui/index.ts",
         ),
       },
-      // Browser-safe aliases for local app plugin package roots.
+      // `screen-time/mobile-signal-setup` ships browser-safe badge/label helpers
+      // the LifeOps renderer imports; alias it to source like `/ui` so the
+      // production browser build resolves it without a built plugin-health dist.
+      {
+        find: /^@elizaos\/plugin-health\/screen-time\/mobile-signal-setup$/,
+        replacement: path.resolve(
+          elizaRoot,
+          "plugins/plugin-health/src/screen-time/mobile-signal-setup.ts",
+        ),
+      },
+      // Browser-safe aliases for local app plugin package roots. Keep these
+      // before workspace aliases; Vite/Rollup uses the first matching alias, and
+      // the renderer must prefer UI facades over package root exports.
       ...createAppPluginBrowserAliases(),
-      // Dynamic aliases for local app plugin package subpaths.
+      // Dynamic aliases for local app plugin package roots that do not have a
+      // dedicated browser facade.
       ...createWorkspacePackageAliases([path.resolve(elizaRoot, "plugins")]),
       ...(() => {
         const sharedPkgPath = path.resolve(
@@ -2075,10 +2498,24 @@ export const INVALID_TRACER_PROVIDER = {};
           // `clearCloudSecrets`, `resolveCloudTtsBaseUrl`, etc.) from the
           // plugin; without an alias Rolldown errors with MISSING_EXPORT
           // when bundling that re-export chain for the renderer. Route the
-          // import to the local browser stub, which already provides all of
+          // import to the local browser replacement, which already provides all of
           // those names as no-ops (see `platform/empty-node-module.ts`).
           {
             find: /^@elizaos\/plugin-elizacloud$/,
+            replacement: path.join(
+              appCoreSrcRoot,
+              "platform/empty-node-module.ts",
+            ),
+          },
+          {
+            find: /^@elizaos\/plugin-calendly$/,
+            replacement: path.join(
+              appCoreSrcRoot,
+              "platform/empty-node-module.ts",
+            ),
+          },
+          {
+            find: /^@elizaos\/plugin-google$/,
             replacement: path.join(
               appCoreSrcRoot,
               "platform/empty-node-module.ts",
@@ -2102,6 +2539,9 @@ export const INVALID_TRACER_PROVIDER = {};
       "react",
       "react-dom",
       "react-dom/client",
+      "react-router",
+      "react-router/dom",
+      "react-router-dom",
       // Three.js core + all subpath imports must be pre-bundled together so
       // esbuild shares a single module identity.
       "three",
@@ -2116,6 +2556,10 @@ export const INVALID_TRACER_PROVIDER = {};
       // lucide-react alone is ~250 per-icon requests once the build-only
       // per-icon rewrite is disabled in dev; the rest are multi-file ESM libs.
       "lucide-react",
+      "streamdown",
+      "recharts",
+      "nprogress",
+      "cookie",
       "yaml",
       "uuid",
       "adze",
@@ -2130,6 +2574,24 @@ export const INVALID_TRACER_PROVIDER = {};
       "zod",
       "zod/v3",
       "zod/v4",
+      // react-day-picker (via @elizaos/ui's calendar) statically imports
+      // `date-fns/locale` — the barrel that re-exports ~700 per-locale modules
+      // — from 100+ call sites. With noDiscovery on and date-fns unbundled,
+      // Vite served that whole locale tree raw, so every page load (and every
+      // HMR full-reload) fired 700+ cold module round-trips. The request storm
+      // stalled the dev server long enough for the dev-ui supervisor's port
+      // health-check to declare it unresponsive and SIGTERM+restart it —
+      // surfacing as "[vite] server connection lost. Polling for restart…"
+      // plus ERR_CONNECTION_REFUSED across the in-flight locale requests and a
+      // failed dynamic import of plugin-wallet-ui. Pre-bundling collapses the
+      // tree (date-fns + date-fns-jalali locales) into a single optimized
+      // chunk. date-fns-jalali is also pre-bundled because react-day-picker
+      // statically imports it for the Persian calendar path.
+      "react-day-picker",
+      "date-fns",
+      "date-fns/locale",
+      "date-fns-jalali",
+      "date-fns-jalali/locale",
       // Resolvable via the resolve.alias above (transitive through @elizaos/core).
       "@opentelemetry/api",
     ],
@@ -2195,6 +2657,15 @@ export const INVALID_TRACER_PROVIDER = {};
             );
           },
         },
+        // es-toolkit@1.47 `./compat/*` is CJS-only and its CJS impl names a
+        // local `require_isUnsafeProperty` that collides with the dep
+        // optimizer's CJS-interop helper -> self-shadowing
+        // `var require_isUnsafeProperty = require_isUnsafeProperty()` (TDZ ->
+        // "is not a function") -> blank app. Resolve each
+        // `es-toolkit/compat/<name>` to its ESM `dist/compat/**/<name>.mjs`
+        // and re-export the named binding as default so the optimizer never
+        // touches the broken CJS path. (Raw-serve counterpart is in `plugins`.)
+        makeEsToolkitCompatEsmPlugin("optimize"),
       ],
     },
     exclude: [
@@ -2250,7 +2721,7 @@ export const INVALID_TRACER_PROVIDER = {};
         // resolve.alias above covers the case when otelApiEntry is resolved, but
         // when the bun store layout differs in CI the alias may be absent.
         // This plugin is a safety net: it resolves the bare specifier to the
-        // same entry the alias would use, falling back to a no-op stub.
+        // same entry the alias would use, falling back to a browser telemetry module.
         ...(otelApiEntry
           ? [
               {
@@ -2263,14 +2734,14 @@ export const INVALID_TRACER_PROVIDER = {};
             ]
           : [
               {
-                name: "otel-api-build-stub",
+                name: "otel-api-build-fallback",
                 resolveId(id: string) {
-                  if (id === "@opentelemetry/api") return "\0otel-api-stub";
+                  if (id === "@opentelemetry/api") return "\0otel-api-fallback";
                   return null;
                 },
                 load(id: string) {
-                  if (id === "\0otel-api-stub") {
-                    // Minimal no-op that satisfies the `trace`, `context`,
+                  if (id === "\0otel-api-fallback") {
+                    // Minimal browser telemetry module that satisfies the `trace`, `context`,
                     // `propagation`, `metrics`, `diag`, `SpanStatusCode` and
                     // `SpanKind` named exports that `ai` reads at import time.
                     return `
@@ -2313,7 +2784,7 @@ export const INVALID_TRACER_PROVIDER = {};
       // Native-only deps that must not be resolved during the browser build.
       // Node built-ins (node:fs, fs, path, etc.) are NOT externalized here —
       // they are intercepted by nativeModuleStubPlugin which replaces them
-      // with no-op Proxy stubs. Externalizing them causes Rollup to emit
+      // with browser fallback Proxy modules. Externalizing them causes Rollup to emit
       // bare `import "node:fs"` in output chunks, which the browser rejects
       // with a CSP violation.
       external: (id) => {
@@ -2343,7 +2814,7 @@ export const INVALID_TRACER_PROVIDER = {};
         manualChunks: resolveManualChunk,
       },
     },
-    // rollupOptions mirrors the otel stub from rolldownOptions above.
+    // rollupOptions mirrors the otel fallback from rolldownOptions above.
     // Vite reads rolldownOptions only when using experimental Rolldown; when
     // running with the classic Rollup bundler (@rollup/wasm-node, as in CI),
     // rolldownOptions is silently ignored and the otel-api-build-* plugin
@@ -2363,13 +2834,13 @@ export const INVALID_TRACER_PROVIDER = {};
             ]
           : [
               {
-                name: "otel-api-build-stub",
+                name: "otel-api-build-fallback",
                 resolveId(id: string) {
-                  if (id === "@opentelemetry/api") return "\0otel-api-stub";
+                  if (id === "@opentelemetry/api") return "\0otel-api-fallback";
                   return null;
                 },
                 load(id: string) {
-                  if (id !== "\0otel-api-stub") return null;
+                  if (id !== "\0otel-api-fallback") return null;
                   return `
 export const trace = { getTracer: () => ({ startSpan: () => ({end(){},setAttribute(){},setStatus(){},recordException(){},isRecording:()=>false}), startActiveSpan: (_n, _o, _ctx, fn) => { const f = typeof _ctx === 'function' ? _ctx : fn; return f && f({end(){},setAttribute(){},setStatus(){},recordException(){},isRecording:()=>false}); } }) };
 export const context = { active: () => ({}), with: (_c, fn) => fn(), bind: (_c, fn) => fn };
@@ -2457,7 +2928,13 @@ export const INVALID_TRACER_PROVIDER = {};
     },
     fs: {
       // Allow serving files from the app directory and eliza src
-      allow: [here, elizaRoot],
+      allow: [
+        here,
+        elizaRoot,
+        ...(fs.existsSync(bunLinkedPackageCacheRoot)
+          ? [bunLinkedPackageCacheRoot]
+          : []),
+      ],
     },
     watch: {
       // Polling is only needed in Docker/WSL where native fs events are unreliable

@@ -149,7 +149,7 @@ export const ROUTABLE_TEXT_MODEL_TYPES: ReadonlySet<string> = new Set([
  *   - `modelClass` is undefined (back-compat path).
  *   - `modelClass` is a string that is not a registered key (forward-compat —
  *     the runtime treats unknown classes as "no preference" rather than
- *     throwing, so a future plugin adding `MEDIUM` to its action descriptors
+ *     throwing, so a plugin with a newer `MEDIUM` action descriptor running
  *     against an older runtime degrades to default behavior instead of
  *     crashing).
  */

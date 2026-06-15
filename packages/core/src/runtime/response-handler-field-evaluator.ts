@@ -254,7 +254,7 @@ export interface ResponseHandlerFieldEvaluator<TValue = unknown> {
 	 * field and a read-only view of all sibling fields.
 	 *
 	 * Return a `ResponseHandlerFieldEffect` to mutate the result or preempt
-	 * the downstream routing. Return `undefined` for no-op.
+	 * the downstream routing. Return `undefined` to leave routing unchanged.
 	 */
 	handle?(
 		ctx: ResponseHandlerFieldHandleContext<TValue>,

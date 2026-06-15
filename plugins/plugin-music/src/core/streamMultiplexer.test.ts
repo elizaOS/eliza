@@ -1,45 +1,61 @@
-import { Readable } from "node:stream";
-import { describe, expect, it, vi } from "vitest";
+import { PassThrough } from "node:stream";
+import { describe, expect, it } from "vitest";
 import { StreamMultiplexer } from "./streamMultiplexer";
 
-describe("StreamMultiplexer BLOCKING backpressure", () => {
-  it("pauses the source when a blocking consumer backpressures and resumes on drain", () => {
-    const source = new Readable({ read() {} });
-    const multiplexer = new StreamMultiplexer({ policy: "BLOCKING" });
+function nextTick(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+describe("StreamMultiplexer", () => {
+  it("pauses and resumes the source for BLOCKING backpressure", async () => {
+    const source = new PassThrough();
+    const multiplexer = new StreamMultiplexer({
+      policy: "BLOCKING",
+      bufferSize: 4,
+    });
     multiplexer.setSource(source);
-    source.resume();
+    const consumer = multiplexer.addConsumer("slow");
 
-    const consumer = multiplexer.addConsumer("recorder");
-    vi.spyOn(consumer, "write").mockReturnValue(false);
-
-    source.emit("data", Buffer.from("audio"));
+    source.write(Buffer.alloc(16, 1));
 
     expect(source.isPaused()).toBe(true);
+    expect(multiplexer.getConsumerStats("slow")).toEqual({
+      droppedFrames: 0,
+      totalFrames: 1,
+    });
 
-    consumer.emit("drain");
+    const received: Buffer[] = [];
+    consumer.on("data", (chunk: Buffer) => {
+      received.push(chunk);
+    });
+    consumer.resume();
+    await nextTick();
 
     expect(source.isPaused()).toBe(false);
+    expect(Buffer.concat(received).length).toBe(16);
+
     multiplexer.destroy();
+    source.destroy();
   });
 
-  it("waits for all blocked consumers before resuming the source", () => {
-    const source = new Readable({ read() {} });
-    const multiplexer = new StreamMultiplexer({ policy: "BLOCKING" });
+  it("resumes a BLOCKING source when the slow consumer is removed", async () => {
+    const source = new PassThrough();
+    const multiplexer = new StreamMultiplexer({
+      policy: "BLOCKING",
+      bufferSize: 4,
+    });
     multiplexer.setSource(source);
-    source.resume();
+    multiplexer.addConsumer("removed");
 
-    const firstConsumer = multiplexer.addConsumer("recorder-a");
-    const secondConsumer = multiplexer.addConsumer("recorder-b");
-    vi.spyOn(firstConsumer, "write").mockReturnValue(false);
-    vi.spyOn(secondConsumer, "write").mockReturnValue(false);
-
-    source.emit("data", Buffer.from("audio"));
-
-    firstConsumer.emit("drain");
+    source.write(Buffer.alloc(16, 2));
     expect(source.isPaused()).toBe(true);
 
-    secondConsumer.emit("drain");
+    multiplexer.removeConsumer("removed");
+    await nextTick();
+
     expect(source.isPaused()).toBe(false);
+
     multiplexer.destroy();
+    source.destroy();
   });
 });

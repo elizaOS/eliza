@@ -41,15 +41,18 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     name: "companion",
     path: "/apps/companion",
     readyChecks: [
+      { text: "Companion" },
       { selector: '[data-testid="companion-root"]' },
-      { selector: '[data-testid="companion-chat-dock"]' },
     ],
     timeoutMs: 90_000,
   },
   {
     name: "lifeops app window",
     path: "/apps/lifeops",
-    selector: '[data-testid="lifeops-shell"]',
+    readyChecks: [
+      { text: "LifeOps" },
+      { selector: '[data-testid="lifeops-nav-rail"]' },
+    ],
     timeoutMs: 90_000,
   },
   {
@@ -113,25 +116,37 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
     name: "hyperliquid",
     path: "/hyperliquid",
-    selector: '[data-testid="hyperliquid-shell"]',
+    readyChecks: [
+      { text: "Hyperliquid" },
+      { selector: '[data-testid="hyperliquid-shell"]' },
+    ],
     timeoutMs: 90_000,
   },
   {
     name: "polymarket",
     path: "/polymarket",
-    selector: '[data-testid="polymarket-shell"]',
+    readyChecks: [
+      { text: "Polymarket" },
+      { selector: '[data-testid="polymarket-shell"]' },
+    ],
     timeoutMs: 90_000,
   },
   {
     name: "shopify",
     path: "/shopify",
-    selector: '[data-testid="shopify-shell"]',
+    readyChecks: [
+      { text: "Shopify" },
+      { selector: '[data-testid="shopify-shell"]' },
+    ],
     timeoutMs: 90_000,
   },
   {
     name: "vincent",
     path: "/vincent",
-    selector: '[data-testid="vincent-shell"]',
+    readyChecks: [
+      { text: "Vincent" },
+      { selector: '[data-testid="vincent-shell"]' },
+    ],
     timeoutMs: 90_000,
   },
   {
@@ -149,7 +164,7 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
     name: "elizamaker app window",
     path: "/apps/elizamaker",
-    selector: '[data-testid="chat-composer-textarea"]',
+    selector: "#root",
     timeoutMs: 90_000,
   },
   {
@@ -188,7 +203,7 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
     name: "smartglasses app window",
     path: "/apps/smartglasses",
-    readyChecks: [{ text: "Smartglasses" }, { text: "Connect Headset" }],
+    readyChecks: [{ text: "Smartglasses" }, { text: "Connect" }],
     timeoutMs: 90_000,
   },
   {
@@ -207,6 +222,12 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
+    name: "odysseus app shell page",
+    path: "/odysseus",
+    selector: '[data-testid="odysseus-shell"]',
+    timeoutMs: 90_000,
+  },
+  {
     name: "orchestrator tui app shell page",
     path: "/orchestrator/tui",
     readyChecks: [
@@ -219,14 +240,21 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
 
 const managerVisibleViewTileCases = [
   { viewId: "2004scape", path: "/2004scape" },
+  { viewId: "calendar", path: "/calendar" },
   { viewId: "clawville", path: "/clawville" },
   { viewId: "companion", path: "/companion" },
   { viewId: "contacts", path: "/contacts" },
   { viewId: "defense-of-the-agents", path: "/defense-of-the-agents" },
+  { viewId: "documents", path: "/documents" },
   { viewId: "facewear", path: "/apps/hearwear" },
   { viewId: "feed", path: "/feed" },
+  { viewId: "finances", path: "/finances" },
+  { viewId: "focus", path: "/focus" },
+  { viewId: "goals", path: "/goals" },
+  { viewId: "health", path: "/health" },
   { viewId: "hyperliquid", path: "/hyperliquid" },
   { viewId: "hyperscape", path: "/hyperscape" },
+  { viewId: "inbox", path: "/inbox" },
   { viewId: "lifeops", path: "/lifeops" },
   { viewId: "messages", path: "/messages" },
   { viewId: "model-tester", path: "/model-tester" },
@@ -237,13 +265,16 @@ const managerVisibleViewTileCases = [
   { viewId: "screenshare", path: "/screenshare" },
   { viewId: "shopify", path: "/shopify" },
   { viewId: "smartglasses", path: "/apps/smartglasses" },
+  { viewId: "social-alpha", path: "/social-alpha" },
   { viewId: "steward", path: "/steward" },
   { viewId: "task-coordinator", path: "/task-coordinator" },
-  { viewId: "training", path: "/training" },
+  { viewId: "todos", path: "/todos" },
+  { viewId: "training", path: "/apps/fine-tuning" },
   { viewId: "trajectory-logger", path: "/trajectory-logger" },
   { viewId: "views-manager", path: "/views" },
   { viewId: "vincent", path: "/vincent" },
   { viewId: "wallet", path: "/wallet" },
+  { viewId: "vector-browser", path: "/vector-browser" },
 ];
 
 /**

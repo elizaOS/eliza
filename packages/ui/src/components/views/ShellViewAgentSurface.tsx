@@ -14,6 +14,7 @@
 import { type ReactNode, useEffect, useRef } from "react";
 import {
   AgentElementOverlay,
+  AgentSurfaceElementReporter,
   AgentSurfaceProvider,
   type AgentViewType,
   getViewRegistry,
@@ -104,6 +105,7 @@ export function ShellViewAgentSurface({
         {children}
       </div>
       <AgentElementOverlay />
+      <AgentSurfaceElementReporter />
     </AgentSurfaceProvider>
   );
 }

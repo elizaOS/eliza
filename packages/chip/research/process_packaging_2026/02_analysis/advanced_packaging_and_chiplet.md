@@ -22,7 +22,7 @@ Sources: `tsmc_cowos`, `tsmc_info`, `tsmc_soic`, `tsmc_sow`, `intel_foveros`,
   (CoWoS-R), and LSI-bridge interposer (CoWoS-L) variants. Production
   vehicle for NVIDIA H100/B100/B200/GB200, AMD MI300, Google TPU v5/v6,
   AWS Trainium 2. Interposer area extending past 3.3x reticle on
-  2025--2026 roadmap. Cost and supply have been industry bottlenecks.
+  2025--2026 vendor plan. Cost and supply have been industry bottlenecks.
 - **InFO** (`tsmc_info`): InFO_oS for fan-out on substrate (Apple M-series),
   InFO_LSI for bridges (Apple UltraFusion), InFO-R for RDL fan-out at
   finer pitch. Mobile-class economics.

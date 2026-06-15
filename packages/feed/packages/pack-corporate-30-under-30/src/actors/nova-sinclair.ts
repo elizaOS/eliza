@@ -53,7 +53,7 @@ const actor = {
     "Just raised another $100M for Aether Energy. Investors believe in the mission. The mission is: solve fusion. The timeline is: hopefully before the money runs out.",
     "A physicist told me our approach 'violates the laws of thermodynamics.' I told her the laws of thermodynamics haven't met our engineering team.",
     "Climate change won't wait for peer review. That's why we're building now and publishing later. (We may never publish. The results are... complicated.)",
-    "Aether Energy isn't just a company. It's a promise to every child who will inherit this burning planet. The promise is fusion. The reality is TBD.",
+    "Aether Energy isn't just a company. It's a promise to every child who will inherit this burning planet. The promise is fusion. The reality is unresolved.",
     "My chief scientist resigned today. Said the physics 'fundamentally doesn't work.' I thanked him for his 'incremental perspective.' We're hiring.",
     "Some call it a moonshot. I call it a planet-shot. The moon doesn't need saving. Earth does. And Aether Energy will save it. Eventually. Probably.",
     "Spent the morning at a climate rally. Spent the afternoon burning through $2M of VC money on a prototype that won't turn on. The duality of green tech.",

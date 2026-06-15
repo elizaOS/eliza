@@ -1,7 +1,7 @@
 /**
  * WS7 — Cascade (ScreenSeekeR) tests.
  *
- * Validates the orchestrator that takes a stubbed `Brain` and turns its
+ * Validates the orchestrator that takes a fake `Brain` and turns its
  * BrainOutput into a concrete `ProposedAction`:
  *
  *   - Non-coordinate actions (`wait`, `finish`, `type`, `hotkey`, `key`)
@@ -108,14 +108,14 @@ function captures(seed = 1): Map<number, DisplayCapture> {
   return m;
 }
 
-function stubBrain(out: unknown): Brain {
+function fakeBrain(out: unknown): Brain {
   return new Brain(null, { invokeModel: async () => JSON.stringify(out) });
 }
 
 describe("Cascade — non-coordinate actions short-circuit grounding", () => {
   it("wait", async () => {
     const cascade = new Cascade({
-      brain: stubBrain({
+      brain: fakeBrain({
         scene_summary: "S",
         target_display_id: 0,
         roi: [],
@@ -134,7 +134,7 @@ describe("Cascade — non-coordinate actions short-circuit grounding", () => {
 
   it("finish", async () => {
     const cascade = new Cascade({
-      brain: stubBrain({
+      brain: fakeBrain({
         scene_summary: "done",
         target_display_id: 0,
         roi: [],
@@ -151,7 +151,7 @@ describe("Cascade — non-coordinate actions short-circuit grounding", () => {
 
   it("type forwards args.text", async () => {
     const cascade = new Cascade({
-      brain: stubBrain({
+      brain: fakeBrain({
         scene_summary: "S",
         target_display_id: 0,
         roi: [],
@@ -173,7 +173,7 @@ describe("Cascade — non-coordinate actions short-circuit grounding", () => {
 
   it("hotkey forwards args.keys", async () => {
     const cascade = new Cascade({
-      brain: stubBrain({
+      brain: fakeBrain({
         scene_summary: "S",
         target_display_id: 0,
         roi: [],
@@ -195,7 +195,7 @@ describe("Cascade — non-coordinate actions short-circuit grounding", () => {
 
   it("key forwards args.key", async () => {
     const cascade = new Cascade({
-      brain: stubBrain({
+      brain: fakeBrain({
         scene_summary: "S",
         target_display_id: 0,
         roi: [],
@@ -213,7 +213,7 @@ describe("Cascade — non-coordinate actions short-circuit grounding", () => {
 
   it("type without args.text throws", async () => {
     const cascade = new Cascade({
-      brain: stubBrain({
+      brain: fakeBrain({
         scene_summary: "S",
         target_display_id: 0,
         roi: [],
@@ -229,7 +229,7 @@ describe("Cascade — non-coordinate actions short-circuit grounding", () => {
 describe("Cascade — click grounding paths", () => {
   it("ref → OCR/AX deterministic grounding resolves to bbox center", async () => {
     const cascade = new Cascade({
-      brain: stubBrain({
+      brain: fakeBrain({
         scene_summary: "S",
         target_display_id: 0,
         roi: [],
@@ -274,7 +274,7 @@ describe("Cascade — click grounding paths", () => {
       ]);
     };
     const cascade = new Cascade({
-      brain: stubBrain({
+      brain: fakeBrain({
         scene_summary: "S",
         target_display_id: 0,
         roi: [{ displayId: 0, bbox: [10, 20, 200, 300], reason: "btn-area" }],
@@ -290,7 +290,7 @@ describe("Cascade — click grounding paths", () => {
     });
     expect(seenCrops).toHaveLength(1);
     // Crop carries the exact bbox the Brain emitted.
-    expect(seenCrops[0]!.toString("utf8", 0, 20)).toBe("crop:[10,20,200,300]");
+    expect(seenCrops[0]?.toString("utf8", 0, 20)).toBe("crop:[10,20,200,300]");
     // Actor coords are rounded by the cascade.
     expect(res.proposed.x).toBe(555);
     expect(res.proposed.y).toBe(667);
@@ -299,7 +299,7 @@ describe("Cascade — click grounding paths", () => {
 
   it("ROI without Actor falls back to ROI center", async () => {
     const cascade = new Cascade({
-      brain: stubBrain({
+      brain: fakeBrain({
         scene_summary: "S",
         target_display_id: 0,
         roi: [{ displayId: 0, bbox: [100, 200, 80, 40], reason: "r" }],
@@ -317,7 +317,7 @@ describe("Cascade — click grounding paths", () => {
 
   it("rois are truncated to the cascade cap in the result", async () => {
     const cascade = new Cascade({
-      brain: stubBrain({
+      brain: fakeBrain({
         scene_summary: "S",
         target_display_id: 0,
         roi: [
@@ -338,7 +338,7 @@ describe("Cascade — click grounding paths", () => {
 
   it("no ref and no roi → can't resolve a click", async () => {
     const cascade = new Cascade({
-      brain: stubBrain({
+      brain: fakeBrain({
         scene_summary: "S",
         target_display_id: 0,
         roi: [],
@@ -352,7 +352,7 @@ describe("Cascade — click grounding paths", () => {
 
   it("scroll forwards (dx, dy) and anchors on ROI center", async () => {
     const cascade = new Cascade({
-      brain: stubBrain({
+      brain: fakeBrain({
         scene_summary: "S",
         target_display_id: 0,
         roi: [
@@ -379,7 +379,7 @@ describe("Cascade — click grounding paths", () => {
 
   it("drag requires start+end endpoints", async () => {
     const cascade = new Cascade({
-      brain: stubBrain({
+      brain: fakeBrain({
         scene_summary: "S",
         target_display_id: 0,
         roi: [],
@@ -407,7 +407,7 @@ describe("Cascade — registered OCR actor end-to-end", () => {
   it("uses OcrCoordinateGroundingActor when the cascade receives one", async () => {
     const actor = new OcrCoordinateGroundingActor(() => scene());
     const cascade = new Cascade({
-      brain: stubBrain({
+      brain: fakeBrain({
         scene_summary: "S",
         target_display_id: 0,
         roi: [],

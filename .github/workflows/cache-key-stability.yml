@@ -23,7 +23,7 @@ on:
     branches: [main, develop]
     paths:
       - "packages/core/**"
-      - "plugins/plugin-lifeops/**"
+      - "plugins/plugin-personal-assistant/**"
       - "packages/prompts/**"
       - ".github/workflows/cache-key-stability.yml"
 

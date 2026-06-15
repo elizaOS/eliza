@@ -15,11 +15,16 @@ import { describe, expect, it, vi } from "vitest";
 
 const streamMock = vi.fn();
 const convertMock = vi.fn();
+const clientConfigMock = vi.fn();
 
 // Mock the SDK before the plugin module is loaded.
 vi.mock("@elevenlabs/elevenlabs-js", () => {
   return {
     ElevenLabsClient: class {
+      constructor(config: unknown) {
+        clientConfigMock(config);
+      }
+
       textToSpeech = {
         stream: streamMock,
       };
@@ -44,15 +49,17 @@ vi.mock("@elevenlabs/elevenlabs-js/api", () => {
   };
 });
 
-interface FakeRuntime {
+interface TestRuntime {
   agentId: string;
   getSetting: (key: string) => string | undefined;
   character: { settings: Record<string, unknown> };
 }
 
-function createFakeRuntime(settings: Record<string, string> = {}): FakeRuntime {
-  const merged: Record<string, string> = {
-    ELEVENLABS_API_KEY: "sk-test-fake",
+function createTestRuntime(
+  settings: Record<string, string | undefined> = {},
+): TestRuntime {
+  const merged: Record<string, string | undefined> = {
+    ELEVENLABS_API_KEY: "sk-test-key",
     ELEVENLABS_VOICE_ID: "voice-123",
     ELEVENLABS_MODEL_ID: "eleven_monolingual_v1",
     ELEVENLABS_OUTPUT_FORMAT: "mp3_44100_128",
@@ -130,7 +137,7 @@ describe("plugin-elevenlabs TTS streaming", () => {
     const ttsHandler = elevenLabsPlugin.models?.TEXT_TO_SPEECH;
     expect(ttsHandler).toBeDefined();
 
-    const runtime = createFakeRuntime();
+    const runtime = createTestRuntime();
     // The plugin handler signature accepts (runtime, input).
     const result = (await ttsHandler?.(
       runtime as unknown as Parameters<NonNullable<typeof ttsHandler>>[0],
@@ -160,7 +167,7 @@ describe("plugin-elevenlabs TTS streaming", () => {
 
     const { elevenLabsPlugin } = await import("../src/index.js");
     const ttsHandler = elevenLabsPlugin.models?.TEXT_TO_SPEECH;
-    const runtime = createFakeRuntime({
+    const runtime = createTestRuntime({
       ELEVENLABS_VOICE_ID: "voice-XYZ",
       ELEVENLABS_OUTPUT_FORMAT: "pcm_16000",
     });
@@ -187,7 +194,7 @@ describe("plugin-elevenlabs TTS streaming", () => {
 
     const { elevenLabsPlugin } = await import("../src/index.js");
     const ttsHandler = elevenLabsPlugin.models?.TEXT_TO_SPEECH;
-    const runtime = createFakeRuntime();
+    const runtime = createTestRuntime();
 
     await ttsHandler?.(
       runtime as unknown as Parameters<NonNullable<typeof ttsHandler>>[0],
@@ -207,7 +214,7 @@ describe("plugin-elevenlabs TTS streaming", () => {
 
     const { elevenLabsPlugin } = await import("../src/index.js");
     const ttsHandler = elevenLabsPlugin.models?.TEXT_TO_SPEECH;
-    const runtime = createFakeRuntime();
+    const runtime = createTestRuntime();
 
     await expect(
       ttsHandler?.(
@@ -230,7 +237,7 @@ describe("plugin-elevenlabs TTS streaming", () => {
 
     const { elevenLabsPlugin } = await import("../src/index.js");
     const ttsHandler = elevenLabsPlugin.models?.TEXT_TO_SPEECH;
-    const runtime = createFakeRuntime();
+    const runtime = createTestRuntime();
 
     await expect(
       ttsHandler?.(
@@ -239,6 +246,57 @@ describe("plugin-elevenlabs TTS streaming", () => {
       ),
     ).rejects.toThrow(/ElevenLabs TTS .*required|must be a non-empty string/);
     expect(streamMock).not.toHaveBeenCalled();
+  });
+
+  it("uses a browser proxy without sending synthetic API credentials", async () => {
+    streamMock.mockReset();
+    clientConfigMock.mockReset();
+    const { stream } = makeChunkedStream([4], 0);
+    streamMock.mockResolvedValueOnce(stream);
+    const restoreDocument = setGlobalValue("document", {});
+
+    const { elevenLabsPlugin } = await import("../src/index.js");
+    const ttsHandler = elevenLabsPlugin.models?.TEXT_TO_SPEECH;
+    const runtime = createTestRuntime({
+      ELEVENLABS_API_KEY: undefined,
+      ELEVENLABS_BROWSER_URL: "https://elevenlabs-proxy.example/v1",
+    });
+
+    await ttsHandler?.(
+      runtime as unknown as Parameters<NonNullable<typeof ttsHandler>>[0],
+      "browser proxy",
+    );
+
+    expect(clientConfigMock).toHaveBeenCalledWith({
+      baseUrl: "https://elevenlabs-proxy.example/v1",
+    });
+    expect(streamMock).toHaveBeenCalledTimes(1);
+
+    restoreDocument();
+  });
+
+  it("rejects browser TTS without an API key or browser proxy", async () => {
+    streamMock.mockReset();
+    clientConfigMock.mockReset();
+    const restoreDocument = setGlobalValue("document", {});
+
+    const { elevenLabsPlugin } = await import("../src/index.js");
+    const ttsHandler = elevenLabsPlugin.models?.TEXT_TO_SPEECH;
+    const runtime = createTestRuntime({
+      ELEVENLABS_API_KEY: undefined,
+      ELEVENLABS_BROWSER_URL: undefined,
+    });
+
+    await expect(
+      ttsHandler?.(
+        runtime as unknown as Parameters<NonNullable<typeof ttsHandler>>[0],
+        "missing proxy",
+      ),
+    ).rejects.toThrow("ELEVENLABS_API_KEY is required");
+    expect(clientConfigMock).not.toHaveBeenCalled();
+    expect(streamMock).not.toHaveBeenCalled();
+
+    restoreDocument();
   });
 });
 
@@ -249,7 +307,7 @@ describe("plugin-elevenlabs STT transcription", () => {
 
     const { elevenLabsPlugin } = await import("../src/index.js");
     const transcriptionHandler = elevenLabsPlugin.models?.TRANSCRIPTION;
-    const runtime = createFakeRuntime({
+    const runtime = createTestRuntime({
       ELEVENLABS_STT_MODEL_ID: "scribe_v1",
       ELEVENLABS_STT_LANGUAGE_CODE: "en",
       ELEVENLABS_STT_TIMESTAMPS_GRANULARITY: "word",
@@ -292,7 +350,7 @@ describe("plugin-elevenlabs STT transcription", () => {
 
     const { elevenLabsPlugin } = await import("../src/index.js");
     const transcriptionHandler = elevenLabsPlugin.models?.TRANSCRIPTION;
-    const runtime = createFakeRuntime({
+    const runtime = createTestRuntime({
       ELEVENLABS_STT_TIMESTAMPS_GRANULARITY: "none",
       ELEVENLABS_STT_DIARIZE: "false",
       ELEVENLABS_STT_TAG_AUDIO_EVENTS: "false",
@@ -329,7 +387,7 @@ describe("plugin-elevenlabs STT transcription", () => {
 
     const { elevenLabsPlugin } = await import("../src/index.js");
     const transcriptionHandler = elevenLabsPlugin.models?.TRANSCRIPTION;
-    const runtime = createFakeRuntime();
+    const runtime = createTestRuntime();
 
     await expect(
       transcriptionHandler?.(
@@ -362,7 +420,7 @@ describe("plugin-elevenlabs STT transcription", () => {
 
     const { elevenLabsPlugin } = await import("../src/index.js");
     const transcriptionHandler = elevenLabsPlugin.models?.TRANSCRIPTION;
-    const runtime = createFakeRuntime();
+    const runtime = createTestRuntime();
 
     await expect(
       transcriptionHandler?.(
@@ -383,7 +441,7 @@ describe("plugin-elevenlabs STT transcription", () => {
 
     const { elevenLabsPlugin } = await import("../src/index.js");
     const transcriptionHandler = elevenLabsPlugin.models?.TRANSCRIPTION;
-    const runtime = createFakeRuntime({
+    const runtime = createTestRuntime({
       ELEVENLABS_STT_MODEL_ID: "bad_model",
     });
 
@@ -403,7 +461,7 @@ describe("plugin-elevenlabs STT transcription", () => {
 
     const { elevenLabsPlugin } = await import("../src/index.js");
     const transcriptionHandler = elevenLabsPlugin.models?.TRANSCRIPTION;
-    const runtime = createFakeRuntime({
+    const runtime = createTestRuntime({
       ELEVENLABS_STT_DIARIZE: "true",
       ELEVENLABS_STT_NUM_SPEAKERS: "abc",
     });
@@ -440,7 +498,7 @@ describe("plugin-elevenlabs STT transcription", () => {
 
     const { elevenLabsPlugin } = await import("../src/index.js");
     const transcriptionHandler = elevenLabsPlugin.models?.TRANSCRIPTION;
-    const runtime = createFakeRuntime();
+    const runtime = createTestRuntime();
 
     await expect(
       transcriptionHandler?.(

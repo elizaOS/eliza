@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import {
-  AGENT_TRANSFER_IN_TRANSACTION_TYPE,
-  AGENT_TRANSFER_OUT_TRANSACTION_TYPE,
-} from "@feed/shared";
+
+const AGENT_TRANSFER_IN_TRANSACTION_TYPE = "agent_transfer_in";
+const AGENT_TRANSFER_OUT_TRANSACTION_TYPE = "agent_transfer_out";
 
 let mockRecipientUser: { id: string } | null = { id: "user-2" };
 let mockSenderBalance = 1000;
@@ -43,6 +42,16 @@ let routeTransferResult: {
   recipientBalanceAfter: 30,
 };
 let routeRateLimitResult = { allowed: true, retryAfter: 60 };
+let shareInformationResult = {
+  success: true,
+  matchCount: 2,
+  sharedWithRecipient: true,
+  messageId: "share-message-1",
+};
+let requestPaymentResult = {
+  success: true,
+  requestId: "payment-request-1",
+};
 
 const invalidateUserCacheMock = mock(async () => undefined);
 const routeAuthenticateMock = mock(async () => ({
@@ -105,6 +114,7 @@ mock.module("@feed/db", () => ({
   groupMembers: { role: "role" },
   groups: { id: "id" },
   gte: (...args: unknown[]) => args,
+  inArray: (...args: unknown[]) => args,
   isNull: (...args: unknown[]) => args,
   messages: {},
   perpPositions: {},
@@ -247,7 +257,65 @@ mock.module("../utils/resolvePerpTicker", () => ({
   resolvePerpTicker: mock(() => null),
 }));
 
-const { executeDirectSendMoney } = await import("../DirectExecutors");
+mock.module("../intel-payment-executors", () => ({
+  executeDirectShareInformation: mock(async () => shareInformationResult),
+  executeDirectRequestPayment: mock(async () => requestPaymentResult),
+}));
+
+const {
+  executeDirectRequestPayment,
+  executeDirectSendMoney,
+  executeDirectShareInformation,
+} = await import("../DirectExecutors");
+
+describe("intel and payment request direct executors", () => {
+  beforeEach(() => {
+    shareInformationResult = {
+      success: true,
+      matchCount: 2,
+      sharedWithRecipient: true,
+      messageId: "share-message-1",
+    };
+    requestPaymentResult = {
+      success: true,
+      requestId: "payment-request-1",
+    };
+  });
+
+  test("share information delegates to the active intel executor", async () => {
+    const result = await executeDirectShareInformation({
+      agentUserId: "agent-1",
+      recipientId: "agent-2",
+      keywords: ["alpha", "beta"],
+      context: "deal research",
+      askingPrice: 5,
+    });
+
+    expect(result).toEqual({
+      success: true,
+      error: undefined,
+      matchCount: 2,
+      sharedWithRecipient: true,
+      messageId: "share-message-1",
+    });
+  });
+
+  test("request payment delegates to the active payment executor", async () => {
+    const result = await executeDirectRequestPayment({
+      agentUserId: "agent-1",
+      recipientId: "agent-2",
+      amount: 25,
+      reason: "intel fee",
+      deadline: 10,
+    });
+
+    expect(result).toEqual({
+      success: true,
+      error: undefined,
+      requestId: "payment-request-1",
+    });
+  });
+});
 
 describe("executeDirectSendMoney", () => {
   beforeEach(() => {

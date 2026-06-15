@@ -1,171 +1,67 @@
-// Static import: CharacterEditor is statically re-exported by app-core's
-// browser entry, so the previous lazy() was eagerly merged back into the
-// main chunk. Drop the wrapper to silence the dynamic↔static collision
-// warning and remove the unnecessary Suspense boundary overhead.
-import {
-  CharacterEditor,
-  type OverlayAppContext,
-  useApp,
-  useRenderGuard,
-} from "@elizaos/ui";
-import { memo, Suspense, useCallback, useMemo, useState } from "react";
-import { CompanionHeader, type CompanionShellView } from "./CompanionHeader";
+import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
+import { useRenderGuard } from "@elizaos/ui/hooks";
+import { useApp } from "@elizaos/ui/state";
+import { memo, useEffect } from "react";
 import { CompanionSceneHost } from "./CompanionSceneHost";
-import { CompanionSettingsPanel } from "./CompanionSettingsPanel";
+import { useCompanionSceneStatus } from "./companion-scene-status-context";
 import { EmotePicker } from "./EmotePicker";
-import { InferenceCloudAlertButton } from "./InferenceCloudAlertButton";
-import { resolveCompanionInferenceNotice } from "./resolve-companion-inference-notice";
 
 /**
- * Inner overlay — subscribes to useApp() for chat state.
- * Extracted so CompanionSceneHost receives stable children.
+ * Inner overlay rendered on top of the avatar scene. The companion now shows
+ * just the avatar — no header / nav bar — so this only hosts the emote picker
+ * overlay plus an Escape-to-exit affordance (the full-screen overlay app has no
+ * visible chrome to close it otherwise).
  */
-const CompanionOverlay = memo(function CompanionOverlay() {
+const CompanionOverlay = memo(function CompanionOverlay({
+  exitToApps,
+}: {
+  exitToApps: () => void;
+}) {
   useRenderGuard("CompanionAppView");
-  const {
-    uiLanguage,
-    setUiLanguage,
-    uiTheme,
-    setUiTheme,
-    chatAgentVoiceMuted,
-    chatLastUsage,
-    conversationMessages,
-    elizaCloudAuthRejected,
-    elizaCloudConnected,
-    elizaCloudCreditsError,
-    elizaCloudEnabled,
-    emotePickerOpen,
-    openEmotePicker,
-    closeEmotePicker,
-    handleNewConversation,
-    navigation,
-    setState,
-    setTab,
-    t,
-  } = useApp();
+  const { emotePickerOpen } = useApp();
+  const { avatarReady } = useCompanionSceneStatus();
 
-  const [companionView, setCompanionView] =
-    useState<CompanionShellView>("companion");
-
-  const hasInterruptedAssistant = useMemo(
-    () =>
-      conversationMessages.some((m) => m.role === "assistant" && m.interrupted),
-    [conversationMessages],
-  );
-
-  const inferenceNotice = useMemo(
-    () =>
-      resolveCompanionInferenceNotice({
-        elizaCloudConnected,
-        elizaCloudAuthRejected,
-        elizaCloudCreditsError,
-        elizaCloudEnabled,
-        chatLastUsageModel: chatLastUsage?.model,
-        hasInterruptedAssistant,
-        t,
-      }),
-    [
-      chatLastUsage?.model,
-      elizaCloudAuthRejected,
-      elizaCloudConnected,
-      elizaCloudCreditsError,
-      elizaCloudEnabled,
-      hasInterruptedAssistant,
-      t,
-    ],
-  );
-
-  // Exit companion overlay → navigate to chat / desktop mode
-  const handleExitToDesktop = useCallback(() => {
-    setState("activeOverlayApp", null);
-    setTab("chat");
-  }, [setState, setTab]);
-
-  // Switch to character editor within the companion overlay
-  const handleSwitchToCharacter = useCallback(() => {
-    setCompanionView("character");
-  }, []);
-
-  const handleOpenSettings = useCallback(() => {
-    setCompanionView("settings");
-  }, []);
-
-  // Switch back to companion chat within the overlay
-  const handleSwitchToCompanion = useCallback(() => {
-    setCompanionView("companion");
-  }, []);
-
-  const handleToggleEmotePicker = useCallback(() => {
-    if (emotePickerOpen) {
-      closeEmotePicker();
-      return;
-    }
-    openEmotePicker();
-  }, [closeEmotePicker, emotePickerOpen, openEmotePicker]);
-
-  const handleInferenceAlertClick = useCallback(() => {
-    if (!inferenceNotice) return;
-    setState("activeOverlayApp", null);
-    navigation.scheduleAfterTabCommit(() => {
-      setTab("settings");
-      if (inferenceNotice.kind === "cloud") {
-        setState("cloudDashboardView", "billing");
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      // While the emote picker is open it owns Escape (to close itself).
+      if (event.key === "Escape" && !emotePickerOpen) {
+        exitToApps();
       }
-    });
-  }, [inferenceNotice, navigation, setState, setTab]);
-
-  const companionHeaderRightExtras = (
-    <>
-      {inferenceNotice ? (
-        <InferenceCloudAlertButton
-          notice={inferenceNotice}
-          onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
-          onClick={handleInferenceAlertClick}
-        />
-      ) : null}
-    </>
-  );
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [emotePickerOpen, exitToApps]);
 
   return (
     <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
-      <div>
-        <CompanionHeader
-          activeView={companionView}
-          onExitToDesktop={handleExitToDesktop}
-          onExitToCharacter={handleSwitchToCharacter}
-          onOpenSettings={handleOpenSettings}
-          onSwitchToCompanion={handleSwitchToCompanion}
-          uiLanguage={uiLanguage}
-          setUiLanguage={setUiLanguage}
-          uiTheme={uiTheme}
-          setUiTheme={setUiTheme}
-          t={t}
-          chatAgentVoiceMuted={chatAgentVoiceMuted}
-          onToggleVoiceMute={() =>
-            setState("chatAgentVoiceMuted", !chatAgentVoiceMuted)
-          }
-          onNewChat={() => void handleNewConversation()}
-          onToggleEmotePicker={handleToggleEmotePicker}
-          rightExtras={companionHeaderRightExtras}
-        />
-      </div>
-
-      {/* In-view chat removed — the global floating pill is the only chat
-          surface. Chat/voice happen in the pill on top of every view. */}
-
-      {companionView === "character" && (
-        <Suspense fallback={null}>
-          <CharacterEditor sceneOverlay />
-        </Suspense>
-      )}
-
-      {companionView === "settings" && <CompanionSettingsPanel />}
-
       <EmotePicker />
+      <button
+        type="button"
+        aria-label="Close companion"
+        className="pointer-events-auto absolute right-4 top-4 z-20 grid h-10 w-10 place-items-center rounded-full border border-white/15 bg-black/55 text-sm font-semibold text-white shadow-lg backdrop-blur-md transition hover:bg-black/75"
+        onClick={exitToApps}
+        data-no-camera-drag="true"
+      >
+        x
+      </button>
 
-      <div className="flex-1 grid grid-cols-[1fr_auto] gap-6 min-h-0 relative">
-        <div className="w-full h-full" />
+      <div
+        className="absolute bottom-4 left-4 z-20 flex items-center gap-2 rounded-full border border-white/15 bg-black/50 px-3 py-2 backdrop-blur-md"
+        title={avatarReady ? "Avatar ready" : "Avatar loading"}
+      >
+        <span
+          className={`h-2.5 w-2.5 rounded-full ${
+            avatarReady ? "bg-emerald-400" : "bg-amber-400"
+          }`}
+        />
+        <span className="text-2xs font-semibold uppercase tracking-normal text-white/80">
+          {avatarReady ? "Companion avatar ready" : "Companion avatar loading"}
+        </span>
       </div>
+
+      <div className="min-h-0 flex-1" />
     </div>
   );
 });
@@ -176,11 +72,11 @@ const CompanionOverlay = memo(function CompanionOverlay() {
  * Mounts CompanionSceneHost (which owns VrmStage → VrmViewer → VrmEngine).
  * Everything loads on mount, everything disposes on unmount.
  */
-export function CompanionAppView(_props: OverlayAppContext) {
+export function CompanionAppView(props: OverlayAppContext) {
   return (
     <div className="fixed inset-0 z-50 h-[100vh] w-full min-h-0 overflow-hidden supports-[height:100dvh]:h-[100dvh]">
       <CompanionSceneHost active>
-        <CompanionOverlay />
+        <CompanionOverlay exitToApps={props.exitToApps} />
       </CompanionSceneHost>
     </div>
   );

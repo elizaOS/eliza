@@ -677,36 +677,72 @@ export async function dispatchAgentChat(
         tag?: MessageTag;
       } | null = null;
 
-      await runtime.processActions(
-        elizaMessage,
-        [actionMessage],
+      const actionDefinition = runtime.actions.find(
+        (candidate) => candidate.name === action,
+      );
+      if (!actionDefinition) {
+        throw new Error(`Action not registered: ${action}`);
+      }
+
+      const handlerResult = await actionDefinition.handler(
+        runtime,
+        actionMessage,
         state,
-        async (results: unknown) => {
-          const resultsArray = results as Array<{
-            content?: {
-              success?: boolean;
-              text?: string;
-              values?: Record<string, unknown>;
-              tag?: MessageTag;
-            };
-          }> | null;
-          if (resultsArray && resultsArray.length > 0) {
-            const firstResult = resultsArray[0];
-            if (firstResult) {
-              actionResult = {
-                success: firstResult.content?.success ?? false,
-                text:
-                  typeof firstResult.content?.text === "string"
-                    ? firstResult.content.text
-                    : undefined,
-                values: firstResult.content?.values,
-                tag: firstResult.content?.tag,
-              };
-            }
-          }
+        { actionParams },
+        async (response) => {
+          actionResult = {
+            success: response.success as boolean | undefined,
+            text: typeof response.text === "string" ? response.text : undefined,
+            values: response.values as Record<string, unknown> | undefined,
+            tag: response.tag as MessageTag | undefined,
+          };
           return [];
         },
       );
+
+      if (!actionResult && handlerResult) {
+        actionResult = {
+          success: handlerResult.success,
+          text:
+            typeof handlerResult.text === "string"
+              ? handlerResult.text
+              : undefined,
+          values: handlerResult.values as Record<string, unknown> | undefined,
+        };
+      }
+
+      if (!actionResult) {
+        const responseActions = actionMessage.content.actions;
+        if (Array.isArray(responseActions) && responseActions.length > 0) {
+          actionResult = {
+            success: true,
+            text: `${action} executed`,
+          };
+        }
+      }
+
+      if (!actionResult) {
+        const resultsArray = [actionMessage] as Array<{
+          content?: {
+            success?: boolean;
+            text?: string;
+            values?: Record<string, unknown>;
+            tag?: MessageTag;
+          };
+        }>;
+        const firstResult = resultsArray[0];
+        if (firstResult) {
+          actionResult = {
+            success: firstResult.content?.success ?? false,
+            text:
+              typeof firstResult.content?.text === "string"
+                ? firstResult.content.text
+                : undefined,
+            values: firstResult.content?.values,
+            tag: firstResult.content?.tag,
+          };
+        }
+      }
 
       // Fallback: check stateCache if callback didn't fire
       if (!actionResult) {

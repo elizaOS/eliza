@@ -381,10 +381,8 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
 
   describe("Schema Evolution Support", () => {
     it("should support ALTER operations (when schema changes)", async () => {
-      // This would test ALTER column functionality when we have schema changes
-      // For now, just verify the infrastructure is in place
-
-      // Check that we have snapshot comparison capability
+      // Check that the migration journal stored a schema snapshot, which is the
+      // comparison input used when a later plugin schema changes.
       const status = await migrator.getStatus("plugin-sql");
       expect(status.snapshots).toBeGreaterThan(0);
 

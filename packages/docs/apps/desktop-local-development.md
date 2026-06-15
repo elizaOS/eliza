@@ -122,7 +122,7 @@ With `detached`, **only the orchestrator** gets TTY **SIGINT**; it runs a single
 
 If you **Quit** from the native menu, Electrobun exits with code 0 while **Vite and the API may still be running**. The orchestrator watches the **electrobun** child: on exit, it **stops the remaining services** and exits.
 
-**Why:** Otherwise the terminal session hangs after “App quitting…” because the parent process is still holding pipes to Vite/API — same underlying issue as an incomplete Ctrl-C shutdown.
+**Why:** Otherwise the terminal session hangs after “App quitting…” because the parent process is still holding pipes to Vite/API — same underlying issue as a partial Ctrl-C shutdown.
 
 ## Port cleanup before Vite (`killUiListenPort`)
 

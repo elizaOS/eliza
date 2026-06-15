@@ -110,7 +110,7 @@ describe("voice-preset-format v2", () => {
 
 	it("rejects bad magic on read", () => {
 		const buf = new Uint8Array(64);
-		// magic = 'XXXX'
+		// four invalid magic bytes
 		buf[0] = 0x58;
 		buf[1] = 0x58;
 		buf[2] = 0x58;

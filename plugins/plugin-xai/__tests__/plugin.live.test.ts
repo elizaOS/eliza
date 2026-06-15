@@ -5,11 +5,11 @@
  *   - the runtime emits `MODEL_USED` with non-zero prompt/completion token
  *     counts sourced from the upstream usage payload
  *
- * Skips with a yellow warning when `XAI_API_KEY` is not set. xAI is not a
+ * Does not run and prints a yellow warning when `XAI_API_KEY` is not set. xAI is not a
  * supported provider in the shared `describeLive` helper, so this suite
  * uses an inline minimal runtime that satisfies the bits the model handler
  * actually touches (`getSetting`, `emitEvent`, `character`, plus enough of
- * the trajectory plumbing for `recordLlmCall` to no-op cleanly).
+ * the trajectory plumbing for `recordLlmCall` to return cleanly).
  */
 import {
   type EventPayload,
@@ -57,12 +57,12 @@ if (missing.length > 0) {
   const reason = `missing required env: ${missing.join(", ")}`;
   process.env.SKIP_REASON ||= reason;
   console.warn(
-    `${YELLOW}[plugin-xai live] skipped — ${reason} (set ${missing.join(
+    `${YELLOW}[plugin-xai live] not run — ${reason} (set ${missing.join(
       ", ",
     )} to enable)${RESET}`,
   );
   describe("xai live MODEL_USED events", () => {
-    it.skip(`[live] suite skipped — set ${missing.join(", ")} to enable`, () => {});
+    it.skip(`[live] suite not run — set ${missing.join(", ")} to enable`, () => {});
   });
 } else {
   describe("xai live MODEL_USED events", () => {

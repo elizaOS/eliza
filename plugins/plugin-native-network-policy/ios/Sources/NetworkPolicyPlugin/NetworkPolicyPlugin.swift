@@ -48,8 +48,8 @@ public class ElizaNetworkPolicyPlugin: CAPPlugin, CAPBridgedPlugin {
         started = true
     }
 
-    /// Android-only stub on iOS. Always resolves with a placeholder shape
-    /// so the JS bridge can call `getMeteredHint()` uniformly across
+    /// Android-only safe fallback on iOS. Always resolves with the shared
+    /// response shape so the JS bridge can call `getMeteredHint()` uniformly across
     /// platforms; iOS callers should prefer `getPathHints()`.
     @objc func getMeteredHint(_ call: CAPPluginCall) {
         var response: [String: Any] = ["source": "android-os"]

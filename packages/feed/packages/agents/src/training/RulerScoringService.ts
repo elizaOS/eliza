@@ -363,7 +363,11 @@ export class RulerScoringService {
         continue;
       }
 
-      const trajectoryId = richTrajectories[i]?.traj.trajectoryId;
+      const richTrajectory = richTrajectories[i];
+      if (!richTrajectory) {
+        continue;
+      }
+      const trajectoryId = richTrajectory.traj.trajectoryId;
 
       const normalizedScore = Math.max(0, Math.min(1, scoreData.score));
       await upsertRewardJudgment({

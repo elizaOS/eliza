@@ -204,8 +204,8 @@ untouched to preserve the recurrent state.
 |--------|------:|-----:|
 | KL divergence (vs source, 100 harmless held-out) | {kl_divergence:.4f} | <= {kl_gate} |
 | Refusal rate (50 harmful held-out) | {refusal_rate:.1%} | <= {refusal_gate:.0%} |
-| MMLU | <TBD: run benchmark> | -- |
-| GSM8K | <TBD: run benchmark> | -- |
+| MMLU | not run in this report | -- |
+| GSM8K | not run in this report | -- |
 
 ## License
 

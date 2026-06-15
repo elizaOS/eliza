@@ -114,7 +114,7 @@ async function resolveBuiltInFallbackAction(
   }
 
   if (!ownerBlockFallbackPromise) {
-    ownerBlockFallbackPromise = import("@elizaos/plugin-lifeops")
+    ownerBlockFallbackPromise = import("@elizaos/plugin-personal-assistant")
       .then((mod) => mod.websiteBlockAction ?? null)
       .catch(() => null);
   }

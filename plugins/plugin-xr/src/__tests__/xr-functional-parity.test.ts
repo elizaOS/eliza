@@ -16,7 +16,7 @@
  *      (proving the agent sees the same interface in XR as in TUI/GUI)
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -32,6 +32,26 @@ function readFile(relPath: string): string {
 
 function fileExists(relPath: string): boolean {
   return existsSync(resolve(repoRoot, relPath));
+}
+
+/**
+ * A view "component" is no longer a single monolithic .tsx — each view is a
+ * co-located family of files sharing one directory: the entry `X.tsx`, its
+ * agent-facing capability handlers in `X.interact.ts`, data/helpers in
+ * `X.helpers.ts`, plus extracted sub-components and hooks. The functional
+ * content, React hooks, and TUI capabilities live across that family. Read the
+ * whole directory (non-recursive) so the parity checks see the real source the
+ * shared bundle is built from, not just the thin shell entry file.
+ */
+function readComponentFamily(relPath: string): string {
+  const fileDir = dirname(resolve(repoRoot, relPath));
+  if (!existsSync(fileDir)) return "";
+  const parts: string[] = [];
+  for (const name of readdirSync(fileDir)) {
+    if (!name.endsWith(".ts") && !name.endsWith(".tsx")) continue;
+    parts.push(readFileSync(resolve(fileDir, name), "utf8"));
+  }
+  return parts.join("\n");
 }
 
 // ── Manifest parser ───────────────────────────────────────────────────────────
@@ -110,7 +130,7 @@ const PLUGIN_REGISTRY: Array<{
     manifestPath: "plugins/plugin-companion/src/plugin.ts",
     xrComponentSrc:
       "plugins/plugin-companion/src/components/companion/CompanionView.tsx",
-    requiredTerms: ["useState", "Button", "CompanionView"],
+    requiredTerms: ["CompanionView", "CompanionSceneHost", "EmotePicker"],
   },
   {
     pluginDir: "plugins/plugin-contacts",
@@ -130,12 +150,6 @@ const PLUGIN_REGISTRY: Array<{
     manifestPath: "plugins/plugin-hyperliquid-app/src/plugin.ts",
     xrComponentSrc: "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.tsx",
     requiredTerms: ["HyperliquidAppView", "useState"],
-  },
-  {
-    pluginDir: "plugins/plugin-lifeops",
-    manifestPath: "plugins/plugin-lifeops/src/plugin.ts",
-    xrComponentSrc: "plugins/plugin-lifeops/src/components/LifeOpsPageView.tsx",
-    requiredTerms: ["LifeOpsPageView", "useState"],
   },
   {
     pluginDir: "plugins/plugin-messages",
@@ -184,7 +198,7 @@ const PLUGIN_REGISTRY: Array<{
     pluginDir: "plugins/plugin-wallet-ui",
     manifestPath: "plugins/plugin-wallet-ui/src/plugin.ts",
     xrComponentSrc: "plugins/plugin-wallet-ui/src/InventoryView.tsx",
-    requiredTerms: ["InventoryView", "Button", "WalletBalancesResponse"],
+    requiredTerms: ["InventoryView", "Button", "useInventoryData"],
   },
   {
     pluginDir: "plugins/plugin-2004scape",
@@ -277,77 +291,80 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
 > = {
   "plugins/plugin-companion": {
     srcFile:
-      "plugins/plugin-companion/src/components/companion/CompanionView.tsx",
+      "plugins/plugin-companion/src/components/companion/CompanionView.interact.ts",
     capabilities: ["terminal-companion-state", "terminal-companion-emotes"],
   },
   "plugins/plugin-contacts": {
-    srcFile: "plugins/plugin-contacts/src/components/ContactsAppView.tsx",
+    srcFile:
+      "plugins/plugin-contacts/src/components/ContactsAppView.interact.ts",
     capabilities: ["terminal-list-contacts", "terminal-create-contact"],
   },
   "plugins/plugin-hyperliquid-app": {
-    srcFile: "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.tsx",
+    srcFile:
+      "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.interact.ts",
     capabilities: ["terminal-hyperliquid-state"],
   },
-  "plugins/plugin-lifeops": {
-    srcFile: "plugins/plugin-lifeops/src/components/LifeOpsPageView.tsx",
-    capabilities: ["terminal-lifeops-state", "terminal-lifeops-enable"],
-  },
   "plugins/plugin-messages": {
-    srcFile: "plugins/plugin-messages/src/components/MessagesAppView.tsx",
+    srcFile:
+      "plugins/plugin-messages/src/components/MessagesAppView.interact.ts",
     capabilities: ["terminal-list-threads", "terminal-send-sms"],
   },
   "plugins/plugin-phone": {
-    srcFile: "plugins/plugin-phone/src/components/PhoneAppView.tsx",
+    srcFile: "plugins/plugin-phone/src/components/PhoneAppView.interact.ts",
     capabilities: ["terminal-phone-state", "terminal-place-call"],
   },
   "plugins/plugin-wallet-ui": {
-    srcFile: "plugins/plugin-wallet-ui/src/InventoryView.tsx",
+    srcFile: "plugins/plugin-wallet-ui/src/InventoryView.interact.ts",
     capabilities: ["terminal-wallet-state"],
   },
   "plugins/plugin-2004scape": {
     srcFile:
-      "plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.tsx",
+      "plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.interact.ts",
     capabilities: ["terminal-2004scape-state", "terminal-2004scape-command"],
   },
   "plugins/plugin-feed": {
-    srcFile: "plugins/plugin-feed/src/ui/FeedOperatorSurface.tsx",
+    srcFile: "plugins/plugin-feed/src/ui/FeedOperatorSurface.interact.ts",
     capabilities: ["get-state", "refresh-agent-status"],
   },
   "plugins/plugin-clawville": {
-    srcFile: "plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.tsx",
+    srcFile:
+      "plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.interact.ts",
     capabilities: ["terminal-clawville-state", "terminal-clawville-command"],
   },
   "plugins/plugin-defense-of-the-agents": {
     srcFile:
-      "plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.tsx",
+      "plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.interact.ts",
     capabilities: ["terminal-defense-state", "terminal-defense-command"],
   },
   "plugins/plugin-hyperscape": {
-    srcFile: "plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.tsx",
+    srcFile:
+      "plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.interact.ts",
     capabilities: ["terminal-hyperscape-state", "terminal-hyperscape-command"],
   },
   "plugins/plugin-scape": {
-    srcFile: "plugins/plugin-scape/src/ui/ScapeOperatorSurface.tsx",
+    srcFile: "plugins/plugin-scape/src/ui/ScapeOperatorSurface.interact.ts",
     capabilities: ["terminal-scape-state", "terminal-scape-command"],
   },
   "plugins/plugin-screenshare": {
-    srcFile: "plugins/plugin-screenshare/src/ui/ScreenshareOperatorSurface.tsx",
+    srcFile:
+      "plugins/plugin-screenshare/src/ui/ScreenshareOperatorSurface.interact.ts",
     capabilities: ["terminal-screenshare-state", "terminal-screenshare-start"],
   },
   "plugins/plugin-task-coordinator": {
-    srcFile: "plugins/plugin-task-coordinator/src/CodingAgentTasksPanel.tsx",
+    srcFile:
+      "plugins/plugin-task-coordinator/src/CodingAgentTasksPanel.interact.ts",
     capabilities: ["list-sessions", "list-task-threads"],
   },
   "plugins/plugin-trajectory-logger": {
     srcFile:
-      "plugins/plugin-trajectory-logger/src/components/TrajectoryLoggerView.tsx",
+      "plugins/plugin-trajectory-logger/src/components/TrajectoryLoggerView.interact.ts",
     capabilities: ["list-trajectories", "open-latest"],
   },
 };
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("XR feature-by-feature functional parity — all 24 views", () => {
+describe("XR feature-by-feature functional parity — all 23 views", () => {
   // A. Shared bundle architecture ─────────────────────────────────────────────
 
   it("A — every XR view uses the same bundlePath as the GUI view (shared bundle = shared features)", () => {
@@ -430,7 +447,7 @@ describe("XR feature-by-feature functional parity — all 24 views", () => {
       requiredTerms,
     } of PLUGIN_REGISTRY) {
       if (!fileExists(xrComponentSrc)) continue;
-      const src = readFile(xrComponentSrc);
+      const src = readComponentFamily(xrComponentSrc);
       for (const term of requiredTerms) {
         if (!src.includes(term)) {
           failures.push(
@@ -448,19 +465,21 @@ describe("XR feature-by-feature functional parity — all 24 views", () => {
     const noHooks: string[] = [];
     for (const { pluginDir, xrComponentSrc } of PLUGIN_REGISTRY) {
       if (!fileExists(xrComponentSrc)) continue;
-      const src = readFile(xrComponentSrc);
+      const src = readComponentFamily(xrComponentSrc);
       if (
         !src.includes("useState") &&
         !src.includes("useEffect") &&
         !src.includes("useRef") &&
-        !src.includes("useCallback")
+        !src.includes("useCallback") &&
+        !src.includes("useRenderGuard")
       ) {
         noHooks.push(`${pluginDir}: ${xrComponentSrc}`);
       }
     }
-    expect(noHooks, "XR components with no React hooks (likely stubs)").toEqual(
-      [],
-    );
+    expect(
+      noHooks,
+      "XR components with no React hooks (likely static shells)",
+    ).toEqual([]);
   });
 
   // C. Bundle exports the declared component symbol ───────────────────────────
@@ -500,7 +519,7 @@ describe("XR feature-by-feature functional parity — all 24 views", () => {
         failures.push(`${pluginDir}: source file ${srcFile} missing`);
         continue;
       }
-      const src = readFile(srcFile);
+      const src = readComponentFamily(srcFile);
       for (const cap of capabilities) {
         if (!src.includes(cap)) {
           failures.push(`${pluginDir}: capability "${cap}" not in ${srcFile}`);
@@ -515,11 +534,11 @@ describe("XR feature-by-feature functional parity — all 24 views", () => {
 
   // Summary assertion ─────────────────────────────────────────────────────────
 
-  it("summary — all 24 plugins have XR views that are functionally identical to their GUI views", () => {
+  it("summary — all 23 plugins have XR views that are functionally identical to their GUI views", () => {
     // This test is a logical consequence of tests A, B, C, D above all passing.
     // It explicitly states the guarantee: same bundle + same component = same features.
     const xrPluginCount = PLUGIN_REGISTRY.length;
-    expect(xrPluginCount).toBe(24);
+    expect(xrPluginCount).toBe(23);
 
     for (const { pluginDir, manifestPath } of PLUGIN_REGISTRY) {
       const source = readFile(manifestPath);

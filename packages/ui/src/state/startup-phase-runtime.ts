@@ -111,6 +111,32 @@ function isRuntimeReadyFromLaunchProgress(progress: LaunchSnapshot): boolean {
 }
 
 /**
+ * Fills in the full agent status once launch/boot progress reports the runtime
+ * ready. Progress snapshots are enough to LEAVE startup, but they carry no
+ * `model` field — without this, ChatView sees `model: undefined` and treats the
+ * agent as having no configured provider, blocking the composer. Called after
+ * the readiness check but before dispatching AGENT_RUNNING; a failed/slow
+ * /status is non-fatal because the readiness decision has already been made.
+ */
+async function hydrateReadyAgentStatus(
+  deps: StartingRuntimeDeps,
+): Promise<void> {
+  try {
+    const status = await client.getStatus();
+    if (status?.state !== "running") return;
+
+    deps.setAgentStatus(status);
+    if (status.pendingRestart) {
+      deps.setPendingRestart(true);
+      deps.setPendingRestartReasons(status.pendingRestartReasons ?? []);
+    }
+  } catch {
+    // Progress snapshots are already enough to leave startup; full status
+    // hydration is only needed when the status endpoint is ready too.
+  }
+}
+
+/**
  * Runs the starting-runtime phase.
  * Polls /status until the agent reaches "running", then dispatches AGENT_RUNNING.
  *
@@ -207,6 +233,7 @@ export async function runStartingRuntime(
         }
 
         if (isRuntimeReadyFromLaunchProgress(launchProgress)) {
+          await hydrateReadyAgentStatus(deps);
           deps.setConnected(true);
           dispatch({ type: "AGENT_RUNNING" });
           return;
@@ -254,6 +281,7 @@ export async function runStartingRuntime(
         lastDiag = bootStatus.startup;
 
         if (isRuntimeReadyFromBootProgress(bootProgress)) {
+          await hydrateReadyAgentStatus(deps);
           deps.setConnected(true);
           dispatch({ type: "AGENT_RUNNING" });
           return;

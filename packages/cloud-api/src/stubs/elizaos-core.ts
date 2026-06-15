@@ -1,5 +1,5 @@
 /**
- * @elizaos/core Cloudflare Workers stub.
+ * @elizaos/core Cloudflare Workers compatibility shim.
  *
  * The real package performs forbidden top-level I/O on Workers. Agent runtime
  * code runs on the Node sidecar (`services/agent-server`). This module keeps
@@ -192,7 +192,7 @@ export function createUniqueUuid(
   return stringToUuid(`${baseUserId}:${runtime?.agentId ?? ""}`);
 }
 
-const stubLogger = {
+const workerLogger = {
   log: () => {},
   info: () => {},
   warn: () => {},
@@ -201,11 +201,11 @@ const stubLogger = {
   trace: () => {},
   fatal: () => {},
   success: () => {},
-  child: () => stubLogger,
+  child: () => workerLogger,
 };
 
-export const logger = stubLogger;
-export const elizaLogger = stubLogger;
+export const logger = workerLogger;
+export const elizaLogger = workerLogger;
 
 export const DEFAULT_ELIZA_CLOUD_TEXT_MODEL = "deepseek/deepseek-chat";
 export const DEFAULT_MAX_BODY_BYTES = 1_048_576;
@@ -528,7 +528,8 @@ export const MemoryType = {
 
 export const documentsPluginCore = {
   name: "documents",
-  description: "Cloud Worker stub for the documents runtime plugin.",
+  description:
+    "Cloud Worker compatibility surface for the documents runtime plugin.",
   actions: [],
   providers: [],
   services: [],

@@ -219,7 +219,7 @@
       "outputs": ["dist/**"]
     },
     "@elizaos/electrobun#build": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["@elizaos/app#build", "^build"],
       "outputs": ["build/**"]
     },
     "@elizaos/plugin-cli#build": {
@@ -402,7 +402,7 @@
       "outputs": []
     },
     "@elizaos/app#typecheck": {
-      "dependsOn": ["@elizaos/plugin-lifeops#build", "@elizaos/ui#build"],
+      "dependsOn": ["@elizaos/plugin-personal-assistant#build", "@elizaos/ui#build"],
       "outputs": []
     },
     "@elizaos/plugin-contacts#typecheck": {
@@ -433,6 +433,35 @@
       "dependsOn": [
         "@elizaos/plugin-remote-manifest#build",
         "@elizaos/plugin-worker-runtime#build",
+        "^build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/plugin-host-shim-android#typecheck": {
+      "dependsOn": [
+        "@elizaos/plugin-host-shim#build",
+        "@elizaos/plugin-remote-manifest#build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/plugin-host-shim-electrobun#typecheck": {
+      "dependsOn": [
+        "@elizaos/plugin-host-shim#build",
+        "@elizaos/plugin-remote-manifest#build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/plugin-host-shim-ios#typecheck": {
+      "dependsOn": [
+        "@elizaos/plugin-host-shim#build",
+        "@elizaos/plugin-remote-manifest#build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/plugin-local-inference#typecheck": {
+      "dependsOn": [
+        "@elizaos/agent#build",
+        "@elizaos/plugin-task-coordinator#build",
         "^build"
       ],
       "outputs": []

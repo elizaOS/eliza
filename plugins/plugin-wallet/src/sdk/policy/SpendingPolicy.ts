@@ -176,7 +176,7 @@ export class SpendingPolicy {
     return true;
   }
 
-  /** Return all pending (not yet approved or rejected) drafts. */
+  /** Return all pending drafts awaiting approval or rejection. */
   getPendingDrafts(): DraftEntry[] {
     return Array.from(this.drafts.values()).filter(
       (d) => !d.approved && !d.rejected,

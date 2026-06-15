@@ -194,7 +194,7 @@ class TestA2AMethods:
             })
             print(f"✅ createPost succeeded: {result}")
         except A2AError as e:
-            # Expected if user doesn't exist or method not implemented
+            # Expected if the user is absent or the method is unavailable.
             print(f"✅ createPost raised A2AError: [{e.code}] {e.message}")
             assert isinstance(e, A2AError)
         finally:
@@ -290,4 +290,3 @@ def test_summary():
 
 if __name__ == "__main__":
     pytest.main([__file__, '-v', '-s'])
-

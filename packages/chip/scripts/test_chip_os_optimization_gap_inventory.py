@@ -447,7 +447,9 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
         self.assertIn("collect-post-flash-logcat", commands)
         self.assertIn("validate-post-flash-logcat", commands)
         finding = report["findings"][0]
-        self.assertEqual(finding["next_command"], "capture-launcher-runtime --logcat out/logcat.txt")
+        self.assertEqual(
+            finding["next_command"], "capture-launcher-runtime --logcat out/logcat.txt"
+        )
 
     def test_finding_prefers_npu_capture_command_over_adb_probe(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

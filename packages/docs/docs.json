@@ -78,7 +78,7 @@
             "group": "Project",
             "pages": [
               "changelog",
-              "roadmap",
+              "direction",
               "build-and-release"
             ]
           }

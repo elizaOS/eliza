@@ -275,17 +275,19 @@ export async function main({ cwd = repoRoot, env = process.env } = {}) {
   }
 
   const retryPolicy = getValidationRetryPolicy();
+  const appAssetRoot = env.ELIZA_CDN_APP_ASSET_ROOT || "packages/app/public";
+  const homepageAssetRoot = env.ELIZA_CDN_HOMEPAGE_ASSET_ROOT || "packages/homepage/public";
   const [missingApp, missingHomepage] = await Promise.all([
     validateGroup(manifest.app, {
       repository,
       releaseTag: effectiveRef,
-      assetRoot: "packages/app/public",
+      assetRoot: appAssetRoot,
       retryPolicy,
     }),
     validateGroup(manifest.homepage, {
       repository,
       releaseTag: effectiveRef,
-      assetRoot: "packages/homepage/public",
+      assetRoot: homepageAssetRoot,
       retryPolicy,
     }),
   ]);
@@ -308,5 +310,6 @@ if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
-  await main();
+  const overrideRoot = process.env.ELIZA_CDN_ROOT_DIR;
+  await main({ cwd: overrideRoot ? path.resolve(overrideRoot) : repoRoot });
 }

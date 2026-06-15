@@ -1,7 +1,7 @@
 import { LocalKmsAdapter, randomRootKey } from "./local-adapter.js";
 import { MemoryKmsAdapter } from "./memory-adapter.js";
 import { StewardKmsAdapter } from "./steward-adapter.js";
-import { KmsError, type KmsClient } from "./types.js";
+import { type KmsClient, KmsError } from "./types.js";
 
 export type KmsBackend = "memory" | "local" | "steward";
 
@@ -62,7 +62,9 @@ function decodeRootKey(b64: string, source: string): Uint8Array {
   try {
     buf = Buffer.from(normalized, "base64");
   } catch (cause) {
-    throw new KmsError(`${source} failed base64 decode: ${(cause as Error).message}`);
+    throw new KmsError(
+      `${source} failed base64 decode: ${(cause as Error).message}`,
+    );
   }
   if (buf.length !== 32) {
     throw new KmsError(
@@ -109,13 +111,11 @@ export function createKmsClient(opts: KmsFactoryOptions = {}): KmsClient {
   const env = opts.env ?? process.env;
   let backend = resolveKmsBackend(opts, env);
 
-  // Production-safety fallback: the StewardKmsAdapter is a stub today and
-  // even the "config present" path throws NotImplementedError. If the
-  // operator selected `steward` (or it defaulted there) but did not pass
-  // steward config AND a local root key is provisioned, fall back to local.
-  // This keeps SIWE signup / api-key encryption working on Eliza Cloud
-  // until the Steward endpoint ships, without silently degrading security
-  // posture in a misconfigured deploy (the env var must be explicitly set).
+  // Production-safety fallback: if the operator selected `steward` (or it
+  // defaulted there) but did not pass steward config AND a local root key is
+  // provisioned, fall back to local. This keeps SIWE signup / api-key
+  // encryption working without silently degrading security posture in a
+  // misconfigured deploy (the env var must be explicitly set).
   if (backend === "steward" && !opts.steward) {
     const localKey = env.ELIZA_LOCAL_ROOT_KEY;
     if (localKey && localKey.length > 0) {
@@ -148,6 +148,6 @@ export function createKmsClient(opts: KmsFactoryOptions = {}): KmsClient {
   }
 }
 
-export { LocalKmsAdapter, MemoryKmsAdapter, StewardKmsAdapter };
-export * from "./types.js";
 export * from "./key-namespace.js";
+export * from "./types.js";
+export { LocalKmsAdapter, MemoryKmsAdapter, StewardKmsAdapter };

@@ -106,7 +106,7 @@ export interface OmniVoiceBackend {
 
 /**
  * One PCM segment delivered by a streaming OmniVoice runtime. This is the
- * scheduler-facing TypeScript contract for the future native streaming ABI:
+ * scheduler-facing TypeScript contract for the native streaming ABI extension:
  * the current v1/batch ABI remains valid, and backends that implement this
  * seam can additionally surface first-audio before a full phrase finishes.
  */
@@ -180,7 +180,7 @@ export type VoiceInputKind =
 
 /**
  * Where speech audio entered the voice loop. Keep this structural so local
- * mic, Discord, phone, and future connector captures can share the same
+ * mic, Discord, phone, and connector captures can share the same
  * turn-taking and attribution path without branching on prompt text.
  */
 export interface VoiceInputSource {
@@ -565,7 +565,7 @@ export interface SchedulerConfig {
 	 * fixed in the llama.cpp merge (native Metal kernels for
 	 * `ggml_conv_transpose_1d`; the CPU fallback causing the hang is gone).
 	 * The flag is therefore `true` by default. Set to `false` only when
-	 * testing against a non-streaming build stub or reproducing the pre-fix
+	 * testing against a non-streaming build or reproducing the pre-fix
 	 * behaviour.
 	 */
 	streamingTtsActive?: boolean;

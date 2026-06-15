@@ -14,7 +14,7 @@
  *
  * Idempotent: re-running with the registry already populated is a
  * no-op for unchanged entries (`upsertElizaModel` overwrites entries
- * with the same id, so updated sha256s on a future re-bundle replace
+ * with the same id, so updated sha256s on a later re-bundle replace
  * the old metadata cleanly).
  *
  * Source classification: the runtime treats bundled models as

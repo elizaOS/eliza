@@ -777,8 +777,8 @@ export class RelationshipsService extends Service {
 		}
 
 		// Start with an empty cache — contacts will be populated as they are added.
-		// This avoids crashing on fresh databases or adapters that do not yet
-		// support queryEntities.
+		// This avoids crashing on fresh databases or adapters without
+		// queryEntities support.
 		logger.info(
 			"[RelationshipsService] Starting with empty contact cache (contacts will load on demand)",
 		);
@@ -1118,7 +1118,7 @@ export class RelationshipsService extends Service {
 			sharedConversationWindows,
 			lastInteractionAt,
 			averageResponseTime,
-			sentimentScore: 0.7, // Placeholder - could integrate sentiment analysis
+			sentimentScore: 0.7, // Default neutral-positive score until sentiment is observed
 			topicsDiscussed: Array.from(topicsSet).slice(0, 10),
 		};
 

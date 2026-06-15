@@ -1,11 +1,11 @@
 /**
- * ssh2 — Cloudflare Workers stub.
+ * ssh2 — Cloudflare Workers compatibility shim.
  *
  * The real ssh2 package is Node-only (loads a `.node` native binding).
  * Container/agent SSH operations live on the Node sidecar
  * (`services/agent-server` + Hetzner Docker pool — see cloud/INFRA.md
  * "Long-running services NOT migrated"). The Worker is bundled with this
- * stub so transitive imports don't crash the build; any code path that
+ * shim so transitive imports don't crash the build; any code path that
  * actually instantiates a Client at runtime throws a clear error so the
  * accidental Worker-side call is visible immediately.
  */
@@ -34,5 +34,5 @@ export const utils = new Proxy(
   },
 );
 
-const stub = { Client, Server, utils };
-export default stub;
+const workerSsh2Surface = { Client, Server, utils };
+export default workerSsh2Surface;

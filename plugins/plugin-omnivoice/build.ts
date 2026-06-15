@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Dual build script for @elizaos/plugin-omnivoice (Node + Browser stub).
+ * Dual build script for @elizaos/plugin-omnivoice (Node + browser unavailable entry).
  * Mirrors plugins/plugin-edge-tts/build.ts.
  */
 
@@ -32,7 +32,9 @@ async function build() {
     `Node build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`,
   );
 
-  console.log("Building @elizaos/plugin-omnivoice for Browser (stub)...");
+  console.log(
+    "Building @elizaos/plugin-omnivoice for Browser (unavailable entry)...",
+  );
   const browserStart = Date.now();
   const browserResult = await Bun.build({
     entrypoints: ["src/index.browser.ts"],
@@ -56,22 +58,16 @@ async function build() {
   const dtsStart = Date.now();
   const { mkdir, writeFile } = await import("node:fs/promises");
   const { $ } = await import("bun");
-  try {
-    await $`tsc --project tsconfig.build.json`;
-  } catch (_e) {
-    console.warn("tsc failed, writing stub declarations");
-  }
+  await $`tsc --project tsconfig.build.json`;
   await mkdir("dist/node", { recursive: true });
   await mkdir("dist/browser", { recursive: true });
-  const stub = `export * from "@elizaos/core";\n`;
-  await writeFile("dist/index.d.ts", stub);
   await writeFile(
     "dist/node/index.d.ts",
-    `export * from '../index';\nexport { default } from '../index';\n`,
+    `export * from '../index.node';\nexport { default } from '../index.node';\n`,
   );
   await writeFile(
     "dist/browser/index.d.ts",
-    `export * from '../index';\nexport { default } from '../index';\n`,
+    `export * from '../index.browser';\nexport { default } from '../index.browser';\n`,
   );
   console.log(
     `Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`,

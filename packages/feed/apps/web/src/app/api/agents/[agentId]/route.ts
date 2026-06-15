@@ -192,12 +192,12 @@ export const GET = withErrorHandling(async function GET(
   const user = await authenticateUser(req);
   const { agentId } = await params;
 
-  const [agent, performance, config, agent0TokenId] = await Promise.all([
+  const [agent, performance, config] = await Promise.all([
     agentService.getAgent(agentId, user.id),
     agentService.getPerformance(agentId),
     getAgentConfig(agentId),
-    getAgent0TokenIdByAgentId(agentId),
   ]);
+  const agent0TokenId = agent ? await getAgent0TokenIdByAgentId(agentId) : null;
 
   const tradingEnabled = isAutonomousTradingEnabled(config);
 
@@ -284,8 +284,8 @@ export const GET = withErrorHandling(async function GET(
       lastChatAt: toISOOrNull(config?.lastChatAt),
       walletAddress: agent?.walletAddress,
       agent0TokenId,
-      createdAt: toISO(agent?.createdAt),
-      updatedAt: toISO(agent?.updatedAt),
+      createdAt: agent ? toISO(agent.createdAt) : null,
+      updatedAt: agent ? toISO(agent.updatedAt) : null,
     },
   });
 });

@@ -166,7 +166,6 @@ export class PlanningService extends Service {
 	serviceType = "planning";
 	capabilityDescription = "Planning and action coordination";
 
-	private activePlans = new Map<UUID, ActionPlan>();
 	private planExecutions = new Map<
 		UUID,
 		{
@@ -254,7 +253,6 @@ export class PlanningService extends Service {
 				},
 			};
 
-			this.activePlans.set(planId, plan);
 			return plan;
 		} catch (error) {
 			const err = error instanceof Error ? error.message : String(error);
@@ -303,7 +301,6 @@ export class PlanningService extends Service {
 			throw new Error("Enhanced plan missing id");
 		}
 
-		this.activePlans.set(enhancedPlan.id, enhancedPlan);
 		return enhancedPlan;
 	}
 
@@ -491,9 +488,6 @@ export class PlanningService extends Service {
 			plan,
 			currentStepIndex,
 		);
-		if (plan.id) {
-			this.activePlans.set(plan.id, adaptedPlan);
-		}
 		return adaptedPlan;
 	}
 
@@ -522,7 +516,6 @@ export class PlanningService extends Service {
 		}
 
 		this.planExecutions.clear();
-		this.activePlans.clear();
 	}
 
 	private buildPlanningPrompt(

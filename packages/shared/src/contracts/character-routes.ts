@@ -8,7 +8,7 @@
  * The OpenAI-compat (`POST /v1/chat/completions`) and Anthropic-compat
  * (`POST /v1/messages`) endpoints are intentionally NOT migrated —
  * they are external-API surface that must mirror upstream specs and
- * accept partial / future fields without rejecting.
+ * accept partial / unknown extension fields without rejecting.
  *
  * Routes covered:
  *   POST /api/character/generate  { field, context, mode? }

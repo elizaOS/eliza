@@ -133,7 +133,7 @@ export const elizaOSCloudPlugin: Plugin = {
 
   // ─── Runtime Event Handlers ──────────────────────────────────────────
   // Forwards per-inference token + USD spend to waifu's burn meter when the
-  // container is provisioned as a hosted waifu agent (no-op otherwise). See
+  // container is provisioned as a hosted waifu agent (inactive otherwise). See
   // utils/waifu-metering.ts for the honest-meter rationale.
   events: {
     MODEL_USED: [createWaifuMeteringHandler()],

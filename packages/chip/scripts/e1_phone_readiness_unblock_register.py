@@ -431,6 +431,53 @@ def main() -> int:
             "local_pattern_all_electrical_pad_counts_match_manifest": local_progress.get(
                 "pattern_all_electrical_pad_counts_match_manifest", False
             ),
+            "local_instance_pin_step_status": local_progress.get("instance_pin_step_status", ""),
+            "local_instance_pin_step_component_instance_count": local_progress.get(
+                "instance_pin_step_component_instance_count", 0
+            ),
+            "local_instance_pin_step_routed_board_footprint_count": local_progress.get(
+                "instance_pin_step_routed_board_footprint_count", 0
+            ),
+            "local_instance_pin_step_pinout_bound_instance_count": local_progress.get(
+                "instance_pin_step_pinout_bound_instance_count", 0
+            ),
+            "local_instance_pin_step_support_pattern_instance_count": local_progress.get(
+                "instance_pin_step_support_pattern_instance_count", 0
+            ),
+            "local_instance_pin_step_pending_supplier_pad_map_or_order_instance_count": (
+                local_progress.get(
+                    "instance_pin_step_pending_supplier_pad_map_or_order_instance_count", 0
+                )
+            ),
+            "local_instance_pin_step_public_candidate_package_conflict_instance_count": (
+                local_progress.get(
+                    "instance_pin_step_public_candidate_package_conflict_instance_count", 0
+                )
+            ),
+            "local_instance_pin_step_local_step_instance_count": local_progress.get(
+                "instance_pin_step_local_step_instance_count", 0
+            ),
+            "local_instance_pin_step_local_step_hash_match_count": local_progress.get(
+                "instance_pin_step_local_step_hash_match_count", 0
+            ),
+            "local_instance_pin_step_local_contract_pass_count": local_progress.get(
+                "instance_pin_step_local_contract_pass_count", 0
+            ),
+            "local_instance_pin_step_local_review_pass_count": local_progress.get(
+                "instance_pin_step_local_review_pass_count", 0
+            ),
+            "local_instance_pin_step_supplier_approved_instance_count": local_progress.get(
+                "instance_pin_step_supplier_approved_instance_count", 0
+            ),
+            "local_instance_pin_step_release_credit_instance_count": local_progress.get(
+                "instance_pin_step_release_credit_instance_count", 0
+            ),
+            "local_instance_pin_step_local_failure_count": local_progress.get(
+                "instance_pin_step_local_failure_count", 0
+            ),
+            "local_instance_pin_step_release_credit": local_progress.get(
+                "instance_pin_step_release_credit", False
+            ),
             "local_cad_connection_passing_count": local_progress.get(
                 "cad_connection_passing_count", 0
             ),
@@ -556,9 +603,7 @@ def main() -> int:
                 )
             ),
             "local_component_model_directory_pattern_bound_model_record_count": (
-                local_progress.get(
-                    "component_model_directory_pattern_bound_model_record_count", 0
-                )
+                local_progress.get("component_model_directory_pattern_bound_model_record_count", 0)
             ),
             "local_component_model_directory_terminal_contract_bound_model_record_count": (
                 local_progress.get(

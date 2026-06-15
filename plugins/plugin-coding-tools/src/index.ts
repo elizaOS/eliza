@@ -33,7 +33,7 @@ function terminalSupportedByEnv(
 export const codingToolsPlugin: Plugin = {
   name: "coding-tools",
   description:
-    "Native Claude-Code-style coding tools. FILE owns read/write/edit/grep/glob/ls operations, SHELL runs local commands, and WORKTREE owns enter/exit worktree operations. The TODO umbrella action is provided by @elizaos/plugin-todos. WEB_SEARCH is provided by core/agent. All file paths must be absolute unless an operation explicitly defaults to session cwd. Blocks user-private + per-OS system paths by default.",
+    "Native Claude-Code-style coding tools. FILE owns read/write/edit/grep/glob/ls operations, SHELL runs local commands, and WORKTREE owns enter/exit worktree operations. The task-list umbrella action is provided by @elizaos/plugin-todos. WEB_SEARCH is provided by core/agent. All file paths must be absolute unless an operation explicitly defaults to session cwd. Blocks user-private + per-OS system paths by default.",
   services: [
     FileStateService,
     SandboxService,

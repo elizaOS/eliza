@@ -348,13 +348,27 @@ app.post("/", async (c) => {
     const provider = getImageProvider(definition.billingSource);
     const env = getCloudAwareEnv();
     const apiKeys = {
-      OPENROUTER_API_KEY: env.OPENROUTER_API_KEY,
+      BITROUTER_API_KEY: env.BITROUTER_API_KEY,
+      BITROUTER_BASE_URL: env.BITROUTER_BASE_URL,
+      ATLASCLOUD_API_KEY: env.ATLASCLOUD_API_KEY,
+      ATLASCLOUD_BASE_URL: env.ATLASCLOUD_BASE_URL,
       FAL_KEY: env.FAL_KEY,
       FAL_API_KEY: env.FAL_API_KEY,
     };
     if (
-      definition.billingSource === "openrouter" &&
-      !apiKeys.OPENROUTER_API_KEY
+      definition.billingSource === "bitrouter" &&
+      !apiKeys.BITROUTER_API_KEY
+    ) {
+      return jsonError(
+        c,
+        503,
+        getAiProviderConfigurationError(),
+        "internal_error",
+      );
+    }
+    if (
+      definition.billingSource === "atlascloud" &&
+      !apiKeys.ATLASCLOUD_API_KEY
     ) {
       return jsonError(
         c,
@@ -426,8 +440,8 @@ app.post("/", async (c) => {
       return c.json(
         {
           success: false,
-          error: "Insufficient app credits",
-          code: "insufficient_app_credits",
+          error: "Insufficient cloud credits",
+          code: "insufficient_credits",
           required: deduction.totalCost,
           balance: deduction.newBalance,
         },

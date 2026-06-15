@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-todos",
-  "version": "2.0.3-beta.0",
+  "version": "2.0.3-beta.13",
   "description": "User-scoped persistent todos with CRUD. Single TODO umbrella action (op-based: write/create/update/complete/cancel/delete/list/clear) and a currentTodosProvider that surfaces the user's pending + in-progress todos to the planner each turn. Backed by drizzle pgSchema('todos').",
   "type": "module",
   "main": "dist/index.js",
@@ -49,23 +49,39 @@
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "drizzle-orm": "^0.45.1"
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*",
+    "drizzle-orm": "^0.45.1",
+    "lucide-react": "^1.0.0"
   },
   "peerDependencies": {
-    "@elizaos/plugin-sql": "workspace:*"
+    "@elizaos/plugin-sql": "workspace:*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tsup": "^8.5.1",
     "typescript": "^6.0.3",
+    "vite": "^8.0.0",
     "vitest": "^4.0.0"
   },
   "scripts": {
-    "build": "bun run build.ts",
+    "build": "bun run build:js && bun run build:views && bun run build:types",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:views": "bunx --bun vite build --config vite.config.views.ts",
+    "build:types": "tsc --noCheck -p tsconfig.build.json",
     "dev": "bun --hot build.ts",
     "clean": "rm -rf dist .turbo",
     "test": "vitest run",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "echo \"Lint skipped\"",
     "lint:check": "bun run lint",
     "check": "bun run typecheck && bun run test"
@@ -76,6 +92,12 @@
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {}
+  },
+  "elizaos": {
+    "app": {
+      "displayName": "Todos",
+      "category": "productivity"
+    }
   },
   "eliza": {
     "platforms": [

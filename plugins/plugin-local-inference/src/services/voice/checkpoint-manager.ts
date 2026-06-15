@@ -12,17 +12,15 @@
  *     mint filenames, track active handles, or know about the upstream URL
  *     scheme. They want `save("pre-draft") → handle`, `restore(handle)`,
  *     `discard(handle)` and an in-memory mock for unit tests.
- *   - When the upstream llama.cpp merge lands and `/v1/checkpoint/save`
- *     becomes the canonical endpoint, only this file changes — the voice
- *     state machine keeps the same public interface (`saveCheckpoint`,
- *     `restoreCheckpoint`, `discardCheckpoint`). The `CheckpointHandle` is
- *     opaque from the caller's perspective; only this module reads its
- *     fields.
+ *   - Backend reference shape is isolated here: the voice state machine keeps
+ *     the same public interface (`saveCheckpoint`, `restoreCheckpoint`,
+ *     `discardCheckpoint`) while this module owns how the REST backend stores
+ *     and addresses the snapshot.
  *
  * The handle returned from `saveCheckpoint` carries enough information to
  * `restore` and `discard` the same snapshot later even after the underlying
- * URL scheme changes. Today it points at `(slotId, filename)`; tomorrow it
- * will point at the v1 checkpoint id the upstream API returns.
+ * URL scheme changes. The current backend reference points at
+ * `(slotId, filename)` and can evolve without changing callers.
  *
  * **MockCheckpointManager** stores a caller-supplied snapshot (token sequence
  * + arbitrary metadata) in memory keyed by the handle. Tests use it to drive
@@ -175,10 +173,8 @@ export class CheckpointManager implements CheckpointManagerLike {
 		const numericSlot = this.resolveSlotId(slotId);
 		const id = this.nextId++;
 		const filename = restFilenameFor(slotId, name, id);
-		// TODO(upstream-fork-PR-#TBD): when llama.cpp's `/v1/checkpoint/save`
-		// endpoint lands (tracked in `docs/eliza-1-optimistic-rollback.md`),
-		// switch this to the new checkpoint-id-based REST call. Public
-		// interface stays the same — only `backendRef` changes shape.
+		// REST backend reference is intentionally opaque to callers; this
+		// filename-based shape matches the currently supported llama.cpp fork API.
 		const backendRef = await this.client.saveCheckpoint(numericSlot, filename);
 		this.live.add(id);
 		return {
@@ -197,9 +193,7 @@ export class CheckpointManager implements CheckpointManagerLike {
 				`[checkpoint-manager] handle id=${handle.id} has no REST backend reference (mock-only handle?)`,
 			);
 		}
-		// TODO(upstream-fork-PR-#TBD): swap for `/v1/checkpoint/restore` once
-		// upstream lands. The handle already carries the upstream id via
-		// `backendRef`.
+		// Restore through the backend reference produced by saveCheckpoint.
 		await this.client.restoreCheckpoint(
 			handle.backendRef.slotId,
 			handle.backendRef.filename,

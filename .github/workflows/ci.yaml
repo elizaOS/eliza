@@ -36,13 +36,14 @@ jobs:
         with:
           node-version: "24.15.0"
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: "canary"
-
-      - name: Install dependencies
-        run: bun install
+          install-command: bun install
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
 
       - name: Create test env file
         run: |
@@ -109,13 +110,16 @@ jobs:
         with:
           node-version: "24.15.0"
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: "canary"
-
-      - name: Install dependencies
-        run: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
 
       # The scenario CLI imports @elizaos/core from source, which imports the
       # gitignored ./generated/validation-keyword-data.ts. --ignore-scripts skips
@@ -198,6 +202,12 @@ jobs:
           path: |
             reports/scenarios/pr-deterministic/
             reports/scenarios/catalog-inventory/
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Prune deterministic E2E scratch output
+        if: always()
+        run: rm -rf reports/scenarios/pr-deterministic reports/scenarios/catalog-inventory packages/app/playwright-report packages/app/test-results
 
   # Lint and format job
   lint-and-format:
@@ -217,13 +227,16 @@ jobs:
         with:
           node-version: "24.15.0"
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: "canary"
-
-      - name: Install dependencies
-        run: bun install
+          install-command: bun install
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
 
       - name: Prompt secret scan
         run: cd packages/prompts && bun run check:secrets
@@ -252,13 +265,16 @@ jobs:
         with:
           node-version: "24.15.0"
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: "canary"
-
-      - name: Install dependencies
-        run: bun install
+          install-command: bun install
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
 
       - name: Build packages
         run: bun run build
@@ -283,13 +299,16 @@ jobs:
         with:
           node-version: "24.15.0"
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: "canary"
-
-      - name: Install dependencies
-        run: bun install
+          install-command: bun install
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
 
       - name: Build packages
         run: bun run build

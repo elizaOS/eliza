@@ -21,14 +21,14 @@ export const checkoutDependentE2EPaths = [
 export const specializedLiveE2EPaths = [
   // Feature-specific lanes that require extra live env flags, long-running
   // setup, or dedicated orchestration to avoid baseline E2E skips.
-  "eliza/plugins/plugin-lifeops/test/assistant-user-journeys.live.e2e.test.ts",
-  "eliza/plugins/plugin-lifeops/test/lifeops-calendar-chat.live.e2e.test.ts",
-  "eliza/plugins/plugin-lifeops/test/lifeops-chat.live.e2e.test.ts",
-  "eliza/plugins/plugin-lifeops/test/lifeops-gmail-chat.live.e2e.test.ts",
-  "eliza/plugins/plugin-lifeops/test/lifeops-memory.live.e2e.test.ts",
-  "eliza/plugins/plugin-lifeops/test/selfcontrol-chat.live.e2e.test.ts",
-  "eliza/plugins/plugin-lifeops/test/selfcontrol-desktop.live.e2e.test.ts",
-  "eliza/plugins/plugin-lifeops/test/selfcontrol-dev.live.e2e.test.ts",
+  "eliza/plugins/plugin-personal-assistant/test/assistant-user-journeys.live.e2e.test.ts",
+  "eliza/plugins/plugin-personal-assistant/test/lifeops-calendar-chat.live.e2e.test.ts",
+  "eliza/plugins/plugin-personal-assistant/test/lifeops-chat.live.e2e.test.ts",
+  "eliza/plugins/plugin-personal-assistant/test/lifeops-gmail-chat.live.e2e.test.ts",
+  "eliza/plugins/plugin-personal-assistant/test/lifeops-memory.live.e2e.test.ts",
+  "eliza/plugins/plugin-personal-assistant/test/selfcontrol-chat.live.e2e.test.ts",
+  "eliza/plugins/plugin-personal-assistant/test/selfcontrol-desktop.live.e2e.test.ts",
+  "eliza/plugins/plugin-personal-assistant/test/selfcontrol-dev.live.e2e.test.ts",
   "eliza/plugins/plugin-documents/test/documents-api.live.e2e.test.ts",
   "eliza/packages/app-core/test/live-agent/action-invocation.live.e2e.test.ts",
   "eliza/packages/app-core/test/live-agent/agent-runtime.live.e2e.test.ts",

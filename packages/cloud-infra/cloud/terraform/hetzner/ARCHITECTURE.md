@@ -9,7 +9,8 @@ split so we stop treating manually-created VMs as "infrastructure-by-prayer".
 ┌──────────────────────────────────────────────────────────────┐
 │  Tier 1 — Control plane (static, 1-2 VMs, Terraform)        │
 │                                                              │
-│   eliza-1   (Hetzner cpx21, fsn1)             │
+│   eliza-1   (Hetzner cax21 ARM, fsn1, manual)               │
+│   eliza-staging-1   (Hetzner cpx32 x86, fsn1)               │
 │     ├── eliza-provisioning-worker  (systemd, queue consumer)│
 │     ├── eliza-agent-router         (systemd, HTTP routing)  │
 │     ├── headscale                  (VPN mesh)               │
@@ -18,7 +19,8 @@ split so we stop treating manually-created VMs as "infrastructure-by-prayer".
 │     └── (optional: grafana/prometheus)                      │
 │                                                              │
 │   Lifecycle: long-lived. Replaced on demand, not autoscaled.│
-│   Cost: ~€5/mo per VM (cpx21).                              │
+│   Cost: prod ~€7/mo (cax21), staging ~€11/mo (cpx32).       │
+│   See variables.tf for cpx21→cpx32 retirement + ARM notes.  │
 └──────────────────────────────────────────────────────────────┘
                               │ enqueue / SSH
                               ▼
@@ -101,6 +103,77 @@ hcloud server delete milady-core-2
 DELETE FROM docker_nodes WHERE node_id LIKE 'milady-core-%';
 ```
 
+## Multi-project layout
+
+Each environment lives in its **own Hetzner Cloud Project** — not just its own
+state file. Projects are administrative containers in the Hetzner Cloud
+console: separate API tokens, separate per-project resource quotas (5 servers
+by default, 10 with KYC), separate SSH keys, separate private networks. There
+is no `hcloud_project` Terraform resource — projects are management-plane only.
+
+```
+Hetzner Cloud account (one human)
+├── Project "eliza-prod"      (env-scoped HCLOUD_TOKEN, 5/5 servers max)
+│   ├── eliza-1               (control-plane, cax21)
+│   └── eliza-core-<hex>      (worker, ccx33, autoscaled by node-autoscaler.ts)
+├── Project "eliza-staging"   (env-scoped HCLOUD_TOKEN, 5/5 servers max)
+│   ├── eliza-staging-1               (control-plane, cpx32)
+│   └── eliza-core-<hex>              (worker, cpx32, autoscaled)
+└── Project "apps"            (repo-level HCLOUD_APPS_TOKEN, shared)
+    ├── eliza-app-tenant              (tenant Postgres — SHARED across envs; apps-shared/)
+    ├── eliza-apps-node-staging-1     (apps Product-2 worker, staging; apps-data-plane/)
+    └── eliza-apps-node-production-1  (apps Product-2 worker, production; apps-data-plane/)
+```
+
+The tenant DB is intentionally shared across staging + production app workers
+— alpha scale, one Postgres node holds both env's per-tenant DATABASE+ROLE,
+isolation is per-tenant not per-env. Its IaC lives in the dedicated
+`apps-shared/` module with a single shared backend.
+
+### Why split
+
+- **Quota isolation** — prod can't starve staging, staging can't starve prod;
+  apps untrusted-container quota is independent of agent capacity
+- **Blast radius** — a leaked staging token can't delete prod resources; an
+  apps-tenant-DB compromise can't reach the agent plane (separate network)
+- **Cost visibility** — Hetzner billing already splits per project in the invoice
+- **Apps stays simple** — Product 2 is alpha; one shared `apps` project keeps
+  operator overhead low until there's real prod-Apps traffic to isolate.
+  Future split into `apps-staging` + `apps-prod` is a token-and-state-file
+  swap, no resource recreation.
+
+### Token plumbing
+
+| Where                                          | Sets                          | Used for                |
+|------------------------------------------------|-------------------------------|-------------------------|
+| GitHub Environment `staging`   → `HCLOUD_TOKEN`| staging project token         | terraform plan/apply on control-plane staging |
+| GitHub Environment `production`→ `HCLOUD_TOKEN`| prod project token            | terraform plan/apply on control-plane prod    |
+| Repo-level → `HCLOUD_APPS_TOKEN`               | apps project token (shared)   | terraform plan/apply on apps-shared + apps-data-plane (both envs) |
+| Staging control-plane `/opt/eliza/cloud/.env.local` → `HCLOUD_TOKEN` | staging project token | provisioning-worker autoscaler   |
+| Prod control-plane `/opt/eliza/cloud/.env.local`    → `HCLOUD_TOKEN` | prod project token    | provisioning-worker autoscaler   |
+
+Terraform's `provider "hcloud" { token = var.hcloud_token }` block accepts the
+token from either `var.hcloud_token` (tfvars / `-var`) or the `HCLOUD_TOKEN`
+env var. GHA wires the env var via the environment-scoped secret.
+
+### Migrating an existing project to a per-env split
+
+Hetzner has **no move-resource-between-projects** API. The move is destructive:
+
+1. **Create the new project** in console.hetzner.cloud (free, instant)
+2. **Generate a token** scoped to the new project; store as the matching
+   GitHub Environment secret + the matching control-plane env var
+3. **Provision the new env's resources** fresh in the new project via
+   terraform apply
+4. **Migrate state** by recreating agents (the daemon does this on a
+   `recreate` job — picks up env vars then targets the new project)
+5. **Delete the old resources** from the old project; the old project becomes
+   the home of the OTHER env (e.g. keep "default" as prod, new "staging"
+   gets the new project)
+
+Downtime is per-agent during recreate; control-plane is unaffected because
+the daemon stays running on its own VM.
+
 ## Followups (not in this initial PR)
 
 - [ ] Terraform module for headscale state (preauth keys, ACLs)
@@ -111,8 +184,8 @@ DELETE FROM docker_nodes WHERE node_id LIKE 'milady-core-%';
       (`pool-replenish`, `pool-health-check`, `pool-image-rollout`,
       `deployment-monitor`). Once done, retire the
       `packages/cloud-services/container-control-plane/` package entirely.
-- [ ] Raise Hetzner Cloud server limit (open ticket) to enable autoscale
-      past the default cap of ~10 servers per account.
+- [ ] Raise Hetzner Cloud server limit (open ticket) — only if the
+      per-project default 5 isn't enough after the multi-project split.
 
 ## Operator runbook
 

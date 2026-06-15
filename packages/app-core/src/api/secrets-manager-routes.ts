@@ -55,8 +55,8 @@ import { sendJson, sendJsonError } from "./response";
  *
  * Why is CREATE in-house only? `op item create` and `bw create item` work
  * but require a vault path / folder id and structured field metadata that
- * a generic POST can't safely synthesize for the user. Adding an external
- * item is deferred to a future iteration with vendor-specific UI.
+ * a generic POST can't safely synthesize for the user. External-manager
+ * creates must go through vendor-specific UI that can collect those fields.
  *
  * The manager wraps `@elizaos/vault` and routes sensitive writes to
  * the user's chosen password manager (1Password / Proton / Bitwarden)
@@ -94,7 +94,7 @@ export function _resetSecretsManagerForTesting(): void {
   _resetSecretsManagerInstallerForTesting();
 }
 
-/** Test hook: inject a manager built around a test vault + stub exec. */
+/** Test hook: inject a manager built around a test vault + exec double. */
 export function _setSecretsManagerForTesting(
   next: SecretsManager | null,
 ): void {

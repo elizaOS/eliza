@@ -70,7 +70,7 @@ class TierSplitResult(TypedDict):
 # geometric one. The anchor is TSMC's published F2F SoIC figure of ~14,000
 # signals/mm2 at 6 um HVM (vs the 27,778/mm2 geometric value) -- a bonding
 # efficiency of ~0.5. Finer hybrid pitches scale by the same quadratic with the
-# same efficiency factor; 1 um hybrid is roadmap/research for general logic
+# same efficiency factor; 1 um hybrid is research-track for general logic
 # (imec W2W 1 um is HVM for image sensors / 3D NAND only), so its realizable
 # figure is a research extrapolation, not 2025 HVM. Monolithic MIV is sequential
 # integration with near-unity efficiency at its demonstrated ~100k MIV/mm2.

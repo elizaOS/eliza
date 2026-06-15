@@ -115,9 +115,9 @@ or generalized.
 
 1. **String replacements must catch:** `eliza`, `Eliza`, `nyx`,
    `native-reasoning`, framework-specific section headers.
-   These should map to identity values (find === replace) initially —
-   they're presence detectors, not transformations. Future tuning can
-   replace with neutral synonyms.
+   These map to identity values (find === replace) by default because
+   they're presence detectors, not transformations. Custom dictionaries can
+   replace them with neutral synonyms.
 2. **Tool renames must remap eliza tools to CC-shaped tools.** Mapping
    choices below.
 3. **Property renames** are minimal — eliza already uses fairly generic
@@ -149,5 +149,5 @@ Designed to make eliza's tool surface look like a Claude Code session:
 | `close_thread`   | `TodoComplete`   | CC-adjacent                        |
 | `update_project` | `ProjectUpdate`  | neutral                            |
 | `spawn_codex`    | `Task`           | CC has Task (subagent)             |
-| `spawn_agent`    | `Agent`          | CC stub uses Agent                 |
+| `spawn_agent`    | `Agent`          | CC metadata uses Agent             |
 | `sessions_spawn`    | `TaskCreate`     | distinct from Task                 |

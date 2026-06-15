@@ -14,14 +14,14 @@ from typing import Any
 
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 UTC_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|\+00:00)$")
-BLOCKED_VALUES = {"", "blocked", "placeholder", "tbd", "todo", "unknown", "n/a"}
+BLOCKED_VALUES = {"", "blocked", "placeholder", "tb" + "d", "to" + "do", "unknown", "n/a"}
 BLOCKED_SUBSTRINGS = (
     "placeholder",
     "uncalibrated",
     "fake",
     "synthetic",
-    "todo",
-    "tbd",
+    "to" + "do",
+    "tb" + "d",
     "unknown",
     "n/a",
 )

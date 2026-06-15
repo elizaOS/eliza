@@ -222,8 +222,8 @@ export class MeteoraLpService extends Service {
 
       const binIdsToRemove = position.positionData.positionBinData.map((bin) => bin.binId);
 
-      // TODO: The ILpService interface is not ideal for DLMMs.
-      // We are forced to assume removing 100% of liquidity here.
+      // ILpService has no DLMM percentage/bin selection fields yet, so this
+      // adapter removes 100% of the selected position.
       const removeLiquidityTx = await dlmmPool.removeLiquidity({
         position: position.publicKey,
         user: params.userVault.publicKey,
@@ -355,7 +355,7 @@ export class MeteoraLpService extends Service {
           symbol: "METEORA-POS",
         },
         underlyingTokens,
-        valueUsd: 0, // TODO: requires a price oracle
+        valueUsd: 0, // USD valuation is unavailable until a price oracle is wired.
         accruedFees: [],
         rewards: [],
       };

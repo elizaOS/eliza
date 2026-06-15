@@ -7,7 +7,7 @@ Next.js application: UI, API routes, SSE, auth wiring, and Vercel Analytics/Spee
 - **Vercel Speed Insights** (real-user Web Vitals) is wrapped in **`GatedSpeedInsights`**: route allowlist + session sampling + optional disable for minimal/embed layout.
 - **Why documented centrally:** Operators tune sampling without reading layout code; rationale for allowlists and defaults lives in one place.
 
-Full write-up (WHYs, env vars, route list, roadmap): [`docs/observability/speed-insights.md`](../../docs/observability/speed-insights.md).
+Full write-up (WHYs, env vars, route list, follow-ups): [`docs/observability/speed-insights.md`](../../docs/observability/speed-insights.md).
 
 ## Related docs
 

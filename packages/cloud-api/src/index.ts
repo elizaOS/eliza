@@ -17,6 +17,14 @@ import { makeCronHandler } from "@/lib/cron/cloudflare-cron";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 let appPromise: Promise<Hono<AppEnv>> | undefined;
+const AGENT_ID_RE =
+  /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+const DEFAULT_AGENT_BASE_DOMAIN = "elizacloud.ai";
+const DEFAULT_AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.elizacloud.ai";
+type AgentDomainBindings = Pick<
+  AppEnv["Bindings"],
+  "AGENT_ROUTER_ORIGIN_HOST" | "ELIZA_CLOUD_AGENT_BASE_DOMAIN"
+>;
 
 async function getApp(): Promise<Hono<AppEnv>> {
   appPromise ??= import("./bootstrap-app").then((m) => m.createApp());
@@ -37,6 +45,68 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
   );
 }
 
+function normalizeHostname(hostname: string | undefined): string | null {
+  const normalized = hostname?.trim().toLowerCase().replace(/\.+$/, "");
+  return normalized || null;
+}
+
+function getGeneratedAgentId(
+  url: URL,
+  env: AgentDomainBindings,
+): string | null {
+  const baseDomain =
+    normalizeHostname(env.ELIZA_CLOUD_AGENT_BASE_DOMAIN) ??
+    DEFAULT_AGENT_BASE_DOMAIN;
+  const suffix = `.${baseDomain}`;
+  const hostname = normalizeHostname(url.hostname);
+  if (!hostname?.endsWith(suffix)) return null;
+  const subdomain = hostname.slice(0, -suffix.length);
+  return AGENT_ID_RE.test(subdomain) ? subdomain : null;
+}
+
+export function redirectFrontendHost(
+  url: URL,
+  env: AgentDomainBindings,
+): Response | null {
+  const baseDomain =
+    normalizeHostname(env.ELIZA_CLOUD_AGENT_BASE_DOMAIN) ??
+    DEFAULT_AGENT_BASE_DOMAIN;
+  const hostname = normalizeHostname(url.hostname);
+  if (hostname !== `www.${baseDomain}`) return null;
+
+  const targetUrl = new URL(url);
+  targetUrl.hostname = baseDomain;
+  return Response.redirect(targetUrl.toString(), 308);
+}
+
+function proxyGeneratedAgentRequest(
+  request: Request,
+  env: AppEnv["Bindings"],
+  url: URL,
+): Promise<Response> | null {
+  if (!getGeneratedAgentId(url, env)) return null;
+
+  const originHost =
+    normalizeHostname(env.AGENT_ROUTER_ORIGIN_HOST) ??
+    DEFAULT_AGENT_ROUTER_ORIGIN_HOST;
+  const targetUrl = new URL(request.url);
+  targetUrl.hostname = originHost;
+  const headers = new Headers(request.headers);
+  headers.delete("host");
+  headers.set("x-forwarded-host", url.host);
+  headers.set("x-forwarded-proto", url.protocol.replace(":", ""));
+  const init: RequestInit = {
+    method: request.method,
+    headers,
+    redirect: "manual",
+  };
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    init.body = request.body;
+  }
+
+  return fetch(new Request(targetUrl, init));
+}
+
 const scheduled = makeCronHandler(async (request, env, ctx) =>
   (await getApp()).fetch(request, env, ctx),
 );
@@ -47,7 +117,13 @@ export default {
     env: AppEnv["Bindings"],
     ctx: ExecutionContext,
   ) => {
-    if (new URL(request.url).pathname === "/api/health") {
+    const url = new URL(request.url);
+    const agentProxyResponse = proxyGeneratedAgentRequest(request, env, url);
+    if (agentProxyResponse) return agentProxyResponse;
+    const frontendRedirect = redirectFrontendHost(url, env);
+    if (frontendRedirect) return frontendRedirect;
+
+    if (url.pathname === "/api/health") {
       return healthResponse(env);
     }
 

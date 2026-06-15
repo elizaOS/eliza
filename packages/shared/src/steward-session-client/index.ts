@@ -9,7 +9,7 @@
  *    browser;
  *  - the small set of helpers each consumer needs (sync, clear, read).
  *
- * Browser-only helpers no-op cleanly under SSR (`typeof window === "undefined"`).
+ * Browser-only helpers return cleanly under SSR (`typeof window === "undefined"`).
  */
 
 // ---------------------------------------------------------------------------
@@ -53,8 +53,9 @@ export const STEWARD_NONCE_EXCHANGE_ENDPOINT =
 /**
  * Same-origin endpoint that rotates the Steward access + refresh tokens
  * using the HttpOnly `steward-refresh-token` cookie. The browser POSTs
- * with `credentials: "include"`; the cookie travels automatically and no
- * token ever enters JS.
+ * with `credentials: "include"`; the cookie travels automatically. Trusted
+ * Cloud browser origins receive the short-lived access token so the SPA can
+ * refresh its localStorage mirror while route auth remains synchronous.
  */
 export const STEWARD_REFRESH_ENDPOINT = "/api/auth/steward-refresh";
 
@@ -189,8 +190,8 @@ export function readStoredStewardRefreshToken(): string | null {
  * HttpOnly-cookie protection the server already provides. The cookie is
  * set by `/api/auth/steward-session` and `/api/auth/steward-nonce-exchange`
  * — there is no longer any reason for the browser to hold a copy. This
- * helper is a no-op-equivalent kept only for one release window; after
- * that it will be deleted.
+ * helper intentionally does not write and is kept only for one release
+ * window; after that it will be deleted.
  */
 export function writeStoredStewardRefreshToken(_token: string): void {
   if (typeof window === "undefined") return;
@@ -198,7 +199,7 @@ export function writeStoredStewardRefreshToken(_token: string): void {
     warnedWriteRefresh = true;
     try {
       console.warn(
-        "[steward] writeStoredStewardRefreshToken() is deprecated and no longer writes to localStorage. The HttpOnly steward-refresh-token cookie is now the only persistence. This call is a no-op.",
+        "[steward] writeStoredStewardRefreshToken() is deprecated and no longer writes to localStorage. The HttpOnly steward-refresh-token cookie is now the only persistence. This call intentionally leaves storage unchanged.",
       );
     } catch {
       // ignore
@@ -298,6 +299,8 @@ export interface StewardNonceExchangeRequest {
   redirectUri?: string;
   /** Steward tenant ID (e.g. "elizacloud"). */
   tenantId?: string;
+  /** PKCE verifier paired with the `code_challenge` sent to Steward. */
+  codeVerifier?: string;
 }
 
 export interface StewardNonceExchangeResponse extends StewardSessionResponse {
@@ -319,6 +322,8 @@ export interface ExchangeStewardCodeOpts extends SyncOpts {
   redirectUri?: string;
   /** Steward tenant id. */
   tenantId?: string;
+  /** PKCE verifier paired with the `code_challenge` sent to Steward. */
+  codeVerifier?: string;
 }
 
 /**
@@ -338,6 +343,7 @@ export async function exchangeStewardCode(
     code,
     ...(opts.redirectUri ? { redirectUri: opts.redirectUri } : {}),
     ...(opts.tenantId ? { tenantId: opts.tenantId } : {}),
+    ...(opts.codeVerifier ? { codeVerifier: opts.codeVerifier } : {}),
   };
   const response = await f(endpoint, {
     method: "POST",
@@ -361,6 +367,17 @@ export async function exchangeStewardCode(
  * swallowed — the caller has already wiped localStorage and there's nothing
  * useful to do about a cookie that won't clear.
  */
+export {
+  buildStewardOAuthAuthorizeUrl,
+  consumeStewardPkceVerifier,
+  createStewardPkceChallenge,
+  createStewardPkcePair,
+  generateStewardPkceVerifier,
+  type StewardOAuthProvider,
+  type StewardPkcePair,
+  storeStewardPkceVerifier,
+} from "./steward-oauth-pkce.js";
+
 export function clearStewardSession(opts: ClearOpts = {}): void {
   const endpoints = opts.endpoints ?? [STEWARD_SESSION_ENDPOINT];
   const f = opts.fetchImpl ?? (typeof fetch !== "undefined" ? fetch : null);

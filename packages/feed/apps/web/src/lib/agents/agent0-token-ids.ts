@@ -1,18 +1,22 @@
 import { agentRegistries, db, inArray } from "@feed/db";
 
-function parseAgent0TokenId(value: string | null): number | null {
-  if (!value) return null;
-  const tokenId = Number(value);
-  if (!Number.isSafeInteger(tokenId) || tokenId < 0) {
+export function parseAgent0TokenId(value: string | null): number | null {
+  if (!value) {
     return null;
   }
-  return tokenId;
+
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    return null;
+  }
+
+  return parsed;
 }
 
 export async function getAgent0TokenIdsByAgentId(
   agentIds: string[],
 ): Promise<Map<string, number | null>> {
-  const uniqueAgentIds = Array.from(new Set(agentIds.filter(Boolean)));
+  const uniqueAgentIds = [...new Set(agentIds)].filter(Boolean);
   if (uniqueAgentIds.length === 0) {
     return new Map();
   }

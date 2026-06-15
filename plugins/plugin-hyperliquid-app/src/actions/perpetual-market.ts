@@ -12,8 +12,11 @@ import type {
 import { Service } from "@elizaos/core";
 import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
 import type {
+  HyperliquidFundingRate,
+  HyperliquidFundingResponse,
   HyperliquidMarket,
   HyperliquidMarketsResponse,
+  HyperliquidOrdersResponse,
   HyperliquidPositionsResponse,
   HyperliquidStatusResponse,
 } from "../hyperliquid-contracts";
@@ -27,6 +30,7 @@ const HYPERLIQUID_ACTION_CONTEXTS = [
 ] as const;
 const PERPETUAL_MARKET_ACTION_NAME = "PERPETUAL_MARKET";
 const HYPERLIQUID_READ_COMPAT_NAME = "HYPERLIQUID_READ";
+const HYPERLIQUID_PLACE_ORDER_COMPAT_NAME = "HYPERLIQUID_PLACE_ORDER";
 
 function toCallbackData(data: ProviderDataRecord): Content["data"] {
   return data as unknown as Content["data"];
@@ -52,6 +56,37 @@ const HYPERLIQUID_READ_KEYWORDS = [
   "선물",
   "무기한",
 ] as const;
+const HYPERLIQUID_TRADE_KEYWORDS = [
+  ...HYPERLIQUID_READ_KEYWORDS,
+  "buy",
+  "sell",
+  "trade",
+  "order",
+  "long",
+  "short",
+  "open position",
+  "close position",
+  "comprar",
+  "vender",
+  "orden",
+  "acheter",
+  "vendre",
+  "ordre",
+  "kaufen",
+  "verkaufen",
+  "auftrag",
+  "comprare",
+  "vendere",
+  "注文",
+  "買う",
+  "売る",
+  "买入",
+  "卖出",
+  "订单",
+  "매수",
+  "매도",
+] as const;
+
 const READ_KINDS = [
   "status",
   "markets",
@@ -60,7 +95,7 @@ const READ_KINDS = [
   "funding",
 ] as const;
 type HyperliquidReadKind = (typeof READ_KINDS)[number];
-const HYPERLIQUID_OPS = ["read"] as const;
+const HYPERLIQUID_OPS = ["read", "place_order"] as const;
 type HyperliquidOp = (typeof HYPERLIQUID_OPS)[number];
 const HYPERLIQUID_READ_COMPAT_SIMILES = [
   "HYPERLIQUID",
@@ -77,13 +112,38 @@ const HYPERLIQUID_READ_COMPAT_SIMILES = [
   "HYPERLIQUID_POSITIONS",
   "HYPERLIQUID_FUNDING",
 ] as const;
+const HYPERLIQUID_PLACE_ORDER_COMPAT_SIMILES = [
+  HYPERLIQUID_PLACE_ORDER_COMPAT_NAME,
+  "HYPERLIQUID_TRADE",
+  "HYPERLIQUID_BUY",
+  "HYPERLIQUID_SELL",
+  "HYPERLIQUID_LONG",
+  "HYPERLIQUID_SHORT",
+  // HyperliquidBench Rust plan-step kinds (packages/benchmarks/HyperliquidBench/types.py)
+  // — keep these as similes so retrieval/fine-tune transfer covers the bench's vocabulary.
+  "HYPERLIQUID_PERP_ORDERS",
+  "HYPERLIQUID_CANCEL_LAST",
+  "HYPERLIQUID_CANCEL_OIDS",
+  "HYPERLIQUID_CANCEL_ALL",
+  "HYPERLIQUID_USD_CLASS_TRANSFER",
+  "HYPERLIQUID_SET_LEVERAGE",
+] as const;
 const HYPERLIQUID_READ_OP_ALIASES = new Set([
   ...READ_KINDS,
   ...HYPERLIQUID_READ_COMPAT_SIMILES.map((name) => name.toLowerCase()),
 ]);
+const HYPERLIQUID_PLACE_ORDER_OP_ALIASES = new Set([
+  ...HYPERLIQUID_PLACE_ORDER_COMPAT_SIMILES.map((name) => name.toLowerCase()),
+  "trade",
+  "order",
+  "buy",
+  "sell",
+  "long",
+  "short",
+]);
 
-const FUNDING_NOT_WIRED_REASON =
-  "Hyperliquid funding-rate reads are not yet wired to a route in the native app. Use kind=markets for perpetual metadata or kind=status for credential readiness.";
+const PLACE_ORDER_DISABLED_REASON =
+  "Signed Hyperliquid exchange execution is disabled in the native app. Use the Hyperliquid UI or a dedicated signer to place orders.";
 
 function getApiBase(): string {
   return `http://127.0.0.1:${resolveDesktopApiPort(process.env)}`;
@@ -139,6 +199,9 @@ function normalizeOp(value: unknown): HyperliquidOp | null {
   if (HYPERLIQUID_READ_OP_ALIASES.has(normalized)) {
     return "read";
   }
+  if (HYPERLIQUID_PLACE_ORDER_OP_ALIASES.has(normalized)) {
+    return "place_order";
+  }
   return null;
 }
 
@@ -154,6 +217,14 @@ function readOp(
   const explicit = normalizeOp(rawOp);
   if (explicit) return explicit;
   if (readKind(options)) return "read";
+  if (
+    readStringParam(options, "side") ||
+    readStringParam(options, "coin") ||
+    readStringParam(options, "asset") ||
+    readParam(options, "size") !== undefined
+  ) {
+    return "place_order";
+  }
   return null;
 }
 
@@ -278,6 +349,21 @@ function formatMarket(market: HyperliquidMarket | null): string {
     `Max leverage: ${market.maxLeverage ?? "n/a"}`,
     `Isolated only: ${market.onlyIsolated ? "yes" : "no"}`,
   ].join("\n");
+}
+
+function fundingLine(rate: HyperliquidFundingRate): string {
+  const premium = rate.premium ? ` premium ${rate.premium}` : "";
+  const openInterest = rate.openInterest ? ` OI ${rate.openInterest}` : "";
+  const mark = rate.markPx ? ` mark ${rate.markPx}` : "";
+  return `- ${rate.coin}: funding ${rate.funding}${premium}${openInterest}${mark}`;
+}
+
+function formatFundingRates(rates: readonly HyperliquidFundingRate[]): string {
+  if (rates.length === 0) return "No Hyperliquid funding rates found.";
+  return `Hyperliquid current funding rates:\n${rates
+    .slice(0, 20)
+    .map(fundingLine)
+    .join("\n")}`;
 }
 
 async function handleStatus(
@@ -405,14 +491,29 @@ async function handlePositions(
 }
 
 async function handleFunding(
+  options: HandlerOptions | Record<string, unknown> | undefined,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
-  return emit(callback, FUNDING_NOT_WIRED_REASON, {
+  const coin =
+    readStringParam(options, "coin") ??
+    readStringParam(options, "asset") ??
+    readStringParam(options, "symbol");
+  const response = await fetchHyperliquidJson<HyperliquidFundingResponse>(
+    "/api/hyperliquid/funding",
+  );
+  const rates = coin
+    ? response.rates.filter(
+        (rate) => rate.coin.toUpperCase() === coin.toUpperCase(),
+      )
+    : response.rates;
+  return emit(callback, formatFundingRates(rates), {
     op: "read" satisfies HyperliquidOp,
     compatActionName: HYPERLIQUID_READ_COMPAT_NAME,
     kind: "funding" satisfies HyperliquidReadKind,
-    notWired: true,
-    reason: FUNDING_NOT_WIRED_REASON,
+    rates,
+    source: response.source,
+    fetchedAt: response.fetchedAt,
+    ...(coin ? { coin } : {}),
   });
 }
 
@@ -442,7 +543,7 @@ async function handleReadOperation(
       case "positions":
         return await handlePositions(callback);
       case "funding":
-        return await handleFunding(callback);
+        return await handleFunding(options, callback);
     }
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error);
@@ -453,6 +554,35 @@ async function handleReadOperation(
       kind,
     });
   }
+}
+
+async function handlePlaceOrderOperation(
+  callback: HandlerCallback | undefined,
+): Promise<ActionResult> {
+  let status: HyperliquidStatusResponse | null = null;
+  try {
+    status = await fetchHyperliquidJson<HyperliquidStatusResponse>(
+      "/api/hyperliquid/status",
+    );
+  } catch {
+    status = null;
+  }
+  const reason = status?.executionBlockedReason ?? PLACE_ORDER_DISABLED_REASON;
+  const text = `Hyperliquid order placement is disabled.\nReason: ${reason}`;
+  return {
+    ...(await emit(callback, text, {
+      op: "place_order" satisfies HyperliquidOp,
+      compatActionName: HYPERLIQUID_PLACE_ORDER_COMPAT_NAME,
+      trading: {
+        enabled: false,
+        reason,
+        credentialMode: status?.credentialMode ?? "none",
+        signerReady: status?.signerReady ?? false,
+      },
+    })),
+    success: false,
+    error: reason,
+  };
 }
 
 async function handleOrders(
@@ -471,6 +601,7 @@ async function handleOrders(
 }
 
 void handleOrders;
+void ({} as HyperliquidOrdersResponse);
 
 interface PerpetualMarketProviderMetadata {
   readonly name: string;
@@ -508,12 +639,15 @@ function createHyperliquidProvider(): PerpetualMarketProvider {
   return {
     name: "hyperliquid",
     aliases: ["hl", "hyperliquid-perps"],
-    supportedSubactions: ["read"],
-    description: "Hyperliquid perpetual market discovery and position reads.",
+    supportedSubactions: ["read", "place_order"],
+    description:
+      "Hyperliquid perpetual market discovery, position reads, and execution readiness.",
     execute: async ({ options, op, callback }) => {
       switch (op) {
         case "read":
           return await handleReadOperation(options, callback);
+        case "place_order":
+          return await handlePlaceOrderOperation(callback);
       }
     },
   };
@@ -626,11 +760,14 @@ export const perpetualMarketAction: Action = {
   contexts: [...HYPERLIQUID_ACTION_CONTEXTS],
   contextGate: { anyOf: [...HYPERLIQUID_ACTION_CONTEXTS] },
   roleGate: { minRole: "USER" },
-  similes: [...HYPERLIQUID_READ_COMPAT_SIMILES],
+  similes: [
+    ...HYPERLIQUID_READ_COMPAT_SIMILES,
+    ...HYPERLIQUID_PLACE_ORDER_COMPAT_SIMILES,
+  ],
   description:
-    "Use registered perpetual market providers. target selects the provider; Hyperliquid is registered today. action=read reads public state with kind: status, markets, market, positions, or funding.",
+    "Use registered perpetual market providers. target selects the provider; Hyperliquid is registered today. action=read reads public state with kind: status, markets, market, positions, or funding. action=place_order reports trading readiness; signed order placement is disabled in this read-only app.",
   descriptionCompressed:
-    "Perpetual market router: target hyperliquid; action read.",
+    "Perpetual market router: target hyperliquid; action read or place_order.",
   parameters: [
     {
       name: "target",
@@ -644,15 +781,15 @@ export const perpetualMarketAction: Action = {
     },
     {
       name: "action",
-      description: "Perpetual market operation: read.",
+      description: "Perpetual market operation: read or place_order.",
       required: false,
-      schema: { type: "string", enum: ["read"] },
+      schema: { type: "string", enum: ["read", "place_order"] },
     },
     {
       name: "subaction",
-      description: "Alias for action (read).",
+      description: "Alias for action (read | place_order | place-order).",
       required: false,
-      schema: { type: "string", enum: ["read"] },
+      schema: { type: "string", enum: ["read", "place_order", "place-order"] },
     },
     {
       name: "kind",
@@ -670,15 +807,34 @@ export const perpetualMarketAction: Action = {
       required: false,
       schema: { type: "string" },
     },
+    {
+      name: "side",
+      description: "place_order only: intended side, buy or sell.",
+      required: false,
+      schema: { type: "string", enum: ["buy", "sell"] },
+    },
+    {
+      name: "asset",
+      description: "place_order only: Hyperliquid asset symbol.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "size",
+      description: "place_order only: intended order size.",
+      required: false,
+      schema: { type: "number" },
+    },
   ],
   validate: async (_runtime, message: Memory, state?: State) =>
     hasSelectedContext(state) ||
-    hasKeywordIntent(message, state, HYPERLIQUID_READ_KEYWORDS),
+    hasKeywordIntent(message, state, HYPERLIQUID_READ_KEYWORDS) ||
+    hasKeywordIntent(message, state, HYPERLIQUID_TRADE_KEYWORDS),
   handler: async (runtime, _message, _state, options, callback) => {
     const op = readOp(options);
     if (!op) {
       const text =
-        "Provide action: read and kind: status | markets | market | positions | funding.";
+        "Provide action: read | place_order. For read, also provide kind: status | markets | market | positions | funding.";
       return emitFailure(callback, text, "missing_or_invalid_op", {
         actionName: PERPETUAL_MARKET_ACTION_NAME,
         availableActions: [...HYPERLIQUID_OPS],

@@ -24,7 +24,7 @@ export function StartupShell({ view, firstRun, onRetry }: StartupShellProps) {
   }
 
   if (view.kind === "first-run") {
-    return <>{firstRun}</>;
+    return <StartupFirstRunBackground>{firstRun}</StartupFirstRunBackground>;
   }
 
   if (view.kind === "none") {
@@ -32,6 +32,18 @@ export function StartupShell({ view, firstRun, onRetry }: StartupShellProps) {
   }
 
   return <StartupLoading phase={view.phase} status={view.status} />;
+}
+
+function StartupFirstRunBackground({ children }: { children: ReactNode }) {
+  return (
+    <div
+      data-testid="startup-first-run-background"
+      className="fixed inset-0 overflow-hidden bg-[#FF5800] text-white"
+      style={{ fontFamily: FONT }}
+    >
+      {children}
+    </div>
+  );
 }
 
 function StartupLoading(props: { phase: string; status: string }) {
@@ -42,19 +54,17 @@ function StartupLoading(props: { phase: string; status: string }) {
       role="status"
       aria-live="polite"
       aria-busy="true"
-      className="fixed inset-0 flex items-center justify-center overflow-hidden bg-[#F7F9FF] text-[#0B35F1]"
+      className="fixed inset-0 flex items-center justify-center overflow-hidden bg-[#FF5800] text-white"
       style={{ fontFamily: FONT }}
     >
       <div className="relative z-10 flex w-full max-w-[24rem] flex-col items-center gap-5 px-6 text-center">
         <div className="flex items-center justify-center gap-3">
-          <span className="grid h-14 w-14 place-items-center rounded-full bg-white shadow-[0_18px_48px_rgba(11,53,241,0.14)] ring-1 ring-[#0B35F1]/15">
-            <img
-              src="./brand/favicons/favicon.svg"
-              alt=""
-              aria-hidden="true"
-              className="h-9 w-9"
-            />
-          </span>
+          <img
+            src="./brand/logos/logo_white_nobg.svg"
+            alt=""
+            aria-hidden="true"
+            className="h-12 w-12"
+          />
           <span className="text-4xl font-medium leading-none tracking-normal">
             elizaOS
           </span>
@@ -62,15 +72,10 @@ function StartupLoading(props: { phase: string; status: string }) {
 
         <p
           style={{ fontFamily: FONT }}
-          className="min-h-5 text-sm text-[#0B35F1]/75 animate-pulse motion-reduce:animate-none"
+          className="min-h-5 text-sm text-white/80 animate-pulse motion-reduce:animate-none"
         >
           {props.status}
         </p>
-        <div className="flex w-full max-w-[18rem] flex-col gap-2" aria-hidden>
-          <div className="h-2.5 w-full rounded-sm bg-[#0B35F1]/20 animate-pulse motion-reduce:animate-none" />
-          <div className="h-2.5 w-3/4 self-center rounded-sm bg-[#0B35F1]/15 animate-pulse motion-reduce:animate-none" />
-          <div className="h-2.5 w-1/2 self-center rounded-sm bg-[#0B35F1]/10 animate-pulse motion-reduce:animate-none" />
-        </div>
       </div>
     </div>
   );

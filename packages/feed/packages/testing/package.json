@@ -13,8 +13,8 @@
     }
   },
   "scripts": {
-    "lint": "echo skip (feed) >&2",
-    "typecheck": "echo skip (feed) >&2",
+    "lint": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/testing/package.json packages/testing/tsconfig.json packages/testing/tsconfig.typecheck.json packages/testing/src packages/testing/unit packages/testing/e2e",
+    "typecheck": "cd ../.. && bun run scripts/typecheck-workspace.ts packages/testing",
     "test:unit": "bun test unit/ --preload ./unit/preload.ts",
     "test:integration": "bun test integration/ --preload ./integration/preload.ts",
     "test:e2e": "cd ../.. && rm -rf packages/testing/node_modules/@playwright packages/testing/node_modules/playwright && bunx playwright test --config packages/testing/playwright.config.ts",
@@ -30,13 +30,13 @@
   },
   "devDependencies": {
     "@elizaos/core": "2.0.0-alpha.109",
-    "@playwright/test": "1.60.0",
+    "@playwright/test": "1.61.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "dotenv": "^16.4.5",
     "nanoid": "5.1.7",
     "next": "16.2.6",
-    "playwright": "1.60.0",
+    "playwright": "1.61.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "siwe": "^3.0.0",

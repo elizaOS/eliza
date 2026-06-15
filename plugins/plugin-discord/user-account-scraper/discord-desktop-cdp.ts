@@ -4,13 +4,10 @@
 // and probes go through the same scraper primitives but over CDP rather
 // than the workspace bridge.
 //
-// Platform support: macOS and Windows. Discord Desktop on both OSes
-// accepts the Electron `--remote-debugging-port` flag (empirically
-// verified against Discord 1.0.9237 / Electron 37.6.0 on Windows; same
-// flag has been the macOS path since this file's introduction). Linux
-// support is not implemented yet — the desktop control surface there
-// would need a separate process-detection + launch path.
-import { execFile } from "node:child_process";
+// Platform support: macOS, Windows, and Linux. Discord Desktop accepts
+// Electron's `--remote-debugging-port` flag; each OS only needs its own
+// process-detection and launch path.
+import { execFile, spawn } from "node:child_process";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -121,8 +118,8 @@ function execFileAsync(
 
 function isDiscordDesktopSupportedPlatform(
   platform: NodeJS.Platform,
-): platform is "darwin" | "win32" {
-  return platform === "darwin" || platform === "win32";
+): platform is "darwin" | "linux" | "win32" {
+  return platform === "darwin" || platform === "linux" || platform === "win32";
 }
 
 async function discordAppRunning(): Promise<boolean> {
@@ -143,6 +140,18 @@ async function discordAppRunning(): Promise<boolean> {
         2_000,
       );
       return /Discord\.exe/i.test(stdout);
+    }
+    if (process.platform === "linux") {
+      await execFileAsync(
+        "/usr/bin/env",
+        [
+          "sh",
+          "-lc",
+          "pgrep -x Discord || pgrep -x discord || pgrep -x DiscordCanary || pgrep -x DiscordPTB",
+        ],
+        1_000,
+      );
+      return true;
     }
     return false;
   } catch {
@@ -201,6 +210,32 @@ async function findDiscordExeWindows(): Promise<string | null> {
     return null;
   }
   return join(discordRoot, appVersions[0].name, "Discord.exe");
+}
+
+async function findDiscordExecutableLinux(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string | null> {
+  const configured = env.ELIZA_DISCORD_DESKTOP_PATH?.trim();
+  if (configured) {
+    return configured;
+  }
+  const candidates = ["discord", "Discord", "discord-canary", "discord-ptb"];
+  for (const command of candidates) {
+    try {
+      const { stdout } = await execFileAsync(
+        "/usr/bin/env",
+        ["sh", "-lc", `command -v ${command}`],
+        1_000,
+      );
+      const resolved = stdout.trim().split("\n")[0];
+      if (resolved) {
+        return resolved;
+      }
+    } catch {
+      // Try the next common package name.
+    }
+  }
+  return null;
 }
 
 async function fetchJson<T>(url: string, timeoutMs: number): Promise<T> {
@@ -423,7 +458,7 @@ export async function getDiscordDesktopCdpStatus(
       webSocketDebuggerUrl: null,
       probe: null,
       lastError:
-        "Discord Desktop control is currently supported on macOS and Windows.",
+        "Discord Desktop control is currently supported on macOS, Windows, and Linux.",
     };
   }
 
@@ -804,10 +839,34 @@ export async function relaunchDiscordDesktopForCdp(
       ["/d", "/s", "/c", "start", "", exePath, ...cdpArgs],
       5_000,
     );
+  } else if (process.platform === "linux") {
+    if (current.appRunning) {
+      await execFileAsync(
+        "/usr/bin/env",
+        [
+          "sh",
+          "-lc",
+          "pkill -x Discord; pkill -x discord; pkill -x DiscordCanary; pkill -x DiscordPTB; true",
+        ],
+        5_000,
+      );
+      await waitForDiscordToQuit();
+    }
+    const exePath = await findDiscordExecutableLinux(env);
+    if (!exePath) {
+      throw new Error(
+        "Discord Desktop executable not found. Install Discord or set ELIZA_DISCORD_DESKTOP_PATH.",
+      );
+    }
+    const child = spawn(exePath, cdpArgs, {
+      detached: true,
+      stdio: "ignore",
+    });
+    child.unref();
   } else {
     // Defensive: getDiscordDesktopCdpStatus already returns supported=false
-    // for non-darwin/non-win32 platforms, so this branch shouldn't be
-    // reached. Throw rather than silently no-op so a misconfigured caller
+    // for non-darwin/non-linux/non-win32 platforms, so this branch shouldn't be
+    // reached. Throw rather than silently succeed so a misconfigured caller
     // surfaces immediately.
     throw new Error(
       `Discord Desktop relaunch not supported on ${process.platform}.`,

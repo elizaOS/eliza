@@ -130,7 +130,7 @@ export interface AgentSkillsServiceConfig {
 	 */
 	bundledSkillsDirs?: string[];
 
-	// === Phase 4.1: Skill Source Precedence ===
+	// Skill source precedence
 	/** Workspace skills directory (highest precedence) */
 	workspaceSkillsDir?: string;
 	/** Plugin-contributed skills directories */
@@ -138,7 +138,7 @@ export interface AgentSkillsServiceConfig {
 	/** Extra directories to load skills from (lowest precedence) */
 	extraDirs?: string[];
 
-	// === Phase 4.4: Skill Configuration ===
+	// Skill configuration
 	/** Allowlist of skill slugs (only these skills will be loaded) */
 	allowlist?: string[];
 	/** Denylist of skill slugs (these skills will not be loaded) */
@@ -181,7 +181,7 @@ export class AgentSkillsService extends Service {
 	private bundledSkillsDirs: string[];
 	private bundledStorages: Map<string, FileSystemSkillStore> = new Map();
 
-	// Phase 4.1: Additional skill source directories
+	// Additional skill source directories
 	private workspaceSkillsDir: string | null = null;
 	private workspaceStorage: FileSystemSkillStore | null = null;
 	private pluginSkillsDirs: string[] = [];
@@ -195,10 +195,10 @@ export class AgentSkillsService extends Service {
 	private searchCache: Map<string, CacheEntry<SkillSearchResult[]>> = new Map();
 	private detailsCache: Map<string, CacheEntry<SkillDetails>> = new Map();
 
-	// Phase 4.2: Eligibility cache
+	// Eligibility cache
 	private eligibilityCache: Map<string, SkillEligibility> = new Map();
 
-	// Phase 4.4: Skill configuration
+	// Skill configuration
 	private allowlist: Set<string> | null = null;
 	private denylist: Set<string> = new Set();
 	private skillEntries: Map<string, SkillConfigEntry> = new Map();
@@ -294,7 +294,7 @@ export class AgentSkillsService extends Service {
 			this.bundledSkillsDirs = [];
 		}
 
-		// Phase 4.1: Workspace skills directory (highest precedence)
+		// Workspace skills directory (highest precedence)
 		const workspaceDirConfig =
 			config?.workspaceSkillsDir ||
 			runtime.getSetting("WORKSPACE_SKILLS_DIR") ||
@@ -303,14 +303,14 @@ export class AgentSkillsService extends Service {
 			this.workspaceSkillsDir = workspaceDirConfig.trim();
 		}
 
-		// Phase 4.1: Plugin-contributed skills directories
+		// Plugin-contributed skills directories
 		const pluginDirsConfig =
 			config?.pluginSkillsDirs ||
 			runtime.getSetting("PLUGIN_SKILLS_DIRS") ||
 			runtime.getSetting("OTTO_PLUGIN_SKILLS_DIRS");
 		this.pluginSkillsDirs = this.parseDirectoryList(pluginDirsConfig);
 
-		// Phase 4.1: Extra directories (lowest precedence)
+		// Extra directories (lowest precedence)
 		const extraDirsConfig =
 			config?.extraDirs ||
 			runtime.getSetting("EXTRA_SKILLS_DIRS") ||
@@ -318,7 +318,7 @@ export class AgentSkillsService extends Service {
 			runtime.getSetting("skills.load.extraDirs");
 		this.extraDirs = this.parseDirectoryList(extraDirsConfig);
 
-		// Phase 4.4: Allowlist/Denylist
+		// Allowlist/Denylist
 		const allowlistConfig =
 			config?.allowlist ||
 			runtime.getSetting("SKILLS_ALLOWLIST") ||
@@ -335,14 +335,14 @@ export class AgentSkillsService extends Service {
 			this.denylist = new Set(this.parseStringList(denylistConfig));
 		}
 
-		// Phase 4.4: Per-skill configuration
+		// Per-skill configuration
 		if (config?.skillEntries) {
 			for (const [slug, entry] of Object.entries(config.skillEntries)) {
 				this.skillEntries.set(slug, entry);
 			}
 		}
 
-		// Phase 4.4: Auto-refresh
+		// Auto-refresh
 		this.autoRefreshEnabled =
 			config?.autoRefresh ??
 			runtime.getSetting("SKILLS_AUTO_REFRESH") === "true";
@@ -707,7 +707,8 @@ export class AgentSkillsService extends Service {
 			watchDirs.push(this.workspaceSkillsDir);
 		}
 
-		// Only watch workspace for now (most likely to change during development)
+		// Auto-refresh watches workspace skills, the mutable source this service
+		// owns. Managed, bundled, and catalog skills refresh through load/sync flows.
 		if (watchDirs.length === 0) {
 			this.runtime.logger.debug(
 				"AgentSkills: No directories to watch for auto-refresh",

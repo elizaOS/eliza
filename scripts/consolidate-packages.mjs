@@ -95,7 +95,7 @@ function writeText(p, content) {
   }
 }
 
-// ---------------- Phase 1: directory + file moves ----------------
+// ---------------- Step 1: directory + file moves ----------------
 
 // 1a. ui-stories -> ui/stories
 mvDir("packages/ui-stories", "packages/ui/stories");
@@ -164,7 +164,7 @@ mvFile(
 );
 rmPath("packages/steward-session-client");
 
-// ---------------- Phase 2: update root package.json (workspaces + devDependencies) ----------------
+// ---------------- Step 2: update root package.json (workspaces + devDependencies) ----------------
 
 if (!DRY) {
   const root = readJson("package.json");
@@ -202,7 +202,7 @@ if (!DRY) {
   log("would update root package.json workspaces + drop merged deps");
 }
 
-// ---------------- Phase 3: update shared/package.json (files + scripts) ----------------
+// ---------------- Step 3: update shared/package.json (files + scripts) ----------------
 
 if (!DRY) {
   const shared = readJson("packages/shared/package.json");
@@ -235,7 +235,7 @@ if (!DRY) {
   );
 }
 
-// ---------------- Phase 4: update scenario-runner/package.json ----------------
+// ---------------- Step 4: update scenario-runner/package.json ----------------
 
 if (!DRY) {
   const sr = readJson("packages/scenario-runner/package.json");
@@ -254,7 +254,7 @@ if (!DRY) {
   );
 }
 
-// ---------------- Phase 5: update UI package.json (stories scripts) ----------------
+// ---------------- Step 5: update UI package.json (stories scripts) ----------------
 
 if (!DRY && existsSync(path.join(ROOT, "packages/ui/package.json"))) {
   const ui = readJson("packages/ui/package.json");
@@ -270,7 +270,7 @@ if (!DRY && existsSync(path.join(ROOT, "packages/ui/package.json"))) {
   );
 }
 
-// ---------------- Phase 6: rewrite imports ----------------
+// ---------------- Step 6: rewrite imports ----------------
 
 const IMPORT_RENAMES = [
   // longer/specific subpaths first so partial replacements don't shadow
@@ -419,7 +419,7 @@ for (const file of allFiles) {
 }
 log(`import rewrites: ${changedCount} files`);
 
-// ---------------- Phase 7: regenerate lockfile ----------------
+// ---------------- Step 7: regenerate lockfile ----------------
 
 if (!DRY) {
   sh("bun install");

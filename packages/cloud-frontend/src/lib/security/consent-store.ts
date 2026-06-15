@@ -3,7 +3,7 @@
  * `localStorage` keyed under a fixed prefix. Each accessor returns a default
  * that errs on the side of "OFF / not consented", per privacy-by-default.
  *
- * TODO(SOC2/secure-store): migrate to the desktop/iOS SecureStore once the
+ * Secure-store migration note: use the desktop/iOS SecureStore once the
  * clients agent exposes a uniform JS API. Until then, localStorage is the
  * portable path for the web dashboard.
  */

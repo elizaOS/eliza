@@ -24,14 +24,42 @@
     "paths": {
       "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
-      "@elizaos/plugin-lifeops": ["../plugin-lifeops/src/index.ts"],
+      "@elizaos/plugin-personal-assistant": ["../plugin-personal-assistant/src/index.ts"],
       "@elizaos/plugin-steward-app": ["../plugin-steward-app/src/index.ts"],
       "@elizaos/plugin-wallet-ui": ["../plugin-wallet-ui/src/index.ts"],
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
-      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/agent": ["../../packages/agent/dist/index.d.ts"],
+      "@elizaos/agent/*": [
+        "../../packages/agent/src/*.d.ts",
+        "../../packages/agent/src/*.ts"
+      ],
+      "@elizaos/plugin-registry": [
+        "../plugin-registry/src/index.d.ts"
+      ],
+      "@elizaos/plugin-registry/*": [
+        "../plugin-registry/src/*.d.ts",
+        "../plugin-registry/src/*.ts"
+      ],
+      "@elizaos/plugin-elizacloud": [
+        "../plugin-elizacloud/src/index.node.d.ts"
+      ],
+      "@elizaos/plugin-elizacloud/*": [
+        "../plugin-elizacloud/src/*.d.ts",
+        "../plugin-elizacloud/src/*.ts"
+      ],
+      "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
+      "@elizaos/ui/agent-surface": [
+        "../../packages/ui/dist/agent-surface/index.d.ts"
+      ],
+      "@elizaos/ui/components": [
+        "../../packages/ui/dist/components/index.d.ts"
+      ],
+      "@elizaos/ui/i18n": ["../../packages/ui/dist/i18n/index.d.ts"],
+      "@elizaos/ui/state": ["../../packages/ui/dist/state/index.d.ts"],
+      "@elizaos/ui/utils": ["../../packages/ui/dist/utils/index.d.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/dist/*"],
       "@elizaos/ui/api/client-types-cloud": [
-        "../../packages/ui/src/api/client-types-cloud.ts"
+        "../../packages/ui/dist/api/client-types-cloud.d.ts"
       ],
       "@elizaos/plugin-companion": ["./src/index.ts"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],

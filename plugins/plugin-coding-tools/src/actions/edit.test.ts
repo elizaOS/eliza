@@ -125,13 +125,13 @@ describe("EDIT", () => {
   });
 
   it("rejects identical old_string and new_string", async () => {
-    const file = await seedFile("e.txt", "noop content");
+    const file = await seedFile("e.txt", "same content");
 
     const result = await editFileHandler(env.runtime, env.message, undefined, {
       parameters: {
         file_path: file,
-        old_string: "noop",
-        new_string: "noop",
+        old_string: "same",
+        new_string: "same",
       },
     });
 

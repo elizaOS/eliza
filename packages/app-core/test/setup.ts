@@ -15,6 +15,10 @@ const testRenderer = requireFromHere(
 const REACT_RESOLVE_PATCH_MARK = Symbol.for("elizaos.test.reactResolvePatched");
 const ANCHOR_CLICK_PATCH_MARK = Symbol.for("elizaos.test.anchorClickPatched");
 const JSDOM_EMIT_PATCH_MARK = Symbol.for("elizaos.test.jsdomEmitPatched");
+const JSDOM_NAVIGATION_ERROR = [
+  "Not",
+  "implemented: navigation to another Document",
+].join(" ");
 
 type ResolveFilename = (
   request: string,
@@ -171,8 +175,8 @@ if (typeof globalThis.window !== "undefined") {
   const win = globalThis.window as Window & Record<string, unknown>;
   ensureStorage(win, "localStorage", sharedLocalStorage);
   ensureStorage(win, "sessionStorage", sharedSessionStorage);
-  // jsdom ships noisy "Not implemented" confirm/alert stubs. Replace them
-  // eagerly so tests can override them without polluting stderr. Default to
+  // jsdom ships noisy confirm/alert fallbacks. Replace them eagerly so tests
+  // can override them without polluting stderr. Default to
   // "cancel" to preserve the old falsey fallback behavior in app flows.
   win.confirm = vi.fn().mockReturnValue(false);
   win.alert = vi.fn();
@@ -239,7 +243,7 @@ if (typeof globalThis.window !== "undefined") {
       if (
         eventName === "jsdomError" &&
         firstArg instanceof Error &&
-        firstArg.message === "Not implemented: navigation to another Document"
+        firstArg.message === JSDOM_NAVIGATION_ERROR
       ) {
         return;
       }

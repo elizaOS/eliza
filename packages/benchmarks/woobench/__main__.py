@@ -202,10 +202,7 @@ def _list_personas() -> None:
 async def _create_dummy_agent(
     conversation_history: list[dict[str, str]],
 ) -> str:
-    """A placeholder agent for dry runs and testing.
-
-    Replace this with the actual agent under test.
-    """
+    """A deterministic agent for dry runs and testing."""
     return (
         "I sense a period of transformation and growth in your life. "
         "The energies around you suggest that change is coming, and with it, "

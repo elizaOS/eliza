@@ -1,11 +1,11 @@
 /*
- * doctr-cpp — internal Phase 2 reference implementation header.
+ * doctr-cpp — internal native-runtime header.
  *
- * Phase 2 is pure-C scalar code (no SIMD): a minimal GGUF reader, an
+ * The current runtime is pure-C scalar code (no SIMD): a minimal GGUF reader, an
  * image preprocessor, a small set of NN kernels (Conv2D, BN-folded
  * affine, ReLU, MaxPool, ConvTranspose2d, BiLSTM, MatMul, Sigmoid,
- * Softmax), and the DBNet postprocess. Phase 3 will add AVX2/NEON
- * dispatch behind the same internal API.
+ * Softmax), and the DBNet postprocess. AVX2/NEON dispatch can be added
+ * behind the same internal API.
  *
  * Tensor layout convention everywhere in this file: NCHW for activations
  * (channel-major within an HxW plane), OIhw for conv weights, where O is
@@ -88,8 +88,8 @@ int doctr_resize_rgb_to_chw(
  *     hout = (hin + 2*padh - kh)/strideh + 1
  *     wout = (win + 2*padw - kw)/stridew + 1
  *
- * Caller must size `out` correctly. Slow naive impl — Phase 3 replaces
- * with an im2col-style SIMD path. */
+ * Caller must size `out` correctly. Slow naive impl; SIMD dispatch can
+ * replace it with an im2col-style path. */
 void doctr_conv2d_ref(
     const float *x, int cin, int hin, int win,
     const float *w, int cout, int kh, int kw,

@@ -28,8 +28,8 @@ later padframe and board work must preserve.
 
 The machine-readable source for this contract is
 `package/wifi-external-interface.yaml`. Its current state is a product scaffold:
-the pins are not bonded in the e1 chip, the host controller is not
-implemented, and the OS/firmware driver path is not implemented.
+the pins are not bonded in the e1 chip, the host controller is not available,
+and the OS/firmware driver path is not available.
 
 ## Concrete integration slice
 

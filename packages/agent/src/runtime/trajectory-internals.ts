@@ -1043,8 +1043,8 @@ export async function ensureTrajectoriesTable(
     }
 
     // One-shot forward migration from steps_json into trajectory_steps.
-    // Idempotent: only migrates trajectories whose steps are not yet in
-    // the dedicated table.
+    // Idempotent: only migrates trajectories whose steps are absent from the
+    // dedicated table.
     await forwardMigrateStepsJsonToRows(runtime);
 
     if (needsRecreate) {
@@ -1951,7 +1951,7 @@ export async function saveTrajectory(
     // Mirror steps into the dedicated `trajectory_steps` table. Writes
     // here are the new source of truth for step data; the JSONB blob in
     // `trajectories.steps_json` is kept in lockstep for back-compat
-    // readers that have not yet been migrated.
+    // readers that still consume the legacy column.
     try {
       await replaceStepsForTrajectoryInternal(
         runtime,

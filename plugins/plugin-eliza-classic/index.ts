@@ -66,6 +66,72 @@ async function handleText(
   });
 }
 
+const EMBEDDING_DIMS = 1536;
+
+function extractEmbeddingText(params: unknown): string {
+  if (typeof params === "string") return params;
+  if (!params || typeof params !== "object") return "";
+  const record = params as Record<string, unknown>;
+  for (const key of ["text", "input", "prompt", "query"]) {
+    const value = record[key];
+    if (typeof value === "string") return value;
+  }
+  return "";
+}
+
+function hashToken(token: string): number {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < token.length; index += 1) {
+    hash ^= token.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+function tokenizeForEmbedding(text: string): string[] {
+  return text.toLowerCase().match(/[\p{L}\p{N}']+/gu) ?? [];
+}
+
+function deterministicLexicalEmbedding(text: string): number[] {
+  const vector = Array.from({ length: EMBEDDING_DIMS }, () => 0);
+  const tokens = tokenizeForEmbedding(text);
+
+  if (tokens.length === 0) {
+    vector[0] = 1;
+    return vector;
+  }
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    const tokenHash = hashToken(token);
+    const slot = tokenHash % EMBEDDING_DIMS;
+    const sign = tokenHash & 0x80000000 ? -1 : 1;
+    vector[slot] += sign;
+
+    const next = tokens[index + 1];
+    if (next) {
+      const bigramHash = hashToken(`${token}\u0000${next}`);
+      const bigramSlot = bigramHash % EMBEDDING_DIMS;
+      const bigramSign = bigramHash & 0x80000000 ? -1 : 1;
+      vector[bigramSlot] += bigramSign * 0.5;
+    }
+  }
+
+  const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
+  if (norm === 0) {
+    vector[0] = 1;
+    return vector;
+  }
+  return vector.map((value) => value / norm);
+}
+
+async function handleEmbedding(
+  _runtime: IAgentRuntime,
+  params: unknown,
+): Promise<number[]> {
+  return deterministicLexicalEmbedding(extractEmbeddingText(params));
+}
+
 export const elizaClassicPlugin: Plugin = {
   name: "eliza-classic",
   description: "Deterministic offline ELIZA-style text responses.",
@@ -79,6 +145,7 @@ export const elizaClassicPlugin: Plugin = {
     [ModelType.RESPONSE_HANDLER]: handleText,
     [ModelType.ACTION_PLANNER]: handleText,
     [ModelType.TEXT_COMPLETION]: handleText,
+    [ModelType.TEXT_EMBEDDING]: handleEmbedding,
   },
 };
 

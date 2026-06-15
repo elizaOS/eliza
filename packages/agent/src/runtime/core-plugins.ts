@@ -50,7 +50,7 @@ export const MOBILE_CORE_PLUGINS: readonly string[] = [
  * that exposes privileged system surfaces — WiFi, Contacts, Phone — to the
  * agent as actions. The overlay UIs themselves register at app boot via
  * `@elizaos/plugin-{wifi,contacts,phone}/register`, gated on `isElizaOS()` so
- * stock Android, iOS, web, and desktop are no-ops.
+ * stock Android, iOS, web, and desktop leave them inactive.
  *
  * Stock Android does not get these because Play Store style builds should not
  * expose privileged OS-control surfaces merely because `Capacitor` reports
@@ -93,7 +93,6 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime
   "@elizaos/plugin-commands", // slash command handling (skills auto-register as /commands)
   "@elizaos/plugin-browser", // Browser workspace and Chrome/Safari companion bridge.
-  "@elizaos/plugin-video", // Video download / transcription (managed yt-dlp + ffmpeg with auto-update on extractor failure)
   // Built-in runtime capabilities (no longer external plugins):
   // - experience, todos, personality: advanced capabilities (advancedCapabilities: true)
   // - form: standalone @elizaos/plugin-form
@@ -130,7 +129,7 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   // plugin-manager, secrets (SECRETS), trust: now built-in core capabilities
   // Enable via character settings: ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST
   "@elizaos/plugin-google", // Google Workspace connector (requires googleapis + explicit OAuth config); only loaded when LifeOps/Google is enabled
-  "@elizaos/plugin-lifeops", // LifeOps: personal ops - tasks, goals, calendar, inbox, website blocking (requires @capacitor/core + plugin-google); enable explicitly
+  "@elizaos/plugin-personal-assistant", // LifeOps: personal ops - tasks, goals, calendar, inbox, website blocking (requires @capacitor/core + plugin-google); enable explicitly
   "@elizaos/plugin-pdf", // PDF processing (published bundle broken in alpha.15)
   "@elizaos/plugin-cua", // CUA computer-use agent (cloud sandbox automation)
   "@elizaos/plugin-obsidian", // Obsidian vault CLI integration
@@ -149,8 +148,8 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-elevenlabs", // ElevenLabs text-to-speech
   "@elizaos/plugin-music", // Library, playback, and streaming routes.
   "@elizaos/plugin-gitpathologist", // forensic git-history analysis (opt-in via ELIZA_GITPATHOLOGIST, auto-on when .git/ exists)
-  // "@elizaos/plugin-directives", // directive processing - not yet ready
-  // "@elizaos/plugin-mcp", // MCP protocol support - not yet ready
-  // "@elizaos/plugin-scheduling", // scheduling - not yet ready
+  // "@elizaos/plugin-directives", // directive processing remains opt-in
+  // "@elizaos/plugin-mcp", // MCP protocol support remains opt-in
+  // "@elizaos/plugin-scheduling", // scheduling remains opt-in
   // todos: now built-in as advanced capability (advancedCapabilities: true)
 ];

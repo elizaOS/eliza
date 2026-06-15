@@ -13,7 +13,6 @@ import { request as httpsRequest } from "node:https";
 import {
   type LoadResult,
   loadCredentials,
-  type OAuthCreds,
 } from "../utils/credentials-loader.js";
 import {
   CC_VERSION,
@@ -29,6 +28,7 @@ import {
 import { type ProcessBodyConfig, processBody } from "./process-body.js";
 import { reverseMap } from "./reverse-map.js";
 import type { Pair } from "./sanitize.js";
+import type { SystemPromptStripConfig } from "./system-prompt.js";
 import { createSseStream } from "./sse-rewrite.js";
 import { getStainlessHeaders } from "./stainless-headers.js";
 
@@ -43,6 +43,7 @@ export interface ProxyServerOptions {
   toolRenames?: ReadonlyArray<Pair>;
   propRenames?: ReadonlyArray<Pair>;
   reverseMap?: ReadonlyArray<Pair>;
+  systemPromptStrip?: SystemPromptStripConfig;
   logger?: {
     info: (msg: string) => void;
     warn: (msg: string) => void;
@@ -72,7 +73,7 @@ export interface ProxyStats {
 
 const DEFAULT_BIND = "127.0.0.1";
 
-const noopLogger: NonNullable<ProxyServerOptions["logger"]> = {
+const silentLogger: NonNullable<ProxyServerOptions["logger"]> = {
   info: (_msg: string) => undefined,
   warn: (_msg: string) => undefined,
   error: (_msg: string) => undefined,
@@ -94,10 +95,8 @@ export class ProxyServer {
   private readonly toolRenames: ReadonlyArray<Pair>;
   private readonly propRenames: ReadonlyArray<Pair>;
   private readonly reverseMapPairs: ReadonlyArray<Pair>;
+  private readonly systemPromptStrip?: SystemPromptStripConfig;
   private readonly logger: NonNullable<ProxyServerOptions["logger"]>;
-
-  private cachedCreds: OAuthCreds | null = null;
-  private credsError?: string;
 
   constructor(opts: ProxyServerOptions = {}) {
     this.port = opts.port ?? DEFAULT_PORT;
@@ -110,17 +109,15 @@ export class ProxyServer {
     this.toolRenames = opts.toolRenames ?? DEFAULT_TOOL_RENAMES;
     this.propRenames = opts.propRenames ?? DEFAULT_PROP_RENAMES;
     this.reverseMapPairs = opts.reverseMap ?? DEFAULT_REVERSE_MAP;
-    this.logger = opts.logger ?? noopLogger;
+    this.systemPromptStrip = opts.systemPromptStrip;
+    this.logger = opts.logger ?? silentLogger;
   }
 
   private getCreds(): LoadResult {
-    const result = loadCredentials({
+    return loadCredentials({
       credentialsPath: this.credentialsPath,
       envToken: this.envToken,
     });
-    if (result.creds) this.cachedCreds = result.creds;
-    if (result.error) this.credsError = result.error;
-    return result;
   }
 
   getStats(): ProxyStats {
@@ -160,11 +157,12 @@ export class ProxyServer {
     }
 
     this.server = createServer((req, res) => this.handleRequest(req, res));
+    const server = this.server;
     this.startedAt = Date.now();
     await new Promise<void>((resolve, reject) => {
-      this.server!.once("error", reject);
-      this.server!.listen(this.port, this.bindHost, () => {
-        this.server!.removeListener("error", reject);
+      server.once("error", reject);
+      server.listen(this.port, this.bindHost, () => {
+        server.removeListener("error", reject);
         this.listening = true;
         this.logger.info(
           `anthropic-proxy listening on http://${this.bindHost}:${this.port} (cc=${CC_VERSION})`,
@@ -176,8 +174,9 @@ export class ProxyServer {
 
   async stop(): Promise<void> {
     if (!this.server || !this.listening) return;
+    const server = this.server;
     await new Promise<void>((resolve) => {
-      this.server!.close(() => {
+      server.close(() => {
         this.listening = false;
         resolve();
       });
@@ -203,6 +202,7 @@ export class ProxyServer {
       replacements: this.replacements,
       toolRenames: this.toolRenames,
       propRenames: this.propRenames,
+      systemPromptStrip: this.systemPromptStrip,
     };
   }
 
@@ -262,7 +262,7 @@ export class ProxyServer {
           continue;
         headers[key] = Array.isArray(value) ? value.join(",") : value;
       }
-      headers["authorization"] = `Bearer ${creds.accessToken}`;
+      headers.authorization = `Bearer ${creds.accessToken}`;
       headers["content-length"] = body.length;
       headers["accept-encoding"] = "identity";
       headers["anthropic-version"] = "2023-06-01";
@@ -317,10 +317,7 @@ export class ProxyServer {
             return;
           }
 
-          if (
-            upRes.headers["content-type"] &&
-            upRes.headers["content-type"].includes("text/event-stream")
-          ) {
+          if (upRes.headers["content-type"]?.includes("text/event-stream")) {
             const sseHeaders = { ...upRes.headers };
             delete sseHeaders["content-length"];
             delete sseHeaders["transfer-encoding"];

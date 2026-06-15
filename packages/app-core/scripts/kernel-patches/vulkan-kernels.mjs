@@ -41,7 +41,7 @@
 //   * Generic mat-vec / get-rows replacement for every GGML call site. The
 //     runtime patch wires the attention-score graph routes needed by the
 //     Eliza-1 local voice/text path. Broader type-aware branches in
-//     ggml_vk_get_dequantize_mul_mat_vec() remain future work because those
+//     ggml_vk_get_dequantize_mul_mat_vec() stay in a dedicated follow-up because those
 //     paths use different bind-set conventions from the standalone kernels.
 //
 //   * Batched ne[2]/ne[3] graph shapes. The source patch refuses to advertise

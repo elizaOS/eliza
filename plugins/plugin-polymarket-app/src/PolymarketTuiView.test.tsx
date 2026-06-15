@@ -31,7 +31,8 @@ vi.mock("@elizaos/app-core", () => ({
 
 vi.mock("./client", () => ({}));
 
-import { interact, PolymarketTuiView } from "./PolymarketAppView";
+import { PolymarketTuiView } from "./PolymarketAppView";
+import { interact } from "./PolymarketAppView.interact";
 
 const mountedRoots: Array<{ container: HTMLDivElement; root: Root }> = [];
 

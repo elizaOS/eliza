@@ -58,7 +58,7 @@ export function parseVaultRef(value: string): string | null {
   return value.slice(VAULT_REF_PREFIX.length);
 }
 
-/** Narrow surface of `Vault` used by the boot resolver — easier to stub. */
+/** Narrow surface of `Vault` used by the boot resolver and test fakes. */
 export type VaultLike = Pick<Vault, "get" | "has">;
 
 /**

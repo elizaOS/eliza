@@ -57,11 +57,11 @@ export function LinkSocialAccountsModal({
   // Phase 2: Email comes from Feed user record (set by Steward at login)
   const linkedEmail = user?.email ?? null;
 
-  // Phase 2: Social linking flows are handled via OAuth/SIWF redirects
-  // These stubs maintain API compatibility while Steward linking is implemented
+  // Phase 2: Social linking flows are handled via OAuth/SIWF redirects.
+  // These handlers maintain API compatibility while Steward linking lands.
   const linkEmail = () => {
     logger.info(
-      "Email linking via Steward — not yet implemented in UI",
+      "Email linking via Steward is gated off in this UI",
       {},
       "LinkSocialAccountsModal",
     );
@@ -71,7 +71,7 @@ export function LinkSocialAccountsModal({
   };
   const linkFarcaster = () => {
     logger.info(
-      "Farcaster linking via SIWF — not yet implemented in UI",
+      "Farcaster linking via SIWF is gated off in this UI",
       {},
       "LinkSocialAccountsModal",
     );
@@ -163,7 +163,7 @@ export function LinkSocialAccountsModal({
         toast.error("Unable to link Telegram. Please try again.");
       }
     } else {
-      // Phase 2: Telegram linking outside mini-app — not yet implemented
+      // Phase 2: Telegram linking outside mini-app requires the redirect flow.
       setLinking(null);
       toast.info("Open Feed in Telegram to link your Telegram account.");
     }

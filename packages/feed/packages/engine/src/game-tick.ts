@@ -1968,7 +1968,7 @@ async function shouldUpdateWorldFacts(): Promise<boolean> {
  * @deprecated This function is no longer called from game-tick.
  * World facts are now handled by /api/cron/world-facts which runs twice daily.
  *
- * Kept for reference during migration. TODO: Remove after confirming no regressions.
+ * Kept for reference during migration until regression checks are complete.
  */
 export async function updateWorldFactsIfNeeded(): Promise<{
   updated: boolean;

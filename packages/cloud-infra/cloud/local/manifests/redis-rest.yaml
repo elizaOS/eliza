@@ -25,8 +25,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: redis-rest
-          # TODO(soc2): pin to digest, e.g. hiett/serverless-redis-http@sha256:<digest>
-          image: hiett/serverless-redis-http:latest
+          image: hiett/serverless-redis-http@sha256:5b0bb9239fce53abf87b2018a7a0deb9ec7bd900c5360738fe5fbeeb426f9150
           ports:
             - containerPort: 80
           # SOC2 CC6.3 — container-level hardening.
@@ -45,7 +44,7 @@ spec:
               value: env
             - name: SRH_TOKEN
               # Local dev only. Production loads via ESO -> Steward.
-              # TODO(soc2): replace literal with secretKeyRef once ESO is wired.
+              # Production boundary: replace this with secretKeyRef once ESO is wired.
               value: local_dev_token
             - name: SRH_CONNECTION_STRING
               value: redis://redis-master.eliza-infra.svc:6379

@@ -15,6 +15,7 @@ import pytest
 from eliza_robot.rl.text_conditioned.profile_env import (
     ProfileEnvConfig,
     _contact_cadence_reward,
+    _fixed_contact_pattern_reward,
     _foot_clearance_reward,
     _stance_contact_reward,
     make_text_conditioned_env,
@@ -288,6 +289,36 @@ def test_walking_reward_helpers_shape_stance_swing_before_completion() -> None:
         )
         == 0.0
     )
+
+
+def test_fixed_contact_pattern_reward_matches_lift_task_contract() -> None:
+    reward = _fixed_contact_pattern_reward(
+        {
+            "left_foot_contact_required": False,
+            "right_foot_contact_required": True,
+        },
+        np.asarray([0.03, 0.0], dtype=np.float32),
+        np.asarray([0.0, 1.0], dtype=np.float32),
+        swing_height_m=0.08,
+    )
+
+    assert reward is not None
+    assert reward["contact_cadence"] == pytest.approx(1.0)
+    assert reward["stance_contact"] == pytest.approx(1.0)
+    assert reward["foot_clearance"] > 0.0
+
+    wrong = _fixed_contact_pattern_reward(
+        {
+            "left_foot_contact_required": False,
+            "right_foot_contact_required": True,
+        },
+        np.asarray([0.0, 0.0], dtype=np.float32),
+        np.asarray([1.0, 1.0], dtype=np.float32),
+        swing_height_m=0.08,
+    )
+    assert wrong is not None
+    assert wrong["contact_cadence"] < reward["contact_cadence"]
+    assert wrong["foot_clearance"] == pytest.approx(0.0)
 
 
 def test_foot_clearance_telemetry_uses_aabb_bottom_clearance() -> None:
@@ -1976,6 +2007,144 @@ def test_locomotion_action_prior_is_opt_in_residual_action() -> None:
     assert info["locomotion_prior_residual_scale"] == pytest.approx(0.0)
 
 
+def test_bounded_step_walk_prior_is_available_for_hiwonder_walk() -> None:
+    pytest.importorskip("mujoco")
+    for task_id in ("walk_forward_bridge", "walk_forward_mid_bridge", "walk_forward"):
+        env = make_text_conditioned_env(
+            "hiwonder-ainex",
+            config=ProfileEnvConfig(
+                include_tasks=(task_id,),
+                exclude_tasks=(),
+                episode_steps=4,
+                pca_dim=32,
+                locomotion_action_prior="hiwonder_bounded_step_walk",
+                locomotion_prior_residual_scale=0.0,
+            ),
+        )
+        env.reset(seed=0)
+        _, _, _, _, info = env.step(np.zeros(env.action_space.shape, dtype=np.float32))
+
+        assert info["locomotion_action_prior"] == "hiwonder_bounded_step_walk"
+        assert info["raw_action_max_abs"] == pytest.approx(0.0)
+        assert info["effective_action_max_abs"] > 0.1
+        assert info["locomotion_prior_action_max_abs"] > 0.1
+        assert info["locomotion_prior_residual_max_abs"] == pytest.approx(0.0)
+
+
+def test_bounded_step_walk_uses_prior_aligned_gait_cadence() -> None:
+    pytest.importorskip("mujoco")
+    env = make_text_conditioned_env(
+        "hiwonder-ainex",
+        config=ProfileEnvConfig(
+            include_tasks=("walk_forward",),
+            exclude_tasks=(),
+            episode_steps=4,
+            pca_dim=32,
+            locomotion_action_prior="hiwonder_bounded_step_walk",
+            locomotion_prior_residual_scale=0.0,
+        ),
+    )
+    env.reset(seed=0)
+
+    assert env._effective_gait_cadence_hz() == pytest.approx(1.0 / (52.0 * 0.02))  # noqa: SLF001
+
+
+def test_bounded_step_walk_bridge_keeps_default_gait_cadence() -> None:
+    pytest.importorskip("mujoco")
+    env = make_text_conditioned_env(
+        "hiwonder-ainex",
+        config=ProfileEnvConfig(
+            include_tasks=("walk_forward_bridge",),
+            exclude_tasks=(),
+            episode_steps=4,
+            pca_dim=32,
+            locomotion_action_prior="hiwonder_bounded_step_walk",
+            locomotion_prior_residual_scale=0.0,
+        ),
+    )
+    env.reset(seed=0)
+
+    assert env._effective_gait_cadence_hz() == pytest.approx(1.5)  # noqa: SLF001
+
+
+def test_bounded_step_walk_bridge_bypasses_capture_plant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("mujoco")
+    env = make_text_conditioned_env(
+        "hiwonder-ainex",
+        config=ProfileEnvConfig(
+            include_tasks=("walk_forward_bridge",),
+            exclude_tasks=(),
+            episode_steps=4,
+            pca_dim=32,
+            locomotion_action_prior="hiwonder_bounded_step_walk",
+            locomotion_prior_residual_scale=0.0,
+        ),
+    )
+    env.reset(seed=0)
+    pose = env._root_pose_summary()  # noqa: SLF001
+    tracked = env._tracked_pose_summary(pose)  # noqa: SLF001
+    tracked["x"] = env._episode_start_tracked_x + 0.20  # noqa: SLF001
+    monkeypatch.setattr(env, "_root_pose_summary", lambda: dict(pose))
+    monkeypatch.setattr(env, "_tracked_pose_summary", lambda _pose: dict(tracked))
+    env._foot_contact_switch_count = 2  # noqa: SLF001
+    prior = np.full(env.action_space.shape, 0.5, dtype=np.float32)
+
+    planted = env._apply_locomotion_prior_capture_plant(prior)  # noqa: SLF001
+
+    np.testing.assert_allclose(planted, prior)
+
+
+def test_staged_biped_prior_is_opt_in_residual_action() -> None:
+    pytest.importorskip("mujoco")
+    env = make_text_conditioned_env(
+        "hiwonder-ainex",
+        config=ProfileEnvConfig(
+            include_tasks=("lift_left_foot",),
+            exclude_tasks=(),
+            episode_steps=4,
+            pca_dim=32,
+            staged_biped_action_prior="hiwonder_staged_biped",
+            locomotion_prior_residual_scale=0.0,
+        ),
+    )
+    env.reset(seed=0)
+    _, _, _, _, info = env.step(np.zeros(env.action_space.shape, dtype=np.float32))
+
+    assert info["locomotion_action_prior"] == "none"
+    assert info["staged_biped_action_prior"] == "hiwonder_staged_biped"
+    assert info["raw_action_max_abs"] == pytest.approx(0.0)
+    assert info["effective_action_max_abs"] > 0.1
+    assert info["locomotion_prior_action_max_abs"] > 0.1
+    assert info["locomotion_prior_residual_max_abs"] == pytest.approx(0.0)
+    assert info["locomotion_prior_residual_scale"] == pytest.approx(0.0)
+
+
+def test_staged_biped_prior_ignores_global_residual_authority() -> None:
+    pytest.importorskip("mujoco")
+    env = make_text_conditioned_env(
+        "hiwonder-ainex",
+        config=ProfileEnvConfig(
+            include_tasks=("step_forward",),
+            exclude_tasks=(),
+            episode_steps=4,
+            pca_dim=32,
+            staged_biped_action_prior="hiwonder_staged_biped",
+            locomotion_prior_residual_scale=0.5,
+        ),
+    )
+    env.reset(seed=0)
+    residual = np.ones(env.action_space.shape, dtype=np.float32)
+    _, _, _, _, info = env.step(residual)
+
+    assert info["staged_biped_action_prior"] == "hiwonder_staged_biped"
+    assert info["raw_action_max_abs"] == pytest.approx(1.0)
+    assert info["locomotion_prior_residual_max_abs"] == pytest.approx(0.0)
+    assert info["locomotion_prior_residual_pre_guard_max_abs"] == pytest.approx(0.0)
+    assert info["locomotion_prior_residual_scale"] == pytest.approx(0.0)
+
+
 def test_hiwonder_contact_sine_prior_seeds_alternating_contacts() -> None:
     pytest.importorskip("mujoco")
     env = make_text_conditioned_env(
@@ -2581,6 +2750,33 @@ def test_locomotion_landing_guard_reacts_to_stance_slip_before_touchdown() -> No
     assert env._last_locomotion_prior_landing_gap_m > 0.004  # noqa: SLF001
     assert left_leg_values
     assert max(left_leg_values) < 0.5
+
+
+def test_bounded_step_walk_bypasses_landing_guard() -> None:
+    pytest.importorskip("mujoco")
+    env = make_text_conditioned_env(
+        "hiwonder-ainex",
+        config=ProfileEnvConfig(
+            include_tasks=("walk_forward",),
+            exclude_tasks=(),
+            episode_steps=4,
+            pca_dim=32,
+            locomotion_action_prior="hiwonder_bounded_step_walk",
+            locomotion_prior_residual_scale=0.0,
+        ),
+    )
+    env.reset(seed=0)
+    env._last_foot_telemetry = np.array(  # noqa: SLF001
+        [0.0, 1.0, 0.060, 0.034, 0.0, 0.34, 0.0, 0.0],
+        dtype=np.float32,
+    )
+    prior = np.full(env.action_space.shape, 0.5, dtype=np.float32)
+
+    guarded = env._apply_locomotion_prior_landing_guard(prior)  # noqa: SLF001
+
+    assert env._last_locomotion_prior_stance_slip_guard_scale == pytest.approx(0.0)  # noqa: SLF001
+    assert env._last_locomotion_prior_landing_guard_scale == pytest.approx(0.0)  # noqa: SLF001
+    np.testing.assert_allclose(guarded, prior)
 
 
 def test_locomotion_landing_guard_uses_current_stance_slip_not_latched_max() -> None:

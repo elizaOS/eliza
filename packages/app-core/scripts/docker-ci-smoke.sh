@@ -610,7 +610,7 @@ log "Building all @elizaos/app workspace deps (turbo, --force to bypass cache)"
 # turbo build of @elizaos/app's dep graph (build:core covers a subset
 # but misses @elizaos/ui and the @elizaos/app-* surface packages).
 # --force forces fresh builds, sidestepping any poisoned remote cache
-# that contains incomplete dist artifacts.
+# that contains partial dist artifacts.
 "$BUN_BIN" run build:client -- --force
 
 log "Building agent workspace"

@@ -171,7 +171,7 @@ Run `bun run env:validate` to check required variables before starting.
 
 Vercel **Speed Insights** is enabled in production builds but **gated**: only selected high-traffic routes contribute vitals, **session sampling** reduces datapoint volume (default **50%** when the env var is omitted), and **minimal / embed** layout skips the component entirely. **Why:** RUM cost and dashboard noise scale with every page view; we keep signal on surfaces where Core Web Vitals correlate with product quality (feed, markets, wallet, etc.).
 
-Details, env migration notes, and roadmap: **[docs/observability/speed-insights.md](docs/observability/speed-insights.md)**.
+Details, env migration notes, and follow-ups: **[docs/observability/speed-insights.md](docs/observability/speed-insights.md)**.
 
 ---
 
@@ -214,6 +214,8 @@ Details, env migration notes, and roadmap: **[docs/observability/speed-insights.
 | `bun run dev` | Start web + cron simulator + Docker services |
 | `bun run dev:web` | Web only (no cron simulator) |
 | `bun run check` | Biome format + lint (auto-fix) |
+| `bun run lint` | Biome format + lint check (no writes) |
+| `bun run typecheck` | Typecheck stable root packages/apps (`shared`, `contracts`, `db`, `core`, `engine`, `sim`, `agents`, `api`, `a2a`, `mcp`, `testing` public surface, `apps/cli`, `apps/mobile` native shell, `apps/web`) |
 | `bun run build` | Production build (per-package; runs each package's `tsc`) |
 | `bun run db:generate` | Generate Drizzle migration files |
 | `bun run db:migrate` | Apply migrations |
@@ -225,11 +227,11 @@ Details, env migration notes, and roadmap: **[docs/observability/speed-insights.
 
 ```bash
 bun run check       # Biome format + lint (auto-fix)
+bun run lint        # Biome format + lint check (no writes)
+bun run typecheck   # Typecheck stable root packages/apps (shared, contracts, db, core, engine, sim, agents, api, a2a, mcp, testing public surface, apps/cli, apps/mobile native shell, apps/web)
 bun run build       # Production build — typechecks each package via its own tsc
 bun run test:unit   # Unit tests
 ```
-
-> Note: the root `typecheck` and `lint` scripts are no-ops (`echo skip (feed)`). Typechecking happens per-package, and the workspace build is the canonical typecheck gate.
 
 ### Docker services
 
@@ -411,7 +413,7 @@ For OpenAI Codex CLI: `CODEX_HOME="$(pwd)/.codex"`
 ## Contributing
 
 1. Default branch is **`staging`** (not `main`)
-2. Run `bun run check && bun run build` before committing (the build is the typecheck gate; root `typecheck`/`lint` are no-ops)
+2. Run `bun run lint && bun run typecheck`, then the relevant package/app build before committing
 3. Commit style: `feat:`, `fix:`, `chore:`, `refactor:`, `docs:` prefix
 4. Domain logic belongs in `packages/` — `apps/web` is wiring only
 5. No `any`, no broad `try/catch`, no invented behavior

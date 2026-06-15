@@ -328,7 +328,7 @@ def write_markdown(report: dict[str, Any], path: Path) -> None:
     lines = [
         "# Nebius Clean Launch Status",
         "",
-        f"Result: `{'launched' if report.get('ok') else 'incomplete'}`",
+        f"Result: `{'launched' if report.get('ok') else 'not-launched'}`",
         f"State: `{report.get('state') or 'unknown'}`",
         f"Run: `{report.get('run_id')}`",
         f"Disk: `{report.get('disk_id') or 'missing'}`",

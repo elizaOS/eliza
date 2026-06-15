@@ -40,7 +40,7 @@ src/
   generate-stream.test.ts
   kv-cache-resolver.test.ts
   token-tree-codec.test.ts
-android/                    Reserved for Android-specific native stubs (currently empty)
+android/                    Reserved for Android-specific native sources (currently empty)
 rollup.config.mjs           Rollup bundle config (IIFE + CJS outputs; ESM comes from tsc)
 ```
 
@@ -58,7 +58,7 @@ There is no standalone test script in package.json; tests are run by the repo-le
 
 | Var | Required | Description |
 |-----|----------|-------------|
-| `ELIZA_LLAMA_CACHE_TYPE_K` | no | KV-cache key type override — `f16`, `tbq3_0`, or `tbq4_0`. Stock builds ignore non-`f16` values (warn-no-op). |
+| `ELIZA_LLAMA_CACHE_TYPE_K` | no | KV-cache key type override — `f16`, `tbq3_0`, or `tbq4_0`. Stock builds ignore non-`f16` values after warning. |
 | `ELIZA_LLAMA_CACHE_TYPE_V` | no | KV-cache value type override — same values as above. |
 
 Both env vars are read by `kv-cache-resolver.ts`. Callers can also pass explicit `cacheTypeK`/`cacheTypeV` fields on `LoadOptions` which take precedence.
@@ -68,7 +68,7 @@ No other env vars are consumed. `DeviceBridgeClientConfig` (`agentUrl`, `pairing
 ## How to extend
 
 **Add a method to `LlamaAdapter`:**
-1. Declare the method signature in `src/definitions.ts` on the `LlamaAdapter` interface (optional marker `?` for native-only capabilities that stock builds warn-and-no-op).
+1. Declare the method signature in `src/definitions.ts` on the `LlamaAdapter` interface (optional marker `?` for native-only capabilities that stock builds warn and skip).
 2. Implement it in `CapacitorLlamaAdapter` in `src/capacitor-llama-adapter.ts`.
 3. If the method should be reachable from the agent container over the bridge, add the request type to `AgentInbound` and response type to `DeviceOutbound` in `src/device-bridge-client.ts`, then handle the new `msg.type` in `handleAgentMessage`.
 4. Export from `src/index.ts` if it is a free function.
@@ -80,7 +80,7 @@ Add a new variant to the `SamplerStage` union in `src/definitions.ts`. The nativ
 
 - **One native context per adapter instance.** `CapacitorLlamaAdapter` allocates a unique `contextId` from a module-level counter. Never share one instance for both chat and embedding — `registerCapacitorLlamaLoader` creates two separate instances exactly for this reason.
 - **iOS GPU default: Metal on.** Android default: GPU off (Capacitor wrapper is CPU-only unless a Vulkan-capable fork is used). Controlled via `LoadOptions.useGpu`.
-- **`llama-cpp-capacitor` is dynamically imported** inside `loadPlugin()` so the adapter can be bundled into desktop builds without import-resolution errors. The native plugin is feature-detected at call time; missing methods are warn-and-no-op.
+- **`llama-cpp-capacitor` is dynamically imported** inside `loadPlugin()` so the adapter can be bundled into desktop builds without import-resolution errors. The native plugin is feature-detected at call time; missing methods warn and skip the unsupported operation.
 - **`buun-llama-cpp` fork** exposes `setCacheType`, `setSpecType`, and `getNativeKernels` methods not present in stock builds. The adapter feature-detects all three; stock builds silently skip them.
 - **`generateStream`** is the canonical generation path. `generate()` is a wrapper that drains the stream into a single `GenerateResult`.
 - **Mobile token cap:** `resolveMobileMaxTokens` clamps `maxTokens` to 256 on mobile to avoid OOM. Adjust `MOBILE_MAX_TOKENS_CAP` in `capacitor-llama-adapter.ts` if the cap needs to change.

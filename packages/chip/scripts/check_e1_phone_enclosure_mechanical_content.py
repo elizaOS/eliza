@@ -837,7 +837,7 @@ def clearance_case_diagnostics(
                 "missing": missing,
                 "measurement_instruction": rerun.get(
                     "measurement_instruction",
-                    "Rerun against routed KiCad STEP with production component 3D models.",
+                    "Measure against approved routed KiCad STEP with production component 3D models.",
                 ),
             }
         )
@@ -1029,11 +1029,11 @@ def first_article_physical_fit_action_inventory(paths: list[str]) -> list[dict[s
             action = "export the approved routed KiCad board with production component STEP models"
         elif "routed-board-clearance" in path:
             evidence_class = "physical_routed_board_clearance_result"
-            action = "rerun all physical clearance cases against the approved routed STEP"
+            action = "measure all physical clearance cases against the approved routed STEP"
         elif "full-cad-boolean-interference" in path:
             evidence_class = "routed_full_cad_boolean_interference_report"
             action = (
-                "rerun boolean interference on the approved routed board and enclosure assembly"
+                "measure boolean interference on the approved routed board and enclosure assembly"
             )
         elif "assembly.pdf" in path:
             evidence_class = "released_assembly_drawing"
@@ -2049,7 +2049,7 @@ def main() -> int:
             raise ValueError("routed clearance result_cases must be a list")
         rerun_matrix = routed_clearance.get("rerun_matrix", [])
         if not isinstance(rerun_matrix, list):
-            raise ValueError("routed clearance rerun_matrix must be a list")
+            raise ValueError("routed clearance release matrix must be a list")
         development_clearance_context = routed_clearance.get("development_clearance_context", {})
         if development_clearance_context and not isinstance(development_clearance_context, dict):
             raise ValueError("development_clearance_context must be a mapping")
@@ -2212,10 +2212,7 @@ def main() -> int:
             raise ValueError("CAD connection release-boundary lost terminal marker coverage")
         if release_boundary.get("all_connections_have_solid_step_parts") is not True:
             raise ValueError("CAD connection release-boundary lost solid STEP coverage")
-        if (
-            release_boundary.get("all_connections_bound_to_routed_development_records")
-            is not True
-        ):
+        if release_boundary.get("all_connections_bound_to_routed_development_records") is not True:
             raise ValueError("CAD connection release-boundary lost routed-record binding")
         if release_boundary.get("all_connections_supplier_release_required") is not True:
             raise ValueError("CAD connection release-boundary lost supplier-release requirement")

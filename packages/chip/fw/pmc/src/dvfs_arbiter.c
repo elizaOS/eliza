@@ -1,7 +1,7 @@
 /*
- * DVFS arbiter: per-rail operating-point lookup. Placeholder TT table is
- * compiled in. Real production builds replace these arrays with output
- * generated from docs/pd/dvfs-tables/.
+ * DVFS arbiter: per-rail operating-point lookup. The TT characterization seed
+ * table is compiled in; SS/FF tables are absent until generated from
+ * docs/pd/dvfs-tables/.
  */
 
 #include "dvfs.h"
@@ -63,14 +63,21 @@ static const struct pmc_dvfs_table *g_active_table;
 
 const struct pmc_dvfs_table *pmc_dvfs_table_for_corner(enum pmc_corner corner)
 {
-    /* Only TT is populated; SS and FF return TT as placeholder. */
-    (void)corner;
-    return &tt_table;
+    switch (corner) {
+    case PMC_CORNER_TT:
+        return &tt_table;
+    case PMC_CORNER_SS:
+    case PMC_CORNER_FF:
+    case PMC_CORNER__COUNT:
+    default:
+        return NULL;
+    }
 }
 
 int pmc_dvfs_arbiter_init(const struct pmc_dvfs_table *tbl)
 {
     if (!tbl) {
+        g_active_table = NULL;
         return -1;
     }
     g_active_table = tbl;

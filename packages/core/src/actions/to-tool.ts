@@ -333,7 +333,7 @@ export interface BuildPlannerToolsFromTieredActionsOptions {
 		| Readonly<Record<string, PlannerToolActionShape>>;
 	/**
 	 * Optional callback invoked when a string sub-action reference could not
-	 * be resolved through `actionLookup`. Defaults to a no-op. Useful for
+	 * be resolved through `actionLookup`. Defaults to skipped. Useful for
 	 * threading log messages without coupling the helper to a logger.
 	 */
 	onUnresolvedSubAction?: (info: {

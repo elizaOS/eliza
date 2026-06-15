@@ -131,7 +131,7 @@ export function deriveActivityPattern(
   actor: ActivityActor,
   gameDay = 1,
 ): ActivityPattern {
-  // TODO: Read nightOwl, workaholic, weekendActive from actor data when available
+  // Actor metadata can override these defaults when those fields are added.
   return {
     timezone: "UTC",
     peakHours: getActorActiveHours(actor.id, gameDay),

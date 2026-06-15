@@ -116,7 +116,7 @@ When no issue ID is provided, use searchBy fields:
     "assignee": "Name or email of assignee if mentioned",
     "priority": "urgent|high|normal|low|1|2|3|4",
     "team": "Team name or key if mentioned",
-    "state": "Issue state if mentioned, such as todo, in-progress, or done",
+    "state": "Issue state if mentioned, such as to-do, in-progress, or done",
     "recency": "latest|newest|recent|last",
     "type": "bug|feature|task"
   }
@@ -237,7 +237,7 @@ Respond with JSON only. Use this shape:
     "priority": 3,
     "teamKey": "New team key if moving to another team, such as ENG, ELIZA, or COM2",
     "assignee": "New assignee username or email if changing",
-    "status": "todo|in-progress|done|canceled",
+    "status": "to-do|in-progress|done|canceled",
     "labels": ["label"]
   }
 }

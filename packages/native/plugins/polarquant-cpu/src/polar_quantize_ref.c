@@ -139,7 +139,7 @@ void quantize_row_q4_polar_ref(
              * reference we set bit 0 of qjl[0] to the global sign and
              * leave the other bits at zero; the decoder reads bit 0
              * and applies the magnitude correction along the same
-             * sign vector.  Future work may upgrade to per-coord bits
+             * sign vector.  Per-coordinate residuals can use these reserved bits
              * without changing the on-disk size.
              */
             float proj = 0.0f;

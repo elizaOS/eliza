@@ -186,7 +186,7 @@ def main() -> int:
             "is NOT libavb-RSA compatible and makes no such claim. Scope is "
             "vbmeta VERIFICATION only: on-device AVB enforcement in a booted "
             "Android image is gated on the AOSP boot lane, and full A/B OTA "
-            "apply/recovery is not implemented here. The OTP rollback fuses and "
+            "apply/recovery is outside this verifier. The OTP rollback fuses and "
             "the silicon RoT crypto that supply the verifier's trust inputs are "
             "hardware-gated; no production verified-boot claim follows from "
             "host/sim evidence alone."

@@ -22,11 +22,16 @@ test("settings exposes computer use capability controls", async ({ page }) => {
   await page.getByRole("switch", { name: "Enable Computer Use" }).click();
 
   await expect(
-    page.getByText(/Computer Use requires Accessibility and Screen Recording/),
+    page.getByText(
+      /Computer Use requires Accessibility and Screen Recording permissions\./,
+    ),
   ).toBeVisible();
-  await expect(page.locator("#permissions")).toBeVisible();
+  await openSettingsSection(page, /^App Permissions\b/);
+  await expect(page.locator("#app-permissions")).toBeVisible();
   await expect(
-    page.locator("#permissions").getByText("Permissions", { exact: true }),
+    page
+      .locator("#app-permissions")
+      .getByText("App Permissions", { exact: true }),
   ).toBeVisible();
 });
 
@@ -42,11 +47,30 @@ test("first-run starts with setup choices before capability settings", async ({
 
   await page.goto("/chat", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByTestId("first-run-shell")).toBeVisible();
+  const firstRunSurface = page
+    .getByTestId("first-run-shell")
+    .or(page.getByTestId("onboarding-toast"))
+    .or(page.getByRole("form", { name: "Bootstrap token entry" }));
+  await expect(firstRunSurface).toBeVisible();
+  const bootstrapGate = page.getByRole("form", {
+    name: "Bootstrap token entry",
+  });
+  if (await bootstrapGate.isVisible()) {
+    await expect(
+      page.getByRole("switch", { name: "Enable Computer Use" }),
+    ).toHaveCount(0);
+    return;
+  }
   await expect(
-    page.getByRole("heading", { name: /Where should .* run\?/ }),
+    page
+      .getByRole("heading", { name: /Where should .* run\?/ })
+      .or(page.getByRole("button", { name: "Connect" })),
   ).toBeVisible();
-  await expect(page.getByTestId("first-run-runtime-cloud")).toBeVisible();
+  await expect(
+    page
+      .getByTestId("first-run-runtime-cloud")
+      .or(page.getByRole("button", { name: /^(Eliza Cloud|Connect)$/ })),
+  ).toBeVisible();
   const localRuntime = page.getByTestId("first-run-runtime-local");
   if (await localRuntime.count()) {
     await expect(localRuntime).toBeVisible();

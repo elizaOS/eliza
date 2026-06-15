@@ -1,7 +1,7 @@
 /**
- * No-op `CloudSetupObserver` for tests and headless runs.
+ * Silent `CloudSetupObserver` for tests and headless runs.
  *
- * - All event methods are no-ops.
+ * - All event methods intentionally ignore their inputs.
  * - All prompt methods resolve to `null` (i.e. "user cancelled"), which
  *   lets the orchestrator exercise its cancel branches without surfacing
  *   any UI.

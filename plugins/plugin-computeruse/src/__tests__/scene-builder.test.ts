@@ -185,7 +185,7 @@ describe("SceneBuilder — JSON shape", () => {
       ocrBoxesPerCall: [
         [
           {
-            id: "placeholder",
+            id: "sample",
             text: "Hello world",
             bbox: [10, 20, 100, 24],
             conf: 0.92,

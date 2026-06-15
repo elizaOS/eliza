@@ -20,7 +20,7 @@ import { MODEL_CATALOG } from "../services/local-inference/catalog";
 import type { ModelHubSnapshot } from "../services/local-inference/types";
 import { autoDownloadRecommendedLocalModelInBackground } from "./auto-download-recommended";
 
-function stubLocalStorage(): Storage {
+function fakeLocalStorage(): Storage {
   const items = new Map<string, string>();
   return {
     getItem: vi.fn((key: string) => items.get(key) ?? null),
@@ -81,7 +81,7 @@ describe("autoDownloadRecommendedLocalModelInBackground", () => {
   });
 
   it("queues the fit-aware recommended default model on iOS simulator hardware", async () => {
-    vi.stubGlobal("window", { localStorage: stubLocalStorage() });
+    vi.stubGlobal("window", { localStorage: fakeLocalStorage() });
     fetchWithCsrfMock.mockResolvedValue(new Response("ok", { status: 200 }));
     mockClient.getLocalInferenceHub.mockResolvedValue(simulatorSnapshot());
     mockClient.startLocalInferenceDownload.mockResolvedValue({ ok: true });
@@ -108,7 +108,7 @@ describe("autoDownloadRecommendedLocalModelInBackground", () => {
       },
     ] as ModelHubSnapshot["installed"];
 
-    vi.stubGlobal("window", { localStorage: stubLocalStorage() });
+    vi.stubGlobal("window", { localStorage: fakeLocalStorage() });
     fetchWithCsrfMock.mockResolvedValue(new Response("ok", { status: 200 }));
     mockClient.getLocalInferenceHub.mockResolvedValue(snapshot);
     mockClient.setLocalInferenceActive.mockResolvedValue({ status: "ready" });
@@ -141,7 +141,7 @@ describe("autoDownloadRecommendedLocalModelInBackground", () => {
       status: "ready",
     };
 
-    vi.stubGlobal("window", { localStorage: stubLocalStorage() });
+    vi.stubGlobal("window", { localStorage: fakeLocalStorage() });
     fetchWithCsrfMock.mockResolvedValue(new Response("ok", { status: 200 }));
     mockClient.getLocalInferenceHub.mockResolvedValue(snapshot);
 

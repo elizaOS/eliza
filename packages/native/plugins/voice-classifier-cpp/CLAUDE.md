@@ -1,9 +1,11 @@
 # voice-classifier-cpp — port plan
 
-**ONNX deprecation status (K7 update, 2026-05-15):** all three model heads in
-this library (`voice_emotion_*`, `voice_speaker_*`, `voice_diarizer_*`) are stubs
-that return `-ENOSYS`. The ONNX runtime paths in the resolved production code
-remain active until these stubs are replaced with real ggml graph implementations.
+**ONNX deprecation status (updated 2026-06-03):** the native C library now has
+real scalar forward paths for `voice_emotion_*`, `voice_speaker_*`, and
+`voice_diarizer_*`. The audio-side `voice_eot_*` head validates GGUF metadata
+but still returns `-ENOSYS` from `voice_eot_score` until an upstream audio-turn
+model is pinned. The ONNX/runtime paths in the resolved production TypeScript
+code remain active until the GGUF bindings are promoted and parity gates pass.
 
 K7 audit confirmed:
 - `voice-emotion-classifier.ts` → `onnxruntime-node` (active, blocked on K1)
@@ -11,11 +13,11 @@ K7 audit confirmed:
 - `speaker/diarizer.ts` → `onnxruntime-node` (active, blocked on K3)
 
 Do NOT remove `onnxruntime-node` from `plugin-local-inference/package.json` until
-all three heads are implemented and the TS files renamed from `*-ggml.ts` to
-canonical names. See `.swarm/impl/K7-no-onnx.md §D` for the per-head migration
+the production TS services have swapped to the native bindings and the EOT gap
+is resolved. See `.swarm/impl/K7-no-onnx.md §D` for the per-head migration
 protocol and `.swarm/impl/I1-single-runtime.md §F` for the broader context.
 
-Standalone C library that ports three small voice-side classifiers to
+Standalone C library that ports native voice-side classifiers to
 the elizaOS/llama.cpp fork's ggml dispatcher, replacing the ONNX
 runtime path used today by:
 
@@ -27,16 +29,21 @@ runtime path used today by:
   end-of-turn detector that pairs with them);
 - `plugins/plugin-local-inference/src/services/voice/speaker/encoder.ts`
   (WeSpeaker ResNet34-LM via onnxruntime-node).
+- `plugins/plugin-local-inference/src/services/voice/speaker/diarizer.ts`
+  (pyannote segmentation via onnxruntime-node).
 
-Today this is a **stub for the three model heads** plus three real
-shared utilities (the emotion class-name table, the cosine-distance
-helper, and the mel front-end). The stub TUs return `-ENOSYS` from
-every model entry point; the real ports replace those TUs without
-changing the ABI.
+Today this package has three implemented native heads plus one explicit
+fail-closed boundary:
 
-## Why one library, three heads
+- emotion: Wav2Small scalar C forward path;
+- speaker: WeSpeaker ResNet34-LM scalar C forward path;
+- diarizer: pyannote-3 scalar C forward path;
+- audio EOT: GGUF metadata validation only; `voice_eot_score` returns
+  `-ENOSYS` until an upstream audio-turn model and graph are pinned.
 
-All three classifiers have the same shape: small input window of mono
+## Why one library, four heads
+
+All four classifiers have the same shape: small input window of mono
 16 kHz float PCM → small fixed-shape output. They share a log-mel
 front-end (n_mels=80, n_fft=512, hop=160), the same audio plumbing,
 the same threading contract, the same error model, and the same
@@ -46,12 +53,12 @@ as one library means:
 - one CMake target, one set of compiler flags, one shared mel
   precomputation table;
 - the eventual ggml dispatcher integration patches the fork once, and
-  the three heads pick it up;
+  the heads pick it up;
 - the GGUF schema is per-head (one `.gguf` file per head) but the
   metadata-key conventions (`voice_emotion.variant`, etc.) follow the
   same pattern so the runtime can refuse mismatched bundles uniformly.
 
-The three heads keep separate session handles so a runtime can load
+The heads keep separate session handles so a runtime can load
 only what it needs (e.g. mobile bundles often skip the speaker head).
 
 ## Per-head port plan
@@ -140,8 +147,8 @@ only what it needs (e.g. mobile bundles often skip the speaker head).
 
 ## C ABI (frozen by `include/voice_classifier/voice_classifier.h`)
 
-The stub implements every model entry point; the real ports must match
-the ABI byte-for-byte. The shared utilities are real and stay as-is:
+Every model entry point keeps the frozen ABI byte-for-byte. The shared
+utilities are real and stay as-is:
 
 - `voice_emotion_class_name` — never NULL for valid indices, NULL for
   out-of-range; class order locked.
@@ -161,8 +168,9 @@ Each head has its own conversion script under `scripts/`:
 - `scripts/voice_emotion_to_gguf.py`
 - `scripts/voice_eot_to_gguf.py`
 - `scripts/voice_speaker_to_gguf.py`
+- `scripts/voice_diarizer_to_gguf.py`
 
-All three follow the same skeleton (mirror of
+The converters follow the same metadata discipline (mirror of
 `packages/native/plugins/doctr-cpp/scripts/doctr_to_gguf.py` and
 `packages/native/plugins/polarquant-cpu/scripts/polarquant_to_gguf.py`):
 
@@ -172,10 +180,10 @@ All three follow the same skeleton (mirror of
   mel parameters, output dim);
 - pinned upstream commit recorded both in code and in the GGUF
   metadata key — runtime refuses unknown commits;
-- `NotImplementedError` in every TODO block so a half-built converter
-  cannot pass for working;
+- explicit converter validation and hard errors on unknown checkpoints so a
+  mismatched upstream cannot pass for working;
 - per-head metadata key: `voice_emotion.variant`, `voice_eot.variant`,
-  `voice_speaker.variant` — the runtime checks each.
+  `voice_speaker.variant`, `voice_diarizer.variant` — the runtime checks each.
 
 ## elizaOS/llama.cpp fork integration
 
@@ -187,8 +195,8 @@ covered by `ggml_conv_1d`, `ggml_norm`, `ggml_mul_mat`).
 1. Bring up the speaker head first — pure feed-forward TDNN, smallest
    surface, easiest parity test (compare 192-dim cosine distance
    against the SpeechBrain reference for a small enrollment set).
-2. Bring up the emotion head next — wav2vec2 backbone is the
-   heavy-weight piece; the classifier head is one `ggml_mul_mat`.
+2. Bring up the emotion head next — Wav2Small is implemented in scalar C;
+   ggml promotion still needs the production binding/parity swap.
 3. Bring up the EOT head last — depends on which upstream we land on;
    the turn-detection-from-audio research field is younger.
 4. Add a `fork-integration/` directory if any new ggml ops or quant
@@ -204,6 +212,7 @@ pass, the corresponding TS service swaps to the new ggml binding:
 - `eot-classifier-ggml.ts` provides the audio-side EOT detector that
   pairs with the existing text-side classifiers in `eot-classifier.ts`;
 - `speaker/encoder-ggml.ts` replaces `speaker/encoder.ts`.
+- `speaker/diarizer-ggml.ts` replaces `speaker/diarizer.ts`.
 
 The new TS files exist as **EXPERIMENTAL** bindings today (Phase 1).
 Phase 2 wires them into the production pipeline once the ggml ports
@@ -218,10 +227,10 @@ cmake --build packages/native/plugins/voice-classifier-cpp/build -j
 ctest --test-dir packages/native/plugins/voice-classifier-cpp/build --output-on-failure
 ```
 
-Output: `libvoice_classifier.a` plus four test binaries:
+Output: `libvoice_classifier.a`, the shared library, and ctest binaries:
 
-- `voice_classifier_stub_smoke` — every model entry point still
-  returns `-ENOSYS` and clears its out-parameters.
+- `voice_classifier_abi_smoke` — ABI failure paths clear out-parameters
+  and keep unavailable forwards fail-closed.
 - `voice_emotion_classes_test` — the 7-class vocabulary order is
   intact; out-of-bounds returns NULL.
 - `voice_speaker_distance_test` — identical=0, orthogonal=1,
@@ -229,20 +238,26 @@ Output: `libvoice_classifier.a` plus four test binaries:
 - `voice_mel_features_test` — a 1 kHz sine produces a stable mel-band
   peak in the low-mid range and argument validation reports the
   documented error codes.
+- `voice_gguf_loader_test` — hand-rolled GGUF metadata fixtures are
+  accepted/rejected correctly.
+- `voice_diarizer_parity_test` — pyannote parity when GGUF fixtures are
+  available; skipped without fixtures.
+- `voice_speaker_parity_test` — WeSpeaker parity when GGUF fixtures are
+  available; skipped without fixtures.
 
-All four pass on the dev host today; that's the contract the port
-preserves while it grows real implementations behind the same ABI.
+The unit tests pass on the dev host today; parity tests skip when their
+large GGUF/reference fixture bundles are absent.
 
 ## What's missing before the port is real
 
-- Pinned upstream commits + recorded weight download recipes for each
-  head.
-- Real `discover_*_tensors`, `load_*`, and `write_gguf` implementations
-  in the three `scripts/voice_*_to_gguf.py` files.
-- ggml-backed model TUs (`src/voice_emotion_ggml.c`,
-  `src/voice_eot_ggml.c`, `src/voice_speaker_ggml.c`) replacing the
-  stub.
-- Per-head parity test fixtures (small audio set + expected outputs
-  from the upstream reference) wired into ctest.
+- Pinned upstream commit + recorded weight download recipe for the
+  audio-side EOT head.
+- Audio-side EOT scoring graph selection and parity fixtures after an upstream
+  audio-turn model is pinned. `scripts/voice_eot_to_gguf.py` already discovers
+  encoder/head tensors and writes the locked GGUF metadata/payload; the runtime
+  keeps scoring fail-closed until the graph contract is selected.
+- Production TS binding promotion after parity gates pass.
+- Per-head parity fixture bundles staged for local/CI runs where they are
+  currently optional.
 - `fork-integration/` patches if any new ggml ops or quant types are
   needed (none expected for the first pass).

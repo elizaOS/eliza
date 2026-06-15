@@ -128,7 +128,7 @@ GET /api/markets/predictions?page=1&limit=5
 
 ---
 
-## Roadmap
+## Next Steps
 
 Prioritized by impact on data freshness and DB load.
 

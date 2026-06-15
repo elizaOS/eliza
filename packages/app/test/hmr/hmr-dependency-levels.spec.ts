@@ -30,12 +30,44 @@ const LEVELS = [
     file: "plugins/plugin-contacts/src/components/ContactsAppView.tsx",
   },
   {
-    name: "plugin view hyperliquid",
-    file: "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.tsx",
+    name: "plugin view lifeops",
+    file: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
   },
   {
-    name: "plugin view lifeops",
-    file: "plugins/plugin-lifeops/src/components/LifeOpsPageView.tsx",
+    name: "plugin view focus",
+    file: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
+  },
+  {
+    name: "plugin view calendar",
+    file: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
+  },
+  {
+    name: "plugin view documents",
+    file: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
+  },
+  {
+    name: "plugin view finances",
+    file: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
+  },
+  {
+    name: "plugin view goals",
+    file: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
+  },
+  {
+    name: "plugin view health",
+    file: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
+  },
+  {
+    name: "plugin view inbox",
+    file: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
+  },
+  {
+    name: "plugin view todos",
+    file: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
+  },
+  {
+    name: "plugin view hyperliquid",
+    file: "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.tsx",
   },
   {
     name: "plugin view messages",
@@ -70,6 +102,10 @@ const LEVELS = [
     file: "plugins/plugin-wallet-ui/src/InventoryView.tsx",
   },
   {
+    name: "plugin view vector-browser",
+    file: "plugins/plugin-vector-browser/src/VectorBrowserView.tsx",
+  },
+  {
     name: "plugin view 2004scape",
     file: "plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.tsx",
   },
@@ -100,6 +136,10 @@ const LEVELS = [
   {
     name: "plugin view screenshare",
     file: "plugins/plugin-screenshare/src/ui/ScreenshareOperatorSurface.tsx",
+  },
+  {
+    name: "plugin view social alpha",
+    file: "plugins/plugin-social-alpha/src/frontend/LeaderboardView.tsx",
   },
   {
     name: "plugin view task coordinator",

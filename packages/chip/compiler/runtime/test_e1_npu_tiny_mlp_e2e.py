@@ -276,9 +276,9 @@ def test_mobilenet_first_conv2d_partitioner_emits_cpu_fallback_set() -> None:
     from backend.ElizaPartitioner import ElizaPartitioner, GraphNode
 
     nodes = [
-        GraphNode(name="x", target="placeholder"),
-        GraphNode(name="w_conv", target="placeholder"),
-        GraphNode(name="b_conv", target="placeholder"),
+        GraphNode(name="x", target="graph.input"),
+        GraphNode(name="w_conv", target="graph.input"),
+        GraphNode(name="b_conv", target="graph.input"),
         GraphNode(
             name="conv0",
             target="aten.conv2d.default",

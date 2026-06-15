@@ -424,7 +424,7 @@ export const SHOWCASE_PLUGIN: PluginInfo = {
       group: "File Paths",
       width: "full",
       type: "custom",
-      help: "Renderer: custom — placeholder for plugin-provided React components",
+      help: "Renderer: custom — reserved for plugin-provided React components",
       advanced: true,
     },
     RELEASE_NOTES: {

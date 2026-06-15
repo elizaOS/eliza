@@ -9,30 +9,29 @@ import { Textarea } from "@elizaos/ui/components/ui/textarea";
 import {
   ArrowLeft,
   ChevronLeft,
+  Inbox,
   MessageSquareText,
   Plus,
+  Radio,
   RefreshCw,
   Send,
   ShieldCheck,
-  Smartphone,
 } from "lucide-react";
 import {
   type ChangeEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
   useState,
 } from "react";
+import {
+  buildThreads,
+  loadMessagesState,
+  smsRole,
+  type ThreadSummary,
+} from "./MessagesAppView.helpers.ts";
 
-type ThreadSummary = {
-  id: string;
-  address: string;
-  messages: SmsMessageSummary[];
-  lastMessage: SmsMessageSummary;
-  unreadCount: number;
-};
-
-const INBOUND_SMS_TYPE = 1;
 const SENT_SMS_TYPE = 2;
 
 function defaultOverlayContext(): OverlayAppContext {
@@ -66,55 +65,77 @@ function formatTime(epochMs: number): string {
   });
 }
 
-function buildThreads(messages: SmsMessageSummary[]): ThreadSummary[] {
-  const byThread = new Map<string, SmsMessageSummary[]>();
-  for (const message of messages) {
-    const key = message.threadId || message.address || message.id;
-    const list = byThread.get(key) ?? [];
-    list.push(message);
-    byThread.set(key, list);
-  }
-  return Array.from(byThread.entries())
-    .map(([id, threadMessages]) => {
-      const sorted = [...threadMessages].sort((a, b) => a.date - b.date);
-      const lastMessage = sorted[sorted.length - 1] ?? threadMessages[0];
-      return {
-        id,
-        address: lastMessage?.address,
-        messages: sorted,
-        lastMessage,
-        unreadCount: sorted.filter(
-          (m) => !m.read && m.type === INBOUND_SMS_TYPE,
-        ).length,
-      };
-    })
-    .filter((thread): thread is ThreadSummary => Boolean(thread.lastMessage))
-    .sort((a, b) => b.lastMessage.date - a.lastMessage.date);
+function threadInitial(address: string): string {
+  const trimmed = address.trim();
+  if (trimmed.length === 0) return "#";
+  const firstLetter = trimmed.split("").find((ch) => /[a-z]/i.test(ch));
+  if (firstLetter) return firstLetter.toUpperCase();
+  const firstDigit = trimmed.replace(/[^0-9]/g, "").slice(-1);
+  return firstDigit || "#";
 }
 
-function smsRole(status: SystemStatus | null) {
-  return status?.roles.find((role) => role.role === "sms") ?? null;
+function StatChip({
+  icon,
+  label,
+  accent = false,
+}: {
+  icon: ReactNode;
+  label: string;
+  accent?: boolean;
+}) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium"
+      style={{
+        background: accent ? "var(--accent-subtle)" : "var(--surface)",
+        color: accent ? "var(--accent)" : "var(--muted)",
+      }}
+    >
+      <span
+        aria-hidden
+        className="flex h-3.5 w-3.5 items-center justify-center"
+      >
+        {icon}
+      </span>
+      {label}
+    </span>
+  );
 }
 
-function normalizeMessagesLimit(value: unknown, fallback = 200): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  return Math.min(500, Math.max(1, Math.trunc(value)));
-}
-
-async function loadMessagesState(limit = 200) {
-  const [messageResult, statusResult] = await Promise.all([
-    Messages.listMessages({ limit: normalizeMessagesLimit(limit) }),
-    System.getStatus().catch(() => null),
-  ]);
-  const threads = buildThreads(messageResult.messages);
-  const currentSmsRole = smsRole(statusResult);
-  return {
-    messages: messageResult.messages,
-    threads,
-    systemStatus: statusResult,
-    ownsSmsRole: currentSmsRole?.held === true,
-    smsRoleHolder: currentSmsRole?.holders[0] ?? null,
-  };
+function ChatBubblesMotif() {
+  return (
+    <svg width="96" height="96" viewBox="0 0 96 96" fill="none" role="img">
+      <title>Chat bubbles</title>
+      <rect
+        x="10"
+        y="20"
+        width="56"
+        height="34"
+        rx="12"
+        fill="var(--accent-subtle)"
+        stroke="var(--accent)"
+        strokeWidth="2"
+      />
+      <path d="M24 54 L24 64 L36 54 Z" fill="var(--accent-subtle)" />
+      <rect
+        x="38"
+        y="44"
+        width="48"
+        height="30"
+        rx="11"
+        fill="var(--surface)"
+        stroke="var(--border)"
+        strokeWidth="2"
+      />
+      <path d="M72 74 L72 82 L62 74 Z" fill="var(--surface)" />
+      <circle cx="24" cy="37" r="2.5" fill="var(--accent)" />
+      <circle cx="34" cy="37" r="2.5" fill="var(--accent)" />
+      <circle cx="44" cy="37" r="2.5" fill="var(--accent)" />
+      <circle cx="56" cy="59" r="2.5" fill="var(--muted)" />
+      <circle cx="66" cy="59" r="2.5" fill="var(--muted)" />
+      <circle cx="76" cy="59" r="2.5" fill="var(--muted)" />
+    </svg>
+  );
 }
 
 function MessagesThreadButton({
@@ -141,18 +162,25 @@ function MessagesThreadButton({
       type="button"
       onClick={() => onOpen(thread)}
       aria-current={selected ? "true" : undefined}
-      className="flex w-full items-start gap-3 border-b border-border/16 px-4 py-3 text-left transition-colors hover:bg-bg-accent/50 focus:bg-bg-accent/50 focus:outline-none"
+      className="flex w-full items-start gap-3 border-b border-border/16 px-4 py-3 text-left transition-colors focus:outline-none"
+      style={selected ? { background: "var(--accent-subtle)" } : undefined}
       data-testid={`messages-thread-${thread.id}`}
     >
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-bg-accent">
-        <Smartphone className="h-4 w-4 text-muted" />
+      <span
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
+        style={{ background: "var(--accent-subtle)", color: "var(--accent)" }}
+      >
+        {threadInitial(thread.address)}
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-center justify-between gap-2">
           <span className="truncate text-sm font-semibold text-txt">
             {thread.address || "Unknown"}
           </span>
-          <span className="shrink-0 text-2xs text-muted">
+          <span
+            className="shrink-0 rounded-full px-2 py-0.5 text-2xs text-muted"
+            style={{ background: "var(--surface)" }}
+          >
             {formatTime(thread.lastMessage.date)}
           </span>
         </span>
@@ -161,7 +189,13 @@ function MessagesThreadButton({
         </span>
       </span>
       {thread.unreadCount > 0 ? (
-        <span className="rounded-full bg-info px-1.5 py-0.5 text-2xs font-semibold text-bg">
+        <span
+          className="rounded-full px-1.5 py-0.5 text-2xs font-semibold"
+          style={{
+            background: "var(--accent)",
+            color: "var(--accent-foreground)",
+          }}
+        >
           {thread.unreadCount}
         </span>
       ) : null}
@@ -269,6 +303,11 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
   );
   const currentSmsRole = smsRole(systemStatus);
   const ownsSmsRole = currentSmsRole?.held === true;
+  const unreadTotal = threads.reduce(
+    (total, thread) => total + thread.unreadCount,
+    0,
+  );
+  const latestThread = threads[0] ?? null;
   const canSend =
     composeAddress.trim().length > 0 &&
     composeBody.trim().length > 0 &&
@@ -518,9 +557,9 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
         </div>
       )}
 
-      <main className="grid min-h-0 flex-1 md:grid-cols-[340px_minmax(0,1fr)]">
+      <main className="flex min-h-0 flex-1 flex-col">
         <section
-          className={`min-h-0 flex-col border-border/24 md:flex md:border-r ${
+          className={`min-h-0 flex-1 flex-col ${
             showComposer ? "hidden" : "flex"
           }`}
           data-testid="messages-thread-list"
@@ -530,47 +569,118 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
               {t("messages.loading", { defaultValue: "Loading messages…" })}
             </div>
           ) : threads.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-              <MessageSquareText className="h-11 w-11 text-muted" />
-              <div>
-                <div className="text-sm font-medium text-txt">
-                  {t("messages.emptyTitle", {
-                    defaultValue: "No SMS threads yet",
+            <div className="flex flex-1 flex-col items-center justify-center px-6 pb-32 text-center">
+              <span
+                className="flex h-20 w-20 items-center justify-center rounded-3xl"
+                style={{ background: "var(--accent-subtle)" }}
+              >
+                <ChatBubblesMotif />
+              </span>
+              <h2 className="mt-5 text-base font-semibold text-txt">
+                {t("messages.empty.title", { defaultValue: "No messages yet" })}
+              </h2>
+              <p className="mt-1 max-w-xs text-sm text-muted">
+                {t("messages.empty.body", {
+                  defaultValue:
+                    "Start a conversation — texts you send and receive show up here.",
+                })}
+              </p>
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                <StatChip
+                  icon={<MessageSquareText className="h-3.5 w-3.5" />}
+                  label={t("messages.threadCount", {
+                    defaultValue: "0 threads",
                   })}
-                </div>
-                <p className="mt-1 text-xs text-muted">
-                  {t("messages.emptyBody", {
-                    defaultValue:
-                      "Start a message, or grant SMS permissions on Android to load existing conversations.",
-                  })}
-                </p>
+                />
+                <StatChip
+                  icon={<Radio className="h-3.5 w-3.5" />}
+                  label={
+                    ownsSmsRole
+                      ? t("messages.smsReady", {
+                          defaultValue: "Default SMS app",
+                        })
+                      : t("messages.smsBridge", {
+                          defaultValue: "Android SMS bridge",
+                        })
+                  }
+                />
               </div>
-              <Button
+              <button
                 ref={emptyNewMessage.ref}
                 {...emptyNewMessage.agentProps}
-                size="sm"
+                type="button"
                 onClick={openNewComposer}
+                className="mt-6 inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition-colors"
+                style={{
+                  background: "var(--accent)",
+                  color: "var(--accent-foreground)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "var(--accent-hover)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "var(--accent)";
+                }}
               >
-                <Plus className="mr-1.5 h-4 w-4" />
+                <Plus className="h-4 w-4" />
                 {t("messages.new", { defaultValue: "New message" })}
-              </Button>
+              </button>
             </div>
           ) : (
-            <div className="chat-native-scrollbar min-h-0 flex-1 overflow-y-auto">
-              {threads.map((thread) => (
-                <MessagesThreadButton
-                  key={thread.id}
-                  thread={thread}
-                  selected={thread.id === selectedThreadId}
-                  onOpen={openThread}
-                />
-              ))}
+            <div className="chat-native-scrollbar min-h-0 flex-1 overflow-y-auto pb-32">
+              <div className="flex items-center gap-3 px-4 py-4">
+                <span
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
+                  style={{ background: "var(--accent-subtle)" }}
+                >
+                  <MessageSquareText
+                    className="h-5 w-5"
+                    style={{ color: "var(--accent)" }}
+                  />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-base font-semibold text-txt">
+                    {t("messages.title", { defaultValue: "Messages" })}
+                  </h2>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <StatChip
+                      icon={<MessageSquareText className="h-3.5 w-3.5" />}
+                      label={t("messages.threadCountN", {
+                        defaultValue: `${threads.length} threads`,
+                      })}
+                      accent
+                    />
+                    <StatChip
+                      icon={<Inbox className="h-3.5 w-3.5" />}
+                      label={t("messages.unreadCountN", {
+                        defaultValue: `${unreadTotal} unread`,
+                      })}
+                    />
+                    {latestThread ? (
+                      <StatChip
+                        icon={<Radio className="h-3.5 w-3.5" />}
+                        label={formatTime(latestThread.lastMessage.date)}
+                      />
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+              <div>
+                {threads.map((thread) => (
+                  <MessagesThreadButton
+                    key={thread.id}
+                    thread={thread}
+                    selected={thread.id === selectedThreadId}
+                    onOpen={openThread}
+                  />
+                ))}
+              </div>
             </div>
           )}
         </section>
 
         <section
-          className={`min-h-0 flex-col ${showComposer ? "flex" : "hidden md:flex"}`}
+          className={`min-h-0 flex-1 flex-col ${showComposer ? "flex" : "hidden"}`}
           data-testid="messages-composer-panel"
         >
           {showComposer ? (
@@ -608,17 +718,30 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
                           className={`flex ${sent ? "justify-end" : "justify-start"}`}
                         >
                           <div
-                            className={`max-w-[78%] rounded-lg px-3 py-2 ${
-                              sent ? "bg-info text-bg" : "bg-bg-accent text-txt"
-                            }`}
+                            className="max-w-[78%] rounded-2xl px-3 py-2"
+                            style={
+                              sent
+                                ? {
+                                    background: "var(--accent)",
+                                    color: "var(--accent-foreground)",
+                                  }
+                                : {
+                                    background: "var(--surface)",
+                                    color: "var(--text)",
+                                  }
+                            }
                           >
                             <div className="whitespace-pre-wrap break-words text-sm">
                               {message.body}
                             </div>
                             <div
-                              className={`mt-1 text-right text-2xs ${
-                                sent ? "text-bg/70" : "text-muted"
-                              }`}
+                              className="mt-1 text-right text-2xs"
+                              style={{
+                                opacity: 0.7,
+                                color: sent
+                                  ? "var(--accent-foreground)"
+                                  : "var(--muted)",
+                              }}
                             >
                               {formatTime(message.date)}
                             </div>
@@ -864,13 +987,7 @@ export function MessagesTuiView() {
         | {lastAction}
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(220px, 0.9fr) minmax(280px, 1.1fr)",
-          gap: 16,
-        }}
-      >
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
         <section
           aria-label="SMS threads"
           style={{
@@ -913,7 +1030,7 @@ export function MessagesTuiView() {
           {!loading && !error && threads.length === 0 && (
             <div style={{ color: "#64748b" }}>no sms threads</div>
           )}
-          {threads.map((thread, index) => (
+          {threads.slice(0, 24).map((thread, index) => (
             <TuiThreadButton
               key={thread.id}
               thread={thread}
@@ -937,7 +1054,8 @@ export function MessagesTuiView() {
             {selectedThread ? selectedThread.address : "compose"}
           </strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: refresh | request-role | send
+            {messages.length} messages / sms{" "}
+            {ownsSmsRole ? "ready" : smsRoleHolder ? "held" : "unclaimed"}
           </div>
 
           {!ownsSmsRole && (
@@ -1054,51 +1172,4 @@ export function MessagesTuiView() {
       </div>
     </div>
   );
-}
-
-export async function interact(
-  capability: string,
-  params?: Record<string, unknown>,
-): Promise<unknown> {
-  if (capability === "terminal-list-threads") {
-    const state = await loadMessagesState(
-      normalizeMessagesLimit(params?.limit),
-    );
-    return {
-      viewType: "tui",
-      threads: state.threads.map((thread) => ({
-        id: thread.id,
-        address: thread.address,
-        messageCount: thread.messages.length,
-        unreadCount: thread.unreadCount,
-        lastMessage: thread.lastMessage.body,
-        lastMessageAt: thread.lastMessage.date,
-      })),
-      ownsSmsRole: state.ownsSmsRole,
-      smsRoleHolder: state.smsRoleHolder,
-    };
-  }
-
-  if (capability === "terminal-send-sms") {
-    const address =
-      typeof params?.address === "string" ? params.address.trim() : "";
-    const body = typeof params?.body === "string" ? params.body.trim() : "";
-    if (!address) throw new Error("address is required");
-    if (!body) throw new Error("body is required");
-    await Messages.sendSms({ address, body });
-    return { sent: true, address, bodyLength: body.length, viewType: "tui" };
-  }
-
-  if (capability === "terminal-request-sms-role") {
-    await System.requestRole({ role: "sms" });
-    const state = await loadMessagesState(200);
-    return {
-      requested: true,
-      ownsSmsRole: state.ownsSmsRole,
-      smsRoleHolder: state.smsRoleHolder,
-      viewType: "tui",
-    };
-  }
-
-  throw new Error(`Unsupported capability "${capability}"`);
 }

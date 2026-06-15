@@ -11,7 +11,7 @@
  * Bun's vi.spyOn(Date, 'now') doesn't affect `new Date()` calls,
  * making time-dependent tests unreliable.
  *
- * TODO: Re-enable these tests when Bun supports full timer mocking.
+ * Re-enable these tests when Bun supports full timer mocking.
  * Tracking: https://github.com/oven-sh/bun/issues/5388
  * Skipped tests:
  * - "should update lastCoveredAt on subsequent tracks"

@@ -30,7 +30,7 @@ const seedGrantsModuleUrl = new URL(
   import.meta.url,
 ).href;
 const lifeopsApprovalQueueModuleUrl = new URL(
-  "../../../../plugins/plugin-lifeops/src/lifeops/approval-queue.ts",
+  "../../../../plugins/plugin-personal-assistant/src/lifeops/approval-queue.ts",
   import.meta.url,
 ).href;
 
@@ -458,7 +458,7 @@ function registerBenchmarkXConnectors(runtime: AgentRuntime): void {
         runtime,
         source: "x",
         index: 1,
-        text: "DM from @alex: quick question about the elizaOS roadmap.",
+        text: "DM from @alex: quick question about the elizaOS release plan.",
       }),
       makeBenchmarkConnectorMemory({
         runtime,
@@ -603,7 +603,9 @@ export function caseMatches(
   return false;
 }
 
-export function isAcceptableNoActionResponse(text: string | undefined): boolean {
+export function isAcceptableNoActionResponse(
+  text: string | undefined,
+): boolean {
   const trimmed = text?.trim();
   if (!trimmed) return false;
   if (!/[A-Za-z0-9]/.test(trimmed)) return false;
@@ -1174,7 +1176,7 @@ async function seedBenchmarkCaseFixtures(
   //    is migrated against the per-case PGLite adapter. Idempotent — safe to
   //    call even when the runtime already ran plugin migrations at boot.
   try {
-    const { LifeOpsRepository } = (await import("@elizaos/plugin-lifeops")) as {
+    const { LifeOpsRepository } = (await import("@elizaos/plugin-personal-assistant")) as {
       LifeOpsRepository: {
         bootstrapSchema?: (r: AgentRuntime) => Promise<void>;
       };
@@ -1192,7 +1194,7 @@ async function seedBenchmarkCaseFixtures(
   // 2) Seed a David relationship row used by relationship-flow benchmark cases.
   try {
     const now = new Date().toISOString();
-    const { LifeOpsRepository } = await import("@elizaos/plugin-lifeops");
+    const { LifeOpsRepository } = await import("@elizaos/plugin-personal-assistant");
     const repo = new LifeOpsRepository(runtime);
     const relationshipRepo = repo as typeof repo & {
       upsertRelationship?: (rel: Record<string, unknown>) => Promise<unknown>;
@@ -1406,7 +1408,7 @@ async function seedBenchmarkCaseFixtures(
     let lastError: unknown;
     for (let attempt = 0; attempt < 20 && !seeded; attempt += 1) {
       try {
-        const approvalModule = await import("@elizaos/plugin-lifeops");
+        const approvalModule = await import("@elizaos/plugin-personal-assistant");
         const createApprovalQueue =
           (approvalModule as { createApprovalQueue?: unknown })
             .createApprovalQueue ??
@@ -2254,8 +2256,7 @@ export function buildBenchmarkReportArtifact(
       passed: report.passed,
       failed: report.failed,
       accuracy: report.accuracy,
-      plannerAccuracy:
-        report.total === 0 ? 0 : plannerPassed / report.total,
+      plannerAccuracy: report.total === 0 ? 0 : plannerPassed / report.total,
       executionAccuracy:
         report.total === 0 ? 0 : executionPassed / report.total,
       latency: report.latency,

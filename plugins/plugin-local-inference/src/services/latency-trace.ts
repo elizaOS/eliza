@@ -5,9 +5,9 @@
  * checkpoints from "user makes a sound" to "agent's first audio plays".
  * The checkpoint set is fixed (`VOICE_CHECKPOINTS`) and ordered; each
  * checkpoint is recorded at most once per turn. Missing checkpoints are
- * surfaced as `incomplete` — never synthesized — and derived metrics that
- * depend on a missing checkpoint stay `null` (AGENTS.md §3 / §7: a missing
- * measurement is recorded as missing, not faked).
+ * surfaced as missing-checkpoint state — never synthesized — and derived
+ * metrics that depend on a missing checkpoint stay `null` (AGENTS.md §3 / §7:
+ * a missing measurement is recorded as missing, not faked).
  *
  * Ownership / lifecycle:
  *   - The turn controller (`voice/turn-controller.ts`, W9) is the natural
@@ -97,7 +97,7 @@ const CHECKPOINT_ORDER: Readonly<Record<VoiceCheckpoint, number>> =
  * Checkpoints that only appear in specific run shapes — `peer-utterance-end`
  * and `audio-first-into-peer-ring` are recorded only by the two-agents duet
  * harness; `replyText-first-emotion-tag` only when the model emits an inline
- * expressive tag. Their absence does NOT make a trace `incomplete` (a
+ * expressive tag. Their absence does NOT make a trace missing-checkpoint (a
  * single-agent voice turn is "complete" without them); they are still listed
  * in `missing` so the duet harness can see which ones it didn't get.
  */
@@ -796,7 +796,7 @@ export class VoiceRunMetrics {
 		const lastMb = rssN > 0 ? (this.rssSamples[rssN - 1] as number) : null;
 		const maxMb = rssN > 0 ? Math.max(...this.rssSamples) : null;
 		// Leak heuristic: ≥4 samples, monotone non-decreasing, and grew by more
-		// than the threshold (default 256 MB). Not a proof — a flag.
+		// than the threshold (default 256 MB). This is a warning flag.
 		const threshold = this.opts.leakGrowthMbThreshold ?? 256;
 		let monotone = rssN >= 4;
 		for (let i = 1; i < rssN; i++) {

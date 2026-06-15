@@ -300,7 +300,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   description: "Open-source AI agents for everyone",
   envPrefix: "ELIZA",
   namespace: "eliza",
-  defaultApps: ["@elizaos/plugin-lifeops"],
+  defaultApps: ["@elizaos/plugin-personal-assistant"],
   desktop: {
     bundleId: "app.eliza",
     urlScheme: "elizaos",

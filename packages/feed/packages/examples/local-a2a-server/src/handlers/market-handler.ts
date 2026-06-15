@@ -179,14 +179,7 @@ export class MarketHandler {
       INSERT INTO trades (id, user_id, market_id, type, outcome, shares, price, total_cost)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
-      tradeId,
-      userId,
-      marketId,
-      "BUY",
-      outcome,
-      shares,
-      price,
-      amount,
+      [tradeId, userId, marketId, "BUY", outcome, shares, price, amount],
     );
 
     // Update market volume and prices
@@ -235,11 +228,10 @@ export class MarketHandler {
     if (newShares > 0) {
       this.db.run(
         "UPDATE positions SET shares = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-        newShares,
-        position.id,
+        [newShares, position.id],
       );
     } else {
-      this.db.run("DELETE FROM positions WHERE id = ?", position.id);
+      this.db.run("DELETE FROM positions WHERE id = ?", [position.id]);
     }
 
     // Credit balance to user
@@ -252,14 +244,7 @@ export class MarketHandler {
       INSERT INTO trades (id, user_id, market_id, type, outcome, shares, price, total_cost)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
-      tradeId,
-      userId,
-      marketId,
-      "SELL",
-      outcome,
-      sharesToSell,
-      price,
-      payout,
+      [tradeId, userId, marketId, "SELL", outcome, sharesToSell, price, payout],
     );
 
     // Update market
@@ -323,9 +308,7 @@ export class MarketHandler {
 
       this.db.run(
         "UPDATE positions SET shares = ?, avg_price = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-        totalShares,
-        newAvgPrice,
-        existing.id,
+        [totalShares, newAvgPrice, existing.id],
       );
 
       return existing.id;
@@ -337,12 +320,7 @@ export class MarketHandler {
       INSERT INTO positions (id, user_id, market_id, outcome, shares, avg_price)
       VALUES (?, ?, ?, ?, ?, ?)
     `,
-      positionId,
-      userId,
-      marketId,
-      outcome,
-      newShares,
-      price,
+      [positionId, userId, marketId, outcome, newShares, price],
     );
 
     return positionId;
@@ -367,8 +345,7 @@ export class MarketHandler {
 
     this.db.run(
       "UPDATE users SET virtual_balance = virtual_balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-      amount,
-      userId,
+      [amount, userId],
     );
   }
 
@@ -386,21 +363,22 @@ export class MarketHandler {
         id, wallet_address, display_name, username, bio, virtual_balance, reputation_points
       ) VALUES (?, ?, ?, ?, ?, ?, ?)
     `,
-      userId,
-      `0x${userId.slice(-40).padStart(40, "0")}`,
-      `Agent ${userId.slice(-8)}`,
-      username,
-      "Autonomous agent",
-      1000,
-      100,
+      [
+        userId,
+        `0x${userId.slice(-40).padStart(40, "0")}`,
+        `Agent ${userId.slice(-8)}`,
+        username,
+        "Autonomous agent",
+        1000,
+        100,
+      ],
     );
   }
 
   private creditUserBalance(userId: string, amount: number): void {
     this.db.run(
       "UPDATE users SET virtual_balance = virtual_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-      amount,
-      userId,
+      [amount, userId],
     );
   }
 
@@ -414,8 +392,7 @@ export class MarketHandler {
     // Update total volume
     this.db.run(
       "UPDATE prediction_markets SET total_volume = total_volume + ? WHERE id = ?",
-      volume,
-      marketId,
+      [volume, marketId],
     );
 
     // Update shares and prices (simplified CPMM)
@@ -435,10 +412,7 @@ export class MarketHandler {
 
       this.db.run(
         "UPDATE prediction_markets SET yes_shares = ?, yes_price = ?, no_price = ? WHERE id = ?",
-        newYesShares,
-        newYesPrice,
-        newNoPrice,
-        marketId,
+        [newYesShares, newYesPrice, newNoPrice, marketId],
       );
     } else {
       const newNoShares = Math.max(0.01, noShares + shareChange);
@@ -450,10 +424,7 @@ export class MarketHandler {
 
       this.db.run(
         "UPDATE prediction_markets SET no_shares = ?, yes_price = ?, no_price = ? WHERE id = ?",
-        newNoShares,
-        newYesPrice,
-        newNoPrice,
-        marketId,
+        [newNoShares, newYesPrice, newNoPrice, marketId],
       );
     }
   }

@@ -14,6 +14,7 @@ For Docker / multi-tenant / API-key-first deployments, use the
 ```
 deploy/systemd/
   install.sh                  idempotent installer (user services)
+  smoke-test.sh               static unit/script contract check (no install)
   eliza.env.example           env template -> ~/.config/eliza/env on first install
   units/
     eliza.service             the bot: Restart=always, OAuth refresh before launch
@@ -54,8 +55,13 @@ systemctl --user daemon-reload
 loginctl disable-linger "$USER"   # optional
 ```
 
-> **Not yet smoke-tested on a fresh host in CI.** The unit/script contract is
-> verified against the running agent (`/api/health` returns
-> `"agentState":"running"`, API on `ELIZA_API_PORT`, OAuth creds at
-> `~/.claude/.credentials.json`), but a first-boot run on a clean VPS should be
-> exercised before this is relied on for production.
+## Smoke Test
+
+```bash
+./deploy/systemd/smoke-test.sh
+```
+
+The smoke test renders every unit template into a temporary directory, verifies
+that all installer substitutions are resolved, syntax-checks the helper scripts
+and installer, and runs `systemd-analyze verify` when available. It does not
+install units, enable linger, start services, or require Claude credentials.

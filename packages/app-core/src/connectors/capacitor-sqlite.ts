@@ -157,7 +157,7 @@ export async function openDatabase(
 export async function isSqliteAvailable(): Promise<boolean> {
   try {
     if (!isCommunitySqlitePluginRegistered()) return false;
-    // `checkConnectionsConsistency` is a no-op on a clean install but
+    // `checkConnectionsConsistency` has no visible work on a clean install but
     // confirms the native bridge is wired up.
     await CapacitorSQLite.checkConnectionsConsistency({
       dbNames: [],

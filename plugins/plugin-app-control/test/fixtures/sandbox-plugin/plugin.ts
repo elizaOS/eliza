@@ -1,13 +1,11 @@
 /**
- * Phase 2.3 fixture plugin. Exports a tiny Plugin shape with two
+ * Worker-host fixture plugin. Exports a tiny Plugin shape with two
  * actions:
  *
  * - `ECHO`: returns `{ echoed: content }`. Proves the host can pass
  *   params into the worker's action handler and read the result back.
- * - `RUNTIME_PROBE`: tries to call `runtime.getMemories(...)`. With
- *   the Phase 2.3 stub this MUST throw; the test asserts the
- *   structured failure surfaces back across the bridge with the
- *   stub's diagnostic message.
+ * - `RUNTIME_PROBE`: calls `runtime.getMemories(...)`. The host
+ *   runtime bridge should service the call and return memory rows.
  *
  * Intentionally not a full @elizaos/core Plugin — the worker entry
  * is duck-typed against `{ actions: [{ name, handler }, ...] }` so
@@ -54,10 +52,7 @@ const sandboxPlugin: FixturePlugin = {
 			handler: async (runtime: {
 				getMemories: (...args: unknown[]) => unknown;
 			}) => {
-				// Stub throws on every un-gated property access. Proves
-				// the worker forwards the failure as a structured RPC
-				// error rather than crashing the worker.
-				return await runtime.getMemories({});
+				return await runtime.getMemories({ tableName: "messages", limit: 2 });
 			},
 		},
 		{

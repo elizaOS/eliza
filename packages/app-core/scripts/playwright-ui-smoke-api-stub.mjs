@@ -7,6 +7,7 @@ import { WebSocketServer } from "ws";
 const port = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
 const repoRoot = path.resolve(new URL("../../..", import.meta.url).pathname);
 const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
+const DEMO_ORCHESTRATOR = process.env.ELIZA_UI_SMOKE_DEMO_ORCHESTRATOR === "1";
 let browserWorkspaceCounter = 0;
 let browserWorkspaceTabs = [];
 let lifeOpsAppEnabled = true;
@@ -44,6 +45,12 @@ function buildSilentWav() {
 }
 
 const SILENT_WAV = buildSilentWav();
+// Deterministic transcript the local-inference ASR stub returns for any audio
+// the /chat overlay captures — keeps the voice e2e turn reproducible.
+const SMOKE_VOICE_TRANSCRIPT = "this is the voice smoke transcript";
+// The spoken reply the stub returns for that transcript — a clean sentence so
+// the overlay's TTS output is non-empty and the assistant bubble is assertable.
+const SMOKE_VOICE_REPLY = "Got it, this is the spoken reply.";
 function readSmokeVrm() {
   const candidates = [
     new URL(
@@ -101,11 +108,11 @@ const smokeViewDeclarations = [
     "HyperliquidTuiView",
     "tui",
   ],
-  ["lifeops", "LifeOps", "plugin-lifeops", "/lifeops", "LifeOpsPageView"],
+  ["lifeops", "LifeOps", "plugin-personal-assistant", "/lifeops", "LifeOpsPageView"],
   [
     "lifeops",
     "LifeOps TUI",
-    "plugin-lifeops",
+    "plugin-personal-assistant",
     "/lifeops/tui",
     "LifeOpsTuiView",
     "tui",
@@ -194,6 +201,13 @@ const smokeViewDeclarations = [
     "tui",
   ],
   [
+    "vector-browser",
+    "Vector Browser",
+    "plugin-vector-browser",
+    "/vector-browser",
+    "VectorBrowserView",
+  ],
+  [
     "2004scape",
     "2004Scape",
     "plugin-2004scape",
@@ -280,6 +294,13 @@ const smokeViewDeclarations = [
     "/screenshare/tui",
     "ScreenshareTuiView",
     "tui",
+  ],
+  [
+    "social-alpha",
+    "Social Alpha",
+    "plugin-social-alpha",
+    "/social-alpha",
+    "SocialAlphaView",
   ],
   [
     "task-coordinator",
@@ -443,7 +464,7 @@ function stubCatalogApp({
 
 const stubCatalogApps = [
   stubCatalogApp({
-    name: "@elizaos/plugin-lifeops",
+    name: "@elizaos/plugin-personal-assistant",
     displayName: "LifeOps",
     description:
       "Run tasks, reminders, calendar, inbox, and connected workflows.",
@@ -1219,6 +1240,11 @@ function classifyAssistantAction(text) {
 
 function createDeterministicAssistantText({ body, conversationId, transport }) {
   const inputText = normalizeAssistantInput(body?.text ?? body?.message);
+  if (inputText === SMOKE_VOICE_TRANSCRIPT) {
+    // Voice e2e: reply to the spoken turn with a plain sentence (not the JSON
+    // fixture) so the bidirectional voice output is speakable + assertable.
+    return SMOKE_VOICE_REPLY;
+  }
   if (/\bbroken[_ -]?llm[_ -]?response\b/i.test(inputText)) {
     return `BROKEN_MOCK_LLM_RESPONSE:${JSON.stringify({
       fixture: "ui-smoke-assistant-v1",
@@ -1608,13 +1634,378 @@ function safeComponentExportName(value) {
   return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value) ? value : "SmokeView";
 }
 
-function smokeViewBundleSource(view) {
-  const exportName = safeComponentExportName(view.componentExport);
+function smokeTuiViewBundleSource(view, exportName) {
   const label = JSON.stringify(view.label);
   const id = JSON.stringify(view.id);
   const viewType = JSON.stringify(view.viewType);
   const pluginName = JSON.stringify(view.pluginName);
-  const isTui = view.viewType === "tui";
+  const commands =
+    view.id === "feed"
+      ? [
+          "refresh-agent-status",
+          "refresh-feed",
+          "list-agents",
+          "summarize-feed",
+        ]
+      : ["status", "refresh", "inspect", "help"];
+  return `import React from "react";
+
+const viewMeta = {
+  id: ${id},
+  label: ${label},
+  viewType: ${viewType},
+  pluginName: ${pluginName}
+};
+const commands = ${JSON.stringify(commands)};
+
+function SmokeView() {
+  const [outputs, setOutputs] = React.useState([]);
+  const runCommand = async (command) => {
+    window.dispatchEvent(new CustomEvent("eliza:tui-command", {
+      detail: { viewId: viewMeta.id, command }
+    }));
+    let result;
+    try {
+      const response = await fetch("/api/views/" + encodeURIComponent(viewMeta.id) + "/interact?viewType=tui", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ capability: command, timeoutMs: 5000 })
+      });
+      result = await response.json();
+    } catch (error) {
+      result = { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+    setOutputs((current) => [...current, { command, result }]);
+  };
+  const state = JSON.stringify({
+    viewId: viewMeta.id,
+    viewType: "tui",
+    status: "ready",
+    fixture: "ui-smoke",
+    commandCount: commands.length
+  });
+  return React.createElement(
+    "div",
+    {
+      "data-view-state": state,
+      style: {
+        minHeight: "100vh",
+        background: "#020617",
+        color: "#cbd5e1",
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+        padding: 20
+      }
+    },
+    React.createElement("div", { style: { color: "#7dd3fc", marginBottom: 4 } }, "elizaos://" + viewMeta.id + " --type=tui"),
+    React.createElement("div", { style: { color: "#94a3b8", marginBottom: 16 } }, viewMeta.label + " smoke terminal"),
+    React.createElement(
+      "div",
+      { style: { display: "flex", flexWrap: "wrap", gap: 8 } },
+      ...commands.map((command) =>
+        React.createElement(
+          "button",
+          {
+            key: command,
+            type: "button",
+            "data-terminal-command": command,
+            onClick: () => void runCommand(command),
+            style: {
+              border: "1px solid #38bdf8",
+              borderRadius: 4,
+              color: "#e0f2fe",
+              background: "transparent",
+              padding: "6px 10px"
+            }
+          },
+          command
+        )
+      )
+    ),
+    ...outputs.map((entry, index) =>
+      React.createElement(
+        "pre",
+        {
+          key: entry.command + index,
+          "data-terminal-output": entry.result?.ok ? "ok" : "error",
+          style: {
+            marginTop: 8,
+            whiteSpace: "pre-wrap",
+            color: entry.result?.ok ? "#bbf7d0" : "#fecaca"
+          }
+        },
+        "$ " + entry.command + "\\n" + JSON.stringify(entry.result, null, 2)
+      )
+    )
+  );
+}
+
+export { SmokeView as ${exportName} };
+export default SmokeView;
+export async function interact(capability, params = {}) {
+  return { ok: true, viewId: viewMeta.id, viewType: viewMeta.viewType, capability, params };
+}
+`;
+}
+
+function smokeScreenshareBundleSource(view, exportName) {
+  const label = JSON.stringify(view.label);
+  const id = JSON.stringify(view.id);
+  const viewType = JSON.stringify(view.viewType);
+  const pluginName = JSON.stringify(view.pluginName);
+  return `import React from "react";
+
+const viewMeta = {
+  id: ${id},
+  label: ${label},
+  viewType: ${viewType},
+  pluginName: ${pluginName}
+};
+
+function maskSession(value) {
+  if (!value) return "";
+  return value.slice(0, 6) + "\\u2026" + value.slice(-4);
+}
+
+function maskToken(value) {
+  if (!value) return "";
+  return "\\u2022\\u2022\\u2022\\u2022 " + value.slice(-4);
+}
+
+function SmokeView() {
+  const [capabilities, setCapabilities] = React.useState(null);
+  const [host, setHost] = React.useState(null);
+  const [token, setToken] = React.useState("");
+  const [viewerUrl, setViewerUrl] = React.useState("");
+  const [remoteBase, setRemoteBase] = React.useState("");
+  const [remoteSession, setRemoteSession] = React.useState("");
+  const [remoteToken, setRemoteToken] = React.useState("");
+
+  const refreshCapabilities = React.useCallback(async () => {
+    const response = await fetch("/api/apps/screenshare/capabilities");
+    setCapabilities(await response.json());
+  }, []);
+
+  React.useEffect(() => {
+    void refreshCapabilities();
+  }, [refreshCapabilities]);
+
+  const startHost = async () => {
+    const response = await fetch("/api/apps/screenshare/session", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ label: "This machine" })
+    });
+    const result = await response.json();
+    setHost(result.session);
+    setToken(result.token);
+    setViewerUrl(result.viewerUrl);
+  };
+
+  const copyDetails = async () => {
+    await navigator.clipboard.writeText(JSON.stringify({
+      sessionId: host?.id,
+      token
+    }));
+  };
+
+  const openHostViewer = () => {
+    if (viewerUrl) window.open(viewerUrl);
+  };
+
+  const openRemote = () => {
+    const url = new URL("/api/apps/screenshare/viewer", remoteBase);
+    url.searchParams.set("sessionId", remoteSession);
+    url.searchParams.set("token", remoteToken);
+    url.searchParams.set("remoteBase", remoteBase);
+    window.open(url.toString());
+  };
+
+  const stopHost = async () => {
+    if (!host?.id) return;
+    const response = await fetch("/api/apps/screenshare/session/" + encodeURIComponent(host.id) + "/stop", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-screenshare-token": token
+      },
+      body: JSON.stringify({ token })
+    });
+    const result = await response.json();
+    setHost(result.session);
+  };
+
+  const capabilityList = capabilities?.capabilities ?? {};
+  return React.createElement(
+    "section",
+    { "aria-label": viewMeta.label, style: { minHeight: "100vh", padding: 24 } },
+    React.createElement("h1", null, viewMeta.label),
+    React.createElement("p", null, viewMeta.pluginName + " dynamic view smoke surface is ready."),
+    React.createElement("h2", null, "Host"),
+    React.createElement("button", { type: "button", onClick: startHost }, "Start host session"),
+    host && React.createElement("button", { type: "button", onClick: copyDetails }, "Copy host details"),
+    host && React.createElement("button", { type: "button", onClick: openHostViewer }, "Open host viewer"),
+    host && React.createElement("button", { type: "button", onClick: stopHost }, "Stop host session"),
+    host && React.createElement("div", null,
+      React.createElement("input", { placeholder: "Session", readOnly: true, value: maskSession(host.id) }),
+      React.createElement("input", { placeholder: "Token", readOnly: true, value: maskToken(token) }),
+      React.createElement("span", null, String(host.frameCount ?? 0)),
+      React.createElement("span", null, String(host.inputCount ?? 0)),
+      React.createElement("span", null, host.status)
+    ),
+    React.createElement("h2", null, "Capabilities"),
+    React.createElement("button", { type: "button", onClick: () => void refreshCapabilities() }, "Refresh capabilities"),
+    React.createElement("div", null,
+      React.createElement("span", null, "Screenshot"),
+      React.createElement("span", null, capabilityList.screenshot?.available ? "Ready" : "Unavailable")
+    ),
+    React.createElement("div", null,
+      React.createElement("span", null, "Keyboard"),
+      React.createElement("span", null, capabilityList.keyboard?.available ? "Ready" : "Unavailable")
+    ),
+    React.createElement("h2", null, "Remote"),
+    React.createElement("input", { placeholder: "Server URL", value: remoteBase, onChange: (event) => setRemoteBase(event.target.value) }),
+    React.createElement("input", { placeholder: "Session", value: remoteSession, onChange: (event) => setRemoteSession(event.target.value) }),
+    React.createElement("input", { placeholder: "Token", value: remoteToken, onChange: (event) => setRemoteToken(event.target.value) }),
+    React.createElement("button", { type: "button", onClick: openRemote }, "Connect to remote")
+  );
+}
+
+export { SmokeView as ${exportName} };
+export default SmokeView;
+export async function interact(capability, params = {}) {
+  return { ok: true, viewId: viewMeta.id, viewType: viewMeta.viewType, capability, params };
+}
+`;
+}
+
+function smokeTaskCoordinatorBundleSource(view, exportName) {
+  const label = JSON.stringify(view.label);
+  const id = JSON.stringify(view.id);
+  const viewType = JSON.stringify(view.viewType);
+  const pluginName = JSON.stringify(view.pluginName);
+  return `import React from "react";
+
+const viewMeta = {
+  id: ${id},
+  label: ${label},
+  viewType: ${viewType},
+  pluginName: ${pluginName}
+};
+
+function statusLabel(thread) {
+  return String(thread?.status ?? "open").replace(/_/g, " ");
+}
+
+function SmokeView() {
+  const [tasks, setTasks] = React.useState([]);
+  const [detail, setDetail] = React.useState(null);
+  const [search, setSearch] = React.useState("");
+
+  const loadTasks = React.useCallback(async (nextSearch = search) => {
+    const url = new URL("/api/orchestrator/tasks", window.location.origin);
+    url.searchParams.set("limit", "50");
+    if (nextSearch) url.searchParams.set("search", nextSearch);
+    const response = await fetch(url.pathname + url.search);
+    const result = await response.json();
+    setTasks(result.tasks ?? []);
+  }, [search]);
+
+  React.useEffect(() => {
+    void loadTasks("");
+  }, []);
+
+  const updateSearch = (value) => {
+    setSearch(value);
+    void loadTasks(value);
+  };
+
+  const openTask = async (task) => {
+    const response = await fetch("/api/orchestrator/tasks/" + encodeURIComponent(task.id));
+    setDetail(await response.json());
+  };
+
+  const archiveTask = async () => {
+    if (!detail?.id) return;
+    await fetch("/api/orchestrator/tasks/" + encodeURIComponent(detail.id) + "/archive", { method: "POST" });
+    await loadTasks(search);
+  };
+
+  const reopenTask = async () => {
+    if (!detail?.id) return;
+    await fetch("/api/orchestrator/tasks/" + encodeURIComponent(detail.id) + "/reopen", { method: "POST" });
+    const response = await fetch("/api/orchestrator/tasks/" + encodeURIComponent(detail.id));
+    setDetail(await response.json());
+    await loadTasks(search);
+  };
+
+  return React.createElement(
+    "section",
+    {
+      "aria-label": viewMeta.label,
+      "data-testid": "chat-widget-orchestrator",
+      style: { minHeight: "100vh", padding: 24 }
+    },
+    React.createElement("h1", null, viewMeta.label),
+    React.createElement("p", null, viewMeta.pluginName + " dynamic view smoke surface is ready."),
+    React.createElement("input", {
+      placeholder: "Search tasks",
+      value: search,
+      onChange: (event) => updateSearch(event.target.value)
+    }),
+    React.createElement(
+      "div",
+      null,
+      ...tasks.map((task) =>
+        React.createElement(
+          "button",
+          {
+            key: task.id,
+            type: "button",
+            onClick: () => void openTask(task),
+            style: { display: "block", marginTop: 8 }
+          },
+          task.title + " " + statusLabel(task)
+        )
+      )
+    ),
+    detail && React.createElement(
+      "article",
+      { "aria-label": "Task detail", style: { marginTop: 16 } },
+      React.createElement("h2", null, detail.title),
+      React.createElement("p", null, detail.summary ?? detail.originalRequest ?? ""),
+      ...(detail.acceptanceCriteria ?? []).map((item) => React.createElement("p", { key: item }, item)),
+      ...(detail.sessions ?? []).map((session) =>
+        React.createElement(
+          "div",
+          { key: session.id },
+          React.createElement("span", null, session.label),
+          React.createElement("span", null, (session.framework ?? "") + " (" + (session.providerSource ?? "") + ")")
+        )
+      ),
+      ...(detail.artifacts ?? []).map((artifact) => React.createElement("p", { key: artifact.id }, artifact.title)),
+      ...(detail.pendingDecisions ?? []).map((decision) => React.createElement("p", { key: decision.sessionId }, decision.promptText)),
+      ...(detail.events ?? []).map((event) => React.createElement("p", { key: event.id }, event.summary)),
+      ...(detail.transcripts ?? []).map((transcript) => React.createElement("p", { key: transcript.id }, transcript.content)),
+      detail.status === "archived"
+        ? React.createElement("button", { type: "button", onClick: () => void reopenTask() }, "Reopen")
+        : React.createElement("button", { type: "button", onClick: () => void archiveTask() }, "Delete")
+    )
+  );
+}
+
+export { SmokeView as ${exportName} };
+export default SmokeView;
+export async function interact(capability, params = {}) {
+  return { ok: true, viewId: viewMeta.id, viewType: viewMeta.viewType, capability, params };
+}
+`;
+}
+
+function smokeGenericViewBundleSource(view, exportName) {
+  const label = JSON.stringify(view.label);
+  const id = JSON.stringify(view.id);
+  const viewType = JSON.stringify(view.viewType);
+  const pluginName = JSON.stringify(view.pluginName);
   return `import React from "react";
 
 const viewMeta = {
@@ -1625,56 +2016,6 @@ const viewMeta = {
 };
 
 function SmokeView() {
-  const [outputs, setOutputs] = React.useState([]);
-  const addOutput = (command) => {
-    setOutputs((current) => [...current, command]);
-  };
-  if (${JSON.stringify(isTui)}) {
-    const state = JSON.stringify({
-      viewId: viewMeta.id,
-      viewType: "tui",
-      status: "ready",
-      fixture: "ui-smoke"
-    });
-    return React.createElement(
-      "div",
-      {
-        "data-view-state": state,
-        style: {
-          minHeight: "100vh",
-          background: "#020617",
-          color: "#cbd5e1",
-          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-          padding: 20
-        }
-      },
-      React.createElement("div", { style: { color: "#7dd3fc", marginBottom: 4 } }, "elizaos://" + viewMeta.id + " --type=tui"),
-      React.createElement("div", { style: { color: "#94a3b8", marginBottom: 16 } }, viewMeta.label + " smoke terminal"),
-      React.createElement(
-        "button",
-        {
-          type: "button",
-          "data-terminal-command": "status",
-          onClick: () => addOutput("status"),
-          style: {
-            border: "1px solid #38bdf8",
-            borderRadius: 4,
-            color: "#e0f2fe",
-            background: "transparent",
-            padding: "6px 10px"
-          }
-        },
-        "status"
-      ),
-      ...outputs.map((command, index) =>
-        React.createElement(
-          "div",
-          { key: command + index, "data-terminal-output": command, style: { marginTop: 8 } },
-          "ok: " + command
-        )
-      )
-    );
-  }
   return React.createElement(
     "section",
     { "aria-label": viewMeta.label, style: { minHeight: "100vh", padding: 24 } },
@@ -1691,6 +2032,20 @@ export async function interact(capability, params = {}) {
   return { ok: true, viewId: viewMeta.id, viewType: viewMeta.viewType, capability, params };
 }
 `;
+}
+
+function smokeViewBundleSource(view) {
+  const exportName = safeComponentExportName(view.componentExport);
+  if (view.viewType === "tui") {
+    return smokeTuiViewBundleSource(view, exportName);
+  }
+  if (view.id === "screenshare") {
+    return smokeScreenshareBundleSource(view, exportName);
+  }
+  if (view.id === "task-coordinator") {
+    return smokeTaskCoordinatorBundleSource(view, exportName);
+  }
+  return smokeGenericViewBundleSource(view, exportName);
 }
 
 function sendSmokeViewAsset(req, res, url, view, subResource) {
@@ -1771,6 +2126,17 @@ async function readJsonBody(req) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
+// Consume and discard a request body (binary or irrelevant) so the socket
+// drains cleanly before the response is sent.
+async function drainRequest(req) {
+  await new Promise((resolve) => {
+    req.on("data", () => {});
+    req.on("end", resolve);
+    req.on("error", resolve);
+    req.resume();
+  });
+}
+
 function workbenchOverview() {
   return {
     tasks: [],
@@ -1789,6 +2155,916 @@ function workbenchOverview() {
     todosAvailable: false,
     lifeopsAvailable: false,
   };
+}
+
+const emptyOrchestratorUsage = {
+  inputTokens: 0,
+  outputTokens: 0,
+  reasoningTokens: 0,
+  cacheTokens: 0,
+  totalTokens: 0,
+  costUsd: 0,
+  state: "unavailable",
+  byProvider: [],
+};
+
+function emptyOrchestratorStatus() {
+  return {
+    taskCount: 0,
+    activeTaskCount: 0,
+    pausedTaskCount: 0,
+    blockedTaskCount: 0,
+    validatingTaskCount: 0,
+    sessionCount: 0,
+    activeSessionCount: 0,
+    usage: emptyOrchestratorUsage,
+    byStatus: {
+      open: 0,
+      active: 0,
+      waiting_on_user: 0,
+      blocked: 0,
+      validating: 0,
+      done: 0,
+      failed: 0,
+      archived: 0,
+      interrupted: 0,
+    },
+  };
+}
+
+function emptyTrajectoryList(url) {
+  return {
+    trajectories: [],
+    total: 0,
+    offset: Number(url.searchParams.get("offset") ?? 0),
+    limit: Number(url.searchParams.get("limit") ?? 50),
+  };
+}
+
+function orchestratorUsage(overrides = {}) {
+  const createdAt = overrides.createdAt ?? new Date().toISOString();
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    cacheTokens: 0,
+    totalTokens: 0,
+    costUsd: 0,
+    state: "unavailable",
+    usageState: "unavailable",
+    byProvider: [],
+    metadata: {},
+    createdAt,
+    updatedAt: overrides.updatedAt ?? createdAt,
+    ...overrides,
+  };
+}
+
+function createDemoOrchestratorState() {
+  const startedAtMs = Date.now();
+  const startedAt = new Date(startedAtMs).toISOString();
+  const richUsage = orchestratorUsage({
+    inputTokens: 8400,
+    outputTokens: 2600,
+    reasoningTokens: 1345,
+    totalTokens: 12_345,
+    costUsd: 0.42,
+    state: "measured",
+    usageState: "measured",
+    byProvider: [
+      {
+        provider: "cerebras",
+        model: "gpt-oss-120b",
+        inputTokens: 8400,
+        outputTokens: 2600,
+        reasoningTokens: 1345,
+        cacheTokens: 0,
+        totalTokens: 12_345,
+        costUsd: 0.42,
+        state: "measured",
+      },
+      {
+        provider: "codex",
+        model: "codex-cli",
+        inputTokens: 1200,
+        outputTokens: 900,
+        reasoningTokens: 0,
+        cacheTokens: 0,
+        totalTokens: 2100,
+        costUsd: 0,
+        state: "estimated",
+      },
+    ],
+    createdAt: startedAt,
+    updatedAt: startedAt,
+  });
+  const detail = createDemoTaskDetail({
+    id: "smoke-task-1",
+    title: "Build Kanban planner app",
+    status: "active",
+    priority: "urgent",
+    goal: "Build and verify a tiny Kanban planner app with accessible columns, cards, and persistence.",
+    originalRequest:
+      "Use Codex plus Cerebras gpt-oss-120b to build a planner app.",
+    summary: "Codex has generated files; Cerebras is reviewing UX.",
+    sessionCount: 2,
+    activeSessionCount: 2,
+    latestSessionId: "session-codex",
+    latestSessionLabel: "Codex Builder",
+    latestWorkdir: "/tmp/orchestrator-kanban",
+    latestRepo: "/home/nubs/Git/iqlabs/eliza-labs/eliza",
+    latestActivityAt: startedAtMs,
+    createdAt: startedAt,
+    updatedAt: startedAt,
+    acceptanceCriteria: [
+      "Planner renders three workflow columns",
+      "Cards can be created and moved",
+      "Generated files pass syntax checks",
+    ],
+    currentPlan: {
+      summary: "Build, review, and verify the Kanban planner.",
+      steps: [
+        { title: "Generate app shell", status: "completed" },
+        { title: "Review visual affordances", status: "in_progress" },
+        { title: "Run browser smoke checks", status: "pending" },
+      ],
+    },
+    planRevisions: [
+      {
+        id: "plan-rev-1",
+        threadId: "smoke-task-1",
+        plan: {
+          summary: "Build, review, and verify the Kanban planner.",
+          steps: [
+            { title: "Generate app shell", status: "completed" },
+            { title: "Review visual affordances", status: "in_progress" },
+            { title: "Run browser smoke checks", status: "pending" },
+          ],
+        },
+        basePlanRevisionId: null,
+        editSummary: null,
+        createdBy: "system",
+        metadata: {},
+        timestamp: startedAtMs,
+        createdAt: startedAt,
+      },
+    ],
+    providerPolicy: {
+      preferredFramework: "codex",
+      providerSource: "cerebras",
+      model: "gpt-oss-120b",
+    },
+    sessions: [
+      {
+        id: "session-codex-record",
+        threadId: "smoke-task-1",
+        sessionId: "session-codex",
+        label: "Codex Builder",
+        status: "running",
+        framework: "codex",
+        providerSource: "local-auth",
+        model: "codex-cli",
+        originalTask:
+          "Generate the planner shell and persist card movement locally.",
+        workdir: "/tmp/orchestrator-kanban",
+        repo: "/home/nubs/Git/iqlabs/eliza-labs/eliza",
+        activeTool: "write",
+        decisionCount: 0,
+        autoResolvedCount: 0,
+        registeredAt: startedAtMs,
+        lastActivityAt: startedAtMs,
+        idleCheckCount: 0,
+        taskDelivered: true,
+        completionSummary: null,
+        lastSeenDecisionIndex: 0,
+        lastInputSentAt: null,
+        stoppedAt: null,
+        inputTokens: 1200,
+        outputTokens: 900,
+        reasoningTokens: 0,
+        totalTokens: 2100,
+        cacheTokens: 0,
+        costUsd: 0,
+        usageState: "estimated",
+        metadata: {},
+        createdAt: startedAt,
+        updatedAt: startedAt,
+      },
+      {
+        id: "session-cerebras-record",
+        threadId: "smoke-task-1",
+        sessionId: "session-cerebras",
+        label: "Cerebras Reviewer",
+        status: "running",
+        framework: "eliza",
+        providerSource: "cerebras",
+        model: "gpt-oss-120b",
+        originalTask:
+          "Review the planner visual affordances and interaction model.",
+        workdir: "/tmp/orchestrator-kanban",
+        repo: "/home/nubs/Git/iqlabs/eliza-labs/eliza",
+        activeTool: "review",
+        decisionCount: 0,
+        autoResolvedCount: 0,
+        registeredAt: startedAtMs,
+        lastActivityAt: startedAtMs,
+        idleCheckCount: 0,
+        taskDelivered: true,
+        completionSummary: null,
+        lastSeenDecisionIndex: 0,
+        lastInputSentAt: null,
+        stoppedAt: null,
+        inputTokens: 8400,
+        outputTokens: 2600,
+        reasoningTokens: 1345,
+        totalTokens: 12_345,
+        cacheTokens: 0,
+        costUsd: 0.42,
+        usageState: "measured",
+        metadata: {},
+        createdAt: startedAt,
+        updatedAt: startedAt,
+      },
+    ],
+    artifacts: [
+      {
+        id: "artifact-index",
+        threadId: "smoke-task-1",
+        sessionId: "session-codex",
+        title: "Kanban planner HTML",
+        artifactType: "file",
+        path: "planner/index.html",
+        uri: null,
+        mimeType: "text/html",
+        verificationStatus: "passed",
+        metadata: {},
+        createdAt: startedAt,
+      },
+      {
+        id: "artifact-test",
+        threadId: "smoke-task-1",
+        sessionId: "session-cerebras",
+        title: "Browser smoke report",
+        artifactType: "verification",
+        path: "reports/kanban-smoke.md",
+        uri: null,
+        mimeType: "text/markdown",
+        verificationStatus: "pending",
+        metadata: {},
+        createdAt: startedAt,
+      },
+    ],
+    usage: richUsage,
+  });
+
+  return {
+    tasks: [detail],
+    messages: [
+      {
+        id: "message-user-1",
+        threadId: "smoke-task-1",
+        sessionId: null,
+        senderKind: "user",
+        direction: "stdout",
+        content: "Create a compact Kanban planner app.",
+        timestamp: startedAtMs - 4000,
+        metadata: {},
+        createdAt: new Date(startedAtMs - 4000).toISOString(),
+      },
+      {
+        id: "message-agent-1",
+        threadId: "smoke-task-1",
+        sessionId: "session-codex",
+        senderKind: "sub_agent",
+        direction: "stdout",
+        content: "Generated the planner shell and wired card movement.",
+        timestamp: startedAtMs - 2000,
+        metadata: {},
+        createdAt: new Date(startedAtMs - 2000).toISOString(),
+      },
+    ],
+    events: [
+      {
+        id: "event-tool-write",
+        threadId: "smoke-task-1",
+        sessionId: "session-codex",
+        eventType: "tool_running",
+        summary: "write planner files",
+        timestamp: startedAtMs - 1000,
+        data: {
+          toolCall: {
+            id: "tool-write-index",
+            title: "write",
+            kind: "edit",
+            status: "completed",
+            rawInput: {
+              path: "planner/index.html",
+              content: '<main id="board"></main>',
+            },
+            output: "Wrote planner/index.html",
+          },
+        },
+        createdAt: new Date(startedAtMs - 1000).toISOString(),
+      },
+      {
+        id: "event-validation",
+        threadId: "smoke-task-1",
+        sessionId: "session-cerebras",
+        eventType: "task_registered",
+        summary: "Cerebras reviewer joined for UX validation",
+        timestamp: startedAtMs - 500,
+        data: {},
+        createdAt: new Date(startedAtMs - 500).toISOString(),
+      },
+    ],
+    nextTaskId: 2,
+    nextMessageId: 2,
+    nextEventId: 2,
+    nextSessionId: 3,
+  };
+}
+
+function createDemoTaskDetail(overrides = {}) {
+  const id = overrides.id ?? "smoke-task-1";
+  const createdAt = overrides.createdAt ?? new Date().toISOString();
+  return {
+    id,
+    title: "Audit orchestrator surface",
+    kind: "coding",
+    status: "open",
+    priority: "high",
+    paused: false,
+    originalRequest: "Audit orchestrator surface",
+    summary: "Created by ui-smoke demo mode.",
+    sessionCount: 0,
+    activeSessionCount: 0,
+    latestSessionId: null,
+    latestSessionLabel: null,
+    latestWorkdir: null,
+    latestRepo: null,
+    latestActivityAt: null,
+    decisionCount: 0,
+    usage: orchestratorUsage(),
+    createdAt,
+    updatedAt: overrides.updatedAt ?? createdAt,
+    closedAt: null,
+    archivedAt: null,
+    goal: "Verify controls, routing, and message flow.",
+    roomId: null,
+    taskRoomId: null,
+    worldId: null,
+    ownerUserId: null,
+    parentTaskId: null,
+    acceptanceCriteria: ["Task appears in rail", "Message posts"],
+    currentPlan: null,
+    providerPolicy: null,
+    lastUserTurnAt: null,
+    lastCoordinatorTurnAt: null,
+    metadata: {},
+    sessions: [],
+    decisions: [],
+    events: [],
+    artifacts: [],
+    messages: [],
+    transcripts: [],
+    planRevisions: [],
+    ...overrides,
+  };
+}
+
+function summarizeDemoTask(detail) {
+  return {
+    id: detail.id,
+    title: detail.title,
+    kind: detail.kind,
+    status: detail.status,
+    priority: detail.priority,
+    paused: detail.paused,
+    originalRequest: detail.originalRequest,
+    summary: detail.summary,
+    sessionCount: detail.sessionCount,
+    activeSessionCount: detail.activeSessionCount,
+    latestSessionId: detail.latestSessionId,
+    latestSessionLabel: detail.latestSessionLabel,
+    latestWorkdir: detail.latestWorkdir,
+    latestRepo: detail.latestRepo,
+    latestActivityAt: detail.latestActivityAt,
+    decisionCount: detail.decisionCount,
+    usage: detail.usage,
+    createdAt: detail.createdAt,
+    updatedAt: detail.updatedAt,
+    closedAt: detail.closedAt,
+    archivedAt: detail.archivedAt,
+  };
+}
+
+function demoOrchestratorStatus(state) {
+  const visibleTasks = state.tasks;
+  const byStatus = {
+    open: 0,
+    active: 0,
+    waiting_on_user: 0,
+    blocked: 0,
+    validating: 0,
+    done: 0,
+    failed: 0,
+    archived: 0,
+    interrupted: 0,
+  };
+  let sessionCount = 0;
+  let activeSessionCount = 0;
+  for (const task of visibleTasks) {
+    if (byStatus[task.status] !== undefined) byStatus[task.status] += 1;
+    sessionCount += Number(task.sessionCount ?? 0);
+    activeSessionCount += Number(task.activeSessionCount ?? 0);
+  }
+  return {
+    taskCount: visibleTasks.length,
+    activeTaskCount: byStatus.active,
+    pausedTaskCount: visibleTasks.filter((task) => task.paused === true).length,
+    blockedTaskCount: byStatus.blocked + byStatus.waiting_on_user,
+    validatingTaskCount: byStatus.validating,
+    sessionCount,
+    activeSessionCount,
+    usage: visibleTasks[0]?.usage ?? emptyOrchestratorUsage,
+    byStatus,
+  };
+}
+
+function demoTaskList(state, url) {
+  const status = url.searchParams.get("status");
+  const includeArchived = url.searchParams.get("includeArchived") === "true";
+  const search = (url.searchParams.get("search") ?? "").toLowerCase();
+  const limit = Math.max(1, Number(url.searchParams.get("limit") ?? 50));
+  return state.tasks
+    .filter((task) => includeArchived || task.status !== "archived")
+    .filter((task) => !status || task.status === status)
+    .filter((task) => {
+      if (!search) return true;
+      return [task.title, task.goal, task.summary, task.originalRequest]
+        .join(" ")
+        .toLowerCase()
+        .includes(search);
+    })
+    .slice(0, limit)
+    .map(summarizeDemoTask);
+}
+
+function demoTimelinePage(state, taskId, url) {
+  const limit =
+    Math.max(1, Number.parseInt(url.searchParams.get("limit") ?? "100", 10)) ||
+    100;
+  const start =
+    Math.max(0, Number.parseInt(url.searchParams.get("cursor") ?? "0", 10)) ||
+    0;
+  const items = [
+    ...state.messages
+      .filter((message) => message.threadId === taskId)
+      .map((message) => ({
+        id: `message:${message.id}`,
+        kind: "message",
+        threadId: message.threadId,
+        sessionId: message.sessionId ?? null,
+        timestamp: message.timestamp,
+        createdAt: message.createdAt,
+        message,
+      })),
+    ...state.events
+      .filter((event) => event.threadId === taskId)
+      .map((event) => ({
+        id: `event:${event.id}`,
+        kind: "event",
+        threadId: event.threadId,
+        sessionId: event.sessionId ?? null,
+        timestamp: event.timestamp,
+        createdAt: event.createdAt,
+        event,
+      })),
+  ].sort((a, b) => Number(b.timestamp) - Number(a.timestamp));
+  const page = items.slice(start, start + limit);
+  const next = start + limit;
+  return {
+    items: page,
+    nextCursor: next < items.length ? String(next) : null,
+  };
+}
+
+function pushDemoEvent(state, taskId, summary, data = {}) {
+  const event = {
+    id: `demo-event-${state.nextEventId++}`,
+    threadId: taskId,
+    sessionId: null,
+    eventType: "operator_action",
+    summary,
+    timestamp: Date.now(),
+    data,
+    createdAt: new Date().toISOString(),
+  };
+  state.events.push(event);
+  return event;
+}
+
+function pushDemoMessage(state, taskId, senderKind, content, sessionId = null) {
+  const message = {
+    id: `demo-message-${state.nextMessageId++}`,
+    threadId: taskId,
+    sessionId,
+    senderKind,
+    direction: "stdout",
+    content,
+    timestamp: Date.now(),
+    metadata: {},
+    createdAt: new Date().toISOString(),
+  };
+  state.messages.push(message);
+  return message;
+}
+
+const demoOrchestratorState = DEMO_ORCHESTRATOR
+  ? createDemoOrchestratorState()
+  : null;
+
+async function handleDemoOrchestratorRoute(req, res, url) {
+  if (!demoOrchestratorState) return false;
+  if (!url.pathname.startsWith("/api/orchestrator")) return false;
+
+  if (req.method === "GET" && url.pathname === "/api/orchestrator/status") {
+    sendJson(req, res, 200, demoOrchestratorStatus(demoOrchestratorState));
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/orchestrator/tasks") {
+    sendJson(req, res, 200, {
+      tasks: demoTaskList(demoOrchestratorState, url),
+    });
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/orchestrator/tasks") {
+    const body = (await readJsonBody(req)) || {};
+    const id = `demo-task-${demoOrchestratorState.nextTaskId++}`;
+    const detail = createDemoTaskDetail({
+      id,
+      title: body.title || "Demo orchestrator task",
+      goal: body.goal || body.originalRequest || body.title || "Demo task",
+      originalRequest:
+        body.originalRequest || body.goal || body.title || "Demo task",
+      priority: body.priority || "normal",
+      acceptanceCriteria: Array.isArray(body.acceptanceCriteria)
+        ? body.acceptanceCriteria
+        : ["Created from the visible local UI"],
+      providerPolicy: body.providerPolicy ?? null,
+      status: "open",
+      summary: "Created locally in demo mode.",
+      currentPlan: {
+        summary: "Demo task created from the local UI.",
+        steps: [
+          { title: "Capture request", status: "completed" },
+          { title: "Assign sub-agent", status: "pending" },
+          { title: "Verify result", status: "pending" },
+        ],
+      },
+    });
+    demoOrchestratorState.tasks.unshift(detail);
+    pushDemoMessage(
+      demoOrchestratorState,
+      id,
+      "user",
+      detail.originalRequest || detail.goal,
+    );
+    pushDemoEvent(demoOrchestratorState, id, "Task created from local demo UI");
+    sendJson(req, res, 200, detail);
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/orchestrator/pause-all") {
+    for (const task of demoOrchestratorState.tasks) task.paused = true;
+    sendJson(req, res, 200, { paused: demoOrchestratorState.tasks.length });
+    return true;
+  }
+
+  if (
+    req.method === "POST" &&
+    url.pathname === "/api/orchestrator/resume-all"
+  ) {
+    for (const task of demoOrchestratorState.tasks) task.paused = false;
+    sendJson(req, res, 200, { resumed: demoOrchestratorState.tasks.length });
+    return true;
+  }
+
+  const taskPath = url.pathname.slice("/api/orchestrator/tasks/".length);
+  if (!taskPath || taskPath === url.pathname) return false;
+  const parts = taskPath.split("/").map((part) => decodeURIComponent(part));
+  const [taskId, action, subId, subAction] = parts;
+  const task = demoOrchestratorState.tasks.find((item) => item.id === taskId);
+
+  if (action === "stream" && req.method === "GET") {
+    sendSseHeaders(req, res);
+    writeSseEvent(res, { type: "ready" });
+    const interval = setInterval(() => {
+      res.write(": heartbeat\n\n");
+    }, 15_000);
+    req.on("close", () => clearInterval(interval));
+    return true;
+  }
+
+  if (!task) {
+    sendJson(req, res, 404, { error: `Task not found: ${taskId}` });
+    return true;
+  }
+
+  if (!action) {
+    if (req.method === "GET") {
+      sendJson(req, res, 200, task);
+      return true;
+    }
+    if (req.method === "PATCH") {
+      const body = (await readJsonBody(req)) || {};
+      Object.assign(task, body, { updatedAt: new Date().toISOString() });
+      sendJson(req, res, 200, task);
+      return true;
+    }
+    if (req.method === "DELETE") {
+      demoOrchestratorState.tasks = demoOrchestratorState.tasks.filter(
+        (item) => item.id !== taskId,
+      );
+      demoOrchestratorState.messages = demoOrchestratorState.messages.filter(
+        (item) => item.threadId !== taskId,
+      );
+      demoOrchestratorState.events = demoOrchestratorState.events.filter(
+        (item) => item.threadId !== taskId,
+      );
+      sendJson(req, res, 200, { deleted: true });
+      return true;
+    }
+  }
+
+  if (action === "messages") {
+    if (req.method === "GET") {
+      sendJson(req, res, 200, {
+        items: demoOrchestratorState.messages.filter(
+          (item) => item.threadId === taskId,
+        ),
+        nextCursor: null,
+      });
+      return true;
+    }
+    if (req.method === "POST") {
+      const body = (await readJsonBody(req)) || {};
+      const content = String(body.content ?? "").trim();
+      if (content) {
+        pushDemoMessage(demoOrchestratorState, taskId, "user", content);
+        pushDemoMessage(
+          demoOrchestratorState,
+          taskId,
+          "orchestrator",
+          `Demo orchestrator received: ${content}`,
+        );
+        pushDemoEvent(demoOrchestratorState, taskId, "Message forwarded");
+        task.summary = "New demo message received from the local UI.";
+        task.updatedAt = new Date().toISOString();
+      }
+      sendJson(req, res, 200, { recorded: true, forwardedTo: [] });
+      return true;
+    }
+  }
+
+  if (action === "events" && req.method === "GET") {
+    sendJson(req, res, 200, {
+      items: demoOrchestratorState.events.filter(
+        (item) => item.threadId === taskId,
+      ),
+      nextCursor: null,
+    });
+    return true;
+  }
+
+  if (action === "timeline" && req.method === "GET") {
+    sendJson(
+      req,
+      res,
+      200,
+      demoTimelinePage(demoOrchestratorState, taskId, url),
+    );
+    return true;
+  }
+
+  if (action === "usage" && req.method === "GET") {
+    sendJson(req, res, 200, task.usage ?? emptyOrchestratorUsage);
+    return true;
+  }
+
+  if (action === "plan-revisions") {
+    if (req.method === "GET") {
+      sendJson(req, res, 200, {
+        items: task.planRevisions ?? [],
+        nextCursor: null,
+      });
+      return true;
+    }
+    if (req.method === "POST") {
+      const body = (await readJsonBody(req)) || {};
+      const revision = {
+        id: `plan-rev-${(task.planRevisions?.length ?? 0) + 1}`,
+        threadId: taskId,
+        plan: body.plan ?? task.currentPlan ?? {},
+        basePlanRevisionId: body.basePlanRevisionId ?? null,
+        editSummary: body.editSummary ?? "Edited in local demo mode",
+        createdBy: body.createdBy ?? "operator",
+        metadata: body.metadata ?? {},
+        timestamp: Date.now(),
+        createdAt: new Date().toISOString(),
+      };
+      task.planRevisions = [revision, ...(task.planRevisions ?? [])];
+      task.currentPlan = revision.plan;
+      sendJson(req, res, 200, revision);
+      return true;
+    }
+  }
+
+  if (action === "agents" && req.method === "POST" && !subId) {
+    const body = (await readJsonBody(req)) || {};
+    const sessionId = `demo-session-${demoOrchestratorState.nextSessionId++}`;
+    const session = {
+      id: `${sessionId}-record`,
+      threadId: taskId,
+      sessionId,
+      label: body.label || "Demo sub-agent",
+      status: "running",
+      framework: body.framework || "codex",
+      providerSource: body.providerSource || "local-demo",
+      model: body.model || "gpt-5.4",
+      originalTask: body.task || "Assist with the demo task.",
+      workdir: body.workdir || task.latestWorkdir || "/tmp/orchestrator-demo",
+      repo: body.repo || task.latestRepo || null,
+      activeTool: "thinking",
+      decisionCount: 0,
+      autoResolvedCount: 0,
+      registeredAt: Date.now(),
+      lastActivityAt: Date.now(),
+      idleCheckCount: 0,
+      taskDelivered: true,
+      completionSummary: null,
+      lastSeenDecisionIndex: 0,
+      lastInputSentAt: null,
+      stoppedAt: null,
+      inputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 0,
+      cacheTokens: 0,
+      costUsd: 0,
+      usageState: "estimated",
+      metadata: {},
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    task.sessions = [...(task.sessions ?? []), session];
+    task.sessionCount = task.sessions.length;
+    task.activeSessionCount = task.sessions.filter(
+      (item) => item.status === "running",
+    ).length;
+    task.latestSessionId = session.sessionId;
+    task.latestSessionLabel = session.label;
+    task.latestActivityAt = session.lastActivityAt;
+    pushDemoEvent(demoOrchestratorState, taskId, `Added ${session.label}`);
+    sendJson(req, res, 200, task);
+    return true;
+  }
+
+  if (
+    action === "agents" &&
+    subId &&
+    subAction === "stop" &&
+    req.method === "POST"
+  ) {
+    task.sessions = (task.sessions ?? []).map((session) =>
+      session.sessionId === subId
+        ? {
+            ...session,
+            status: "stopped",
+            stoppedAt: Date.now(),
+            activeTool: null,
+            updatedAt: new Date().toISOString(),
+          }
+        : session,
+    );
+    task.activeSessionCount = task.sessions.filter(
+      (item) => item.status === "running",
+    ).length;
+    pushDemoEvent(demoOrchestratorState, taskId, `Stopped agent ${subId}`);
+    sendJson(req, res, 200, { stopped: true });
+    return true;
+  }
+
+  if (req.method === "POST") {
+    const body = (await readJsonBody(req)) || {};
+    if (action === "pause") {
+      task.paused = true;
+      pushDemoEvent(demoOrchestratorState, taskId, "Task paused");
+      sendJson(req, res, 200, task);
+      return true;
+    }
+    if (action === "resume") {
+      task.paused = false;
+      pushDemoEvent(demoOrchestratorState, taskId, "Task resumed");
+      sendJson(req, res, 200, task);
+      return true;
+    }
+    if (action === "archive") {
+      task.status = "archived";
+      task.archivedAt = new Date().toISOString();
+      pushDemoEvent(demoOrchestratorState, taskId, "Task archived");
+      sendJson(req, res, 200, { archived: true });
+      return true;
+    }
+    if (action === "reopen") {
+      task.status = "open";
+      task.archivedAt = null;
+      pushDemoEvent(demoOrchestratorState, taskId, "Task reopened");
+      sendJson(req, res, 200, task);
+      return true;
+    }
+    if (action === "fork") {
+      const forked = createDemoTaskDetail({
+        ...task,
+        id: `demo-task-${demoOrchestratorState.nextTaskId++}`,
+        title: body.title || `Fork of ${task.title}`,
+        goal: body.goal || task.goal,
+        parentTaskId: task.id,
+        status: "open",
+        archivedAt: null,
+        sessions: [],
+        sessionCount: 0,
+        activeSessionCount: 0,
+      });
+      demoOrchestratorState.tasks.unshift(forked);
+      pushDemoEvent(demoOrchestratorState, forked.id, "Task forked");
+      sendJson(req, res, 200, forked);
+      return true;
+    }
+    if (action === "validate") {
+      task.status = body.passed === true ? "done" : "blocked";
+      task.summary = body.summary || task.summary;
+      pushDemoEvent(
+        demoOrchestratorState,
+        taskId,
+        "Validation submitted",
+        body,
+      );
+      sendJson(req, res, 200, task);
+      return true;
+    }
+    if (action === "retry-turn") {
+      pushDemoEvent(
+        demoOrchestratorState,
+        taskId,
+        "Retry turn requested",
+        body,
+      );
+      sendJson(req, res, 200, task);
+      return true;
+    }
+    if (action === "rerun-from-event") {
+      pushDemoEvent(
+        demoOrchestratorState,
+        taskId,
+        "Rerun from event requested",
+        body,
+      );
+      sendJson(req, res, 200, task);
+      return true;
+    }
+    if (action === "restart") {
+      task.status = "active";
+      pushDemoEvent(
+        demoOrchestratorState,
+        taskId,
+        "Task restart requested",
+        body,
+      );
+      sendJson(req, res, 200, task);
+      return true;
+    }
+    if (action === "restart-with-edited-plan") {
+      task.status = "active";
+      if (body.plan && typeof body.plan === "object")
+        task.currentPlan = body.plan;
+      pushDemoEvent(
+        demoOrchestratorState,
+        taskId,
+        "Restart with edited plan requested",
+        body,
+      );
+      sendJson(req, res, 200, task);
+      return true;
+    }
+  }
+
+  sendJson(req, res, 404, {
+    error: `Unhandled demo orchestrator route ${url.pathname}`,
+  });
+  return true;
 }
 
 function streamSettings(payload = {}) {
@@ -2066,6 +3342,8 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "GET" && url.pathname === "/api/status") {
     sendJson(req, res, 200, {
       state: "running",
+      agentName: "Playwright Smoke",
+      model: "ui-smoke",
       startup: { phase: "running", attempt: 0 },
       pendingRestart: false,
       pendingRestartReasons: [],
@@ -2077,6 +3355,13 @@ const server = http.createServer(async (req, res) => {
     const config = {
       cloud: { enabled: false },
       media: {},
+      // Select the local-inference voice provider so the /chat overlay's
+      // bidirectional loop drives /api/asr/local-inference (in) and
+      // /api/tts/local-inference (out) — both stubbed below.
+      messages: {
+        tts: { provider: "local-inference" },
+        asr: { provider: "local-inference" },
+      },
       plugins: { entries: {} },
       ui: {},
       wallet: {},
@@ -3208,6 +4493,97 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (await handleDemoOrchestratorRoute(req, res, url)) {
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/orchestrator/status") {
+    sendJson(req, res, 200, emptyOrchestratorStatus());
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/orchestrator/tasks") {
+    sendJson(req, res, 200, { tasks: [] });
+    return;
+  }
+
+  const orchestratorTaskMatch =
+    /^\/api\/orchestrator\/tasks\/([^/]+)(?:\/([^/]+))?$/.exec(url.pathname);
+  if (orchestratorTaskMatch) {
+    const [, taskId, action] = orchestratorTaskMatch;
+    if (req.method === "GET" && action === "messages") {
+      sendJson(req, res, 200, { items: [], nextCursor: null });
+      return;
+    }
+    if (req.method === "GET" && action === "events") {
+      sendJson(req, res, 200, { items: [], nextCursor: null });
+      return;
+    }
+    if (req.method === "GET" && action === "timeline") {
+      sendJson(req, res, 200, { items: [], nextCursor: null });
+      return;
+    }
+    if (req.method === "GET" && action === "usage") {
+      sendJson(req, res, 200, emptyOrchestratorUsage);
+      return;
+    }
+    if (req.method === "GET" && !action) {
+      sendJson(req, res, 404, { error: `Task not found: ${taskId}` });
+      return;
+    }
+    if (req.method === "POST") {
+      sendJson(req, res, 200, { ok: true, id: taskId });
+      return;
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/trajectories/stats") {
+    sendJson(req, res, 200, {
+      totalTrajectories: 0,
+      totalLlmCalls: 0,
+      totalProviderAccesses: 0,
+      totalPromptTokens: 0,
+      totalCompletionTokens: 0,
+      averageDurationMs: 0,
+      bySource: {},
+      byModel: {},
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/trajectories/config") {
+    sendJson(req, res, 200, { enabled: false });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/trajectories/latest") {
+    sendJson(req, res, 200, { trajectory: null });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/trajectories") {
+    sendJson(req, res, 200, emptyTrajectoryList(url));
+    return;
+  }
+
+  const trajectoryDetailMatch = /^\/api\/trajectories\/([^/]+)$/.exec(
+    url.pathname,
+  );
+  if (req.method === "GET" && trajectoryDetailMatch) {
+    sendJson(req, res, 200, {
+      trajectory: {
+        id: decodeURIComponent(trajectoryDetailMatch[1] ?? "unknown"),
+        status: "completed",
+        llmCallCount: 0,
+      },
+      llmCalls: [],
+      providerAccesses: [],
+      toolEvents: [],
+      evaluationEvents: [],
+    });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/coding-agents/preflight") {
     sendJson(req, res, 200, {
       ok: true,
@@ -3235,6 +4611,43 @@ const server = http.createServer(async (req, res) => {
     url.pathname === "/api/coding-agents/coordinator/threads"
   ) {
     sendJson(req, res, 200, { threads: [], total: 0 });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/extension/status") {
+    sendJson(req, res, 200, {
+      installed: false,
+      connected: false,
+      relayReachable: false,
+      relayPort: 0,
+      extensionPath: null,
+      chromeBuildPath: null,
+      chromePackagePath: null,
+      safariWebExtensionPath: null,
+      safariAppPath: null,
+      safariPackagePath: null,
+      releaseManifest: null,
+    });
+    return;
+  }
+
+  if (
+    (req.method === "GET" || req.method === "POST") &&
+    url.pathname === "/api/training/auto/config"
+  ) {
+    sendJson(req, res, 200, {
+      config: {
+        autoTrain: false,
+        triggerThreshold: 20,
+        triggerCooldownHours: 24,
+        backends: [],
+      },
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/training/auto/status") {
+    sendJson(req, res, 200, { serviceRegistered: false });
     return;
   }
 
@@ -3426,6 +4839,50 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/skills/curated") {
+    sendJson(req, res, 200, { skills: [] });
+    return;
+  }
+
+  if (
+    (req.method === "POST" || req.method === "DELETE") &&
+    url.pathname.startsWith("/api/skills/curated/")
+  ) {
+    sendJson(req, res, 200, { ok: true });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/skills/catalog") {
+    sendJson(req, res, 200, {
+      total: 0,
+      page: Number(url.searchParams.get("page") ?? 1),
+      perPage: Number(url.searchParams.get("perPage") ?? 50),
+      totalPages: 0,
+      installedCount: 0,
+      skills: [],
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/skills/catalog/search") {
+    sendJson(req, res, 200, {
+      query: url.searchParams.get("q") ?? "",
+      count: 0,
+      results: [],
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname.startsWith("/api/skills/catalog/")) {
+    sendJson(req, res, 404, { error: "Skill not found" });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/skills/catalog/refresh") {
+    sendJson(req, res, 200, { ok: true, count: 0 });
+    return;
+  }
+
   if (
     req.method === "GET" &&
     url.pathname === "/api/skills/marketplace/search"
@@ -3453,7 +4910,9 @@ const server = http.createServer(async (req, res) => {
   if (
     req.method === "POST" &&
     (url.pathname === "/api/skills/marketplace/install" ||
-      url.pathname === "/api/skills/marketplace/uninstall")
+      url.pathname === "/api/skills/marketplace/uninstall" ||
+      url.pathname === "/api/skills/catalog/install" ||
+      url.pathname === "/api/skills/catalog/uninstall")
   ) {
     sendJson(req, res, 200, { ok: true });
     return;
@@ -3571,10 +5030,64 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/suggestions") {
+    // Mirror the real prompt-suggestion route
+    // (packages/agent/src/api/suggestions-routes.ts). The continuous-chat
+    // overlay's resting composer strip POSTs here to upgrade its static
+    // suggestions to a model-backed set; with no model the real route returns
+    // an empty set and the overlay keeps its deterministic offline fallback.
+    // Returning the same empty set keeps the strip's static pills and avoids
+    // the catch-all 501 the diagnostics guard would otherwise flag.
+    await drainRequest(req);
+    sendJson(req, res, 200, { suggestions: [] });
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/social-alpha/leaderboard"
+  ) {
+    // Mirror the social-alpha leaderboard route's zero-key behavior
+    // (plugins/plugin-social-alpha/src/routes.ts): with no recommendations
+    // recorded the real route returns an empty data array, and the view
+    // renders its wallet-required / empty state. Returning the same shape
+    // keeps the visual smoke deterministic and avoids the catch-all 501.
+    sendJson(req, res, 200, { data: [] });
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/tts/first-run/speak") {
     // Onboarding synthesizes its scripted voice lines here and plays the bytes
     // as audio/wav. Return decodable silence so the live stack never logs a
     // 501; the real route (first-run-tts-route.ts) returns neural TTS audio.
+    sendBinary(req, res, 200, "audio/wav", SILENT_WAV);
+    return;
+  }
+
+  // ── Local-inference voice (drives the /chat overlay's bidirectional loop) ──
+  // The client mic capture + VAD end-of-turn are REAL (Chromium fake-audio
+  // file); these endpoints stand in for the on-device ASR/TTS models so the
+  // transcript-in / spoken-reply-out round trip stays deterministic.
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/asr/local-inference/status"
+  ) {
+    sendJson(req, res, 200, { ready: true, provider: "local-inference" });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/asr/local-inference") {
+    // The WAV body is real captured audio; we don't transcribe it, we return a
+    // fixed phrase so the spoken turn resolves to a known message.
+    await drainRequest(req);
+    sendJson(req, res, 200, { text: SMOKE_VOICE_TRANSCRIPT });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/tts/local-inference") {
+    // Assistant reply spoken back. Decodable silence is enough — the request
+    // itself is the bidirectional-output signal the e2e asserts on.
+    await drainRequest(req);
     sendBinary(req, res, 200, "audio/wav", SILENT_WAV);
     return;
   }

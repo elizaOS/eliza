@@ -1,0 +1,166 @@
+name: Terraform — Apps Shared (Hetzner)
+
+# Plan/apply the SHARED half of the Eliza Cloud Apps (Product 2) data-plane IaC
+# (packages/cloud-infra/cloud/terraform/hetzner/apps-shared) — i.e. the private
+# network + tenant Postgres node that staging + production app worker nodes
+# both attach to.
+#
+#   pull_request touching the module -> fmt + validate (NO cloud creds, no state — safe)
+#   workflow_dispatch (manual)        -> terraform plan or apply against the
+#                                        SHARED state (no per-env input — this
+#                                        module owns one set of resources used
+#                                        by both staging and production)
+#
+# Apply provisions real billed Hetzner resources (the tenant Postgres node +
+# its 200 GB volume), so it is an explicit operator action — it never auto-runs.
+#
+# Secrets (repo-level — apps Hetzner project is shared):
+#   HCLOUD_APPS_TOKEN             Hetzner Cloud API token for the `apps` project
+#   R2_STATE_ACCESS_KEY_ID        R2 token -> AWS_ACCESS_KEY_ID (tf state backend)
+#   R2_STATE_SECRET_ACCESS_KEY    R2 token -> AWS_SECRET_ACCESS_KEY (tf state backend)
+# Variables (repo-level — the shared module is NOT per-env):
+#   APPS_SHARED_OPERATOR_SSH_KEY  operator SSH public key allowed onto the tenant DB
+#   APPS_SHARED_OPERATOR_INGRESS_CIDRS
+#                                 JSON array of allowed SSH CIDRs, e.g.
+#                                 ["1.2.3.4/32"] — `0.0.0.0/0` rejected by the
+#                                 module's validation block.
+
+on:
+  pull_request:
+    paths:
+      - "packages/cloud-infra/cloud/terraform/hetzner/apps-shared/**"
+      - ".github/workflows/terraform-apps-shared.yml"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: terraform action
+        type: choice
+        default: plan
+        options: [plan, apply]
+      replace:
+        description: |
+          Optional. Comma-separated TF resource addresses to force-replace on
+          this apply (e.g. "hcloud_server.tenant_db"). Threaded through as
+          `-replace=<addr>` flags. Leave empty for a normal apply. Has no
+          effect on `plan` action.
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  pull-requests: write
+
+# Serialize plan/apply across BOTH the shared and per-env data-plane workflows
+# (same Hetzner project, same private network, cross-state remote_state read
+# in apps-data-plane). A shared apply that recreates hcloud_network.apps would
+# otherwise race a concurrent apps-data-plane apply that's mid-attach. PR
+# validation stays parallel via the format('pr-{0}', github.ref) fallback.
+concurrency:
+  group: ${{ github.event_name == 'workflow_dispatch' && 'terraform-apps-hetzner' || format('pr-{0}', github.ref) }}
+  cancel-in-progress: false
+
+env:
+  TF_DIR: packages/cloud-infra/cloud/terraform/hetzner/apps-shared
+  # 1.10.5 — needed for S3 backend `use_lockfile = true` (R2 has no DynamoDB
+  # equivalent, this is how we serialize state writes). Bumping below 1.10
+  # silently reintroduces the parallel-apply race.
+  TF_VERSION: "1.10.5"
+
+jobs:
+  # PR validation: format + validate only. No cloud credentials, no remote state,
+  # so it runs safely on every PR (incl. before the env HCLOUD_TOKEN exists).
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: terraform fmt -check
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform fmt -check -recursive
+      - name: terraform validate (no backend)
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate -no-color
+
+  # Manual plan/apply against the shared state. No environment input — this
+  # module owns ONE set of resources shared by both staging + production app
+  # nodes; the per-env scoping lives in apps-data-plane.
+  plan-apply:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      HCLOUD_TOKEN: ${{ secrets.HCLOUD_APPS_TOKEN }}
+      # R2 (S3-compatible) state backend creds.
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATE_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATE_SECRET_ACCESS_KEY }}
+      # Non-secret inputs threaded as TF_VAR_*. The shared module isn't per-env
+      # so both values come from repo-level GH vars.
+      TF_VAR_ssh_public_keys: '["${{ vars.APPS_SHARED_OPERATOR_SSH_KEY }}"]'
+      # operator_ingress_cidrs MUST be a JSON array literal; module validation
+      # rejects 0.0.0.0/0. Set as a repo-level GH var, e.g. '["1.2.3.4/32"]'.
+      TF_VAR_operator_ingress_cidrs: ${{ vars.APPS_SHARED_OPERATOR_INGRESS_CIDRS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Preflight — required secrets / vars present
+        run: |
+          fail=0
+          [ -n "$HCLOUD_TOKEN" ] || { echo "::error::set repo secret HCLOUD_APPS_TOKEN (apps Hetzner project token, shared across envs)"; fail=1; }
+          [ -n "$AWS_ACCESS_KEY_ID" ] || { echo "::error::missing repo secret R2_STATE_ACCESS_KEY_ID"; fail=1; }
+          [ -n "$AWS_SECRET_ACCESS_KEY" ] || { echo "::error::missing repo secret R2_STATE_SECRET_ACCESS_KEY"; fail=1; }
+          [ "$TF_VAR_ssh_public_keys" != '[""]' ] || { echo "::error::set vars.APPS_SHARED_OPERATOR_SSH_KEY at the repo level"; fail=1; }
+          [ -n "$TF_VAR_operator_ingress_cidrs" ] || { echo "::error::set vars.APPS_SHARED_OPERATOR_INGRESS_CIDRS at the repo level (JSON array of allowed SSH CIDRs, no 0.0.0.0/0)"; fail=1; }
+          # Defense in depth: reject 0.0.0.0/0 here too, before TF validation
+          # runs — fails the workflow earlier with a clearer error.
+          case "$TF_VAR_operator_ingress_cidrs" in
+            *'0.0.0.0/0'*|*'::/0'*)
+              echo "::error::APPS_SHARED_OPERATOR_INGRESS_CIDRS contains '0.0.0.0/0' or '::/0' — module validation rejects these; pin to operator IPs"
+              fail=1
+              ;;
+          esac
+          exit $fail
+
+      - name: terraform fmt -check
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform fmt -check -recursive
+
+      - name: terraform init (R2 backend, lockfile readonly)
+        working-directory: ${{ env.TF_DIR }}
+        # -lockfile=readonly fails the run if the committed .terraform.lock.hcl
+        # would need updating (e.g. provider checksum drift). Forces operators
+        # to run `terraform init -upgrade` in a PR explicitly.
+        run: terraform init -input=false -lockfile=readonly -backend-config=backend.hcl
+
+      - name: terraform plan
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform plan -no-color -input=false
+
+      - name: terraform apply
+        if: github.event.inputs.action == 'apply'
+        working-directory: ${{ env.TF_DIR }}
+        # `replace` input is a comma-separated list of TF resource addresses to
+        # force-replace this run. Empty -> normal apply.
+        # See terraform-control-plane.yml for why we thread the input via $env
+        # instead of inline `${{ ... }}` (quote handling).
+        env:
+          REPLACE_INPUT: ${{ github.event.inputs.replace }}
+        run: |
+          REPLACE_ARGS=()
+          if [ -n "$REPLACE_INPUT" ]; then
+            IFS=',' read -ra ADDRS <<< "$REPLACE_INPUT"
+            for addr in "${ADDRS[@]}"; do
+              addr_trimmed="${addr#"${addr%%[![:space:]]*}"}"
+              addr_trimmed="${addr_trimmed%"${addr_trimmed##*[![:space:]]}"}"
+              [ -n "$addr_trimmed" ] && REPLACE_ARGS+=("-replace=$addr_trimmed")
+            done
+            echo "::notice::forcing replacement of: ${REPLACE_ARGS[*]}"
+          fi
+          terraform apply -auto-approve -input=false "${REPLACE_ARGS[@]}"

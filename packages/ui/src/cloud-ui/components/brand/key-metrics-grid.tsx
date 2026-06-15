@@ -1,17 +1,18 @@
 import type { LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
 import { cn } from "../../lib/utils";
 import { BrandCard } from "./brand-card";
 
 export interface KeyMetric {
   label: string;
-  value: string;
-  helper?: string;
+  value: ReactNode;
+  helper?: ReactNode;
   delta?: {
     value: string;
     trend?: "up" | "down" | "neutral";
     label?: string;
   };
-  icon: LucideIcon;
+  icon?: LucideIcon;
   accent?: "violet" | "sky" | "emerald" | "amber" | "rose";
 }
 
@@ -57,9 +58,11 @@ export function KeyMetricsGrid({ metrics, columns = 4 }: KeyMetricsGridProps) {
               metric.accent ? accentClasses[metric.accent] : "",
             )}
           >
-            <div className="absolute right-5 top-5 text-muted-foreground">
-              <metric.icon className="h-5 w-5" />
-            </div>
+            {metric.icon ? (
+              <div className="absolute right-5 top-5 text-muted-foreground">
+                <metric.icon className="h-5 w-5" />
+              </div>
+            ) : null}
             <div className="space-y-2 p-6 pb-4">
               <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {metric.label}

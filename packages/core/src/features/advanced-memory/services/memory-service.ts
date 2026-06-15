@@ -69,6 +69,11 @@ export class MemoryService extends Service {
 	private sessionMessageCounts: Map<UUID, number>;
 	private memoryConfig: MemoryConfig;
 	private lastExtractionCheckpoints: Map<string, number>;
+	// Both maps grow one entry per distinct room / (entity,room) pair seen over the
+	// lifetime of the process. Cap them (FIFO by Map insertion order). An evicted
+	// session counter resets to 0 (only affects summarization cadence for a dormant
+	// room); an evicted checkpoint is re-fetched from runtime.getCache on miss.
+	private static readonly MAX_SESSION_ENTRIES = 5000;
 
 	/** Resolved at initialize(). null means no storage backend is available. */
 	private storage: MemoryStorageProvider | null = null;
@@ -102,7 +107,17 @@ export class MemoryService extends Service {
 	}
 
 	async stop(): Promise<void> {
+		this.sessionMessageCounts.clear();
+		this.lastExtractionCheckpoints.clear();
 		logger.info({ src: "service:memory" }, "MemoryService stopped");
+	}
+
+	private capSessionMap(map: Map<string, number>): void {
+		while (map.size > MemoryService.MAX_SESSION_ENTRIES) {
+			const oldest = map.keys().next().value;
+			if (oldest === undefined) break;
+			map.delete(oldest);
+		}
 	}
 
 	async initialize(runtime: IAgentRuntime): Promise<void> {
@@ -291,6 +306,7 @@ export class MemoryService extends Service {
 		const current = this.sessionMessageCounts.get(roomId) || 0;
 		const newCount = current + 1;
 		this.sessionMessageCounts.set(roomId, newCount);
+		this.capSessionMap(this.sessionMessageCounts);
 		return newCount;
 	}
 
@@ -322,6 +338,7 @@ export class MemoryService extends Service {
 			const checkpoint = await this.runtime.getCache<number>(key);
 			const messageCount = checkpoint ?? 0;
 			this.lastExtractionCheckpoints.set(key, messageCount);
+			this.capSessionMap(this.lastExtractionCheckpoints);
 			return messageCount;
 		} catch (error) {
 			const err = error instanceof Error ? error.message : String(error);
@@ -340,6 +357,7 @@ export class MemoryService extends Service {
 	): Promise<void> {
 		const key = this.getExtractionKey(entityId, roomId);
 		this.lastExtractionCheckpoints.set(key, messageCount);
+		this.capSessionMap(this.lastExtractionCheckpoints);
 
 		try {
 			await this.runtime.setCache(key, messageCount);

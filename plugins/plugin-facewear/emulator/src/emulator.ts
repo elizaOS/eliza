@@ -14,7 +14,7 @@
  *
  * rawCameraAccess simulation:
  *   The experimental WebXR rawCameraAccess path (XRWebGLBinding.getCameraImage) is
- *   NOT implemented by IWER, so app-xr automatically falls back to the getUserMedia
+ *   outside IWER's current emulation surface, so app-xr automatically falls back to the getUserMedia
  *   video track (Path 3). Injecting frames via __XREmulator.injectCameraFrame() paints
  *   onto the canvas that feeds getUserMedia, making injected frames reachable by both
  *   the getUserMedia path and any code that reads the canvas directly.

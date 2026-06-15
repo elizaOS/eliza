@@ -42,7 +42,7 @@ export interface StabilizerOutput {
 	/** The agreed-on prefix — safe to hand the drafter / phrase chunker. */
 	stable: string;
 	/**
-	 * The suffix that has not yet been agreed `n` times — surface in UI but
+	 * The suffix still awaiting `n` matching partials — surface in UI but
 	 * do not commit. Concatenating `stable + pending` reconstructs the
 	 * latest raw partial.
 	 */

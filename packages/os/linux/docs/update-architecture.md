@@ -150,9 +150,9 @@ Schemas live in:
 
 The manifest signs the runtime and pins the optional model catalog by hash.
 The model catalog describes model artifacts and capabilities, but model
-artifact fetching and model runtime loading remain separate future work.
+artifact fetching and model runtime loading remain separate release tracks.
 
-## Production TODOs
+## Production Readiness Checklist
 
 - Generate and bake a real elizaOS update public keyring.
 - Decide release channel policy and signing ceremony.

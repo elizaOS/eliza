@@ -15,17 +15,11 @@
  *     plugin-computeruse/src/mobile/ocr-provider.ts) that the runtime wires up
  *     at boot.
  *
- * Phase 1 (this file): define the canonical `OcrWithCoordsService` interface,
- * ship a transitional adapter (`RapidOcrCoordAdapter`) backed by the existing
- * `RapidOCRService`, and compute `semantic_position` deterministically from
- * the bbox center against tile-relative thirds.
- *
- * Phase 2 (TODO — see `packages/native/plugins/doctr-cpp/AGENTS.md`): replace
- * the adapter with `DoctrCoordOcrService`, which calls into the doctr-cpp
- * native plugin (db_resnet50 + crnn_vgg16_bn ported to ggml, dispatched by
- * the same elizaOS/llama.cpp fork that runs eliza-1's vision and text
- * tracks). At that point the adapter here will be removed and the native
- * implementation registered as the canonical provider.
+ * This file defines the canonical `OcrWithCoordsService` interface and the
+ * in-tree `RapidOcrCoordAdapter` provider. The adapter is backed by the
+ * existing `RapidOCRService` and computes `semantic_position`
+ * deterministically from the bbox center against tile-relative thirds. Native
+ * OCR providers can register the same interface without changing consumers.
  */
 
 import { logger } from "@elizaos/core";
@@ -153,21 +147,15 @@ export function getOcrWithCoordsService(): OcrWithCoordsService | null {
   return registeredCoordOcrService;
 }
 
-// ── Transitional RapidOCR-backed adapter ────────────────────────────────────
+// ── RapidOCR-backed adapter ─────────────────────────────────────────────────
 
 /**
- * @deprecated Phase 1 transitional adapter. Wraps the existing
- * `RapidOCRService` (PP-OCRv5 over onnxruntime-node) and maps its line-level
- * output to the hierarchical `OcrWithCoordsResult` shape, computing
- * `semantic_position` deterministically against the source tile thirds.
- *
- * Phase 2 target: replace with the native doctr-cpp implementation. See
- * `packages/native/plugins/doctr-cpp/AGENTS.md` for the port plan
- * (db_resnet50 detection + crnn_vgg16_bn recognition over ggml, dispatched
- * by the elizaOS/llama.cpp fork).
+ * Wraps the existing `RapidOCRService` and maps its line-level output to the
+ * hierarchical `OcrWithCoordsResult` shape, computing `semantic_position`
+ * deterministically against the source tile thirds.
  */
 export class RapidOcrCoordAdapter implements OcrWithCoordsService {
-  readonly name = "rapid-coord-adapter (transitional, replace with doctr-cpp)";
+  readonly name = "rapid-coord-adapter";
 
   constructor(
     private readonly impl: Pick<OCRService, "extractText"> = new OCRService(),

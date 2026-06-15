@@ -955,11 +955,4 @@ describe("Memory Integration Tests", () => {
     const content = updated.content as Record<string, unknown>;
     expect(content.text).toBe("Initial content"); // Content should be unchanged
   });
-
-  it("should handle partial updates correctly", async () => {
-    // This test is covered by the comprehensive partial update tests above
-    // Including: 'should perform partial updates without affecting other fields'
-    // and 'should perform nested partial updates without overriding existing fields'
-    expect(true).toBe(true); // Placeholder to avoid empty test
-  });
 });

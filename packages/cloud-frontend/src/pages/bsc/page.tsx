@@ -7,7 +7,6 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  CloudVideoBackground,
   DashboardErrorState,
   Input,
 } from "@elizaos/ui";
@@ -77,10 +76,9 @@ export default function BscPromoPage() {
           })}
         />
       </Helmet>
-      <CloudVideoBackground
-        scrim={0.18}
-        scrimColor="rgba(255,255,255,1)"
+      <div
         className="theme-clouds min-h-screen bg-white font-poppins text-black"
+        style={{ background: "var(--background)" }}
       >
         <main
           id="main"
@@ -276,7 +274,7 @@ export default function BscPromoPage() {
             </div>
           </section>
         </main>
-      </CloudVideoBackground>
+      </div>
     </>
   );
 }

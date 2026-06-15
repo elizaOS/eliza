@@ -9,7 +9,7 @@ export type HealthStatus = { ok: true } | { ok: false; reason: string };
 
 /**
  * Typed venue / data-source adapter. Canonical actions dispatch into concrete
- * provider classes registered on the runtime provider registry (Phase 2 wiring).
+ * provider classes registered on the runtime provider registry.
  *
  * See docs/architecture/wallet-and-trading.md §B.3.
  */

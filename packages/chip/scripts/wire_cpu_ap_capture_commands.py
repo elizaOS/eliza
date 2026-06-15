@@ -593,12 +593,13 @@ def accepted_ap_benchmark_evidence_status() -> dict[str, object]:
         status["problems"] = [f"manifest marker load error: {error}" for error in errors]
         return status
     if not spec:
-        status["problems"] = ["CPU/AP evidence manifest is missing ap_benchmark_log transcript spec"]
+        status["problems"] = [
+            "CPU/AP evidence manifest is missing ap_benchmark_log transcript spec"
+        ]
         return status
     if not transcript.is_file():
         status["problems"] = [
-            "generated-AP AP benchmark transcript is missing: "
-            f"{AP_BENCHMARK_ACCEPTED_EVIDENCE}"
+            f"generated-AP AP benchmark transcript is missing: {AP_BENCHMARK_ACCEPTED_EVIDENCE}"
         ]
         return status
     text = transcript.read_text(encoding="utf-8", errors="ignore")

@@ -121,7 +121,7 @@ describe("DryRunUsbInstallerBackend", () => {
     expect(plan.steps[0]?.detail).toContain("8 GiB is required");
   });
 
-  it("blocks non-dry-run write requests because raw writes are not implemented", async () => {
+  it("blocks non-dry-run write requests because this backend is dry-run only", async () => {
     const backend = new DryRunUsbInstallerBackend();
 
     await expect(

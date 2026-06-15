@@ -148,6 +148,7 @@ def test_unified_train_alberta_splits_total_steps_across_tasks(
         requested_total_steps=None,
         domain_rand=True,
         locomotion_action_prior="none",
+        staged_biped_action_prior="none",
         locomotion_prior_residual_scale=1.0,
         locomotion_prior_residual_scale_initial=None,
         locomotion_prior_residual_scale_increment=0.05,
@@ -172,6 +173,7 @@ def test_unified_train_alberta_splits_total_steps_across_tasks(
                 "requested_total_steps": requested_total_steps,
                 "domain_rand": domain_rand,
                 "locomotion_action_prior": locomotion_action_prior,
+                "staged_biped_action_prior": staged_biped_action_prior,
                 "locomotion_prior_residual_scale": locomotion_prior_residual_scale,
                 "locomotion_prior_residual_scale_initial": (
                     locomotion_prior_residual_scale_initial
@@ -202,6 +204,7 @@ def test_unified_train_alberta_splits_total_steps_across_tasks(
         eval_episodes=2,
         domain_rand=False,
         locomotion_action_prior="hiwonder_low_slip_contact_sine",
+        staged_biped_action_prior="hiwonder_staged_biped",
         locomotion_prior_residual_scale=0.75,
         locomotion_prior_residual_scale_initial=0.0,
         locomotion_prior_residual_scale_increment=0.1,
@@ -222,6 +225,7 @@ def test_unified_train_alberta_splits_total_steps_across_tasks(
     assert captured["domain_rand"] is False
     assert captured["tasks"] == ["stand_up", "walk_forward", "turn_left"]
     assert captured["locomotion_action_prior"] == "hiwonder_low_slip_contact_sine"
+    assert captured["staged_biped_action_prior"] == "hiwonder_staged_biped"
     assert captured["locomotion_prior_residual_scale"] == 0.75
     assert captured["locomotion_prior_residual_scale_initial"] == 0.0
     assert captured["locomotion_prior_residual_scale_increment"] == 0.1
@@ -313,6 +317,7 @@ def test_module_train_uses_mode_specific_default_outputs(
         min_phase_success_rate,
         phase_eval_interval_steps,
         locomotion_action_prior,
+        staged_biped_action_prior,
         locomotion_prior_residual_scale,
         locomotion_prior_residual_scale_initial,
         locomotion_prior_residual_scale_increment,
@@ -325,6 +330,7 @@ def test_module_train_uses_mode_specific_default_outputs(
         captured["alberta_gamma"] = gamma
         captured["alberta_normalize"] = normalize
         captured["module_locomotion_action_prior"] = locomotion_action_prior
+        captured["module_staged_biped_action_prior"] = staged_biped_action_prior
         captured["module_locomotion_prior_residual_scale"] = (
             locomotion_prior_residual_scale
         )
@@ -362,6 +368,8 @@ def test_module_train_uses_mode_specific_default_outputs(
             "1",
             "--locomotion-action-prior",
             "hiwonder_contact_sine",
+            "--staged-biped-action-prior",
+            "hiwonder_staged_biped",
             "--locomotion-prior-residual-scale",
             "0.6",
             "--locomotion-prior-residual-scale-initial",
@@ -386,6 +394,7 @@ def test_module_train_uses_mode_specific_default_outputs(
     assert captured["alberta_gamma"] == 0.97
     assert captured["alberta_normalize"] is True
     assert captured["module_locomotion_action_prior"] == "hiwonder_contact_sine"
+    assert captured["module_staged_biped_action_prior"] == "hiwonder_staged_biped"
     assert captured["module_locomotion_prior_residual_scale"] == 0.6
     assert captured["module_locomotion_prior_residual_scale_initial"] == 0.0
     assert captured["module_locomotion_prior_residual_scale_increment"] == 0.2

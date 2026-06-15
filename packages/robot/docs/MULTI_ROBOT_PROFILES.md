@@ -84,7 +84,7 @@ into `assets/profiles/<id>/` and update the YAML if you rename them.
    - `openpi` — defer to a Physical Intelligence VLA backend over HTTP.
      Used for manipulation-heavy embodiments.
    For arm-only robots, `bezier`/`rl` still apply but the gait params are
-   effectively unused; set them to reasonable placeholders and rely on
+   effectively unused; set them to reasonable conservative values and rely on
    `bridge_capabilities` to gate which commands are exposed.
 6. Set `bridge_capabilities` to the subset of bridge commands this robot
    actually supports. An arm without legs should not list `walk.set` /

@@ -31,7 +31,7 @@ import { handleWalletCoreRoutes } from "./routes/wallet-core-routes";
 import { handleWalletTradeCompatRoutes } from "./routes/wallet-trade-compat-routes";
 
 // ---------------------------------------------------------------------------
-// Helper: build a CompatRuntimeState stub.  The compat handlers need a `state`
+// Helper: build a CompatRuntimeState adapter. The compat handlers need a `state`
 // object with `{ current: AgentRuntime | null }`.  When dispatched via the
 // plugin route system the runtime is the third argument, so we thread it
 // through.

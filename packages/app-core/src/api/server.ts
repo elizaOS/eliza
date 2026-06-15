@@ -114,9 +114,8 @@ let _localInferenceRoutes:
   | undefined;
 async function getLocalInferenceRoutes() {
   if (!_localInferenceRoutes) {
-    _localInferenceRoutes = await import(
-      "@elizaos/plugin-local-inference/routes"
-    );
+    _localInferenceRoutes =
+      await import("@elizaos/plugin-local-inference/routes");
   }
   return _localInferenceRoutes;
 }
@@ -137,11 +136,11 @@ import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";
 import { handleAuthSessionRoutes } from "./auth-session-routes";
 import { handleBackgroundTasksRoute } from "./background-tasks-routes";
 import { handleCatalogRoutes } from "./catalog-routes";
+import { handleCloudPairRoute } from "./cloud-pair-route";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleFirstRunRoute } from "./first-run-routes";
 import { handleFirstRunTtsRoute } from "./first-run-tts-route";
-import { handleI18nLocaleRoute } from "./i18n-locale-routes";
 import { handleInternalWakeRoute } from "./internal-routes";
 import {
   isPerfInstrumentEnabled,
@@ -631,7 +630,7 @@ function resolveCloudConfig(runtime?: unknown): ElizaConfig {
         (config as Record<string, unknown>).cloud = {};
       }
       (config.cloud as Record<string, unknown>).apiKey = backfillKey;
-      // Persist the backfilled key so future reads find it on disk
+      // Persist the backfilled key so later reads find it on disk.
       try {
         saveElizaConfig(config);
         logger.info("[cloud] Backfilled missing cloud.apiKey to config file");
@@ -728,11 +727,13 @@ async function handleCompatRouteInner(
     });
   }
 
-  // Public language suggestion from IP-geo + Accept-Language (pre-auth).
-  if (await handleI18nLocaleRoute(req, res)) return true;
-
   // Dev observability routes — extracted to dev-compat-routes.ts
   if (await handleDevCompatRoutes(req, res, state)) return true;
+
+  // Cloud SSO popup landing — `/pair?token=X` calls cloud-api server-side,
+  // serves HTML that pins the API token on the SPA's window global. Mounted
+  // before any other auth handler so it owns the root `/pair` URL.
+  if (await handleCloudPairRoute(req, res)) return true;
 
   // Must precede the auth-pairing handler so the rate-limited route owns /api/auth/bootstrap/exchange.
   if (await handleAuthBootstrapRoutes(req, res, state)) return true;
@@ -776,9 +777,8 @@ async function handleCompatRouteInner(
 
   if (method === "POST" && url.pathname === "/api/tts/cloud") {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
-    const { handleCloudTtsPreviewRoute } = await import(
-      "@elizaos/plugin-elizacloud"
-    );
+    const { handleCloudTtsPreviewRoute } =
+      await import("@elizaos/plugin-elizacloud");
     return handleCloudTtsPreviewRoute(req, res);
   }
 
@@ -920,12 +920,13 @@ async function handleCompatRouteInner(
   if (uiSpecMatch) {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const pluginId = decodeURIComponent(uiSpecMatch[1]);
-    const { buildPluginConfigUiSpec } = await import(
-      "@elizaos/shared/config/plugin-ui-spec"
-    );
+    const { buildPluginConfigUiSpec } =
+      await import("@elizaos/shared/config/plugin-ui-spec");
     const { buildPluginListResponse } = await getPluginRegistryApi();
     const pluginList = buildPluginListResponse(state.current);
-    const plugin = pluginList.plugins.find((p) => p.id === pluginId);
+    const plugin = pluginList.plugins.find(
+      (p: { id: string }) => p.id === pluginId,
+    );
     if (!plugin) {
       sendJsonResponse(res, 404, { error: `Plugin "${pluginId}" not found` });
       return true;
@@ -1191,7 +1192,9 @@ export async function startApiServer(
   try {
     if (compatState.current) {
       await ensureRuntimeSqlCompatibility(compatState.current);
-      await (await lazyEnsureTTS())(compatState.current);
+      await (
+        await lazyEnsureTTS()
+      )(compatState.current);
     }
 
     const upstreamStart = Date.now();
@@ -1226,7 +1229,9 @@ export async function startApiServer(
         }
 
         try {
-          await (await lazyEnsureTTS())(runtime);
+          await (
+            await lazyEnsureTTS()
+          )(runtime);
         } catch (err) {
           logger.warn(
             `[eliza][runtime] TTS init failed (non-critical): ${

@@ -118,7 +118,7 @@ def phase_record(phase: dict[str, Any], release_outputs: dict[str, Any]) -> dict
             "first_article_traveler",
             "fab_assembler_quote",
         ],
-        "5_enclosure_routed_step_rerun": [
+        "5_routed_step_release_clearance": [
             "board_step_with_supplier_models",
             "supplier_component_3d_model_manifest",
             "enclosure_clearance_report_using_routed_step",
@@ -637,7 +637,7 @@ def main() -> int:
             "cellular and Wi-Fi/Bluetooth module pinouts, reference layouts, firmware identity, and RF evidence are missing",
             "post-route DRC, length/skew, impedance, SI/PI, RF, power, thermal, and factory evidence are missing",
             "production Gerber or IPC-2581, drill, position, BOM/AVL, assembly, STEP, DFM/DFA, and quote outputs are missing",
-            "candidate routed board STEP exists for local review only; production routed-board STEP has not been supplier-approved or rerun through measured enclosure clearance",
+            "candidate routed board STEP exists for local review only; production routed-board STEP has not been supplier-approved or cleared by measured routed-board release-clearance evidence",
         ],
         "forbidden_claims": [
             "routed_pcb_ready",

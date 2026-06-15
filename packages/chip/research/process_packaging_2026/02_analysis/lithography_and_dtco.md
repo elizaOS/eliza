@@ -20,7 +20,7 @@ Sources: `asml_high_na_exe5000`, `asml_high_na_exe5200`, `imec_high_na_status`,
 - High-NA EUV (NA 0.55, ASML EXE:5000 / EXE:5200) extends single-exposure
   reach toward sub-10 nm half-pitch. The first EXE:5000 was installed at
   imec / Intel in 2023--2024; EXE:5200 ramp targets HVM in 2025--2026.
-- Hyper-NA (>0.55) is in early ASML research roadmap; not credible for the
+- Hyper-NA (>0.55) is in early ASML research planning; not credible for the
   2028 production window.
 
 ## Pitch Trends At A14-Class

@@ -383,6 +383,6 @@ export async function openPrivacyPane(pane: string): Promise<void> {
   try {
     await execFileAsync("open", [url], { encoding: "utf8" });
   } catch {
-    // no-op
+    // Best-effort only; failures leave the caller on the existing settings path.
   }
 }

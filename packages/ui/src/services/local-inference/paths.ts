@@ -4,4 +4,4 @@ export {
   isWithinElizaRoot,
   localInferenceRoot,
   registryPath,
-} from "@elizaos/shared";
+} from "@elizaos/shared/local-inference/paths";

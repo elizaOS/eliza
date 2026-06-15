@@ -293,10 +293,7 @@ export class TrainingTriggerService extends Service {
     this.state = readPersisted(this.statePath);
   }
 
-  /**
-   * Idempotent no-op; kept so callers can swap the service into a `Service`
-   * subclass later without changing the registration site.
-   */
+  /** Idempotent stop hook for the service lifecycle. */
   async stop(): Promise<void> {}
 
   getStatus(): TriggerStatusSnapshot {
@@ -336,9 +333,9 @@ export class TrainingTriggerService extends Service {
    * `completed`. Looks up the detail, increments the relevant counters, and
    * checks each touched task's threshold + cooldown.
    *
-   * Errors propagate by design — the caller passes through optional chaining
-   * so a missing service is a no-op, but a misconfigured service that throws
-   * during increment should not be silently lost.
+   * Errors propagate by design — the caller uses optional chaining so a missing
+   * service skips training triggers, while a misconfigured service that throws
+   * during increment is still surfaced.
    */
   async notifyTrajectoryCompleted(trajectoryId: string): Promise<void> {
     if (!trajectoryId.trim()) return;
@@ -517,8 +514,8 @@ export interface BootstrapOptimizationOptions {
   configLoader?: () => TrainingConfig;
   notifier?: UserNotifier;
   /**
-   * Override the service used to trigger the run. Tests pass a stub; in
-   * production the registered TrainingTriggerService is looked up from
+   * Override the service used to trigger the run. Tests pass a controlled
+   * trigger; production looks up the registered TrainingTriggerService from
    * runtime.services.
    */
   triggerOverride?: (input: {

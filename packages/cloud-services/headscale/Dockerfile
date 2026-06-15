@@ -21,7 +21,12 @@ RUN apk add --no-cache ca-certificates tzdata wget \
 # /var/lib/headscale for the sqlite db and generated keys.
 COPY config.yaml /etc/headscale/config.yaml
 COPY acl.hujson /etc/headscale/acl.hujson
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 EXPOSE 8080
 
-CMD ["headscale", "serve"]
+# Entrypoint templates server_url from RAILWAY_PUBLIC_DOMAIN (per-env) then
+# execs `headscale serve` — same runtime behaviour, now env-portable so the
+# one image deploys to prod + staging without baking a hardcoded URL.
+CMD ["/usr/local/bin/entrypoint.sh"]

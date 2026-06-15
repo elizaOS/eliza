@@ -104,7 +104,8 @@ if command -v verilator >/dev/null 2>&1; then
         --top-module e1_l2_cache $cache_pkg_sources rtl/cache/l2/e1_l2_cache.sv
     # shellcheck disable=SC2086
     verilator --lint-only -Wall $cache_lint_waivers \
-        --top-module e1_l3_cache $cache_pkg_sources rtl/cache/l3/e1_l3_cache.sv
+        --top-module e1_l3_cache $cache_pkg_sources $cache_unit_sources \
+        rtl/cache/l3/e1_l3_cache.sv
     # shellcheck disable=SC2086
     verilator --lint-only -Wall $cache_lint_waivers \
         --top-module e1_slc $cache_pkg_sources \
@@ -142,6 +143,7 @@ elif command -v iverilog >/dev/null 2>&1; then
         rtl/cache/l2/e1_l2_cache.sv
     # shellcheck disable=SC2086
     iverilog -g2012 -tnull -s e1_l3_cache $cache_pkg_sources \
+        $cache_unit_sources \
         rtl/cache/l3/e1_l3_cache.sv
     # shellcheck disable=SC2086
     iverilog -g2012 -tnull -s e1_slc $cache_pkg_sources \

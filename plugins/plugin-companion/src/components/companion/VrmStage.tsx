@@ -1,13 +1,15 @@
+import type { TranslateFn } from "@elizaos/ui/components/pages/config-page-sections";
 import {
   APP_EMOTE_EVENT,
   type AppEmoteEventDetail,
-  type CompanionHalfFramerateMode,
-  type CompanionVrmPowerMode,
-  resolveAppAssetUrl,
   STOP_EMOTE_EVENT,
-  type TranslateFn,
-  useRenderGuard,
-} from "@elizaos/ui";
+} from "@elizaos/ui/events";
+import { useRenderGuard } from "@elizaos/ui/hooks";
+import type {
+  CompanionHalfFramerateMode,
+  CompanionVrmPowerMode,
+} from "@elizaos/ui/state";
+import { resolveAppAssetUrl } from "@elizaos/ui/utils";
 import {
   memo,
   type ReactElement,
@@ -247,32 +249,12 @@ export const VrmStage = memo(function VrmStage({
       data-vrm-loaded={vrmLoaded ? "true" : "false"}
       data-vrm-fallback={showVrmFallback ? "true" : "false"}
       data-loader-hidden={loaderHidden ? "true" : "false"}
-      className={`fixed inset-0 z-0 overflow-hidden ${environmentTheme === "dark" ? "bg-[#08060e]" : "bg-[#f5f5f5]"}`}
+      className="fixed inset-0 z-0 overflow-hidden"
     >
-      {/* Static CSS fallback — themed construct with faint receding grid */}
-      <div className="pointer-events-none absolute inset-0">
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              environmentTheme === "dark"
-                ? "radial-gradient(circle at 50% 40%, rgba(80, 20, 140, 0.18) 0%, transparent 60%), linear-gradient(180deg, #08060e 0%, #0c0a14 100%)"
-                : "radial-gradient(circle at 50% 40%, rgba(180, 200, 220, 0.12) 0%, transparent 60%), linear-gradient(180deg, #f5f5f5 0%, #efefef 100%)",
-          }}
-        />
-        <div
-          className={`absolute inset-x-[-14%] bottom-[-24%] h-[74%] ${environmentTheme === "dark" ? "opacity-50" : "opacity-30"}`}
-          style={{
-            transform: "perspective(1200px) rotateX(80deg)",
-            transformOrigin: "center bottom",
-            backgroundImage:
-              environmentTheme === "dark"
-                ? "linear-gradient(rgba(80, 20, 160, 0.45) 1px, transparent 1px), linear-gradient(90deg, rgba(80, 20, 160, 0.4) 1px, transparent 1px)"
-                : "linear-gradient(rgba(160, 170, 180, 0.25) 1px, transparent 1px), linear-gradient(90deg, rgba(160, 170, 180, 0.22) 1px, transparent 1px)",
-            backgroundSize: "68px 68px",
-          }}
-        />
-      </div>
+      {/* Backdrop is owned by CompanionStageBackdrop (rendered behind this
+          transparent canvas layer). The renderer clears to alpha 0, so the
+          stage shows through; keeping this layer transparent avoids painting a
+          second opaque background over the silhouette / gradient stage. */}
 
       {/* Single persistent VrmViewer — world stays loaded, only character swaps */}
       <div className="absolute inset-0 z-10">

@@ -19,6 +19,7 @@
  * module has no interact export.
  */
 
+import { resolveAppBranding } from "@elizaos/shared";
 import { AlertTriangle, Ban, LoaderCircle } from "lucide-react";
 import {
   type ComponentType,
@@ -31,15 +32,40 @@ import {
 } from "react";
 import {
   AgentElementOverlay,
+  AgentSurfaceElementReporter,
   AgentSurfaceProvider,
   getViewRegistry,
   handleAgentSurfaceCapability,
   isAgentSurfaceCapability,
   type ViewAgentRegistry,
 } from "../../agent-surface";
+import { client } from "../../api/index.ts";
 import { isDynamicViewLoadingAllowed } from "../../platform/platform-guards";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
+import { useApp } from "../../state/useApp.ts";
+import { registerDetailExtension } from "../apps/extensions/registry.ts";
+import {
+  formatDetailTimestamp,
+  selectLatestRunForApp,
+  toneForHealthState,
+  toneForStatusText,
+  toneForViewerAttachment,
+} from "../apps/extensions/surface.helpers.ts";
+import {
+  SurfaceBadge,
+  SurfaceCard,
+  SurfaceEmptyState,
+  SurfaceGrid,
+  SurfaceSection,
+} from "../apps/extensions/surface.tsx";
+import { registerOverlayApp } from "../apps/overlay-app-registry.ts";
+import { GameOperatorShell } from "../apps/surfaces/GameOperatorShell.tsx";
+import { registerOperatorSurface } from "../apps/surfaces/registry.ts";
+import { PagePanel } from "../composites/page-panel/index.ts";
+import { Button } from "../ui/button.tsx";
 import { ErrorBoundary } from "../ui/error-boundary";
+import { Input } from "../ui/input.tsx";
+import { Spinner } from "../ui/spinner.tsx";
 import { registerViewInteractHandler } from "./view-interact-registry";
 
 interface ViewBundleModule {
@@ -66,10 +92,38 @@ function isReactComponentExport(
 
 type HostExternalImporter = () => Promise<Record<string, unknown>>;
 
+const APP_CORE_VIEW_COMPAT: Record<string, unknown> = {
+  client,
+  resolveAppBranding,
+  Button,
+  Input,
+  Spinner,
+  PagePanel,
+  GameOperatorShell,
+  registerDetailExtension,
+  registerOverlayApp,
+  registerOperatorSurface,
+  useApp,
+  SurfaceBadge,
+  SurfaceCard,
+  SurfaceEmptyState,
+  SurfaceGrid,
+  SurfaceSection,
+  formatDetailTimestamp,
+  selectLatestRunForApp,
+  toneForHealthState,
+  toneForStatusText,
+  toneForViewerAttachment,
+};
+
+async function importAppCoreViewCompat(): Promise<Record<string, unknown>> {
+  return APP_CORE_VIEW_COMPAT;
+}
+
 const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
-  "@elizaos/app-core": () => import("@elizaos/app-core"),
-  "@elizaos/app-core/browser": () => import("@elizaos/app-core"),
-  "@elizaos/app-core/ui-compat": () => import("@elizaos/app-core/ui-compat"),
+  "@elizaos/app-core": importAppCoreViewCompat,
+  "@elizaos/app-core/browser": importAppCoreViewCompat,
+  "@elizaos/app-core/ui-compat": importAppCoreViewCompat,
   "@elizaos/capacitor-contacts": () => import("@elizaos/capacitor-contacts"),
   "@elizaos/capacitor-messages": () => import("@elizaos/capacitor-messages"),
   "@elizaos/capacitor-mobile-signals": () =>
@@ -79,24 +133,56 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/shared": () => import("@elizaos/shared"),
   "@elizaos/ui": () => import("@elizaos/ui"),
   "@elizaos/plugin-browser": () => import("@elizaos/plugin-browser"),
+  "@elizaos/plugin-health/screen-time/mobile-signal-setup": () =>
+    import("@elizaos/plugin-health/screen-time/mobile-signal-setup"),
+  "@elizaos/plugin-training": () => import("@elizaos/plugin-training"),
   "@elizaos/ui/agent-surface": () => import("../../agent-surface/index.ts"),
   "@elizaos/ui/api": () => import("../../api/index.ts"),
+  "@elizaos/ui/bridge": () => import("../../bridge/index.ts"),
+  "@elizaos/ui/components": () => import("../index.ts"),
+  "@elizaos/ui/config": () => import("../../config/index.ts"),
+  "@elizaos/ui/events": () => import("../../events/index.ts"),
+  "@elizaos/ui/hooks": () => import("../../hooks/index.ts"),
+  "@elizaos/ui/layouts": () => import("../../layouts/index.ts"),
   "@elizaos/ui/platform": () => import("../../platform/index.ts"),
   "@elizaos/ui/platform/ios-runtime": () =>
     import("../../platform/ios-runtime.ts"),
   "@elizaos/ui/state": () => import("../../state/index.ts"),
   "@elizaos/ui/state/useApp": () => import("../../state/useApp.ts"),
+  "@elizaos/ui/utils": () => import("../../utils/index.ts"),
+  "@elizaos/ui/components/composites/page-panel": () =>
+    import("../composites/page-panel/index.ts"),
+  "@elizaos/ui/components/composites/sidebar/sidebar-content": () =>
+    import("../composites/sidebar/sidebar-content.tsx"),
+  "@elizaos/ui/components/composites/sidebar/sidebar-panel": () =>
+    import("../composites/sidebar/sidebar-panel.tsx"),
+  "@elizaos/ui/components/composites/sidebar/sidebar-scroll-region": () =>
+    import("../composites/sidebar/sidebar-scroll-region.tsx"),
+  "@elizaos/ui/components/pages/MemoryDetailPanel": () =>
+    import("../pages/MemoryDetailPanel.tsx"),
+  "@elizaos/ui/components/pages/vector-browser-utils": () =>
+    import("../pages/vector-browser-utils.ts"),
+  "@elizaos/ui/components/shared/AppPageSidebar": () =>
+    import("../shared/AppPageSidebar.tsx"),
   "@elizaos/ui/components/views/TerminalPluginView": () =>
     import("./TerminalPluginView.tsx"),
   "@elizaos/ui/components/ui/button": () => import("../ui/button.tsx"),
   "@elizaos/ui/components/ui/input": () => import("../ui/input.tsx"),
+  "@elizaos/ui/components/ui/select": () => import("../ui/select.tsx"),
+  "@elizaos/ui/components/ui/settings-controls": () =>
+    import("../ui/settings-controls.tsx"),
   "@elizaos/ui/components/ui/spinner": () => import("../ui/spinner.tsx"),
+  "@elizaos/ui/components/ui/skeleton-layouts": () =>
+    import("../ui/skeleton-layouts.tsx"),
   "@elizaos/ui/components/ui/tabs": () => import("../ui/tabs.tsx"),
   "@elizaos/ui/components/ui/textarea": () => import("../ui/textarea.tsx"),
+  "@elizaos/ui/components/ui/tooltip-extended": () =>
+    import("../ui/tooltip-extended.tsx"),
   "@elizaos/ui/components/apps/surfaces/GameOperatorShell": () =>
     import("../apps/surfaces/GameOperatorShell.tsx"),
   "lucide-react": () => import("lucide-react"),
   "@pixiv/three-vrm": () => import("@pixiv/three-vrm"),
+  "@pixiv/three-vrm/nodes": () => import("@pixiv/three-vrm/nodes"),
   react: () => import("react"),
   "react-plaid-link": () => import("react-plaid-link"),
   "react/jsx-dev-runtime": async () => {
@@ -109,6 +195,8 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   },
   "react/jsx-runtime": () => import("react/jsx-runtime"),
   three: () => import("three"),
+  "three/tsl": () => import("three/tsl"),
+  "three/webgpu": () => import("three/webgpu"),
   "three/examples/jsm/controls/OrbitControls.js": () =>
     import("three/examples/jsm/controls/OrbitControls.js"),
   "three/examples/jsm/libs/meshopt_decoder.module.js": () =>
@@ -461,6 +549,8 @@ interface DynamicViewLoaderProps {
   componentExport?: string;
   /** The view's stable ID, used in error state messages. */
   viewId: string;
+  /** Optional props forwarded to the loaded view root component. */
+  viewProps?: Record<string, unknown>;
   /** Presentation/runtime family for this view. Defaults to GUI. */
   viewType?: "gui" | "tui" | "xr";
 }
@@ -480,6 +570,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   bundleUrl,
   componentExport = "default",
   viewId,
+  viewProps: forwardedViewProps,
   viewType = "gui",
 }: DynamicViewLoaderProps) {
   const [bundle, setBundle] = useState<ViewBundleModule | null>(null);
@@ -629,6 +720,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
 
   const View = bundle.component;
   const viewProps = {
+    ...forwardedViewProps,
     exitToApps: () => {
       if (typeof window !== "undefined") {
         window.history.pushState(null, "", "/views");
@@ -654,6 +746,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
           <View {...viewProps} />
         </ErrorBoundary>
         <AgentElementOverlay />
+        <AgentSurfaceElementReporter />
       </AgentSurfaceProvider>
     </div>
   );

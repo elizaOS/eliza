@@ -4,7 +4,7 @@ scope: >
   Checked backlog for turning AI/EDA research sources into bounded E1
   integrations. Items remain incomplete until their evidence gates pass.
 status_values:
-  - TODO
+  - PLANNED_BLOCKED
   - BLOCKED
   - IN_PROGRESS
   - DONE
@@ -549,7 +549,7 @@ work_items:
       - build/ai_eda/zigzag/<run-id>/dse_report.yaml
     evidence_gate: >
       DSE results are architecture estimates only and require runtime-contract,
-      roadmap, simulator, synthesis, and benchmark evidence before any product
+      phase-gate, simulator, synthesis, and benchmark evidence before any product
       claim.
     validation_commands:
       - python3 scripts/check_ai_eda_source_inventory.py
@@ -633,7 +633,7 @@ work_items:
   - id: p2-rtl-ppa-rewrite
     title: RTL PPA Rewrite And Equivalence Harness
     priority: P2
-    status: TODO
+    status: PLANNED_BLOCKED
     source_ids:
       - symrtlo
       - hyperheurist
@@ -658,7 +658,7 @@ work_items:
       - No equivalence harness for AI-rewritten RTL
       - No source-allowed rewrite workflow
     acceptance_criteria:
-      - Work item remains blocked or TODO until equivalence evidence exists.
+      - Work item remains blocked or planned until equivalence evidence exists.
       - PPA claims require local before/after Yosys/OpenLane evidence.
   - id: p1-rtl-rewrite-equivalence-target-capture
     title: RTL Rewrite Equivalence Target Capture
@@ -1232,7 +1232,7 @@ work_items:
   - id: p2-dft-atpg-watch
     title: DFT And ATPG Watch Lane
     priority: P2
-    status: TODO
+    status: PLANNED_BLOCKED
     source_ids:
       - fault-dft
     target_area:
@@ -1256,7 +1256,7 @@ work_items:
       - No ATPG execution harness
       - No fault coverage report schema
     acceptance_criteria:
-      - DFT remains a blocked or TODO lane until an executable gate exists.
+      - DFT remains a blocked or planned lane until an executable gate exists.
       - No manufacturing-test claim is made from research references alone.
   - id: p1-dft-atpg-target-capture
     title: DFT, ATPG, And Testability AI Target Capture
@@ -1343,7 +1343,7 @@ work_items:
   - id: p2-power-thermal-ai-watch
     title: Power And Thermal AI Watch Lane
     priority: P2
-    status: TODO
+    status: PLANNED_BLOCKED
     source_ids:
       - deepoheat
       - thermal-generative-ai
@@ -1745,7 +1745,7 @@ work_items:
   - id: p2-hardware-security-ai-watch
     title: Hardware Security AI Watch Lane
     priority: P2
-    status: TODO
+    status: PLANNED_BLOCKED
     source_ids:
       - hardware-trojan-ml
       - veriloglavd

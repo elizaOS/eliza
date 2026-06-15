@@ -21,7 +21,7 @@ import { buildFailureReplyPrompt, isRateLimitError } from "../message";
  * Fix: the prompt now explicitly forbids answering the question on the
  * merits during a failure reply — even when the answer looks obvious —
  * because the grounding trajectory never ran. These tests pin the
- * forbid-list so a future "let's make the failure reply more helpful"
+ * forbid-list so a later "let's make the failure reply more helpful"
  * refactor can't silently re-introduce the hallucination vector.
  */
 describe("buildFailureReplyPrompt", () => {

@@ -110,6 +110,33 @@ class PrototypeStatusDashboardTest(unittest.TestCase):
         }
         self.assertTrue(conservative_snapshot_allowed("benchmarks", status, row))
 
+    def test_allows_toolchain_probe_to_stay_conservative_on_full_host(self) -> None:
+        status = {
+            "status": "pass",
+            "evidence_class": "tool_available",
+            "next_step": "none",
+        }
+        row = {
+            "Status": "`BLOCK`",
+            "Evidence class": "`tool_blocker`",
+            "Next action": "`scripts/check_tools.sh && scripts/tool_versions.sh`",
+        }
+        self.assertTrue(conservative_snapshot_allowed("toolchain-fast-path", status, row))
+
+    def test_does_not_let_toolchain_probe_overclaim_pass(self) -> None:
+        # A dashboard PASS while the live gate reports BLOCK must still fail closed.
+        status = {
+            "status": "block",
+            "evidence_class": "tool_blocker",
+            "next_step": "scripts/check_tools.sh && scripts/tool_versions.sh",
+        }
+        row = {
+            "Status": "`PASS`",
+            "Evidence class": "`tool_available`",
+            "Next action": "`none`",
+        }
+        self.assertFalse(conservative_snapshot_allowed("toolchain-fast-path", status, row))
+
     def test_allows_npu_ml_proof_to_remain_source_only_conservative(self) -> None:
         status = {
             "status": "pass",

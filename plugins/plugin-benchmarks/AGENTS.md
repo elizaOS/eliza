@@ -78,8 +78,8 @@ None. This plugin reads no environment variables and has no runtime configuratio
 
 ## Conventions / gotchas
 
-- **Handlers are stubs.** Every action handler returns `success: true` with the structured parameters passed through as `data`. The actual benchmark operation is performed by the external benchmark environment, not by the handler. Do not add real side effects here.
-- **`promoteSubactionsToActions`** from `@elizaos/core` reads the first parameter's `schema.enum` array and generates one virtual `Action` per entry, named `<UMBRELLA>_<SUBACTION_UPPERCASED>`. The umbrella action itself is also included. Tau-bench skips promotion because `tool_name` has no enum.
+- **Handlers are pass-through adapters.** Every action handler returns `success: true` with the structured parameters passed through as `data`. The actual benchmark operation is performed by the external benchmark environment, not by the handler. Do not add real side effects here.
+- **`promoteSubactionsToActions`** from `@elizaos/core` reads the first parameter's `schema.enum` array and generates one virtual `Action` per entry, named `<UMBRELLA>_<SUBACTION_UPPERCASED>`. The umbrella action itself is also included. Tau-bench uses the umbrella action directly because `tool_name` has no enum.
 - **`subActions` is mutated by `promoteSubactionsToActions`.** After calling it, the umbrella action's `subActions` array is populated (9 for vending, 5 for webshop, 11 for OSWorld, 7 for visualwebbench). Tests assert these counts.
 - **No external dependencies** beyond `@elizaos/core`. No native addons, no network calls, no file I/O.
 - **Total action count is 37.** Tests assert this — update the assertion whenever actions are added or removed.

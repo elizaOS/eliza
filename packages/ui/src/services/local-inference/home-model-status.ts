@@ -13,7 +13,7 @@ export type HomeModelStatusKind =
 
 export interface HomeModelStatus {
   kind: HomeModelStatusKind;
-  /** True while the local text model is not yet usable for chat. */
+  /** True while the local text model is unavailable for chat. */
   blocksSend: boolean;
   /** Download completion 0–100, or null when not downloading. */
   percent: number | null;
@@ -120,7 +120,7 @@ export function deriveHomeModelStatus(
     };
   }
 
-  // Downloaded to disk but not yet activated by the runtime.
+  // Downloaded to disk and awaiting runtime activation.
   return {
     kind: "loading",
     blocksSend: true,

@@ -181,7 +181,7 @@ describe.skipIf(!serverAvailable)("A2A Client Coverage E2E Tests", () => {
       expect(result).toBeDefined();
     });
 
-    // TODO: Referral methods not yet implemented
+    // Referral methods are unavailable in this example client.
     // it('should get referrals', async () => {
     //   const result = await client.getReferrals();
     //   expect(result).toHaveProperty('referrals');

@@ -953,6 +953,48 @@
       "when": 1779408400000,
       "tag": "0135_agent_sandboxes_image_digest",
       "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1779408500000,
+      "tag": "0135_app_image_generation_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1779408600000,
+      "tag": "0136_agent_backup_incremental",
+      "breakpoints": true
+    },
+    {
+      "idx": 138,
+      "version": "7",
+      "when": 1779408700000,
+      "tag": "0137_agent_execution_tier",
+      "breakpoints": true
+    },
+    {
+      "idx": 139,
+      "version": "7",
+      "when": 1779408800000,
+      "tag": "0140_tenant_db_clusters",
+      "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "7",
+      "when": 1779409000000,
+      "tag": "0142_container_billing_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1779409100000,
+      "tag": "0143_org_credit_balance_default_zero",
+      "breakpoints": true
     }
   ]
 }

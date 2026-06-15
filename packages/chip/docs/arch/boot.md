@@ -34,7 +34,7 @@ and the OpenSBI handoff record that proves Linux sees initialized memory rather
 than the current SRAM-backed test aperture.
 The identity ROM remains a contract ROM for the package debug path, not a full firmware ROM. A production boot handoff still needs ROM code that sets up M-mode state and jumps to OpenSBI or another firmware payload.
 
-Secure boot is not implemented. A production chain must authenticate a
+Secure boot evidence is absent. A production chain must authenticate a
 signature, enforce rollback indexes, select A/B slots, validate recovery/OTA,
 and fail closed before mutable firmware runs.
 

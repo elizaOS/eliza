@@ -1,4 +1,4 @@
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import type { SpendingLimitConfig } from "./types";
@@ -64,8 +64,4 @@ export function SpendingLimitSection({
       />
     </div>
   );
-}
-
-export function spendingSummary(config: SpendingLimitConfig): string {
-  return `$${config.maxPerTx}/tx · $${config.maxPerDay}/day · $${config.maxPerWeek}/wk`;
 }

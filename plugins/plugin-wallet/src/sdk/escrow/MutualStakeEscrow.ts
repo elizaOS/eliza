@@ -220,8 +220,7 @@ export class MutualStakeEscrow {
 
     await this.publicClient.waitForTransactionReceipt({ hash: txHash });
 
-    // Read vault address from return data via simulation
-    // (VaultCreated event parsing reserved for future use)
+    // Read vault address from return data via simulation.
     const vaultAddress = (await this.publicClient.readContract({
       address: this.factoryAddress,
       abi: StakeVaultFactoryAbi,

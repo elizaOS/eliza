@@ -42,6 +42,7 @@ class ProfileEnvConfig:
     control_dt_s: float = 0.02
     action_scale: float = 0.3
     locomotion_action_prior: str = "none"
+    staged_biped_action_prior: str = "none"
     locomotion_prior_residual_scale: float = 1.0
     locomotion_prior_residual_mode: str = "joint"
     locomotion_prior_feedback_pitch: float = 0.0
@@ -216,6 +217,8 @@ class TextConditionedProfileEnv(gym.Env):
         self._last_locomotion_prior_stance_slip_ratio = 0.0
         self._last_locomotion_prior_swing_left = False
         self._last_locomotion_prior_residual_scale = 0.0
+        self._bounded_step_walk_hold_action: np.ndarray | None = None
+        self._bounded_step_walk_settle_started_step: int | None = None
         self._last_single_foot_contact_state: str | None = None
         self._foot_contact_switch_count = 0
         self._post_contact_no_support_steps = 0
@@ -368,6 +371,8 @@ class TextConditionedProfileEnv(gym.Env):
         self._last_locomotion_prior_stance_slip_m_s = 0.0
         self._last_locomotion_prior_stance_slip_ratio = 0.0
         self._last_locomotion_prior_swing_left = False
+        self._bounded_step_walk_hold_action = None
+        self._bounded_step_walk_settle_started_step = None
         self._last_single_foot_contact_state = self._single_foot_contact_state(
             self._last_foot_telemetry
         )
@@ -657,7 +662,10 @@ class TextConditionedProfileEnv(gym.Env):
         self._step_count += 1
         self._gait_phase = _wrap_2pi(
             self._gait_phase
-            + 2.0 * math.pi * self.config.gait_cadence_hz * self.config.control_dt_s
+            + 2.0
+            * math.pi
+            * self._effective_gait_cadence_hz()
+            * self.config.control_dt_s
         )
         self._last_foot_telemetry = self._foot_telemetry()
         self._update_foot_contact_switch_count()
@@ -835,10 +843,37 @@ class TextConditionedProfileEnv(gym.Env):
                     self._last_locomotion_prior_residual_scale
                 ),
                 "locomotion_action_prior": self.config.locomotion_action_prior,
+                "staged_biped_action_prior": self.config.staged_biped_action_prior,
             },
         )
 
+    def _effective_gait_cadence_hz(self) -> float:
+        if (
+            self.config.locomotion_action_prior == "hiwonder_bounded_step_walk"
+            and self._current_task is not None
+            and self._current_task.id == "walk_forward"
+        ):
+            return 1.0 / (52.0 * max(float(self.config.control_dt_s), 1e-6))
+        return float(self.config.gait_cadence_hz)
+
     def _apply_locomotion_action_prior(self, action: np.ndarray) -> np.ndarray:
+        if (
+            self.config.staged_biped_action_prior != "none"
+            and self._current_task is not None
+            and _is_staged_biped_task(self._current_task.id)
+        ):
+            prior = self._staged_biped_prior_action()
+            residual_scale = 0.0
+            residual = np.zeros_like(action, dtype=np.float32)
+            self._last_locomotion_prior_action = prior.copy()
+            self._last_locomotion_prior_residual = residual.copy()
+            self._last_locomotion_prior_residual_pre_guard = residual.copy()
+            self._last_locomotion_prior_residual_stability_scale = 1.0
+            self._last_locomotion_prior_goal_hold_scale = 1.0
+            self._last_locomotion_prior_residual_scale = residual_scale
+            return np.clip(prior + residual_scale * residual, -1.0, 1.0).astype(
+                np.float32
+            )
         if (
             self.config.locomotion_action_prior == "none"
             or self._current_task is None
@@ -861,11 +896,13 @@ class TextConditionedProfileEnv(gym.Env):
             prior = self._locomotion_hiwonder_contact_sine_prior_action()
         elif self.config.locomotion_action_prior == "hiwonder_low_slip_contact_sine":
             prior = self._locomotion_hiwonder_low_slip_contact_sine_prior_action()
+        elif self.config.locomotion_action_prior == "hiwonder_bounded_step_walk":
+            prior = self._locomotion_hiwonder_bounded_step_walk_prior_action()
         else:
             raise ValueError(
                 "locomotion_action_prior must be one of: none, gait, "
                 "hiwonder_sine, hiwonder_contact_sine, "
-                "hiwonder_low_slip_contact_sine"
+                "hiwonder_low_slip_contact_sine, hiwonder_bounded_step_walk"
             )
         if self.config.locomotion_action_prior in {
             "hiwonder_sine",
@@ -877,6 +914,8 @@ class TextConditionedProfileEnv(gym.Env):
             balance_delta = np.clip(balanced_prior - raw_prior, -0.25, 0.25)
             prior = self._apply_locomotion_prior_goal_hold_taper(raw_prior)
             prior = np.clip(prior + balance_delta, -1.0, 1.0).astype(np.float32)
+        elif self.config.locomotion_action_prior == "hiwonder_bounded_step_walk":
+            self._last_locomotion_prior_goal_hold_scale = 1.0
         else:
             prior = self._apply_locomotion_prior_balance_feedback(prior)
             prior = self._apply_locomotion_prior_goal_hold_taper(prior)
@@ -888,6 +927,100 @@ class TextConditionedProfileEnv(gym.Env):
         self._last_locomotion_prior_residual = residual.copy()
         self._last_locomotion_prior_residual_scale = residual_scale
         return np.clip(prior + residual_scale * residual, -1.0, 1.0).astype(np.float32)
+
+    def _staged_biped_prior_action(self) -> np.ndarray:
+        if self.config.staged_biped_action_prior != "hiwonder_staged_biped":
+            raise ValueError(
+                "staged_biped_action_prior must be one of: none, "
+                "hiwonder_staged_biped"
+            )
+        task_id = self._current_task.id if self._current_task is not None else ""
+        if task_id == "weight_shift_left":
+            return self._staged_biped_weight_shift_action("left")
+        if task_id == "weight_shift_right":
+            return self._staged_biped_weight_shift_action("right")
+        if task_id == "lift_left_foot":
+            if self._step_count < 30:
+                return self._staged_biped_lift_action("left", roll=0.45)
+            return np.zeros(self.action_space.shape, dtype=np.float32)
+        if task_id == "lift_right_foot":
+            if self._step_count < 30:
+                return self._staged_biped_lift_action("right", roll=-0.45)
+            return np.zeros(self.action_space.shape, dtype=np.float32)
+        if task_id == "step_in_place":
+            cycle = self._step_count % 36
+            if cycle < 8:
+                return self._staged_biped_lift_action("left", roll=0.45)
+            if cycle < 14:
+                return np.zeros(self.action_space.shape, dtype=np.float32)
+            if cycle < 30:
+                return self._staged_biped_lift_action("right", roll=-0.45)
+            return np.zeros(self.action_space.shape, dtype=np.float32)
+        if task_id == "step_forward":
+            return self._staged_biped_step_forward_action()
+        return np.zeros(self.action_space.shape, dtype=np.float32)
+
+    def _staged_biped_lift_action(self, lift_side: str, roll: float) -> np.ndarray:
+        action = np.zeros(self.action_space.shape, dtype=np.float32)
+        for idx, joint in enumerate(self._action_joints):
+            name = joint.name.lower()
+            side = "left" if name.startswith(("l_", "left_")) else "right"
+            if "hip_roll" in name:
+                action[idx] = roll
+            elif "ank_roll" in name or "ankle_roll" in name:
+                action[idx] = -roll
+            if side != lift_side:
+                continue
+            if "hip_pitch" in name:
+                action[idx] = -0.25
+            elif "knee" in name:
+                action[idx] = 0.75
+            elif "ank_pitch" in name or "ankle_pitch" in name:
+                action[idx] = 0.20
+        return np.clip(action, -1.0, 1.0).astype(np.float32)
+
+    def _staged_biped_weight_shift_action(self, stance_side: str) -> np.ndarray:
+        roll = 0.20 if stance_side == "left" else -0.20
+        action = np.zeros(self.action_space.shape, dtype=np.float32)
+        for idx, joint in enumerate(self._action_joints):
+            name = joint.name.lower()
+            if "hip_roll" in name:
+                action[idx] = roll
+            elif "ank_roll" in name or "ankle_roll" in name:
+                action[idx] = -roll
+        return np.clip(action, -1.0, 1.0).astype(np.float32)
+
+    def _staged_biped_step_forward_action(self) -> np.ndarray:
+        if self._step_count >= 60:
+            return np.zeros(self.action_space.shape, dtype=np.float32)
+        cycle = self._step_count % 36
+        if cycle < 8:
+            return self._staged_biped_forward_lift_action("left")
+        if cycle < 14:
+            return np.zeros(self.action_space.shape, dtype=np.float32)
+        if cycle < 22:
+            return self._staged_biped_forward_lift_action("right")
+        return np.zeros(self.action_space.shape, dtype=np.float32)
+
+    def _staged_biped_forward_lift_action(self, lift_side: str) -> np.ndarray:
+        roll = 0.40 if lift_side == "left" else -0.40
+        action = np.zeros(self.action_space.shape, dtype=np.float32)
+        for idx, joint in enumerate(self._action_joints):
+            name = joint.name.lower()
+            side = "left" if name.startswith(("l_", "left_")) else "right"
+            if "hip_roll" in name:
+                action[idx] = roll
+            elif "ank_roll" in name or "ankle_roll" in name:
+                action[idx] = -roll
+            if side != lift_side:
+                continue
+            if "hip_pitch" in name:
+                action[idx] = 0.10
+            elif "knee" in name:
+                action[idx] = 0.75
+            elif "ank_pitch" in name or "ankle_pitch" in name:
+                action[idx] = 0.20
+        return np.clip(action, -1.0, 1.0).astype(np.float32)
 
     def _apply_locomotion_prior_capture_plant(self, prior: np.ndarray) -> np.ndarray:
         if self._current_task is None or not _is_locomotion_reward(self._current_task.reward):
@@ -1961,6 +2094,16 @@ class TextConditionedProfileEnv(gym.Env):
             self._gait_phase,
             self.profile.gait.swing_height_m,
         )
+        fixed_contact_reward = _fixed_contact_pattern_reward(
+            crit,
+            foot_telemetry[2:4],
+            foot_telemetry[:2],
+            self.profile.gait.swing_height_m,
+        )
+        if fixed_contact_reward is not None:
+            contact_cadence = fixed_contact_reward["contact_cadence"]
+            stance_contact = fixed_contact_reward["stance_contact"]
+            foot_clearance = fixed_contact_reward["foot_clearance"]
         no_support = 1.0 if float(np.sum(foot_telemetry[:2])) < 0.5 else 0.0
         double_support = 1.0 if float(np.sum(foot_telemetry[:2] > 0.5)) >= 2.0 else 0.0
         foot_slip = float(np.max(foot_telemetry[4:6])) if foot_telemetry.size >= 6 else 0.0
@@ -2671,6 +2814,150 @@ class TextConditionedProfileEnv(gym.Env):
             self._locomotion_hiwonder_low_slip_contact_sine_params()
         )
 
+    def _joint_pose_action(self) -> np.ndarray:
+        joint_pose = np.array(
+            [self._data.qpos[qpos_idx] for qpos_idx in self._joint_qpos_idx],
+            dtype=np.float32,
+        )
+        action_scale = max(float(self.config.action_scale), 1e-6)
+        return np.clip(
+            (joint_pose - self._home_pose.astype(np.float32)) / action_scale,
+            -1.0,
+            1.0,
+        ).astype(np.float32)
+
+    def _locomotion_hiwonder_bounded_step_walk_prior_action(self) -> np.ndarray:
+        """Verifier-aligned HiWonder walk scaffold built from `step_forward`.
+
+        It is not a walking proof by itself. The point is to give Alberta a
+        causal prior that has foot clearance and alternating contacts, then let
+        joint residuals learn stability, distance, and hold.
+        """
+        if self._current_task is None or self._current_task.id not in {
+            "walk_forward",
+            "walk_forward_bridge",
+            "walk_forward_mid_bridge",
+        }:
+            return np.zeros(self.action_space.shape, dtype=np.float32)
+
+        pose = self._root_pose_summary()
+        tracked = self._tracked_pose_summary(pose)
+        delta_x = float(tracked["x"] - self._episode_start_tracked_x)
+        delta_y = float(tracked["y"] - self._episode_start_tracked_y)
+        yaw = _wrap_pi(float(pose.get("yaw", 0.0)) - self._episode_start_yaw)
+        roll_now = float(pose.get("roll", 0.0))
+        should_settle = self._step_count >= 240 or delta_x >= 0.305
+        if should_settle and self._bounded_step_walk_settle_started_step is None:
+            self._bounded_step_walk_settle_started_step = self._step_count
+        if self._bounded_step_walk_settle_started_step is not None:
+            if self._bounded_step_walk_hold_action is None:
+                self._bounded_step_walk_hold_action = self._joint_pose_action()
+            hold = self._bounded_step_walk_hold_action
+            correction = np.zeros(self.action_space.shape, dtype=np.float32)
+            for idx, joint in enumerate(self._action_joints):
+                name = joint.name.lower()
+                side_sign = 1.0 if name.startswith(("l_", "left_")) else -1.0
+                if "hip_yaw" in name:
+                    correction[idx] = 0.20 * side_sign * yaw
+                elif "hip_roll" in name:
+                    correction[idx] = 0.40 * delta_y
+                elif "ank_roll" in name or "ankle_roll" in name:
+                    correction[idx] = -0.40 * delta_y
+            hold_action = np.clip(0.75 * hold + correction, -1.0, 1.0).astype(
+                np.float32
+            )
+            alpha = min(
+                1.0,
+                float(self._step_count - self._bounded_step_walk_settle_started_step + 1)
+                / 20.0,
+            )
+            alpha = alpha * alpha * (3.0 - 2.0 * alpha)
+            drive_action = self._bounded_step_walk_drive_action(
+                delta_y=delta_y,
+                yaw=yaw,
+                roll_now=roll_now,
+            )
+            return np.clip(
+                (1.0 - alpha) * drive_action + alpha * hold_action,
+                -1.0,
+                1.0,
+            ).astype(np.float32)
+
+        return self._bounded_step_walk_drive_action(
+            delta_y=delta_y,
+            yaw=yaw,
+            roll_now=roll_now,
+        )
+
+    def _bounded_step_walk_drive_action(
+        self,
+        *,
+        delta_y: float,
+        yaw: float,
+        roll_now: float,
+    ) -> np.ndarray:
+        if self._current_task is not None and self._current_task.id in {
+            "walk_forward",
+            "walk_forward_mid_bridge",
+        }:
+            cycle_steps = 52
+            left_lift_steps = 8
+            neutral_steps = 16
+            right_lift_steps = 8
+            roll_amplitude = 0.30
+            hip_pitch = 0.40
+            knee = 0.85
+            ankle_pitch = 0.20
+            yaw_gain = 0.40
+            lateral_gain = -0.40
+        else:
+            cycle_steps = 42
+            left_lift_steps = 8
+            neutral_steps = 6
+            right_lift_steps = 8
+            roll_amplitude = 0.32
+            hip_pitch = 0.25
+            knee = 0.85
+            ankle_pitch = 0.20
+            yaw_gain = 0.80
+            lateral_gain = -0.40
+
+        cycle = self._step_count % cycle_steps
+        if cycle < left_lift_steps:
+            lift_side = "left"
+        elif cycle < left_lift_steps + neutral_steps:
+            return np.zeros(self.action_space.shape, dtype=np.float32)
+        elif cycle < left_lift_steps + neutral_steps + right_lift_steps:
+            lift_side = "right"
+        else:
+            return np.zeros(self.action_space.shape, dtype=np.float32)
+
+        roll = (
+            (roll_amplitude if lift_side == "left" else -roll_amplitude)
+            + lateral_gain * delta_y
+            + 0.15 * roll_now
+        )
+        action = np.zeros(self.action_space.shape, dtype=np.float32)
+        for idx, joint in enumerate(self._action_joints):
+            name = joint.name.lower()
+            side = "left" if name.startswith(("l_", "left_")) else "right"
+            side_sign = 1.0 if side == "left" else -1.0
+            if "hip_yaw" in name:
+                action[idx] = yaw_gain * side_sign * yaw
+            if "hip_roll" in name:
+                action[idx] = roll
+            elif "ank_roll" in name or "ankle_roll" in name:
+                action[idx] = -roll
+            if side != lift_side:
+                continue
+            if "hip_pitch" in name:
+                action[idx] = hip_pitch
+            elif "knee" in name:
+                action[idx] = knee
+            elif "ank_pitch" in name or "ankle_pitch" in name:
+                action[idx] = ankle_pitch
+        return np.clip(action, -1.0, 1.0).astype(np.float32)
+
     def _locomotion_hiwonder_sine_action_from_params(
         self,
         params: dict[str, float],
@@ -3067,6 +3354,17 @@ def _is_locomotion_reward(reward_cfg: dict) -> bool:
     )
 
 
+def _is_staged_biped_task(task_id: str) -> bool:
+    return task_id in {
+        "weight_shift_left",
+        "weight_shift_right",
+        "lift_left_foot",
+        "lift_right_foot",
+        "step_in_place",
+        "step_forward",
+    }
+
+
 def _task_requires_unsupported_profile_env_features(task: TaskSpec) -> bool:
     reward_keys = {
         "head_tilt_target_rad",
@@ -3154,6 +3452,55 @@ def _foot_clearance_reward(
     clearance = np.maximum(0.0, foot_z[:2][swing_mask] - ground_z)
     airborne = 1.0 - np.clip(contacts[:2][swing_mask], 0.0, 1.0)
     return float(np.mean(np.clip(clearance / target, 0.0, 1.0) * airborne))
+
+
+def _fixed_contact_pattern_reward(
+    success: dict,
+    foot_z: np.ndarray,
+    contacts: np.ndarray,
+    swing_height_m: float,
+) -> dict[str, float] | None:
+    """Reward an explicit verifier contact pattern for staged biped tasks."""
+    desired = np.full(2, np.nan, dtype=np.float32)
+    for side_idx, side in enumerate(("left", "right")):
+        key = f"{side}_foot_contact_required"
+        if key in success:
+            desired[side_idx] = 1.0 if bool(success[key]) else 0.0
+    specified = np.isfinite(desired)
+    if not bool(np.any(specified)):
+        return None
+    contacts = np.asarray(contacts, dtype=np.float32)
+    foot_z = np.asarray(foot_z, dtype=np.float32)
+    if contacts.shape[0] < 2 or foot_z.shape[0] < 2:
+        return {"contact_cadence": 0.0, "stance_contact": 0.0, "foot_clearance": 0.0}
+    clipped_contacts = np.clip(contacts[:2], 0.0, 1.0)
+    contact_cadence = float(
+        1.0 - np.mean(np.abs(clipped_contacts[specified] - desired[specified]))
+    )
+    stance_mask = np.logical_and(specified, desired > 0.5)
+    stance_contact = (
+        float(np.mean(clipped_contacts[stance_mask]))
+        if bool(np.any(stance_mask))
+        else contact_cadence
+    )
+    swing_mask = np.logical_and(specified, desired < 0.5)
+    foot_clearance = 0.0
+    if bool(np.any(swing_mask)):
+        stance_z = foot_z[:2][stance_mask]
+        ground_z = (
+            float(np.min(stance_z)) if stance_z.size else float(np.min(foot_z[:2]))
+        )
+        target = max(0.01, 0.45 * float(swing_height_m))
+        clearance = np.maximum(0.0, foot_z[:2][swing_mask] - ground_z)
+        airborne = 1.0 - clipped_contacts[swing_mask]
+        foot_clearance = float(
+            np.mean(np.clip(clearance / target, 0.0, 1.0) * airborne)
+        )
+    return {
+        "contact_cadence": contact_cadence,
+        "stance_contact": stance_contact,
+        "foot_clearance": foot_clearance,
+    }
 
 
 def _clamped_ratio(value: float, target: float) -> float:

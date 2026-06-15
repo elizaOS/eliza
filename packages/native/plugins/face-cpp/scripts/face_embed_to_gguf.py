@@ -102,7 +102,7 @@ def build_random_tensors(seed: int) -> dict[str, np.ndarray]:
 
 
 def discover_embedder_tensors(family: str, *, seed: int) -> dict[str, np.ndarray]:
-    """Return the tensor map for the embedding network. Phase 2 ships
+    """Return the tensor map for the embedding network. This build ships
     the random-init variant; ``family`` only controls the metadata
     tag the GGUF advertises (so the C ABI accepts both names while
     only the same architecture is exposed)."""

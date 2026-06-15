@@ -1,5 +1,5 @@
 /**
- * WS7 — AospInputActor stub tests.
+ * WS7 — AospInputActor fake-bridge tests.
  *
  * Exercises the privileged-build adapter that maps cascade-resolved
  * `ProposedAction`s into `injectMotionEvent` calls. We don't have a real

@@ -59,7 +59,7 @@ operations.
 | S10 Signer host / HSM API | offline / online | A2, A3, A4, A13 |
 | S11 RMA unlock challenge-response | service | A5, A7, A10 |
 
-## 4. Mitigations (required, not implemented)
+## 4. Required Mitigations
 
 | ID | Mitigation | Surfaces | Spec doc |
 |----|---|---|---|

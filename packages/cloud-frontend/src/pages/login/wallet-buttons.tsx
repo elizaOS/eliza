@@ -1,7 +1,11 @@
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
-import type { StewardAuth, StewardAuthResult } from "@stwd/sdk";
+import type {
+  StewardAuth,
+  StewardAuthResult,
+  StewardMfaRequiredResult,
+} from "@stwd/sdk";
 import NetworkBase from "@web3icons/react/icons/networks/NetworkBase";
 import NetworkBinanceSmartChain from "@web3icons/react/icons/networks/NetworkBinanceSmartChain";
 import NetworkEthereum from "@web3icons/react/icons/networks/NetworkEthereum";
@@ -9,6 +13,81 @@ import TokenSOL from "@web3icons/react/icons/tokens/TokenSOL";
 import { useCallback, useEffect, useRef } from "react";
 import { type Connector, useAccount, useConnect, useSignMessage } from "wagmi";
 import { useT } from "@/providers/I18nProvider";
+
+type HexAddress = `0x${string}`;
+
+interface Eip1193Provider {
+  isPhantom?: boolean;
+  request(args: {
+    method: "eth_accounts" | "eth_requestAccounts";
+  }): Promise<readonly string[] | null>;
+  request(args: {
+    method: "personal_sign";
+    params: readonly [`0x${string}`, HexAddress];
+  }): Promise<string>;
+}
+
+function getWindowEthereumProvider(): Eip1193Provider | null {
+  if (typeof window === "undefined") return null;
+  const ethereum = (window as Window & { ethereum?: Eip1193Provider }).ethereum;
+  if (!ethereum || typeof ethereum.request !== "function") return null;
+  if (ethereum.isPhantom === true) return null;
+  return ethereum;
+}
+
+function isHexAddress(value: string | undefined): value is HexAddress {
+  return /^0x[a-fA-F0-9]{40}$/.test(value ?? "");
+}
+
+// Wallet sign-in returns `StewardAuthResult | StewardMfaRequiredResult`.
+// There is no MFA-continuation UI in this login surface, so narrow on the
+// `mfaRequired` discriminant and surface a clear error instead of forwarding
+// an MFA challenge to onSuccess as if it carried tokens.
+function requireCompletedAuth(
+  result: StewardAuthResult | StewardMfaRequiredResult,
+): StewardAuthResult {
+  if ("mfaRequired" in result) {
+    throw new Error("MFA required — not yet supported in this client.");
+  }
+  return result;
+}
+
+async function requestEip1193Account(
+  provider: Eip1193Provider,
+): Promise<HexAddress | null> {
+  const existingAccounts = await provider.request({ method: "eth_accounts" });
+  const [existingAccount] = existingAccounts ?? [];
+  if (isHexAddress(existingAccount)) return existingAccount;
+
+  const requestedAccounts = await provider.request({
+    method: "eth_requestAccounts",
+  });
+  const [requestedAccount] = requestedAccounts ?? [];
+  return isHexAddress(requestedAccount) ? requestedAccount : null;
+}
+
+function stringToHex(value: string): `0x${string}` {
+  let hex = "";
+  for (const byte of new TextEncoder().encode(value)) {
+    hex += byte.toString(16).padStart(2, "0");
+  }
+  return `0x${hex}`;
+}
+
+async function personalSign(
+  provider: Eip1193Provider,
+  address: HexAddress,
+  message: string,
+): Promise<string> {
+  const signature = await provider.request({
+    method: "personal_sign",
+    params: [stringToHex(message), address],
+  });
+  if (!signature.startsWith("0x")) {
+    throw new Error("Wallet returned an invalid Ethereum signature.");
+  }
+  return signature;
+}
 
 // Phantom injects itself as an Ethereum provider but must never be used for
 // SIWE — it is Solana-first and the user's intent for SIWE is a real EVM wallet.
@@ -68,15 +147,19 @@ async function pickInjectedConnector(
  *   3. Call onSuccess(result) or onError(err).
  */
 export function WalletButtons({
+  autoStart,
   auth,
   disabled,
+  onAutoStartHandled,
   onSuccess,
   onError,
   onLoadingChange,
   loadingProvider,
 }: {
+  autoStart?: "ethereum" | "solana" | null;
   auth: StewardAuth;
   disabled: boolean;
+  onAutoStartHandled?: () => void;
   onSuccess: (result: StewardAuthResult) => void | Promise<void>;
   onError: (error: Error, kind: "ethereum" | "solana") => void;
   onLoadingChange: (kind: "ethereum" | "solana" | null) => void;
@@ -85,16 +168,20 @@ export function WalletButtons({
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
       <EthereumButton
+        autoStart={autoStart === "ethereum"}
         auth={auth}
         disabled={disabled}
+        onAutoStartHandled={onAutoStartHandled}
         loading={loadingProvider === "ethereum"}
         onSuccess={onSuccess}
         onError={(err) => onError(err, "ethereum")}
         onLoadingChange={(l) => onLoadingChange(l ? "ethereum" : null)}
       />
       <SolanaButton
+        autoStart={autoStart === "solana"}
         auth={auth}
         disabled={disabled}
+        onAutoStartHandled={onAutoStartHandled}
         loading={loadingProvider === "solana"}
         onSuccess={onSuccess}
         onError={(err) => onError(err, "solana")}
@@ -107,16 +194,20 @@ export function WalletButtons({
 // ── Ethereum ────────────────────────────────────────────────────────────────
 
 function EthereumButton({
+  autoStart,
   auth,
   disabled,
   loading,
+  onAutoStartHandled,
   onSuccess,
   onError,
   onLoadingChange,
 }: {
+  autoStart: boolean;
   auth: StewardAuth;
   disabled: boolean;
   loading: boolean;
+  onAutoStartHandled?: () => void;
   onSuccess: (result: StewardAuthResult) => void | Promise<void>;
   onError: (err: Error) => void;
   onLoadingChange: (loading: boolean) => void;
@@ -131,15 +222,15 @@ function EthereumButton({
   // connection to trigger SIWE" intent.
   const pendingSignRef = useRef(false);
 
-  const sign = useCallback(
-    async (addr: `0x${string}`) => {
+  const signWith = useCallback(
+    async (
+      addr: HexAddress,
+      signMessage: (message: string) => Promise<string>,
+    ) => {
       onLoadingChange(true);
       try {
-        const result = await auth.signInWithSIWE(
-          addr,
-          async (message: string) => {
-            return await signMessageAsync({ message });
-          },
+        const result = requireCompletedAuth(
+          await auth.signInWithSIWE(addr, signMessage),
         );
         await onSuccess(result);
       } catch (e) {
@@ -149,7 +240,25 @@ function EthereumButton({
         onLoadingChange(false);
       }
     },
-    [auth, signMessageAsync, onSuccess, onError, onLoadingChange],
+    [auth, onSuccess, onError, onLoadingChange],
+  );
+
+  const sign = useCallback(
+    async (addr: HexAddress) => {
+      await signWith(addr, async (message: string) => {
+        return await signMessageAsync({ message });
+      });
+    },
+    [signMessageAsync, signWith],
+  );
+
+  const signWithEip1193 = useCallback(
+    async (provider: Eip1193Provider, addr: HexAddress) => {
+      await signWith(addr, async (message: string) => {
+        return await personalSign(provider, addr, message);
+      });
+    },
+    [signWith],
   );
 
   // If click triggered a connect modal, once connection lands, auto-sign.
@@ -163,6 +272,15 @@ function EthereumButton({
   const connectAndSign = useCallback(async () => {
     onLoadingChange(true);
     try {
+      const provider = getWindowEthereumProvider();
+      if (provider) {
+        const account = await requestEip1193Account(provider);
+        if (account) {
+          await signWithEip1193(provider, account);
+          return;
+        }
+      }
+
       const connector = await pickInjectedConnector(connectors);
       if (!connector) {
         // No injected connector available — fall through to the RainbowKit
@@ -194,6 +312,7 @@ function EthereumButton({
     onError,
     onLoadingChange,
     sign,
+    signWithEip1193,
     t,
   ]);
 
@@ -205,6 +324,14 @@ function EthereumButton({
     }
     void connectAndSign();
   }, [disabled, loading, isConnected, address, sign, connectAndSign]);
+
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (!autoStart || autoStartedRef.current || disabled || loading) return;
+    autoStartedRef.current = true;
+    onAutoStartHandled?.();
+    handleClick();
+  }, [autoStart, disabled, handleClick, loading, onAutoStartHandled]);
 
   // If the user closes the modal without connecting, we don't have a clean
   // signal from RainbowKit; the next effect-tick just leaves pendingSignRef
@@ -227,16 +354,20 @@ function EthereumButton({
 // ── Solana ──────────────────────────────────────────────────────────────────
 
 function SolanaButton({
+  autoStart,
   auth,
   disabled,
   loading,
+  onAutoStartHandled,
   onSuccess,
   onError,
   onLoadingChange,
 }: {
+  autoStart: boolean;
   auth: StewardAuth;
   disabled: boolean;
   loading: boolean;
+  onAutoStartHandled?: () => void;
   onSuccess: (result: StewardAuthResult) => void | Promise<void>;
   onError: (err: Error) => void;
   onLoadingChange: (loading: boolean) => void;
@@ -262,9 +393,8 @@ function SolanaButton({
     try {
       const publicKey = wallet.publicKey.toBase58();
       const signMessage = wallet.signMessage;
-      const result = await auth.signInWithSolana(
-        publicKey,
-        async (msg: Uint8Array) => {
+      const result = requireCompletedAuth(
+        await auth.signInWithSolana(publicKey, async (msg: Uint8Array) => {
           const out = await signMessage(msg);
           if (!out)
             throw new Error(
@@ -273,7 +403,7 @@ function SolanaButton({
               }),
             );
           return out;
-        },
+        }),
       );
       await onSuccess(result);
     } catch (e) {
@@ -300,6 +430,14 @@ function SolanaButton({
     pendingSignRef.current = true;
     setVisible(true);
   }, [disabled, loading, wallet.connected, wallet.publicKey, sign, setVisible]);
+
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (!autoStart || autoStartedRef.current || disabled || loading) return;
+    autoStartedRef.current = true;
+    onAutoStartHandled?.();
+    handleClick();
+  }, [autoStart, disabled, handleClick, loading, onAutoStartHandled]);
 
   return (
     <button

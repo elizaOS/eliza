@@ -459,7 +459,7 @@ function sanitizeLocalInferenceSpeechText(input: string): string {
 
 // ── Config resolution ─────────────────────────────────────────────────────
 
-/** Helper to check if a string looks like a redacted secret placeholder. */
+/** Helper to check if a string looks like a redacted secret token. */
 function isRedactedSecret(val: string): boolean {
   return /^\*+$/.test(val) || val === "REDACTED" || val === "[REDACTED]";
 }

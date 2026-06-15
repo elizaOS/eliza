@@ -62,7 +62,7 @@ evidence_inventory:
   evidence_keys_per_function: 12
   required_evidence_path_count: 120
   present_evidence_path_count: 0
-  blocked_or_local_candidate_evidence_path_count: 110
+  blocked_or_local_candidate_evidence_path_count: 70
   local_surrogate_step_path_count: 10
   missing_evidence_path_count: 120
   every_required_production_path_absent: false

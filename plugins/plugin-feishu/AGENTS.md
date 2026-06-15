@@ -52,7 +52,7 @@ plugins/plugin-feishu/
     constants.ts                 FEISHU_SERVICE_NAME, FEISHU_DOMAINS, MAX_MESSAGE_LENGTH
     types.ts                     All Feishu-specific types: FeishuMessage, FeishuChat, FeishuUser,
                                  FeishuCard, FeishuEventTypes enum, payload interfaces
-    accounts.ts                  Multi-account scaffolding: FeishuAccountConfig, resolveFeishuAccount,
+    accounts.ts                  Account resolution: FeishuAccountConfig, resolveFeishuAccount,
                                  listEnabledFeishuAccounts, normalizeAccountId
     connector-account-provider.ts  ConnectorAccountProvider adapter over accounts.ts
     workflow-credential-provider.ts  Surfaces app credentials to workflow plugin

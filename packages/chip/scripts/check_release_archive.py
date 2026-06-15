@@ -148,7 +148,7 @@ REQUIRED_TEXT = {
     ],
     "source/docs/project/critical-gap-review-2026-05-17.md": [
         "A gap is closed only when",
-        "Workstream E: Product Features Not Implemented",
+        "Workstream E: Product Feature Evidence Pending",
     ],
     "source/docs/project/prototype-status-dashboard.md": [
         "MVP Gate Snapshot",

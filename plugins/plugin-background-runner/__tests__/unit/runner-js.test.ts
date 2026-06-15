@@ -4,9 +4,9 @@
  *
  * The runner executes inside Capacitor's sandboxed JSContext at OS wake time.
  * We can't spin up that runtime here, so the test loads the source as text,
- * stubs `addEventListener` + `fetch` + `console`, evaluates it in a fresh
- * scope to extract the `handleWake` function the file installs on globalThis,
- * then exercises that function directly.
+ * installs test `addEventListener` + `fetch` + `console` globals, evaluates it
+ * in a fresh scope to extract the `handleWake` function the file installs on
+ * globalThis, then exercises that function directly.
  *
  * The same file is read from BOTH the iOS and Android paths; the test that
  * asserts they're identical (`runner-mirror.test.ts`) covers content drift.

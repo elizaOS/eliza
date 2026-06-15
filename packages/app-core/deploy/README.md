@@ -6,7 +6,6 @@ This directory contains the generic deployment assets for elizaOS apps: Dockerfi
 
 - `deploy.defaults.env` — shared defaults loaded by the setup and rollout scripts
 - `Dockerfile.ci` — canonical image for prebuilt runtime/UI artifacts
-- `Dockerfile.cloud` — cloud-optimized full-app image
 - `Dockerfile.cloud-agent` — subordinate cloud-agent runtime image
 - `docker-compose.yml` — gateway plus interactive CLI services
 - `docker-compose.supabase-db.yml` — optional local Postgres service

@@ -4,7 +4,7 @@ Roblox Open Cloud integration: lets an Eliza agent send messages, trigger game-s
 
 ## Purpose / role
 
-Adds outbound Roblox game communication to any Eliza agent. The plugin publishes messages and action payloads to a Roblox experience via the Open Cloud Messaging Service API, and can query player and experience metadata. It is opt-in: set `ROBLOX_API_KEY` + `ROBLOX_UNIVERSE_ID` in the agent's settings; the service skips initialization if either is missing.
+Adds outbound Roblox game communication to any Eliza agent. The plugin publishes messages and action payloads to a Roblox experience via the Open Cloud Messaging Service API, and can query player and experience metadata. It is opt-in: set `ROBLOX_API_KEY` + `ROBLOX_UNIVERSE_ID` in the agent's settings; the service is unavailable if either is missing.
 
 ## Plugin surface
 
@@ -75,7 +75,7 @@ All read via `runtime.getSetting(...)` in `utils/config.ts`:
 | `ROBLOX_API_KEY` | Yes | — | Roblox Open Cloud API key; sensitive |
 | `ROBLOX_UNIVERSE_ID` | Yes | — | Target universe ID |
 | `ROBLOX_PLACE_ID` | No | — | Narrows scope to a specific place |
-| `ROBLOX_WEBHOOK_SECRET` | No | — | For future inbound webhook validation; stored in config but not consumed yet |
+| `ROBLOX_WEBHOOK_SECRET` | No | — | Stored on config for external inbound bridges; the built-in plugin is outbound-only |
 | `ROBLOX_MESSAGING_TOPIC` | No | `"eliza-agent"` | Open Cloud Messaging Service topic |
 | `ROBLOX_DRY_RUN` | No | `false` | String `"true"` suppresses actual publish calls |
 
@@ -94,7 +94,7 @@ All read via `runtime.getSetting(...)` in `utils/config.ts`:
 ## Conventions / gotchas
 
 - **Outbound only**: Open Cloud has no external subscribe endpoint. This plugin publishes to Roblox; it cannot poll incoming player chat. For inbound messages, build an HTTP bridge in Roblox Studio using `HttpService:RequestAsync`.
-- **DryRun**: `ROBLOX_DRY_RUN=true` skips `publishMessage` and `setDataStoreEntry`/`deleteDataStoreEntry` calls silently. DataStore dry-run uses `console.log` (acceptable only in development; do not ship).
+- **DryRun**: `ROBLOX_DRY_RUN=true` records intended `publishMessage` and `setDataStoreEntry`/`deleteDataStoreEntry` operations without calling Roblox. DataStore dry-run uses the structured logger.
 - **Action timeout**: all Roblox service calls are wrapped in a 15-second `Promise.race` timeout (`ROBLOX_ACTION_TIMEOUT_MS`).
 - **Player ID caps**: `targetPlayerIds` is capped at 25 entries (`MAX_ROBLOX_TARGET_IDS`); messages are capped at 1000 characters.
 - **Service singleton**: `RobloxService` is a singleton instance across the process. Each agent UUID gets its own `RobloxAgentManager`. Do not hold state on the service instance directly.

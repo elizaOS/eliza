@@ -1130,10 +1130,12 @@ declare module "./client-base" {
       name: string;
       bio?: string[];
       onProgress?: (status: string, detail?: string) => void;
+      allowSharedRuntime?: boolean;
     }): Promise<{
       bridgeUrl: string;
       agentId: string;
       webUiUrl?: string | null;
+      executionTier?: string;
     }>;
     checkBugReportInfo(): Promise<{
       nodeVersion?: string;
@@ -2430,6 +2432,13 @@ export function resolveCloudAgentApiBase(args: {
   return stripTrailingSlash(args.bridgeUrl ?? "");
 }
 
+function resolveDirectCloudAgentBridgeUrl(
+  cloudApiBase: string,
+  agentId: string,
+): string {
+  return `${cloudApiBase.replace(/\/+$/, "")}/api/v1/eliza/agents/${encodeURIComponent(agentId)}/bridge`;
+}
+
 ElizaClient.prototype.provisionCloudSandbox = async (options) => {
   const { cloudApiBase, authToken, name, bio, onProgress } = options;
   const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
@@ -2472,14 +2481,17 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
 
   // Step 2: Start provisioning
   const provisionRes = await directCloudJsonResponse<{
+    source?: string;
     data?: {
       jobId?: string;
       bridgeUrl?: string | null;
       webUiUrl?: string | null;
+      executionTier?: string | null;
     };
     jobId?: string;
     bridgeUrl?: string | null;
     webUiUrl?: string | null;
+    executionTier?: string | null;
   }>(`${resolvedCloudApiBase}/api/v1/eliza/agents/${agentId}/provision`, {
     method: "POST",
     headers,
@@ -2493,12 +2505,34 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
     provisionData.data?.bridgeUrl ?? provisionData.bridgeUrl ?? null;
   const immediateWebUiUrl =
     provisionData.data?.webUiUrl ?? provisionData.webUiUrl ?? null;
+  const executionTier =
+    provisionData.data?.executionTier ?? provisionData.executionTier ?? null;
+  const isSharedRuntime =
+    provisionData.source === "shared_runtime" || executionTier === "shared";
+  if (isSharedRuntime && options.allowSharedRuntime) {
+    onProgress?.("ready", "Cloud agent ready!");
+    return {
+      bridgeUrl: resolveDirectCloudAgentBridgeUrl(
+        resolvedCloudApiBase,
+        agentId,
+      ),
+      agentId,
+      webUiUrl: null,
+      executionTier: "shared",
+    };
+  }
+  if (isSharedRuntime) {
+    throw new Error(
+      "Failed to start provisioning: shared runtime has no sandbox bridge",
+    );
+  }
   if (immediateBridgeUrl) {
     onProgress?.("ready", "Sandbox ready!");
     return {
       bridgeUrl: immediateBridgeUrl,
       agentId,
       webUiUrl: immediateWebUiUrl,
+      ...(executionTier ? { executionTier } : {}),
     };
   }
   const jobId = provisionData.data?.jobId ?? provisionData.jobId;

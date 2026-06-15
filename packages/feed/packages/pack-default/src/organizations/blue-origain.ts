@@ -46,7 +46,7 @@ const organization = {
     "Our capsule has a ring light.",
     "You are not an astronaut, you are a customer.",
     "We promise awe and a window seat.",
-    "Launch schedule: TBD, vibes confirmed.",
+    "Launch schedule: unannounced, vibes confirmed.",
     "We measure success in minutes, not miles.",
     "Blue Origin: for when you need a flex that costs more than a yacht.",
     "SpaceX goes to Mars. We go to the edge of space. Different visions.",

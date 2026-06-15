@@ -74,11 +74,11 @@ let _servicesImport:
 function requirePhraseChunker(): PhraseChunkerConstructor {
   if (_PhraseChunkerClass) return _PhraseChunkerClass;
   throw new Error(
-    "PhraseChunker not yet loaded — call await PhraseChunkedTts.load() before constructing instances, or provide chunkerClass in options.",
+    "PhraseChunker class unavailable — call await PhraseChunkedTts.load() before constructing instances, or provide chunkerClass in options.",
   );
 }
 /** Pre-warm the PhraseChunker class. Called automatically when the first
- *  PhraseChunkedTts is instantiated if the class hasn't been loaded yet. */
+ *  PhraseChunkedTts is instantiated if the class is not already loaded. */
 async function ensurePhraseChunkerLoaded(): Promise<void> {
   if (_PhraseChunkerClass) return;
   _servicesImport ??= import(

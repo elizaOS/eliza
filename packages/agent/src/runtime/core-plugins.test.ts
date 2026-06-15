@@ -7,7 +7,7 @@ import {
 } from "./core-plugins.ts";
 
 describe("CORE_PLUGINS", () => {
-  it("does not load plugin-google or plugin-lifeops by default", () => {
+  it("does not load plugin-google or plugin-personal-assistant by default", () => {
     // These two plugins pull in heavy native/cloud deps (googleapis and
     // @capacitor/core) that the slim Docker runtime image intentionally does
     // not bundle. Loading them by default crashed the boot smoke / boot gate
@@ -15,13 +15,13 @@ describe("CORE_PLUGINS", () => {
     // require explicit configuration (Google OAuth, LifeOps enablement), so
     // they belong in OPTIONAL_CORE_PLUGINS, never the default core load set.
     expect(CORE_PLUGINS).not.toContain("@elizaos/plugin-google");
-    expect(CORE_PLUGINS).not.toContain("@elizaos/plugin-lifeops");
+    expect(CORE_PLUGINS).not.toContain("@elizaos/plugin-personal-assistant");
     expect(DEFERRED_CORE_PLUGINS).not.toContain("@elizaos/plugin-google");
-    expect(DEFERRED_CORE_PLUGINS).not.toContain("@elizaos/plugin-lifeops");
+    expect(DEFERRED_CORE_PLUGINS).not.toContain("@elizaos/plugin-personal-assistant");
   });
 
-  it("exposes plugin-google and plugin-lifeops as optional, explicitly-enabled plugins", () => {
+  it("exposes plugin-google and plugin-personal-assistant as optional, explicitly-enabled plugins", () => {
     expect(OPTIONAL_CORE_PLUGINS).toContain("@elizaos/plugin-google");
-    expect(OPTIONAL_CORE_PLUGINS).toContain("@elizaos/plugin-lifeops");
+    expect(OPTIONAL_CORE_PLUGINS).toContain("@elizaos/plugin-personal-assistant");
   });
 });

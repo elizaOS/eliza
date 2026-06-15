@@ -12,6 +12,12 @@ This plugin registers model handlers for `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBED
 | Name | Description |
 |---|---|
 | `GENERATE_MEDIA` | Classifies user text as image/audio/video intent, then dispatches to `ModelType.IMAGE` or `ModelType.TEXT_TO_SPEECH`. Video is refused cleanly. |
+| `IDENTIFY_SPEAKER` | Binds the most-recently-heard *unidentified* speaker voice to a named person ("that was Jill"). Emits `VOICE_TURN_OBSERVED` to drive the merge engine; the `VOICE_ENTITY_BOUND` round-trip persists `entityId` onto the profile. Inert (logs only) if no merge-engine plugin is loaded. |
+
+### Events (voice ⇄ entity binding seam — issue #8234)
+The plugin owns the `VoiceProfileStore` (speaker centroids); a merge-engine plugin (plugin-lifeops) owns the entity graph. They communicate only through two core events — neither imports the other:
+- **emits** `VOICE_TURN_OBSERVED` (`emitVoiceTurnObserved`, `src/runtime/voice-entity-binding.ts`) — a recognized voice turn for the merge engine to fold into the graph.
+- **handles** `VOICE_ENTITY_BOUND` (`handleVoiceEntityBound`, registered in `provider.ts`) — persists the merge-engine's `entityId` onto every profile in the imprint cluster via `VoiceProfileStore.bindEntity` (the runtime caller that issue #8234 was missing).
 
 ### Model handlers (registered by `createLocalInferenceModelHandlers()`)
 `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBEDDING`, `IMAGE`, `IMAGE_DESCRIPTION`, `TEXT_TO_SPEECH`, `TRANSCRIPTION`
@@ -30,9 +36,14 @@ Import from `@elizaos/plugin-local-inference/routes` (except `handleLocalInferen
 - ASR: `handleLocalInferenceAsrRoute` (`src/routes/local-inference-asr-route.ts`)
 - Voice first-run: `handleVoiceFirstRunRoutes` (`src/routes/voice-first-run-routes.ts`)
 - Voice models: `handleVoiceModelsRoutes` (`src/routes/voice-models-routes.ts`)
-- Voice profiles: `handleVoiceProfileRoutes` (`src/services/voice/voice-profile-routes.ts`)
+- Voice profiles (TTS preset catalog): `handleVoiceProfileRoutes` (`src/services/voice/voice-profile-routes.ts`)
 - Family-member voice encoder: `handleFamilyMemberRoute` (`src/routes/family-member-route.ts`)
 - Catalog/download/hardware/providers/routing (`/api/local-inference/*`): `handleLocalInferenceCompatRoutes` (`src/routes/local-inference-compat-routes.ts`) — this is the variant app-core mounts; `handleLocalInferenceRoutes` above is the upstream-agent equivalent.
+
+### HTTP routes (served from `plugin.routes` — `runtime.routes` rawPath)
+No server forwards these namespaces to the route dispatchers above, so they are registered as `rawPath` routes on the plugin object (`src/routes/voice-profile-plugin-routes.ts`) and served by both the upstream agent server and app-core via the runtime plugin route system. All are private (the host dispatcher answers 401 for unauthenticated callers):
+- Speaker-profile entity binding (`/v1/voice/speaker-profiles`, `…/:id/bind`, `…/:id/unbind`): `handleVoiceSpeakerProfileRoutes` (`src/routes/voice-speaker-profile-routes.ts`) — list speaker centroids and bind/unbind a recognized voice to an elizaOS entity (the HTTP runtime path for `VoiceProfileStore.bindEntity`, issue #8234)
+- Voice-profile management UI (`/api/voice/profiles*` — list / rename / delete / merge / split / export / sample / bind / unbind): `handleVoiceProfilesManagementRoutes` (`src/routes/voice-profiles-management-routes.ts`) — the server half of the `VoiceProfileSection` settings UI
 
 ### Runtime boot exports
 Import from `@elizaos/plugin-local-inference/runtime`:
@@ -51,6 +62,7 @@ src/
 
   actions/
     generate-media.ts             GENERATE_MEDIA action: keyword+classifier intent routing → IMAGE or TTS
+    identify-speaker.ts           IDENTIFY_SPEAKER action: name a recent unidentified voice → merge engine
 
   routes/
     index.ts                      Re-exports all route handlers
@@ -59,10 +71,14 @@ src/
     local-inference-compat-routes.ts  /api/local-inference/* catalog, downloads, hardware, providers, routing
     voice-first-run-routes.ts     Voice onboarding flow
     voice-models-routes.ts        Voice model install/update routes
+    voice-profile-plugin-routes.ts   rawPath Route[] on the plugin object (mounts the two below)
+    voice-speaker-profile-routes.ts  Bind/unbind a recognized speaker voice to an elizaOS entity
+    voice-profiles-management-routes.ts  /api/voice/profiles* — VoiceProfileSection management UI
     family-member-route.ts        Family-member voice encoder route
 
   runtime/
     index.ts                      Boot-time exports (ensureLocalInferenceHandler, embedding policy, mobile gate)
+    voice-entity-binding.ts       VOICE_TURN_OBSERVED producer + VOICE_ENTITY_BOUND consumer (profile bindEntity)
     ensure-local-inference-handler.ts  Registers text/embedding handlers; wires router-handler
     embedding-presets.ts          detectEmbeddingPreset(), EMBEDDING_PRESETS
     embedding-warmup-policy.ts    shouldWarmupLocalEmbeddingModel()

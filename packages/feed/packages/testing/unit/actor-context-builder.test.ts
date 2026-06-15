@@ -141,10 +141,12 @@ describe("ActorContextBuilder", () => {
 
   it("includes headlines array in awareness", async () => {
     const ctx = await builder.buildContext("ailon-musk");
-    expect(ctx).not.toBeNull();
-    expect(Array.isArray(ctx?.awareness.headlines)).toBe(true);
+    if (!ctx) {
+      throw new Error("expected actor context");
+    }
+    expect(Array.isArray(ctx.awareness.headlines)).toBe(true);
     // Headlines may be empty on fresh DB, but shouldn't crash
-    for (const h of ctx?.awareness.headlines) {
+    for (const h of ctx.awareness.headlines) {
       expect(typeof h.title).toBe("string");
       expect(typeof h.source).toBe("string");
     }

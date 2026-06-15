@@ -1,5 +1,5 @@
 /**
- * Browser stub for the npm `phonemizer` package (aliased in vite.config.ts).
+ * Browser replacement for the npm `phonemizer` package (aliased in vite.config.ts).
  *
  * `phonemizer` ships only a Node build: an Emscripten eSpeak-NG module whose
  * top-level init gunzips embedded voice data with
@@ -13,7 +13,7 @@
  * The renderer never needs real eSpeak phonemization: the Kokoro TTS adapter
  * (`plugin-local-inference/.../kokoro/phonemizer.ts`) falls back to its bundled
  * `FallbackG2PPhonemizer` when this module exposes no `phonemize`. So alias the
- * package to this empty stub for the browser build, keeping the 1.3 MB Node
+ * package to this empty replacement for the browser build, keeping the 1.3 MB Node
  * blob out of the bundle entirely. The Node agent imports the real package
  * directly (it does not go through Vite), so server-side Kokoro TTS is
  * unaffected.

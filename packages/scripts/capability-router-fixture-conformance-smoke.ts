@@ -103,7 +103,7 @@ try {
     !exercised.responseHandlerFieldEvaluator
   ) {
     throw new Error(
-      `Fixture conformance smoke returned incomplete report: ${JSON.stringify(report)}`,
+      `Fixture conformance smoke returned partial report: ${JSON.stringify(report)}`,
     );
   }
   const bundleResponse = await fetch(

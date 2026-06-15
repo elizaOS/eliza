@@ -22,7 +22,7 @@ export interface RLMMessage {
 }
 
 export interface RLMMetadata {
-  stub: boolean;
+  synthetic: boolean;
   iterations?: number;
   depth?: number;
   error?: string;
@@ -46,7 +46,7 @@ export interface RLMInferOptions {
   stopSequences?: string[];
   /** User identifier for tracking */
   user?: string;
-  /** Enable streaming (not yet supported by RLM) */
+  /** Request streaming; RLM currently returns complete text responses only. */
   stream?: boolean;
 
   // Per-request RLM overrides (Paper Algorithm 1)

@@ -68,7 +68,7 @@ Speed Insights **does not send production telemetry in development** (Vercel SDK
 
 ---
 
-## Roadmap
+## Follow-ups
 
 Ordered by likely value vs. effort:
 

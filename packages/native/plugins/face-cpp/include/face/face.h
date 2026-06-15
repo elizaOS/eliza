@@ -37,7 +37,7 @@
  * Sharing one handle across threads requires the caller's own mutex.
  *
  * Error handling: all entry points return `int` — zero on success,
- * negative `errno`-style codes on failure. The stub returns `-ENOSYS`.
+ * negative `errno`-style codes on failure.
  */
 
 #ifndef FACE_FACE_H
@@ -110,9 +110,8 @@ typedef struct face_embed_session   *face_embed_handle;
  * Open a BlazeFace session against a GGUF produced by
  * `scripts/blazeface_to_gguf.py`. The GGUF must declare its
  * `face.detector` key as FACE_DETECTOR_BLAZEFACE_FRONT. Returns 0 on
- * success and writes the new handle into `*out`. Returns `-ENOSYS`
- * from the stub, `-ENOENT` for missing GGUF, `-EINVAL` for shape /
- * version mismatch.
+ * success and writes the new handle into `*out`. Returns `-ENOENT`
+ * for missing GGUF, `-EINVAL` for shape / version mismatch.
  */
 int face_detect_open(const char *gguf_path, face_detect_handle *out);
 
@@ -150,7 +149,7 @@ int face_detect_close(face_detect_handle handle);
  * `scripts/face_embed_to_gguf.py`. The GGUF must declare its
  * `face.embedder` key as one of FACE_EMBEDDER_FACENET_128 /
  * FACE_EMBEDDER_ARCFACE_MINI_128. Returns 0 on success and writes the
- * new handle into `*out`. Stub returns `-ENOSYS`.
+ * new handle into `*out`.
  */
 int face_embed_open(const char *gguf_path, face_embed_handle *out);
 
@@ -165,8 +164,7 @@ int face_embed_open(const char *gguf_path, face_embed_handle *out);
  *   - `embedding_out` must point to a buffer of FACE_EMBED_DIM (128)
  *     floats. The library writes the L2-normalized embedding there.
  *
- * Returns 0 on success, `-EINVAL` for null inputs or zero-area crop,
- * `-ENOSYS` from the stub.
+ * Returns 0 on success, `-EINVAL` for null inputs or zero-area crop.
  */
 int face_embed(face_embed_handle handle,
                const uint8_t *rgb,
@@ -286,9 +284,8 @@ int face_align_5pt(const uint8_t *rgb,
 /* ---------------- diagnostics ---------------- */
 
 /*
- * Capability string of the active backend, e.g. "ggml-cpu",
- * "ggml-metal", "stub". Reflects the *runtime*-selected path. The
- * stub returns "stub".
+ * Capability string of the active backend, e.g. "ggml-cpu-ref",
+ * "ggml-cpu", "ggml-metal". Reflects the *runtime*-selected path.
  */
 const char *face_active_backend(void);
 

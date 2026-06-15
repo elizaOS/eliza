@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ElizaCloudPublicRoutesClient } from "./public-routes.js";
 import type { CloudRequestOptions, HttpMethod } from "./types.js";
 
-class FakeTransport {
+class TestTransport {
   readonly requests: {
     method: HttpMethod;
     path: string;
@@ -31,7 +31,7 @@ class FakeTransport {
 
 describe("ElizaCloudPublicRoutesClient path building", () => {
   it("preserves meaningful empty middle segments for catch-all string params", async () => {
-    const transport = new FakeTransport();
+    const transport = new TestTransport();
     const client = new ElizaCloudPublicRoutesClient(transport);
 
     await client.getApiV1ApisStorageObjectsByKey({
@@ -48,7 +48,7 @@ describe("ElizaCloudPublicRoutesClient path building", () => {
   });
 
   it("encodes catch-all array params one segment at a time", async () => {
-    const transport = new FakeTransport();
+    const transport = new TestTransport();
     const client = new ElizaCloudPublicRoutesClient(transport);
 
     await client.deleteApiV1ApisStorageObjectsByKey({
@@ -66,7 +66,7 @@ describe("ElizaCloudPublicRoutesClient path building", () => {
   });
 
   it("rejects unexpected params and arrays for non-catch-all params", async () => {
-    const client = new ElizaCloudPublicRoutesClient(new FakeTransport());
+    const client = new ElizaCloudPublicRoutesClient(new TestTransport());
 
     await expect(() =>
       client.getApiV1AppsById({
@@ -82,7 +82,7 @@ describe("ElizaCloudPublicRoutesClient path building", () => {
   });
 
   it("rejects catch-all values with empty leading or trailing segments", async () => {
-    const client = new ElizaCloudPublicRoutesClient(new FakeTransport());
+    const client = new ElizaCloudPublicRoutesClient(new TestTransport());
 
     await expect(() =>
       client.getApiV1ApisStorageObjectsByKey({

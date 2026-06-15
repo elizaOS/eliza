@@ -105,6 +105,21 @@ export default defineConfig({
         replacement: hostExternalStub,
       },
       {
+        // Dynamically loaded by DynamicViewLoader as a host-external plugin;
+        // alias it so the ui test build doesn't require its built dist.
+        find: /^@elizaos\/plugin-training$/,
+        replacement: hostExternalStub,
+      },
+      {
+        // Browser-safe screen-time helper imported by DynamicViewLoader; resolve
+        // to source so the ui test build doesn't require plugin-health's dist.
+        find: /^@elizaos\/plugin-health\/screen-time\/mobile-signal-setup$/,
+        replacement: resolve(
+          monorepoRoot,
+          "plugins/plugin-health/src/screen-time/mobile-signal-setup.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/capacitor-bun-runtime$/,
         replacement: bunRuntimeSrc,
       },
@@ -142,7 +157,7 @@ export default defineConfig({
       },
       // `@capacitor/app` is an optional native bridge the host app supplies — not
       // a declared dep of `@elizaos/ui`. Tests `vi.mock` it; alias to a resolvable
-      // stub so vite's transform doesn't fail in CI where it isn't installed.
+      // test double so vite's transform doesn't fail in CI where it isn't installed.
       {
         find: /^@capacitor\/app$/,
         replacement: resolve(packageRoot, "test/stubs/capacitor-app.ts"),

@@ -10,9 +10,9 @@
 
 import { Pause, Play, Volume2, VolumeX } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "../../../components/ui/button";
+import { Slider } from "../../../components/ui/slider";
 import { cn } from "../../lib/utils";
-import { Button } from "../button";
-import { Slider } from "../slider";
 
 interface VoiceAudioPlayerProps {
   audioUrl: string;

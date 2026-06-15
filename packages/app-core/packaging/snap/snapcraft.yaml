@@ -133,7 +133,7 @@ parts:
           "plugin-elizacloud",
           "plugin-elizamaker",
           "plugin-imessage",
-          "plugin-lifeops",
+          "plugin-personal-assistant",
           "plugin-local-inference",
           "plugin-ollama",
           "plugin-pdf",
@@ -490,7 +490,7 @@ parts:
         --filter=@elizaos/plugin-browser \
         --filter=@elizaos/plugin-elizamaker \
         --filter=@elizaos/plugin-imessage \
-        --filter=@elizaos/plugin-lifeops \
+        --filter=@elizaos/plugin-personal-assistant \
         --filter=@elizaos/plugin-local-inference \
         --filter=@elizaos/plugin-ollama \
         --filter=@elizaos/plugin-pdf \

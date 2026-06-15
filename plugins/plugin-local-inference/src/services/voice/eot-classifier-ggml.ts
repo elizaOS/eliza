@@ -35,7 +35,7 @@
  * uses (single-turn user message wrapped in `<|im_start|>user\n... \n`)
  * — see `applyQwenUserTemplate` below.
  *
- * --- Future: LoRA hot-swap path ---
+ * --- Planned LoRA hot-swap path ---
  *
  * The LiveKit GGUF is a separate 66 MB (EN) or 396 MB (intl) resident
  * model. The chat target model (eliza-1-{0_8b,2b,4b}) is already
@@ -228,16 +228,16 @@ async function loadNlc(): Promise<NlcModule> {
 	// `LlamaContextSequence.controlledEvaluate({ generateNext: { probabilities:
 	// true } })` to read the next-token probability distribution after a
 	// truncated prompt. The current `capacitor-llama` adapter and the desktop
-	// bun:ffi shim do not yet expose an equivalent (both surface `completion()`,
+	// bun:ffi shim do not expose an equivalent (both surface `completion()`,
 	// which consumes tokens rather than returning a logit map without sampling).
 	//
 	// The resolver above this binding (`tryBuildEliza1EotClassifier`) is gated
 	// on the dispatcher's active backend and model pointer, so this path is
-	// only reached if a future caller bypasses the resolver. Throwing here
+	// only reached if a caller bypasses the resolver. Throwing here
 	// keeps fail-closed semantics: the binding never fabricates a probability.
 	throw new EotGgmlUnavailableError(
 		"native-missing",
-		"[eot-ggml] the active llama.cpp adapter (capacitor-llama / bun:ffi shim) does not yet expose a controlled-evaluate API for next-token probabilities. Use HeuristicEotClassifier until the shim exposes `llama_get_logits_ith`.",
+		"[eot-ggml] the active llama.cpp adapter (capacitor-llama / bun:ffi shim) does not expose a controlled-evaluate API for next-token probabilities. Use HeuristicEotClassifier until the shim exposes `llama_get_logits_ith`.",
 	);
 }
 

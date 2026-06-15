@@ -100,7 +100,7 @@ def main() -> int:
             required_tokens=("STATUS: PASS mvp.npu_ml_smoke",),
         ),
         Check(
-            name="product release blocks unfinished hardware evidence",
+            name="product release blocks incomplete hardware evidence",
             command=[sys.executable, "scripts/product_check.py", "--release"],
             expected_codes={1},
             required_tokens=("product release check failed", "KiCad release blockers"),

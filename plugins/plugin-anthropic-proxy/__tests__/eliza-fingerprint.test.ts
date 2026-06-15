@@ -139,18 +139,38 @@ describe("eliza fingerprint — system prompt strip", () => {
     expect(result.body).toContain("More content here.");
   });
 
-  it("no-ops when the eliza marker is not present", () => {
+  it("leaves the payload unchanged when the eliza marker is not present", () => {
     const wirePayload = `{"system":[{"type":"text","text":"You are some other bot."}]}`;
     const result = stripSystemConfig(wirePayload);
     expect(result.stripped).toBe(0);
     expect(result.body).toBe(wirePayload);
   });
 
-  it("no-ops on a too-short marker run (defensive against partial matches)", () => {
+  it("leaves a too-short marker run unchanged (defensive against partial matches)", () => {
     const wirePayload = `{"system":[{"type":"text","text":"${ELIZA_IDENTITY_MARKER} ${ELIZA_BOUNDARY_END}"}]}`;
-    // This is shorter than MIN_STRIP_LEN, should no-op.
+    // This is shorter than MIN_STRIP_LEN, so it should remain unchanged.
     const result = stripSystemConfig(wirePayload);
     expect(result.stripped).toBe(0);
+  });
+
+  it("supports configured anchors and paraphrase for non-eliza recurring blocks", () => {
+    const recurring =
+      "FRAMEWORK_START " +
+      "This long framework policy block repeats on every request. ".repeat(8) +
+      "FRAMEWORK_END";
+    const wirePayload = `{"system":[{"type":"text","text":"Keep this.\\n${recurring}\\nKeep that."}]}`;
+    const result = stripSystemConfig(wirePayload, {
+      start: "FRAMEWORK_START",
+      end: "FRAMEWORK_END",
+      paraphrase: '{"type":"text","text":"Short framework policy."}',
+      minStripLen: 20,
+    });
+    expect(result.stripped).toBeGreaterThan(0);
+    expect(result.body).not.toContain("FRAMEWORK_START");
+    expect(result.body).not.toContain("FRAMEWORK_END");
+    expect(result.body).toContain("Short framework policy.");
+    expect(result.body).toContain("Keep this.");
+    expect(result.body).toContain("Keep that.");
   });
 });
 

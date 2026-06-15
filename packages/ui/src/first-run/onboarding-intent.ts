@@ -4,11 +4,10 @@
  * same runtime choice into the existing first-run controller.
  *
  * The voice path already parses spoken commands into a runtime choice
- * (applyFirstRunVoiceTranscript in ./first-run). This adds the tray side:
+ * (applyFirstRunVoiceTranscript in ./first-run). This is the tray side:
  * stable item ids + label keys for the onboarding tray entries, and a mapping
- * from a clicked tray action id back to the runtime choice. Stage B wires the
- * tray runtime to surface these items while first-run is incomplete and to
- * dispatch the resolved choice into the controller.
+ * from a clicked tray action id back to the runtime choice. The compact
+ * onboarding overlay dispatches the resolved choice into the controller.
  */
 
 /** The runtime a user picks during first-run (cloud sign-in needs a gesture). */
@@ -26,7 +25,7 @@ export interface OnboardingTrayItem {
 }
 
 /**
- * Tray items shown only while first-run is incomplete. "No default — ask":
+ * Tray items shown only while first-run setup is pending. "No default — ask":
  * local and cloud are presented as equal peers. Cloud completes via the OAuth
  * popup, which a tray click (a real user gesture) satisfies.
  */

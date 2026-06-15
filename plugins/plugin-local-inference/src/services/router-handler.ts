@@ -11,7 +11,7 @@
  *      registry's current set (excluding ourselves).
  *   3. Invoke that provider's original handler directly — bypassing
  *      `runtime.useModel` which would recurse into us.
- *   4. Record the observed latency so future "fastest" picks have data.
+ *   4. Record the observed latency so later "fastest" picks have data.
  *   5. On handler failure: retry the next eligible provider in priority
  *      order until exhausted (except in `manual` mode with an explicit
  *      preferred provider — that throws verbatim).
@@ -178,6 +178,14 @@ export async function filterUnavailableLocalInference(
 	preferredProvider: string | null,
 	candidates: HandlerRegistration[],
 ): Promise<HandlerRegistration[]> {
+	// Voice slots (TTS / STT) are self-sufficient — their handlers call
+	// ensureActiveBundleVoiceReady() internally which loads the voice model
+	// on-demand. Don't gate them behind text model availability; the text
+	// model assignment check only makes sense for text generation slots.
+	if (slot === "TEXT_TO_SPEECH" || slot === "TRANSCRIPTION") {
+		return candidates;
+	}
+
 	const hasLocalInference = candidates.some(
 		(candidate) => candidate.provider === "eliza-local-inference",
 	);

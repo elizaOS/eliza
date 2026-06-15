@@ -1,5 +1,5 @@
 # mypy: disable-error-code="call-arg,name-defined"
-"""Fast/slow additive learner scaffold for Step 2 productionization.
+"""Fast/slow additive learner implementation for Step 2 productionization.
 
 This module is the small production-oriented bridge from the D18 research
 runner toward a JAX-native core learner.  It intentionally avoids the D18
@@ -38,7 +38,7 @@ class FastSlowConfig:
         fast_step_size: Step-size for the fast readout.
         gate_step_size: Step-size for the learned fast/slow gate.
         fast_decay: Per-step decay applied to the fast readout before its new
-            update.  This is the only fixed timescale in the scaffold.
+            update.  This is the only fixed timescale in the learner.
         slow_weight_decay: Optional multiplicative decay for slow readout
             weights.  Defaults to no decay.
         gate_l2: L2 shrinkage on gate weights.  Defaults to no shrinkage.

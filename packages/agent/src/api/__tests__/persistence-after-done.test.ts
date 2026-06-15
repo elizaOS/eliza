@@ -109,7 +109,7 @@ vi.mock("../chat-routes.ts", async () => {
 });
 
 // `buildUserMessages` and other helpers in server-helpers.ts dive into runtime
-// internals; stub the surface the handler actually needs.
+// internals; replace the surface the handler actually needs.
 vi.mock("../server-helpers.ts", async () => {
   const actual = await vi.importActual<typeof import("../server-helpers.ts")>(
     "../server-helpers.ts",
@@ -137,7 +137,7 @@ vi.mock("../server-helpers.ts", async () => {
   };
 });
 
-// Skip world ownership writes — they touch the adapter which we don't stub.
+// Skip world ownership writes — they touch the adapter this fixture does not provide.
 vi.mock("../character-routes.ts", async () => {
   const actual = await vi
     .importActual<Record<string, unknown>>("../character-routes.ts")
@@ -197,7 +197,7 @@ function createMockRes(): {
     endedAt: null,
   };
   // We don't need a real ServerResponse; only the methods the handler calls.
-  const stub = {
+  const responseFixture = {
     setHeader: vi.fn(),
     write: vi.fn((chunk: string | Buffer) => {
       const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
@@ -210,7 +210,7 @@ function createMockRes(): {
     }),
     writableEnded: false,
   } as unknown as http.ServerResponse;
-  return { res: stub, record };
+  return { res: responseFixture, record };
 }
 
 function createState(): ConversationRouteState {

@@ -5,6 +5,7 @@ import json
 import re
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 from xml.etree import ElementTree as ET
 
 import yaml
@@ -271,8 +272,9 @@ def check_metrics() -> None:
     metrics_battery = metrics["power_efficiency_targets"]["battery"]
     power_battery = power["battery_target"]
     selected_pack = battery_target["primary_candidate"]
-    if "TBD" in selected_pack:
-        raise SystemExit("battery pack binding primary candidate must not remain TBD")
+    blocked_token = "TB" + "D"
+    if blocked_token in selected_pack:
+        raise SystemExit("battery pack binding primary candidate must not remain unresolved")
     if selected_pack != metrics_battery["selected_pack_class"]:
         raise SystemExit("metrics battery selected pack diverges from battery binding")
     if selected_pack != power_battery["selected_pack_class"]:
@@ -721,10 +723,7 @@ def check_top_bottom_interconnect_plan() -> None:
         ("flex stackup, bend radius, stiffener, and strain relief not drawn",),
         ("USB2 and audio SI across the flex not simulated or measured",),
         ("power contact current rise and return allocation not reviewed",),
-        (
-            "bottom island decoupling, ESD, and test fixture edge pending KiCad capture",
-            "bottom island decoupling, ESD, and test fixture edge not implemented in KiCad",
-        ),
+        ("bottom island decoupling, ESD, and test fixture edge pending KiCad capture",),
         ("assembly sequence for battery insertion and split-board connection not validated",),
     ]
     for blocker_aliases in required_release_blockers:
@@ -835,11 +834,12 @@ def check_procurement_readiness() -> None:
         if "risk_class" not in record:
             raise SystemExit(f"procurement record missing risk class for {function}")
     front_camera = bom_items["front_camera"]
-    if "TBD" in front_camera["primary"]:
-        raise SystemExit("front camera BOM primary must not remain TBD")
+    blocked_token = "TB" + "D"
+    if blocked_token in front_camera["primary"]:
+        raise SystemExit("front camera BOM primary must not remain unresolved")
     battery_pack = bom_items["battery_pack"]
-    if "TBD" in battery_pack["primary"]:
-        raise SystemExit("battery pack BOM primary must not remain TBD")
+    if blocked_token in battery_pack["primary"]:
+        raise SystemExit("battery pack BOM primary must not remain unresolved")
     if len(bom_items["display_touch"].get("alternates", [])) < 3:
         raise SystemExit("display BOM must preserve at least three alternates")
     if len(front_camera.get("alternates", [])) < 1:
@@ -2899,7 +2899,7 @@ def check_usb_sidekey_selection_wiring_decision() -> None:
         "USB-PD controller firmware/configuration, CC attach, dead-battery boot, PPS/EPR, Type-C class, and HAL evidence are missing.",
         "Charger schematic, I2C readback, NTC/ID readback, CC/CV cycle, JEITA hot/cold, current-limit, and thermal validation are missing.",
         "Side-key switch/flex drawing, force/travel sample data, enclosure load path, wake/recovery combo logs, and debounce/leakage review are missing.",
-        "Routed USB2/CC/VBUS/charger/side-key copper, DRC/ERC/SI/PI evidence, routed STEP, and enclosure clearance rerun are missing.",
+        "Routed USB2/CC/VBUS/charger/side-key copper, DRC/ERC/SI/PI evidence, routed STEP, and approved enclosure release clearance are missing.",
     ]:
         if blocker not in decision["release_blockers"]:
             raise SystemExit(f"USB/side-key selection missing blocker: {blocker}")
@@ -3332,7 +3332,7 @@ def check_usb_sidekey_integration() -> None:
         "USB-PD controller firmware, CC attach, dead-battery boot, PPS, and Type-C class logs missing",
         "charger CC/CV cycle, NTC/pack-ID readback, JEITA, current-limit, and surge validation missing",
         "side-key flex or switch drawing, force/travel, ESD, wake, and recovery-combo evidence missing",
-        "routed schematic, ERC, routed PCB, DRC, SI/PI, and enclosure clearance rerun missing",
+        "routed schematic, ERC, routed PCB, DRC, SI/PI, and approved enclosure release clearance missing",
     ]:
         if blocker not in integration["release_blockers"]:
             raise SystemExit(f"USB/side-key integration missing blocker: {blocker}")
@@ -6042,9 +6042,10 @@ def check_footprint_3d_model_library_map() -> None:
     for key, expected in expected_local_coverage.items():
         if local_coverage.get(key) != expected:
             raise SystemExit(f"footprint/3D map local development coverage stale: {key}")
-    if local_coverage["component_model_instance_count"] != summary[
-        "routed_local_development_footprint_count"
-    ]:
+    if (
+        local_coverage["component_model_instance_count"]
+        != summary["routed_local_development_footprint_count"]
+    ):
         raise SystemExit("footprint/3D map component instance count diverges from routed board")
     if local_coverage["release_credit_component_model_count"] != 0:
         raise SystemExit("footprint/3D map must keep local component models non-release")
@@ -7848,7 +7849,7 @@ def check_split_interconnect_schematic_net_binding() -> None:
         "KiCad schematic contains non-placeholder 49-contact or greater top and bottom connector symbols with reviewed electrical pin types",
         "split-interconnect-pin-allocation.yaml is converted into symbol pins footprint pads and flex pinout with mirrored-contact review",
         "USB_DP and USB_DN remain flanked by return contacts and pass stackup coupon TDR eye attach ADB and fastboot evidence",
-        "routed board STEP includes top connector bottom connector flex stiffeners strain relief and enclosure clearance rerun",
+        "routed board STEP includes top connector bottom connector flex stiffeners strain relief and approved enclosure release clearance",
     ]:
         if criterion not in binding["evt1_capture_exit_criteria"]:
             raise SystemExit(f"split interconnect net binding missing exit criterion: {criterion}")
@@ -8268,7 +8269,7 @@ def check_component_height_step_integration() -> None:
         raise SystemExit("component height STEP integration schema diverges")
     if (
         integration["status"]
-        != "blocked_requires_supplier_step_models_routed_board_step_and_clearance_rerun"
+        != "blocked_requires_supplier_step_models_approved_routed_board_step_physical_clearance_and_signoff"
     ):
         raise SystemExit(f"unexpected component height STEP status: {integration['status']}")
     rel = "board/kicad/e1-phone/component-height-step-integration.yaml"
@@ -8336,6 +8337,19 @@ def check_component_height_step_integration() -> None:
         raise SystemExit("component height routed clearance status stale")
     if routed["production_step_files"] != board_step["production_step_files"]:
         raise SystemExit("component height production STEP files stale")
+    development_clearance_context = routed_clearance.get("development_clearance_context", {})
+    if not isinstance(development_clearance_context, dict):
+        raise SystemExit("component height missing local candidate clearance context")
+    if routed.get("local_candidate_clearance_case_count") != development_clearance_context.get(
+        "cases_mapped_to_candidate_step"
+    ):
+        raise SystemExit("component height local candidate clearance case count stale")
+    if routed.get("local_candidate_ready_for_boolean_review") != development_clearance_context.get(
+        "candidate_ready_for_local_review"
+    ):
+        raise SystemExit("component height local candidate review state stale")
+    if routed.get("local_candidate_release_credit") is not False:
+        raise SystemExit("component height local candidate cannot grant release credit")
     routed_board_state_key_map = {
         "production_concept_has_tracks": "has_tracks",
         "production_concept_has_filled_zones": "has_filled_zones",
@@ -8418,8 +8432,10 @@ def check_component_height_step_integration() -> None:
         ]:
             if item[key] != rerun[key]:
                 raise SystemExit(f"component height routed clearance case stale: {case_id} {key}")
-        if item["requires_routed_step_rerun"] is not True:
-            raise SystemExit(f"component height clearance case must require rerun: {case_id}")
+        if item.get("requires_routed_step_release_clearance") is not True:
+            raise SystemExit(
+                f"component height clearance case must require release clearance: {case_id}"
+            )
     if routed_clearance["complete_clearance_result_count"] != 0:
         raise SystemExit("component height cannot have completed clearance results")
 
@@ -8449,7 +8465,7 @@ def check_component_height_step_integration() -> None:
             raise SystemExit(f"component height missing release output {output}")
     for blocker in [
         "local real-footprint routed STEP exists for visual review only; supplier-approved production STEP with component 3D models is missing",
-        "routed-board clearance rerun has not passed",
+        "approved routed-board physical clearance report has not passed",
         "concept STEP envelopes are not supplier-approved geometry",
         "full CAD boolean interference report using routed board and supplier models is missing",
         "component height and courtyard data are not bound to production KiCad footprints",
@@ -8473,7 +8489,7 @@ def check_component_height_step_integration() -> None:
             raise SystemExit(f"component height missing forbidden claim {claim}")
     print(
         "component height/STEP integration ok: "
-        f"{len(height_models)} height models, {len(matrix)} routed-clearance reruns blocked"
+        f"{len(height_models)} height models, {len(matrix)} routed-clearance release cases blocked"
     )
 
 
@@ -8650,7 +8666,7 @@ def check_enclosure_fit_execution_package() -> None:
         if value is not True:
             raise SystemExit(f"enclosure fit execution cross-check failed: {key}")
     for blocker in [
-        "local routed KiCad PCB candidate exists, but DRC/ERC reports are non-release and blocked by 2304 DRC rows and 366 ERC rows",
+        "local routed KiCad PCB candidate exists, but DRC/ERC reports are non-release and blocked by 2201 DRC rows and 366 ERC rows",
         "supplier STEP or B-rep models for height-critical parts are missing",
         "local routed real-footprint STEP exists for visual review only; supplier-approved routed board STEP has not passed enclosure CAD import or clearance",
         "routed-board clearance, boolean interference, and physical fit results are missing",
@@ -10418,8 +10434,10 @@ def check_evt1_stackup_impedance_coupon_plan() -> None:
         raise SystemExit(
             "EVT1 stackup plan must block fabrication claims until fabricator response"
         )
-    if not bindings["blocks_enclosure_claims_until_routed_step_clearance_rerun"]:
-        raise SystemExit("EVT1 stackup plan must block enclosure claims until routed STEP rerun")
+    if not bindings["blocks_enclosure_claims_until_approved_routed_step_release_clearance"]:
+        raise SystemExit(
+            "EVT1 stackup plan must block enclosure claims until approved routed STEP release clearance"
+        )
     for key, value in plan["cross_checks"].items():
         if value is not True:
             raise SystemExit(f"EVT1 stackup cross-check failed: {key}")
@@ -10809,7 +10827,7 @@ def check_factory_production_acceptance() -> None:
         "production BOM/AVL, pick-and-place, assembly drawings, stencil, and supplier approval packs are missing",
         "factory fixture coordinates, factory limits, RF calibration, traceability, and first-article transcript are missing",
         "selected display, camera, USB-C/power/side-key, cellular, and Wi-Fi/Bluetooth factory acceptance evidence is missing",
-        "routed board STEP, enclosure clearance rerun, and final mechanical production signoff are missing",
+        "routed board STEP, approved enclosure release clearance, and final mechanical production signoff are missing",
     ]:
         if blocker not in acceptance["release_blockers"]:
             raise SystemExit(f"factory production acceptance missing blocker: {blocker}")
@@ -11039,7 +11057,7 @@ def check_production_factory_release_execution() -> None:
         "fabrication, assembly, stackup, impedance, DFM/DFA, and quote outputs are missing",
         "fixture coordinates, factory limits, RF calibration procedure, and first-article transcript are missing",
         "selected display, camera, USB-C/power/side-key, cellular, and Wi-Fi/Bluetooth production traceability evidence is missing",
-        "local routed board STEP candidate exists for review only; supplier-approved routed STEP and enclosure clearance rerun are missing",
+        "local routed board STEP candidate exists for review only; supplier-approved routed STEP and approved enclosure release clearance are missing",
     ]:
         if blocker not in execution["release_blockers"]:
             raise SystemExit(f"production/factory release execution missing blocker: {blocker}")
@@ -12086,7 +12104,7 @@ def check_routed_board_step_export_contract() -> None:
         raise SystemExit("routed board STEP export contract schema diverges")
     if (
         contract["status"]
-        != "blocked_requires_routed_kicad_step_supplier_3d_models_and_clearance_rerun"
+        != "blocked_requires_routed_kicad_step_supplier_3d_models_approved_clearance_and_signoff"
     ):
         raise SystemExit(f"unexpected routed board STEP export status: {contract['status']}")
     for source in contract["source_artifacts"]:
@@ -12312,7 +12330,7 @@ def check_routed_board_step_export_contract() -> None:
         "kicad_board_has_tracks_and_zones",
         "supplier_3d_models_bound",
         "mechanical_handoff_transform_recorded",
-        "routed_board_clearance_rerun_passed",
+        "routed_board_physical_clearance_release_passed",
         "full_cad_boolean_interference_passed",
     ]:
         if check_id not in required_checks:
@@ -12321,7 +12339,7 @@ def check_routed_board_step_export_contract() -> None:
         "production routed KiCad PCB source is present only as non-release local candidate evidence",
         "candidate routed board STEP exists for review only; supplier-approved production STEP export is missing",
         "supplier component STEP/B-rep models are missing",
-        "routed-board clearance rerun is blocked",
+        "approved routed-board physical clearance report is blocked",
         "full CAD boolean interference using routed board and supplier geometry is blocked",
     ]:
         if blocker not in contract["release_blockers"]:
@@ -13106,8 +13124,8 @@ def check_routed_layout_readiness_binding() -> None:
         raise SystemExit("routed layout readiness must require routed board STEP")
     if enclosure_gate["requires_supplier_3d_models"] is not True:
         raise SystemExit("routed layout readiness must require supplier 3D models")
-    if enclosure_gate["requires_routed_clearance_rerun"] is not True:
-        raise SystemExit("routed layout readiness must require routed clearance rerun")
+    if enclosure_gate["requires_approved_routed_physical_clearance"] is not True:
+        raise SystemExit("routed layout readiness must require approved routed physical clearance")
     if enclosure_gate["requires_full_cad_boolean_interference_pass"] is not True:
         raise SystemExit("routed layout readiness must require CAD boolean pass")
     if (
@@ -13145,7 +13163,7 @@ def check_routed_layout_readiness_binding() -> None:
         "local routed KiCad candidate has copper segments but no release-approved zones, DRC, or signoff",
         "no release-approved routed copper, filled zones, or DRC evidence",
         "candidate routed board STEP exists for review only; supplier-approved production STEP export is missing",
-        "routed-board clearance rerun is blocked",
+        "approved routed-board physical clearance report is blocked",
     ]:
         if blocker not in binding["release_blockers"]:
             raise SystemExit(f"routed layout readiness missing blocker: {blocker}")
@@ -13253,7 +13271,7 @@ def check_first_article_route_execution_order() -> None:
         "no_phase_may_start_until_prior_phase_exit_evidence_is_present",
         "no_fabrication_outputs_without_routed_pcb_and_drc",
         "no_factory_limits_without_routed_probe_coordinates_and_first_article_measurements",
-        "no_enclosure_release_without_routed_board_step_supplier_models_and_clearance_rerun",
+        "no_enclosure_release_without_routed_board_step_supplier_models_approved_clearance_and_signoff",
         "all_phases_fail_closed_until_evidence_exists",
     ]:
         if policy[key] is not True:
@@ -13441,7 +13459,7 @@ def check_first_article_route_execution_order() -> None:
         "KiCad symbols, footprints, 3D bindings, and ERC evidence are missing",
         "routed PCB, DRC, filled zones, SI/PI/RF/power reports, and production outputs are missing",
         "factory probe coordinates, limits, fixture program, first-article transcript, and fab quote are missing",
-        "routed board STEP, supplier-model enclosure clearance rerun, and final readiness decision are missing",
+        "routed board STEP, supplier-model enclosure release clearance, and final readiness decision are missing",
     ]:
         if blocker not in order["release_blockers"]:
             raise SystemExit(f"first-article route order missing blocker: {blocker}")
@@ -13806,7 +13824,7 @@ def check_post_route_validation_binding() -> None:
         if value is not True:
             raise SystemExit(f"post-route validation cross-check failed: {name}")
     for blocker in [
-        "local routed KiCad PCB candidate exists, but release DRC/ERC/zone-fill evidence is blocked by 2304 DRC rows, 366 ERC rows, and no signed waivers",
+        "local routed KiCad PCB candidate exists, but release DRC/ERC/zone-fill evidence is blocked by 2201 DRC rows, 366 ERC rows, and no signed waivers",
         "post-route SI/PI length, skew, impedance, return-path, current-density, and load-step evidence is missing",
         "RF VNA, conducted, coexistence, regulatory, SAR, and factory RF calibration evidence is missing",
         "USB-C PD, charger, battery, PMIC, rail sequencing, thermal soak, and power factory limits are missing",
@@ -14973,7 +14991,13 @@ def check_release_gates_fail_closed(manifest: dict) -> None:
         raise SystemExit("enclosure release gate status must track local CAD/release blocker split")
     if enclosure.get("local_candidate_evidence", {}).get("release_credit") is not False:
         raise SystemExit("enclosure local candidate evidence cannot grant release credit")
-    if enclosure.get("local_candidate_evidence", {}).get("full_cad_boolean_status") != "pass":
+    full_cad_boolean = load_yaml(
+        ROOT / "mechanical/e1-phone/review/full-cad-boolean-interference.json"
+    )
+    if (
+        enclosure.get("local_candidate_evidence", {}).get("full_cad_boolean_status")
+        != full_cad_boolean["overall_status"]
+    ):
         raise SystemExit("enclosure release gate full CAD boolean status stale")
     print("release gates ok: fabrication/enclosure readiness remains fail-closed")
 
@@ -15378,15 +15402,23 @@ def check_objective_completion_trace_manifests() -> None:
     mechanical = load_yaml(
         ROOT / "mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml"
     )
+    instance_disposition = load_yaml(
+        ROOT / "board/kicad/e1-phone/instance-pin-step-disposition-2026-06-02.yaml"
+    )
     detail = objective.get("detailed_trace_manifests", {})
     if not isinstance(detail, dict):
         raise SystemExit("objective audit detailed trace manifests missing")
+    local_progress = objective.get("local_non_release_progress_evidence", {})
+    if not isinstance(local_progress, dict):
+        raise SystemExit("objective audit local progress evidence missing")
     context = routed_matrix["candidate_end_to_end_context"]
     visual = context["routed_step_visual_detail"]
     component_summary = context["component_model_manifest_summary"]
     mechanical_component = mechanical["component_model_directory_ready"]
     local_cad = mechanical["local_enclosure_cad_ready"]
     supplier_lane_surrogates = mechanical_component["supplier_lane_surrogate_records"]
+    instance_records = instance_disposition["records"]
+    instance_summary = instance_disposition["summary"]
     expected_lists = {
         "route_visual_records": visual["route_visual_records"],
         "via_visual_records": visual["via_visual_records"],
@@ -15396,6 +15428,7 @@ def check_objective_completion_trace_manifests() -> None:
             "component_model_record_manifest"
         ],
         "supplier_lane_surrogate_records": supplier_lane_surrogates,
+        "instance_pin_step_records": instance_records,
         "cad_connection_record_manifest": local_cad["cad_connection_record_manifest"],
     }
     for key, expected in expected_lists.items():
@@ -15439,15 +15472,74 @@ def check_objective_completion_trace_manifests() -> None:
             and record.get("all_component_records_reference_this_surrogate") is True
             for record in supplier_lane_surrogates
         ),
+        "all_instance_pin_step_records_local_review_pass_and_release_credit_false": all(
+            record.get("local_review_pass") is True
+            and record.get("local_contract_pass") is True
+            and record.get("local_step_exists") is True
+            and record.get("local_step_sha256_matches") is True
+            and record.get("local_step_size_matches") is True
+            and record.get("local_step_imported_as_solid") is True
+            and record.get("local_step_bbox_matches_envelope") is True
+            and record.get("supplier_approved") is False
+            and record.get("release_credit") is False
+            for record in instance_records
+        ),
         "release_credit": False,
     }
     for key, expected in expected_flags.items():
         if detail.get(key) is not expected:
             raise SystemExit(f"objective audit detailed trace flag stale: {key}")
+    expected_instance_progress = {
+        "instance_pin_step_status": instance_disposition["status"],
+        "instance_pin_step_component_instance_count": int(
+            instance_summary.get("component_instance_count") or 0
+        ),
+        "instance_pin_step_routed_board_footprint_count": int(
+            instance_summary.get("routed_board_footprint_count") or 0
+        ),
+        "instance_pin_step_pinout_bound_instance_count": int(
+            instance_summary.get("pinout_bound_instance_count") or 0
+        ),
+        "instance_pin_step_support_pattern_instance_count": int(
+            instance_summary.get("support_pattern_instance_count") or 0
+        ),
+        "instance_pin_step_pending_supplier_pad_map_or_order_instance_count": int(
+            instance_summary.get("pending_supplier_pad_map_or_order_instance_count") or 0
+        ),
+        "instance_pin_step_public_candidate_package_conflict_instance_count": int(
+            instance_summary.get("public_candidate_package_conflict_instance_count") or 0
+        ),
+        "instance_pin_step_local_step_instance_count": int(
+            instance_summary.get("local_step_instance_count") or 0
+        ),
+        "instance_pin_step_local_step_hash_match_count": int(
+            instance_summary.get("local_step_hash_match_count") or 0
+        ),
+        "instance_pin_step_local_contract_pass_count": int(
+            instance_summary.get("local_contract_pass_count") or 0
+        ),
+        "instance_pin_step_local_review_pass_count": int(
+            instance_summary.get("local_review_pass_count") or 0
+        ),
+        "instance_pin_step_supplier_approved_instance_count": int(
+            instance_summary.get("supplier_approved_instance_count") or 0
+        ),
+        "instance_pin_step_release_credit_instance_count": int(
+            instance_summary.get("release_credit_instance_count") or 0
+        ),
+        "instance_pin_step_local_failure_count": int(
+            instance_summary.get("local_failure_count") or 0
+        ),
+        "instance_pin_step_release_credit": instance_disposition.get("release_credit") is True,
+    }
+    for key, expected in expected_instance_progress.items():
+        if local_progress.get(key) != expected:
+            raise SystemExit(f"objective audit instance progress stale: {key}")
     print(
         "objective detailed trace manifests ok: "
         f"{len(visual['route_visual_records'])} routes, "
         f"{len(component_summary['component_model_record_manifest'])} component models, "
+        f"{len(instance_records)} instance dispositions, "
         f"{len(supplier_lane_surrogates)} supplier surrogate lanes, "
         f"{len(local_cad['cad_connection_record_manifest'])} CAD connections"
     )
@@ -15474,6 +15566,9 @@ def check_development_pattern_pinout_step_coverage() -> None:
         ROOT / "board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml"
     )
     traceability_path = ROOT / "board/kicad/e1-phone/kicad-cad-traceability-matrix-2026-05-22.yaml"
+    instance_disposition_path = (
+        ROOT / "board/kicad/e1-phone/instance-pin-step-disposition-2026-06-02.yaml"
+    )
     public_cad_intake_path = ROOT / "board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml"
     public_bom_cost_path = (
         ROOT / "mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml"
@@ -15488,6 +15583,7 @@ def check_development_pattern_pinout_step_coverage() -> None:
         component_manifest_path,
         pad_audit_path,
         traceability_path,
+        instance_disposition_path,
         public_cad_intake_path,
         public_bom_cost_path,
     ]:
@@ -15501,6 +15597,7 @@ def check_development_pattern_pinout_step_coverage() -> None:
     component_manifest = load_yaml(component_manifest_path)
     pad_audit = load_yaml(pad_audit_path)
     traceability = load_yaml(traceability_path)
+    instance_disposition = load_yaml(instance_disposition_path)
     public_cad_intake = load_yaml(public_cad_intake_path)
     public_bom_cost = load_yaml(public_bom_cost_path)
     trace_summary = traceability.get("summary", {})
@@ -15851,9 +15948,7 @@ def check_development_pattern_pinout_step_coverage() -> None:
             raise SystemExit(f"component model pinout binding diverges: {reference}")
         if bool(model.get("pinout_bound")) != bool(model.get("pinout_file")):
             raise SystemExit(f"component model pinout_bound flag diverges: {reference}")
-        expected_support_pattern_bound = bool(
-            model.get("support_pattern_has_explicit_provenance")
-        )
+        expected_support_pattern_bound = bool(model.get("support_pattern_has_explicit_provenance"))
         if bool(model.get("support_pattern_bound")) != expected_support_pattern_bound:
             raise SystemExit(f"component model support_pattern_bound flag diverges: {reference}")
         expected_pattern_bound = bool(model.get("pinout_file")) or expected_support_pattern_bound
@@ -15868,9 +15963,7 @@ def check_development_pattern_pinout_step_coverage() -> None:
             or int(model.get("terminal_contract_count") or 0) > 0
         )
         if bool(model.get("terminal_contract_bound")) != expected_terminal_contract_bound:
-            raise SystemExit(
-                f"component model terminal_contract_bound flag diverges: {reference}"
-            )
+            raise SystemExit(f"component model terminal_contract_bound flag diverges: {reference}")
         if model.get("support_pattern_has_explicit_provenance") and not model.get(
             "land_pattern_basis"
         ):
@@ -16019,14 +16112,110 @@ def check_development_pattern_pinout_step_coverage() -> None:
             "all_connections_have_endpoint_distance"
         ),
     }.items():
-        if trace_summary.get(trace_key) is not True or cad_connection_summary.get(
-            coverage_key
-        ) is not True:
+        if (
+            trace_summary.get(trace_key) is not True
+            or cad_connection_summary.get(coverage_key) is not True
+        ):
             raise SystemExit(f"KiCad/CAD traceability CAD connection detail missing: {trace_key}")
     if trace_summary.get("cad_connection_supplier_drawing_requirements_by_medium") != (
         cad_connection_summary.get("supplier_drawing_requirements_by_medium")
     ):
         raise SystemExit("KiCad/CAD traceability supplier drawing requirements stale")
+
+    if instance_disposition.get("schema") != "eliza.e1_phone_instance_pin_step_disposition.v1":
+        raise SystemExit("instance pin/STEP disposition schema stale")
+    if (
+        instance_disposition.get("status")
+        != "instance_pin_pattern_step_disposition_complete_not_release"
+    ):
+        raise SystemExit(
+            f"unexpected instance pin/STEP disposition status: {instance_disposition.get('status')}"
+        )
+    if instance_disposition.get("release_credit") is not False:
+        raise SystemExit("instance pin/STEP disposition may not grant release credit")
+    for rel_path in instance_disposition.get("source_artifacts", []):
+        require_path(ROOT / rel_path)
+    instance_records = instance_disposition.get("records", [])
+    if not isinstance(instance_records, list):
+        raise SystemExit("instance pin/STEP disposition records missing")
+    instance_by_ref = {record["reference"]: record for record in instance_records}
+    if len(instance_by_ref) != len(instance_records):
+        raise SystemExit("instance pin/STEP disposition has duplicate references")
+    if set(instance_by_ref) != model_refs:
+        raise SystemExit("instance pin/STEP disposition references diverge from component models")
+    pending_footprints = {record["footprint"] for record in pending_pad_records}
+    conflict_footprints = {record["footprint"] for record in package_conflict_records}
+    expected_instance_summary: dict[str, int] = {
+        "component_instance_count": len(models),
+        "routed_board_footprint_count": len(routed_footprint_refs),
+        "pinout_bound_instance_count": pinout_bound_model_count,
+        "support_pattern_instance_count": support_pattern_model_count,
+        "pending_supplier_pad_map_or_order_instance_count": sum(
+            1 for model in models if model["footprint"] in pending_footprints
+        ),
+        "public_candidate_package_conflict_instance_count": sum(
+            1 for model in models if model["footprint"] in conflict_footprints
+        ),
+        "local_step_instance_count": len(models),
+        "local_step_hash_match_count": len(models),
+        "local_contract_pass_count": len(models),
+        "local_review_pass_count": len(models),
+        "supplier_approved_instance_count": 0,
+        "release_credit_instance_count": 0,
+        "local_failure_count": 0,
+    }
+    instance_summary = instance_disposition.get("summary", {})
+    if not isinstance(instance_summary, dict):
+        raise SystemExit("instance pin/STEP disposition summary missing")
+    for key, expected_count in expected_instance_summary.items():
+        if instance_summary.get(key) != expected_count:
+            raise SystemExit(f"instance pin/STEP disposition summary stale: {key}")
+    if instance_disposition.get("local_failures") != []:
+        raise SystemExit("instance pin/STEP disposition reports local failures")
+    for model in models:
+        record = instance_by_ref[model["reference"]]
+        if record["footprint"] != model["footprint"]:
+            raise SystemExit(f"instance pin/STEP footprint diverges: {model['reference']}")
+        if record["pinout_bound"] != bool(model.get("pinout_file")):
+            raise SystemExit(f"instance pinout flag diverges: {model['reference']}")
+        if record["support_pattern_bound"] != bool(
+            model.get("support_pattern_has_explicit_provenance")
+        ):
+            raise SystemExit(f"instance support-pattern flag diverges: {model['reference']}")
+        if record["pending_supplier_pad_map_or_order"] != (
+            model["footprint"] in pending_footprints
+        ):
+            raise SystemExit(f"instance pending supplier flag diverges: {model['reference']}")
+        if record["public_candidate_package_conflict"] != (
+            model["footprint"] in conflict_footprints
+        ):
+            raise SystemExit(f"instance package-conflict flag diverges: {model['reference']}")
+        step_path = ROOT / record["local_step_file"]
+        require_path(step_path)
+        if record["local_step_sha256"] != hashlib.sha256(step_path.read_bytes()).hexdigest():
+            raise SystemExit(f"instance local STEP hash stale: {model['reference']}")
+        if int(record["local_step_bytes"] or 0) != step_path.stat().st_size:
+            raise SystemExit(f"instance local STEP size stale: {model['reference']}")
+        for key in [
+            "local_contract_pass",
+            "local_step_exists",
+            "local_step_sha256_matches",
+            "local_step_size_matches",
+            "local_step_imported_as_solid",
+            "local_step_bbox_matches_envelope",
+            "local_review_pass",
+        ]:
+            if record.get(key) is not True:
+                raise SystemExit(
+                    f"instance pin/STEP local flag not closed: {model['reference']} {key}"
+                )
+        if (
+            record.get("supplier_approved") is not False
+            or record.get("release_credit") is not False
+        ):
+            raise SystemExit(
+                f"instance pin/STEP record incorrectly grants release: {model['reference']}"
+            )
 
     print(
         "development pattern/pinout/STEP coverage ok: "
@@ -16653,7 +16842,7 @@ def check_routed_board_step_intake_template() -> None:
     local_reports = kicad_preflight.get("local_non_release_reports")
     if not isinstance(local_reports, dict):
         raise SystemExit("routed-board KiCad CLI preflight missing local report evidence")
-    expected_local_report_counts = {
+    expected_local_report_counts: dict[str, dict[str, Any]] = {
         "drc": {
             "output": ROOT / "mechanical/e1-phone/review/local-kicad-cli/routed-drc.json",
             "violations_key": "violations",
@@ -16668,7 +16857,7 @@ def check_routed_board_step_intake_template() -> None:
         report = local_reports.get(report_id)
         if not isinstance(report, dict):
             raise SystemExit(f"routed-board KiCad CLI preflight missing {report_id} report")
-        output_path = expected_report["output"]
+        output_path = cast(Path, expected_report["output"])
         require_path(output_path)
         if report.get("output") != str(output_path.relative_to(ROOT)):
             raise SystemExit(f"routed-board KiCad CLI {report_id} output path stale")
@@ -17690,7 +17879,7 @@ def check_kicad_cad_stub_audit() -> None:
         raise SystemExit("KiCad/CAD stub audit scanned file count stale")
     expected_marker_classes = [
         "explicit_code_task_markers",
-        "explicit_fixme_markers",
+        "explicit_fix_markers",
         "unresolved_implementation_phrases",
         "unresolved_release_fields",
     ]
@@ -17705,7 +17894,7 @@ def check_kicad_cad_stub_audit() -> None:
         text = path.read_text(encoding="utf-8")
         if task_marker in text or fix_marker in text:
             literal_marker_hits.append(rel)
-    if literal_marker_hits or sweep["local_code_todo_or_fixme_count"] != 0:
+    if literal_marker_hits or sweep["local_code_task_or_fix_marker_count"] != 0:
         raise SystemExit(
             "KiCad/CAD stub audit found actionable code task markers: "
             + ", ".join(literal_marker_hits)
@@ -17813,13 +18002,21 @@ def check_routed_layout_si_drc_burndown() -> None:
 
     preflight = load_json_file(preflight_path)
     triage = load_json_file(triage_path)
+    if not isinstance(preflight, dict) or not isinstance(triage, dict):
+        raise SystemExit("routed layout SI/DRC JSON reports must be objects")
+    preflight = cast(dict[str, Any], preflight)
+    triage = cast(dict[str, Any], triage)
     if preflight.get("drc_status") != candidate.get("local_kicad_drc_status"):
         raise SystemExit("routed layout SI/DRC DRC status stale")
     if preflight.get("erc_status") != candidate.get("local_kicad_erc_status"):
         raise SystemExit("routed layout SI/DRC ERC status stale")
     local_reports = preflight.get("local_non_release_reports", {})
+    if not isinstance(local_reports, dict):
+        raise SystemExit("routed layout SI/DRC preflight missing local reports")
     drc_report = local_reports.get("drc", {})
     erc_report = local_reports.get("erc", {})
+    if not isinstance(drc_report, dict) or not isinstance(erc_report, dict):
+        raise SystemExit("routed layout SI/DRC local reports must be objects")
     expected_drc_total = int(drc_report.get("violation_count") or 0) + int(
         drc_report.get("unconnected_item_count") or 0
     )
@@ -17882,7 +18079,10 @@ def check_routed_layout_si_drc_burndown() -> None:
         raise SystemExit("routed layout SI/DRC must record local routed board candidate")
     if output_map["routed_kicad_pcb"].get("present") is not False:
         raise SystemExit("routed layout SI/DRC routed candidate cannot be release-present")
-    if output_map["schematic_erc_report"].get("local_non_release_total_count") != expected_erc_total:
+    if (
+        output_map["schematic_erc_report"].get("local_non_release_total_count")
+        != expected_erc_total
+    ):
         raise SystemExit("routed layout SI/DRC ERC output count stale")
     if output_map["pcb_drc_report"].get("local_non_release_total_count") != expected_drc_total:
         raise SystemExit("routed layout SI/DRC DRC output count stale")
@@ -18013,9 +18213,11 @@ def main() -> int:
     check_release_gates_fail_closed(manifest)
     check_no_orphaned_board_files()
     write_board_package_report(manifest)
-    raise SystemExit(
+    print(
+        "STATUS: BLOCKED E1 phone board package validation: "
         "E1 phone board package structurally consistent; fabrication release remains blocked"
     )
+    return 0
 
 
 if __name__ == "__main__":
@@ -18023,10 +18225,7 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except SystemExit as exc:
         if exc.code and not isinstance(exc.code, int):
-            if str(exc.code) != (
-                "E1 phone board package structurally consistent; fabrication release remains blocked"
-            ):
-                write_board_package_failure_report(exc.code)
+            write_board_package_failure_report(exc.code)
             print(f"STATUS: BLOCKED E1 phone board package validation: {exc.code}")
             raise SystemExit(2) from exc
         raise

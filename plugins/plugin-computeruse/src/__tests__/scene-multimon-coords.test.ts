@@ -18,7 +18,7 @@
  * Notes:
  *   - These tests use synthetic PNGs and fully dependency-injected
  *     SceneBuilder deps. No live host required.
- *   - The Wayland dispatcher tests stub `commandExists` indirectly via env
+ *   - The Wayland dispatcher tests replace `commandExists` indirectly via env
  *     manipulation and observe the snapshot() result.
  */
 
@@ -163,7 +163,7 @@ function fakeCapture(id: number, png: Buffer): DisplayCapture {
 // ── 1. Display coord round-trip on a real secondary display ─────────────────
 
 describe("coord round-trip — secondary display", () => {
-  // We stub the displays singleton so coords.ts → localToGlobal sees a
+  // Replace the displays singleton so coords.ts → localToGlobal sees a
   // 2-display registry independent of the live host.
   const twoDisplays: DisplayInfo[] = [
     {
@@ -514,7 +514,7 @@ describe("coords — backing-store retina translation", () => {
     // Inject a synthetic retina display into the cache via the parser path.
     // The displays singleton on Linux will be xrandr; we exercise the
     // translate() math directly via localToGlobal against a fixture display
-    // by force-stubbing findDisplay through globalToLocal. The cleanest test
+    // by forcing findDisplay through globalToLocal. The cleanest test
     // is to assert the arithmetic against parseDarwinDisplays output.
     const displaysModule = await import("../platform/displays.js");
     const fixture = JSON.stringify([

@@ -234,7 +234,7 @@ export class BlueSkyClient {
 			logger.info(
 				`Dry run: would create post with text: ${request.content.text}`,
 			);
-			return this.mockPost(request.content.text);
+			return this.createDryRunPost(request.content.text);
 		}
 
 		const rt = new RichText({ text: request.content.text });
@@ -380,7 +380,7 @@ export class BlueSkyClient {
 	async sendMessage(request: SendMessageRequest): Promise<BlueSkyMessage> {
 		if (this.config.dryRun) {
 			logger.info({ convoId: request.convoId }, "Dry run: would send message");
-			return this.mockMessage(request.message.text ?? "");
+			return this.createDryRunMessage(request.message.text ?? "");
 		}
 
 		const response = await this.agent.api.chat.bsky.convo.sendMessage(
@@ -398,26 +398,26 @@ export class BlueSkyClient {
 		this.session = null;
 	}
 
-	private mockPost(text: string): BlueSkyPost {
+	private createDryRunPost(text: string): BlueSkyPost {
 		const now = new Date().toISOString();
 		return {
-			uri: `mock://post/${Date.now()}`,
-			cid: `mock-cid-${Date.now()}`,
+			uri: `dryrun://post/${Date.now()}`,
+			cid: `dry-run-cid-${Date.now()}`,
 			author: {
-				did: this.session?.did ?? "did:plc:mock",
-				handle: this.session?.handle ?? "mock.handle",
+				did: this.session?.did ?? "did:plc:dryrun",
+				handle: this.session?.handle ?? "dry.run",
 			},
 			record: { $type: "app.bsky.feed.post", text, createdAt: now },
 			indexedAt: now,
 		};
 	}
 
-	private mockMessage(text: string): BlueSkyMessage {
+	private createDryRunMessage(text: string): BlueSkyMessage {
 		return {
-			id: `mock-msg-${Date.now()}`,
+			id: `dry-run-msg-${Date.now()}`,
 			rev: "1",
 			text,
-			sender: { did: this.session?.did ?? "did:plc:mock" },
+			sender: { did: this.session?.did ?? "did:plc:dryrun" },
 			sentAt: new Date().toISOString(),
 		};
 	}

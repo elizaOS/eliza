@@ -79,7 +79,7 @@ describe("AudioPipeline", () => {
     };
     pipeline.push("conn1", header, Buffer.alloc(512));
     pipeline.clear("conn1");
-    // after clear, flush is a no-op
+    // after clear, flush has no pending audio to emit
     expect(onTranscript).not.toHaveBeenCalled();
   });
 

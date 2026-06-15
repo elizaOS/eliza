@@ -317,7 +317,7 @@ export interface IMessagingAdapter {
 	 * Create a new channel
 	 *
 	 * WHY: When the agent joins/creates a channel on a platform, it needs to
-	 * store the channel metadata for future message routing.
+	 * store the channel metadata for later message routing.
 	 *
 	 * @param data Channel properties
 	 * @param participantIds Optional initial participant list

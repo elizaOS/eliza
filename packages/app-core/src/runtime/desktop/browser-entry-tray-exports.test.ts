@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { DESKTOP_TRAY_MENU_ITEMS } from "./DesktopTrayRuntime";
+import { DESKTOP_TRAY_MENU_ITEMS } from "./tray-menu";
 
 const browserEntryPath = fileURLToPath(
   new URL("../../browser.ts", import.meta.url),

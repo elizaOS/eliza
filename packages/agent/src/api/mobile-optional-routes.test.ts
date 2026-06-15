@@ -70,7 +70,7 @@ describe("handleMobileOptionalRoutes", () => {
     configMock.loadElizaConfig.mockReturnValue({});
   });
 
-  it("serves stream settings on mobile when the optional streaming plugin is stubbed", async () => {
+  it("serves stream settings on mobile when the optional streaming plugin is provided by the mobile shim", async () => {
     process.env.ELIZA_MOBILE_LOCAL_AGENT = "1";
     const res = makeRes();
 

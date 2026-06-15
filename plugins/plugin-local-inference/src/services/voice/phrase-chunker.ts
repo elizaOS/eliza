@@ -94,7 +94,7 @@ export class PhraseChunker {
 		this.tokenizer = tokenizer;
 		if (this.chunkOn === "phoneme-stream" && this.tokenizer === null) {
 			throw new Error(
-				"PhraseChunker: chunkOn='phoneme-stream' requires a PhonemeTokenizer (pass CharacterPhonemeStub for testing or a real tokenizer for production)",
+				"PhraseChunker: chunkOn='phoneme-stream' requires a PhonemeTokenizer",
 			);
 		}
 	}
@@ -170,10 +170,10 @@ export class PhraseChunker {
 	}
 
 	/**
-	 * Drop buffered (not-yet-flushed) tokens whose token index is ≥
+	 * Drop buffered tokens that have not flushed whose token index is ≥
 	 * `fromIndex`. Used by the pipeline's rollback path: when the target
 	 * verifier rejects a draft tail, any draft tokens still sitting in the
-	 * chunker's buffer (not yet packed into a phrase) MUST be discarded so
+	 * chunker's buffer before phrase packing MUST be discarded so
 	 * the verifier's correction does not get glued onto stale text.
 	 * Phonemes are recounted from scratch over what remains.
 	 */

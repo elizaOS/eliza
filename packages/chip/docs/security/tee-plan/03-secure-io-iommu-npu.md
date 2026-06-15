@@ -65,10 +65,10 @@ phone/Linux IOMMU. Reading the RTL:
   low in the `always_ff`; no upstream PRI request port).
 - **Command queue** (`CQB`/`CQH`/`CQT`) registers exist and the local IOFENCE.C
   fetch/decode/completion path is covered, including fail-closed handling for
-  unsupported CQ opcodes. `IOTINVAL.*` / `IODIR.INVAL_*` side effects are not
-  implemented.
+  unsupported CQ opcodes. `IOTINVAL.*` / `IODIR.INVAL_*` side effects are absent
+  from the current scaffold.
 - **MSI translation, MRIF, and `MSI_CFG_TBL`** are advertised in `CAPABILITIES`
-  (IGS=2) but not implemented.
+  (IGS=2) but have no backing datapath yet.
 - **No IOPMP.** There is no second, region-based access-control layer; the only
   gate is the DID allowlist, which is permission-blind (no R/W/X, no address-range
   scoping, no per-region revoke).
@@ -83,7 +83,7 @@ phone/Linux IOMMU. Reading the RTL:
 | **Region-scoped R/W/X permissions** per source ID (IOPMP) | none | Need an IOPMP layer enforcing address-range + R/W/X per source ID, independent of and downstream-redundant to the IOMMU PTW. |
 | Real **two-stage PTW** (S1 Sv39/Sv48 + G-stage Sv39x4/Sv48x4) with TLB | partial S1 Sv39 KAT under identity G-stage | Complete S1/S2 walker and TLB remain Phase 1 deliverables. |
 | **Fault → revoke → scrub** on reset/error (a faulting or torn-down master loses access and its in-flight queue/scratch is zeroized) | fault recorded, transaction dropped; no revoke/scrub coupling | Need a hardware revoke port the monitor drives, plus a scrub engine handshake (ties to `scrub-pending` page state in `01-`). |
-| **Secure MSI/IRQ translation** (MRIF) so a device cannot inject an interrupt into monitor/private state | IGS=2 advertised, not implemented | Phase 5. |
+| **Secure MSI/IRQ translation** (MRIF) so a device cannot inject an interrupt into monitor/private state | IGS=2 advertised; backing datapath absent | Phase 5. |
 
 **Assessment.** The IOMMU is a verification scaffold that proves the register map,
 fault-record layout, IOFENCE.C fetch/decode/completion, an allowlist authorization

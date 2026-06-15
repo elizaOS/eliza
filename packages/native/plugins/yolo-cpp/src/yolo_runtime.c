@@ -224,12 +224,11 @@ const char *yolo_active_backend(void) {
  * Today this entry point letterboxes the input through the real
  * yolo_letterbox_rgb_to_chw and reports ``-ENOSYS`` for the forward
  * pass itself, which is being staged in this same TU below
- * (``yolo_run_v8n_forward``). The stub still drains ``out_count`` so
- * callers can call/recover safely; the synthetic ctest in
+ * (``yolo_run_v8n_forward``). The staged path still drains
+ * ``out_count`` so callers can call/recover safely; the synthetic ctest in
  * ``test/yolo_runtime_test.c`` exercises this contract honestly.
  *
- * The full forward path is intentionally NOT implemented here in this
- * commit:
+ * The full forward path stays outside this entry point in this commit:
  *   - Scalar-C YOLOv8n forward is on the order of a minute per frame
  *     and untrustworthy without a parity test against the Ultralytics
  *     Python reference.

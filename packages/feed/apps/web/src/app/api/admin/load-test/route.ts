@@ -119,6 +119,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Get configuration
   const config = TEST_SCENARIOS[scenario];
+  if (!config) {
+    return errorResponse(
+      "Load test scenario not found",
+      "SCENARIO_NOT_FOUND",
+      400,
+    );
+  }
   const testBaseUrl =
     baseUrl ||
     (process.env.VERCEL_URL

@@ -153,12 +153,14 @@ Implemented static/build coverage:
   task/reminder deep links with text route to chat first so `ScheduledTask`
   creation remains owned by the LifeOps runtime.
 
-Still waiting on live device validation:
+Live-device validation is tracked through evidence manifests and platform
+release gates:
 
 - macOS shortcut/voice entry has installer/verifier scripts, but the final Siri
   phrase creation and spoken-phrase result are still per-device manual checks.
-- iOS Siri/App Shortcuts must still be installed on a physical device and
-  tested with the spoken phrases in `ElizaAppShortcuts.swift`.
+- iOS Siri/App Shortcuts must be installed on a physical device and recorded
+  in `docs/ios-device-validation.json` alongside the spoken phrases in
+  `ElizaAppShortcuts.swift`.
 - Android consumer App Actions require a Play/Assistant-capable device or test
   environment to confirm Assistant fulfillment, not just static XML validity.
 - Android AOSP assistant-role behavior still needs a system-image validation

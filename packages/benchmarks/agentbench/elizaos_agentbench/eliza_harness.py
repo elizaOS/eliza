@@ -43,13 +43,13 @@ class EnvironmentAdapterProtocol(Protocol):
 
 @dataclass
 class BenchmarkDatabaseAdapter:
-    """Compatibility placeholder for the removed Python runtime database adapter."""
+    """Compatibility record for the removed Python runtime database adapter."""
 
     name: str = "removed-python-eliza-runtime"
 
 
 class ElizaAgentHarness:
-    """Compatibility placeholder for the removed Python runtime harness."""
+    """Compatibility guard for the removed Python runtime harness."""
 
     def __init__(self, *_args: object, **_kwargs: object) -> None:
         raise RuntimeError(
@@ -67,7 +67,7 @@ def create_benchmark_character() -> dict[str, object]:
 
 
 async def create_benchmark_runtime(*_args: object, **_kwargs: object) -> object:
-    """Compatibility stub for the removed Python runtime factory."""
+    """Compatibility guard for the removed Python runtime factory."""
     raise RuntimeError(
         "The Python Eliza AgentBench runtime was removed. Use the TypeScript bridge "
         "via packages/benchmarks/eliza-adapter."
@@ -75,7 +75,7 @@ async def create_benchmark_runtime(*_args: object, **_kwargs: object) -> object:
 
 
 def create_benchmark_plugin() -> None:
-    """Compatibility stub for the removed Python plugin."""
+    """Compatibility shim for the removed Python plugin."""
     return None
 
 

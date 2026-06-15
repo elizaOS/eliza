@@ -2,7 +2,7 @@
  * Integration test for the cache wrapper that plugs into the agent runtime
  * `registerAction` interceptor in `plugin-lifecycle.ts`.
  *
- * Builds a stub Action whose name matches a cacheable registry entry and
+ * Builds a fake Action whose name matches a cacheable registry entry and
  * verifies that the wrapped handler short-circuits on hit, falls through on
  * miss, and leaves non-cacheable actions untouched.
  */
@@ -28,14 +28,14 @@ afterEach(() => {
   rmSync(tempRoot, { recursive: true, force: true });
 });
 
-function makeStubAction(
+function makeFakeAction(
   name: string,
   impl: (parameters: Record<string, unknown>) => ActionResult,
 ): { action: Action; calls: () => number } {
   let count = 0;
   const action: Action = {
     name,
-    description: "stub",
+    description: "fake",
     handler: async (_runtime, _msg, _state, options) => {
       count += 1;
       const opts = options as
@@ -52,7 +52,7 @@ describe("wrapActionWithCache", () => {
   it("short-circuits cacheable action on second invocation", async () => {
     const cache = createToolCallCacheFromConfig({ diskRoot: tempRoot });
     if (!cache) throw new Error("cache must be enabled");
-    const { action, calls } = makeStubAction("web_search", (params) => ({
+    const { action, calls } = makeFakeAction("web_search", (params) => ({
       success: true,
       text: `searched:${params.q ?? ""}`,
     }));
@@ -71,7 +71,7 @@ describe("wrapActionWithCache", () => {
   it("leaves non-cacheable actions untouched", async () => {
     const cache = createToolCallCacheFromConfig({ diskRoot: tempRoot });
     if (!cache) throw new Error("cache must be enabled");
-    const { action, calls } = makeStubAction("send_email", (params) => ({
+    const { action, calls } = makeFakeAction("send_email", (params) => ({
       success: true,
       text: `sent:${params.to ?? ""}`,
     }));
@@ -90,7 +90,7 @@ describe("wrapActionWithCache", () => {
       perTool: { web_search: { version: "9" } },
     });
     if (!cache) throw new Error("cache must be enabled");
-    const { action, calls } = makeStubAction("web_search", () => ({
+    const { action, calls } = makeFakeAction("web_search", () => ({
       success: true,
       text: "v9",
     }));

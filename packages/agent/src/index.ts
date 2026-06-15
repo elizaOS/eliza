@@ -85,6 +85,7 @@ export * from "./api/plugin-runtime-apply.ts";
 export type { PluginParamInfo } from "./api/plugin-validation.ts";
 export {
   applyCanonicalFirstRunConfig,
+  applyFirstRunCredentialPersistence,
   clearPersistedFirstRunConfig,
 } from "./api/provider-switch-config.ts";
 export { RegistryService } from "./api/registry-service.ts";
@@ -174,10 +175,9 @@ export { CharacterSchema } from "./config/character-schema.ts";
 export { loadElizaConfig, saveElizaConfig } from "./config/config.ts";
 export * from "./config/index.ts";
 export { resolveUserPath } from "./config/paths.ts";
-// Phase 4F: surface plugin-widgets / plugin-validation / plugin-manager
+// Surface plugin-widgets / plugin-validation / plugin-manager
 // types through the barrel so `@elizaos/plugin-registry` consumes them
 // without reaching into subpaths. The implementations remain agent-private.
-// === Phase 4F ===
 // plugin-routes / plugins-compat-routes moved to @elizaos/plugin-registry.
 // Re-export the internal helpers they consume so the plugin can stay free of
 // `agent/src/...` deep imports.

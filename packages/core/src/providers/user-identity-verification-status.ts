@@ -14,6 +14,7 @@ import type {
 	Memory,
 	Provider,
 	ProviderResult,
+	Service,
 	State,
 } from "../types/index.ts";
 
@@ -41,9 +42,9 @@ export const userIdentityVerificationStatusProvider: Provider = {
 		message: Memory,
 		_state?: State,
 	): Promise<ProviderResult> => {
-		const client = runtime.getService(
+		const client = runtime.getService<Service & IdentityVerificationClient>(
 			IDENTITY_VERIFICATION_CLIENT_SERVICE,
-		) as unknown as IdentityVerificationClient | null;
+		);
 		const identityId =
 			typeof message.entityId === "string" ? message.entityId : undefined;
 

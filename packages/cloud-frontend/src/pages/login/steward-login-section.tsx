@@ -1,7 +1,15 @@
 import { resolveBrowserStewardApiUrl } from "@elizaos/cloud-shared/lib/steward-url";
-import { writeStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import {
+  hasStewardAuthedCookie,
+  readStoredStewardToken,
+  writeStoredStewardToken,
+} from "@elizaos/shared/steward-session-client";
 import { Alert, AlertDescription, DiscordIcon } from "@elizaos/ui";
-import type { StewardProviders } from "@stwd/sdk";
+import type {
+  StewardAuthResult,
+  StewardMfaRequiredResult,
+  StewardProviders,
+} from "@stwd/sdk";
 import { StewardAuth } from "@stwd/sdk";
 import { AlertCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -18,14 +26,23 @@ import {
   consumeStewardCodeFromQuery,
   consumeStewardTokensFromHash,
   exchangeStewardCodeViaApi,
+  refreshStewardSessionViaCookie,
   syncStewardSessionCookie,
 } from "../../lib/steward-session";
-import { resolveLoginReturnTo } from "./login-return-to";
+import {
+  consumePendingOAuthReturnTo,
+  resolveLoginReturnTo,
+  storePendingOAuthReturnTo,
+} from "./login-return-to";
 import {
   buildStewardOAuthAuthorizeUrl,
   buildStewardOAuthRedirectUri,
+  consumeStewardPkceVerifier,
+  createStewardPkcePair,
   type StewardOAuthProvider,
+  storeStewardPkceVerifier,
 } from "./steward-oauth-url";
+import { StewardWalletProviders } from "./steward-wallet-providers";
 import { WalletButtons } from "./wallet-buttons";
 
 // lucide-react v1.x dropped brand icons (Github included). Inline a small
@@ -51,6 +68,15 @@ const PLAYWRIGHT_TEST_AUTH_ENABLED =
     process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
 
 type AuthStep = "idle" | "loading" | "email-sent" | "success";
+
+function persistStewardToken(token: string): void {
+  writeStoredStewardToken(token);
+  if (readStoredStewardToken() !== token) {
+    throw new Error(
+      "Eliza Cloud sign-in needs browser storage. Enable storage for this site and try again.",
+    );
+  }
+}
 type Provider =
   | "passkey"
   | "email"
@@ -71,6 +97,7 @@ const DEFAULT_PROVIDERS: StewardProviders = {
   google: false,
   discord: false,
   github: false,
+  twitter: false,
   oauth: [],
 };
 
@@ -80,6 +107,19 @@ const TEST_PROVIDERS: StewardProviders = {
 };
 
 type LoginTranslator = ReturnType<typeof useT>;
+
+// SDK sign-in methods return `StewardAuthResult | StewardMfaRequiredResult`.
+// This client has no MFA-continuation UI, so a step-up challenge can't be
+// completed here by this surface. Narrow on the `mfaRequired` discriminant and
+// fail before reading token fields off the MFA branch.
+function requireCompletedAuth(
+  result: StewardAuthResult | StewardMfaRequiredResult,
+): StewardAuthResult {
+  if ("mfaRequired" in result) {
+    throw new Error("MFA required — not yet supported in this client.");
+  }
+  return result;
+}
 
 function getCallbackReasonMessage(
   reason: string | null,
@@ -102,6 +142,41 @@ function getCallbackReasonMessage(
     case "server_error":
       return t("cloud.login.callback.serverError", {
         defaultValue: "Something went wrong on our end. Try again in a moment.",
+      });
+    case "invalid_link":
+      return t("cloud.login.callback.invalidLink", {
+        defaultValue:
+          "We couldn't verify that sign-in link. Request a new one. If it keeps happening, contact support.",
+      });
+    case "tenant_mismatch":
+      return t("cloud.login.callback.tenantMismatch", {
+        defaultValue: "That sign-in link is for a different workspace.",
+      });
+    case "rate_limited":
+      return t("cloud.login.callback.rateLimited", {
+        defaultValue: "Too many attempts. Wait a moment and try again.",
+      });
+    case "method_disabled":
+      return t("cloud.login.callback.methodDisabled", {
+        defaultValue: "That sign-in method isn't enabled for this workspace.",
+      });
+    case "sso_required":
+      return t("cloud.login.callback.ssoRequired", {
+        defaultValue: "Your organization requires SSO to sign in.",
+      });
+    case "tenant_not_found":
+    case "tenant_forbidden":
+      return t("cloud.login.callback.tenantUnavailable", {
+        defaultValue: "Workspace not found or access denied.",
+      });
+    case "missing_params":
+      return t("cloud.login.callback.missingParams", {
+        defaultValue: "That sign-in link is incomplete. Request a new one.",
+      });
+    case "mfa_required":
+      return t("cloud.login.callback.mfaRequired", {
+        defaultValue:
+          "Additional verification is required to finish signing in.",
       });
     default:
       return t("cloud.login.callback.unknown", {
@@ -152,6 +227,10 @@ export default function StewardLoginSection() {
   const [error, setError] = useState<string | null>(null);
   const [callbackError, setCallbackError] = useState<string | null>(null);
   const [redirectTo, setRedirectTo] = useState<string | null>(null);
+  const [walletButtonsMounted, setWalletButtonsMounted] = useState(false);
+  const [autoStartWallet, setAutoStartWallet] = useState<WalletKind | null>(
+    null,
+  );
   const [providersLoaded, setProvidersLoaded] = useState(
     PLAYWRIGHT_TEST_AUTH_ENABLED || cachedStewardProviders !== null,
   );
@@ -192,25 +271,42 @@ export default function StewardLoginSection() {
     // and sets HttpOnly cookies. Access + refresh tokens never enter JS.
     const code = consumeStewardCodeFromQuery();
     if (code) {
+      // Replay the PKCE verifier stashed before the /authorize redirect so
+      // Steward can match it against the bound challenge. Null when the flow
+      // predates PKCE (rollout window) or sessionStorage was cleared — the
+      // exchange then omits it and Steward surfaces the mismatch.
+      const codeVerifier = consumeStewardPkceVerifier() ?? undefined;
       exchangeStewardCodeViaApi(code, {
-        redirectUri: buildStewardOAuthRedirectUri(
-          window.location.origin,
-          window.location.search,
-        ),
+        redirectUri: buildStewardOAuthRedirectUri(window.location.origin),
         tenantId: STEWARD_TENANT_ID,
+        codeVerifier,
       })
-        .then((res) => {
+        .then(async (res) => {
           // Mirror the JWT into localStorage so `@stwd/react`'s `useAuth()`
           // and `readStewardSessionFromStorage()` see the session on the
           // very next route mount. Without this, OAuth users land back on
           // `/login` after a successful exchange (HttpOnly cookies alone
           // aren't enough — the SPA auth check requires the localStorage
-          // copy until that's relaxed).
-          if (res?.token) {
-            writeStoredStewardToken(res.token);
-            window.dispatchEvent(new CustomEvent("steward-token-sync"));
+          // copy until that's relaxed). If an older Worker returns only
+          // cookies, hydrate through the cookie refresh endpoint before
+          // redirecting instead of bouncing into a login loop.
+          let token = res?.token;
+          if (!token) {
+            const refreshed = await refreshStewardSessionViaCookie().catch(
+              () => null,
+            );
+            token = refreshed?.token;
           }
-          setRedirectTo(resolveLoginReturnTo(searchParams));
+          if (!token) {
+            throw new Error(
+              "Sign-in completed, but the browser session could not be hydrated. Refresh and try again.",
+            );
+          }
+          persistStewardToken(token);
+          window.dispatchEvent(new CustomEvent("steward-token-sync"));
+          setRedirectTo(
+            resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
+          );
         })
         .catch((sessionError) => {
           setCallbackError(
@@ -233,7 +329,17 @@ export default function StewardLoginSection() {
     const refreshToken = fromHash?.refreshToken ?? queryRefreshToken ?? null;
     if (!token) return;
 
-    writeStoredStewardToken(token);
+    try {
+      persistStewardToken(token);
+    } catch (sessionError) {
+      setCallbackError(
+        getErrorMessage(
+          sessionError,
+          "Could not complete Eliza Cloud sign-in.",
+        ),
+      );
+      return;
+    }
     // Refresh token is forwarded to the server only so it can be set as the
     // HttpOnly steward-refresh-token cookie — it is NOT persisted in
     // localStorage (XSS-reachable). After first login the HttpOnly cookie
@@ -241,7 +347,9 @@ export default function StewardLoginSection() {
 
     syncStewardSessionCookie(token, refreshToken)
       .then(() => {
-        setRedirectTo(resolveLoginReturnTo(searchParams));
+        setRedirectTo(
+          resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
+        );
       })
       .catch((sessionError) => {
         setCallbackError(
@@ -266,6 +374,20 @@ export default function StewardLoginSection() {
           if (!cancelled) setRedirectTo(resolveLoginReturnTo(searchParams));
           return;
         }
+
+        const storedToken = readStoredStewardToken();
+        if (!storedToken && hasStewardAuthedCookie()) {
+          const refreshed = await refreshStewardSessionViaCookie();
+          if (cancelled) return;
+          if (refreshed?.token) {
+            writeStoredStewardToken(refreshed.token);
+            window.dispatchEvent(new CustomEvent("steward-token-sync"));
+            setRedirectTo(resolveLoginReturnTo(searchParams));
+          }
+          return;
+        }
+
+        if (!storedToken) return;
 
         const refreshed = await auth.refreshSession();
         if (cancelled) return;
@@ -325,7 +447,9 @@ export default function StewardLoginSection() {
     setLoading("passkey");
     setError(null);
     try {
-      const result = await auth.signInWithPasskey(email.trim());
+      const result = requireCompletedAuth(
+        await auth.signInWithPasskey(email.trim()),
+      );
       await handleSuccess(result.token, result.refreshToken);
     } catch (e: unknown) {
       setError(getErrorMessage(e, "Passkey failed"));
@@ -353,12 +477,12 @@ export default function StewardLoginSection() {
   async function handleOAuth(provider: StewardOAuthProvider) {
     setLoading(provider);
     setError(null);
-    // Server-side redirect flow. Preserve the current query string on
-    // redirect_uri so returnTo (used by /auth/cli-login, app-authorize, etc.)
-    // survives the OAuth round-trip. Without this, users signing in from a
-    // deep-linked page land on /dashboard instead of the page that redirected
-    // them to /login. The authorize endpoint reads `tenant_id` (snake_case);
-    // camelCase `tenantId` falls back to the user's personal tenant.
+    // Server-side redirect flow. Keep redirect_uri stable at /login so it
+    // matches Steward's exact tenant OAuth allowlist. Do not include returnTo
+    // or other volatile login query params in redirect_uri; those can make
+    // production logins fail allowlist checks before reaching the provider.
+    // The authorize endpoint reads `tenant_id` (snake_case); camelCase
+    // `tenantId` falls back to the user's personal tenant.
     // Cloudflare Pages preview deploys live on `*.pages.dev`, whose hashed
     // subdomain is never on the Steward tenant's redirect_uri allowlist.
     // Route OAuth through staging.elizacloud.ai (which is whitelisted, matching
@@ -369,15 +493,45 @@ export default function StewardLoginSection() {
     const oauthOrigin = host.endsWith(".pages.dev")
       ? "https://staging.elizacloud.ai"
       : window.location.origin;
+    // Steward requires a PKCE challenge on `response_type=code`. Mint the
+    // verifier/challenge pair, stash the verifier for the post-redirect
+    // /exchange step, and send only the challenge to /authorize. If crypto is
+    // unavailable, surface the error instead of redirecting into a guaranteed
+    // 400 ("code_challenge is required for response_type=code").
+    let codeChallenge: string;
+    try {
+      const pkce = await createStewardPkcePair();
+      // Fail fast if the verifier can't be persisted: redirecting with a
+      // challenge we can't later answer would just 401 after a full OAuth
+      // round-trip. Better to tell the user upfront.
+      if (!storeStewardPkceVerifier(pkce.verifier)) {
+        setError(
+          "Could not start sign-in — browser storage is unavailable. Enable cookies / site data and try again.",
+        );
+        setLoading(null);
+        return;
+      }
+      codeChallenge = pkce.challenge;
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, "Could not start sign-in"));
+      setLoading(null);
+      return;
+    }
+    storePendingOAuthReturnTo(searchParams);
     window.location.href = buildStewardOAuthAuthorizeUrl(
       provider,
       oauthOrigin,
       {
-        redirectSearch: window.location.search,
         stewardApiUrl,
         stewardTenantId: STEWARD_TENANT_ID,
+        codeChallenge,
       },
     );
+  }
+
+  function handleWalletIntent(kind: WalletKind) {
+    setWalletButtonsMounted(true);
+    setAutoStartWallet(kind);
   }
 
   if (redirectTo) {
@@ -560,27 +714,52 @@ export default function StewardLoginSection() {
             <div className="h-px flex-1 bg-white/14" />
           </div>
 
-          <WalletButtons
-            auth={auth}
-            disabled={isLoading}
-            loadingProvider={
-              loading === "ethereum" || loading === "solana"
-                ? (loading as WalletKind)
-                : null
-            }
-            onLoadingChange={(kind) => setLoading(kind)}
-            onSuccess={(result) =>
-              handleSuccess(result.token, result.refreshToken)
-            }
-            onError={(walletError) => {
-              setError(
-                walletError.message ||
-                  t("cloud.login.error.walletFailed", {
-                    defaultValue: "Wallet sign-in failed",
-                  }),
-              );
-            }}
-          />
+          {walletButtonsMounted ? (
+            <StewardWalletProviders>
+              <WalletButtons
+                auth={auth}
+                autoStart={autoStartWallet}
+                disabled={isLoading}
+                loadingProvider={
+                  loading === "ethereum" || loading === "solana"
+                    ? (loading as WalletKind)
+                    : null
+                }
+                onAutoStartHandled={() => setAutoStartWallet(null)}
+                onLoadingChange={(kind) => setLoading(kind)}
+                onSuccess={(result) =>
+                  handleSuccess(result.token, result.refreshToken)
+                }
+                onError={(walletError) => {
+                  setError(
+                    walletError.message ||
+                      t("cloud.login.error.walletFailed", {
+                        defaultValue: "Wallet sign-in failed",
+                      }),
+                  );
+                }}
+              />
+            </StewardWalletProviders>
+          ) : (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => handleWalletIntent("ethereum")}
+                disabled={isLoading}
+                className="flex items-center justify-center gap-2 bg-transparent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-black disabled:opacity-50"
+              >
+                {t("cloud.login.wallet.evm", { defaultValue: "EVM" })}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleWalletIntent("solana")}
+                disabled={isLoading}
+                className="flex items-center justify-center gap-2 bg-transparent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-black disabled:opacity-50"
+              >
+                {t("cloud.login.wallet.solana", { defaultValue: "Solana" })}
+              </button>
+            </div>
+          )}
         </>
       )}
 

@@ -3,7 +3,7 @@
  *
  * The orchestrator's unit tests (`ensure-local-artifacts.test.ts`) inject a
  * tiny `vi.fn()`-shaped service. These integration tests stand up a more
- * realistic shape of `LocalInferenceService` — full method stubs with
+ * realistic shape of `LocalInferenceService` — full method test doubles with
  * `vi.fn` recording and configurable behavior — so the wiring inside the
  * service surface (`startDownload`, `getInstalled`, `getHardware`) is
  * exercised the way the real boot path would call it. The four-mode matrix
@@ -12,8 +12,8 @@
  * covered.
  *
  * Note on test lane: filename ends in `.integration.test.ts`. The default
- * vitest config picks this up via the `*.test.ts` glob, but if a future
- * lane excludes integration tests it should be run explicitly via the path
+ * vitest config picks this up via the `*.test.ts` glob; lanes that exclude
+ * integration tests should run it explicitly via the path
  * (see Part 3 of the parallel-sweep brief).
  */
 
@@ -94,7 +94,7 @@ describe("ensureLocalArtifacts integration", () => {
 	});
 
 	describe("mode matrix", () => {
-		it("cloud mode is a no-op (no service calls, artifacts: [], complete: true)", async () => {
+		it("cloud mode skips downloads (no service calls, artifacts: [], complete: true)", async () => {
 			const mock = makeMockService();
 
 			const result = await ensureLocalArtifacts({
@@ -110,7 +110,7 @@ describe("ensureLocalArtifacts integration", () => {
 			expect(mock.getInstalled).not.toHaveBeenCalled();
 		});
 
-		it("remote mode is a no-op (no service calls, artifacts: [], complete: true)", async () => {
+		it("remote mode skips downloads (no service calls, artifacts: [], complete: true)", async () => {
 			const mock = makeMockService();
 
 			const result = await ensureLocalArtifacts({

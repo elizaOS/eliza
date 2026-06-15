@@ -24,9 +24,8 @@ import { sendJson } from "./response";
 
 /**
  * The runtime contract is `runDueTasks(): Promise<void>`. The optional
- * `maxWallTimeMs` is currently advisory — passed through so a future
- * TaskService update can honour deadline-bounded execution without a route
- * signature change.
+ * `maxWallTimeMs` is currently advisory and is passed through for services
+ * that support deadline-bounded execution.
  */
 interface TaskServiceLike {
   runDueTasks(options?: { maxWallTimeMs?: number }): Promise<unknown>;

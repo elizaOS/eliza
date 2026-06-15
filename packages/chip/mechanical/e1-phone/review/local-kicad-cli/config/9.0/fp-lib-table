@@ -1,0 +1,3 @@
+(fp_lib_table
+  (lib (name "e1-phone-dev")(type "KiCad")(uri "/home/shaw/milady/eliza/packages/chip/board/kicad/e1-phone/e1-phone-dev.pretty")(options "")(descr "E1 phone non-release development footprints with CAD envelope STEP bindings"))
+)

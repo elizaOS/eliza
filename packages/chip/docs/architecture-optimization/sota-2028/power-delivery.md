@@ -26,7 +26,7 @@ Sub-report of [2028-sota-integrated-report.md](../2028-sota-integrated-report.md
 
 - **Intel PowerVia (production, 18A in 2025)** — first production BSPDN. Internal E-core test vehicle with > 90% utilization shows: >30% platform voltage droop improvement, 6% frequency benefit at iso-voltage, looser frontside metal pitch reducing lithography cost.
 - **TSMC A14 (production 2028)** — first version is frontside-PDN only for mobile/client. Separate **A14 + SPR (Super Power Rail)** = informally "A12" with BSPDN ships in 2029.
-- Samsung SF2 has BSPDN roadmap; Exynos 2600 reported on SF2 without BSPDN.
+- Samsung SF2Z is the BSPDN variant; Exynos 2600 is reported on SF2 without BSPDN.
 - **Thermal trade-off**: BSPDN puts power TSVs through bulk, removing thermal contact between active devices and substrate top side. SemiEngineering and IRDS 2024 flag higher local Tj because heat travels through BEOL of carrier rather than directly out back. Cooling at package and board must compensate.
 
 ### A.4 On-die decap density

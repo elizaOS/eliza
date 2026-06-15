@@ -118,13 +118,14 @@ Profile attachment for AutoFDO+Propeller+BOLT is documented in
 
 ## Status
 
-- **BLOCKED until canonical build executed in container.** The pin file's
-  `upstream.commit_sha` is the placeholder `TODO_PIN_LLVM_SHA_FROM_CONTAINER_BUILD`.
-  No release-grade compiler evidence will be accepted until
+- **Pinned recipe, blocked build evidence.** The pin file's
+  `upstream.commit_sha` is
+  `de3ee84346d6dcf77ac20fe5c8acc95594886cbc`, resolved from LLVM `main` on
+  2026-05-19. No release-grade compiler evidence will be accepted until
   `scripts/build_llvm_riscv.sh` runs to completion in the Linux container and
-  the resolved SHA is written into the pin file.
-- The recipe is checked-in regardless so the build is reproducible from a
-  single repo SHA + the container digest.
+  the build evidence is archived.
+- The recipe is checked in so the build is reproducible from a single repo SHA
+  plus the container digest.
 
 ## Refresh procedure
 

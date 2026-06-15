@@ -14,10 +14,10 @@ import type { EvmSigningCapabilityKind } from "@elizaos/shared";
  *                       ELIZA_CLOUD_PROVISIONED != "1")
  *   - "steward-cloud" — cloud-provisioned Steward sidecar (same creds,
  *                       ELIZA_CLOUD_PROVISIONED == "1")
- *   - "cloud-view-only" — cloud bind stored ELIZA_CLOUD_EVM_ADDRESS but no
- *                         signing path is wired (backend contract not yet
- *                         implemented locally). Address is visible, but no
- *                         transactions can be signed from this process.
+ *   - "cloud-view-only" — cloud bind stored ELIZA_CLOUD_EVM_ADDRESS, but
+ *                         signing is unavailable in this local process.
+ *                         Address is visible, but no transactions can be
+ *                         signed from this process.
  *   - "none"          — no address, no signer
  *
  * The UI surfaces `reason` verbatim, so it should be short and user-facing.
@@ -79,15 +79,16 @@ export function resolveEvmSigningCapability(
         };
   }
 
-  // Cloud bind persisted an address but no usable signing path is wired up
-  // in this runtime. The UI can still show the address (view-only), but
+  // Cloud bind persisted an address, but this runtime has no local signing
+  // authority. The UI can still show the address (view-only), but
   // plugin-wallet must NOT be auto-enabled — its actions would fail at runtime.
   const cloudAddress = env.ELIZA_CLOUD_EVM_ADDRESS?.trim();
   if (cloudAddress) {
     return {
       kind: "cloud-view-only",
       canSign: false,
-      reason: "Cloud wallet provisioned (view-only — signing not yet wired)",
+      reason:
+        "Cloud wallet provisioned (view-only — local signing unavailable)",
     };
   }
 

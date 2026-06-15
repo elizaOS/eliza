@@ -1,17 +1,14 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("brand flows", () => {
-  test("landing renders headline, cloud video, and CTA buttons", async ({
+  test("landing renders headline and CTA on a solid background", async ({
     page,
   }) => {
     await page.goto("/");
     await expect(page.locator("h1")).toBeVisible();
-    // Cloud video element exists via the CloudVideoBackground component
-    const hasVideoOrPoster = await page
-      .locator("video, img[src*='clouds']")
-      .first()
-      .count();
-    expect(hasVideoOrPoster).toBeGreaterThan(0);
+    // The landing hero is a static solid backdrop — no cloud video/poster.
+    expect(await page.locator("video").count()).toBe(0);
+    expect(await page.locator("img[src*='clouds']").count()).toBe(0);
     await expect(
       page.getByRole("button", { name: /launch eliza/i }).first(),
     ).toBeVisible();

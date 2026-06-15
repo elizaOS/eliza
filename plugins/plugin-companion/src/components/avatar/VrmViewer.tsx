@@ -8,9 +8,11 @@
 import {
   CHAT_AVATAR_VOICE_EVENT,
   type ChatAvatarVoiceEventDetail,
-  type CompanionHalfFramerateMode,
-  type CompanionVrmPowerMode,
-} from "@elizaos/ui";
+} from "@elizaos/ui/events";
+import type {
+  CompanionHalfFramerateMode,
+  CompanionVrmPowerMode,
+} from "@elizaos/ui/state";
 import { useEffect, useEffectEvent, useRef } from "react";
 import { getVrmCount, getVrmUrl } from "../../vrm-assets";
 import {

@@ -9,7 +9,7 @@ flagged. Prepared for the E1X3D wafer-scale RISC-V mesh program.
 
 - **Hybrid bonding is the only 3D style shipping high-volume logic-on-logic /
   cache-on-logic today.** TSMC SoIC in production since 2022; production bond
-  pitch ~6 um in 2025, roadmap ~4.5 um and ~3 um by 2027-2029. Intel Foveros
+  pitch ~6 um in 2025, vendor plan ~4.5 um and ~3 um by 2027-2029. Intel Foveros
   Direct targets sub-5 um on 18A-PT in H2 2026. Treat "6-micron resurrects
   Moore's Law" syndicated articles as PR, not data.
 - **Monolithic 3D (M3D) has the densest vertical interconnect but is
@@ -76,7 +76,7 @@ arrays ~25 um pitch, die thickness 30-50 um, HBM microbumps ~40 um (HBM3) ->
 
 **Hybrid bonding / face-to-face (F2F).** Direct Cu-Cu + oxide/SiCN dielectric
 bonding, no bumps - the production sweet spot for logic stacking. TSMC SoIC-X:
-production since 2022, ~6 um pitch in 2025, roadmap to ~4.5 um and ~3 um by
+production since 2022, ~6 um pitch in 2025, vendor plan to ~4.5 um and ~3 um by
 2027-2029; powers AMD 3D V-Cache. Intel Foveros Direct: sub-5 um on 18A-PT, H2
 2026. Samsung SAINT: SAINT-S / SAINT-D / SAINT-L productized splits, 3D-stacked
 SoC mass production ~2026. imec research: W2W hybrid bonding at 400 nm pitch
@@ -205,7 +205,7 @@ real 3D tapeout.
 
 ## Sources
 
-See parent index. Key URLs: Tom's Hardware TSMC SoIC roadmap; TSMC 3DFabric SoIC;
+See parent index. Key URLs: Tom's Hardware TSMC SoIC plan; TSMC 3DFabric SoIC;
 Intel Foveros Direct 18A-PT; Samsung SAINT (TrendForce / Tom's Hardware / Sammy
 Fans); imec W2W 400 nm / D2W 2 um; arXiv 2306.14033 (MIV transistor M3D); Nature
 Electronics s41928-024-01251-8; BU PEAC TCAS-II Mono3D tutorial; Cerebras
@@ -217,6 +217,6 @@ S1359431124009220); IEEE Std 1838-2019 (9036129); GT MIV BIST (08791515);
 CEA-Leti KGD (cea-03759970); Yole AMD 3D V-Cache SoIC.
 
 Skeptic flags: "N-micron resurrects Moore's Law" syndicated PR not used for
-quantitative claims; foundry pitch roadmaps are vendor-stated; academic PPA % are
+quantitative claims; foundry pitch plans are vendor-stated; academic PPA % are
 28 nm research PDKs and may not transfer; microfluidic cooling numbers are lab
 demonstrations.

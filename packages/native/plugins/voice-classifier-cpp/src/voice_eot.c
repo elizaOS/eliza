@@ -56,7 +56,8 @@ int voice_eot_score(voice_eot_handle h,
                     float *eot_prob) {
     if (eot_prob) *eot_prob = 0.0f;
     if (!h || !pcm_16khz || !eot_prob || n == 0) return -EINVAL;
-    /* TODO: pin upstream + port forward graph. */
+    /* Audio EOT has no pinned upstream graph yet. Keep the head
+     * fail-closed instead of fabricating a turn probability. */
     return -ENOSYS;
 }
 

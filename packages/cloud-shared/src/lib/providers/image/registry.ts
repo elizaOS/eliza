@@ -1,6 +1,7 @@
 import type { PricingBillingSource } from "../../services/ai-pricing-definitions";
+import { atlasCloudImageProvider } from "./atlascloud-image-generation";
+import { bitRouterImageProvider } from "./bitrouter-image-generation";
 import { falImageProvider } from "./fal-image-generation";
-import { openRouterImageProvider } from "./openrouter-image-generation";
 import type { ImageProvider } from "./types";
 
 const PROVIDERS = new Map<PricingBillingSource, ImageProvider>();
@@ -17,5 +18,6 @@ export function getImageProvider(billingSource: PricingBillingSource): ImageProv
   return provider;
 }
 
-registerImageProvider(openRouterImageProvider);
+registerImageProvider(bitRouterImageProvider);
 registerImageProvider(falImageProvider);
+registerImageProvider(atlasCloudImageProvider);

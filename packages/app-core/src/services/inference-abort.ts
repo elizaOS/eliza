@@ -6,8 +6,8 @@
  * `APP_PAUSE_EVENT` to cancel UI-side streams before iOS suspends the
  * WKWebView. That covers the UI's fetch streams. This module covers the
  * runtime side: inference paths internal to the agent (the AOSP llama FFI
- * adapter, the cloud-fallback wrapper, any future locally-driven model
- * call) can register their `AbortController` here so a single hook can
+ * adapter, the cloud-fallback wrapper, and local model calls) can register
+ * their `AbortController` here so a single hook can
  * abort ALL of them at once on pause / shutdown / account switch.
  *
  * Contract:

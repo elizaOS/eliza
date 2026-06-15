@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-computeruse",
-  "version": "2.0.3-beta.0",
+  "version": "2.0.3-beta.13",
   "description": "Desktop automation plugin — screenshots, mouse/keyboard control, browser CDP, and window management for elizaOS agents. Ported from open-computer-use (Apache 2.0).",
   "type": "module",
   "main": "dist/index.js",
@@ -39,7 +39,8 @@
     "postinstall": "node scripts/ensure-platform-deps.mjs",
     "build": "bun run build.ts",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsgo --noEmit",
+    "validate:ios-device-evidence": "node scripts/validate-ios-device-evidence.mjs"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"
@@ -49,7 +50,7 @@
     "@types/node": "^25.2.3",
     "bun-types": "^1.3.14",
     "typescript": "^6.0.3",
-    "vitest": "4.1.7"
+    "vitest": "4.1.9"
   },
   "dependencies": {
     "@nut-tree-fork/nut-js": "^4.2.6",

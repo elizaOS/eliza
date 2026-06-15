@@ -887,15 +887,15 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ## App / app-lifeops
 
-> This generated inventory is incomplete for LifeOps. The canonical action
-> registration is `appLifeOpsPlugin.actions` in
-> `eliza/plugins/plugin-lifeops/src/plugin.ts`, which currently includes browser
+> This generated inventory is partial for LifeOps. The canonical action
+> registration is `personalAssistantPlugin.actions` in
+> `eliza/plugins/plugin-personal-assistant/src/plugin.ts`, which currently includes browser
 > companion, inbox, approvals, travel, check-in, follow-up, scheduling, and
 > activity actions beyond the legacy subset below.
 
 ### BLOCK_APPS
 
-- **File:** `eliza/plugins/plugin-lifeops/src/actions/app-blocker.ts`
+- **File:** `eliza/plugins/plugin-personal-assistant/src/actions/app-blocker.ts`
 - **Description:** Admin-only. Block selected apps on the user
 - **Similes:** `BLOCK_APP`, `BLOCK_APPLICATION`, `APP_BLOCKER`, `START_APP_BLOCK`, `BLOCK_DISTRACTING_APPS`, `SHIELD_APPS`
 - **Validate:** ✅ yes
@@ -904,7 +904,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### BLOCK_WEBSITES
 
-- **File:** `eliza/plugins/plugin-lifeops/src/actions/website-blocker.ts`
+- **File:** `eliza/plugins/plugin-personal-assistant/src/actions/website-blocker.ts`
 - **Description:** Admin-only. Start a local website block by editing the system hosts file.
 - **Similes:** `SELFCONTROL_BLOCK_WEBSITES`, `BLOCK_WEBSITE`, `BLOCK_SITE`, `BLOCK_WEBSITE_NOW`, `WEBSITE_BLOCKER`, `WEBSITEBLOCKER`, `START_FOCUS_BLOCK`, `BLOCK_SITE`, `BLOCK_DISTRACTING_SITES`
 - **Validate:** ✅ yes
@@ -913,7 +913,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### CALENDAR_ACTION
 
-- **File:** `eliza/plugins/plugin-lifeops/src/actions/calendar.ts`
+- **File:** `eliza/plugins/plugin-personal-assistant/src/actions/calendar.ts`
 - **Description:** Interact with Google Calendar through LifeOps.
 - **Similes:** `CALENDAR`, `CHECK_CALENDAR`, `SCHEDULE_EVENT`, `CREATE_CALENDAR_EVENT`, `SEARCH_CALENDAR`, `NEXT_MEETING`, `ITINERARY`, `TRAVEL_SCHEDULE`, `CHECK_SCHEDULE`
 - **Validate:** ✅ yes
@@ -922,7 +922,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### GMAIL_ACTION
 
-- **File:** `eliza/plugins/plugin-lifeops/src/actions/gmail.ts`
+- **File:** `eliza/plugins/plugin-personal-assistant/src/actions/gmail.ts`
 - **Description:** Interact with Gmail through LifeOps.
 - **Similes:** `GMAIL`, `CHECK_EMAIL`, `EMAIL_TRIAGE`, `SEARCH_EMAIL`, `DRAFT_EMAIL_REPLY`, `SEND_EMAIL_REPLY`
 - **Validate:** ✅ yes
@@ -931,7 +931,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### LIFE
 
-- **File:** `eliza/plugins/plugin-lifeops/src/actions/life.ts`
+- **File:** `eliza/plugins/plugin-personal-assistant/src/actions/life.ts`
 - **Description:** Manage the user
 - **Similes:** `MANAGE_LIFEOPS`, `QUERY_LIFEOPS`, `CREATE_TASK`, `CREATE_HABIT`, `CREATE_GOAL`, `TRACK_HABIT`, `COMPLETE_TASK`, `SET_ALARM`, `SET_REMINDER`, `SNOOZE_REMINDER`, `SET_REMINDER_INTENSITY`
 - **Validate:** ✅ yes
@@ -940,7 +940,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### UPDATE_OWNER_PROFILE
 
-- **File:** `eliza/plugins/plugin-lifeops/src/actions/update-owner-profile.ts`
+- **File:** `eliza/plugins/plugin-personal-assistant/src/actions/update-owner-profile.ts`
 - **Description:** Silently persist stable, owner-only LifeOps profile details when the canonical owner clearly states or confirms them.
 - **Similes:** `SAVE_OWNER_PROFILE`, `SET_OWNER_PROFILE`, `UPDATE_USER_PROFILE`, `SAVE_USER_PROFILE`
 - **Validate:** ✅ yes
@@ -970,7 +970,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 ### MANAGE_WINDOW
 
 - **File:** `eliza/plugins/plugin-computeruse/src/actions/manage-window.ts`
-- **Description:** Manage desktop windows through the local runtime. This includes listing visible windows, focusing or switching windows, minimizing, maximizing, restoring, closing, and parity no-op arrange/move comman
+- **Description:** Manage desktop windows through the local runtime. This includes listing visible windows, focusing or switching windows, minimizing, maximizing, restoring, closing, and parity arrange/move commands that report unsupported platform behavior clearly.
 - **Similes:** `LIST_WINDOWS`, `FOCUS_WINDOW`, `SWITCH_WINDOW`, `MINIMIZE_WINDOW`, `MAXIMIZE_WINDOW`, `CLOSE_WINDOW`, `WINDOW_MANAGEMENT`
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -1348,12 +1348,12 @@ Notable actions without examples (first 10):
 - **Count:** 25
 
   - `eliza/plugins/plugin-2004scape/src/actions/param-parser.ts`
-  - `eliza/plugins/plugin-lifeops/src/actions/inbox-digest.ts`
-  - `eliza/plugins/plugin-lifeops/src/actions/inbox-respond.ts`
-  - `eliza/plugins/plugin-lifeops/src/actions/inbox-triage.ts`
-  - `eliza/plugins/plugin-lifeops/src/actions/inbox.ts`
-  - `eliza/plugins/plugin-lifeops/src/actions/life-goal-extractor.ts`
-  - `eliza/plugins/plugin-lifeops/src/actions/life-param-extractor.ts`
-  - `eliza/plugins/plugin-lifeops/src/actions/life-recent-context.ts`
-  - `eliza/plugins/plugin-lifeops/src/actions/life-update-extractor.ts`
-  - `eliza/plugins/plugin-lifeops/src/actions/life.extractor.ts`
+  - `eliza/plugins/plugin-personal-assistant/src/actions/inbox-digest.ts`
+  - `eliza/plugins/plugin-personal-assistant/src/actions/inbox-respond.ts`
+  - `eliza/plugins/plugin-personal-assistant/src/actions/inbox-triage.ts`
+  - `eliza/plugins/plugin-personal-assistant/src/actions/inbox.ts`
+  - `eliza/plugins/plugin-personal-assistant/src/actions/life-goal-extractor.ts`
+  - `eliza/plugins/plugin-personal-assistant/src/actions/life-param-extractor.ts`
+  - `eliza/plugins/plugin-personal-assistant/src/actions/life-recent-context.ts`
+  - `eliza/plugins/plugin-personal-assistant/src/actions/life-update-extractor.ts`
+  - `eliza/plugins/plugin-personal-assistant/src/actions/life.extractor.ts`

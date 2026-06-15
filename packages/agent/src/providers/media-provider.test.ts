@@ -12,7 +12,7 @@ type FetchCall = {
   body: Record<string, unknown>;
 };
 
-function stubAudioFetch(response: Response, calls: FetchCall[]) {
+function fakeMediaFetch(response: Response, calls: FetchCall[]) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
@@ -36,7 +36,7 @@ describe("media audio provider routing", () => {
 
   it("routes sfx requests to ElevenLabs sound generation", async () => {
     const calls: FetchCall[] = [];
-    stubAudioFetch(
+    fakeMediaFetch(
       new Response(new Uint8Array([1, 2, 3]), {
         headers: {
           "content-type": "audio/mpeg",
@@ -85,7 +85,7 @@ describe("media audio provider routing", () => {
 
   it("routes tts requests to ElevenLabs text-to-speech", async () => {
     const calls: FetchCall[] = [];
-    stubAudioFetch(
+    fakeMediaFetch(
       new Response(new Uint8Array([4, 5]), {
         headers: { "content-type": "audio/mpeg" },
       }),
@@ -122,7 +122,7 @@ describe("media audio provider routing", () => {
 
   it("routes music requests to FAL audio generation", async () => {
     const calls: FetchCall[] = [];
-    stubAudioFetch(
+    fakeMediaFetch(
       Response.json({
         audio_file: {
           url: "https://cdn.example/audio.wav",
@@ -224,7 +224,7 @@ describe("media video provider routing", () => {
 
   it("sends FAL video generation request shape and returns video output", async () => {
     const calls: FetchCall[] = [];
-    stubAudioFetch(
+    fakeMediaFetch(
       Response.json({
         video: { url: "https://cdn.example/video.mp4" },
         thumbnail: { url: "https://cdn.example/thumb.jpg" },
@@ -275,7 +275,7 @@ describe("media video provider routing", () => {
 
   it("returns failure when FAL succeeds without a video URL", async () => {
     const calls: FetchCall[] = [];
-    stubAudioFetch(Response.json({ video: {}, duration: 7 }), calls);
+    fakeMediaFetch(Response.json({ video: {}, duration: 7 }), calls);
 
     const provider = createVideoProvider(
       {

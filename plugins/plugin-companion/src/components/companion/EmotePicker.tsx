@@ -1,15 +1,14 @@
+import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { client } from "@elizaos/ui/api";
+import { Button, Input } from "@elizaos/ui/components";
 import {
-  Button,
-  client,
   dispatchAppEvent,
   EMOTE_PICKER_EVENT,
-  Input,
   STOP_EMOTE_EVENT,
-  useApp,
-  useTimeout,
-  Z_SYSTEM_CRITICAL,
-} from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
+} from "@elizaos/ui/events";
+import { useTimeout } from "@elizaos/ui/hooks";
+import { useApp } from "@elizaos/ui/state";
+import { Z_SYSTEM_CRITICAL } from "@elizaos/ui/utils";
 import {
   Accessibility,
   Activity,

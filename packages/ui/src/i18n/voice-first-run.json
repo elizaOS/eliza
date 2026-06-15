@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/i18next.json",
-  "description": "Voice first-run + voice settings copy used by R10 (I10-app-ux). Mirrors the canonical English copy in R10 §3.2 / §5 / §8. Translate by adding sibling json files (zh-CN, tl, ko, pt, vi, es, ja, de). English-only entries are acceptable for this wave; mark TODO(i18n) when adding new locales.",
+  "description": "Voice first-run + voice settings copy used by R10 (I10-app-ux). Mirrors the canonical English copy in R10 §3.2 / §5 / §8. Translate by adding sibling json files (zh-CN, tl, ko, pt, vi, es, ja, de). English-only entries are acceptable for this wave; annotate locale coverage when adding new locales.",
   "voice": {
     "first-run": {
       "welcome": {

@@ -153,12 +153,6 @@ describe("Comprehensive Dynamic Migration Tests", () => {
     }
   });
 
-  // Skip introspection tests since our RuntimeMigrator handles this internally
-  describe.skip("Schema Introspection", () => {
-    // Our RuntimeMigrator now uses snapshot-generator.ts internally
-    // which properly extracts schema information from Drizzle definitions
-  });
-
   describe("Migration Execution", () => {
     // Clean up any existing schemas before migration tests
     beforeAll(async () => {

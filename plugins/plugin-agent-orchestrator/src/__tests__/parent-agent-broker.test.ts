@@ -1,6 +1,7 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runParentAgentBroker } from "../services/parent-agent-broker.js";
+import { resetSessionSpendUsd } from "../services/spend-allowance.js";
 
 function createRuntime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime {
   const cache = new Map<string, unknown>();
@@ -35,6 +36,7 @@ describe("runParentAgentBroker", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
+    resetSessionSpendUsd();
   });
 
   it("lists matching parent actions", async () => {
@@ -296,5 +298,119 @@ describe("runParentAgentBroker", () => {
     const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
     expect(url.pathname).toBe("/api/v1/apps/app-1/domains/check");
     expect(init.body).toBe(JSON.stringify({ domain: "example.com" }));
+  });
+
+  describe("capped self-spend allowance", () => {
+    function stubAllowance(capUsd: string) {
+      // Point config resolution at a missing file so the cap is read from env.
+      vi.stubEnv("ELIZA_CONFIG_PATH", "/nonexistent/eliza-config.json");
+      vi.stubEnv("ELIZA_AGENT_SPEND_CAP_USD", capUsd);
+      vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "test-key");
+      vi.stubEnv("ELIZA_CLOUD_BASE_URL", "https://cloud.test");
+    }
+
+    it("self-authorizes a paid self-spend command within the cap and strips the spend hint", async () => {
+      stubAllowance("50");
+      const fetchMock = vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ success: true, status: "registered" }),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            },
+          ),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      const result = await runParentAgentBroker({
+        runtime: createRuntime(),
+        sessionId: "spend-within",
+        message: brokerMessage(),
+        args: {
+          mode: "cloud-command",
+          command: "domains.buy",
+          params: { id: "app-1", domain: "myapp.com", spendEstimateUsd: 14.95 },
+        },
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.text).not.toContain("Reply yes");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+      expect(url.pathname).toBe("/api/v1/apps/app-1/domains/buy");
+      // The reserved spend hint must NOT leak into the Cloud request body.
+      expect(init.body).toBe(JSON.stringify({ domain: "myapp.com" }));
+    });
+
+    it("requires confirmation when a self-spend command exceeds the allowance", async () => {
+      stubAllowance("10");
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const result = await runParentAgentBroker({
+        runtime: createRuntime(),
+        sessionId: "spend-over",
+        message: brokerMessage(),
+        args: {
+          mode: "cloud-command",
+          command: "domains.buy",
+          params: { id: "app-1", domain: "myapp.com", spendEstimateUsd: 14.95 },
+        },
+      });
+
+      expect(result.text).toContain("Reply yes");
+      expect(result.text).toContain("allowance");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("still requires confirmation for destructive commands even under an allowance", async () => {
+      stubAllowance("1000");
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const result = await runParentAgentBroker({
+        runtime: createRuntime(),
+        sessionId: "spend-destructive",
+        message: brokerMessage(),
+        args: {
+          mode: "cloud-command",
+          command: "apps.delete",
+          params: { id: "app-1" },
+        },
+      });
+
+      expect(result.text).toContain("Reply yes");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("auto-authorizes non-self-spend mutating commands under an allowance", async () => {
+      stubAllowance("50");
+      const fetchMock = vi.fn(
+        async () =>
+          new Response(JSON.stringify({ success: true }), {
+            status: 201,
+            headers: { "content-type": "application/json" },
+          }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      const result = await runParentAgentBroker({
+        runtime: createRuntime(),
+        sessionId: "spend-mutating",
+        message: brokerMessage(),
+        args: {
+          mode: "cloud-command",
+          command: "apps.create",
+          params: { body: { name: "Auto App" } },
+        },
+      });
+
+      expect(result.text).not.toContain("Reply yes");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+      expect(url.pathname).toBe("/api/v1/apps");
+      expect(init.method).toBe("POST");
+    });
   });
 });

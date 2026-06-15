@@ -5,7 +5,7 @@
  *
  * 1. Device tier banner (R10 §7, banner pulled in from VoiceTierBanner).
  * 2. Continuous chat mode (off / vad-gated / always-on).
- * 3. Wake word — placeholder until WakeWordSection is decoupled from
+ * 3. Wake word — inline controls until WakeWordSection is decoupled from
  *    VoiceConfigView.
  * 4. Local-vs-Cloud strategy (auto / force-local / force-cloud).
  * 5. Models — slot for I5's ModelUpdatesPanel (renders the slot prop or
@@ -18,35 +18,52 @@
  * `messages.tts.*` keys stay; the new `messages.voice.*` keys live here.
  */
 
-import { Cloud, Database, Mic, Shield, Sliders } from "lucide-react";
+import { Cloud, Database, Mic, Shield, Sliders, Timer } from "lucide-react";
 import * as React from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { VoiceProfilesClient } from "../../api/client-voice-profiles";
 import { cn } from "../../lib/utils";
-import { useTranslation } from "../../state/TranslationContext";
-import {
-  DEFAULT_VOICE_CONTINUOUS_MODE,
-  type VoiceContinuousMode,
-} from "../../voice/voice-chat-types";
+import { useTranslation } from "../../state/TranslationContext.hooks";
+import type { VoiceContinuousMode } from "../../voice/voice-chat-types";
 import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
 import { VoiceProfileSection } from "./VoiceProfileSection";
+import { DEFAULT_VAD_AUTO_STOP_PREFS } from "./VoiceSection.helpers";
 import { type VoiceDeviceTier, VoiceTierBanner } from "./VoiceTierBanner";
 
 export type VoiceLocalCloudStrategy = "auto" | "force-local" | "force-cloud";
+
+/**
+ * User-facing slice of {@link LocalAsrAutoStopOptions}: how long silence ends a
+ * turn (`silenceMs`) and how loud audio must be to count as speech
+ * (`speechRmsThreshold`). The remaining auto-stop fields keep their library
+ * defaults — these two are the only knobs worth surfacing.
+ */
+export interface VadAutoStopPrefs {
+  /** Trailing silence (ms) that ends a turn in VAD / local-ASR capture. */
+  silenceMs: number;
+  /** RMS amplitude (0–1) above which audio is treated as speech. */
+  speechRmsThreshold: number;
+}
+
+/** Bounds for the surfaced sliders, kept well inside sane capture ranges. */
+const VAD_SILENCE_MIN_MS = 300;
+const VAD_SILENCE_MAX_MS = 3000;
+const VAD_SILENCE_STEP_MS = 100;
+const VAD_RMS_MIN = 0.001;
+const VAD_RMS_MAX = 0.02;
+const VAD_RMS_STEP = 0.001;
 
 export interface VoiceSectionPrefs {
   continuous: VoiceContinuousMode;
   strategy: VoiceLocalCloudStrategy;
   cloudFirstLineCache: boolean;
   autoLearnVoices: boolean;
+  /**
+   * VAD / local-ASR end-of-turn tuning. Optional so older persisted prefs (and
+   * the registry mount) stay valid; falls back to {@link DEFAULT_VAD_AUTO_STOP_PREFS}.
+   */
+  vadAutoStop?: VadAutoStopPrefs;
 }
-
-export const DEFAULT_VOICE_SECTION_PREFS: VoiceSectionPrefs = {
-  continuous: DEFAULT_VOICE_CONTINUOUS_MODE,
-  strategy: "auto",
-  cloudFirstLineCache: false,
-  autoLearnVoices: true,
-};
 
 export interface VoiceSectionProps {
   /** Hardware tier from I9 (null falls back to "GOOD"). */
@@ -61,8 +78,7 @@ export interface VoiceSectionProps {
   profilesClient: VoiceProfilesClient;
   /**
    * Slot for I5's ModelUpdatesPanel — caller mounts it when ready, otherwise
-   * we render a "Models will appear here once they finish downloading"
-   * placeholder.
+   * we render an empty-state banner until model downloads are available.
    */
   modelsPanel?: React.ReactNode;
   /** Whether the user has at least one wake-word configured. */
@@ -121,6 +137,19 @@ export function VoiceSection({
       onPrefsChange({ ...prefs, ...patch });
     },
     [onPrefsChange, prefs],
+  );
+
+  const vadAutoStop = prefs.vadAutoStop ?? DEFAULT_VAD_AUTO_STOP_PREFS;
+  const updateVadAutoStop = React.useCallback(
+    (patch: Partial<VadAutoStopPrefs>) => {
+      updatePrefs({
+        vadAutoStop: {
+          ...(prefs.vadAutoStop ?? DEFAULT_VAD_AUTO_STOP_PREFS),
+          ...patch,
+        },
+      });
+    },
+    [prefs.vadAutoStop, updatePrefs],
   );
 
   const { ref: wakeWordRef, agentProps: wakeWordAgentProps } =
@@ -269,6 +298,100 @@ export function VoiceSection({
           </option>
         </select>
       </FieldRow>
+
+      <div
+        className="rounded-sm border border-border/30 bg-card/30 p-3"
+        data-testid="voice-section-vad"
+      >
+        <div className="mb-2 flex items-center gap-2">
+          <Timer className="h-4 w-4 text-muted" aria-hidden />
+          <h3 className="text-sm font-semibold">
+            {t("voicesection.endOfTurn", { defaultValue: "End of turn" })}
+          </h3>
+        </div>
+        <p className="mb-3 text-xs text-muted">
+          {t("voicesection.endOfTurnDesc", {
+            defaultValue:
+              "Tune how on-device VAD decides you've finished speaking. Applies to VAD-gated and continuous capture with local speech recognition.",
+          })}
+        </p>
+
+        <label className="mb-3 block text-xs">
+          <span className="mb-1 flex items-center justify-between">
+            <span className="text-sm">
+              {t("voicesection.silenceDuration", {
+                defaultValue: "Silence before end of turn",
+              })}
+            </span>
+            <span
+              className="font-medium text-muted"
+              data-testid="voice-section-vad-silence-value"
+            >
+              {(vadAutoStop.silenceMs / 1000).toFixed(1)}s
+            </span>
+          </span>
+          <input
+            type="range"
+            min={VAD_SILENCE_MIN_MS}
+            max={VAD_SILENCE_MAX_MS}
+            step={VAD_SILENCE_STEP_MS}
+            value={vadAutoStop.silenceMs}
+            onChange={(e) =>
+              updateVadAutoStop({ silenceMs: Number(e.target.value) })
+            }
+            className="w-full accent-accent"
+            data-testid="voice-section-vad-silence"
+            aria-label={t("voicesection.silenceDuration", {
+              defaultValue: "Silence before end of turn",
+            })}
+          />
+        </label>
+
+        <label className="block text-xs">
+          <span className="mb-1 flex items-center justify-between">
+            <span className="text-sm">
+              {t("voicesection.micSensitivity", {
+                defaultValue: "Speech detection threshold",
+              })}
+            </span>
+            <span
+              className="font-medium text-muted"
+              data-testid="voice-section-vad-rms-value"
+            >
+              {vadAutoStop.speechRmsThreshold.toFixed(3)}
+            </span>
+          </span>
+          <input
+            type="range"
+            min={VAD_RMS_MIN}
+            max={VAD_RMS_MAX}
+            step={VAD_RMS_STEP}
+            value={vadAutoStop.speechRmsThreshold}
+            onChange={(e) =>
+              updateVadAutoStop({
+                speechRmsThreshold: Number(e.target.value),
+              })
+            }
+            className="w-full accent-accent"
+            data-testid="voice-section-vad-rms"
+            aria-label={t("voicesection.micSensitivity", {
+              defaultValue: "Speech detection threshold",
+            })}
+          />
+          <span className="mt-1 flex justify-between text-[10px] text-muted">
+            <span>
+              {t("voicesection.thresholdLower", {
+                defaultValue: "More sensitive",
+              })}
+            </span>
+            <span>
+              {t("voicesection.thresholdHigher", {
+                defaultValue: "Less sensitive",
+              })}
+            </span>
+          </span>
+        </label>
+      </div>
 
       <div
         className="rounded-sm border border-border/30 bg-card/30 p-3"

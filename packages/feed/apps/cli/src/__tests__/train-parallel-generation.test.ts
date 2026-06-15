@@ -35,7 +35,9 @@ const dbWhere = mock(async () => [
     trajectoryId: "traj-agent-1",
     agentId: "agent-1",
     archetype: "trader",
-    stepsJson: JSON.stringify([{ action: "BUY", input: "market", output: "trade" }]),
+    stepsJson: JSON.stringify([
+      { action: "BUY", input: "market", output: "trade" },
+    ]),
     aiJudgeReward: 0.8,
     aiJudgeReasoning: "coherent",
     scenarioId: "feed-parallel",
@@ -46,7 +48,9 @@ const dbWhere = mock(async () => [
     trajectoryId: "traj-agent-2",
     agentId: "agent-2",
     archetype: "trader",
-    stepsJson: JSON.stringify([{ action: "HOLD", input: "market", output: "wait" }]),
+    stepsJson: JSON.stringify([
+      { action: "HOLD", input: "market", output: "wait" },
+    ]),
     aiJudgeReward: 0.7,
     aiJudgeReasoning: "stable",
     scenarioId: "feed-parallel",
@@ -106,7 +110,11 @@ mock.module("@feed/db", () => ({
 
 mock.module("@feed/agents/dependencies", () => ({
   configureTrainingDependencies,
-  getAgentService: () => ({ serviceName: "agent-service", createAgent, deleteAgent }),
+  getAgentService: () => ({
+    serviceName: "agent-service",
+    createAgent,
+    deleteAgent,
+  }),
   getAgentRuntimeManager: () => ({ getRuntime }),
   getAutonomousCoordinator: () => ({ executeAutonomousTick }),
   getToTrainingMessages: () => () => [],
@@ -196,7 +204,9 @@ describe("feed train parallel generation", () => {
       errors: 0,
     });
     expect(manifest.trajectoryIds).toEqual(["traj-agent-1", "traj-agent-2"]);
-    expect(manifest.exportPath).toBe(join(outputDir, "feed-generated-trajectories.jsonl"));
+    expect(manifest.exportPath).toBe(
+      join(outputDir, "feed-generated-trajectories.jsonl"),
+    );
     const exported = (await readFile(manifest.exportPath, "utf8"))
       .trim()
       .split("\n")

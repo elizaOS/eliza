@@ -215,4 +215,4 @@ void ggml_vec_dot_q4_polar_q8_0_rvv(
 
 #endif /* __riscv && __riscv_v_intrinsic */
 
-typedef int polar_dot_rvv_iso_c_tu_stub;
+typedef int polar_dot_rvv_iso_c_translation_unit_anchor;

@@ -49,8 +49,9 @@ bootstrap(myPlugin);
 1. Creates (or accepts) a `WorkerChannel` transport.
 2. Instantiates `RuntimeProxy` and wires it to the channel.
 3. Calls `buildAnnounceDescriptor(plugin, registry)` and sends `worker-announce-plugin`.
-4. Calls `plugin.init(config, runtimeApi)` if present.
-5. Sends `init-complete`; the worker is now in dispatch mode.
+4. Snapshots declared plugin surfaces, then calls `plugin.init(config, runtimeApi)` if present.
+5. If `init()` appended new surfaces to the plugin object, sends a `worker-announce-dynamic` descriptor for just those additions.
+6. Sends `init-complete`; the worker is now in dispatch mode.
 
 **`BootstrapOptions`:**
 - `channel?: WorkerChannel` — override transport (default: auto-detect Worker vs stdio).
@@ -70,9 +71,9 @@ Transport contract: `send(msg)`, `onMessage(handler) → unsubscribe`, `close()`
 What plugin handlers receive as their `runtime` argument. Each method issues a `host-rpc` message and awaits `host-rpc-result`.
 
 **Supported methods (`SUPPORTED_RUNTIME_METHODS`):**
-`getService`, `useModel`, `getMemory`, `createMemory`, `updateMemory`, `emitEvent`, `registerEvent`, `getSetting`, `setSetting`, `composeState`.
+`getService`, `useModel`, `getMemory`, `createMemory`, `updateMemory`, `emitEvent`, `getSetting`, `setSetting`, `composeState`.
 
-`runtime.registerEvent()` is proxied in remote mode. Static `Plugin.events` is still preferred for known events, but runtime-registered handlers are stored in the worker handler registry and the host registers a local event stub that forwards payloads back to that worker handler.
+`runtime.registerEvent()` cannot serialize a live callback over host-RPC. Declare event handlers statically on the `Plugin.events` object so bootstrap can announce stable RPC handler ids.
 
 ### `buildAnnounceDescriptor(plugin, registry)` — `src/descriptor.ts`
 
@@ -149,9 +150,9 @@ Implement `WorkerChannel` in `src/envelope.ts` (or a separate file), export it, 
 
 ## Conventions / gotchas
 
-- **Static surfaces only at announce time.** `buildAnnounceDescriptor` snapshots the plugin's surface arrays at bootstrap. Surfaces added after `init()` are not reflected in the descriptor sent to the host (dynamic announce is not yet implemented).
-- **Action callbacks are proxied.** When the host invokes an action with a callback, the bridge passes a callback id to the worker and `callback(...)` round-trips over `host-rpc actionCallback`; actions may use either callback responses or return values.
+- **Init-time dynamic surfaces are supported.** `bootstrap()` announces the static surfaces first, then snapshots any plugin surfaces appended by `init()` and sends them as `worker-announce-dynamic` before `init-complete`. Later runtime mutation after `bootstrap()` completes is still not announced.
+- **Action callbacks are proxied.** If the host provides an action callback, the bridge assigns a callback id and routes worker callback payloads back over `worker-action-callback`.
 - **Service instances are lazy and per-worker.** The `serviceInstances` WeakMap in `descriptor.ts` caches the `Promise<RemoteServiceInstance>` for each `RemoteServiceClass`. The first host invocation of any method on a service triggers `service.start(runtime)`. Subsequent calls reuse the cached instance for the worker's lifetime.
-- **`runtime.registerEvent` is proxied.** Static `Plugin.events` is still preferred for known events, but runtime-registered handlers are forwarded through `host-rpc registerEvent` and later invoked via `worker-rpc event`.
+- **Remote event registration is static.** Calling `runtime.registerEvent` inside a remote handler throws because function callbacks cannot cross host-RPC. Declare event handlers in the static `Plugin.events` object.
 - **`"tests"` surface is not host-RPC reachable.** The dispatcher explicitly rejects it with a clear error.
 - **HMAC auth is opt-in.** Pass `rpcAuth` in `DispatchContext` to require MAC verification; omitting it disables the check entirely (appropriate for local workers).

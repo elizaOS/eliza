@@ -77,4 +77,4 @@ void ggml_vec_dot_q4_polar_preht_f32_neon(
 #endif /* __ARM_NEON */
 
 /* Avoid ISO C "empty translation unit" pedantic error when __ARM_NEON is undefined. */
-typedef int polar_dot_preht_neon_iso_c_tu_stub;
+typedef int polar_dot_preht_neon_iso_c_translation_unit_anchor;

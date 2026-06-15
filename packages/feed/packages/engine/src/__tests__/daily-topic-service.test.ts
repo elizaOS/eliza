@@ -31,9 +31,10 @@ const dbMock = {
         );
       }
       if (where?.date?.lt) {
+        const cutoffDate = where.date.lt;
         return (
           [...storedTopics]
-            .filter((topic) => (topic.date as Date) < where.date?.lt!)
+            .filter((topic) => (topic.date as Date) < cutoffDate)
             .sort(
               (a, b) => (b.date as Date).getTime() - (a.date as Date).getTime(),
             )[0] ?? null
@@ -147,7 +148,7 @@ describe("daily-topic-service", () => {
       {
         id: "h2",
         title: "OpenAI faces scrutiny over new launch",
-        summary: "Developers react to OpenAI roadmap",
+        summary: "Developers react to OpenAI launch plan",
         publishedAt: new Date("2026-03-06T09:00:00.000Z"),
       },
       {
@@ -342,7 +343,7 @@ describe("daily-topic-service", () => {
         {
           id: "h2",
           title: "OpenAI faces scrutiny over new launch",
-          summary: "Developers react to OpenAI roadmap",
+          summary: "Developers react to OpenAI launch plan",
           publishedAt: new Date("2026-03-06T09:00:00.000Z"),
         },
         {
@@ -411,7 +412,7 @@ describe("daily-topic-service", () => {
         {
           id: "h2",
           title: "OpenAI faces scrutiny over launch",
-          summary: "Developers react to OpenAI roadmap",
+          summary: "Developers react to OpenAI launch plan",
           publishedAt: new Date("2026-03-06T09:00:00.000Z"),
         },
         {

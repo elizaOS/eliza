@@ -7,13 +7,13 @@
 
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { closeDatabase, db, eq, inArray, trajectories, users } from "@feed/db";
 import {
   getAgentRuntimeManager,
   getAgentService,
   getAutonomousCoordinator,
 } from "@feed/agents/dependencies";
 import { getAvailableArchetypes } from "@feed/agents/rubrics/index";
+import { closeDatabase, db, eq, inArray, trajectories, users } from "@feed/db";
 import { getFlag, getOption, type parseArgs, wantsHelp } from "../lib/args.js";
 import { logger } from "../lib/logger.js";
 import { writeFeedParallelGenerationManifest } from "../lib/training-artifacts.js";
@@ -47,7 +47,10 @@ type CreatedAgent = {
   archetype: string;
 };
 
-function parseJsonOrFallback(value: string | null | undefined, fallback: unknown): unknown {
+function parseJsonOrFallback(
+  value: string | null | undefined,
+  fallback: unknown,
+): unknown {
   if (!value) return fallback;
   try {
     return JSON.parse(value) as unknown;
@@ -118,7 +121,9 @@ async function runLimited<T>(
   }
 }
 
-function createParallelGenerator(config: ParallelGenerationConfig): ParallelGenerator {
+function createParallelGenerator(
+  config: ParallelGenerationConfig,
+): ParallelGenerator {
   const agentService = getAgentService();
   const runtimeManager = getAgentRuntimeManager();
   const autonomousCoordinator = getAutonomousCoordinator();
@@ -138,9 +143,9 @@ function createParallelGenerator(config: ParallelGenerationConfig): ParallelGene
       for (const archetype of config.archetypes) {
         archetypeStats[archetype] = {
           agents: config.agentsPerArchetype,
-            trajectories: 0,
-            avgTicksPerAgent: config.ticksPerAgent,
-          };
+          trajectories: 0,
+          avgTicksPerAgent: config.ticksPerAgent,
+        };
         archetypeTrajectoryIds[archetype] = new Set();
         for (let index = 0; index < config.agentsPerArchetype; index += 1) {
           try {
@@ -298,7 +303,8 @@ export async function runParallelGeneration(
   const cleanup = getFlag(parsed, "cleanup");
   const dryRun = getFlag(parsed, "dry-run");
   const providedManagerId = getOption(parsed, "manager-id");
-  const outputDir = getOption(parsed, "output-dir") || "training-data/feed-parallel";
+  const outputDir =
+    getOption(parsed, "output-dir") || "training-data/feed-parallel";
 
   logger.header("Parallel Training Data Generation");
 
@@ -412,7 +418,9 @@ export async function runParallelGeneration(
     console.log(`  Errors: ${result.errors.length}`);
     console.log();
     console.log("Errors:");
-    result.errors.slice(0, 5).forEach((err) => console.log(`  - ${err}`));
+    for (const err of result.errors.slice(0, 5)) {
+      console.log(`  - ${err}`);
+    }
     if (result.errors.length > 5) {
       console.log(`  ... and ${result.errors.length - 5} more`);
     }
@@ -439,7 +447,9 @@ export async function runParallelGeneration(
     console.log();
   } else {
     console.log("Created agents:");
-    result.agentsCreated.slice(0, 5).forEach((id) => console.log(`  - ${id}`));
+    for (const id of result.agentsCreated.slice(0, 5)) {
+      console.log(`  - ${id}`);
+    }
     if (result.agentsCreated.length > 5) {
       console.log(`  ... and ${result.agentsCreated.length - 5} more`);
     }

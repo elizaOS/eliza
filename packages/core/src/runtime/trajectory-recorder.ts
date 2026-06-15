@@ -1361,8 +1361,8 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
  * resolved from `ELIZA_TRAJECTORY_DIR` → `ELIZA_STATE_DIR/trajectories` →
  * `resolveStateDir()/trajectories`.
  *
- * Pass `enabled: false` to short-circuit every method to a no-op (test
- * fixtures, opt-out at construction time).
+ * Pass `enabled: false` to short-circuit every method (test fixtures, opt-out
+ * at construction time).
  */
 export function createJsonFileTrajectoryRecorder(
 	opts: CreateJsonFileRecorderOptions = {},
@@ -1371,7 +1371,7 @@ export function createJsonFileTrajectoryRecorder(
 }
 
 // ---------------------------------------------------------------------------
-// No-op recorder (used when recording is disabled or no recorder was passed
+// Disabled recorder (used when recording is disabled or no recorder was passed
 // into a sub-runtime call). This lets every hook be unconditional.
 // ---------------------------------------------------------------------------
 
@@ -1384,7 +1384,7 @@ const NOOP_RECORDER: TrajectoryRecorder = {
 };
 
 /**
- * Get a no-op recorder. Useful when wiring a runtime path that may or may
+ * Get a disabled recorder. Useful when wiring a runtime path that may or may
  * not have a recorder attached.
  */
 export function getNoopTrajectoryRecorder(): TrajectoryRecorder {

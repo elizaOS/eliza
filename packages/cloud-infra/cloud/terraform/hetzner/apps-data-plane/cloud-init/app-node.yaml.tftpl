@@ -1,0 +1,127 @@
+#cloud-config
+# App worker node for Eliza Cloud Apps (Product 2) — runs UNTRUSTED user
+# containers. The node daemon (provisioning-worker) SSHes in as `deploy` and runs
+# each app on its OWN `--internal` docker network with --cap-drop=ALL, behind a
+# default-deny egress proxy (see cloud-shared/lib/services/app-network-utils.ts).
+#
+# This bootstrap installs docker + a squid egress proxy + an ingress reverse
+# proxy (Caddy) that maps <shortid>.<base-domain> -> the app container's host
+# port (the ingress-map / public_hostname the runtime stamps).
+#
+# STAN: for untrusted images decide gVisor (runsc) / Kata / userns-remap +
+# seccomp profile; this draft uses stock docker + cap-drop + --internal, which is
+# the verified baseline but not defense-in-depth against a kernel 0-day.
+
+hostname: ${hostname}
+manage_etc_hosts: true
+
+users:
+  - name: deploy
+    groups: sudo, docker
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: true
+    ssh_authorized_keys:
+%{ for key in operator_ssh_keys ~}
+      - ${key}
+%{ endfor ~}
+
+apt:
+  sources:
+    docker:
+      source: "deb [arch=amd64 signed-by=$KEY_FILE] https://download.docker.com/linux/ubuntu $RELEASE stable"
+      keyid: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+
+package_update: true
+packages:
+  - curl
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - squid
+  - jq
+
+write_files:
+  # Default-deny egress proxy: app containers (HTTP_PROXY -> :3128) can only
+  # reach explicitly allowlisted hosts. STAN: extend allowed_dst as needed
+  # (package registries the apps legitimately need). The tenant DB is reached
+  # over the private net, NOT through this proxy.
+  - path: /etc/squid/conf.d/apps-egress.conf
+    content: |
+      http_port 3128
+      acl allowed_dst dstdomain .ghcr.io .githubusercontent.com
+      http_access allow allowed_dst
+      http_access deny all
+
+  # Caddy front door for per-app URLs (<shortid>.<base> + verified custom
+  # domains). NATIVE JSON config (not a Caddyfile) because the deploy flow adds
+  # routes through the admin API to the server named EXACTLY "srv0" with a
+  # "routes" array — the structure the merged builders target
+  # (apps-ingress-routes.buildCaddyAddRouteUrl -> /config/apps/http/servers/
+  # srv0/routes). A Caddyfile's auto-generated server name/shape would NOT
+  # match. This exact JSON is proven end-to-end against caddy v2 (base loads ->
+  # real route POST 200 -> Host routes -> DELETE by @id) and `caddy validate`s.
+  #
+  #   - on-demand TLS, issuance gated by cloud-api's ask endpoint
+  #     (apps.tls.automation.on_demand.permission -> GET .../apps-ingress/ask)
+  #     so certs are only minted for hosts a live app owns: the system shortid
+  #     host (containers.public_hostname) or a verified+active managed domain;
+  #   - the `policies: [{on_demand:true}]` makes srv0 actually USE on-demand for
+  #     any SNI (the permission endpoint is the gate);
+  #   - srv0 starts with routes:[] — per-app routes are added/removed LIVE via
+  #     the admin API by the deploy flow (idempotent add by @id on provision,
+  #     delete by @id on teardown); NO terminal catch-all (it would shadow the
+  #     appended routes). Unmatched hosts never pass the ask gate -> no cert.
+  # The admin API binds 0.0.0.0:2019; exposure is controlled by the node
+  # firewall (2019 only from operator_ingress_cidrs — the control plane),
+  # mirroring how SSH is restricted.
+  # NOTE: a caddy RESTART reloads this file (routes:[]), so live-added routes are
+  # re-applied by the daemon's next provision/reconcile — base config stays
+  # deterministic.
+  - path: /etc/caddy/caddy.json
+    content: |
+      {
+        "admin": { "listen": "0.0.0.0:2019" },
+        "apps": {
+          "tls": {
+            "automation": {
+              "on_demand": {
+                "permission": {
+                  "module": "http",
+                  "endpoint": "${cloud_api_origin}/api/v1/apps-ingress/ask"
+                }
+              },
+              "policies": [ { "on_demand": true } ]
+            }
+          },
+          "http": {
+            "servers": {
+              "srv0": { "listen": [":443"], "routes": [] }
+            }
+          }
+        }
+      }
+
+  # Run the official caddy unit against the JSON config instead of the default
+  # /etc/caddy/Caddyfile (the package unit hardcodes the Caddyfile + adapter).
+  - path: /etc/systemd/system/caddy.service.d/10-json-config.conf
+    content: |
+      [Service]
+      ExecStart=
+      ExecStart=/usr/bin/caddy run --environ --config /etc/caddy/caddy.json
+      ExecReload=
+      ExecReload=/usr/bin/caddy reload --config /etc/caddy/caddy.json --force
+
+runcmd:
+  - systemctl enable docker && systemctl start docker
+  - systemctl enable squid && systemctl restart squid
+  # The tenant DB lives at ${tenant_db_host} on the private net; app containers
+  # get a per-tenant DSN pointing there (injected by the deploy runner).
+  - echo "tenant_db_host=${tenant_db_host}" > /etc/eliza-apps-node.env
+  # Caddy via the official repo (the distro package lags). Configs are written
+  # above (JSON + systemd drop-in); install, then start against the JSON config.
+  - curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  - curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' > /etc/apt/sources.list.d/caddy-stable.list
+  - apt-get update && apt-get install -y caddy
+  - systemctl daemon-reload
+  - systemctl enable caddy && systemctl restart caddy

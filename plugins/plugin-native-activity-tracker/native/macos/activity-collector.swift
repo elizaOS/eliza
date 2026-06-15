@@ -256,8 +256,8 @@ hidIdleTimer.resume()
 
 RunLoop.main.run()
 #else
-// Non-Darwin stub — the Swift compiler is only expected on macOS. We still
-// compile this file cleanly on Linux so CI type-checks don't explode.
+// Non-Darwin unsupported entrypoint. The collector only runs on macOS, but this
+// branch keeps the file compileable on Linux CI.
 import Foundation
 FileHandle.standardError.write("[activity-collector] This helper only runs on macOS.\n".data(using: .utf8) ?? Data())
 exit(2)

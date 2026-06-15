@@ -54,10 +54,10 @@ set_target_properties(yolo_shared PROPERTIES OUTPUT_NAME "yolo")
 
 enable_testing()
 
-add_executable(yolo_stub_smoke test/yolo_stub_smoke.c)
-target_link_libraries(yolo_stub_smoke PRIVATE yolo)
-target_compile_options(yolo_stub_smoke PRIVATE -O2 -Wall -Wextra)
-add_test(NAME yolo_stub_smoke COMMAND yolo_stub_smoke)
+add_executable(yolo_abi_smoke test/yolo_abi_smoke.c)
+target_link_libraries(yolo_abi_smoke PRIVATE yolo)
+target_compile_options(yolo_abi_smoke PRIVATE -O2 -Wall -Wextra)
+add_test(NAME yolo_abi_smoke COMMAND yolo_abi_smoke)
 
 add_executable(yolo_nms_test test/yolo_nms_test.c)
 target_link_libraries(yolo_nms_test PRIVATE yolo)

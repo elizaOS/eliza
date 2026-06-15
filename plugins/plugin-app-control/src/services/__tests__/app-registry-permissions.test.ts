@@ -291,7 +291,7 @@ describe("AppRegistryService permissions surface", () => {
 		});
 	});
 
-	describe("Phase 3 — default isolation:'worker' for trust:'external'", () => {
+	describe("default isolation:'worker' for trust:'external'", () => {
 		it("forces isolation:'worker' on an external app even when the manifest declared 'none'", async () => {
 			const service = new AppRegistryService(NOOP_RUNTIME);
 			await service.register(makeEntry({ isolation: "none" }), {
@@ -329,9 +329,9 @@ describe("AppRegistryService permissions surface", () => {
 		});
 	});
 
-	describe("isolation persistence (Phase 2.1)", () => {
+	describe("isolation persistence", () => {
 		it("defaults isolation to 'none' for a first-party app with no isolation declared", async () => {
-			// Use trust:"first-party" to bypass Phase 3's default-flip
+			// Use trust:"first-party" to bypass the external-app default flip
 			// to "worker" for external apps; this test exercises the
 			// raw entry-level default before policy is applied.
 			const service = new AppRegistryService(NOOP_RUNTIME);
@@ -507,7 +507,7 @@ describe("AppRegistryService permissions surface", () => {
 			);
 			await service.setGrantedNamespaces("demo", ["fs"], "user");
 
-			// Tamper with the on-disk file to simulate a future-Eliza writeback
+			// Tamper with the on-disk file to simulate a newer-Eliza writeback
 			// containing a namespace this version doesn't recognise.
 			const grantsPath = path.join(state.stateDir, "granted-permissions.json");
 			const raw = readFileSync(grantsPath, "utf8");

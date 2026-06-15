@@ -534,7 +534,7 @@ Specific events with temporal/spatial context.
 **Requirements:**
 - WHO did WHAT, WHEN/WHERE
 - Specific concrete event (not pattern)
-- Significant impact on future work
+- Significant impact on later work
 
 ## 2. SEMANTIC
 Stable facts and identity about the user.
@@ -572,7 +572,7 @@ Skills, workflows, methodologies, how-to.
 - Significant completed projects/milestones
 - Important bugs, incidents, problems
 - Major decisions with lasting impact
-- Formative experiences shaping future work
+- Formative experiences shaping later decisions
 
 **SEMANTIC:**
 - Professional identity (role, title, company)

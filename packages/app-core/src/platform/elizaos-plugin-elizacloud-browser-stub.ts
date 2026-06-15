@@ -1,7 +1,7 @@
-// Browser-side stub for @elizaos/plugin-elizacloud. The plugin's runtime
+// Browser-side inert alias for @elizaos/plugin-elizacloud. The plugin's runtime
 // surface (cloud secrets, TTS/billing/relay routes, wallet provisioning, the
 // cloud client) only runs server-side; the renderer just needs the named
-// imports to statically resolve. Every export here is an inert stub.
+// imports to statically resolve. Every export here is inert.
 
 const noop = () => undefined;
 const noopProxyHandler: ProxyHandler<typeof noop> = {
@@ -55,7 +55,7 @@ export const provisionCloudWalletsBestEffort = async (): Promise<{
 }> => ({ descriptors: {}, failures: [], warnings: [] });
 
 // Server-only predicate — a browser/renderer context is never a
-// cloud-provisioned container, so the stub is a hard `false`.
+// cloud-provisioned container, so the browser alias is a hard `false`.
 export const isCloudProvisionedContainer = (): boolean => false;
 
 // Cloud client — server-only; the renderer never opens a cloud connection.

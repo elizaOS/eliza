@@ -8,11 +8,11 @@ import {
   renderHook,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { AdvancedToggle } from "./AdvancedToggle";
 import {
   ADVANCED_TOGGLE_STORAGE_KEY,
-  AdvancedToggle,
   useAdvancedSettingsEnabled,
-} from "./AdvancedToggle";
+} from "./AdvancedToggle.hooks";
 
 beforeEach(() => {
   window.localStorage.clear();

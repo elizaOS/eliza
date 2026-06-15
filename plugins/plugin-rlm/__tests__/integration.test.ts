@@ -89,7 +89,7 @@ describe("RLM Integration", () => {
 
       expect(result).toBeDefined();
       expect(typeof result.text).toBe("string");
-      expect(typeof result.metadata.stub).toBe("boolean");
+      expect(typeof result.metadata.synthetic).toBe("boolean");
 
       await client.shutdown();
     });
@@ -132,7 +132,7 @@ describe("RLM trajectory wrapping", () => {
     vi.resetModules();
     const infer = vi.fn(async () => ({
       text: "recursive answer",
-      metadata: { stub: false },
+      metadata: { synthetic: false },
     }));
     vi.doMock("../client", () => ({
       RLMClient: vi.fn(function RLMClient() {

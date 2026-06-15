@@ -10,7 +10,7 @@
  * Why a helper instead of running each op as its own xdotool/scrot shell?
  *   - Single entry point makes the wire format consistent across all ops.
  *   - Saves us from re-encoding key/modifier mappings per call.
- *   - Lets Phase 2 swap the transport (virtio-serial) without touching ops.
+ *   - Keeps the transport isolated from the driver operation mapping.
  *
  * The image MUST satisfy:
  *   - python3 on PATH
@@ -43,7 +43,7 @@ export interface DockerBackendOptions {
   /** Override the Docker CLI binary (default `docker`). */
   dockerBinary?: string;
   /**
-   * Override the helper transport. Tests inject a stub that bypasses the
+   * Override the helper transport. Tests inject a fake that bypasses the
    * actual `docker exec` spawn. Production code does not pass this.
    */
   spawnExec?: (
@@ -52,7 +52,7 @@ export interface DockerBackendOptions {
   ) => ChildProcessWithoutNullStreams;
   /**
    * Override the synchronous shell-out used for `docker run`/`docker rm`/
-   * `docker cp`. Tests inject a stub.
+   * `docker cp`. Tests inject a fake.
    */
   runShell?: (
     binary: string,

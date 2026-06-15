@@ -198,8 +198,8 @@ static void emo_conv1d_k3_pad1(const float *in, int C_in, int T,
                 const float *w_ci = w_co + ci * 3;
                 const float *x = in + (size_t)ci * T;
                 /* k=0: t-1 (pad=1), k=1: t, k=2: t+1 */
-                if (t > 0)     acc += w_ci[0] * x[t - 1];
-                               acc += w_ci[1] * x[t];
+                if (t > 0) acc += w_ci[0] * x[t - 1];
+                acc += w_ci[1] * x[t];
                 if (t < T - 1) acc += w_ci[2] * x[t + 1];
             }
             out[(size_t)co * T + t] = acc;

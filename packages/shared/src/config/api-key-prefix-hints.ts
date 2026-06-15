@@ -11,9 +11,8 @@
  * catch the mistake before it lands on disk.
  *
  * Keep both in sync. If a third party plugin needs prefix validation,
- * add it here and to plugin-validation.ts. (Future: derive from a
- * shared registry; the duplication is acknowledged-but-bounded for
- * now since the data is small and rarely changes.)
+ * add it here and to plugin-validation.ts. The duplication is
+ * acknowledged-but-bounded for now since the data is small and rarely changes.
  */
 
 export interface ApiKeyPrefixHint {

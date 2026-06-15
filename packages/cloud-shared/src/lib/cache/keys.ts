@@ -116,8 +116,8 @@ export const CacheKeys = {
     pattern: () => `discovery:*`,
   },
   models: {
-    /** Cache upstream OpenRouter model catalog for selector/detail/status routes */
-    openrouterCatalog: () => `models:openrouter-catalog:v1`,
+    /** Cache upstream BitRouter model catalog for selector/detail/status routes */
+    bitrouterCatalog: () => `models:bitrouter-catalog:v1`,
     pattern: () => `models:*`,
   },
   /**

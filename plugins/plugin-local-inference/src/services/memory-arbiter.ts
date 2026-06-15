@@ -121,9 +121,9 @@ const CAPABILITY_ROLE: Readonly<Record<ArbiterCapability, ResidentModelRole>> =
 		text: "text-target",
 		embedding: "embedding",
 		"vision-describe": "vision",
-		// Image-gen has no slot in `ResidentModelRole` today (it's a future
-		// modality). We park it on `vision` priority so it co-evicts with the
-		// VL model — both are GPU-heavy weights with similar lifecycles.
+		// Image-gen has no slot in `ResidentModelRole` today. We park it on
+		// `vision` priority so it co-evicts with the VL model — both are
+		// GPU-heavy weights with similar lifecycles.
 		"image-gen": "vision",
 		transcribe: "asr",
 		speak: "tts",

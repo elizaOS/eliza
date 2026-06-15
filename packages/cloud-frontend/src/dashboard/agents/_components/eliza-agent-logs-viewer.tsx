@@ -23,8 +23,40 @@ interface LogsState {
 interface LogsApiResponse {
   success?: boolean;
   error?: string;
-  data?: string;
+  data?: string | LogsJobPayload;
 }
+
+interface LogsJobPayload {
+  jobId?: string;
+  status?: string;
+  polling?: {
+    endpoint?: string;
+    intervalMs?: number;
+    expectedDurationMs?: number;
+  };
+}
+
+interface LogsJobResult {
+  logs?: string;
+  message?: string;
+  error?: string;
+}
+
+interface LogsJobStatusResponse {
+  success?: boolean;
+  error?: string;
+  data?: {
+    status?: string;
+    result?: LogsJobResult | null;
+    error?: string | null;
+  };
+  polling?: {
+    intervalMs?: number;
+    shouldContinue?: boolean;
+  };
+}
+
+const LOG_JOB_TIMEOUT_MS = 30_000;
 
 const STATUS_BADGE_STYLES: Record<string, string> = {
   running: "border-green-500/40 bg-green-500/10 text-green-400",
@@ -66,6 +98,68 @@ function getLineClass(line: string): string {
   return "border-l-neutral-700 text-neutral-300";
 }
 
+function isLogsJobPayload(
+  data: LogsApiResponse["data"],
+): data is LogsJobPayload {
+  return (
+    typeof data === "object" && data !== null && typeof data.jobId === "string"
+  );
+}
+
+function splitLines(raw: string): string[] {
+  return raw.length > 0 ? raw.split("\n").filter(Boolean) : [];
+}
+
+function logsJobResultToRaw(result: LogsJobResult | null | undefined): string {
+  if (typeof result?.logs === "string" && result.logs.length > 0) {
+    return result.logs;
+  }
+  if (typeof result?.message === "string" && result.message.length > 0) {
+    return result.message;
+  }
+  return "";
+}
+
+async function waitForLogsJob(
+  endpoint: string,
+  initialIntervalMs: number,
+): Promise<string> {
+  const deadline = Date.now() + LOG_JOB_TIMEOUT_MS;
+  let intervalMs = initialIntervalMs;
+
+  while (Date.now() <= deadline) {
+    const response = await fetch(endpoint, { cache: "no-store" });
+    const payload: LogsJobStatusResponse = await response
+      .json()
+      .catch(() => ({}));
+
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.error ?? `HTTP ${response.status}`);
+    }
+
+    const status = payload.data?.status;
+    if (status === "completed") {
+      if (payload.data?.result?.error) {
+        throw new Error(payload.data.result.error);
+      }
+      return logsJobResultToRaw(payload.data?.result);
+    }
+    if (status === "failed") {
+      throw new Error(
+        payload.data?.error ??
+          payload.data?.result?.error ??
+          "Log collection failed",
+      );
+    }
+
+    const nextIntervalMs = payload.polling?.intervalMs ?? intervalMs;
+    intervalMs = Math.min(Math.max(nextIntervalMs, 500), 5_000);
+    await new Promise((resolve) => window.setTimeout(resolve, intervalMs));
+  }
+
+  return "Log collection is still running. Refresh again in a moment.";
+}
+
 export function ElizaAgentLogsViewer({
   agentId,
   agentName,
@@ -96,14 +190,27 @@ export function ElizaAgentLogsViewer({
       const payload: LogsApiResponse = await response.json().catch(() => ({}));
 
       if (!response.ok || !payload.success) {
-        throw new Error(payload.error ?? `HTTP ${response.status}`);
+        throw new Error(
+          payload.error ??
+            (response.ok
+              ? "Log response did not include log data"
+              : `HTTP ${response.status}`),
+        );
       }
 
-      const raw = typeof payload.data === "string" ? payload.data : "";
+      const raw = isLogsJobPayload(payload.data)
+        ? await waitForLogsJob(
+            payload.data.polling?.endpoint ??
+              `/api/v1/jobs/${payload.data.jobId}`,
+            payload.data.polling?.intervalMs ?? 2_000,
+          )
+        : typeof payload.data === "string"
+          ? payload.data
+          : "";
 
       setLogsState({
         raw,
-        lines: raw.length > 0 ? raw.split("\n").filter(Boolean) : [],
+        lines: splitLines(raw),
         loading: false,
         error: null,
         fetchedAt: new Date().toISOString(),

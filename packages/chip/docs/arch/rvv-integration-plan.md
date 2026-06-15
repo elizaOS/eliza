@@ -1,6 +1,6 @@
 # e1 RVV 1.0 vector integration plan
 
-This document is the honest roadmap from the current state — a real
+This document is the honest integration path from the current state — a real
 element-wise ALU subset plus functional ISA-level evidence — to a full,
 cycle-accurate RVV 1.0 vector backend in the e1 big core. It exists so the
 gate in `docs/evidence/cpu_ap/rvv-1-0-execution.yaml` cannot silently flip

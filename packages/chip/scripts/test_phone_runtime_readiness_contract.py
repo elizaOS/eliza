@@ -416,6 +416,13 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             "packages/chip/docs/evidence/android/peripherals/rear_camera_sim.log",
         )
         self.assertFalse(blocked_file["release_credit"])
+        self.assertIn(gate.ADB_TARGET_SELECTOR_COMMAND, blocked_file["capture_commands"])
+        self.assertTrue(
+            any(
+                '--adb-serial "$CHIP_ANDROID_ADB_SERIAL"' in command
+                for command in blocked_file["capture_commands"]
+            )
+        )
         self.assertTrue(
             any(
                 "capture_simulated_peripheral_evidence.py" in command and "rear_camera" in command
@@ -568,6 +575,13 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         )
         self.assertEqual(blocked_file["expected_file_schema"], "fixture wifi evidence schema")
         self.assertTrue(blocked_file["capture_commands"])
+        self.assertIn(gate.ADB_TARGET_SELECTOR_COMMAND, blocked_file["capture_commands"])
+        self.assertTrue(
+            any(
+                '--adb-serial "$CHIP_ANDROID_ADB_SERIAL"' in command
+                for command in blocked_file["capture_commands"]
+            )
+        )
         self.assertTrue(
             any(
                 "capture_simulated_peripheral_evidence.py" in cmd
@@ -596,6 +610,11 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         self.assertEqual(set(blocked_files), expected)
         for path, row in blocked_files.items():
             self.assertTrue(row["capture_commands"], path)
+            self.assertIn(gate.ADB_TARGET_SELECTOR_COMMAND, row["capture_commands"], path)
+            self.assertTrue(
+                any("CHIP_ANDROID_ADB_SERIAL" in command for command in row["capture_commands"]),
+                path,
+            )
             self.assertTrue(
                 any(
                     command.startswith("python3 packages/chip/scripts/android/")
@@ -789,6 +808,10 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         self.assertEqual(
             command_batch["claim_boundary"],
             "operator_commands_only_not_phone_runtime_or_release_evidence",
+        )
+        self.assertIn(gate.ADB_TARGET_SELECTOR_COMMAND, command_batch["commands"])
+        self.assertTrue(
+            any("CHIP_ANDROID_ADB_SERIAL" in command for command in command_batch["commands"])
         )
         self.assertEqual(command_batch["commands"], group["next_commands"])
         self.assertEqual(command_batch["expected_output_files"], group["next_artifacts"])

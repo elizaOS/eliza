@@ -1,4 +1,4 @@
-// TODO: validate on device — checklist in ANDROID_CONSTRAINTS.md
+// Device behavior scope: checklist in ANDROID_CONSTRAINTS.md.
 //
 // Camera2Source — MobileCameraSource implementation via Camera2 API.
 //

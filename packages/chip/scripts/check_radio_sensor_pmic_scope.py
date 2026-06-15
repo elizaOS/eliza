@@ -130,7 +130,7 @@ def build_report() -> dict[str, Any]:
         {
             "id": "wifi_gap_fail_closed",
             "status": "pass"
-            if "not implemented" in str(wifi_gap.get("claim_boundary", ""))
+            if "not available" in str(wifi_gap.get("claim_boundary", ""))
             and contains_all(
                 " ".join(str(item) for item in wifi_gap.get("required_evidence", [])),
                 ("Wi-Fi", "Bluetooth", "GNSS", "NFC", "firmware", "certification"),
@@ -172,7 +172,7 @@ def build_report() -> dict[str, Any]:
         {
             "id": "sensors_gap_fail_closed",
             "status": "pass"
-            if "not implemented" in str(sensors_gap.get("claim_boundary", ""))
+            if "not available as product functions" in str(sensors_gap.get("claim_boundary", ""))
             and contains_all(
                 " ".join(str(item) for item in sensors_gap.get("required_evidence", [])),
                 ("sensors", "haptic", "Android sensor HAL", "calibration"),
@@ -198,7 +198,7 @@ def build_report() -> dict[str, Any]:
         {
             "id": "pmic_gap_fail_closed",
             "status": "pass"
-            if "not implemented" in str(pmic_gap.get("claim_boundary", ""))
+            if "not available as product functions" in str(pmic_gap.get("claim_boundary", ""))
             and contains_all(
                 " ".join(str(item) for item in pmic_gap.get("required_evidence", [])),
                 ("PMIC", "fuel gauge", "thermal", "charger", "current-limit"),

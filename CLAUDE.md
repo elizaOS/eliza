@@ -158,10 +158,10 @@ The product design language (colors, type, layout, do/don't) is `DESIGN.md`.
 
 ## LifeOps + health: one scheduler, structural behavior
 
-`@elizaos/plugin-lifeops` and `@elizaos/plugin-health` share one
+`@elizaos/plugin-personal-assistant` and `@elizaos/plugin-health` share one
 scheduled-item architecture. Reminders, check-ins, follow-ups, watchers,
 recaps, approvals, and outputs are all `ScheduledTask` records routed through a
-single runner (`plugins/plugin-lifeops/src/lifeops/scheduled-task/runner.ts`),
+single runner (`plugins/plugin-personal-assistant/src/lifeops/scheduled-task/runner.ts`),
 which pattern-matches on structural fields (`kind`, `trigger`, `shouldFire`,
 `completionCheck`, `pipeline`, …), never on `promptInstructions` text. Health
 contributes through registries; LifeOps does not import its internals.
@@ -171,7 +171,7 @@ store (use `EntityStore` / `RelationshipStore`), behavior driven by
 `promptInstructions` string content, a `boolean` return from a connector
 dispatch (use the typed `DispatchResult`), or an identity-merge that bypasses
 the merge engine. Architecture, frozen contracts, and contribution paths live in
-`plugins/plugin-lifeops/README.md` and `plugins/plugin-health/README.md`.
+`plugins/plugin-personal-assistant/README.md` and `plugins/plugin-health/README.md`.
 
 ## Contributing
 

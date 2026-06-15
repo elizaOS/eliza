@@ -1,0 +1,184 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+
+import {
+  collectAgentSourceDirs,
+  isReloadableChangePath,
+  startAgentSourceWatcher,
+} from "./agent-source-watcher.mjs";
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function waitUntil(predicate, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return true;
+    await delay(40);
+  }
+  return predicate();
+}
+
+describe("collectAgentSourceDirs", () => {
+  let root = null;
+  afterEach(() => {
+    if (root) rmSync(root, { recursive: true, force: true });
+    root = null;
+  });
+
+  it("includes backend packages + all plugins, excludes frontend + src-less dirs", () => {
+    root = mkdtempSync(path.join(tmpdir(), "agent-watch-"));
+    const mk = (...p) => mkdirSync(path.join(root, ...p), { recursive: true });
+    mk("packages", "core", "src");
+    mk("packages", "agent", "src");
+    mk("packages", "ui", "src"); // frontend → excluded
+    mk("packages", "app", "src"); // frontend → excluded
+    mk("packages", "no-src"); // has no src → excluded
+    mk("plugins", "plugin-app-control", "src");
+    mk("plugins", "plugin-x", "src");
+
+    const dirs = collectAgentSourceDirs(root)
+      .map((d) => path.relative(root, d).split(path.sep).join("/"))
+      .sort();
+    expect(dirs).toEqual([
+      "packages/agent/src",
+      "packages/core/src",
+      "plugins/plugin-app-control/src",
+      "plugins/plugin-x/src",
+    ]);
+  });
+
+  it("returns [] when packages/ and plugins/ are absent", () => {
+    root = mkdtempSync(path.join(tmpdir(), "agent-watch-empty-"));
+    expect(collectAgentSourceDirs(root)).toEqual([]);
+  });
+});
+
+describe("isReloadableChangePath", () => {
+  it("reloads for hand-written TS source + json the agent loads", () => {
+    for (const p of [
+      "/r/plugins/plugin-app-control/src/actions/views.ts",
+      "/r/packages/agent/src/api/server.ts",
+      "/r/packages/core/src/runtime/x.tsx",
+      "/r/packages/core/src/runtime/y.mts",
+      "/r/plugins/p/src/registry.json",
+    ]) {
+      expect(isReloadableChangePath(p)).toBe(true);
+    }
+  });
+
+  it("does NOT react to compiled .js / .d.ts shadows next to source", () => {
+    // This monorepo emits .js/.d.ts into src/; reacting would bounce the agent
+    // on every build.
+    for (const p of [
+      "/r/packages/core/src/runtime/views.js",
+      "/r/packages/core/src/runtime/views.mjs",
+      "/r/packages/core/src/runtime/views.d.ts",
+      "/r/packages/core/src/runtime/views.d.mts",
+    ]) {
+      expect(isReloadableChangePath(p)).toBe(false);
+    }
+  });
+
+  it("ignores build output, deps, generated, and test/coverage dirs", () => {
+    for (const p of [
+      "/r/packages/core/dist/index.ts",
+      "/r/packages/core/src/node_modules/x/y.ts",
+      "/r/packages/core/src/__tests__/a.ts",
+      "/r/packages/core/src/generated/data.ts",
+      "/r/packages/core/.turbo/log.json",
+      "/r/packages/core/coverage/lcov.ts",
+    ]) {
+      expect(isReloadableChangePath(p)).toBe(false);
+    }
+  });
+
+  it("ignores co-located test/spec files and non-code files", () => {
+    for (const p of [
+      "/r/packages/core/src/views.test.ts",
+      "/r/packages/core/src/views.spec.tsx",
+      "/r/packages/core/src/readme.md",
+      "/r/packages/core/src/styles.css",
+    ]) {
+      expect(isReloadableChangePath(p)).toBe(false);
+    }
+  });
+
+  it("treats an unknown (null/undefined) filename as reloadable", () => {
+    expect(isReloadableChangePath(null)).toBe(true);
+    expect(isReloadableChangePath(undefined)).toBe(true);
+  });
+});
+
+describe("startAgentSourceWatcher (integration)", () => {
+  let root = null;
+  let handle = null;
+  afterEach(() => {
+    if (handle) handle.close();
+    handle = null;
+    if (root) rmSync(root, { recursive: true, force: true });
+    root = null;
+  });
+
+  it("fires onChange (debounced) for a real backend src edit", async () => {
+    root = mkdtempSync(path.join(tmpdir(), "agent-watch-int-"));
+    const mk = (...p) => mkdirSync(path.join(root, ...p), { recursive: true });
+    mk("plugins", "plugin-app-control", "src", "actions");
+    mk("packages", "ui", "src"); // frontend → not among watched dirs
+
+    const calls = [];
+    handle = startAgentSourceWatcher({
+      root,
+      debounceMs: 60,
+      onChange: (rel, count) => calls.push({ rel, count }),
+    });
+    // Only the plugin src is watched; the frontend package is excluded.
+    expect(handle.count).toBe(1);
+
+    await delay(200); // let the OS watcher arm before the first write
+    writeFileSync(
+      path.join(root, "plugins/plugin-app-control/src/actions/views.ts"),
+      "export const x = 1;\n",
+    );
+
+    const fired = await waitUntil(() => calls.length > 0, 4000);
+    expect(fired).toBe(true);
+    expect(calls.some((c) => c.rel.includes("views.ts"))).toBe(true);
+    // A single edit reports a small changed-count (the bulk guard keys on this).
+    expect(calls.every((c) => c.count <= 2)).toBe(true);
+  });
+
+  it("reports a high changed-count for a bulk rewrite (so callers can skip it)", async () => {
+    root = mkdtempSync(path.join(tmpdir(), "agent-watch-bulk-"));
+    const srcDir = path.join(root, "plugins", "plugin-x", "src");
+    mkdirSync(srcDir, { recursive: true });
+    for (let i = 0; i < 20; i++) {
+      writeFileSync(path.join(srcDir, `mod-${i}.ts`), `export const v${i}=0;\n`);
+    }
+
+    const calls = [];
+    handle = startAgentSourceWatcher({
+      root,
+      debounceMs: 300,
+      onChange: (rel, count) => calls.push({ rel, count }),
+    });
+    expect(handle.count).toBe(1);
+
+    await delay(200);
+    // Simulate a reset/checkout: many files rewritten in one burst.
+    for (let i = 0; i < 20; i++) {
+      writeFileSync(
+        path.join(srcDir, `mod-${i}.ts`),
+        `export const v${i}=1;\n`,
+      );
+      await delay(5);
+    }
+
+    const fired = await waitUntil(() => calls.length > 0, 4000);
+    expect(fired).toBe(true);
+    // macOS can coalesce fs.watch events, but burst rewrites still report more
+    // than the default bulk threshold used by dev-ui.
+    expect(Math.max(...calls.map((c) => c.count))).toBeGreaterThan(4);
+  });
+});

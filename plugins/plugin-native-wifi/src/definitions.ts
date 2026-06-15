@@ -76,7 +76,7 @@ export interface ConnectResult {
   message?: string;
 }
 
-/** Public Capacitor plugin contract — implemented natively on Android, stubbed on web. */
+/** Public Capacitor plugin contract — implemented natively on Android with an empty-data web fallback. */
 export interface WiFiPlugin {
   /** Read radio + active connection state. */
   getWifiState(): Promise<WifiStateResult>;

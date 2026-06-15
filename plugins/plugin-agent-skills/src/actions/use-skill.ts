@@ -288,7 +288,7 @@ function executeScript(
  * args + result are encoded via `captureSkillInvocationIO`, which caps
  * each field at 64KB and emits a structured truncation marker on overflow.
  *
- * No-op when no active trajectory step is in scope. Annotation errors
+ * Skips when no active trajectory step is in scope. Annotation errors
  * propagate, matching the contract of `annotateActiveTrajectoryStep`.
  */
 async function recordSkillInvocation(

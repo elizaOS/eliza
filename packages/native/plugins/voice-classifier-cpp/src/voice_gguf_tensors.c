@@ -246,9 +246,8 @@ int voice_gguf_tensors_open(const char *path, voice_gguf_tensors_t *out) {
         if (vc_read_u64(p, map_size, &cur, &off) != 0) {
             free(tensors); munmap(map, map_size); return -EINVAL;
         }
-        /* Stash the offset temporarily in n_elements bits — we'll fix
-         * up `data` below once we know data_start. */
-        /* Use a parallel array. */
+        /* Carry the file-relative offset in `data` until data_start is known;
+         * the loop below rewrites it to the mmap-backed float pointer. */
         tensors[i].data = (const float *)(uintptr_t)off;  /* tentative */
         const uint64_t end = off + nelem * sizeof(float);
         if (end > max_offset_end) max_offset_end = end;

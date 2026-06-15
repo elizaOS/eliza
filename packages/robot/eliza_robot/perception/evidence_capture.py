@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 import io
 import time
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -103,7 +104,7 @@ class EvidenceCapture:
         target_h: int = 360,
     ) -> None:
         """Composite two frames horizontally + write to `track`. Either side
-        may be None — replaced with a dark placeholder + label.
+        may be None; missing sides are rendered as dark labeled frames.
         """
         import cv2
 
@@ -118,13 +119,13 @@ class EvidenceCapture:
             )
             return resized
 
-        def _placeholder(width: int, label: str) -> np.ndarray:
-            ph = np.full((target_h, max(width, 200), 3), 30, dtype=np.uint8)
+        def _missing_frame(width: int, label: str) -> np.ndarray:
+            frame = np.full((target_h, max(width, 200), 3), 30, dtype=np.uint8)
             cv2.putText(
-                ph, f"(no {label} frame)", (12, target_h // 2),
+                frame, f"(no {label} frame)", (12, target_h // 2),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1,
             )
-            return ph
+            return frame
 
         ll = labels[0]
         rl = labels[1]
@@ -132,10 +133,10 @@ class EvidenceCapture:
             return
         if left_rgb is None:
             right = _resize(right_rgb, rl)
-            left = _placeholder(right.shape[1], ll)
+            left = _missing_frame(right.shape[1], ll)
         elif right_rgb is None:
             left = _resize(left_rgb, ll)
-            right = _placeholder(left.shape[1], rl)
+            right = _missing_frame(left.shape[1], rl)
         else:
             left = _resize(left_rgb, ll)
             right = _resize(right_rgb, rl)
@@ -175,14 +176,12 @@ class EvidenceCapture:
         """Release all writers. Returns frame counts per track."""
         counts = dict(self._frames_by_writer)
         for w in self._writers.values():
-            try:
+            with suppress(Exception):
                 w.release()
-            except Exception:
-                pass
         self._writers.clear()
         return counts
 
-    def __enter__(self) -> "EvidenceCapture":
+    def __enter__(self) -> EvidenceCapture:
         return self
 
     def __exit__(self, *_exc) -> None:

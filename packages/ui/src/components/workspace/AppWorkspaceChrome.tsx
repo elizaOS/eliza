@@ -6,10 +6,8 @@ import {
 } from "lucide-react";
 import type React from "react";
 import {
-  createContext,
   type ReactNode,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -20,35 +18,27 @@ import {
   type WorkspaceMobileSidebarControl,
   type WorkspaceMobileSidebarControls,
   WorkspaceMobileSidebarControlsContext,
-} from "../../layouts/workspace-layout/workspace-mobile-sidebar-controls";
+} from "../../layouts/workspace-layout/workspace-mobile-sidebar-controls.hooks";
 import {
   PageScopedChatPane,
   type PageScopedChatPaneProps,
 } from "../pages/PageScopedChatPane.js";
 import type { PageScope } from "../pages/page-scoped-conversations.js";
+import {
+  AppWorkspaceChatChromeContext,
+  type AppWorkspaceChatChromeContextValue,
+  useAppWorkspaceChatChrome,
+} from "./AppWorkspaceChrome.hooks";
 
-export const APP_WORKSPACE_CHROME_CHAT_STORAGE_KEY =
+const APP_WORKSPACE_CHROME_CHAT_STORAGE_KEY =
   "app-workspace-chrome:chat-collapsed";
-export const APP_WORKSPACE_CHROME_CHAT_WIDTH_STORAGE_KEY =
+const APP_WORKSPACE_CHROME_CHAT_WIDTH_STORAGE_KEY =
   "app-workspace-chrome:chat-width";
 
 const CHAT_DEFAULT_WIDTH = 384;
 const CHAT_MIN_WIDTH = 240;
 const CHAT_MAX_WIDTH = 640;
 const WORKSPACE_MOBILE_MEDIA_QUERY = "(max-width: 819px)";
-
-interface AppWorkspaceChatChromeContextValue {
-  collapseChat: () => void;
-  openChat: () => void;
-  isChatOpen: boolean;
-}
-
-const AppWorkspaceChatChromeContext =
-  createContext<AppWorkspaceChatChromeContextValue | null>(null);
-
-export function useAppWorkspaceChatChrome(): AppWorkspaceChatChromeContextValue | null {
-  return useContext(AppWorkspaceChatChromeContext);
-}
 
 interface AppWorkspaceChatCollapseButtonProps {
   testId?: string;

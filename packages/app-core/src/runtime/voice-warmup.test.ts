@@ -6,10 +6,16 @@ import {
 } from "./voice-warmup";
 
 describe("shouldWarmupVoice", () => {
-  const base = { mobile: false, skipEnv: false, localInferenceActive: true };
+  const base = { mobile: false, skipEnv: false };
 
-  it("warms when on desktop, not skipped, and local inference is active", () => {
+  it("warms when on desktop and not skipped", () => {
     expect(shouldWarmupVoice(base)).toBe(true);
+  });
+
+  it("warms for cloud-only setups (localInferenceActive=false)", () => {
+    expect(shouldWarmupVoice({ ...base, localInferenceActive: false })).toBe(
+      true,
+    );
   });
 
   it("skips on mobile", () => {
@@ -20,10 +26,9 @@ describe("shouldWarmupVoice", () => {
     expect(shouldWarmupVoice({ ...base, skipEnv: true })).toBe(false);
   });
 
-  it("skips when local inference is not the active path (e.g. cloud-only)", () => {
-    expect(shouldWarmupVoice({ ...base, localInferenceActive: false })).toBe(
-      false,
-    );
+  it("skips on a dev hot-reload respawn (cold boot still warms)", () => {
+    expect(shouldWarmupVoice({ ...base, hotReload: true })).toBe(false);
+    expect(shouldWarmupVoice({ ...base, hotReload: false })).toBe(true);
   });
 });
 

@@ -68,19 +68,19 @@ export {
 
 // resolvePlugins is re-exported via index.ts from ./plugin-resolver
 
-// `@elizaos/app-lifeops` and `@elizaos/app-companion` are NOT eagerly imported
-// here. Both packages transitively import from `@elizaos/agent` (e.g.
-// `hasOwnerAccess` from this package's barrel) — a top-level static import
-// would form a module-init cycle that leaves named exports of the app-lifeops
-// actions array as `undefined`, crashing `runtime.registerPlugin` when it
-// iterates `plugin.actions`.
+// `@elizaos/plugin-personal-assistant` and `@elizaos/plugin-companion` are NOT
+// eagerly imported here. Both packages transitively import from
+// `@elizaos/agent` (e.g. `hasOwnerAccess` from this package's barrel) — a
+// top-level static import would form a module-init cycle that leaves named
+// exports (like a plugin's actions array) as `undefined`, crashing
+// `runtime.registerPlugin` when it iterates `plugin.actions`.
 //
-// Both apps still resolve at plugin-load time via headless dynamic-import
+// Both still resolve at plugin-load time via headless dynamic-import
 // entrypoints in `plugin-resolver.ts`, after the static module graph has fully
 // evaluated, so the cycle never forms and browser-only UI exports stay out of
 // the agent process.
 // Keep this here as a single sentinel: if we ever need a static reference,
-// add `as const` data only — never an `import * as` of an app-* package.
+// add `as const` data only — never an `import * as` of these packages.
 import {
   AgentRuntime,
   AutonomyService,
@@ -285,7 +285,7 @@ async function loadRequiredPluginSql(): Promise<
   typeof import("@elizaos/plugin-sql")
 > {
   try {
-    return await import("@elizaos/plugin-sql");
+    return await import(/* @vite-ignore */ "@elizaos/plugin-sql");
   } catch (err) {
     const sourceEntry = path.resolve(
       path.dirname(fileURLToPath(import.meta.url)),
@@ -321,37 +321,43 @@ function resolveWorkspacePluginSourceEntry(packageName: string): string | null {
 const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
   try {
     if (packageName === "@elizaos/plugin-agent-orchestrator") {
-      return await import("@elizaos/plugin-agent-orchestrator");
+      return await import(
+        /* @vite-ignore */ "@elizaos/plugin-agent-orchestrator"
+      );
     }
     if (packageName === "@elizaos/plugin-task-coordinator") {
-      return await import("@elizaos/plugin-task-coordinator");
+      return await import(
+        /* @vite-ignore */ "@elizaos/plugin-task-coordinator"
+      );
     }
     if (packageName === "@elizaos/plugin-shell") {
-      return await import("@elizaos/plugin-shell");
+      return await import(/* @vite-ignore */ "@elizaos/plugin-shell");
     }
     if (packageName === "@elizaos/plugin-coding-tools") {
-      return await import("@elizaos/plugin-coding-tools");
+      return await import(/* @vite-ignore */ "@elizaos/plugin-coding-tools");
     }
     if (packageName === "@elizaos/plugin-ollama") {
-      return await import("@elizaos/plugin-ollama");
+      return await import(/* @vite-ignore */ "@elizaos/plugin-ollama");
     }
     if (packageName === "@elizaos/plugin-elizacloud") {
-      return await import("@elizaos/plugin-elizacloud");
+      return await import(/* @vite-ignore */ "@elizaos/plugin-elizacloud");
     }
     if (packageName === "@elizaos/plugin-commands") {
-      return await import("@elizaos/plugin-commands");
+      return await import(/* @vite-ignore */ "@elizaos/plugin-commands");
     }
     if (packageName === "@elizaos/plugin-video") {
-      return await import("@elizaos/plugin-video");
+      return await import(/* @vite-ignore */ "@elizaos/plugin-video");
     }
     if (packageName === "@elizaos/plugin-background-runner") {
-      return await import("@elizaos/plugin-background-runner");
+      return await import(
+        /* @vite-ignore */ "@elizaos/plugin-background-runner"
+      );
     }
     if (packageName === "@elizaos/plugin-anthropic") {
-      return await import("@elizaos/plugin-anthropic");
+      return await import(/* @vite-ignore */ "@elizaos/plugin-anthropic");
     }
     if (packageName === "@elizaos/plugin-openai") {
-      return await import("@elizaos/plugin-openai");
+      return await import(/* @vite-ignore */ "@elizaos/plugin-openai");
     }
     return await import(packageName);
   } catch {
@@ -402,7 +408,9 @@ async function getPluginLocalEmbedding(): Promise<
   if (!_pluginLocalEmbeddingPromise) {
     _pluginLocalEmbeddingPromise = (async () => {
       try {
-        return await import("@elizaos/plugin-local-inference");
+        return await import(
+          /* @vite-ignore */ "@elizaos/plugin-local-inference"
+        );
       } catch {
         return null;
       }
@@ -863,9 +871,8 @@ export async function configureLocalEmbeddingPlugin(
   _plugin: Plugin,
   config?: ElizaConfig,
 ): Promise<void> {
-  const { detectEmbeddingPreset } = await import(
-    "@elizaos/plugin-local-inference/runtime/embedding-presets"
-  );
+  const { detectEmbeddingPreset } =
+    await import("@elizaos/plugin-local-inference/runtime/embedding-presets");
   const detectedPreset = detectEmbeddingPreset();
   const SQL_COMPATIBLE_EMBEDDING_DIMENSIONS = new Set([
     384, 512, 768, 1024, 1536, 3072,
@@ -1469,9 +1476,8 @@ async function installPromptOptimizationLayer(
   config?: ElizaConfig,
 ): Promise<void> {
   try {
-    const { installPromptOptimizations } = await import(
-      "./prompt-optimization.ts"
-    );
+    const { installPromptOptimizations } =
+      await import("./prompt-optimization.ts");
     installPromptOptimizations(runtime, config);
   } catch (err) {
     logger.warn(
@@ -2930,7 +2936,7 @@ async function registerSqlPluginWithRecovery(
 const CORE_PLUGIN_BOOT_DEPENDENCIES = new Map<string, readonly string[]>([
   ["@elizaos/plugin-coding-tools", ["@elizaos/plugin-shell"]],
   ["@elizaos/plugin-agent-skills", ["@elizaos/plugin-shell"]],
-  ["@elizaos/plugin-lifeops", ["@elizaos/plugin-google"]],
+  ["@elizaos/plugin-personal-assistant", ["@elizaos/plugin-google"]],
 ]);
 
 async function preregisterCorePluginsInDependencyWaves(args: {
@@ -3189,7 +3195,7 @@ export const logToChatListener = (entry: LogEntry) => {
 
           isLog: "true",
         })
-        .catch((err) => {
+        .catch((err: unknown) => {
           logger.debug(
             `[runtime] failed to send log message to target: ${err}`,
           );
@@ -3267,12 +3273,11 @@ export async function startEliza(
   // holds the connection. MUST run AFTER applyConnectorSecretsToEnv (which can
   // repopulate the tokens from config.connectors) and BEFORE plugin
   // auto-enable / resolvePlugins below. Also clears the matching config
-  // connector blocks so nothing downstream re-derives the token. No-op
+  // connector blocks so nothing downstream re-derives the token. Skipped
   // outside a provisioned container or when ELIZA_SANDBOX_OWNS_CONNECTORS=1.
   {
-    const { applySandboxConnectorOwnership } = await import(
-      "./sandbox-character.ts"
-    );
+    const { applySandboxConnectorOwnership } =
+      await import("./sandbox-character.ts");
     applySandboxConnectorOwnership(process.env, config);
   }
   // Kick off the Discord App ID lookup and the cloud GitHub token fetch (both
@@ -3285,7 +3290,7 @@ export async function startEliza(
   // vault hydration + setup work below and the entire blocking resolve.
   //
   // autoFetchCloudGithubToken needs the cloud agent id. config.cloud?.agentId
-  // is available now; the function falls back to its own no-op guards (no cloud
+  // is available now; the function falls back to its own skip guards (no cloud
   // key / no managed namespace) when the id is absent this early.
   const discordAppIdPromise = autoResolveDiscordAppId();
   const cloudGithubTokenPromise = autoFetchCloudGithubToken(
@@ -3557,9 +3562,8 @@ export async function startEliza(
   //     it only logs availability — so deferring it changes no resolve input.
   let subscriptionCredentialsDeferredPromise: Promise<void> = Promise.resolve();
   try {
-    const { applySubscriptionCredentialsLocal } = await import(
-      "../auth/index.ts"
-    );
+    const { applySubscriptionCredentialsLocal } =
+      await import("../auth/index.ts");
     applySubscriptionCredentialsLocal(config);
   } catch (err) {
     logger.warn(
@@ -3567,9 +3571,8 @@ export async function startEliza(
     );
   }
   subscriptionCredentialsDeferredPromise = (async () => {
-    const { applySubscriptionCredentialsDeferred } = await import(
-      "../auth/index.ts"
-    );
+    const { applySubscriptionCredentialsDeferred } =
+      await import("../auth/index.ts");
     await applySubscriptionCredentialsDeferred();
   })().catch((err) => {
     logger.warn(
@@ -3630,7 +3633,7 @@ export async function startEliza(
   // Cloud sandbox (Path A): if the provisioner injected the assigned
   // character via ELIZA_AGENT_CHARACTER_JSON, merge it onto the config so the
   // container boots AS that character (e.g. "Nyx") instead of the bundled
-  // default preset. No-op when the env var is absent.
+  // default preset. Skipped when the env var is absent.
   let sandboxRouteAgentId: string | null = null;
   {
     const { applySandboxCharacterFromEnv, resolveSandboxRouteAgentId } =
@@ -3686,9 +3689,8 @@ export async function startEliza(
   ) {
     try {
       const { sharedVault } = await importAppCoreRuntime();
-      const { applyVaultProfilesForAgent } = await import(
-        "./vault-profile-resolver.ts"
-      );
+      const { applyVaultProfilesForAgent } =
+        await import("./vault-profile-resolver.ts");
       await applyVaultProfilesForAgent(sharedVault(), agentId);
     } catch (err) {
       logger.warn(
@@ -3698,15 +3700,15 @@ export async function startEliza(
   }
 
   // 5-pre. Per-agent EVM + Solana wallet bootstrap is DEFERRED off the boot
-  // critical path — see startDeferredAgentWalletBootstrap(), fired from the
-  // deferred-services phase after the runtime is ready. The per-agent wallets
-  // are only consumed later by the in-app browser, never during boot or plugin
-  // resolution, and generating them (heavy EVM/Solana crypto import + encrypted
-  // vault writes) measured ~50s on the critical path. Firing it fire-and-forget
-  // after readiness cut agent boot from ~56s to ~6s. The opt-out
-  // (ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP), the cloud-container skip
-  // (ELIZA_CLOUD_PROVISIONED), and the TEE-gate suppression all still apply in
-  // the deferred path.
+  // critical path: it runs after the runtime is reachable (fired fire-and-forget
+  // from the deferred boot phase via ensureAgentWalletsLazy()), not during
+  // essential boot. This keeps the ~50s EVM/Solana crypto import + vault-write
+  // cost out of the time-to-reachable window. The opt-out
+  // (ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP) and cloud-container skip
+  // (ELIZA_CLOUD_PROVISIONED) are checked inside ensureAgentWalletsLazy();
+  // the TEE-gate suppression lives inside bridgeAgentWalletsToProcessEnv
+  // (agent-wallets.ts:359, opt-in via ELIZA_AGENT_WALLET_AS_USER=1) and
+  // revealAgentWalletPrivateKey (agent-wallets.ts:155).
 
   bootTimer.lap("pre-resolve-setup");
 
@@ -4088,9 +4090,8 @@ export async function startEliza(
   // with "no provider" diagnostics and disabled embedding services.
   if (process.env.ELIZA_LOCAL_LLAMA?.trim() === "1") {
     try {
-      const { ensureAospLocalInferenceHandlers } = await import(
-        "@elizaos/plugin-aosp-local-inference"
-      );
+      const { ensureAospLocalInferenceHandlers } =
+        await import("@elizaos/plugin-aosp-local-inference");
       await ensureAospLocalInferenceHandlers(runtime);
     } catch (err) {
       logger.warn(
@@ -4099,9 +4100,8 @@ export async function startEliza(
     }
   } else if (process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1") {
     try {
-      const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
-        "@elizaos/plugin-capacitor-bridge"
-      );
+      const { ensureMobileDeviceBridgeInferenceHandlers } =
+        await import("@elizaos/plugin-capacitor-bridge");
       await ensureMobileDeviceBridgeInferenceHandlers(runtime);
     } catch (err) {
       logger.warn(
@@ -4228,9 +4228,8 @@ export async function startEliza(
 
   const registerConnectorSetupService = async (): Promise<void> => {
     try {
-      const { ConnectorSetupService } = await import(
-        "../services/connector-setup-service.ts"
-      );
+      const { ConnectorSetupService } =
+        await import("../services/connector-setup-service.ts");
       await runtime.registerService(ConnectorSetupService);
     } catch (err) {
       logger.debug(
@@ -4269,7 +4268,7 @@ export async function startEliza(
   // configured: `evaluateTeeBootGate` returns secretsEnabled:true and normal/
   // local-only boots are unaffected. When ELIZA_TEE_REQUIRED (or a production
   // profile) resolves a required policy and the evidence is not trusted, the
-  // gate fails closed and high-value capabilities (remote plugin sync; future
+  // gate fails closed and high-value capabilities (remote plugin sync plus
   // model-key/signing consumers) are withheld. Boot still proceeds in a
   // degraded, secret-less mode — it never silently continues with secrets.
   let teeBootGateResult: TeeBootGate | undefined;
@@ -4316,9 +4315,8 @@ export async function startEliza(
     }
     try {
       const { sharedVault } = await importAppCoreRuntime();
-      const { VaultSignerBackend } = await import(
-        "../services/vault-signer-backend.ts"
-      );
+      const { VaultSignerBackend } =
+        await import("../services/vault-signer-backend.ts");
       const {
         createTeeGatedRemoteSigningService,
         RemoteSigningRuntimeService,
@@ -4398,9 +4396,8 @@ export async function startEliza(
 
   const registerConversationProximityProvider = async (): Promise<void> => {
     try {
-      const { conversationProximityProvider } = await import(
-        "../providers/conversation-proximity.ts"
-      );
+      const { conversationProximityProvider } =
+        await import("../providers/conversation-proximity.ts");
       await runtime.registerPlugin({
         name: "eliza-conversation-proximity",
         description:
@@ -4444,9 +4441,8 @@ export async function startEliza(
 
   const installServerSideWebSearchIfAvailable = async (): Promise<void> => {
     try {
-      const { installServerSideWebSearch } = await import(
-        "./web-search-tools.ts"
-      );
+      const { installServerSideWebSearch } =
+        await import("./web-search-tools.ts");
       installServerSideWebSearch();
     } catch (err) {
       logger.debug(
@@ -4459,9 +4455,8 @@ export async function startEliza(
   // Opt out with ELIZA_WEB_FETCH=0|false|off, mirroring ELIZA_WEB_SEARCH.
   const registerWebFetchActionIfEnabled = async (): Promise<void> => {
     try {
-      const { webFetch, isWebFetchEnabled } = await import(
-        "./actions/web-fetch.ts"
-      );
+      const { webFetch, isWebFetchEnabled } =
+        await import("./actions/web-fetch.ts");
       if (!isWebFetchEnabled()) {
         logger.info(
           "[eliza] WEB_FETCH action disabled via ELIZA_WEB_FETCH=0|false|off",
@@ -4546,7 +4541,9 @@ export async function startEliza(
       isEmbeddingWarmupReuseDisabled,
       ensureModel,
       DEFAULT_MODELS_DIR,
-    } = await import("@elizaos/plugin-local-inference/runtime");
+    } = await import(
+      /* @vite-ignore */ "@elizaos/plugin-local-inference/runtime"
+    );
 
     if (!shouldWarmupLocalEmbeddingModel()) {
       logger.info(
@@ -4604,20 +4601,36 @@ export async function startEliza(
     });
   };
 
-  // Per-agent EVM + Solana wallet bootstrap, deferred off the boot critical
-  // path (see the "5-pre" note above). Fire-and-forget: generating the keypairs
-  // (heavy EVM/Solana crypto import + encrypted vault writes) measured ~50s and
-  // must never block the agent becoming ready — the wallets are only consumed
-  // later by the in-app browser. The opt-out and cloud-container skip are kept
-  // here; the TEE-gate suppression lives inside ensureAgentWallets.
-  const startDeferredAgentWalletBootstrap = (): void => {
+  // Per-agent EVM + Solana wallet bootstrap is DEFERRED off the boot critical
+  // path: it runs after the runtime is reachable (fired fire-and-forget from
+  // the deferred boot phase below), not synchronously during essential boot.
+  // This keeps the ~50s crypto import cost (EVM + Solana keypair generation +
+  // encrypted vault writes) out of the time-to-reachable window.
+  //
+  // The opt-out (ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP), cloud-container skip
+  // (ELIZA_CLOUD_PROVISIONED), and TEE-gate suppression (inside
+  // bridgeAgentWalletsToProcessEnv and revealAgentWalletPrivateKey in
+  // agent-wallets.ts) all still apply.
+  //
+  // The init is a singleton: once the first call resolves, subsequent calls
+  // return the cached descriptors; a failure clears the singleton so the next
+  // call retries. This closure is local to startEliza — it is not attached to
+  // the runtime object. If a wallet route or signer needs true on-demand
+  // generation, wire it onto the runtime and call it from that path.
+  let walletInitPromise: Promise<
+    readonly import("./agent-wallets.ts").AgentWalletDescriptor[]
+  > | null = null;
+  const ensureAgentWalletsLazy = (): Promise<
+    readonly import("./agent-wallets.ts").AgentWalletDescriptor[]
+  > => {
     if (
       process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP === "1" ||
       process.env.ELIZA_CLOUD_PROVISIONED === "1"
     ) {
-      return;
+      return Promise.resolve([]);
     }
-    void (async () => {
+    if (walletInitPromise) return walletInitPromise;
+    walletInitPromise = (async () => {
       try {
         const { sharedVault } = await importAppCoreRuntime();
         const { ensureAgentWallets } = await import("./agent-wallets.ts");
@@ -4632,12 +4645,17 @@ export async function startEliza(
         logger.info(
           `[agent-wallets] agent="${agentId}" wallets ready (${summary})`,
         );
+        return descriptors;
       } catch (err) {
+        // Clear the singleton so the next access retries.
+        walletInitPromise = null;
         logger.warn(
           `[agent-wallets] failed to ensure wallets for agent="${agentId}": ${err instanceof Error ? err.message : String(err)}`,
         );
+        return [];
       }
     })();
+    return walletInitPromise;
   };
 
   // Essential boot: only what the runtime needs to become reachable (sql +
@@ -4833,7 +4851,11 @@ export async function startEliza(
     await enableAutonomyLoopIfAvailable(autonomyLoopEnabled);
     startAgentSkillsWarmup();
     startEmbeddingWarmup();
-    startDeferredAgentWalletBootstrap();
+    // Trigger the lazy wallet singleton fire-and-forget. This is a safety net
+    // — if no wallet route or signing flow triggers it earlier, wallets are
+    // still generated here. The singleton keeps this harmless if already
+    // resolved by an earlier caller.
+    void ensureAgentWalletsLazy();
     bootTimer.lap("deferred:autonomy+warmup");
 
     // Re-install action aliases now that deferred plugins have registered
@@ -5057,9 +5079,8 @@ export async function startEliza(
           // Apply subscription-based credentials (Claude Max, Codex Max)
           // that may have been set up during first-run setup.
           try {
-            const { applySubscriptionCredentials } = await import(
-              "../auth/index.ts"
-            );
+            const { applySubscriptionCredentials } =
+              await import("../auth/index.ts");
             await applySubscriptionCredentials(freshConfig);
           } catch (subErr) {
             logger.warn(
@@ -5164,9 +5185,8 @@ export async function startEliza(
 
           assertPersistentDatabaseRequired(newRuntime);
           try {
-            const { ConnectorSetupService: CSSReload } = await import(
-              "../services/connector-setup-service.ts"
-            );
+            const { ConnectorSetupService: CSSReload } =
+              await import("../services/connector-setup-service.ts");
             await newRuntime.registerService(CSSReload);
           } catch {
             // non-fatal
@@ -5196,9 +5216,8 @@ export async function startEliza(
           );
 
           try {
-            const { applyPluginRoleGating } = await import(
-              "./plugin-role-gating.ts"
-            );
+            const { applyPluginRoleGating } =
+              await import("./plugin-role-gating.ts");
             applyPluginRoleGating(newRuntime.plugins ?? []);
           } catch (err) {
             logger.debug(
@@ -5285,12 +5304,11 @@ export async function startEliza(
     // the SANDBOX_REGISTRY_* env vars. Writing the `agent:<id>:server` +
     // `server:<name>:url` keys to the shared Upstash Redis lets the
     // multi-tenant gateways resolve this container as the inference target
-    // and forward inbound platform messages here. Returns null (no-op) for
-    // every non-provisioned runtime, so this is inert outside the cloud
+    // and forward inbound platform messages here. Returns null for every
+    // non-provisioned runtime, so this is inert outside the cloud
     // container. See packages/agent/src/runtime/sandbox-registry.ts.
-    const { buildSandboxRegistryFromEnv } = await import(
-      "./sandbox-registry.ts"
-    );
+    const { buildSandboxRegistryFromEnv } =
+      await import("./sandbox-registry.ts");
     const sandboxRegistry = buildSandboxRegistryFromEnv();
     if (sandboxRegistry) {
       try {
@@ -5526,7 +5544,9 @@ export async function startInCloudMode(
   // be populated for any code path that touches `STATIC_ELIZA_PLUGINS` while
   // the cloud proxy is active.
   await ensureCoreStaticPluginsRegistered();
-  const { CloudManager } = await import("@elizaos/plugin-elizacloud");
+  const { CloudManager } = await import(
+    /* @vite-ignore */ "@elizaos/plugin-elizacloud"
+  );
 
   const cloudConfig = config.cloud;
   if (!cloudConfig) {

@@ -15,10 +15,8 @@ import type { ReactNode } from "react";
 import { useMediaQuery } from "../../hooks";
 import type { UiLanguage } from "../../i18n";
 import type { ShellView, UiTheme } from "../../state";
-import {
-  LANGUAGE_DROPDOWN_TRIGGER_CLASSNAME,
-  LanguageDropdown,
-} from "../shared/LanguageDropdown";
+import { LanguageDropdown } from "../shared/LanguageDropdown";
+import { LANGUAGE_DROPDOWN_TRIGGER_CLASSNAME } from "../shared/LanguageDropdown.helpers";
 import { ThemeToggle } from "../shared/ThemeToggle";
 import { Button } from "../ui/button";
 

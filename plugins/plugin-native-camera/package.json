@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-camera",
-  "version": "2.0.3-beta.0",
+  "version": "2.0.3-beta.13",
   "description": "Captures photos, records video, and streams camera preview with manual controls.",
   "keywords": [
     "camera",
@@ -48,7 +48,7 @@
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
     "@rollup/plugin-node-resolve": "^16.0.0",
-    "fast-check": "^3.23.2",
+    "fast-check": "^4.8.0",
     "rollup": "^4.60.2",
     "typescript": "^6.0.3",
     "vitest": "^4.0.18"

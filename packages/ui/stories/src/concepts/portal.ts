@@ -18,7 +18,12 @@ const BACK_R = 0.18;
 // Hoop tube radius (thin wire look).
 const TUBE_R = 0.018;
 
-function build(THREE: WebGPUModule, _TSL: TSLModule, _U: OrbUniforms, parent: any): VariantHandle {
+function build(
+  THREE: WebGPUModule,
+  _TSL: TSLModule,
+  _U: OrbUniforms,
+  parent: any,
+): VariantHandle {
   // ---- tunnel hoops -------------------------------------------------------
   // Each hoop is a thin TorusGeometry with its own emissive material so we can
   // color them independently and drive emissiveIntensity per-frame.
@@ -26,9 +31,9 @@ function build(THREE: WebGPUModule, _TSL: TSLModule, _U: OrbUniforms, parent: an
     mesh: any;
     geo: any;
     mat: any;
-    baseRoll: number;  // initial Z rotation so spiral-staggering is baked in
-    zOffset: number;   // starting Z position (recycled during pull-in animation)
-    recycleZ: number;  // the Z value at which we snap this hoop back to the rear
+    baseRoll: number; // initial Z rotation so spiral-staggering is baked in
+    zOffset: number; // starting Z position (recycled during pull-in animation)
+    recycleZ: number; // the Z value at which we snap this hoop back to the rear
   };
 
   const hoops: HoopEntry[] = [];
@@ -147,7 +152,13 @@ function build(THREE: WebGPUModule, _TSL: TSLModule, _U: OrbUniforms, parent: an
   let globalSpin: number = 0.0;
   let respondPulse: number = 0.0; // smoothed respond value for pulse wave
 
-  function frame(f: { time: number; energy: number; low: number; listen: number; respond: number }): void {
+  function frame(f: {
+    time: number;
+    energy: number;
+    low: number;
+    listen: number;
+    respond: number;
+  }): void {
     const energy: number = f.energy;
     const respond: number = f.respond;
 
@@ -174,11 +185,18 @@ function build(THREE: WebGPUModule, _TSL: TSLModule, _U: OrbUniforms, parent: an
       }
 
       // Parametric t (0 = back, 1 = front) based on live Z.
-      const t: number = Math.max(0.0, Math.min(1.0, (hoopLiveZ[i] - BACK_Z) / TUNNEL_LENGTH));
+      const t: number = Math.max(
+        0.0,
+        Math.min(1.0, (hoopLiveZ[i] - BACK_Z) / TUNNEL_LENGTH),
+      );
       const radius: number = BACK_R + (FRONT_R - BACK_R) * t;
 
       h.mesh.position.z = hoopLiveZ[i];
-      h.mesh.scale.setScalar(radius / (BACK_R + (FRONT_R - BACK_R) * (h.zOffset - BACK_Z) / TUNNEL_LENGTH));
+      h.mesh.scale.setScalar(
+        radius /
+          (BACK_R +
+            ((FRONT_R - BACK_R) * (h.zOffset - BACK_Z)) / TUNNEL_LENGTH),
+      );
 
       // Counter-spin every other ring so adjacent rings churn against each other.
       const dir: number = i % 2 === 0 ? 1.0 : -1.3;
@@ -200,14 +218,21 @@ function build(THREE: WebGPUModule, _TSL: TSLModule, _U: OrbUniforms, parent: an
       h.mat.emissiveIntensity = baseBright + energyBoost + waveFlash;
 
       // Fade near-back hoops slightly (they'll snap soon and we don't want a pop).
-      const fadeEdge: number = Math.min(1.0, (hoopLiveZ[i] - BACK_Z) / (Z_STEP * 1.5));
-      const fadeFront: number = Math.min(1.0, (FRONT_Z - hoopLiveZ[i] + Z_STEP) / Z_STEP);
+      const fadeEdge: number = Math.min(
+        1.0,
+        (hoopLiveZ[i] - BACK_Z) / (Z_STEP * 1.5),
+      );
+      const fadeFront: number = Math.min(
+        1.0,
+        (FRONT_Z - hoopLiveZ[i] + Z_STEP) / Z_STEP,
+      );
       h.mat.opacity = 0.35 + t * 0.45 * Math.min(fadeEdge, fadeFront);
     }
 
     // Event horizon glow: rises strongly on respond and energy.
     const horizonPulse: number = Math.sin(f.time * 5.2) * 0.15 + 0.85;
-    horizonMat.emissiveIntensity = (1.2 + energy * 0.8 + respondPulse * 1.2) * horizonPulse;
+    horizonMat.emissiveIntensity =
+      (1.2 + energy * 0.8 + respondPulse * 1.2) * horizonPulse;
     horizonMat.emissive.setRGB(
       0.3 + respondPulse * 0.55,
       0.12 + energy * 0.25,
@@ -216,7 +241,8 @@ function build(THREE: WebGPUModule, _TSL: TSLModule, _U: OrbUniforms, parent: an
 
     // Hot core: flares white on respond.
     const corePulse: number = Math.sin(f.time * 9.3) * 0.2 + 0.8;
-    coreMat.emissiveIntensity = (1.3 + energy * 0.6 + respondPulse * 1.2) * corePulse;
+    coreMat.emissiveIntensity =
+      (1.3 + energy * 0.6 + respondPulse * 1.2) * corePulse;
     coreMat.emissive.setRGB(
       0.7 + respondPulse * 0.3,
       0.6 + respondPulse * 0.4,

@@ -70,6 +70,10 @@ type BirdeyeMultiPriceItem = NonNullable<
 > & {
   priceInNative?: number;
   liquidity?: number;
+  market_cap?: number;
+  marketcap?: number;
+  mc?: number;
+  realMc?: number;
 };
 
 type BirdeyeMultiPriceResponse = Omit<DefiMultiPriceResponse, "data"> & {
@@ -82,10 +86,19 @@ export interface BirdeyeTokenMarketSnapshot {
   priceSol?: number;
   liquidity: number;
   priceChange24h: number;
+  marketCapUsd?: number;
 }
 
 type WalletTransaction =
   WalletTransactionHistoryResponse["data"][string][number];
+
+function firstFiniteNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+}
 
 export class BirdeyeService extends Service {
   static serviceType: string = BIRDEYE_SERVICE_NAME;
@@ -249,7 +262,7 @@ export class BirdeyeService extends Service {
       return { data: [], setAt: Date.now() };
     }
 
-    // Don't allow 'evm' as a trending chain (it's just a placeholder)
+    // Don't allow 'evm' as a trending chain; callers must choose a concrete chain.
     if (validatedChain === "evm") {
       this.runtime.logger.warn(
         `getTrendingTokensForChain: 'evm' is not a specific chain. Use ethereum, arbitrum, polygon, etc.`,
@@ -691,7 +704,12 @@ export class BirdeyeService extends Service {
               priceSol: t.priceInNative,
               liquidity: t.liquidity ?? 0,
               priceChange24h: t.priceChange24h ?? 0,
-              //marketcap
+              marketCapUsd: firstFiniteNumber(
+                t.market_cap,
+                t.marketcap,
+                t.mc,
+                t.realMc,
+              ),
               //volume24hUSD
             };
             tokenDb[ca] = marketSnapshot;

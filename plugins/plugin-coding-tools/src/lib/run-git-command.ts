@@ -3,8 +3,8 @@ import { promisify } from "node:util";
 
 import {
   CapabilityError,
-  getCapabilityRouter,
   type GitOperation,
+  getCapabilityRouter,
   type IAgentRuntime,
 } from "@elizaos/core";
 

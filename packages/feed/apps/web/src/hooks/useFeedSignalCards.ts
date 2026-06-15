@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo } from "react";
 import type {
+  MarketClosingSoonProps,
   TopGainerProps,
   TopLoserProps,
 } from "@/components/notifications/FeedSignalCards";
@@ -12,9 +13,12 @@ const CAP_STATE_KEY = "bab_feed_signal_cap";
 
 interface FeedSignalCapState {
   date: string; // YYYY-MM-DD — resets daily
+  shownClosingIds: string[];
   shownGainerIds: string[];
   shownLoserIds: string[];
 }
+
+const CLOSING_SOON_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function getTodayDate(): string {
   return new Date().toISOString().slice(0, 10);
@@ -24,6 +28,7 @@ function readCapState(): FeedSignalCapState {
   const today = getTodayDate();
   const empty: FeedSignalCapState = {
     date: today,
+    shownClosingIds: [],
     shownGainerIds: [],
     shownLoserIds: [],
   };
@@ -34,7 +39,13 @@ function readCapState(): FeedSignalCapState {
     const stored = localStorage.getItem(CAP_STATE_KEY);
     if (!stored) return empty;
     const parsed = JSON.parse(stored) as FeedSignalCapState;
-    return parsed.date === today ? parsed : empty;
+    if (parsed.date !== today) return empty;
+    return {
+      date: parsed.date,
+      shownClosingIds: parsed.shownClosingIds ?? [],
+      shownGainerIds: parsed.shownGainerIds ?? [],
+      shownLoserIds: parsed.shownLoserIds ?? [],
+    };
   } catch {
     return empty;
   }
@@ -51,9 +62,13 @@ function writeCapState(state: FeedSignalCapState): void {
 
 function markShown(
   state: FeedSignalCapState,
-  type: "gainer" | "loser",
+  type: "closing" | "gainer" | "loser",
   marketId: string,
 ): FeedSignalCapState {
+  if (type === "closing") {
+    if (state.shownClosingIds.includes(marketId)) return state;
+    return { ...state, shownClosingIds: [...state.shownClosingIds, marketId] };
+  }
   if (type === "gainer") {
     if (state.shownGainerIds.includes(marketId)) return state;
     return { ...state, shownGainerIds: [...state.shownGainerIds, marketId] };
@@ -65,25 +80,21 @@ function markShown(
 export interface FeedSignalCardsResult {
   gainerCard: TopGainerProps | null;
   loserCard: TopLoserProps | null;
-  /** Always null until backend exposes closesAt on positions (TODO BAB-285) */
-  closingCard: null;
+  closingCard: MarketClosingSoonProps | null;
 }
 
 interface DerivedFeedSignalCards {
   gainerCard: TopGainerProps | null;
   loserCard: TopLoserProps | null;
-  closingCard: null;
+  closingCard: MarketClosingSoonProps | null;
   /** Updated cap state to persist, or null if no new cards were selected. */
   pendingCapState: FeedSignalCapState | null;
 }
 
 /**
- * Derives feed signal cards (top gainer / top loser) from the user's open
- * prediction positions. Applies daily capping and dedup via localStorage so
- * the same market is not surfaced more than once per day per card type.
- *
- * `closingCard` is always null — blocked on backend exposing `closesAt`.
- * TODO(BAB-285): enable MarketClosingSoonCard when closesAt is available on positions.
+ * Derives feed signal cards from the user's open prediction positions. Applies
+ * daily capping and dedup via localStorage so the same market is not surfaced
+ * more than once per day per card type.
  */
 export function useFeedSignalCards(): FeedSignalCardsResult {
   const { user } = useAuth();
@@ -113,8 +124,38 @@ export function useFeedSignalCards(): FeedSignalCardsResult {
     );
 
     let capState = readCapState();
+    let closingCard: MarketClosingSoonProps | null = null;
     let gainerCard: TopGainerProps | null = null;
     let loserCard: TopLoserProps | null = null;
+
+    const now = Date.now();
+    const closingCandidates = active
+      .map((pos) => ({
+        pos,
+        closeTime: pos.closesAt ? new Date(pos.closesAt).getTime() : Number.NaN,
+      }))
+      .filter(({ closeTime }) => {
+        if (!Number.isFinite(closeTime)) return false;
+        const msUntilClose = closeTime - now;
+        return msUntilClose > 0 && msUntilClose <= CLOSING_SOON_WINDOW_MS;
+      })
+      .sort((a, b) => a.closeTime - b.closeTime);
+
+    for (const { pos } of closingCandidates) {
+      if (!pos.closesAt) continue;
+      if (!capState.shownClosingIds.includes(pos.marketId)) {
+        closingCard = {
+          marketId: pos.marketId,
+          marketName: pos.question,
+          closesAt: pos.closesAt,
+          positionSide: pos.side,
+          currentPrice: pos.currentPrice,
+          entryPrice: pos.avgPrice,
+        };
+        capState = markShown(capState, "closing", pos.marketId);
+        break;
+      }
+    }
 
     // Top gainer: first position with positive PnL not already shown today
     for (const pos of sorted) {
@@ -154,9 +195,9 @@ export function useFeedSignalCards(): FeedSignalCardsResult {
     return {
       gainerCard,
       loserCard,
-      closingCard: null,
+      closingCard,
       // Only carry the updated state when new cards were selected
-      pendingCapState: gainerCard || loserCard ? capState : null,
+      pendingCapState: closingCard || gainerCard || loserCard ? capState : null,
     };
   }, [predictionPositions]);
 

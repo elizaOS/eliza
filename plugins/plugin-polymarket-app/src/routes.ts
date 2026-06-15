@@ -78,10 +78,10 @@ interface ClobOrderbookRecord {
 }
 
 const DISABLED_TRADING_REASON =
-  "Trading and order management are disabled in this first native scaffold. Configure CLOB credentials first, then implement signed CLOB order calls before enabling these routes.";
+  "Trading and order management are disabled in this app integration. Configure a signed CLOB execution path before enabling these routes.";
 
-const TRADING_NOT_IMPLEMENTED_REASON =
-  "Signed Polymarket CLOB trading is not implemented in this native scaffold yet.";
+const TRADING_DISABLED_REASON =
+  "Signed Polymarket CLOB trading is disabled in this app integration.";
 
 const TRADING_ENV_ALIASES: Partial<Record<PolymarketTradingEnvVar, string[]>> =
   {
@@ -155,7 +155,7 @@ function buildStatusResponse(
       ready: false,
       credentialsReady,
       reason: credentialsReady
-        ? TRADING_NOT_IMPLEMENTED_REASON
+        ? TRADING_DISABLED_REASON
         : "Trading requires POLYMARKET_PRIVATE_KEY plus CLOB API key, secret, and passphrase.",
       missing,
       clobApiBase: POLYMARKET_CLOB_API_BASE,

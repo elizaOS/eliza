@@ -9,7 +9,7 @@ import { elizaLogger } from "@elizaos/core";
  * `OPENAI_API_KEY` / `ELIZA_PROVIDER` — the keys the plugin code path
  * actually reads. Without those, the openai plugin is skipped at load time,
  * no TEXT_LARGE / TEXT_SMALL handler is registered, and every benchmark turn
- * falls back to the "no LLM provider configured" stub.
+ * falls back to the "no LLM provider configured" unavailable-provider path.
  *
  * Promotes Cerebras config to OpenAI-compat keys when ALL of these hold:
  *   - `CEREBRAS_API_KEY` is set

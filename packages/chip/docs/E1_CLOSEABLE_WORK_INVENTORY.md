@@ -16,7 +16,7 @@ This supersedes the cleanup sections (§3–§5) of the older `E1_SOTA_TAPEOUT_D
 | 0.1 | Replace `run_benchmarks.py` inline parsers with imports from `benchmarks/parsers/` | `benchmarks/run_benchmarks.py:1277-1509` | -230 LoC dup; canonical parsers tested; sole consumer; zero risk |
 | 0.2 | Run the 9 local benchmarks to produce local/simulator evidence | `benchmarks/parsers/*`, `benchmarks/sim/run_*.py` | CoreMark/STREAM/lmbench/fio (host) + NPU-scale/thermal/IOMMU-QoS/context-queue sims all runnable now; this does not produce phone-class L5/L6 release evidence |
 | 0.3 | Wire 3 orphaned sim harnesses into the benchmark pipeline | `benchmarks/sim/run_npu_timeloop.py`, `run_memory_iommu_qos_sim.py`, `run_npu_context_queue_sim.py` | exist but `run_benchmarks.py` never calls them |
-| 0.4 | Dispatch StableHLO `TransformerBlock`/`ModernDecoderBlock` (parsed+lowered but not wired) | `compiler/runtime/e1_npu_stablehlo.py:505-524`, `e1_npu_lowering.py:5067-5082` | 2 isinstance branches; lowering already exists |
+| 0.4 | Dispatch StableHLO `TransformerBlock`/`ModernDecoderBlock` through module lowering | `compiler/runtime/e1_npu_stablehlo.py`, `compiler/runtime/e1_npu_lowering.py` | Done: parser/planner/materializer and module dispatch now cover both fused block lowerers |
 | 0.5 | Wire sparse 2:4 opcode dispatch (`golden_sdot4_s4_2_4` exists, never called) | `e1_npu_runtime.py:1601`, `e1_npu_lowering.py:1587-1656` | completes the sparse path |
 | 0.6 | Wire `dma_long_transfer` cocotb test into the Makefile (written, not run) | `verify/cocotb/dma/test_dma_long_transfer.py` | + un-skip `npu_queue_stress` tests |
 | 0.7 | 5 missing CAD parts (declared in params, not emitted by `build_parts`) | `mechanical/.../e1_phone_params.yaml` (soc_thermal_spreader, mid_frame_stiffener, antenna_feeds, front_proximity_als, display_ground_foam); `scripts/generate_e1_phone_cad.py:1610` | ~60-80 LoC; closes the camera-back high-severity flags |
@@ -29,7 +29,7 @@ This supersedes the cleanup sections (§3–§5) of the older `E1_SOTA_TAPEOUT_D
 ## Tier 1 — Medium closeable features (M)
 
 **RTL** (all elaboratable + cocotb/formal-verifiable locally):
-- AXI-Lite debug↔CPU MMIO 2-master crossbar (replaces the stub at `rtl/top/e1_soc_top.sv:650-665`; TODO present).
+- AXI-Lite debug↔CPU MMIO 2-master crossbar (current `rtl/top/e1_soc_top.sv` has `e1_axil_to_mmio` plus `e1_mmio_arb2`; keep cocotb/formal coverage current).
 - RVV integer ALU subset wiring — `rtl/cpu/rvv/rvv_unit_stub.sv` returns zeros while `rvv_alu_subset.sv` (12 ops) is never consulted; add dispatch mux.
 - DRAM QoS scheduling — `rtl/memory/dram_ctrl/e1_dram_ctrl.sv:60-102` accepts AxQOS but never parses it; add priority queues.
 - JTAG TAP / RVdebug DMI — `rtl/dft/e1_jtag_tap.sv` minimal; add IR decode + DTM/DMI for OpenOCD.

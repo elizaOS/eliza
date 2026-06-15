@@ -29,6 +29,7 @@ const acpStub = {
       workdir: (opts.workdir as string | undefined) ?? "/repo",
       status: "ready",
     }),
+  sendToSession: () => Promise.resolve(),
   stopSession: () => Promise.resolve(),
 };
 
@@ -354,12 +355,31 @@ describe("orchestrator routes — room, telemetry, agents", () => {
   it("lists and posts room messages", async () => {
     const service = makeService();
     const id = await seedTask(service);
+    await service.addMessage(id, {
+      content: "hello",
+      senderKind: "user",
+      direction: "stdin",
+    });
     const page = await call(
       service,
       "GET",
       `/api/orchestrator/tasks/${id}/messages`,
     );
     expect(Array.isArray(page.json.items)).toBe(true);
+    expect(
+      (page.json.items as Array<Record<string, unknown>>)[0],
+    ).toMatchObject({
+      threadId: id,
+      sessionId: null,
+      content: "hello",
+    });
+    expect(
+      (page.json.items as Array<Record<string, unknown>>)[0],
+    ).not.toHaveProperty("taskId");
+    expect(
+      (await call(service, "GET", "/api/orchestrator/tasks/missing/messages"))
+        .status,
+    ).toBe(404);
 
     expect(
       (
@@ -381,13 +401,31 @@ describe("orchestrator routes — room, telemetry, agents", () => {
     expect(posted.json.recorded).toBe(true);
   });
 
-  it("lists events and usage; 404s usage for a missing task", async () => {
+  it("lists events and usage; 404s missing task telemetry pages", async () => {
     const service = makeService();
     const id = await seedTask(service);
+    await service.validateTask(id, {
+      passed: false,
+      summary: "needs another pass",
+      humanOverride: true,
+    });
+    const events = await call(
+      service,
+      "GET",
+      `/api/orchestrator/tasks/${id}/events`,
+    );
+    expect(events.status).toBe(200);
     expect(
-      (await call(service, "GET", `/api/orchestrator/tasks/${id}/events`))
-        .status,
-    ).toBe(200);
+      (events.json.items as Array<Record<string, unknown>>)[0],
+    ).toMatchObject({
+      threadId: id,
+      sessionId: null,
+      eventType: "validation_failed",
+      summary: "needs another pass",
+    });
+    expect(
+      (events.json.items as Array<Record<string, unknown>>)[0],
+    ).not.toHaveProperty("taskId");
     expect(
       (await call(service, "GET", `/api/orchestrator/tasks/${id}/usage`))
         .status,
@@ -395,6 +433,211 @@ describe("orchestrator routes — room, telemetry, agents", () => {
     expect(
       (await call(service, "GET", "/api/orchestrator/tasks/missing/usage"))
         .status,
+    ).toBe(404);
+    expect(
+      (await call(service, "GET", "/api/orchestrator/tasks/missing/events"))
+        .status,
+    ).toBe(404);
+  });
+
+  it("lists a normalized mixed task timeline page", async () => {
+    const service = makeService();
+    const id = await seedTask(service);
+    await service.addMessage(id, {
+      content: "operator prompt",
+      senderKind: "user",
+      direction: "stdin",
+    });
+    await service.validateTask(id, {
+      passed: false,
+      summary: "needs another pass",
+      humanOverride: true,
+    });
+
+    const timeline = await call(
+      service,
+      "GET",
+      `/api/orchestrator/tasks/${id}/timeline?limit=10`,
+    );
+
+    expect(timeline.status).toBe(200);
+    const items = timeline.json.items as Array<Record<string, unknown>>;
+    expect(items).toHaveLength(2);
+    expect(items.map((item) => item.kind).sort()).toEqual(["event", "message"]);
+    expect(items.find((item) => item.kind === "message")).toMatchObject({
+      id: expect.stringMatching(/^message:/),
+      threadId: id,
+      message: expect.objectContaining({
+        threadId: id,
+        content: "operator prompt",
+      }),
+    });
+    expect(items.find((item) => item.kind === "event")).toMatchObject({
+      id: expect.stringMatching(/^event:/),
+      threadId: id,
+      event: expect.objectContaining({
+        threadId: id,
+        eventType: "validation_failed",
+      }),
+    });
+    expect(
+      (await call(service, "GET", "/api/orchestrator/tasks/missing/timeline"))
+        .status,
+    ).toBe(404);
+  });
+
+  it("runs recovery controls with plan revisions and rejects unknown revision ids", async () => {
+    const service = makeService();
+    const id = await seedTask(service);
+    await call(service, "POST", `/api/orchestrator/tasks/${id}/agents`, {
+      framework: "codex",
+    });
+    const createdRevision = await call(
+      service,
+      "POST",
+      `/api/orchestrator/tasks/${id}/plan-revisions`,
+      {
+        plan: { summary: "route plan", steps: ["retry"] },
+        editSummary: "route edit",
+        metadata: { source: "route-test" },
+      },
+    );
+    expect(createdRevision.status).toBe(201);
+    expect(createdRevision.json).toMatchObject({
+      threadId: id,
+      plan: { summary: "route plan", steps: ["retry"] },
+      editSummary: "route edit",
+      metadata: { source: "route-test" },
+    });
+    const planRevisionId = createdRevision.json.id as string;
+    const revisions = await call(
+      service,
+      "GET",
+      `/api/orchestrator/tasks/${id}/plan-revisions?limit=1`,
+    );
+    expect(revisions.status).toBe(200);
+    expect((revisions.json.items as Array<Record<string, unknown>>)[0]).toEqual(
+      expect.objectContaining({ id: planRevisionId, threadId: id }),
+    );
+    expect(
+      (
+        await call(
+          service,
+          "POST",
+          `/api/orchestrator/tasks/${id}/plan-revisions`,
+          {},
+        )
+      ).status,
+    ).toBe(400);
+
+    const retry = await call(
+      service,
+      "POST",
+      `/api/orchestrator/tasks/${id}/retry-turn`,
+      {
+        sessionId: "session-1",
+        instruction: "retry the edit",
+        planRevisionId,
+      },
+    );
+
+    expect(retry.status).toBe(201);
+    expect(retry.json.currentPlan).toEqual({
+      summary: "route plan",
+      steps: ["retry"],
+    });
+    expect(
+      (retry.json.messages as Array<Record<string, unknown>>).at(-1),
+    ).toMatchObject({
+      senderKind: "orchestrator",
+      content: expect.stringContaining("retry the edit"),
+    });
+    expect(
+      (retry.json.events as Array<Record<string, unknown>>).some(
+        (event) =>
+          event.eventType === "retry_turn_requested" &&
+          (event.data as Record<string, unknown>).planRevisionId ===
+            planRevisionId,
+      ),
+    ).toBe(true);
+
+    await service.validateTask(id, {
+      passed: false,
+      summary: "needs another pass",
+      humanOverride: true,
+    });
+    const sourceEvent = (await service.getTask(id))?.events.find(
+      (event) => event.eventType === "validation_failed",
+    );
+    const rerun = await call(
+      service,
+      "POST",
+      `/api/orchestrator/tasks/${id}/rerun-from-event`,
+      { eventId: sourceEvent?.id, instruction: "rerun branch" },
+    );
+    expect(rerun.status).toBe(201);
+    expect(
+      (rerun.json.events as Array<Record<string, unknown>>).some(
+        (event) => event.eventType === "rerun_from_event_requested",
+      ),
+    ).toBe(true);
+
+    const restart = await call(
+      service,
+      "POST",
+      `/api/orchestrator/tasks/${id}/restart`,
+      { instruction: "restart cleanly", stopActive: false },
+    );
+    expect(restart.status).toBe(201);
+    expect(
+      (restart.json.events as Array<Record<string, unknown>>).some(
+        (event) => event.eventType === "restart_requested",
+      ),
+    ).toBe(true);
+
+    const editedRestart = await call(
+      service,
+      "POST",
+      `/api/orchestrator/tasks/${id}/restart-with-edited-plan`,
+      {
+        plan: { summary: "edited restart", steps: ["fresh"] },
+        editSummary: "restart edit",
+        stopActive: false,
+      },
+    );
+    expect(editedRestart.status).toBe(201);
+    expect(editedRestart.json.currentPlan).toEqual({
+      summary: "edited restart",
+      steps: ["fresh"],
+    });
+    expect(
+      (editedRestart.json.planRevisions as Array<Record<string, unknown>>).at(
+        -1,
+      ),
+    ).toMatchObject({
+      threadId: id,
+      editSummary: "restart edit",
+    });
+
+    expect(
+      (
+        await call(
+          service,
+          "POST",
+          `/api/orchestrator/tasks/${id}/retry-turn`,
+          {
+            instruction: "retry",
+            planRevisionId: "plan-1",
+          },
+        )
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await call(service, "POST", "/api/orchestrator/tasks/missing/restart", {
+          instruction: "restart",
+        })
+      ).status,
     ).toBe(404);
   });
 

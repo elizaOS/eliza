@@ -124,6 +124,12 @@ const OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER: Readonly<
 
 const KEEP_ALIVE_INTERVAL_MS = 5 * 60_000;
 
+// affinity is keyed by sessionKey, which is per-conversation/per-request, so the
+// map grows one entry per distinct session over the process lifetime. Cap it
+// (FIFO by Map insertion order) — an evicted session simply re-selects on its
+// next call, which is the same behavior as a cold session.
+const MAX_AFFINITY_ENTRIES = 10_000;
+
 export class AccountPool {
   private readonly deps: AccountPoolDeps;
   private readonly affinity = new Map<string, AffinityEntry>();
@@ -162,6 +168,11 @@ export class AccountPool {
         accountId: picked.id,
         attempts: 1,
       });
+      while (this.affinity.size > MAX_AFFINITY_ENTRIES) {
+        const oldest = this.affinity.keys().next().value;
+        if (oldest === undefined) break;
+        this.affinity.delete(oldest);
+      }
     }
     return picked;
   }

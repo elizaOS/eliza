@@ -136,8 +136,8 @@ async function navigateToView(
 	requestedViewType?: ViewType,
 ): Promise<string> {
 	// Emit navigate event via POST /api/views/:id/navigate (shell listens).
-	// If that route 501s (not yet implemented in all shells), fall back to a
-	// descriptive message — the user can click through to the view manually.
+	// If a shell returns 501 for this route, fall back to a descriptive message;
+	// the user can click through to the view manually.
 	const port = resolveServerOnlyPort(process.env);
 	const base = `http://127.0.0.1:${port}`;
 
@@ -153,7 +153,7 @@ async function navigateToView(
 		);
 		if (resp.ok)
 			return `Navigated to ${view.label} (${view.viewType ?? "gui"}).`;
-		// 501 = not implemented on this shell — not an error.
+		// 501 = navigation unsupported by this shell; opening the view still succeeds.
 		if (resp.status === 501) return `Opened ${view.label}.`;
 		// 404 for the route itself means the agent doesn't expose this endpoint.
 		if (resp.status === 404) return `Opened ${view.label}.`;

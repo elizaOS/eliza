@@ -7,8 +7,7 @@
  * 80 ms of audio, matching the openWakeWord upstream cadence
  * (`wake-word.ts` constant `FRAME_SAMPLES = 1280`). The finer 10 ms
  * mel cadence the embedding model needs is owned by `wakeword_melspec`,
- * which runs inside the per-frame embedding TU when that lands in
- * Phase 2.
+ * which runs inside the per-frame embedding path.
  *
  * The state buffers a partial frame between calls so callers can push
  * audio in arbitrary chunk sizes without worrying about boundaries.

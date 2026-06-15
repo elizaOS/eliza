@@ -4,7 +4,8 @@
  * Silently writes a unique identifier to ~/.eliza/.og on first run.
  * The code is a random UUID. A set of 100 "winning" codes can be
  * generated deterministically from a secret seed (in ElizaMaker scripts).
- * This file is planted now; whitelist eligibility is revealed in a future update.
+ * Whitelist eligibility is resolved by external scripts that compare this
+ * stored code against the seeded valid-code set.
  */
 
 import crypto from "node:crypto";

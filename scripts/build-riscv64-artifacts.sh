@@ -8,7 +8,7 @@
 # step is skipped (so callers can re-run cheaply).
 #
 # Gated on ELIZA_RISCV64_SMOKE=1 by default (same posture as the smoke
-# harness). Unset = no-op.
+# harness). Unset = skip all builds.
 #
 # Tooling requirements (caller's job to install):
 #   - zig 0.14+        (Zig toolchain; provides riscv64-linux-musl — every
@@ -164,7 +164,7 @@ fi
 
 # ── Native plugins ───────────────────────────────────────────────────
 echo
-echo "── Phase 1: native plugins (CPU-side kernels + speech/vision libs) ──"
+echo "── Step 1: native plugins (CPU-side kernels + speech/vision libs) ──"
 build_native_plugin qjl-cpu              "$QJL_RVV"
 build_native_plugin polarquant-cpu       "$POLAR_RVV"
 build_native_plugin turboquant-cpu       "$TBQ_RVV"
@@ -177,7 +177,7 @@ build_native_plugin doctr-cpp            ""
 
 # ── libllama family (MTP) ─────────────────────────────────────────
 echo
-echo "── Phase 2: libllama / libggml family (MTP) ──"
+echo "── Step 2: libllama / libggml family (MTP) ──"
 COMPILE_LIBLLAMA="$repo_root/packages/app-core/scripts/aosp/compile-libllama.mjs"
 if [ ! -f "$COMPILE_LIBLLAMA" ]; then
     echo "  ✗ compile-libllama.mjs missing at $COMPILE_LIBLLAMA"
@@ -219,7 +219,7 @@ fi
 
 # ── libomnivoice ─────────────────────────────────────────────────────
 echo
-echo "── Phase 3: libomnivoice ──"
+echo "── Step 3: libomnivoice ──"
 BUILD_OMNI="$repo_root/plugins/plugin-local-inference/native/build-omnivoice.mjs"
 if [ ! -f "$BUILD_OMNI" ]; then
     echo "  ✗ build-omnivoice.mjs missing at $BUILD_OMNI"
@@ -239,7 +239,7 @@ fi
 
 # ── libwhisper (Task 25) ─────────────────────────────────────────────
 echo
-echo "── Phase 4: libwhisper + libwhisper_eliza_adapter ──"
+echo "── Step 4: libwhisper + libwhisper_eliza_adapter ──"
 BUILD_WHISPER="$repo_root/plugins/plugin-local-inference/native/build-whisper.mjs"
 if [ ! -f "$BUILD_WHISPER" ]; then
     echo "  ✗ build-whisper.mjs missing at $BUILD_WHISPER"
@@ -259,7 +259,7 @@ fi
 
 # ── sigsys-handler-riscv64 ───────────────────────────────────────────
 echo
-echo "── Phase 5: libsigsys-handler-riscv64 (Bun seccomp shim) ──"
+echo "── Step 5: libsigsys-handler-riscv64 (Bun seccomp shim) ──"
 COMPILE_SHIM="$repo_root/packages/app-core/scripts/aosp/compile-shim.mjs"
 if [ ! -f "$COMPILE_SHIM" ]; then
     echo "  ✗ compile-shim.mjs missing at $COMPILE_SHIM"

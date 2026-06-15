@@ -45,7 +45,7 @@ describe("inventory — categorization heuristics", () => {
     expect(categorizeKey("SOLANA_PRIVATE_KEY")).toBe("wallet");
     expect(categorizeKey("MY_MNEMONIC")).toBe("wallet");
     expect(categorizeKey("BACKUP_SEED_PHRASE")).toBe("wallet");
-    // Phase 3 storage shape
+    // Wallet storage shape
     expect(categorizeKey("wallet.dizzy.evm.privateKey")).toBe("wallet");
     expect(categorizeKey("wallet.casper.solana.privateKey")).toBe("wallet");
     // Legacy per-agent shape
@@ -199,7 +199,7 @@ describe("inventory — listVaultInventory", () => {
 
   it("groups every stored key by inferred category, never reveals values", async () => {
     // Use distinctive value markers that don't collide with key names.
-    await vault.set("OPENROUTER_API_KEY", "sk-or-XXXX-NEVERLEAK-1", {
+    await vault.set("OPENROUTER_API_KEY", "sk-or-TEST-NEVERLEAK-1", {
       sensitive: true,
     });
     await vault.set("EVM_PRIVATE_KEY", "0xNEVERLEAK2", { sensitive: true });

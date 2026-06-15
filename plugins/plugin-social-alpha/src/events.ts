@@ -364,7 +364,7 @@ const messageReceivedHandler = async ({
 						address: extractedRec.tokenMentioned,
 						chain: DEFAULT_CHAIN,
 						ticker: undefined,
-					}; // Assume address-like strings are on default chain for now
+					}; // Address-like strings without chain metadata use the default chain.
 				} else {
 					logger.debug(
 						`[CommunityInvestor] Invalid address-like token: ${extractedRec.tokenMentioned}`,

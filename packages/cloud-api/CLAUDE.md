@@ -78,7 +78,7 @@ bun run --cwd packages/cloud-api agent:build    # build the cloud agent containe
 
 Worker bindings and env vars are declared in `wrangler.toml` and typed by `Bindings` in `@/types/cloud-worker-env` (cloud-shared). Local dev reads `.dev.vars`; both `.dev.vars` and the `.dev.vars.example` reference file are gitignored (`.gitignore` `.dev.vars.*`). `bun run dev` regenerates `.dev.vars` from repo `.env`/`.env.local` via `packages/scripts/cloud/admin/sync-api-dev-vars.ts`.
 
-Representative bindings (see `Bindings` for the full set): `DATABASE_URL` / `DATABASE_URL_UNPOOLED` (Neon Postgres in cloud, PGlite locally), `BLOB` (R2), `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `CEREBRAS_API_KEY` / `OPENROUTER_API_KEY` / `AI_GATEWAY_API_KEY`, `ELEVENLABS_API_KEY`, `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN`, `STEWARD_API_URL`, `JWT_SIGNING_KEY_ID` / `JWT_SIGNING_PRIVATE_KEY` / `JWT_SIGNING_PUBLIC_KEY`, `R2_PUBLIC_HOST`. Stripe/crypto webhook secrets are read by their respective route handlers.
+Representative bindings (see `Bindings` for the full set): `DATABASE_URL` / `DATABASE_URL_UNPOOLED` (Neon Postgres in cloud, PGlite locally), `BLOB` (R2), `BITROUTER_API_KEY` / `BITROUTER_BASE_URL` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `CEREBRAS_API_KEY` / `AI_GATEWAY_API_KEY`, `ELEVENLABS_API_KEY`, `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN`, `STEWARD_API_URL`, `JWT_SIGNING_KEY_ID` / `JWT_SIGNING_PRIVATE_KEY` / `JWT_SIGNING_PUBLIC_KEY`, `R2_PUBLIC_HOST`. Stripe/crypto webhook secrets are read by their respective route handlers.
 
 ## How to extend
 

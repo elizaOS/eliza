@@ -78,6 +78,9 @@ import {
   patchHttpCreateServerForCompat,
   startApiServer,
 } from "../api/server.js";
+
+const _require = createRequire(import.meta.url);
+
 import { invalidateCorsAllowedPorts } from "../api/server-cors.js";
 import { isRuntimeAutonomyEnabled } from "./autonomy-policy.js";
 import {
@@ -327,6 +330,61 @@ async function ensureAutonomyBootstrapContext(
 
 type AppRoutePluginModule = Record<string, unknown>;
 
+class OptionalAppRoutePluginUnavailableError extends Error {
+  constructor(
+    readonly specifier: string,
+    cause: unknown,
+  ) {
+    super(`Optional app route plugin ${specifier} is unavailable`, { cause });
+    this.name = "OptionalAppRoutePluginUnavailableError";
+  }
+}
+
+function isOptionalAppRoutePluginUnavailableError(
+  err: unknown,
+): err is OptionalAppRoutePluginUnavailableError {
+  return err instanceof OptionalAppRoutePluginUnavailableError;
+}
+
+function splitPackageSpecifier(specifier: string): {
+  packageName: string;
+  exportSubpath: string;
+} | null {
+  const parts = specifier.split("/");
+  if (specifier.startsWith("@")) {
+    if (parts.length < 2) return null;
+    return {
+      packageName: `${parts[0]}/${parts[1]}`,
+      exportSubpath: parts.length > 2 ? `./${parts.slice(2).join("/")}` : ".",
+    };
+  }
+  if (!parts[0]) return null;
+  return {
+    packageName: parts[0],
+    exportSubpath: parts.length > 1 ? `./${parts.slice(1).join("/")}` : ".",
+  };
+}
+
+async function resolveLocalAppRoutePluginEntry(
+  specifier: string,
+): Promise<string | null> {
+  const parsed = splitPackageSpecifier(specifier);
+  if (!parsed) return null;
+
+  let packageJsonPath: string;
+  try {
+    packageJsonPath = _require.resolve(`${parsed.packageName}/package.json`);
+  } catch {
+    return null;
+  }
+
+  const entry = await resolvePackageEntry(
+    path.dirname(packageJsonPath),
+    parsed.exportSubpath,
+  );
+  return existsSync(entry) ? entry : null;
+}
+
 function isPlugin(value: unknown): value is Plugin {
   return (
     typeof value === "object" &&
@@ -360,11 +418,33 @@ async function loadAppRoutePluginFromSpecifier(
   specifier: string,
   exportName: string | undefined,
 ): Promise<Plugin> {
-  const module = (await import(
-    /* webpackIgnore: true */ specifier
-  )) as AppRoutePluginModule;
+  let module: AppRoutePluginModule;
+  try {
+    module = (await import(
+      /* webpackIgnore: true */ specifier
+    )) as AppRoutePluginModule;
+  } catch (err) {
+    if (!isModuleNotFoundError(err)) throw err;
+    const sourceEntry = await resolveLocalAppRoutePluginEntry(specifier);
+    if (!sourceEntry) {
+      throw new OptionalAppRoutePluginUnavailableError(specifier, err);
+    }
+    logger.debug(
+      `[eliza] Loading app route plugin ${specifier} from workspace source at ${sourceEntry}`,
+    );
+    module = (await import(
+      pathToFileURL(sourceEntry).href
+    )) as AppRoutePluginModule;
+  }
   return resolvePluginExport(module, exportName);
 }
+
+/** @internal Exported for focused loader regression tests. */
+export const __loadAppRoutePluginFromSpecifierForTest =
+  loadAppRoutePluginFromSpecifier;
+
+const WORKFLOW_ROUTE_PLUGIN_ID = "@elizaos/plugin-workflow:routes";
+const WALLET_ROUTE_PLUGIN_ID = "@elizaos/plugin-wallet:routes";
 
 function getRegistryAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   return getApps(loadRegistry()).flatMap((app) => {
@@ -390,7 +470,7 @@ function getRegistryAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
  * transpiling + registering hundreds of feature routes a core dev does not
  * exercise.
  *
- * A loader's id is its full package name (e.g. `@elizaos/plugin-lifeops`,
+ * A loader's id is its full package name (e.g. `@elizaos/plugin-personal-assistant`,
  * `@elizaos/plugin-steward-app`, `@elizaos/plugin-elizacloud:routes`). Tokens
  * are matched against BOTH the full id and a normalized short alias
  * (see {@link normalizeAppRoutePluginId}), so the ergonomic short forms work
@@ -447,6 +527,37 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   for (const entry of listAppRoutePluginLoaders()) {
     byId.set(entry.id, entry);
   }
+  // plugin-workflow is default-enabled and registers its rawPath route plugin
+  // (`/api/automations`, `/api/workflow/*`) only as a side effect of its
+  // `register-routes` import. That side effect runs inside the plugin's own
+  // module init, which is not guaranteed to have executed before this snapshot
+  // is taken on the post-ready boot tail — so the loader can be missing and the
+  // routes 404. Register it explicitly here (load-order independent), mirroring
+  // how every other rawPath route plugin is wired via the registry.
+  if (!byId.has(WORKFLOW_ROUTE_PLUGIN_ID)) {
+    byId.set(WORKFLOW_ROUTE_PLUGIN_ID, {
+      id: WORKFLOW_ROUTE_PLUGIN_ID,
+      load: () =>
+        loadAppRoutePluginFromSpecifier(
+          "@elizaos/plugin-workflow/plugin-routes",
+          "workflowRoutePlugin",
+        ),
+    });
+  }
+  // plugin-wallet has the same load-order hazard: its rawPath route plugin
+  // (`/api/wallet/market-overview`) registers only as a side effect of the
+  // `register-routes` import, which is not guaranteed to have run before this
+  // snapshot. Register it explicitly so the route is always mounted.
+  if (!byId.has(WALLET_ROUTE_PLUGIN_ID)) {
+    byId.set(WALLET_ROUTE_PLUGIN_ID, {
+      id: WALLET_ROUTE_PLUGIN_ID,
+      load: () =>
+        loadAppRoutePluginFromSpecifier(
+          "@elizaos/plugin-wallet/routes/plugin",
+          "walletRoutePlugin",
+        ),
+    });
+  }
 
   const skip = getSkippedAppRoutePluginIds();
   if (skip.size === 0) {
@@ -493,6 +604,12 @@ async function registerAppRoutePlugins(runtime: AgentRuntime): Promise<void> {
       try {
         return await load();
       } catch (err) {
+        if (isOptionalAppRoutePluginUnavailableError(err)) {
+          logger.debug(
+            `[eliza] App route plugin ${id} unavailable, skipping route registration`,
+          );
+          return null;
+        }
         logger.warn(
           `[eliza] Failed to register app route plugin ${id}: ${formatError(err)}`,
         );
@@ -1073,24 +1190,16 @@ async function warmupEmbeddingModelImpl(
  * the local-inference path so cloud-only setups never make a paid TTS/STT call.
  */
 async function startDeferredVoiceWarmup(runtime: AgentRuntime): Promise<void> {
-  let localInferenceActive = false;
-  try {
-    localInferenceActive = (
-      await _localInference()
-    ).shouldWarmupLocalEmbeddingModel();
-  } catch {
-    localInferenceActive = false;
-  }
   if (
     !shouldWarmupVoice({
       mobile: isMobilePlatform(),
       skipEnv: isTruthyEnvValue(process.env.ELIZA_SKIP_LOCAL_VOICE_WARMUP),
-      localInferenceActive,
+      hotReload: isTruthyEnvValue(process.env.ELIZA_DEV_IS_HOT_RELOAD),
     })
   ) {
     return;
   }
-  logger.info("[eliza] Starting deferred local voice warmup");
+  logger.info("[eliza] Starting deferred voice warmup");
   await warmVoiceModels(
     runtime as unknown as Parameters<typeof warmVoiceModels>[0],
     {
@@ -1508,31 +1617,49 @@ export async function startEliza(
       const apiPort = process.env.ELIZA_API_PORT
         ? resolveDesktopApiPort(process.env)
         : resolveServerOnlyPort(process.env);
-      const { port: actualApiPort } = await startApiServer({
-        port: apiPort,
-        runtime: currentRuntime,
-        onRestart: async () => {
-          if (!currentRuntime) {
-            return null;
-          }
+      let actualApiPort: number;
+      try {
+        const startedApiServer = await startApiServer({
+          port: apiPort,
+          runtime: currentRuntime,
+          onRestart: async () => {
+            if (!currentRuntime) {
+              return null;
+            }
 
-          await upstreamShutdownRuntime(currentRuntime, "server-only restart");
+            await upstreamShutdownRuntime(
+              currentRuntime,
+              "server-only restart",
+            );
 
-          const restarted =
-            (await upstreamStartElizaWithPgliteCompat({
-              ...options,
-              headless: true,
-              serverOnly: false,
-            })) ?? undefined;
+            const restarted =
+              (await upstreamStartElizaWithPgliteCompat({
+                ...options,
+                headless: true,
+                serverOnly: false,
+              })) ?? undefined;
 
-          currentRuntime = restarted
-            ? await repairRuntimeAfterBoot(restarted)
-            : undefined;
-          earlyCompatState.current = currentRuntime ?? null;
+            currentRuntime = restarted
+              ? await repairRuntimeAfterBoot(restarted)
+              : undefined;
+            earlyCompatState.current = currentRuntime ?? null;
 
-          return currentRuntime ?? null;
-        },
-      });
+            return currentRuntime ?? null;
+          },
+        });
+        actualApiPort = startedApiServer.port;
+      } catch (apiErr) {
+        const apiErrMsg =
+          apiErr instanceof Error
+            ? (apiErr.stack ?? apiErr.message)
+            : String(apiErr);
+        logger.error(`[eliza] API server failed to start: ${apiErrMsg}`);
+        console.error(apiErrMsg);
+        if (options?.serverOnly) {
+          process.exit(1);
+        }
+        throw apiErr;
+      }
 
       // WHY: `startApiServer` may bind a different port than requested (busy
       // socket, upstream policy). Shells, scripts, and follow-up code reading

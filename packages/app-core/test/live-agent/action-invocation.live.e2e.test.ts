@@ -17,6 +17,8 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
+import { detectPasswordManagerBackend } from "@elizaos/plugin-browser/password-manager-bridge";
+import { detectHealthBackend } from "@elizaos/plugin-health";
 import { afterAll, beforeAll, describe, expect } from "vitest";
 import { itIf } from "../../../../test/helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../../../../test/helpers/live-provider";
@@ -39,7 +41,7 @@ const canRunLiveTests = liveModelTestsEnabled && selectedLiveProvider !== null;
 
 const DEFAULT_TEST_TIMEOUT_MS = 90_000;
 
-type LifeOpsModule = typeof import("@elizaos/plugin-lifeops");
+type LifeOpsModule = typeof import("@elizaos/plugin-personal-assistant");
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -227,14 +229,14 @@ describe("Action Invocation E2E", () => {
     previousDisableLifeOpsScheduler =
       process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
     process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = "1";
-    lifeOps = await import("@elizaos/plugin-lifeops");
+    lifeOps = await import("@elizaos/plugin-personal-assistant");
 
     const result = await createRealTestRuntime({
       withLLM: true,
       preferredProvider: selectedLiveProvider?.name,
       characterName: "ActionTestAgent",
       advancedCapabilities: true,
-      plugins: [lifeOps.appLifeOpsPlugin],
+      plugins: [lifeOps.personalAssistantPlugin],
     });
 
     runtime = result.runtime;
@@ -253,10 +255,9 @@ describe("Action Invocation E2E", () => {
     twilioConfigured = Boolean(lifeOps.readTwilioCredentialsFromEnv());
     calendlyConfigured = Boolean(lifeOps.readCalendlyCredentialsFromEnv());
     healthBackendAvailable =
-      (await lifeOps.detectHealthBackend().catch(() => "none")) !== "none";
+      (await detectHealthBackend().catch(() => "none")) !== "none";
     passwordManagerAvailable =
-      (await lifeOps.detectPasswordManagerBackend().catch(() => "none")) !==
-      "none";
+      (await detectPasswordManagerBackend().catch(() => "none")) !== "none";
     remoteDesktopAvailable =
       (await lifeOps.detectRemoteDesktopBackend().catch(() => "none")) !==
       "none";
@@ -433,7 +434,7 @@ describe("Action Invocation E2E", () => {
     );
 
     // Morning/night CHECKIN tests removed: the CHECKIN action was deleted in
-    // favor of scheduled tasks. See plugins/plugin-lifeops/src/actions/CHECKIN_MIGRATION.TODO.md.
+    // favor of scheduled tasks. See the LifeOps CHECKIN migration notes.
   });
 
   // ===================================================================

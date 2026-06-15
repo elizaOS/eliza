@@ -36,7 +36,7 @@ The contracts are real; the silicon and the confidential runtime are not yet.
 - **Hardware (verified against the tree).** PMP/ePMP/Smmtt/H-ext are absent (CVA6 is
   `cv64a6_imafdc_sv39`, only a PMA comment at `e1_soc_integrated.sv:796`). The
   IOMMU is identity-passthrough with a 6-entry allowlist, no page-table walk
-  (`e1_riscv_iommu.sv:359`); the NPU and DMA bypass it. The RoT is placeholder
+  (`e1_riscv_iommu.sv:359`); the NPU and DMA bypass it. The RoT is development-only
   (`e1_lifecycle.sv:68` XORs `0xA5A5_5A5A`; `fw/pmc/src/secure_boot.c` returns 0;
   `fw/boot-rom/reset.S` is an unconditional jump to `0x8000_0000`). **The job is
   to make the existing contract true in hardware, not to invent a TEE.**
@@ -48,13 +48,13 @@ The contracts are real; the silicon and the confidential runtime are not yet.
   `tee-evidence.ts` (strict `normalizeTeeEvidence`, no `any`), `tee-policy.ts`
   (`evaluateTeeEvidencePolicy` — the single trust decision), `tee-revocation.ts`,
   `tee-release-policy.ts`, `tee-signer-backend.ts` (re-attests every sign), and the
-  fail-closed `remote-capability-endpoint-provider`. **What is mock/missing:** no
-  real quote verification anywhere (the dstack provider fetches a self-asserted
-  `TeeEvidence` JSON; `evidence.quote` is carried but never cryptographically
-  checked); the HTTP key-release path does not bind a fresh nonce + ephemeral key
-  (replayable); no production wiring (the `tee-*` modules are exported but nothing
-  in agent boot consumes them); and **no confidential-inference path** (`model-key`
-  scope has no consumer).
+  fail-closed `remote-capability-endpoint-provider`. **Current hardware-bound
+  gaps:** no real quote verification anywhere (the dstack provider fetches a
+  self-asserted `TeeEvidence` JSON; `evidence.quote` is carried but never
+  cryptographically checked); the HTTP key-release path does not bind a fresh
+  nonce + ephemeral key (replayable); no production wiring (the `tee-*` modules
+  are exported but nothing in agent boot consumes them); and **no
+  confidential-inference path** (`model-key` scope has no consumer).
 
 So all three layers have a real skeleton and a real consumer contract; the silicon
 mechanisms, the reproducible confidential image, and the runtime quote-verification
@@ -252,7 +252,7 @@ A drift correction the swarm surfaced, now settled:
 
 ---
 
-## 8. Unified sequenced roadmap
+## 8. Unified sequenced plan
 
 Three program phases gated by hardware availability; effort is the buildable-subset
 estimate.
@@ -262,10 +262,10 @@ Establish the executable contract and the fail-closed gate floor.
 - **Agent (~13.5 PW):** add the production-profile policy; wire `tee-*` into agent
   boot (consume `resolveTeeRuntimePolicy`, gate secrets, wrap the signer); add fresh
   nonce + epk binding to the key-release client; negative/revocation test vectors;
-  plumb the `model-key` unseal path against mock evidence.
-- **OS (~3.25 PM):** add the `tee` block to the release manifest; scaffold the
-  `meta-elizaos` confidential profile; build the evidence bridge with mock fixtures;
-  ship policy + dstack-pin data; add `compose`/`gpuFirmware`/`npuFirmware`/
+  plumb the `model-key` unseal path against synthetic fixture evidence.
+- **OS (~3.25 PM):** add the `tee` block to the release manifest; create the
+  `meta-elizaos` confidential profile; build the evidence bridge with fixture
+  transcripts; ship policy + dstack-pin data; add `compose`/`gpuFirmware`/`npuFirmware`/
   `modelWeights` to the measurement contract + fixtures.
 - **Hardware (Phase-1 models/gates):** page-state transition model, `TeeEvidence`
   quote serializer, OTP fuse-map checker, MEE-freshness model check, purge-sequence
@@ -360,4 +360,4 @@ provisioning.
 4. **Stand up the lane-05 perf loop** so every later hardening change is measured
    against a baseline, not guessed.
 5. **Pin/harden dstack** per §4 before any reliance, and stand up the cloud TDX lane
-   skeleton against mock evidence so it's ready when a TDX + CC-GPU host appears.
+   contract against fixture evidence so it's ready when a TDX + CC-GPU host appears.

@@ -130,7 +130,7 @@ Only scripts defined in `packages/shared/package.json`:
 ```bash
 bun run --cwd packages/shared build          # generate-keywords + tsc dist
 bun run --cwd packages/shared build:i18n     # regenerate src/i18n/generated/
-bun run --cwd packages/shared build:dist     # tsc only (skip i18n)
+bun run --cwd packages/shared build:dist     # tsc only (does not regenerate i18n)
 bun run --cwd packages/shared typecheck      # tsgo --noEmit
 bun run --cwd packages/shared test           # vitest run
 bun run --cwd packages/shared lint           # biome check src
@@ -173,7 +173,7 @@ bun run --cwd packages/shared sync           # copy assets to consumer public/ d
 
 - **No Node.js-only imports at the root barrel level.** The root `src/index.ts` must be importable in both browser and Node.js contexts. The only React reference is a type-only `import type { ReactNode }` in `config/config-catalog.ts` (erased at compile time); never add a value-level React import to a barrel-reachable module.
 - **Sub-path exports are the escape hatch.** Modules with heavier or environment-specific concerns use dedicated sub-path exports (`/brand`, `/local-inference`, `/steward-session-client`, `/dev-settings-*`) so consumers opt in.
-- **Cycle guard in `src/config/env-vars.ts`.** This file is an empty stub kept so older deep imports fail closed without creating a `shared → agent` cycle. `src/config/config.ts` is not a stub — it contains migration helpers (`migrateCloudEnabledToProviders`) and re-exports `ElizaConfig` from `types.eliza.ts` for backward compatibility. Do not import from `@elizaos/agent` in either file or you will break the bench-server boot.
+- **Cycle guard in `src/config/env-vars.ts`.** This file is an empty compatibility module kept so older deep imports fail closed without creating a `shared → agent` cycle. `src/config/config.ts` contains migration helpers (`migrateCloudEnabledToProviders`) and re-exports `ElizaConfig` from `types.eliza.ts` for backward compatibility. Do not import from `@elizaos/agent` in either file or you will break the bench-server boot.
 - **`src/contracts/theme.ts` exports only types**, not the runtime theme engine. The runtime helpers (`ELIZA_DEFAULT_THEME`, `applyThemeToDocument`) live in `@elizaos/ui`.
 - **`assets/` and `assets-classic/` are published** (listed in `files`). Do not place generated build artifacts there.
 - **i18n keyword files** under `src/i18n/generated/` are produced by `scripts/generate-keywords.mjs` from the hand-authored `*.keywords.json` sources in `src/i18n/keywords/`; edit the sources, then regenerate — never hand-edit the `generated/` output.

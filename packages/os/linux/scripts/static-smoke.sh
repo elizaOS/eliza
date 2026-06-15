@@ -292,15 +292,23 @@ if [ "${SOURCE_ONLY}" != "1" ]; then
         exit 1
     fi
 fi
-if rg -n 'bg-\[#ffe600\]|radial-gradient|blur-\[' \
+# StartupShell is a SHARED app-shell component (@elizaos/ui), and the elizaOS OS
+# ISO bundles it verbatim — there is no downstream OS theme override for the
+# boot splash. Per the per-surface accent system, the *app* surface owns the
+# splash and it is intentionally orange (#FF5800), while the OS chrome
+# (greeter, dashboard metadata, failure/first-run shells below) stays on the
+# blue/white palette. So this gate asserts the splash's current intentional
+# orange palette and the neutral bootstrap-gate surface, and only rejects the
+# genuinely-stale dark/gradient/glow styling from the pre-redesign shell.
+if rg -n 'bg-\[#08080a\]|bg-\[#0a0a0a\]|radial-gradient|blur-\[' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupShell.tsx"
 then
-    echo "Startup shell must stay on the clean elizaOS white/blue surface." >&2
+    echo "Startup shell must not reintroduce the old dark/gradient splash." >&2
     exit 1
 fi
-grep -q 'bg-\[#F7F9FF\]' \
+grep -q 'bg-\[#FF5800\]' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupShell.tsx"
-grep -q 'text-\[#0B35F1\]' \
+grep -q 'bg-\[#F7F6F4\]' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupShell.tsx"
 if rg -n 'bg-danger|text-danger|variant="danger"|radial-gradient' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupFailureView.tsx"
@@ -348,7 +356,9 @@ if [ "${SOURCE_ONLY}" != "1" ]; then
 fi
 grep -q 'export const handleWalletRoutes' \
     "${REPO_ROOT}/packages/agent/src/api/index.ts"
-grep -q 'await import("@elizaos/plugin-wallet")' \
+# Wallet routes must load via a lazy dynamic import (not a top-level static
+# import) at startup. Tolerate an inline /* @vite-ignore */ comment in the call.
+rg -q 'await import\((/\* @vite-ignore \*/ )?"@elizaos/plugin-wallet"\)' \
     "${REPO_ROOT}/packages/agent/src/api/index.ts"
 if rg -n 'handleWalletRoutes,\\n  type WalletAddressesSnapshot' \
     "${REPO_ROOT}/packages/agent/src/api/index.ts"
@@ -442,7 +452,7 @@ if command -v identify >/dev/null 2>&1; then
 fi
 if rg -n \
     'Tails-based|Tails Cloner|Tails Documentation|Connect Tails|Tails USB stick|elizaOS \(Tails-based\)' \
-    README.md ROADMAP.md docs/user-experience.md docs/mode-parity.md \
+    README.md RELEASE_PATH.md docs/user-experience.md docs/mode-parity.md \
     PLAN.md docs/build-infrastructure.md \
     tails/auto/build tails/auto/config \
     tails/config/chroot_local-includes/etc \
@@ -1296,7 +1306,7 @@ for (const root of [
     ["@elizaos/plugin-documents", "documents"],
     ["@elizaos/plugin-google", "google"],
     ["@elizaos/plugin-hyperliquid-app", "hyperliquid"],
-    ["@elizaos/plugin-lifeops", "lifeops"],
+    ["@elizaos/plugin-personal-assistant", "lifeops"],
     ["@elizaos/plugin-polymarket-app", "polymarket"],
     ["@elizaos/plugin-shopify-ui", "shopify"],
     ["@elizaos/plugin-steward-app", "steward"],

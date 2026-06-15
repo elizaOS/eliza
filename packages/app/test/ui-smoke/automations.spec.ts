@@ -669,8 +669,9 @@ test("automations overview empty state encourages creating tasks and workflows",
   await expect(
     page.getByRole("heading", { name: "Automations" }),
   ).toBeVisible();
-  await expect(page.getByText(/0 tasks? · 0 workflows?/)).toBeVisible();
-  await expect(page.getByText("No automations yet.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Tasks 0" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Workflows 0" })).toBeVisible();
+  await expect(page.getByText("Nothing scheduled yet")).toBeVisible();
 
   await page.getByRole("button", { name: "New" }).click();
   await expect(page.getByText("What do you want to create?")).toBeVisible();
@@ -702,7 +703,8 @@ test("automations can list tasks, create a task, and inspect workflow JSON", asy
 
   await openAppPath(page, "/automations");
 
-  await expect(page.getByText("1 task · 1 workflow")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Tasks 1" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Workflows 1" })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Message triage" }),
   ).toBeVisible();

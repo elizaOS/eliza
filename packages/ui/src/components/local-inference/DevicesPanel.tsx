@@ -1,6 +1,6 @@
 import type { DeviceBridgeStatus } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { useTranslation } from "../../state/TranslationContext";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 
 /**
  * Multi-device panel. Lists every connected bridge device (desktop +

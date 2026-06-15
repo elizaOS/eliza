@@ -2,7 +2,7 @@
  * useShopifyDashboard — data hook for the Shopify overlay app.
  *
  * Polls all Shopify API endpoints and exposes typed state for each panel.
- * Handles 404 (service not yet started) gracefully as "disconnected".
+ * Handles route 404 responses gracefully as "disconnected".
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";

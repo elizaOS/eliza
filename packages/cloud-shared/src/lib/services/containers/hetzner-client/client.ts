@@ -647,7 +647,7 @@ export class HetznerContainersClient {
     if (request.patches?.length) {
       throw new HetznerClientError(
         "invalid_input",
-        "workspace patch sync is not implemented; send changedFiles instead",
+        "workspace patch sync is unsupported; send changedFiles instead",
       );
     }
 
@@ -688,11 +688,10 @@ export class HetznerContainersClient {
    * Fetch the last `tailLines` lines of container logs. Returns plain
    * text, line-delimited; the route layer streams it back to the client.
    *
-   * Streaming (`docker logs --follow`) is intentionally NOT implemented
-   * here — that requires holding an open SSH channel for the duration
-   * of the client's connection, which doesn't compose well with
-   * serverless. Keep streaming on the Node sidecar path until the API
-   * route has an SSE adapter.
+   * Streaming (`docker logs --follow`) stays outside this Worker client
+   * because it requires holding an open SSH channel for the duration of the
+   * client's connection, which doesn't compose well with serverless. Keep
+   * streaming on the Node sidecar path until the API route has an SSE adapter.
    */
   async tailLogs(containerId: string, organizationId: string, tailLines = 200): Promise<string> {
     if (!Number.isInteger(tailLines) || tailLines < 1 || tailLines > 10_000) {
