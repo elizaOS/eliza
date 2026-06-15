@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-inbox",
-  "version": "2.0.3-beta.12",
+  "version": "2.0.3-beta.13",
   "type": "module",
   "description": "Unified cross-channel inbox triage with unresolved-item tracking, snooze, archive, and follow-up watcher. Drives the inbox-zero workflow across email/Discord/Telegram/WhatsApp/X/Slack and other non-SMS channels.",
   "main": "./dist/index.js",

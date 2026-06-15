@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-location",
-  "version": "2.0.3-beta.12",
+  "version": "2.0.3-beta.13",
   "description": "Reads current location, watches movement, and manages geolocation permissions.",
   "keywords": [
     "location",
