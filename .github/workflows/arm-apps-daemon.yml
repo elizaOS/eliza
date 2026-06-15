@@ -143,6 +143,10 @@ jobs:
               printf '%s\n' "$k=\"$v\"" | sudo tee -a "$F" >/dev/null
             }
 
+            # APPS_DEPLOY_ENABLED arms the APP_DEPLOY runner; without it the daemon's
+            # armAppsDeployBackendIfEnabled() early-returns (provisioning-worker.ts:652)
+            # and APP_DEPLOY jobs never get claimed (apps stuck "building").
+            upsert APPS_DEPLOY_ENABLED 1
             upsert APPS_CONTAINERS_ENABLED 1
             upsert CONTAINERS_DOCKER_NODES "$APP_NODE"
             upsert CONTAINERS_SSH_USER deploy
