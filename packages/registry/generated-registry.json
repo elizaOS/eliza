@@ -274,6 +274,49 @@
       "kind": "plugin",
       "registryKind": "plugin",
       "directory": null
+    },
+    "elizaos-plugin-reddit-search": {
+      "git": {
+        "repo": "xavier-arosemena/elizaos-plugin-reddit-search",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-reddit-search",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "ElizaOS plugin for Reddit integration — search, engage, and manage Reddit interactions autonomously",
+      "homepage": null,
+      "topics": [
+        "reddit",
+        "social",
+        "discovery"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
     }
   }
 }

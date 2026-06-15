@@ -1,0 +1,8 @@
+{
+  "package": "elizaos-plugin-reddit-search",
+  "repository": "github:xavier-arosemena/elizaos-plugin-reddit-search",
+  "kind": "plugin",
+  "description": "ElizaOS plugin for Reddit integration — search, engage, and manage Reddit interactions autonomously",
+  "version": "0.1.0",
+  "tags": ["reddit", "social", "discovery"]
+}
