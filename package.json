@@ -245,7 +245,7 @@
     "packages/feed/tools/*"
   ],
   "devDependencies": {
-    "@biomejs/biome": "2.4.16",
+    "@biomejs/biome": "2.5.0",
     "@capacitor/core": "8.4.0",
     "@elizaos-benchmarks/lib": "workspace:*",
     "@elizaos/agent": "workspace:*",
@@ -271,7 +271,7 @@
     "create-hmac": "^1.1.7",
     "ethers": "^6.16.0",
     "express": "^5.2.1",
-    "fast-check": "^3.23.2",
+    "fast-check": "^4.8.0",
     "hash-base": "^3.1.2",
     "jsdom": "^29.1.1",
     "json5": "^2.2.3",
