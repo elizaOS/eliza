@@ -57,6 +57,7 @@ Maintainers can force specific lanes with labels:
 |-------|--------|
 | `ci:full` | Run every path-gated lane in workflows that honor the shared gate |
 | `ci:e2e` / `ci:zero-key` | Run deterministic zero-key E2E lanes |
+| `ci:scenario` | Run `scenario-pr.yml` deterministic scenario/browser E2E |
 | `ci:server` | Run server tests |
 | `ci:client` | Run client tests |
 | `ci:plugins` | Run plugin tests |
@@ -88,9 +89,9 @@ Quality contract:
 - Workflow, shared setup, toolchain, lockfile, and classifier changes should run
   the affected expensive lanes because they can change CI behavior even when
   product code did not move.
-- The classifier must be self-tested before its outputs are consumed by a
-  workflow. The self-test covers representative path matches and label forcing
-  so a future edit cannot silently weaken the gate.
+- The `Tests` workflow runs the classifier self-test before consuming classifier
+  outputs. That self-test covers representative path matches and label forcing
+  so a future edit cannot silently weaken the broadest PR test gate.
 - When splitting a long lane, keep the same substantive commands unless the PR
   explicitly documents the safety reason for removing one.
 

@@ -3,8 +3,9 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const script = new URL("./ci-path-gate.mjs", import.meta.url).pathname;
+const script = fileURLToPath(new URL("./ci-path-gate.mjs", import.meta.url));
 
 function runGate({ config, files = [], labels = "" }) {
   const dir = mkdtempSync(join(tmpdir(), "ci-path-gate-"));
