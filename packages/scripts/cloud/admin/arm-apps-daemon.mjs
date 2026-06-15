@@ -69,6 +69,11 @@ if (!sshKey)
 // omitted, so an operator can layer this onto a box that already has it set
 // (and we never clobber an agent-fleet value by accident — see the guard).
 const desired = {
+  // Arms the APP_DEPLOY runner (DefaultAppDeployRunner). Without this the daemon's
+  // armAppsDeployBackendIfEnabled() early-returns (provisioning-worker.ts:652) and
+  // APP_DEPLOY jobs are enqueued but never claimed — apps stay stuck "building".
+  APPS_DEPLOY_ENABLED: "1",
+  // Arms the container executor backend (AppContainerProvider over docker-over-SSH).
   APPS_CONTAINERS_ENABLED: "1",
   CONTAINERS_DOCKER_NODES: args["app-node"],
   CONTAINERS_SSH_USER: args["node-ssh-user"] || "deploy",
