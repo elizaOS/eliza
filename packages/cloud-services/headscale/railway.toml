@@ -7,5 +7,8 @@ dockerfilePath = "./Dockerfile"
 [deploy]
 healthcheckPath = "/health"
 healthcheckTimeout = 30
-restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 10
+# This is a stateful, single-instance control plane: if every customer tunnel
+# loses its coordination server the blast radius is the whole tunnel fleet.
+# Prefer ALWAYS over ON_FAILURE+capped retries so a transient boot failure
+# self-heals instead of hard-downing prod once the retry budget is exhausted.
+restartPolicyType = "ALWAYS"
