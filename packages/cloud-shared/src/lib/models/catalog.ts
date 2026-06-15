@@ -77,7 +77,8 @@ const BITROUTER_FEATURED_TEXT_MODELS: CatalogModel[] = [
     type: "language",
     context_window: 131072,
     max_tokens: 40960,
-    tags: ["reasoning", "open-weight", "cerebras"],
+    tags: ["recommended", "reasoning", "open-weight", "cerebras"],
+    recommended: true,
   },
   {
     id: BITROUTER_RECOMMENDED_TEXT_MODEL,
@@ -85,11 +86,10 @@ const BITROUTER_FEATURED_TEXT_MODELS: CatalogModel[] = [
     created: 0,
     owned_by: "openai",
     name: "GPT OSS 120B Nitro",
-    description: "Recommended BitRouter high-throughput open-weight reasoning model",
+    description: "BitRouter high-throughput open-weight reasoning model (gateway path)",
     type: "language",
     context_window: 131072,
-    tags: ["recommended", "reasoning", "open-weight", "nitro"],
-    recommended: true,
+    tags: ["reasoning", "open-weight", "nitro"],
   },
   {
     id: "openai/gpt-oss-120b",

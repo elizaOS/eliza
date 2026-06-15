@@ -117,7 +117,7 @@
     "server-only": "^0.0.1",
     "tailwindcss": "4.3.0",
     "viem": "2.47.6",
-    "ws": "8.20.1",
+    "ws": "8.21.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -193,7 +193,7 @@
     "qs": "6.15.0",
     "cookie": "1.1.1",
     "path-to-regexp": "0.1.13",
-    "ws": "8.20.1"
+    "ws": "8.21.0"
   },
   "trustedDependencies": [
     "@reown/appkit",
