@@ -76,6 +76,7 @@ import {
   parseApproval,
   pickBoolean,
   pickString,
+  resolveOriginatingRequestText,
   resolveSession,
   setCurrentSession,
   setCurrentSessions,
@@ -495,6 +496,13 @@ async function runCreate(
   }
 
   const text = messageText(message);
+  // Genuine user request for workdir-route matching — see runSpawnAgent and
+  // resolveOriginatingRequestText. Keeps routing planner-independent.
+  const routingRequest = await resolveOriginatingRequestText(
+    runtime,
+    message,
+    state,
+  );
   const tasks = taskParts(params, content, text);
   if (tasks.length > MAX_CONCURRENT_AGENTS) {
     const msg = `Too many task agents requested (${tasks.length}); maximum is ${MAX_CONCURRENT_AGENTS}.`;
@@ -546,7 +554,7 @@ async function runCreate(
       const { workdir: sessionWorkdir, route } = resolveSpawnWorkdir(
         runtime,
         task,
-        text,
+        routingRequest,
         explicitWorkdir,
         { lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true },
       );
@@ -750,6 +758,17 @@ async function runSpawnAgent(
   try {
     const text = messageText(message);
     const task = pickString(params, content, "task") ?? text;
+    // Route matching must see the genuine user request, not the planner's
+    // (possibly terse) rephrasing or an empty content.text. Without this, a
+    // request like "build me a … web page" routes correctly under a verbose
+    // planner but falls back to the default ACP workspace under a terser one.
+    // `state` carries the runtime-composed conversation window, which holds
+    // the real request synchronously even when content.text is empty.
+    const routingRequest = await resolveOriginatingRequestText(
+      runtime,
+      message,
+      state,
+    );
     // Operator-pinned adapter (ELIZA_DEFAULT_AGENT_TYPE +
     // ELIZA_AGENT_SELECTION_STRATEGY=fixed) is a deployment policy and
     // wins over the planner's `agentType` choice. The planner only sees
@@ -775,7 +794,7 @@ async function runSpawnAgent(
     const { workdir, route } = resolveSpawnWorkdir(
       runtime,
       task,
-      text,
+      routingRequest,
       pickString(params, content, "workdir"),
       { lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true },
     );
