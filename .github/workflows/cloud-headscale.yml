@@ -1,0 +1,80 @@
+name: Cloud Headscale
+
+# CD for the headscale tunnel-coordination service (the one cloud service that
+# had no deploy automation — see packages/cloud-services/headscale/DEPLOY.md).
+#
+# Unlike the gateways (which rely on Railway's native GitHub auto-deploy), this
+# deploys explicitly with `railway up` so the pipeline is fully defined in-repo
+# and deterministic. Branch -> env mirrors deploy-eliza-provisioning-worker.yml:
+#   develop -> staging      (headscale-staging.elizacloud.ai)
+#   main    -> production   (headscale.elizacloud.ai)
+# The image is env-portable: entrypoint.sh templates server_url from the per-env
+# RAILWAY_PUBLIC_DOMAIN, so the same source builds correctly in both envs.
+#
+# One-time setup per env (NOT done here): a Railway volume mounted at
+# /var/lib/headscale, the custom domain, and `headscale users/apikeys create`
+# for HEADSCALE_API_KEY. See DEPLOY.md.
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "packages/cloud-services/headscale/**"
+      - ".github/workflows/cloud-headscale.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target Railway environment"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
+
+concurrency:
+  group: cloud-headscale-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  resolve-env:
+    name: Resolve environment
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+    steps:
+      - id: env
+        run: |
+          if [ -n "${{ github.event.inputs.environment }}" ]; then
+            env="${{ github.event.inputs.environment }}"
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            env="production"
+          else
+            env="staging"
+          fi
+          echo "environment=$env" >> "$GITHUB_OUTPUT"
+          echo "Resolved Railway environment: $env"
+
+  deploy:
+    name: Deploy headscale (${{ needs.resolve-env.outputs.environment }})
+    needs: resolve-env
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Railway CLI
+        run: bash <(curl -fsSL https://railway.com/install.sh) || npm i -g @railway/cli
+
+      - name: Deploy to Railway
+        working-directory: packages/cloud-services/headscale
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway up \
+            --service headscale \
+            --environment "${{ needs.resolve-env.outputs.environment }}" \
+            --ci
