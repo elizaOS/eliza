@@ -216,6 +216,48 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.contexts).toEqual(["simple"]);
 	});
 
+	it("force-plans a build ask when the model explicitly routes to a non-simple context AND names TASKS_SPAWN_AGENT, even if its ack is a full sentence", () => {
+		// Live regression (OAuth Claude RESPONSE_HANDLER bridge, trajectories
+		// tj-5f6bd3a2f72799 / tj-56f7b842ac8db6): for "build me a ... web page" the
+		// model emitted contexts:["general"] + candidateActionNames:["TASKS_SPAWN_AGENT"]
+		// — i.e. it deliberately routed to planning and named the spawn action —
+		// but its ack read as a complete sentence ("On it — spawning a coding agent
+		// to build the dice roller page."). The OLD complete-direct-reply override
+		// fired on the sentence shape and pulled this back to contexts:["simple"],
+		// requiresTool:false, so TASKS_SPAWN_AGENT never ran and nothing built.
+		// Terse-ack planners ("On it.") were unaffected, masking the bug as
+		// model-specific. The fix is structural: when the model itself committed to
+		// delegation (non-simple context it chose + a runnable spawn-class candidate
+		// it named), a verbose ack is still an ack — never a finished direct reply.
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["general"],
+				candidateActionNames: ["TASKS_SPAWN_AGENT"],
+				replyText:
+					"On it — spawning a coding agent to build the dice roller page.",
+				intents: ["build dice roller web page", "spawn coding sub-agent"],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: REAL_ACTIONS,
+				messageText: "build me a simple dice roller web page",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.candidateActions).toEqual(["TASKS_SPAWN_AGENT"]);
+		// The ack passes through as the brief reply; the planner sends the grounded
+		// follow-up after the spawn.
+		expect(handler.plan.reply).toBe(
+			"On it — spawning a coding agent to build the dice roller page.",
+		);
+	});
+
 	it("still force-plans a genuine build ask when the model only acked", () => {
 		const handler = messageHandlerFromFieldResult(
 			{
