@@ -23,10 +23,13 @@ name: Cloud Headscale
 #     what make `main -> production` / `develop -> staging` actually target the
 #     right env. The `environment:` key on the deploy job resolves the matching
 #     token (and applies production protection rules).
-#   - HEADSCALE_PUBLIC_URL set per env (prod https://headscale.elizacloud.ai,
-#     staging https://headscale-staging.elizacloud.ai), a Railway volume mounted
-#     at /var/lib/headscale, the custom domain, and `headscale users/apikeys
-#     create` for HEADSCALE_API_KEY. See DEPLOY.md.
+#   - HEADSCALE_PUBLIC_URL as a GitHub Environment variable per env (prod
+#     https://headscale.elizacloud.ai, staging
+#     https://headscale-staging.elizacloud.ai). The deploy job syncs it onto the
+#     Railway service before `railway up`, so the GH var is the single source of
+#     truth — no manual Railway dashboard edit. Also: a Railway volume mounted at
+#     /var/lib/headscale, the custom domain, and `headscale users/apikeys create`
+#     for HEADSCALE_API_KEY. See DEPLOY.md.
 
 on:
   push:
@@ -91,6 +94,23 @@ jobs:
         # actually fell back on a download failure (process substitution masks
         # curl's exit status).
         run: npm i -g @railway/cli@5.13.0
+
+      - name: Sync HEADSCALE_PUBLIC_URL to Railway
+        # entrypoint.sh templates headscale's server_url from the
+        # HEADSCALE_PUBLIC_URL var in the Railway container env. Drive that var
+        # from the GitHub Environment var (the single source of truth) on every
+        # deploy instead of hand-setting it in the Railway dashboard, so a new env
+        # only needs the GH var defined. --skip-deploys persists the value without
+        # triggering a redeploy here; the `railway up` below is the one deploy and
+        # picks it up. No-op when the value already matches.
+        if: vars.HEADSCALE_PUBLIC_URL != ''
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway variables \
+            --service headscale \
+            --set "HEADSCALE_PUBLIC_URL=${{ vars.HEADSCALE_PUBLIC_URL }}" \
+            --skip-deploys
 
       - name: Deploy to Railway
         working-directory: packages/cloud-services/headscale

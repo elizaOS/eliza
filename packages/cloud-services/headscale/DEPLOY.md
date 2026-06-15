@@ -29,14 +29,14 @@ Do not set a Railway start-command override; the Dockerfile starts Headscale wit
 
 ### Per-environment variables
 
-`server_url` must equal the public-facing custom domain (agents/tunnels register and re-derive control/DERP/MagicDNS against it). The entrypoint templates it from an explicit `HEADSCALE_PUBLIC_URL` Railway variable, NOT from `RAILWAY_PUBLIC_DOMAIN` (Railway injects that as the auto-generated `*.up.railway.app` host, not the custom domain). Set it per env:
+`server_url` must equal the public-facing custom domain (agents/tunnels register and re-derive control/DERP/MagicDNS against it). The entrypoint templates it from an explicit `HEADSCALE_PUBLIC_URL` Railway variable, NOT from `RAILWAY_PUBLIC_DOMAIN` (Railway injects that as the auto-generated `*.up.railway.app` host, not the custom domain). Per env:
 
 | Environment | `HEADSCALE_PUBLIC_URL` |
 |---|---|
 | production | `https://headscale.elizacloud.ai` |
 | staging | `https://headscale-staging.elizacloud.ai` |
 
-When unset, the committed `config.yaml` prod value stands.
+You do not set this on the Railway service by hand: it lives as a **GitHub Environment variable** (below) and the CI/CD workflow syncs it onto the Railway service (`railway variables --set … --skip-deploys`) before each `railway up`. The GitHub var is the single source of truth. When the var is unset entirely, the committed `config.yaml` prod value stands.
 
 ### CI/CD (`.github/workflows/cloud-headscale.yml`)
 
@@ -44,7 +44,9 @@ When unset, the committed `config.yaml` prod value stands.
 
 - **Disable Railway's native GitHub auto-deploy** on the headscale service (Settings -> disconnect repo / no auto-deploy). Otherwise a single push triggers BOTH the native Railway deploy and the workflow's `railway up`, racing two concurrent builds of the live control plane against the single SQLite volume.
 - Define two **GitHub Environments** (`staging`, `production`), each holding its own project-scoped `RAILWAY_TOKEN` bound to that Railway environment. A Railway project token is scoped to one project+environment, so per-env tokens are what make the branch->env mapping actually land in the right place; the workflow's `environment:` key resolves the matching token and applies production protection rules.
-- Set `HEADSCALE_PUBLIC_URL` (above) as a GitHub Environment variable too, so the workflow's post-deploy `/health` gate hits the right host. `railway up --ci` only validates the BUILD, not runtime health — the health gate is what catches a container that builds but crash-loops (bad server_url, missing volume).
+- Set `HEADSCALE_PUBLIC_URL` (above) as a GitHub Environment variable. The workflow uses it twice: it syncs it onto the Railway service (so the entrypoint's `server_url` is correct) AND points its post-deploy `/health` gate at that host. `railway up --ci` only validates the BUILD, not runtime health — the health gate is what catches a container that builds but crash-loops (bad server_url, missing volume).
+
+> **IaC scope.** The Railway **volume** (`/var/lib/headscale`) and the **custom domain** are stateful Railway service resources — Railway's `railway.toml` only declares build + deploy config (`[build]`, `[deploy]`), so neither can be expressed there. They are one-time setup, created via the Railway dashboard or API and persisted as service state; this file is their reproducible record. `HEADSCALE_PUBLIC_URL` is the exception: it IS codified, as the GitHub Environment variable the workflow pushes to Railway on every deploy.
 
 ## 3. Long-lived headscale preauth key for the proxy
 
