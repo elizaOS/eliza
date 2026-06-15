@@ -9,11 +9,24 @@ name: Cloud Headscale
 #   develop -> staging      (headscale-staging.elizacloud.ai)
 #   main    -> production   (headscale.elizacloud.ai)
 # The image is env-portable: entrypoint.sh templates server_url from the per-env
-# RAILWAY_PUBLIC_DOMAIN, so the same source builds correctly in both envs.
+# HEADSCALE_PUBLIC_URL Railway variable, so the same source builds correctly in
+# both envs.
 #
-# One-time setup per env (NOT done here): a Railway volume mounted at
-# /var/lib/headscale, the custom domain, and `headscale users/apikeys create`
-# for HEADSCALE_API_KEY. See DEPLOY.md.
+# REQUIRED one-time setup (NOT done here):
+#   - Disable Railway's native GitHub auto-deploy on the headscale service
+#     (Settings -> disconnect repo / no auto-deploy) so this `railway up` is the
+#     SOLE deploy path. Otherwise a single push triggers two concurrent builds
+#     of the live coordination server, racing the SQLite volume. See DEPLOY.md.
+#   - Two GitHub Environments (staging, production), each holding its own
+#     project-scoped RAILWAY_TOKEN bound to that Railway environment. A Railway
+#     project token is scoped to ONE project+environment, so per-env tokens are
+#     what make `main -> production` / `develop -> staging` actually target the
+#     right env. The `environment:` key on the deploy job resolves the matching
+#     token (and applies production protection rules).
+#   - HEADSCALE_PUBLIC_URL set per env (prod https://headscale.elizacloud.ai,
+#     staging https://headscale-staging.elizacloud.ai), a Railway volume mounted
+#     at /var/lib/headscale, the custom domain, and `headscale users/apikeys
+#     create` for HEADSCALE_API_KEY. See DEPLOY.md.
 
 on:
   push:
@@ -62,19 +75,83 @@ jobs:
     name: Deploy headscale (${{ needs.resolve-env.outputs.environment }})
     needs: resolve-env
     runs-on: ubuntu-latest
+    # Bind to the per-env GitHub Environment so secrets.RAILWAY_TOKEN resolves to
+    # that environment's project-scoped Railway token (a Railway project token is
+    # bound to ONE project+environment). This also applies the environment's
+    # protection rules (e.g. required reviewers on production), mirroring
+    # deploy-eliza-provisioning-worker.yml.
+    environment: ${{ needs.resolve-env.outputs.environment }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Install Railway CLI
-        run: bash <(curl -fsSL https://railway.com/install.sh) || npm i -g @railway/cli
+        # npm is present on ubuntu-latest; a single pinned install is
+        # deterministic and avoids the curl-pipe-to-bash fallback that never
+        # actually fell back on a download failure (process substitution masks
+        # curl's exit status).
+        run: npm i -g @railway/cli@5.13.0
 
       - name: Deploy to Railway
         working-directory: packages/cloud-services/headscale
         env:
+          # Per-env project token from the bound GitHub Environment; it pins the
+          # Railway project+environment, so no --environment flag is needed (and
+          # passing one that differs from the token's env is rejected).
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
           railway up \
             --service headscale \
-            --environment "${{ needs.resolve-env.outputs.environment }}" \
             --ci
+
+      - name: Health check
+        # `railway up --ci` streams build logs and exits when the BUILD finishes;
+        # it does NOT gate on the container becoming healthy. Combined with
+        # railway.toml restartPolicyType=ON_FAILURE, a build that crash-loops at
+        # runtime (bad server_url, missing volume) would otherwise report green.
+        # headscale exposes /health on the public URL; poll it and fail on a
+        # non-200. HEALTHCHECK_URL is set per env (matches HEADSCALE_PUBLIC_URL).
+        env:
+          HEALTHCHECK_URL: ${{ vars.HEADSCALE_PUBLIC_URL }}
+        run: |
+          if [ -z "$HEALTHCHECK_URL" ]; then
+            echo "::warning::HEADSCALE_PUBLIC_URL not set for this environment; skipping post-deploy health check. --ci only validated the build, not runtime health."
+            exit 0
+          fi
+          for attempt in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -m 5 "${HEALTHCHECK_URL%/}/health" || echo "000")
+            if [ "$code" = "200" ]; then
+              echo "headscale /health returned 200 on attempt $attempt."
+              exit 0
+            fi
+            echo "Health check attempt $attempt/30: ${HEALTHCHECK_URL%/}/health -> $code"
+            sleep 10
+          done
+          echo "::error::headscale did not return 200 from /health within ~5min after deploy."
+          exit 1
+
+      - name: Notify Discord (Success)
+        if: success()
+        uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          ack_no_webhook: true
+          title: "🚀 Cloud Headscale Deployed (${{ needs.resolve-env.outputs.environment }})"
+          nodetail: true
+          description: |
+            Environment: ${{ needs.resolve-env.outputs.environment }}
+            Commit: ${{ github.sha }}
+          color: 0x00ff00
+
+      - name: Notify Discord (Failure)
+        if: failure()
+        uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          ack_no_webhook: true
+          title: "❌ Cloud Headscale Deploy Failed (${{ needs.resolve-env.outputs.environment }})"
+          nodetail: true
+          description: |
+            Environment: ${{ needs.resolve-env.outputs.environment }}
+            Commit: ${{ github.sha }}
+          color: 0xff0000
