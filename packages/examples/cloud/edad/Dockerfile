@@ -10,6 +10,7 @@ WORKDIR /app
 
 COPY package.json ./
 COPY server.ts ./
+COPY db.ts ./
 COPY public ./public
 
 ENV PORT=3000
