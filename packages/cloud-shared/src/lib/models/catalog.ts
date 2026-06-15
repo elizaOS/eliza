@@ -46,7 +46,15 @@ export const BITROUTER_DEFAULT_FREE_MODEL = "openai/gpt-oss-120b:free";
 export const CEREBRAS_DEFAULT_TEXT_SMALL_MODEL = "gpt-oss-120b";
 export const CEREBRAS_DEFAULT_TEXT_LARGE_MODEL = "zai-glm-4.7";
 
-const BITROUTER_RECOMMENDED_MODEL_IDS = new Set<string>([BITROUTER_RECOMMENDED_TEXT_MODEL]);
+// Models force-marked `recommended` by the annotation layer. Point this at the
+// healthy Cerebras defaults — NOT openai/gpt-oss-120b:nitro, whose gateway path
+// returns 503 (the flakiness PR #8426 set out to stop recommending). Without
+// this, annotateCatalogModel re-adds the recommended badge to :nitro even though
+// its inline flag was removed.
+const BITROUTER_RECOMMENDED_MODEL_IDS = new Set<string>([
+  CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
+  CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
+]);
 
 // Verified against the public provider catalogs on 2026-04-25:
 // - BitRouter: https://bitrouter.ai/api/v1/models
