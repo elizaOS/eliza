@@ -32,7 +32,10 @@ export const organizations = pgTable(
     slug: text("slug").notNull().unique(),
     credit_balance: numeric("credit_balance", { precision: 12, scale: 6 })
       .notNull()
-      .default("100.000000"),
+      // Default to $0. The signup path grants DEFAULT_INITIAL_CREDITS ($5) explicitly
+      // (steward-sync.ts), so this only affects orgs created via other paths — which
+      // must not start with free credit. The old $100 default was a give-away footgun.
+      .default("0.000000"),
 
     // Settings (kept for backward compatibility with container management)
     settings: jsonb("settings").$type<Record<string, unknown>>().default({}),
