@@ -39,7 +39,6 @@
         "hono": "^4.12.18",
         "node-edge-tts": "^1.2.9",
         "pg": "^8.20.0",
-        "playwright-core": "^1.61.0",
         "robot3": "^0.4.1",
         "tailwind-merge": "3.4.0",
         "zod": "^4.4.3",
