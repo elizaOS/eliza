@@ -1,0 +1,58 @@
+name: Apps Deploy E2E (Product 2)
+
+# Hermetic, real-Docker end-to-end proof of the Apps (Product 2) deploy chain:
+#   build user image (real AppImageBuilder) -> provision a per-tenant Postgres DB
+#   -> run the image as an --internal isolated container with its per-tenant DSN
+#   -> it reaches ITS OWN DB and serves -> it is REJECTED from another tenant's DB
+#   (REVOKE CONNECT) -> it has NO internet egress.
+#
+# Self-contained: needs only docker + bun on the runner (no staging, no secrets,
+# no VPS). Wires the previously-unwired verify scripts in
+# packages/cloud-shared/scripts/ into CI so the deploy + per-tenant-DB + isolation
+# mechanics are GATED, not manually run on a box — matching the "everything is
+# CI/CD, no manual" model. Dispatchable on demand and gating on apps-deploy code.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "packages/cloud-shared/src/lib/services/app-deploy-runner.ts"
+      - "packages/cloud-shared/src/lib/services/app-container-provider.ts"
+      - "packages/cloud-shared/src/lib/services/app-db-ambassador.ts"
+      - "packages/cloud-shared/src/lib/services/app-image-builder.ts"
+      - "packages/cloud-shared/src/lib/services/app-image-resolver.ts"
+      - "packages/cloud-shared/src/lib/services/container-executor-deps.ts"
+      - "packages/cloud-shared/src/lib/services/tenant-db/**"
+      - "packages/cloud-shared/scripts/verify-e2e-deploy.sh"
+      - "packages/cloud-shared/scripts/verify-e2e-container-db.sh"
+      - "packages/cloud-shared/scripts/_e2e-build.ts"
+      - "packages/cloud-shared/scripts/e2e-sample-app/**"
+      - ".github/workflows/apps-deploy-e2e.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apps-deploy-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apps-deploy-e2e:
+    name: Apps deploy + per-tenant DB isolation (real docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - uses: ./.github/actions/cloud-setup-test-env
+
+      - name: Build cloud-shared (drizzle artifacts)
+        run: bun run --cwd packages/cloud-shared build || true
+
+      - name: E2E — build image → tenant DB → isolated container serves its own DB, blocked from others + egress
+        working-directory: packages/cloud-shared
+        run: bash scripts/verify-e2e-deploy.sh
+
+      - name: E2E — real-docker tenant-DB isolation (REVOKE CONNECT + --internal no-egress)
+        working-directory: packages/cloud-shared
+        run: bash scripts/verify-e2e-container-db.sh
