@@ -42,6 +42,77 @@ Publishes TypeScript/JavaScript packages to NPM.
 
 ## Test Workflows
 
+### PR Path Gates
+
+PR workflows use `packages/scripts/ci-path-gate.mjs` to keep expensive lanes
+targeted. Each classifier job writes a GitHub step summary showing:
+
+- which files changed
+- which lanes will run
+- which path or label caused each lane to run
+
+Maintainers can force specific lanes with labels:
+
+| Label | Effect |
+|-------|--------|
+| `ci:full` | Run every path-gated lane in workflows that honor the shared gate |
+| `ci:e2e` / `ci:zero-key` | Run deterministic zero-key E2E lanes |
+| `ci:scenario` | Run `scenario-pr.yml` deterministic scenario/browser E2E |
+| `ci:server` | Run server tests |
+| `ci:client` | Run client tests |
+| `ci:plugins` | Run plugin tests |
+| `ci:cloud` | Run cloud live E2E where secrets are configured |
+| `ci:docker` | Run Docker CI smoke |
+| `ci:mobile` / `ci:ios` / `ci:android` | Run mobile smoke, or one mobile platform |
+| `ci:desktop` / `ci:windows` | Run desktop and Windows smoke lanes |
+| `ci:dev-smoke` | Run the `bun run dev` onboarding smoke |
+
+Push, scheduled, and manual runs keep their broader/default behavior; the path
+gate mainly keeps PR feedback fast and explainable.
+
+Why this exists:
+
+- OSS contributors should get useful feedback quickly without waiting on
+  unrelated mobile, Docker, desktop, Windows, or browser-heavy lanes.
+- Maintainers should be able to see why a lane ran or skipped from the job
+  summary, without reverse-engineering shell conditionals.
+- The quality gate should stay equivalent for affected code. Path gates decide
+  which surface is relevant; they do not replace the tests for that surface.
+- Push, scheduled, and manual runs remain broad because they protect branch
+  health, release readiness, and nightly confidence rather than one PR diff.
+
+Quality contract:
+
+- Any path-gated lane must be forced by `ci:full`.
+- Every expensive lane needs a matching force label so maintainers can request
+  coverage without pushing a no-op commit.
+- Workflow, shared setup, toolchain, lockfile, and classifier changes should run
+  the affected expensive lanes because they can change CI behavior even when
+  product code did not move.
+- The `Tests` workflow runs the classifier self-test before consuming classifier
+  outputs. That self-test covers representative path matches and label forcing
+  so a future edit cannot silently weaken the broadest PR test gate.
+- When splitting a long lane, keep the same substantive commands unless the PR
+  explicitly documents the safety reason for removing one.
+
+Long deterministic E2E gates are split into named parallel slices for unit/UI
+coverage, browser coverage, diagnostics, and scenario execution. The visible
+`Zero-Key Deterministic E2E` check is an aggregate status over those slices, so
+reviewers can see the failing surface without opening one giant serial log.
+
+Why the aggregate stays:
+
+- Branch protection and reviewer muscle memory can keep using one stable check.
+- The underlying slices can run in parallel and fail with precise names.
+- Manual review becomes easier because a browser failure, diagnostics failure,
+  or scenario-runner failure points at the relevant log immediately.
+
+Related CI docs:
+
+- `CHANGELOG.md` records workflow policy changes and the reason they happened.
+- `ROADMAP.md` tracks future CI performance work that should preserve gate
+  quality.
+
 ### Main CI (`ci.yaml`)
 
 Runs on PRs and pushes to main:
