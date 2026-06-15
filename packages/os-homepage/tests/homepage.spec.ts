@@ -147,13 +147,14 @@ test("checkout lives on elizaOS and starts with Eliza Cloud auth", async ({
     "/brand/concepts/concept_usbdrive_900.jpg",
   );
 
-  const googleLink = page.getByRole("link", { name: "Google" });
-  await expect(googleLink).toHaveAttribute(
-    "href",
-    /api\.elizacloud\.ai\/steward\/auth\/oauth\/google\/authorize/,
-  );
-  await expect(googleLink).toHaveAttribute(
-    "href",
+  await Promise.all([
+    page.waitForURL(
+      /api\.elizacloud\.ai\/steward\/auth\/oauth\/google\/authorize.*code_challenge=/,
+      { timeout: 15000 },
+    ),
+    page.getByRole("button", { name: "Google" }).click(),
+  ]);
+  expect(page.url()).toMatch(
     /redirect_uri=http%3A%2F%2F127\.0\.0\.1%3A4455%2Fcheckout%3Fsku%3Delizaos-usb/,
   );
 

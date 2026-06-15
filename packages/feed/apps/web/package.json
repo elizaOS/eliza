@@ -30,6 +30,7 @@
     "@dagrejs/dagre": "^3.0.0",
     "@discord/embedded-app-sdk": "^2.4.0",
     "@elizaos/core": "2.0.0-alpha.109",
+    "@elizaos/shared": "file:../../../shared",
     "@elizaos/plugin-anthropic": "2.0.0-alpha.11",
     "@elizaos/plugin-openai": "2.0.0-alpha.15",
     "@elizaos/plugin-sql": "2.0.0-alpha.17",
