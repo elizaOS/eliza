@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-facewear",
-  "version": "2.0.3-beta.10",
+  "version": "2.0.3-beta.12",
   "type": "module",
   "description": "Unified hearwear plugin — Meta Quest 3, XReal, Even Realities G1/G2, Apple Vision Pro. Bidirectional voice+camera streaming, smartglasses display, view panels, device management.",
   "main": "./dist/index.js",

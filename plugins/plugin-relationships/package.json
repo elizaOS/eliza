@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-relationships",
-  "version": "2.0.3-beta.6",
+  "version": "2.0.3-beta.12",
   "description": "Entity and relationship knowledge graph for Eliza agents. Provides the ENTITY umbrella action (person/org/place/project/concept CRUD), EntityStore with identity merge engine, RelationshipStore for typed edges, voice-observer-bridge, and an entity-graph context provider. Backed by drizzle pgSchema('app_relationships').",
   "type": "module",
   "main": "dist/index.js",

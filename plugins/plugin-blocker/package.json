@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-blocker",
-  "version": "2.0.3-beta.6",
+  "version": "2.0.3-beta.12",
   "type": "module",
   "description": "Focus / distraction control: website blocking via SelfControl hosts file + macOS app blocking. Schedules, allow-lists, override approval. Exposes the BLOCK action, websiteBlockerProvider + appBlockerProvider, a WebsiteBlockerService, drizzle pgSchema('app_blocker'), and a Focus overlay view.",
   "main": "./dist/index.js",

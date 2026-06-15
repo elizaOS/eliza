@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-localdb",
-  "version": "2.0.3-beta.10",
+  "version": "2.0.3-beta.12",
   "type": "module",
   "description": "File-backed (Node) and localStorage (browser) persistence via plugin-inmemorydb; ships compiled ESM in dist/.",
   "main": "./dist/index.js",

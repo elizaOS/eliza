@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-personal-assistant",
-  "version": "2.0.3-beta.10",
+  "version": "2.0.3-beta.12",
   "type": "module",
   "description": "Personal-assistant orchestration plugin: BRIEF, PRIORITIZE, PERSONAL_ASSISTANT cross-domain orchestration, scheduled-task owner CRUD, and default-pack composition. Slimmed from the legacy plugin-lifeops; domain-specific surfaces have moved to plugin-inbox, plugin-goals, plugin-calendar, plugin-blocker, plugin-finances, plugin-relationships, etc.",
   "sideEffects": [

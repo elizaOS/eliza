@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-network-policy",
-  "version": "2.0.3-beta.10",
+  "version": "2.0.3-beta.12",
   "description": "Android + iOS native shims surfacing the `metered` / `isExpensive` hints used by the voice-model auto-updater (R5-versioning §4).",
   "main": "./dist/plugin.cjs.js",
   "module": "./dist/esm/index.js",
