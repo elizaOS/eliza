@@ -473,7 +473,7 @@ export function stripProgressLabelPrefix(text: string): string {
   return text.replace(PROGRESS_PREFIX_REGEX, "$1 ");
 }
 
-type SubAgentProgressMode = "compact" | "threaded" | "silent";
+type SubAgentProgressMode = "compact" | "threaded" | "silent" | "ack";
 
 interface SubAgentProgressPolicy {
   mode: SubAgentProgressMode;
@@ -485,7 +485,13 @@ function readProgressSetting(
   runtime: IAgentRuntime,
   key: string,
 ): string | undefined {
-  const value = runtime.getSetting(key);
+  // runtime.getSetting() reads character settings/secrets only; it never
+  // consults process.env (its last fallback is the empty environmentSettings
+  // map on the agent boot path). A value provided purely via the process
+  // environment (e.g. ACPX_PROGRESS_MODE in the service env file) would
+  // otherwise be invisible, silently leaving the policy at the "compact"
+  // default. Fall back to process.env so env-based config is honored.
+  const value = runtime.getSetting(key) ?? process.env[key];
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : undefined;
@@ -503,6 +509,10 @@ function parseProgressMode(value: string | undefined): SubAgentProgressMode {
   ) {
     return "silent";
   }
+  // "ack": post the spawn ACK once and never edit it again — let the
+  // completion-evaluator synthesis be the separate final message. Gives a clean
+  // "ack + final" UX with no in-place message editing.
+  if (normalized === "ack" || normalized === "ack-only") return "ack";
   if (normalized === "thread" || normalized === "threaded") return "threaded";
   return "compact";
 }
@@ -523,19 +533,28 @@ function parseProgressReactions(value: string | undefined): boolean {
 export function resolveSubAgentProgressPolicy(
   runtime: IAgentRuntime,
 ): SubAgentProgressPolicy {
+  const mode = parseProgressMode(
+    readProgressSetting(runtime, "ACPX_PROGRESS_MODE") ??
+      readProgressSetting(runtime, "ELIZA_SUB_AGENT_PROGRESS_MODE"),
+  );
   return {
-    mode: parseProgressMode(
-      readProgressSetting(runtime, "ACPX_PROGRESS_MODE") ??
-        readProgressSetting(runtime, "ELIZA_SUB_AGENT_PROGRESS_MODE"),
-    ),
+    mode,
     reactions: parseProgressReactions(
       readProgressSetting(runtime, "ACPX_PROGRESS_REACTIONS") ??
         readProgressSetting(runtime, "ELIZA_SUB_AGENT_PROGRESS_REACTIONS"),
     ),
-    delayMs: parseProgressDelayMs(
-      readProgressSetting(runtime, "ACPX_PROGRESS_DELAY_MS") ??
-        readProgressSetting(runtime, "ELIZA_SUB_AGENT_PROGRESS_DELAY_MS"),
-    ),
+    // "ack" is a one-shot spawn acknowledgment, not a debounced progress
+    // stream — the post-delay (which exists to skip progress on sub-second
+    // tasks) would instead DROP the ack entirely when a fast sub-agent
+    // reaches task_complete before the timer fires. Force it off for ack mode
+    // so the ack is reliable regardless of the configured delay.
+    delayMs:
+      mode === "ack"
+        ? 0
+        : parseProgressDelayMs(
+            readProgressSetting(runtime, "ACPX_PROGRESS_DELAY_MS") ??
+              readProgressSetting(runtime, "ELIZA_SUB_AGENT_PROGRESS_DELAY_MS"),
+          ),
   };
 }
 
@@ -545,6 +564,27 @@ export function compactProgressText(text: string): string {
     .replace(PROGRESS_EMOJI_PREFIX_REGEX, "")
     .trim();
   return stripped || "Working.";
+}
+
+/**
+ * Decide whether the planner already acknowledged a spawn turn, so the
+ * orchestrator's spawn ACK can be suppressed (avoiding two back-to-back acks:
+ * planner "On it." + orchestrator "working on it now."). True iff the planner
+ * sent a user-facing message to the room within the spawn turn — i.e. at/after
+ * the session's createdAt minus a small lookback (REPLY and the TASKS spawn
+ * action run in the same turn, in either order). A planner reply older than
+ * that belongs to an earlier turn (e.g. a previous task's completion summary)
+ * and must NOT suppress this spawn's ack. Pure + deterministic so it is unit
+ * tested directly instead of relying on a flaky live "On it." case.
+ */
+export function plannerAlreadyAckedSpawn(
+  plannerReplyAtMs: number | undefined,
+  sessionCreatedAtMs: number | undefined,
+  lookbackMs: number,
+): boolean {
+  if (sessionCreatedAtMs === undefined) return false;
+  if (plannerReplyAtMs === undefined) return false;
+  return plannerReplyAtMs >= sessionCreatedAtMs - lookbackMs;
 }
 
 // Exported for unit tests; not part of the plugin's public API contract.
@@ -759,6 +799,24 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     lastText: string;
   };
   const progressBySession = new Map<string, ProgressState>();
+  // Sessions whose first main-channel post is mid-flight. The first emit for a
+  // session `await`s sendMessageToTarget BEFORE it records state in
+  // progressBySession, so two progress events that arrive close together (the
+  // window widens with ACPX_PROGRESS_DELAY_MS=0) would both see `!state`, both
+  // pass the guards, and both post a duplicate spawn ACK. This set is set
+  // synchronously before that await and cleared once state is recorded, so the
+  // second concurrent emit bails — exactly one spawn message per session.
+  const firstPostInFlight = new Set<string>();
+  // Sessions whose single "ack"-mode spawn ACK has been posted. This is the
+  // canonical "ack done" marker for ack mode — set synchronously the moment we
+  // commit to sending the ACK (before any await) and cleared only on terminal
+  // cleanup. It does NOT depend on the post succeeding or on progressBySession
+  // being recorded: when sendMessageToTarget returns an empty platformId (or a
+  // post-send throw releases firstPostInFlight), `state.mainMessageId` never
+  // gets set, so a `state?.mainMessageId`-keyed guard would let the 10s
+  // heartbeat re-run the first-post path and post a SECOND ack. Keying ack
+  // suppression on this set instead makes it exactly one ack per session.
+  const ackedSessions = new Set<string>();
   // Cache threads by (source, roomId, label) so a rate-limit retry, a
   // mid-flight crash recovery, or a follow-up spawn for the same logical
   // project reuses the existing thread instead of creating a duplicate.
@@ -789,6 +847,18 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     }
   >();
   const delayedProgressFirstSeenAt = new Map<string, number>();
+  // Last time the planner (or any non-internal sender) posted a user-facing
+  // message to a room, keyed by roomId. Recorded by the sendMessageToTarget
+  // wrapper below. Used to dedupe the spawn ACK: if the planner already
+  // acknowledged the spawn turn ("On it.") the orchestrator stays silent so
+  // the user never sees two back-to-back acks. Bounded to stay memory-safe.
+  const lastPlannerReplyAtByRoom = new Map<string, number>();
+  // How far before a session's createdAt a planner reply still counts as that
+  // spawn's acknowledgment. The planner's REPLY and the TASKS spawn action run
+  // in the same turn (milliseconds to ~1s apart, either order), so a small
+  // lookback reliably attributes the reply to this spawn without catching an
+  // unrelated earlier chat reply.
+  const PLANNER_ACK_LOOKBACK_MS = 8000;
 
   // Cross-platform outgoing-message middleware. When the planner-loop's REPLY
   // action (or any other plugin) calls `runtime.sendMessageToTarget` for a
@@ -831,6 +901,14 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         typeof target.source === "string" ? target.source.trim() : "";
       const roomId = typeof target.roomId === "string" ? target.roomId : "";
       if (!source || !roomId) return originalSend(target, content);
+      // This is a user-facing (non-internal) send — the planner's REPLY, a
+      // synthesis, etc. Record it so the spawn-ACK dedup can tell whether the
+      // planner already acknowledged the spawn turn for this room.
+      lastPlannerReplyAtByRoom.set(roomId, Date.now());
+      if (lastPlannerReplyAtByRoom.size > 512) {
+        const oldest = lastPlannerReplyAtByRoom.keys().next().value;
+        if (oldest !== undefined) lastPlannerReplyAtByRoom.delete(oldest);
+      }
       const prefix = `${source}::${roomId}::`;
       const matches: ThreadHandle[] = [];
       for (const [key, thread] of threadCacheByKey) {
@@ -1054,6 +1132,14 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     if (progressPolicy.mode === "silent") return;
     const text = sanitizePlannerText(rawText);
     const state = progressBySession.get(sessionId);
+    // "ack" mode: the spawn ACK posts once (first emit); never edit it
+    // afterward. Once the main message exists, suppress every later progress
+    // emit so the ACK stays untouched and the completion-evaluator synthesis is
+    // the separate final message — no in-place editing of the channel message.
+    if (progressPolicy.mode === "ack" && ackedSessions.has(sessionId)) {
+      if (state) state.lastText = text;
+      return;
+    }
     if (!state && progressPolicy.delayMs > 0) {
       const firstSeenAt =
         delayedProgressFirstSeenAt.get(sessionId) ?? Date.now();
@@ -1163,7 +1249,34 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         ? displayText
         : progressPolicy.mode === "threaded"
           ? `🚀 [${sessionLabel}] running`
-          : displayText;
+          : progressPolicy.mode === "ack"
+            ? // "ack" mode posts ONE clean spawn ACK (never the raw sub-agent
+              // narration) and never edits it afterward — the completion
+              // synthesis is the separate final message. Plain text, no emoji.
+              "working on it now."
+            : displayText;
+      // Claim the first post synchronously before the await. A second progress
+      // event for the same session that arrives while this send is in flight
+      // (it still sees `!state`) bails here instead of posting a duplicate
+      // spawn ACK. Cleared once state is recorded (below) or on send failure
+      // (catch). No `await` may sit between this check and the send.
+      if (!state) {
+        if (firstPostInFlight.has(sessionId)) return;
+        firstPostInFlight.add(sessionId);
+        // ack mode posts exactly one ACK per session — claim it here,
+        // synchronously, so the heartbeat / narration flush / a trailing
+        // post-completion event can never re-enter this first-post path even
+        // if the send below returns no platformId (state stays unrecorded).
+        // Persist for the session's life (never cleared on terminal); bound
+        // the set so a long-lived runtime doesn't accumulate sessionIds.
+        if (progressPolicy.mode === "ack") {
+          ackedSessions.add(sessionId);
+          if (ackedSessions.size > 512) {
+            const oldest = ackedSessions.values().next().value;
+            if (oldest !== undefined) ackedSessions.delete(oldest);
+          }
+        }
+      }
       const sent = await runtime.sendMessageToTarget(
         target,
         transientContent(initialText, "sub_agent_progress"),
@@ -1186,8 +1299,13 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           lastText: initialText,
         };
         progressBySession.set(sessionId, newState);
-        // 🚀 reaction marks "spawning/running" without polluting message text.
-        if (canReact) {
+        // State is recorded — later emits now take the edit/ack-guard branch.
+        // Release the first-post claim so a genuine respawn can post again.
+        firstPostInFlight.delete(sessionId);
+        // A spawning/running reaction marks progress without polluting the
+        // message text. Skip it in "ack" mode — the plain ACK already conveys
+        // "working on it" and the rocket reads as noise next to it.
+        if (canReact && progressPolicy.mode !== "ack") {
           void bestEffortReact(target, platformId, "🚀");
         }
         // Resolve the per-(source,roomId,label) thread. Cache hit ⇒ reuse
@@ -1259,6 +1377,9 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         }
       }
     } catch (err: unknown) {
+      // Release the first-post claim on failure so a retry can post the ACK
+      // (on success it was already released once state was recorded).
+      firstPostInFlight.delete(sessionId);
       runtime.logger?.warn?.(
         {
           src: "@elizaos/plugin-agent-orchestrator",
@@ -1281,27 +1402,36 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
       progressPolicy.mode === "threaded"
         ? `✅ [${state.label}] ${summary}`
         : `Completed ${state.label}: ${summary}`;
-    if (state.canEdit && typeof runtime.editMessageOnTarget === "function") {
-      try {
-        await runtime.editMessageOnTarget(
-          target,
-          state.mainMessageId,
-          transientContent(completionText, "sub_agent_complete"),
-        );
-      } catch {
-        // ignore: reaction below is the secondary signal
-      }
-    } else {
-      // Capability-poor surface (no edit): emitProgress was silenced
-      // mid-task — post the final summary as a fresh message so the user
-      // actually sees the outcome.
-      try {
-        await runtime.sendMessageToTarget(
-          target,
-          transientContent(completionText, "sub_agent_complete"),
-        );
-      } catch {
-        // best-effort
+    // "ack"/"silent" mode: the completion-evaluator synthesis IS the final
+    // user-facing message ("your site is live at <url>"). Posting or editing a
+    // second completion message here would compete with that synthesis, so
+    // suppress the completion post entirely in those modes and let the ✅
+    // reaction on the untouched ACK be the only extra completion signal.
+    const suppressCompletionPost =
+      progressPolicy.mode === "ack" || progressPolicy.mode === "silent";
+    if (!suppressCompletionPost) {
+      if (state.canEdit && typeof runtime.editMessageOnTarget === "function") {
+        try {
+          await runtime.editMessageOnTarget(
+            target,
+            state.mainMessageId,
+            transientContent(completionText, "sub_agent_complete"),
+          );
+        } catch {
+          // ignore: reaction below is the secondary signal
+        }
+      } else {
+        // Capability-poor surface (no edit): emitProgress was silenced
+        // mid-task — post the final summary as a fresh message so the user
+        // actually sees the outcome.
+        try {
+          await runtime.sendMessageToTarget(
+            target,
+            transientContent(completionText, "sub_agent_complete"),
+          );
+        } catch {
+          // best-effort
+        }
       }
     }
     if (state.canReact) {
@@ -1396,6 +1526,53 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           typeof meta.label === "string" && meta.label.trim().length > 0
             ? meta.label
             : `sub-agent ${sessionId.slice(0, 8)}`;
+        // "ack" mode: post the single clean spawn ACK on the FIRST event of any
+        // kind, not just narration. The ack used to ride on the first
+        // message-buffer flush, which only fires after a narration silence gap
+        // (MESSAGE_SILENCE_FLUSH_MS). Fast sub-agents (opencode/gpt-oss stream
+        // continuously and reach task_complete before any flush) therefore
+        // posted NO ack — only the final synthesis. Posting here, gated on the
+        // first non-terminal event, makes "ack + separate synthesis" reliable
+        // on every backend (codex/opencode/claude). emitProgress ignores the
+        // empty rawText for the ack first-post and the firstPostInFlight +
+        // mainMessageId guards keep it to exactly one ack.
+        if (
+          progressPolicy.mode === "ack" &&
+          !ackedSessions.has(sessionId) &&
+          evName !== "task_complete" &&
+          evName !== "turn_complete" &&
+          evName !== "stopped" &&
+          evName !== "error" &&
+          evName !== "cancelled"
+        ) {
+          // Dedupe against the planner's own acknowledgment. The planner often
+          // replies "On it." in the same turn it spawns the task; posting a
+          // second orchestrator ACK ("working on it now.") right after is the
+          // back-to-back double-ack users complained about. If a user-facing
+          // (non-internal) message hit this room within the spawn turn — i.e.
+          // at/after createdAt minus a small lookback — the planner already
+          // acked: claim the marker (so trailing events + heartbeat stay
+          // suppressed) and post nothing. When the planner was silent, the
+          // orchestrator ACK is the single reliable ack.
+          const createdAtMs =
+            session?.createdAt instanceof Date
+              ? session.createdAt.getTime()
+              : undefined;
+          const plannerAlreadyAcked = plannerAlreadyAckedSpawn(
+            lastPlannerReplyAtByRoom.get(roomId),
+            createdAtMs,
+            PLANNER_ACK_LOOKBACK_MS,
+          );
+          if (plannerAlreadyAcked) {
+            ackedSessions.add(sessionId);
+            if (ackedSessions.size > 512) {
+              const oldest = ackedSessions.values().next().value;
+              if (oldest !== undefined) ackedSessions.delete(oldest);
+            }
+          } else {
+            await emitProgress(sessionId, { source, roomId }, "", label);
+          }
+        }
         // Start/stop the per-session heartbeat based on lifecycle events.
         // The interval is capability-aware: fast (10s) when the platform can
         // edit messages in place, slow (30s) when each tick is a new post.
@@ -1453,6 +1630,14 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           // posting it to the main channel (greptile #1 review).
           const terminalState = progressBySession.get(sessionId);
           progressBySession.delete(sessionId);
+          firstPostInFlight.delete(sessionId);
+          // Do NOT clear ackedSessions here. Sub-agents (notably opencode /
+          // gpt-oss) emit trailing `message` events AFTER `task_complete`;
+          // clearing the marker let those late events re-enter the spawn-ack
+          // path and post a SECOND "🚀 On it…" right before the synthesis.
+          // A respawn always gets a fresh sessionId (uuid), so a per-sessionId
+          // marker never needs releasing for reuse — it only needs bounding
+          // (handled at the add site) to stay memory-safe.
           if (terminalState) {
             const cacheKey = threadCacheKey(
               source,
