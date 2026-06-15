@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import { containerBillingRecords, containers } from "../schemas/containers";
 import { creditTransactions } from "../schemas/credit-transactions";
@@ -50,11 +50,22 @@ export interface RecordSuccessfulBillingInput {
   newBalance: number;
   fromEarnings: number;
   fromCredits: number;
+  /** Wall-clock time of this billing run (used for the row-lock period guard). */
   now: Date;
+  /** UTC-day-aligned start of the period this charge covers. */
+  billingPeriodStart: Date;
+  /** End of the period; also written to `next_billing_at`. */
+  billingPeriodEnd: Date;
 }
 
 export class ContainerBillingRepository {
-  async listBillableContainers(): Promise<BillableContainer[]> {
+  /**
+   * Containers due for billing as of `now`. Gating on `next_billing_at` (set
+   * to the end of the last billed period) makes the cron idempotent for the
+   * common case: a same-day re-run skips containers whose period is already
+   * paid. `null` means never billed → due immediately.
+   */
+  async listBillableContainers(now: Date): Promise<BillableContainer[]> {
     return await dbRead
       .select({
         id: containers.id,
@@ -76,6 +87,7 @@ export class ContainerBillingRepository {
         and(
           eq(containers.status, "running"),
           inArray(containers.billing_status, ["active", "warning", "shutdown_pending"]),
+          or(isNull(containers.next_billing_at), lte(containers.next_billing_at, now)),
         ),
       );
   }
@@ -152,9 +164,34 @@ export class ContainerBillingRepository {
 
   async recordSuccessfulDailyBilling(input: RecordSuccessfulBillingInput): Promise<{
     newBalance: number;
-    transactionId: string;
+    transactionId: string | null;
+    alreadyBilled: boolean;
   }> {
     return await dbWrite.transaction(async (tx) => {
+      // Idempotency guard: lock the container row and re-check whether it has
+      // already been billed for this period. `next_billing_at` is the end of
+      // the period last charged; if it is still in the future, the period is
+      // paid — skip without touching any balance. This closes the read→write
+      // race between listBillableContainers and this write (e.g. two concurrent
+      // cron invocations both selecting the container before either commits).
+      const [locked] = await tx
+        .select({ next_billing_at: containers.next_billing_at })
+        .from(containers)
+        .where(eq(containers.id, input.containerId))
+        .for("update");
+
+      if (locked?.next_billing_at && locked.next_billing_at > input.now) {
+        const [org] = await tx
+          .select({ credit_balance: organizations.credit_balance })
+          .from(organizations)
+          .where(eq(organizations.id, input.organizationId));
+        return {
+          newBalance: org ? Number(org.credit_balance) : input.newBalance,
+          transactionId: null,
+          alreadyBilled: true,
+        };
+      }
+
       await tx
         .update(organizations)
         .set({
@@ -163,19 +200,24 @@ export class ContainerBillingRepository {
         })
         .where(eq(organizations.id, input.organizationId));
 
+      // Record only the credit-balance movement (fromCredits). The earnings
+      // portion is debited from the redeemable-earnings ledger via
+      // convertToCredits, so charging the full dailyCost here would
+      // double-count it and break credit_balance == sum(credit_transactions).
       const [creditTx] = await tx
         .insert(creditTransactions)
         .values({
           organization_id: input.organizationId,
           user_id: input.userId,
-          amount: String(-input.dailyCost),
+          amount: String(-input.fromCredits),
           type: "debit",
           description: `Daily container billing: ${input.containerName}`,
           metadata: {
             container_id: input.containerId,
             container_name: input.containerName,
             billing_type: "daily_container",
-            billing_period: input.now.toISOString().split("T")[0],
+            billing_period: input.billingPeriodStart.toISOString().split("T")[0],
+            daily_cost: input.dailyCost.toFixed(4),
             paid_from_earnings: input.fromEarnings.toFixed(4),
             paid_from_credits: input.fromCredits.toFixed(4),
           },
@@ -187,7 +229,7 @@ export class ContainerBillingRepository {
         .update(containers)
         .set({
           last_billed_at: input.now,
-          next_billing_at: new Date(input.now.getTime() + 24 * 60 * 60 * 1000),
+          next_billing_at: input.billingPeriodEnd,
           billing_status: "active" as ContainerBillingStatus,
           shutdown_warning_sent_at: null,
           scheduled_shutdown_at: null,
@@ -200,14 +242,14 @@ export class ContainerBillingRepository {
         container_id: input.containerId,
         organization_id: input.organizationId,
         amount: String(input.dailyCost),
-        billing_period_start: input.now,
-        billing_period_end: new Date(input.now.getTime() + 24 * 60 * 60 * 1000),
+        billing_period_start: input.billingPeriodStart,
+        billing_period_end: input.billingPeriodEnd,
         status: "success",
         credit_transaction_id: creditTx.id,
         created_at: input.now,
       });
 
-      return { newBalance: input.newBalance, transactionId: creditTx.id };
+      return { newBalance: input.newBalance, transactionId: creditTx.id, alreadyBilled: false };
     });
   }
 }
