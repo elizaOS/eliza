@@ -26,15 +26,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Bun
-        # oven-sh/setup-bun@v2
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-        with:
-          bun-version: "canary"
-
-      - name: Install
-        run: bun install --frozen-lockfile || bun install --no-frozen-lockfile
-
       - name: Determine changed files
         id: changed
         run: |
@@ -63,7 +54,19 @@ jobs:
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
+      - name: Setup Bun workspace
+        if: steps.changed.outputs.tests != ''
+        # Keep dependency setup behind the changed-test check. The coverage gate
+        # is advisory for changed Bun-native tests, so docs-only and no-test PRs
+        # should not spend CI time or fail on unrelated registry/install noise.
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+
       - name: Run changed Bun tests with coverage
+        if: steps.changed.outputs.tests != ''
         run: |
           cat > "$RUNNER_TEMP/changed-tests.txt" <<'EOF'
           ${{ steps.changed.outputs.tests }}
@@ -80,6 +83,7 @@ jobs:
           BUN_COVERAGE_DIR: coverage
 
       - name: Apply coverage gate (advisory)
+        if: steps.changed.outputs.tests != ''
         env:
           COVERAGE_GATE_ENFORCE: "0"   # flip to "1" once baseline established
         run: |

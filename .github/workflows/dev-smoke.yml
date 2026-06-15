@@ -3,15 +3,7 @@ name: Dev Smoke
 on:
   pull_request:
     branches: [main, develop]
-    paths:
-      - ".github/workflows/dev-smoke.yml"
-      - "package.json"
-      - "bun.lock"
-      - "packages/app/**"
-      - "packages/app-core/**"
-      - "packages/core/**"
-      - "packages/shared/**"
-      - "packages/ui/**"
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
   push:
     branches: [main, develop]
     paths:
@@ -48,8 +40,37 @@ env:
   ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
 
 jobs:
+  changes:
+    name: Classify changed paths
+    runs-on: ubuntu-24.04
+    outputs:
+      dev_smoke: ${{ steps.filter.outputs.dev_smoke }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Determine affected dev smoke surface
+        id: filter
+        shell: bash
+        env:
+          PR_LABELS: ${{ github.event_name == 'pull_request' && join(github.event.pull_request.labels.*.name, ',') || '' }}
+        run: |
+          set -euo pipefail
+          node packages/scripts/ci-path-gate.mjs \
+            --config dev-smoke \
+            --event "${{ github.event_name }}" \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}" \
+            --labels "$PR_LABELS" \
+            --output "$GITHUB_OUTPUT" \
+            --summary "$GITHUB_STEP_SUMMARY"
+
   dev-smoke:
     name: bun run dev onboarding chat
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.dev_smoke == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:

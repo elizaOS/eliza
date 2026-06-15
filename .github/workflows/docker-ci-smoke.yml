@@ -3,16 +3,50 @@ name: Docker CI Smoke
 on:
   pull_request:
     branches: [develop]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
   push:
     branches: [develop]
   workflow_dispatch:
+
+concurrency:
+  group: docker-ci-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Classify changed paths
+    runs-on: ubuntu-24.04
+    outputs:
+      docker: ${{ steps.filter.outputs.docker }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Determine affected Docker smoke surface
+        id: filter
+        shell: bash
+        env:
+          PR_LABELS: ${{ github.event_name == 'pull_request' && join(github.event.pull_request.labels.*.name, ',') || '' }}
+        run: |
+          set -euo pipefail
+          node packages/scripts/ci-path-gate.mjs \
+            --config docker \
+            --event "${{ github.event_name }}" \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}" \
+            --labels "$PR_LABELS" \
+            --output "$GITHUB_OUTPUT" \
+            --summary "$GITHUB_STEP_SUMMARY"
+
   docker-ci-smoke:
     name: Build production Docker image (+ smoke boot)
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.docker == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
