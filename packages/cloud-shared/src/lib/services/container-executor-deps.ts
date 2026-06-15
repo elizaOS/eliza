@@ -21,6 +21,7 @@ import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
 import { AppContainerProvider, type AppContainerSsh } from "./app-container-provider";
 import { appContainerStore } from "./app-container-store";
+import type { BuildExec } from "./app-image-builder";
 import { addAppRoute, removeAppRoute } from "./apps-ingress-provisioner";
 import type { ContainerExecutorDeps } from "./container-job-executors";
 import { DockerSSHClient } from "./docker-ssh";
@@ -61,6 +62,24 @@ function selectNodeHost(): string {
     );
   }
   return host;
+}
+
+/**
+ * Expose the app node's SSH connection as a {@link BuildExec} so the deploy
+ * backend can build user images FROM THEIR REPO on the node (`docker buildx
+ * build --push <git-url>`) and push to the registry — the "Vercel-like" path
+ * where the platform does the build, not the user. The node already has Docker
+ * + buildx (it runs the containers); `AppContainerSsh.exec(cmd, timeoutMs)` is
+ * structurally identical to `BuildExec.exec`. Returns null when the node backend
+ * isn't configured, so the deploy backend cleanly falls back to prebuilt images.
+ *
+ * INFRA NOTE: the node must be `docker login`'d to the registry (push for build,
+ * pull for run). That credential is provisioned out-of-band (operator/cloud-init),
+ * not here — same as the container SSH key.
+ */
+export function makeNodeBuilderExec(): BuildExec | null {
+  if (!appsContainersEnabled()) return null;
+  return makeNodeSsh();
 }
 
 /** A pooled SSH connection to the chosen node, exposing the `AppContainerSsh` seam. */

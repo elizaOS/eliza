@@ -656,12 +656,19 @@ async function armAppsDeployBackendIfEnabled(
   const port = process.env.APPS_DEPLOY_PORT
     ? Number(process.env.APPS_DEPLOY_PORT)
     : undefined;
-  configureAppsDeployBackend({ port });
+  // When APPS_IMAGE_REGISTRY is set, the backend arms BUILD-FROM-REPO (builds the
+  // user's repo on the app node via buildx and pushes to this registry — the
+  // Vercel-like path). Unset → prebuilt images (imageTag/APP_DEFAULT_IMAGE).
+  const registry = process.env.APPS_IMAGE_REGISTRY;
+  configureAppsDeployBackend({ port, registry });
   logger.info("[provisioning-worker] apps deploy backend armed", {
     tenantDbAdminDsn: process.env.APPS_TENANT_ADMIN_DSN
       ? "env-sourced"
       : "encrypted",
-    images: "prebuilt (imageTag/APP_DEFAULT_IMAGE)",
+    images: registry
+      ? "build-from-repo"
+      : "prebuilt (imageTag/APP_DEFAULT_IMAGE)",
+    registry: registry ?? null,
     port: port ?? 3000,
   });
 }
