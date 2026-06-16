@@ -154,10 +154,13 @@ and the **client DOM-event → shell hop is covered** (ui-smoke
 `task-widget-in-chat.spec.ts`). The missing piece is a real-LLM e2e where the
 model *chooses* to navigate from a chat message. A dev-smoke spec capturing
 `eliza:navigate:view` was prototyped but a local `llama3.2:3b` did not reliably
-select the navigate action (and `app-control`'s package dir fails to resolve in
-dev-source mode — its actions may not load there). Next step: confirm
-`app-control` actions load in dev, then validate against a capable
-action-selecting model in the nightly `app-live-e2e.yml` lane.
+select the navigate action from a free-form "open the wallet view" prompt.
+`plugin-app-control` IS a core plugin and its actions load fine in dev — the
+`views-registry` "could not resolve package directory" warning is scoped to the
+view *bundle* (rendering), not the actions — so this is purely a model
+action-selection/affinity gap, not a loading bug. Next step: validate against a
+capable action-selecting model (claude-haiku / gpt-5-mini) in the nightly
+`app-live-e2e.yml` lane, optionally biasing selection via view-action affinity.
 
 ## Keyless interaction depth (buttons/flows)
 
