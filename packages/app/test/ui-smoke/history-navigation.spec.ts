@@ -15,6 +15,8 @@ type HistoryRoute = {
   mode?: Parameters<typeof assertReadyChecks>[3];
 };
 
+const ASSET_FETCH_RETRY_DELAYS_MS = [100, 250] as const;
+
 const CHAT_COMPOSER_SELECTOR =
   '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]';
 
@@ -58,7 +60,21 @@ async function prepareHistoryPage(page: Parameters<typeof seedAppStorage>[0]) {
     });
   });
   await page.route(/\.(?:js|mjs|tsx)(?:[?#].*)?$/i, async (route) => {
-    const response = await route.fetch();
+    let response: Awaited<ReturnType<typeof route.fetch>>;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        response = await route.fetch();
+        break;
+      } catch {
+        if (attempt >= ASSET_FETCH_RETRY_DELAYS_MS.length) {
+          await route.continue();
+          return;
+        }
+        await new Promise((resolve) =>
+          setTimeout(resolve, ASSET_FETCH_RETRY_DELAYS_MS[attempt]),
+        );
+      }
+    }
     const headers = response.headers();
     if (headers["content-type"]?.includes("application/octet-stream")) {
       await route.fulfill({
