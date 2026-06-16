@@ -667,20 +667,25 @@ export async function getLocalInferenceActiveSnapshot(): Promise<{
 		aospActive.role === "chat" &&
 		typeof aospActive.path === "string"
 	) {
+		// aosp-active.json is the authoritative "a local chat model is loaded and
+		// serving in-process" signal for the agent-side path (ELIZA_LOCAL_LLAMA),
+		// written by plugin-aosp-local-inference when it loads the GGUF. Report
+		// ready off that file directly — do NOT gate it on the installed-models
+		// registry: a device can stage the GGUF without registering it (e.g. a
+		// pushed smoke model, or any direct install), and the model is loaded
+		// regardless. Resolve a friendly modelId from the registry when present,
+		// else fall back to the gguf filename so the snapshot stays meaningful.
 		const installed = (await installedSnapshot()).find(
 			(model) => model.path === aospActive.path,
 		);
-		const catalogModel = installed
-			? CATALOG.find((model) => model.id === installed.id)
-			: null;
-		if (installed && catalogModel?.role === "chat") {
-			return {
-				modelId: installed.id,
-				loadedAt:
-					typeof aospActive.loadedAt === "string" ? aospActive.loadedAt : null,
-				status: "ready",
-			};
-		}
+		return {
+			modelId:
+				installed?.id ??
+				path.basename(aospActive.path).replace(/\.gguf$/i, ""),
+			loadedAt:
+				typeof aospActive.loadedAt === "string" ? aospActive.loadedAt : null,
+			status: "ready",
+		};
 	}
 	const bridgeStatus = await getMobileDeviceBridgeApi()
 		.then((api) => api.getMobileDeviceBridgeStatus())
@@ -689,14 +694,17 @@ export async function getLocalInferenceActiveSnapshot(): Promise<{
 		Boolean(device.loadedPath),
 	)?.loadedPath;
 	if (!loadedPath) return activeModelState;
+	// A connected device bridge that reports a loadedPath has the GGUF loaded and
+	// serving on-device — that's "ready", same as the AOSP path above. Don't gate
+	// on the installed-models registry (a device may load a directly-staged
+	// model); resolve a friendly modelId from the registry when present, else the
+	// gguf filename.
 	const installed = (await installedSnapshot()).find(
 		(model) => model.path === loadedPath,
 	);
-	if (!installed) return activeModelState;
-	const catalogModel = CATALOG.find((model) => model.id === installed.id);
-	if (catalogModel?.role !== "chat") return activeModelState;
 	return {
-		modelId: installed.id,
+		modelId:
+			installed?.id ?? path.basename(loadedPath).replace(/\.gguf$/i, ""),
 		loadedAt: activeModelState.loadedAt,
 		status: "ready",
 	};

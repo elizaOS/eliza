@@ -1183,18 +1183,34 @@ function reconcilePluginManifestWithGradle(targetAssets) {
     String(pkg ?? "")
       .replace(/@/g, "")
       .replace(/\//g, "-");
-  const kept = plugins.filter((plugin) =>
-    compiledProjects.has(gradleProjectFor(plugin?.pkg)),
-  );
+  // When ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1 the llama-cpp-capacitor CMake builds
+  // a no-op stub (`ELIZA_SKIP_MTP_ANDROID_LIB`). That stub *registers* fine but
+  // throws java.lang.UnsatisfiedLinkError on its first native call
+  // (LlamaCpp.toggleNativeLog during the WebView device-bridge init) — an
+  // UNCAUGHT exception that kills the whole app process (SIG 9), which tears
+  // down the on-device agent and any in-flight chat turn. Drop the stub from the
+  // manifest so it never registers: the device-bridge import then fails as a
+  // catchable "LlamaCpp plugin not implemented" JS error instead of a native
+  // crash. Agent-side local inference (ELIZA_LOCAL_LLAMA, libllama via bun:ffi)
+  // does NOT use this Capacitor plugin, so dropping the stub costs nothing.
+  const stubLlamaCpp =
+    process.env.ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB === "1" ||
+    process.env.elizaSkipForkLlamaLib === "true";
+  const isCompiledAndUsable = (plugin) => {
+    if (!compiledProjects.has(gradleProjectFor(plugin?.pkg))) return false;
+    if (stubLlamaCpp && plugin?.pkg === "llama-cpp-capacitor") return false;
+    return true;
+  };
+  const kept = plugins.filter(isCompiledAndUsable);
 
   if (kept.length !== plugins.length) {
     const dropped = plugins
-      .filter((plugin) => !compiledProjects.has(gradleProjectFor(plugin?.pkg)))
+      .filter((plugin) => !isCompiledAndUsable(plugin))
       .map((plugin) => plugin?.pkg)
       .join(", ");
     fs.writeFileSync(manifestPath, `${JSON.stringify(kept, null, "\t")}\n`, "utf8");
     console.log(
-      `[mobile-build] Reconciled capacitor.plugins.json with capacitor.settings.gradle (dropped ${plugins.length - kept.length} uncompiled plugin(s): ${dropped}).`,
+      `[mobile-build] Reconciled capacitor.plugins.json with capacitor.settings.gradle (dropped ${plugins.length - kept.length} plugin(s): ${dropped}).`,
     );
   }
 }
