@@ -142,8 +142,13 @@ export function CompactOnboarding(
     return match ? match[0] : null;
   }, [cloudError]);
 
-  const statusMessage =
-    error ?? (cloudLoginUrl ? null : cloudError) ?? busyText;
+  // While an action is in flight, show its progress (busyText) — a stale
+  // cloud error from a previous attempt must not shadow "Starting local
+  // agent" etc. When idle, surface the error (cloud login URLs render as a
+  // button below, so they're excluded here).
+  const statusMessage = busy
+    ? busyText
+    : (error ?? (cloudLoginUrl ? null : cloudError));
 
   const onRemote = step === "remote" && !cloudOnly;
 

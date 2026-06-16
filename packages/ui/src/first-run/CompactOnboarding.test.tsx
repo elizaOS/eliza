@@ -186,6 +186,20 @@ describe("CompactOnboarding", () => {
     expect(document.querySelector(".first-run-screen")).toBeTruthy();
   });
 
+  it("shows in-flight progress over a stale cloud error while submitting", () => {
+    controllerMock.current = controller({
+      submitting: true,
+      busyText: "Starting local agent",
+      cloudError: "Eliza Cloud login timed out. Please try again.",
+    });
+
+    render(<CompactOnboarding />);
+
+    const toast = screen.getByTestId("onboarding-toast").textContent ?? "";
+    expect(toast).toContain("Starting local agent");
+    expect(toast).not.toContain("login timed out");
+  });
+
   it("disables the option cards while submitting", () => {
     controllerMock.current = controller({ submitting: true });
 
