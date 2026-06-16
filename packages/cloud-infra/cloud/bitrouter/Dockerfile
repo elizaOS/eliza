@@ -4,7 +4,9 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl expect xz-utils \
   && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g bitrouter
+# Pin the version: an unpinned install can silently change routing/failover
+# semantics (e.g. how multi-endpoint `models:` lists are evaluated) on rebuild.
+RUN npm install -g bitrouter@0.33.0
 
 WORKDIR /app
 COPY bitrouter.yaml /app/bitrouter.yaml
