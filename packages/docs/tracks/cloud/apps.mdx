@@ -1,41 +1,60 @@
 ---
 title: Cloud Apps
-description: "Register an appId, version, and publish."
+description: "Register a Cloud app, route app-scoped chat, manage domains, and monetize usage."
 ---
 
-An **app** in Cloud is a registered product that bundles metadata, allowed redirect URIs, billing settings, and deployment configuration. Registering an app gives you an `appId` that:
+An **app** in Cloud is a registered product record that bundles metadata,
+allowed browser origins, hosting/domain settings, analytics, and monetization.
+Registering an app gives you an `id` that:
 
 - Identifies the app to Cloud-routed inference, billing, and analytics.
-- Lets the app use Cloud OAuth flows.
-- Enables container deploys and domain binding.
+- Lets your backend call app administration APIs.
+- Enables app-scoped chat, container deploy metadata, and domain binding.
 - Powers creator monetization (earnings tied to app usage).
 
 ## Register
 
-`POST /v1/apps`
+`POST /api/v1/apps`
 
 Body:
 
 ```json
 {
   "name": "My App",
+  "app_url": "https://placeholder.invalid",
+  "allowed_origins": ["https://placeholder.invalid"],
   "description": "What it does.",
-  "redirectUris": ["https://my-app.example.com/oauth/callback"],
-  "monetization": { "enabled": true }
+  "skipGitHubRepo": true
 }
 ```
 
-Response includes the assigned `appId` and a client secret. Store the secret server-side.
+Response includes the assigned app `id` and a one-time app API key. Store the
+key server-side. For user-facing app chat, forward the user's bearer token to
+`POST /api/v1/apps/{id}/chat` so the user's organization is charged.
 
 ## Lifecycle
 
-- `GET /v1/apps/:id` — fetch.
-- `PATCH /v1/apps/:id` — update metadata, redirects, settings.
-- `DELETE /v1/apps/:id` — soft-delete.
+- `GET /api/v1/apps/{id}` - fetch.
+- `PATCH /api/v1/apps/{id}` - update metadata, URLs, origins, and settings.
+- `PUT /api/v1/apps/{id}/monetization` - configure creator markup.
+- `POST /api/v1/apps/{id}/chat` - run app-scoped chat.
+- `DELETE /api/v1/apps/{id}` - delete and clean up.
 
-## Versioning
+## Monetization
 
-App versions track deployed releases. Versions can be published, rolled back, and marked stable / beta.
+Apps can earn creator revenue from app-scoped inference markup. The current
+monetization payload uses flat fields:
+
+```json
+{
+  "monetizationEnabled": true,
+  "inferenceMarkupPercentage": 100,
+  "purchaseSharePercentage": 10
+}
+```
+
+Older `enabled` plus nested `pricing` payloads are stale and should not be
+used.
 
 ## Source
 
