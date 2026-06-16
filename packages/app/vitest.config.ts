@@ -21,6 +21,23 @@ const unitExcludes = [
 export default defineConfig({
   ...baseConfig,
   root: here,
+  resolve: {
+    ...baseConfig.resolve,
+    // `@elizaos/ui/components/voice-pill` resolves through the package export
+    // map to unbuilt `dist/components/voice-pill.js`, which vitest can't find.
+    // Source-alias the one deep subpath an app test imports (AndroidVoicePill)
+    // ahead of the base aliases so it resolves without a ui dist build.
+    alias: [
+      {
+        find: /^@elizaos\/ui\/components\/voice-pill$/,
+        replacement: path.resolve(
+          here,
+          "../ui/src/components/voice-pill/index.ts",
+        ),
+      },
+      ...(baseConfig.resolve?.alias ?? []),
+    ],
+  },
   test: {
     ...baseConfig.test,
     environment: "jsdom",
