@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { containersEnv as actualContainersEnv } from "../../config/containers-env";
 
 const listByOrganization = mock();
 const createAgent = mock();
@@ -6,8 +7,14 @@ const enqueueAgentProvision = mock();
 const hasElizaAppInitialFreeCredits = mock();
 const addCredits = mock();
 
+// Spread the real containersEnv so this process-global mock.module only
+// overrides defaultAgentImage. bun's mock.module leaks across files in a
+// single test process; a partial object would make every other method
+// (appsPublicBaseDomain, defaultHcloudServerType, …) undefined for whichever
+// file happens to import after this one (order varies by platform → Windows).
 mock.module("../../config/containers-env", () => ({
   containersEnv: {
+    ...actualContainersEnv,
     defaultAgentImage: () => "ghcr.io/elizaos/eliza:stable",
   },
 }));

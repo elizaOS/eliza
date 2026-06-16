@@ -42,6 +42,17 @@ const containerDescribe =
   liveEnabled && apiKey && containerEnabled && destructiveEnabled
     ? describe
     : describe.skip;
+// Container/agent (sandbox) endpoints require resource-scoped API keys
+// (`containers:read` / `agents:read`). The generic live-suite key is not
+// guaranteed to carry those scopes — so read-path assertions are gated behind
+// the same scope flags as their lifecycle counterparts (non-destructive: a
+// list/quota read needs the scope, not the destructive opt-in). This keeps the
+// live suite honest about the credentials it is actually given instead of
+// hard-failing whenever the key lacks container/agent scope.
+const containerReadDescribe =
+  liveEnabled && apiKey && containerEnabled ? describe : describe.skip;
+const agentReadDescribe =
+  liveEnabled && apiKey && agentEnabled ? describe : describe.skip;
 const agentDescribe =
   liveEnabled && apiKey && agentEnabled && destructiveEnabled
     ? describe
@@ -160,17 +171,34 @@ authedDescribe("ElizaCloudClient real API e2e: API-key read paths", () => {
       true,
     );
   });
-
-  it("lists containers, container quota, and Eliza agents", async () => {
-    const client = clientWithApiKey();
-    await expect(client.listContainers()).resolves.toHaveProperty(
-      "success",
-      true,
-    );
-    await expect(client.getContainerQuota()).resolves.toBeTruthy();
-    await expect(client.listAgents()).resolves.toHaveProperty("success", true);
-  });
 });
+
+containerReadDescribe(
+  "ElizaCloudClient real API e2e: container read paths (requires containers scope)",
+  () => {
+    it("lists containers and container quota", async () => {
+      const client = clientWithApiKey();
+      await expect(client.listContainers()).resolves.toHaveProperty(
+        "success",
+        true,
+      );
+      await expect(client.getContainerQuota()).resolves.toBeTruthy();
+    });
+  },
+);
+
+agentReadDescribe(
+  "ElizaCloudClient real API e2e: Eliza agent read paths (requires agents scope)",
+  () => {
+    it("lists Eliza agents", async () => {
+      const client = clientWithApiKey();
+      await expect(client.listAgents()).resolves.toHaveProperty(
+        "success",
+        true,
+      );
+    });
+  },
+);
 
 generationDescribe(
   "ElizaCloudClient real API e2e: paid generation paths",
