@@ -1131,6 +1131,72 @@ function mirrorCapacitorWebPayloadIntoAndroidDir() {
   console.log(
     `[mobile-build] Mirrored Capacitor web payload into ${path.relative(repoRoot, targetAssets)}`,
   );
+  // `cap sync` (run against appDir) generates capacitor.plugins.json from the
+  // FULL appDir dependency set, but androidDir ships a committed
+  // capacitor.settings.gradle that compiles only a curated subset of plugin
+  // modules (plus app-core additions like elizaos-capacitor-bun-runtime that
+  // cap sync never emits). Mirroring the full manifest into androidDir leaves
+  // it listing classes that aren't on the dex — and Capacitor's
+  // PluginManager.loadPluginClasses ABORTS the ENTIRE auto-registration on the
+  // first missing class (PluginLoadException). The net effect is that NONE of
+  // the auto-registered plugins load — including the compiled ones the app
+  // actually needs (Preferences, LlamaCpp, every @elizaos/capacitor-*) — so
+  // on-device local inference and Capacitor Preferences silently report
+  // "not implemented on android". Reconcile the manifest with what gradle
+  // actually compiles so loadPluginClasses succeeds.
+  reconcilePluginManifestWithGradle(targetAssets);
+}
+
+/**
+ * Drop capacitor.plugins.json entries whose gradle module is not included in
+ * androidDir/capacitor.settings.gradle. Uses Capacitor's canonical package →
+ * gradle-project derivation (`pkg.replace(/@/g,"").replace(/\//g,"-")`), so
+ * `@capacitor/preferences`→`capacitor-preferences`,
+ * `@elizaos/capacitor-agent`→`elizaos-capacitor-agent`,
+ * `llama-cpp-capacitor`→`llama-cpp-capacitor`. Keeping the manifest in lockstep
+ * with the compiled module set is what stops PluginManager.loadPluginClasses
+ * from throwing on a class that isn't on the dex.
+ */
+function reconcilePluginManifestWithGradle(targetAssets) {
+  const manifestPath = path.join(targetAssets, "capacitor.plugins.json");
+  const settingsPath = path.join(androidDir, "capacitor.settings.gradle");
+  if (!fs.existsSync(manifestPath) || !fs.existsSync(settingsPath)) return;
+
+  const settings = fs.readFileSync(settingsPath, "utf8");
+  const compiledProjects = new Set(
+    [...settings.matchAll(/include ':([^']+)'/g)].map((m) => m[1]),
+  );
+
+  let plugins;
+  try {
+    plugins = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `[mobile-build] Could not parse capacitor.plugins.json for gradle reconciliation: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  if (!Array.isArray(plugins)) return;
+
+  const gradleProjectFor = (pkg) =>
+    String(pkg ?? "")
+      .replace(/@/g, "")
+      .replace(/\//g, "-");
+  const kept = plugins.filter((plugin) =>
+    compiledProjects.has(gradleProjectFor(plugin?.pkg)),
+  );
+
+  if (kept.length !== plugins.length) {
+    const dropped = plugins
+      .filter((plugin) => !compiledProjects.has(gradleProjectFor(plugin?.pkg)))
+      .map((plugin) => plugin?.pkg)
+      .join(", ");
+    fs.writeFileSync(manifestPath, `${JSON.stringify(kept, null, "\t")}\n`, "utf8");
+    console.log(
+      `[mobile-build] Reconciled capacitor.plugins.json with capacitor.settings.gradle (dropped ${plugins.length - kept.length} uncompiled plugin(s): ${dropped}).`,
+    );
+  }
 }
 
 // ── Phase 4: Android native overlay ─────────────────────────────────────

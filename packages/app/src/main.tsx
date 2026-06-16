@@ -1940,14 +1940,44 @@ function applyBuildTimeIosConnection(): void {
 }
 
 async function getOrCreateDeviceBridgeId(): Promise<string> {
-  const existing = await Preferences.get({ key: DEVICE_BRIDGE_ID_KEY });
-  if (existing.value?.trim()) return existing.value.trim();
+  // The device-bridge id is a stable per-install identifier, not durable native
+  // config. On Android sideloads the Capacitor `Preferences` plugin can report
+  // "not implemented on android" — the same condition `mobile-runtime-mode.ts`
+  // already tolerates for the runtime-mode store. A hard Preferences dependency
+  // here previously rejected the whole device-bridge startup ("Device bridge
+  // unavailable: Preferences plugin is not implemented on android"), which left
+  // on-device local inference with no connected device to route to. Read and
+  // persist through Preferences when it works, but fall back to localStorage,
+  // which is always present in the WebView origin and persists across restarts.
+  const readPersisted = async (): Promise<string | undefined> => {
+    try {
+      const fromPrefs = (
+        await Preferences.get({ key: DEVICE_BRIDGE_ID_KEY })
+      ).value?.trim();
+      if (fromPrefs) return fromPrefs;
+    } catch {
+      // Preferences unavailable on this platform; fall through to localStorage.
+    }
+    return globalThis.localStorage?.getItem(DEVICE_BRIDGE_ID_KEY)?.trim() || undefined;
+  };
+
+  const existing = await readPersisted();
+  if (existing) return existing;
 
   const prefix = isAndroid ? "android" : isIOS ? "ios" : "mobile";
   const generated =
     globalThis.crypto?.randomUUID?.() ??
     `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-  await Preferences.set({ key: DEVICE_BRIDGE_ID_KEY, value: generated });
+  try {
+    await Preferences.set({ key: DEVICE_BRIDGE_ID_KEY, value: generated });
+  } catch {
+    // Preferences unavailable; localStorage below is the durable fallback.
+  }
+  try {
+    globalThis.localStorage?.setItem(DEVICE_BRIDGE_ID_KEY, generated);
+  } catch {
+    // No persistent store available; the id is still usable for this session.
+  }
   return generated;
 }
 

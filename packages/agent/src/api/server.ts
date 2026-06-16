@@ -148,7 +148,14 @@ function getLocalInferenceServerApi(): Promise<LocalInferenceServerApi> {
       handleLocalInferenceRoutes: routes.handleLocalInferenceRoutes,
       handleLocalInferenceTtsRoute: ttsRoutes.handleLocalInferenceTtsRoute,
     };
-  })();
+  })().catch((err: unknown) => {
+    // A cold-boot import failure must not poison the memoized promise: `??=`
+    // would otherwise cache the rejection and 404 EVERY /api/local-inference/*
+    // route for the lifetime of the process. Clear the memo so the next request
+    // retries once the deferred plugin closure is resolvable.
+    localInferenceServerApiPromise = null;
+    throw err;
+  });
   return localInferenceServerApiPromise;
 }
 
