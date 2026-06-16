@@ -717,9 +717,13 @@ function smokePolymarketMarkets() {
           { name: "Yes", price: "0.87" },
           { name: "No", price: "0.13" },
         ],
-        liquidity: "$12,345",
-        volume: "$45,678",
-        volume24hr: "$1,234",
+        // Raw numeric strings — the real Gamma API + BFF parser emit unformatted
+        // numerics (see plugin-polymarket-app routes.contract.test.ts). The view's
+        // shortNumber() does Number(value), so a pre-formatted "$12,345" would
+        // render as "—". Keep this matching the validated real DTO shape.
+        liquidity: "12345.5",
+        volume: "45678.25",
+        volume24hr: "1234.75",
         lastTradePrice: "0.87",
         bestBid: "0.86",
         bestAsk: "0.88",
@@ -746,9 +750,9 @@ function smokePolymarketMarkets() {
           { name: "Up", price: "0.64" },
           { name: "Down", price: "0.36" },
         ],
-        liquidity: "$2,345",
-        volume: "$5,678",
-        volume24hr: "$234",
+        liquidity: "2345.1",
+        volume: "5678.4",
+        volume24hr: "234.6",
         lastTradePrice: "0.64",
         bestBid: "0.63",
         bestAsk: "0.65",
