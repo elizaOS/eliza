@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import type { HeadscaleClient } from "./headscale-client";
 import {
   HeadscaleIntegration,
   inferHeadscaleUser,
   inferTailscaleHostname,
 } from "./headscale-integration";
-import type { HeadscaleClient } from "./headscale-client";
 
 const savedEnv = { ...process.env };
 

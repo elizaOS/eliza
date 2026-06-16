@@ -49,9 +49,7 @@ export function resolveBrowserStewardApiUrl(origin?: string): string {
   // same-origin Pages Functions proxy and hit the Workers API directly.
   // The Workers API allowlists these origins for CORS + credentials.
   const browserHost = getBrowserHostname();
-  const directApi = browserHost
-    ? ELIZA_CLOUD_DIRECT_API_BY_HOST[browserHost]
-    : undefined;
+  const directApi = browserHost ? ELIZA_CLOUD_DIRECT_API_BY_HOST[browserHost] : undefined;
   if (directApi) {
     return `${directApi}${STEWARD_PREFIX}`;
   }

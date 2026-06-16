@@ -1235,11 +1235,13 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
       // Clean up Headscale pre-auth key if VPN was prepared
       if (headscaleEnabled) {
-        await headscaleIntegration.cleanupContainerVPN(vpnEnvVars.TS_HOSTNAME ?? agentId).catch((cleanupErr) => {
-          logger.warn(
-            `[docker-sandbox] Headscale cleanup failed during rollback for ${agentId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
-          );
-        });
+        await headscaleIntegration
+          .cleanupContainerVPN(vpnEnvVars.TS_HOSTNAME ?? agentId)
+          .catch((cleanupErr) => {
+            logger.warn(
+              `[docker-sandbox] Headscale cleanup failed during rollback for ${agentId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
+            );
+          });
       }
       throw new Error(
         `[docker-sandbox] Failed to create container on ${nodeId}: ${err instanceof Error ? err.message : String(err)}`,
@@ -1575,11 +1577,13 @@ export class DockerSandboxProvider implements SandboxProvider {
     if (process.env.HEADSCALE_API_KEY && meta.agentId) {
       // Delete the node by the hostname it registered under (TS_HOSTNAME), not the
       // bare agentId — Headscale identifies the node by that name.
-      await headscaleIntegration.cleanupContainerVPN(meta.tsHostname ?? meta.agentId).catch((err) => {
-        logger.warn(
-          `[docker-sandbox] Headscale cleanup failed for ${meta.agentId}: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      });
+      await headscaleIntegration
+        .cleanupContainerVPN(meta.tsHostname ?? meta.agentId)
+        .catch((err) => {
+          logger.warn(
+            `[docker-sandbox] Headscale cleanup failed for ${meta.agentId}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
     }
 
     // Remove from in-memory registry
