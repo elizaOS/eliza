@@ -20,6 +20,7 @@
 
 import { join } from "node:path";
 import { CloudApiError, ElizaCloudClient } from "@elizaos/cloud-sdk";
+import { dbReady, getHistory, initDb, saveTurn, userRef } from "./db.ts";
 
 const PORT = Number(process.env.PORT ?? 3000);
 const PUBLIC_DIR = join(import.meta.dir, "public");
@@ -46,6 +47,42 @@ function jsonError(status: number, code: string, message: string): Response {
   });
 }
 
+// Flatten a message `content` (string, or an array of {text} parts) to plain
+// text for persistence. Defensive: unknown shapes collapse to "".
+function flattenContent(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((c) =>
+        typeof c === "string"
+          ? c
+          : typeof (c as { text?: unknown })?.text === "string"
+            ? (c as { text: string }).text
+            : "",
+      )
+      .join(" ")
+      .trim();
+  }
+  return "";
+}
+
+/** The user's latest message text from the forwarded request body. */
+function extractUserText(json: unknown): string {
+  const msgs = (json as { messages?: Array<{ role?: string; content?: unknown }> })?.messages;
+  if (Array.isArray(msgs)) {
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i]?.role === "user") return flattenContent(msgs[i]?.content);
+    }
+  }
+  return "";
+}
+
+/** The assistant reply text from the upstream result (Anthropic-style shape). */
+function extractReplyText(result: unknown): string {
+  const r = result as { content?: unknown; message?: { content?: unknown } };
+  return flattenContent(r?.content) || flattenContent(r?.message?.content) || "";
+}
+
 async function forwardMessages(
   req: Request,
   userToken: string,
@@ -59,6 +96,14 @@ async function forwardMessages(
   try {
     const json = await req.json();
     const result = await cloud.routes.postApiV1Messages({ json });
+    // Persist the turn to this app's isolated per-tenant DB so history survives
+    // across sessions. No-op when the app has no DB (see db.ts); wrapped so a
+    // persistence error never affects the reply the user gets back.
+    if (dbReady()) {
+      const ref = userRef(userToken);
+      await saveTurn(ref, "user", extractUserText(json));
+      await saveTurn(ref, "assistant", extractReplyText(result));
+    }
     return Response.json(result);
   } catch (err) {
     if (err instanceof CloudApiError) {
@@ -87,6 +132,7 @@ async function handleApi(req: Request, segments: string[]): Promise<Response> {
         app_id: APP_ID || null,
         cloud_url: CLOUD_URL,
         affiliate_code: AFFILIATE_CODE,
+        db_enabled: dbReady(),
       },
       { headers: { "cache-control": "no-store" } },
     );
@@ -109,6 +155,16 @@ async function handleApi(req: Request, segments: string[]): Promise<Response> {
     return forwardMessages(req, userToken);
   }
 
+  // Signed-in user's persisted chat history from this app's per-tenant DB.
+  // Empty when the app has no isolated DB — the UI just starts a fresh chat.
+  if (segments.length === 1 && segments[0] === "history" && req.method === "GET") {
+    const messages = dbReady() ? await getHistory(userRef(userToken)) : [];
+    return Response.json(
+      { messages, db_enabled: dbReady() },
+      { headers: { "cache-control": "no-store" } },
+    );
+  }
+
   return jsonError(404, "not_found", "unknown route");
 }
 
@@ -119,6 +175,10 @@ async function serveStatic(pathname: string): Promise<Response | null> {
   if (!(await file.exists())) return null;
   return new Response(file, { headers: { "cache-control": "no-store" } });
 }
+
+// Connect the per-tenant DB (if any) before we start taking requests. Never
+// throws — a missing/unreachable DB just means stateless mode (see db.ts).
+await initDb();
 
 const server = Bun.serve({
   port: PORT,

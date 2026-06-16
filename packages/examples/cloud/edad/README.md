@@ -31,7 +31,8 @@ browser                                  app backend                         eli
 | `public/index.html` | landing + chat UI + OAuth sign-in + message loop |
 | `public/style.css` | dad-energy dark theme, SVG silhouette, responsive |
 | `public/meta.json` | app index metadata |
-| `server.ts` | standalone Bun server: serves `public/`, exposes `GET /api/config`, `POST /api/messages` (forwards to `/api/v1/messages` via @elizaos/cloud-sdk with `x-app-id`/`x-affiliate-code`), and `/health` |
+| `server.ts` | standalone Bun server: serves `public/`, exposes `GET /api/config`, `POST /api/messages` (forwards to `/api/v1/messages` via @elizaos/cloud-sdk with `x-app-id`/`x-affiliate-code`), `GET /api/history` (per-user persisted chat, when a DB is present), and `/health` |
+| `db.ts` | optional per-tenant Postgres persistence via native `Bun.sql` — saves each turn + serves history. No-op without `DATABASE_URL`, so the proxy still runs standalone |
 | `Dockerfile` | bun:1.2-alpine image, exposes :3000, includes `/health` for ECS health checks |
 
 ## Env required
@@ -40,7 +41,19 @@ browser                                  app backend                         eli
 ELIZA_APP_ID=<uuid of app registered via POST /api/v1/apps>
 ELIZA_CLOUD_URL=https://www.elizacloud.ai
 ELIZA_AFFILIATE_CODE=AFF-XXXXXX     # your affiliate code — drives per-call affiliate share earnings
+DATABASE_URL=postgres://...         # OPTIONAL — when set, chat history persists (see below)
 ```
+
+### Per-tenant database (optional)
+
+Deploy edad on Eliza Cloud with `databaseMode: "isolated"` and the platform
+provisions an isolated Postgres DB + injects `DATABASE_URL` (reachable only via
+the per-app DB ambassador — no other tenant can connect, no general egress).
+`db.ts` then persists each turn so a signed-in user's history survives across
+sessions, and `GET /api/history` serves it back. Without `DATABASE_URL` it's a
+silent no-op — the proxy runs stateless anywhere. This makes edad a single app
+that exercises the **whole** platform: monetized inference + container deploy +
+per-tenant DB + per-app auth + custom domain.
 
 There is **no operator-paid fallback**. The proxy rejects requests without a Steward JWT with 401. Reasoning:
 
