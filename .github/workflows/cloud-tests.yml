@@ -144,6 +144,10 @@ jobs:
     timeout-minutes: 35
     needs: [changed-paths, lint-and-types]
     if: needs.changed-paths.outputs.cloud_frontend == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium-desktop, chromium-mobile]
     env:
       NODE_ENV: test
       PLAYWRIGHT_WORKERS: "1"
@@ -155,4 +159,9 @@ jobs:
       - name: Install Playwright browsers
         run: bunx playwright install --with-deps chromium
       - name: Run Playwright tests
-        run: bun run test:cloud:playwright
+        # WHY: the cloud Playwright suite covers every route in both desktop and
+        # mobile projects. Running both projects serially in one job routinely
+        # exhausts the PR timeout; splitting by project preserves the same test
+        # surface while letting GitHub schedule the two independent lanes in
+        # parallel.
+        run: bun run --cwd packages/cloud-frontend test:e2e -- --project=${{ matrix.project }}
