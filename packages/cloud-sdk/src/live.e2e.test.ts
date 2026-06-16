@@ -71,6 +71,11 @@ function publicClient() {
   return new ElizaCloudClient({ baseUrl, apiBaseUrl });
 }
 
+function apiV1BaseUrl(): string {
+  const normalized = apiBaseUrl.replace(/\/+$/, "");
+  return normalized.endsWith("/api/v1") ? normalized : `${normalized}/api/v1`;
+}
+
 function clientWithApiKey() {
   return createElizaCloudClient({ baseUrl, apiBaseUrl, apiKey });
 }
@@ -88,6 +93,7 @@ liveDescribe(
   () => {
     it.skipIf(!apiKey && process.env.ELIZA_CLOUD_SDK_LIVE_OPENAPI !== "1")(
       "fetches the live OpenAPI document through getOpenApiSpec, request, and requestRaw",
+      { timeout: 30_000 },
       async () => {
         const client = apiKey ? clientWithApiKey() : publicClient();
 
@@ -136,10 +142,10 @@ liveDescribe(
       const models = await client.listModels();
       expect(Array.isArray(models.data)).toBe(true);
 
-      const compatibility = new CloudApiClient(apiBaseUrl);
+      const compatibility = new CloudApiClient(apiV1BaseUrl());
       await expect(
         compatibility.get("/models", { skipAuth: true }),
-      ).resolves.toBeTruthy();
+      ).resolves.toMatchObject({ data: expect.any(Array) });
       expect(compatibility.buildWsUrl("/agent/gateway-relay")).toContain(
         "/agent/gateway-relay",
       );

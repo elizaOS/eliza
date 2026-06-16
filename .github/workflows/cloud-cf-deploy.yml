@@ -276,3 +276,38 @@ jobs:
         # (so `_middleware.ts` never runs and `/api/*` falls through to the
         # SPA's index.html instead of being proxied to the API Worker).
         run: bunx wrangler pages deploy --project-name=eliza-cloud --branch=${{ steps.pages.outputs.branch }}
+
+      - name: Verify same-origin API proxy
+        if: steps.cf.outputs.configured == 'true' && github.event_name != 'pull_request'
+        env:
+          SITE_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
+          API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+        run: |
+          check_json() {
+            local label="$1"
+            local url="$2"
+            local expected="$3"
+            local tmp
+            tmp="$(mktemp)"
+            local code
+            code="$(curl -sS -o "$tmp" -w '%{http_code}' -m 20 "$url" || echo "000")"
+            local content_type
+            content_type="$(file -b --mime-type "$tmp" 2>/dev/null || true)"
+            if [ "$code" != "$expected" ]; then
+              echo "::error::$label returned HTTP $code, expected $expected: $url"
+              head -c 500 "$tmp" || true
+              echo
+              exit 1
+            fi
+            if ! head -c 1 "$tmp" | grep -q '[{[]'; then
+              echo "::error::$label did not return JSON-looking content ($content_type): $url"
+              head -c 500 "$tmp" || true
+              echo
+              exit 1
+            fi
+          }
+
+          check_json "direct API health" "${API_URL%/}/api/health" 200
+          check_json "same-origin API health" "${SITE_URL%/}/api/health" 200
+          check_json "direct Steward providers" "${API_URL%/}/steward/auth/providers" 200
+          check_json "same-origin Steward providers" "${SITE_URL%/}/steward/auth/providers" 200

@@ -97,6 +97,11 @@ function normalizeBaseUrl(value: string | undefined, fallback: string): string {
   return trimTrailingSlash(trimmed && trimmed.length > 0 ? trimmed : fallback);
 }
 
+function normalizeApiBaseUrl(value: string | undefined, fallback: string): string {
+  const normalized = normalizeBaseUrl(value, fallback);
+  return normalized.endsWith("/api/v1") ? normalized : `${normalized}/api/v1`;
+}
+
 function apiOriginFromApiBaseUrl(value: string): string {
   return value.replace(/\/api\/v1\/?$/, "");
 }
@@ -167,7 +172,7 @@ export class ElizaCloudClient {
       options.baseUrl,
       DEFAULT_ELIZA_CLOUD_BASE_URL,
     );
-    this.apiBaseUrl = normalizeBaseUrl(
+    this.apiBaseUrl = normalizeApiBaseUrl(
       options.apiBaseUrl,
       options.baseUrl
         ? `${this.baseUrl}/api/v1`
