@@ -57,6 +57,21 @@ const LIVE_ONLY: Readonly<Record<string, string>> = {
     "BroadcastChannel) which does not exist in the renderer yet; the spec is " +
     "skipped against the desired theme-toggle broadcast behavior and only " +
     "activates once that feature ships.",
+  "vault-routing.spec.ts":
+    "deep routing-config write→reload→read-back needs the real on-disk vault " +
+    "(ELIZA_UI_SMOKE_LIVE_STACK=1); the keyless stub's GET /api/secrets/routing " +
+    "is a static {rules:[]} and its PUT does not persist, so a saved rule never " +
+    "reloads. Guarded by test.skip(!LIVE_STACK).",
+  "wallet-keys.spec.ts":
+    "deep wallet-key add→reveal→delete round-trip needs the real on-disk vault " +
+    "(ELIZA_UI_SMOKE_LIVE_STACK=1); the keyless stub returns a fixed wallet " +
+    "inventory and does not persist PUT/DELETE on /api/secrets/inventory/:key. " +
+    "Guarded by test.skip(!LIVE_STACK).",
+  "provider-config.spec.ts":
+    "real provider switch needs the app-core runtime to service POST " +
+    "/api/provider/switch and re-derive the active provider " +
+    "(ELIZA_UI_SMOKE_LIVE_STACK=1); the keyless stub neither restarts the agent " +
+    "nor reflects the switched provider. Guarded by test.skip(!LIVE_STACK).",
 };
 
 /**

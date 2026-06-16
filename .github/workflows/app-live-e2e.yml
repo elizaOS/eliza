@@ -107,6 +107,14 @@ jobs:
       - name: Run live agent chat (real model turn)
         run: bun run --cwd packages/app test:e2e test/ui-smoke/live-agent-chat.spec.ts --project=chromium -g "live agent"
 
+      # Deep settings/vault round-trips that the keyless stub structurally
+      # cannot serve (write→reload→read-back against the real on-disk vault +
+      # runtime). LIVE_STACK=1 is set job-wide, so the test.skip(!LIVE_STACK)
+      # guards in these specs open. The two *-interactions specs also run keyless
+      # in scenario-pr.yml (skipping their deep blocks); here they run them.
+      - name: Run settings + vault live-stack deep e2e
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/vault-routing.spec.ts test/ui-smoke/wallet-keys.spec.ts test/ui-smoke/provider-config.spec.ts test/ui-smoke/vault-modal-interactions.spec.ts test/ui-smoke/settings-sections-interactions.spec.ts --project=chromium
+
       - name: Upload live-chat artifacts
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
