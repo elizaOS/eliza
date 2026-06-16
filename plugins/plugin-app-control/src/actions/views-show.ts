@@ -40,6 +40,8 @@ const FILLER_WORDS = new Set([
 	"pls",
 	"now",
 	"my",
+	"me",
+	"us",
 	"a",
 	"an",
 ]);
