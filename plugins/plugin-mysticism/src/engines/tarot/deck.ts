@@ -1,6 +1,6 @@
 import { webcrypto } from "node:crypto";
 import type { DrawnCard, TarotCard } from "../../types";
-import cardsData from "./data/cards.json";
+import cardsData from "./data/cards.json" with { type: "json" };
 
 const allCards: TarotCard[] = cardsData as TarotCard[];
 

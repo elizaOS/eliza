@@ -218,11 +218,26 @@ async function installDirectCloudSandboxRoutes(
         return;
       }
       options.state.jobPollRequests += 1;
+      // Real provisioning jobs transition pending -> in_progress -> completed
+      // across multiple polls (cloud-shared jobs schema). Returning "completed"
+      // on the first poll never exercises the renderer's poll loop on a
+      // non-terminal status — if the client mishandled "pending"/"in_progress"
+      // (treated it as done or failed), provisioning would stall and never hand
+      // off the bridgeUrl. Driving the real sequence makes "reaches chat" prove
+      // the client correctly keeps polling through in-flight states.
+      const status =
+        options.state.jobPollRequests === 1
+          ? "pending"
+          : options.state.jobPollRequests === 2
+            ? "in_progress"
+            : "completed";
       await fulfillJson(route, 200, {
         success: true,
         data: {
-          status: "completed",
-          result: { bridgeUrl: options.apiBase },
+          status,
+          ...(status === "completed"
+            ? { result: { bridgeUrl: options.apiBase } }
+            : {}),
         },
       });
     },
@@ -616,9 +631,11 @@ for (const viewport of VIEWPORTS) {
 
     await expect.poll(() => directCloudState.createRequests).toBe(1);
     await expect.poll(() => directCloudState.provisionRequests).toBe(1);
+    // >= 3 proves the renderer polled through pending + in_progress before the
+    // completed poll handed off the bridgeUrl, not an instant single-poll finish.
     await expect
       .poll(() => directCloudState.jobPollRequests)
-      .toBeGreaterThan(0);
+      .toBeGreaterThanOrEqual(3);
     await expect.poll(() => firstRunState.submissions.length).toBe(1);
 
     await expect
@@ -924,7 +941,11 @@ test("new cloud agent provisions through direct cloud sandbox and reaches chat",
 
   await expect.poll(() => directCloudState.createRequests).toBe(1);
   await expect.poll(() => directCloudState.provisionRequests).toBe(1);
-  await expect.poll(() => directCloudState.jobPollRequests).toBeGreaterThan(0);
+  // >= 3 proves the renderer polled through pending + in_progress before the
+  // completed poll handed off the bridgeUrl, not an instant single-poll finish.
+  await expect
+    .poll(() => directCloudState.jobPollRequests)
+    .toBeGreaterThanOrEqual(3);
   await expect.poll(() => firstRunState.submissions.length).toBe(1);
   await expect
     .poll(() =>

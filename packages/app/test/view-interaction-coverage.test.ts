@@ -43,9 +43,61 @@ const VISUAL_BASELINE_OWNER: InteractionOwner = {
   ],
 };
 
+const DECOMPOSED_PA_SPEC =
+  "packages/app/test/ui-smoke/apps-personal-assistant-decomposed-interactions.spec.ts";
+
 const GUI_INTERACTION_OWNERS: Readonly<
   Record<string, readonly InteractionOwner[]>
 > = {
+  calendar: [
+    {
+      spec: DECOMPOSED_PA_SPEC,
+      proves: "Drives the calendar day/week/month tab switcher.",
+      signals: ["calendar decomposed view", "/calendar"],
+    },
+  ],
+  finances: [
+    {
+      spec: DECOMPOSED_PA_SPEC,
+      proves: "Renders the finances summary scaffold.",
+      signals: ["finances decomposed view", "/finances"],
+    },
+  ],
+  focus: [
+    {
+      spec: DECOMPOSED_PA_SPEC,
+      proves: "Renders the focus/blocker scaffold.",
+      signals: ["focus decomposed view", "/focus"],
+    },
+  ],
+  goals: [
+    {
+      spec: DECOMPOSED_PA_SPEC,
+      proves: "Renders the goals scaffold.",
+      signals: ["goals decomposed view", "/goals"],
+    },
+  ],
+  health: [
+    {
+      spec: DECOMPOSED_PA_SPEC,
+      proves: "Renders the health regions.",
+      signals: ["health decomposed view", "/health"],
+    },
+  ],
+  inbox: [
+    {
+      spec: DECOMPOSED_PA_SPEC,
+      proves: "Toggles the inbox channel filters.",
+      signals: ["inbox decomposed view", "/inbox"],
+    },
+  ],
+  todos: [
+    {
+      spec: DECOMPOSED_PA_SPEC,
+      proves: "Renders the todo lanes.",
+      signals: ["todos decomposed view", "/todos"],
+    },
+  ],
   companion: [
     {
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
@@ -313,26 +365,21 @@ const GUI_INTERACTION_OWNERS: Readonly<
   ],
 };
 
+// Every decomposed personal-assistant view has a dedicated interaction owner
+// (apps-personal-assistant-decomposed-interactions.spec.ts) EXCEPT "documents":
+// its `/documents` view path collides with the built-in "documents" tab
+// (App.tsx findView matches `/${tab}`), so registering it in the ui-smoke stub
+// hijacks the `/character/documents` route. It stays tracked debt until that
+// view path is disambiguated.
 const INTERACTION_DEBT: Readonly<Record<string, string>> = {
-  "calendar:gui":
-    "Decomposed personal-assistant view is newly registered; needs a dedicated calendar interaction spec once migration wiring settles.",
   "documents:gui":
-    "Decomposed personal-assistant view is newly registered; needs a dedicated documents interaction spec once migration wiring settles.",
-  "finances:gui":
-    "Decomposed personal-assistant view is newly registered; needs a dedicated finances interaction spec once migration wiring settles.",
-  "focus:gui":
-    "Decomposed personal-assistant view is newly registered; needs a dedicated focus/blocker interaction spec once migration wiring settles.",
-  "goals:gui":
-    "Decomposed personal-assistant view is newly registered; needs a dedicated goals interaction spec once migration wiring settles.",
-  "health:gui":
-    "Decomposed personal-assistant view is newly registered; needs a dedicated health interaction spec once migration wiring settles.",
-  "inbox:gui":
-    "Decomposed personal-assistant view is newly registered; needs a dedicated inbox interaction spec once migration wiring settles.",
-  "todos:gui":
-    "Decomposed personal-assistant view is newly registered; needs a dedicated todos interaction spec once migration wiring settles.",
+    "The decomposed documents view path `/documents` collides with the built-in " +
+    "`documents` tab (/character/documents) via App.tsx findView, so it cannot be " +
+    "registered in the ui-smoke stub without hijacking that route. Needs a " +
+    "disambiguated view path before a keyless interaction spec can drive it.",
 };
 
-const MAX_INTERACTION_DEBT = 8;
+const MAX_INTERACTION_DEBT = 1;
 
 const KEYLESS_INTERACTION_OWNER_DEBT = new Set([
   "packages/app/test/ui-smoke/apps-personal-assistant-feed-interactions.spec.ts",

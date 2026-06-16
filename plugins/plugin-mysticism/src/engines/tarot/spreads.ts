@@ -1,5 +1,5 @@
 import type { SpreadDefinition } from "../../types";
-import spreadsData from "./data/spreads.json";
+import spreadsData from "./data/spreads.json" with { type: "json" };
 
 const allSpreads: SpreadDefinition[] = spreadsData as SpreadDefinition[];
 

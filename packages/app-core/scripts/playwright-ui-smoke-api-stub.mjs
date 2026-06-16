@@ -108,7 +108,13 @@ const smokeViewDeclarations = [
     "HyperliquidTuiView",
     "tui",
   ],
-  ["lifeops", "LifeOps", "plugin-personal-assistant", "/lifeops", "LifeOpsPageView"],
+  [
+    "lifeops",
+    "LifeOps",
+    "plugin-personal-assistant",
+    "/lifeops",
+    "LifeOpsPageView",
+  ],
   [
     "lifeops",
     "LifeOps TUI",
@@ -117,6 +123,19 @@ const smokeViewDeclarations = [
     "LifeOpsTuiView",
     "tui",
   ],
+  // Decomposed personal-assistant domain views — registered so their dynamic
+  // bundles load in keyless ui-smoke and the decomposed-interactions spec can
+  // drive them (closing INTERACTION_DEBT in view-interaction-coverage.test.ts).
+  // NOTE: "documents" is intentionally NOT registered here — its view path
+  // `/documents` collides with the built-in "documents" tab (App.tsx findView
+  // matches `/${tab}`), which would hijack the `/character/documents` route.
+  ["calendar", "Calendar", "plugin-calendar", "/calendar", "CalendarView"],
+  ["finances", "Finances", "plugin-finances", "/finances", "FinancesView"],
+  ["focus", "Focus", "plugin-blocker", "/focus", "FocusView"],
+  ["goals", "Goals", "plugin-goals", "/goals", "GoalsView"],
+  ["health", "Health", "plugin-health", "/health", "HealthView"],
+  ["inbox", "Inbox", "plugin-inbox", "/inbox", "InboxView"],
+  ["todos", "Todos", "plugin-todos", "/todos", "TodosView"],
   [
     "messages",
     "Messages",
@@ -4069,6 +4088,37 @@ const server = http.createServer(async (req, res) => {
         },
       ],
     });
+    return;
+  }
+
+  // Secrets-manager modal load endpoints — the modal's load() requires all of
+  // these to be ok or it shows an error banner instead of the tabs/add-secret
+  // form. Minimal valid shapes (vault-tabs/types.ts) so the modal renders.
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/secrets/manager/backends"
+  ) {
+    sendJson(req, res, 200, {
+      backends: [{ id: "in-house", label: "In-House Vault", available: true }],
+    });
+    return;
+  }
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/secrets/manager/preferences"
+  ) {
+    sendJson(req, res, 200, { preferences: { enabled: ["in-house"] } });
+    return;
+  }
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/secrets/manager/install/methods"
+  ) {
+    sendJson(req, res, 200, { methods: {} });
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/api/secrets/routing") {
+    sendJson(req, res, 200, { config: { rules: [] } });
     return;
   }
 

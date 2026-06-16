@@ -41,6 +41,11 @@ const KEYLESS_WORKFLOW = path.join(
  * cloud sandbox, or running endpoint), not merely be unwired.
  */
 const LIVE_ONLY: Readonly<Record<string, string>> = {
+  "cloud-live.spec.ts":
+    "real cloud login + provisioning + chat against real Eliza Cloud; needs " +
+    "ELIZA_UI_SMOKE_CLOUD_LIVE=1 + ELIZA_UI_SMOKE_LIVE_STACK=1 + " +
+    "ELIZAOS_CLOUD_API_KEY and spends real cloud credits, so it never runs in a " +
+    "keyless PR lane — wired only into the nightly app-live-e2e.yml workflow.",
   "multi-client-desync.spec.ts":
     "needs a live shared messaging backend so two independent browser contexts " +
     "(separate localStorage/page.route mocks) converge on one server-side " +

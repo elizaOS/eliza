@@ -5,7 +5,9 @@ import {
   keccak256,
   stringToHex,
 } from "viem";
-import governorArtifacts from "./contracts/artifacts/OZGovernor.json";
+import governorArtifacts from "./contracts/artifacts/OZGovernor.json" with {
+  type: "json",
+};
 import { buildSendTxParams } from "./actions/helpers";
 import { initWalletProvider, type WalletProvider } from "./providers/wallet";
 import type {

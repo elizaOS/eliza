@@ -140,6 +140,37 @@ async function findMacLauncher(): Promise<string | null> {
   return await fs.realpath(withStats[0].path);
 }
 
+async function findLinuxLauncher(): Promise<string | null> {
+  const explicit = process.env.ELIZA_TEST_PACKAGED_LAUNCHER_PATH?.trim();
+  if (explicit) {
+    await fs.access(explicit);
+    return await fs.realpath(explicit);
+  }
+
+  // The Linux Electrobun bundle places the launcher at `<App>/bin/launcher`.
+  const candidates = [
+    ...(await findFiles(electrobunBuildDir, (fullPath) =>
+      fullPath.endsWith(`${path.sep}bin${path.sep}launcher`),
+    )),
+    ...(await findFiles(electrobunArtifactsDir, (fullPath) =>
+      fullPath.endsWith(`${path.sep}bin${path.sep}launcher`),
+    )),
+  ];
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const withStats = await Promise.all(
+    candidates.map(async (candidate) => ({
+      path: candidate,
+      stat: await fs.stat(candidate),
+    })),
+  );
+  withStats.sort((left, right) => right.stat.mtimeMs - left.stat.mtimeMs);
+  return await fs.realpath(withStats[0].path);
+}
+
 async function findWindowsLauncherExe(dir: string): Promise<string | null> {
   const matches = await findFiles(
     dir,
@@ -225,6 +256,9 @@ export async function resolvePackagedLauncher(
   if (process.platform === "win32") {
     return await resolveWindowsLauncher(tempExtractDir);
   }
+  if (process.platform === "linux") {
+    return await findLinuxLauncher();
+  }
   return null;
 }
 
@@ -286,6 +320,21 @@ function createPackagedDesktopEnv(args: {
       ...commonEnv,
       APPDATA: args.appData ?? args.stateDir,
       LOCALAPPDATA: args.localAppData ?? args.stateDir,
+    };
+  }
+
+  if (process.platform === "linux") {
+    return {
+      ...buildMinimalMacEnv(args.baseEnv),
+      ...commonEnv,
+      // Linux Electrobun uses WebKitGTK; it needs a display and software GL so
+      // the webview renders under a headless / GPU-less display (the bare GPU
+      // path raises GLXBadWindow).
+      DISPLAY: args.baseEnv.DISPLAY || process.env.DISPLAY || ":0",
+      WEBKIT_DISABLE_DMABUF_RENDERER: "1",
+      WEBKIT_DISABLE_COMPOSITING_MODE: "1",
+      LIBGL_ALWAYS_SOFTWARE: "1",
+      GALLIUM_DRIVER: "llvmpipe",
     };
   }
 

@@ -12,6 +12,7 @@
     "test:dev-smoke": "node scripts/run-ui-playwright.mjs --config playwright.dev-smoke.config.ts",
     "test:hmr": "node scripts/run-ui-playwright.mjs --config playwright.hmr.config.ts",
     "test:e2e": "node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts",
+    "test:desktop:packaged": "bunx playwright test --config playwright.electrobun.packaged.config.ts",
     "test:remote-capabilities:ui": "node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts test/ui-smoke/remote-capability-view.spec.ts",
     "test:e2e:cloud-wallet": "node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts test/ui-smoke/cloud-wallet-import.spec.ts",
     "test:e2e:android": "node scripts/android-e2e.mjs",
