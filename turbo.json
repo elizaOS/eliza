@@ -375,9 +375,23 @@
       "outputs": ["dist/**"]
     },
     "lint": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/plugin-agent-skills#build",
+        "@elizaos/plugin-app-manager#build",
+        "^build"
+      ],
       "outputs": []
     },
     "lint:check": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/plugin-agent-skills#build",
+        "@elizaos/plugin-app-manager#build",
+        "^build"
+      ],
       "outputs": []
     },
     "typecheck": {
