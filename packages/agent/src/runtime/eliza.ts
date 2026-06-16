@@ -1016,6 +1016,19 @@ export async function configureLocalEmbeddingPlugin(
       : "openai/gpt-oss-120b",
   );
 
+  // Default Cerebras model — plugin-openai's Cerebras mode otherwise falls
+  // back to OpenAI-only ids (gpt-5 / gpt-5.4-mini) when CEREBRAS_MODEL is
+  // unset, which 404 on api.cerebras.ai for direct own-key sessions that
+  // never hit the first-run / provider-switch path. Seed the approved GPT-OSS
+  // default before plugin init (mirrors the Groq handling above; Cerebras
+  // shares one CEREBRAS_MODEL for both small and large).
+  setEnvIfMissing(
+    "CEREBRAS_MODEL",
+    currentSharedLargeModel && !isLikelyOpenAiTextModel(currentSharedLargeModel)
+      ? currentSharedLargeModel
+      : "gpt-oss-120b",
+  );
+
   logger.info(
     `[eliza] Configured local embedding env: ${process.env.LOCAL_EMBEDDING_MODEL} (repo: ${process.env.LOCAL_EMBEDDING_MODEL_REPO ?? "auto"}, dims: ${process.env.LOCAL_EMBEDDING_DIMENSIONS ?? "auto"}, ctx: ${process.env.LOCAL_EMBEDDING_CONTEXT_SIZE ?? "auto"}, GPU: ${process.env.LOCAL_EMBEDDING_GPU_LAYERS}, mmap: ${process.env.LOCAL_EMBEDDING_USE_MMAP})`,
   );
