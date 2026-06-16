@@ -31,7 +31,7 @@ describe("cloud-api worker entrypoint", () => {
     );
 
     expect(target?.toString()).toBe(
-      "https://develop.eliza-cloud.pages.dev/dashboard?tab=agents",
+      "https://develop.eliza-cloud-enq.pages.dev/dashboard?tab=agents",
     );
   });
 
