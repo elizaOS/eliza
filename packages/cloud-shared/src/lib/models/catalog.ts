@@ -41,10 +41,19 @@ export interface SelectorModel {
 }
 
 export const BITROUTER_RECOMMENDED_TEXT_MODEL = "openai/gpt-oss-120b:nitro";
-export const BITROUTER_DEFAULT_TEXT_MODEL = BITROUTER_RECOMMENDED_TEXT_MODEL;
 export const BITROUTER_DEFAULT_FREE_MODEL = "openai/gpt-oss-120b:free";
 export const CEREBRAS_DEFAULT_TEXT_SMALL_MODEL = "gpt-oss-120b";
 export const CEREBRAS_DEFAULT_TEXT_LARGE_MODEL = "zai-glm-4.7";
+
+// The default served text model (drives PRO_MODEL_ID / the new-user default).
+// This is the Cerebras-direct bare id "gpt-oss-120b" — HTTP 200 in ~3s in prod —
+// NOT the gateway id "openai/gpt-oss-120b:nitro". The :nitro id has no Cerebras
+// route: it goes through the self-hosted BitRouter to OpenRouter, whose nitro
+// upstream returns 502, which we surface as 503 ("Failed after 3 attempts: Bad
+// Gateway") — the error every new user hits on their first message. The bare id
+// makes getLanguageModel()'s isCerebrasNativeModel() short-circuit straight to
+// the Cerebras client (providers/language-model.ts), Shaw's ~2000 tok/s path.
+export const BITROUTER_DEFAULT_TEXT_MODEL = CEREBRAS_DEFAULT_TEXT_SMALL_MODEL;
 
 // Models force-marked `recommended` by the annotation layer. Point this at the
 // healthy Cerebras defaults — NOT openai/gpt-oss-120b:nitro, whose gateway path

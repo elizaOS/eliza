@@ -17,7 +17,7 @@ import {
 import {
   BITROUTER_DEFAULT_FREE_MODEL,
   BITROUTER_DEFAULT_TEXT_MODEL,
-  BITROUTER_RECOMMENDED_TEXT_MODEL,
+  CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
 } from "./catalog";
 
 export type ModelTier = "fast" | "pro" | "ultra";
@@ -238,11 +238,11 @@ export const DEFAULT_IMAGE_MODEL = IMAGE_MODELS[0];
 
 export const ADDITIONAL_MODELS: AdditionalModel[] = [
   {
-    id: "gpt-oss-120b-nitro",
-    name: "GPT OSS 120B Nitro",
-    description: "Recommended BitRouter high-throughput reasoning model",
-    modelId: BITROUTER_RECOMMENDED_TEXT_MODEL,
-    provider: "openai",
+    id: "gpt-oss-120b",
+    name: "GPT OSS 120B",
+    description: "Fast open-weight reasoning on Cerebras (~2000 tok/s)",
+    modelId: CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
+    provider: "cerebras",
     recommended: true,
   },
   {
