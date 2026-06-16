@@ -593,10 +593,14 @@ describe("scenario PR workflow contract", () => {
     expect(workflow).toContain("pull_request:");
     expect(workflow).toContain("Run Playwright tests");
     expect(workflow).toContain("project: [chromium-desktop, chromium-mobile]");
+    expect(workflow).toContain('shard: ["1/2", "2/2"]');
     const matrixProjectExpression = ["$", "{{ matrix.project }}"].join("");
+    const matrixShardExpression = ["$", "{{ matrix.shard }}"].join("");
     expect(workflow).toContain(
       "bun run --cwd packages/cloud-frontend test:e2e -- --project=" +
-        matrixProjectExpression,
+        matrixProjectExpression +
+        " --shard=" +
+        matrixShardExpression,
     );
     expect(rootPackage.scripts?.["test:cloud:playwright"]).toBe(
       "bun run --cwd packages/cloud-frontend test:e2e",
