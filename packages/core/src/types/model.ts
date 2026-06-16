@@ -681,6 +681,20 @@ export interface TextStreamResult {
 	 * Common values: 'stop', 'length', 'content-filter'
 	 */
 	finishReason: Promise<string | undefined>;
+
+	/**
+	 * Optional native tool calls surfaced by providers that stream tool use
+	 * (e.g. plugin-openai, plugin-codex-cli). Shape is provider-specific; the
+	 * runtime duck-types this field off the stream result, so it is typed
+	 * permissively rather than to one provider's tool-call shape.
+	 */
+	toolCalls?: unknown;
+
+	/**
+	 * Optional provider-specific metadata attached to the stream result
+	 * (e.g. `{ modelName }`). Read opportunistically by the runtime.
+	 */
+	providerMetadata?: Record<string, unknown>;
 }
 
 /**
