@@ -23,7 +23,12 @@ export {
 import { PgDatabaseAdapter } from "./pg/adapter";
 import { PostgresConnectionManager } from "./pg/manager";
 import { PgliteDatabaseAdapter } from "./pglite/adapter";
-import { PGliteClientManager } from "./pglite/manager";
+import {
+  type LiveNamespace,
+  PGliteClientManager,
+  type PgliteSyncStatus,
+  type PgliteSyncTableStatus,
+} from "./pglite/manager";
 import * as schema from "./schema";
 import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
 import { stringToUuid } from "./utils/string-to-uuid";
@@ -49,6 +54,7 @@ export type {
 } from "@elizaos/core";
 export * from "./connector-credential-store";
 export * from "./pglite/errors";
+export type { LiveNamespace, PgliteSyncStatus, PgliteSyncTableStatus } from "./pglite/manager";
 export * from "./schema";
 export type { DrizzleDatabase } from "./types";
 
@@ -144,7 +150,7 @@ export function createDatabaseAdapter(
   }
 
   if (!shouldReusePgliteManager(globalSingletons.pgLiteClientManager)) {
-    globalSingletons.pgLiteClientManager = new PGliteClientManager({ dataDir });
+    globalSingletons.pgLiteClientManager = new PGliteClientManager({ dataDir, agentId });
   }
   const manager = globalSingletons.pgLiteClientManager;
   if (!manager) {
@@ -219,6 +225,7 @@ export const plugin: Plugin = {
 
 export default plugin;
 
+export * from "./drizzle";
 export { DatabaseMigrationService } from "./migration-service";
 export {
   applyRLSToNewTables,
@@ -229,3 +236,50 @@ export {
   uninstallRLS,
 } from "./rls";
 export { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
+
+/**
+ * Query the live Electric Sync status from the global PGliteClientManager
+ * singleton. Returns "disabled" when no manager exists or sync is not
+ * configured, and "syncing" / "synced" / "error" at runtime as the sync
+ * client transitions.
+ */
+export function getPgliteSyncStatus(): {
+  status: PgliteSyncStatus;
+  error: string | null;
+  tables: PgliteSyncTableStatus;
+  synced: string[];
+} {
+  const manager = globalSingletons.pgLiteClientManager;
+  if (!manager) {
+    return { status: "disabled", error: null, tables: {}, synced: [] };
+  }
+  return manager.getSyncStatus();
+}
+
+/**
+ * Access the PGlite live query namespace from the global singleton.
+ * Returns null when the PGlite adapter is not in use or extensions are disabled.
+ * Use for reactive dashboard queries via pg.live.query() / incrementalQuery() / changes().
+ */
+export function getPgliteLiveNamespace(): LiveNamespace | null {
+  const manager = globalSingletons.pgLiteClientManager;
+  if (!manager) return null;
+  return manager.liveQuery();
+}
+
+/**
+ * Force-reset the Electric Sync stream for the current agent.
+ * Drops the electric schema, unsubscribes the current stream,
+ * and starts a fresh sync from the source Postgres.
+ * Returns the sync status after the reset, or null when sync is not configured.
+ */
+export async function forcePgliteResync(): Promise<{
+  status: PgliteSyncStatus;
+  error: string | null;
+  tables: PgliteSyncTableStatus;
+  synced: string[];
+} | null> {
+  const manager = globalSingletons.pgLiteClientManager;
+  if (!manager) return null;
+  return manager.forceResync();
+}
