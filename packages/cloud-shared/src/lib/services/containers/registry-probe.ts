@@ -13,6 +13,15 @@ import { logger } from "../../utils/logger";
 
 const CACHE_TTL_MS = 60_000;
 
+/**
+ * Per-request cap on the two ghcr.io HTTP calls (token + manifest HEAD). These
+ * were the one genuinely-unbounded leaf in the provisioning cycle — a hung
+ * ghcr connection could stall the fleet-upgrade reconciler indefinitely.
+ * `resolveImageDigest` already returns null on any failure and callers treat
+ * null as "skip, retry next tick", so bounding adds no behavior change.
+ */
+const REGISTRY_FETCH_TIMEOUT_MS = 5_000;
+
 interface CacheEntry {
   digest: string | null;
   expiresAt: number;
@@ -93,6 +102,7 @@ async function fetchGhcrDigest(
   try {
     const tokenResp = await fetchFn(
       `https://ghcr.io/token?scope=repository:${encodedRepo}:pull&service=ghcr.io`,
+      { signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS) },
     );
     if (!tokenResp.ok) {
       logger.warn(`[registry-probe] ghcr token fetch failed for ${repo}: ${tokenResp.status}`);
@@ -113,6 +123,7 @@ async function fetchGhcrDigest(
       `https://ghcr.io/v2/${encodedRepo}/manifests/${encodedTag}`,
       {
         method: "HEAD",
+        signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: [

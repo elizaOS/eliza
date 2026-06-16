@@ -4,6 +4,7 @@ import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { type AgentSandboxStatus, agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import type { DockerNodeStatus } from "../../db/schemas/docker-nodes";
 import { logger } from "../utils/logger";
+import { withTimeout } from "../utils/with-timeout";
 import { DockerSSHClient } from "./docker-ssh";
 
 const HEARTBEAT_WARNING_MINUTES = 5;
@@ -33,23 +34,6 @@ async function pLimit<T>(tasks: Array<() => Promise<T>>, limit: number): Promise
   const workers = Array.from({ length: Math.min(limit, tasks.length) }, () => worker());
   await Promise.all(workers);
   return results;
-}
-
-/** Wraps a promise with a timeout — rejects with an error if the deadline expires. */
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (err) => {
-        clearTimeout(timer);
-        reject(err);
-      },
-    );
-  });
 }
 
 /**

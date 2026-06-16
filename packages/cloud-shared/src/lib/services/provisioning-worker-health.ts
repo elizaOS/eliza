@@ -4,6 +4,14 @@ import {
   type RedisFactoryEnv,
 } from "../cache/redis-factory";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+import { withTimeout } from "../utils/with-timeout";
+
+/**
+ * Cap on the heartbeat Redis SET. Redis has been flaky in prod; without this
+ * the publish can hang indefinitely and (in the daemon's interval) pile up
+ * unresolved promises. 5s is generous for a single SET against Upstash/Redis.
+ */
+const HEARTBEAT_SET_TIMEOUT_MS = 5_000;
 
 /**
  * Redis key the provisioning-worker daemon SETs with a short TTL every
@@ -123,8 +131,14 @@ export async function publishProvisioningWorkerHeartbeat(): Promise<boolean> {
   const redis = getRedis();
   if (!redis) return false;
   const timestamp = new Date().toISOString();
-  await redis.set(PROVISIONING_WORKER_HEARTBEAT_KEY, timestamp, {
-    ex: PROVISIONING_WORKER_HEARTBEAT_TTL_S,
-  });
+  await withTimeout(
+    Promise.resolve(
+      redis.set(PROVISIONING_WORKER_HEARTBEAT_KEY, timestamp, {
+        ex: PROVISIONING_WORKER_HEARTBEAT_TTL_S,
+      }),
+    ),
+    HEARTBEAT_SET_TIMEOUT_MS,
+    "heartbeat redis set",
+  );
   return true;
 }
