@@ -66,8 +66,16 @@ import { installMobileFsShim } from "../shared/fs-shim.ts";
 type StartEliza = (options: { serverOnly: true }) => Promise<unknown>;
 
 async function loadStartEliza(): Promise<StartEliza> {
-	const agentSpecifier = "@elizaos/" + "agent";
-	const mod = (await import(agentSpecifier)) as { startEliza: StartEliza };
+	// Literal specifier with @vite-ignore: Vite skips it (so the WebView build's
+	// import-analysis boundary gate doesn't try to pull @elizaos/agent into the
+	// renderer bundle), while Bun.build — which ignores @vite-ignore — sees the
+	// literal and inlines @elizaos/agent via the mobile dedupe plugin. The prior
+	// `"@elizaos/" + "agent"` concatenation hid the specifier from Bun too, so it
+	// externalized the import and the on-device agent crashed at startup with
+	// `Cannot find module '@elizaos/agent'` (no node_modules on device).
+	const mod = (await import(/* @vite-ignore */ "@elizaos/agent")) as {
+		startEliza: StartEliza;
+	};
 	return mod.startEliza;
 }
 
