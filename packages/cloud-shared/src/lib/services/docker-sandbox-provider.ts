@@ -89,6 +89,8 @@ interface ContainerMeta {
   bridgePort: number;
   webUiPort: number;
   agentId: string;
+  /** Headscale node name (TS_HOSTNAME) used at registration, for cleanup lookup. */
+  tsHostname?: string;
   sshPort: number;
   sshUser: string;
   hostKeyFingerprint?: string;
@@ -1233,7 +1235,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
       // Clean up Headscale pre-auth key if VPN was prepared
       if (headscaleEnabled) {
-        await headscaleIntegration.cleanupContainerVPN(agentId).catch((cleanupErr) => {
+        await headscaleIntegration.cleanupContainerVPN(vpnEnvVars.TS_HOSTNAME ?? agentId).catch((cleanupErr) => {
           logger.warn(
             `[docker-sandbox] Headscale cleanup failed during rollback for ${agentId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
           );
@@ -1251,6 +1253,9 @@ export class DockerSandboxProvider implements SandboxProvider {
       bridgePort,
       webUiPort,
       agentId,
+      // Headscale node name (TS_HOSTNAME) the container registered under, so
+      // cleanup can find + delete the node by the same name it was created with.
+      tsHostname: vpnEnvVars.TS_HOSTNAME,
       sshPort,
       sshUser,
       hostKeyFingerprint,
@@ -1260,7 +1265,14 @@ export class DockerSandboxProvider implements SandboxProvider {
     // 8. Wait for Headscale VPN registration if enabled
     if (headscaleEnabled) {
       try {
-        headscaleIp = await headscaleIntegration.waitForVPNRegistration(agentId, 60_000);
+        // Poll by the node's TS_HOSTNAME (what the container registers under via
+        // inferTailscaleHostname), NOT the bare agentId — Headscale only knows the
+        // node by that hostname, so polling by agentId never matched and the node
+        // "timed out" registering despite being online.
+        headscaleIp = await headscaleIntegration.waitForVPNRegistration(
+          vpnEnvVars.TS_HOSTNAME ?? agentId,
+          60_000,
+        );
         if (headscaleIp) {
           logger.info(
             `[docker-sandbox] Container ${containerName} registered on VPN: ${headscaleIp}`,
@@ -1561,7 +1573,9 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     // Clean up Headscale VPN registration if enabled
     if (process.env.HEADSCALE_API_KEY && meta.agentId) {
-      await headscaleIntegration.cleanupContainerVPN(meta.agentId).catch((err) => {
+      // Delete the node by the hostname it registered under (TS_HOSTNAME), not the
+      // bare agentId — Headscale identifies the node by that name.
+      await headscaleIntegration.cleanupContainerVPN(meta.tsHostname ?? meta.agentId).catch((err) => {
         logger.warn(
           `[docker-sandbox] Headscale cleanup failed for ${meta.agentId}: ${err instanceof Error ? err.message : String(err)}`,
         );

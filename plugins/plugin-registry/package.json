@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-registry",
-  "version": "2.0.3-beta.13",
+  "version": "2.0.3-beta.14",
   "type": "module",
   "description": "Plugin registry plugin: consolidates plugin discovery, manifest reading, install/uninstall lifecycle, and HTTP routes for plugin management. Owns the cross-package plugin-routes (agent-tier) and plugins-routes (app-core compat-tier) surfaces and the install-orchestration helpers that forward into the agent runtime.",
   "main": "./dist/index.js",

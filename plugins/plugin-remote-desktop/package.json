@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-remote-desktop",
-  "version": "2.0.3-beta.13",
+  "version": "2.0.3-beta.14",
   "description": "Remote desktop session control for Eliza agents. REMOTE_DESKTOP umbrella action (start/status/end/list/revoke) over Tailscale VNC/SSH and ngrok backends with pairing-code confirmation. Extracted from @elizaos/plugin-personal-assistant.",
   "type": "module",
   "main": "dist/index.js",
