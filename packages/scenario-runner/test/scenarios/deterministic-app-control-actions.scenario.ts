@@ -1071,6 +1071,72 @@ export default scenario({
             search: "",
           },
           {
+            body: null,
+            method: "GET",
+            pathname: "/api/views",
+            response: { body: { views }, status: 200 },
+            search: "",
+          },
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/views/current",
+            response: { body: { currentView }, status: 200 },
+            search: "",
+          },
+          {
+            body: {
+              action: "split-view",
+              views: ["remote-ledger", "settings"],
+              layout: "horizontal",
+            },
+            method: "POST",
+            pathname: "/api/views/remote-ledger/navigate",
+            response: {
+              body: { ok: true, navigated: true, viewId: "remote-ledger" },
+              status: 200,
+            },
+            search: "",
+          },
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/views",
+            response: { body: { views }, status: 200 },
+            search: "",
+          },
+          {
+            body: {
+              action: "tile-views",
+              views: ["remote-ledger", "settings"],
+              layout: "grid",
+            },
+            method: "POST",
+            pathname: "/api/views/remote-ledger/navigate",
+            response: {
+              body: { ok: true, navigated: true, viewId: "remote-ledger" },
+              status: 200,
+            },
+            search: "",
+          },
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/views",
+            response: { body: { views }, status: 200 },
+            search: "",
+          },
+          {
+            body: { action: "close", alwaysOnTop: false },
+            method: "POST",
+            pathname: "/api/views/settings/navigate",
+            response: {
+              body: { ok: true, navigated: true, viewId: "settings" },
+              status: 200,
+            },
+            search: "",
+          },
+          {
             body: { type: "wallet:refresh", payload: { source: "scenario" } },
             method: "POST",
             pathname: "/api/views/events/broadcast",
