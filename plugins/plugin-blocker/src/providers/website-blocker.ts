@@ -17,7 +17,7 @@ import type {
   State,
 } from "@elizaos/core";
 
-import { WebsiteBlockerService } from "../services/website-blocker.ts";
+import type { WebsiteBlockerService } from "../services/website-blocker.ts";
 import { BLOCKER_CONTEXTS, WEBSITE_BLOCKER_SERVICE_TYPE } from "../types.ts";
 
 export const websiteBlockerProvider: Provider = {
