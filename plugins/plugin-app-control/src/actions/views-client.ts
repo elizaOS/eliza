@@ -37,6 +37,9 @@ export interface CurrentViewSummary {
 	viewLabel: string;
 	viewType: ViewType;
 	action?: string;
+	views?: string[];
+	layout?: string;
+	placement?: string;
 	updatedAt: string;
 }
 
@@ -47,6 +50,68 @@ function getApiBase(): string {
 
 function isObject(v: unknown): v is Record<string, unknown> {
 	return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+
+type ViewCapabilityParams = NonNullable<ViewCapability["params"]>;
+
+function parseCapabilityParams(
+	value: unknown,
+): ViewCapabilityParams | undefined {
+	if (!isObject(value)) return undefined;
+	const params: ViewCapabilityParams = {};
+	for (const [key, rawParam] of Object.entries(value)) {
+		if (!isObject(rawParam) || typeof rawParam.type !== "string") continue;
+		params[key] = {
+			type: rawParam.type,
+			description:
+				typeof rawParam.description === "string" ? rawParam.description : "",
+			...(typeof rawParam.required === "boolean"
+				? { required: rawParam.required }
+				: {}),
+		};
+	}
+	return Object.keys(params).length > 0 ? params : undefined;
+}
+
+function parseJsonSchemaParams(
+	value: unknown,
+): ViewCapabilityParams | undefined {
+	if (!isObject(value) || !isObject(value.properties)) return undefined;
+	const required = Array.isArray(value.required)
+		? new Set(
+				value.required.filter(
+					(item): item is string => typeof item === "string",
+				),
+			)
+		: new Set<string>();
+	const params: ViewCapabilityParams = {};
+	for (const [key, rawProperty] of Object.entries(value.properties)) {
+		if (!isObject(rawProperty) || typeof rawProperty.type !== "string")
+			continue;
+		params[key] = {
+			type: rawProperty.type,
+			description:
+				typeof rawProperty.description === "string"
+					? rawProperty.description
+					: "",
+			...(required.has(key) ? { required: true } : {}),
+		};
+	}
+	return Object.keys(params).length > 0 ? params : undefined;
+}
+
+function parseViewCapability(entry: unknown): ViewCapability | null {
+	if (!isObject(entry)) return null;
+	const rawId = typeof entry.id === "string" ? entry.id : entry.name;
+	if (typeof rawId !== "string" || rawId.trim().length === 0) return null;
+	const params =
+		parseCapabilityParams(entry.params) ??
+		parseJsonSchemaParams(entry.inputSchema);
+	return {
+		id: rawId.trim(),
+		description: typeof entry.description === "string" ? entry.description : "",
+		...(params ? { params } : {}),
+	};
 }
 
 function parseViewSummary(entry: Record<string, unknown>): ViewSummary {
@@ -91,7 +156,11 @@ function parseViewSummary(entry: Record<string, unknown>): ViewSummary {
 		: undefined;
 
 	const capabilities = Array.isArray(entry.capabilities)
-		? (entry.capabilities.filter(isObject) as unknown as ViewCapability[])
+		? entry.capabilities
+				.map(parseViewCapability)
+				.filter(
+					(capability): capability is ViewCapability => capability !== null,
+				)
 		: undefined;
 
 	return {
@@ -149,7 +218,28 @@ function parseCurrentView(body: unknown): CurrentViewSummary | null {
 	}
 	const action =
 		typeof currentView.action === "string" ? currentView.action : undefined;
-	return { viewId, viewPath, viewLabel, viewType, action, updatedAt };
+	const views = Array.isArray(currentView.views)
+		? currentView.views.filter(
+				(view): view is string => typeof view === "string",
+			)
+		: undefined;
+	const layout =
+		typeof currentView.layout === "string" ? currentView.layout : undefined;
+	const placement =
+		typeof currentView.placement === "string"
+			? currentView.placement
+			: undefined;
+	return {
+		viewId,
+		viewPath,
+		viewLabel,
+		viewType,
+		action,
+		views,
+		layout,
+		placement,
+		updatedAt,
+	};
 }
 
 export interface ViewsClient {

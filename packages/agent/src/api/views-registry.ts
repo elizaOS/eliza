@@ -9,6 +9,7 @@
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   logger,
@@ -96,10 +97,38 @@ async function resolvePluginPackageDir(
     // Package is not reachable from this module at all.
   }
 
+  const workspaceDir = await resolveWorkspacePluginPackageDir(pluginName);
+  if (workspaceDir) return workspaceDir;
+
   logger.warn(
     { src: "ViewRegistry", pluginName },
     `Could not resolve package directory for plugin "${pluginName}"; its view bundle will be unavailable`,
   );
+  return undefined;
+}
+
+async function resolveWorkspacePluginPackageDir(
+  pluginName: string,
+): Promise<string | undefined> {
+  if (!pluginName.startsWith("@elizaos/plugin-")) return undefined;
+
+  const shortName = pluginName.slice("@elizaos/".length);
+  let dir = path.dirname(fileURLToPath(import.meta.url));
+  for (let depth = 0; depth < 14; depth += 1) {
+    const candidate = path.join(dir, "plugins", shortName);
+    if (await fileExists(path.join(candidate, "package.json"))) {
+      return candidate;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+
+  const cwdCandidate = path.join(process.cwd(), "plugins", shortName);
+  if (await fileExists(path.join(cwdCandidate, "package.json"))) {
+    return cwdCandidate;
+  }
+
   return undefined;
 }
 

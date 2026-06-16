@@ -37,6 +37,7 @@ const FILLER_WORDS = new Set([
 	"app",
 	"page",
 	"please",
+	"pls",
 	"now",
 	"my",
 	"a",

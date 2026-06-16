@@ -23,6 +23,8 @@ function handlerKey(viewId: string, viewType: ViewType): string {
 
 /** viewType:viewId → handler registered by the mounted DynamicViewLoader. */
 const handlers = new Map<string, InteractHandler>();
+const handledRequestIds = new Map<string, ReturnType<typeof setTimeout>>();
+const HANDLED_REQUEST_TTL_MS = 60_000;
 
 export function registerViewInteractHandler(
   viewId: string,
@@ -53,14 +55,19 @@ export async function dispatchViewInteract(
   const handler = handlers.get(handlerKey(viewId, resolvedViewType));
 
   if (!handler) {
-    client.sendWsMessage({
-      type: "view:interact:result",
-      requestId,
-      success: false,
-      error: `No interact handler registered for ${resolvedViewType} view "${viewId}" - view may not be mounted`,
-    });
+    // The API broadcasts view-interact requests to every connected shell.
+    // Clients that do not currently mount the target view must stay silent so
+    // they do not race the mounted client and resolve the request as failed.
     return;
   }
+  if (handledRequestIds.has(requestId)) {
+    return;
+  }
+  const timeout = setTimeout(() => {
+    handledRequestIds.delete(requestId);
+  }, HANDLED_REQUEST_TTL_MS);
+  (timeout as { unref?: () => void }).unref?.();
+  handledRequestIds.set(requestId, timeout);
 
   try {
     const result = await handler(capability, params);

@@ -30,6 +30,7 @@ import {
   useRef,
   useState,
 } from "react";
+import * as AgentSurfaceHost from "../../agent-surface";
 import {
   AgentElementOverlay,
   AgentSurfaceElementReporter,
@@ -136,7 +137,7 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/plugin-health/screen-time/mobile-signal-setup": () =>
     import("@elizaos/plugin-health/screen-time/mobile-signal-setup"),
   "@elizaos/plugin-training": () => import("@elizaos/plugin-training"),
-  "@elizaos/ui/agent-surface": () => import("../../agent-surface/index.ts"),
+  "@elizaos/ui/agent-surface": async () => AgentSurfaceHost,
   "@elizaos/ui/api": () => import("../../api/index.ts"),
   "@elizaos/ui/bridge": () => import("../../bridge/index.ts"),
   "@elizaos/ui/components": () => import("../index.ts"),
@@ -247,6 +248,11 @@ async function importViewBundle(
     return window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__(bundleUrl);
   }
 
+  const hostExternalUrl = buildHostExternalBundleUrl(bundleUrl);
+  if (hostExternalUrl) {
+    return import(/* @vite-ignore */ hostExternalUrl);
+  }
+
   try {
     return await import(/* @vite-ignore */ bundleUrl);
   } catch (err) {
@@ -256,13 +262,26 @@ async function importViewBundle(
     }
   }
 
+  const rewrittenUrl = buildHostExternalBundleUrl(bundleUrl);
+  if (!rewrittenUrl) {
+    throw new Error(
+      `DynamicViewLoader: bundle at ${bundleUrl} could not use host externals`,
+    );
+  }
+  return import(/* @vite-ignore */ rewrittenUrl);
+}
+
+function buildHostExternalBundleUrl(bundleUrl: string): string | null {
+  if (typeof window === "undefined") return null;
   const rewrittenUrl = new URL(bundleUrl, window.location.href);
+  if (rewrittenUrl.origin !== window.location.origin) return null;
+  if (!rewrittenUrl.pathname.startsWith("/api/views/")) return null;
   rewrittenUrl.searchParams.set("hostExternalRuntime", "1");
   rewrittenUrl.searchParams.set(
     "hostExternalSpecifiers",
     HOST_EXTERNAL_IMPORTER_SPECIFIERS.join(","),
   );
-  return import(/* @vite-ignore */ rewrittenUrl.href);
+  return rewrittenUrl.href;
 }
 
 function loadBundleModule(
@@ -308,6 +327,24 @@ const STANDARD_CAPABILITIES = new Set([
   "get-text",
 ]);
 
+const DOM_FILLABLE_AGENT_ROLES = new Set([
+  "text-input",
+  "number-input",
+  "textarea",
+  "select",
+  "slider",
+]);
+
+const DOM_CLICKABLE_AGENT_ROLES = new Set([
+  "button",
+  "link",
+  "toggle",
+  "tab",
+  "menu-item",
+  "list-item",
+  "card",
+]);
+
 function resolveInteractTarget(
   containerEl: HTMLElement | null,
   params: Record<string, unknown> | undefined,
@@ -339,6 +376,158 @@ function setNativeInputValue(
   setter?.call(target, value);
   target.dispatchEvent(new Event("input", { bubbles: true }));
   target.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function agentSelector(id: string): string {
+  return `[data-agent-id="${CSS.escape(id)}"]`;
+}
+
+function getAgentElementById(
+  containerEl: HTMLElement | null,
+  id: string,
+): HTMLElement | null {
+  return containerEl?.querySelector<HTMLElement>(agentSelector(id)) ?? null;
+}
+
+function readElementValue(el: HTMLElement): unknown {
+  if (
+    el instanceof HTMLInputElement ||
+    el instanceof HTMLTextAreaElement ||
+    el instanceof HTMLSelectElement
+  ) {
+    if (el instanceof HTMLInputElement && el.type === "checkbox") {
+      return el.checked;
+    }
+    return el.value;
+  }
+  return undefined;
+}
+
+function snapshotDomAgentElement(el: HTMLElement) {
+  const rect = el.getBoundingClientRect();
+  const role = el.getAttribute("data-agent-role") || "region";
+  return {
+    id: el.getAttribute("data-agent-id") || "",
+    role,
+    label: el.getAttribute("data-agent-label") || "",
+    status: el.getAttribute("data-state") || undefined,
+    value: readElementValue(el),
+    fillable: DOM_FILLABLE_AGENT_ROLES.has(role),
+    clickable: DOM_CLICKABLE_AGENT_ROLES.has(role),
+    focused:
+      typeof document !== "undefined" &&
+      (document.activeElement === el || el.contains(document.activeElement)),
+    visible: rect.width > 0 && rect.height > 0,
+    bounds: {
+      x: Math.round(rect.x),
+      y: Math.round(rect.y),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+    },
+  };
+}
+
+function listDomAgentElements(containerEl: HTMLElement | null) {
+  if (!containerEl) return [];
+  return [...containerEl.querySelectorAll<HTMLElement>("[data-agent-id]")]
+    .map(snapshotDomAgentElement)
+    .filter((item) => item.id.length > 0);
+}
+
+function handleDomAgentSurfaceCapability(
+  viewId: string,
+  viewType: "gui" | "tui" | "xr",
+  capability: string,
+  params: Record<string, unknown> | undefined,
+  containerEl: HTMLElement | null,
+): unknown {
+  switch (capability) {
+    case "list-elements": {
+      const role = typeof params?.role === "string" ? params.role : null;
+      const elements = listDomAgentElements(containerEl);
+      return role ? elements.filter((item) => item.role === role) : elements;
+    }
+
+    case "get-agent-state": {
+      const elements = listDomAgentElements(containerEl);
+      const focused = elements.find((item) => item.focused)?.id ?? null;
+      return {
+        viewId,
+        viewType,
+        elementCount: elements.length,
+        focusedId: focused,
+        elements,
+        updatedAt: Date.now(),
+      };
+    }
+
+    case "describe-element": {
+      const id = agentIdParam(params);
+      if (!id) throw new Error("describe-element requires an `id` parameter");
+      const el = getAgentElementById(containerEl, id);
+      if (!el) throw new Error(`No element registered with id "${id}"`);
+      return snapshotDomAgentElement(el);
+    }
+
+    case "get-focus": {
+      const elements = listDomAgentElements(containerEl);
+      const element = elements.find((item) => item.focused) ?? null;
+      return { focusedId: element?.id ?? null, element };
+    }
+
+    case "agent-focus": {
+      const id = agentIdParam(params);
+      if (!id) throw new Error("agent-focus requires an `id` parameter");
+      const el = getAgentElementById(containerEl, id);
+      if (!el) return { ok: false, id, reason: "element not found" };
+      el.focus();
+      return { ok: true, id };
+    }
+
+    case "agent-click": {
+      const id = agentIdParam(params);
+      if (!id) throw new Error("agent-click requires an `id` parameter");
+      const el = getAgentElementById(containerEl, id);
+      if (!el) return { ok: false, id, reason: "element not found" };
+      el.click();
+      return { ok: true, id };
+    }
+
+    case "agent-fill": {
+      const id = agentIdParam(params);
+      const value = typeof params?.value === "string" ? params.value : null;
+      if (!id) throw new Error("agent-fill requires an `id` parameter");
+      if (value === null) {
+        throw new Error("agent-fill requires a string `value` parameter");
+      }
+      const el = getAgentElementById(containerEl, id);
+      if (!el) return { ok: false, id, reason: "element not found" };
+      if (
+        el instanceof HTMLInputElement ||
+        el instanceof HTMLTextAreaElement ||
+        el instanceof HTMLSelectElement
+      ) {
+        setNativeInputValue(el, value);
+        return { ok: true, id, value };
+      }
+      return { ok: false, id, reason: "element is not a native field" };
+    }
+
+    case "agent-scroll-to": {
+      const id = agentIdParam(params);
+      if (!id) throw new Error("agent-scroll-to requires an `id` parameter");
+      const el = getAgentElementById(containerEl, id);
+      if (!el) return { ok: false, id, reason: "element not found" };
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      return { ok: true, id };
+    }
+
+    case "set-highlight":
+      return { highlighting: false };
+
+    default:
+      throw new Error(`Unknown agent-surface capability "${capability}"`);
+  }
 }
 
 /**
@@ -645,12 +834,16 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
         // Generic agent-surface capabilities (list-elements, agent-fill, …)
         // operate on the view's element registry.
         if (isAgentSurfaceCapability(capability)) {
-          if (!registry) {
-            throw new Error(
-              `View "${viewId}" has no agent surface registered yet`,
-            );
+          if (registry && registry.size() > 0) {
+            return handleAgentSurfaceCapability(registry, capability, params);
           }
-          return handleAgentSurfaceCapability(registry, capability, params);
+          return handleDomAgentSurfaceCapability(
+            viewId,
+            viewType,
+            capability,
+            params,
+            containerRef.current,
+          );
         }
         // Standard capabilities are handled here regardless of whether the
         // module exports interact — they operate on the registry or the DOM.
