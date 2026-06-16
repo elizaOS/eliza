@@ -181,7 +181,11 @@ export type UiComponentType =
   | "Collapsible"
   | "Accordion"
   | "Dialog"
-  | "Drawer";
+  | "Drawer"
+  // Custom Cloud GenUI Components
+  | "ProfileOverview"
+  | "InfrastructureOverview"
+  | "PermissionMatrix";
 
 // ── Element definition ──────────────────────────────────────────────
 

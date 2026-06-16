@@ -23,6 +23,7 @@ import {
 } from "@elizaos/ui";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useCanvasStore } from "@/lib/stores/canvas-store";
 import { useT } from "@/providers/I18nProvider";
 import type { UserWithOrganizationDto } from "@/types/cloud-api";
 
@@ -42,6 +43,7 @@ interface FormState {
 
 export function GeneralTab({ user }: GeneralTabProps) {
   const t = useT();
+  const { defaultUiMode, setDefaultUiMode } = useCanvasStore();
   const [formState, setFormState] = useState<FormState>({
     fullName: user.name || "",
     nickname: user.nickname || "",
@@ -317,6 +319,43 @@ export function GeneralTab({ user }: GeneralTabProps) {
                 }
                 className="data-[state=checked]:bg-[#FF5800] flex-shrink-0"
               />
+            </div>
+          </div>
+        </div>
+      </BrandCard>
+
+      {/* Default Interface Card */}
+      <BrandCard className="relative">
+        <CornerBrackets size="sm" className="opacity-50" />
+
+        <div className="relative z-10 space-y-4 md:space-y-6">
+          <div className="space-y-2">
+            <Label className="text-white font-mono text-sm md:text-base">
+              Default interface
+            </Label>
+            <p className="text-xs text-[#858585] font-mono">
+              Choose the default workspace mode when logging into the Eliza
+              Cloud dashboard. You can always toggle between modes using ⌘K.
+            </p>
+            <div className="pt-2">
+              <Select
+                value={defaultUiMode}
+                onValueChange={(v) =>
+                  setDefaultUiMode(v as "canvas" | "classic")
+                }
+              >
+                <SelectTrigger className="bg-transparent border-[#303030] text-white w-full sm:w-[280px]">
+                  <SelectValue placeholder="Select default interface" />
+                </SelectTrigger>
+                <SelectContent className="bg-[#1a1a1a] border-[#303030]">
+                  <SelectItem value="canvas">
+                    Interactive Canvas Workspace
+                  </SelectItem>
+                  <SelectItem value="classic">
+                    Classic Dashboard Layout
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </div>

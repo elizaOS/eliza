@@ -11,6 +11,7 @@ import {
   type ReactNode,
   Suspense,
   useEffect,
+  useState,
 } from "react";
 import {
   matchPath,
@@ -20,6 +21,7 @@ import {
   useLocation,
   useParams,
 } from "react-router-dom";
+import { useCanvasStore } from "@/lib/stores/canvas-store";
 import { useT } from "@/providers/I18nProvider";
 import RootLayout from "./RootLayout";
 
@@ -187,6 +189,18 @@ const AdminRedemptionsPage = lazyWithPreload(
 );
 const AdminRpcStatusPage = lazyWithPreload(
   () => import("./dashboard/admin/rpc-status/Page"),
+);
+
+const CanvasLayout = lazy(() =>
+  import("./components/canvas/canvas-layout").then((m) => ({
+    default: m.CanvasLayout,
+  })),
+);
+
+const CloudAssistantPill = lazy(() =>
+  import("./components/canvas/cloud-assistant-pill").then((m) => ({
+    default: m.CloudAssistantPill,
+  })),
 );
 
 /**
@@ -517,6 +531,20 @@ class RouteErrorBoundary extends Component<
 
 function DashboardRouteElement() {
   const location = useLocation();
+  const canvasOpen = useCanvasStore((s) => s.canvasOpen);
+  const defaultUiMode = useCanvasStore((s) => s.defaultUiMode);
+  const setCanvasOpen = useCanvasStore((s) => s.setCanvasOpen);
+  const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    setCanvasOpen(defaultUiMode === "canvas");
+    setInitialized(true);
+  }, [defaultUiMode, setCanvasOpen]);
+
+  if (!initialized) {
+    return <RouteChunkFallback />;
+  }
+
   return (
     <RouteErrorBoundary
       resetKey={location.pathname}
@@ -533,7 +561,10 @@ function DashboardRouteElement() {
       )}
     >
       <Suspense fallback={<RouteChunkFallback />}>
-        <DashboardLayout />
+        <div className="relative h-dvh w-full overflow-hidden">
+          {canvasOpen ? <CanvasLayout /> : <DashboardLayout />}
+          {!canvasOpen && <CloudAssistantPill />}
+        </div>
       </Suspense>
     </RouteErrorBoundary>
   );

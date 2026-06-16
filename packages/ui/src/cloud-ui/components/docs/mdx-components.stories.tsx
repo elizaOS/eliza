@@ -74,8 +74,7 @@ export const StepsList: Story = {
     <Steps>
       <h3>Install the CLI</h3>
       <p>
-        Run <code>bun add -g elizaos</code> to install the elizaos CLI
-        globally.
+        Run <code>bun add -g elizaos</code> to install the elizaos CLI globally.
       </p>
       <h3>Scaffold a project</h3>
       <p>

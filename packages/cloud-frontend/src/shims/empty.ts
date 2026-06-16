@@ -340,6 +340,7 @@ export const chmod = makeStub("chmod");
 export const chmodSync = makeStub("chmodSync");
 export const chown = makeStub("chown");
 export const chownSync = makeStub("chownSync");
+export const statfsSync = makeStub("statfsSync");
 
 // worker_threads
 export const Worker = makeStub("Worker");
