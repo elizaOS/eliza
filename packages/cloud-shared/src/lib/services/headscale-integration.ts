@@ -9,7 +9,7 @@
  *  1. prepareContainerVPN(input) — generates a pre-auth key + env vars
  *  2. Container boots, runs `tailscale up --authkey=... --hostname=...`
  *  3. waitForVPNRegistration(agentId) — polls headscale until the node appears
- *  4. cleanupContainerVPN(agentId) — removes the VPN node when the container dies
+ *  4. cleanupContainerVPN(nodeName) — removes the VPN node when the container dies
  */
 
 import { logger } from "../utils/logger";
@@ -97,16 +97,17 @@ export class HeadscaleIntegration {
    * until the node appears and has at least one IP address, or the timeout
    * expires.
    *
-   * @param agentId   Hostname the container registers with (matches TS_HOSTNAME).
+   * @param nodeName  Headscale node name the container registers under
+   *                  (TS_HOSTNAME = inferTailscaleHostname; NOT the bare agentId).
    * @param timeoutMs Maximum time to wait (default 60 s).
    * @returns The first VPN IP address, or `null` if the timeout was reached.
    */
   async waitForVPNRegistration(
-    agentId: string,
+    nodeName: string,
     timeoutMs: number = DEFAULT_REGISTRATION_TIMEOUT_MS,
   ): Promise<string | null> {
     logger.info(
-      `[headscale-integration] waiting for VPN registration: ${agentId} (timeout ${timeoutMs}ms)`,
+      `[headscale-integration] waiting for VPN registration: ${nodeName} (timeout ${timeoutMs}ms)`,
     );
 
     const deadline = Date.now() + timeoutMs;
@@ -114,11 +115,11 @@ export class HeadscaleIntegration {
 
     while (Date.now() < deadline) {
       try {
-        const node = await this.client.getNodeByName(agentId);
+        const node = await this.client.getNodeByName(nodeName);
 
         if (node && node.ipAddresses.length > 0) {
           const ip = node.ipAddresses[0];
-          logger.info(`[headscale-integration] VPN registered for ${agentId}: ${ip}`);
+          logger.info(`[headscale-integration] VPN registered for ${nodeName}: ${ip}`);
           return ip;
         }
       } catch (err) {
@@ -126,12 +127,12 @@ export class HeadscaleIntegration {
         // Distinguish auth errors (401/403) from transient failures
         if (msg.includes("401") || msg.includes("403")) {
           logger.error(
-            `[headscale-integration] Auth error polling VPN for ${agentId}: ${msg} — check HEADSCALE_API_KEY`,
+            `[headscale-integration] Auth error polling VPN for ${nodeName}: ${msg} — check HEADSCALE_API_KEY`,
           );
           return null; // bail early, retrying won't help
         }
         // Transient errors (network, timeout) — keep polling
-        logger.debug(`[headscale-integration] Poll error for ${agentId}: ${msg}`);
+        logger.debug(`[headscale-integration] Poll error for ${nodeName}: ${msg}`);
       }
 
       // Exponential backoff with jitter to avoid thundering-herd on
@@ -143,7 +144,7 @@ export class HeadscaleIntegration {
       interval = Math.min(interval * 1.5, POLL_INTERVAL_MAX_MS);
     }
 
-    logger.warn(`[headscale-integration] VPN registration timeout for ${agentId}`);
+    logger.warn(`[headscale-integration] VPN registration timeout for ${nodeName}`);
     return null;
   }
 
@@ -153,24 +154,24 @@ export class HeadscaleIntegration {
    * Finds the node by hostname and deletes it from the Headscale network.
    * Silently succeeds if the node was already removed.
    */
-  async cleanupContainerVPN(agentId: string): Promise<void> {
-    logger.info(`[headscale-integration] cleaning up VPN node for ${agentId}`);
+  async cleanupContainerVPN(nodeName: string): Promise<void> {
+    logger.info(`[headscale-integration] cleaning up VPN node for ${nodeName}`);
 
     try {
-      const node = await this.client.getNodeByName(agentId);
+      const node = await this.client.getNodeByName(nodeName);
 
       if (!node) {
         logger.info(
-          `[headscale-integration] no VPN node found for ${agentId}, nothing to clean up`,
+          `[headscale-integration] no VPN node found for ${nodeName}, nothing to clean up`,
         );
         return;
       }
 
       await this.client.deleteNode(node.id);
-      logger.info(`[headscale-integration] VPN node cleaned up for ${agentId}`);
+      logger.info(`[headscale-integration] VPN node cleaned up for ${nodeName}`);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
-      logger.warn(`[headscale-integration] error cleaning up VPN for ${agentId}:`, msg);
+      logger.warn(`[headscale-integration] error cleaning up VPN for ${nodeName}:`, msg);
       // Don't rethrow — cleanup failures should not block container deletion
     }
   }
@@ -180,12 +181,12 @@ export class HeadscaleIntegration {
    *
    * @returns The first VPN IP, or `null` if the node isn't registered.
    */
-  async getContainerVPNIP(agentId: string): Promise<string | null> {
+  async getContainerVPNIP(nodeName: string): Promise<string | null> {
     try {
-      return await this.client.getNodeIP(agentId);
+      return await this.client.getNodeIP(nodeName);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
-      logger.warn(`[headscale-integration] error getting VPN IP for ${agentId}:`, msg);
+      logger.warn(`[headscale-integration] error getting VPN IP for ${nodeName}:`, msg);
       return null;
     }
   }
