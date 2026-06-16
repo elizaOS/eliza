@@ -25,6 +25,17 @@ async function fulfillJson(
   });
 }
 
+// A full-capability host (real API base) so the onboarding offers all three
+// runtimes — without it the surface falls back to cloud-only and the Remote
+// card is correctly disabled.
+async function injectFullCapabilityHost(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__ELIZA_APP_API_BASE__ =
+      window.location.origin;
+    (window as unknown as Record<string, number>).__electrobunWindowId = 1;
+  });
+}
+
 async function routeFirstRunIncomplete(page: Page): Promise<void> {
   await page.route("**/api/auth/status", async (route) => {
     if (route.request().method() !== "GET") {
@@ -56,6 +67,7 @@ test("first-run onboarding renders without a render loop and lets the runtime be
   await installRenderTelemetryGuard(page);
   await installDefaultAppRoutes(page);
   await routeFirstRunIncomplete(page);
+  await injectFullCapabilityHost(page);
   // Land on a fresh device: no persisted first-run completion.
   await seedAppStorage(page, { "eliza:first-run-complete": "" });
 

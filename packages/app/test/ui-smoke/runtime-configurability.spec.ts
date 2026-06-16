@@ -159,9 +159,11 @@ test("onboarding survives browser back and forward while runtime choices churn",
   });
   const shell = await expectFirstRunSurface(page);
   if (!(await hasDetailedFirstRunShell(page))) {
-    // The compact surface offers the runtime choices as option cards.
-    await expect(page.getByTestId("onboarding-option-cloud")).toBeVisible();
-    await expect(page.getByTestId("onboarding-option-local")).toBeVisible();
+    // runtimeTarget=remote opens the compact surface directly on the remote
+    // connect form (the controller seeds step="remote" for that target).
+    await expect(
+      page.getByPlaceholder("https://agent.example.com"),
+    ).toBeVisible();
     await page.goto("/?runtime=first-run&runtimeTarget=local", {
       waitUntil: "domcontentloaded",
     });
