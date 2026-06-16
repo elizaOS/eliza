@@ -3,7 +3,10 @@ title: Cloud Inference
 description: "Routed model calls — gateways, fallback, rate limits."
 ---
 
-Cloud-routed inference is what an Eliza agent uses when its model provider is `@elizaos/plugin-elizacloud`. Cloud acts as a gateway: it takes a model call, picks a provider (you set the priority order), enforces rate limits and budgets, and returns the response.
+Cloud-routed inference is what an Eliza agent uses when it calls elizaOS Cloud
+instead of a provider directly. Cloud acts as a gateway: it accepts
+OpenAI-compatible chat requests, resolves the requested model against the live
+catalog, enforces rate limits and credits, and returns the response.
 
 ## Why route through Cloud
 
@@ -13,9 +16,12 @@ Cloud-routed inference is what an Eliza agent uses when its model provider is `@
 - Per-app inference markup for creator monetization.
 - Cheaper aggregate pricing when Cloud has bulk-rate contracts.
 
-## Provider routing
+## Model routing
 
-The Cloud inference endpoint accepts a model type (`TEXT_LARGE`, `TEXT_SMALL`, `EMBEDDING`, `IMAGE`, etc.) and resolves it to a concrete provider call using your account's routing policy. See [Cloud provider routing](/guides/cloud-provider-routing) for policy syntax.
+Use `GET /api/v1/models` to inspect the live catalog. Chat requests go through
+`POST /api/v1/chat/completions`, Anthropic-compatible clients can use
+`POST /api/v1/messages`, and media routes use their dedicated `/api/v1/*`
+generation endpoints.
 
 ## Fallback
 
@@ -27,10 +33,12 @@ Each app has per-minute, per-hour, and per-day caps configurable in the dashboar
 
 ## Source
 
-- Routes: `packages/cloud-api/v1/inference/`, `packages/cloud-api/v1/llm/`
-- Routing policy: dashboard at `packages/cloud-frontend/src/dashboard/inference/`
+- Chat route: `packages/cloud-api/v1/chat/completions/route.ts`
+- Messages route: `packages/cloud-api/v1/messages/route.ts`
+- Model catalog: `packages/cloud-api/v1/models/route.ts`
 
 ## See also
 
-- [Provider routing guide](/guides/cloud-provider-routing)
+- [Chat API](/cloud/api/chat)
+- [Messages API](/cloud/api/messages)
 - [Model providers](/model-providers)

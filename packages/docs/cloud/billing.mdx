@@ -98,46 +98,54 @@ curl -X GET "https://elizacloud.ai/api/v1/credits/summary" \
 ### Stripe Checkout
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/stripe/create-checkout-session" \
+curl -X POST "https://elizacloud.ai/api/v1/credits/checkout" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "packId": "growth"
+    "credits": 50,
+    "success_url": "https://elizacloud.ai/dashboard/billing/success",
+    "cancel_url": "https://elizacloud.ai/dashboard/billing"
   }'
 ```
+
+The response contains `url` and `sessionId`. Redirect the user to `url`, then
+verify the completed session with `GET /api/v1/credits/verify?session_id=...`.
 
 ### x402 Crypto Payment
 
 Pay with USDC via x402 protocol:
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/credits/topup" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+curl -X POST "https://elizacloud.ai/api/v1/topup/10" \
   -H "X-PAYMENT: <x402-payment-header>"
 ```
 
-<Info>See crypto payment documentation for details.</Info>
+Use `/api/v1/topup/10`, `/api/v1/topup/50`, or `/api/v1/topup/100`.
+With wallet signature headers, credits go to the signer. Without wallet
+signature headers, include `walletAddress` in the request body.
 
 ## Auto Top-Up
 
 Configure automatic credit refills:
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/auto-top-up/settings" \
+curl -X PUT "https://elizacloud.ai/api/v1/billing/settings" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "enabled": true,
-    "threshold": 100,
-    "amount": 1000
+    "autoTopUp": {
+      "enabled": true,
+      "threshold": 100,
+      "amount": 1000
+    }
   }'
 ```
 
 | Setting     | Description                      |
 | ----------- | -------------------------------- |
-| `enabled`   | Enable auto top-up               |
-| `threshold` | Trigger when balance falls below |
-| `amount`    | Credits to add                   |
+| `autoTopUp.enabled`   | Enable auto top-up               |
+| `autoTopUp.threshold` | Trigger when balance falls below |
+| `autoTopUp.amount`    | Credits to add                   |
 
 ## Usage Analytics
 
@@ -152,17 +160,11 @@ See the [Credits API](/cloud/api/credits) for the complete response format inclu
 
 ## Invoices
 
-### List Invoices
+Invoices are available in the dashboard and through the legacy invoice routes.
+They are session/account scoped.
 
 ```bash
 curl -X GET "https://elizacloud.ai/api/invoices/list" \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-### Download Invoice
-
-```bash
-curl -X GET "https://elizacloud.ai/api/invoices/{id}" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 

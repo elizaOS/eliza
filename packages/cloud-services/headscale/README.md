@@ -6,8 +6,8 @@ Self-hosted [headscale](https://github.com/juanfont/headscale) deployment used a
 
 | Tag | Used by | Reach |
 |---|---|---|
-| `tag:agent` | Internal agent containers (set in [`headscale-integration.ts`](../../packages/lib/services/headscale-integration.ts:57)) | Internal services only — must NOT reach customer tunnels. |
-| `tag:eliza-tunnel` | Customer tunnel sessions minted by [`auth-key/route.ts`](../../apps/api/v1/apis/tunnels/tailscale/auth-key/route.ts) | The reverse proxy and the customer's own node. Cross-customer routing is enforced by the proxy lookup layer. |
+| `tag:agent` | Internal agent containers (set in [`headscale-integration.ts`](../../cloud-shared/src/lib/services/headscale-integration.ts:57)) | Internal services only — must NOT reach customer tunnels. |
+| `tag:eliza-tunnel` | Customer tunnel sessions minted by [`auth-key/route.ts`](../../cloud-api/v1/apis/tunnels/tailscale/auth-key/route.ts) | The reverse proxy and the customer's own node. Cross-customer routing is enforced by the proxy lookup layer. |
 | `tag:eliza-proxy` | The public reverse proxy node | Customer tunnel HTTPS endpoints only. |
 
 The exact ACL policy lives in `acl.hujson` next to this README. **Edit there, not in the headscale admin UI** — the file is committed and deployed.

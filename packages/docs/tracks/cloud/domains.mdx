@@ -7,10 +7,11 @@ Cloud lets you bind custom domains to deployed apps and containers. Cloud termin
 
 ## Add a domain
 
-1. Add the domain in the dashboard or via `POST /v1/domains`.
+1. Add the domain in the dashboard or via `POST /api/v1/apps/{id}/domains`.
 2. Cloud returns the DNS records you need to set (`CNAME` or `A`, plus a verification `TXT`).
 3. Set the records at your DNS provider.
-4. Cloud verifies and issues a certificate.
+4. Verify the domain with `POST /api/v1/apps/{id}/domains/verify`.
+5. Check propagation with `POST /api/v1/apps/{id}/domains/status`.
 
 ## Bind to an app or container
 
@@ -22,7 +23,7 @@ Wildcard certificates are supported; subdomain routing per-app uses a route tabl
 
 ## Source
 
-- Routes: `packages/cloud-api/v1/domains/`
+- Routes: `packages/cloud-api/v1/apps/[id]/domains/`
 - Dashboard: `packages/cloud-frontend/src/dashboard/domains/`
 
 ## See also

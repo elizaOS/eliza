@@ -293,6 +293,13 @@ export default scenario({
       predicate: () => {
         const expected = [
           {
+            body: undefined,
+            method: "GET",
+            pathname: "/api/views/current",
+            response: { body: { ok: true }, status: 200 },
+            search: "",
+          },
+          {
             body: { path: "/views" },
             method: "POST",
             pathname: "/api/views/__view-manager__/navigate",
