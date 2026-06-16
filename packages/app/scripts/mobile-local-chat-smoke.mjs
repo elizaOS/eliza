@@ -868,7 +868,11 @@ function writeAndroidSmokeModelManifest(context, targetDir) {
  * which the eliza-local-inference provider does not read for installed/slots.
  */
 function writeAndroidLocalInferenceRegistry(context, localInferenceDir) {
-  const absoluteModelPath = `/data/data/${appId()}/files/${localInferenceDir}/models/${ANDROID_SMOKE_MODEL_FILE}`;
+  // `localInferenceDir` already starts with `files/` (it is run-as-home
+  // relative), so the on-device absolute path is the app home + that dir — do
+  // NOT prepend another `files/` (that produced a dead `files/files/...` path
+  // whose fs.stat failed, so the provider reported "No Eliza-1 bundle installed").
+  const absoluteModelPath = `/data/data/${appId()}/${localInferenceDir}/models/${ANDROID_SMOKE_MODEL_FILE}`;
   const now = new Date().toISOString();
   writeAndroidJsonFile(
     context,
