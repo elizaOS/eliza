@@ -263,7 +263,7 @@ export default scenario({
           capability: "fill-input",
           paramValue: "Remote Ledger Updated",
           responseText:
-            'Interacted with view "remote-ledger" — capability "fill-input": {"ok":true,"capability":"fill-input","value":"Remote Ledger Updated"}.',
+            'Interacted with view "remote-ledger" — capability "fill-input" (returned ok, capability, value).',
           view: "remote-ledger",
         }),
     },
@@ -292,6 +292,13 @@ export default scenario({
       name: "view shell API received exact deterministic requests",
       predicate: () => {
         const expected = [
+          {
+            body: undefined,
+            method: "GET",
+            pathname: "/api/views/current",
+            response: { body: { ok: true }, status: 200 },
+            search: "",
+          },
           {
             body: { path: "/views" },
             method: "POST",
@@ -328,10 +335,18 @@ export default scenario({
             search: "",
           },
           {
+            body: undefined,
+            method: "GET",
+            pathname: "/api/views",
+            response: { body: { views }, status: 200 },
+            search: "",
+          },
+          {
             body: {
               capability: "fill-input",
               params: { name: "view-title", value: "Remote Ledger Updated" },
               timeoutMs: 5000,
+              viewType: "gui",
             },
             method: "POST",
             pathname: "/api/views/remote-ledger/interact",
@@ -343,7 +358,7 @@ export default scenario({
               },
               status: 200,
             },
-            search: "",
+            search: "?viewType=gui",
           },
         ];
 

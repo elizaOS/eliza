@@ -54,10 +54,20 @@ function makeRunner(service: ScreenTimeActionService) {
     renderReply: async ({ fallback }) => fallback,
     resolveActionArgs: async <TSubaction extends string, TParams>(input: {
       defaultSubaction?: TSubaction;
+      options?: {
+        parameters?: {
+          subaction?: TSubaction;
+          date?: string;
+        };
+      };
     }) => ({
       ok: true as const,
-      subaction: (input.defaultSubaction ?? "today") as TSubaction,
-      params: { date: "2026-05-30" } as unknown as TParams,
+      subaction: (input.options?.parameters?.subaction ??
+        input.defaultSubaction ??
+        "today") as TSubaction,
+      params: {
+        date: input.options?.parameters?.date ?? "2026-05-30",
+      } as unknown as TParams,
     }),
     isDarwin: () => false,
     getActivityReport: vi.fn(),
