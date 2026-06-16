@@ -11,8 +11,8 @@ database:
 #   api_key explicitly (inherit_defaults only fills these for built-in providers).
 #   Omitting api_protocol makes bitrouter 500 with "provider 'cerebras' has no
 #   api_protocol configured" the moment an alias actually routes to it. Cerebras
-#   is OpenAI Chat Completions compatible → "chat_completions" (matches the
-#   built-in openrouter/openai entries).
+#   is OpenAI Chat Completions compatible → "openai" (the YAML protocol-family variant;
+#   matches the built-in openrouter/openai providers).
 #
 # Crucially: do NOT declare `bitrouter: {}` — that enables BitRouter Cloud
 # (api.bitrouter.ai/v1) which 402s without a brk_* API key.
@@ -20,7 +20,7 @@ providers:
   openrouter: {}
   cerebras:
     api_base: "https://api.cerebras.ai/v1"
-    api_protocol: "chat_completions"
+    api_protocol: openai
     api_key: "${BITROUTER_CEREBRAS_API_KEY}"
     auto_discover: true
 
