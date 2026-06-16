@@ -430,7 +430,13 @@ installLocalProviderCloudPreferencePatch(client);
 installDesktopPermissionsClientPatch(client);
 applyCloudPairSessionToken();
 
-if (isElizaOS() && !hasFirstRunRuntimeOverride()) {
+// NOTE: do not gate on isElizaOS() here — that requires the `ElizaOS/` UA
+// marker which only AOSP/branded device images carry, so it excluded the
+// stock-phone local sideload build (the on-device-agent APK) and left it stuck
+// on cloud onboarding. preSeedAndroidLocalRuntimeIfFresh() self-gates to the
+// local Android build (native android + non-cloud build), so it's safe to call
+// unconditionally here; it no-ops on iOS/desktop/web and cloud builds.
+if (!hasFirstRunRuntimeOverride()) {
   preSeedAndroidLocalRuntimeIfFresh();
 }
 
