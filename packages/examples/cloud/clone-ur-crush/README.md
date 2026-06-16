@@ -87,6 +87,17 @@ POST /api/affiliate/create-character
 }
 ```
 
+### Application guest sessions & billing
+
+Visitors create and chat with their character **without signing up** — they get
+an anonymous *application guest session*. That guest's usage (inference) is
+billed to the **credits of the application owner**: whoever owns the
+`AFFILIATE_API_KEY`. The guest user and character are created inside the API
+key owner's organization, so every message deducts the owner's `credit_balance`,
+capped per session by `ANON_MESSAGE_LIMIT` (default 5). Keep the owner
+organization funded; when its balance is exhausted, guest inference fails with
+an insufficient-credits error (character creation still succeeds).
+
 ## Tech Stack
 
 - **Framework**: Next.js 15 with App Router

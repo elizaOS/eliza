@@ -29,9 +29,6 @@ import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const AFFILIATE_PERMISSION = "affiliate:create-character";
-const AFFILIATE_ORG_SLUG = "affiliate-characters";
-const AFFILIATE_ORG_NAME = "Affiliate Characters";
-const AFFILIATE_ORG_INITIAL_BALANCE = "1000000";
 const SESSION_TTL_DAYS = 7;
 const ANON_USER_TTL_MS = SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
 
@@ -138,14 +135,25 @@ async function authenticateAffiliate(c: AppContext) {
   return apiKey;
 }
 
-async function getOrCreateAffiliateOrg() {
-  const existing = await organizationsService.getBySlug(AFFILIATE_ORG_SLUG);
-  if (existing) return existing;
-  return organizationsService.create({
-    name: AFFILIATE_ORG_NAME,
-    slug: AFFILIATE_ORG_SLUG,
-    credit_balance: AFFILIATE_ORG_INITIAL_BALANCE,
-  });
+/**
+ * Resolve the application owner's organization for an affiliate API key.
+ *
+ * An affiliate (application) guest session bills the credits of whoever owns
+ * the API key — the application owner — rather than a shared free pool. The
+ * guest is an anonymous user inside the owner's org, so every downstream
+ * inference deducts the owner's `credit_balance` and the per-session
+ * `messages_limit` caps how much any single guest can spend. Character creation
+ * itself is not billable, so it is allowed even at a zero balance; insufficient
+ * credits surface at inference time through the normal billing path.
+ */
+async function resolveApplicationOwnerOrg(organizationId: string) {
+  const org = await organizationsService.getById(organizationId);
+  if (!org) {
+    throw ForbiddenError(
+      "The affiliate API key's owner organization no longer exists",
+    );
+  }
+  return org;
 }
 
 function pickHttpUrl(value: string | undefined | null): string | null {
@@ -210,14 +218,19 @@ app.post("/", async (c) => {
       },
     );
 
-    const affiliateOrg = await getOrCreateAffiliateOrg();
+    // Application guest session: bill the application owner's org, not a shared
+    // pool. The guest is an anonymous user inside the owner's organization, so
+    // every downstream inference deducts the owner's credits.
+    const appOwnerOrg = await resolveApplicationOwnerOrg(
+      apiKey.organization_id,
+    );
 
     const anonymousUserId = crypto.randomUUID();
     const anonymousUser = await usersService.create({
       steward_user_id: `affiliate:${anonymousUserId}`,
       name: character.name,
       email: `affiliate-${anonymousUserId}@anonymous.elizacloud.ai`,
-      organization_id: affiliateOrg.id,
+      organization_id: appOwnerOrg.id,
       is_anonymous: true,
       expires_at: new Date(Date.now() + ANON_USER_TTL_MS),
     });
@@ -268,7 +281,7 @@ app.post("/", async (c) => {
     };
 
     const createdCharacter = await charactersService.create({
-      organization_id: affiliateOrg.id,
+      organization_id: appOwnerOrg.id,
       user_id: anonymousUser.id,
       name: elizaCharacter.name,
       bio: elizaCharacter.bio,
@@ -295,6 +308,8 @@ app.post("/", async (c) => {
         lore: character.lore ?? [],
         affiliate: {
           affiliateId,
+          // The org sponsoring this guest's usage (the application owner).
+          sponsorOrganizationId: appOwnerOrg.id,
           source: metadata?.source,
           vibe: metadata?.vibe,
           backstory: metadata?.backstory,
