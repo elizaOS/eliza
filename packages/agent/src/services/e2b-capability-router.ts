@@ -192,7 +192,9 @@ type E2BSdkSandbox = {
       opts?: SandboxCommandRunOptions,
     ): Promise<SandboxCommandResult>;
   };
-  kill(opts?: { requestTimeoutMs?: number }): Promise<void>;
+  // The e2b SDK's Sandbox.kill() resolves to a boolean (was void in older SDK
+  // versions); match it so the SDK Sandbox stays structurally assignable here.
+  kill(opts?: { requestTimeoutMs?: number }): Promise<boolean>;
 };
 
 class E2BSandboxSdkClient implements E2BSandboxClient {
@@ -219,8 +221,8 @@ class E2BSandboxSdkClient implements E2BSandboxClient {
     return this.sandbox.sandboxId;
   }
 
-  kill(opts?: { requestTimeoutMs?: number }): Promise<void> {
-    return this.sandbox.kill(opts);
+  async kill(opts?: { requestTimeoutMs?: number }): Promise<void> {
+    await this.sandbox.kill(opts);
   }
 
   private async list(
