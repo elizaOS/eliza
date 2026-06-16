@@ -19,6 +19,7 @@
 
 import { containersEnv } from "../../config/containers-env";
 import { validateDockerPlatform } from "../docker-sandbox-utils";
+import { getImageRegistryHost } from "./hetzner-client/registry";
 
 export interface NodeBootstrapInput {
   /** Logical node id (must match what the control plane will register). */
@@ -66,8 +67,35 @@ export function buildContainerNodeUserData(input: NodeBootstrapInput): string {
     ? sanitizeShellSingleQuoted(input.registrationSecret)
     : "";
 
-  const prePullCommands = prePull
-    .filter((image) => image && image.length > 0)
+  const prePullImages = prePull.filter((image) => image && image.length > 0);
+
+  // Ensure deterministic registry access before pre-pulling. The managed agent
+  // image is public, so a node must NOT carry a stale stored ghcr credential
+  // (an expired token in /root/.docker/config.json overrides anonymous access
+  // and the pull fails with `denied`). Mirror `ensureRegistryAccess`:
+  //   - no token configured → `docker logout <host>` clears any stale cred.
+  //   - token configured     → `docker login <host>` writes a fresh cred.
+  // Hosts are derived from the pre-pull images (ghcr.io for the default image).
+  const registryHosts = Array.from(
+    new Set(
+      prePullImages
+        .map((image) => getImageRegistryHost(image))
+        .filter((host): host is string => host !== null),
+    ),
+  );
+  const registryToken = containersEnv.registryToken();
+  const registryUsername = containersEnv.registryUsername();
+  const registryAccessCommands = registryHosts
+    .map((host) => {
+      const quotedHost = sanitizeShellSingleQuoted(host);
+      if (registryToken && registryUsername) {
+        return `  - printf %s '${sanitizeShellSingleQuoted(registryToken)}' | docker login '${quotedHost}' -u '${sanitizeShellSingleQuoted(registryUsername)}' --password-stdin >/dev/null 2>&1 || true`;
+      }
+      return `  - docker logout '${quotedHost}' >/dev/null 2>&1 || true`;
+    })
+    .join("\n");
+
+  const prePullCommands = prePullImages
     .map(
       (image) =>
         `  - docker pull${prePullPlatformFlag} '${sanitizeShellSingleQuoted(image)}' || true`,
@@ -110,6 +138,7 @@ runcmd:
   - curl -fsSL https://get.docker.com | sh
   - systemctl enable --now docker
   - docker network inspect '${sanitizeShellSingleQuoted(network)}' >/dev/null 2>&1 || docker network create --driver bridge '${sanitizeShellSingleQuoted(network)}'
+${registryAccessCommands}
 ${prePullCommands}${registerSection}
 `;
 }

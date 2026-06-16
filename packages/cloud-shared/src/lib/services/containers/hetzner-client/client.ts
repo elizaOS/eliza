@@ -43,7 +43,7 @@ import {
   validateContainerMountPath,
   validateEnvKey,
 } from "./paths";
-import { loginToImageRegistry, readPulledImageDigest } from "./registry";
+import { ensureRegistryAccess, readPulledImageDigest } from "./registry";
 import { findNodeInLocation, findStickyNodeForProject, getDockerNodeLocation } from "./scheduling";
 import {
   type ContainerBootstrapFile,
@@ -202,7 +202,7 @@ export class HetznerContainersClient {
         status: "building",
         deployment_log: `Pulling image ${input.image} on ${node.node_id}...`,
       });
-      await loginToImageRegistry(ssh, input.image);
+      await ensureRegistryAccess(ssh, input.image);
       await ssh.exec(`docker pull ${shellQuote(input.image)}`, 5 * 60 * 1000);
       const imageDigest = await readPulledImageDigest(ssh, input.image);
 
