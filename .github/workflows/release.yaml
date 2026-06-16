@@ -33,29 +33,31 @@ concurrency:
   group: npm-release-${{ github.ref }}
   cancel-in-progress: false
 
-# Required for npm OIDC trusted publishing. Each publish step mints a
-# short-lived OIDC token; npm verifies it against the Trusted Publisher entry
-# configured for the package on npmjs.com (SOC2 CC6.1 / CC9.2).
+# Publishing uses the NPM_TOKEN secret (a granular automation token with
+# read+write on the @elizaos/* scope).
 #
-# HUMAN-IN-LOOP — operator must configure on npmjs.com:
-#   https://docs.npmjs.com/trusted-publishers
-#   For each @elizaos/* package, add Trusted Publisher:
-#     Publisher:    GitHub Actions
-#     Organization: elizaOS
-#     Repository:   eliza
-#     Workflow:     release.yaml
-# npm tries trusted publishing before token auth in OIDC-capable runners, so a
-# missing or mismatched Trusted Publisher entry fails before NPM_TOKEN can be used.
+# We deliberately do NOT grant `id-token: write` here. When an OIDC token is
+# available, lerna 9.0.7 attempts npm trusted publishing *first* and hard-fails
+# the whole release if a package has no Trusted Publisher entry configured on
+# npmjs.com — it never falls back to NPM_TOKEN. The observed failure was:
+#   lerna verb oidc Failed token exchange request ... OIDC token exchange error - package not found
+#   lerna WARN notice Package failed to publish: @elizaos/agent
+#   lerna ERR! E404 Not found
+# (the E404 is the masked OIDC exchange failure, not a token-access problem).
+# Without `id-token: write` the OIDC env vars are absent, so lerna skips the
+# exchange and publishes with the token. Provenance is disabled for the same
+# reason (it requires id-token). To re-enable provenance + trusted publishing
+# later, configure a Trusted Publisher for every published @elizaos/* package
+# at https://docs.npmjs.com/trusted-publishers, then restore `id-token: write`
+# and `NPM_CONFIG_PROVENANCE: "true"`.
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
       contents: write   # release commits push lerna version bumps + git tags
-      id-token: write   # OIDC for npm publish
       packages: write   # publish to GitHub Packages mirror
       issues: write     # comment on release-tracking issues
       actions: read     # read other workflow runs for context
@@ -596,7 +598,6 @@ jobs:
         id: publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "true"
         run: |
           DIST_TAG="${{ steps.release_type.outputs.dist_tag }}"
 
@@ -651,7 +652,6 @@ jobs:
         if: steps.publish.outcome == 'success'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "true"
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           DIST_TAG="${{ steps.release_type.outputs.dist_tag }}"
