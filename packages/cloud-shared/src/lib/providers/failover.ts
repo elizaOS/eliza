@@ -9,22 +9,25 @@ import { logger } from "../utils/logger";
 import type { ProviderHttpError } from "./types";
 
 /**
+ * Upstream HTTP statuses worth retrying on a different provider or routing path:
+ * payment/capacity (402, 429) and gateway/outage (5xx). Shared by the
+ * `ProviderHttpError` failover here and the AI-SDK routing-suffix failover in
+ * `language-model.ts`.
+ */
+export const RETRYABLE_UPSTREAM_STATUSES: ReadonlySet<number> = new Set([
+  402, 429, 500, 502, 503, 504,
+]);
+
+/**
  * Whether a provider error is retryable via fallback.
  * Matches the structured `{ status, error }` shape (`ProviderHttpError`)
  * thrown by every provider implementation (BitRouter, OpenAI direct,
  * Anthropic direct, Groq).
  */
-function isRetryableProviderError(error: unknown): error is ProviderHttpError {
+export function isRetryableProviderError(error: unknown): error is ProviderHttpError {
   if (error && typeof error === "object" && "status" in error) {
     const status = (error as { status: unknown }).status;
-    return (
-      status === 402 ||
-      status === 429 ||
-      status === 500 ||
-      status === 502 ||
-      status === 503 ||
-      status === 504
-    );
+    return typeof status === "number" && RETRYABLE_UPSTREAM_STATUSES.has(status);
   }
   return false;
 }

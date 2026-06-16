@@ -7,7 +7,8 @@
 
 import { logger } from "../utils/logger";
 import { type ProviderLabel, providerFetchWithTimeout } from "./_http";
-import { toBitRouterModelId } from "./model-id-translation";
+import { isRetryableProviderError } from "./failover";
+import { stripOpenRouterRoutingSuffix, toBitRouterModelId } from "./model-id-translation";
 import type {
   AIProvider,
   OpenAIChatRequest,
@@ -66,25 +67,54 @@ export class BitRouterProvider implements AIProvider {
     options?: ProviderRequestOptions,
   ): Promise<Response> {
     const { providerOptions: _providerOptions, ...rest } = request;
-    const translatedModel = toBitRouterModelId(rest.model);
-    const body = translatedModel === rest.model ? rest : { ...rest, model: translatedModel };
+    return await this.postChatCompletions(toBitRouterModelId(rest.model), rest, options, true);
+  }
+
+  /**
+   * POSTs a chat completion, with one same-gateway retry for OpenRouter routing
+   * suffixes: if `model` carries `:nitro` / `:floor` and the request fails with a
+   * retryable upstream error, retry once with the suffix stripped so a healthy
+   * default upstream serves the same model instead of hard-failing on the
+   * throughput-/price-priority path (bitrouter/bitrouter#572).
+   */
+  private async postChatCompletions(
+    model: string,
+    rest: Omit<OpenAIChatRequest, "providerOptions">,
+    options: ProviderRequestOptions | undefined,
+    allowRoutingFallback: boolean,
+  ): Promise<Response> {
+    const body = model === rest.model ? rest : { ...rest, model };
 
     logger.debug("[BitRouter] Forwarding chat completion request", {
-      model: translatedModel,
-      streaming: request.stream,
-      messageCount: request.messages.length,
+      model,
+      streaming: rest.stream,
+      messageCount: rest.messages.length,
     });
 
-    return await this.fetchWithTimeout(
-      `${this.baseUrl}/chat/completions`,
-      {
-        method: "POST",
-        headers: this.getHeaders(),
-        body: JSON.stringify(body),
-        signal: options?.signal,
-      },
-      options?.timeoutMs,
-    );
+    try {
+      return await this.fetchWithTimeout(
+        `${this.baseUrl}/chat/completions`,
+        {
+          method: "POST",
+          headers: this.getHeaders(),
+          body: JSON.stringify(body),
+          signal: options?.signal,
+        },
+        options?.timeoutMs,
+      );
+    } catch (error) {
+      const baseModel = allowRoutingFallback ? stripOpenRouterRoutingSuffix(model) : null;
+      if (baseModel && isRetryableProviderError(error)) {
+        logger.warn(
+          "[BitRouter] Routing-suffixed model %s failed (%d); retrying base %s",
+          model,
+          error.status,
+          baseModel,
+        );
+        return await this.postChatCompletions(baseModel, rest, options, false);
+      }
+      throw error;
+    }
   }
 
   async embeddings(request: OpenAIEmbeddingsRequest): Promise<Response> {
