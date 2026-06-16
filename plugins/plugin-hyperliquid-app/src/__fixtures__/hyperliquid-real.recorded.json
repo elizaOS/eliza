@@ -1,0 +1,400 @@
+{
+  "_source": "Captured from the real public Hyperliquid Info API (https://api.hyperliquid.xyz/info, POST {type:meta} and {type:metaAndAssetCtxs}).",
+  "_captured": "2026-06-16",
+  "_why": "Recorded real responses replayed keyless through handleHyperliquidRoute so the parser is validated against the real API shape. routes.real.test.ts re-fetches live (public API) to detect drift.",
+  "meta": {
+    "universe": [
+      {
+        "szDecimals": 5,
+        "name": "BTC",
+        "maxLeverage": 40,
+        "marginTableId": 56
+      },
+      {
+        "szDecimals": 4,
+        "name": "ETH",
+        "maxLeverage": 25,
+        "marginTableId": 55
+      },
+      {
+        "szDecimals": 2,
+        "name": "ATOM",
+        "maxLeverage": 5,
+        "marginTableId": 5
+      },
+      {
+        "szDecimals": 1,
+        "name": "MATIC",
+        "maxLeverage": 20,
+        "marginTableId": 20,
+        "isDelisted": true
+      },
+      {
+        "szDecimals": 1,
+        "name": "DYDX",
+        "maxLeverage": 5,
+        "marginTableId": 5
+      },
+      {
+        "szDecimals": 2,
+        "name": "SOL",
+        "maxLeverage": 20,
+        "marginTableId": 54
+      }
+    ],
+    "marginTables": [
+      [
+        50,
+        {
+          "description": "",
+          "marginTiers": [
+            {
+              "lowerBound": "0.0",
+              "maxLeverage": 50
+            }
+          ]
+        }
+      ],
+      [
+        51,
+        {
+          "description": "tiered 10x",
+          "marginTiers": [
+            {
+              "lowerBound": "0.0",
+              "maxLeverage": 10
+            },
+            {
+              "lowerBound": "3000000.0",
+              "maxLeverage": 5
+            }
+          ]
+        }
+      ],
+      [
+        52,
+        {
+          "description": "tiered 10x (2)",
+          "marginTiers": [
+            {
+              "lowerBound": "0.0",
+              "maxLeverage": 10
+            },
+            {
+              "lowerBound": "20000000.0",
+              "maxLeverage": 5
+            }
+          ]
+        }
+      ],
+      [
+        53,
+        {
+          "description": "tiered 20x",
+          "marginTiers": [
+            {
+              "lowerBound": "0.0",
+              "maxLeverage": 20
+            },
+            {
+              "lowerBound": "40000000.0",
+              "maxLeverage": 10
+            }
+          ]
+        }
+      ],
+      [
+        54,
+        {
+          "description": "tiered 20x (2)",
+          "marginTiers": [
+            {
+              "lowerBound": "0.0",
+              "maxLeverage": 20
+            },
+            {
+              "lowerBound": "70000000.0",
+              "maxLeverage": 10
+            }
+          ]
+        }
+      ],
+      [
+        55,
+        {
+          "description": "tiered 25x",
+          "marginTiers": [
+            {
+              "lowerBound": "0.0",
+              "maxLeverage": 25
+            },
+            {
+              "lowerBound": "100000000.0",
+              "maxLeverage": 15
+            }
+          ]
+        }
+      ],
+      [
+        56,
+        {
+          "description": "tiered 40x",
+          "marginTiers": [
+            {
+              "lowerBound": "0.0",
+              "maxLeverage": 40
+            },
+            {
+              "lowerBound": "150000000.0",
+              "maxLeverage": 20
+            }
+          ]
+        }
+      ]
+    ],
+    "collateralToken": 0
+  },
+  "metaAndAssetCtxs": [
+    {
+      "universe": [
+        {
+          "szDecimals": 5,
+          "name": "BTC",
+          "maxLeverage": 40,
+          "marginTableId": 56
+        },
+        {
+          "szDecimals": 4,
+          "name": "ETH",
+          "maxLeverage": 25,
+          "marginTableId": 55
+        },
+        {
+          "szDecimals": 2,
+          "name": "ATOM",
+          "maxLeverage": 5,
+          "marginTableId": 5
+        },
+        {
+          "szDecimals": 1,
+          "name": "MATIC",
+          "maxLeverage": 20,
+          "marginTableId": 20,
+          "isDelisted": true
+        },
+        {
+          "szDecimals": 1,
+          "name": "DYDX",
+          "maxLeverage": 5,
+          "marginTableId": 5
+        },
+        {
+          "szDecimals": 2,
+          "name": "SOL",
+          "maxLeverage": 20,
+          "marginTableId": 54
+        }
+      ],
+      "marginTables": [
+        [
+          50,
+          {
+            "description": "",
+            "marginTiers": [
+              {
+                "lowerBound": "0.0",
+                "maxLeverage": 50
+              }
+            ]
+          }
+        ],
+        [
+          51,
+          {
+            "description": "tiered 10x",
+            "marginTiers": [
+              {
+                "lowerBound": "0.0",
+                "maxLeverage": 10
+              },
+              {
+                "lowerBound": "3000000.0",
+                "maxLeverage": 5
+              }
+            ]
+          }
+        ],
+        [
+          52,
+          {
+            "description": "tiered 10x (2)",
+            "marginTiers": [
+              {
+                "lowerBound": "0.0",
+                "maxLeverage": 10
+              },
+              {
+                "lowerBound": "20000000.0",
+                "maxLeverage": 5
+              }
+            ]
+          }
+        ],
+        [
+          53,
+          {
+            "description": "tiered 20x",
+            "marginTiers": [
+              {
+                "lowerBound": "0.0",
+                "maxLeverage": 20
+              },
+              {
+                "lowerBound": "40000000.0",
+                "maxLeverage": 10
+              }
+            ]
+          }
+        ],
+        [
+          54,
+          {
+            "description": "tiered 20x (2)",
+            "marginTiers": [
+              {
+                "lowerBound": "0.0",
+                "maxLeverage": 20
+              },
+              {
+                "lowerBound": "70000000.0",
+                "maxLeverage": 10
+              }
+            ]
+          }
+        ],
+        [
+          55,
+          {
+            "description": "tiered 25x",
+            "marginTiers": [
+              {
+                "lowerBound": "0.0",
+                "maxLeverage": 25
+              },
+              {
+                "lowerBound": "100000000.0",
+                "maxLeverage": 15
+              }
+            ]
+          }
+        ],
+        [
+          56,
+          {
+            "description": "tiered 40x",
+            "marginTiers": [
+              {
+                "lowerBound": "0.0",
+                "maxLeverage": 40
+              },
+              {
+                "lowerBound": "150000000.0",
+                "maxLeverage": 20
+              }
+            ]
+          }
+        ]
+      ],
+      "collateralToken": 0
+    },
+    [
+      {
+        "funding": "0.0000100312",
+        "openInterest": "31547.39558",
+        "prevDayPx": "66405.0",
+        "dayNtlVlm": "1923674441.8380088806",
+        "premium": "-0.0004565168",
+        "oraclePx": "65715.0",
+        "markPx": "65683.0",
+        "midPx": "65684.5",
+        "impactPxs": [
+          "65683.6",
+          "65685.0"
+        ],
+        "dayBaseVlm": "29099.37717"
+      },
+      {
+        "funding": "0.0000125",
+        "openInterest": "794021.0306000001",
+        "prevDayPx": "1815.5",
+        "dayNtlVlm": "1378293452.0004293919",
+        "premium": "-0.0003344482",
+        "oraclePx": "1794.0",
+        "markPx": "1793.3",
+        "midPx": "1793.35",
+        "impactPxs": [
+          "1793.3",
+          "1793.4"
+        ],
+        "dayBaseVlm": "769277.3425000005"
+      },
+      {
+        "funding": "0.0000125",
+        "openInterest": "1330242.6000000001",
+        "prevDayPx": "1.9584",
+        "dayNtlVlm": "536344.555171",
+        "premium": "0.0",
+        "oraclePx": "1.9955",
+        "markPx": "1.9941",
+        "midPx": "1.9942",
+        "impactPxs": [
+          "1.9913",
+          "1.9956"
+        ],
+        "dayBaseVlm": "270537.85"
+      },
+      {
+        "funding": "0.0",
+        "openInterest": "0.0",
+        "prevDayPx": "0.37621",
+        "dayNtlVlm": "0.0",
+        "premium": null,
+        "oraclePx": "0.3754",
+        "markPx": "0.37621",
+        "midPx": null,
+        "impactPxs": null,
+        "dayBaseVlm": "0.0"
+      },
+      {
+        "funding": "0.0000125",
+        "openInterest": "29198259.799999997",
+        "prevDayPx": "0.12267",
+        "dayNtlVlm": "400601.5637049998",
+        "premium": "0.0",
+        "oraclePx": "0.12249",
+        "markPx": "0.12253",
+        "midPx": "0.12257",
+        "impactPxs": [
+          "0.12242",
+          "0.12273"
+        ],
+        "dayBaseVlm": "3281595.7000000002"
+      },
+      {
+        "funding": "0.0000018794",
+        "openInterest": "3886509.2599999993",
+        "prevDayPx": "74.579",
+        "dayNtlVlm": "199773233.4705201089",
+        "premium": "-0.0005819068",
+        "oraclePx": "73.895",
+        "markPx": "73.855",
+        "midPx": "73.8515",
+        "impactPxs": [
+          "73.851",
+          "73.852"
+        ],
+        "dayBaseVlm": "2703151.6000000066"
+      }
+    ]
+  ]
+}

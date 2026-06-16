@@ -371,6 +371,17 @@ export function launchApp(adbBin, serial) {
   });
 }
 
+/**
+ * Bring the app to the foreground WITHOUT force-stopping it. Used by the
+ * Playwright fixture so it doesn't tear down an established agent/device-bridge
+ * connection just to attach to the WebView.
+ */
+export function foregroundApp(adbBin, serial) {
+  adbDevice(adbBin, serial, ["shell", "am", "start", "-n", MAIN_ACTIVITY], {
+    stdio: "pipe",
+  });
+}
+
 export function appPid(adbBin, serial) {
   return adbTry(adbBin, ["-s", serial, "shell", "pidof", APP_ID]).trim();
 }

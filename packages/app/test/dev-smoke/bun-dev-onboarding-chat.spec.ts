@@ -234,9 +234,15 @@ test.describe("bun run dev onboarding chat smoke", () => {
     });
     await expect(conversation).toContainText(prompt, { timeout: 30_000 });
 
-    await expect(conversation).toContainText(RESPONSE_MARKER, {
-      timeout: 180_000,
-    });
+    // Assert the AGENT's reply contains the marker — NOT the whole conversation
+    // log, which also contains the user's own prompt ("reply with exactly
+    // <MARKER>"). Matching the log would pass even when the agent never responds
+    // (e.g. no model provider registered), which is a false green. The reply must
+    // come from a `data-role="assistant"` thread line produced by a real model.
+    const assistantReply = page
+      .locator('[data-testid="thread-line"][data-role="assistant"]')
+      .filter({ hasText: RESPONSE_MARKER });
+    await expect(assistantReply.first()).toBeVisible({ timeout: 180_000 });
 
     expect(failures, "browser/runtime failures").toEqual([]);
   });

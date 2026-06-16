@@ -1881,10 +1881,15 @@ async function requireLocalInferenceReady(baseUrl, authToken) {
     attempt <= ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS;
     attempt += 1
   ) {
-    const hub = await requestJson(
+    // The local-inference "hub" route lives in @elizaos/plugin-local-inference,
+    // which the mobile bundle intentionally stubs — on mobile, local inference
+    // is served by the on-device device-bridge (capacitor-llama), surfaced via
+    // /api/local-inference/device below. So treat /hub as OPTIONAL: a 404 here
+    // is expected on device and must not throw, otherwise readiness can never
+    // fall through to the device-bridge path (deviceConnected && modelPath).
+    const hub = await requestOptionalJson(
       "GET",
       "/api/local-inference/hub",
-      undefined,
       baseUrl,
       authToken,
     );
