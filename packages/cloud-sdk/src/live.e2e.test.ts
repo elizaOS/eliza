@@ -63,9 +63,9 @@ const profileWriteDescribe =
   liveEnabled && apiKey && profileWriteEnabled && destructiveEnabled
     ? describe
     : describe.skip;
-// Live public auth endpoints regularly cross Vitest's 5s default on hosted CI.
+// Live public endpoints regularly cross Vitest's 5s default on hosted CI.
 // This is a timeout budget for real network work, not an artificial delay.
-const LIVE_PUBLIC_AUTH_TIMEOUT_MS = 15_000;
+const LIVE_PUBLIC_ENDPOINT_TIMEOUT_MS = 15_000;
 
 function publicClient() {
   return new ElizaCloudClient({ baseUrl, apiBaseUrl });
@@ -104,6 +104,7 @@ liveDescribe(
         const raw = await client.requestRaw("GET", "/api/openapi.json");
         expect(raw.ok).toBe(true);
       },
+      LIVE_PUBLIC_ENDPOINT_TIMEOUT_MS,
     );
 
     it(
@@ -127,7 +128,7 @@ liveDescribe(
         );
         expect(templated).toMatchObject({ status: "pending" });
       },
-      LIVE_PUBLIC_AUTH_TIMEOUT_MS,
+      LIVE_PUBLIC_ENDPOINT_TIMEOUT_MS,
     );
 
     it("lists public models through the high-level client and compatibility client", async () => {

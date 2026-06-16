@@ -356,6 +356,7 @@ const APP_CONTROL_MODE_SURFACE: Record<
   APP: ["create", "launch", "list", "load_from_directory", "relaunch"],
   VIEWS: [
     "broadcast",
+    "close",
     "create",
     "current",
     "delete",
@@ -368,6 +369,8 @@ const APP_CONTROL_MODE_SURFACE: Record<
     "remove",
     "search",
     "show",
+    "split",
+    "tile",
     "window",
   ],
 };
@@ -442,6 +445,12 @@ const REQUIRED_APP_CONTROL_MODE_TURNS: readonly {
   },
   {
     actionName: "VIEWS",
+    mode: "close",
+    label: "VIEWS close/hide",
+    requiredOptions: { view: isNonEmptyString },
+  },
+  {
+    actionName: "VIEWS",
     mode: "current",
     label: "VIEWS current view",
   },
@@ -476,6 +485,18 @@ const REQUIRED_APP_CONTROL_MODE_TURNS: readonly {
     mode: "window",
     label: "VIEWS detached window",
     requiredOptions: { view: isNonEmptyString },
+  },
+  {
+    actionName: "VIEWS",
+    mode: "split",
+    label: "VIEWS split layout",
+    requiredOptions: { views: hasAtLeastTwoViews },
+  },
+  {
+    actionName: "VIEWS",
+    mode: "tile",
+    label: "VIEWS tile layout",
+    requiredOptions: { views: hasAtLeastTwoViews },
   },
   {
     actionName: "VIEWS",
@@ -744,6 +765,13 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function hasAtLeastTwoViews(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.filter((item): item is string => isNonEmptyString(item)).length >= 2
+  );
+}
+
 function toRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -783,10 +811,25 @@ function appControlActionModes(actionName: AppControlActionName): string[] {
     return Array.isArray(schema?.enum);
   }) as { schema?: { enum?: unknown } } | undefined;
   const modes = parameterWithEnum?.schema?.enum;
+  const importedModes = Array.isArray(modes)
+    ? modes.filter((mode): mode is string => typeof mode === "string")
+    : [];
+  const sourceModes =
+    actionName === "VIEWS" ? appControlViewsModesFromSource() : [];
+  return sorted([...importedModes, ...sourceModes]);
+}
+
+function appControlViewsModesFromSource(): string[] {
+  const source = readFileSync(
+    resolve(repoRoot, "plugins/plugin-app-control/src/actions/views.ts"),
+    "utf8",
+  );
+  const modesMatch = source.match(
+    /const\s+MODES:\s*readonly\s+ViewsMode\[\]\s*=\s*\[([\s\S]*?)\]\s+as\s+const;/,
+  );
+  if (!modesMatch?.[1]) return [];
   return sorted(
-    Array.isArray(modes)
-      ? modes.filter((mode): mode is string => typeof mode === "string")
-      : [],
+    [...modesMatch[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]),
   );
 }
 

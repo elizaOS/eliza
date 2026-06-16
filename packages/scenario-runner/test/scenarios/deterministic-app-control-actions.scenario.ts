@@ -610,6 +610,82 @@ export default scenario({
     },
     {
       kind: "action",
+      name: "split ledger and settings views",
+      text: "Split the remote ledger and settings views horizontally",
+      actionName: "VIEWS",
+      options: {
+        action: "split",
+        layout: "horizontal",
+        views: ["remote-ledger", "settings"],
+      },
+      responseIncludesAny: ["Split views: Remote Ledger, Settings"],
+      assertTurn: (execution) =>
+        expectActionTurn(execution, {
+          actionName: "VIEWS",
+          parameters: {
+            action: "split",
+            layout: "horizontal",
+            views: ["remote-ledger", "settings"],
+          },
+          responseText: "Split views: Remote Ledger, Settings (horizontal).",
+          resultFields: {
+            "values.mode": "split",
+            "values.layout": "horizontal",
+            "values.viewIds.0": "remote-ledger",
+            "values.viewIds.1": "settings",
+            "data.action": "split-view",
+          },
+        }),
+    },
+    {
+      kind: "action",
+      name: "tile ledger and settings views",
+      text: "Tile the remote ledger and settings views",
+      actionName: "VIEWS",
+      options: {
+        action: "tile",
+        views: ["remote-ledger", "settings"],
+      },
+      responseIncludesAny: ["Tiled views: Remote Ledger, Settings"],
+      assertTurn: (execution) =>
+        expectActionTurn(execution, {
+          actionName: "VIEWS",
+          parameters: {
+            action: "tile",
+            views: ["remote-ledger", "settings"],
+          },
+          responseText: "Tiled views: Remote Ledger, Settings.",
+          resultFields: {
+            "values.mode": "tile",
+            "values.layout": "grid",
+            "values.viewIds.0": "remote-ledger",
+            "values.viewIds.1": "settings",
+            "data.action": "tile-views",
+          },
+        }),
+    },
+    {
+      kind: "action",
+      name: "close settings view",
+      text: "Close the settings view",
+      actionName: "VIEWS",
+      options: { action: "close", view: "settings" },
+      responseIncludesAny: ["Closed Settings"],
+      assertTurn: (execution) =>
+        expectActionTurn(execution, {
+          actionName: "VIEWS",
+          parameters: { action: "close", view: "settings" },
+          responseText: "Closed Settings.",
+          resultFields: {
+            "values.mode": "close",
+            "values.viewId": "settings",
+            "values.viewType": "gui",
+            "data.action": "close",
+          },
+        }),
+    },
+    {
+      kind: "action",
       name: "close current view alias",
       text: "Close the current view",
       actionName: "CLOSE_VIEW",
@@ -924,7 +1000,7 @@ export default scenario({
       type: "actionCalled",
       actionName: "VIEWS",
       status: "success",
-      minCount: 10,
+      minCount: 13,
     },
     {
       type: "actionCalled",
@@ -962,6 +1038,9 @@ export default scenario({
         /"search"/,
         /"show"/,
         /"open"/,
+        /"split"/,
+        /"tile"/,
+        /"close"/,
         /"current"/,
         /"broadcast"/,
         /wallet:refresh/,
