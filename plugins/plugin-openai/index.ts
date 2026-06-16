@@ -53,12 +53,15 @@ export const openaiPlugin: Plugin = {
   name: "openai",
   description: "OpenAI API integration for text, image, audio, and embedding models",
   autoEnable: {
-    envKeys: ["OPENAI_API_KEY"],
+    envKeys: ["OPENAI_API_KEY", "CEREBRAS_API_KEY", "EVOLINK_API_KEY"],
   },
 
   config: {
     OPENAI_API_KEY: env.OPENAI_API_KEY ?? null,
     OPENAI_BASE_URL: env.OPENAI_BASE_URL ?? null,
+    EVOLINK_API_KEY: env.EVOLINK_API_KEY ?? null,
+    EVOLINK_BASE_URL: env.EVOLINK_BASE_URL ?? null,
+    EVOLINK_MODEL: env.EVOLINK_MODEL ?? null,
     OPENAI_NANO_MODEL: env.OPENAI_NANO_MODEL ?? null,
     OPENAI_MEDIUM_MODEL: env.OPENAI_MEDIUM_MODEL ?? null,
     OPENAI_SMALL_MODEL: env.OPENAI_SMALL_MODEL ?? null,

@@ -25,6 +25,9 @@ const ENV_KEYS = [
   "CEREBRAS_API_KEY",
   "CEREBRAS_BASE_URL",
   "CEREBRAS_MODEL",
+  "EVOLINK_API_KEY",
+  "EVOLINK_BASE_URL",
+  "EVOLINK_MODEL",
   "OPENAI_API_KEY",
   "OPENAI_SMALL_MODEL",
   "OPENAI_LARGE_MODEL",
@@ -187,6 +190,46 @@ describe("plugin-openai Cerebras config (pure)", () => {
     });
     expect(getBaseURL(runtime)).toBe("https://api.openrouter.ai/api/v1");
     expect(getApiKey(runtime)).toBe("sk-openrouter-fake");
+  });
+
+  it("auto-detects EvoLink mode when only EVOLINK_API_KEY is present", () => {
+    const runtime = buildRuntime({
+      EVOLINK_API_KEY: "evl-fake",
+      OPENAI_API_KEY: undefined,
+      OPENAI_BASE_URL: undefined,
+    });
+    expect(getBaseURL(runtime)).toBe("https://direct.evolink.ai/v1");
+    expect(getApiKey(runtime)).toBe("evl-fake");
+    expect(getSmallModel(runtime)).toBe("gpt-5.2");
+    expect(getLargeModel(runtime)).toBe("gpt-5.2");
+    expect(getResponseHandlerModel(runtime)).toBe("gpt-5.2");
+    expect(getActionPlannerModel(runtime)).toBe("gpt-5.2");
+  });
+
+  it("supports explicit EvoLink base URL and model overrides", () => {
+    const runtime = buildRuntime({
+      ELIZA_PROVIDER: "evolink",
+      EVOLINK_API_KEY: "evl-fake",
+      EVOLINK_BASE_URL: "https://direct.evolink.ai/v1",
+      EVOLINK_MODEL: "gpt-5.1",
+      SMALL_MODEL: "stale-small",
+      LARGE_MODEL: "stale-large",
+    });
+    expect(getBaseURL(runtime)).toBe("https://direct.evolink.ai/v1");
+    expect(getApiKey(runtime)).toBe("evl-fake");
+    expect(getSmallModel(runtime)).toBe("gpt-5.1");
+    expect(getLargeModel(runtime)).toBe("gpt-5.1");
+  });
+
+  it("respects explicit OPENAI settings over EvoLink aliases", () => {
+    const runtime = buildRuntime({
+      EVOLINK_API_KEY: "evl-fake",
+      OPENAI_API_KEY: "sk-openai-fake",
+      OPENAI_BASE_URL: "https://api.openai.com/v1",
+    });
+    expect(getBaseURL(runtime)).toBe("https://api.openai.com/v1");
+    expect(getApiKey(runtime)).toBe("sk-openai-fake");
+    expect(getSmallModel(runtime)).toBe("gpt-5.4-mini");
   });
 
   it("uses a deterministic local embedding fallback in Cerebras mode without an embedding endpoint", async () => {

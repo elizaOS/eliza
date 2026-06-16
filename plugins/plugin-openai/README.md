@@ -13,7 +13,7 @@ OpenAI model-provider plugin for [elizaOS](https://github.com/elizaos/eliza). Ad
 - **Deep research** — `ModelType.RESEARCH` via the OpenAI Responses API (`o3-deep-research` by default); returns annotated, multi-source research reports.
 - **Tokenizer** — encode/decode using js-tiktoken (browser-safe, no network calls).
 
-Works with any OpenAI-compatible endpoint: OpenAI, Cerebras, OpenRouter, local servers, etc.
+Works with any OpenAI-compatible endpoint: OpenAI, Cerebras, EvoLink, OpenRouter, local servers, etc.
 
 ## Enabling the plugin
 
@@ -25,7 +25,7 @@ Add `@elizaos/plugin-openai` to your character's plugin list:
 }
 ```
 
-The plugin auto-enables when `OPENAI_API_KEY` or `CEREBRAS_API_KEY` is present in the environment.
+The plugin auto-enables when `OPENAI_API_KEY`, `CEREBRAS_API_KEY`, or `EVOLINK_API_KEY` is present in the environment.
 
 ## Required configuration
 
@@ -44,7 +44,10 @@ Set these as environment variables or in your character's `settings` object.
 | Variable | Default | Description |
 |---|---|---|
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Override for compatible endpoints |
-| `ELIZA_PROVIDER` | — | Set to `cerebras` to force Cerebras mode |
+| `ELIZA_PROVIDER` | — | Set to `cerebras` or `evolink` to force a compatible-provider mode |
+| `EVOLINK_API_KEY` | — | Auth for EvoLink's OpenAI-compatible endpoint |
+| `EVOLINK_BASE_URL` | `https://direct.evolink.ai/v1` | EvoLink endpoint used when `EVOLINK_API_KEY` enables the plugin |
+| `EVOLINK_MODEL` | `gpt-5.2` | Text model used by EvoLink mode |
 
 ### Text generation models
 
@@ -199,6 +202,10 @@ Then set `OPENAI_BROWSER_BASE_URL=http://localhost:3000/openai`.
 ## Cerebras compatibility
 
 Point `OPENAI_BASE_URL` at a Cerebras endpoint or set `ELIZA_PROVIDER=cerebras` and the plugin automatically adapts: structured output uses `json_object` mode, `reasoning_effort` defaults to `"low"` for reasoning-capable models (to prevent empty responses), and `CEREBRAS_API_KEY` is accepted as an alias for `OPENAI_API_KEY`. Embeddings fall back to a deterministic local hash when no explicit embedding URL is set, since Cerebras does not provide an embeddings endpoint.
+
+## EvoLink compatibility
+
+Set `EVOLINK_API_KEY` to use EvoLink through its OpenAI-compatible endpoint. The plugin defaults to `https://direct.evolink.ai/v1` and `gpt-5.2`; set `EVOLINK_BASE_URL` or `EVOLINK_MODEL` to override either value.
 
 ## Prompt caching
 

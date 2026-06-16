@@ -1,21 +1,23 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
   "..",
-);
-const SCENARIO_CLI = path.join(
-  REPO_ROOT,
-  "packages",
-  "scenario-runner",
-  "src",
-  "cli.ts",
 );
 const DEFAULT_SCENARIO_ROOT = "packages/test/scenarios";
 const DEFAULT_REPORT_DIR = path.join(
@@ -40,35 +42,6 @@ const KEYWORD_GENERATOR = path.join(
   "scripts",
   "generate-keywords.mjs",
 );
-const SCENARIO_LIST_ENV_BLOCKLIST = [
-  "ELIZA_LIVE_SCENARIO_TEST",
-  "ELIZA_LIVE_TEST",
-  "ELIZA_SCENARIO_LLM_PROXY_STRICT",
-  "ELIZA_SCENARIO_USE_LLM_PROXY",
-  "LIFEOPS_LIVE_JUDGE_MIN_SCORE",
-  "SCENARIO_EXPAND_EDGE_CASES",
-  "SCENARIO_INCLUDE_PENDING",
-  "SCENARIO_LLM_PROXY_STRICT",
-  "SCENARIO_USE_LLM_PROXY",
-  "SKIP_REASON",
-  "TEST_LANE",
-];
-
-function scenarioListEnv(extraEnv = {}) {
-  const env = { ...process.env };
-  for (const key of SCENARIO_LIST_ENV_BLOCKLIST) {
-    delete env[key];
-  }
-  for (const [key, value] of Object.entries(extraEnv)) {
-    if (value === undefined || value === null) {
-      delete env[key];
-    } else {
-      env[key] = String(value);
-    }
-  }
-  return env;
-}
-
 function ensureGeneratedKeywordData() {
   if (existsSync(CORE_KEYWORD_DATA)) {
     return;
@@ -112,22 +85,211 @@ function parseArgs(argv) {
   return options;
 }
 
-function runScenarioList(root, globs = [], extraEnv = {}) {
-  const completed = spawnSync("bun", [SCENARIO_CLI, "list", root, ...globs], {
-    cwd: REPO_ROOT,
-    env: scenarioListEnv(extraEnv),
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  if (completed.status !== 0) {
+function walkScenarioFiles(dir, out = []) {
+  const entries = readdirSync(dir);
+  for (const entry of entries) {
+    if (entry.startsWith("_")) continue;
+    if (
+      entry === "node_modules" ||
+      entry === "dist" ||
+      entry === "build" ||
+      entry === ".turbo" ||
+      entry === ".git"
+    ) {
+      continue;
+    }
+    const full = path.join(dir, entry);
+    const st = lstatSync(full);
+    if (st.isSymbolicLink()) continue;
+    if (st.isDirectory()) {
+      walkScenarioFiles(full, out);
+    } else if (entry.endsWith(".scenario.ts")) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+function discoverScenarioFiles(root) {
+  const absoluteRoot = path.resolve(REPO_ROOT, root);
+  const files = [];
+  const st = statSync(absoluteRoot);
+  if (st.isFile()) {
+    if (absoluteRoot.endsWith(".scenario.ts")) files.push(absoluteRoot);
+  } else {
+    walkScenarioFiles(absoluteRoot, files);
+  }
+  files.sort();
+  return files;
+}
+
+function propertyNameText(name) {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name)) {
+    return name.text;
+  }
+  return null;
+}
+
+function staticStringValue(expression) {
+  if (
+    ts.isStringLiteral(expression) ||
+    ts.isNoSubstitutionTemplateLiteral(expression)
+  ) {
+    return expression.text;
+  }
+  return undefined;
+}
+
+function getStaticStringProperty(objectLiteral, propertyName) {
+  for (const property of objectLiteral.properties) {
+    if (!ts.isPropertyAssignment(property)) continue;
+    const name = propertyNameText(property.name);
+    if (name !== propertyName) continue;
+    return staticStringValue(property.initializer);
+  }
+  return undefined;
+}
+
+function scenarioObjectFromExpression(expression) {
+  if (ts.isObjectLiteralExpression(expression)) {
+    return expression;
+  }
+  if (ts.isCallExpression(expression)) {
+    const [firstArg] = expression.arguments;
+    if (firstArg && ts.isObjectLiteralExpression(firstArg)) {
+      return firstArg;
+    }
+  }
+  return null;
+}
+
+function findExportedScenarioObject(sourceFile) {
+  for (const statement of sourceFile.statements) {
+    if (ts.isExportAssignment(statement)) {
+      const objectLiteral = scenarioObjectFromExpression(statement.expression);
+      if (objectLiteral) return objectLiteral;
+    }
+
+    if (!ts.isVariableStatement(statement)) continue;
+    const isExported = statement.modifiers?.some(
+      (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+    );
+    if (!isExported) continue;
+
+    for (const declaration of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(declaration.name)) continue;
+      if (declaration.name.text !== "scenario") continue;
+      if (!declaration.initializer) continue;
+      const objectLiteral = scenarioObjectFromExpression(
+        declaration.initializer,
+      );
+      if (objectLiteral) return objectLiteral;
+    }
+  }
+
+  return null;
+}
+
+function loadScenarioMetadataFile(file) {
+  const sourceText = readFileSync(file, "utf8");
+  const sourceFile = ts.createSourceFile(
+    file,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const objectLiteral = findExportedScenarioObject(sourceFile);
+  if (!objectLiteral) {
     throw new Error(
-      `scenario list failed for ${root}: ${completed.stderr || completed.stdout}`,
+      `[scenario-catalog] ${file}: no statically readable scenario object in default export or exported 'scenario' value.`,
     );
   }
-  return completed.stdout
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+  const id = getStaticStringProperty(objectLiteral, "id");
+  if (!id) {
+    throw new Error(
+      `[scenario-catalog] ${file}: no statically readable scenario id in default export or exported 'scenario' value.`,
+    );
+  }
+  return {
+    file,
+    id,
+    title: getStaticStringProperty(objectLiteral, "title"),
+    status: getStaticStringProperty(objectLiteral, "status"),
+  };
+}
+
+function listScenarioMetadata(root, { includePending = false } = {}) {
+  return discoverScenarioFiles(root)
+    .map(loadScenarioMetadataFile)
+    .filter((metadata) => includePending || metadata.status !== "pending");
+}
+
+function toPosixPath(value) {
+  return value.replace(/\\/g, "/");
+}
+
+function scenarioFileGlobAlternatives(normalizedGlob) {
+  const alternatives = [normalizedGlob];
+  if (normalizedGlob.includes("/**/")) {
+    alternatives.push(normalizedGlob.replace(/\/\*\*\//g, "/"));
+  }
+  return [...new Set(alternatives)];
+}
+
+function globToRegExpSource(glob) {
+  let source = "^";
+  for (let i = 0; i < glob.length; ) {
+    const char = glob[i];
+    if (char === "*") {
+      if (glob[i + 1] === "*") {
+        if (glob[i + 2] === "/") {
+          source += "(?:.*/)?";
+          i += 3;
+        } else {
+          source += ".*";
+          i += 2;
+        }
+      } else {
+        source += "[^/]*";
+        i += 1;
+      }
+      continue;
+    }
+    if (char === "?") {
+      source += "[^/]";
+      i += 1;
+      continue;
+    }
+    source += char.replace(/[\\^$+?.()|[\]{}]/g, "\\$&");
+    i += 1;
+  }
+  return `${source}$`;
+}
+
+function matchesPosixGlob(value, glob) {
+  return new RegExp(globToRegExpSource(glob)).test(value);
+}
+
+function scenarioFileMatchesGlob(file, fileGlob) {
+  const resolvedFile = path.isAbsolute(file)
+    ? path.resolve(file)
+    : path.resolve(REPO_ROOT, file);
+  const absoluteFile = toPosixPath(resolvedFile);
+  const cwdRelativeFile = toPosixPath(path.relative(REPO_ROOT, resolvedFile));
+  const globIsAbsolute = path.isAbsolute(fileGlob);
+  const normalizedGlob = toPosixPath(
+    globIsAbsolute ? path.resolve(fileGlob) : fileGlob,
+  );
+  const target = globIsAbsolute ? absoluteFile : cwdRelativeFile;
+
+  return scenarioFileGlobAlternatives(normalizedGlob).some((candidateGlob) =>
+    matchesPosixGlob(target, candidateGlob),
+  );
+}
+
+function matchesScenarioFileGlobs(file, fileGlobs) {
+  return fileGlobs.some((fileGlob) => scenarioFileMatchesGlob(file, fileGlob));
 }
 
 function workflowScenarioGlobs() {
@@ -504,19 +666,23 @@ function main() {
   ensureGeneratedKeywordData();
   mkdirSync(options.reportDir, { recursive: true });
 
-  const defaultIds = runScenarioList(DEFAULT_SCENARIO_ROOT);
-  const includePendingIds = runScenarioList(DEFAULT_SCENARIO_ROOT, [], {
-    SCENARIO_INCLUDE_PENDING: "1",
-  });
-  const pluginLifeopsIds = runScenarioList(
+  // This inventory is a workflow contract, not a runtime execution test. Keep
+  // it Node-native so CI does not depend on Bun's TS loader/glob behavior while
+  // deciding whether the workflow matrix covers the scenario catalog.
+  const defaultScenarios = listScenarioMetadata(DEFAULT_SCENARIO_ROOT);
+  const defaultIds = defaultScenarios.map((metadata) => metadata.id);
+  const includePendingIds = listScenarioMetadata(DEFAULT_SCENARIO_ROOT, {
+    includePending: true,
+  }).map((metadata) => metadata.id);
+  const pluginLifeopsIds = listScenarioMetadata(
     "plugins/plugin-personal-assistant/test/scenarios",
-  );
-  const pluginAppControlIds = runScenarioList(
+  ).map((metadata) => metadata.id);
+  const pluginAppControlIds = listScenarioMetadata(
     "plugins/plugin-app-control/test/scenarios",
-  );
-  const scenarioRunnerIds = runScenarioList(
+  ).map((metadata) => metadata.id);
+  const scenarioRunnerIds = listScenarioMetadata(
     "packages/scenario-runner/test/scenarios",
-  );
+  ).map((metadata) => metadata.id);
   const allScenarioRows = [
     ...scopedScenarioRows("packages/test/scenarios", defaultIds),
     ...scopedScenarioRows(
@@ -539,8 +705,10 @@ function main() {
     "packages/test/scenarios/executive-assistant/*.scenario.ts",
     "packages/test/scenarios/connector-certification/*.scenario.ts",
   ];
-  for (const id of runScenarioList(DEFAULT_SCENARIO_ROOT, coverageGlobs)) {
-    covered.add(id);
+  for (const scenario of defaultScenarios) {
+    if (matchesScenarioFileGlobs(scenario.file, coverageGlobs)) {
+      covered.add(scenario.id);
+    }
   }
 
   const defaultSet = new Set(defaultIds);

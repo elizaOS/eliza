@@ -319,6 +319,66 @@ describe("dispatcher action callbacks", () => {
     });
   });
 
+  it("proxies action callbacks through the runtime callback channel", async () => {
+    const channel = mockChannel();
+    const callbackCalls: unknown[][] = [];
+    const registry = makeRegistry({
+      id: "action-1",
+      surface: "action",
+      target: "doStuff",
+      handler: async (
+        _runtime: unknown,
+        _message: unknown,
+        _state: unknown,
+        _options: unknown,
+        callback: (data: unknown, actionName?: string) => Promise<unknown>,
+      ) => {
+        const callbackResult = await callback(
+          { text: "callback text" },
+          "DO_STUFF",
+        );
+        return { callbackResult };
+      },
+    } as HandlerEntry);
+    const dispatch = createWorkerRpcDispatcher(registry, {
+      runtime: {
+        actionCallback: async (...args: unknown[]) => {
+          callbackCalls.push(args);
+          return [{ id: "memory-1" }];
+        },
+      } as never,
+      channel: { send: channel.send } as never,
+      permissions: {
+        pluginId: "test-plugin",
+        granted: { bun: { run: true } },
+      },
+    });
+
+    await dispatch({
+      type: "worker-rpc",
+      requestId: 6,
+      surface: "action",
+      target: "action-1",
+      args: {
+        message: null,
+        state: null,
+        options: null,
+        responses: null,
+        callbackId: "callback-1",
+      },
+    } as WorkerRpcMessage);
+
+    expect(callbackCalls).toEqual([
+      ["callback-1", { text: "callback text" }, "DO_STUFF"],
+    ]);
+    expect(channel.outbox[0]).toMatchObject({
+      type: "worker-rpc-result",
+      requestId: 6,
+      ok: true,
+      payload: { callbackResult: [{ id: "memory-1" }] },
+    });
+  });
+
   it("denies provider surface when grants exist but no read/run/host grant is present", async () => {
     const sink = new InMemorySink();
     const auditDispatcher = new AuditDispatcher({ sinks: [sink] });

@@ -148,9 +148,23 @@ function streamTextWithCodex(runtime: IAgentRuntime, params: GenerateTextParams)
     }
   }
 
+  // The planner streams (the Discord message handler sets onStreamChunk), so
+  // ACTION_PLANNER/RESPONSE_HANDLER go through THIS path. The runtime collapses
+  // the stream and only preserves native tool calls when `toolCalls` is present
+  // on the returned object (it duck-types `"toolCalls" in streamRaw`). Without
+  // it, a tool-only response (empty text + native toolCalls) collapses to a bare
+  // empty string and the planner never sees the tool call — it replans until the
+  // required-tool cap and gives up. Mirror plugin-openai: attach `toolCalls`
+  // whenever the call is native, and stamp the model name for trajectory pricing.
+  const shouldReturnNativeTools = Boolean(
+    params.messages?.length || params.tools?.length || params.toolChoice
+  );
   return {
     textStream: textStream(),
     text: resultPromise.then((result) => result.text),
+    ...(shouldReturnNativeTools
+      ? { toolCalls: resultPromise.then((result) => result.toolCalls) }
+      : {}),
     usage: resultPromise.then((result) =>
       result.usage
         ? {
@@ -161,6 +175,7 @@ function streamTextWithCodex(runtime: IAgentRuntime, params: GenerateTextParams)
         : undefined
     ),
     finishReason: resultPromise.then((result) => result.finishReason),
+    providerMetadata: { modelName: getCodexModel(runtime) },
   };
 }
 

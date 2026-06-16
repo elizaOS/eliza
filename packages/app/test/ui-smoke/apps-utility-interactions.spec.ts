@@ -27,6 +27,9 @@ const BENIGN_CONSOLE_PATTERNS = [
   /THREE\.WebGLShadowMap: PCFSoftShadowMap has been deprecated/i,
   /\[VrmEngine\] TSL dissolve unavailable, showing instantly/i,
   /GL Driver Message .*GPU stall due to ReadPixels/i,
+  // The smoke stub already treats avatar VRM request failures as non-fatal;
+  // Chromium can surface the same optional avatar fetch as a console warning.
+  /Failed to load VRM: TypeError: network error/i,
   /\[eliza\]\[startup:init\] stream settings avatar TypeError: Failed to fetch/i,
 ];
 

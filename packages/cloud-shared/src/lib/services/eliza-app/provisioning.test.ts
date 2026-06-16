@@ -6,6 +6,12 @@ const enqueueAgentProvision = mock();
 const hasElizaAppInitialFreeCredits = mock();
 const addCredits = mock();
 
+mock.module("../../config/containers-env", () => ({
+  containersEnv: {
+    defaultAgentImage: () => "ghcr.io/elizaos/eliza:stable",
+  },
+}));
+
 mock.module("../../../db/repositories/agent-sandboxes", () => ({
   agentSandboxesRepository: {
     listByOrganization,
@@ -104,7 +110,7 @@ describe("ensureElizaAppProvisioning", () => {
       organizationId: "org-1",
       userId: "user-1",
       agentName: "Eliza",
-      dockerImage: "elizaos/eliza:latest",
+      dockerImage: "ghcr.io/elizaos/eliza:stable",
     });
     expect(enqueueAgentProvision).toHaveBeenCalledWith({
       agentId: "agent-1",

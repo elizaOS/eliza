@@ -662,8 +662,16 @@ jobs:
             exit 0
           fi
 
-          if grep -Eiq 'CloudApiError:.*(404|not found)|status code: 404|HTTP 404|exceeded your current quota|quota exceeded|insufficient[_ -]?(quota|balance|funds|credits?)|billing details|credit balance|please add credits|top[_ -]?up your credits|invalid api key|unauthorized|authentication|status code: 429|too many requests|unexpected error occurred while processing the request|temporarily unavailable|service unavailable|internal server error|overloaded' "$log_file"; then
-            echo "::warning::Cloud Live E2E skipped because the configured external provider is unavailable."
+          # Soft-fail ONLY on genuine provider-side unavailability (HTTP 429/5xx, quota
+          # exhaustion, or network errors) that a contributor can't control. Client-side
+          # failures must redden the job so real regressions aren't masked: 4xx auth/permission
+          # (e.g. 403 access_denied / "missing required permission"), assertion failures and
+          # timeouts all fall through to exit 1. Patterns are anchored to HTTP status codes and
+          # error tokens so they can't collide with a benign test title (the old allowlist
+          # matched "credit balance" from the test name "gets credit balance and summary",
+          # swallowing every failure on every run).
+          if grep -Eiq '(status code|statusCode|HTTP)[: ]*429|too many requests|rate.?limit|(status code|statusCode|HTTP)[: ]*5[0-9][0-9]|service unavailable|internal server error|temporarily unavailable|overloaded|exceeded your current quota|quota exceeded|insufficient[_ -]?(quota|balance|funds|credits?)|please add credits|top[_ -]?up your credits|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|socket hang up' "$log_file"; then
+            echo "::warning::Cloud Live E2E soft-failed: external provider unavailable (HTTP 429/5xx, quota, or network error). Genuine test failures are NOT suppressed."
             exit 0
           fi
 

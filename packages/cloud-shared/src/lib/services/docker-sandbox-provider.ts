@@ -18,6 +18,7 @@ import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { signStewardMutatingRequest } from "../steward/sign";
 import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 import { logger } from "../utils/logger";
+import { loginToImageRegistry } from "./containers/hetzner-client/registry";
 import { getNodeAutoscaler } from "./containers/node-autoscaler";
 import { resolveImageDigest } from "./containers/registry-probe";
 import { isAlreadyGoneMessage } from "./docker-error-classifier";
@@ -990,9 +991,11 @@ export class DockerSandboxProvider implements SandboxProvider {
         DOCKER_CMD_TIMEOUT_MS,
       );
 
-      // Pull image (may take a while on first run)
+      // Pull image (may take a while on first run). Log in when registry
+      // credentials are configured; otherwise rely on anonymous public pulls.
       logger.info(`[docker-sandbox] Pulling image ${resolvedImage} on ${nodeId}`);
       try {
+        await loginToImageRegistry(ssh, resolvedImage);
         await ssh.exec(
           ["docker pull", ...platformFlags, shellQuote(resolvedImage)].join(" "),
           PULL_TIMEOUT_MS,

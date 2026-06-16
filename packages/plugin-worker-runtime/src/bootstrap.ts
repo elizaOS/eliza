@@ -164,7 +164,20 @@ export async function bootstrap(
       : {}),
   });
   proxy.attach();
-  const runtimeApi = buildRuntimeProxyApi(proxy);
+  let dynamicEventCounter = 0;
+  const runtimeApi = buildRuntimeProxyApi(proxy, {
+    registerDynamicEventHandler: (name, handler) => {
+      dynamicEventCounter += 1;
+      const id = `event:${name}.dynamic:${dynamicEventCounter}`;
+      registry.set(id, {
+        id,
+        surface: "event",
+        target: `${name}#dynamic:${dynamicEventCounter}`,
+        handler: (payload: unknown) => handler(payload as JsonValue),
+      });
+      return { rpc: true, id };
+    },
+  });
 
   const dispatchRpc = createWorkerRpcDispatcher(registry, {
     runtime: runtimeApi,

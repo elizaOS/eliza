@@ -45,6 +45,7 @@ export * from "./discord-channels";
 export * from "./discord-connections";
 export * from "./discord-guilds";
 export * from "./docker-nodes";
+export * from "./domain-purchase-idempotency";
 export * from "./eliza";
 export * from "./eliza-room-characters";
 export * from "./entity-settings";

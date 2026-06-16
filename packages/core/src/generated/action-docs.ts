@@ -3570,11 +3570,32 @@ export const allActionsSpec = {
 		{
 			name: "CALENDAR",
 			description:
-				"Owner-facing calendar umbrella action. Action-based dispatch over the unified Google + Apple calendar feed: read_feed, create_event, update_event, delete_event, find_slots, next_event, describe_event, travel_buffer.",
+				"Owner-facing calendar umbrella action. Op-based dispatch over the unified Google + Apple calendar feed: read_feed, create_event, update_event, delete_event, find_slots, next_event, describe_event, travel_buffer.",
 			parameters: [
 				{
 					name: "action",
-					description: "Which calendar operation to run.",
+					description:
+						"Canonical calendar sub-operation. Mirrors op for planner compatibility.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"read_feed",
+							"create_event",
+							"update_event",
+							"delete_event",
+							"find_slots",
+							"next_event",
+							"describe_event",
+							"travel_buffer",
+						],
+					},
+					descriptionCompressed:
+						"Canonical calendar sub-operation. Mirrors op for planner compatibility.",
+				},
+				{
+					name: "op",
+					description: "Which calendar sub-operation to run.",
 					required: true,
 					schema: {
 						type: "string",
@@ -3589,7 +3610,7 @@ export const allActionsSpec = {
 							"travel_buffer",
 						],
 					},
-					descriptionCompressed: "Which calendar operation to run.",
+					descriptionCompressed: "Which calendar sub-operation to run.",
 				},
 				{
 					name: "eventId",
@@ -3668,6 +3689,7 @@ export const allActionsSpec = {
 					params: {
 						CALENDAR: {
 							action: "read_feed",
+							op: "read_feed",
 							eventId: "example",
 							startAt: "example",
 							endAt: "example",
@@ -3679,7 +3701,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Owner-facing calendar umbrella action. Action-based dispatch over the unified Google + Apple calendar feed: read_feed, create_event, update_event, delete_event...",
+				"Owner-facing calendar umbrella action. Op-based dispatch over the unified Google + Apple calendar feed: read_feed, create_event, update_event, delete_event...",
 		},
 		{
 			name: "COMPUTER_USE",
@@ -5155,16 +5177,27 @@ export const allActionsSpec = {
 		{
 			name: "INBOX",
 			description:
-				"Unified cross-channel inbox umbrella action. Action-based dispatch: list, triage, reply, snooze, archive, approve. Operates across email, Discord, Telegram, WhatsApp, Slack, X and similar non-SMS channels (Android SMS is handled by plugin-messages).",
+				"Unified cross-channel inbox umbrella action. Op-based dispatch: list, triage, reply, snooze, archive, approve. Operates across email, Discord, Telegram, WhatsApp, Slack, X and similar non-SMS channels (Android SMS is handled by plugin-messages).",
 			parameters: [
 				{
 					name: "action",
-					description: "Which inbox operation to run.",
+					description:
+						"Canonical inbox sub-operation. Mirrors op for planner compatibility.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Canonical inbox sub-operation. Mirrors op for planner compatibility.",
+				},
+				{
+					name: "op",
+					description: "Which inbox sub-operation to run.",
 					required: true,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Which inbox operation to run.",
+					descriptionCompressed: "Which inbox sub-operation to run.",
 				},
 				{
 					name: "threadId",
@@ -5246,6 +5279,7 @@ export const allActionsSpec = {
 					params: {
 						INBOX: {
 							action: "example",
+							op: "example",
 							threadId: "example",
 							channel: "example",
 							decision: "example",
@@ -5258,7 +5292,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Unified cross-channel inbox umbrella action. Action-based dispatch: list, triage, reply, snooze, archive, approve. Operates across email, Discord, Telegram...",
+				"Unified cross-channel inbox umbrella action. Op-based dispatch: list, triage, reply, snooze, archive, approve. Operates across email, Discord, Telegram...",
 		},
 		{
 			name: "LINEAR",
@@ -6117,7 +6151,26 @@ export const allActionsSpec = {
 			parameters: [
 				{
 					name: "action",
-					description: "Which OWNER_DOCUMENTS operation to run.",
+					description:
+						"Canonical OWNER_DOCUMENTS sub-operation. Mirrors subaction for planner compatibility.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"request_signature",
+							"request_approval",
+							"track_deadline",
+							"upload_asset",
+							"collect_id",
+							"close_request",
+						],
+					},
+					descriptionCompressed:
+						"Canonical OWNER_DOCUMENTS sub-operation. Mirrors subaction for planner compatibility.",
+				},
+				{
+					name: "subaction",
+					description: "Which OWNER_DOCUMENTS sub-operation to run.",
 					required: true,
 					schema: {
 						type: "string",
@@ -6130,7 +6183,7 @@ export const allActionsSpec = {
 							"close_request",
 						],
 					},
-					descriptionCompressed: "Which OWNER_DOCUMENTS operation to run.",
+					descriptionCompressed: "Which OWNER_DOCUMENTS sub-operation to run.",
 				},
 				{
 					name: "requestId",
@@ -6226,6 +6279,7 @@ export const allActionsSpec = {
 					actions: ["OWNER_DOCUMENTS"],
 					params: {
 						OWNER_DOCUMENTS: {
+							action: "request_signature",
 							subaction: "request_signature",
 							requestId: "example",
 							kind: "example",
@@ -6365,6 +6419,15 @@ export const allActionsSpec = {
 					descriptionCompressed: "Which health operation to run.",
 				},
 				{
+					name: "subaction",
+					description: "Legacy alias for action.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Legacy alias for action.",
+				},
+				{
 					name: "metric",
 					description:
 						"Specific metric to query (steps, heart_rate, sleep_hours, calories, distance_meters, active_minutes).",
@@ -6402,6 +6465,7 @@ export const allActionsSpec = {
 					params: {
 						OWNER_HEALTH: {
 							action: "example",
+							subaction: "example",
 							metric: "example",
 							date: "example",
 							days: 1,
@@ -6570,6 +6634,15 @@ export const allActionsSpec = {
 					descriptionCompressed: "Which screen-time operation to run.",
 				},
 				{
+					name: "subaction",
+					description: "Legacy alias for action.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Legacy alias for action.",
+				},
+				{
 					name: "source",
 					description: "Aggregation source — 'app' or 'website'.",
 					required: false,
@@ -6634,6 +6707,7 @@ export const allActionsSpec = {
 					params: {
 						OWNER_SCREENTIME: {
 							action: "example",
+							subaction: "example",
 							source: "example",
 							identifier: "example",
 							date: "example",

@@ -80,6 +80,34 @@ describe("tool translation", () => {
       strict: false,
     });
   });
+
+  it("normalizes strict tool schemas (codex backend 400s on partial required / missing additionalProperties)", () => {
+    const out = toOpenAITool({
+      name: "TASKS",
+      description: "spawn/list coding sub-agents",
+      strict: true,
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["create", "list"] },
+          prompt: { type: "string" },
+        },
+        required: ["action"],
+      },
+    });
+    expect(out.strict).toBe(true);
+    // required must list EVERY property, additionalProperties:false, and the
+    // originally-optional `prompt` is made nullable to keep its optional meaning.
+    expect(out.parameters).toEqual({
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["create", "list"] },
+        prompt: { type: ["string", "null"] },
+      },
+      required: ["action", "prompt"],
+      additionalProperties: false,
+    });
+  });
 });
 
 describe("CodexBackend", () => {
@@ -145,5 +173,30 @@ describe("CodexBackend", () => {
       tools: [{ type: "function", name: "lookup" }],
       tool_choice: { type: "function", name: "lookup" },
     });
+  });
+
+  it("never forwards temperature or max_output_tokens (the codex backend 400s on them)", async () => {
+    const bodies: unknown[] = [];
+    const backend = new CodexBackend({
+      authPath: "/tmp/auth.json",
+      jitterMaxMs: 0,
+      loadAuth: async () => auth,
+      fetchImpl: (async (_url: string | URL | Request, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return sseResponse([
+          'event: response.output_text.delta\ndata: {"delta":"ok"}\n\n',
+          'event: response.completed\ndata: {"response":{"stop_reason":"stop","usage":{"input_tokens":1,"output_tokens":1}}}\n\n',
+        ]);
+      }) as typeof fetch,
+    });
+
+    // The runtime's planner/response-handler calls always pass maxTokens (and
+    // often temperature); the ChatGPT codex backend rejects both with a 400
+    // "Unsupported parameter", which previously emptied every codex turn.
+    await backend.generate({ prompt: "hi", temperature: 0.7, maxTokens: 2048 });
+
+    const body = bodies[0] as Record<string, unknown>;
+    expect(body).not.toHaveProperty("temperature");
+    expect(body).not.toHaveProperty("max_output_tokens");
   });
 });

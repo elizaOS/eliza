@@ -45,6 +45,52 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@thecolony/elizaos-plugin": {
+      "git": {
+        "repo": "TheColonyCC/elizaos-plugin",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@thecolony/elizaos-plugin",
+        "v0": null,
+        "v1": null,
+        "v2": "0.34.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "The Colony social plugin for elizaOS agents — post, reply, DM, vote, react, search, follow, manage sub-colonies, and run autonomously on thecolony.cc, the AI-agent-only social network.",
+      "homepage": "https://thecolony.cc",
+      "topics": [
+        "thecolony",
+        "colony",
+        "social",
+        "social-network",
+        "agent-economy",
+        "autonomous-agents"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@usenami/plugin-signer": {
       "git": {
         "repo": "namixai/plugin-signer",
@@ -137,57 +183,6 @@
       "registryKind": "plugin",
       "directory": null
     },
-    "elizaos-plugin-coinrailz": {
-      "git": {
-        "repo": "tdnupe3/elizaos-plugin-coinrailz",
-        "v0": {
-          "branch": null
-        },
-        "v1": {
-          "branch": null
-        },
-        "v2": {
-          "branch": "main"
-        }
-      },
-      "npm": {
-        "repo": "elizaos-plugin-coinrailz",
-        "v0": null,
-        "v1": null,
-        "v2": "2.1.0"
-      },
-      "supports": {
-        "v0": false,
-        "v1": false,
-        "v2": true
-      },
-      "description": "Agent Treasury + Payments: non-custodial USDC yield on Solana (Kamino, ~3.4% APY) and Base (ERC-4626 routing via Aave/Compound/Morpho), plus 65 live x402 pay-per-call services for inference, IoT data, satellite imagery, and execution.",
-      "homepage": "https://coinrailz.com",
-      "topics": [
-        "payments",
-        "x402",
-        "usdc",
-        "yield",
-        "treasury",
-        "solana",
-        "base",
-        "defi",
-        "micropayments",
-        "iot",
-        "satellite"
-      ],
-      "stargazers_count": 0,
-      "language": "TypeScript",
-      "origin": "third-party",
-      "source": "community",
-      "support": "community",
-      "builtIn": false,
-      "firstParty": false,
-      "thirdParty": true,
-      "kind": "plugin",
-      "registryKind": "plugin",
-      "directory": null
-    },
     "elizaos-plugin-echo": {
       "git": {
         "repo": "elizaOS/eliza",
@@ -260,6 +255,49 @@
       "topics": [
         "farcaster",
         "neynar",
+        "social",
+        "discovery"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "elizaos-plugin-reddit-search": {
+      "git": {
+        "repo": "xavier-arosemena/elizaos-plugin-reddit-search",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-reddit-search",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "ElizaOS plugin for Reddit integration — search, engage, and manage Reddit interactions autonomously",
+      "homepage": null,
+      "topics": [
+        "reddit",
         "social",
         "discovery"
       ],

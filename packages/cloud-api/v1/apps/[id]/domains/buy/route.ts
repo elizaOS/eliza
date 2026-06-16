@@ -1,14 +1,22 @@
 /**
  * POST /api/v1/apps/:id/domains/buy
  *
- * Atomic buy flow: check availability → debit credits → register via
- * cloudflare → write managed_domains row + assign to app → CNAME the new
- * zone at the app's container public URL. Refunds credits and surfaces
- * the error if cloudflare registration fails after the debit.
+ * Atomic buy flow: claim an idempotency key → check availability → debit
+ * credits → register via cloudflare → write managed_domains row + assign to app
+ * → CNAME the new zone at the app's container public URL. Refunds credits and
+ * surfaces the error if cloudflare registration fails after the debit.
+ *
+ * The idempotency claim (a UNIQUE row inserted BEFORE any money moves) makes the
+ * debit + register pair single-flighted: a retried or concurrent buy of the same
+ * domain short-circuits on the completed row's cached response instead of
+ * charging twice. Mirrors apps/[id]/generate-image's idempotent-charge pattern.
  */
 
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
+import { dbRead, dbWrite } from "@/db/client";
+import { domainPurchaseIdempotency } from "@/db/schemas/domain-purchase-idempotency";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
@@ -44,9 +52,23 @@ const BuySchema = z.object({
     .transform((d) => d.toLowerCase().trim()),
 });
 
+/**
+ * Idempotency claim lifetime. A claim that never reaches `completed` within this
+ * window (e.g. the worker died mid-purchase) is treated as stale and a retry may
+ * re-claim it. Matches the app-image-generation idempotency TTL.
+ */
+const DOMAIN_PURCHASE_IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
+
+type PurchaseOutcome = {
+  status: 200 | 402 | 409 | 502;
+  body: Record<string, unknown>;
+};
+
 const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
+  let idempotencyKey: string | undefined;
+  let claimed = false;
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const appId = c.req.param("id");
@@ -70,36 +92,145 @@ app.post("/", async (c) => {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
 
-    const existing = await managedDomainsService.getDomainByName(domain);
-    if (existing) {
-      if (existing.organizationId !== user.organization_id) {
+    // Claim the idempotency key BEFORE any debit/register. The unique insert is
+    // the single point of serialization: only the winner runs the purchase; a
+    // concurrent/retried buy of the same domain short-circuits below.
+    idempotencyKey = `domain-buy:${user.organization_id}:${domain}`;
+    const [claim] = await dbWrite
+      .insert(domainPurchaseIdempotency)
+      .values({
+        key: idempotencyKey,
+        organization_id: user.organization_id,
+        app_id: appId,
+        domain,
+        status: "processing",
+        expires_at: new Date(Date.now() + DOMAIN_PURCHASE_IDEMPOTENCY_TTL_MS),
+      })
+      .onConflictDoNothing({ target: domainPurchaseIdempotency.key })
+      .returning({ id: domainPurchaseIdempotency.id });
+
+    if (!claim) {
+      const [existingClaim] = await dbRead
+        .select()
+        .from(domainPurchaseIdempotency)
+        .where(eq(domainPurchaseIdempotency.key, idempotencyKey))
+        .limit(1);
+      if (!existingClaim || existingClaim.expires_at < new Date()) {
+        await dbWrite
+          .delete(domainPurchaseIdempotency)
+          .where(eq(domainPurchaseIdempotency.key, idempotencyKey));
         return c.json(
-          {
-            success: false,
-            error: "Domain is already registered to a different organization",
-          },
+          { success: false, error: "Retry request", code: "idempotency_retry" },
           409,
         );
       }
-
-      const registered = await fetchRegisteredDomainForRecovery(
-        domain,
-        appId,
-        "existing-row",
+      if (existingClaim.status === "completed" && existingClaim.response_body) {
+        return c.json(
+          existingClaim.response_body as Record<string, unknown>,
+          200,
+        );
+      }
+      return c.json(
+        {
+          success: false,
+          error: "Domain purchase already in progress",
+          code: "idempotency_in_progress",
+        },
+        409,
       );
-      if (existing.registrar === "cloudflare" || registered) {
-        const result = await persistAndAssignCloudflareDomain({
-          organizationId: user.organization_id,
-          appId,
-          appUrl: appRow.app_url,
-          domain,
-          existingCloudflareRegistrationId: existing.cloudflareRegistrationId,
-          registered,
-          existingZoneId: existing.cloudflareZoneId,
-          existingStatus: existing.status,
-          existingVerified: existing.verified,
+    }
+    claimed = true;
+
+    const outcome = await executeDomainPurchase({
+      organizationId: user.organization_id,
+      appId,
+      appUrl: appRow.app_url,
+      domain,
+    });
+
+    if (outcome.status === 200) {
+      // Cache the success so a retry replays it instead of charging again.
+      await dbWrite
+        .update(domainPurchaseIdempotency)
+        .set({
+          status: "completed",
+          response_body: outcome.body,
+          updated_at: new Date(),
+        })
+        .where(eq(domainPurchaseIdempotency.key, idempotencyKey))
+        .catch((stateError) => {
+          logger.error(
+            "[Domains Buy] failed to persist idempotent completion",
+            {
+              appId,
+              domain,
+              error: extractErrorMessage(stateError),
+            },
+          );
         });
-        return c.json({
+    } else {
+      // Failure (insufficient credits / unavailable / refunded register): drop
+      // the claim so a genuine retry can proceed.
+      await releaseClaim(idempotencyKey);
+    }
+
+    return c.json(outcome.body, outcome.status);
+  } catch (error) {
+    if (claimed && idempotencyKey) await releaseClaim(idempotencyKey);
+    logger.error("[Domains Buy] unhandled error", { error });
+    return failureResponse(c, error);
+  }
+});
+
+interface PurchaseContext {
+  organizationId: string;
+  appId: string;
+  appUrl: string | null | undefined;
+  domain: string;
+}
+
+/**
+ * Run the actual purchase (availability → debit → register → persist) for a
+ * claim winner and return the HTTP outcome. Throws only on truly unexpected
+ * errors (the caller releases the claim and maps them via failureResponse).
+ */
+async function executeDomainPurchase(
+  ctx: PurchaseContext,
+): Promise<PurchaseOutcome> {
+  const { organizationId, appId, appUrl, domain } = ctx;
+
+  const existing = await managedDomainsService.getDomainByName(domain);
+  if (existing) {
+    if (existing.organizationId !== organizationId) {
+      return {
+        status: 409,
+        body: {
+          success: false,
+          error: "Domain is already registered to a different organization",
+        },
+      };
+    }
+
+    const registered = await fetchRegisteredDomainForRecovery(
+      domain,
+      appId,
+      "existing-row",
+    );
+    if (existing.registrar === "cloudflare" || registered) {
+      const result = await persistAndAssignCloudflareDomain({
+        organizationId,
+        appId,
+        appUrl,
+        domain,
+        existingCloudflareRegistrationId: existing.cloudflareRegistrationId,
+        registered,
+        existingZoneId: existing.cloudflareZoneId,
+        existingStatus: existing.status,
+        existingVerified: existing.verified,
+      });
+      return {
+        status: 200,
+        body: {
           success: true,
           domain,
           appDomainId: result.appDomainId,
@@ -110,37 +241,40 @@ app.post("/", async (c) => {
           recoveredFromRegistrar:
             existing.registrar !== "cloudflare" && Boolean(registered),
           pendingZoneProvisioning: !result.zoneId,
-        });
-      }
-
-      return c.json(
-        {
-          success: false,
-          error:
-            "Domain is already attached as an external domain. Verify or detach it before buying it through Cloudflare.",
         },
-        409,
-      );
+      };
     }
 
-    // 1. availability + price quote
-    const availability =
-      await cloudflareRegistrarService.checkAvailability(domain);
-    if (!availability.available) {
-      const registered = await fetchRegisteredDomainForRecovery(
-        domain,
+    return {
+      status: 409,
+      body: {
+        success: false,
+        error:
+          "Domain is already attached as an external domain. Verify or detach it before buying it through Cloudflare.",
+      },
+    };
+  }
+
+  // 1. availability + price quote
+  const availability =
+    await cloudflareRegistrarService.checkAvailability(domain);
+  if (!availability.available) {
+    const registered = await fetchRegisteredDomainForRecovery(
+      domain,
+      appId,
+      "unavailable",
+    );
+    if (registered) {
+      const result = await persistAndAssignCloudflareDomain({
+        organizationId,
         appId,
-        "unavailable",
-      );
-      if (registered) {
-        const result = await persistAndAssignCloudflareDomain({
-          organizationId: user.organization_id,
-          appId,
-          appUrl: appRow.app_url,
-          domain,
-          registered,
-        });
-        return c.json({
+        appUrl,
+        domain,
+        registered,
+      });
+      return {
+        status: 200,
+        body: {
           success: true,
           domain,
           appDomainId: result.appDomainId,
@@ -150,86 +284,92 @@ app.post("/", async (c) => {
           alreadyRegistered: true,
           recoveredFromRegistrar: true,
           pendingZoneProvisioning: !result.zoneId,
-        });
-      }
-      return c.json(
-        { success: false, error: "Domain is not available for registration" },
-        409,
-      );
+        },
+      };
     }
-    const price = computeDomainPrice(availability.priceUsdCents);
-    const renewalPrice = computeDomainPrice(
-      availability.renewalUsdCents ?? availability.priceUsdCents,
-    );
-
-    // 2. debit user's org credit balance
-    const debitDescription = `domain registration: ${domain}`;
-    const debitMetadata = {
-      type: "domain_purchase" as const,
-      domain,
-      appId,
-      wholesaleUsdCents: price.wholesaleUsdCents,
-      marginUsdCents: price.marginUsdCents,
+    return {
+      status: 409,
+      body: {
+        success: false,
+        error: "Domain is not available for registration",
+      },
     };
-    try {
-      await creditsService.deductCredits({
-        organizationId: user.organization_id,
-        amount: price.totalUsdCents / 100,
-        description: debitDescription,
-        metadata: debitMetadata,
-      });
-    } catch (err) {
-      if (err instanceof InsufficientCreditsError) {
-        return c.json(
-          {
-            success: false,
-            error: "Insufficient credit balance for this domain",
-          },
-          402,
-        );
-      }
-      throw err;
-    }
+  }
+  const price = computeDomainPrice(availability.priceUsdCents);
+  const renewalPrice = computeDomainPrice(
+    availability.renewalUsdCents ?? availability.priceUsdCents,
+  );
 
-    // 3. register via cloudflare
-    let registrationId: string;
-    try {
-      const reg = await cloudflareRegistrarService.registerDomain(domain);
-      registrationId = reg.registrationId;
-    } catch (err) {
-      await creditsService.refundCredits({
-        organizationId: user.organization_id,
-        amount: price.totalUsdCents / 100,
-        description: `${debitDescription} (refund: registration failed)`,
-        metadata: { ...debitMetadata, type: "domain_purchase_refund" },
-      });
-      const message = extractErrorMessage(err);
-      logger.error("[Domains Buy] cloudflare register failed; refunded", {
-        appId,
-        domain,
-        error: message,
-      });
-      return c.json({ success: false, error: message }, 502);
-    }
-
-    // 4. fetch the registered domain to get zone_id
-    const reg = await fetchRegisteredDomainForRecovery(
-      domain,
-      appId,
-      "post-register",
-    );
-    const result = await persistAndAssignCloudflareDomain({
-      organizationId: user.organization_id,
-      appId,
-      appUrl: appRow.app_url,
-      domain,
-      cloudflareRegistrationId: registrationId,
-      purchasePriceCents: price.totalUsdCents,
-      renewalPriceCents: renewalPrice.totalUsdCents,
-      registered: reg,
+  // 2. debit user's org credit balance
+  const debitDescription = `domain registration: ${domain}`;
+  const debitMetadata = {
+    type: "domain_purchase" as const,
+    domain,
+    appId,
+    wholesaleUsdCents: price.wholesaleUsdCents,
+    marginUsdCents: price.marginUsdCents,
+  };
+  try {
+    await creditsService.deductCredits({
+      organizationId,
+      amount: price.totalUsdCents / 100,
+      description: debitDescription,
+      metadata: debitMetadata,
     });
+  } catch (err) {
+    if (err instanceof InsufficientCreditsError) {
+      return {
+        status: 402,
+        body: {
+          success: false,
+          error: "Insufficient credit balance for this domain",
+        },
+      };
+    }
+    throw err;
+  }
 
-    return c.json({
+  // 3. register via cloudflare
+  let registrationId: string;
+  try {
+    const reg = await cloudflareRegistrarService.registerDomain(domain);
+    registrationId = reg.registrationId;
+  } catch (err) {
+    await creditsService.refundCredits({
+      organizationId,
+      amount: price.totalUsdCents / 100,
+      description: `${debitDescription} (refund: registration failed)`,
+      metadata: { ...debitMetadata, type: "domain_purchase_refund" },
+    });
+    const message = extractErrorMessage(err);
+    logger.error("[Domains Buy] cloudflare register failed; refunded", {
+      appId,
+      domain,
+      error: message,
+    });
+    return { status: 502, body: { success: false, error: message } };
+  }
+
+  // 4. fetch the registered domain to get zone_id
+  const reg = await fetchRegisteredDomainForRecovery(
+    domain,
+    appId,
+    "post-register",
+  );
+  const result = await persistAndAssignCloudflareDomain({
+    organizationId,
+    appId,
+    appUrl,
+    domain,
+    cloudflareRegistrationId: registrationId,
+    purchasePriceCents: price.totalUsdCents,
+    renewalPriceCents: renewalPrice.totalUsdCents,
+    registered: reg,
+  });
+
+  return {
+    status: 200,
+    body: {
       success: true,
       domain,
       appDomainId: result.appDomainId,
@@ -242,12 +382,21 @@ app.post("/", async (c) => {
         totalUsdCents: price.totalUsdCents,
         currency: availability.currency,
       },
+    },
+  };
+}
+
+async function releaseClaim(key: string): Promise<void> {
+  await dbWrite
+    .delete(domainPurchaseIdempotency)
+    .where(eq(domainPurchaseIdempotency.key, key))
+    .catch((err) => {
+      logger.warn("[Domains Buy] failed to release idempotency claim", {
+        key,
+        error: extractErrorMessage(err),
+      });
     });
-  } catch (error) {
-    logger.error("[Domains Buy] unhandled error", { error });
-    return failureResponse(c, error);
-  }
-});
+}
 
 interface PersistCloudflareDomainInput {
   organizationId: string;
