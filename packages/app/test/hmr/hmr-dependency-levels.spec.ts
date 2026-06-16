@@ -20,7 +20,11 @@ const LEVELS = [
   // The app imports @elizaos/ui via subpaths (not the root barrel), so target
   // the root App component that main.tsx renders — guaranteed in the live graph.
   { name: "@elizaos/ui", file: "packages/ui/src/App.tsx" },
-  { name: "@elizaos/shared", file: "packages/shared/src/brand/index.ts" },
+  // shared/brand is only reachable via ElizaLogo, which is not eager on the app
+  // "/" route, so Vite never transforms it and an edit emits no HMR event. Target
+  // character-presets instead: main.tsx calls getStylePresets() at module scope,
+  // so this source file is guaranteed in the live graph.
+  { name: "@elizaos/shared", file: "packages/shared/src/character-presets.ts" },
   {
     name: "plugin view companion",
     file: "plugins/plugin-companion/src/components/companion/CompanionView.tsx",
