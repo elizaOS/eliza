@@ -26,6 +26,52 @@ const PREFIX_MAP: ReadonlyArray<readonly [string, string]> = [
   ["mistral/", "mistralai/"],
 ];
 
+/**
+ * OpenRouter-style routing suffixes that select a *provider preference* for a
+ * model without changing the model itself: `:nitro` sorts upstreams by
+ * throughput, `:floor` sorts by price. BitRouter accepts these as a drop-in
+ * OpenRouter replacement, but the preferred upstream can be unhealthy while the
+ * model's default routing is fine — see bitrouter/bitrouter#572, where
+ * `openai/gpt-oss-120b:nitro` returns 503 from the gateway while the same model
+ * served by a healthy upstream returns 200.
+ *
+ * These suffixes are routing *hints*, not part of model identity, so on a
+ * retryable upstream failure we can drop the suffix and retry the base id (which
+ * routes to the gateway default). Deliberately excluded: `:free` (a distinct
+ * free-tier variant with different pricing/SLA) and `:online` (enables web
+ * search) — stripping those would change billing or behavior.
+ */
+const OPENROUTER_ROUTING_SUFFIXES: ReadonlySet<string> = new Set(["nitro", "floor"]);
+
+/**
+ * If `model` carries an OpenRouter routing suffix (`:nitro` / `:floor`), returns
+ * the base model id with the suffix removed; otherwise returns `null`.
+ *
+ * The suffix is the last `:`-delimited token. A forced-provider prefix
+ * (`cerebras:gpt-oss-120b`) is never mistaken for a suffix because its token is
+ * not a known routing word, and a bare `provider:model` with no dash in the
+ * prefix is rejected so only real model ids (`openai/gpt-oss-120b:nitro`,
+ * `gpt-oss-120b:nitro`) match.
+ */
+export function stripOpenRouterRoutingSuffix(model: string): string | null {
+  const colonIndex = model.lastIndexOf(":");
+  if (colonIndex <= 0) {
+    return null;
+  }
+  const suffix = model.slice(colonIndex + 1);
+  if (!OPENROUTER_ROUTING_SUFFIXES.has(suffix)) {
+    return null;
+  }
+  const base = model.slice(0, colonIndex);
+  // A routing suffix attaches to a model id, which is either provider-prefixed
+  // (`openai/gpt-oss-120b`) or a dashed bare id that lost its prefix upstream
+  // (`gpt-oss-120b`). Anything else (`foo:nitro`) is treated as opaque.
+  if (!base.includes("/") && !base.includes("-")) {
+    return null;
+  }
+  return base;
+}
+
 const PROVIDER_KEY_MAP: Readonly<Record<string, string>> = {
   "x-ai": "xai",
   mistralai: "mistral",

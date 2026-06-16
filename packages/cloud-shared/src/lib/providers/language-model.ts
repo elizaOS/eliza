@@ -1,6 +1,7 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGatewayProvider, type GatewayProvider } from "@ai-sdk/gateway";
 import { createOpenAI } from "@ai-sdk/openai";
+import { APICallError, type LanguageModelMiddleware, RetryError, wrapLanguageModel } from "ai";
 import {
   BITROUTER_DEFAULT_FREE_MODEL,
   BITROUTER_RECOMMENDED_TEXT_MODEL,
@@ -10,7 +11,9 @@ import {
   isGroqNativeModel,
   isVastNativeModel,
 } from "../models";
-import { toBitRouterModelId } from "./model-id-translation";
+import { logger } from "../utils/logger";
+import { RETRYABLE_UPSTREAM_STATUSES } from "./failover";
+import { stripOpenRouterRoutingSuffix, toBitRouterModelId } from "./model-id-translation";
 import { getProviderKey } from "./provider-env";
 import { hasAnyVastProviderConfigured, resolveVastEndpointConfig } from "./vast-endpoints";
 
@@ -198,6 +201,76 @@ function normalizeBitRouterLanguageModelId(model: string): string {
   return toBitRouterModelId(model);
 }
 
+/** HTTP status of an AI-SDK provider error, unwrapping the retry envelope. */
+function aiSdkErrorStatus(error: unknown): number | null {
+  const unwrapped = RetryError.isInstance(error) ? error.lastError : error;
+  if (APICallError.isInstance(unwrapped) && typeof unwrapped.statusCode === "number") {
+    return unwrapped.statusCode;
+  }
+  return null;
+}
+
+function isRetryableAiSdkError(error: unknown): boolean {
+  const status = aiSdkErrorStatus(error);
+  return status !== null && RETRYABLE_UPSTREAM_STATUSES.has(status);
+}
+
+/**
+ * Resolves a BitRouter language model, adding a same-gateway routing-suffix
+ * failover for OpenRouter `:nitro` / `:floor` ids: if the throughput-/price-
+ * priority upstream fails with a retryable error, retry against the base model
+ * id (gateway default routing) instead of hard-failing — see
+ * bitrouter/bitrouter#572. Models without a routing suffix are returned as-is.
+ */
+function getBitRouterLanguageModel(model: string) {
+  const client = getBitRouterClient();
+  const primaryId = normalizeBitRouterLanguageModelId(model);
+  const baseId = stripOpenRouterRoutingSuffix(primaryId);
+  const primaryModel = client.chat(primaryId);
+  if (!baseId) {
+    return primaryModel;
+  }
+
+  const baseModel = client.chat(baseId);
+  const middleware: LanguageModelMiddleware = {
+    specificationVersion: "v3",
+    wrapGenerate: async ({ doGenerate, params }) => {
+      try {
+        return await doGenerate();
+      } catch (error) {
+        if (!isRetryableAiSdkError(error)) {
+          throw error;
+        }
+        logger.warn(
+          "[BitRouter] Routing-suffixed model %s failed (%d); retrying base %s",
+          primaryId,
+          aiSdkErrorStatus(error),
+          baseId,
+        );
+        return await baseModel.doGenerate(params);
+      }
+    },
+    wrapStream: async ({ doStream, params }) => {
+      try {
+        return await doStream();
+      } catch (error) {
+        if (!isRetryableAiSdkError(error)) {
+          throw error;
+        }
+        logger.warn(
+          "[BitRouter] Routing-suffixed model %s stream failed (%d); retrying base %s",
+          primaryId,
+          aiSdkErrorStatus(error),
+          baseId,
+        );
+        return await baseModel.doStream(params);
+      }
+    },
+  };
+
+  return wrapLanguageModel({ model: primaryModel, middleware });
+}
+
 function requiresBitRouterRouting(model: string): boolean {
   const bitRouterModel = toBitRouterModelId(model);
   return (
@@ -285,7 +358,7 @@ export function getLanguageModel(model: string) {
   }
 
   if (getBitRouterApiKey()) {
-    return getBitRouterClient().chat(normalizeBitRouterLanguageModelId(model));
+    return getBitRouterLanguageModel(model);
   }
 
   if (requiresBitRouterRouting(model)) {
