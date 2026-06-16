@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { redirectFrontendHost } from "./index";
+import { getFrontendAliasProxyTarget, redirectFrontendHost } from "./index";
 
 describe("cloud-api worker entrypoint", () => {
   test("redirects www frontend host to apex without dropping path or query", () => {
@@ -23,5 +23,25 @@ describe("cloud-api worker entrypoint", () => {
     );
 
     expect(response).toBeNull();
+  });
+
+  test("proxies staging frontend aliases to the Pages develop branch", () => {
+    const target = getFrontendAliasProxyTarget(
+      new URL("https://staging.elizacloud.ai/dashboard?tab=agents"),
+    );
+
+    expect(target?.toString()).toBe(
+      "https://develop.eliza-cloud.pages.dev/dashboard?tab=agents",
+    );
+  });
+
+  test("proxies staging API aliases to the staging API worker", () => {
+    const target = getFrontendAliasProxyTarget(
+      new URL("https://staging.elizacloud.ai/api/health"),
+    );
+
+    expect(target?.toString()).toBe(
+      "https://api-staging.elizacloud.ai/api/health",
+    );
   });
 });
