@@ -147,18 +147,18 @@ describe("plannerAlreadyAckedSpawn", () => {
 
   it("SUPPRESSES when the planner replied within the lookback before createdAt", () => {
     // REPLY action ran just before the TASKS spawn action in the same turn.
-    expect(plannerAlreadyAckedSpawn(createdAt - 2000, createdAt, LOOKBACK)).toBe(
-      true,
-    );
+    expect(
+      plannerAlreadyAckedSpawn(createdAt - 2000, createdAt, LOOKBACK),
+    ).toBe(true);
     expect(
       plannerAlreadyAckedSpawn(createdAt - LOOKBACK, createdAt, LOOKBACK),
     ).toBe(true);
   });
 
   it("SUPPRESSES when the planner replied after createdAt (spawn action ran first)", () => {
-    expect(plannerAlreadyAckedSpawn(createdAt + 1500, createdAt, LOOKBACK)).toBe(
-      true,
-    );
+    expect(
+      plannerAlreadyAckedSpawn(createdAt + 1500, createdAt, LOOKBACK),
+    ).toBe(true);
   });
 
   it("ALLOWS the orchestrator ack when the planner reply is older than the lookback", () => {
@@ -173,12 +173,16 @@ describe("plannerAlreadyAckedSpawn", () => {
   });
 
   it("ALLOWS the orchestrator ack when the planner never replied to the room", () => {
-    expect(plannerAlreadyAckedSpawn(undefined, createdAt, LOOKBACK)).toBe(false);
+    expect(plannerAlreadyAckedSpawn(undefined, createdAt, LOOKBACK)).toBe(
+      false,
+    );
   });
 
   it("ALLOWS the orchestrator ack when the session createdAt is unknown", () => {
     // Can't attribute a reply to the spawn turn without createdAt — default to
     // posting the ack rather than risk silently dropping it.
-    expect(plannerAlreadyAckedSpawn(createdAt, undefined, LOOKBACK)).toBe(false);
+    expect(plannerAlreadyAckedSpawn(createdAt, undefined, LOOKBACK)).toBe(
+      false,
+    );
   });
 });
