@@ -1,0 +1,105 @@
+---
+title: Launch Status
+description: Current Eliza Cloud 10-user launch status, gates, and operator sequence.
+---
+
+# Launch Status
+
+This page records the repository-visible state for the Eliza Cloud 10-user
+launch as of **June 16, 2026**. It summarizes issue
+[#8434](https://github.com/elizaOS/eliza/issues/8434), the apps audit in
+[#8321](https://github.com/elizaOS/eliza/issues/8321), and the current PR
+state so operators do not have to reconstruct the plan from stale tracker
+body text.
+
+<Warning>
+  GitHub issue bodies can lag behind merged PRs. For launch decisions, use the
+  latest issue comments, the PR state, and the checks on the current branch.
+</Warning>
+
+## Current State
+
+- **Agent provisioning is proven on staging.** A fresh staging agent registered
+  on Headscale, received `headscale_ip`, passed the tailnet health probe after
+  a boot/warmup retry, and reached `running`. **Why:** this proves the launch
+  gate that was unknown: the daemon, Worker, Headscale, and agent router can
+  complete a real provision flow.
+- **Agent fix chain is merged to `develop`.** PRs
+  [#8435](https://github.com/elizaOS/eliza/pull/8435),
+  [#8441](https://github.com/elizaOS/eliza/pull/8441), and
+  [#8448](https://github.com/elizaOS/eliza/pull/8448) cover Headscale node
+  lookup by `TS_HOSTNAME`, tailnet container-port routing, health-probe backoff,
+  heartbeat hysteresis, and proxy re-warm. **Why:** one cold idle packet must
+  not mark a healthy agent disconnected or make the public route 404.
+- **Apps deploy mechanics are CI-proven.** PR
+  [#8430](https://github.com/elizaOS/eliza/pull/8430) added the apps deploy and
+  tenant-DB E2E workflow. It builds a real app image, provisions a tenant
+  Postgres database, runs the app in an isolated container, verifies the app can
+  reach its own DB, verifies it is rejected from another tenant DB, and checks
+  no public egress. **Why:** production cutover should depend on a repeatable CI
+  gate, not a manual run on one operator machine.
+- **eDad is the all-features test app.** PR
+  [#8433](https://github.com/elizaOS/eliza/pull/8433) added optional
+  per-tenant DB persistence to `packages/examples/cloud/edad`. **Why:** one app
+  now exercises monetized inference, container deploy, isolated DB injection,
+  per-app auth, custom domain routing, and persisted chat history.
+- **New-user first chat was root-caused and fixed on `develop`.** PR
+  [#8450](https://github.com/elizaOS/eliza/pull/8450) routes the default
+  `gpt-oss-120b` path to Cerebras and makes legacy
+  `openai/gpt-oss-120b` / `openai/gpt-oss-120b:nitro` aliases
+  Cerebras-first with OpenRouter fallback in self-hosted BitRouter. **Why:** the
+  `:nitro` route was reaching OpenRouter through self-hosted BitRouter and
+  surfacing 503s for new users instead of using the already-working Cerebras
+  path.
+
+## Production Gates
+
+1. **Replicate the staging Headscale setup to production.** The production
+   control plane must expose `https://headscale.elizacloud.ai`, use that value
+   as Headscale `server_url`, and have matching daemon/Worker secrets for
+   `HEADSCALE_API_KEY`, `HEADSCALE_PUBLIC_URL`, and
+   `AGENT_TOKEN_PRIVATE_KEY_PEM`. **Why:** staging is proven; production must
+   be the same recipe before a prod provision E2E is meaningful.
+2. **Run one clean production provision E2E.** A fresh prod agent must receive a
+   non-null `headscale_ip`, reach `running`, stay routable after idle warm-keep,
+   and serve `/pair`. **Why:** this proves prod carries the same end-to-end
+   behavior as staging, including the idle-tailnet fix.
+3. **Apply the production apps data plane.** Run
+   `terraform-apps-data-plane.yml` for `environment=production` after confirming
+   the GitHub Environment variables listed in the apps data-plane runbook.
+   **Why:** the Worker cutover flag only enqueues deploy jobs; without a prod app
+   node and wildcard DNS, jobs can be accepted but not completed.
+4. **Merge the cutover switch PR.** PR
+   [#8425](https://github.com/elizaOS/eliza/pull/8425) is intentionally draft
+   until the prod apps data plane exists and the daemon is ready. **Why:**
+   merging `APPS_DEPLOY_ENABLED="1"` early half-enables production deploys and
+   can leave apps stuck in `building`.
+5. **Arm the production apps daemon.** Run `arm-apps-daemon.yml` with the prod
+   app node and tenant DB DSN from shared state. **Why:** the Worker and daemon
+   must agree that app deploy is live, and the daemon must know where to run
+   containers.
+6. **Deploy eDad and reset stuck apps.** Deploy eDad with isolated DB mode and
+   confirm `https://edad.apps.elizacloud.ai` plus `GET /api/history`; reset the
+   stuck `council` app so it re-enters the now-armed path. **Why:** eDad is the
+   single launch smoke that covers the whole apps platform, while stuck pre-gate
+   records should not be treated as fresh failures.
+
+## PR Triage
+
+| PR | State | Launch Meaning |
+| --- | --- | --- |
+| [#8430](https://github.com/elizaOS/eliza/pull/8430) | Merged | Apps deploy and tenant-DB E2E is now a CI gate. |
+| [#8433](https://github.com/elizaOS/eliza/pull/8433) | Merged | eDad can exercise per-tenant DB as the all-features test app. |
+| [#8448](https://github.com/elizaOS/eliza/pull/8448) | Merged | Idle tailnet false-eviction fix is on `develop`; promote before relying on prod idle behavior. |
+| [#8450](https://github.com/elizaOS/eliza/pull/8450) | Merged | Cerebras-first default/fallback routing is on `develop`; deploy BitRouter and Worker paths before claiming prod fixed. |
+| [#8425](https://github.com/elizaOS/eliza/pull/8425) | Open draft | Production apps cutover switch; un-draft only after prod data plane and daemon are ready. |
+| [#8451](https://github.com/elizaOS/eliza/pull/8451) | Open draft | Adds deploy automation for ARM Headscale control-plane work; useful follow-up, not an apps cutover prerequisite. |
+| [#8351](https://github.com/elizaOS/eliza/pull/8351), [#8356](https://github.com/elizaOS/eliza/pull/8356), [#8292](https://github.com/elizaOS/eliza/pull/8292) | Open/stale | Do not merge as-is for launch; split or close after comparing against merged focused PRs. |
+
+## Quality Gate
+
+The launch standard is unchanged: code can become faster and more path-gated,
+but it must not skip isolation, billing, routing, or production-readiness proof.
+For apps, the minimum gate is the #8430 E2E plus one production eDad deployment.
+For agents, the minimum gate is a fresh prod provision, `headscale_ip`, running
+status, reachable route, `/pair`, and idle warm-keep survival.
