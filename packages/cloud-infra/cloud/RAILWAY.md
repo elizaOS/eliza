@@ -27,6 +27,10 @@ operator explicitly opts in. New code should not target it.
 
 ### `headscale`
 
+- Status: working on staging; production promotion waits on control-plane
+  daemon hardening and robot VM cleanup. Why: Headscale coordinates the mesh,
+  but customer tunnel readiness depends on the surrounding CP/VM path behaving
+  the same way production will.
 - Builder: Dockerfile (pinned headscale v0.28.0).
 - Healthcheck: `GET /health` on `listen_addr` (port 8080). Headscale v0.28
   serves this natively.
