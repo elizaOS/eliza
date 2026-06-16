@@ -230,6 +230,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 name = "eliza-cloud-api-staging"
 workers_dev = false
 routes = [
+  { pattern = "staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
   { pattern = "api-staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
 ]
 
