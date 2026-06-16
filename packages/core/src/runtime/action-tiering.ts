@@ -3,7 +3,11 @@ import {
 	type ActionCatalogParent,
 	normalizeActionName,
 } from "./action-catalog";
-import type { ActionRetrievalResult } from "./action-retrieval";
+import {
+	type ActionRetrievalResult,
+	candidateNamespaceParentExists,
+	parentAliasesForCandidateAction,
+} from "./action-retrieval";
 
 export const TIER0_PROTOCOL_ACTIONS = [
 	"IGNORE",
@@ -106,7 +110,10 @@ export function tierActionResults(
 	// it to tier-B and the safety fallback would fire, leaving FILE/BASH in
 	// tier-A. By narrowing first we collapse tier-A to only the candidates,
 	// and the cap then applies to that smaller set.
-	const narrowSet = normalizeCandidateSet(input.narrowToCandidateActions);
+	const narrowSet = normalizeCandidateSet(
+		input.narrowToCandidateActions,
+		input.catalog.parents,
+	);
 	if (narrowSet.size > 0) {
 		const canonicalOwnersByCandidate = new Map<string, Set<string>>();
 		for (const candidate of narrowSet) {
@@ -349,6 +356,7 @@ function sortedUnique(values: readonly string[]): string[] {
 
 function normalizeCandidateSet(
 	values: readonly string[] | undefined,
+	parents: readonly Pick<ActionCatalogParent, "normalizedName">[],
 ): Set<string> {
 	// normalizeActionName produces the same UPPER_SNAKE_CASE form the catalog
 	// uses for normalizedName / childNormalizedNames, so candidate names line
@@ -364,6 +372,15 @@ function normalizeCandidateSet(
 		const normalized = normalizeActionName(value);
 		if (normalized) {
 			set.add(normalized);
+			if (candidateNamespaceParentExists(parents, normalized)) {
+				continue;
+			}
+			for (const parentAlias of parentAliasesForCandidateAction(normalized)) {
+				const normalizedAlias = normalizeActionName(parentAlias);
+				if (normalizedAlias) {
+					set.add(normalizedAlias);
+				}
+			}
 		}
 	}
 	return set;

@@ -178,7 +178,64 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, string> = {
 	SEARCH_CHAT: "MESSAGE",
 	FIND_MESSAGES: "MESSAGE",
 	FIND_MESSAGE: "MESSAGE",
+	ARRANGE_VIEWS: "VIEWS",
+	CLOSE_ALL_VIEWS: "VIEWS",
+	CLOSE_VIEW: "VIEWS",
+	LIST_VIEWS: "VIEWS",
+	OPEN_APP: "VIEWS",
+	OPEN_APPLICATION: "VIEWS",
+	OPEN_VIEW: "VIEWS",
+	SHOW_APP: "VIEWS",
+	SHOW_APPLICATION: "VIEWS",
+	SHOW_VIEW: "VIEWS",
+	SPLIT_VIEW: "VIEWS",
+	SPLIT_VIEWS: "VIEWS",
+	SWITCH_VIEW: "VIEWS",
+	TILE_VIEWS: "VIEWS",
+	VIEW_MANAGER: "VIEWS",
 };
+
+const VIEW_SURFACE_TOKENS = new Set([
+	"VIEW",
+	"VIEWS",
+	"WINDOW",
+	"WINDOWS",
+	"PANEL",
+	"PANELS",
+	"APP",
+	"APPS",
+	"APPLICATION",
+	"APPLICATIONS",
+	"PLUGIN",
+	"PLUGINS",
+]);
+
+const VIEW_OPERATION_TOKENS = new Set([
+	"ADD",
+	"ARRANGE",
+	"CLOSE",
+	"CREATE",
+	"DELETE",
+	"DISMISS",
+	"GET",
+	"GO",
+	"HIDE",
+	"LAYOUT",
+	"LIST",
+	"MANAGER",
+	"NAVIGATE",
+	"OPEN",
+	"PIN",
+	"READ",
+	"REMOVE",
+	"SELECT",
+	"SET",
+	"SHOW",
+	"SPLIT",
+	"SWITCH",
+	"TILE",
+	"UPDATE",
+]);
 
 function resolveTierOverridesFromEnv():
 	| { topK: number; stageWeights: Partial<Record<RetrievalStageName, number>> }
@@ -218,7 +275,9 @@ export function retrieveActions(
 	const parentActionHints = dedupeNormalizedStrings([
 		...(input.parentActionHints ?? []),
 		...candidateActions.flatMap((actionName) =>
-			parentAliasesForCandidateAction(actionName),
+			candidateNamespaceParentExists(input.catalog.parents, actionName)
+				? []
+				: parentAliasesForCandidateAction(actionName),
 		),
 	]);
 	const recentConversationText = shouldUseRecentConversationForActionSearch(
@@ -762,10 +821,69 @@ function dedupeNormalizedStrings(values: string[] | undefined): string[] {
 	return result;
 }
 
-function parentAliasesForCandidateAction(actionName: string): string[] {
+export function parentAliasesForCandidateAction(actionName: string): string[] {
 	const normalized = normalizeActionName(actionName);
 	const parent = CANDIDATE_ACTION_PARENT_ALIASES[normalized];
-	return parent ? [parent] : [];
+	if (parent) return [parent];
+	if (looksLikeViewCandidateAction(normalized)) return ["VIEWS"];
+	return [];
+}
+
+function looksLikeViewCandidateAction(normalizedActionName: string): boolean {
+	if (!normalizedActionName) return false;
+	const tokens = new Set(normalizedActionName.split(/_+/).filter(Boolean));
+	const hasViewSurface = hasAnyToken(tokens, VIEW_SURFACE_TOKENS);
+	const hasViewOperation = hasAnyToken(tokens, VIEW_OPERATION_TOKENS);
+	const hasGeneratedCapabilityShape =
+		hasViewOperation && tokens.size >= 2 && !hasOnlyOperationTokens(tokens);
+	return hasViewOperation && (hasViewSurface || hasGeneratedCapabilityShape);
+}
+
+function hasAnyToken(tokens: Set<string>, expected: Set<string>): boolean {
+	for (const token of tokens) {
+		if (expected.has(token)) return true;
+	}
+	return false;
+}
+
+function hasOnlyOperationTokens(tokens: Set<string>): boolean {
+	for (const token of tokens) {
+		if (!VIEW_OPERATION_TOKENS.has(token)) return false;
+	}
+	return true;
+}
+
+export function candidateNamespaceParentExists(
+	parents: readonly Pick<ActionCatalogParent, "normalizedName">[],
+	actionName: string,
+): boolean {
+	const normalized = normalizeActionName(actionName);
+	const tokens = normalized.split("_").filter(Boolean);
+	if (
+		tokens.length < 2 ||
+		normalized === "VIEWS" ||
+		hasAnyToken(new Set(tokens), VIEW_SURFACE_TOKENS)
+	) {
+		return false;
+	}
+	const domainTokens = tokens.filter(
+		(token) => !VIEW_OPERATION_TOKENS.has(token) && token !== "VIEWS",
+	);
+	return parents.some((parent) =>
+		domainTokens.some((token) => actionTokenMatchesParent(token, parent)),
+	);
+}
+
+function actionTokenMatchesParent(
+	token: string,
+	parent: Pick<ActionCatalogParent, "normalizedName">,
+): boolean {
+	const parentName = parent.normalizedName;
+	return (
+		parentName === token ||
+		parentName === `${token}S` ||
+		(parentName.endsWith("S") && parentName.slice(0, -1) === token)
+	);
 }
 
 function shouldUseRecentConversationForActionSearch(

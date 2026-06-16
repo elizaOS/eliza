@@ -2114,6 +2114,7 @@ async function collectV5PlannerCandidateActions(args: {
 	message: Memory;
 	state: State;
 	selectedContexts?: readonly AgentContext[];
+	candidateActions?: readonly string[];
 	userRoles?: readonly RoleGateRole[];
 }): Promise<Action[]> {
 	// We used to filter the candidate set by `action.contexts` against the
@@ -2128,6 +2129,7 @@ async function collectV5PlannerCandidateActions(args: {
 	// outside its declared context, while avoiding dead tools that the planner
 	// could select but execution would immediately reject.
 	const allRuntimeActions = args.runtime.actions;
+	const actionLookup = buildRuntimeActionLookup(args.runtime);
 	const actionsByName = new Map(
 		allRuntimeActions.map((action) => [action.name, action]),
 	);
@@ -2198,6 +2200,16 @@ async function collectV5PlannerCandidateActions(args: {
 
 	for (const action of allRuntimeActions) {
 		await appendIfAllowed(action);
+	}
+
+	for (const candidateName of args.candidateActions ?? []) {
+		const action = resolveRuntimeAction(actionLookup, candidateName);
+		if (!action) continue;
+		await appendIfAllowed(
+			action,
+			undefined,
+			mergeAgentContexts(args.selectedContexts, action.contexts),
+		);
 	}
 
 	for (let index = 0; index < selectedActions.length; index += 1) {
@@ -2339,7 +2351,7 @@ const ACTION_CATALOG_CACHE_LIMIT = 8;
 function actionCatalogCacheKey(actions: readonly Action[]): string {
 	let key = "";
 	for (const action of actions) {
-		key += `${action.name} `;
+		key += `${action.name}\u0000`;
 	}
 	return key;
 }
@@ -2747,6 +2759,43 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 					clearReply: true,
 					debug: [
 						`voice turn signal suppressed reply (${signal?.source ?? "unknown"}; p=${typeof signal?.endOfTurnProbability === "number" ? signal.endOfTurnProbability.toFixed(3) : "n/a"}; next=${signal?.nextSpeaker ?? "unknown"})`,
+					],
+				};
+			},
+		},
+		{
+			name: "core.simple_registered_action_request",
+			description:
+				"Promotes simple-path replies to planning when the current user request matches a registered action's metadata.",
+			priority: 20,
+			shouldRun: ({ message, messageHandler, runtime }) => {
+				if (messageHandler.processMessage !== "RESPOND") return false;
+				if (messageHandler.plan.requiresTool === true) return false;
+				const nonSimpleContexts = (messageHandler.plan.contexts ?? []).filter(
+					(context) => context !== SIMPLE_CONTEXT_ID,
+				);
+				if (nonSimpleContexts.length > 0) return false;
+				const text = getUserMessageText(message);
+				if (!text?.trim()) return false;
+				return (
+					inferDirectCurrentRequestCandidateActions(runtime.actions ?? [], text)
+						.length > 0
+				);
+			},
+			evaluate: ({ message, runtime }) => {
+				const text = getUserMessageText(message) ?? "";
+				const candidateActions = inferDirectCurrentRequestCandidateActions(
+					runtime.actions ?? [],
+					text,
+				);
+				if (candidateActions.length === 0) return undefined;
+				return {
+					requiresTool: true,
+					addContexts: ["general"],
+					addCandidateActions: candidateActions,
+					reply: "On it.",
+					debug: [
+						`current request matched registered action metadata: ${candidateActions.join(", ")}`,
 					],
 				};
 			},
@@ -3412,19 +3461,23 @@ export function messageHandlerFromFieldResult(
 				...inferredAckCandidateActions,
 				...inferredDirectCandidateActions,
 			]);
+	const runnableCandidateActions = filterRunnableCandidateActions(
+		effectiveCandidateActions,
+		runtimeContext,
+	);
+	const planCandidateActions =
+		inferredDirectCandidateActions.length > 0 &&
+		candidateActions.length > 0 &&
+		!hasValidProvidedCandidate
+			? runnableCandidateActions
+			: effectiveCandidateActions;
 	// When the caller passes the runtime's `actions`, narrow the candidate set
 	// to those that are (a) registered actions OR (b) canonical control names
 	// (REPLY / IGNORE / STOP). All-bogus candidate lists collapse to length 0,
 	// which lets the routing logic below fall back to simple-reply when the
 	// only context is "simple". When no `runtimeContext` is provided, behaviour
 	// is unchanged (back-compat).
-	const validCandidateCount = runtimeContext
-		? effectiveCandidateActions.filter((name) => {
-				const normalized = normalizeActionIdentifier(name);
-				if (canonicalPlannerControlActionName(normalized) !== null) return true;
-				return exposedActionMatches(runtimeContext.actions, normalized);
-			}).length
-		: effectiveCandidateActions.length;
+	const validCandidateCount = runnableCandidateActions.length;
 	const facts = Array.isArray(result.facts)
 		? result.facts.map((fact) => String(fact).trim()).filter(Boolean)
 		: [];
@@ -3510,7 +3563,7 @@ export function messageHandlerFromFieldResult(
 		!modelCommittedToDelegation &&
 		shouldPreferCompleteDirectReply({
 			replyText: replyTextRaw,
-			candidateActions: effectiveCandidateActions,
+			candidateActions: runnableCandidateActions,
 			contexts: routedContexts,
 		});
 	const preferInlineCodeSnippetDirectReply =
@@ -3518,7 +3571,7 @@ export function messageHandlerFromFieldResult(
 		requestedPlanning &&
 		shouldPreferInlineCodeSnippetDirectReply({
 			currentMessageText,
-			candidateActions: effectiveCandidateActions,
+			candidateActions: runnableCandidateActions,
 			contexts: routedContexts,
 		});
 	const shouldPlan =
@@ -3555,9 +3608,9 @@ export function messageHandlerFromFieldResult(
 	if (
 		!preferCompleteDirectReply &&
 		!preferInlineCodeSnippetDirectReply &&
-		effectiveCandidateActions.length > 0
+		planCandidateActions.length > 0
 	) {
-		plan.candidateActions = effectiveCandidateActions;
+		plan.candidateActions = planCandidateActions;
 	}
 	const extract =
 		facts.length > 0 || relationships.length > 0 || addressedTo.length > 0
@@ -3655,6 +3708,74 @@ function candidateActionsContainRunnableAction(
 		if (canonicalPlannerControlActionName(normalized) !== null) return true;
 		return exposedActionMatches(runtimeContext.actions, normalized);
 	});
+}
+
+function filterRunnableCandidateActions(
+	candidateActions: readonly string[],
+	runtimeContext:
+		| {
+				actions: ReadonlyArray<Pick<Action, "name" | "similes">>;
+		  }
+		| undefined,
+): string[] {
+	if (!runtimeContext) return [...candidateActions];
+	return candidateActions.filter((name) => {
+		const normalized = normalizeActionIdentifier(name);
+		if (canonicalPlannerControlActionName(normalized) !== null) return true;
+		return exposedActionMatches(runtimeContext.actions, normalized);
+	});
+}
+
+function applyDirectCurrentCandidateBackstopToMessageHandler(
+	messageHandler: MessageHandlerResult,
+	runtimeContext:
+		| {
+				actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
+				messageText?: string;
+		  }
+		| undefined,
+): MessageHandlerResult {
+	const currentMessageText = runtimeContext?.messageText ?? "";
+	if (
+		messageHandler.processMessage !== "RESPOND" ||
+		!runtimeContext ||
+		currentMessageText.trim().length === 0
+	) {
+		return messageHandler;
+	}
+
+	const directCurrentCandidateActions =
+		inferDirectCurrentRequestCandidateActions(
+			runtimeContext.actions,
+			currentMessageText,
+		);
+	if (directCurrentCandidateActions.length === 0) return messageHandler;
+
+	const runnableCandidateActions = filterRunnableCandidateActions(
+		uniqueActionNames([
+			...getMessageHandlerCandidateActions(messageHandler),
+			...directCurrentCandidateActions,
+		]),
+		runtimeContext,
+	);
+	if (runnableCandidateActions.length === 0) return messageHandler;
+
+	const planningContexts = (messageHandler.plan.contexts ?? []).filter(
+		(context) => context !== SIMPLE_CONTEXT_ID,
+	);
+	return {
+		...messageHandler,
+		plan: {
+			...messageHandler.plan,
+			contexts:
+				planningContexts.length > 0
+					? Array.from(new Set(planningContexts))
+					: ["general"],
+			simple: false,
+			requiresTool: true,
+			candidateActions: runnableCandidateActions,
+		},
+	};
 }
 
 const PLANNING_ACK_REPLIES = new Set([
@@ -3921,6 +4042,13 @@ export function inferDirectCurrentRequestCandidateActions(
 		const codingAction = findCodingDelegationActionName(actions);
 		if (codingAction) return [codingAction];
 	}
+	const viewShellAction = findViewShellActionName(actions, messageText);
+	if (viewShellAction) return [viewShellAction];
+	const viewCapabilityAction = findViewCapabilityActionName(
+		actions,
+		messageText,
+	);
+	if (viewCapabilityAction) return [viewCapabilityAction];
 	if (looksLikeWebSearchRequest(messageText)) {
 		const lookupAction = findWebLookupActionName(actions);
 		if (lookupAction) return [lookupAction];
@@ -3940,6 +4068,7 @@ function shouldUseDirectReplyFastPath(args: {
 	) {
 		return false;
 	}
+	if (looksLikeContextDependentMutationRequest(text)) return false;
 	if (/https?:\/\//iu.test(text)) return false;
 	if (
 		/\b(?:search|browse|lookup|look\s+up|find|fetch|download|install|run|execute|build|deploy|commit|push|pull\s+request|pr\b|issue|debug|inspect|logs?|repo|github|terminal|shell|file|folder|save|send|create|edit|modify|fix|improve|rewrite|update|delete|remove|uninstall|schedule|remind|todo|task|calendar|email|contact|message|dm|call|wallet|balance|price|weather|news|latest|current|today|tomorrow|yesterday|remember|forget|settings?|password|secret|key|token|screen|screenshot|browser|click|open|close|app|view|plugin|window|device|workflow|automation|draw|sketch|paint|illustrate|render|picture|photo|photograph|image|speak|read\s+aloud|read\s+out|narrate|text\s*to\s*speech|tts|voice\s+this|voice\s+over|audio|video|animate|animation)\b/iu.test(
@@ -3949,6 +4078,40 @@ function shouldUseDirectReplyFastPath(args: {
 		return false;
 	}
 	return true;
+}
+
+function looksLikeContextDependentMutationRequest(text: string): boolean {
+	const tokens = new Set(
+		tokenizeActionMetadata(text).map(normalizeSingularToken),
+	);
+	const mutationTokens = [
+		"ADD",
+		"CREATE",
+		"DO",
+		"MAKE",
+		"PUT",
+		"SET",
+		"WRITE",
+		"EDIT",
+		"UPDATE",
+		"DELETE",
+		"REMOVE",
+	];
+	const contextReferenceTokens = [
+		"ANOTHER",
+		"IT",
+		"ONE",
+		"SAME",
+		"THAT",
+		"THEM",
+		"THESE",
+		"THIS",
+		"THOSE",
+	];
+	return (
+		mutationTokens.some((token) => tokens.has(token)) &&
+		contextReferenceTokens.some((token) => tokens.has(token))
+	);
 }
 
 function looksLikeHighStakesPersonalCrisisRequest(text: string): boolean {
@@ -4025,6 +4188,253 @@ function findCodingDelegationActionName(
 		)?.name ??
 		findAvailableActionName(actions, LEGACY_CODING_DELEGATION_ACTION_NAMES)
 	);
+}
+
+const VIEW_REQUEST_OPERATION_GROUPS = {
+	create: ["ADD", "CREATE", "MAKE", "NEW"],
+	read: ["FIND", "GET", "LIST", "READ", "SHOW", "WHAT", "WHICH"],
+	update: ["CHANGE", "EDIT", "MODIFY", "RENAME", "UPDATE"],
+	delete: ["DELETE", "REMOVE"],
+	open: ["GO", "NAVIGATE", "OPEN", "SWITCH"],
+	close: ["CLOSE", "DISMISS", "HIDE"],
+	layout: [
+		"ARRANGE",
+		"BOTTOM",
+		"HORIZONTAL",
+		"LEFT",
+		"LAYOUT",
+		"RIGHT",
+		"SPLIT",
+		"TILE",
+		"TOP",
+		"VERTICAL",
+	],
+	pin: ["DOCK", "PIN"],
+} as const;
+
+const VIEW_REQUEST_OPERATION_TOKENS: ReadonlySet<string> = new Set<string>(
+	Object.values(VIEW_REQUEST_OPERATION_GROUPS).flat(),
+);
+
+const VIEW_REQUEST_GENERIC_TOKENS: ReadonlySet<string> = new Set<string>([
+	"ACTION",
+	"ACTIONS",
+	"APP",
+	"APPS",
+	"APPLICATION",
+	"APPLICATIONS",
+	"BROADCAST",
+	"CALL",
+	"CAPABILITY",
+	"CAPABILITIES",
+	"CURRENT",
+	"EVENT",
+	"EVENTS",
+	"INVOKE",
+	"LAYOUT",
+	"MANAGER",
+	"MODE",
+	"NOTIFY",
+	"PANEL",
+	"PANELS",
+	"PIN",
+	"PLUGIN",
+	"PLUGINS",
+	"SCREEN",
+	"SIGNAL",
+	"UI",
+	"USE",
+	"VIEW",
+	"VIEWS",
+	"WINDOW",
+	"WINDOWS",
+	"WITH",
+]);
+
+const VIEW_REQUEST_SURFACE_TOKENS: ReadonlySet<string> = new Set<string>([
+	"APP",
+	"APPLICATION",
+	"MANAGER",
+	"PANEL",
+	"SCREEN",
+	"UI",
+	"VIEW",
+	"WINDOW",
+]);
+
+const VIEW_LAYOUT_FOLLOWUP_TOKENS: ReadonlySet<string> = new Set<string>([
+	"AGAIN",
+	"ALSO",
+	"HORIZONTAL",
+	"INSTEAD",
+	"NOW",
+	"TOO",
+	"VERTICAL",
+]);
+
+const VIEW_PLUGIN_SURFACE_TOKENS: ReadonlySet<string> = new Set<string>([
+	"BROWSER",
+	"CATALOG",
+	"MANAGER",
+	"MARKETPLACE",
+]);
+
+function findViewsActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "tags">>,
+): string | undefined {
+	return actions.find((action) => {
+		if (normalizeActionIdentifier(action.name) === "VIEWS") return true;
+		return (action.tags ?? []).some(
+			(tag) => normalizedMetadataPhrase(tag) === "VIEW_CAPABILITY",
+		);
+	})?.name;
+}
+
+function collectViewActionMetadataEntries(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
+	viewActionName: string,
+): Array<Pick<Action, "name" | "similes" | "tags">> {
+	const normalizedViewActionName = normalizeActionIdentifier(viewActionName);
+	return actions.filter((action) => {
+		if (normalizeActionIdentifier(action.name) === normalizedViewActionName) {
+			return true;
+		}
+		return (action.tags ?? []).some(
+			(tag) => normalizedMetadataPhrase(tag) === "VIEW_CAPABILITY",
+		);
+	});
+}
+
+function findViewShellActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "tags">>,
+	messageText: string,
+): string | undefined {
+	if (looksLikeInstructionalViewQuestion(messageText)) return undefined;
+	const viewActionName = findViewsActionName(actions);
+	if (!viewActionName) return undefined;
+
+	const messageTokens = tokenizeActionMetadata(messageText).map(
+		normalizeSingularToken,
+	);
+	const messageOperationGroups = operationGroupsForTokens(messageTokens);
+	if (messageOperationGroups.size === 0) return undefined;
+
+	const tokenSet = new Set(messageTokens);
+	for (const token of VIEW_REQUEST_SURFACE_TOKENS) {
+		if (tokenSet.has(token)) return viewActionName;
+	}
+	if (
+		(tokenSet.has("PLUGIN") || tokenSet.has("PLUGINS")) &&
+		messageTokens.some((token) => VIEW_PLUGIN_SURFACE_TOKENS.has(token))
+	) {
+		return viewActionName;
+	}
+	if (
+		messageOperationGroups.has("layout") &&
+		messageTokens.some((token) => VIEW_LAYOUT_FOLLOWUP_TOKENS.has(token))
+	) {
+		return viewActionName;
+	}
+	return undefined;
+}
+
+function findViewCapabilityActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
+	messageText: string,
+): string | undefined {
+	if (looksLikeInstructionalViewQuestion(messageText)) return undefined;
+	const viewActionName = findViewsActionName(actions);
+	if (!viewActionName) return undefined;
+	const viewActions = collectViewActionMetadataEntries(actions, viewActionName);
+	if (viewActions.length === 0) return undefined;
+
+	const messageTokens = tokenizeActionMetadata(messageText);
+	const messageTokenSet = new Set(messageTokens.map(normalizeSingularToken));
+	const messageOperationGroups = operationGroupsForTokens(messageTokens);
+	if (messageOperationGroups.size === 0) return undefined;
+
+	for (const viewAction of viewActions) {
+		for (const alias of [
+			viewAction.name,
+			...(viewAction.similes ?? []),
+			...(viewAction.tags ?? []),
+		]) {
+			const aliasTokens = tokenizeActionMetadata(String(alias));
+			if (aliasTokens.length === 0) continue;
+			const aliasOperationGroups = operationGroupsForTokens(aliasTokens);
+			if (
+				aliasOperationGroups.size > 0 &&
+				!setsIntersect(aliasOperationGroups, messageOperationGroups)
+			) {
+				continue;
+			}
+			const targetTokens = aliasTokens
+				.map(normalizeSingularToken)
+				.filter(
+					(token) =>
+						!VIEW_REQUEST_OPERATION_TOKENS.has(token) &&
+						!VIEW_REQUEST_GENERIC_TOKENS.has(token),
+				);
+			if (targetTokens.length === 0) continue;
+			if (targetTokens.every((token) => messageTokenSet.has(token))) {
+				return viewActionName;
+			}
+		}
+	}
+	return undefined;
+}
+
+function looksLikeInstructionalViewQuestion(messageText: string): boolean {
+	return /^\s*(?:explain|describe|teach|what\s+(?:is|are)|how\s+(?:do|can|to)\b)/iu.test(
+		messageText,
+	);
+}
+
+function tokenizeActionMetadata(value: string): string[] {
+	const matches = value
+		.replace(/([a-z])([A-Z])/g, "$1 $2")
+		.toUpperCase()
+		.match(/[A-Z0-9]+/g);
+	return matches ?? [];
+}
+
+function normalizedMetadataPhrase(value: string): string {
+	return tokenizeActionMetadata(value).map(normalizeSingularToken).join("_");
+}
+
+function normalizeSingularToken(token: string): string {
+	if (token === "CALENDER") return "CALENDAR";
+	if (token.length > 3 && token.endsWith("IES")) {
+		return `${token.slice(0, -3)}Y`;
+	}
+	if (token.length > 3 && token.endsWith("S")) {
+		return token.slice(0, -1);
+	}
+	return token;
+}
+
+function operationGroupsForTokens(tokens: readonly string[]): Set<string> {
+	const groups = new Set<string>();
+	for (const token of tokens.map(normalizeSingularToken)) {
+		for (const [group, groupTokens] of Object.entries(
+			VIEW_REQUEST_OPERATION_GROUPS,
+		)) {
+			if ((groupTokens as readonly string[]).includes(token)) {
+				groups.add(group);
+			}
+		}
+	}
+	return groups;
+}
+
+function setsIntersect<T>(
+	left: ReadonlySet<T>,
+	right: ReadonlySet<T>,
+): boolean {
+	for (const entry of left) {
+		if (right.has(entry)) return true;
+	}
+	return false;
 }
 
 function findAvailableActionName(
@@ -4296,18 +4706,29 @@ function synthesizePlannerFallbackFromStage1Failure(args: {
  */
 function parseMessageHandlerModelOutput(
 	raw: string | GenerateTextResult,
+	runtimeContext?: {
+		actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
+		messageText?: string;
+	},
 ): MessageHandlerResult | null {
+	const applyBackstops = (result: MessageHandlerResult | null) =>
+		result
+			? applyDirectCurrentCandidateBackstopToMessageHandler(
+					result,
+					runtimeContext,
+				)
+			: null;
 	if (typeof raw !== "string") {
 		const native = parseMessageHandlerNativeToolCall(raw);
-		if (native) return native;
+		if (native) return applyBackstops(native);
 		const text = getV5ModelText(raw);
-		return (
+		return applyBackstops(
 			parseMessageHandlerOutput(text) ??
-			synthesizeSimpleReplyFromPlainText(text)
+				synthesizeSimpleReplyFromPlainText(text),
 		);
 	}
-	return (
-		parseMessageHandlerOutput(raw) ?? synthesizeSimpleReplyFromPlainText(raw)
+	return applyBackstops(
+		parseMessageHandlerOutput(raw) ?? synthesizeSimpleReplyFromPlainText(raw),
 	);
 }
 
@@ -4784,6 +5205,15 @@ async function executeV5PlannedToolCall(
 	const action = executionActions.find(
 		(candidate) => candidate.name === toolCall.name,
 	);
+	const executorCtx = action
+		? {
+				...args.executorCtx,
+				activeContexts: mergeAgentContexts(
+					args.executorCtx.activeContexts,
+					action.contexts,
+				),
+			}
+		: args.executorCtx;
 
 	const hasDispatcherActionParameter =
 		plannerToolCallHasActionParameter(toolCall);
@@ -4792,7 +5222,7 @@ async function executeV5PlannedToolCall(
 			runtime: args.runtime as IAgentRuntime & PlannerRuntime,
 			action,
 			context: args.plannerContext,
-			ctx: args.executorCtx,
+			ctx: executorCtx,
 			options: args.executorOptions,
 			evaluate: args.evaluate,
 			evaluatorEffects: args.evaluatorEffects,
@@ -4806,7 +5236,7 @@ async function executeV5PlannedToolCall(
 
 	const actionResult = await executePlannedToolCall(
 		args.runtime,
-		args.executorCtx,
+		executorCtx,
 		toolCall,
 		{ ...(args.executorOptions ?? {}), actions: executionActions },
 	);
@@ -5306,7 +5736,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			);
 		}
 		if (!messageHandler) {
-			messageHandler = parseMessageHandlerModelOutput(rawMessageHandler);
+			messageHandler = parseMessageHandlerModelOutput(rawMessageHandler, {
+				actions: args.runtime.actions,
+				messageText: getUserMessageText(args.message),
+			});
 		}
 		const stage1CompletionLimitHit = stage1HitCompletionLimit(
 			rawMessageHandler,
@@ -5617,11 +6050,23 @@ export async function runV5MessageRuntimeStage1(args: {
 			attachAvailableContexts(recomposedPlannerState, args.runtime),
 			selectedContextRoutingState,
 		);
+		const directPlannerCandidateActions =
+			inferDirectCurrentRequestCandidateActions(
+				args.runtime.actions ?? [],
+				getUserMessageText(args.message) ?? "",
+			);
+		if (directPlannerCandidateActions.length > 0) {
+			messageHandler.plan.candidateActions = uniqueActionNames([
+				...getMessageHandlerCandidateActions(messageHandler),
+				...directPlannerCandidateActions,
+			]);
+		}
 		const plannerCandidateActions = await collectV5PlannerCandidateActions({
 			runtime: args.runtime,
 			message: args.message,
 			state: plannerState,
 			selectedContexts,
+			candidateActions: getMessageHandlerCandidateActions(messageHandler),
 			userRoles: [senderRole],
 		});
 		const localizedExamplesProvider = getLocalizedExamplesProvider(

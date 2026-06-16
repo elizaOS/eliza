@@ -382,8 +382,19 @@ async function writeCompletedTrajectoryStep({
   trajectory.source = source?.trim() || trajectory.source || "runtime";
   trajectory.status = normalizeStatus(status, "completed");
   trajectory.metadata = mergeMetadata(trajectory.metadata, metadata);
-  trajectory.endTime = Math.max(trajectory.endTime ?? now, now);
-  trajectory.startTime = Math.min(trajectory.startTime, now);
+  const previousStartTime =
+    typeof trajectory.startTime === "number" &&
+    Number.isFinite(trajectory.startTime)
+      ? trajectory.startTime
+      : now;
+  trajectory.startTime = Math.min(previousStartTime, now);
+  const previousEndTime =
+    typeof trajectory.endTime === "number" &&
+    Number.isFinite(trajectory.endTime) &&
+    trajectory.endTime >= trajectory.startTime
+      ? trajectory.endTime
+      : now;
+  trajectory.endTime = Math.max(previousEndTime, now, trajectory.startTime);
   ensureStep(trajectory, stepId, now);
   trajectory.updatedAt = new Date(now).toISOString();
 
@@ -728,6 +739,7 @@ export async function installDatabaseTrajectoryLogger(
 
     const runtimeKey = runtime as object;
     lastWritePromises.set(runtimeKey, writePromise);
+    await writePromise;
   };
 
   // Add query methods for API endpoints
@@ -1316,6 +1328,7 @@ export class DatabaseTrajectoryLogger extends Service {
 
     const runtimeKey = this.runtime as object;
     lastWritePromises.set(runtimeKey, writePromise);
+    await writePromise;
   }
 
   logLlmCall(params: Record<string, unknown>): void {
