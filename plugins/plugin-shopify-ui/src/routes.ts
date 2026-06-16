@@ -746,8 +746,11 @@ export async function handleShopifyRoute(
               firstName: string;
               lastName: string;
               email: string;
-              ordersCount: number;
-              totalSpentV2: { amount: string; currencyCode: string };
+              // Admin API 2025-04 removed Customer.ordersCount / totalSpentV2.
+              // numberOfOrders is UnsignedInt64 (serialized as a string in JSON);
+              // amountSpent is MoneyV2. Verified against the 2025-04 schema.
+              numberOfOrders: string;
+              amountSpent: { amount: string; currencyCode: string };
               createdAt: string;
             };
           }>;
@@ -759,8 +762,8 @@ export async function handleShopifyRoute(
           customers(first: $first, query: $query) {
             edges {
               node {
-                id firstName lastName email ordersCount
-                totalSpentV2 { amount currencyCode }
+                id firstName lastName email numberOfOrders
+                amountSpent { amount currencyCode }
                 createdAt
               }
             }
@@ -775,9 +778,9 @@ export async function handleShopifyRoute(
         firstName: edge.node.firstName ?? "",
         lastName: edge.node.lastName ?? "",
         email: edge.node.email ?? "",
-        ordersCount: edge.node.ordersCount,
-        totalSpent: edge.node.totalSpentV2.amount,
-        currencyCode: edge.node.totalSpentV2.currencyCode,
+        ordersCount: Number(edge.node.numberOfOrders ?? 0),
+        totalSpent: edge.node.amountSpent.amount,
+        currencyCode: edge.node.amountSpent.currencyCode,
         createdAt: edge.node.createdAt,
       }));
 

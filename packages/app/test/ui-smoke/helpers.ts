@@ -1609,10 +1609,31 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       return;
     }
     if (request.method() === "POST") {
+      // Match the real handler's 201 response shape (a full product object), not
+      // a {ok, productId} stub — the TUI interact() returns this body as `product`.
+      const input = (request.postDataJSON() ?? {}) as {
+        title?: string;
+        vendor?: string;
+        productType?: string;
+        price?: string;
+      };
       await route.fulfill({
         status: 201,
         contentType: "application/json",
-        body: JSON.stringify({ ok: true, productId: "ui-smoke-product" }),
+        body: JSON.stringify({
+          id: "gid://shopify/Product/9001",
+          title: input.title ?? "New Product",
+          status: "DRAFT",
+          productType: input.productType ?? "",
+          vendor: input.vendor ?? "",
+          totalInventory: 0,
+          updatedAt: SMOKE_GENERATED_AT,
+          imageUrl: null,
+          priceRange: {
+            min: input.price ?? "0.00",
+            max: input.price ?? "0.00",
+          },
+        }),
       });
       return;
     }
