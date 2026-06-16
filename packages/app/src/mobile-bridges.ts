@@ -17,11 +17,27 @@ import {
   IOS_LOCAL_AGENT_IPC_BASE,
   MOBILE_LOCAL_AGENT_API_BASE,
 } from "@elizaos/ui/first-run/mobile-runtime-mode";
+import { userAgentHasElizaOSMarker } from "@elizaos/ui/platform";
 import { apiBaseToDeviceBridgeUrl, type IosRuntimeConfig } from "./ios-runtime";
 import type { UrlTrustPolicy } from "./url-trust-policy";
 
 const BACKGROUND_RUNNER_LABEL = "eliza-tasks";
 const BACKGROUND_RUNNER_CONFIG_RETRY_MS = 5_000;
+
+/**
+ * True on AOSP Eliza-derived Android system images, where the agent serves
+ * inference in-process (plugin-aosp-local-inference, ELIZA_LOCAL_LLAMA=1) and
+ * the WebView llama device bridge is redundant. Detected from the framework
+ * `ElizaOS/<tag>` user-agent marker the AOSP image stamps on the WebView —
+ * synchronous and boot-race-free. Stock-Android sideloads of the same APK do
+ * not carry the marker, so they keep the device-bridge path.
+ */
+function isAospElizaAndroid(): boolean {
+  return (
+    typeof navigator !== "undefined" &&
+    userAgentHasElizaOSMarker(navigator.userAgent)
+  );
+}
 
 export interface MobileBridgeContext {
   isNative: boolean;
@@ -58,11 +74,23 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
         ? config.deviceBridgeUrl
         : null;
     }
-    // Android local still needs the llama device bridge: the background agent
-    // service cannot call the Capacitor Llama plugin directly. Foreground API
-    // traffic uses Agent.request IPC; this WebSocket is only the native-model
-    // device bridge until that call path moves behind the same plugin surface.
+    // Android local still needs the llama device bridge on stock-Android
+    // sideloads: the background agent service cannot call the Capacitor Llama
+    // plugin directly. Foreground API traffic uses Agent.request IPC; this
+    // WebSocket is only the native-model device bridge until that call path
+    // moves behind the same plugin surface.
+    //
+    // AOSP Eliza-derived Android builds are the exception: they ship the fork
+    // llama libs and serve inference in-process via plugin-aosp-local-inference
+    // (ELIZA_LOCAL_LLAMA=1, eliza-aosp-llama handlers at priority 0). On those
+    // builds the WebView device bridge is pure overhead — it connects, the
+    // agent never routes a `generate` to it, and it just churns reconnect
+    // sockets. The AOSP system image stamps the framework `ElizaOS/<tag>`
+    // user-agent marker, which is a synchronous, boot-race-free signal (no
+    // server round-trip), so we can skip the bridge here. Stock-Android
+    // sideloads of the same APK carry no marker → bridge still starts.
     if (config.mode === "local" && ctx.isAndroid) {
+      if (isAospElizaAndroid()) return null;
       return apiBaseToDeviceBridgeUrl(MOBILE_LOCAL_AGENT_API_BASE);
     }
     // iOS local uses the Bun/ITTP request bridge and must not open loopback.
