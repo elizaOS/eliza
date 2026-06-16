@@ -6,4 +6,5 @@ Screenshots: `../desktop/login.png`, `../desktop/login--hover.png`, `../mobile/l
 
 `good`
 
-Passkey primary + 4 sign-in options. No blue.
+Passkey and Magic Link remain clear on desktop/mobile. Copy now clarifies that
+Magic Link creates new accounts and passkey is available after setup. No blue.

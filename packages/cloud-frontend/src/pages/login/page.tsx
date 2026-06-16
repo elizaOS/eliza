@@ -42,7 +42,9 @@ export default function LoginPage() {
             draggable={false}
           />
           <h1 className="font-poppins text-2xl font-semibold text-white">
-            {t("cloud.login.signIn", { defaultValue: "Sign in" })}
+            {t("cloud.login.signIn", {
+              defaultValue: "Sign in or create an account",
+            })}
           </h1>
           <p className="text-sm text-white/70">
             {t("cloud.login.tagline", { defaultValue: "Run Eliza in Cloud." })}
