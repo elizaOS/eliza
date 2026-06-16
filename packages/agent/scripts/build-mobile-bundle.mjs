@@ -1145,7 +1145,16 @@ const workspaceSrcFallbackPlugin = {
       // (for example @elizaos/plugin-x402/startup-validator); fall back to
       // source when that subpath has not been emitted yet.
       const distDir = path.join(pkgDir, "dist");
-      if (existsSync(distDir)) {
+      // The bundle's own runtime/API packages (@elizaos/agent, @elizaos/app-core)
+      // have compiled `dist` re-exports (e.g. dist/api/cloud-pair-route,
+      // dist/runtime) whose circular barrel exports come out `undefined` once
+      // Bun re-bundles them, OR re-emit bare `@elizaos/*` requires Bun can't
+      // inline — both fatal on-device (no node_modules; handler "is not a
+      // function"). Always resolve these from src so the whole graph inlines
+      // into the single bundle and circular exports settle via Bun's bundler.
+      const forceSourceResolution =
+        pkgName === "@elizaos/agent" || pkgName === "@elizaos/app-core";
+      if (existsSync(distDir) && !forceSourceResolution) {
         if (!subpath) return undefined;
         const cleanedDist = subpath.replace(/\.js$/, "");
         const distCandidates = [

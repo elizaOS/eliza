@@ -24,7 +24,11 @@ const PLUGINS_ROUTE = "/apps/plugins";
 test.describe.configure({ mode: "serial" });
 
 function isPackagedPlatform(): boolean {
-  return process.platform === "darwin" || process.platform === "win32";
+  return (
+    process.platform === "darwin" ||
+    process.platform === "win32" ||
+    process.platform === "linux"
+  );
 }
 
 function getApiBaseExpression(): string {

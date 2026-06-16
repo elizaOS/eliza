@@ -1,0 +1,97 @@
+name: android-device-e2e
+
+# Real-device Android e2e: builds the WebView-debuggable APK, boots an emulator,
+# and drives the real app via Playwright's Android driver + the on-device agent
+# smoke. workflow_dispatch only (it boots an emulator and is slow/heavy).
+#
+# IMPORTANT coverage note: the embedded on-device agent (bun + llama) runs on
+# real arm64 hardware but SIGSEGVs on a stock x86_64 emulator, so the LOCAL
+# route's full chat round-trip only goes green on a self-hosted arm64 device
+# runner. On a GitHub-hosted x86_64 emulator this lane proves: build + install +
+# WebView attach + route navigation, and runs the local smoke as a (currently
+# expected-to-surface) signal. For green route coverage on the emulator, supply
+# an Eliza Cloud token (ELIZA_CLOUD_AUTH_TOKEN secret) so the app onboards to a
+# real cloud agent.
+
+on:
+  workflow_dispatch:
+    inputs:
+      backend:
+        description: "WebView backend for route coverage (cloud|host|local)"
+        type: choice
+        options: [cloud, host, local]
+        default: cloud
+      api-level:
+        description: "Android emulator API level"
+        default: "34"
+
+concurrency:
+  group: android-device-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      ELIZA_MOBILE_REPO_ROOT: ${{ github.workspace }}
+      ELIZA_WEBVIEW_DEBUG: "1"
+      ELIZA_BUN_RISCV64_OPTIONAL: "1"
+      ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB: "1"
+      ELIZA_ANDROID_BACKEND: ${{ github.event.inputs.backend }}
+      ELIZA_CLOUD_AUTH_TOKEN: ${{ secrets.ELIZA_CLOUD_AUTH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+
+      - name: Install workspace
+        run: bun install
+
+      - name: Build WebView-debuggable APK
+        run: bun run --cwd packages/app build:android
+
+      # KVM enables a usable emulator on GitHub ubuntu runners.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+
+      - name: Route coverage on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ github.event.inputs.api-level }}
+          arch: x86_64
+          ram-size: 6144M
+          # avx2/fma passthrough so the (x86) on-device agent doesn't SIGILL.
+          emulator-options: -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect -qemu -cpu qemu64,+avx,+avx2,+f16c,+fma
+          script: |
+            adb root || true
+            adb shell setenforce 0 || true
+            bun run --cwd packages/app build  # ensure web dist
+            ELIZA_ANDROID_REQUIRE_AGENT=${{ github.event.inputs.backend == 'local' && '1' || '0' }} \
+              bun run --cwd packages/app test:e2e:android:routes || true
+            # Local on-device agent smoke (surfaces failure loudly; expected to
+            # fail on stock x86 emulator — see coverage note above).
+            bun run --cwd packages/app test:sim:local-chat:android:live || true
+
+      - name: Cloud provisioning probe
+        if: ${{ env.ELIZA_CLOUD_AUTH_TOKEN != '' }}
+        run: bun run --cwd packages/app test:e2e:android:cloud
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-e2e-artifacts
+          path: |
+            packages/app/test-results/**
+            packages/app/playwright-report/**
+          if-no-files-found: ignore

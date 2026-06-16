@@ -19,7 +19,7 @@ import { signStewardMutatingRequest } from "../steward/sign";
 import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 import { logger } from "../utils/logger";
 import { withTimeout } from "../utils/with-timeout";
-import { loginToImageRegistry } from "./containers/hetzner-client/registry";
+import { ensureRegistryAccess } from "./containers/hetzner-client/registry";
 import { getNodeAutoscaler } from "./containers/node-autoscaler";
 import { resolveImageDigest } from "./containers/registry-probe";
 import { isAlreadyGoneMessage } from "./docker-error-classifier";
@@ -1008,7 +1008,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       // credentials are configured; otherwise rely on anonymous public pulls.
       logger.info(`[docker-sandbox] Pulling image ${resolvedImage} on ${nodeId}`);
       try {
-        await loginToImageRegistry(ssh, resolvedImage);
+        await ensureRegistryAccess(ssh, resolvedImage);
         await ssh.exec(
           ["docker pull", ...platformFlags, shellQuote(resolvedImage)].join(" "),
           PULL_TIMEOUT_MS,

@@ -40,14 +40,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="@string/custom_url_scheme" />
             </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.HOME" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-
-
-        </activity>
+</activity>
 <!--
             Continuous-chat foreground service (R10 §6.2). Owns the long-
             lived microphone capture path so VAD-gated / always-on chat
@@ -69,12 +62,12 @@
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
 <service
-            android:name="ai.milady.milady.GatewayConnectionService"
+            android:name="ai.elizaos.app.GatewayConnectionService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
     
         <service
-            android:name="ai.milady.milady.ElizaAgentService"
+            android:name="ai.elizaos.app.ElizaAgentService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property
@@ -83,7 +76,7 @@
         </service>
     
         <activity
-            android:name="ai.milady.milady.ElizaDialActivity"
+            android:name="ai.elizaos.app.ElizaDialActivity"
             android:exported="true"
             android:theme="@style/AppTheme.NoActionBar">
             <intent-filter>
@@ -98,7 +91,7 @@
         </activity>
     
         <activity
-            android:name="ai.milady.milady.ElizaAssistActivity"
+            android:name="ai.elizaos.app.ElizaAssistActivity"
             android:exported="true"
             android:theme="@style/AppTheme.NoActionBar">
             <intent-filter>
@@ -112,7 +105,7 @@
         </activity>
     
         <service
-            android:name="ai.milady.milady.ElizaAccessibilityService"
+            android:name="ai.elizaos.app.ElizaAccessibilityService"
             android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
@@ -124,7 +117,7 @@
         </service>
     
         <service
-            android:name="ai.milady.milady.ElizaNotificationListenerService"
+            android:name="ai.elizaos.app.ElizaNotificationListenerService"
             android:exported="true"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
@@ -133,7 +126,7 @@
         </service>
     
         <service
-            android:name="ai.milady.milady.ElizaInCallService"
+            android:name="ai.elizaos.app.ElizaInCallService"
             android:exported="true"
             android:permission="android.permission.BIND_INCALL_SERVICE">
             <meta-data
@@ -148,7 +141,7 @@
         </service>
     
         <receiver
-            android:name="ai.milady.milady.ElizaSmsReceiver"
+            android:name="ai.elizaos.app.ElizaSmsReceiver"
             android:exported="true"
             android:permission="android.permission.BROADCAST_SMS">
             <intent-filter>
@@ -157,7 +150,7 @@
         </receiver>
     
         <receiver
-            android:name="ai.milady.milady.ElizaMmsReceiver"
+            android:name="ai.elizaos.app.ElizaMmsReceiver"
             android:exported="true"
             android:permission="android.permission.BROADCAST_WAP_PUSH">
             <intent-filter>
@@ -167,11 +160,11 @@
         </receiver>
     
         <service
-            android:name="ai.milady.milady.ElizaSmsGatewayService"
+            android:name="ai.elizaos.app.ElizaSmsGatewayService"
             android:exported="false" />
     
         <service
-            android:name="ai.milady.milady.ElizaRespondViaMessageService"
+            android:name="ai.elizaos.app.ElizaRespondViaMessageService"
             android:exported="true"
             android:permission="android.permission.SEND_RESPOND_VIA_MESSAGE">
             <intent-filter>
@@ -184,7 +177,7 @@
         </service>
     
         <activity
-            android:name="ai.milady.milady.ElizaSmsComposeActivity"
+            android:name="ai.elizaos.app.ElizaSmsComposeActivity"
             android:exported="true"
             android:theme="@style/AppTheme.NoActionBar">
             <intent-filter>
@@ -198,7 +191,7 @@
         </activity>
     
         <receiver
-            android:name="ai.milady.milady.ElizaBootReceiver"
+            android:name="ai.elizaos.app.ElizaBootReceiver"
             android:directBootAware="true"
             android:exported="false">
             <intent-filter>
@@ -208,7 +201,7 @@
         </receiver>
     
         <activity
-            android:name="ai.milady.milady.ElizaBrowserActivity"
+            android:name="ai.elizaos.app.ElizaBrowserActivity"
             android:exported="true"
             android:theme="@style/AppTheme.NoActionBar">
             <intent-filter>
@@ -225,15 +218,10 @@
         </activity>
     
         <activity
-            android:name="ai.milady.milady.ElizaContactsActivity"
+            android:name="ai.elizaos.app.ElizaContactsActivity"
             android:exported="true"
             android:label="Contacts"
             android:theme="@style/AppTheme.NoActionBar">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-                <category android:name="android.intent.category.APP_CONTACTS" />
-            </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -249,14 +237,10 @@
         </activity>
     
         <activity
-            android:name="ai.milady.milady.ElizaCameraActivity"
+            android:name="ai.elizaos.app.ElizaCameraActivity"
             android:exported="true"
             android:label="Camera"
             android:theme="@style/AppTheme.NoActionBar">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
             <intent-filter>
                 <action android:name="android.media.action.STILL_IMAGE_CAMERA" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -272,14 +256,10 @@
         </activity>
     
         <activity
-            android:name="ai.milady.milady.ElizaClockActivity"
+            android:name="ai.elizaos.app.ElizaClockActivity"
             android:exported="true"
             android:label="Clock"
             android:theme="@style/AppTheme.NoActionBar">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SET_ALARM" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -303,15 +283,10 @@
         </activity>
     
         <activity
-            android:name="ai.milady.milady.ElizaCalendarActivity"
+            android:name="ai.elizaos.app.ElizaCalendarActivity"
             android:exported="true"
             android:label="Calendar"
             android:theme="@style/AppTheme.NoActionBar">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-                <category android:name="android.intent.category.APP_CALENDAR" />
-            </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
