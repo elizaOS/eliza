@@ -16,7 +16,7 @@ import {
   APP_ID,
   appPid,
   connectPlaywrightDevice,
-  launchApp,
+  foregroundApp,
   resolveAdb,
 } from "../../scripts/lib/android-device.mjs";
 
@@ -90,7 +90,9 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   appPage: [
     async ({ device }, use) => {
       const adb = resolveAdb();
-      launchApp(adb, device.serial());
+      // Foreground (don't force-stop) so an already-connected agent/device-bridge
+      // session survives; force-stopping resets it and the shell never recovers.
+      foregroundApp(adb, device.serial());
       for (let i = 0; i < 30 && !appPid(adb, device.serial()); i += 1) {
         await delay(500);
       }
@@ -102,10 +104,14 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           localStorage.setItem(key, value);
         }
       }, SEED_STORAGE);
-      await page
-        .goto(`${ORIGIN}/`, { waitUntil: "domcontentloaded", timeout: 20_000 })
-        .catch(() => {});
-      await waitForShellReady(page);
+      // Only reload into a clean shell if the app isn't already rendered — a
+      // reload re-bootstraps the connection and can dead-end on a stock device.
+      if (!(await isShellReady(page))) {
+        await page
+          .goto(`${ORIGIN}/`, { waitUntil: "domcontentloaded", timeout: 20_000 })
+          .catch(() => {});
+        await waitForShellReady(page);
+      }
       await use(page);
     },
     { scope: "worker" },
@@ -120,6 +126,15 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 });
 
 export { expect, android };
+
+/** One-shot check: is the React shell rendered past the connecting splash? */
+export async function isShellReady(page: Page): Promise<boolean> {
+  const text = await page
+    .evaluate(() => document.body?.innerText ?? "")
+    .catch(() => "");
+  const stillBooting = /Connecting to backend|INITIALIZING AGENT/i.test(text);
+  return !stillBooting && text.trim().length > 40;
+}
 
 /** True once the React shell has rendered past the connecting/loading splash. */
 export async function waitForShellReady(
