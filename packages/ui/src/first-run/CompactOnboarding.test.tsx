@@ -23,6 +23,9 @@ vi.mock("./use-first-run-controller", () => ({
   },
 }));
 
+const openExternalUrl = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock("../utils/openExternalUrl", () => ({ openExternalUrl }));
+
 import { CompactOnboarding } from "./CompactOnboarding";
 
 function controller(
@@ -38,7 +41,7 @@ function controller(
       remoteToken: "",
     },
     localRuntimeAvailable: false,
-    cloudOnly: true,
+    cloudOnly: false,
     elizaCloudConnected: false,
     submitting: false,
     busyText: null,
@@ -75,25 +78,102 @@ function controller(
 afterEach(() => {
   cleanup();
   controllerMock.current = null;
+  openExternalUrl.mockClear();
 });
 
 describe("CompactOnboarding", () => {
-  it("renders the minimalist cloud-only entry surface", () => {
+  it("offers the three runtime options with the brand lockup and no orb", () => {
     controllerMock.current = controller();
 
     render(<CompactOnboarding />);
 
-    expect(screen.getByRole("button", { name: "Tap to speak" })).toBeTruthy();
-    const connect = screen.getByRole("button", { name: "Connect" });
-    expect(connect.className).toContain("bg-transparent");
-    expect(connect.className).toContain("border");
-    expect(connect.className).toContain("rounded-[2px]");
-    expect(screen.queryByText("Set up your agent")).toBeNull();
-    expect(screen.queryByText("Connect to cloud.")).toBeNull();
-    expect(screen.queryByText("Use Local")).toBeNull();
+    expect(screen.getByText("Choose how to run your agent")).toBeTruthy();
+    expect(screen.getByTestId("onboarding-option-cloud")).toBeTruthy();
+    expect(screen.getByTestId("onboarding-option-remote")).toBeTruthy();
+    expect(screen.getByTestId("onboarding-option-local")).toBeTruthy();
+    // The voice-first orb is gone.
+    expect(screen.queryByRole("button", { name: "Tap to speak" })).toBeNull();
   });
 
-  it("shows cloud login errors without replacing the orange background", () => {
+  it("connects to cloud directly from the Eliza Cloud option", async () => {
+    const updateDraft = vi.fn();
+    const finishRuntime = vi.fn(async () => {});
+    controllerMock.current = controller({ updateDraft, finishRuntime });
+
+    render(<CompactOnboarding />);
+    fireEvent.click(screen.getByTestId("onboarding-option-cloud"));
+
+    await waitFor(() => expect(finishRuntime).toHaveBeenCalledTimes(1));
+    expect(updateDraft).toHaveBeenCalledWith("runtime", "cloud");
+  });
+
+  it("opens the remote form (URL + token) from the Remote option", () => {
+    const updateDraft = vi.fn();
+    const setStep = vi.fn();
+    controllerMock.current = controller({ updateDraft, setStep });
+
+    render(<CompactOnboarding />);
+    fireEvent.click(screen.getByTestId("onboarding-option-remote"));
+
+    expect(updateDraft).toHaveBeenCalledWith("runtime", "remote");
+    expect(setStep).toHaveBeenCalledWith("remote");
+  });
+
+  it("renders the remote URL/token form on the remote step and finishes", async () => {
+    const finishRuntime = vi.fn(async () => {});
+    controllerMock.current = controller({
+      step: "remote",
+      draft: {
+        agentName: "Eliza",
+        runtime: "remote",
+        localInference: "all-local",
+        remoteApiBase: "https://agent.example.com",
+        remoteToken: "",
+      },
+      finishRuntime,
+    });
+
+    render(<CompactOnboarding />);
+    expect(
+      screen.getByPlaceholderText("https://agent.example.com"),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByTestId("onboarding-remote-connect"));
+
+    await waitFor(() => expect(finishRuntime).toHaveBeenCalledTimes(1));
+  });
+
+  it("starts the local runtime from the Local option", async () => {
+    const updateDraft = vi.fn();
+    const finishRuntime = vi.fn(async () => {});
+    controllerMock.current = controller({ updateDraft, finishRuntime });
+
+    render(<CompactOnboarding />);
+    fireEvent.click(screen.getByTestId("onboarding-option-local"));
+
+    await waitFor(() => expect(finishRuntime).toHaveBeenCalledTimes(1));
+    expect(updateDraft).toHaveBeenCalledWith("runtime", "local");
+  });
+
+  it("surfaces the cloud login link as a tappable button, not raw text", () => {
+    controllerMock.current = controller({
+      cloudError:
+        "Open this link to log in: https://www.elizacloud.ai/auth/cli-login?session=abc",
+    });
+
+    render(<CompactOnboarding />);
+
+    const openBtn = screen.getByTestId("onboarding-cloud-open-signin");
+    expect(openBtn).toBeTruthy();
+    // The raw "Open this link to log in:" string is NOT dumped at the user.
+    expect(screen.queryByText(/Open this link to log in:/)).toBeNull();
+
+    fireEvent.click(openBtn);
+    expect(openExternalUrl).toHaveBeenCalledWith(
+      "https://www.elizacloud.ai/auth/cli-login?session=abc",
+    );
+  });
+
+  it("keeps the orange background when a cloud error is shown", () => {
     controllerMock.current = controller({
       cloudError: "Eliza Cloud login timed out. Please try again.",
     });
@@ -106,32 +186,16 @@ describe("CompactOnboarding", () => {
     expect(document.querySelector(".first-run-screen")).toBeTruthy();
   });
 
-  it("disables actions while cloud login is pending", () => {
+  it("disables the option cards while submitting", () => {
     controllerMock.current = controller({ submitting: true });
 
     render(<CompactOnboarding />);
 
     expect(
-      screen.getByRole<HTMLButtonElement>("button", { name: "Tap to speak" })
-        .disabled,
+      screen.getByTestId<HTMLButtonElement>("onboarding-option-cloud").disabled,
     ).toBe(true);
     expect(
-      screen.getByRole<HTMLButtonElement>("button", { name: "Connect" })
-        .disabled,
+      screen.getByTestId<HTMLButtonElement>("onboarding-option-local").disabled,
     ).toBe(true);
-  });
-
-  it("connects to cloud from the single Connect action", async () => {
-    const updateDraft = vi.fn();
-    const finishRuntime = vi.fn(async () => {});
-    controllerMock.current = controller({ updateDraft, finishRuntime });
-
-    render(<CompactOnboarding />);
-    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-
-    await waitFor(() => {
-      expect(finishRuntime).toHaveBeenCalledTimes(1);
-    });
-    expect(updateDraft).toHaveBeenCalledWith("runtime", "cloud");
   });
 });

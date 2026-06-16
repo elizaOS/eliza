@@ -119,22 +119,12 @@ async function clickIfVisible(
 }
 
 async function startCloudRuntime(page: Page): Promise<void> {
-  await clickIfVisible(page.getByRole("button", { name: "Get started" }));
-  const compactCloudButton = page
-    .getByTestId("first-run-runtime-cloud")
-    .or(page.locator("button").filter({ hasText: /^Eliza Cloud$/ }));
-  if (await clickIfVisible(compactCloudButton, 30_000)) {
-    return;
-  }
-
-  const startButton = page.getByRole("button", { name: /^Start$/ });
-  if (await clickIfVisible(startButton)) {
-    return;
-  }
-
-  const connectButton = page.getByRole("button", { name: /^Connect$/ });
-  await connectButton.click();
-  await clickIfVisible(startButton, 5_000);
+  // Redesigned first-run onboarding: the "Choose how to run your agent"
+  // card surfaces three runtime option buttons. Picking the cloud option
+  // applies the cloud draft + finishes the runtime in a single tap.
+  const cloudOption = page.getByTestId("onboarding-option-cloud");
+  await cloudOption.waitFor({ state: "visible", timeout: 30_000 });
+  await cloudOption.click();
 }
 
 async function installCloudConnectionRoutes(

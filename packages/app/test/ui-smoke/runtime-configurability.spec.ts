@@ -94,16 +94,11 @@ test("onboarding exposes local, cloud, and remote runtimes and each is configura
   if (!(await hasDetailedFirstRunShell(page))) {
     const toast = page.getByTestId("onboarding-toast");
     await expect(toast).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Tap to speak" }),
-    ).toBeVisible();
-    await expect(page.getByRole("button", { name: "Connect" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Use Local" })).toHaveCount(
-      0,
-    );
-    await expect(page.getByRole("button", { name: "Eliza Cloud" })).toHaveCount(
-      0,
-    );
+    await expect(page.getByText("Choose how to run your agent")).toBeVisible();
+    // All three runtimes are offered as option cards on the compact surface.
+    await expect(page.getByTestId("onboarding-option-cloud")).toBeVisible();
+    await expect(page.getByTestId("onboarding-option-remote")).toBeVisible();
+    await expect(page.getByTestId("onboarding-option-local")).toBeVisible();
     await expect(toast).toBeVisible();
     await expectNoRenderTelemetryErrors(
       page,
@@ -164,12 +159,9 @@ test("onboarding survives browser back and forward while runtime choices churn",
   });
   const shell = await expectFirstRunSurface(page);
   if (!(await hasDetailedFirstRunShell(page))) {
-    await expect(
-      page.getByRole("button", { name: /^(Use Local|Connect)$/ }),
-    ).toBeVisible();
-    await expect(page.getByRole("button", { name: "Eliza Cloud" })).toHaveCount(
-      0,
-    );
+    // The compact surface offers the runtime choices as option cards.
+    await expect(page.getByTestId("onboarding-option-cloud")).toBeVisible();
+    await expect(page.getByTestId("onboarding-option-local")).toBeVisible();
     await page.goto("/?runtime=first-run&runtimeTarget=local", {
       waitUntil: "domcontentloaded",
     });
