@@ -42,6 +42,13 @@ const DEFAULT_BIND_HOST = "127.0.0.1";
 const DEFAULT_AGENT_BASE_DOMAIN = "elizacloud.ai";
 const AGENT_ID_RE =
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+// The first request to an agent after an idle period can hit a transiently cold
+// tailnet path that fails while it re-establishes. Retry idempotent requests
+// once (the first attempt re-warms the path) before surfacing the failure.
+// Non-idempotent requests are never retried (the warm-keep heartbeat holds the
+// path open between requests, so a cold POST is rare).
+const PROXY_TAILNET_RETRY_ATTEMPTS = 1;
+const PROXY_TAILNET_RETRY_DELAY_MS = 400;
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
   "content-length",
@@ -320,12 +327,24 @@ async function proxyAgentRequest(
     redirect: "manual",
     signal: AbortSignal.timeout(120_000),
   };
-  if (method !== "GET" && method !== "HEAD") {
+  const idempotent = method === "GET" || method === "HEAD";
+  if (!idempotent) {
     const body = await readIncomingBody(req);
     if (body) init.body = body;
   }
 
-  return fetch(targetUrl, init);
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fetch(targetUrl, init);
+    } catch (error) {
+      // Only idempotent requests are safe to replay, and only a transport
+      // failure (a cold/torn path) — never a real HTTP response — reaches here.
+      if (!idempotent || attempt >= PROXY_TAILNET_RETRY_ATTEMPTS) throw error;
+      await new Promise((resolve) =>
+        setTimeout(resolve, PROXY_TAILNET_RETRY_DELAY_MS),
+      );
+    }
+  }
 }
 
 async function handleRequest(

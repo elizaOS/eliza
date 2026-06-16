@@ -121,6 +121,16 @@ export interface SnapshotResult {
 const MAX_BACKUPS = 10;
 const SHARED_RUNTIME_HISTORY_TTL_SECONDS = 60 * 60 * 24 * 30;
 const SHARED_RUNTIME_HISTORY_MAX_MESSAGES = 40;
+// Heartbeat probes the agent over the headscale tailnet. When idle the path
+// goes cold, so the first probe after a quiet period can fail while it
+// re-establishes — retry before evicting a healthy agent.
+const HEARTBEAT_PROBE_ATTEMPTS = 3;
+const HEARTBEAT_PROBE_RETRY_MS = 2_000;
+// A single failed cycle must not evict. Only mark disconnected after the agent
+// has been continuously unreachable this long — last_heartbeat_at (bumped only
+// on success) is the downtime clock. The ~30s heartbeat itself keeps the
+// WireGuard NAT mapping warm, so a reachable agent never trips this.
+const HEARTBEAT_DISCONNECT_AFTER_MS = 120_000;
 type LifecycleTx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 function digestPinnedImageRef(imageRef: string, digest: string): string {
@@ -3200,26 +3210,54 @@ export class ElizaSandboxService {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
     if (!rec?.bridge_url) return false;
 
-    const res = await (async () => {
+    // The agent is reached over the headscale tailnet, where an idle path goes
+    // cold; a single cold-path miss must not evict a healthy agent. Retry the
+    // probe (the first attempt re-warms the path), then apply hysteresis before
+    // giving up — seen live: a freshly-running agent was marked disconnected
+    // ~1 min after boot by one transient "fetch failed".
+    const heartbeatEndpoint = await this.getAgentApiEndpoint(rec, "/");
+    let res: Response | null = null;
+    for (let attempt = 0; attempt < HEARTBEAT_PROBE_ATTEMPTS; attempt++) {
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, HEARTBEAT_PROBE_RETRY_MS));
+      }
       try {
-        const heartbeatEndpoint = await this.getAgentApiEndpoint(rec, "/");
-        return await fetch(heartbeatEndpoint, {
+        res = await fetch(heartbeatEndpoint, {
           method: "GET",
           headers: this.getAgentJsonHeaders(rec),
           signal: AbortSignal.timeout(10_000),
         });
+        if (res.ok) break;
       } catch (error) {
-        logger.warn("[agent-sandbox] Heartbeat request failed", {
+        logger.debug("[agent-sandbox] Heartbeat probe attempt failed, retrying", {
           agentId,
+          attempt,
           error: error instanceof Error ? error.message : String(error),
         });
-        return null;
+        res = null;
       }
-    })();
+    }
 
     if (!res?.ok) {
-      logger.warn("[agent-sandbox] Heartbeat failed, marking disconnected", {
+      // Hysteresis: one failed cycle is not enough to evict. last_heartbeat_at
+      // is bumped only on success, so its age is how long the agent has been
+      // continuously unreachable. Stay running inside the grace window (the next
+      // cycle's retry re-warms the path); only disconnect once unreachable past
+      // it.
+      const lastOkMs = rec.last_heartbeat_at
+        ? new Date(rec.last_heartbeat_at).getTime()
+        : Date.now();
+      const downForMs = Date.now() - lastOkMs;
+      if (downForMs < HEARTBEAT_DISCONNECT_AFTER_MS) {
+        logger.warn("[agent-sandbox] Heartbeat miss within grace window, keeping running", {
+          agentId,
+          downForMs,
+        });
+        return false;
+      }
+      logger.warn("[agent-sandbox] Heartbeat failed past grace window, marking disconnected", {
         agentId,
+        downForMs,
       });
       await agentSandboxesRepository.update(rec.id, {
         status: "disconnected",
