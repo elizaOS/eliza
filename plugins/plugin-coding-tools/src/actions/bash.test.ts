@@ -23,8 +23,7 @@ import { describe, expect, it, vi } from "vitest";
 // Porting each assertion to a per-platform expected value would be
 // invasive and is out of scope for the Windows compatibility lane; skip
 // the suite on Windows and trust the equivalent Linux/macOS runs.
-const describeIfPosix =
-  process.platform === "win32" ? describe.skip : describe;
+const describeIfPosix = process.platform === "win32" ? describe.skip : describe;
 
 import { SandboxService, SessionCwdService } from "../services/index.js";
 import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";

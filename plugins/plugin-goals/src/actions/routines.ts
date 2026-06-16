@@ -18,11 +18,7 @@ import type {
   State,
 } from "@elizaos/core";
 
-import {
-  GOALS_CONTEXTS,
-  GOALS_LOG_PREFIX,
-  ROUTINE_ACTIONS,
-} from "../types.ts";
+import { GOALS_CONTEXTS, GOALS_LOG_PREFIX, ROUTINE_ACTIONS } from "../types.ts";
 
 export const ownerRoutinesAction: Action = {
   name: "OWNER_ROUTINES",

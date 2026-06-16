@@ -7,16 +7,15 @@
  */
 
 export { ownerFinancesAction } from "./actions/finances.ts";
+export { FinancesView } from "./components/finances/FinancesView.tsx";
 export {
   financesSchema,
-  recurringChargesTable,
   type RecurringChargeInsert,
   type RecurringChargeRow,
-  transactionsTable,
+  recurringChargesTable,
   type TransactionInsert,
   type TransactionRow,
+  transactionsTable,
 } from "./db/schema.ts";
-export { financesPlugin } from "./plugin.ts";
-export { default } from "./plugin.ts";
+export { default, financesPlugin } from "./plugin.ts";
 export * from "./types.ts";
-export { FinancesView } from "./components/finances/FinancesView.tsx";

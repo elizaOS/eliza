@@ -3,9 +3,9 @@ import { resolveRuntimePluginImportSpecifier } from "./plugin-resolver";
 
 describe("resolveRuntimePluginImportSpecifier", () => {
   it("uses app plugin runtime entrypoints for core app plugins", () => {
-    expect(resolveRuntimePluginImportSpecifier("@elizaos/plugin-personal-assistant")).toBe(
-      "@elizaos/plugin-personal-assistant/plugin",
-    );
+    expect(
+      resolveRuntimePluginImportSpecifier("@elizaos/plugin-personal-assistant"),
+    ).toBe("@elizaos/plugin-personal-assistant/plugin");
     expect(
       resolveRuntimePluginImportSpecifier("@elizaos/plugin-companion"),
     ).toBe("@elizaos/plugin-companion/plugin");

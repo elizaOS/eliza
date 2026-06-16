@@ -24,7 +24,12 @@ interface SectionProps {
   readonly children?: ReactElement | ReactElement[] | string;
 }
 
-function Section({ title, subtitle, icon, children }: SectionProps): ReactElement {
+function Section({
+  title,
+  subtitle,
+  icon,
+  children,
+}: SectionProps): ReactElement {
   return (
     <section
       style={{

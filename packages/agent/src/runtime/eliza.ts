@@ -871,8 +871,9 @@ export async function configureLocalEmbeddingPlugin(
   _plugin: Plugin,
   config?: ElizaConfig,
 ): Promise<void> {
-  const { detectEmbeddingPreset } =
-    await import("@elizaos/plugin-local-inference/runtime/embedding-presets");
+  const { detectEmbeddingPreset } = await import(
+    "@elizaos/plugin-local-inference/runtime/embedding-presets"
+  );
   const detectedPreset = detectEmbeddingPreset();
   const SQL_COMPATIBLE_EMBEDDING_DIMENSIONS = new Set([
     384, 512, 768, 1024, 1536, 3072,
@@ -1476,8 +1477,9 @@ async function installPromptOptimizationLayer(
   config?: ElizaConfig,
 ): Promise<void> {
   try {
-    const { installPromptOptimizations } =
-      await import("./prompt-optimization.ts");
+    const { installPromptOptimizations } = await import(
+      "./prompt-optimization.ts"
+    );
     installPromptOptimizations(runtime, config);
   } catch (err) {
     logger.warn(
@@ -3276,8 +3278,9 @@ export async function startEliza(
   // connector blocks so nothing downstream re-derives the token. Skipped
   // outside a provisioned container or when ELIZA_SANDBOX_OWNS_CONNECTORS=1.
   {
-    const { applySandboxConnectorOwnership } =
-      await import("./sandbox-character.ts");
+    const { applySandboxConnectorOwnership } = await import(
+      "./sandbox-character.ts"
+    );
     applySandboxConnectorOwnership(process.env, config);
   }
   // Kick off the Discord App ID lookup and the cloud GitHub token fetch (both
@@ -3562,8 +3565,9 @@ export async function startEliza(
   //     it only logs availability — so deferring it changes no resolve input.
   let subscriptionCredentialsDeferredPromise: Promise<void> = Promise.resolve();
   try {
-    const { applySubscriptionCredentialsLocal } =
-      await import("../auth/index.ts");
+    const { applySubscriptionCredentialsLocal } = await import(
+      "../auth/index.ts"
+    );
     applySubscriptionCredentialsLocal(config);
   } catch (err) {
     logger.warn(
@@ -3571,8 +3575,9 @@ export async function startEliza(
     );
   }
   subscriptionCredentialsDeferredPromise = (async () => {
-    const { applySubscriptionCredentialsDeferred } =
-      await import("../auth/index.ts");
+    const { applySubscriptionCredentialsDeferred } = await import(
+      "../auth/index.ts"
+    );
     await applySubscriptionCredentialsDeferred();
   })().catch((err) => {
     logger.warn(
@@ -3689,8 +3694,9 @@ export async function startEliza(
   ) {
     try {
       const { sharedVault } = await importAppCoreRuntime();
-      const { applyVaultProfilesForAgent } =
-        await import("./vault-profile-resolver.ts");
+      const { applyVaultProfilesForAgent } = await import(
+        "./vault-profile-resolver.ts"
+      );
       await applyVaultProfilesForAgent(sharedVault(), agentId);
     } catch (err) {
       logger.warn(
@@ -4090,8 +4096,9 @@ export async function startEliza(
   // with "no provider" diagnostics and disabled embedding services.
   if (process.env.ELIZA_LOCAL_LLAMA?.trim() === "1") {
     try {
-      const { ensureAospLocalInferenceHandlers } =
-        await import("@elizaos/plugin-aosp-local-inference");
+      const { ensureAospLocalInferenceHandlers } = await import(
+        "@elizaos/plugin-aosp-local-inference"
+      );
       await ensureAospLocalInferenceHandlers(runtime);
     } catch (err) {
       logger.warn(
@@ -4100,8 +4107,9 @@ export async function startEliza(
     }
   } else if (process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1") {
     try {
-      const { ensureMobileDeviceBridgeInferenceHandlers } =
-        await import("@elizaos/plugin-capacitor-bridge");
+      const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
+        "@elizaos/plugin-capacitor-bridge"
+      );
       await ensureMobileDeviceBridgeInferenceHandlers(runtime);
     } catch (err) {
       logger.warn(
@@ -4228,8 +4236,9 @@ export async function startEliza(
 
   const registerConnectorSetupService = async (): Promise<void> => {
     try {
-      const { ConnectorSetupService } =
-        await import("../services/connector-setup-service.ts");
+      const { ConnectorSetupService } = await import(
+        "../services/connector-setup-service.ts"
+      );
       await runtime.registerService(ConnectorSetupService);
     } catch (err) {
       logger.debug(
@@ -4315,8 +4324,9 @@ export async function startEliza(
     }
     try {
       const { sharedVault } = await importAppCoreRuntime();
-      const { VaultSignerBackend } =
-        await import("../services/vault-signer-backend.ts");
+      const { VaultSignerBackend } = await import(
+        "../services/vault-signer-backend.ts"
+      );
       const {
         createTeeGatedRemoteSigningService,
         RemoteSigningRuntimeService,
@@ -4396,8 +4406,9 @@ export async function startEliza(
 
   const registerConversationProximityProvider = async (): Promise<void> => {
     try {
-      const { conversationProximityProvider } =
-        await import("../providers/conversation-proximity.ts");
+      const { conversationProximityProvider } = await import(
+        "../providers/conversation-proximity.ts"
+      );
       await runtime.registerPlugin({
         name: "eliza-conversation-proximity",
         description:
@@ -4441,8 +4452,9 @@ export async function startEliza(
 
   const installServerSideWebSearchIfAvailable = async (): Promise<void> => {
     try {
-      const { installServerSideWebSearch } =
-        await import("./web-search-tools.ts");
+      const { installServerSideWebSearch } = await import(
+        "./web-search-tools.ts"
+      );
       installServerSideWebSearch();
     } catch (err) {
       logger.debug(
@@ -4455,8 +4467,9 @@ export async function startEliza(
   // Opt out with ELIZA_WEB_FETCH=0|false|off, mirroring ELIZA_WEB_SEARCH.
   const registerWebFetchActionIfEnabled = async (): Promise<void> => {
     try {
-      const { webFetch, isWebFetchEnabled } =
-        await import("./actions/web-fetch.ts");
+      const { webFetch, isWebFetchEnabled } = await import(
+        "./actions/web-fetch.ts"
+      );
       if (!isWebFetchEnabled()) {
         logger.info(
           "[eliza] WEB_FETCH action disabled via ELIZA_WEB_FETCH=0|false|off",
@@ -5079,8 +5092,9 @@ export async function startEliza(
           // Apply subscription-based credentials (Claude Max, Codex Max)
           // that may have been set up during first-run setup.
           try {
-            const { applySubscriptionCredentials } =
-              await import("../auth/index.ts");
+            const { applySubscriptionCredentials } = await import(
+              "../auth/index.ts"
+            );
             await applySubscriptionCredentials(freshConfig);
           } catch (subErr) {
             logger.warn(
@@ -5185,8 +5199,9 @@ export async function startEliza(
 
           assertPersistentDatabaseRequired(newRuntime);
           try {
-            const { ConnectorSetupService: CSSReload } =
-              await import("../services/connector-setup-service.ts");
+            const { ConnectorSetupService: CSSReload } = await import(
+              "../services/connector-setup-service.ts"
+            );
             await newRuntime.registerService(CSSReload);
           } catch {
             // non-fatal
@@ -5216,8 +5231,9 @@ export async function startEliza(
           );
 
           try {
-            const { applyPluginRoleGating } =
-              await import("./plugin-role-gating.ts");
+            const { applyPluginRoleGating } = await import(
+              "./plugin-role-gating.ts"
+            );
             applyPluginRoleGating(newRuntime.plugins ?? []);
           } catch (err) {
             logger.debug(
@@ -5307,8 +5323,9 @@ export async function startEliza(
     // and forward inbound platform messages here. Returns null for every
     // non-provisioned runtime, so this is inert outside the cloud
     // container. See packages/agent/src/runtime/sandbox-registry.ts.
-    const { buildSandboxRegistryFromEnv } =
-      await import("./sandbox-registry.ts");
+    const { buildSandboxRegistryFromEnv } = await import(
+      "./sandbox-registry.ts"
+    );
     const sandboxRegistry = buildSandboxRegistryFromEnv();
     if (sandboxRegistry) {
       try {

@@ -16,8 +16,8 @@ import { CreditCard, Repeat, Wallet } from "lucide-react";
 import type { ReactElement } from "react";
 import type {
   FinanceBalanceSummaryDTO,
-  FinanceTransactionDTO,
   FinancesViewProps,
+  FinanceTransactionDTO,
   RecurringChargeDTO,
 } from "../../types.ts";
 
@@ -52,9 +52,7 @@ function BalanceSummarySection({
           </div>
           <div>
             <dt>This month — in</dt>
-            <dd>
-              {formatMinor(balance.monthlyIncomeMinor, balance.currency)}
-            </dd>
+            <dd>{formatMinor(balance.monthlyIncomeMinor, balance.currency)}</dd>
           </div>
           <div>
             <dt>This month — out</dt>

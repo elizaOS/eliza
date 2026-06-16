@@ -76,12 +76,14 @@ export const voiceCallAction: Action = {
     },
     {
       name: "phoneNumber",
-      description: "Resolved E.164 phone number. Required for recipientKind=e164.",
+      description:
+        "Resolved E.164 phone number. Required for recipientKind=e164.",
       schema: { type: "string" },
     },
     {
       name: "recipient",
-      description: "Contact name or E.164 used for recipientKind=external lookup.",
+      description:
+        "Contact name or E.164 used for recipientKind=external lookup.",
       schema: { type: "string" },
     },
     {
@@ -132,10 +134,7 @@ export const voiceCallAction: Action = {
         // port Twilio dispatch (readTwilioCredentialsFromEnv +
         // sendTwilioVoiceCall), owner / external / e164 routing branches,
         // pending-call draft store, and approval-queue handoff.
-        return failure(
-          "scaffold_stub",
-          "VOICE_CALL.dial is not migrated yet.",
-        );
+        return failure("scaffold_stub", "VOICE_CALL.dial is not migrated yet.");
       default:
         return failure("unknown_op", `Unsupported op '${op}'.`);
     }

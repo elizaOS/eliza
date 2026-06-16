@@ -8,7 +8,9 @@
     "moduleResolution": "bundler",
     "paths": {
       "@elizaos/app-core": ["./src/type-stubs/app-core/index.d.ts"],
-      "@elizaos/plugin-personal-assistant": ["./src/type-stubs/eliza-apps/lifeops.d.ts"],
+      "@elizaos/plugin-personal-assistant": [
+        "./src/type-stubs/eliza-apps/lifeops.d.ts"
+      ],
       "@elizaos/core": ["./src/type-stubs/core/index.d.ts"],
       "@elizaos/shared": ["./src/type-stubs/shared/index.d.ts"],
       "@elizaos/plugin-2004scape": [

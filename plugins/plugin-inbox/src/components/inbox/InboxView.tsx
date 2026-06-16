@@ -74,6 +74,7 @@ export function InboxView(props: InboxViewProps): ReactElement {
         </p>
       </header>
 
+      {/* biome-ignore lint/a11y/useSemanticElements: an ARIA group of filter-chip toggles, not a form fieldset */}
       <div
         role="group"
         aria-label="Channel filters"
