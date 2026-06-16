@@ -96,6 +96,7 @@ export interface TrajectoryListItem {
 	scenarioId: string | null;
 	batchId: string | null;
 	createdAt: string;
+	updatedAt?: string;
 }
 
 export interface TrajectoryStats {
@@ -164,6 +165,19 @@ function asIsoString(value: SqlCell | undefined): string {
 	const parsed = new Date(asText);
 	if (Number.isNaN(parsed.getTime())) return new Date(0).toISOString();
 	return parsed.toISOString();
+}
+
+function asEpochMs(value: SqlCell | undefined): number | null {
+	if (value instanceof Date) {
+		const timestamp = value.getTime();
+		return Number.isFinite(timestamp) ? timestamp : null;
+	}
+	const directNumber = asNumber(value);
+	if (directNumber !== null) return directNumber;
+	const asText = asString(value);
+	if (!asText) return null;
+	const parsed = Date.parse(asText);
+	return Number.isFinite(parsed) ? parsed : null;
 }
 
 function pickCell(row: SqlRow, ...keys: string[]): SqlCell | undefined {
@@ -747,6 +761,87 @@ type TrajectoryStatus =
 	| "error"
 	| "timeout"
 	| "terminated";
+
+function isFinalTrajectoryStatus(status: unknown): boolean {
+	return (
+		status === "completed" ||
+		status === "error" ||
+		status === "timeout" ||
+		status === "terminated"
+	);
+}
+
+function normalizeReadTrajectoryTiming(input: {
+	status: unknown;
+	startTime: number;
+	endTime: number | null;
+	durationMs: number | null;
+	createdAtMs?: number | null;
+	updatedAtMs?: number | null;
+}): { endTime: number | null; durationMs: number | null } {
+	if (!isFinalTrajectoryStatus(input.status)) {
+		return { endTime: null, durationMs: null };
+	}
+
+	const startTime = Number.isFinite(input.startTime) ? input.startTime : 0;
+	const existingEndTime =
+		typeof input.endTime === "number" &&
+		Number.isFinite(input.endTime) &&
+		input.endTime > 0 &&
+		input.endTime >= startTime
+			? input.endTime
+			: null;
+	const fallbackEndTime = startTime > 0 ? startTime : Date.now();
+	const endTime =
+		existingEndTime ??
+		[input.updatedAtMs, input.createdAtMs, fallbackEndTime].find(
+			(candidate): candidate is number =>
+				typeof candidate === "number" &&
+				Number.isFinite(candidate) &&
+				candidate > 0 &&
+				candidate >= startTime,
+		) ??
+		startTime;
+	const durationMs =
+		existingEndTime !== null &&
+		typeof input.durationMs === "number" &&
+		Number.isFinite(input.durationMs) &&
+		input.durationMs >= 0
+			? input.durationMs
+			: Math.max(0, endTime - startTime);
+
+	return { endTime, durationMs };
+}
+
+function normalizeReadTrajectoryUpdatedAt(input: {
+	startTime: number;
+	endTime: number | null;
+	createdAtMs?: number | null;
+	updatedAtMs?: number | null;
+}): string {
+	const startTime = Number.isFinite(input.startTime) ? input.startTime : 0;
+	const floorTime =
+		typeof input.endTime === "number" && Number.isFinite(input.endTime)
+			? input.endTime
+			: startTime;
+	const timestamp =
+		(typeof input.updatedAtMs === "number" &&
+		input.updatedAtMs > 0 &&
+		input.updatedAtMs >= floorTime
+			? input.updatedAtMs
+			: null) ??
+		(typeof input.endTime === "number" &&
+		Number.isFinite(input.endTime) &&
+		input.endTime > 0
+			? input.endTime
+			: null) ??
+		(typeof input.createdAtMs === "number" && input.createdAtMs > 0
+			? input.createdAtMs
+			: null) ??
+		(startTime > 0 ? startTime : Date.now());
+
+	return new Date(timestamp).toISOString();
+}
 
 type StartTrajectoryOptions = {
 	agentId?: string;
@@ -2184,7 +2279,7 @@ export class TrajectoriesService extends Service {
         id, agent_id, source, status, start_time, end_time, duration_ms,
         step_count, llm_call_count, total_prompt_tokens, total_completion_tokens,
         total_cache_read_input_tokens, total_cache_creation_input_tokens,
-        total_reward, scenario_id, batch_id, created_at
+        total_reward, scenario_id, batch_id, created_at, updated_at
       FROM trajectories
       ${whereClause}
       ORDER BY created_at DESC
@@ -2195,6 +2290,15 @@ export class TrajectoriesService extends Service {
 			const status =
 				(asString(pickCell(row, "status")) as TrajectoryListItem["status"]) ??
 				"completed";
+			const startTime = asNumber(pickCell(row, "start_time")) ?? 0;
+			const timing = normalizeReadTrajectoryTiming({
+				status,
+				startTime,
+				endTime: asNumber(pickCell(row, "end_time")),
+				durationMs: asNumber(pickCell(row, "duration_ms")),
+				createdAtMs: asEpochMs(pickCell(row, "created_at")),
+				updatedAtMs: asEpochMs(pickCell(row, "updated_at")),
+			});
 			const rawLlmCallCount = asNumber(pickCell(row, "llm_call_count")) ?? 0;
 			const llmCallCount = rawLlmCallCount;
 
@@ -2203,9 +2307,9 @@ export class TrajectoriesService extends Service {
 				agentId: asString(pickCell(row, "agent_id")) ?? "",
 				source: asString(pickCell(row, "source")) ?? "chat",
 				status,
-				startTime: asNumber(pickCell(row, "start_time")) ?? 0,
-				endTime: asNumber(pickCell(row, "end_time")),
-				durationMs: asNumber(pickCell(row, "duration_ms")),
+				startTime,
+				endTime: timing.endTime,
+				durationMs: timing.durationMs,
 				stepCount: asNumber(pickCell(row, "step_count")) ?? 0,
 				llmCallCount,
 				totalPromptTokens: asNumber(pickCell(row, "total_prompt_tokens")) ?? 0,
@@ -2219,6 +2323,12 @@ export class TrajectoriesService extends Service {
 				scenarioId: asString(pickCell(row, "scenario_id")),
 				batchId: asString(pickCell(row, "batch_id")),
 				createdAt: asIsoString(pickCell(row, "created_at")),
+				updatedAt: normalizeReadTrajectoryUpdatedAt({
+					startTime,
+					endTime: timing.endTime,
+					createdAtMs: asEpochMs(pickCell(row, "created_at")),
+					updatedAtMs: asEpochMs(pickCell(row, "updated_at")),
+				}),
 			};
 		});
 
@@ -2410,10 +2520,23 @@ export class TrajectoriesService extends Service {
 		updatedAt: string;
 	} {
 		const finalStatus = trajectory.metrics.finalStatus;
-		const normalizedEndTime =
-			typeof trajectory.endTime === "number" && trajectory.endTime > 0
-				? trajectory.endTime
-				: null;
+		const rawEndTime =
+			typeof trajectory.endTime === "number" ? trajectory.endTime : null;
+		const timingStatus = isFinalTrajectoryStatus(finalStatus)
+			? finalStatus
+			: rawEndTime
+				? "completed"
+				: "active";
+		const timing = normalizeReadTrajectoryTiming({
+			status: timingStatus,
+			startTime: trajectory.startTime,
+			endTime: rawEndTime,
+			durationMs:
+				typeof trajectory.durationMs === "number"
+					? trajectory.durationMs
+					: null,
+		});
+		const normalizedEndTime = timing.endTime;
 		const status: "active" | "completed" | "error" =
 			finalStatus === "timeout" ||
 			finalStatus === "terminated" ||
@@ -2448,12 +2571,7 @@ export class TrajectoriesService extends Service {
 			typeof value === "string" ? value : null;
 		const source =
 			typeof metadata.source === "string" ? metadata.source : "chat";
-		const normalizedDurationMs =
-			status === "active"
-				? null
-				: typeof trajectory.durationMs === "number"
-					? trajectory.durationMs
-					: null;
+		const normalizedDurationMs = status === "active" ? null : timing.durationMs;
 		const updatedAtMs =
 			normalizedEndTime ?? (trajectory.startTime || Date.now());
 
@@ -2640,14 +2758,30 @@ export class TrajectoriesService extends Service {
 	// ─────────────────────────────────────────────────────────────────────────
 
 	private rowToTrajectory(row: SqlRow): Trajectory {
+		const startTime = asNumber(pickCell(row, "start_time")) ?? 0;
+		const metrics = parseTrajectoryMetrics(
+			pickCell(row, "metrics_json", "metrics"),
+		);
+		const timing = normalizeReadTrajectoryTiming({
+			status:
+				asString(pickCell(row, "status")) ??
+				stringValue(metrics.finalStatus) ??
+				"completed",
+			startTime,
+			endTime: asNumber(pickCell(row, "end_time")),
+			durationMs: asNumber(pickCell(row, "duration_ms")),
+			createdAtMs: asEpochMs(pickCell(row, "created_at")),
+			updatedAtMs: asEpochMs(pickCell(row, "updated_at")),
+		});
+
 		return {
 			trajectoryId: (asString(pickCell(row, "id")) ??
 				"") as `${string}-${string}-${string}-${string}-${string}`,
 			agentId: (asString(pickCell(row, "agent_id")) ??
 				"") as `${string}-${string}-${string}-${string}-${string}`,
-			startTime: asNumber(pickCell(row, "start_time")) ?? 0,
-			endTime: asNumber(pickCell(row, "end_time")) ?? 0,
-			durationMs: asNumber(pickCell(row, "duration_ms")) ?? 0,
+			startTime,
+			endTime: timing.endTime ?? 0,
+			durationMs: timing.durationMs ?? 0,
 			scenarioId: asString(pickCell(row, "scenario_id")) ?? undefined,
 			episodeId: asString(pickCell(row, "episode_id")) ?? undefined,
 			batchId: asString(pickCell(row, "batch_id")) ?? undefined,
@@ -2657,7 +2791,7 @@ export class TrajectoriesService extends Service {
 			rewardComponents: parseRewardComponents(
 				pickCell(row, "reward_components_json", "reward_components"),
 			),
-			metrics: parseTrajectoryMetrics(pickCell(row, "metrics_json", "metrics")),
+			metrics,
 			metadata: parseTrajectoryMetadata(
 				pickCell(row, "metadata_json", "metadata"),
 			),

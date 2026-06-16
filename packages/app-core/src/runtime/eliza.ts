@@ -108,6 +108,7 @@ const PLUGIN_SQL_GLOBAL_SINGLETONS = Symbol.for(
   "elizaos.plugin-sql.global-singletons",
 );
 const ELIZA_AUTO_RESET_PGLITE_ERROR_CODE = "ELIZA_PGLITE_MANUAL_RESET_REQUIRED";
+const APP_ROUTE_PLUGIN_ALIASES = new Map([["personal-assistant", "lifeops"]]);
 
 export const shutdownRuntime = upstreamShutdownRuntime;
 
@@ -509,14 +510,17 @@ export function getDeferAppRoutesEnabled(
  * alias for forgiving matching: lowercase, drop the `@elizaos/plugin-` prefix
  * and the `:routes` / `-app` / `-ui` / `-routes` suffixes. So
  * `@elizaos/plugin-steward-app` and `steward` both normalize to `steward`.
+ * Legacy product names are normalized after structural cleanup, so `lifeops`
+ * still skips the personal-assistant route plugin.
  */
 export function normalizeAppRoutePluginId(id: string): string {
-  return id
+  const normalized = id
     .trim()
     .toLowerCase()
     .replace(/^@elizaos\/plugin-/, "")
     .replace(/:routes$/, "")
     .replace(/-(app|ui|routes)$/, "");
+  return APP_ROUTE_PLUGIN_ALIASES.get(normalized) ?? normalized;
 }
 
 function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {

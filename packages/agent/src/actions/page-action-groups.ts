@@ -205,7 +205,7 @@ export const pageDelegateAction: PageActionGroup = {
   descriptionCompressed:
     "PAGE_DELEGATE {page browser|wallet|settings|connectors|phone|owner, action CHILD}",
   routingHint:
-    'main-chat browser/wallet/settings/page operations -> PAGE_DELEGATE; browser navigation uses {page:"browser", action:"BROWSER_OPEN", url} or {page:"browser", action:"BROWSER", subaction:"open", url} through the browser page',
+    'main-chat browser/wallet/settings/connectors/phone/owner data operations -> PAGE_DELEGATE. Do not use PAGE_DELEGATE for UI view/window/panel/app navigation, opening/closing views, view manager, split/tile layout, or notes/calendar/notepad view switching; those belong to VIEWS. Browser web navigation still uses {page:"browser", action:"BROWSER_OPEN", url} or {page:"browser", action:"BROWSER", subaction:"open", url}.',
   validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,

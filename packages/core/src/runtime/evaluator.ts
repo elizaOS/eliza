@@ -1,6 +1,10 @@
 import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { evaluatorSchema, evaluatorTemplate } from "../prompts/evaluator";
-import { emitStreamingHook, getStreamingContext } from "../streaming-context";
+import {
+	emitStreamingHook,
+	getStreamingContext,
+	runWithStreamingContext,
+} from "../streaming-context";
 import type { EvaluationResult } from "../types/components";
 import {
 	type ChatMessage,
@@ -69,6 +73,7 @@ const DEFAULT_EVALUATOR_MAX_TOKENS = 1024;
 export async function runEvaluator(
 	params: RunEvaluatorParams,
 ): Promise<EvaluatorOutput> {
+	const streamingContext = getStreamingContext();
 	const renderedInput = renderEvaluatorModelInput({
 		context: params.context,
 		trajectory: params.trajectory,
@@ -103,16 +108,25 @@ export async function runEvaluator(
 	};
 	const startedAt = Date.now();
 	const modelType = params.modelType ?? ModelType.RESPONSE_HANDLER;
-	const raw = await params.runtime.useModel(
-		modelType,
-		{
-			messages: renderedInput.messages,
-			maxTokens: DEFAULT_EVALUATOR_MAX_TOKENS,
-			responseSchema: evaluatorSchema,
-			promptSegments: renderedInput.promptSegments,
-			providerOptions,
-		},
-		params.provider,
+	const raw = await runWithStreamingContext(
+		streamingContext
+			? {
+					...streamingContext,
+					onStreamChunk: async () => undefined,
+				}
+			: undefined,
+		() =>
+			params.runtime.useModel(
+				modelType,
+				{
+					messages: renderedInput.messages,
+					maxTokens: DEFAULT_EVALUATOR_MAX_TOKENS,
+					responseSchema: evaluatorSchema,
+					promptSegments: renderedInput.promptSegments,
+					providerOptions,
+				},
+				params.provider,
+			),
 	);
 	const endedAt = Date.now();
 	const output = sanitizeOutputMessage(
@@ -132,7 +146,6 @@ export async function runEvaluator(
 			params.trajectory,
 		),
 	);
-	const streamingContext = getStreamingContext();
 	await emitStreamingHook(streamingContext, "onEvaluation", {
 		evaluation: output,
 		messageId: streamingContext?.messageId,
