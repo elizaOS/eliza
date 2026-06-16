@@ -42,6 +42,9 @@
       "@elizaos/contracts": ["../contracts/src/index.ts"],
       "@elizaos/contracts/*": ["../contracts/src/*"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
+      "@elizaos/capacitor-bun-runtime": [
+        "../../plugins/plugin-native-bun-runtime/src/index.ts"
+      ],
       "drizzle-orm": ["../cloud-shared/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../cloud-shared/node_modules/drizzle-orm/*"],
       "lucide-react": [

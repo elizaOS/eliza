@@ -77,9 +77,19 @@ function nodeExecutable() {
 }
 
 function wranglerScript() {
-  return require.resolve("wrangler/bin/wrangler.js", {
+  // wrangler's package.json `exports` does not expose `bin/wrangler.js` as a
+  // subpath, so require.resolve("wrangler/bin/wrangler.js") throws
+  // ERR_PACKAGE_PATH_NOT_EXPORTED on wrangler >=4. Resolve the package via its
+  // (exported) package.json and read the declared bin path instead.
+  const pkgJsonPath = require.resolve("wrangler/package.json", {
     paths: [path.join(repoRoot, "packages", "cloud-api")],
   });
+  const pkg = require(pkgJsonPath);
+  const binRel =
+    typeof pkg.bin === "string"
+      ? pkg.bin
+      : (pkg.bin?.wrangler ?? "bin/wrangler.js");
+  return path.join(path.dirname(pkgJsonPath), binRel);
 }
 
 function parsePGliteDataDir(url) {
