@@ -1,4 +1,4 @@
-package ai.milady.milady;
+package ai.elizaos.app;
 
 import android.content.Context;
 import android.webkit.JavascriptInterface;

@@ -1,4 +1,4 @@
-package ai.milady.milady;
+package ai.elizaos.app;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
@@ -13,7 +13,7 @@ import androidx.core.content.ContextCompat;
 
 import com.getcapacitor.BridgeActivity;
 
-import ai.milady.milady.BuildConfig;
+import ai.elizaos.app.BuildConfig;
 
 import java.lang.reflect.Method;
 
@@ -56,7 +56,6 @@ public class MainActivity extends BridgeActivity {
      */
     private static final UserAgentMarker[] BRAND_USER_AGENT_MARKERS = new UserAgentMarker[] {
         new UserAgentMarker("ro.elizaos.product", "ElizaOS/"),
-        new UserAgentMarker("ro.miladyos.product", "MiladyOS/"),
     };
 
     @Override

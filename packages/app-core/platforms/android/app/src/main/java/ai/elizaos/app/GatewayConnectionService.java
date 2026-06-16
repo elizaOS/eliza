@@ -1,4 +1,4 @@
-package ai.milady.milady;
+package ai.elizaos.app;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -14,7 +14,7 @@ import android.os.IBinder;
 
 import androidx.core.app.NotificationCompat;
 
-import ai.milady.milady.R;
+import ai.elizaos.app.R;
 
 /**
  * Foreground service that keeps the Android process alive so the Capacitor

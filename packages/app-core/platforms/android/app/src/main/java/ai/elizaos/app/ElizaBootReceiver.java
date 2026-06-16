@@ -1,4 +1,4 @@
-package ai.milady.milady;
+package ai.elizaos.app;
 
 import android.app.AppOpsManager;
 import android.content.BroadcastReceiver;

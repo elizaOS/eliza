@@ -1761,7 +1761,19 @@ async function handleRequest(
   // Cloud SSO popup handoff: GET /pair?token=X must short-circuit BEFORE the
   // static-UI catch-all, otherwise the SPA index.html is served and the user
   // ends up on the password screen.
-  if (await handleCloudPairRoute(req, res)) return;
+  //
+  // Guard the call: in the on-device mobile bundle this app-core export can
+  // come through as `undefined` (circular re-export init order under Bun.build),
+  // and an unguarded call throws on EVERY request — 500-ing /api/auth/status
+  // and wedging the dashboard at "Connecting to backend…". The route is a
+  // cloud-SSO handoff that a local on-device agent never legitimately serves,
+  // so skipping it when unavailable is safe.
+  if (
+    typeof handleCloudPairRoute === "function" &&
+    (await handleCloudPairRoute(req, res))
+  ) {
+    return;
+  }
 
   // Serve dashboard static assets before the auth gates. serveStaticUi already
   // refuses /api/, /v1/, and /ws paths, so API endpoints remain protected

@@ -1,4 +1,4 @@
-package ai.milady.milady;
+package ai.elizaos.app;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -14,7 +14,7 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
-import ai.milady.milady.R;
+import ai.elizaos.app.R;
 
 /**
  * Foreground service for continuous-chat / VAD-gated voice capture

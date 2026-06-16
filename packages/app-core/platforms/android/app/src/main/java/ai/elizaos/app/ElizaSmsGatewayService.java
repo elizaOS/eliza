@@ -1,4 +1,4 @@
-package ai.milady.milady;
+package ai.elizaos.app;
 
 import android.app.Service;
 import android.content.ContentValues;
@@ -10,7 +10,7 @@ import android.provider.Telephony;
 import android.telephony.SmsManager;
 import android.text.TextUtils;
 import android.util.Log;
-import ai.milady.milady.BuildConfig;
+import ai.elizaos.app.BuildConfig;
 import androidx.work.Data;
 import androidx.work.OneTimeWorkRequest;
 import androidx.work.WorkManager;

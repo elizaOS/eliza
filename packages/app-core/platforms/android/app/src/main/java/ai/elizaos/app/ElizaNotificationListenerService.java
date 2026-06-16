@@ -1,4 +1,4 @@
-package ai.milady.milady;
+package ai.elizaos.app;
 
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
