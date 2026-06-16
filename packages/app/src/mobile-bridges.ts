@@ -152,7 +152,7 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
     }
   }
 
-  async function initializeDeviceBridge(): Promise<void> {
+  async function initializeDeviceBridge(retry = 0): Promise<void> {
     const runtimeConfig = ctx.getIosRuntimeConfig();
     if (
       !ctx.isNative ||
@@ -200,6 +200,16 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
           `${ctx.logPrefix} Device bridge unavailable:`,
           error instanceof Error ? error.message : error,
         );
+        // A Capacitor plugin the bridge depends on (e.g. Preferences) may not be
+        // registered yet at cold start. Retry a few times with backoff so a
+        // transient init-order failure doesn't permanently disable on-device
+        // inference (the dashboard otherwise stays on "provider issue" forever).
+        if (retry < 6) {
+          window.setTimeout(
+            () => void initializeDeviceBridge(retry + 1),
+            BACKGROUND_RUNNER_CONFIG_RETRY_MS * (retry + 1),
+          );
+        }
       } finally {
         deviceBridgeStartPromise = null;
       }
