@@ -16,10 +16,70 @@ function jsonResponse(body: unknown) {
 
 afterEach(() => {
 	vi.restoreAllMocks();
+	vi.unstubAllGlobals();
 	coreMock.resolveServerOnlyPort.mockClear();
 });
 
 describe("views client", () => {
+	it("normalizes legacy capability metadata from the view registry", async () => {
+		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+			expect(String(input)).toBe("http://127.0.0.1:3456/api/views");
+			return jsonResponse({
+				views: [
+					{
+						id: "remote-ledger",
+						label: "Remote Ledger",
+						pluginName: "@scenario/plugin-remote-ledger",
+						available: true,
+						capabilities: [
+							{
+								name: "fill-input",
+								description: "Fill a named input in the view.",
+								inputSchema: {
+									type: "object",
+									properties: {
+										name: {
+											type: "string",
+											description: "Input name.",
+										},
+										value: { type: "string" },
+									},
+									required: ["name", "value"],
+								},
+							},
+							{ description: "missing id/name should be ignored" },
+						],
+					},
+				],
+			});
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(createViewsClient().listViews()).resolves.toMatchObject([
+			{
+				id: "remote-ledger",
+				capabilities: [
+					{
+						id: "fill-input",
+						description: "Fill a named input in the view.",
+						params: {
+							name: {
+								type: "string",
+								description: "Input name.",
+								required: true,
+							},
+							value: {
+								type: "string",
+								description: "",
+								required: true,
+							},
+						},
+					},
+				],
+			},
+		]);
+	});
+
 	it("parses XR current-view state", async () => {
 		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
 			expect(String(input)).toBe("http://127.0.0.1:3456/api/views/current");

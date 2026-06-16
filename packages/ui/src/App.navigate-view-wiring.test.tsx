@@ -67,6 +67,26 @@ const viewsManagerTuiView = {
   viewType: "tui" as const,
 };
 
+const notesView = {
+  id: "notes",
+  label: "Notes",
+  available: true,
+  pluginName: "@elizaos/plugin-simple-views",
+  path: "/notes",
+  bundleUrl: "/api/views/notes/bundle.js",
+  viewType: "gui" as const,
+};
+
+const calendarView = {
+  id: "calendar",
+  label: "Calendar",
+  available: true,
+  pluginName: "@elizaos/plugin-simple-views",
+  path: "/calendar",
+  bundleUrl: "/api/views/calendar/bundle.js",
+  viewType: "gui" as const,
+};
+
 vi.mock("@capacitor/keyboard", () => ({
   Keyboard: { setScroll: vi.fn(async () => undefined) },
 }));
@@ -90,7 +110,13 @@ vi.mock("./hooks/useDesktopTabs", () => ({
 
 vi.mock("./hooks/useAvailableViews", () => ({
   useAvailableViews: () => ({
-    views: [remoteLedgerView, viewsManagerView, viewsManagerTuiView],
+    views: [
+      remoteLedgerView,
+      viewsManagerView,
+      viewsManagerTuiView,
+      notesView,
+      calendarView,
+    ],
   }),
 }));
 
@@ -314,7 +340,7 @@ describe("App navigate-view event wiring", () => {
     appState.tab = "apps";
     window.history.replaceState(null, "", "/apps/remote-ledger");
 
-    const { getByTestId } = render(<App />);
+    const { container, getByTestId } = render(<App />);
 
     await waitFor(() => {
       expect(dynamicViewLoaderMock.render).toHaveBeenCalledWith(
@@ -332,6 +358,42 @@ describe("App navigate-view event wiring", () => {
     );
     expect(loader.getAttribute("data-view-id")).toBe("remote-ledger");
     expect(loader.getAttribute("data-view-type")).toBe("gui");
+    expect(
+      container
+        .querySelector('[data-shell-content-region="true"]')
+        ?.className.includes("pb-[var(--eliza-continuous-chat-clearance"),
+    ).toBe(true);
+  });
+
+  it("renders split-view events as a live dynamic view layout", async () => {
+    appState.tab = "views";
+    window.history.replaceState(null, "", "/views");
+
+    const { getAllByTestId, getByTestId } = render(<App />);
+
+    navigateView({
+      action: "split-view",
+      viewId: "notes",
+      views: ["notes", "calendar"],
+      layout: "horizontal",
+      placement: "right",
+    });
+
+    await waitFor(() => {
+      expect(getByTestId("view-layout-surface")).toBeTruthy();
+    });
+    expect(getByTestId("view-layout-pane-notes")).toBeTruthy();
+    expect(getByTestId("view-layout-pane-calendar")).toBeTruthy();
+    const loaders = getAllByTestId("dynamic-view-loader");
+    expect(
+      loaders.map((loader) => loader.getAttribute("data-view-id")),
+    ).toEqual(["notes", "calendar"]);
+    expect(desktopTabsMock.openTab).toHaveBeenCalledWith(notesView, {
+      pinned: false,
+    });
+    expect(desktopTabsMock.openTab).toHaveBeenCalledWith(calendarView, {
+      pinned: false,
+    });
   });
 
   it("keeps /views on the built-in manager page instead of the remote manager bundle", async () => {

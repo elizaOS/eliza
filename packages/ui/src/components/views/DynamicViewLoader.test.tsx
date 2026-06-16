@@ -608,12 +608,9 @@ describe("DynamicViewLoader", () => {
         undefined,
       );
     });
-    expect(sendWsMessage).toHaveBeenCalledWith(
+    expect(sendWsMessage).not.toHaveBeenCalledWith(
       expect.objectContaining({
         requestId: "req-old-view",
-        success: false,
-        error:
-          'No interact handler registered for gui view "replace.first" - view may not be mounted',
       }),
     );
     expect(sendWsMessage).toHaveBeenCalledWith({
