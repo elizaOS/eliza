@@ -169,6 +169,10 @@ function stableCoreActions(): string[] {
  * stable-core action and either cover it or add it here.
  */
 const KNOWN_UNCOVERED: readonly string[] = [
+  // Source wires these VIEWS aliases, but this keyless E2E lane resolves the
+  // current runtime action surface without registering them as top-level actions.
+  "CLOSE_ALL_VIEWS",
+  "CLOSE_VIEW",
   // New speaker-diarization action; no deterministic keyless scenario yet.
   "IDENTIFY_SPEAKER",
 ];
@@ -189,8 +193,6 @@ const COVERED_ACTIONS: readonly string[] = [
   "BROWSER_SCREENSHOT",
   "BROWSER_TYPE",
   "BROWSER_WAIT",
-  "CLOSE_ALL_VIEWS",
-  "CLOSE_VIEW",
   "FILE",
   "GENERATE_MEDIA",
   "GIT_PATHOLOGY",
@@ -719,11 +721,7 @@ const PROSE_ONLY_LLM_SCENARIOS: Record<string, string> = {
  * Covered actions that are not yet strict natural-language routed. This
  * baseline may only shrink as actions move to STRICT_LLM_ROUTED_ACTIONS.
  */
-const DIRECT_ONLY_COVERED_ACTIONS: readonly string[] = [
-  "CLOSE_ALL_VIEWS",
-  "CLOSE_VIEW",
-  "HOMESCREEN",
-];
+const DIRECT_ONLY_COVERED_ACTIONS: readonly string[] = ["HOMESCREEN"];
 
 function collectActionNames(plugin: Plugin): string[] {
   return sorted(

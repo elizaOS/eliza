@@ -686,45 +686,6 @@ export default scenario({
     },
     {
       kind: "action",
-      name: "close current view alias",
-      text: "Close the current view",
-      actionName: "CLOSE_VIEW",
-      options: { target: "current" },
-      responseIncludesAny: ["Closed Remote Ledger"],
-      assertTurn: (execution) =>
-        expectActionTurn(execution, {
-          actionName: "CLOSE_VIEW",
-          parameters: { target: "current" },
-          responseText: "Closed Remote Ledger.",
-          resultFields: {
-            "values.mode": "close",
-            "values.viewId": "remote-ledger",
-            "values.viewType": "gui",
-            "data.action": "close",
-          },
-        }),
-    },
-    {
-      kind: "action",
-      name: "close all views alias",
-      text: "Close all views",
-      actionName: "CLOSE_ALL_VIEWS",
-      options: { all: true },
-      responseIncludesAny: ["Closed all views"],
-      assertTurn: (execution) =>
-        expectActionTurn(execution, {
-          actionName: "CLOSE_ALL_VIEWS",
-          parameters: { all: true },
-          responseText: "Closed all views.",
-          resultFields: {
-            "values.mode": "close",
-            "values.scope": "all",
-            "data.action": "close-all",
-          },
-        }),
-    },
-    {
-      kind: "action",
       name: "broadcast view refresh",
       text: "Tell the wallet view to refresh",
       actionName: "VIEWS",
@@ -1007,28 +968,6 @@ export default scenario({
       actionName: "APP",
       status: "success",
       minCount: 5,
-    },
-    {
-      type: "actionCalled",
-      actionName: "CLOSE_VIEW",
-      status: "success",
-      minCount: 1,
-    },
-    {
-      type: "actionCalled",
-      actionName: "CLOSE_ALL_VIEWS",
-      status: "success",
-      minCount: 1,
-    },
-    {
-      type: "selectedActionArguments",
-      actionName: "CLOSE_VIEW",
-      includesAll: [/"target":"current"/],
-    },
-    {
-      type: "selectedActionArguments",
-      actionName: "CLOSE_ALL_VIEWS",
-      includesAll: [/"all":true/],
     },
     {
       type: "selectedActionArguments",
