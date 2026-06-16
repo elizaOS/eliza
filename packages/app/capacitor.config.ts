@@ -76,6 +76,19 @@ const iosApiBase = storeSafeAgentApiBase(
   iosRuntimeMode,
 );
 
+// E2E/test builds opt into WebView remote debugging via ELIZA_WEBVIEW_DEBUG=1
+// (alias MILADY_WEBVIEW_DEBUG). This keeps the bundled APK assets and the real
+// on-device agent, but makes the System WebView CDP-attachable so Playwright's
+// Android driver (and chrome://inspect) can drive it for end-to-end tests. It
+// is NEVER enabled for store builds. Production builds leave it unset → off.
+function isFlagEnabled(value: string | undefined): boolean {
+  return /^(1|true|yes|on)$/i.test((value ?? "").trim());
+}
+const webViewDebuggingEnabled =
+  !isIosStoreBuild() &&
+  (isFlagEnabled(process.env.ELIZA_WEBVIEW_DEBUG) ||
+    isFlagEnabled(process.env.MILADY_WEBVIEW_DEBUG));
+
 const config: CapacitorConfig = {
   appId: appConfig.appId,
   appName: appConfig.appName,
@@ -139,12 +152,13 @@ const config: CapacitorConfig = {
     preferredContentMode: "mobile",
     backgroundColor: "#FF5800",
     allowsLinkPreview: false,
+    webContentsDebuggingEnabled: webViewDebuggingEnabled,
   },
   android: {
     backgroundColor: "#FF5800",
     allowMixedContent: false,
     captureInput: true,
-    webContentsDebuggingEnabled: false,
+    webContentsDebuggingEnabled: webViewDebuggingEnabled,
   },
 };
 

@@ -146,11 +146,16 @@ function appId() {
 }
 
 function androidSdkRoot() {
-  return (
-    process.env.ANDROID_HOME ??
-    process.env.ANDROID_SDK_ROOT ??
-    path.join(os.homedir(), "Library/Android/sdk")
-  );
+  if (process.env.ANDROID_HOME) return process.env.ANDROID_HOME;
+  if (process.env.ANDROID_SDK_ROOT) return process.env.ANDROID_SDK_ROOT;
+  const home = os.homedir();
+  if (process.platform === "darwin") {
+    return path.join(home, "Library/Android/sdk");
+  }
+  if (process.platform === "win32") {
+    return path.join(home, "AppData/Local/Android/Sdk");
+  }
+  return path.join(home, "Android/Sdk");
 }
 
 function androidTool(relativePath, fallbackName) {
