@@ -390,3 +390,62 @@ describe("live routing regressions", () => {
 		).toBe(false);
 	});
 });
+
+// Regression fence for PR #8446: the `core.simple_registered_action_request`
+// evaluator promotes a simple reply into planning only when the current request
+// matches a REGISTERED action's metadata. The view-request inference must be
+// structurally anchored to a VIEWS-named or VIEW_CAPABILITY-tagged action so it
+// stays inert for the overwhelming majority of agents that never load the views
+// plugin — never promoting a turn into planning on keyword text alone.
+describe("VIEWS request inference (PR #8446)", () => {
+	const nonViewActions: Array<Pick<Action, "name" | "similes" | "tags">> = [
+		{ name: "REPLY", similes: ["RESPOND"] },
+		{ name: "SEND_MESSAGE" },
+	];
+	const viewsAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "VIEWS",
+		similes: [],
+		tags: [],
+	};
+
+	it("is inert when no VIEWS (or VIEW_CAPABILITY) action is registered", () => {
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				nonViewActions,
+				"open the notes panel",
+			),
+		).not.toContain("VIEWS");
+	});
+
+	it("promotes a view-shaped request when a VIEWS action is registered", () => {
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[...nonViewActions, viewsAction],
+				"open the notes panel",
+			),
+		).toContain("VIEWS");
+	});
+
+	it("does not promote a non-view request even with a VIEWS action registered", () => {
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[...nonViewActions, viewsAction],
+				"what is the weather today",
+			),
+		).not.toContain("VIEWS");
+	});
+
+	it("resolves a VIEW_CAPABILITY-tagged action by tag, not just the VIEWS name", () => {
+		const capabilityAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "OPEN_DASHBOARD",
+			similes: [],
+			tags: ["VIEW_CAPABILITY"],
+		};
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[...nonViewActions, capabilityAction],
+				"open the dashboard window",
+			),
+		).toContain("OPEN_DASHBOARD");
+	});
+});
