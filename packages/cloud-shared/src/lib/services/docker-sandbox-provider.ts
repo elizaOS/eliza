@@ -1346,10 +1346,22 @@ export class DockerSandboxProvider implements SandboxProvider {
       headscaleIp: headscaleIp || undefined,
     };
 
+    // Over the headscale mesh the agent-router and the daemon's runtime calls
+    // reach the CONTAINER directly at its tailnet IP, where only the container-
+    // internal port is bound (the app binds 0.0.0.0:${containerPort}).
+    // bridge_port / web_ui_port are the HOST-published ports from
+    // `docker -p host:container`; they don't exist inside the container's
+    // network namespace, so they only work for legacy host routing. bridge_url
+    // and health_url are the single source of truth for reaching the agent —
+    // encode the port that is actually reachable over the chosen ingress.
+    const containerPortNum = Number.parseInt(containerPort, 10);
+    const bridgeUrlPort = headscaleIp ? containerPortNum : bridgePort;
+    const webUiUrlPort = headscaleIp ? containerPortNum : webUiPort;
+
     return {
       sandboxId: containerName,
-      bridgeUrl: `http://${targetHost}:${bridgePort}`,
-      healthUrl: `http://${targetHost}:${webUiPort}/api`,
+      bridgeUrl: `http://${targetHost}:${bridgeUrlPort}`,
+      healthUrl: `http://${targetHost}:${webUiUrlPort}/api`,
       metadata: { ...metadata },
     };
   }
@@ -1594,15 +1606,86 @@ export class DockerSandboxProvider implements SandboxProvider {
   // checkHealth
   // ------------------------------------------------------------------
 
+  /**
+   * Poll the agent's health endpoint over the headscale tailnet — the real
+   * ingress the agent-router uses. The daemon is a member of the mesh, so it
+   * dials the agent's tailnet IP directly. Retries until the app has booted AND
+   * the WireGuard/DERP path is warm, or the deadline passes. This is what keeps
+   * a freshly-registered container alive long enough to become reachable: the
+   * SSH host probe alone passes as soon as the app binds the container's docker
+   * bridge (eth0), which happens before the tailnet path is warm, so the first
+   * racing tailnet fetch (listRuntimeAgents) would tear a healthy agent down.
+   */
+  private async pollTailnetHealth(
+    handle: SandboxHandle,
+    meta: ContainerMeta,
+    deadline: number,
+  ): Promise<boolean> {
+    // handle.healthUrl is `http://<headscaleIp>:<containerPort>/api`; the agent
+    // serves liveness at /api/health on that same port.
+    const healthUrl = `${handle.healthUrl}/health`;
+    logger.info(
+      `[docker-sandbox] Polling tailnet health for ${meta.containerName} at ${healthUrl} (timeout: ${HEALTH_CHECK_TIMEOUT_MS / 1000}s)`,
+    );
+
+    while (Date.now() < deadline) {
+      try {
+        const res = await fetch(healthUrl, {
+          method: "GET",
+          signal: AbortSignal.timeout(5_000),
+        });
+        if ([200, 301, 302, 401].includes(res.status)) {
+          logger.info(
+            `[docker-sandbox] Tailnet health probe passed for ${meta.containerName} (${healthUrl})`,
+          );
+          return true;
+        }
+        logger.debug(
+          `[docker-sandbox] Tailnet health probe for ${meta.containerName} returned HTTP ${res.status}, retrying...`,
+        );
+      } catch (err) {
+        logger.debug(
+          `[docker-sandbox] Tailnet health probe failed for ${meta.containerName}, retrying: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(HEALTH_CHECK_POLL_INTERVAL_MS, remaining)),
+      );
+    }
+
+    logger.warn(
+      `[docker-sandbox] Tailnet health check timed out after ${HEALTH_CHECK_TIMEOUT_MS / 1000}s for ${meta.containerName} (${healthUrl})`,
+    );
+    return false;
+  }
+
   async checkHealth(handle: SandboxHandle): Promise<boolean> {
     const meta = await this.resolveContainer(handle.sandboxId);
+    const deadline = Date.now() + HEALTH_CHECK_TIMEOUT_MS;
+
+    // When the agent is reachable over the headscale mesh, validate THAT
+    // ingress: the agent-router and the post-create runtime calls reach the
+    // agent over the tailnet, and the daemon is itself on the mesh. The SSH host
+    // probe below only proves the app bound the container's docker bridge, which
+    // happens before the tailnet/DERP path is warm — gating on it would let the
+    // first racing tailnet fetch tear the agent down despite it being healthy.
+    const headscaleIp =
+      typeof handle.metadata?.headscaleIp === "string"
+        ? handle.metadata.headscaleIp
+        : undefined;
+    if (headscaleIp) {
+      return this.pollTailnetHealth(handle, meta, deadline);
+    }
+
     const ssh = DockerSSHClient.getClient(
       meta.hostname,
       meta.sshPort,
       meta.hostKeyFingerprint,
       meta.sshUser,
     );
-    const deadline = Date.now() + HEALTH_CHECK_TIMEOUT_MS;
     const inspectCmd = `docker inspect --format '{{.State.Health.Status}}' ${shellQuote(meta.containerName)}`;
     const hostProbeCmd = `sh -lc ${shellQuote(
       [
