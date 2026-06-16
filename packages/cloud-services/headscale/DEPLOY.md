@@ -2,14 +2,6 @@
 
 End-to-end checklist to bring the customer-tunnel stack online. Railway owns the Headscale runtime; Wrangler owns the Eliza Cloud Worker config and secrets.
 
-## Current rollout status
-
-Headscale is deployed and working on staging. Treat production rollout as
-blocked until the control-plane daemon hardening and robot VM cleanup finish.
-Why: customer tunnels depend on Headscale, the CP daemon, robot VM state, and
-the tunnel proxy as one path; promoting Headscale alone would make the runbook
-look greener than the end-to-end launch path really is.
-
 ## 1. DNS
 
 - `headscale.elizacloud.ai` → CNAME/ALIAS → Railway public domain for the headscale service.

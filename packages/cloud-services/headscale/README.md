@@ -2,15 +2,6 @@
 
 Self-hosted [headscale](https://github.com/juanfont/headscale) deployment used as Tailscale's coordination server for customer tunnels sold by `@elizaos/plugin-elizacloud`. The same headscale instance also coordinates internal agent containers; the two cohabit through ACL-tag isolation.
 
-## Current status
-
-Headscale is active and verified on staging. Production readiness is blocked on
-the surrounding control-plane work, not on proving the Headscale path itself:
-the CP daemon is still being hardened, and robot VM cleanup is still in
-progress. Keep staging as the validation environment until those two items are
-closed so the tailnet boundary, ACLs, and tunnel proxy are tested against the
-same daemon behavior production will run.
-
 ## Tag namespaces (load-bearing safety boundary)
 
 | Tag | Used by | Reach |
