@@ -415,6 +415,18 @@ export function forwardAgentApi(adbBin, serial, localPort = AGENT_API_PORT) {
   return localPort;
 }
 
+/**
+ * adb reverse: make the device's `127.0.0.1:<devicePort>` connect to the host's
+ * `<hostPort>`. Used to point the WebView at a real agent running on the dev
+ * host (route coverage on an emulator where the embedded agent can't run).
+ */
+export function adbReverse(adbBin, serial, devicePort, hostPort = devicePort) {
+  adbTry(adbBin, ["-s", serial, "reverse", "--remove", `tcp:${devicePort}`], {
+    stdio: "ignore",
+  });
+  adb(adbBin, ["-s", serial, "reverse", `tcp:${devicePort}`, `tcp:${hostPort}`]);
+}
+
 export function forwardWebViewCdp(adbBin, serial, localPort, pid) {
   const resolvedPid = pid ?? appPid(adbBin, serial);
   if (!resolvedPid) {

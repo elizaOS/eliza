@@ -27,32 +27,49 @@ export const ORIGIN = "https://localhost";
  * runtime mode, and a local active-server so the WebView drives the on-device
  * agent instead of showing the first-run "Choose your setup" picker.
  */
-export const SEED_STORAGE: Record<string, string> = {
-  "eliza:onboarding-complete": "1",
-  "eliza:ui-shell-mode": "native",
-  "eliza:mobile-runtime-mode": "local",
-  // Point the renderer at the on-device agent over the Capacitor Agent IPC.
-  // The renderer reads runtime mode from localStorage (a SEPARATE store from
-  // the native SharedPreferences that gate the agent autostart), so seeding
-  // this is what makes the WebView talk to the local agent instead of falling
-  // back to cloud onboarding. Values mirror preSeedAndroidLocalRuntime.
-  "elizaos:active-server": JSON.stringify({
+// Which backend the WebView talks to. `local` = the embedded on-device agent
+// over the Capacitor Agent IPC (needs the agent running on-device). `host` =
+// a real agent on the dev host, reached via `adb reverse tcp:31337` — used for
+// route coverage on an emulator where the embedded agent can't run. Cloud/remote
+// modes seed their own active-server out of band.
+const BACKEND = (process.env.ELIZA_ANDROID_BACKEND ?? "local").toLowerCase();
+
+function activeServerSeed(): string {
+  if (BACKEND === "host") {
+    return JSON.stringify({
+      id: "remote:host",
+      kind: "remote",
+      label: "Host agent",
+      apiBase: "http://127.0.0.1:31337",
+    });
+  }
+  // The renderer reads runtime mode from localStorage (a SEPARATE store from the
+  // native SharedPreferences that gate agent autostart), so seeding this is what
+  // makes the WebView talk to the local agent instead of cloud onboarding.
+  return JSON.stringify({
     id: "local:android",
     kind: "remote",
     label: "On-device agent",
     apiBase: "eliza-local-agent://ipc",
-  }),
+  });
+}
+
+export const SEED_STORAGE: Record<string, string> = {
+  "eliza:onboarding-complete": "1",
+  "eliza:ui-shell-mode": "native",
+  "eliza:mobile-runtime-mode": BACKEND === "host" ? "remote" : "local",
+  "elizaos:active-server": activeServerSeed(),
 };
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-type Fixtures = Record<string, never>;
+type TestFixtures = { page: Page };
 type WorkerFixtures = {
   device: AndroidDevice;
-  page: Page;
+  appPage: Page;
 };
 
-export const test = base.extend<Fixtures, WorkerFixtures>({
+export const test = base.extend<TestFixtures, WorkerFixtures>({
   // One connected device per worker (workers are forced to 1 — the device has a
   // single WebView). Closed at the end so adb is released for the next run.
   device: [
@@ -70,17 +87,14 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
   // One app session per worker. Launches the app, attaches to its WebView,
   // seeds storage, reloads, and waits for the shell to leave the "Connecting to
   // backend…" splash. Subsequent specs SPA-navigate this same page.
-  page: [
+  appPage: [
     async ({ device }, use) => {
       const adb = resolveAdb();
       launchApp(adb, device.serial());
       for (let i = 0; i < 30 && !appPid(adb, device.serial()); i += 1) {
         await delay(500);
       }
-      const webview = await device.webView(
-        { pkg: APP_ID },
-        { timeout: 60_000 },
-      );
+      const webview = await device.webView({ pkg: APP_ID }, { timeout: 60_000 });
       const page = await webview.page();
       await page.waitForLoadState("domcontentloaded").catch(() => {});
       await page.evaluate((seed: Record<string, string>) => {
@@ -96,6 +110,13 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
     },
     { scope: "worker" },
   ],
+
+  // Override the built-in test-scoped `page` with the worker WebView page, so
+  // the specs read like ordinary Playwright but drive the real device WebView.
+  // It does NOT depend on browser/context, so no Chromium is launched.
+  page: async ({ appPage }, use) => {
+    await use(appPage);
+  },
 });
 
 export { expect, android };

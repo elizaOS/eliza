@@ -9,6 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  adbReverse,
   adbTry,
   AGENT_API_PORT,
   forwardAgentApi,
@@ -21,6 +22,7 @@ import {
 
 const HEALTH_POLL_MS = Number(process.env.ELIZA_ANDROID_HEALTH_TIMEOUT_MS ?? 180_000);
 const REQUIRE_AGENT = process.env.ELIZA_ANDROID_REQUIRE_AGENT !== "0";
+const BACKEND = (process.env.ELIZA_ANDROID_BACKEND ?? "local").toLowerCase();
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -70,6 +72,14 @@ export default async function globalSetup() {
     });
   }
 
+  // host backend: route the device's loopback :31337 to the host agent.
+  if (BACKEND === "host") {
+    adbReverse(adb, serial, AGENT_API_PORT, AGENT_API_PORT);
+    console.log(
+      `[android-e2e] host backend: adb reverse tcp:${AGENT_API_PORT} -> host:${AGENT_API_PORT}`,
+    );
+  }
+
   // Bring the app to the foreground so its WebView DevTools socket is live.
   launchApp(adb, serial);
 
@@ -78,11 +88,17 @@ export default async function globalSetup() {
     return;
   }
 
-  const localPort = forwardAgentApi(adb, serial, AGENT_API_PORT);
+  // host backend: the agent runs on the test host itself; poll it directly.
+  // local backend: forward the on-device agent's port to the host and poll that.
+  const pollPort =
+    BACKEND === "host"
+      ? AGENT_API_PORT
+      : forwardAgentApi(adb, serial, AGENT_API_PORT);
+  const where = BACKEND === "host" ? "host agent" : "on-device agent";
   console.log(
-    `[android-e2e] waiting up to ${HEALTH_POLL_MS}ms for on-device agent (127.0.0.1:${localPort}/api/health)…`,
+    `[android-e2e] waiting up to ${HEALTH_POLL_MS}ms for ${where} (127.0.0.1:${pollPort}/api/health)…`,
   );
-  const health = await pollAgentHealth(localPort, HEALTH_POLL_MS);
+  const health = await pollAgentHealth(pollPort, HEALTH_POLL_MS);
   if ((health as { timedOut?: boolean }).timedOut) {
     const logPath = path.join(os.tmpdir(), `android-e2e-logcat-${serial}.txt`);
     fs.writeFileSync(
@@ -90,11 +106,13 @@ export default async function globalSetup() {
       adbTry(adb, ["-s", serial, "logcat", "-d", "-t", "400"]),
     );
     throw new Error(
-      `[android-e2e] On-device agent never became healthy within ${HEALTH_POLL_MS}ms — the local runtime failed to start. ` +
-        `Run the local bring-up first (bun run --cwd packages/app test:sim:local-chat:android:live) ` +
-        `or set ELIZA_ANDROID_REQUIRE_AGENT=0 to test cloud/remote mode. ` +
+      `[android-e2e] ${where} never became healthy within ${HEALTH_POLL_MS}ms — the ${BACKEND} runtime failed to start. ` +
+        (BACKEND === "host"
+          ? "Start a host agent on :31337 (bun run dev) first. "
+          : "Run the local bring-up first (bun run --cwd packages/app test:sim:local-chat:android:live) ") +
+        `or set ELIZA_ANDROID_REQUIRE_AGENT=0. ` +
         `Logcat: ${logPath}. Last health: ${JSON.stringify((health as { last?: unknown }).last)}`,
     );
   }
-  console.log(`[android-e2e] on-device agent healthy: ${JSON.stringify(health)}`);
+  console.log(`[android-e2e] ${where} healthy: ${JSON.stringify(health)}`);
 }
