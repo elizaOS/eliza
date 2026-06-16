@@ -113,6 +113,22 @@ describe("ContinuousChatOverlay", () => {
     expect(strip.className).toContain("opacity-100");
   });
 
+  it("reveals suggestions when an empty composer receives keyboard focus", () => {
+    render(
+      <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
+    );
+    const strip = screen.getByTestId("chat-suggestions");
+    const firstSuggestion = screen.getByTestId("chat-suggestion-0");
+
+    expect(strip.className).toContain("opacity-0");
+    expect(firstSuggestion.tabIndex).toBe(-1);
+
+    fireEvent.focus(screen.getByLabelText("message"));
+
+    expect(strip.className).toContain("opacity-100");
+    expect(firstSuggestion.tabIndex).toBe(0);
+  });
+
   it("filters whitespace-only messages from the expanded thread", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     fireEvent.focus(screen.getByLabelText("message"));
@@ -143,6 +159,17 @@ describe("ContinuousChatOverlay", () => {
     expect(user?.className).toContain("justify-end");
   });
 
+  it("anchors typing dots as an assistant-aligned transcript row", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({ phase: "responding" })}
+      />,
+    );
+    const typing = screen.getByTestId("typing-dots");
+    expect(typing.className).toContain("w-full");
+    expect(typing.className).toContain("justify-start");
+  });
+
   it("collapses the bubbles on Escape", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const input = screen.getByLabelText("message");
@@ -153,18 +180,16 @@ describe("ContinuousChatOverlay", () => {
     expect(thread?.getAttribute("data-revealed")).toBe("false");
   });
 
-  it("toggles a full-screen takeover with a liquid-glass focus backdrop", () => {
+  it("toggles a full-screen takeover with a lightweight focus backdrop", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const root = screen.getByTestId("continuous-chat-overlay");
     const backdrop = screen.getByTestId("chat-fullscreen-backdrop");
     expect(root.getAttribute("data-fullscreen")).toBeNull();
     // Resting: backdrop is inactive + click-through (the live view stays usable).
-    // pointer-events live on the className (a static Tailwind class) so the
-    // perf-sensitive backdrop-filter is the only animated property.
     expect(backdrop.getAttribute("data-active")).toBe("false");
     expect(backdrop.className).toContain("pointer-events-none");
 
-    // Far-left button enters full screen and blooms the glass panel over the view.
+    // Far-left button enters full screen and fades a cheap scrim over the view.
     fireEvent.click(screen.getByLabelText("expand to full screen"));
     expect(root.getAttribute("data-fullscreen")).toBe("true");
     expect(document.querySelector('[data-variant="fullscreen"]')).toBeTruthy();
@@ -296,6 +321,19 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.getAllByTestId("chat-composer-textarea")).toHaveLength(1);
   });
 
+  it("keeps composer controls inside one constrained input pill", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+
+    const input = screen.getByTestId("chat-composer-textarea");
+    const bar = input.parentElement;
+
+    expect(screen.queryByTestId("chat-composer-clear-debug")).toBeNull();
+    expect(bar?.className).toContain("max-w-full");
+    expect(bar?.className).not.toContain("flex-wrap");
+    expect(input.className).toContain("flex-1");
+    expect(input.className).not.toContain("basis-full");
+  });
+
   it("shows exactly three resting prompt suggestions", () => {
     render(
       <ContinuousChatOverlay
@@ -345,6 +383,17 @@ describe("ContinuousChatOverlay", () => {
     expect(thread?.getAttribute("data-revealed")).toBe("true");
     // A click on the live view behind (here, the bare document body) closes it.
     fireEvent.pointerDown(document.body);
+    expect(thread?.getAttribute("data-revealed")).toBe("false");
+  });
+
+  it("collapses the bubbles when the underlying app scrolls", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const thread = document.getElementById("continuous-thread");
+
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(thread?.getAttribute("data-revealed")).toBe("true");
+
+    fireEvent.scroll(document.body);
     expect(thread?.getAttribute("data-revealed")).toBe("false");
   });
 
