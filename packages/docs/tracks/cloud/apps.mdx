@@ -1,15 +1,15 @@
 ---
 title: Cloud Apps
-description: "Register a Cloud app, route app-scoped chat, manage domains, and monetize usage."
+description: "Register a Cloud app, route app-scoped chat, and prepare container deploys."
 ---
 
-An **app** in Cloud is a registered product record that bundles metadata,
-allowed browser origins, hosting/domain settings, analytics, and monetization.
-Registering an app gives you an `id` that:
+An **app** in Cloud is a registered product that bundles metadata, allowed
+origins, billing settings, and deployment configuration. Registering an app
+gives you an `id` that:
 
 - Identifies the app to Cloud-routed inference, billing, and analytics.
-- Lets your backend call app administration APIs.
-- Enables app-scoped chat, container deploy metadata, and domain binding.
+- Lets the app use app-scoped chat and app-owned admin APIs.
+- Enables container deploys and domain binding.
 - Powers creator monetization (earnings tied to app usage).
 
 ## Register
@@ -29,32 +29,24 @@ Body:
 ```
 
 Response includes the assigned app `id` and a one-time app API key. Store the
-key server-side. For user-facing app chat, forward the user's bearer token to
-`POST /api/v1/apps/{id}/chat` so the user's organization is charged.
+key server-side.
 
 ## Lifecycle
 
-- `GET /api/v1/apps/{id}` - fetch.
-- `PATCH /api/v1/apps/{id}` - update metadata, URLs, origins, and settings.
-- `PUT /api/v1/apps/{id}/monetization` - configure creator markup.
-- `POST /api/v1/apps/{id}/chat` - run app-scoped chat.
-- `DELETE /api/v1/apps/{id}` - delete and clean up.
+- `GET /api/v1/apps/:id` - fetch.
+- `PATCH /api/v1/apps/:id` - update metadata, URLs, origins, and settings.
+- `DELETE /api/v1/apps/:id` - soft-delete.
 
-## Monetization
+## Deploy Readiness
 
-Apps can earn creator revenue from app-scoped inference markup. The current
-monetization payload uses flat fields:
+App deploys are gated in production by `APPS_DEPLOY_ENABLED`. The cutover is
+operator-controlled: apply the production apps data plane, merge the production
+Worker flag, arm the production daemon, then deploy the all-features eDad test
+app with isolated DB mode.
 
-```json
-{
-  "monetizationEnabled": true,
-  "inferenceMarkupPercentage": 100,
-  "purchaseSharePercentage": 10
-}
-```
-
-Older `enabled` plus nested `pricing` payloads are stale and should not be
-used.
+**Why:** the app record, Worker route, daemon, app node, tenant DB, and wildcard
+domain must agree before production can safely accept deploy jobs. See
+[Launch Status](/cloud/launch-status) for the current gate.
 
 ## Source
 

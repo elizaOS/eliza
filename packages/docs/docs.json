@@ -394,6 +394,7 @@
               "cloud/rate-limits",
               "cloud/errors",
               "cloud/sdks",
+              "cloud/launch-status",
               "cloud/changelog"
             ]
           },

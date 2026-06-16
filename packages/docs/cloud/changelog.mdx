@@ -9,6 +9,42 @@ Stay up to date with the latest changes to elizaOS Cloud.
 
 ---
 
+## June 2026
+
+### Jun 16, 2026
+
+**Cloud launch readiness — staging agent gate, apps E2E, Cerebras routing**
+
+- **Staging agent provisioning proven** — A fresh staging agent registered on
+  Headscale, received `headscale_ip`, passed the tailnet health probe after the
+  boot/warmup retry, and reached `running`. **Why:** the launch-critical path is
+  now known-good outside a local machine: Worker, daemon, Headscale, tailnet
+  routing, and agent router all complete the same flow.
+- **Tailnet warm-keep merged** — Agent health now tolerates cold idle packets
+  with retry, heartbeat hysteresis, and proxy re-warm. **Why:** one transient
+  DERP/WireGuard re-warm should not mark an agent disconnected or cause a public
+  subdomain to 404.
+- **Apps deploy E2E in CI** — The apps CI now builds a real app image,
+  provisions an isolated tenant DB, runs the app in an isolated container,
+  proves own-DB access, proves cross-tenant rejection, and checks no egress.
+  **Why:** app cutover needs a repeatable quality gate instead of a manual
+  staging-only proof.
+- **eDad all-features test app** — eDad can persist chat history when
+  `DATABASE_URL` is injected by isolated DB mode, while staying stateless when
+  no DB is present. **Why:** one deploy now covers monetized inference, app
+  container deploy, per-tenant DB, per-app auth, and custom domain routing.
+- **Cerebras-first default routing** — `gpt-oss-120b` now routes through the
+  Cerebras-direct path, and legacy `openai/gpt-oss-120b` plus
+  `openai/gpt-oss-120b:nitro` aliases route Cerebras-first with OpenRouter
+  fallback in self-hosted BitRouter. **Why:** the old `:nitro` default surfaced
+  503s through OpenRouter even though the bare Cerebras model was already
+  returning successfully.
+
+See [Launch Status](/cloud/launch-status) for the current production gates and
+operator sequence.
+
+---
+
 ## April 2026
 
 ### Apr 28, 2026
