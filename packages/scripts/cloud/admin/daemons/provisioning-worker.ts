@@ -474,6 +474,44 @@ async function processPoolDrainIdleCycle(): Promise<PoolDrainSummary> {
 let running = true;
 let lastInfraMaintenanceAt = 0;
 
+/**
+ * Heartbeat cadence — independent of the work cycle. The liveness key lives
+ * 60s in Redis (PROVISIONING_WORKER_HEARTBEAT_TTL_S); publishing every 15s
+ * leaves room for 3 missed publishes before the gate trips. Decoupling this
+ * from `pollCycle` is THE fix: a slow agent-delete or node health-check can no
+ * longer starve the heartbeat and make cloud-api reject every provision.
+ */
+const HEARTBEAT_INTERVAL_MS = 15_000;
+
+/**
+ * If the work cycle stops completing for this long, the worker is wedged
+ * (e.g. Redis healthy but Neon/SSH hung). We deliberately STOP publishing the
+ * heartbeat so cloud-api fails CLOSED — `checkProvisioningWorkerHealth` sees
+ * the stale key and 503s new provisions instead of routing them to a worker
+ * that can't make progress — and the loud error log flags it for a human.
+ * This does NOT itself restart the process (systemd `Restart=always` only
+ * fires on process exit, and nothing kills us on a stale key); true
+ * auto-recovery via `process.exit(1)` is a deliberate follow-up that first
+ * needs a threshold comfortably above worst-case infra-maintenance on a large
+ * fleet, else a slow-but-healthy cycle would restart-loop. P1 keeps a
+ * *progressing* worker healthy; the watchdog fails a *wedged* one closed.
+ */
+const WATCHDOG_MAX_CYCLE_MS = 5 * 60_000;
+
+/**
+ * Liveness gate. The heartbeat interval publishes ONLY when this is true.
+ * Set true immediately after `assertProvisioningWorkerPreflight()` succeeds,
+ * false on any throw. Default false so a KMS-dead worker never advertises
+ * healthy before the first preflight has run.
+ */
+let preflightOk = false;
+
+/** Wall-clock of the last `pollCycle` that returned. Drives the watchdog. */
+let lastCycleCompletedAt = Date.now();
+
+/** In-flight guard so a hung Redis write can't pile up unresolved publishes. */
+let heartbeatPublishInFlight = false;
+
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -491,12 +529,91 @@ async function publishHeartbeat(logger: WorkerLogger): Promise<void> {
   }
 }
 
+/**
+ * Decide whether the heartbeat may be published this tick, and publish it.
+ * Gated on three independent conditions, all of which must hold:
+ *   1. `preflightOk` — KMS is usable (a KMS-dead worker must never advertise
+ *      healthy, mirroring the old in-cycle preflight gate).
+ *   2. the watchdog has not tripped — the work cycle is still progressing.
+ *   3. no publish is already in flight — a slow/hung Redis write must not pile
+ *      up unresolved promises.
+ * Exported for unit testing the gate logic.
+ */
+export async function maybePublishHeartbeat(
+  logger: WorkerLogger,
+  deps: {
+    preflightOk: boolean;
+    lastCycleCompletedAt: number;
+    now?: number;
+    publish?: (logger: WorkerLogger) => Promise<void>;
+  },
+): Promise<{ published: boolean; watchdogTripped: boolean }> {
+  const now = deps.now ?? Date.now();
+  const publish = deps.publish ?? publishHeartbeat;
+
+  if (now - deps.lastCycleCompletedAt > WATCHDOG_MAX_CYCLE_MS) {
+    logger.error(
+      "[provisioning-worker] WATCHDOG: work cycle has not completed in over " +
+        `${Math.round(WATCHDOG_MAX_CYCLE_MS / 1000)}s — worker appears wedged. ` +
+        "Withholding heartbeat so cloud-api fails closed (stops routing provisions here); restart this worker.",
+      {
+        lastCycleCompletedAt: new Date(deps.lastCycleCompletedAt).toISOString(),
+      },
+    );
+    return { published: false, watchdogTripped: true };
+  }
+
+  // KMS-dead worker must never advertise healthy.
+  if (!deps.preflightOk) {
+    return { published: false, watchdogTripped: false };
+  }
+
+  await publish(logger);
+  return { published: true, watchdogTripped: false };
+}
+
+/**
+ * Start the independent heartbeat timer. Decoupled from `pollCycle` so a slow
+ * work item can never starve the liveness key. The in-flight guard skips a
+ * tick rather than queueing a second publish behind a hung Redis write.
+ */
+function startHeartbeatInterval(logger: WorkerLogger): NodeJS.Timeout {
+  const tick = () => {
+    if (heartbeatPublishInFlight) return;
+    heartbeatPublishInFlight = true;
+    void maybePublishHeartbeat(logger, {
+      preflightOk,
+      lastCycleCompletedAt,
+    }).finally(() => {
+      heartbeatPublishInFlight = false;
+    });
+  };
+  const timer = setInterval(tick, HEARTBEAT_INTERVAL_MS);
+  timer.unref();
+  return timer;
+}
+
 async function pollCycle(
   logger: WorkerLogger,
   config: ProvisioningWorkerConfig,
 ): Promise<void> {
-  await assertProvisioningWorkerPreflight();
-  await publishHeartbeat(logger);
+  // Re-validate the preflight at the top of every cycle (cheap — a local KMS
+  // getOrCreateKey). The heartbeat interval owns liveness now, but it only
+  // publishes while `preflightOk` is true, so this is what keeps a KMS-dead
+  // worker from advertising healthy. Set true ONLY immediately after success.
+  try {
+    await assertProvisioningWorkerPreflight();
+    preflightOk = true;
+  } catch (error) {
+    preflightOk = false;
+    logger.error(
+      "[provisioning-worker] preflight failed; withholding heartbeat",
+      {
+        error: error instanceof Error ? error.message : String(error),
+      },
+    );
+    return;
+  }
   try {
     const result = await processProvisioningWorkerCycle(config.batchSize);
     if (result.claimed > 0 || result.failed > 0) {
@@ -563,6 +680,10 @@ async function pollCycle(
     lastInfraMaintenanceAt = now;
     await runInfraMaintenanceCycle(logger);
   }
+
+  // Mark progress for the watchdog. As long as this advances, the heartbeat
+  // interval keeps the worker healthy even across long cycles.
+  lastCycleCompletedAt = Date.now();
 }
 
 async function runInfraMaintenanceCycle(logger: WorkerLogger): Promise<void> {
@@ -687,21 +808,39 @@ async function main(): Promise<void> {
   });
 
   await assertProvisioningWorkerPreflight();
+  preflightOk = true;
   logger.info("[provisioning-worker] startup preflight passed");
 
   // Apps (Product 2): arm the deploy backend when enabled (gated; no-op by default).
   await armAppsDeployBackendIfEnabled(logger);
 
+  // Seed the watchdog clock so a slow first cycle can't trip it immediately.
+  lastCycleCompletedAt = Date.now();
+
   if (config.runOnce) {
+    // Publish once so a --once invocation still reports liveness, then run a
+    // single cycle. No interval needed for the one-shot path.
+    await publishHeartbeat(logger);
     await pollCycle(logger, config);
     return;
   }
 
-  while (running) {
-    await pollCycle(logger, config);
-    if (running) {
-      await sleep(config.pollIntervalMs);
+  // Decouple liveness from the work cycle: an independent timer publishes the
+  // heartbeat every HEARTBEAT_INTERVAL_MS regardless of how long a single
+  // cycle takes. Publish once immediately so there's no cold gap before the
+  // first tick.
+  await publishHeartbeat(logger);
+  const heartbeatTimer = startHeartbeatInterval(logger);
+
+  try {
+    while (running) {
+      await pollCycle(logger, config);
+      if (running) {
+        await sleep(config.pollIntervalMs);
+      }
     }
+  } finally {
+    clearInterval(heartbeatTimer);
   }
 
   logger.info("[provisioning-worker] stopped");

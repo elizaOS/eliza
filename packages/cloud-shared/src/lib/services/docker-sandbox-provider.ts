@@ -18,6 +18,7 @@ import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { signStewardMutatingRequest } from "../steward/sign";
 import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 import { logger } from "../utils/logger";
+import { withTimeout } from "../utils/with-timeout";
 import { loginToImageRegistry } from "./containers/hetzner-client/registry";
 import { getNodeAutoscaler } from "./containers/node-autoscaler";
 import { resolveImageDigest } from "./containers/registry-probe";
@@ -370,6 +371,18 @@ const PULL_TIMEOUT_MS = 300_000; // 5 min
 
 /** SSH command timeout for docker run / stop / rm. */
 const DOCKER_CMD_TIMEOUT_MS = 60_000;
+
+/**
+ * Dedicated, tighter SSH timeout for the stop/rm calls on the delete path.
+ * `docker stop` uses its own `-t 10` grace, so 25s caps the whole stop path
+ * without ever truncating a legitimate graceful shutdown. Keeping this under
+ * the 60s generic timeout is what stops one wedged delete from holding the
+ * cycle (and the DB advisory lock) open across the full minute.
+ */
+const STOP_CMD_TIMEOUT_MS = 25_000;
+
+/** Cap on the best-effort headscale VPN cleanup during stop(). */
+const HEADSCALE_CLEANUP_TIMEOUT_MS = 15_000;
 
 /** Autoscaled node readiness polling. */
 const AUTOSCALED_NODE_READY_TIMEOUT_MS = 4 * 60 * 1000;
@@ -1539,7 +1552,7 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     try {
       // Graceful stop with 10s timeout, then force-remove
-      await ssh.exec(`docker stop -t 10 ${shellQuote(meta.containerName)}`, DOCKER_CMD_TIMEOUT_MS);
+      await ssh.exec(`docker stop -t 10 ${shellQuote(meta.containerName)}`, STOP_CMD_TIMEOUT_MS);
       logger.info(`[docker-sandbox] Container stopped: ${meta.containerName}`);
     } catch (err) {
       stopErr = err;
@@ -1549,7 +1562,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
 
     try {
-      await ssh.exec(`docker rm -f ${shellQuote(meta.containerName)}`, DOCKER_CMD_TIMEOUT_MS);
+      await ssh.exec(`docker rm -f ${shellQuote(meta.containerName)}`, STOP_CMD_TIMEOUT_MS);
       logger.info(`[docker-sandbox] Container removed: ${meta.containerName}`);
     } catch (err) {
       rmErr = err;
@@ -1589,13 +1602,15 @@ export class DockerSandboxProvider implements SandboxProvider {
     if (process.env.HEADSCALE_API_KEY && meta.agentId) {
       // Delete the node by the hostname it registered under (TS_HOSTNAME), not the
       // bare agentId — Headscale identifies the node by that name.
-      await headscaleIntegration
-        .cleanupContainerVPN(meta.tsHostname ?? meta.agentId)
-        .catch((err) => {
-          logger.warn(
-            `[docker-sandbox] Headscale cleanup failed for ${meta.agentId}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        });
+      await withTimeout(
+        headscaleIntegration.cleanupContainerVPN(meta.tsHostname ?? meta.agentId),
+        HEADSCALE_CLEANUP_TIMEOUT_MS,
+        "headscale cleanup",
+      ).catch((err) => {
+        logger.warn(
+          `[docker-sandbox] Headscale cleanup failed for ${meta.agentId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
     }
 
     // Remove from in-memory registry

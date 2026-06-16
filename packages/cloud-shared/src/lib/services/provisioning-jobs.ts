@@ -27,6 +27,7 @@ import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { jobs } from "../../db/schemas/jobs";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { logger } from "../utils/logger";
+import { withTimeout } from "../utils/with-timeout";
 import { dispatchAppDbDeprovisionJob } from "./app-db-deprovision-job-service";
 import { dispatchAppDeployJob } from "./app-deploy-job-service";
 import { dispatchContainerJob, getContainerExecutorDeps } from "./container-job-service";
@@ -591,6 +592,14 @@ interface LifecycleJobOptions<TData extends object> {
    */
   beforeInsert?: (tx: Parameters<Parameters<typeof dbWrite.transaction>[0]>[0]) => Promise<void>;
 }
+
+/**
+ * Hard ceiling on a single job's execution. A slow agent_delete (SSH +
+ * headscale network I/O while holding a DB advisory lock) used to run for
+ * minutes and starve the whole cycle. Every leaf is independently bounded, so
+ * a job hitting this ceiling means something is genuinely wedged.
+ */
+const PER_JOB_TIMEOUT_MS = 120_000;
 
 export class ProvisioningJobService {
   /**
@@ -1359,7 +1368,12 @@ export class ProvisioningJobService {
       result.claimed++;
 
       try {
-        await this.executeJob(job);
+        // withTimeout frees the awaiter (this cycle's job slot), not the
+        // underlying SSH/headscale I/O — those are themselves bounded. On
+        // timeout this throws → the catch below runs incrementAttempt, which
+        // flips the row to error/deletion_failed once attempts exhaust;
+        // recoverStaleJobs (5-min in_progress threshold) is the backstop.
+        await withTimeout(this.executeJob(job), PER_JOB_TIMEOUT_MS, `job ${job.type}`);
         result.succeeded++;
       } catch (err) {
         result.failed++;
