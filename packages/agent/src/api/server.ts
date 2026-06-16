@@ -123,9 +123,32 @@ let localInferenceServerApiPromise: Promise<LocalInferenceServerApi> | null =
   null;
 
 function getLocalInferenceServerApi(): Promise<LocalInferenceServerApi> {
-  localInferenceServerApiPromise ??= import(
-    /* @vite-ignore */ "@elizaos/plugin-local-inference"
-  ) as Promise<LocalInferenceServerApi>;
+  // Import the route modules directly, NOT the package's bare entry: the mobile
+  // agent bundle stubs `@elizaos/plugin-local-inference` (the heavy Plugin entry)
+  // to a null module, so a bare import yields undefined handlers and every
+  // /api/local-inference/* route 404s on-device. The deep subpaths (the `./*`
+  // wildcard + `./routes` exports) aren't stubbed and carry the real impls on
+  // every platform.
+  localInferenceServerApiPromise ??= (async (): Promise<LocalInferenceServerApi> => {
+    const [routes, ttsRoutes] = await Promise.all([
+      import(
+        /* @vite-ignore */ "@elizaos/plugin-local-inference/local-inference-routes"
+      ) as Promise<
+        Pick<
+          LocalInferenceServerApi,
+          "getLocalInferenceActiveModelId" | "handleLocalInferenceRoutes"
+        >
+      >,
+      import(/* @vite-ignore */ "@elizaos/plugin-local-inference/routes") as Promise<
+        Pick<LocalInferenceServerApi, "handleLocalInferenceTtsRoute">
+      >,
+    ]);
+    return {
+      getLocalInferenceActiveModelId: routes.getLocalInferenceActiveModelId,
+      handleLocalInferenceRoutes: routes.handleLocalInferenceRoutes,
+      handleLocalInferenceTtsRoute: ttsRoutes.handleLocalInferenceTtsRoute,
+    };
+  })();
   return localInferenceServerApiPromise;
 }
 
