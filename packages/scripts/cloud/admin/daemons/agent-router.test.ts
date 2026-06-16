@@ -7,37 +7,44 @@ import {
 } from "./agent-router";
 
 describe("resolveSandboxRouting", () => {
-  it("prefers headscale IP for the target when bridge metadata is available", () => {
+  it("routes over the tailnet to the container port encoded in bridge_url", () => {
+    // After provisioning, bridge_url encodes the agent's tailnet IP + the
+    // container-internal port (the app binds 0.0.0.0:<containerPort>). Over the
+    // mesh the container is reached directly there, so bridge and web UI share
+    // that one port.
     expect(
       resolveSandboxRouting({
         status: "running",
-        bridge_url: "http://172.18.0.10:18791",
+        bridge_url: "http://100.64.0.21:3000",
         headscale_ip: "100.64.0.21",
         web_ui_port: 20001,
       }),
     ).toEqual({
       headscaleIp: "100.64.0.21",
-      bridgePort: 18791,
-      webUiPort: 20001,
-      bridgeTarget: "100.64.0.21:18791",
-      webTarget: "100.64.0.21:20001",
-      target: "100.64.0.21:20001",
+      bridgePort: 3000,
+      webUiPort: 3000,
+      bridgeTarget: "100.64.0.21:3000",
+      webTarget: "100.64.0.21:3000",
+      target: "100.64.0.21:3000",
     });
   });
 
-  it("prefers persisted bridge port over bridge URL metadata", () => {
+  it("ignores the host bridge_port over the tailnet (container port from bridge_url wins)", () => {
+    // bridge_port / web_ui_port are HOST-published ports (docker -p) that do
+    // not exist inside the container's netns; routing them over the tailnet
+    // would always connection-refuse. The container port from bridge_url wins.
     expect(
       resolveSandboxRouting({
         status: "running",
-        bridge_url: "http://172.18.0.10:18791",
+        bridge_url: "http://100.64.0.21:3000",
         bridge_port: 18888,
         headscale_ip: "100.64.0.21",
         web_ui_port: 20001,
       }),
     ).toMatchObject({
-      bridgePort: 18888,
-      bridgeTarget: "100.64.0.21:18888",
-      webTarget: "100.64.0.21:20001",
+      bridgePort: 3000,
+      bridgeTarget: "100.64.0.21:3000",
+      webTarget: "100.64.0.21:3000",
     });
   });
 
@@ -71,7 +78,9 @@ describe("resolveSandboxRouting", () => {
     });
   });
 
-  it("routes valid headscale IP even when bridge URL is malformed", () => {
+  it("refuses to route a headscale sandbox when bridge_url has no usable port", () => {
+    // Over the tailnet there is no safe fallback — the host ports are
+    // unreachable, so without the container port we must not route at all.
     expect(
       resolveSandboxRouting({
         status: "running",
@@ -79,14 +88,7 @@ describe("resolveSandboxRouting", () => {
         headscale_ip: "100.64.0.21",
         web_ui_port: 20001,
       }),
-    ).toEqual({
-      headscaleIp: "100.64.0.21",
-      bridgePort: 20001,
-      webUiPort: 20001,
-      bridgeTarget: "100.64.0.21:20001",
-      webTarget: "100.64.0.21:20001",
-      target: "100.64.0.21:20001",
-    });
+    ).toBeNull();
   });
 
   it("only enables bridge-host fallback through the explicit env flag", () => {

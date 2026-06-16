@@ -107,6 +107,18 @@ interface SandboxRoutingOptions {
   allowBridgeHostFallback?: boolean;
 }
 
+function parseUrlPort(url: string | null | undefined): number | null {
+  if (!url) return null;
+  try {
+    const { port } = new URL(url);
+    if (!port) return null;
+    const parsed = Number.parseInt(port, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 export function resolveSandboxRouting(
   sandbox: SandboxRoutingFields | null | undefined,
   options: SandboxRoutingOptions = {},
@@ -115,6 +127,32 @@ export function resolveSandboxRouting(
     return null;
   }
 
+  // Headscale mesh routing: the router reaches the CONTAINER directly at its
+  // tailnet IP, where only the container-internal port is bound. bridge_port /
+  // web_ui_port are the HOST-published ports (docker -p host:container) and do
+  // not exist inside the container's network namespace, so they are unreachable
+  // over the tailnet. bridge_url is the single source of truth and encodes the
+  // reachable container port; the bridge API and the web UI are both served on
+  // it. Without a parseable port we cannot route — refuse rather than guess a
+  // host port that would never connect.
+  const tailnetIp = sandbox.headscale_ip?.trim();
+  if (tailnetIp) {
+    const containerPort = parseUrlPort(sandbox.bridge_url);
+    if (!containerPort) return null;
+    const target = `${tailnetIp}:${containerPort}`;
+    return {
+      headscaleIp: tailnetIp,
+      bridgePort: containerPort,
+      webUiPort: containerPort,
+      bridgeTarget: target,
+      webTarget: target,
+      target,
+    };
+  }
+
+  // Legacy host routing (no headscale_ip): reach the agent through the docker
+  // host's published bridge/web ports. Off by default — requires the explicit
+  // AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK opt-in.
   let bridgePort: number | null =
     typeof sandbox.bridge_port === "number" ? sandbox.bridge_port : null;
   let bridgeHost: string | null = null;
@@ -130,17 +168,16 @@ export function resolveSandboxRouting(
     }
   }
 
-  const host = sandbox.headscale_ip?.trim() || bridgeHost;
-  if (!host) return null;
+  if (!bridgeHost) return null;
   if (!bridgePort || !Number.isFinite(bridgePort)) {
     bridgePort = sandbox.web_ui_port;
   }
 
   const webUiPort = sandbox.web_ui_port;
-  const bridgeTarget = `${host}:${bridgePort}`;
-  const webTarget = `${host}:${webUiPort}`;
+  const bridgeTarget = `${bridgeHost}:${bridgePort}`;
+  const webTarget = `${bridgeHost}:${webUiPort}`;
   return {
-    headscaleIp: host,
+    headscaleIp: bridgeHost,
     bridgePort,
     webUiPort,
     bridgeTarget,
