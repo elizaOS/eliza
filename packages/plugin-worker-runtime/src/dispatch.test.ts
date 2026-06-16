@@ -320,7 +320,7 @@ describe("dispatcher action callbacks", () => {
   });
 
   it("proxies action callbacks through the runtime callback channel", async () => {
-    const channel = mockChannel();
+    const channel = createTestChannel();
     const callbackCalls: unknown[][] = [];
     const registry = makeRegistry({
       id: "action-1",

@@ -23,7 +23,7 @@ function makeService(): ScreenTimeActionService {
       {
         id: "daily-1",
         agentId: "agent-screen-time",
-        source: "app",
+        source: "app" as const,
         identifier: "com.example.Editor",
         date: "2026-05-30",
         totalSeconds: 3600,
@@ -52,10 +52,12 @@ function makeRunner(service: ScreenTimeActionService) {
     messageText: (input) =>
       typeof input.content.text === "string" ? input.content.text : "",
     renderReply: async ({ fallback }) => fallback,
-    resolveActionArgs: async () => ({
-      ok: true,
-      subaction: "today",
-      params: { date: "2026-05-30" },
+    resolveActionArgs: async <TSubaction extends string, TParams>(input: {
+      defaultSubaction?: TSubaction;
+    }) => ({
+      ok: true as const,
+      subaction: (input.defaultSubaction ?? "today") as TSubaction,
+      params: { date: "2026-05-30" } as unknown as TParams,
     }),
     isDarwin: () => false,
     getActivityReport: vi.fn(),

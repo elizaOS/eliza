@@ -173,7 +173,22 @@ export interface RuntimeProxyApi {
   ): Promise<JsonValue>;
 }
 
-export function buildRuntimeProxyApi(proxy: RuntimeProxy): RuntimeProxyApi {
+export interface BuildRuntimeProxyApiOptions {
+  /**
+   * When provided, `runtime.registerEvent` registers the handler as a dynamic
+   * worker event (routed back over RPC by the host) instead of throwing. The
+   * host wires this to its dispatch registry and returns the assigned id.
+   */
+  registerDynamicEventHandler?: (
+    name: string,
+    handler: (payload: JsonValue) => void,
+  ) => { rpc: true; id: string };
+}
+
+export function buildRuntimeProxyApi(
+  proxy: RuntimeProxy,
+  options?: BuildRuntimeProxyApiOptions,
+): RuntimeProxyApi {
   return {
     getService: (serviceType) =>
       proxy.call("getService", { serviceType }) as Promise<never>,
@@ -191,10 +206,14 @@ export function buildRuntimeProxyApi(proxy: RuntimeProxy): RuntimeProxyApi {
     emitEvent: async (name, payload) => {
       await proxy.call("emitEvent", { name, payload });
     },
-    registerEvent: async (_name, _handler) => {
-      throw new Error(
-        "runtime.registerEvent inside a remote-mode plugin cannot serialize callbacks; declare events via Plugin.events instead.",
-      );
+    registerEvent: async (name, handler) => {
+      const register = options?.registerDynamicEventHandler;
+      if (!register) {
+        throw new Error(
+          "runtime.registerEvent inside a remote-mode plugin cannot serialize callbacks; declare events via Plugin.events instead.",
+        );
+      }
+      register(name, handler);
     },
     getSetting: (key) => proxy.call("getSetting", { key }),
     setSetting: async (key, value) => {
