@@ -348,17 +348,28 @@ function normalizeChatRole(
  * and leave legacy `prompt` unset; without this bridge the native adapter sees
  * an empty string and llama_tokenize returns zero tokens.
  *
- * The format mirrors the regular mobile bridge fallback: model-agnostic
- * role-labelled text plus a trailing assistant turn marker. We deliberately do
- * not hardcode Llama/Qwen special tokens here; models with baked chat templates
- * are handled by other backends, while this path must stay tokenizer-neutral.
+ * The Eliza-1 bundle is a qwen3.5-family model (catalog tokenizerFamily
+ * "qwen35"), so we render the qwen ChatML template
+ * (`<|im_start|>role\n…<|im_end|>`) with a trailing `<|im_start|>assistant`
+ * generation marker. The generate path MUST tokenize this with
+ * parse_special=true so the role markers become real control tokens instead of
+ * literal text the model parrots back (which is what produced replies like
+ * "|im_start| user …"), and stops on `<|im_end|>`. If a non-qwen GGUF is ever
+ * served through this path the template has to become family-aware (or call the
+ * model's baked chat template).
  */
+const QWEN_IM_START = "<|im_start|>";
+const QWEN_IM_END = "<|im_end|>";
+
 export function flattenGenerateTextParamsForAospPrompt(
   params: GenerateTextParams,
 ): string {
   if (typeof params.prompt === "string" && params.prompt.length > 0) {
     return params.prompt;
   }
+
+  const chatmlBlock = (role: string, content: string) =>
+    `${QWEN_IM_START}${role}\n${content}${QWEN_IM_END}`;
 
   const messages = params.messages ?? [];
   if (messages.length > 0) {
@@ -371,19 +382,19 @@ export function flattenGenerateTextParamsForAospPrompt(
       typeof params.system === "string" &&
       params.system
     ) {
-      blocks.push(`system:\n${params.system.trim()}`);
+      blocks.push(chatmlBlock("system", params.system.trim()));
     }
     for (const message of messages) {
       const content = renderMessageContent(message.content);
       if (!content) continue;
-      blocks.push(`${normalizeChatRole(message.role)}:\n${content}`);
+      blocks.push(chatmlBlock(normalizeChatRole(message.role), content));
     }
     if (blocks.length > 0) {
       const lastRole = normalizeChatRole(messages[messages.length - 1]?.role);
       if (lastRole !== "assistant") {
-        blocks.push("assistant:");
+        blocks.push(`${QWEN_IM_START}assistant\n`);
       }
-      return blocks.join("\n\n");
+      return blocks.join("\n");
     }
   }
 
@@ -396,7 +407,7 @@ export function flattenGenerateTextParamsForAospPrompt(
   }
 
   if (typeof params.system === "string" && params.system.length > 0) {
-    return `system:\n${params.system.trim()}\n\nassistant:`;
+    return `${chatmlBlock("system", params.system.trim())}\n${QWEN_IM_START}assistant\n`;
   }
 
   return "";
@@ -408,9 +419,15 @@ export function buildGenerateArgsFromParams(
   const args: Parameters<AospLoader["generate"]>[0] = {
     prompt: flattenGenerateTextParamsForAospPrompt(params),
   };
-  if (params.stopSequences !== undefined) {
-    args.stopSequences = params.stopSequences;
-  }
+  // Always stop at qwen ChatML turn boundaries. With parse_special=true the
+  // model's <|im_end|> is its EOG token (caught by llama_vocab_is_eog), but the
+  // text stops are a belt-and-suspenders guard against the model continuing past
+  // its turn or opening a new <|im_start|> role.
+  args.stopSequences = [
+    ...(params.stopSequences ?? []),
+    QWEN_IM_END,
+    QWEN_IM_START,
+  ];
   if (params.maxTokens !== undefined) {
     args.maxTokens = params.maxTokens;
   }
