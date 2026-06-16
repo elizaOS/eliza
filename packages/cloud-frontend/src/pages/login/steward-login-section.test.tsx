@@ -134,6 +134,9 @@ describe("StewardLoginSection", () => {
     expect(await screen.findByPlaceholderText("you@example.com")).toBeVisible();
     expect(screen.getByRole("button", { name: /passkey/i })).toBeVisible();
     expect(screen.getByRole("button", { name: /magic link/i })).toBeVisible();
+    expect(
+      screen.getByText(/choose magic link to create your account/i),
+    ).toBeVisible();
     expect(screen.getByText(/provider endpoint down/i)).toBeVisible();
   });
 

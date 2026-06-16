@@ -34,12 +34,16 @@ function configuredApiBase(): string | null {
   return trimmed;
 }
 
-function browserApiBase(): string | null {
-  if (typeof window === "undefined") return null;
-  const host = window.location.hostname.toLowerCase();
+function apiBaseForHostname(hostname: string): string | null {
+  const host = hostname.toLowerCase();
   if (isLocalBrowserHost(host)) return null;
   if (host.endsWith(".pages.dev")) return "https://api-staging.elizacloud.ai";
   return configuredApiBase() ?? ELIZA_API_HOSTS[host] ?? null;
+}
+
+function browserApiBase(): string | null {
+  if (typeof window === "undefined") return null;
+  return apiBaseForHostname(window.location.hostname);
 }
 
 function isApiPath(path: string): boolean {
@@ -64,16 +68,37 @@ function withAuthHeaders(headers: HeadersInit | undefined): Headers {
 }
 
 function rewriteStringInput(input: string): string {
-  if (!isApiPath(input)) return input;
-  const base = browserApiBase();
-  return base ? `${base}${input}` : input;
+  if (isApiPath(input)) {
+    const base = browserApiBase();
+    return base ? `${base}${input}` : input;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(input);
+  } catch {
+    return input;
+  }
+
+  if (typeof window === "undefined" || !isApiPath(url.pathname)) {
+    return input;
+  }
+
+  const base =
+    url.origin === window.location.origin
+      ? browserApiBase()
+      : apiBaseForHostname(url.hostname);
+  return base ? `${base}${url.pathname}${url.search}${url.hash}` : input;
 }
 
 function rewriteUrlInput(input: URL): URL | string {
-  if (input.origin !== window.location.origin || !isApiPath(input.pathname)) {
+  if (!isApiPath(input.pathname)) {
     return input;
   }
-  const base = browserApiBase();
+  const base =
+    input.origin === window.location.origin
+      ? browserApiBase()
+      : apiBaseForHostname(input.hostname);
   return base ? `${base}${input.pathname}${input.search}${input.hash}` : input;
 }
 
@@ -87,12 +112,15 @@ export function installApiFetchBridge(): void {
 
   const nativeFetch = window.fetch.bind(window);
   window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-    if (typeof input === "string" && isApiPath(input)) {
-      return nativeFetch(rewriteStringInput(input), {
-        ...init,
-        credentials: init?.credentials ?? "include",
-        headers: withAuthHeaders(init?.headers),
-      });
+    if (typeof input === "string") {
+      const rewritten = rewriteStringInput(input);
+      if (rewritten !== input || isApiPath(input)) {
+        return nativeFetch(rewritten, {
+          ...init,
+          credentials: init?.credentials ?? "include",
+          headers: withAuthHeaders(init?.headers),
+        });
+      }
     }
 
     if (input instanceof URL && isApiPath(input.pathname)) {
@@ -105,11 +133,13 @@ export function installApiFetchBridge(): void {
 
     if (input instanceof Request) {
       const url = new URL(input.url, window.location.origin);
-      if (url.origin === window.location.origin && isApiPath(url.pathname)) {
+      const base =
+        url.origin === window.location.origin
+          ? browserApiBase()
+          : apiBaseForHostname(url.hostname);
+      if (base && isApiPath(url.pathname)) {
         const request = new Request(input, init);
-        const rewritten = browserApiBase()
-          ? `${browserApiBase()}${url.pathname}${url.search}${url.hash}`
-          : request.url;
+        const rewritten = `${base}${url.pathname}${url.search}${url.hash}`;
         return nativeFetch(new Request(rewritten, request), {
           headers: withAuthHeaders(request.headers),
           credentials: request.credentials ?? "include",

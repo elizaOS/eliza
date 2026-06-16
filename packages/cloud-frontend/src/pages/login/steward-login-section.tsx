@@ -648,6 +648,13 @@ export default function StewardLoginSection() {
         )}
       </div>
 
+      <p className="text-center text-xs leading-5 text-white/62">
+        {t("cloud.login.signupHint", {
+          defaultValue:
+            "New here? Enter your email and choose Magic Link to create your account. Passkey works after you add one.",
+        })}
+      </p>
+
       {hasOAuthProviders && (
         <div className="flex items-center gap-3">
           <div className="h-px flex-1 bg-white/14" />
