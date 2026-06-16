@@ -31,8 +31,13 @@ function getCloudHealthApi(): Promise<CloudHealthApi> {
 }
 
 function getLocalInferenceHealthApi(): Promise<LocalInferenceHealthApi> {
+  // Import the route module directly, NOT the package's bare entry. The mobile
+  // agent bundle stubs `@elizaos/plugin-local-inference` (the heavy Plugin entry)
+  // to a null module, so a bare import returns `{ getLocalInferenceActiveSnapshot:
+  // undefined }` and /api/status 500s. The deep subpath (the `./*` wildcard
+  // export) isn't stubbed and carries the real implementation on every platform.
   localInferenceHealthApiPromise ??= import(
-    "@elizaos/plugin-local-inference"
+    /* @vite-ignore */ "@elizaos/plugin-local-inference/local-inference-routes"
   ) as Promise<LocalInferenceHealthApi>;
   return localInferenceHealthApiPromise;
 }
@@ -455,9 +460,12 @@ export async function handleHealthRoutes(
     const uptime = state.startedAt ? Date.now() - state.startedAt : undefined;
     const { getLocalInferenceActiveSnapshot } =
       await getLocalInferenceHealthApi();
-    const localInferenceActive = await getLocalInferenceActiveSnapshot().catch(
-      () => null,
-    );
+    // The active-model snapshot is optional status info; never let an
+    // unavailable local-inference API turn /api/status into a 500.
+    const localInferenceActive =
+      typeof getLocalInferenceActiveSnapshot === "function"
+        ? await getLocalInferenceActiveSnapshot().catch(() => null)
+        : null;
     const activeLocalModel =
       localInferenceActive?.status === "ready" &&
       localInferenceActive.modelId?.trim()
