@@ -78,9 +78,15 @@ import {
 // ── Paths ───────────────────────────────────────────────────────────────
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolveRepoRootFromImportMeta(import.meta.url, {
-  fallbackToCwd: true,
-});
+// When this elizaOS checkout is nested inside a consumer monorepo (e.g.
+// milady wraps it as `eliza/`), the repo-root walk resolves to the OUTER
+// repo and the build targets the consumer's app. Allow an explicit override
+// so the elizaOS app itself can be built standalone from the nested checkout.
+const repoRoot = process.env.ELIZA_MOBILE_REPO_ROOT?.trim()
+  ? path.resolve(process.env.ELIZA_MOBILE_REPO_ROOT.trim())
+  : resolveRepoRootFromImportMeta(import.meta.url, {
+      fallbackToCwd: true,
+    });
 const appCoreRoot = path.resolve(__dirname, "..");
 const packagesRoot = path.resolve(appCoreRoot, "..");
 const elizaRepoRoot = path.resolve(packagesRoot, "..");
@@ -1085,6 +1091,46 @@ async function ensurePlatform(platform) {
   if (!isCapacitorPlatformReady(platform)) {
     syncPlatformTemplateFiles(platform);
   }
+}
+
+/**
+ * `cap sync android` copies the web bundle + capacitor runtime config into the
+ * host app's Capacitor project (`<appDir>/android`). The gradle build and agent
+ * staging, however, run against the canonical platform tree
+ * (`androidDir` = `app-core/platforms/android`). When those are distinct
+ * directories — e.g. this elizaOS checkout nested inside a consumer monorepo —
+ * the freshly-synced renderer never reaches the dir gradle packages, so the APK
+ * ships no web assets and the WebView 404s on index.html
+ * (net::ERR_CONNECTION_REFUSED). Mirror the synced payload into androidDir.
+ * No-op when both trees resolve to the same directory (standalone layout).
+ */
+function mirrorCapacitorWebPayloadIntoAndroidDir() {
+  const syncedAssets = path.join(
+    appDir,
+    "android",
+    "app",
+    "src",
+    "main",
+    "assets",
+  );
+  const targetAssets = path.join(androidDir, "app", "src", "main", "assets");
+  const syncedPublic = path.join(syncedAssets, "public");
+  if (!fs.existsSync(syncedPublic)) return;
+  const sameTree =
+    fs.existsSync(targetAssets) &&
+    fs.realpathSync(syncedAssets) === fs.realpathSync(targetAssets);
+  if (sameTree) return;
+  const targetPublic = path.join(targetAssets, "public");
+  fs.mkdirSync(targetAssets, { recursive: true });
+  fs.rmSync(targetPublic, { recursive: true, force: true });
+  fs.cpSync(syncedPublic, targetPublic, { recursive: true });
+  for (const cfg of ["capacitor.config.json", "capacitor.plugins.json"]) {
+    const src = path.join(syncedAssets, cfg);
+    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(targetAssets, cfg));
+  }
+  console.log(
+    `[mobile-build] Mirrored Capacitor web payload into ${path.relative(repoRoot, targetAssets)}`,
+  );
 }
 
 // ── Phase 4: Android native overlay ─────────────────────────────────────
@@ -5857,6 +5903,7 @@ async function buildAndroid() {
   await buildMobileAgentBundle();
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
+  mirrorCapacitorWebPayloadIntoAndroidDir();
 
   patchAndroidGradle();
   await generateAndroidBrandAssets();
