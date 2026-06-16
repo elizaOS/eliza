@@ -1,0 +1,105 @@
+name: Arm Headscale Control Plane
+
+# Converges Headscale on the Hetzner control-plane host. This is the
+# repeatable version of the launch runbook: configure server_url/listen_addr,
+# install the committed ACL, ensure users exist, upsert daemon env, restart
+# headscale + provisioning-worker, and fail if local /health is not green.
+#
+# WHY: agent provisioning must not be allowed to "sort of" work. If the daemon
+# has a Headscale key, docker-sandbox-provider requires a real headscale_ip
+# before marking a sandbox running. This workflow makes that dependency explicit
+# and keeps prod/staging wiring in GitHub Environments instead of hand-edited
+# shell history on the host.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target control-plane environment"
+        type: choice
+        default: staging
+        options: [staging, production]
+      headscale_public_url:
+        description: "Public Headscale URL. Empty = vars.HEADSCALE_PUBLIC_URL"
+        type: string
+        required: false
+        default: ""
+      headscale_api_url:
+        description: "Daemon-local Headscale API URL"
+        type: string
+        required: false
+        default: "http://127.0.0.1:8081"
+      listen_addr:
+        description: "Headscale listen_addr on the CP"
+        type: string
+        required: false
+        default: "127.0.0.1:8081"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arm-headscale-control-plane-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  arm:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    timeout-minutes: 10
+    env:
+      DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+      DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+      HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
+      AGENT_TOKEN_PRIVATE_KEY_PEM: ${{ secrets.AGENT_TOKEN_PRIVATE_KEY_PEM }}
+      ELIZA_LOCAL_ROOT_KEY: ${{ secrets.ELIZA_LOCAL_ROOT_KEY }}
+      HEADSCALE_PUBLIC_URL_INPUT: ${{ github.event.inputs.headscale_public_url }}
+      HEADSCALE_PUBLIC_URL_VAR: ${{ vars.HEADSCALE_PUBLIC_URL }}
+      HEADSCALE_API_URL: ${{ github.event.inputs.headscale_api_url }}
+      HEADSCALE_LISTEN_ADDR: ${{ github.event.inputs.listen_addr }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preflight
+        run: |
+          fail=0
+          [ -n "$DEPLOY_HOST" ] || { echo "::error::missing secret ELIZA_PROVISIONING_HOST"; fail=1; }
+          [ -n "$DEPLOY_SSH_KEY" ] || { echo "::error::missing secret ELIZA_PROVISIONING_SSH_KEY"; fail=1; }
+          [ -n "$HEADSCALE_API_KEY" ] || { echo "::error::missing secret HEADSCALE_API_KEY"; fail=1; }
+          if [ -n "$HEADSCALE_PUBLIC_URL_INPUT" ]; then
+            echo "HEADSCALE_PUBLIC_URL=$HEADSCALE_PUBLIC_URL_INPUT" >> "$GITHUB_ENV"
+          elif [ -n "$HEADSCALE_PUBLIC_URL_VAR" ]; then
+            echo "HEADSCALE_PUBLIC_URL=$HEADSCALE_PUBLIC_URL_VAR" >> "$GITHUB_ENV"
+          else
+            echo "::error::set vars.HEADSCALE_PUBLIC_URL or provide headscale_public_url"
+            fail=1
+          fi
+          [ "$fail" = 0 ] || exit 1
+
+      - name: Write SSH key
+        run: |
+          install -d -m 700 "$RUNNER_TEMP/headscale"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$RUNNER_TEMP/headscale/deploy_ed25519"
+          chmod 600 "$RUNNER_TEMP/headscale/deploy_ed25519"
+          echo "DEPLOY_SSH_KEY_PATH=$RUNNER_TEMP/headscale/deploy_ed25519" >> "$GITHUB_ENV"
+
+      - name: Arm Headscale and daemon env
+        run: |
+          node packages/scripts/cloud/admin/arm-headscale-control-plane.mjs \
+            --host "$DEPLOY_HOST" \
+            --ssh-key "$DEPLOY_SSH_KEY_PATH" \
+            --headscale-public-url "$HEADSCALE_PUBLIC_URL" \
+            --headscale-api-url "$HEADSCALE_API_URL" \
+            --listen-addr "$HEADSCALE_LISTEN_ADDR"
+
+      - name: Summary
+        run: |
+          {
+            echo "### Headscale control plane armed"
+            echo ""
+            echo "- Environment: \`${{ github.event.inputs.environment }}\`"
+            echo "- Public URL: \`$HEADSCALE_PUBLIC_URL\`"
+            echo "- Daemon API URL: \`$HEADSCALE_API_URL\`"
+            echo ""
+            echo "Next: set matching Cloudflare Worker secrets, then run the provision E2E."
+          } >> "$GITHUB_STEP_SUMMARY"
