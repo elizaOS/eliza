@@ -592,6 +592,7 @@ describe("scenario PR workflow contract", () => {
 
     expect(workflow).toContain("pull_request:");
     expect(workflow).toContain("Run Playwright tests");
+    expect(workflow).toContain("github.event_name == 'workflow_dispatch'");
     expect(workflow).toContain("project: [chromium-desktop, chromium-mobile]");
     expect(workflow).toContain('shard: ["1/2", "2/2"]');
     const matrixProjectExpression = ["$", "{{ matrix.project }}"].join("");
@@ -601,6 +602,11 @@ describe("scenario PR workflow contract", () => {
         matrixProjectExpression +
         " --shard=" +
         matrixShardExpression,
+    );
+    expect(workflow).toContain("playwright-smoke:");
+    expect(workflow).toContain("Run Playwright route smoke");
+    expect(workflow).toContain(
+      'tests/e2e/cloud-routes.spec.ts --project=chromium-desktop -g "public route renders:"',
     );
     expect(rootPackage.scripts?.["test:cloud:playwright"]).toBe(
       "bun run --cwd packages/cloud-frontend test:e2e",
