@@ -19,10 +19,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  AGENT_API_PORT,
   ensureEmulatorBooted,
   ensureEmulatorPermissive,
-  forwardAgentApi,
   installApk,
   isInstalled,
   resolveAdb,
@@ -136,15 +134,8 @@ async function main() {
   }
 
   if (has("--cloud")) {
-    log("cloud route: real provisioning probe…");
-    forwardAgentApi(adb, serial, AGENT_API_PORT);
-    run("node", [
-      "scripts/cloud-provisioning-e2e.mjs",
-      "--surfaces",
-      "programmatic,android",
-      "--android-serial",
-      serial,
-    ]);
+    log("cloud route: real Hetzner provisioning probe (loud-fails if it can't)…");
+    run("node", ["scripts/cloud-provisioning-e2e.mjs"]);
   }
 
   log("ALL ANDROID E2E PASSED ✅");
