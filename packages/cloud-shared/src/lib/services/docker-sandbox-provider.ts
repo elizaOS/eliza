@@ -1673,9 +1673,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     // happens before the tailnet/DERP path is warm — gating on it would let the
     // first racing tailnet fetch tear the agent down despite it being healthy.
     const headscaleIp =
-      typeof handle.metadata?.headscaleIp === "string"
-        ? handle.metadata.headscaleIp
-        : undefined;
+      typeof handle.metadata?.headscaleIp === "string" ? handle.metadata.headscaleIp : undefined;
     if (headscaleIp) {
       return this.pollTailnetHealth(handle, meta, deadline);
     }
