@@ -63,6 +63,9 @@ const profileWriteDescribe =
   liveEnabled && apiKey && profileWriteEnabled && destructiveEnabled
     ? describe
     : describe.skip;
+// Live public auth endpoints regularly cross Vitest's 5s default on hosted CI.
+// This is a timeout budget for real network work, not an artificial delay.
+const LIVE_PUBLIC_AUTH_TIMEOUT_MS = 15_000;
 
 function publicClient() {
   return new ElizaCloudClient({ baseUrl, apiBaseUrl });
@@ -103,25 +106,29 @@ liveDescribe(
       },
     );
 
-    it("starts a CLI login session and polls it with direct and templated endpoint calls", async () => {
-      const client = publicClient();
-      const started = await client.startCliLogin();
-      expect(started.sessionId).toBeTruthy();
-      expect(started.browserUrl).toContain("/auth/cli-login?session=");
+    it(
+      "starts a CLI login session and polls it with direct and templated endpoint calls",
+      async () => {
+        const client = publicClient();
+        const started = await client.startCliLogin();
+        expect(started.sessionId).toBeTruthy();
+        expect(started.browserUrl).toContain("/auth/cli-login?session=");
 
-      const polled = await client.pollCliLogin(started.sessionId);
-      expect(polled.status).toBe("pending");
+        const polled = await client.pollCliLogin(started.sessionId);
+        expect(polled.status).toBe("pending");
 
-      const templated = await client.callEndpoint(
-        "GET",
-        "/api/auth/cli-session/{sessionId}",
-        {
-          pathParams: { sessionId: started.sessionId },
-          skipAuth: true,
-        },
-      );
-      expect(templated).toMatchObject({ status: "pending" });
-    });
+        const templated = await client.callEndpoint(
+          "GET",
+          "/api/auth/cli-session/{sessionId}",
+          {
+            pathParams: { sessionId: started.sessionId },
+            skipAuth: true,
+          },
+        );
+        expect(templated).toMatchObject({ status: "pending" });
+      },
+      LIVE_PUBLIC_AUTH_TIMEOUT_MS,
+    );
 
     it("lists public models through the high-level client and compatibility client", async () => {
       const client = publicClient();
