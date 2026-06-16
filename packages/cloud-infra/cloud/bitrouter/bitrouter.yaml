@@ -25,29 +25,27 @@ providers:
 # Strategy 3 SHOULD also route them via openrouter — but the explicit form
 # is more deterministic for the models our agent actually uses.
 #
-# gpt-oss-120b routes Cerebras-FIRST (the ~2000 tok/s interactive path), with
-# OpenRouter as an ordered fallback for Cerebras 429s/outages. Previously these
-# aliases pointed only at OpenRouter, and the gateway/`:nitro` variants returned
+# gpt-oss-120b is Cerebras-ONLY — no fallback. We use this model purely for
+# Cerebras' ~2000 tok/s speed (interactively fast; no other provider is), so a
+# slower OpenRouter fallback would defeat the point — if it can't be fast, we'd
+# rather it fail than silently degrade. (Owner decision, 2026-06-16.) Previously
+# these aliases pointed at OpenRouter, and the gateway/`:nitro` variants returned
 # 503 ("Failed after 3 attempts: Bad Gateway") on every new-user default — the
 # `:nitro` suffix is an OpenRouter convention with no healthy upstream here, so
-# it 502s and we surface 503. Multi-endpoint lists are tried in order (BitRouter
-# fallback chains), so a Cerebras error falls through to OpenRouter (plain id,
-# never `:nitro`). The bare `gpt-oss-120b` alias covers raw-provider callers
-# (apps chat); the Worker's own cerebras-direct path handles the dashboard
-# default before BitRouter is ever reached.
+# it 502s and we surface 503. All three spellings now resolve to Cerebras. The
+# bare `gpt-oss-120b` alias covers raw-provider callers (apps chat); the Worker's
+# own cerebras-direct path handles the dashboard default before BitRouter is ever
+# reached.
 models:
   "gpt-oss-120b":
     endpoints:
       - { provider: cerebras, service_id: "gpt-oss-120b" }
-      - { provider: openrouter, service_id: "openai/gpt-oss-120b" }
   "openai/gpt-oss-120b":
     endpoints:
       - { provider: cerebras, service_id: "gpt-oss-120b" }
-      - { provider: openrouter, service_id: "openai/gpt-oss-120b" }
   "openai/gpt-oss-120b:nitro":
     endpoints:
       - { provider: cerebras, service_id: "gpt-oss-120b" }
-      - { provider: openrouter, service_id: "openai/gpt-oss-120b" }
   "anthropic/claude-haiku-4.5":
     endpoints:
       - { provider: openrouter, service_id: "anthropic/claude-haiku-4.5" }
