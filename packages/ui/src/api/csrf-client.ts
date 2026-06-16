@@ -15,6 +15,7 @@
 
 import { getBootConfig } from "../config/boot-config";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
+import { resolveApiUrl } from "../utils/asset-url";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
 import { CSRF_COOKIE_NAME, CSRF_HEADER_NAME } from "./auth/sessions";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
@@ -45,6 +46,15 @@ export async function fetchWithCsrf(
   url: string,
   init: RequestInit = {},
 ): Promise<Response> {
+  // Resolve relative API paths against the configured API base. On Capacitor
+  // remote mode the page origin is the bundle's asset server, which answers
+  // ANY path with index.html and HTTP 200 — a relative "/api/..." fetch
+  // "succeeds" and then explodes at JSON parse. No-op when no base is set
+  // (plain same-origin web). Absolute and protocol-relative URLs pass through
+  // untouched — resolveApiUrl prefixes blindly and would corrupt them.
+  if (url.startsWith("/") && !url.startsWith("//")) {
+    url = resolveApiUrl(url);
+  }
   const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
 

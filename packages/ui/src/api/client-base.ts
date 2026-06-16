@@ -511,8 +511,8 @@ export class ElizaClient {
       }
     }
     if (!res.ok && !options?.allowNonOk) {
-      const body = (await res
-        .json()
+      const body = (await this.readBodyText(res, path, options?.timeoutMs)
+        .then((text) => JSON.parse(text) as Record<string, unknown>)
         .catch(() => ({ error: res.statusText }))) as Record<
         string,
         unknown
@@ -680,6 +680,42 @@ export class ElizaClient {
     });
   }
 
+  /**
+   * Reads a response body with the same budget the request itself had. The
+   * per-request abort timer in {@link rawRequestOnce} is cleared the moment
+   * HEADERS arrive, so without this a response whose body stream stalls
+   * (proxies, USB/adb relays, dropped radios) pends forever — JSON consumers
+   * must never await an unbounded body. Streaming consumers (SSE) keep their
+   * own idle timeout and do not go through here.
+   */
+  private async readBodyText(
+    res: Response,
+    path: string,
+    timeoutMs?: number,
+  ): Promise<string> {
+    const budgetMs = timeoutMs ?? defaultFetchTimeoutMs(path, undefined);
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        res.text(),
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => {
+            reject(
+              new ApiError({
+                kind: "timeout",
+                path,
+                status: res.status,
+                message: `Response body timed out after ${budgetMs}ms`,
+              }),
+            );
+          }, budgetMs);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
   async fetch<T>(
     path: string,
     init?: RequestInit,
@@ -699,7 +735,7 @@ export class ElizaClient {
     if (res.status === 204) {
       return undefined as T;
     }
-    const text = await res.text();
+    const text = await this.readBodyText(res, path, options?.timeoutMs);
     if (text === "") {
       return undefined as T;
     }
