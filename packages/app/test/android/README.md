@@ -85,6 +85,28 @@ start, model won't download/run, a route won't render, cloud won't provision
 | `ELIZA_ANDROID_REQUIRE_AGENT=0` | Don't gate route coverage on local agent health (cloud/remote mode) |
 | `ELIZA_EMULATOR_MEMORY_MB` / `ELIZA_EMULATOR_CORES` | Override emulator sizing |
 
+## On-device agent: where it runs
+
+The embedded agent (bun + llama) **runs on real arm64 hardware** (verified on a
+Pixel 9a: `/api/health` → `ready:true` with 21 plugins, `/api/status` →
+`running`). It does **not** run on a stock x86_64 emulator — bun SIGSEGVs there
+even after SELinux-permissive + 6GB + AVX2 (an emulator/runtime incompatibility
+the branded AOSP build avoids). So the on-device LOCAL route is validated on a
+device runner; the smoke surfaces the emulator failure loudly.
+
+## Known last gate: device pairing
+
+With a healthy on-device agent, the WebView still gates the shell behind the
+app's **device-pairing** screen ("Pairing Required — generate a code on the
+server, paste it here"). For unattended e2e the agent should run with
+`ELIZA_PAIRING_DISABLED=1` (skips `pairingEnabled()` in
+`app-core/src/api/auth-pairing-routes.ts`), or the harness must complete the
+`GET /api/auth/pair-code` → `POST /api/auth/pair` handshake and seed the
+resulting session. Until then, route coverage needs a backend that's already
+"connected" — a cloud-onboarded agent (`ELIZA_ANDROID_BACKEND` + a cloud token)
+or pairing disabled in the test build. This is the one remaining wiring step to
+fully-green on-device route coverage.
+
 ## iOS
 
 iOS uses the same `mobile-local-chat-smoke.mjs` (simulator path via `xcrun

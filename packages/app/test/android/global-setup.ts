@@ -12,7 +12,6 @@ import {
   adbReverse,
   adbTry,
   AGENT_API_PORT,
-  forwardAgentApi,
   isInstalled,
   launchApp,
   resolveAdb,
@@ -72,6 +71,16 @@ export default async function globalSetup() {
     });
   }
 
+  // Pre-grant the runtime permissions the app requests on launch, so a system
+  // GrantPermissionsActivity doesn't cover the WebView and stall route render.
+  for (const perm of [
+    "android.permission.POST_NOTIFICATIONS",
+    "android.permission.RECORD_AUDIO",
+    "android.permission.CAMERA",
+  ]) {
+    adbTry(adb, ["-s", serial, "shell", "pm", "grant", "ai.elizaos.app", perm]);
+  }
+
   // host backend: route the device's loopback :31337 to the host agent.
   if (BACKEND === "host") {
     adbReverse(adb, serial, AGENT_API_PORT, AGENT_API_PORT);
@@ -89,11 +98,20 @@ export default async function globalSetup() {
   }
 
   // host backend: the agent runs on the test host itself; poll it directly.
-  // local backend: forward the on-device agent's port to the host and poll that.
+  // local backend: forward the on-device agent's port to a FREE host port (0)
+  // and poll that — avoids colliding with anything already bound to host :31337.
   const pollPort =
     BACKEND === "host"
       ? AGENT_API_PORT
-      : forwardAgentApi(adb, serial, AGENT_API_PORT);
+      : Number(
+          adbTry(adb, [
+            "-s",
+            serial,
+            "forward",
+            "tcp:0",
+            `tcp:${AGENT_API_PORT}`,
+          ]).trim() || AGENT_API_PORT,
+        );
   const where = BACKEND === "host" ? "host agent" : "on-device agent";
   console.log(
     `[android-e2e] waiting up to ${HEALTH_POLL_MS}ms for ${where} (127.0.0.1:${pollPort}/api/health)…`,
