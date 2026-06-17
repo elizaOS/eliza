@@ -56,7 +56,7 @@
 		"@discordjs/ws": "^1.2.3",
 		"@elizaos/core": "workspace:*",
 		"@elizaos/plugin-browser": "workspace:*",
-		"@sapphire/snowflake": "3.5.3",
+		"@sapphire/snowflake": "3.5.5",
 		"discord-api-types": "^0.38.0",
 		"discord.js": "^14.26.4",
 		"fast-deep-equal": "3.1.3",
