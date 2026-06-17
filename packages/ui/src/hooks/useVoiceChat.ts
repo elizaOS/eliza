@@ -1761,6 +1761,48 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               : {}),
           });
 
+          // Native mobile (Android/iOS Capacitor): route the reply through the
+          // native TalkMode engine (Kotlin AudioTrack / on-device local-inference
+          // TTS) per the Android TTS-owner decision, instead of the WebView
+          // AudioContext path. Falls through to the web TTS path on a native error.
+          if (Capacitor.isNativePlatform()) {
+            const trimmed = task.text.trim();
+            if (!trimmed) continue;
+            usingAudioAnalysisRef.current = false;
+            setUsingAudioAnalysis(false);
+            emitPlaybackStart({
+              text: task.text,
+              segment: task.segment,
+              provider: "browser",
+              cached: false,
+              startedAtMs: performance.now(),
+              ...task.telemetry,
+            });
+            try {
+              const result = await getTalkModePlugin().speak({
+                text: trimmed,
+                useLocalInferenceTts: true,
+              });
+              if (workerGeneration !== generationRef.current) break;
+              if (result?.error) throw new Error(result.error);
+              continue;
+            } catch (error) {
+              if (
+                workerGeneration !== generationRef.current ||
+                isAbortError(error)
+              ) {
+                break;
+              }
+              ttsDebug("useVoiceChat:native-talkmode-failed-fallback", {
+                err:
+                  error instanceof Error
+                    ? `${error.name}: ${error.message.slice(0, 200)}`
+                    : String(error).slice(0, 200),
+              });
+              // Fall through to the web TTS path (elevenlabs/local/browser).
+            }
+          }
+
           if (useLocalInference) {
             usingAudioAnalysisRef.current = true;
             setUsingAudioAnalysis(true);
