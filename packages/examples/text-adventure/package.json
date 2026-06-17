@@ -15,7 +15,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "@clack/prompts": "^0.11.0",
+    "@clack/prompts": "^1.5.1",
     "uuid": "^14.0.0"
   },
   "devDependencies": {
