@@ -79,6 +79,21 @@ async function main(): Promise<void> {
       replyText.length > 0,
       "the agent must produce a non-empty reply through the real pipeline",
     );
+    // The reply must come from the real generation path — NOT the route's
+    // provider-failure fallback ("Sorry, I'm having a provider issue") or an
+    // ignored turn. Both of those also return HTTP 200 with non-empty text, so
+    // without these checks any regression inside generateChatResponse would
+    // still make this "real" proof exit 0 (false green).
+    assert.equal(
+      sent.data.failureKind,
+      undefined,
+      `chat hit the provider-failure fallback instead of a real reply: ${JSON.stringify(sent.data)}`,
+    );
+    assert.notEqual(
+      sent.data.noResponseReason,
+      "ignored",
+      `agent ignored the message instead of replying: ${JSON.stringify(sent.data)}`,
+    );
     console.log(
       `[local-chat] PASS reply via real pipeline: ${JSON.stringify(replyText.slice(0, 80))}`,
     );
