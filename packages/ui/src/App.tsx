@@ -305,7 +305,7 @@ function OnboardingOverlayShell() {
       data-testid="onboarding-overlay-shell"
       className="pointer-events-none fixed inset-0 bg-transparent"
     >
-      <CompactOnboarding showVoicePill />
+      <CompactOnboarding />
     </div>
   );
 }
