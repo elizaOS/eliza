@@ -1,6 +1,6 @@
 /**
  * API keys page client component for managing API keys.
- * Displays key summary, table, and creation dialog with rate limit and permission configuration.
+ * Displays key summary, table, and creation dialog with rate limit configuration.
  *
  * @param props - API keys page client configuration
  * @param props.keys - Array of API key display objects
