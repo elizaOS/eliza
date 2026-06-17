@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+const permissionsSchema = z.array(z.string().trim().min(1)).max(50);
+
 const optionalExpiresAtSchema = z
   .union([z.string().trim().min(1), z.null()])
   .optional()
@@ -24,6 +26,7 @@ export const createApiKeySchema = z.object({
       const trimmed = value.trim();
       return trimmed.length ? trimmed : null;
     }),
+  permissions: permissionsSchema.default([]),
   rate_limit: z.coerce.number().int().min(1).max(100000).default(1000),
   expires_at: optionalExpiresAtSchema,
 });
@@ -40,6 +43,7 @@ export const updateApiKeySchema = z
         const trimmed = value.trim();
         return trimmed.length ? trimmed : null;
       }),
+    permissions: permissionsSchema.optional(),
     rate_limit: z.coerce.number().int().min(1).max(100000).optional(),
     is_active: z.boolean().optional(),
     expires_at: optionalExpiresAtSchema,

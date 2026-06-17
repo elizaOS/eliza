@@ -3,6 +3,7 @@
  */
 
 import { Hono } from "hono";
+import { requireApiKeyPermission } from "@/api-app/middleware/auth";
 import { assertOrgMembership } from "@/api-app/middleware/org-membership";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
@@ -18,6 +19,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STRICT));
+app.use("*", requireApiKeyPermission("keys:write"));
 
 app.post("/", async (c) => {
   try {
@@ -86,6 +88,7 @@ app.post("/", async (c) => {
         description: updatedKey.description,
         key_prefix: updatedKey.key_prefix,
         created_at: updatedKey.created_at,
+        permissions: updatedKey.permissions,
         rate_limit: updatedKey.rate_limit,
         expires_at: updatedKey.expires_at,
       },
