@@ -67,9 +67,17 @@ describe("AgentSandboxesRepository", () => {
     // ...and have NO live agent_provision job.
     expect(sql).toContain("not exists");
     expect(sql).toContain("agent_provision");
+    // The job predicate is load-bearing: only LIVE jobs ('pending'/'in_progress')
+    // count, so a row whose only agent_provision job is completed/error is still
+    // reclaimed. Assert the live-state filter is present and dead states are not.
+    expect(sql).toContain("'pending', 'in_progress'");
+    expect(sql).not.toContain("'completed'");
+    expect(sql).not.toContain("'error'");
 
     // It MARKS ERROR (it never re-enqueues) with a clear, retry-able message.
     expect(capturedSet?.status).toBe("error");
     expect(String(capturedSet?.error_message)).toContain("no agent_provision job was enqueued");
+    // updated_at is bumped so the row no longer matches the cron on the next tick.
+    expect(capturedSet?.updated_at instanceof Date).toBe(true);
   });
 });

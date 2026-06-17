@@ -143,11 +143,24 @@ describe("POST /api/v1/eliza/agents — orphan cleanup", () => {
     prepareManagedElizaEnvironment.mockClear();
     enqueueAgentProvision.mockClear();
     triggerImmediate.mockClear();
+    deleteSandbox.mockResolvedValue(true);
     prepareManagedElizaEnvironment.mockResolvedValue({
       changed: false,
       environmentVars: {},
     });
   });
+
+  // The route has no local onError, so a thrown plain Error bubbles to Hono's
+  // default handler: HTTP 500, text/plain "Internal Server Error" (no JSON).
+  async function expectOrphanCleanedUp(response: Response) {
+    // createAgent committed exactly one row...
+    expect(createAgent).toHaveBeenCalledTimes(1);
+    // ...which was rolled back so the daemon can't strand it in `pending`.
+    expect(deleteSandbox).toHaveBeenCalledWith("sandbox-1", "org-1");
+    // The original error still surfaces to the caller (not swallowed).
+    expect(response.status).toBe(500);
+    expect(await response.text()).toBe("Internal Server Error");
+  }
 
   test("deletes the just-created sandbox when env prep throws (no orphaned pending row)", async () => {
     prepareManagedElizaEnvironment.mockRejectedValueOnce(
@@ -156,13 +169,9 @@ describe("POST /api/v1/eliza/agents — orphan cleanup", () => {
 
     const response = await postAgent();
 
-    // createAgent committed the row, but env prep blew up before the enqueue.
-    expect(createAgent).toHaveBeenCalledTimes(1);
+    // env prep blew up before the enqueue.
     expect(enqueueAgentProvision).not.toHaveBeenCalled();
-    // The orphan was rolled back so the daemon can't strand it in `pending`.
-    expect(deleteSandbox).toHaveBeenCalledWith("sandbox-1", "org-1");
-    // The error still surfaces to the caller (not swallowed).
-    expect(response.status).toBeGreaterThanOrEqual(500);
+    await expectOrphanCleanedUp(response);
   });
 
   test("deletes the just-created sandbox when the env update throws", async () => {
@@ -174,10 +183,36 @@ describe("POST /api/v1/eliza/agents — orphan cleanup", () => {
 
     const response = await postAgent();
 
-    expect(createAgent).toHaveBeenCalledTimes(1);
     expect(enqueueAgentProvision).not.toHaveBeenCalled();
-    expect(deleteSandbox).toHaveBeenCalledWith("sandbox-1", "org-1");
-    expect(response.status).toBeGreaterThanOrEqual(500);
+    await expectOrphanCleanedUp(response);
+  });
+
+  test("deletes the just-created sandbox when the provision-job enqueue throws", async () => {
+    enqueueAgentProvision.mockRejectedValueOnce(
+      new Error("job table write failed"),
+    );
+
+    const response = await postAgent();
+
+    // enqueue is the last write in the guarded span; the row must still roll back.
+    expect(enqueueAgentProvision).toHaveBeenCalledTimes(1);
+    // triggerImmediate fires only AFTER a successful enqueue — never here.
+    expect(triggerImmediate).not.toHaveBeenCalled();
+    await expectOrphanCleanedUp(response);
+  });
+
+  test("rethrows the original error even when the cleanup delete also fails", async () => {
+    prepareManagedElizaEnvironment.mockRejectedValueOnce(
+      new Error("KMS key mint failed"),
+    );
+    // The best-effort cleanup itself throws: withOrphanCleanup's nested catch
+    // logs cleanupErr but must rethrow the ORIGINAL err, not the cleanup error.
+    deleteSandbox.mockRejectedValueOnce(new Error("delete failed too"));
+
+    const response = await postAgent();
+
+    expect(enqueueAgentProvision).not.toHaveBeenCalled();
+    await expectOrphanCleanedUp(response);
   });
 
   test("happy path enqueues the provision job and never deletes the sandbox", async () => {
