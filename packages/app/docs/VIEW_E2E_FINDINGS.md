@@ -54,17 +54,20 @@ committed tripwire test so it is change-detected. Status below.
   patrick→agent-security). (commit: "fix(clawville): resolve building targets to
   REAL live ids via perception".)
 
-## Open — deferred (needs a product decision / cross-package shared type)
+- **plugin-feed — FeedAgentSummary type lie.** `getFeedAgentSummary()` only
+  proxies the upstream `/agent/summary` body but was typed `Promise<FeedAgentSummary>`
+  ({id,name,summary,recentActivity}) — a shape it never builds and the surface
+  never reads. Not a product decision after all: `extractAgentSummary(unknown)` is
+  the authoritative parser of the real `{agent,portfolio,positions}` envelope.
+  Fixed: client return typed `unknown` (validated at the boundary), `FeedAgentSummary`
+  deprecated, and `feed-data.contract.test.ts` flipped from documenting the mismatch
+  to asserting the resolution. (commit: "fix(feed): correct getFeedAgentSummary
+  type lie".)
 
-- **plugin-feed — FeedAgentSummary type vs route envelope mismatch.** The
-  canonical `FeedAgentSummary` type (`packages/ui/src/api/client-types-feed.ts`)
-  is `{id,name,summary,recentActivity[]}`, but the `/agent/summary` proxy route
-  (`plugins/plugin-feed/src/routes.ts`) and `FeedOperatorSurface.extractAgentSummary`
-  consume a different envelope `{agent,portfolio,positions}`.
-  `client.getFeedAgentSummary()` is typed `Promise<FeedAgentSummary>` yet the
-  surface reads none of those fields. Reconciling requires a product decision on
-  which envelope is canonical (shared type in `packages/ui`) — ASK the owner.
-  Pinned by `plugin-feed/.../feed-data.contract.test.ts`.
+## Open — deferred
+
+_(none — all three formerly-deferred bugs are fixed: app-model-tester TUI,
+clawville building ids, feed type lie.)_
 
 ## Pre-existing (not caused by this work; noted for the owner)
 
