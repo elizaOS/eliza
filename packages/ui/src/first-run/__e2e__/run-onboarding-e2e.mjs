@@ -41,6 +41,25 @@ const stubController = {
     }));
   },
 };
+// FirstRunShell imports ../first-run (normalizeFirstRunName), which pulls
+// @elizaos/shared's Node fs-extra; only the name normalizer is needed at runtime.
+const stubFirstRun = {
+  name: "stub-first-run",
+  setup(b) {
+    b.onResolve({ filter: /first-run\/first-run$/ }, () => ({
+      path: join(here, "first-run.stub.ts"),
+    }));
+  },
+};
+// FirstRunShell's useTranslation throws without a provider; render defaultValues.
+const stubTranslation = {
+  name: "stub-translation",
+  setup(b) {
+    b.onResolve({ filter: /TranslationContext\.hooks$/ }, () => ({
+      path: join(here, "TranslationContext.hooks.stub.ts"),
+    }));
+  },
+};
 const result = await build({
   entryPoints: [join(here, "onboarding-fixture.tsx")],
   bundle: true,
@@ -49,7 +68,7 @@ const result = await build({
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
   define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [stubController],
+  plugins: [stubController, stubFirstRun, stubTranslation],
   write: false,
 });
 const js = result.outputFiles[0].text;
@@ -104,6 +123,32 @@ try {
       await snap(p, `${view.tag}-${st.name}`);
       await p.close();
     }
+  }
+
+  // Full-screen FirstRunShell (the "onboarding" view). reduced-motion makes the
+  // typed-prompt reveal instant so the controls are up for the screenshot.
+  const FULL_STATES = [
+    { q: "?shell=full", name: "full-runtime-cloud" },
+    { q: "?shell=full&runtime=local", name: "full-runtime-local" },
+    {
+      q: "?shell=full&runtime=local&localinference=cloud-inference",
+      name: "full-local-inference-cloud",
+    },
+    { q: "?shell=full&step=remote", name: "full-remote" },
+    { q: "?shell=full&mic=denied", name: "full-mic-denied" },
+  ];
+  for (const st of FULL_STATES) {
+    const p = await browser.newPage({
+      viewport: { width: 1180, height: 860 },
+      deviceScaleFactor: 1,
+    });
+    attachConsole(p);
+    await p.emulateMedia({ reducedMotion: "reduce" });
+    await p.goto(`${url}${st.q}`);
+    await p.waitForSelector('[data-testid="first-run-shell"]', { timeout: 10_000 });
+    await p.waitForTimeout(500);
+    await snap(p, st.name);
+    await p.close();
   }
 
   // Assertions on the default "choose" state (mobile).

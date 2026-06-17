@@ -16,10 +16,16 @@ export function useFirstRunController() {
   const [draft, setDraft] = React.useState({
     agentName: "Eliza",
     runtime: params.get("runtime") ?? "cloud",
-    localInference: "all-local",
+    localInference: params.get("localinference") ?? "all-local",
     remoteApiBase: params.get("step") === "remote" ? "https://agent.example.com" : "",
     remoteToken: "",
   });
+  const micStatus =
+    params.get("mic") === "denied"
+      ? "denied"
+      : params.get("mic") === "prompt"
+        ? "prompt"
+        : "granted";
   const updateDraft = React.useCallback((key: string, value: unknown) => {
     setDraft((d) => ({ ...d, [key]: value }));
   }, []);
@@ -50,8 +56,8 @@ export function useFirstRunController() {
       error: null,
     },
     microphone: {
-      status: "granted" as const,
-      canRequest: true,
+      status: micStatus,
+      canRequest: micStatus !== "denied",
       requesting: false,
       request: async () => {},
       openSettings: async () => {},
