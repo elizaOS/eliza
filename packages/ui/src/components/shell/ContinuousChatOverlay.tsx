@@ -163,8 +163,11 @@ function SheetGrabber({
 }): React.JSX.Element {
   return (
     <div
-      role="separator"
-      aria-orientation="horizontal"
+      // A disclosure toggle for the chat history, not a value-bearing separator:
+      // button + aria-expanded is the accurate semantic and stays keyboard-
+      // operable (Enter/Space toggle, Arrow keys nudge) per WCAG 2.1.1.
+      role="button"
+      aria-expanded={open}
       aria-label={open ? "drag down to close chat" : "drag up to open chat"}
       tabIndex={0}
       data-testid="chat-sheet-grabber"
@@ -323,7 +326,6 @@ export function ContinuousChatOverlay({
   // then resets when the release spring takes over.
   const [drag, setDrag] = React.useState(0);
   const [dragging, setDragging] = React.useState(false);
-  const [whisperVisible, setWhisperVisible] = React.useState(false);
   const [pushToTalkActive, setPushToTalkActive] = React.useState(false);
   const [pendingImages, setPendingImages] = React.useState<ImageAttachment[]>(
     [],
@@ -343,7 +345,6 @@ export function ContinuousChatOverlay({
   const visibleMessages = messages.filter((m) => m.content.trim());
   const lastId = visibleMessages.at(-1)?.id ?? null;
   const lastContent = visibleMessages.at(-1)?.content ?? "";
-  const seenIdRef = React.useRef(lastId);
   // The last line id the scroll effect pinned to — lets it tell a NEW line
   // (always pin to bottom) from streaming growth of the current line (follow
   // only when the reader is already at the bottom).
@@ -369,22 +370,6 @@ export function ContinuousChatOverlay({
   const suggestions = usePromptSuggestions(messages, {
     enabled: suggestionsVisible,
   });
-
-  // Whisper: when a genuinely NEW line arrives while collapsed, surface the
-  // recent lines for 12s. Keyed on the last message id (not length, and the
-  // `open` dep early-returns) so toggling the panel never re-triggers it.
-  React.useEffect(() => {
-    if (lastId === seenIdRef.current) return;
-    seenIdRef.current = lastId;
-    if (open) return;
-    setWhisperVisible(true);
-    const timer = window.setTimeout(() => setWhisperVisible(false), 12000);
-    return () => window.clearTimeout(timer);
-  }, [lastId, open]);
-
-  React.useEffect(() => {
-    if (open) setWhisperVisible(false);
-  }, [open]);
 
   React.useEffect(
     () => () => {
@@ -435,6 +420,24 @@ export function ContinuousChatOverlay({
       focusThreadRef.current = false;
     }
   }, [lastId, lastContent, sheetOpen]);
+
+  // The closed peek must always whisper the NEWEST line, but closing is an
+  // animated height collapse: a one-shot scroll set runs before the height
+  // finishes shrinking, leaving the peek parked mid-thread as clientHeight
+  // drops. Observe the peek while closed and re-pin to the bottom on every size
+  // change (animation frames, web-font reflow, viewport resize) until it
+  // settles. Disconnects the moment the sheet opens.
+  React.useEffect(() => {
+    const el = threadRef.current;
+    if (!el || sheetOpen || typeof ResizeObserver === "undefined") return;
+    const pin = () => {
+      el.scrollTop = el.scrollHeight;
+    };
+    pin();
+    const ro = new ResizeObserver(pin);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [sheetOpen]);
 
   const submit = React.useCallback(() => {
     const text = draft.trim();
@@ -635,7 +638,10 @@ export function ContinuousChatOverlay({
   // the full transcript in as the sheet grows, so the two read as one surface.
   const revealed = Math.min(
     1,
-    Math.max(0, (sheetH - SHEET_CLOSED_H) / Math.max(1, openH - SHEET_CLOSED_H)),
+    Math.max(
+      0,
+      (sheetH - SHEET_CLOSED_H) / Math.max(1, openH - SHEET_CLOSED_H),
+    ),
   );
 
   return (

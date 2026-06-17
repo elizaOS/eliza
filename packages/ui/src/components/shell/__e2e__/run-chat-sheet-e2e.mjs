@@ -111,26 +111,13 @@ try {
   await page.waitForSelector('[data-testid="chat-sheet"]');
   await page.waitForTimeout(700); // let the Play CDN JIT the utilities
 
-  // 1. Closed at rest — peek whispers the LATEST line. (Re-pin first: the Play
-  // CDN restyles asynchronously after mount, so the component's mount-time pin
-  // can be stale in this harness — the real app has synchronous CSS.)
-  await page.evaluate(() => {
-    const log = document.getElementById("continuous-thread");
-    if (log) log.scrollTop = log.scrollHeight;
-  });
-  await page.waitForTimeout(80);
+  // 1. Closed at rest — peek whispers the LATEST line. The component's
+  // ResizeObserver pins it to the bottom across the async CDN reflow with no
+  // help from the harness, so this verifies the real pinning behaviour.
+  await page.waitForTimeout(150);
   assert((await variant(page)) === "closed", "starts closed (resting peek)");
   assert(
-    await page.evaluate(() => {
-      const log = document.getElementById("continuous-thread");
-      const lines = log?.querySelectorAll('[data-testid="thread-line"]');
-      const last = lines?.[lines.length - 1];
-      if (!log || !last) return false;
-      // The last line's bottom sits inside the clipped peek (latest is shown).
-      const lr = last.getBoundingClientRect();
-      const cr = log.getBoundingClientRect();
-      return lr.bottom <= cr.bottom + 6 && lr.bottom > cr.top;
-    }),
+    await lastLineAtBottom(page),
     "closed peek shows the LATEST line at the bottom (not the oldest)",
   );
   await snap(page, "closed");
@@ -174,16 +161,18 @@ try {
   assert((await variant(page)) === "open", "scrolling the thread does NOT close it");
   await snap(page, "open-scrolled-history");
 
-  // 6. Mid pull-down (held) then release → closed.
-  await page.evaluate(() => {
-    const log = document.getElementById("continuous-thread");
-    if (log) log.scrollTop = log.scrollHeight;
-  });
+  // 6. Mid pull-down (held) then release → closed. Note: we are STILL scrolled
+  // to the top of history (step 5). Closing must re-pin the peek to the newest
+  // line anyway — that is the bug the ResizeObserver fixes.
   await dragGrabber(page, 320, { hold: true });
   await snap(page, "pull-down-mid-drag");
   await page.mouse.up();
-  await page.waitForTimeout(450);
+  await page.waitForTimeout(550); // let the height-collapse animation settle
   assert((await variant(page)) === "closed", "pull-DOWN closes the sheet");
+  assert(
+    await lastLineAtBottom(page),
+    "closed peek re-pins to the LATEST line even when closed from scrolled-up history",
+  );
   await snap(page, "closed-after-pulldown");
 
   // 7. Keyboard: focus the grabber, ArrowUp opens.
@@ -277,6 +266,10 @@ try {
   await wide.goto(url);
   await wide.waitForSelector('[data-testid="chat-sheet"]');
   await wide.waitForTimeout(700);
+  assert(
+    await lastLineAtBottom(wide),
+    "desktop closed peek also shows the LATEST line",
+  );
   await snap(wide, "desktop-closed");
   await dragGrabber(wide, -320);
   await wide.waitForTimeout(450);
