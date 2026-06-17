@@ -749,7 +749,6 @@ export function ChatComposer({
       ) : isInline && !hasDraft ? (
         <Button
           variant="ghost"
-          data-testid="chat-composer-action"
           size="icon"
           className={`h-8 w-8 shrink-0 rounded-sm p-0 shadow-none transition-colors active:scale-95 ${
             voice.isListening
