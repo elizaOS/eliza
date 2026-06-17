@@ -117,6 +117,60 @@ function readStringOpt(
 	return t.length > 0 ? t : null;
 }
 
+// Deterministic intent -> view safety net. Passive utterances ("what's on my
+// calendar", "I want to add a new feature to my app") carry no explicit view
+// name, so the verb scan + keyword scorer return nothing. These rules map a
+// recognized DOMAIN intent straight to a concrete view id. Kept deliberately
+// specific (anchored on "my <surface>" / explicit intent phrases) so it only
+// fires as a fallback once a normal target resolution has already failed — it
+// never overrides an explicit navigation. Owner-decided mappings: "messages"
+// and "email" both route to the cross-channel inbox; app/feature/coding intent
+// routes to the task-coordinator (coding-agent) view.
+const INTENT_VIEW_RULES: ReadonlyArray<{ re: RegExp; viewId: string }> = [
+	{
+		re: /\b(add (a |an )?(new )?feature|build (me )?(an? )?(new )?app|app builder|work on my app|coding view|code something|write some code)\b/i,
+		viewId: "task-coordinator",
+	},
+	{
+		re: /\b(what'?s on my (calendar|agenda|schedule)|what is on my (calendar|agenda|schedule)|my (calendar|agenda|schedule))\b/i,
+		viewId: "calendar",
+	},
+	{
+		re: /\b(check (my )?messages|my messages|my (e-?mail|inbox|mail)|check my (e-?mail|inbox|mail))\b/i,
+		viewId: "inbox",
+	},
+	{
+		re: /\b(my wallet|my balance|my portfolio|my crypto|my funds)\b/i,
+		viewId: "wallet",
+	},
+	{
+		re: /\b(i need to focus|help me focus|focus mode|block (out )?distractions|stop distractions)\b/i,
+		viewId: "focus",
+	},
+	{
+		re: /\b(my goals|my routines|my reminders)\b/i,
+		viewId: "goals",
+	},
+	{
+		re: /\b(my health|my sleep|my screen time|my activity)\b/i,
+		viewId: "health",
+	},
+];
+
+/**
+ * Map a passive domain intent to a concrete view id, or null when no rule
+ * matches. Used both as a `runViewsShow` fallback (when normal resolution
+ * fails) and by `inferMode` to route intent-only utterances to `show`.
+ */
+export function resolveIntentView(text: string | undefined): string | null {
+	const t = (text ?? "").toLowerCase();
+	if (!t) return null;
+	for (const rule of INTENT_VIEW_RULES) {
+		if (rule.re.test(t)) return rule.viewId;
+	}
+	return null;
+}
+
 function resolveView(
 	target: string,
 	views: readonly ViewSummary[],
@@ -205,7 +259,11 @@ export async function runViewsShow({
 	viewType,
 	callback,
 }: RunViewsShowInput): Promise<ActionResult> {
-	const target = extractViewTarget(message, options);
+	const messageText = message?.content?.text ?? "";
+	// Passive intent fallback: "what's on my calendar" / "I want to add a feature
+	// to my app" carry no explicit view name, so the verb scan yields nothing.
+	// Map the domain intent straight to a view id.
+	const target = extractViewTarget(message, options) ?? resolveIntentView(messageText);
 	if (!target) {
 		const text =
 			'Tell me which view to open. Try: "open wallet" or "show settings".';
@@ -214,7 +272,16 @@ export async function runViewsShow({
 	}
 
 	const views = await client.listViews({ viewType });
-	const resolution = resolveView(target, views);
+	let resolution = resolveView(target, views);
+
+	// If an extracted/fuzzy target didn't match a view but the message expresses
+	// a known domain intent, fall back to that intent's view id (exact-id match).
+	if (resolution.kind === "none") {
+		const intentViewId = resolveIntentView(messageText);
+		if (intentViewId && intentViewId !== target) {
+			resolution = resolveView(intentViewId, views);
+		}
+	}
 
 	if (resolution.kind === "none") {
 		const text = `No view matches "${target}". Try \`action=list\` to see available views.`;

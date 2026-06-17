@@ -330,26 +330,19 @@ describe("view switching — VIEWS action resolver", () => {
 			},
 		);
 
-		// Documents the *text-only* resolver behavior for the spec's passive
-		// examples — i.e. what happens when the planner does NOT pre-resolve the id
-		// and the handler must infer the view from raw intent text alone.
-		//
-		// FINDING (passive-intent gap): the show-path resolver does substring
-		// matching of the *whole extracted phrase* against each view's
-		// label/tags/description. For an intent-only utterance like
-		// "what is on my calendar" the extracted target is the entire phrase, which
-		// is LONGER than the "calendar" label, so scoreView() returns 0 and the
-		// view does not resolve. In production this is masked because the LLM
-		// planner supplies the view id (the PASSIVE_PLANNER_CASES above). The raw
-		// keyword resolver alone cannot route intent-only phrases.
-		it("does NOT resolve an intent-only phrase from raw text (planner gap)", async () => {
+		// The deterministic intent->view fallback (resolveIntentView) routes the
+		// spec's passive examples even when the planner does NOT pre-resolve the
+		// id: an intent-only utterance like "what is on my calendar" maps straight
+		// to the calendar view, where previously the whole-phrase keyword scorer
+		// returned 0 and nothing resolved.
+		it("resolves an intent-only phrase from raw text via the intent fallback", async () => {
 			const { navigated } = installNavigateCapture();
 			const { result } = await runShow(
 				REGISTRY,
 				"show me what is on my calendar",
 			);
-			expect(result?.success).toBe(false);
-			expect(navigated).toEqual([]);
+			expect(result?.success).toBe(true);
+			expect(navigated).toEqual(["calendar"]);
 		});
 
 		// When the view *name* appears as a trailing token the keyword resolver
@@ -403,20 +396,19 @@ describe("view switching — VIEWS action resolver", () => {
 		});
 	});
 
-	describe("BUG PROBE: spec ACTIVE example 'go to my email' → inbox/email view", () => {
-		// Product spec: "go to my email" -> switch to the inbox/email view.
-		// The inbox view has NO "email" token in id/label/tags/description, so the
-		// keyword resolver scores 0 and returns no-match. This is a real reachability
-		// gap for the spec's headline ACTIVE example.
-		it("FAILS to route 'go to my email' to the inbox view (missing email alias)", async () => {
+	describe("spec ACTIVE example 'go to my email' → inbox view", () => {
+		// Product spec: "go to my email" -> switch to the inbox view. Now routed by
+		// the deterministic intent->view fallback (my email/inbox/messages -> inbox)
+		// AND by the inbox view's email/mail aliases. Previously the keyword
+		// resolver scored 0 (no email token) and returned no-match.
+		it("routes 'go to my email' to the inbox view", async () => {
 			const { navigated } = installNavigateCapture();
 			const { result } = await runShow(REGISTRY, "go to my email");
-			// Documented current (buggy) behavior: no view resolves.
-			expect(result?.success).toBe(false);
-			expect(navigated).toEqual([]);
+			expect(result?.success).toBe(true);
+			expect(navigated).toEqual(["inbox"]);
 		});
 
-		it("would route once an 'email' tag/alias is added to the inbox view", async () => {
+		it("still routes once an 'email' tag/alias is on the inbox view", async () => {
 			const withEmailAlias = REGISTRY.map((v) =>
 				v.id === "inbox"
 					? { ...v, tags: [...(v.tags ?? []), "email", "mail"] }
@@ -426,6 +418,62 @@ describe("view switching — VIEWS action resolver", () => {
 			const { result } = await runShow(withEmailAlias, "go to my email");
 			expect(result?.success).toBe(true);
 			expect(navigated).toEqual(["inbox"]);
+		});
+	});
+
+	describe("passive intent -> view fallback (no explicit view name)", () => {
+		it("routes 'I want to add a new feature to my app' to the coding view", async () => {
+			const codingRegistry: ViewSummary[] = [
+				...REGISTRY,
+				{
+					id: "task-coordinator",
+					label: "Task Coordinator",
+					description: "Coding agent task threads, sessions, and controls",
+					pluginName: "task-coordinator",
+					available: true,
+					viewType: "gui",
+					tags: [
+						"developer",
+						"coding-agent",
+						"coding",
+						"build",
+						"feature",
+						"app builder",
+						"tasks",
+					],
+				},
+			];
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(
+				codingRegistry,
+				"I want to add a new feature to my app",
+			);
+			expect(result?.success).toBe(true);
+			expect(navigated).toEqual(["task-coordinator"]);
+		});
+
+		it("routes 'check my messages' to the inbox (owner decision)", async () => {
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(REGISTRY, "check my messages");
+			expect(result?.success).toBe(true);
+			expect(navigated).toEqual(["inbox"]);
+		});
+
+		it("routes 'show me my balance' to the wallet", async () => {
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(REGISTRY, "show me my balance");
+			expect(result?.success).toBe(true);
+			expect(navigated).toEqual(["wallet"]);
+		});
+
+		it("routes 'give me an overview of my wallet' to wallet (no 'view'-in-overview misparse)", async () => {
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(
+				REGISTRY,
+				"give me an overview of my wallet",
+			);
+			expect(result?.success).toBe(true);
+			expect(navigated).toEqual(["wallet"]);
 		});
 	});
 
