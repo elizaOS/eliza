@@ -104,7 +104,7 @@
     "drizzle-orm": "^0.45.2",
     "eventsource-parser": "^1.1.2",
     "ethers": "^6.16.0",
-    "import-in-the-middle": "^2.0.0",
+    "import-in-the-middle": "^3.1.0",
     "ioredis": "5.10.1",
     "js-tiktoken": "^1.0.21",
     "lightweight-charts": "^5.0.9",
