@@ -51,7 +51,7 @@ jobs:
           echo "NODE_ENV=test" >> packages/core/.env.test
 
       - name: Build packages
-        run: bun run build
+        run: bun run build:core
 
       - name: Run typecheck
         run: bun run typecheck
@@ -277,7 +277,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Build packages
-        run: bun run build
+        run: bun run build:core
 
   # Dev startup + HMR job: prove `bun run dev` boots to a usable state quickly
   # and that edits at every package dependency depth propagate to the running
