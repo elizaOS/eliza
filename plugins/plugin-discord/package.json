@@ -69,7 +69,7 @@
 		"opusscript": "^0.1.1",
 		"prism-media": "1.3.5",
 		"tslib": "^2.6.3",
-		"undici": "6.24.1",
+		"undici": "8.5.0",
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {
