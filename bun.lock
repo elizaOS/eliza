@@ -2046,7 +2046,6 @@
         "@anthropic-ai/sdk": "^0.71.0",
         "@aws-sdk/client-s3": "^3.943.0",
         "@aws-sdk/lib-storage": "^3.943.0",
-        "@feed/agents": "workspace:*",
         "@feed/shared": "workspace:*",
         "@vercel/blob": "2.3.2",
         "graphql": "16.13.2",
@@ -2930,7 +2929,6 @@
       "name": "@elizaos/plugin-agent-orchestrator",
       "version": "2.0.3-beta.14",
       "dependencies": {
-        "@elizaos/plugin-task-coordinator": "workspace:*",
         "@octokit/rest": "^22.0.0",
         "coding-agent-adapters": "0.16.3",
         "drizzle-orm": "^0.45.1",
@@ -3917,8 +3915,6 @@
       "name": "@elizaos/plugin-health",
       "version": "2.0.3-beta.14",
       "dependencies": {
-        "@elizaos/agent": "workspace:*",
-        "@elizaos/app-core": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
