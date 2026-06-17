@@ -40,7 +40,7 @@ const phoneBridge = vi.hoisted(() => ({
 // loadContactsModule() returns null when `Contacts.listContacts` is not a
 // function, which is exactly how a device without the contacts bridge behaves.
 const contactsBridge = vi.hoisted(() => ({
-  listContacts: undefined as unknown,
+  listContacts: undefined as unknown as ReturnType<typeof vi.fn>,
 }));
 
 vi.mock("@elizaos/capacitor-phone", () => ({
@@ -377,7 +377,9 @@ describe("PhoneAppView — contacts tab", () => {
     const probe = vi.fn();
     contactsBridge.listContacts = probe;
     // Simulate "module not loadable" by making the probe guard fail.
-    contactsBridge.listContacts = undefined;
+    contactsBridge.listContacts = undefined as unknown as ReturnType<
+      typeof vi.fn
+    >;
     render(React.createElement(PhoneAppView, overlayContext()));
 
     // Let the mount-time probe settle, then confirm the tab is still disabled

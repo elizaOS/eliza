@@ -23,7 +23,13 @@ const navState = vi.hoisted(
     },
 );
 const getPairingStatus = vi.hoisted(() =>
-  vi.fn(async () => ({ paired: false, agentUrl: null, deviceId: null })),
+  vi.fn(
+    async (): Promise<{
+      paired: boolean;
+      agentUrl: string | null;
+      deviceId: string | null;
+    }> => ({ paired: false, agentUrl: null, deviceId: null }),
+  ),
 );
 
 vi.mock("../services", async () => {
@@ -34,8 +40,8 @@ vi.mock("../services", async () => {
     useNavigation: (): NavState => ({
       view: navState.view,
       ready: navState.ready,
-      push: navState.push,
-      pop: navState.pop,
+      push: navState.push as NavState["push"],
+      pop: navState.pop as NavState["pop"],
     }),
     ElizaIntent: { getPairingStatus, setPairingStatus: vi.fn() },
     registerPush: vi.fn(async () => ({ unregister: async () => {} })),
