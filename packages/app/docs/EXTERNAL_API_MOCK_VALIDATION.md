@@ -37,21 +37,50 @@ Requirement for the pattern: the route handler must accept an injectable
 `fetchImpl` (Polymarket/Hyperliquid `*RouteState`). Plugins whose provider call is
 not injectable need that refactor first.
 
+## Tiers
+
+- **validated** — a recorded-real contract test (replays a captured real response
+  through the real parser) AND a live-drift test (re-fetches the live API). The
+  strongest tier; needs a public API.
+- **contract-tested** — a recorded-real contract test only (the parser is proven
+  against a captured real response). No live-drift yet (key-gated, or the live
+  call is awkward to make in CI).
+- **researched-fixed** — the shape was verified against the provider's current
+  docs/schema and a real bug fixed, but there's no recorded-replay harness yet
+  (the call isn't injectable).
+- **validated-elsewhere** — covered by a different real-backend harness.
+- **unvalidated** — inline fixtures only; no tie to the real API. The debt set.
+
 ## Ledger
 
-| External API | Provider | Public? | Status | Evidence / debt |
+| External API | Provider host | Public? | Tier | Evidence / next step |
 |---|---|---|---|---|
-| Polymarket | gamma/clob/data-api.polymarket.com | yes | **validated** | `plugins/plugin-polymarket-app/src/routes.{contract,real}.test.ts` — recorded + live. Fixed UI mock `liquidity` format. |
-| Hyperliquid | api.hyperliquid.xyz/info | yes | **validated** | `plugins/plugin-hyperliquid-app/src/routes.{contract,real}.test.ts` — recorded + live. |
-| Shopify | Admin GraphQL 2025-04 | no (needs store token) | **researched-fixed** | Customer fields fixed to `numberOfOrders`/`amountSpent` (verified vs live 2025-04 schema docs); product mock matched to handler. Debt: `shopifyGql` is not injectable — no recorded-replay harness yet. |
-| Eliza Cloud | cloud-api worker | n/a | **validated elsewhere** | `packages/test/cloud-e2e` boots the real cloud-api worker; the `helpers.ts` cloud mock is a trivial `connected:false` shell. |
-| Vincent | heyvincent.ai OAuth | no (OAuth) | **debt** | Only the unconfigured `connected:false` path is exercised; the real OAuth/profile response shape is unvalidated. |
-| Wallet / RPC | EVM/Solana RPC + token providers | partial | **debt** | Inline DTO fixtures, no recorded-real tie. |
+| Polymarket | gamma/clob/data-api.polymarket.com | yes | **validated** | `plugin-polymarket-app/src/routes.{contract,real}.test.ts`. Fixed UI mock `liquidity` format. |
+| Hyperliquid | api.hyperliquid.xyz/info | yes | **validated** | `plugin-hyperliquid-app/src/routes.{contract,real}.test.ts`. |
+| ClawVille | api.clawville.world | yes | **contract-tested** | `plugin-clawville/src/routes.test.ts` (recorded REAL_CONNECT/perception). Fixed stale building ids via perception-aware resolution. Next: live-drift test. |
+| Defense of the Agents | defenseoftheagents.com | yes | **contract-tested** | `plugin-defense-of-the-agents/src/routes.contract.test.ts`. Next: live-drift. |
+| Scape | scape backend | partial | **contract-tested** | `plugin-scape/src/routes.telemetry.test.ts` (real-shaped telemetry parser). |
+| Shopify | Admin GraphQL 2025-04 | no (store token) | **contract-tested** | `plugin-shopify-ui/src/routes.contract.test.ts` + customer fields fixed to `numberOfOrders`/`amountSpent` (verified vs live 2025-04 docs). Next: gated live-refresh. |
+| Steward | KMS/anvil bridge | no | **contract-tested** | `plugin-steward-app/src/steward-bridge.contract.test.ts`. |
+| Vincent | heyvincent.ai OAuth | no (OAuth) | **contract-tested** | `plugin-vincent/src/vincent-oauth-parser.contract.test.ts`. Next: gated live OAuth-profile capture. |
+| Eliza Cloud | cloud-api worker | n/a | **validated-elsewhere** | `packages/test/cloud-e2e` boots the real cloud-api worker. |
+| CoinGecko | api.coingecko.com | yes | **unvalidated** | Used by `plugin-wallet` (token-info/market-overview) + `plugin-social-alpha`. Public → easy next: contract test over a recorded `/simple/price` + `/coins/markets`. |
+| Block explorers | bscscan/etherscan/solscan | yes (key for some) | **unvalidated** | `plugin-wallet`, `plugin-steward-app`. Public read endpoints → recorded contract test. |
+| Wallet RPC | EVM/Solana RPC + token providers | partial | **unvalidated** | Inline DTO fixtures, no recorded-real tie. |
+| ElevenLabs | api.elevenlabs.io | no (key) | **unvalidated** | TTS/STT; gated recorded fixture + live-refresh. |
+| Calendly | api.calendly.com | no (key) | **unvalidated** | `plugin-calendly`; gated recorded fixture. |
+| Strava | www.strava.com | no (OAuth) | **unvalidated** | gated recorded fixture. |
+| Google (Calendar/Gmail/Drive/YouTube) | googleapis.com | no (OAuth) | **unvalidated** | gated recorded fixtures per surface. |
+| Web search | provider-dependent | no (key) | **unvalidated** | `plugin-web-search`; gated recorded fixture. |
 
 ## Ratchet
 
-`test/external-api-mock-validation.test.ts` enforces that every API marked
-**validated** keeps its `routes.contract.test.ts` + `routes.real.test.ts`, and
-bounds the **debt** set so it can only shrink. To pay down debt: make the plugin's
-provider call injectable, add the four files above, flip the row to validated, and
-remove it from the debt list in the test.
+`test/external-api-mock-validation.test.ts` enforces three things:
+1. every **validated** API keeps its `routes.contract.test.ts` + `routes.real.test.ts`;
+2. every **contract-tested** API keeps its recorded-contract test file; and
+3. the **unvalidated** debt set only shrinks.
+
+To advance an API a tier: capture a real response, add the recorded-contract test
+(→ contract-tested), then add a live-drift/refresh test (→ validated), updating the
+sets in the gate. Public + injectable APIs (CoinGecko, block explorers) are the
+cheapest next wins.
