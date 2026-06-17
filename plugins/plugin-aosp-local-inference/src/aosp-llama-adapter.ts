@@ -1066,6 +1066,20 @@ class AospLlamaAdapter implements AospLoader {
    */
   private hasDecoded = false;
 
+  /**
+   * Serializes every decode against the single shared `ctx`. `generate()`
+   * and `embed()` both prefill + sample on the same `llama_context`, and
+   * each yields to bun's event loop between chunks/tokens (`setImmediate`)
+   * so the request listener and watchdog stay responsive. Without a lock,
+   * a second `useModel` call (boot warmup / greeting / autonomy turn vs a
+   * live user turn) interleaves its FFI `llama_decode` calls at those yield
+   * points and clobbers the first call's KV-cache state — the victim then
+   * samples garbage and stops after one token. Routing both methods through
+   * this single-flight chain guarantees only one decode loop touches `ctx`
+   * at a time; concurrent callers queue and run in arrival order.
+   */
+  private decodeChain: Promise<unknown> = Promise.resolve();
+
   constructor(
     ffi: BunFFIModule,
     sym: LlamaSymbols,
@@ -1076,6 +1090,22 @@ class AospLlamaAdapter implements AospLoader {
     this.sym = sym;
     this.shim = shim;
     this.speculativeShim = speculativeShim;
+  }
+
+  /**
+   * Run `task` with exclusive access to the shared `ctx`. Tasks execute in
+   * the order they were enqueued; a task's failure does not poison the
+   * chain for later callers.
+   */
+  private runOnContext<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.decodeChain.then(task, task);
+    // Keep the chain alive regardless of this task's outcome so a rejected
+    // generate doesn't reject every queued follow-up.
+    this.decodeChain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   }
 
   private ensureBackend(): void {
@@ -1861,7 +1891,29 @@ class AospLlamaAdapter implements AospLoader {
     return output;
   }
 
-  async generate(args: {
+  generate(args: {
+    prompt: string;
+    stopSequences?: string[];
+    maxTokens?: number;
+    temperature?: number;
+    grammar?: string;
+    onTextChunk?: (chunk: string) => void | Promise<void>;
+    stopOnFirstSentence?: boolean;
+    minFirstSentenceChars?: number;
+    signal?: AbortSignal;
+  }): Promise<string> {
+    // Serialize against the shared ctx — see `decodeChain`. A queued turn
+    // that was cancelled before it reached the head of the queue must abort
+    // immediately rather than wait for the in-flight decode to finish.
+    return this.runOnContext(() => {
+      if (args.signal?.aborted) {
+        throw makeAbortError(args.signal);
+      }
+      return this.generateLocked(args);
+    });
+  }
+
+  private async generateLocked(args: {
     prompt: string;
     stopSequences?: string[];
     maxTokens?: number;
@@ -2432,7 +2484,17 @@ class AospLlamaAdapter implements AospLoader {
    * mobile-first runtime where embeddings are infrequent (memory + RAG
    * indexing) compared to chat turns.
    */
-  async embed(args: { input: string }): Promise<{
+  embed(args: { input: string }): Promise<{
+    embedding: number[];
+    tokens: number;
+  }> {
+    // Serialize against the shared ctx — see `decodeChain`. Embedding
+    // toggles the same context into embeddings mode and decodes on it, so
+    // it must not run concurrently with a chat generate.
+    return this.runOnContext(() => this.embedLocked(args));
+  }
+
+  private async embedLocked(args: { input: string }): Promise<{
     embedding: number[];
     tokens: number;
   }> {

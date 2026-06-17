@@ -1787,7 +1787,9 @@ function resolveAospOmnivoiceTtsStepOverride(
   return String(parsed);
 }
 
-export function makeAospFusedOmnivoiceTextToSpeechHandler(): TextToSpeechHandler {
+export function makeAospFusedOmnivoiceTextToSpeechHandler(
+  loader?: AospLoader,
+): TextToSpeechHandler {
   let contextPromise: Promise<{
     ffi: BunFfiModule;
     symbols: Record<string, (...args: unknown[]) => unknown>;
@@ -1909,6 +1911,32 @@ export function makeAospFusedOmnivoiceTextToSpeechHandler(): TextToSpeechHandler
     if (stepOverride) process.env.ELIZA_TTS_MASKGIT_STEPS = stepOverride;
 
     try {
+      // Release the resident chat model before the FIRST (cold) fused-TTS load.
+      // The engine keeps one model at a time, but the fused TTS context is a
+      // SEPARATE FFI allocation: loading the ~0.66 GB omnivoice model while the
+      // chat model + its hot KV/compute buffers (from the reply we are about to
+      // speak) are still resident spikes RAM past lmkd's low watermark and the
+      // detached agent — which an unprivileged app cannot oom-protect — gets
+      // killed mid-load. The chat model auto-reloads on the next TEXT turn
+      // (makeGenerateHandler -> lifecycle.ensureChatLoaded). Only on the cold
+      // load (contextPromise still null); cached reuse never re-evicts.
+      if (contextPromise === null && loader) {
+        try {
+          if (
+            typeof loader.currentModelPath === "function" &&
+            loader.currentModelPath() !== null &&
+            typeof loader.unloadModel === "function"
+          ) {
+            await loader.unloadModel();
+            logger.info(
+              "[aosp-local-inference] released chat model before cold fused-TTS load to free memory",
+            );
+          }
+        } catch {
+          // Best-effort: a failed eviction just means TTS loads under the prior
+          // (possibly tight) memory conditions — no worse than before.
+        }
+      }
       const started = Date.now();
       const { ffi, symbols, ctx, config, streamSupported } =
         await ensureContext();
@@ -2214,6 +2242,7 @@ function assertNotAborted(signal: AbortSignal | undefined): void {
 async function transcribeWithAospElizaInference(
   audio: { samples: Float32Array; sampleRate: number },
   signal?: AbortSignal,
+  loader?: AospLoader,
 ): Promise<string> {
   assertNotAborted(signal);
   const libPath = resolveElizaInferenceLibPath();
@@ -2221,6 +2250,30 @@ async function transcribeWithAospElizaInference(
     throw new Error(
       `[aosp-local-inference] libelizainference.so missing at ${libPath}`,
     );
+  }
+  // Release the resident chat model before the cold ASR load. The fused ASR
+  // context (eliza_inference_create + mmap_acquire("asr")) maps the ~1.4 GB
+  // Eliza-1 ASR model + projector; loading it while the ~0.55 GB chat model
+  // and its hot KV/compute buffers are still resident spikes RAM past lmkd's
+  // low watermark and the detached agent — which an unprivileged app cannot
+  // oom-protect — gets killed mid-load. The chat model auto-reloads on the
+  // next TEXT turn (makeGenerateHandler -> lifecycle.ensureChatLoaded), so the
+  // eviction is safe; mirrors the cold-TTS eviction in the fused TTS handler.
+  if (
+    loader &&
+    typeof loader.currentModelPath === "function" &&
+    loader.currentModelPath() !== null &&
+    typeof loader.unloadModel === "function"
+  ) {
+    try {
+      await loader.unloadModel();
+      logger.info(
+        "[aosp-local-inference] released chat model before fused ASR load to free memory",
+      );
+    } catch {
+      // Best-effort: a failed eviction just means ASR loads under the prior
+      // (possibly tight) memory conditions — no worse than before.
+    }
   }
   const bundleRoot = resolveAssignedVoiceBundleRoot();
   const ffi = await loadAospVoiceFfi();
@@ -2299,10 +2352,12 @@ async function transcribeWithAospElizaInference(
   }
 }
 
-export function makeAospTranscriptionHandler(): TranscriptionHandler {
+export function makeAospTranscriptionHandler(
+  loader?: AospLoader,
+): TranscriptionHandler {
   return async (_runtime, params) => {
     const { signal, ...audio } = extractAospTranscriptionAudio(params);
-    return transcribeWithAospElizaInference(audio, signal);
+    return transcribeWithAospElizaInference(audio, signal, loader);
   };
 }
 
@@ -2392,7 +2447,7 @@ export async function ensureAospLocalInferenceHandlers(
     ModelType.TRANSCRIPTION,
   ];
   const baseOmnivoiceTextToSpeechHandler =
-    makeAospFusedOmnivoiceTextToSpeechHandler();
+    makeAospFusedOmnivoiceTextToSpeechHandler(loader);
   let foregroundOmnivoiceTextToSpeechUsed = false;
   const textToSpeechHandler = makeAospTextToSpeechHandler({
     omnivoice: baseOmnivoiceTextToSpeechHandler,
@@ -2407,7 +2462,7 @@ export async function ensureAospLocalInferenceHandlers(
         : modelType === ModelType.TEXT_TO_SPEECH
           ? textToSpeechHandler
           : modelType === ModelType.TRANSCRIPTION
-            ? makeAospTranscriptionHandler()
+            ? makeAospTranscriptionHandler(loader)
             : makeGenerateHandler(loader, lifecycle);
     runtimeWithRegistration.registerModel(
       modelType,
