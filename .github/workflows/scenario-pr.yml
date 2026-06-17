@@ -163,6 +163,12 @@ jobs:
       - name: Actual app TTS and STT browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/tts-stt-e2e.spec.ts --project=chromium
 
+      - name: Actual app voice self-test browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/voice-selftest-e2e.spec.ts --project=chromium
+
+      - name: Actual app real-audio mic browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/voice-realaudio.spec.ts --project=chromium-voice-mic
+
       - name: Actual app view manager browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/view-manager-actual-flow.spec.ts --project=chromium
 
