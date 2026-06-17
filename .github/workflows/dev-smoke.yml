@@ -33,18 +33,13 @@ env:
   # lane through one provider makes develop red when that provider hits daily
   # quota. The shared live-provider selector chooses from these keys in order and
   # skips the Playwright spec cleanly when no usable provider is configured.
-  # Cerebras remains available, but only when explicitly selected via
-  # ELIZA_DEV_SMOKE_PROVIDER=cerebras or a Cerebras base URL override.
+  # Cerebras remains available to local/manual runs through the harness, but the
+  # scheduled CI lane does not force it after repeated daily-quota exhaustion.
   CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
   GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
   GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
   OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-  ELIZA_PROVIDER: ${{ vars.ELIZA_DEV_SMOKE_PROVIDER || '' }}
-  OPENAI_BASE_URL: ${{ vars.ELIZA_DEV_SMOKE_OPENAI_BASE_URL || '' }}
-  ELIZA_LIVE_TEST_SMALL_MODEL: ${{ vars.ELIZA_DEV_SMOKE_SMALL_MODEL || '' }}
-  ELIZA_LIVE_TEST_LARGE_MODEL: ${{ vars.ELIZA_DEV_SMOKE_LARGE_MODEL || '' }}
   ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
 
 jobs:

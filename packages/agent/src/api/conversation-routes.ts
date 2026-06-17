@@ -115,6 +115,12 @@ function getDiscordConversationApi(): Promise<DiscordConversationModule> {
   return discordConversationPromise;
 }
 
+function mayBeDiscordSource(source: unknown): boolean {
+  return (
+    typeof source === "string" && source.trim().toLowerCase() === "discord"
+  );
+}
+
 function chunkVisibleTextForSse(text: string): string[] {
   const chunks: string[] = [];
   let cursor = 0;
@@ -1394,9 +1400,23 @@ export async function handleConversationRoutes(
         // plugin action logs with only `thought` / `actions` fields).
         // Without this filter they appear as blank chat bubbles.
         .filter((m) => m.text.trim().length > 0);
-      const discord = await getDiscordConversationApi();
+      const discordMessages = messages.filter((message) =>
+        mayBeDiscordSource(message.source),
+      );
+      const discord =
+        discordMessages.length > 0
+          ? await getDiscordConversationApi().catch((err) => {
+              logger.debug(
+                `[conversations] Discord metadata enrichment unavailable: ${getErrorMessage(err)}`,
+              );
+              return null;
+            })
+          : null;
       await Promise.all(
-        messages.map(async (message) => {
+        discordMessages.map(async (message) => {
+          if (!discord) {
+            return;
+          }
           if (!discord.isCanonicalDiscordSource(message.source)) {
             return;
           }
