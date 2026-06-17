@@ -100,7 +100,6 @@ const BUILDINGS = [
 ] as const;
 
 type ClawvilleSubroute = "move" | "visit-building" | "chat" | "buy";
-type ClawvilleBuildingId = (typeof BUILDINGS)[number]["id"];
 
 const sessionActivities = new Map<string, AppSessionActivityItem[]>();
 
@@ -512,17 +511,69 @@ function normalizeText(value: string): string {
   return value.trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
 }
 
+function liveBuildingsFromPerception(
+  perception?: Record<string, unknown> | null,
+): Array<{ buildingId: string; label: string }> {
+  const nearby = perception?.nearbyBuildings;
+  if (!Array.isArray(nearby)) return [];
+  return nearby.flatMap((entry) => {
+    if (!isRecord(entry)) return [];
+    const buildingId =
+      typeof entry.buildingId === "string" ? entry.buildingId : null;
+    if (!buildingId) return [];
+    const label = typeof entry.label === "string" ? entry.label : "";
+    return [{ buildingId, label }];
+  });
+}
+
+// Identity tokens (≥4 chars) of a hardcoded building — its label + aliases —
+// used to remap to the live building id when the live id has drifted from the
+// hardcoded one (e.g. alias "squidward" -> live "Squidward's House" = memory-rag).
+function buildingIdentityTokens(
+  building: (typeof BUILDINGS)[number],
+): string[] {
+  return [building.label, ...building.aliases]
+    .flatMap((value) => normalizeText(value).split(" "))
+    .filter((token) => token.length >= 4);
+}
+
+/**
+ * Resolve free text to a building id. When live `perception` is supplied, the
+ * result is the REAL live building id (the backend rejects the plugin's stale
+ * hardcoded ids with "Unknown building"): first a direct match against live
+ * nearbyBuildings (id/label), then a remap of the matched hardcoded building to
+ * a live building sharing an identity token. Falls back to the hardcoded id only
+ * when no live building matches (best achievable without the full live registry).
+ */
 function resolveBuildingIdFromText(
   content: string,
-): ClawvilleBuildingId | null {
+  perception?: Record<string, unknown> | null,
+): string | null {
   const normalized = normalizeText(content);
+  const live = liveBuildingsFromPerception(perception);
+
+  // 1. Direct match against the real, live buildings (id or label).
+  for (const building of live) {
+    const candidates = [building.buildingId, building.label].map(normalizeText);
+    if (candidates.some((c) => c && normalized.includes(c))) {
+      return building.buildingId;
+    }
+  }
+
+  // 2. Hardcoded alias match, remapped to the live id when possible.
   for (const building of BUILDINGS) {
     const candidates = [building.id, building.label, ...building.aliases].map(
       normalizeText,
     );
-    if (candidates.some((candidate) => normalized.includes(candidate))) {
-      return building.id;
+    if (!candidates.some((candidate) => normalized.includes(candidate))) {
+      continue;
     }
+    const tokens = buildingIdentityTokens(building);
+    const liveMatch = live.find((entry) => {
+      const haystack = `${normalizeText(entry.label)} ${normalizeText(entry.buildingId)}`;
+      return tokens.some((token) => haystack.includes(token));
+    });
+    return liveMatch ? liveMatch.buildingId : building.id;
   }
   return null;
 }
@@ -621,7 +672,7 @@ function coerceBuildingId(
   ]);
   if (explicit) return explicit;
   const content = readStringField(body, ["content", "message", "command"]);
-  if (content) return resolveBuildingIdFromText(content);
+  if (content) return resolveBuildingIdFromText(content, perception);
   return readNearestBuildingId(perception);
 }
 
@@ -655,14 +706,6 @@ function normalizeDirectCommandBody(
   return record;
 }
 
-async function resolveNearestBuildingId(
-  config: ClawvilleConfig,
-  sessionId: string,
-): Promise<string | null> {
-  const perception = await clawvillePerception(config, sessionId);
-  return readNearestBuildingId(perception);
-}
-
 async function buildMessageCommand(
   config: ClawvilleConfig,
   sessionId: string,
@@ -672,7 +715,13 @@ async function buildMessageCommand(
   body: Record<string, unknown>;
 }> {
   const normalized = normalizeText(content);
-  const explicitBuildingId = resolveBuildingIdFromText(content);
+  // Fetch perception once so building targets resolve to REAL live ids (the
+  // backend rejects the plugin's stale hardcoded ids), and reuse it for the
+  // nearest-building fallback below instead of re-fetching.
+  const perception = await clawvillePerception(config, sessionId).catch(
+    () => null,
+  );
+  const explicitBuildingId = resolveBuildingIdFromText(content, perception);
 
   if (/\b(buy|shop|book|market|purchase)\b/.test(normalized)) {
     return {
@@ -689,8 +738,7 @@ async function buildMessageCommand(
   }
 
   if (/\b(move|go|head|travel|walk|path)\b/.test(normalized)) {
-    const buildingId =
-      explicitBuildingId ?? (await resolveNearestBuildingId(config, sessionId));
+    const buildingId = explicitBuildingId ?? readNearestBuildingId(perception);
     if (!buildingId) {
       return {
         subroute: "chat",
@@ -704,8 +752,7 @@ async function buildMessageCommand(
   }
 
   if (/\b(visit|enter|learn)\b/.test(normalized)) {
-    const buildingId =
-      explicitBuildingId ?? (await resolveNearestBuildingId(config, sessionId));
+    const buildingId = explicitBuildingId ?? readNearestBuildingId(perception);
     if (!buildingId) {
       return {
         subroute: "chat",

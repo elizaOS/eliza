@@ -819,7 +819,6 @@ export interface ApiKeySummary {
   description?: string | null;
   key_prefix: string;
   created_at: string;
-  permissions?: string[];
   rate_limit?: number | null;
   expires_at?: string | null;
 }
@@ -827,7 +826,6 @@ export interface ApiKeySummary {
 export interface ApiKeyCreateRequest {
   name: string;
   description?: string;
-  permissions?: string[];
   rate_limit?: number;
   expires_at?: string | null;
 }

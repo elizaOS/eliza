@@ -38,32 +38,36 @@ committed tripwire test so it is change-detected. Status below.
   alignment locked by `emote-picker-grid.test.ts`. (commit: "fix(companion):
   derive EmotePicker grid from the emote catalog".)
 
-## Open — deferred (out of single-plugin isolation scope; pinned by a tripwire)
-
 - **app-model-tester — TUI capabilities not surfaced.** `ModelTesterTuiView`
-  passes `commands={[]}` to the shared `@elizaos/ui` `TerminalPluginView`, so the
-  5 registered TUI capabilities (get-status, run-text-small, run-transcription,
-  run-vision, run-vad) never render — the terminal shows the shared component's
-  fallback buttons instead. Fix touches the shared `TerminalPluginView` contract.
-  Pinned by `app-model-tester/src/tui-capabilities.test.ts`.
+  passed `commands={[]}` to `TerminalPluginView`, so its 5 registered capabilities
+  never rendered. Fixed: export `MODEL_TESTER_TUI_CAPABILITIES` and wire
+  `commands={[...MODEL_TESTER_TUI_CAPABILITIES]}`; `tui-capabilities.test.ts`
+  asserts list==plugin.ts==interact() and guards the empty-list regression.
+  (commit: "fix(app-model-tester): surface TUI capabilities".)
 
-- **plugin-clawville — building ids stale vs the live API.** `BUILDINGS` in
-  `src/routes.ts` (`tool-workshop`, `skill-forge`, `memory-vault`,
-  `security-fortress`, …) no longer match the live `api.clawville.world` ids
-  (`memory-rag`, `agent-security`, …); live `POST /move|/visit-building` reject
-  the plugin's ids with "Unknown building", so NL-routed move/visit commands fail
-  against production. Needs the `BUILDINGS` const re-synced to the live API
-  (verify against live ids before changing). Pinned by the clawville contract test.
+- **plugin-clawville — building ids stale vs the live API.** Fixed without
+  guessing the full registry: `resolveBuildingIdFromText` is now perception-aware
+  — it resolves move/visit targets to the REAL live ids (matching live
+  `nearbyBuildings` + remapping a matched hardcoded building via shared
+  label/alias tokens), falling back to the hardcoded id only when no live match.
+  Tests assert the remap against recorded ground truth (squidward→memory-rag,
+  patrick→agent-security). (commit: "fix(clawville): resolve building targets to
+  REAL live ids via perception".)
 
-- **plugin-feed — FeedAgentSummary type vs route envelope mismatch.** The
-  canonical `FeedAgentSummary` type (`packages/ui/src/api/client-types-feed.ts`)
-  is `{id,name,summary,recentActivity[]}`, but the `/agent/summary` proxy route
-  (`plugins/plugin-feed/src/routes.ts`) and `FeedOperatorSurface.extractAgentSummary`
-  consume a different envelope `{agent,portfolio,positions}`.
-  `client.getFeedAgentSummary()` is typed `Promise<FeedAgentSummary>` yet the
-  surface reads none of those fields. Reconciling requires a product decision on
-  which envelope is canonical (shared type in `packages/ui`) — ASK the owner.
-  Pinned by `plugin-feed/.../feed-data.contract.test.ts`.
+- **plugin-feed — FeedAgentSummary type lie.** `getFeedAgentSummary()` only
+  proxies the upstream `/agent/summary` body but was typed `Promise<FeedAgentSummary>`
+  ({id,name,summary,recentActivity}) — a shape it never builds and the surface
+  never reads. Not a product decision after all: `extractAgentSummary(unknown)` is
+  the authoritative parser of the real `{agent,portfolio,positions}` envelope.
+  Fixed: client return typed `unknown` (validated at the boundary), `FeedAgentSummary`
+  deprecated, and `feed-data.contract.test.ts` flipped from documenting the mismatch
+  to asserting the resolution. (commit: "fix(feed): correct getFeedAgentSummary
+  type lie".)
+
+## Open — deferred
+
+_(none — all three formerly-deferred bugs are fixed: app-model-tester TUI,
+clawville building ids, feed type lie.)_
 
 ## Pre-existing (not caused by this work; noted for the owner)
 

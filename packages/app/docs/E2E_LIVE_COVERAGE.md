@@ -112,11 +112,19 @@ silent-WAV / shimmed-transcript stubs the keyless ui-smoke lane uses:
   `.../voice/voice-roundtrip.real.test.ts`: text → real **OmniVoice** TTS
   (`omnivoice-tts` CLI + OmniVoice base/tokenizer GGUF) → real 24 kHz speech WAV
   → assert non-silent real signal → ffmpeg resample → real whisper STT → assert
-  the transcript reads back the spoken words. Subprocess-based, runs under
-  vitest; self-skips unless the built CLIs + GGUFs + whisper model + ffmpeg
-  resolve. `bun run --cwd plugins/plugin-local-inference test:voice:roundtrip`.
+  the transcript reads back the spoken words. Subprocess-based; self-skips
+  unless the built CLIs + GGUFs + whisper model + ffmpeg resolve.
   Validated on GPU: *"And so my fellow Americans, ask not what your country can
   do for you."* synthesizes and transcribes back verbatim.
+
+Both on-device voice tests run via `bun run --cwd plugins/plugin-local-inference
+test:voice:real` (or `:test:voice:roundtrip` for just the round-trip). They run
+under **`bun test`, not vitest** — the package vitest config excludes
+`*.real.test.ts` (the round-trip script previously pointed at vitest and so
+silently ran nothing). The whisper STT half needs the model + WAV resolvable:
+either stage `ggml-base.en.bin` at `~/.cache/eliza/whisper/` (the production
+resolver path) or run with `ELIZA_WHISPER_MODEL=…/ggml-base.en.bin
+ELIZA_ASR_TEST_WAV=…/jfk.wav`.
 
 Build steps: `node plugins/plugin-local-inference/native/build-omnivoice.mjs`
 (+ `cmake --build native/omnivoice.cpp/build --target omnivoice-tts`) and

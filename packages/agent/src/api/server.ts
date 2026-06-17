@@ -117,6 +117,11 @@ type LocalInferenceServerApi = {
     res: http.ServerResponse,
     state: { current: AgentRuntime | null },
   ) => Promise<boolean>;
+  handleLocalInferenceAsrRoute?: (
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    state: { current: AgentRuntime | null },
+  ) => Promise<boolean>;
 };
 
 let localInferenceServerApiPromise: Promise<LocalInferenceServerApi> | null =
@@ -140,13 +145,17 @@ function getLocalInferenceServerApi(): Promise<LocalInferenceServerApi> {
         >
       >,
       import(/* @vite-ignore */ "@elizaos/plugin-local-inference/routes") as Promise<
-        Pick<LocalInferenceServerApi, "handleLocalInferenceTtsRoute">
+        Pick<
+          LocalInferenceServerApi,
+          "handleLocalInferenceTtsRoute" | "handleLocalInferenceAsrRoute"
+        >
       >,
     ]);
     return {
       getLocalInferenceActiveModelId: routes.getLocalInferenceActiveModelId,
       handleLocalInferenceRoutes: routes.handleLocalInferenceRoutes,
       handleLocalInferenceTtsRoute: ttsRoutes.handleLocalInferenceTtsRoute,
+      handleLocalInferenceAsrRoute: ttsRoutes.handleLocalInferenceAsrRoute,
     };
   })().catch((err: unknown) => {
     // A cold-boot import failure must not poison the memoized promise: `??=`
@@ -1842,13 +1851,21 @@ async function handleRequest(
   if (
     (pathname.startsWith("/api/local-inference") ||
       pathname === "/api/tts/local-inference" ||
-      pathname === "/api/asr/local-inference") &&
+      pathname.startsWith("/api/asr/local-inference")) &&
     (await (async () => {
       const localInferenceServerApi = await getLocalInferenceServerApi();
       if (
         typeof localInferenceServerApi.handleLocalInferenceRoutes ===
           "function" &&
         (await localInferenceServerApi.handleLocalInferenceRoutes(req, res))
+      ) {
+        return true;
+      }
+      if (
+        localInferenceServerApi.handleLocalInferenceAsrRoute &&
+        (await localInferenceServerApi.handleLocalInferenceAsrRoute(req, res, {
+          current: state.runtime,
+        }))
       ) {
         return true;
       }
