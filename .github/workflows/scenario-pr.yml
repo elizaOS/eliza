@@ -164,12 +164,9 @@ jobs:
         run: bun run --cwd packages/app test:e2e test/ui-smoke/tts-stt-e2e.spec.ts --project=chromium
 
       - name: Actual app voice self-test browser coverage
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/voice-selftest-e2e.spec.ts --project=chromium
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/voice-selftest-e2e.spec.ts test/ui-smoke/voice-desktop-selftest.spec.ts --project=chromium
 
-      - name: Actual app desktop voice self-test browser coverage
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/voice-desktop-selftest.spec.ts --project=chromium
-
-      - name: Actual app real-audio mic browser coverage
+      - name: Actual app real-audio voice button browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/voice-realaudio.spec.ts --project=chromium-voice-mic
 
       - name: Actual app view manager browser coverage
