@@ -17,12 +17,18 @@ import type { ShellController } from "./useShellController";
  * The continuous-chat overlay: one always-present, ambient glass conversation
  * that floats over EVERY view. There are no separate chats and no switcher — it
  * is a single endless thread (the app's one active conversation, via
- * useShellController). Collapsed, recent lines "whisper" — dissolving in over
- * whatever is behind — and an always-present composer bar invites the next line;
- * expanding reveals the whole thread as one flowing, single-column transcript
- * (no chat-app bubbles). The container is pointer-events-none (the view behind
- * stays live); only the composer + thread capture input, so it is non-blocking,
- * unlike the focus-trapping AssistantOverlay it supersedes in the main shell.
+ * useShellController).
+ *
+ * Layout is a fixed composer at the bottom with a pull-up history SHEET above
+ * it. At rest the sheet is a slim peek (the grabber + the latest line); pull it
+ * UP — anywhere on the sheet — or just start typing to spring it open into the
+ * full transcript; pull the grabber back DOWN, or press Escape, to close.
+ * Nothing else dismisses it — clicking or scrolling the view behind does
+ * nothing. The composer never moves; the history slides up over it.
+ *
+ * The container is pointer-events-none (the view behind stays live); only the
+ * composer + sheet capture input, so it is non-blocking — unlike the
+ * focus-trapping AssistantOverlay it supersedes in the main shell.
  *
  * Two design rules keep it intimate rather than app-like:
  *  1. SELF-CONTAINED CONTRAST — every surface carries its own dark-glass scrim
@@ -30,7 +36,7 @@ import type { ShellController } from "./useShellController";
  *     theme's `--txt`, so it stays legible over any substrate: a bright view, a
  *     dark view, or the warm "good evening" backdrop.
  *  2. NO CHROME/SIGNAGE — the thread speaks for itself: no message counter, no
- *     "new chat", no tab strip, controls dissolve into the glass, and status is
+ *     "new chat", no tab strip; controls dissolve into the glass, and status is
  *     a soft breath of light, not a brand-colored alert ring.
  *
  * Pure/presentational: it takes the controller as a prop so it can be rendered
@@ -49,16 +55,16 @@ const GLASS_BAR =
 // Floating (un-scrimmed) text gets a soft shadow so it reads over bright views.
 const FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
 
-// Shared easing for the overlay's cheap motion path. Fullscreen open/close must
-// stay opacity/translate only: animating blur/filter or scaling a scrollable
+// Shared easing for the overlay's cheap motion path. Open/close must stay
+// opacity/translate only: animating blur/filter or scaling a scrollable
 // transcript repaints too much of the viewport and visibly janks on laptops.
 const OVERLAY_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 // Pull-sheet detents. The chat-history window is bottom-anchored just above the
 // fixed composer; its height animates between a slim CLOSED peek (the grabber +
-// a faint whisper of the last line — the pull-up target) and OPEN (most of the
-// viewport above the input). The live drag tracks the finger 1:1; release snaps
-// with an Apple-style spring. CLOSED collapses to 0 when there's no thread.
+// the latest line — the pull-up target) and OPEN (most of the viewport above
+// the input). The live drag tracks the finger 1:1; release snaps with an
+// Apple-style spring. The whole sheet is unmounted when there's no thread yet.
 const SHEET_CLOSED_H = 76; // px — grabber row + one faded line
 const SHEET_OPEN_VH = 0.72; // fraction of viewport height when open
 const SHEET_SPRING = {
@@ -236,8 +242,12 @@ function TypingDots({ reduce }: { reduce?: boolean }): React.JSX.Element {
   );
 }
 
-/** One turn of the transcript as a chat bubble — assistant on the left, user on the right. */
-function ThreadLine({
+/**
+ * One turn of the transcript as a chat bubble — assistant on the left, user on
+ * the right. Memoized so a live drag (which re-renders the overlay on every
+ * pointer-move frame) doesn't re-render every message in a long thread.
+ */
+const ThreadLine = React.memo(function ThreadLine({
   message,
   floating,
   reduce,
@@ -251,9 +261,8 @@ function ThreadLine({
     <motion.div
       data-testid="thread-line"
       data-role={message.role}
-      // New turns rise+fade in (and the old whisper line slides out as the
-      // 2-line resting window shifts). Transform/opacity only; reduced motion
-      // collapses it to a quick fade with no positional movement.
+      // New turns rise+fade in. Transform/opacity only; reduced motion collapses
+      // it to a quick fade with no positional movement.
       initial={reduce ? { opacity: 0 } : { opacity: 0, y: 14 }}
       animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0 }}
       exit={reduce ? { opacity: 0 } : { opacity: 0, y: -8 }}
@@ -267,10 +276,10 @@ function ThreadLine({
       <div
         className={cn(
           "max-w-[80%] rounded-2xl px-3.5 py-2 text-[14px] leading-relaxed",
-          // Both the whisper lines and the chrome-free expanded transcript
-          // render floating: each bubble carries its own dark glass so it stays
-          // legible directly over whatever view is behind. The light tone is for
-          // any embedding that supplies its own surrounding scrim.
+          // The chrome-free transcript renders floating: each bubble carries its
+          // own dark glass so it stays legible directly over whatever view is
+          // behind. The light tone is for any embedding that supplies its own
+          // surrounding scrim.
           isUser ? "rounded-br-md" : "rounded-bl-md",
           floating
             ? cn(
@@ -289,7 +298,7 @@ function ThreadLine({
       </div>
     </motion.div>
   );
-}
+});
 
 export function ContinuousChatOverlay({
   controller,
@@ -335,14 +344,16 @@ export function ContinuousChatOverlay({
   const inputRef = React.useRef<HTMLInputElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const threadRef = React.useRef<HTMLDivElement>(null);
-  const suggestionsRef = React.useRef<HTMLFieldSetElement>(null);
-  const composerRef = React.useRef<HTMLFieldSetElement>(null);
   const focusThreadRef = React.useRef(false);
   const pushToTalkTimerRef = React.useRef<number | null>(null);
   const pushToTalkActiveRef = React.useRef(false);
   const suppressMicClickRef = React.useRef(false);
 
-  const visibleMessages = messages.filter((m) => m.content.trim());
+  // Recomputed only when the thread changes — NOT on every drag/draft re-render.
+  const visibleMessages = React.useMemo(
+    () => messages.filter((m) => m.content.trim()),
+    [messages],
+  );
   const lastId = visibleMessages.at(-1)?.id ?? null;
   const lastContent = visibleMessages.at(-1)?.content ?? "";
   // The last line id the scroll effect pinned to — lets it tell a NEW line
@@ -355,15 +366,13 @@ export function ContinuousChatOverlay({
   const responding = phase === "responding";
   const hasDraft = draft.trim().length > 0;
   const hasImages = pendingImages.length > 0;
-  const open = sheetOpen;
 
   // The suggestion strip is a keyboard-style row of one-tap prompts shown in the
   // RESTING (closed) state — ready, nothing typed or attached, not recording. It
-  // hides once the sheet opens or a draft starts; the base condition also gates
+  // unmounts once the sheet opens or a draft starts; this condition also gates
   // the small-model fetch so it isn't called for a hidden strip.
-  const suggestionsBase =
+  const suggestionsVisible =
     !sheetOpen && !recording && !booting && canSend && !hasDraft && !hasImages;
-  const suggestionsVisible = suggestionsBase;
 
   // Three tailored prompt suggestions for the resting overlay (model-backed via
   // TEXT_SMALL, with a static offline fallback).
@@ -382,10 +391,10 @@ export function ContinuousChatOverlay({
 
   // Keep the transcript pinned to the latest line. On first open jump INSTANTLY
   // to the bottom — a layout effect runs before paint, so the thread never
-  // flashes at the top. A NEW line (the
-  // user's own send, or a fresh reply) always re-pins to the bottom; streaming
-  // growth of the current line follows only when the reader is already resting
-  // at the bottom, so scrolling up to read history is never yanked down.
+  // flashes at the top. A NEW line (the user's own send, or a fresh reply)
+  // always re-pins to the bottom; streaming growth of the current line follows
+  // only when the reader is already resting at the bottom, so scrolling up to
+  // read history is never yanked down.
   const wasOpenRef = React.useRef(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: lastId/lastContent/sheetOpen are the triggers; the body reads refs
   React.useLayoutEffect(() => {
@@ -610,17 +619,30 @@ export function ContinuousChatOverlay({
   // close-on-scroll listener. Clicking/scrolling anywhere outside the chat does
   // nothing — the sheet closes ONLY on a pull-down drag (the grabber) or Escape.
 
-  // Viewport height drives the OPEN detent; track resizes so an open sheet stays
-  // sized correctly through rotation / keyboard show. SSR/test fall back to 800.
-  const [viewportH, setViewportH] = React.useState(() =>
-    typeof window === "undefined" ? 800 : window.innerHeight,
+  // Viewport height drives the OPEN detent. Track the VISUAL viewport so the
+  // open sheet sizes to the space actually left above the mobile on-screen
+  // keyboard — visualViewport shrinks when the keyboard shows (and on rotation),
+  // whereas window.innerHeight does not on iOS. Falls back to innerHeight on
+  // desktop / older webviews and to a fixed value under SSR / tests.
+  const readViewportH = React.useCallback(
+    () =>
+      typeof window === "undefined"
+        ? 800
+        : (window.visualViewport?.height ?? window.innerHeight),
+    [],
   );
+  const [viewportH, setViewportH] = React.useState(readViewportH);
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    const onResize = () => setViewportH(window.innerHeight);
+    const onResize = () => setViewportH(readViewportH());
+    const vv = window.visualViewport;
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
+    vv?.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      vv?.removeEventListener("resize", onResize);
+    };
+  }, [readViewportH]);
 
   // Sheet height: bottom-anchored clip window above the fixed composer. Closed =
   // a slim peek; open = SHEET_OPEN_VH of the viewport. The live drag offset is
@@ -776,16 +798,11 @@ export function ContinuousChatOverlay({
       {/* Three tailored prompt suggestions — a keyboard-style strip shown in the
           resting (closed) state when nothing is typed. Tapping one sends it
           immediately, which also pulls the chat sheet up. */}
-      {suggestionsBase ? (
+      {suggestionsVisible ? (
         <fieldset
-          ref={suggestionsRef}
           aria-label="Suggested prompts"
-          aria-hidden={!suggestionsVisible}
           className={cn(
-            "relative m-0 mb-2 flex w-full max-w-3xl flex-wrap items-center justify-center gap-2 border-0 p-0 transition-opacity duration-200",
-            suggestionsVisible
-              ? "pointer-events-auto opacity-100"
-              : "pointer-events-none opacity-0",
+            "pointer-events-auto relative m-0 mb-2 flex w-full max-w-3xl flex-wrap items-center justify-center gap-2 border-0 p-0",
           )}
           data-testid="chat-suggestions"
         >
@@ -795,7 +812,6 @@ export function ContinuousChatOverlay({
               type="button"
               data-testid={`chat-suggestion-${i}`}
               aria-label={s}
-              tabIndex={suggestionsVisible ? 0 : -1}
               onClick={() => pickSuggestion(s)}
               className={cn(
                 "max-w-full truncate rounded-full border border-white/15 bg-black/40 px-3 py-1.5",
@@ -814,7 +830,6 @@ export function ContinuousChatOverlay({
       {/* The always-present, fixed composer (the heart of the layer). It never
           moves; the chat-history sheet is pulled up ABOVE it. */}
       <fieldset
-        ref={composerRef}
         aria-label="Chat composer"
         className="pointer-events-auto relative m-0 w-full min-w-0 max-w-3xl border-0 p-0"
       >
@@ -907,7 +922,7 @@ export function ContinuousChatOverlay({
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 submit();
-              } else if (e.key === "Escape" && open) {
+              } else if (e.key === "Escape" && sheetOpen) {
                 e.preventDefault();
                 collapse();
               }

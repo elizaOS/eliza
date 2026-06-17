@@ -24763,7 +24763,7 @@
       }
     );
   }
-  function ThreadLine({
+  var ThreadLine = React5.memo(function ThreadLine2({
     message,
     floating,
     reduce
@@ -24788,10 +24788,10 @@
           {
             className: cn(
               "max-w-[80%] rounded-2xl px-3.5 py-2 text-[14px] leading-relaxed",
-              // Both the whisper lines and the chrome-free expanded transcript
-              // render floating: each bubble carries its own dark glass so it stays
-              // legible directly over whatever view is behind. The light tone is for
-              // any embedding that supplies its own surrounding scrim.
+              // The chrome-free transcript renders floating: each bubble carries its
+              // own dark glass so it stays legible directly over whatever view is
+              // behind. The light tone is for any embedding that supplies its own
+              // surrounding scrim.
               isUser ? "rounded-br-md" : "rounded-bl-md",
               floating ? cn(
                 "border",
@@ -24804,7 +24804,7 @@
         )
       }
     );
-  }
+  });
   function ContinuousChatOverlay({
     controller
   }) {
@@ -24836,13 +24836,14 @@
     const inputRef = React5.useRef(null);
     const fileInputRef = React5.useRef(null);
     const threadRef = React5.useRef(null);
-    const suggestionsRef = React5.useRef(null);
-    const composerRef = React5.useRef(null);
     const focusThreadRef = React5.useRef(false);
     const pushToTalkTimerRef = React5.useRef(null);
     const pushToTalkActiveRef = React5.useRef(false);
     const suppressMicClickRef = React5.useRef(false);
-    const visibleMessages = messages.filter((m2) => m2.content.trim());
+    const visibleMessages = React5.useMemo(
+      () => messages.filter((m2) => m2.content.trim()),
+      [messages]
+    );
     const lastId = visibleMessages.at(-1)?.id ?? null;
     const lastContent = visibleMessages.at(-1)?.content ?? "";
     const scrollPinnedIdRef = React5.useRef(lastId);
@@ -24851,9 +24852,7 @@
     const responding = phase === "responding";
     const hasDraft = draft.trim().length > 0;
     const hasImages = pendingImages.length > 0;
-    const open = sheetOpen;
-    const suggestionsBase = !sheetOpen && !recording && !booting && canSend && !hasDraft && !hasImages;
-    const suggestionsVisible = suggestionsBase;
+    const suggestionsVisible = !sheetOpen && !recording && !booting && canSend && !hasDraft && !hasImages;
     const suggestions = usePromptSuggestions(messages, {
       enabled: suggestionsVisible
     });
@@ -25026,15 +25025,22 @@
         closeSheet();
       }
     });
-    const [viewportH, setViewportH] = React5.useState(
-      () => typeof window === "undefined" ? 800 : window.innerHeight
+    const readViewportH = React5.useCallback(
+      () => typeof window === "undefined" ? 800 : window.visualViewport?.height ?? window.innerHeight,
+      []
     );
+    const [viewportH, setViewportH] = React5.useState(readViewportH);
     React5.useEffect(() => {
       if (typeof window === "undefined") return void 0;
-      const onResize = () => setViewportH(window.innerHeight);
+      const onResize = () => setViewportH(readViewportH());
+      const vv = window.visualViewport;
       window.addEventListener("resize", onResize);
-      return () => window.removeEventListener("resize", onResize);
-    }, []);
+      vv?.addEventListener("resize", onResize);
+      return () => {
+        window.removeEventListener("resize", onResize);
+        vv?.removeEventListener("resize", onResize);
+      };
+    }, [readViewportH]);
     const openH = Math.round(viewportH * SHEET_OPEN_VH);
     const baseH = sheetOpen ? openH : SHEET_CLOSED_H;
     const rawH = baseH + drag2;
@@ -25154,15 +25160,12 @@
               ]
             }
           ) : null,
-          suggestionsBase ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+          suggestionsVisible ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
             "fieldset",
             {
-              ref: suggestionsRef,
               "aria-label": "Suggested prompts",
-              "aria-hidden": !suggestionsVisible,
               className: cn(
-                "relative m-0 mb-2 flex w-full max-w-3xl flex-wrap items-center justify-center gap-2 border-0 p-0 transition-opacity duration-200",
-                suggestionsVisible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+                "pointer-events-auto relative m-0 mb-2 flex w-full max-w-3xl flex-wrap items-center justify-center gap-2 border-0 p-0"
               ),
               "data-testid": "chat-suggestions",
               children: suggestions.map((s, i) => /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
@@ -25171,7 +25174,6 @@
                   type: "button",
                   "data-testid": `chat-suggestion-${i}`,
                   "aria-label": s,
-                  tabIndex: suggestionsVisible ? 0 : -1,
                   onClick: () => pickSuggestion(s),
                   className: cn(
                     "max-w-full truncate rounded-full border border-white/15 bg-black/40 px-3 py-1.5",
@@ -25189,7 +25191,6 @@
           /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
             "fieldset",
             {
-              ref: composerRef,
               "aria-label": "Chat composer",
               className: "pointer-events-auto relative m-0 w-full min-w-0 max-w-3xl border-0 p-0",
               children: [
@@ -25282,7 +25283,7 @@
                         if (e.key === "Enter" && !e.shiftKey) {
                           e.preventDefault();
                           submit();
-                        } else if (e.key === "Escape" && open) {
+                        } else if (e.key === "Escape" && sheetOpen) {
                           e.preventDefault();
                           collapse();
                         }

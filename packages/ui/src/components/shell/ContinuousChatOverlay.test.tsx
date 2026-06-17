@@ -114,9 +114,10 @@ describe("ContinuousChatOverlay", () => {
     );
     const strip = screen.getByTestId("chat-suggestions");
     const firstSuggestion = screen.getByTestId("chat-suggestion-0");
-    // At rest (ready, nothing typed) the strip is visible + tabbable — there is
-    // no hover/focus gate any more; it is the closed-state affordance.
-    expect(strip.className).toContain("opacity-100");
+    // At rest (ready, nothing typed) the strip is mounted, interactive, and
+    // tabbable — there is no hover/focus gate any more; it is the closed-state
+    // affordance, and it simply unmounts once the sheet opens or a draft starts.
+    expect(strip.className).toContain("pointer-events-auto");
     expect(firstSuggestion.tabIndex).toBe(0);
   });
 
