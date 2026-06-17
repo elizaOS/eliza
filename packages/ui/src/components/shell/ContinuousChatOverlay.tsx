@@ -66,7 +66,31 @@ const OVERLAY_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 // the input). The live drag tracks the finger 1:1; release snaps with an
 // Apple-style spring. The whole sheet is unmounted when there's no thread yet.
 const SHEET_CLOSED_H = 76; // px — grabber row + one faded line
-const SHEET_OPEN_VH = 0.72; // fraction of viewport height when open
+const SHEET_OPEN_VH = 0.72; // fraction of viewport height at the FULL detent
+const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
+
+// A light iOS-style impact on each detent cross. Self-contained + guarded so it
+// is a no-op off-native (and in jsdom tests) without coupling the overlay to the
+// Capacitor bridge module. Mirrors `bridge/capacitor-bridge.ts` `haptics.light()`.
+function detentHaptic(): void {
+  try {
+    const cap = (
+      globalThis as {
+        Capacitor?: {
+          isNativePlatform?: () => boolean;
+          Plugins?: {
+            Haptics?: { impact?: (o: { style: string }) => unknown };
+          };
+        };
+      }
+    ).Capacitor;
+    if (cap?.isNativePlatform?.()) {
+      void cap.Plugins?.Haptics?.impact?.({ style: "LIGHT" });
+    }
+  } catch {
+    // Haptics are a nicety — never let them throw into the gesture path.
+  }
+}
 const SHEET_SPRING = {
   type: "spring" as const,
   stiffness: 320,
@@ -330,6 +354,11 @@ export function ContinuousChatOverlay({
   // by focusing the composer, or by sending; closed by a pull-down drag or
   // Escape. Never by click-out, scroll, or blur.
   const [sheetOpen, setSheetOpen] = React.useState(false);
+  // iOS-style 3 detents: PEEK (sheet closed) → HALF → FULL. `sheetOpen` stays
+  // the primary peek-vs-open gate (suggestions, scroll-pin, scrim); `expanded`
+  // selects FULL vs HALF while open. Grabber pulls step through the detents
+  // (each cross fires a light haptic); programmatic opens (send/focus) go FULL.
+  const [expanded, setExpanded] = React.useState(false);
   // Live drag offset in px (positive = pulling up) while the grabber/peek is
   // dragged; 0 at rest. Drives the sheet height 1:1 so it tracks the finger,
   // then resets when the release spring takes over.
@@ -462,6 +491,8 @@ export function ContinuousChatOverlay({
       send(text);
     }
     setSheetOpen(true);
+    setExpanded(true);
+    detentHaptic();
     inputRef.current?.focus();
   }, [draft, pendingImages, canSend, send]);
 
@@ -473,6 +504,8 @@ export function ContinuousChatOverlay({
       setDraft("");
       send(text);
       setSheetOpen(true);
+      setExpanded(true);
+      detentHaptic();
       inputRef.current?.focus();
     },
     [canSend, send],
@@ -553,8 +586,23 @@ export function ContinuousChatOverlay({
 
   const closeSheet = React.useCallback(() => {
     setSheetOpen(false);
+    setExpanded(false);
     settleDrag();
   }, [settleDrag]);
+
+  // Snap to one of the three iOS-style detents and settle the live drag. A
+  // detent change fires a light haptic so the snap feels physical on device.
+  // "peek" is the closed whisper-line; "half" the comfortable reading height;
+  // "full" the near-fullscreen reading mode.
+  const goToDetent = React.useCallback(
+    (detent: "peek" | "half" | "full") => {
+      setSheetOpen(detent !== "peek");
+      setExpanded(detent === "full");
+      settleDrag();
+      detentHaptic();
+    },
+    [settleDrag],
+  );
 
   // Close, then return keyboard focus to the always-visible composer WITHOUT
   // bouncing back open: focusing the input normally re-opens (see `expand`), so
@@ -593,25 +641,39 @@ export function ContinuousChatOverlay({
   const onDragOffset = React.useCallback(
     (offset: number) => {
       setDragging(true);
-      // Open → only a downward (negative) drag is meaningful; closed → only an
-      // upward (positive) one. Pin the other direction so the sheet feels held.
-      setDrag(sheetOpen ? Math.min(0, offset) : Math.max(0, offset));
+      // Three detents, three live-drag ranges. Peek (closed): only an upward
+      // (positive) drag is meaningful. Full (expanded): only a downward
+      // (negative) one. Half (the middle): both directions are live so the
+      // finger can climb to full or fall to peek. Pin the dead direction so the
+      // sheet feels held at the ends.
+      if (!sheetOpen) setDrag(Math.max(0, offset));
+      else if (expanded) setDrag(Math.min(0, offset));
+      else setDrag(offset);
     },
-    [sheetOpen],
+    [sheetOpen, expanded],
   );
 
   const pullBinding: PullGestureBinding = usePullGesture({
     onDrag: onDragOffset,
+    // Pulls STEP one detent at a time (peek→half→full and back) rather than
+    // jumping straight to the ends — the iOS sheet feel. The inline closures are
+    // rebuilt every render, so they always read the current detent.
     onPullUp: () => {
-      settleDrag();
-      if (hasThread) {
-        setSheetOpen(true);
+      if (!sheetOpen) {
+        if (!hasThread) return settleDrag();
+        goToDetent("half");
         focusThreadRef.current = true;
+      } else if (!expanded) {
+        goToDetent("full");
+        focusThreadRef.current = true;
+      } else {
+        settleDrag();
       }
     },
     onPullDown: () => {
-      settleDrag();
-      closeSheet();
+      if (expanded) goToDetent("half");
+      else if (sheetOpen) goToDetent("peek");
+      else settleDrag();
     },
   });
 
@@ -644,11 +706,14 @@ export function ContinuousChatOverlay({
     };
   }, [readViewportH]);
 
-  // Sheet height: bottom-anchored clip window above the fixed composer. Closed =
-  // a slim peek; open = SHEET_OPEN_VH of the viewport. The live drag offset is
-  // added and rubber-banded past either detent so the pull tracks the finger.
+  // Sheet height: bottom-anchored clip window above the fixed composer. Three
+  // detents — a slim PEEK (closed), a comfortable HALF, and a near-full FULL
+  // (SHEET_OPEN_VH of the viewport). The live drag offset is added and
+  // rubber-banded only past the two extremes, so dragging between PEEK and FULL
+  // tracks the finger 1:1 and the HALF stop is just a spring target on release.
   const openH = Math.round(viewportH * SHEET_OPEN_VH);
-  const baseH = sheetOpen ? openH : SHEET_CLOSED_H;
+  const halfH = Math.round(viewportH * SHEET_HALF_VH);
+  const baseH = !sheetOpen ? SHEET_CLOSED_H : expanded ? openH : halfH;
   const rawH = baseH + drag;
   const sheetH =
     rawH > openH
@@ -725,7 +790,7 @@ export function ContinuousChatOverlay({
           <SheetGrabber
             open={sheetOpen}
             onOpen={() => {
-              setSheetOpen(true);
+              goToDetent("half");
               focusThreadRef.current = true;
             }}
             onClose={collapse}
@@ -797,13 +862,16 @@ export function ContinuousChatOverlay({
 
       {/* Three tailored prompt suggestions — a keyboard-style strip shown in the
           resting (closed) state when nothing is typed. Tapping one sends it
-          immediately, which also pulls the chat sheet up. */}
+          immediately, which also pulls the chat sheet up. `order: -1` floats the
+          strip ABOVE the chat sheet (sheet-below-bubbles layout); the strip fades
+          out as the sheet is dragged up so the unmount on open never pops. */}
       {suggestionsVisible ? (
         <fieldset
           aria-label="Suggested prompts"
           className={cn(
             "pointer-events-auto relative m-0 mb-2 flex w-full max-w-3xl flex-wrap items-center justify-center gap-2 border-0 p-0",
           )}
+          style={{ order: -1, opacity: Math.max(0, 1 - revealed) }}
           data-testid="chat-suggestions"
         >
           {suggestions.map((s, i) => (
