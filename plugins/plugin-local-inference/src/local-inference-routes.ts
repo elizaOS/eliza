@@ -680,8 +680,7 @@ export async function getLocalInferenceActiveSnapshot(): Promise<{
 		);
 		return {
 			modelId:
-				installed?.id ??
-				path.basename(aospActive.path).replace(/\.gguf$/i, ""),
+				installed?.id ?? path.basename(aospActive.path).replace(/\.gguf$/i, ""),
 			loadedAt:
 				typeof aospActive.loadedAt === "string" ? aospActive.loadedAt : null,
 			status: "ready",
@@ -703,8 +702,7 @@ export async function getLocalInferenceActiveSnapshot(): Promise<{
 		(model) => model.path === loadedPath,
 	);
 	return {
-		modelId:
-			installed?.id ?? path.basename(loadedPath).replace(/\.gguf$/i, ""),
+		modelId: installed?.id ?? path.basename(loadedPath).replace(/\.gguf$/i, ""),
 		loadedAt: activeModelState.loadedAt,
 		status: "ready",
 	};
