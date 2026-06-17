@@ -2,8 +2,6 @@
  * Pre-seed the AOSP ElizaOS APK when the device itself is the local agent.
  */
 
-import { Capacitor } from "@capacitor/core";
-import { isAndroidCloudBuild } from "../platform/android-runtime";
 import { isAospElizaUserAgent } from "../platform/aosp-user-agent";
 import {
   ANDROID_LOCAL_AGENT_IPC_BASE,
@@ -61,34 +59,22 @@ function isBrandedAndroidDevice(): boolean {
   return isAospElizaUserAgent(navigator.userAgent);
 }
 
-function isNativeAndroid(): boolean {
-  try {
-    if (Capacitor.getPlatform() === "android") return true;
-  } catch {
-    // Capacitor may not be wired up yet during early boot — fall through to
-    // the UA check, which is available synchronously from the first paint.
-  }
-  // Capacitor's Android System WebView UA carries the "; wv)" marker, which a
-  // stock Android Chrome browser does not — so this matches the native app
-  // only, not the web dashboard opened in Android Chrome.
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent;
-  return /android/i.test(ua) && /;\s*wv\)/i.test(ua);
-}
-
 /**
  * Whether to pre-seed the on-device local agent as the active server.
  *
- * Branded ElizaOS device images carry the `ElizaOS/<tag>` UA marker. The
- * stock-phone sideload build does not, but it IS the local on-device agent
- * build (the cloud variant is `build:android:cloud`). Without seeding, that
- * sideload defaults to the cloud-connect onboarding with no "use local"
- * option, so a fresh install on a stock phone can never reach the local
- * agent. Seed local whenever this is the local Android build.
+ * Branded ElizaOS device images (carrying the `ElizaOS/<tag>` UA marker) are
+ * dedicated local-agent hardware, so they auto-seed local.
+ *
+ * Stock-phone sideloads do NOT auto-seed: the first-run 3-way chooser
+ * (CompactOnboarding's "Local models" card) now offers local explicitly, so
+ * auto-seeding only did harm — it skipped the chooser, auto-started the slow
+ * on-device agent foreground service (triggering the POST_NOTIFICATIONS prompt
+ * at launch), and left the dashboard stuck "connecting to backend" while that
+ * agent booted. Letting the chooser render instead is faster, prompts nothing
+ * on launch, and still reaches local in one tap.
  */
 function shouldPreSeedLocalRuntime(): boolean {
-  if (isBrandedAndroidDevice()) return true;
-  return isNativeAndroid() && !isAndroidCloudBuild();
+  return isBrandedAndroidDevice();
 }
 
 export function preSeedAndroidLocalRuntimeIfFresh(): boolean {
