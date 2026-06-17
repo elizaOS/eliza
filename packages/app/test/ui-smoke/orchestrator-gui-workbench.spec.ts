@@ -1,5 +1,6 @@
 import { expect, type Page, type Route, test } from "@playwright/test";
 import {
+  hideContinuousChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -902,6 +903,7 @@ test.describe("orchestrator GUI workbench", () => {
   test("creates a task and sends a message through the visible controls", async ({
     page,
   }) => {
+    await hideContinuousChatOverlay(page);
     await seedAppStorage(page);
     await installDefaultAppRoutes(page);
     const requests = await installOrchestratorWorkbenchRoutes(page);
