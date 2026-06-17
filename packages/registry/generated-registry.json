@@ -91,9 +91,9 @@
       "registryKind": "plugin",
       "directory": null
     },
-    "@usenami/funding-mcp": {
+    "@usenami/plugin-funding": {
       "git": {
-        "repo": "namixai/funding-mcp",
+        "repo": "namixai/plugin-funding",
         "v0": {
           "branch": null
         },
@@ -105,17 +105,17 @@
         }
       },
       "npm": {
-        "repo": "@usenami/funding-mcp",
+        "repo": "@usenami/plugin-funding",
         "v0": null,
         "v1": null,
-        "v2": "0.2.0"
+        "v2": "0.1.0"
       },
       "supports": {
         "v0": false,
         "v1": false,
         "v2": true
       },
-      "description": "Multi-venue perpetual funding-rate data & cross-exchange funding-arbitrage for elizaOS agents — across 20+ exchanges incl. Hyperliquid HIP-3 sub-DEXes. Free funding_screener; paid funding_arb + funding_spread settle per-call over x402 (auto-pay).",
+      "description": "Multi-venue perpetual funding-rate data & cross-exchange funding-arbitrage for elizaOS agents — across 20+ exchanges incl. Hyperliquid HIP-3 sub-DEXes. Free FUNDING_SCREENER; paid FUNDING_ARB + FUNDING_SPREAD settle per-call over x402 (auto-pay in USDC on Base).",
       "homepage": "https://usenami.io",
       "topics": [
         "funding-rate",
