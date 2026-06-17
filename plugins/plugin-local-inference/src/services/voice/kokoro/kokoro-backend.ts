@@ -9,7 +9,7 @@
  * caller's first-audio-latency target.
  *
  * The actual model inference is delegated to a `KokoroRuntime` instance
- * (ONNX / GGUF / mock) — this class owns:
+ * (GGUF / mock) — this class owns:
  *   - phonemizer resolution + per-phrase phonemize call,
  *   - voice-pack resolution against `SpeakerPreset.voiceId`,
  *   - streaming-protocol bookkeeping (cancel signal polling, final tail).
@@ -42,10 +42,9 @@ export interface KokoroTtsBackendDeps extends KokoroBackendOptions {
 }
 
 /**
- * `KokoroTtsBackend` is a streaming-only TTS backend (the model has no
- * cheaper non-streaming path — ONNX still produces the full waveform in
- * one forward, but we surface it as one body chunk + tail so the
- * scheduler protocol is identical for both backends).
+ * `KokoroTtsBackend` is a streaming-only TTS backend. The model produces
+ * the full waveform in one forward, but we surface it as one body chunk +
+ * tail so the scheduler protocol is identical for both backends.
  */
 export class KokoroTtsBackend implements OmniVoiceBackend, StreamingTtsBackend {
 	readonly id = "kokoro" as const;

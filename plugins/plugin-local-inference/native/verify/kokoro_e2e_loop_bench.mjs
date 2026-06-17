@@ -667,28 +667,26 @@ function asrTranscribe(ffiState, ctx, samples, sampleRate) {
 
 async function createKokoro(files, voiceId, serverUrl) {
   const kokoro = await import("../../src/services/voice/kokoro/index.ts");
-  const runtimeKind = process.env.ELIZA_KOKORO_E2E_RUNTIME || "onnx";
-  const modelFile =
-    runtimeKind === "fork"
-      ? path.basename(files.kokoro.ggufModelPath || files.kokoro.modelPath || "")
-      : path.basename(files.kokoro.onnxModelPath || files.kokoro.modelPath || "");
+  const runtimeKind = process.env.ELIZA_KOKORO_E2E_RUNTIME || "fork";
+  if (runtimeKind !== "fork") {
+    throw new Error(
+      `[kokoro-e2e] ELIZA_KOKORO_E2E_RUNTIME=${runtimeKind} is no longer supported; ` +
+        "the ONNX runtime was removed. Only the 'fork' (llama-server /v1/audio/speech) runtime remains.",
+    );
+  }
   const layout = {
     root: files.kokoro.root,
-    modelFile,
+    modelFile: path.basename(
+      files.kokoro.ggufModelPath || files.kokoro.modelPath || "",
+    ),
     voicesDir: files.kokoro.voicesDir,
     sampleRate: 24000,
   };
-  const runtime =
-    runtimeKind === "fork"
-      ? new kokoro.KokoroGgufRuntime({
-          serverUrl,
-          modelId: process.env.ELIZA_KOKORO_FORK_MODEL_ID?.trim() || "kokoro-v1.0",
-          sampleRate: layout.sampleRate,
-        })
-      : new kokoro.KokoroOnnxRuntime({
-          layout,
-          expectedSha256: files.kokoro.modelSha256,
-        });
+  const runtime = new kokoro.KokoroGgufRuntime({
+    serverUrl,
+    modelId: process.env.ELIZA_KOKORO_FORK_MODEL_ID?.trim() || "kokoro-v1.0",
+    sampleRate: layout.sampleRate,
+  });
   const backend = new kokoro.KokoroTtsBackend({
     layout,
     defaultVoiceId: voiceId,

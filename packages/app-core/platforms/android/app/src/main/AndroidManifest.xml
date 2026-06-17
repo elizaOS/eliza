@@ -3,6 +3,12 @@
 
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
+        <!-- Android 11+ package visibility: expose the system speech
+             RecognitionService so native voice capture (TalkMode SpeechRecognizer)
+             can resolve + bind to it for on-device STT. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
     </queries>
 
     <uses-feature

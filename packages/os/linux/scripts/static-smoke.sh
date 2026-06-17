@@ -17,14 +17,22 @@ rg() {
     fi
 
     local show_line_numbers=0
+    local quiet=0
     local pattern
     local glob_pattern=""
     local paths=()
 
-    if [ "${1:-}" = "-n" ]; then
-        show_line_numbers=1
-        shift
-    fi
+    # Consume leading flags this shim understands. Crucially `-q`: without it,
+    # `rg -q 'pat' file` would leave `-q` as the pattern and shove the real
+    # pattern into grep's file position ("grep: <pat>: No such file or directory").
+    while [ "$#" -gt 0 ]; do
+        case "${1:-}" in
+            -n) show_line_numbers=1; shift ;;
+            -q) quiet=1; shift ;;
+            -nq | -qn) show_line_numbers=1; quiet=1; shift ;;
+            *) break ;;
+        esac
+    done
     pattern="${1:-}"
     if [ -z "${pattern}" ]; then
         return 2
@@ -54,6 +62,9 @@ rg() {
     local grep_flags="-RE"
     if [ "${show_line_numbers}" = "1" ]; then
         grep_flags="${grep_flags}n"
+    fi
+    if [ "${quiet}" = "1" ]; then
+        grep_flags="${grep_flags}q"
     fi
 
     if [ -n "${glob_pattern}" ]; then

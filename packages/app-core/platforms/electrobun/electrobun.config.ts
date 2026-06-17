@@ -557,9 +557,6 @@ export function createElectrobunConfig(): ElectrobunConfig {
           // them breaks those paths.
           "node-llama-cpp",
           "@node-llama-cpp/*",
-          "onnxruntime-node",
-          "onnxruntime-common",
-          "onnxruntime-web",
         ],
       },
       views: {},

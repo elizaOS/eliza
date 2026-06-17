@@ -669,12 +669,6 @@ export function shouldKeepPackageRelativePath(
     }
   }
 
-  if (packageName === "onnxruntime-web") {
-    if (normalizedPath === "lib" || normalizedPath.startsWith("lib/")) {
-      return false;
-    }
-  }
-
   if (packageName === "@elizaos/app-core") {
     if (
       normalizedPath === ".tmp" ||
