@@ -2249,7 +2249,7 @@ function nativeVoiceReadiness(): NativeVoiceReadiness {
 			if (
 				stats.isFile() &&
 				/\/(tts|voice|asr|vad)\//i.test(normalized) &&
-				/\.(gguf|onnx|bin|json)$/i.test(entry)
+				/\.(gguf|bin|json)$/i.test(entry)
 			) {
 				const markerIndex = normalized.indexOf(".bundle/");
 				if (markerIndex >= 0) {

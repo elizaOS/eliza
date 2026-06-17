@@ -433,7 +433,6 @@
     "keccak",
     "node-llama-cpp",
     "nx",
-    "onnxruntime-node",
     "protobufjs",
     "secp256k1",
     "sharp",

@@ -21,7 +21,7 @@
  * other bundle sub-directory).
  *
  * Out of scope:
- * - `node-llama-cpp`, `onnxruntime-node`, etc. — these load native modules
+ * - `node-llama-cpp`, etc. — these load native modules
  *   through Node's `process.dlopen` / `require()`-driven `.node` loader,
  *   not through `bun:ffi`. They are governed separately by the Node
  *   loader's own search path and by signing on the bundled `.node`

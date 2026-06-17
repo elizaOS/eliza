@@ -431,7 +431,7 @@ function primaryVoiceFileForTier(id: Eliza1TierId): string {
   if (defaultBackend === "omnivoice") {
     return `tts/omnivoice-base-${voiceQuantForTier(id)}.gguf`;
   }
-  return "tts/kokoro/model_q4.onnx";
+  return "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf";
 }
 
 function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {

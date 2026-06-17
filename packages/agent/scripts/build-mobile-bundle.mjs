@@ -268,7 +268,6 @@ const nativeStubs = {
   // still has to resolve the dynamic import in
   // plugins/plugin-native-llama/src/capacitor-llama-adapter.ts.
   "llama-cpp-capacitor": path.join(stubsDir, "llama-cpp-capacitor.cjs"),
-  "onnxruntime-node": path.join(stubsDir, "onnxruntime-node.cjs"),
   mammoth: path.join(stubsDir, "mammoth.cjs"),
   "source-map": path.join(stubsDir, "source-map.cjs"),
   // PDF extraction pulls in pdfjs (~2 MB of parser/runtime code) through
@@ -1829,7 +1828,6 @@ const manifest = {
     "canvas",
     "llama-cpp-capacitor",
     "node-llama-cpp",
-    "onnxruntime-node",
     "pty-manager",
     "sharp",
   ],

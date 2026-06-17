@@ -7,7 +7,7 @@
  * classes against a fake layout pointing at a never-read path.
  *
  * The standalone integration script at `scripts/test-kokoro-tts.mjs`
- * covers the real-ORT path against staged artifacts on disk.
+ * covers the real llama-server fork path against staged artifacts on disk.
  */
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -28,7 +28,7 @@ function makeKokoroConfig(rootOverride?: string): KokoroEngineDiscoveryResult {
 	return {
 		layout: {
 			root: rootOverride ?? "/tmp/fake-kokoro",
-			modelFile: "kokoro-v1.0.onnx",
+			modelFile: "kokoro-82m-v1_0-Q4_K_M.gguf",
 			voicesDir: path.join(rootOverride ?? "/tmp/fake-kokoro", "voices"),
 			sampleRate: 24_000,
 		},

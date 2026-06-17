@@ -40,7 +40,6 @@ const external = await externalsFromPackageJson("./package.json", {
     "@elizaos/cloud-routing",
     "node-llama-cpp",
     "@node-llama-cpp/*",
-    "onnxruntime-node",
     "@napi-rs/keyring",
     "@reflink/reflink",
     "ipull",
