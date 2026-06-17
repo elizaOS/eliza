@@ -275,14 +275,20 @@ export async function ensureEmulatorBooted({
   const memoryMb = process.env.ELIZA_EMULATOR_MEMORY_MB ?? "6144";
   const cores = process.env.ELIZA_EMULATOR_CORES ?? "4";
   // The on-device agent's bun + llama-cpp are compiled with -mavx2 -mfma -mf16c,
-  // but the emulator's default CPU model hides those → SIGILL/segfault on model
-  // load. We expose exactly that feature set on the qemu64 base. NOT `-cpu host`:
-  // full passthrough additionally exposes AVX-512/exotic features that make bun
-  // crash on early init under KVM. Must come last — everything after `-qemu`
-  // is forwarded to qemu. Override the whole flag with ELIZA_EMULATOR_QEMU_CPU.
-  const qemuCpu =
-    process.env.ELIZA_EMULATOR_QEMU_CPU ??
-    "qemu64,+avx,+avx2,+f16c,+fma,+bmi1,+bmi2,+sse4.1,+sse4.2,+popcnt,+aes,+xsave,+xsaveopt";
+  // but the emulator's default CPU model hides those → SIGILL in llama on model
+  // load. A hand-rolled `qemu64,+avx2,...` model satisfies llama but gives BUN an
+  // inconsistent CPUID (minimal base + bolted-on leaves): bun's runtime init reads
+  // CPUID and emits an instruction the synthetic model doesn't back, so bun dies
+  // with an "invalid opcode" SIGILL ~1s in — BEFORE model load, 0-byte agent.log,
+  // no tombstone (looks like an OOM but isn't). `-cpu host` (full KVM passthrough)
+  // fixes both: the guest gets the REAL, self-consistent host CPUID and every
+  // instruction executes natively on the host core, so bun boots ("WELCOME TO
+  // ELIZA", plugin-sql + plugin-local-inference load) AND llama still sees AVX2.
+  // Verified on a KVM host: `-cpu host` boots the agent; `qemu64,+avx2` SIGILLs.
+  // Requires KVM (`-accel on` below); a TCG-only host must override this with a
+  // synthetic model via ELIZA_EMULATOR_QEMU_CPU (and accept the bun fragility).
+  // Must come last — everything after `-qemu` is forwarded to qemu.
+  const qemuCpu = process.env.ELIZA_EMULATOR_QEMU_CPU ?? "host";
   const child = spawn(
     emulator,
     [
