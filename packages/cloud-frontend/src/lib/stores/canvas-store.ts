@@ -173,10 +173,13 @@ export const useCanvasStore = create<CanvasState>()(
   persist(
     (set, get) => ({
       // ── Initial state ──
-      canvasOpen: true,
-      canvasMode: "chat" as CanvasMode,
-      defaultUiMode: "canvas",
-      assistantOpen: true,
+      // Default to the classic dashboard (OG DashboardLayout). The interactive
+      // canvas UI remains available behind the toggle, but is no longer the
+      // default surface.
+      canvasOpen: false,
+      canvasMode: "idle" as CanvasMode,
+      defaultUiMode: "classic",
+      assistantOpen: false,
       messages: [],
       isProcessing: false,
       activeSpec: null,
@@ -881,6 +884,17 @@ export const useCanvasStore = create<CanvasState>()(
     }),
     {
       name: "eliza-cloud-canvas",
+      // Bumped to 1 to drop any stale persisted `defaultUiMode: "canvas"` so the
+      // classic dashboard becomes the default surface for existing users too
+      // (not just fresh sessions). The canvas remains available via the toggle.
+      version: 1,
+      migrate: (persisted, version) => {
+        const state = (persisted ?? {}) as Partial<CanvasState>;
+        if (version < 1) {
+          state.defaultUiMode = "classic";
+        }
+        return state as CanvasState;
+      },
       partialize: (state) => ({
         savedViews: state.savedViews,
         actionUsage: state.actionUsage,
