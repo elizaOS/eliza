@@ -2,7 +2,13 @@
 
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+
+beforeAll(() => {
+  (
+    globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+  ).IS_REACT_ACT_ENVIRONMENT = true;
+});
 
 const polymarketClient = vi.hoisted(() => ({
   polymarketStatus: vi.fn(),
@@ -101,6 +107,25 @@ const sampleMarket = {
   endDate: null,
   startDate: null,
   updatedAt: null,
+};
+
+// A second market with NO clob token ids, used to assert the detail-pane
+// "no CLOB token ids" fallback and a market-row selection change.
+const secondMarket = {
+  ...sampleMarket,
+  id: "market-2",
+  slug: "eth-above-5k",
+  question: "Will ETH be above 5k?",
+  category: "Layer1",
+  clobTokenIds: [] as string[],
+  outcomes: [
+    { name: "Yes", price: "0.25" },
+    { name: "No", price: "0.75" },
+  ],
+  liquidity: "5000",
+  volume: "9000",
+  volume24hr: "300",
+  lastTradePrice: "0.25",
 };
 
 const sampleMarkets = {
@@ -205,6 +230,100 @@ describe("PolymarketTuiView", () => {
       selectedMarketId: "market-1",
       ordersEnabled: false,
     });
+  });
+
+  it("renders the auto-selected market detail pane: outcomes + CLOB token ids", async () => {
+    mockState();
+
+    const { container } = render(React.createElement(PolymarketTuiView));
+    await waitForText(container, "Will BTC be above 100k?");
+
+    const text = container.textContent ?? "";
+    // Detail pane (auto-selected first market) renders outcome rows with prices.
+    expect(text).toContain("outcomes");
+    expect(text).toContain("Yes");
+    expect(text).toContain("0.61");
+    expect(text).toContain("No");
+    expect(text).toContain("0.39");
+    // orderbook tokens list renders the market's clobTokenIds.
+    expect(text).toContain("orderbook tokens");
+    expect(text).toContain("token-yes");
+    expect(text).toContain("token-no");
+    // The disabled-trading reason from orders renders in the detail pane.
+    expect(text).toContain("Trading and order management are disabled.");
+  });
+
+  it("clicking refresh re-loads data and sets lastAction=refresh", async () => {
+    mockState();
+
+    const { container } = render(React.createElement(PolymarketTuiView));
+    await waitForText(container, "Will BTC be above 100k?");
+
+    // Initial load already happened once.
+    expect(polymarketClient.polymarketStatus).toHaveBeenCalledTimes(1);
+    expect(polymarketClient.polymarketMarkets).toHaveBeenCalledTimes(1);
+    expect(polymarketClient.polymarketOrders).toHaveBeenCalledTimes(1);
+
+    const refreshBtn = Array.from(
+      container.querySelectorAll<HTMLButtonElement>("button"),
+    ).find((el) => el.textContent?.trim() === "refresh");
+    expect(refreshBtn).toBeTruthy();
+
+    await act(async () => {
+      refreshBtn?.click();
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    // The underlying loader re-fired every client call.
+    expect(polymarketClient.polymarketStatus).toHaveBeenCalledTimes(2);
+    expect(polymarketClient.polymarketMarkets).toHaveBeenCalledTimes(2);
+    expect(polymarketClient.polymarketOrders).toHaveBeenCalledTimes(2);
+
+    const stateElement = container.querySelector("[data-view-state]");
+    expect(
+      JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}"),
+    ).toMatchObject({ lastAction: "refresh", loading: false });
+  });
+
+  it("clicking a market row updates selection and the detail pane", async () => {
+    mockState();
+    polymarketClient.polymarketMarkets.mockResolvedValue({
+      markets: [sampleMarket, secondMarket],
+      source: sampleMarkets.source,
+    });
+
+    const { container } = render(React.createElement(PolymarketTuiView));
+    await waitForText(container, "Will BTC be above 100k?");
+
+    // Auto-selected first market => detail shows its CLOB token ids.
+    expect(container.textContent).toContain("token-yes");
+    let stateElement = container.querySelector("[data-view-state]");
+    expect(
+      JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}"),
+    ).toMatchObject({ selectedMarketId: "market-1", marketCount: 2 });
+
+    // Click the second market row.
+    const secondRow = container.querySelector<HTMLButtonElement>(
+      'button[data-agent-id="tui-market-market-2"]',
+    );
+    expect(secondRow).toBeTruthy();
+    await act(async () => {
+      secondRow?.click();
+    });
+
+    // selectedMarketId switches and the detail pane re-renders the new market.
+    stateElement = container.querySelector("[data-view-state]");
+    expect(
+      JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}"),
+    ).toMatchObject({ selectedMarketId: "market-2" });
+    const text = container.textContent ?? "";
+    expect(text).toContain("Will ETH be above 5k?");
+    expect(text).toContain("0.25");
+    expect(text).toContain("0.75");
+    // secondMarket has empty clobTokenIds => fallback copy renders.
+    expect(text).toContain("no CLOB token ids");
   });
 
   it("supports terminal capabilities for state, market, orderbook, positions, and trading checks", async () => {

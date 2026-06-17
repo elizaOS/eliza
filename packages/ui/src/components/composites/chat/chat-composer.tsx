@@ -436,6 +436,7 @@ export function ChatComposer({
             ? "bg-accent text-bg hover:bg-accent/90 hover:text-bg"
             : "bg-bg text-muted hover:bg-bg hover:text-txt"
         }`}
+        data-testid="chat-composer-mic"
         onClick={handleMicClick}
         onPointerDown={handleMicPointerDown}
         onPointerUp={handleMicPointerUp}
@@ -610,6 +611,7 @@ export function ChatComposer({
                 } ${isComposerLocked ? "opacity-50" : ""}`
               : `h-[38px] w-9 shrink-0 bg-transparent p-0 shadow-none border-0 text-muted hover:bg-transparent hover:text-txt ${voice.isListening ? "text-accent hover:text-accent" : ""}`
           }
+          data-testid="chat-composer-mic"
           onClick={handleMicClick}
           onPointerDown={handleMicPointerDown}
           onPointerUp={handleMicPointerUp}
@@ -754,6 +756,7 @@ export function ChatComposer({
               ? "bg-accent text-bg hover:bg-accent/90 hover:text-bg"
               : "bg-bg text-muted hover:bg-bg hover:text-txt"
           }`}
+          data-testid="chat-composer-mic"
           onClick={handleMicClick}
           onPointerDown={handleMicPointerDown}
           onPointerUp={handleMicPointerUp}
