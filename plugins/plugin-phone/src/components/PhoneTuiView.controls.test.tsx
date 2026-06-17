@@ -84,7 +84,9 @@ describe("PhoneTuiView rendered controls", () => {
     });
     fireEvent.click(screen.getByText("open-dialer"));
     await waitFor(() =>
-      expect(phoneBridge.openDialer).toHaveBeenCalledWith({ number: "5550100" }),
+      expect(phoneBridge.openDialer).toHaveBeenCalledWith({
+        number: "5550100",
+      }),
     );
   });
 

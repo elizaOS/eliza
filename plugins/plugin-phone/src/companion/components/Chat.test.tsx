@@ -1,11 +1,6 @@
 // @vitest-environment jsdom
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // agentUrl() reads import.meta.env; force the "no env fallback" case so the
@@ -56,7 +51,9 @@ describe("Chat", () => {
     fireEvent.click(remoteButton);
     expect(onOpenRemoteSession).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByText("Re-pair").closest("button") as HTMLElement);
+    fireEvent.click(
+      screen.getByText("Re-pair").closest("button") as HTMLElement,
+    );
     expect(onOpenPairing).toHaveBeenCalledTimes(1);
   });
 

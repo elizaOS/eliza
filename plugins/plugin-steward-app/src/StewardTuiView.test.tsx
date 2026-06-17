@@ -16,7 +16,7 @@ vi.mock("@elizaos/ui", () => ({
     children,
     ...props
   }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-    React.createElement("button", props, children),
+    React.createElement("button", { type: "button", ...props }, children),
   PageLayout: ({ children }: { children: React.ReactNode }) =>
     React.createElement("div", {}, children),
   PagePanel: Object.assign(
@@ -37,7 +37,7 @@ vi.mock("@elizaos/ui", () => ({
     SectionLabel: ({ children }: { children: React.ReactNode }) =>
       React.createElement("div", {}, children),
     Item: ({ children }: { children: React.ReactNode }) =>
-      React.createElement("button", {}, children),
+      React.createElement("button", { type: "button" }, children),
     ItemIcon: ({ children }: { children: React.ReactNode }) =>
       React.createElement("span", {}, children),
     ItemBody: ({ children }: { children: React.ReactNode }) =>
@@ -235,5 +235,53 @@ describe("StewardTuiView", () => {
         }),
       }),
     );
+  });
+
+  it("clicking the on-screen refresh button re-runs loadStewardTuiState and sets lastAction=refresh", async () => {
+    mockFetch();
+
+    const { container } = render(React.createElement(StewardTuiView));
+    await screen.findByText("tx-1 / pending");
+
+    const statusCallsAfterBoot = (
+      fetch as unknown as { mock: { calls: unknown[][] } }
+    ).mock.calls.filter(
+      (call) => call[0] === "/api/wallet/steward-status",
+    ).length;
+    expect(statusCallsAfterBoot).toBe(1);
+
+    const refreshButton = screen.getByRole("button", { name: "refresh" });
+    await act(async () => {
+      fireEvent.click(refreshButton);
+    });
+    await screen.findByText("tx-1 / pending");
+
+    // The on-screen refresh button drives a fresh loadStewardTuiState() — a
+    // second steward-status fetch — distinct from the interact() capability.
+    const statusCallsAfterClick = (
+      fetch as unknown as { mock: { calls: unknown[][] } }
+    ).mock.calls.filter(
+      (call) => call[0] === "/api/wallet/steward-status",
+    ).length;
+    expect(statusCallsAfterClick).toBe(2);
+
+    const stateElement = container.querySelector("[data-view-state]");
+    expect(
+      JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}"),
+    ).toMatchObject({ lastAction: "refresh", loading: false });
+  });
+
+  it("renders the populated pending row with chain, to, and value details", async () => {
+    mockFetch();
+
+    render(React.createElement(StewardTuiView));
+    await screen.findByText("tx-1 / pending");
+
+    // The pending row prints chain id, destination, and value verbatim.
+    expect(
+      screen.getByText(
+        /chain 8453 to 0xfeed000000000000000000000000000000000000 value 1000000000000000000/,
+      ),
+    ).toBeTruthy();
   });
 });

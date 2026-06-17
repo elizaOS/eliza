@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -15,7 +21,7 @@ vi.mock("@elizaos/ui", () => ({
     children,
     ...props
   }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-    React.createElement("button", props, children),
+    React.createElement("button", { type: "button", ...props }, children),
   Spinner: (props: React.HTMLAttributes<HTMLSpanElement>) =>
     React.createElement("span", props),
   PagePanel: Object.assign(
@@ -236,7 +242,9 @@ describe("ApprovalQueue — interactive controls", () => {
     await screen.findByText("1 ETH");
     const callsBefore = props.getStewardPending.mock.calls.length;
 
-    const refreshBtn = screen.getByRole("button", { name: "Refresh approvals" });
+    const refreshBtn = screen.getByRole("button", {
+      name: "Refresh approvals",
+    });
     await act(async () => {
       fireEvent.click(refreshBtn);
     });

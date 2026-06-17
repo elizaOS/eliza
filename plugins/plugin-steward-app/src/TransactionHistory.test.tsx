@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -13,7 +19,7 @@ vi.mock("@elizaos/ui", () => ({
     children,
     ...props
   }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-    React.createElement("button", props, children),
+    React.createElement("button", { type: "button", ...props }, children),
   Spinner: (props: React.HTMLAttributes<HTMLSpanElement>) =>
     React.createElement("span", props),
   PagePanel: Object.assign(
@@ -251,8 +257,17 @@ describe("TransactionHistory — interactive controls", () => {
     });
 
     expect(screen.getByText("Page 2 of 2")).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Next page" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Previous page" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(
+      (screen.getByRole("button", { name: "Next page" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Previous page",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Previous page" }));
@@ -278,7 +293,9 @@ describe("TransactionHistory — interactive controls", () => {
     const callsBefore = getStewardHistory.mock.calls.length;
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Refresh transactions" }));
+      fireEvent.click(
+        screen.getByRole("button", { name: "Refresh transactions" }),
+      );
     });
     expect(getStewardHistory.mock.calls.length).toBeGreaterThan(callsBefore);
   });
@@ -308,6 +325,10 @@ describe("TransactionHistory — interactive controls", () => {
       fireEvent.click(copyBtn);
     });
     expect(copyToClipboard).toHaveBeenCalledWith(addr);
-    expect(setActionNotice).toHaveBeenCalledWith("Address copied", "success", 2000);
+    expect(setActionNotice).toHaveBeenCalledWith(
+      "Address copied",
+      "success",
+      2000,
+    );
   });
 });

@@ -86,7 +86,10 @@ describe("getStewardPendingApprovals (real @stwd/sdk TxRecord shape)", () => {
         createdAt: sdkTxRecordPending.createdAt.toISOString(),
       },
     };
-    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse([wireEntry])));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse([wireEntry])),
+    );
     const result = await getStewardPendingApprovals("agent-alpha", ENV);
     expect(result).toHaveLength(1);
     expect(result[0].queueId).toBe("queue-2");
@@ -97,17 +100,15 @@ describe("getStewardPendingApprovals (real @stwd/sdk TxRecord shape)", () => {
       "fetch",
       vi.fn(async () => jsonResponse({ error: "not found" }, { status: 404 })),
     );
-    await expect(getStewardPendingApprovals("agent-alpha", ENV)).resolves.toEqual(
-      [],
-    );
+    await expect(
+      getStewardPendingApprovals("agent-alpha", ENV),
+    ).resolves.toEqual([]);
   });
 
   it("throws on a non-404 error status", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(
-        async () => new Response("boom", { status: 500 }),
-      ),
+      vi.fn(async () => new Response("boom", { status: 500 })),
     );
     await expect(
       getStewardPendingApprovals("agent-alpha", ENV),
@@ -213,7 +214,9 @@ describe("getStewardTokenBalances ({ ok, data } envelope)", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: RequestInfo | URL) => {
-        expect(String(url)).toBe(`${BASE}/agents/agent-alpha/tokens?chainId=8453`);
+        expect(String(url)).toBe(
+          `${BASE}/agents/agent-alpha/tokens?chainId=8453`,
+        );
         return jsonResponse({ ok: true, data: payload });
       }),
     );
@@ -315,7 +318,9 @@ function getPolicyReasons(
 ): string[] {
   if (!Array.isArray(policyResults)) return [];
   return policyResults
-    .filter((r) => r.reason && (r.status === "rejected" || r.status === "pending"))
+    .filter(
+      (r) => r.reason && (r.status === "rejected" || r.status === "pending"),
+    )
     .map((r) => r.reason as string)
     .filter(Boolean);
 }

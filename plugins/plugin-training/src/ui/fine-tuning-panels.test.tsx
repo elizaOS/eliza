@@ -280,7 +280,9 @@ describe("TrajectoriesSection", () => {
 
     // Selected-trajectory detail panel: id / agent / reward / stepsJson textarea.
     expect(
-      screen.getAllByText("trajectory-1").some((node) => node.tagName === "SPAN"),
+      screen
+        .getAllByText("trajectory-1")
+        .some((node) => node.tagName === "SPAN"),
     ).toBe(true);
     expect(screen.getByText("agent-1")).toBeTruthy();
     const textarea = document.querySelector(
@@ -291,7 +293,9 @@ describe("TrajectoriesSection", () => {
     // Controls.
     fireEvent.click(screen.getByLabelText("Refresh trajectories"));
     expect(onRefresh).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByLabelText("Publish trajectories to HuggingFace"));
+    fireEvent.click(
+      screen.getByLabelText("Publish trajectories to HuggingFace"),
+    );
     expect(onPublishTrajectories).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByText("trajectory-2"));
     expect(onSelectTrajectory).toHaveBeenCalledWith("trajectory-2");
@@ -470,9 +474,7 @@ describe("TrainingJobsSection", () => {
     // appears as a <select> option, so target the detail's font-mono span.
     expect(screen.getByText("finetuningview.Status1")).toBeTruthy();
     expect(
-      screen
-        .getAllByText("dataset-1")
-        .some((node) => node.tagName === "SPAN"),
+      screen.getAllByText("dataset-1").some((node) => node.tagName === "SPAN"),
     ).toBe(true);
     const textarea = document.querySelector(
       "textarea",
@@ -693,8 +695,9 @@ describe("LiveEventsPanel", () => {
     expect(first?.textContent).toContain("ts:1700000000000");
     expect(first?.textContent).toContain("42%");
     expect(first?.textContent).toContain("train");
-    expect(within(first as HTMLElement).getByText("training step complete"))
-      .toBeTruthy();
+    expect(
+      within(first as HTMLElement).getByText("training step complete"),
+    ).toBeTruthy();
 
     const second = screen.getByText("model_activated").closest("div");
     expect(second?.textContent).toContain("model now active");

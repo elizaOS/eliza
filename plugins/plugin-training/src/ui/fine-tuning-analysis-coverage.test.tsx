@@ -263,7 +263,10 @@ const artifactAggregationIndex: TrainingAnalysisIndexResponse = {
         summary: {
           schema: "eliza_huggingface_dataset_ingest",
           source: { kind: "huggingface_dataset" },
-          hfSamplePreviews: [{ trajectoryId: "hf-1" }, { trajectoryId: "hf-2" }],
+          hfSamplePreviews: [
+            { trajectoryId: "hf-1" },
+            { trajectoryId: "hf-2" },
+          ],
         },
         payload: {},
       },
@@ -380,7 +383,7 @@ const artifactAggregationIndex: TrainingAnalysisIndexResponse = {
 // font-mono summary string (React splits "{label}:{value}" across text nodes).
 function expectMonoLine(expected: string) {
   return screen.getByText((_content, node) => {
-    if (!node || node.tagName !== "DIV") return false;
+    if (node?.tagName !== "DIV") return false;
     const normalized = node.textContent?.replace(/\s+/g, " ").trim();
     return normalized === expected;
   });
@@ -401,13 +404,16 @@ describe("FineTuningView analysis coverage panel", () => {
     render(React.createElement(FineTuningView));
 
     // No coverage before the index is built.
-    expect(await screen.findByText("finetuningview.NoAnalysisIndexBuilt"))
-      .toBeTruthy();
+    expect(
+      await screen.findByText("finetuningview.NoAnalysisIndexBuilt"),
+    ).toBeTruthy();
 
     fireEvent.click(screen.getByLabelText("Build index"));
 
     await waitFor(() => {
-      expect(trainingClient.buildTrainingAnalysisIndex).toHaveBeenCalledTimes(1);
+      expect(trainingClient.buildTrainingAnalysisIndex).toHaveBeenCalledTimes(
+        1,
+      );
     });
     // The output path proves the panel switched to the built index.
     expect(await screen.findByText("/tmp/analysis-mc")).toBeTruthy();
@@ -450,7 +456,9 @@ describe("FineTuningView analysis coverage panel", () => {
     fireEvent.click(await screen.findByLabelText("Build index"));
 
     await waitFor(() => {
-      expect(trainingClient.buildTrainingAnalysisIndex).toHaveBeenCalledTimes(1);
+      expect(trainingClient.buildTrainingAnalysisIndex).toHaveBeenCalledTimes(
+        1,
+      );
     });
     expect(await screen.findByText("/tmp/analysis-aa")).toBeTruthy();
 

@@ -6,7 +6,14 @@ import type {
   StewardWalletAddressesResponse,
   StewardWebhookEventsResponse,
 } from "@elizaos/core";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -15,7 +22,7 @@ vi.mock("@elizaos/ui", () => ({
     children,
     ...props
   }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-    React.createElement("button", props, children),
+    React.createElement("button", { type: "button", ...props }, children),
 }));
 
 import { StewardVaultOverview } from "./StewardVaultOverview";
@@ -165,9 +172,7 @@ describe("StewardVaultOverview — populated data", () => {
     const { unmount } = render(
       React.createElement(StewardVaultOverview, degraded),
     );
-    expect(
-      await screen.findByText("Vault healthy enough to use"),
-    ).toBeTruthy();
+    expect(await screen.findByText("Vault healthy enough to use")).toBeTruthy();
     unmount();
 
     const errored = makeProps({ vaultHealth: "error" });
@@ -212,15 +217,24 @@ describe("StewardVaultOverview — controls", () => {
     const props = makeProps();
     render(React.createElement(StewardVaultOverview, props));
     await screen.findByText("Vault connected and ready");
+    // The mount load also fetches per-chain snapshots after addresses resolve,
+    // during which the Refresh button stays disabled (`refreshing`). Wait for it
+    // to settle so the click is not a no-op (it would be silently swallowed).
+    const refreshButton = screen
+      .getByText("Refresh vault")
+      .closest("button") as HTMLButtonElement;
+    await waitFor(() => expect(refreshButton.disabled).toBe(false));
     const addrCallsBefore = props.getStewardAddresses.mock.calls.length;
     const eventCallsBefore = props.getStewardWebhookEvents.mock.calls.length;
 
     await act(async () => {
-      fireEvent.click(screen.getByText("Refresh vault"));
+      fireEvent.click(refreshButton);
     });
 
-    expect(props.getStewardAddresses.mock.calls.length).toBeGreaterThan(
-      addrCallsBefore,
+    await waitFor(() =>
+      expect(props.getStewardAddresses.mock.calls.length).toBeGreaterThan(
+        addrCallsBefore,
+      ),
     );
     expect(props.getStewardWebhookEvents.mock.calls.length).toBeGreaterThan(
       eventCallsBefore,

@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { StewardStatusResponse } from "./types/steward";
@@ -21,7 +27,7 @@ vi.mock("@elizaos/ui", () => ({
     children,
     ...props
   }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-    React.createElement("button", props, children),
+    React.createElement("button", { type: "button", ...props }, children),
   Spinner: (props: React.HTMLAttributes<HTMLSpanElement>) =>
     React.createElement("span", props),
   PagePanel: Object.assign(
@@ -116,7 +122,9 @@ describe("StewardView — connected state", () => {
 
     expect(historyTab.getAttribute("aria-selected")).toBe("true");
     expect(
-      screen.getByRole("tab", { name: /Approvals/ }).getAttribute("aria-selected"),
+      screen
+        .getByRole("tab", { name: /Approvals/ })
+        .getAttribute("aria-selected"),
     ).toBe("false");
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
       "History",
