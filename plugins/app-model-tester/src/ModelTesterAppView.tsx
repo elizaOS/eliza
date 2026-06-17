@@ -1,5 +1,6 @@
 import { TerminalPluginView } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { MODEL_TESTER_TUI_CAPABILITIES } from "./ModelTesterAppView.interact";
 import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Spinner } from "@elizaos/ui/components/ui/spinner";
@@ -555,7 +556,7 @@ export function ModelTesterTuiView() {
       id="model-tester"
       label="Model Tester TUI"
       description="Terminal probes for Eliza-1 text, voice, audio, and vision models"
-      commands={[]}
+      commands={[...MODEL_TESTER_TUI_CAPABILITIES]}
       endpoints={["/api/model-tester/status", "/api/model-tester/run"]}
     />
   );
