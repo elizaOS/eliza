@@ -357,7 +357,7 @@ describe("SmartglassesView — Wi-Fi panel", () => {
 
 describe("SmartglassesView — Report panel", () => {
   it("populates report rows and copies the report JSON to the clipboard + window global", async () => {
-    const writeText = vi.fn(async () => {});
+    const writeText = vi.fn(async (_text: string) => {});
     vi.stubGlobal("navigator", {
       ...window.navigator,
       clipboard: { writeText },
