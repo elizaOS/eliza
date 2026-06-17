@@ -65,6 +65,13 @@ class PayoutStatusService {
     const warnings: string[] = [];
     const env = getCloudAwareEnv();
     const skipLiveBalanceChecks = this.shouldSkipLiveBalanceChecks(env);
+    // Opt-in (PAYOUT_STATUS_ASSUME_OPERATIONAL=1): when the live balance read is
+    // skipped, treat a CONFIGURED wallet as operational instead of "no_balance".
+    // Without this, skipping the balance check leaves every network unavailable,
+    // which blocks the redemption quote/request flow entirely (e.g. local/e2e
+    // stacks with no funded wallet). The on-chain payout cron still verifies the
+    // real balance before transferring, so money cannot move on a bad assumption.
+    const assumeOperational = env.PAYOUT_STATUS_ASSUME_OPERATIONAL === "1";
 
     // Check EVM networks (support both naming conventions)
     const evmPrivateKey = env.EVM_PAYOUT_PRIVATE_KEY || env.EVM_PRIVATE_KEY;
@@ -77,7 +84,12 @@ class PayoutStatusService {
 
     for (const network of ["ethereum", "base", "bnb"] as const) {
       const status = skipLiveBalanceChecks
-        ? this.buildSkippedBalanceStatus(network, evmConfigured, evmWalletAddress)
+        ? this.buildSkippedBalanceStatus(
+            network,
+            evmConfigured,
+            evmWalletAddress,
+            assumeOperational,
+          )
         : await this.checkEvmNetwork(network, evmWalletAddress);
       networks.push(status);
 
@@ -96,7 +108,12 @@ class PayoutStatusService {
         : null;
 
     const solanaStatus = skipLiveBalanceChecks
-      ? this.buildSkippedBalanceStatus("solana", solanaConfigured, solanaWalletAddress)
+      ? this.buildSkippedBalanceStatus(
+          "solana",
+          solanaConfigured,
+          solanaWalletAddress,
+          assumeOperational,
+        )
       : await this.checkSolanaNetwork(solanaWalletAddress);
     networks.push(solanaStatus);
 
@@ -192,6 +209,7 @@ class PayoutStatusService {
     network: SupportedNetwork,
     configured: boolean,
     walletAddress: string | null,
+    assumeOperational = false,
   ): NetworkStatus {
     if (!configured) {
       return {
@@ -214,8 +232,10 @@ class PayoutStatusService {
       walletAddress: walletAddress ? this.maskAddress(walletAddress) : null,
       balance: 0,
       hasBalance: false,
-      status: "no_balance",
-      message: "Live payout balance check skipped",
+      status: assumeOperational ? "operational" : "no_balance",
+      message: assumeOperational
+        ? "Assumed operational (live balance check skipped)"
+        : "Live payout balance check skipped",
     };
   }
 
