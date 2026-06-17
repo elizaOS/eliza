@@ -54,6 +54,46 @@ describe("providerFetchWithTimeout retry", () => {
     expect(calls).toBe(3);
   });
 
+  test("a recovered request returns REAL usable content, not just a 200", async () => {
+    // Guard against the failure mode where a 200 carries empty/garbage output:
+    // the recovered response must surface genuine, non-empty completion content
+    // with finish_reason=stop (a real completion, not a truncated/empty body).
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      // First two attempts are the transient failures seen live (429 then the
+      // 502 "neither content nor tool calls" empty-body); the third returns a
+      // genuine completion.
+      if (calls === 1) return jsonResponse(429, { error: { message: "rate limited" } });
+      if (calls === 2)
+        return jsonResponse(502, {
+          error: { message: "chat completion returned neither content nor tool calls" },
+        });
+      return jsonResponse(200, {
+        choices: [{ message: { role: "assistant", content: "42" }, finish_reason: "stop" }],
+        usage: { completion_tokens: 5 },
+      });
+    }) as typeof fetch;
+
+    const res = await providerFetchWithTimeout(
+      "https://x/v1/chat/completions",
+      { method: "POST", body: JSON.stringify({ q: "17 + 25?" }) },
+      30_000,
+      LABEL,
+      { maxRetries: 3, baseDelayMs: 1 },
+    );
+    expect(res.status).toBe(200);
+    expect(calls).toBe(3);
+    const json = (await res.json()) as {
+      choices: Array<{ message: { content: string }; finish_reason: string }>;
+    };
+    const content = json.choices[0]?.message?.content ?? "";
+    // Real inference assertions: non-empty content, clean stop, correct answer.
+    expect(content.trim().length).toBeGreaterThan(0);
+    expect(json.choices[0]?.finish_reason).toBe("stop");
+    expect(content).toContain("42");
+  });
+
   test("retries a transient 502 (empty-content upstream) then succeeds", async () => {
     let calls = 0;
     globalThis.fetch = (async () => {
