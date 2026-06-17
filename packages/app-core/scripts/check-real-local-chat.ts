@@ -117,9 +117,16 @@ async function main(): Promise<void> {
   );
 }
 
-main().catch((error) => {
-  console.error(
-    `[local-chat] FAILED: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
-  );
-  process.exit(1);
-});
+main()
+  .then(() => {
+    // This is a one-shot CI proof script. After the real runtime cleanup above,
+    // force the process closed so stray server/watch handles cannot hold the job
+    // open until GitHub cancels it.
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error(
+      `[local-chat] FAILED: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
+    );
+    process.exit(1);
+  });
