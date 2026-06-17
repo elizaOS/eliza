@@ -595,7 +595,7 @@
         "@solana/wallet-adapter-wallets": "^0.19.38",
         "@solana/web3.js": "1.98.4",
         "@stwd/react": "^0.7.2",
-        "@stwd/sdk": "^0.10.1",
+        "@stwd/sdk": "^0.11.0",
         "@tailwindcss/typography": "^0.5.19",
         "@tailwindcss/vite": "^4.1.18",
         "@tanstack/react-query": "^5.90.20",
@@ -835,7 +835,7 @@
         "@solana/kit": "^6.0.0",
         "@solana/spl-token": "^0.4.14",
         "@solana/web3.js": "1.98.4",
-        "@stwd/sdk": "^0.10.1",
+        "@stwd/sdk": "^0.11.0",
         "@upstash/redis": "^1.37.0",
         "@x402/svm": "2.11.0",
         "ai": "^6.0.170",
@@ -5839,7 +5839,7 @@
     "@slack/web-api": "7.15.2",
     "@solana/kit": "5.5.1",
     "@solana/web3.js": "1.98.4",
-    "@stwd/sdk": "0.10.1",
+    "@stwd/sdk": "^0.11.0",
     "@types/node": "25.6.2",
     "@types/pg": "^8.20.0",
     "@types/react": "19.2.14",
@@ -9083,7 +9083,7 @@
 
     "@stwd/react": ["@stwd/react@0.7.2", "", { "dependencies": { "@stwd/sdk": "^0.8.0" }, "peerDependencies": { "@rainbow-me/rainbowkit": "^2.0.0", "@solana/wallet-adapter-react": "^0.15.0", "@solana/wallet-adapter-react-ui": "^0.9.0", "@solana/wallet-adapter-wallets": "^0.19.0", "@solana/web3.js": "^1.90.0", "@tanstack/react-query": "^5.0.0", "bs58": "^5.0.0", "react": ">=18.0.0", "react-dom": ">=18.0.0", "viem": "^2.0.0", "wagmi": "^2.0.0" }, "optionalPeers": ["@rainbow-me/rainbowkit", "@solana/wallet-adapter-react", "@solana/wallet-adapter-react-ui", "@solana/wallet-adapter-wallets", "@solana/web3.js", "@tanstack/react-query", "bs58", "viem", "wagmi"] }, "sha512-PI+jb17Nr7MJVmf+0NaZ4AQhYscEdK1VGAbAKF0gNfi5vEctut0oMUwwcoqy8JHeqaxZ29vIYdapZ8Dn4Dyg5g=="],
 
-    "@stwd/sdk": ["@stwd/sdk@0.10.1", "", { "dependencies": { "bs58": "^6.0.0" } }, "sha512-ss0hRZIkkY3oHZBlFVnMkbAemqJJzSH1hJmW6lbsnFxSDJGu9rbGct5AveeKjC1Z2cpsam7c+LqdaoZf9bWIHA=="],
+    "@stwd/sdk": ["@stwd/sdk@0.11.0", "", { "dependencies": { "bs58": "^6.0.0" } }, "sha512-v1EmbbdHEe/mcW2ftfZOlnEF7L7lZ6rkRRRsN9Cwv7yEUm9GRqgBsvYl5sQdfOSltlVgdGtHIzPY9LuQ5dTVMg=="],
 
     "@swagger-api/apidom-ast": ["@swagger-api/apidom-ast@1.11.2", "", { "dependencies": { "@babel/runtime-corejs3": "^7.26.10", "@swagger-api/apidom-error": "^1.11.2", "@types/ramda": "~0.30.0", "ramda": "~0.30.0", "ramda-adjunct": "^5.0.0", "unraw": "^3.0.0" } }, "sha512-keG5q/AR0zIizKCcfcUKiDXDQscw27SyILFb0kFmVWlgv3JTP+8pdXjzCEFW+C8RKg/etap270jv2s8B6ghuXA=="],
 
