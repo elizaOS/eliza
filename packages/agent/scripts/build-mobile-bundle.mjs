@@ -1153,7 +1153,15 @@ const workspaceSrcFallbackPlugin = {
       // function"). Always resolve these from src so the whole graph inlines
       // into the single bundle and circular exports settle via Bun's bundler.
       const forceSourceResolution =
-        pkgName === "@elizaos/agent" || pkgName === "@elizaos/app-core";
+        pkgName === "@elizaos/agent" ||
+        pkgName === "@elizaos/app-core" ||
+        // @elizaos/cloud-sdk's dist is a barrel that re-exports the
+        // CloudApiClient class (`export { CloudApiClient } from "./http.js"`).
+        // Re-bundling that dist makes the re-export resolve to `undefined`, so
+        // on-device cloud routing dies with "CloudApiClient is not defined"
+        // (CLOUD_AUTH service start fails, every cloud turn → provider_issue).
+        // Resolve from src so the class inlines into the single bundle.
+        pkgName === "@elizaos/cloud-sdk";
       if (existsSync(distDir) && !forceSourceResolution) {
         if (!subpath) return undefined;
         const cleanedDist = subpath.replace(/\.js$/, "");

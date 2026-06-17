@@ -1183,18 +1183,34 @@ function reconcilePluginManifestWithGradle(targetAssets) {
     String(pkg ?? "")
       .replace(/@/g, "")
       .replace(/\//g, "-");
-  const kept = plugins.filter((plugin) =>
-    compiledProjects.has(gradleProjectFor(plugin?.pkg)),
-  );
+  // When ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1 the llama-cpp-capacitor CMake builds
+  // a no-op stub (`ELIZA_SKIP_MTP_ANDROID_LIB`). That stub *registers* fine but
+  // throws java.lang.UnsatisfiedLinkError on its first native call
+  // (LlamaCpp.toggleNativeLog during the WebView device-bridge init) — an
+  // UNCAUGHT exception that kills the whole app process (SIG 9), which tears
+  // down the on-device agent and any in-flight chat turn. Drop the stub from the
+  // manifest so it never registers: the device-bridge import then fails as a
+  // catchable "LlamaCpp plugin not implemented" JS error instead of a native
+  // crash. Agent-side local inference (ELIZA_LOCAL_LLAMA, libllama via bun:ffi)
+  // does NOT use this Capacitor plugin, so dropping the stub costs nothing.
+  const stubLlamaCpp =
+    process.env.ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB === "1" ||
+    process.env.elizaSkipForkLlamaLib === "true";
+  const isCompiledAndUsable = (plugin) => {
+    if (!compiledProjects.has(gradleProjectFor(plugin?.pkg))) return false;
+    if (stubLlamaCpp && plugin?.pkg === "llama-cpp-capacitor") return false;
+    return true;
+  };
+  const kept = plugins.filter(isCompiledAndUsable);
 
   if (kept.length !== plugins.length) {
     const dropped = plugins
-      .filter((plugin) => !compiledProjects.has(gradleProjectFor(plugin?.pkg)))
+      .filter((plugin) => !isCompiledAndUsable(plugin))
       .map((plugin) => plugin?.pkg)
       .join(", ");
     fs.writeFileSync(manifestPath, `${JSON.stringify(kept, null, "\t")}\n`, "utf8");
     console.log(
-      `[mobile-build] Reconciled capacitor.plugins.json with capacitor.settings.gradle (dropped ${plugins.length - kept.length} uncompiled plugin(s): ${dropped}).`,
+      `[mobile-build] Reconciled capacitor.plugins.json with capacitor.settings.gradle (dropped ${plugins.length - kept.length} plugin(s): ${dropped}).`,
     );
   }
 }
@@ -3861,12 +3877,28 @@ function sanitizeAndroidManifestWhenPlatformTemplatesMissing() {
   }
 }
 
+// Brand accent (BRAND_COLORS.orange in @elizaos/shared) used as the opaque
+// app-icon background on iOS and the Android adaptive-icon background color.
+// Kept inline so this script stays import-free (it parses app.config.ts via
+// regex rather than executing TS).
+const BRAND_ICON_BACKGROUND = "#FF5800";
+
 const ANDROID_LAUNCHER_ICON_SIZES = {
   "mipmap-mdpi": 48,
   "mipmap-hdpi": 72,
   "mipmap-xhdpi": 96,
   "mipmap-xxhdpi": 144,
   "mipmap-xxxhdpi": 192,
+};
+
+// Adaptive-icon foreground + monochrome layers are authored on the standard
+// 108dp canvas (scaled per density). Both layers use the same square sizes.
+const ANDROID_ADAPTIVE_ICON_SIZES = {
+  "mipmap-mdpi": 108,
+  "mipmap-hdpi": 162,
+  "mipmap-xhdpi": 216,
+  "mipmap-xxhdpi": 324,
+  "mipmap-xxxhdpi": 432,
 };
 
 const ANDROID_SPLASH_SIZES = {
@@ -3965,56 +3997,64 @@ async function writeCoverPng(
   await run(tool.magick, args);
 }
 
-async function writeAndroidForegroundPng(tool, source, output, size) {
+// Render the transparent icon mark centered in a square canvas, sized to the
+// adaptive-icon safe zone (~66%). Used for both the adaptive foreground and
+// the themed monochrome layer. `canvas` is the exact output pixel size.
+async function writeAndroidForegroundPng(tool, source, output, canvas) {
+  const art = Math.round(canvas * 0.66);
   if (tool.kind === "sharp") {
-    const foregroundSize = Math.round(size * 0.7);
-    const padding = Math.round(size * 0.4);
-    await tool
+    const mark = await tool
       .sharp(source)
-      .resize(foregroundSize, foregroundSize, { fit: "contain" })
-      .extend({
-        top: padding,
-        bottom: padding,
-        left: padding,
-        right: padding,
+      .resize(art, art, {
+        fit: "contain",
         background: { r: 0, g: 0, b: 0, alpha: 0 },
       })
-      .resize(Math.round(size * 1.5), Math.round(size * 1.5), {
-        fit: "contain",
+      .png()
+      .toBuffer();
+    await tool
+      .sharp({
+        create: {
+          width: canvas,
+          height: canvas,
+          channels: 4,
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
+        },
       })
+      .composite([{ input: mark, gravity: "center" }])
       .png()
       .toFile(output);
     return;
   }
 
   if (tool.kind === "sips") {
-    await writeCoverPng(
-      tool,
-      source,
-      output,
-      Math.round(size * 1.5),
-      Math.round(size * 1.5),
-    );
+    await writeCoverPng(tool, source, output, canvas, canvas);
     return;
   }
 
   await run(tool.magick, [
     source,
     "-resize",
-    `${Math.round(size * 0.7)}x${Math.round(size * 0.7)}`,
+    `${art}x${art}`,
     "-background",
     "none",
     "-gravity",
     "center",
     "-extent",
-    `${Math.round(size * 1.5)}x${Math.round(size * 1.5)}`,
+    `${canvas}x${canvas}`,
     output,
   ]);
 }
 
 function resolveBrandSources() {
   return {
+    // The icon mark must be a white face on a transparent background so iOS
+    // can flatten it onto BRAND_ICON_BACKGROUND and Android can drop it into
+    // the adaptive foreground/monochrome safe zone. The web favicons are an
+    // orange face on transparent — flattening those onto orange would erase
+    // the mark — so the dedicated brand/app-icon.png master comes first.
     iconSource: firstExisting([
+      path.join(appDir, "public", "brand", "app-icon.png"),
+      path.join(appDir, "public", "brand", "logos", "logo_white_nobg.svg"),
       path.join(appDir, "public", "android-chrome-512x512.png"),
       path.join(appDir, "public", "apple-touch-icon.png"),
       path.join(appDir, "public", "favicon-256x256.png"),
@@ -4052,7 +4092,7 @@ async function generateIosBrandAssets() {
           path.join(iconSetDir, image.filename),
           pixels,
           pixels,
-          { flattenBackground: "#000000" },
+          { flattenBackground: BRAND_ICON_BACKGROUND },
         );
       }
     }
@@ -4092,12 +4132,15 @@ async function generateAndroidBrandAssets() {
     for (const [dir, size] of Object.entries(ANDROID_LAUNCHER_ICON_SIZES)) {
       const out = path.join(resDir, dir);
       fs.mkdirSync(out, { recursive: true });
+      // Legacy (pre-adaptive) launcher icons are opaque squares, so flatten
+      // the transparent mark onto the brand background.
       await writeCoverPng(
         imageTool,
         iconSource,
         path.join(out, "ic_launcher.png"),
         size,
         size,
+        { flattenBackground: BRAND_ICON_BACKGROUND },
       );
       await writeCoverPng(
         imageTool,
@@ -4105,14 +4148,34 @@ async function generateAndroidBrandAssets() {
         path.join(out, "ic_launcher_round.png"),
         size,
         size,
+        { flattenBackground: BRAND_ICON_BACKGROUND },
       );
+      // Adaptive foreground + themed monochrome both sit on the system
+      // background (the brand color below), so they stay transparent.
+      const adaptiveCanvas = ANDROID_ADAPTIVE_ICON_SIZES[dir] ?? size;
       await writeAndroidForegroundPng(
         imageTool,
         iconSource,
         path.join(out, "ic_launcher_foreground.png"),
-        size,
+        adaptiveCanvas,
+      );
+      await writeAndroidForegroundPng(
+        imageTool,
+        iconSource,
+        path.join(out, "ic_launcher_monochrome.png"),
+        adaptiveCanvas,
       );
     }
+    // Adaptive-icon background color must match the brand accent. This is a
+    // static resource Capacitor never regenerates, so write it here to keep
+    // it from drifting back to a stale value.
+    const valuesDir = path.join(resDir, "values");
+    fs.mkdirSync(valuesDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(valuesDir, "ic_launcher_background.xml"),
+      `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">${BRAND_ICON_BACKGROUND}</color>\n</resources>\n`,
+      "utf8",
+    );
   }
 
   if (launchSource) {

@@ -1,35 +1,48 @@
 ---
 title: Cloud Auth
-description: "OAuth, API keys, Steward JWT, redirects."
+description: "Browser sessions, API keys, wallet auth, and x402 payments."
 ---
 
 Eliza Cloud auth is multi-modal. Pick whichever fits the caller.
 
-## OAuth (user-facing)
+## Browser sessions
 
-Supported providers: Google, Discord, X (Twitter). The flow:
+Use the hosted dashboard login for user-facing dashboard flows. Browser calls
+use the Steward session cookie and `credentials: "include"`.
 
-1. App redirects the user to `https://cloud.elizaos.ai/auth/<provider>`.
-2. Cloud handles the provider handshake.
-3. Cloud redirects back to the app's registered redirect URI with a session token.
+Some endpoints are intentionally browser-session-only, such as accepting an
+invite, redeeming a signup code, Stripe checkout completion, and CLI web login
+completion. API-key attempts on those flows return `session_auth_required`.
 
-Apps that want OAuth must be registered (see [Apps](/tracks/cloud/apps)) and have allowed redirect URIs configured.
+## API keys
 
-## API keys (server-to-server)
+Issued from the dashboard or wallet SIWE flow. Long-lived, scoped per key, and
+sent as either `Authorization: Bearer <key>` or `X-API-Key: <key>`. Use API
+keys for backend integrations, CI, scripted automation, and OpenAI-compatible
+chat.
 
-Issued from the dashboard. Long-lived, scoped per key. Sent as `Authorization: Bearer <key>`. Used for backend integrations, CI, scripted automation.
+## Wallet auth
 
-## Steward JWT (agent-to-Cloud)
+Wallet users can sign in with SIWE (`GET /api/auth/siwe/nonce`, then
+`POST /api/auth/siwe/verify`) to receive an API key. Headless clients can also
+sign each request with `X-Wallet-Address`, `X-Timestamp`, and
+`X-Wallet-Signature`.
 
-Internal short-lived JWT used by Cloud-managed agents to talk to the rest of the Cloud API. Provisioned during app/container deploy; rotated automatically.
+## x402
+
+x402 topups use `POST /api/v1/topup/10`, `/50`, or `/100` with `X-PAYMENT`.
+Missing payment headers return a 402 quote; valid payments credit the org
+ledger.
 
 ## Where this lives
 
-- Auth routes: `packages/cloud-api/v1/auth/`
-- Middleware: `packages/cloud-api/src/middleware/`
-- Steward provisioning: `packages/cloud-api/src/steward/`
+- API keys: `packages/cloud-api/v1/api-keys/`
+- SIWE: `packages/cloud-api/auth/siwe/`
+- Wallet auth middleware: `packages/cloud-api/src/lib/auth/`
+- x402 topups: `packages/cloud-api/v1/topup/`
 
 ## See also
 
 - [Apps](/tracks/cloud/apps)
-- [Cloud guide](/guides/cloud)
+- [Authentication](/cloud/authentication)
+- [Wallet API](/cloud/wallet-api)

@@ -143,7 +143,9 @@ Create a Stripe checkout session to purchase credits.
 
 ```json
 {
-  "amount": 50.0
+  "credits": 50,
+  "success_url": "https://elizacloud.ai/dashboard/billing/success",
+  "cancel_url": "https://elizacloud.ai/dashboard/billing"
 }
 ```
 
@@ -151,40 +153,39 @@ Create a Stripe checkout session to purchase credits.
 
 ```json
 {
-  "success": true,
-  "checkoutUrl": "https://checkout.stripe.com/c/pay/cs_xxx...",
+  "url": "https://checkout.stripe.com/c/pay/cs_xxx...",
   "sessionId": "cs_xxx..."
 }
 ```
 
-Redirect the user to `checkoutUrl` to complete the payment.
+Redirect the user to `url` to complete the payment. `success_url` and
+`cancel_url` must be allowed platform redirect URLs.
 
 ---
 
 ## Verify Payment
 
 <div className="api-endpoint">
-  <span className="method-badge method-badge-post">POST</span>
+  <span className="method-badge method-badge-get">GET</span>
   <span className="path">/api/v1/credits/verify</span>
 </div>
 
-Verify a completed payment and add credits.
+Verify that a completed Stripe checkout session belongs to the authenticated
+user's organization.
 
-### Request
+### Query Parameters
 
-```json
-{
-  "sessionId": "cs_xxx..."
-}
-```
+| Parameter | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `session_id` | string | yes | Stripe Checkout Session ID. |
 
 ### Response
 
 ```json
 {
   "success": true,
-  "creditsAdded": 50.0,
-  "newBalance": 100.0
+  "amount": 50,
+  "message": "Payment verified successfully"
 }
 ```
 
@@ -347,23 +348,28 @@ Note: `offset` is not supported for this endpoint.
 
 ---
 
-## Crypto Payments
+## x402 Crypto Topups
 
-For cryptocurrency payments, use the crypto payment endpoints:
+For x402 cryptocurrency topups, use the fixed topup endpoints:
 
 <div className="api-endpoint">
   <span className="method-badge method-badge-post">POST</span>
-  <span className="path">/api/crypto/payments</span>
+  <span className="path">/api/v1/topup/10</span>
 </div>
-
-Create a crypto payment request.
 
 <div className="api-endpoint">
-  <span className="method-badge method-badge-get">GET</span>
-  <span className="path">/api/crypto/status</span>
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/topup/50</span>
 </div>
 
-Check crypto payment status.
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/topup/100</span>
+</div>
+
+Missing `X-PAYMENT` returns an x402 quote. A valid payment is settled and
+credited through the organization credit ledger. With wallet signature headers,
+the signer is credited; otherwise send `walletAddress` in the body.
 
 ---
 

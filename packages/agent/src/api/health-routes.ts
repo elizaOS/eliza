@@ -458,36 +458,57 @@ export async function handleHealthRoutes(
   // ── GET /api/status ─────────────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/status") {
     const uptime = state.startedAt ? Date.now() - state.startedAt : undefined;
-    const { getLocalInferenceActiveSnapshot } =
-      await getLocalInferenceHealthApi();
     // The active-model snapshot is optional status info; never let an
-    // unavailable local-inference API turn /api/status into a 500.
-    const localInferenceActive =
-      typeof getLocalInferenceActiveSnapshot === "function"
-        ? await getLocalInferenceActiveSnapshot().catch(() => null)
-        : null;
-    const activeLocalModel =
-      localInferenceActive?.status === "ready" &&
-      localInferenceActive.modelId?.trim()
-        ? localInferenceActive.modelId.trim()
-        : undefined;
+    // unavailable local-inference API turn /api/status into a 500. The deep
+    // subpath import itself can fail (mobile bundle stub, or a module-resolution
+    // environment where the subpath isn't aliased), so guard the import too, not
+    // just the snapshot call.
+    let activeLocalModel: string | undefined;
+    try {
+      const { getLocalInferenceActiveSnapshot } =
+        await getLocalInferenceHealthApi();
+      const localInferenceActive =
+        typeof getLocalInferenceActiveSnapshot === "function"
+          ? await getLocalInferenceActiveSnapshot().catch(() => null)
+          : null;
+      activeLocalModel =
+        localInferenceActive?.status === "ready" &&
+        localInferenceActive.modelId?.trim()
+          ? localInferenceActive.modelId.trim()
+          : undefined;
+    } catch {
+      activeLocalModel = undefined;
+    }
     const model =
       state.model ??
       activeLocalModel ??
       detectRuntimeModel(state.runtime ?? null, state.config);
-    const { isCloudProvisionedContainer, resolveCloudApiKey } =
-      await getCloudHealthApi();
-    const cloudProvisioned = isCloudProvisionedContainer();
-    const hasCloudApiKey = Boolean(
-      resolveCloudApiKey(state.config, state.runtime),
-    );
-    const cloudStatus = {
-      connectionStatus:
-        cloudProvisioned || hasCloudApiKey ? "connected" : "disconnected",
-      activeAgentId: cloudProvisioned ? state.agentName : null,
-      cloudProvisioned,
-      hasApiKey: hasCloudApiKey,
+    // Cloud health is optional status info under the same resilience contract:
+    // a missing/unloadable @elizaos/plugin-elizacloud must degrade to
+    // "disconnected", not 500 the status endpoint.
+    let cloudStatus = {
+      connectionStatus: "disconnected",
+      activeAgentId: null as string | null,
+      cloudProvisioned: false,
+      hasApiKey: false,
     };
+    try {
+      const { isCloudProvisionedContainer, resolveCloudApiKey } =
+        await getCloudHealthApi();
+      const cloudProvisioned = isCloudProvisionedContainer();
+      const hasCloudApiKey = Boolean(
+        resolveCloudApiKey(state.config, state.runtime),
+      );
+      cloudStatus = {
+        connectionStatus:
+          cloudProvisioned || hasCloudApiKey ? "connected" : "disconnected",
+        activeAgentId: cloudProvisioned ? state.agentName : null,
+        cloudProvisioned,
+        hasApiKey: hasCloudApiKey,
+      };
+    } catch {
+      // keep the disconnected default — cloud health is optional status info
+    }
 
     json(res, {
       state: state.agentState,

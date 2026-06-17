@@ -48,7 +48,43 @@ const IOS_FULL_BUN_SMOKE_EXPECTED_REPLY = "ios smoke model works";
 const IOS_FULL_BUN_SMOKE_FAILURE_RE =
   /something went wrong|backend is not running|local backend is not running|no local backend|no local model|no model registered|no provider|connect a provider|waiting for the model download|timed out|<think\b|<\/think>|\/?\bno_think\b/i;
 const ANDROID_HEALTH_ATTEMPTS = 240;
-const ANDROID_FULL_TURN_TIMEOUT_MS = 10 * 60_000;
+const ANDROID_FULL_TURN_TIMEOUT_MS = Number.parseInt(
+  process.env.ANDROID_FULL_TURN_TIMEOUT_MS?.trim() || String(10 * 60_000),
+  10,
+);
+// In-process CPU-only decode on a phone is slow (~0.2 tok/s generate, observed
+// ~41s end-to-end for a short reply). A single slow/blip read must not abort
+// the turn, so the per-request HTTP timeout sits well above that envelope.
+const ANDROID_HEALTH_PROBE_TIMEOUT_MS = Number.parseInt(
+  process.env.ANDROID_HEALTH_PROBE_TIMEOUT_MS?.trim() || String(30_000),
+  10,
+);
+// Bounded transient retry for accepted-but-empty / reset / 5xx / timeout reads
+// against the forwarded local-agent API. The boot/restart window briefly
+// accepts the socket and closes it with an empty body; retry rides that out.
+const ANDROID_TRANSIENT_RETRY_ATTEMPTS = Number.parseInt(
+  process.env.ANDROID_TRANSIENT_RETRY_ATTEMPTS?.trim() || "5",
+  10,
+);
+const ANDROID_TRANSIENT_RETRY_DELAY_MS = Number.parseInt(
+  process.env.ANDROID_TRANSIENT_RETRY_DELAY_MS?.trim() || "2000",
+  10,
+);
+// Process-stability gate: require monotonic uptime across N consecutive
+// /api/health samples (agentState==running, startup.attempt not climbing)
+// before exercising, so a turn is never fired mid-restart.
+const ANDROID_STABILITY_SAMPLES = Number.parseInt(
+  process.env.ANDROID_STABILITY_SAMPLES?.trim() || "3",
+  10,
+);
+const ANDROID_STABILITY_DELAY_MS = Number.parseInt(
+  process.env.ANDROID_STABILITY_DELAY_MS?.trim() || "2000",
+  10,
+);
+const ANDROID_STABILITY_ATTEMPTS = Number.parseInt(
+  process.env.ANDROID_STABILITY_ATTEMPTS?.trim() || "60",
+  10,
+);
 const ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS = Number.parseInt(
   process.env.ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS?.trim() || "180",
   10,
@@ -736,7 +772,8 @@ function androidRunAs(context, script, label, options = {}) {
 }
 
 async function stageAndroidSmokeModel(context) {
-  const targetDir = "files/.eliza/local-inference/models";
+  const localInferenceDir = "files/.eliza/local-inference";
+  const targetDir = `${localInferenceDir}/models`;
   const targetFile = `${targetDir}/${ANDROID_SMOKE_MODEL_FILE}`;
   const existingBytes = androidRunAs(
     context,
@@ -747,6 +784,7 @@ async function stageAndroidSmokeModel(context) {
   const expectedSize = String(ANDROID_SMOKE_MODEL_SIZE_BYTES);
   if (existingBytes?.trim() === expectedSize) {
     writeAndroidSmokeModelManifest(context, targetDir);
+    writeAndroidLocalInferenceRegistry(context, localInferenceDir);
     console.log(
       `[local-chat-smoke] Reused staged Android smoke model ${ANDROID_SMOKE_MODEL_ID}: ${targetFile}`,
     );
@@ -774,6 +812,7 @@ async function stageAndroidSmokeModel(context) {
   ].join(" && ");
   androidRunAs(context, copyScript, "Failed to stage Android smoke model.");
   writeAndroidSmokeModelManifest(context, targetDir);
+  writeAndroidLocalInferenceRegistry(context, localInferenceDir);
   tryExec(context.adb, ["-s", context.serial, "shell", "rm", "-f", tmpTarget], {
     allowFailure: true,
   });
@@ -782,8 +821,25 @@ async function stageAndroidSmokeModel(context) {
   );
 }
 
+function writeAndroidJsonFile(context, targetDir, fileName, value, label) {
+  const encoded = Buffer.from(
+    `${JSON.stringify(value, null, 2)}\n`,
+    "utf8",
+  ).toString("base64");
+  const target = `${targetDir}/${fileName}`;
+  const script = [
+    `mkdir -p ${shellQuote(targetDir)}`,
+    `(printf %s ${encoded} | base64 -d > ${shellQuote(target)}) || (printf %s ${encoded} | toybox base64 -d > ${shellQuote(target)})`,
+    `chmod 600 ${shellQuote(target)}`,
+  ].join(" && ");
+  androidRunAs(context, script, label);
+}
+
 function writeAndroidSmokeModelManifest(context, targetDir) {
-  const manifest = JSON.stringify(
+  writeAndroidJsonFile(
+    context,
+    targetDir,
+    "manifest.json",
     {
       models: [
         {
@@ -799,20 +855,64 @@ function writeAndroidSmokeModelManifest(context, targetDir) {
         },
       ],
     },
-    null,
-    2,
-  );
-  const encoded = Buffer.from(manifest, "utf8").toString("base64");
-  const target = `${targetDir}/manifest.json`;
-  const script = [
-    `mkdir -p ${shellQuote(targetDir)}`,
-    `(printf %s ${encoded} | base64 -d > ${shellQuote(target)}) || (printf %s ${encoded} | toybox base64 -d > ${shellQuote(target)})`,
-    `chmod 600 ${shellQuote(target)}`,
-  ].join(" && ");
-  androidRunAs(
-    context,
-    script,
     "Failed to write Android smoke model manifest.",
+  );
+}
+
+/**
+ * Stage the eliza-local-inference provider's registry.json + assignments.json
+ * into files/.eliza/local-inference/, mirroring the iOS staging block. The
+ * registry uses the ABSOLUTE on-device model path so the provider reports the
+ * model installed; assignments map the chat/completion slots to the model id so
+ * the provider's slots resolve. Today the staging only writes manifest.json,
+ * which the eliza-local-inference provider does not read for installed/slots.
+ */
+function writeAndroidLocalInferenceRegistry(context, localInferenceDir) {
+  // `localInferenceDir` already starts with `files/` (it is run-as-home
+  // relative), so the on-device absolute path is the app home + that dir — do
+  // NOT prepend another `files/` (that produced a dead `files/files/...` path
+  // whose fs.stat failed, so the provider reported "No Eliza-1 bundle installed").
+  const absoluteModelPath = `/data/data/${appId()}/${localInferenceDir}/models/${ANDROID_SMOKE_MODEL_FILE}`;
+  const now = new Date().toISOString();
+  writeAndroidJsonFile(
+    context,
+    localInferenceDir,
+    "registry.json",
+    {
+      models: [
+        {
+          id: ANDROID_SMOKE_MODEL_ID,
+          displayName: "eliza-1-0.8B",
+          path: absoluteModelPath,
+          sizeBytes: ANDROID_SMOKE_MODEL_SIZE_BYTES,
+          installedAt: now,
+          lastUsedAt: now,
+          source: "android-local-chat-smoke",
+          bundleVerifiedAt: now,
+        },
+      ],
+    },
+    "Failed to write Android local-inference registry.",
+  );
+  writeAndroidJsonFile(
+    context,
+    localInferenceDir,
+    "assignments.json",
+    {
+      assignments: Object.fromEntries(
+        [
+          "TEXT_SMALL",
+          "TEXT_LARGE",
+          "RESPONSE_HANDLER",
+          "ACTION_PLANNER",
+          "TEXT_COMPLETION",
+        ].map((slot) => [slot, ANDROID_SMOKE_MODEL_ID]),
+      ),
+    },
+    "Failed to write Android local-inference assignments.",
+  );
+  console.log(
+    `[local-chat-smoke] Staged Android local-inference registry + assignments for ${ANDROID_SMOKE_MODEL_ID}: ${absoluteModelPath}`,
   );
 }
 
@@ -1827,6 +1927,136 @@ async function requestOptionalJson(method, pathname, baseUrl, authToken) {
   return data;
 }
 
+const TRANSIENT_ERROR_RE =
+  /fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|socket hang up|network|empty body|timed out|aborted|terminated|premature close|other side closed|status 5\d\d/i;
+
+function isTransientFailure(error) {
+  const message =
+    error instanceof Error ? `${error.message} ${error.cause ?? ""}` : "";
+  return TRANSIENT_ERROR_RE.test(message);
+}
+
+/**
+ * Run a request closure with bounded retry for transient blips only
+ * (fetch failed / ECONNRESET / 5xx / timeout / accepted-but-empty body).
+ * Non-transient failures (e.g. a 4xx assertion mismatch) rethrow immediately.
+ */
+async function withTransientRetry(label, fn, options = {}) {
+  const attempts = options.attempts ?? ANDROID_TRANSIENT_RETRY_ATTEMPTS;
+  const delayMs = options.delayMs ?? ANDROID_TRANSIENT_RETRY_DELAY_MS;
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt >= attempts || !isTransientFailure(error)) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `[local-chat-smoke] ${label} hit a transient failure (attempt ${attempt}/${attempts}); retrying in ${delayMs}ms: ${message}`,
+      );
+      await sleep(delayMs);
+    }
+  }
+  throw lastError ?? new Error(`${label} failed after ${attempts} attempts.`);
+}
+
+/**
+ * GET /api/health with a bounded HTTP timeout and transient retry. Treats an
+ * accepted-but-empty body as a transient failure (the boot/restart window
+ * accepts the socket then closes it empty).
+ */
+async function probeHealth(baseUrl, authToken) {
+  return withTransientRetry("health probe", async () => {
+    const { response, data, text } = await requestJsonResponse(
+      "GET",
+      "/api/health",
+      undefined,
+      baseUrl,
+      authToken,
+      { timeoutMs: ANDROID_HEALTH_PROBE_TIMEOUT_MS },
+    );
+    if (!response.ok) {
+      throw new Error(`GET /api/health failed: ${response.status} ${text}`);
+    }
+    if (!text || !data || typeof data !== "object") {
+      throw new Error("GET /api/health returned an empty body.");
+    }
+    return data;
+  });
+}
+
+function readStartupAttempt(health) {
+  const attempt = health?.startup?.attempt;
+  return typeof attempt === "number" && Number.isFinite(attempt)
+    ? attempt
+    : null;
+}
+
+/**
+ * Process-stability gate. Requires ANDROID_STABILITY_SAMPLES consecutive
+ * /api/health reads with: agentState==running, ready==true, monotonically
+ * increasing uptime, and a non-climbing startup.attempt. Keyed on PROCESS
+ * health only — NOT on device-bridge connected:true, which is legitimately
+ * false now that inference is served in-process.
+ */
+async function waitForAndroidProcessStability(baseUrl, authToken) {
+  let consecutive = 0;
+  let previousUptime = null;
+  let previousAttempt = null;
+  let lastHealth = null;
+  for (let attempt = 1; attempt <= ANDROID_STABILITY_ATTEMPTS; attempt += 1) {
+    let health;
+    try {
+      health = await probeHealth(baseUrl, authToken);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      consecutive = 0;
+      previousUptime = null;
+      previousAttempt = null;
+      if (attempt % 10 === 0) {
+        console.warn(
+          `[local-chat-smoke] Android process not stable yet (${attempt}/${ANDROID_STABILITY_ATTEMPTS}): ${message}`,
+        );
+      }
+      await sleep(ANDROID_STABILITY_DELAY_MS);
+      continue;
+    }
+    lastHealth = health;
+    const uptime = typeof health.uptime === "number" ? health.uptime : null;
+    const startupAttempt = readStartupAttempt(health);
+    const running = health.agentState === "running" && health.ready === true;
+    const uptimeMonotonic =
+      uptime !== null && (previousUptime === null || uptime >= previousUptime);
+    const attemptStable =
+      previousAttempt === null ||
+      startupAttempt === null ||
+      startupAttempt <= previousAttempt;
+
+    if (running && uptimeMonotonic && attemptStable) {
+      consecutive += 1;
+      if (consecutive >= ANDROID_STABILITY_SAMPLES) {
+        console.log(
+          `[local-chat-smoke] Android process stable: ${consecutive} consecutive healthy samples (uptime=${uptime}, startupAttempt=${startupAttempt}).`,
+        );
+        return health;
+      }
+    } else {
+      // A restart reset the process; uptime dropped or attempt climbed.
+      consecutive = running && uptimeMonotonic ? consecutive : 0;
+    }
+    previousUptime = uptime;
+    previousAttempt = startupAttempt;
+    await sleep(ANDROID_STABILITY_DELAY_MS);
+  }
+  throw new Error(
+    `Android process did not reach ${ANDROID_STABILITY_SAMPLES} consecutive stable health samples in time. ` +
+      `Last health: ${JSON.stringify(lastHealth)}`,
+  );
+}
+
 function parseSseEvents(text) {
   const events = [];
   const blocks = text.replace(/\r\n/g, "\n").split(/\n\n+/);
@@ -2006,7 +2236,11 @@ async function runLocalInferenceApiSmoke(
   console.log(
     `[local-chat-smoke] Exercising app-core API at ${baseUrl} (conversation + local-inference full turn).`,
   );
-  await requestJson("GET", "/api/health", undefined, baseUrl, authToken);
+  // Process-stability gate: wait for a settled agent process (monotonic uptime,
+  // agentState==running, startup.attempt not climbing) before exercising, so a
+  // turn is never fired mid-restart. Keyed on process health, NOT device-bridge
+  // connected:true (inference is in-process now, so the bridge stays detached).
+  await waitForAndroidProcessStability(baseUrl, authToken);
   const readiness = await requireLocalInferenceReady(baseUrl, authToken);
   const greetingCreated = await requestJson(
     "POST",
@@ -2049,19 +2283,38 @@ async function runLocalInferenceApiSmoke(
     throw new Error("Conversation creation did not return an id.");
   }
 
-  const streamText = await requestTextResponse(
-    "POST",
-    `/api/conversations/${encodeURIComponent(conversationId)}/messages/stream`,
-    {
-      text: ANDROID_FULL_TURN_PROMPT,
-      channelType: "DM",
+  const { done, reply } = await withTransientRetry(
+    "streamed full turn",
+    async () => {
+      const streamText = await requestTextResponse(
+        "POST",
+        `/api/conversations/${encodeURIComponent(conversationId)}/messages/stream`,
+        {
+          text: ANDROID_FULL_TURN_PROMPT,
+          channelType: "DM",
+        },
+        baseUrl,
+        authToken,
+        ANDROID_FULL_TURN_TIMEOUT_MS,
+      );
+      if (!streamText) {
+        throw new Error("Streamed full turn returned an empty body.");
+      }
+      const doneEvent = extractDoneEventFromSse(streamText);
+      return {
+        done: doneEvent,
+        reply: requireUsableFullTurnReply(doneEvent, streamText),
+      };
     },
-    baseUrl,
-    authToken,
-    ANDROID_FULL_TURN_TIMEOUT_MS,
   );
-  const done = extractDoneEventFromSse(streamText);
-  const reply = requireUsableFullTurnReply(done, streamText);
+  // Evidence that a local model served the turn. In-process inference
+  // (aosp-local-llama / mobile-local-direct-reply) reports the model on the
+  // SSE done event's usage block; the capacitor device bridge is legitimately
+  // detached now, so its loadedPath is corroborating-only, not required.
+  const usageModel =
+    typeof done?.usage?.model === "string" ? done.usage.model : null;
+  const usageProvider =
+    typeof done?.usage?.provider === "string" ? done.usage.provider : null;
   const postTurnDevice = await requestOptionalJson(
     "GET",
     "/api/local-inference/device",
@@ -2071,15 +2324,22 @@ async function runLocalInferenceApiSmoke(
   const loadedPath = postTurnDevice?.devices?.find?.(
     (device) => typeof device?.loadedPath === "string" && device.loadedPath,
   )?.loadedPath;
-  if (!loadedPath) {
+  if (!usageModel && !loadedPath) {
     throw new Error(
-      `Full-turn smoke did not load a native device model: ${JSON.stringify(postTurnDevice)}`,
+      `Full-turn smoke produced no local-model evidence (no usage.model and no device loadedPath): ${JSON.stringify(
+        { usage: done?.usage ?? null, device: postTurnDevice },
+      )}`,
     );
   }
   console.log("[local-chat-smoke] conversation:", conversationId);
   console.log("[local-chat-smoke] greeting:", greeting.text);
   console.log("[local-chat-smoke] reply:", reply);
-  console.log("[local-chat-smoke] loaded model:", loadedPath);
+  console.log(
+    "[local-chat-smoke] served by:",
+    usageModel
+      ? `${usageModel}${usageProvider ? ` (${usageProvider})` : ""}`
+      : `device-bridge ${loadedPath}`,
+  );
   console.log(
     "[local-chat-smoke] local inference:",
     JSON.stringify(localInferenceSummary(readiness)),

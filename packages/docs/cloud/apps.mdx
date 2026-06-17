@@ -19,6 +19,20 @@ An Eliza Cloud app provides:
 
 Use a **project** for deployable product workspace state and container `project_name`. Use the **Cloud app** `id` when calling `/api/v1/apps/{id}/chat`.
 
+## Launch Readiness
+
+Container deploys and isolated app databases are behind an explicit production
+gate. Staging has a CI-backed deploy proof, but production deploy is only live
+after operators apply the production apps data plane, merge the
+`APPS_DEPLOY_ENABLED` cutover switch, and arm the production daemon.
+
+**Why:** the Worker flag only decides whether deploy requests enqueue real
+`APP_DEPLOY` jobs. The daemon still needs the app node list, registry settings,
+tenant DB admin DSN, and matching feature flag; otherwise requests can be
+accepted while apps remain stuck in `building`.
+
+See [Launch Status](/cloud/launch-status) for the current cutover checklist.
+
 ## Quick Start
 
 ```bash
@@ -147,6 +161,8 @@ Redeem available earnings for elizaOS tokens from [Dashboard -> Earnings](https:
 - Forward user bearer tokens for user-facing app-scoped chat.
 - Store the Cloud app `id` separately from container `project_name`.
 - Patch `app_url` and `allowed_origins` after container deployment.
+- Treat `databaseMode: "isolated"` as the production default for apps that need
+  persistence; verify the deployed image reads the injected `DATABASE_URL`.
 - Handle 402 responses by sending users to [Dashboard -> Billing](https://elizacloud.ai/dashboard/billing).
 
 ## Next Steps

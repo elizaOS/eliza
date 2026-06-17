@@ -33,6 +33,7 @@
     "test:auth": "node ../scripts/run-vitest.mjs run --config vitest.config.ts --no-file-parallelism src/api/auth src/api/auth-bootstrap-routes src/services/auth-store src/cli/program/register.auth",
     "test:local-provisioning": "node scripts/run-node-tsx.mjs scripts/check-real-local-provisioning.ts",
     "test:local-chat": "node scripts/run-node-tsx.mjs scripts/check-real-local-chat.ts",
+    "test:local-reset": "node scripts/run-node-tsx.mjs scripts/check-real-local-reset.ts",
     "lint": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",

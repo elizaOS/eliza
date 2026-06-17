@@ -100,6 +100,68 @@ here the conversation routes, message handling, response decision, and
 persistence are all real; only token generation is deterministic. Wired into
 `scenario-pr.yml`, so **every PR is gated on a genuinely-real local chat turn**.
 
+## Real LLM through the *shipped UI*, fully local + keyless (Ollama recipe)
+
+The dev-smoke lane (`playwright.dev-smoke.config.ts` → `bun run dev` = real API +
+real vite renderer, no 12-min dist build) drives the **real shipped renderer**
+against a **real agent**. `bun-dev-onboarding-chat.spec.ts` completes onboarding
+and sends a chat turn; `selectLiveProvider()` picks the provider from env. With no
+provider key it self-skips — but it can run truly-real and keyless against a local
+model served by **Ollama's OpenAI-compatible endpoint**, no paid key:
+
+```bash
+ollama serve &                     # then: ollama create eliza-1-0_8b -f Modelfile  (FROM <gguf>)
+OPENAI_API_KEY=local \
+OPENAI_BASE_URL=http://localhost:11434/v1 \
+ELIZA_LIVE_TEST_SMALL_MODEL=llama3.2:3b ELIZA_LIVE_TEST_LARGE_MODEL=llama3.2:3b \
+OPENAI_SMALL_MODEL=llama3.2:3b OPENAI_LARGE_MODEL=llama3.2:3b \
+  bun run --cwd packages/app test:dev-smoke test/dev-smoke/bun-dev-onboarding-chat.spec.ts
+```
+
+`selectLiveProvider()` registers `@elizaos/plugin-openai` pointed at Ollama, so
+the agent's TEXT_SMALL/TEXT_LARGE are a **real local model**. Verified green on an
+RTX-class GPU (warm inference ~0.1s/10tok). Use a capable instruct model
+(`llama3.2:3b`) — the 0.8B Eliza-1 reasoning model does not reliably follow
+"reply with exactly X" through the full agent pipeline.
+
+**Two non-obvious hazards this lane surfaced (both fixed in the harness):**
+
+1. **Prompt-echo false green.** Asserting a marker against the whole conversation
+   log passes even when the agent never replies, because the user's prompt
+   ("reply with exactly <MARKER>") contains the marker. The spec now asserts the
+   marker on a `data-role="assistant"` thread line
+   (`[data-testid="thread-line"][data-role="assistant"]`). This was a real larp.
+
+2. **Deferred-provider timing race.** Model-provider plugins register in the
+   deferred boot phase, *after* `/api/health` flips `ready`. A chat fired
+   immediately can race that registration; with first-run target `local`, the
+   prefer-local router then picks `plugin-local-inference` (priority −100,
+   registered at pre-init in `core-plugins.ts`) which throws
+   `LocalInferenceUnavailableError` when no in-process engine/model is active, and
+   the fall-through to plugin-openai only happens once openai is a registered
+   candidate. `warmUpModel()` (live-onboarding.ts) resends a probe until a real
+   reply lands, eliminating the flake. (`ELIZA_SKIP_PLUGINS` does **not** remove
+   local-inference here because its text handler is wired at pre-init, not via the
+   plugin list.)
+
+### Open: chat-driven view switching via a real LLM (UI e2e)
+
+The product path is: chat → the agent selects the `app-control` VIEWS "show"
+action → `POST /api/views/:id/navigate` → server broadcasts `shell:navigate:view`
+→ client re-dispatches `eliza:navigate:view` → `App.tsx` routes. The **server
+broadcast half is unit-tested** (`packages/agent/src/api/views-routes.navigate-broadcast.test.ts`)
+and the **client DOM-event → shell hop is covered** (ui-smoke
+`task-widget-in-chat.spec.ts`). The missing piece is a real-LLM e2e where the
+model *chooses* to navigate from a chat message. A dev-smoke spec capturing
+`eliza:navigate:view` was prototyped but a local `llama3.2:3b` did not reliably
+select the navigate action from a free-form "open the wallet view" prompt.
+`plugin-app-control` IS a core plugin and its actions load fine in dev — the
+`views-registry` "could not resolve package directory" warning is scoped to the
+view *bundle* (rendering), not the actions — so this is purely a model
+action-selection/affinity gap, not a loading bug. Next step: validate against a
+capable action-selecting model (claude-haiku / gpt-5-mini) in the nightly
+`app-live-e2e.yml` lane, optionally biasing selection via view-action affinity.
+
 ## Keyless interaction depth (buttons/flows)
 
 The keyless lane is stub-backed, but that does not mean "render-only." Built-in

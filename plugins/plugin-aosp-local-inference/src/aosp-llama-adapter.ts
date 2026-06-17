@@ -1975,7 +1975,10 @@ class AospLlamaAdapter implements AospLoader {
       this.ffi.ptr(probe),
       0,
       true,
-      false,
+      // parse_special=true: the prompt is qwen ChatML, so <|im_start|>/<|im_end|>
+      // must tokenize as control tokens, not literal text the model echoes back.
+      // The probe and fill passes MUST pass identical add_special/parse_special.
+      true,
     );
     // llama_tokenize returns the negative of required length when n_tokens_max
     // is too small. With n_tokens_max=0 we always get a negative number.
@@ -1991,7 +1994,8 @@ class AospLlamaAdapter implements AospLoader {
       this.ffi.ptr(tokens),
       required,
       true,
-      false,
+      // parse_special=true — must match the probe pass above (qwen ChatML).
+      true,
     );
     if (written < 0) {
       throw new Error(

@@ -1,9 +1,27 @@
-# Eliza Cloud Apps — per-env data plane (Hetzner)
+# Eliza Cloud Apps - per-env data plane (Hetzner)
 
-> The IaC half of "Eliza Cloud Apps" (Product 2). The application code is built
-> + verified in **PR #8293**; this terraform stands up the per-env worker nodes
-> + wildcard DNS. Shared resources (private network + tenant Postgres) live in
-> the sibling [`apps-shared`](../apps-shared/) module — apply that one **first**.
+> The IaC half of "Eliza Cloud Apps" (Product 2). This terraform stands up the
+> per-env worker nodes and wildcard DNS. Shared resources (private network and
+> tenant Postgres) live in the sibling [`apps-shared`](../apps-shared/) module;
+> apply that one first.
+
+## Launch status
+
+- Apps deploy mechanics are CI-proven by
+  [PR #8430](https://github.com/elizaOS/eliza/pull/8430): build a real app
+  image, provision a per-tenant DB, run an isolated container, verify own-DB
+  access, verify cross-tenant rejection, and verify no public egress.
+- eDad is the all-features test app after
+  [PR #8433](https://github.com/elizaOS/eliza/pull/8433): when deployed with
+  `databaseMode: "isolated"`, it persists chat history through the injected
+  `DATABASE_URL`.
+- Production deploy remains behind the draft cutover switch
+  [PR #8425](https://github.com/elizaOS/eliza/pull/8425) until this module has
+  been applied for production and the production daemon is armed.
+
+**Why:** `APPS_DEPLOY_ENABLED` on the Worker only enqueues app deploy jobs. The
+daemon still needs a real app node, registry/build settings, and the tenant DB
+admin DSN; merging the Worker flag early can leave apps stuck in `building`.
 
 ## What this provisions
 
@@ -21,7 +39,7 @@ secret live in [`../apps-shared`](../apps-shared/). This module reads them via
 a `terraform_remote_state` data source pointed at
 `hetzner/apps-shared/shared.tfstate`.
 
-## How it connects to the code (PR #8293)
+## How it connects to the code
 1. Apply `../apps-shared` once → `outputs.tenant_db_admin_dsn` (sensitive) +
    `tenant_db_private_ip`.
 2. Encrypt the admin DSN, seed it into **`tenant_db_clusters`** (`provider='direct_pg'`,
@@ -31,7 +49,7 @@ a `terraform_remote_state` data source pointed at
 4. Set daemon/Worker env: `CONTAINERS_DOCKER_NODES` (= `app_node_ips`),
    `CONTAINERS_PUBLIC_BASE_DOMAIN` (= `apps_base_domain`), `CONTAINERS_EGRESS_PROXY_URL`,
    the image registry.
-5. Wire the 2 gated boot one-liners: cloud-api `configureAppsDeployTrigger()` +
+5. Wire the two gated boot one-liners: cloud-api `configureAppsDeployTrigger()` +
    daemon `configureAppsDeployBackend({ registry, buildExec })`.
 6. Flip the feature gate for an allowlist; **on-node kernel re-check** (throwaway
    `--internal` scratch net) before opening to users.
