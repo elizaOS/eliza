@@ -48,6 +48,13 @@ jobs:
           fetch-depth: 0
           submodules: false
 
+      # The classify job runs `node` directly; self-hosted runners (#8501) have
+      # no ambient node, so set it up explicitly (no-op on github-hosted).
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - name: Determine affected CI surface
         id: filter
         shell: bash
