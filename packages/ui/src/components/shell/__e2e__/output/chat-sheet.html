@@ -24630,6 +24630,7 @@
   // packages/ui/src/components/shell/ContinuousChatOverlay.tsx
   var import_jsx_runtime6 = __toESM(require_jsx_runtime(), 1);
   var GLASS_BAR = "flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-white/18 bg-black/45 px-2 py-2 backdrop-blur-xl sm:gap-2 sm:px-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_16px_46px_-12px_rgba(0,0,0,0.66)]";
+  var GLASS_BAR_DOCKED = "flex min-w-0 max-w-full items-center gap-1.5 rounded-b-[26px] border border-t-white/10 border-white/12 bg-black/55 px-2 py-2 backdrop-blur-xl sm:gap-2 sm:px-3 shadow-[0_26px_54px_-16px_rgba(0,0,0,0.7)]";
   var FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
   var OVERLAY_EASE = [0.22, 1, 0.36, 1];
   var SHEET_CLOSED_H = 76;
@@ -24702,12 +24703,11 @@
     glow
   }) {
     return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-      "div",
+      "button",
       {
-        role: "button",
+        type: "button",
         "aria-expanded": open,
         "aria-label": open ? "drag down to close chat" : "drag up to open chat",
-        tabIndex: 0,
         "data-testid": "chat-sheet-grabber",
         "data-open": open ? "true" : "false",
         onKeyDown: (e) => {
@@ -24725,6 +24725,7 @@
         },
         ...binding,
         className: cn(
+          "appearance-none border-0 bg-transparent p-0 text-left",
           "pointer-events-auto mx-auto flex h-7 w-full max-w-3xl shrink-0 cursor-grab touch-none select-none items-center justify-center active:cursor-grabbing",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full"
         ),
@@ -25128,7 +25129,11 @@
               "data-detent": !sheetOpen ? "peek" : expanded ? "full" : "half",
               "data-revealed": revealed > 0.5 ? "true" : "false",
               className: cn(
-                "pointer-events-auto relative mb-2 flex w-full max-w-3xl flex-col overflow-hidden",
+                "pointer-events-auto relative flex w-full max-w-3xl flex-col overflow-hidden",
+                // Always sit flush on the composer (mb-0): whenever there's a thread,
+                // the sheet + input read as ONE connected panel — peek or open — the
+                // history simply grows up out of the input.
+                "mb-0",
                 "rounded-t-[26px] border border-b-0 border-white/12 bg-black/55 backdrop-blur-xl",
                 "shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_-2px_60px_-20px_rgba(0,0,0,0.7)]"
               ),
@@ -25297,7 +25302,7 @@
                     }
                   }
                 ),
-                /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: cn(GLASS_BAR, "relative"), children: [
+                /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: cn(hasThread ? GLASS_BAR_DOCKED : GLASS_BAR, "relative"), children: [
                   /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
                     SoftButton,
                     {
@@ -25528,7 +25533,9 @@
         style: {
           position: "fixed",
           inset: 0,
-          background: "radial-gradient(120% 90% at 50% 0%, #2a3350 0%, #141826 45%, #0a0d16 100%)",
+          // Flat warm orange — the real /chat ambient home backdrop — so these
+          // screenshots show the true composite (glass chat panel over orange).
+          background: "#ef5a1f",
           color: "rgba(255,255,255,0.9)",
           fontFamily: "ui-sans-serif, system-ui, sans-serif",
           overflow: "hidden"

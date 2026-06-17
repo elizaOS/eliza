@@ -12780,28 +12780,10 @@
         "aria-hidden": "true",
         "data-testid": "chat-ambient-background",
         className: "pointer-events-none absolute inset-0 overflow-hidden",
-        style: { zIndex: 0 },
+        style: { zIndex: 0, backgroundColor: "#ef5a1f" },
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("style", { children: PULSE_CSS }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "div",
-            {
-              className: "absolute inset-0",
-              style: {
-                background: "radial-gradient(125% 100% at 50% 15%, #ff7d42 0%, #f0591d 45%, #bd3d0f 100%)"
-              }
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "chat-ambient-pulse absolute inset-0" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "div",
-            {
-              className: "absolute inset-0",
-              style: {
-                background: "radial-gradient(120% 95% at 50% 28%, transparent 52%, rgba(0,0,0,0.30) 100%)"
-              }
-            }
-          )
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "chat-ambient-pulse absolute inset-0" })
         ]
       }
     );

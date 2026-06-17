@@ -172,8 +172,9 @@ function Harness(): React.JSX.Element {
       style={{
         position: "fixed",
         inset: 0,
-        background:
-          "radial-gradient(120% 90% at 50% 0%, #2a3350 0%, #141826 45%, #0a0d16 100%)",
+        // Flat warm orange — the real /chat ambient home backdrop — so these
+        // screenshots show the true composite (glass chat panel over orange).
+        background: "#ef5a1f",
         color: "rgba(255,255,255,0.9)",
         fontFamily: "ui-sans-serif, system-ui, sans-serif",
         overflow: "hidden",

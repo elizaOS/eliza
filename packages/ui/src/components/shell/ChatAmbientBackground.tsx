@@ -31,27 +31,12 @@ export function ChatAmbientBackground(): React.JSX.Element {
       aria-hidden="true"
       data-testid="chat-ambient-background"
       className="pointer-events-none absolute inset-0 overflow-hidden"
-      style={{ zIndex: 0 }}
+      // Flat warm-orange fill — no gradient, no vignette. The only movement is
+      // the gentle, even hue pulse layered on top.
+      style={{ zIndex: 0, backgroundColor: "#ef5a1f" }}
     >
       <style>{PULSE_CSS}</style>
-      {/* Warm orange base. */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(125% 100% at 50% 15%, #ff7d42 0%, #f0591d 45%, #bd3d0f 100%)",
-        }}
-      />
-      {/* Gentle hue pulse layered over the base. */}
       <div className="chat-ambient-pulse absolute inset-0" />
-      {/* Soft vignette for depth so the field reads as a space, not a flat fill. */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(120% 95% at 50% 28%, transparent 52%, rgba(0,0,0,0.30) 100%)",
-        }}
-      />
     </div>
   );
 }

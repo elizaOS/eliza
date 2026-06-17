@@ -52,6 +52,14 @@ const GLASS_BAR =
   "flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-white/18 bg-black/45 px-2 py-2 backdrop-blur-xl sm:gap-2 sm:px-3 " +
   "shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_16px_46px_-12px_rgba(0,0,0,0.66)]";
 
+// When the history sheet is OPEN, the composer docks to its bottom: it drops the
+// pill shape and shares the sheet's glass (same bg/border/width, square top
+// flush against the sheet, rounded bottom) so the whole thing reads as one panel
+// with the input as its base. A hairline top divider separates thread from input.
+const GLASS_BAR_DOCKED =
+  "flex min-w-0 max-w-full items-center gap-1.5 rounded-b-[26px] border border-t-white/10 border-white/12 bg-black/55 px-2 py-2 backdrop-blur-xl sm:gap-2 sm:px-3 " +
+  "shadow-[0_26px_54px_-16px_rgba(0,0,0,0.7)]";
+
 // Floating (un-scrimmed) text gets a soft shadow so it reads over bright views.
 const FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
 
@@ -780,7 +788,11 @@ export function ContinuousChatOverlay({
           data-detent={!sheetOpen ? "peek" : expanded ? "full" : "half"}
           data-revealed={revealed > 0.5 ? "true" : "false"}
           className={cn(
-            "pointer-events-auto relative mb-2 flex w-full max-w-3xl flex-col overflow-hidden",
+            "pointer-events-auto relative flex w-full max-w-3xl flex-col overflow-hidden",
+            // Always sit flush on the composer (mb-0): whenever there's a thread,
+            // the sheet + input read as ONE connected panel — peek or open — the
+            // history simply grows up out of the input.
+            "mb-0",
             "rounded-t-[26px] border border-b-0 border-white/12 bg-black/55 backdrop-blur-xl",
             "shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_-2px_60px_-20px_rgba(0,0,0,0.7)]",
           )}
@@ -967,7 +979,9 @@ export function ContinuousChatOverlay({
             e.target.value = "";
           }}
         />
-        <div className={cn(GLASS_BAR, "relative")}>
+        <div
+          className={cn(hasThread ? GLASS_BAR_DOCKED : GLASS_BAR, "relative")}
+        >
           {/* No expand chevron: focusing/typing pulls the chat sheet up, and a
               pull-down on the grabber (or Escape) closes it. */}
           <SoftButton
