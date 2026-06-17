@@ -6,7 +6,7 @@
  */
 
 import { logger } from "../utils/logger";
-import { type ProviderLabel, providerFetchWithTimeout } from "./_http";
+import { type ProviderLabel, type ProviderRetryOptions, providerFetchWithTimeout } from "./_http";
 import { isRetryableProviderError } from "./failover";
 import { stripOpenRouterRoutingSuffix, toBitRouterModelId } from "./model-id-translation";
 import type {
@@ -58,8 +58,9 @@ export class BitRouterProvider implements AIProvider {
     url: string,
     options: RequestInit,
     timeoutMs: number = this.timeout,
+    retry?: ProviderRetryOptions,
   ): Promise<Response> {
-    return providerFetchWithTimeout(url, options, timeoutMs, BITROUTER_LABEL);
+    return providerFetchWithTimeout(url, options, timeoutMs, BITROUTER_LABEL, retry);
   }
 
   async chatCompletions(
@@ -91,6 +92,15 @@ export class BitRouterProvider implements AIProvider {
       messageCount: rest.messages.length,
     });
 
+    // Two complementary resilience layers compose here:
+    //  1. Transport-level retry (providerFetchWithTimeout): transparently retry
+    //     transient 429/502/503/504 on the SAME model (bitrouter -> openrouter
+    //     -> upstream-provider hiccups). Disabled for streaming (can't replay a
+    //     consumed SSE body).
+    //  2. Model-level routing fallback (below): if a routing-suffixed model
+    //     (:nitro/:floor) still fails after retries, retry once with the suffix
+    //     stripped so a healthy default upstream serves the same model
+    //     (bitrouter/bitrouter#572).
     try {
       return await this.fetchWithTimeout(
         `${this.baseUrl}/chat/completions`,
@@ -101,6 +111,7 @@ export class BitRouterProvider implements AIProvider {
           signal: options?.signal,
         },
         options?.timeoutMs,
+        rest.stream ? { maxRetries: 0 } : undefined,
       );
     } catch (error) {
       const baseModel = allowRoutingFallback ? stripOpenRouterRoutingSuffix(model) : null;
