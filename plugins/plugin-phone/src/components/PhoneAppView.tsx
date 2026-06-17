@@ -245,7 +245,10 @@ function RecentCallButton({
       type="button"
       onClick={() => onCall(entry.number)}
       className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition active:scale-[0.99]"
-      style={{ backgroundColor: "var(--surface)", border: "1px solid transparent" }}
+      style={{
+        backgroundColor: "var(--surface)",
+        border: "1px solid transparent",
+      }}
       {...agentProps}
     >
       <span
@@ -295,7 +298,10 @@ function ContactButton({
       onClick={() => onCall(primary)}
       disabled={primary.length === 0}
       className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition active:scale-[0.99] disabled:opacity-50"
-      style={{ backgroundColor: "var(--surface)", border: "1px solid transparent" }}
+      style={{
+        backgroundColor: "var(--surface)",
+        border: "1px solid transparent",
+      }}
       {...agentProps}
     >
       <span
@@ -434,6 +440,10 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
   const [contactsLoading, setContactsLoading] = useState(false);
   const [contactsError, setContactsError] = useState<string | null>(null);
   const contactsModuleRef = useRef<ContactsModule | null>(null);
+  // Guards the lazy auto-load so an empty recent-calls result does not retrigger
+  // the fetch forever (an empty list keeps `calls.length === 0`, which would
+  // otherwise re-satisfy the effect's guard on every render → infinite reload).
+  const recentAutoLoadedRef = useRef(false);
 
   const refreshCalls = useCallback(async () => {
     setCallsLoading(true);
@@ -492,7 +502,12 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
 
   // Lazy-load each tab's data on first activation.
   useEffect(() => {
-    if (activeTab === "recent" && calls.length === 0 && !callsLoading) {
+    if (
+      activeTab === "recent" &&
+      !recentAutoLoadedRef.current &&
+      !callsLoading
+    ) {
+      recentAutoLoadedRef.current = true;
       void refreshCalls();
     }
     if (
@@ -505,7 +520,6 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
     }
   }, [
     activeTab,
-    calls.length,
     callsLoading,
     contactsAvailable,
     contacts,
