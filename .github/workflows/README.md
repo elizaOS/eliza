@@ -42,6 +42,26 @@ Publishes TypeScript/JavaScript packages to NPM.
 
 ## Test Workflows
 
+### Linux Self-Hosted Runner Policy
+
+Linux CI jobs that previously ran on hosted Ubuntu now target the shared
+`self-hosted`, `Linux`, `X64`, `hetzner-robot` runner pool for trusted events
+such as same-repository PRs, pushes, schedules, and manual runs.
+
+Fork PRs still fall back to the equivalent GitHub-hosted Ubuntu image. This is
+intentional: the repo is public, and untrusted fork code should keep GitHub's
+ephemeral runner isolation rather than execute on persistent self-hosted
+machines with repository-adjacent state.
+
+Why this exists:
+
+- Same-repository CI can use the larger runner pool to reduce queue time and
+  unblock parallel slices without weakening the quality gate.
+- Fork contributors keep a predictable, isolated hosted environment.
+- Existing workflow commands stay the same; only runner placement changes.
+- macOS, Windows, ARM, GPU, and virtualization-dependent jobs should stay on
+  purpose-built runners until matching self-hosted labels and capacity exist.
+
 ### PR Path Gates
 
 PR workflows use `packages/scripts/ci-path-gate.mjs` to keep expensive lanes

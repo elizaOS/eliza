@@ -49,7 +49,7 @@ permissions:
 
 jobs:
   changed-paths:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
     outputs:
       cloud_frontend: ${{ steps.filter.outputs.cloud_frontend }}
     steps:
@@ -92,7 +92,7 @@ jobs:
           fi
 
   lint-and-types:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -101,7 +101,7 @@ jobs:
         run: bun run verify:cloud
 
   unit-tests:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
     timeout-minutes: 15
     env:
       NODE_ENV: test
@@ -112,7 +112,7 @@ jobs:
         run: bun run test:cloud
 
   integration-tests:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
     timeout-minutes: 25
     env:
       NODE_ENV: test
@@ -126,7 +126,7 @@ jobs:
         run: bun run test:cloud:integration
 
   e2e-tests:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
     timeout-minutes: 35
     needs: [lint-and-types]
     env:
@@ -140,7 +140,7 @@ jobs:
         run: bun run test:cloud:e2e
 
   playwright:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
     timeout-minutes: 35
     needs: [changed-paths, lint-and-types]
     # WHY: the full dashboard Playwright audit currently carries pre-existing
@@ -172,7 +172,7 @@ jobs:
         run: bun run --cwd packages/cloud-frontend test:e2e -- --project=${{ matrix.project }} --shard=${{ matrix.shard }}
 
   playwright-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
     timeout-minutes: 20
     needs: [changed-paths, lint-and-types]
     if: needs.changed-paths.outputs.cloud_frontend == 'true'
