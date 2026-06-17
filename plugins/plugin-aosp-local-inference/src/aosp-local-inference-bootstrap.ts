@@ -1799,6 +1799,28 @@ function resolveAospOmnivoiceTtsStepOverride(
   return String(parsed);
 }
 
+// Free RAM (MiB) at or above which the resident chat model is KEPT across a cold
+// voice-model load instead of being evicted. Eviction frees room for the ~1.4 GB
+// ASR / ~0.66 GB TTS load so it cannot trip lmkd, but it forces a synchronous
+// chat-model reload before the next reply that stalls the single-threaded
+// agent's HTTP listener (a concurrent createConversation then sees a spurious
+// local_agent_unavailable). When there is enough headroom to hold both models
+// the eviction is pure cost, so gate it on actual memory pressure.
+const VOICE_COLOAD_KEEP_AVAIL_MB = 2200;
+
+function shouldEvictChatForVoiceLoad(): boolean {
+  try {
+    const match = readFileSync("/proc/meminfo", "utf8").match(
+      /MemAvailable:\s+(\d+)\s+kB/,
+    );
+    // Unknown memory → evict, preserving the original always-evict safety.
+    if (!match) return true;
+    return Number(match[1]) / 1024 < VOICE_COLOAD_KEEP_AVAIL_MB;
+  } catch {
+    return true;
+  }
+}
+
 export function makeAospFusedOmnivoiceTextToSpeechHandler(
   loader?: AospLoader,
   onEvicted?: () => void,
@@ -1936,6 +1958,7 @@ export function makeAospFusedOmnivoiceTextToSpeechHandler(
       if (contextPromise === null && loader) {
         try {
           if (
+            shouldEvictChatForVoiceLoad() &&
             typeof loader.currentModelPath === "function" &&
             loader.currentModelPath() !== null &&
             typeof loader.unloadModel === "function"
@@ -2280,6 +2303,7 @@ async function transcribeWithAospElizaInference(
   // eviction is safe; mirrors the cold-TTS eviction in the fused TTS handler.
   if (
     loader &&
+    shouldEvictChatForVoiceLoad() &&
     typeof loader.currentModelPath === "function" &&
     loader.currentModelPath() !== null &&
     typeof loader.unloadModel === "function"
