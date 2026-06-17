@@ -6,6 +6,22 @@ assert each view's actual features (populated data + every control + the exact
 ids/shapes the server accepts) surfaced real product bugs. Each is pinned by a
 committed tripwire test so it is change-detected. Status below.
 
+## View-type coverage (gui / tui / xr)
+
+- **gui**: per-plugin component tests (this fan-out) render the real component
+  with realistic data and assert populated data + every control + TUI dispatch;
+  plus screenshot/interaction owners in `packages/app/test/ui-smoke`.
+- **tui**: per-plugin `interact()` capability tests + the central terminal-parity
+  gate (`packages/agent/src/__tests__/plugin-tui-view-coverage.test.ts`).
+- **xr**: covered by the same central test — its
+  `"can route-switch every bundled plugin view in gui, tui, and xr mode"` and
+  `"can dispatch standard interactions ... in gui, tui, and xr mode"` cases
+  register and exercise every declared xr view (23 plugins) through the real
+  navigate route + interaction dispatch. XR views reuse the gui `componentExport`
+  (e.g. `PolymarketAppView`), which the gui render tests already exercise, so the
+  component IS tested; a headless *visual* XR screenshot is not meaningful (no
+  WebXR/headset in jsdom/Playwright). Net: xr is covered for everything testable.
+
 ## Fixed
 
 - **plugin-vincent — TUI read wrong wallet fields.** `VincentTuiView` read
