@@ -5,7 +5,6 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireApiKeyPermission } from "@/api-app/middleware/auth";
 import { assertOrgMembership } from "@/api-app/middleware/org-membership";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
@@ -23,7 +22,6 @@ import { updateApiKeySchema } from "../schemas";
 const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
-app.use("*", requireApiKeyPermission("keys:write"));
 
 function isAgentSandboxKeyName(name: string): boolean {
   return name.startsWith("agent-sandbox:");
@@ -81,14 +79,8 @@ app.patch("/", async (c) => {
     });
 
     const body = await c.req.json();
-    const {
-      name,
-      description,
-      permissions,
-      rate_limit,
-      is_active,
-      expires_at,
-    } = updateApiKeySchema.parse(body);
+    const { name, description, rate_limit, is_active, expires_at } =
+      updateApiKeySchema.parse(body);
 
     if (name !== undefined && isAgentSandboxKeyName(name)) {
       return c.json(
@@ -103,7 +95,6 @@ app.patch("/", async (c) => {
     const updatedKey = await apiKeysService.update(id, {
       ...(name !== undefined && { name }),
       ...(description !== undefined && { description }),
-      ...(permissions !== undefined && { permissions }),
       ...(rate_limit !== undefined && { rate_limit }),
       ...(is_active !== undefined && { is_active }),
       ...(expires_at !== undefined && { expires_at }),
@@ -118,7 +109,6 @@ app.patch("/", async (c) => {
         description: updatedKey.description,
         key_prefix: updatedKey.key_prefix,
         created_at: updatedKey.created_at,
-        permissions: updatedKey.permissions,
         rate_limit: updatedKey.rate_limit,
         is_active: updatedKey.is_active,
         expires_at: updatedKey.expires_at,

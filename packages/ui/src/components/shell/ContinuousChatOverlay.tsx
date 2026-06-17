@@ -9,6 +9,7 @@ import {
   MAX_CHAT_IMAGES,
 } from "../../utils/image-attachment";
 import type { ShellMessage } from "./shell-state";
+import { type PullGestureBinding, usePullGesture } from "./use-pull-gesture";
 import { usePromptSuggestions } from "./usePromptSuggestions";
 import type { ShellController } from "./useShellController";
 
@@ -53,9 +54,23 @@ const FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
 // transcript repaints too much of the viewport and visibly janks on laptops.
 const OVERLAY_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
-// Resting / typing view (not fullscreen) shows only the last couple of turns
-// with no scroll; fullscreen shows the whole history with scroll.
-const RESTING_THREAD_LINES = 2;
+// Pull-sheet detents. The chat-history window is bottom-anchored just above the
+// fixed composer; its height animates between a slim CLOSED peek (the grabber +
+// a faint whisper of the last line — the pull-up target) and OPEN (most of the
+// viewport above the input). The live drag tracks the finger 1:1; release snaps
+// with an Apple-style spring. CLOSED collapses to 0 when there's no thread.
+const SHEET_CLOSED_H = 76; // px — grabber row + one faded line
+const SHEET_OPEN_VH = 0.72; // fraction of viewport height when open
+const SHEET_SPRING = {
+  type: "spring" as const,
+  stiffness: 320,
+  damping: 34,
+  mass: 0.9,
+};
+// Rubber-band resistance applied to drag past a detent (iOS-style overscroll).
+function rubberBand(overshoot: number): number {
+  return Math.sign(overshoot) * Math.sqrt(Math.abs(overshoot)) * 6;
+}
 
 // Glyphs (viewBox 0 0 36 36), rendered in currentColor inside a soft chip — the
 // up-arrow (send) and five-bar waveform (mic) from the shared composer language.
@@ -69,10 +84,6 @@ const SPEAKER_GLYPH =
   "M7 15H12L18 10V26L12 21H7Z M21 14Q25 18 21 22L23 22Q27 18 23 14Z M25 11Q31 18 25 25L27 25Q33 18 27 11Z";
 const SPEAKER_MUTED_GLYPH =
   "M7 15H12L18 10V26L12 21H7Z M21 12.4L22.4 11L31 19.6L29.6 21Z";
-// Two diagonal expand arrows (top-right + bottom-left) — "open in full page".
-const MAXIMIZE_GLYPH =
-  "M20 8H28V16H25V13.1L18.5 19.6L16.4 17.5L22.9 11H20Z " +
-  "M16 28H8V20H11V22.9L17.5 16.4L19.6 18.5L13.1 25H16Z";
 function Glyph({ d }: { d: string }): React.JSX.Element {
   return (
     <svg viewBox="0 0 36 36" className="h-4 w-4" aria-hidden="true">
@@ -127,6 +138,64 @@ function SoftButton({
     >
       <Glyph d={glyph} />
     </button>
+  );
+}
+
+/**
+ * The drag handle at the top of the chat sheet — pull UP to open the history,
+ * pull DOWN to close it. It is also keyboard-operable (Enter/Space toggles,
+ * ArrowUp opens, ArrowDown/Escape closes) so the drag-only affordance stays
+ * WCAG 2.1.1 operable. `touch-none` keeps the browser from scroll/refreshing
+ * mid-drag. A faint warm sheen rides the handle while the agent is live.
+ */
+function SheetGrabber({
+  open,
+  onOpen,
+  onClose,
+  binding,
+  glow,
+}: {
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  binding: PullGestureBinding;
+  glow: boolean;
+}): React.JSX.Element {
+  return (
+    <div
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label={open ? "drag down to close chat" : "drag up to open chat"}
+      tabIndex={0}
+      data-testid="chat-sheet-grabber"
+      data-open={open ? "true" : "false"}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          if (open) onClose();
+          else onOpen();
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          onOpen();
+        } else if (e.key === "ArrowDown" || e.key === "Escape") {
+          e.preventDefault();
+          onClose();
+        }
+      }}
+      {...binding}
+      className={cn(
+        "pointer-events-auto mx-auto flex h-7 w-full max-w-3xl shrink-0 cursor-grab touch-none select-none items-center justify-center active:cursor-grabbing",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full",
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "h-1.5 w-10 rounded-full transition-colors duration-300",
+          glow ? "bg-[rgba(255,180,120,0.75)]" : "bg-white/35",
+        )}
+      />
+    </div>
   );
 }
 
@@ -244,10 +313,16 @@ export function ContinuousChatOverlay({
   const reduce = useReducedMotion() ?? false;
 
   const [draft, setDraft] = React.useState("");
-  const [expanded, setExpanded] = React.useState(false);
-  const [fullscreen, setFullscreen] = React.useState(false);
-  const [hovered, setHovered] = React.useState(false);
-  const [composerFocused, setComposerFocused] = React.useState(false);
+  // The chat-history sheet: closed (a slim peek + grabber) ↔ open (full
+  // scrollable history). The ONLY open/close driver — opened by a pull-up drag,
+  // by focusing the composer, or by sending; closed by a pull-down drag or
+  // Escape. Never by click-out, scroll, or blur.
+  const [sheetOpen, setSheetOpen] = React.useState(false);
+  // Live drag offset in px (positive = pulling up) while the grabber/peek is
+  // dragged; 0 at rest. Drives the sheet height 1:1 so it tracks the finger,
+  // then resets when the release spring takes over.
+  const [drag, setDrag] = React.useState(0);
+  const [dragging, setDragging] = React.useState(false);
   const [whisperVisible, setWhisperVisible] = React.useState(false);
   const [pushToTalkActive, setPushToTalkActive] = React.useState(false);
   const [pendingImages, setPendingImages] = React.useState<ImageAttachment[]>(
@@ -264,7 +339,6 @@ export function ContinuousChatOverlay({
   const pushToTalkTimerRef = React.useRef<number | null>(null);
   const pushToTalkActiveRef = React.useRef(false);
   const suppressMicClickRef = React.useRef(false);
-  const hoverLeaveTimerRef = React.useRef<number | null>(null);
 
   const visibleMessages = messages.filter((m) => m.content.trim());
   const lastId = visibleMessages.at(-1)?.id ?? null;
@@ -280,22 +354,15 @@ export function ContinuousChatOverlay({
   const responding = phase === "responding";
   const hasDraft = draft.trim().length > 0;
   const hasImages = pendingImages.length > 0;
-  const open = expanded || hovered || fullscreen || composerFocused;
-  // "Peek" = the non-fullscreen reveal: the chat bubbles + suggestions fade in
-  // when the user hovers the bar, focuses the composer, clicks into a populated
-  // thread (expanded), while a reply is streaming (responding), or briefly when
-  // a new line arrives (whisperVisible). They fade back out otherwise.
-  const peek =
-    !fullscreen &&
-    (hovered || composerFocused || expanded || responding || whisperVisible);
+  const open = sheetOpen;
 
-  // The suggestion strip rides along with the bubbles (same peek reveal). The
-  // base conditions keep it sensible (ready, nothing typed/attached, not
-  // listening); `peek` gates both its visibility and the model fetch so the
-  // small model isn't called for a hidden strip.
+  // The suggestion strip is a keyboard-style row of one-tap prompts shown in the
+  // RESTING (closed) state — ready, nothing typed or attached, not recording. It
+  // hides once the sheet opens or a draft starts; the base condition also gates
+  // the small-model fetch so it isn't called for a hidden strip.
   const suggestionsBase =
-    !fullscreen && !recording && !booting && canSend && !hasDraft && !hasImages;
-  const suggestionsVisible = peek && suggestionsBase;
+    !sheetOpen && !recording && !booting && canSend && !hasDraft && !hasImages;
+  const suggestionsVisible = suggestionsBase;
 
   // Three tailored prompt suggestions for the resting overlay (model-backed via
   // TEXT_SMALL, with a static offline fallback).
@@ -324,49 +391,50 @@ export function ContinuousChatOverlay({
       if (pushToTalkTimerRef.current !== null) {
         window.clearTimeout(pushToTalkTimerRef.current);
       }
-      if (hoverLeaveTimerRef.current !== null) {
-        window.clearTimeout(hoverLeaveTimerRef.current);
-      }
     },
     [],
   );
 
-  // Keep the transcript pinned to the latest line. On first open (or when
-  // entering fullscreen) jump INSTANTLY to the bottom — a layout effect runs
-  // before paint, so the thread never flashes at the top. A NEW line (the
+  // Keep the transcript pinned to the latest line. On first open jump INSTANTLY
+  // to the bottom — a layout effect runs before paint, so the thread never
+  // flashes at the top. A NEW line (the
   // user's own send, or a fresh reply) always re-pins to the bottom; streaming
   // growth of the current line follows only when the reader is already resting
   // at the bottom, so scrolling up to read history is never yanked down.
   const wasOpenRef = React.useRef(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: lastId/lastContent/fullscreen are the triggers; the body reads refs
+  // biome-ignore lint/correctness/useExhaustiveDependencies: lastId/lastContent/sheetOpen are the triggers; the body reads refs
   React.useLayoutEffect(() => {
-    // Only the fullscreen transcript scrolls; the resting/typing view shows the
-    // last couple of turns with no scroll, so there is nothing to pin there.
-    if (!fullscreen) {
-      wasOpenRef.current = false;
-      return;
-    }
-    const justOpened = !wasOpenRef.current;
-    wasOpenRef.current = true;
+    const el = threadRef.current;
+    if (!el) return;
     const isNewLine = lastId !== scrollPinnedIdRef.current;
     scrollPinnedIdRef.current = lastId;
 
-    const el = threadRef.current;
-    const atBottom =
-      !el || el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    // CLOSED peek: always pin to the bottom so it whispers the LATEST line (the
+    // one nearest the composer) — even though it can't be user-scrolled, the
+    // clipped content must show the end of the thread, not the top.
+    if (!sheetOpen) {
+      wasOpenRef.current = false;
+      el.scrollTop = el.scrollHeight;
+      return;
+    }
 
-    if (justOpened || isNewLine || atBottom) {
-      endRef.current?.scrollIntoView(
-        isNewLine && !justOpened && !reduce
-          ? { behavior: "smooth", block: "end" }
-          : { block: "end" },
-      );
+    // OPEN: jump to the bottom on first open; a NEW line re-pins (smooth); while
+    // already resting at the bottom, follow streaming growth — but never yank a
+    // reader who has scrolled up to read history. Direct scrollTop assignment is
+    // more reliable than scrollIntoView inside this clipped flex column.
+    const justOpened = !wasOpenRef.current;
+    wasOpenRef.current = true;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    if (isNewLine && !justOpened && !reduce && atBottom) {
+      endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    } else if (justOpened || isNewLine || atBottom) {
+      el.scrollTop = el.scrollHeight;
     }
     if (justOpened && focusThreadRef.current) {
-      threadRef.current?.focus();
+      el.focus();
       focusThreadRef.current = false;
     }
-  }, [lastId, lastContent, fullscreen]);
+  }, [lastId, lastContent, sheetOpen]);
 
   const submit = React.useCallback(() => {
     const text = draft.trim();
@@ -381,7 +449,7 @@ export function ContinuousChatOverlay({
     } else {
       send(text);
     }
-    setExpanded(true);
+    setSheetOpen(true);
     inputRef.current?.focus();
   }, [draft, pendingImages, canSend, send]);
 
@@ -392,7 +460,7 @@ export function ContinuousChatOverlay({
       if (!canSend) return;
       setDraft("");
       send(text);
-      setExpanded(true);
+      setSheetOpen(true);
       inputRef.current?.focus();
     },
     [canSend, send],
@@ -466,256 +534,221 @@ export function ContinuousChatOverlay({
 
   const hasThread = visibleMessages.length > 0;
 
-  const collapseAll = React.useCallback(() => {
-    setExpanded(false);
-    setFullscreen(false);
-    setHovered(false);
-    setComposerFocused(false);
-    if (hoverLeaveTimerRef.current !== null) {
-      window.clearTimeout(hoverLeaveTimerRef.current);
-      hoverLeaveTimerRef.current = null;
-    }
+  const settleDrag = React.useCallback(() => {
+    setDrag(0);
+    setDragging(false);
   }, []);
 
+  const closeSheet = React.useCallback(() => {
+    setSheetOpen(false);
+    settleDrag();
+  }, [settleDrag]);
+
+  // Close, then return keyboard focus to the always-visible composer WITHOUT
+  // bouncing back open: focusing the input normally re-opens (see `expand`), so
+  // a one-shot flag makes the refocus's onFocus a no-op. Skip the refocus when
+  // the input already holds focus (Escape pressed in the composer) — refocusing
+  // it would not fire onFocus and would strand the flag.
+  const suppressOpenOnFocusRef = React.useRef(false);
   const collapse = React.useCallback(() => {
-    collapseAll();
-    inputRef.current?.focus();
-  }, [collapseAll]);
-
-  // Hover reveal: entering the bar (or the bubbles) peeks the chat; leaving fades
-  // it back out after a short grace so moving between the bubbles and the
-  // composer doesn't flicker it closed.
-  const handleHoverEnter = React.useCallback(() => {
-    if (hoverLeaveTimerRef.current !== null) {
-      window.clearTimeout(hoverLeaveTimerRef.current);
-      hoverLeaveTimerRef.current = null;
+    closeSheet();
+    if (inputRef.current && document.activeElement !== inputRef.current) {
+      suppressOpenOnFocusRef.current = true;
+      inputRef.current.focus();
     }
-    setHovered(true);
-  }, []);
+  }, [closeSheet]);
 
-  const handleHoverLeave = React.useCallback(() => {
-    if (hoverLeaveTimerRef.current !== null) {
-      window.clearTimeout(hoverLeaveTimerRef.current);
+  // Focusing or typing in the composer pulls the chat up (open) when there's a
+  // thread to show. The one-shot flag (set by `collapse`) lets a programmatic
+  // refocus skip this, so closing never bounces back open. No-op with no thread
+  // — the first send opens it.
+  const expand = React.useCallback(() => {
+    if (suppressOpenOnFocusRef.current) {
+      suppressOpenOnFocusRef.current = false;
+      return;
     }
-    hoverLeaveTimerRef.current = window.setTimeout(() => {
-      hoverLeaveTimerRef.current = null;
-      setHovered(false);
-    }, 150);
-  }, []);
+    if (hasThread) setSheetOpen(true);
+  }, [hasThread]);
 
-  const handleAmbientFocus = React.useCallback(() => {
-    setComposerFocused(true);
-  }, []);
-
-  const handleAmbientBlur = React.useCallback(
-    (event: React.FocusEvent<HTMLElement>) => {
-      const next = event.relatedTarget;
-      const staysInOverlay =
-        next instanceof Element &&
-        ((composerRef.current?.contains(next) ?? false) ||
-          (suggestionsRef.current?.contains(next) ?? false));
-      if (!staysInOverlay) setComposerFocused(false);
+  // --- Pull gesture --------------------------------------------------------
+  // The chat-history sheet is the draggable element. A live drag updates `drag`
+  // (px, + = up) so the sheet height tracks the finger, resisting past either
+  // detent (rubber-band in the render); release fires onPullUp/onPullDown
+  // (distance OR velocity threshold, via usePullGesture) to snap. ONE binding
+  // serves both the grabber and the closed peek — the handlers are state-aware,
+  // so a wrong-direction pull is a harmless no-op. Closing here is the ONLY
+  // dismiss path besides Escape: no click-out, scroll, or blur closes the sheet.
+  const onDragOffset = React.useCallback(
+    (offset: number) => {
+      setDragging(true);
+      // Open → only a downward (negative) drag is meaningful; closed → only an
+      // upward (positive) one. Pin the other direction so the sheet feels held.
+      setDrag(sheetOpen ? Math.min(0, offset) : Math.max(0, offset));
     },
-    [],
+    [sheetOpen],
   );
 
-  // The maximize button: toggle a true full-screen transcript. /chat is the
-  // overlay itself (overlay-only), so there is no separate page to navigate to —
-  // "full screen" means expanding this same thread to fill the viewport.
-  const toggleFullscreen = React.useCallback(() => {
-    setFullscreen((f) => {
-      const next = !f;
-      if (next && hasThread) focusThreadRef.current = true;
-      return next;
-    });
-    // Entering fullscreen supersedes the partial panel; leaving it collapses.
-    setExpanded(false);
-  }, [hasThread]);
+  const pullBinding: PullGestureBinding = usePullGesture({
+    onDrag: onDragOffset,
+    onPullUp: () => {
+      settleDrag();
+      if (hasThread) {
+        setSheetOpen(true);
+        focusThreadRef.current = true;
+      }
+    },
+    onPullDown: () => {
+      settleDrag();
+      closeSheet();
+    },
+  });
 
-  // Click into the composer → reveal the thread, but keep keyboard focus in the
-  // input (don't arm the thread-focus move) so the user can type immediately.
-  const expand = React.useCallback(() => {
-    setComposerFocused(true);
-    if (!hasThread) return;
-    setExpanded(true);
-  }, [hasThread]);
+  // NOTE: the sheet deliberately has NO close-on-outside-pointerdown and NO
+  // close-on-scroll listener. Clicking/scrolling anywhere outside the chat does
+  // nothing — the sheet closes ONLY on a pull-down drag (the grabber) or Escape.
 
-  // Close the thread on any pointer-down that isn't on a message bubble, the
-  // suggestions, or the composer — i.e. anywhere that isn't the chat itself (the
-  // live view behind, a gap in the thread, the backdrop). The overlay root is
-  // pointer-events-none, so a capture-phase document listener still catches
-  // clicks that fall through to the view behind; guarding on the chat affordances
-  // keeps normal interaction from dismissing it.
+  // Viewport height drives the OPEN detent; track resizes so an open sheet stays
+  // sized correctly through rotation / keyboard show. SSR/test fall back to 800.
+  const [viewportH, setViewportH] = React.useState(() =>
+    typeof window === "undefined" ? 800 : window.innerHeight,
+  );
   React.useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (e: PointerEvent) => {
-      const target = e.target instanceof Element ? e.target : null;
-      if (!target) return;
-      const onBubble = target.closest('[data-testid="thread-line"]') !== null;
-      const inSuggestions = suggestionsRef.current?.contains(target) ?? false;
-      const inComposer = composerRef.current?.contains(target) ?? false;
-      if (onBubble || inSuggestions || inComposer) return;
-      collapseAll();
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    return () =>
-      document.removeEventListener("pointerdown", onPointerDown, true);
-  }, [open, collapseAll]);
+    if (typeof window === "undefined") return undefined;
+    const onResize = () => setViewportH(window.innerHeight);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
-  // When the user scrolls the app behind the ambient chat, get the transient
-  // bubbles out of the way. Fullscreen chat owns its own scroll region, so this
-  // only applies to the resting overlay peek state.
-  React.useEffect(() => {
-    if (!peek) return;
-    const onScroll = (event: Event) => {
-      const target = event.target instanceof Element ? event.target : null;
-      const insideChat =
-        target &&
-        ((threadRef.current?.contains(target) ?? false) ||
-          (suggestionsRef.current?.contains(target) ?? false) ||
-          (composerRef.current?.contains(target) ?? false));
-      if (insideChat) return;
-      collapseAll();
-    };
-    document.addEventListener("scroll", onScroll, true);
-    return () => document.removeEventListener("scroll", onScroll, true);
-  }, [collapseAll, peek]);
+  // Sheet height: bottom-anchored clip window above the fixed composer. Closed =
+  // a slim peek; open = SHEET_OPEN_VH of the viewport. The live drag offset is
+  // added and rubber-banded past either detent so the pull tracks the finger.
+  const openH = Math.round(viewportH * SHEET_OPEN_VH);
+  const baseH = sheetOpen ? openH : SHEET_CLOSED_H;
+  const rawH = baseH + drag;
+  const sheetH =
+    rawH > openH
+      ? openH + rubberBand(rawH - openH)
+      : rawH < SHEET_CLOSED_H
+        ? SHEET_CLOSED_H + rubberBand(rawH - SHEET_CLOSED_H)
+        : rawH;
+  // Reveal fraction 0→1 across the detent gap — fades the peek's whisper out and
+  // the full transcript in as the sheet grows, so the two read as one surface.
+  const revealed = Math.min(
+    1,
+    Math.max(0, (sheetH - SHEET_CLOSED_H) / Math.max(1, openH - SHEET_CLOSED_H)),
+  );
 
   return (
     <div
       className={cn(
-        "pointer-events-none fixed flex w-full min-w-0 flex-col items-center px-3 sm:px-4",
-        // Fullscreen: take over the whole viewport (transcript fills, composer
-        // pinned to the bottom). Otherwise: a bottom-anchored ambient bar.
-        fullscreen
-          ? "inset-0 justify-end pt-[calc(var(--safe-area-top,0px)+1rem)]"
-          : "inset-x-0 bottom-0",
+        "pointer-events-none fixed inset-x-0 bottom-0 flex w-full min-w-0 flex-col items-center px-3 sm:px-4",
         "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+1.5rem)]",
       )}
       style={{ zIndex: Z_SHELL_OVERLAY }}
       data-testid="continuous-chat-overlay"
-      data-fullscreen={fullscreen ? "true" : undefined}
+      data-open={sheetOpen ? "true" : undefined}
     >
-      {/* Focus backdrop — a cheap scrim over the live view. Always mounted (so
-          its testid is stable); only opacity animates. Captures pointer events only while
-          fullscreen; clicking it exits via the outside-click handler. */}
+      {/* Dimming scrim behind the open sheet. It fades in WITH the reveal and
+          captures pointer events while open — but has NO click handler, so
+          clicking it does NOTHING: the sheet never closes on click-out, only on
+          a pull-down drag or Escape. Closed → pointer-events-none, so the view
+          behind stays fully live (the overlay is non-blocking by design). */}
       <motion.div
         aria-hidden="true"
-        data-testid="chat-fullscreen-backdrop"
-        data-active={fullscreen ? "true" : "false"}
-        className={cn(
-          "fixed inset-0",
-          "bg-[linear-gradient(135deg,rgba(255,255,255,0.08)_0%,rgba(8,10,18,0.64)_48%,rgba(0,0,0,0.70)_100%)]",
-          fullscreen ? "pointer-events-auto" : "pointer-events-none",
-        )}
+        data-testid="chat-sheet-backdrop"
+        data-active={sheetOpen ? "true" : "false"}
+        className="fixed inset-0 bg-[linear-gradient(160deg,rgba(255,255,255,0.06)_0%,rgba(8,10,18,0.55)_46%,rgba(0,0,0,0.66)_100%)]"
+        style={{ pointerEvents: revealed > 0.04 ? "auto" : "none" }}
         initial={false}
-        animate={{
-          opacity: fullscreen ? 1 : 0,
-        }}
-        transition={{ duration: reduce ? 0.08 : 0.16, ease: OVERLAY_EASE }}
+        animate={{ opacity: revealed }}
+        transition={
+          dragging || reduce
+            ? { duration: 0 }
+            : { duration: 0.2, ease: OVERLAY_EASE }
+        }
       />
 
-      {/* Cinematic bottom vignette — grounds the floating bar over bright views.
-          Hidden in fullscreen: the solid backdrop already supplies contrast. */}
-      {!fullscreen ? (
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-72 bg-gradient-to-t from-black/45 via-black/15 to-transparent"
-        />
-      ) : null}
+      {/* Cinematic bottom vignette — grounds the floating bar over bright views. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-72 bg-gradient-to-t from-black/45 via-black/15 to-transparent"
+      />
 
-      {/* Fullscreen transcript — full history in a plain composited panel. Keep
-          the transition to opacity/translate so long threads do not stutter. */}
-      <AnimatePresence>
-        {fullscreen && hasThread ? (
-          <motion.div
-            key="fullscreen-thread"
+      {/* The chat-history SHEET — THE pullable element. A bottom-anchored clip
+          window above the fixed composer: its height animates between a slim
+          CLOSED peek (grabber + a faded whisper of the last line) and the OPEN
+          detent (most of the viewport). The live drag tracks the finger; release
+          springs to a detent. Pull UP anywhere to open; pull the grabber DOWN to
+          close. Only mounted when there is a thread to show. */}
+      {hasThread ? (
+        <motion.div
+          data-testid="chat-sheet"
+          data-variant={sheetOpen ? "open" : "closed"}
+          data-revealed={revealed > 0.5 ? "true" : "false"}
+          className={cn(
+            "pointer-events-auto relative mb-2 flex w-full max-w-3xl flex-col overflow-hidden",
+            "rounded-t-[26px] border border-b-0 border-white/12 bg-black/55 backdrop-blur-xl",
+            "shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_-2px_60px_-20px_rgba(0,0,0,0.7)]",
+          )}
+          initial={false}
+          animate={{ height: sheetH }}
+          transition={dragging || reduce ? { duration: 0 } : SHEET_SPRING}
+        >
+          <SheetGrabber
+            open={sheetOpen}
+            onOpen={() => {
+              setSheetOpen(true);
+              focusThreadRef.current = true;
+            }}
+            onClose={collapse}
+            binding={pullBinding}
+            glow={listening || responding}
+          />
+          {/* Message log. CLOSED: the whole peek is the pull-up target (the pull
+              gesture is bound here, touch-none so the browser doesn't fight the
+              vertical drag) and content is clipped + dimmed to a whisper. OPEN:
+              a normal vertical-scroll region — the grabber owns the close drag,
+              so dragging the messages just scrolls. */}
+          <div
             id="continuous-thread"
-            data-variant="fullscreen"
             ref={threadRef}
             role="log"
             aria-label="conversation history"
             aria-live="polite"
-            // The scrollable log region is keyboard-focusable so it can be
-            // arrow/Page scrolled (WCAG 2.1.1).
-            tabIndex={0}
+            aria-hidden={revealed < 0.5 ? true : undefined}
+            tabIndex={sheetOpen ? 0 : -1}
             onKeyDown={(e) => {
               if (e.key === "Escape") {
                 e.preventDefault();
                 collapse();
               }
             }}
-            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 12 }}
-            animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0 }}
-            exit={
-              reduce
-                ? { opacity: 0 }
-                : {
-                    opacity: 0,
-                    y: 8,
-                    transition: { duration: 0.12, ease: OVERLAY_EASE },
-                  }
-            }
-            transition={
-              reduce
-                ? { duration: 0.08 }
-                : { duration: 0.18, ease: OVERLAY_EASE }
-            }
+            {...(sheetOpen ? {} : pullBinding)}
             className={cn(
-              "pointer-events-auto relative mb-3 min-h-0 w-full max-w-3xl flex-1 origin-bottom overflow-y-auto px-5 py-6",
-              "rounded-[24px] border border-white/12 bg-black/60",
-              "shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_28px_80px_-28px_rgba(0,0,0,0.62)]",
-              // No visible scrollbar — the thread still scrolls, the chrome hides.
-              "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
+              "relative flex min-h-0 w-full flex-1 flex-col px-5",
+              sheetOpen
+                ? "touch-pan-y overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                : "cursor-grab touch-none overflow-hidden active:cursor-grabbing",
+              "focus-visible:rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
             )}
+            style={{ opacity: 0.5 + 0.5 * revealed }}
           >
-            <AnimatePresence initial={false}>
-              {visibleMessages.map((m) => (
-                <ThreadLine key={m.id} message={m} floating reduce={reduce} />
-              ))}
-            </AnimatePresence>
-            <AnimatePresence>
-              {responding ? <TypingDots reduce={reduce} /> : null}
-            </AnimatePresence>
-            <div ref={endRef} />
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-
-      {/* Resting / typing bubbles — the last couple of turns, floating over the
-          view with no scroll. Always mounted (when there is a thread) so the
-          quick opacity fade plays in BOTH directions; `peek` reveals them on
-          hover, on focus (expanded), while replying, or briefly when a new line
-          arrives, and fades them back out otherwise. */}
-      {!fullscreen && hasThread ? (
-        <div
-          id="continuous-thread"
-          ref={threadRef}
-          role="log"
-          aria-label="conversation history"
-          aria-live="polite"
-          aria-hidden={!peek}
-          data-revealed={peek ? "true" : "false"}
-          data-variant="resting"
-          onPointerEnter={handleHoverEnter}
-          onPointerLeave={handleHoverLeave}
-          className={cn(
-            "relative mb-3 w-full max-w-3xl overflow-hidden px-1 py-2 transition-opacity duration-200",
-            peek
-              ? "pointer-events-auto opacity-100"
-              : "pointer-events-none opacity-0",
-          )}
-        >
-          <AnimatePresence initial={false}>
-            {visibleMessages.slice(-RESTING_THREAD_LINES).map((m) => (
-              <ThreadLine key={m.id} message={m} floating reduce={reduce} />
-            ))}
-          </AnimatePresence>
-          <AnimatePresence>
-            {responding ? <TypingDots reduce={reduce} /> : null}
-          </AnimatePresence>
-        </div>
+            {/* `mt-auto` pins the latest line to the bottom (nearest the input)
+                when the thread is shorter than the sheet, yet still scrolls to
+                history when it overflows. */}
+            <div className="mt-auto flex flex-col pb-3 pt-1">
+              <AnimatePresence initial={false}>
+                {visibleMessages.map((m) => (
+                  <ThreadLine key={m.id} message={m} floating reduce={reduce} />
+                ))}
+              </AnimatePresence>
+              <AnimatePresence>
+                {responding ? <TypingDots reduce={reduce} /> : null}
+              </AnimatePresence>
+              <div ref={endRef} />
+            </div>
+          </div>
+        </motion.div>
       ) : null}
 
       {/* Live interim transcript while listening */}
@@ -734,17 +767,12 @@ export function ContinuousChatOverlay({
         </div>
       ) : null}
 
-      {/* Three tailored prompt suggestions — keyboard-strip style. They ride
-          along with the chat bubbles (same `peek` reveal: hover or focus) and
-          fade with them, so they only appear when the conversation does. Tapping
-          one sends it immediately. */}
+      {/* Three tailored prompt suggestions — a keyboard-style strip shown in the
+          resting (closed) state when nothing is typed. Tapping one sends it
+          immediately, which also pulls the chat sheet up. */}
       {suggestionsBase ? (
         <fieldset
           ref={suggestionsRef}
-          onPointerEnter={handleHoverEnter}
-          onPointerLeave={handleHoverLeave}
-          onFocus={handleAmbientFocus}
-          onBlur={handleAmbientBlur}
           aria-label="Suggested prompts"
           aria-hidden={!suggestionsVisible}
           className={cn(
@@ -777,14 +805,10 @@ export function ContinuousChatOverlay({
         </fieldset>
       ) : null}
 
-      {/* The always-present ambient composer (the heart of the layer). Hovering
-          it (or the bubbles/suggestions) peeks the chat; leaving fades it out. */}
+      {/* The always-present, fixed composer (the heart of the layer). It never
+          moves; the chat-history sheet is pulled up ABOVE it. */}
       <fieldset
         ref={composerRef}
-        onPointerEnter={handleHoverEnter}
-        onPointerLeave={handleHoverLeave}
-        onFocus={handleAmbientFocus}
-        onBlur={handleAmbientBlur}
         aria-label="Chat composer"
         className="pointer-events-auto relative m-0 w-full min-w-0 max-w-3xl border-0 p-0"
       >
@@ -854,15 +878,8 @@ export function ContinuousChatOverlay({
           }}
         />
         <div className={cn(GLASS_BAR, "relative")}>
-          {/* No expand/collapse chevron: focusing the input opens the thread,
-              and Escape / clicking outside collapses it. */}
-          <SoftButton
-            glyph={MAXIMIZE_GLYPH}
-            label={fullscreen ? "exit full screen" : "expand to full screen"}
-            active={fullscreen}
-            onClick={toggleFullscreen}
-            testId="chat-composer-fullscreen"
-          />
+          {/* No expand chevron: focusing/typing pulls the chat sheet up, and a
+              pull-down on the grabber (or Escape) closes it. */}
           <SoftButton
             glyph={PLUS_GLYPH}
             label="attach image"
@@ -873,7 +890,12 @@ export function ContinuousChatOverlay({
           <input
             ref={inputRef}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              // Typing pulls the chat up even if the sheet was just closed while
+              // the input kept focus (Escape doesn't re-fire onFocus).
+              if (e.target.value.length > 0) expand();
+            }}
             onFocus={expand}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -881,7 +903,7 @@ export function ContinuousChatOverlay({
                 submit();
               } else if (e.key === "Escape" && open) {
                 e.preventDefault();
-                collapseAll();
+                collapse();
               }
             }}
             placeholder={booting ? "connecting…" : "say anything…"}

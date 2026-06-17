@@ -7,7 +7,6 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireApiKeyPermission } from "@/api-app/middleware/auth";
 import { assertOrgMembership } from "@/api-app/middleware/org-membership";
 import { userCharactersRepository } from "@/db/repositories/characters";
 import {
@@ -21,8 +20,6 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
-
-app.use("*", requireApiKeyPermission("agents:write"));
 
 const PublishSchema = z.object({
   enableMonetization: z.boolean().optional().default(false),

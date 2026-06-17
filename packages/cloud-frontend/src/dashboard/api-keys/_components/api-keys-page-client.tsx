@@ -72,72 +72,6 @@ const rateLimitPresets = [
   },
 ] as const;
 
-const permissionGroups = [
-  {
-    titleKey: "cloud.apiKeys.permGroupCore",
-    defaultTitle: "Core",
-    permissions: [
-      {
-        id: "read",
-        labelKey: "cloud.apiKeys.permReadData",
-        defaultLabel: "Read data",
-      },
-      {
-        id: "write",
-        labelKey: "cloud.apiKeys.permWriteData",
-        defaultLabel: "Write data",
-      },
-      {
-        id: "usage",
-        labelKey: "cloud.apiKeys.permViewUsage",
-        defaultLabel: "View usage",
-      },
-    ],
-  },
-  {
-    titleKey: "cloud.apiKeys.permGroupGenerations",
-    defaultTitle: "Generations",
-    permissions: [
-      {
-        id: "text",
-        labelKey: "cloud.apiKeys.permTextGen",
-        defaultLabel: "Text generation",
-      },
-      {
-        id: "image",
-        labelKey: "cloud.apiKeys.permImageGen",
-        defaultLabel: "Image generation",
-      },
-      {
-        id: "video",
-        labelKey: "cloud.apiKeys.permVideoGen",
-        defaultLabel: "Video generation",
-      },
-    ],
-  },
-  {
-    titleKey: "cloud.apiKeys.permGroupManagement",
-    defaultTitle: "Management",
-    permissions: [
-      {
-        id: "billing",
-        labelKey: "cloud.apiKeys.permBilling",
-        defaultLabel: "Billing",
-      },
-      {
-        id: "team",
-        labelKey: "cloud.apiKeys.permTeam",
-        defaultLabel: "Team management",
-      },
-      {
-        id: "keys",
-        labelKey: "cloud.apiKeys.permManageKeys",
-        defaultLabel: "Manage API keys",
-      },
-    ],
-  },
-] as const;
-
 export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
   const t = useT();
   const queryClient = useQueryClient();
@@ -148,7 +82,6 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
   const [rateLimitPreset, setRateLimitPreset] =
     useState<(typeof rateLimitPresets)[number]["value"]>("standard");
   const [isCreating, setIsCreating] = useState(false);
-  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -203,7 +136,6 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
       body: JSON.stringify({
         name: formData.name,
         description: formData.description,
-        permissions: selectedPermissions,
         rate_limit: rateLimit,
       }),
     });
@@ -223,7 +155,6 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
     // local state so it remains visible after the list refetches.
     setCreatedKey({ plainKey: data.plainKey, name: data.apiKey.name });
     setFormData({ name: "", description: "", rate_limit: 1000 });
-    setSelectedPermissions([]);
     setRateLimitPreset("standard");
     setCreateDialogOpen(false);
     toast.success(
@@ -494,50 +425,6 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
                 rows={3}
                 className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[#FF5800] focus:border-[#FF5800]"
               />
-            </div>
-
-            <div className="grid gap-2">
-              <p className="text-xs font-medium text-white/70 uppercase tracking-wide">
-                {t("cloud.apiKeys.permissionsLabel", {
-                  defaultValue: "Permissions",
-                })}
-              </p>
-              <div className="grid gap-3 rounded-sm border border-white/10 bg-black/40 p-4">
-                {permissionGroups.map((group) => (
-                  <div key={group.titleKey} className="space-y-2">
-                    <p className="text-xs font-medium uppercase tracking-wide text-white/50">
-                      {t(group.titleKey, { defaultValue: group.defaultTitle })}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {group.permissions.map((permission) => {
-                        const isSelected = selectedPermissions.includes(
-                          permission.id,
-                        );
-                        return (
-                          <BrandButton
-                            key={permission.id}
-                            type="button"
-                            variant={isSelected ? "primary" : "outline"}
-                            size="sm"
-                            className="text-xs"
-                            onClick={() => {
-                              setSelectedPermissions((prev) =>
-                                isSelected
-                                  ? prev.filter((p) => p !== permission.id)
-                                  : [...prev, permission.id],
-                              );
-                            }}
-                          >
-                            {t(permission.labelKey, {
-                              defaultValue: permission.defaultLabel,
-                            })}
-                          </BrandButton>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
 
             <div className="grid gap-2">

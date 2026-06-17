@@ -21,9 +21,6 @@ export interface SeedTestUserOptions {
   email?: string;
   stewardUserId?: string;
   role?: string;
-  /** API-key permission scopes. Defaults to ["read","write","admin"]; pass
-   *  ["*"] for a fully-scoped key (e.g. routes that enforce scopes). */
-  permissions?: string[];
 }
 
 /**
@@ -86,7 +83,6 @@ export async function seedTestUser(
     description: "cloud-e2e harness key",
     organization_id: organization.id,
     user_id: user.id,
-    permissions: opts.permissions ?? ["read", "write", "admin"],
     rate_limit: 10_000,
     is_active: true,
   });

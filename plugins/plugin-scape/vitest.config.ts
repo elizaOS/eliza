@@ -1,9 +1,49 @@
+import { existsSync, readdirSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
+
+// jsdom component tests (ScapeOperatorSurface / ScapeTuiView) must mount against
+// a single React copy. react is a peer dep resolvable from the plugin; react-dom
+// is hoisted to the monorepo's node_modules/.bun under a content-hashed dir, so
+// locate the react-dom@<version>+<hash> dir that matches the resolved react.
+const requireFromHere = createRequire(import.meta.url);
+const reactPkgJson = requireFromHere.resolve("react/package.json");
+const reactDir = path.dirname(reactPkgJson);
+const reactVersion = (requireFromHere(reactPkgJson) as { version: string })
+  .version;
+
+function locateBunModulesDir(start: string): string {
+  let current = start;
+  while (true) {
+    const candidate = path.join(current, "node_modules/.bun");
+    if (existsSync(candidate)) return candidate;
+    const parent = path.dirname(current);
+    if (parent === current) {
+      throw new Error("Unable to locate node_modules/.bun");
+    }
+    current = parent;
+  }
+}
+
+const bunModulesDir = locateBunModulesDir(here);
+const reactDomEntry = readdirSync(bunModulesDir).find((entry) =>
+  entry.startsWith(`react-dom@${reactVersion}+`),
+);
+if (!reactDomEntry) {
+  throw new Error(
+    `Unable to locate react-dom@${reactVersion} in ${bunModulesDir}`,
+  );
+}
+const reactDomDir = path.join(
+  bunModulesDir,
+  reactDomEntry,
+  "node_modules/react-dom",
+);
 
 // Alias all @elizaos/plugin-* packages that agent/src imports to their source
 // so vitest can resolve them without a pre-built dist. Anchors the find
@@ -20,20 +60,57 @@ export default defineConfig({
   root: here,
   resolve: {
     alias: [
+      // React single-copy resolution for jsdom component tests.
+      { find: /^react$/, replacement: reactDir },
       {
-        find: "@elizaos/core",
+        find: /^react\/jsx-runtime$/,
+        replacement: path.join(reactDir, "jsx-runtime.js"),
+      },
+      {
+        find: /^react\/jsx-dev-runtime$/,
+        replacement: path.join(reactDir, "jsx-dev-runtime.js"),
+      },
+      { find: /^react-dom$/, replacement: reactDomDir },
+      {
+        find: /^react-dom\/client$/,
+        replacement: path.join(reactDomDir, "client.js"),
+      },
+      {
+        find: /^react-dom\/test-utils$/,
+        replacement: path.join(reactDomDir, "test-utils.js"),
+      },
+      // The view components import @elizaos/ui subpaths (agent-surface). Every
+      // component test mocks @elizaos/ui, so collapse the subpaths onto the
+      // root spec so a single vi.mock("@elizaos/ui") covers them all.
+      {
+        find: /^@elizaos\/ui\/(agent-surface|api|components(?:\/.*)?|hooks|layouts|state|utils)$/,
+        replacement: "@elizaos/ui",
+      },
+      // Anchor the bare-specifier aliases so subpath imports
+      // (e.g. `@elizaos/shared/brand`) resolve via the explicit subpath aliases
+      // below instead of being rewritten to `<index.ts>/brand` (ENOTDIR).
+      {
+        find: /^@elizaos\/shared\/(.+)$/,
+        replacement: path.join(repoRoot, "packages/shared/src/$1"),
+      },
+      {
+        find: /^@elizaos\/core\/(.+)$/,
+        replacement: path.join(repoRoot, "packages/core/src/$1"),
+      },
+      {
+        find: /^@elizaos\/core$/,
         replacement: path.join(repoRoot, "packages/core/src/index.ts"),
       },
       {
-        find: "@elizaos/logger",
+        find: /^@elizaos\/logger$/,
         replacement: path.join(repoRoot, "packages/logger/src/index.ts"),
       },
       {
-        find: "@elizaos/agent",
+        find: /^@elizaos\/agent$/,
         replacement: path.join(repoRoot, "packages/agent/src/index.ts"),
       },
       {
-        find: "@elizaos/shared",
+        find: /^@elizaos\/shared$/,
         replacement: path.join(repoRoot, "packages/shared/src/index.ts"),
       },
       // All plugins in plugins/ that have no pre-built dist — point vitest at
@@ -210,7 +287,8 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     exclude: ["dist/**", "node_modules/**"],
+    restoreMocks: true,
   },
 });

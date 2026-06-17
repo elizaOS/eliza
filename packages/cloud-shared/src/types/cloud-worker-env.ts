@@ -147,8 +147,6 @@ export interface Variables {
   requestId: string;
   /** ID of the validated API key, when `authMethod === "api_key"`. */
   apiKeyId?: string;
-  /** Permission scopes attached to the validated API key. Empty array means no scopes granted. */
-  apiKeyPermissions?: string[];
 }
 
 export type AppEnv = {
