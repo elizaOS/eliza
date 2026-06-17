@@ -128,9 +128,9 @@ describe("CustomersPanel", () => {
         onSearchChange: vi.fn(),
       }),
     );
-    expect(container.querySelectorAll("[data-skeleton]").length).toBeGreaterThan(
-      0,
-    );
+    expect(
+      container.querySelectorAll("[data-skeleton]").length,
+    ).toBeGreaterThan(0);
   });
 
   it("invokes onSearchChange when the search input changes", () => {

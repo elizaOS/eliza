@@ -9,7 +9,7 @@ vi.mock("@elizaos/ui", () => ({
     children,
     ...props
   }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-    React.createElement("button", props, children),
+    React.createElement("button", { type: "button", ...props }, children),
   Input: (props: React.InputHTMLAttributes<HTMLInputElement>) =>
     React.createElement("input", props),
   Skeleton: (props: React.HTMLAttributes<HTMLDivElement>) =>
@@ -22,7 +22,8 @@ vi.mock("@elizaos/ui", () => ({
     open: boolean;
     onOpenChange?: (next: boolean) => void;
     children: React.ReactNode;
-  }) => (open ? React.createElement("div", { role: "dialog" }, children) : null),
+  }) =>
+    open ? React.createElement("div", { role: "dialog" }, children) : null,
   DialogContent: ({ children }: { children: React.ReactNode }) =>
     React.createElement("div", {}, children),
   DialogHeader: ({ children }: { children: React.ReactNode }) =>

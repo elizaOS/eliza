@@ -56,26 +56,23 @@ vi.mock("@elizaos/ui", () => ({
     children: React.ReactNode;
   }) => {
     const ctx = React.useContext(TabsCtx);
-    return ctx.value === value ? React.createElement("div", {}, children) : null;
+    return ctx.value === value
+      ? React.createElement("div", {}, children)
+      : null;
   },
   Button: ({
     children,
     ...props
   }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-    React.createElement("button", props, children),
+    React.createElement("button", { type: "button", ...props }, children),
   Input: (props: React.InputHTMLAttributes<HTMLInputElement>) =>
     React.createElement("input", props),
   Badge: ({ children }: { children: React.ReactNode }) =>
     React.createElement("span", {}, children),
   Skeleton: (props: React.HTMLAttributes<HTMLDivElement>) =>
     React.createElement("div", { ...props, "data-skeleton": true }),
-  Dialog: ({
-    open,
-    children,
-  }: {
-    open: boolean;
-    children: React.ReactNode;
-  }) => (open ? React.createElement("div", { role: "dialog" }, children) : null),
+  Dialog: ({ open, children }: { open: boolean; children: React.ReactNode }) =>
+    open ? React.createElement("div", { role: "dialog" }, children) : null,
   DialogContent: ({ children }: { children: React.ReactNode }) =>
     React.createElement("div", {}, children),
   DialogHeader: ({ children }: { children: React.ReactNode }) =>
@@ -301,9 +298,8 @@ describe("ShopifyAppView (gui + xr)", () => {
     await screen.findAllByText("Eliza Store");
 
     const statusCalls = () =>
-      fetchMock.mock.calls.filter(
-        ([u]) => String(u) === "/api/shopify/status",
-      ).length;
+      fetchMock.mock.calls.filter(([u]) => String(u) === "/api/shopify/status")
+        .length;
     const before = statusCalls();
     fireEvent.click(screen.getByLabelText("Refresh"));
     await vi.waitFor(() => expect(statusCalls()).toBeGreaterThan(before));

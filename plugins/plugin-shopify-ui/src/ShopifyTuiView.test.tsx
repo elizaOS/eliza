@@ -12,7 +12,7 @@ vi.mock("@elizaos/ui", () => ({
     children,
     ...props
   }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-    React.createElement("button", props, children),
+    React.createElement("button", { type: "button", ...props }, children),
   Skeleton: (props: React.HTMLAttributes<HTMLDivElement>) =>
     React.createElement("div", props),
   Tabs: ({ children }: { children: React.ReactNode }) =>
@@ -22,7 +22,7 @@ vi.mock("@elizaos/ui", () => ({
   TabsList: ({ children }: { children: React.ReactNode }) =>
     React.createElement("div", {}, children),
   TabsTrigger: ({ children }: { children: React.ReactNode }) =>
-    React.createElement("button", {}, children),
+    React.createElement("button", { type: "button" }, children),
 }));
 
 import { ShopifyTuiView } from "./ShopifyAppView";
@@ -202,9 +202,8 @@ describe("ShopifyTuiView", () => {
     expect(readAction()).toBe("refresh"); // first load sets refresh on success
 
     const statusCalls = () =>
-      fetchMock.mock.calls.filter(
-        ([u]) => String(u) === "/api/shopify/status",
-      ).length;
+      fetchMock.mock.calls.filter(([u]) => String(u) === "/api/shopify/status")
+        .length;
     const before = statusCalls();
     fireEvent.click(screen.getByText("refresh"));
     await vi.waitFor(() => expect(statusCalls()).toBeGreaterThan(before));

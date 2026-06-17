@@ -15,7 +15,7 @@ vi.mock("@elizaos/ui", () => ({
     children,
     ...props
   }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-    React.createElement("button", props, children),
+    React.createElement("button", { type: "button", ...props }, children),
   Skeleton: (props: React.HTMLAttributes<HTMLDivElement>) =>
     React.createElement("div", { ...props, "data-skeleton": true }),
 }));
@@ -104,9 +104,7 @@ describe("InventoryLevelsPanel", () => {
       }),
     );
 
-    const select = screen.getByLabelText(
-      "Location",
-    ) as HTMLSelectElement;
+    const select = screen.getByLabelText("Location") as HTMLSelectElement;
     fireEvent.change(select, { target: { value: "Main Warehouse" } });
 
     expect(screen.getByText("Terminal Hoodie")).toBeTruthy();

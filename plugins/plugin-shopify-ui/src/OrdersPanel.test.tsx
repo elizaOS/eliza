@@ -136,7 +136,9 @@ describe("OrdersPanel", () => {
     // Collapsed: detail-only labels absent.
     expect(screen.queryByText("Order ID")).toBeNull();
 
-    const row = screen.getByText("#1001").closest("button") as HTMLButtonElement;
+    const row = screen
+      .getByText("#1001")
+      .closest("button") as HTMLButtonElement;
     expect(row.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(row);
     expect(row.getAttribute("aria-expanded")).toBe("true");
