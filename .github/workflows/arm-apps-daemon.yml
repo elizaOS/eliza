@@ -34,6 +34,11 @@ on:
         type: choice
         default: staging
         options: [staging, production]
+      target:
+        description: "Which daemon to arm: the shared control-plane provisioning-worker (cp-daemon) or the dedicated apps-control worker (apps-worker, Product-2 isolated path)"
+        type: choice
+        default: cp-daemon
+        options: [cp-daemon, apps-worker]
       app_node:
         description: "CONTAINERS_DOCKER_NODES (id:ip:capacity), e.g. apps-node-1:167.233.112.155:20"
         type: string
@@ -67,8 +72,14 @@ jobs:
     environment: ${{ github.event.inputs.environment }}
     timeout-minutes: 10
     env:
-      DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
-      DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+      # Target the dedicated apps-control host (apps-worker) or the shared
+      # control-plane host (cp-daemon). The apps-worker path arms the isolated
+      # Product-2 daemon on a host that sits on the apps private net (so it can
+      # reach the tenant DB) and runs no agent jobs — never touching the agent
+      # control plane.
+      DEPLOY_HOST: ${{ github.event.inputs.target == 'apps-worker' && secrets.ELIZA_APPS_WORKER_HOST || secrets.ELIZA_PROVISIONING_HOST }}
+      DEPLOY_SSH_KEY: ${{ github.event.inputs.target == 'apps-worker' && secrets.ELIZA_APPS_WORKER_SSH_KEY || secrets.ELIZA_PROVISIONING_SSH_KEY }}
+      SYSTEMD_UNIT: ${{ github.event.inputs.target == 'apps-worker' && 'eliza-apps-worker.service' || 'eliza-provisioning-worker.service' }}
       BASE_DOMAIN: ${{ vars.APPS_BASE_DOMAIN }}
       APP_NODE: ${{ github.event.inputs.app_node }}
       TENANT_ADMIN_DSN: ${{ github.event.inputs.tenant_admin_dsn }}
@@ -77,8 +88,10 @@ jobs:
       - name: Preflight
         run: |
           fail=0
-          [ -n "$DEPLOY_HOST" ] || { echo "::error::missing secret ELIZA_PROVISIONING_HOST on the '${{ github.event.inputs.environment }}' environment"; fail=1; }
-          [ -n "$DEPLOY_SSH_KEY" ] || { echo "::error::missing secret ELIZA_PROVISIONING_SSH_KEY"; fail=1; }
+          HOST_SECRET="${{ github.event.inputs.target == 'apps-worker' && 'ELIZA_APPS_WORKER_HOST' || 'ELIZA_PROVISIONING_HOST' }}"
+          KEY_SECRET="${{ github.event.inputs.target == 'apps-worker' && 'ELIZA_APPS_WORKER_SSH_KEY' || 'ELIZA_PROVISIONING_SSH_KEY' }}"
+          [ -n "$DEPLOY_HOST" ] || { echo "::error::missing secret $HOST_SECRET on the '${{ github.event.inputs.environment }}' environment (target=${{ github.event.inputs.target }})"; fail=1; }
+          [ -n "$DEPLOY_SSH_KEY" ] || { echo "::error::missing secret $KEY_SECRET"; fail=1; }
           [ -n "$BASE_DOMAIN" ] || { echo "::error::set vars.APPS_BASE_DOMAIN on the '${{ github.event.inputs.environment }}' environment"; fail=1; }
           [ -n "$APP_NODE" ] || { echo "::error::app_node input is required (id:ip:capacity)"; fail=1; }
           # Derive the Caddy admin URL from the app node IP (2nd colon field).
@@ -124,7 +137,7 @@ jobs:
           key: ${{ env.DEPLOY_SSH_KEY }}
           command_timeout: 5m
           # Only the values; the upsert logic is fixed here (mirrors arm-apps-daemon.mjs).
-          envs: APP_NODE,BASE_DOMAIN,CADDY_ADMIN,TENANT_ADMIN_DSN,EGRESS_PROXY
+          envs: APP_NODE,BASE_DOMAIN,CADDY_ADMIN,TENANT_ADMIN_DSN,EGRESS_PROXY,SYSTEMD_UNIT
           script: |
             set -euo pipefail
             F=/opt/eliza/cloud/.env.local
@@ -159,8 +172,11 @@ jobs:
             sudo grep -E '^(APPS_|CONTAINERS_(DOCKER_NODES|SSH_USER|PUBLIC_BASE_DOMAIN|EGRESS_PROXY_URL))' "$F" \
               | sed -E 's/(DSN|KEY)=.*/\1=<redacted>/'
 
-            sudo systemctl restart eliza-provisioning-worker.service
+            # Restart whichever daemon we armed: the dedicated apps-worker on the
+            # apps-control host, or the shared control-plane provisioning-worker.
+            UNIT="${SYSTEMD_UNIT:-eliza-provisioning-worker.service}"
+            sudo systemctl restart "$UNIT"
             sleep 2
-            echo "--- daemon status ---"
-            systemctl is-active eliza-provisioning-worker.service
-            journalctl -u eliza-provisioning-worker.service -n 10 --no-pager | tail -10 || true
+            echo "--- daemon status ($UNIT) ---"
+            systemctl is-active "$UNIT"
+            journalctl -u "$UNIT" -n 10 --no-pager | tail -10 || true

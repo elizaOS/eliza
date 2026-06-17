@@ -14,6 +14,10 @@
 
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  type ProvisioningJobType,
+  resolveJobTypesForLanes,
+} from "@elizaos/cloud-shared/lib/services/provisioning-job-types";
 import type {
   HeartbeatResult,
   ProcessingResult,
@@ -67,6 +71,14 @@ export interface ProvisioningWorkerConfig {
   batchSize: number;
   runOnce: boolean;
   nodeHealthIntervalMs: number;
+  /**
+   * Job types this daemon claims, from `PROVISIONING_JOB_LANES`. Unset → ALL
+   * (the single-daemon default; behavior unchanged). Pin to `agent` once a
+   * dedicated apps-control daemon owns the `apps` lane so this control-plane
+   * worker stops claiming (and failing) APP_DEPLOY/CONTAINER_* jobs it can't
+   * reach the private tenant DB to run.
+   */
+  jobTypes: readonly ProvisioningJobType[];
 }
 
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
@@ -103,6 +115,7 @@ export function readWorkerConfig(
       env.WORKER_NODE_HEALTH_INTERVAL,
       DEFAULT_NODE_HEALTH_INTERVAL_MS,
     ),
+    jobTypes: resolveJobTypesForLanes(env.PROVISIONING_JOB_LANES),
   };
 }
 
@@ -208,9 +221,10 @@ export async function assertProvisioningWorkerPreflight(
 
 async function processProvisioningWorkerCycle(
   batchSize = readWorkerConfig().batchSize,
+  jobTypes?: readonly ProvisioningJobType[],
 ): Promise<ProcessingResult> {
   const { provisioningJobService } = await loadDeps();
-  return provisioningJobService.processPendingJobs(batchSize);
+  return provisioningJobService.processPendingJobs(batchSize, { jobTypes });
 }
 
 async function processHeartbeatCycle(
@@ -615,7 +629,10 @@ async function pollCycle(
     return;
   }
   try {
-    const result = await processProvisioningWorkerCycle(config.batchSize);
+    const result = await processProvisioningWorkerCycle(
+      config.batchSize,
+      config.jobTypes,
+    );
     if (result.claimed > 0 || result.failed > 0) {
       logger.info(
         "[provisioning-worker] cycle complete",
@@ -805,6 +822,10 @@ async function main(): Promise<void> {
     batchSize: config.batchSize,
     runOnce: config.runOnce,
     nodeHealthIntervalMs: config.nodeHealthIntervalMs,
+    // Surface the claim scope: empty PROVISIONING_JOB_LANES → all 18 types.
+    // When a dedicated apps daemon ships, pin this one to `agent`.
+    jobLanes: process.env.PROVISIONING_JOB_LANES || "(all)",
+    jobTypeCount: config.jobTypes.length,
   });
 
   await assertProvisioningWorkerPreflight();
