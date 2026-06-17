@@ -79,14 +79,10 @@ const AppsPage = lazy(() => import("@/dashboard/apps/Page"));
 type AgentsQuery = ReturnType<typeof useAgents>;
 type ApiKeysQuery = ReturnType<typeof useApiKeys>;
 
-// The canvas UI reads a couple of display fields the agent-list DTO does not
-// (yet) carry (`name`, `runtime`); they are optional and currently unpopulated
-// by the API, so they render as the existing fallbacks.
 type AgentListItem = NonNullable<AgentsQuery["data"]>[number];
-type CanvasAgent = AgentListItem & { name?: string; runtime?: string };
-// Likewise the keys table reads a plaintext `token` the list DTO omits.
+type CanvasAgent = AgentListItem;
 type ApiKeyItem = NonNullable<ApiKeysQuery["data"]>[number];
-type CanvasApiKey = ApiKeyItem & { token?: string };
+type CanvasApiKey = ApiKeyItem;
 
 interface ChatMessage {
   id: string;
@@ -1346,7 +1342,7 @@ function PremiumNodeRenderer({
                     className="flex justify-between items-center bg-white/[0.01] border border-white/[0.03] rounded-lg p-2 text-xs"
                   >
                     <span className="font-mono text-white/80 truncate max-w-[120px]">
-                      {a.name}
+                      {a.agentName ?? "Unnamed agent"}
                     </span>
                     <span
                       className={`text-[9px] px-1.5 py-0.5 rounded border font-bold uppercase ${
@@ -1510,7 +1506,7 @@ function PremiumNodeRenderer({
                         className={`w-2 h-2 rounded-full ${agent.status === "running" ? "bg-emerald-400 animate-pulse shadow-[0_0_6px_#34d399]" : "bg-zinc-500"}`}
                       />
                       <span className="font-medium truncate max-w-[120px]">
-                        {agent.name}
+                        {agent.agentName ?? "Unnamed agent"}
                       </span>
                     </div>
                     <button
@@ -1604,17 +1600,15 @@ function PremiumNodeRenderer({
                     </span>
                     <div className="flex items-center gap-1.5">
                       <span className="font-mono text-white/30 text-[10px]">
-                        eliza_••••{k.token?.slice(-4) || "4a2b"}
+                        {k.key_prefix}
                       </span>
                       <button
                         type="button"
                         onClick={() => {
-                          navigator.clipboard.writeText(
-                            k.token || "mock-key-token",
-                          );
+                          navigator.clipboard.writeText(k.key_prefix);
                         }}
                         className="p-1 rounded hover:bg-white/5 text-white/40 hover:text-white transition-colors"
-                        title="Copy Key"
+                        title="Copy key prefix"
                       >
                         <Copy className="h-3 w-3" />
                       </button>
@@ -2159,11 +2153,11 @@ function PremiumNodeRenderer({
                       className={`w-2 h-2 rounded-full shrink-0 ${agent.status === "running" ? "bg-emerald-400 animate-pulse shadow-[0_0_6px_#34d399]" : "bg-zinc-500"}`}
                     />
                     <span className="font-semibold text-xs truncate">
-                      {agent.name}
+                      {agent.agentName ?? "Unnamed agent"}
                     </span>
                   </div>
                   <span className="text-[9px] font-mono text-white/30 uppercase">
-                    {agent.runtime || "node"}
+                    node
                   </span>
                 </button>
               ))}
@@ -2189,7 +2183,7 @@ function PremiumNodeRenderer({
                 <div className="flex justify-between items-start border-b border-white/10 pb-4 mb-4">
                   <div>
                     <h2 className="text-xl font-bold text-zinc-100 flex items-center gap-3">
-                      {activeAgent.name}
+                      {activeAgent.agentName ?? "Unnamed agent"}
                       <span
                         className={`px-2 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider ${
                           activeAgent.status === "running"
@@ -2321,7 +2315,7 @@ function PremiumNodeRenderer({
                             </div>
                             <span>
                               Send a message to start chatting with{" "}
-                              {activeAgent.name}
+                              {activeAgent.agentName ?? "Unnamed agent"}
                             </span>
                           </div>
                         ) : (
@@ -2371,7 +2365,7 @@ function PremiumNodeRenderer({
                           }
                           placeholder={
                             activeAgent.status === "running"
-                              ? `Message ${activeAgent.name}...`
+                              ? `Message ${activeAgent.agentName ?? "Unnamed agent"}...`
                               : "Instance must be running to chat"
                           }
                           className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-[#FF5800]/50 placeholder-white/20"
@@ -3261,7 +3255,7 @@ function PremiumNodeRenderer({
                               )}
                             </td>
                             <td className="py-2.5 text-white/40">
-                              eliza_live_••••{k.token?.slice(-4) || "4a2b"}
+                              {k.key_prefix}
                             </td>
                             <td className="py-2.5 text-white/70">
                               {Number(k.usage_count || 0).toLocaleString()}{" "}
@@ -3296,10 +3290,8 @@ function PremiumNodeRenderer({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  navigator.clipboard.writeText(
-                                    k.token || "mock-token-copied",
-                                  );
-                                  alert("Key copied to clipboard!");
+                                  navigator.clipboard.writeText(k.key_prefix);
+                                  alert("Key prefix copied to clipboard");
                                 }}
                                 className="px-2 py-0.5 bg-white/5 border border-white/10 rounded hover:bg-white/10 text-white/60 hover:text-white cursor-pointer"
                               >
