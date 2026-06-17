@@ -263,7 +263,8 @@ export async function runViewsShow({
 	// Passive intent fallback: "what's on my calendar" / "I want to add a feature
 	// to my app" carry no explicit view name, so the verb scan yields nothing.
 	// Map the domain intent straight to a view id.
-	const target = extractViewTarget(message, options) ?? resolveIntentView(messageText);
+	const target =
+		extractViewTarget(message, options) ?? resolveIntentView(messageText);
 	if (!target) {
 		const text =
 			'Tell me which view to open. Try: "open wallet" or "show settings".';

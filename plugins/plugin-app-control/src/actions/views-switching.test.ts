@@ -274,16 +274,15 @@ describe("view switching — VIEWS action resolver", () => {
 			["show the logs view", "logs"],
 		];
 
-		it.each(ACTIVE_CASES)(
-			'"%s" navigates to view "%s"',
-			async (phrase, expectedId) => {
-				const { navigated } = installNavigateCapture();
-				const { result } = await runShow(REGISTRY, phrase);
-				expect(result?.success).toBe(true);
-				expect(result?.values?.viewId).toBe(expectedId);
-				expect(navigated).toEqual([expectedId]);
-			},
-		);
+		it.each(
+			ACTIVE_CASES,
+		)('"%s" navigates to view "%s"', async (phrase, expectedId) => {
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(REGISTRY, phrase);
+			expect(result?.success).toBe(true);
+			expect(result?.values?.viewId).toBe(expectedId);
+			expect(navigated).toEqual([expectedId]);
+		});
 
 		it("dispatches navigate to the exact /api/views/<id>/navigate endpoint", async () => {
 			installNavigateCapture();
@@ -316,19 +315,18 @@ describe("view switching — VIEWS action resolver", () => {
 			["how much money do I have", "wallet"],
 		];
 
-		it.each(PASSIVE_PLANNER_CASES)(
-			'planner-routed intent "%s" opens view "%s"',
-			async (phrase, viewId) => {
-				const { navigated } = installNavigateCapture();
-				const { result } = await runShow(REGISTRY, phrase, {
-					action: "show",
-					view: viewId,
-				});
-				expect(result?.success).toBe(true);
-				expect(result?.values?.viewId).toBe(viewId);
-				expect(navigated).toEqual([viewId]);
-			},
-		);
+		it.each(
+			PASSIVE_PLANNER_CASES,
+		)('planner-routed intent "%s" opens view "%s"', async (phrase, viewId) => {
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(REGISTRY, phrase, {
+				action: "show",
+				view: viewId,
+			});
+			expect(result?.success).toBe(true);
+			expect(result?.values?.viewId).toBe(viewId);
+			expect(navigated).toEqual([viewId]);
+		});
 
 		// The deterministic intent->view fallback (resolveIntentView) routes the
 		// spec's passive examples even when the planner does NOT pre-resolve the
@@ -529,7 +527,9 @@ describe("view switching — VIEWS action resolver", () => {
 			// Every listViews call must NOT request developerMode (the action relies
 			// on the route's default visibility filtering, not its own escalation).
 			for (const [opts] of calls) {
-				expect((opts as { developerMode?: boolean } | undefined)?.developerMode).toBeFalsy();
+				expect(
+					(opts as { developerMode?: boolean } | undefined)?.developerMode,
+				).toBeFalsy();
 			}
 		});
 	});
