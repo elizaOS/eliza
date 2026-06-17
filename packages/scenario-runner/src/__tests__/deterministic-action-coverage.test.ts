@@ -382,14 +382,10 @@ const APP_CONTROL_MODE_SURFACE: Record<
  * baseline may only shrink. The high-risk management modes below it are
  * covered by asserted turns and cannot be represented by helper strings.
  */
-const KNOWN_UNCOVERED_APP_CONTROL_MODES: readonly string[] = [
-  // Newly surfaced VIEWS modes without a deterministic scenario turn yet. The
-  // close-alias is exercised via the CLOSE_VIEW action; split/tile are
-  // multi-view layout ops. Cover them with real turns and delete here.
-  "VIEWS:close",
-  "VIEWS:split",
-  "VIEWS:tile",
-];
+// VIEWS:close/split/tile are now exercised by real scenario turns (the coverage
+// loader reports zero uncovered modes), so the known-uncovered baseline is empty.
+// Re-add a mode here only if its real scenario turn is intentionally removed.
+const KNOWN_UNCOVERED_APP_CONTROL_MODES: readonly string[] = [];
 
 const REQUIRED_APP_CONTROL_MODE_TURNS: readonly {
   actionName: AppControlActionName;
