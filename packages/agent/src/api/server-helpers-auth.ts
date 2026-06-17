@@ -41,6 +41,7 @@ export const CORS_ALLOWED_HEADERS = [
   "X-Eliza-Client-Id",
   "X-ElizaOS-Client-Id",
   "X-Eliza-Terminal-Token",
+  "X-Eliza-Platform",
   "X-Eliza-UI-Language",
   "X-ElizaOS-UI-Language",
   "X-Browser-Bridge-Companion-Id",
