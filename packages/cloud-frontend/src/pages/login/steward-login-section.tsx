@@ -67,7 +67,12 @@ const PLAYWRIGHT_TEST_AUTH_ENABLED =
   (typeof process !== "undefined" &&
     process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
 
-type AuthStep = "idle" | "loading" | "email-sent" | "success";
+type AuthStep =
+  | "idle"
+  | "loading"
+  | "email-sent"
+  | "otp-entry"
+  | "success";
 
 function persistStewardToken(token: string): void {
   writeStoredStewardToken(token);
@@ -222,6 +227,7 @@ export default function StewardLoginSection() {
   const emailInputRef = useRef<HTMLInputElement>(null);
 
   const [email, setEmail] = useState("");
+  const [otpCode, setOtpCode] = useState("");
   const [step, setStep] = useState<AuthStep>("idle");
   const [loading, setLoading] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -439,6 +445,32 @@ export default function StewardLoginSection() {
     setRedirectTo(resolveLoginReturnTo(searchParams));
   }
 
+  // Heuristic: did passkey login fail because this email has NO passkey yet
+  // (a brand-new or never-enrolled user), vs. a genuine error/cancel? When
+  // it's "no credential", we transparently fall into the Privy-style email
+  // OTP → passkey-register flow so a first-time user can set up a passkey.
+  function isNoPasskeyError(e: unknown): boolean {
+    const msg = getErrorMessage(e, "").toLowerCase();
+    return (
+      msg.includes("no passkey") ||
+      msg.includes("no credential") ||
+      msg.includes("not found") ||
+      msg.includes("404") ||
+      msg.includes("no matching")
+    );
+  }
+
+  // Did the user cancel the WebAuthn prompt? Don't auto-fallback on cancel.
+  function isUserCancelled(e: unknown): boolean {
+    const msg = getErrorMessage(e, "").toLowerCase();
+    return (
+      msg.includes("cancel") ||
+      msg.includes("notallowed") ||
+      msg.includes("aborted") ||
+      msg.includes("timed out")
+    );
+  }
+
   async function handlePasskey() {
     if (!email.trim()) {
       setError("Enter your email first");
@@ -452,7 +484,57 @@ export default function StewardLoginSection() {
       );
       await handleSuccess(result.token, result.refreshToken);
     } catch (e: unknown) {
+      // First-time user with no passkey yet → start the OTP-verified passkey
+      // signup instead of dead-ending. A real cancel stays an error.
+      if (isNoPasskeyError(e) && !isUserCancelled(e)) {
+        await startPasskeySignup();
+        return;
+      }
       setError(getErrorMessage(e, "Passkey failed"));
+      setLoading(null);
+    }
+  }
+
+  // First-time passkey signup, step 1: email a 6-digit OTP and switch to the
+  // code-entry step. (Parity with waifu.fun's first-time passkey setup.)
+  async function startPasskeySignup() {
+    setLoading("passkey");
+    setError(null);
+    try {
+      await auth.sendEmailOtp(email.trim());
+      setOtpCode("");
+      setStep("otp-entry");
+      setLoading(null);
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, "Couldn't send your code. Try again."));
+      setLoading(null);
+    }
+  }
+
+  // First-time passkey signup, step 2: verify the OTP → emailGrant → register
+  // a passkey with that grant (no prior session needed).
+  async function handleVerifyOtpAndRegister() {
+    const code = otpCode.trim();
+    if (code.length < 4) {
+      setError("Enter the code from your email");
+      return;
+    }
+    setLoading("passkey");
+    setError(null);
+    try {
+      const { emailGrant } = await auth.verifyEmailOtp(email.trim(), code);
+      const result = requireCompletedAuth(
+        await auth.addPasskey(email.trim(), { emailGrant }),
+      );
+      await handleSuccess(result.token, result.refreshToken);
+    } catch (e: unknown) {
+      if (isUserCancelled(e)) {
+        // They dismissed the OS passkey prompt — stay on the step so they can
+        // retry without re-entering the code.
+        setError("Passkey setup was cancelled. Tap Create passkey to retry.");
+      } else {
+        setError(getErrorMessage(e, "That code didn't work. Try again."));
+      }
       setLoading(null);
     }
   }
@@ -574,6 +656,87 @@ export default function StewardLoginSection() {
     );
   }
 
+  if (step === "otp-entry") {
+    return (
+      <div className="space-y-4 py-4">
+        <div className="space-y-1 text-center">
+          <p className="text-white">
+            {t("cloud.login.otp.title", {
+              defaultValue: "Set up your passkey",
+            })}
+          </p>
+          <p className="text-sm text-white/72">
+            {t("cloud.login.otp.subtitle", {
+              defaultValue: "Enter the 6-digit code we sent to",
+            })}{" "}
+            <strong>{email}</strong>
+          </p>
+        </div>
+
+        {error && (
+          <Alert variant="destructive">
+            <AlertCircle />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <input
+          type="text"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          // biome-ignore lint/a11y/noAutofocus: code-entry step expects focus
+          autoFocus
+          maxLength={8}
+          placeholder="123456"
+          value={otpCode}
+          onChange={(e) =>
+            setOtpCode(e.target.value.replace(/[^0-9]/g, "").slice(0, 8))
+          }
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleVerifyOtpAndRegister();
+          }}
+          disabled={loading !== null}
+          className="w-full border border-white/20 bg-black px-4 py-3 text-center text-lg tracking-[0.5em] text-white placeholder:tracking-normal placeholder:text-white/40 outline-none transition focus:border-white focus:ring-2 focus:ring-[#FF5800]/40 disabled:opacity-50"
+        />
+
+        <button
+          type="button"
+          onClick={handleVerifyOtpAndRegister}
+          disabled={loading !== null || otpCode.trim().length < 4}
+          className="flex w-full items-center justify-center gap-2 bg-[#FF5800] px-4 py-3 font-semibold text-white transition-colors hover:bg-[#e54f00] disabled:opacity-50"
+        >
+          {loading === "passkey" ? <Spinner /> : <PasskeyIcon />}{" "}
+          {t("cloud.login.otp.createPasskey", {
+            defaultValue: "Create passkey",
+          })}
+        </button>
+
+        <div className="flex items-center justify-between text-sm">
+          <button
+            type="button"
+            className="text-white/68 transition-colors hover:text-white"
+            onClick={() => {
+              setStep("idle");
+              setOtpCode("");
+              setError(null);
+              setLoading(null);
+            }}
+          >
+            ← {t("cloud.login.back", { defaultValue: "Back" })}
+          </button>
+          <button
+            type="button"
+            className="text-white/68 transition-colors hover:text-white disabled:opacity-50"
+            disabled={loading !== null}
+            onClick={startPasskeySignup}
+          >
+            {t("cloud.login.otp.resend", { defaultValue: "Resend code" })}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!providersLoaded) {
     return (
       <div
@@ -651,7 +814,7 @@ export default function StewardLoginSection() {
       <p className="text-center text-xs leading-5 text-white/62">
         {t("cloud.login.signupHint", {
           defaultValue:
-            "New here? Enter your email and choose Magic Link to create your account. Passkey works after you add one.",
+            "New here? Enter your email and tap Passkey — we'll email you a code, then set up your passkey. Magic Link works too.",
         })}
       </p>
 

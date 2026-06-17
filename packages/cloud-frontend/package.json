@@ -41,7 +41,7 @@
     "@solana/web3.js": "1.98.4",
     "@simplewebauthn/browser": "^13.3.0",
     "@stwd/react": "^0.7.2",
-    "@stwd/sdk": "^0.10.1",
+    "@stwd/sdk": "^0.11.0",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/react-query": "^5.90.20",
