@@ -328,7 +328,7 @@
     "ethers": "^6.16.0",
     "git-workspace-service": "0.4.5",
     "hono": "^4.12.18",
-    "ignore": "^5.1.4",
+    "ignore": "^7.0.5",
     "isomorphic-git": "^1.35.0",
     "jsdom": "^29.0.0",
     "json5": "^2.2.3",
