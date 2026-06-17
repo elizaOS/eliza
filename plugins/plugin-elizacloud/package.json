@@ -64,14 +64,14 @@
     }
   },
   "dependencies": {
-    "@ai-sdk/gateway": "3.0.109",
+    "@ai-sdk/gateway": "3.0.133",
     "@ai-sdk/openai": "^3.0.9",
     "@ai-sdk/provider": "3.0.10",
     "@ai-sdk/provider-utils": "4.0.26",
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
-    "@noble/curves": "1.9.1",
+    "@noble/curves": "2.2.0",
     "@noble/hashes": "1.8.0",
     "@opentelemetry/api": "1.9.1",
     "@scure/bip32": "1.7.0",
