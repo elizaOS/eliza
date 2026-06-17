@@ -46,44 +46,61 @@ const FILLER_WORDS = new Set([
 	"an",
 ]);
 
+// Match a show-verb on WORD BOUNDARIES at the earliest position in the text.
+// Anchoring with \b stops the bare verb "view" from firing inside words like
+// "overview"/"preview"/"review"/"interview" (which an unanchored indexOf scan
+// did, mis-parsing "give me an overview of my wallet"). Longest-first so a
+// multi-word verb ("navigate to") wins over any shorter prefix.
+const SHOW_VERB_PATTERN = new RegExp(
+	`\\b(?:${[...SHOW_VERBS]
+		.sort((a, b) => b.length - a.length)
+		.map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+		.join("|")})\\b`,
+	"i",
+);
+
 function extractViewTarget(
 	message: Memory | undefined,
 	options: Record<string, unknown> | undefined,
 ): string | null {
-	// Explicit option wins.
+	// Explicit option wins. Accept every alias the VIEWS schema + the other
+	// sub-modes accept (view/viewId/id/target/name) so a planner-supplied
+	// `{ action: "show", target: "settings" }` or `{ viewId: "settings" }`
+	// resolves instead of dead-ending on the text scan.
 	const explicit =
 		readStringOpt(options, "view") ??
+		readStringOpt(options, "viewId") ??
 		readStringOpt(options, "id") ??
+		readStringOpt(options, "target") ??
 		readStringOpt(options, "name");
 	if (explicit) return explicit;
 
 	const text = message?.content?.text ?? "";
-	const lower = text.toLowerCase();
 
-	for (const verb of SHOW_VERBS) {
-		const idx = lower.indexOf(verb);
-		if (idx === -1) continue;
-		const rest = text.slice(idx + verb.length).trim();
-		if (!rest) continue;
-		const tokens = rest
-			.split(/[\s,!.?]+/)
-			.map((t) => t.trim())
-			.filter((t) => t.length > 0);
-		// Strip filler from both ends: "the wallet view" / "wallet page" /
-		// "settings view please" should all resolve to the bare view name.
-		let start = 0;
-		while (
-			start < tokens.length &&
-			FILLER_WORDS.has(tokens[start].toLowerCase())
-		) {
-			start++;
+	const match = SHOW_VERB_PATTERN.exec(text);
+	if (match) {
+		const rest = text.slice(match.index + match[0].length).trim();
+		if (rest) {
+			const tokens = rest
+				.split(/[\s,!.?]+/)
+				.map((t) => t.trim())
+				.filter((t) => t.length > 0);
+			// Strip filler from both ends: "the wallet view" / "wallet page" /
+			// "settings view please" should all resolve to the bare view name.
+			let start = 0;
+			while (
+				start < tokens.length &&
+				FILLER_WORDS.has(tokens[start].toLowerCase())
+			) {
+				start++;
+			}
+			let end = tokens.length;
+			while (end > start && FILLER_WORDS.has(tokens[end - 1].toLowerCase())) {
+				end--;
+			}
+			const candidate = tokens.slice(start, end).join(" ").toLowerCase();
+			if (candidate && !FILLER_WORDS.has(candidate)) return candidate;
 		}
-		let end = tokens.length;
-		while (end > start && FILLER_WORDS.has(tokens[end - 1].toLowerCase())) {
-			end--;
-		}
-		const candidate = tokens.slice(start, end).join(" ").toLowerCase();
-		if (candidate && !FILLER_WORDS.has(candidate)) return candidate;
 	}
 
 	return null;

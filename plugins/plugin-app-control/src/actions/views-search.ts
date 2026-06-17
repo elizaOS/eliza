@@ -33,8 +33,14 @@ export function scoreView(view: ViewSummary, query: string): number {
 	if (label === q) return 100;
 	if (label.includes(q)) return 80;
 
+	// Tags are commonly hyphenated (screen-time, address-book, personal-assistant)
+	// but users speak them spaced ("screen time"). Normalize hyphens to spaces on
+	// both sides so the exact-tag tier still fires for the spoken form.
 	const tags = view.tags ?? [];
-	if (tags.some((t) => t.toLowerCase() === q)) return 60;
+	const qSpaced = q.replace(/-/g, " ");
+	if (tags.some((t) => t.toLowerCase().replace(/-/g, " ") === qSpaced)) {
+		return 60;
+	}
 
 	const description = (view.description ?? "").toLowerCase();
 	if (description.includes(q)) return 40;
