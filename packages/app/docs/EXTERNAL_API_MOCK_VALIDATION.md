@@ -69,8 +69,10 @@ not injectable need that refactor first.
 | Wallet RPC | EVM/Solana RPC + token providers | partial | **unvalidated** | Inline DTO fixtures, no recorded-real tie. |
 | ElevenLabs | api.elevenlabs.io | no (key) | **unvalidated** | TTS/STT; gated recorded fixture + live-refresh. |
 | Calendly | api.calendly.com | no (key) | **unvalidated** | `plugin-calendly`; gated recorded fixture. |
+| Calendly | api.calendly.com | no (token) | **validated** | `plugin-calendly/src/calendly-client.{contract,real}.test.ts` — recorded v2 `{resource}`/`{collection}` shapes through the real normalizers + gated live (CALENDLY_LIVE_TEST=1 + token). |
 | Strava | www.strava.com | no (OAuth) | **unvalidated** | gated recorded fixture. |
 | Google (Calendar/Gmail/Drive/YouTube) | googleapis.com | no (OAuth) | **unvalidated** | gated recorded fixtures per surface. |
+| ElevenLabs | api.elevenlabs.io | no (key) | **unvalidated** | TTS returns binary audio (no JSON parse); the `/voices` JSON list is the validation target. |
 | Web search | provider-dependent | no (key) | **unvalidated** | `plugin-web-search`; gated recorded fixture. |
 
 ## Ratchet

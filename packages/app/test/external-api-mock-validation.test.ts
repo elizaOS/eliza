@@ -43,6 +43,11 @@ const VALIDATED: Readonly<
     real: "plugins/plugin-wallet/src/routes/wallet-market-overview.real.test.ts",
     fixtures: "plugins/plugin-wallet/src/routes/__fixtures__",
   },
+  calendly: {
+    contract: "plugins/plugin-calendly/src/calendly-client.contract.test.ts",
+    real: "plugins/plugin-calendly/src/calendly-client.real.test.ts",
+    fixtures: "plugins/plugin-calendly/src/__fixtures__",
+  },
 };
 
 /**
@@ -73,8 +78,8 @@ const DEBT: Readonly<Record<string, string>> = {
   "wallet-rpc":
     "EVM/Solana RPC + token-balance providers use inline DTO fixtures.",
   elevenlabs:
-    "api.elevenlabs.io TTS/STT; key-gated recorded fixture + live-refresh.",
-  calendly: "api.calendly.com (plugin-calendly); key-gated recorded fixture.",
+    "api.elevenlabs.io TTS/STT; TTS returns binary audio (no JSON parser to " +
+    "validate) — the /voices JSON list is the validation target.",
   google:
     "googleapis.com Calendar/Gmail/Drive/YouTube; OAuth-gated recorded fixtures.",
   "web-search": "plugin-web-search; key-gated recorded fixture.",
@@ -82,7 +87,7 @@ const DEBT: Readonly<Record<string, string>> = {
 
 // True count of currently-unvalidated external integrations. The ratchet forbids
 // GROWING past this — it must only shrink as APIs are validated.
-const MAX_DEBT = 6;
+const MAX_DEBT = 5;
 
 describe("external-API mock validation ratchet", () => {
   it("every validated API keeps its recorded-contract + live-drift tests", () => {
