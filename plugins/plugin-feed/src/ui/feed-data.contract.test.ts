@@ -100,17 +100,17 @@ describe("feed-data parsers — real Feed response shapes", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // CONTRACT MISMATCH REGRESSION
+  // CONTRACT: the type lie is resolved.
   // ---------------------------------------------------------------------------
-  it("documents the canonical FeedAgentSummary vs extractAgentSummary envelope mismatch", () => {
-    // The canonical @elizaos/ui type for the /agent/summary endpoint is:
-    //   FeedAgentSummary = { id, name, summary, recentActivity[] }
-    // (client-types-feed.ts:289). The proxy + operator surface, however, read a
-    // DIFFERENT envelope: { agent, portfolio, positions }. The two disagree on
-    // the SAME endpoint. This test pins the divergence so it cannot drift
-    // unnoticed: feeding a canonical-shaped FeedAgentSummary through the real
-    // parser yields NO populated agent/portfolio (the data is silently dropped).
-    const canonical = {
+  // `getFeedAgentSummary()` used to be typed `Promise<FeedAgentSummary>`
+  // ({ id, name, summary, recentActivity }), but it only proxies the upstream
+  // body — it never builds that shape. It is now typed `Promise<unknown>` and the
+  // authoritative parser is `extractAgentSummary` (this file), which consumes the
+  // real `{ agent, portfolio, positions }` envelope. `FeedAgentSummary` is
+  // deprecated. These assertions lock that resolution: the parser is the contract,
+  // and the legacy canonical shape is NOT what the endpoint returns.
+  it("the legacy FeedAgentSummary shape is not the /agent/summary contract", () => {
+    const legacyCanonical = {
       id: "feed-agent-alice",
       name: "alice",
       summary: "Up 25% this week across prediction markets.",
@@ -124,17 +124,25 @@ describe("feed-data parsers — real Feed response shapes", () => {
       ],
     };
 
-    const result = extractAgentSummary(canonical);
-
-    // The parser ignores `summary` / `recentActivity` entirely; `agent` and
-    // `portfolio` come back undefined because the envelope keys are absent.
+    // The legacy shape carries none of the real envelope keys, so the parser
+    // (the contract) yields no agent/portfolio — confirming it is the wrong shape
+    // and that the client must NOT be typed with it.
+    const result = extractAgentSummary(legacyCanonical);
     expect(result.agent).toBeUndefined();
     expect(result.portfolio).toBeUndefined();
-    // The canonical fields the type promises are NOT surfaced by the parser.
     expect(result as Record<string, unknown>).not.toHaveProperty("summary");
     expect(result as Record<string, unknown>).not.toHaveProperty(
       "recentActivity",
     );
+
+    // The REAL envelope the endpoint returns parses into populated data.
+    const real = extractAgentSummary({
+      agent: { id: "feed-agent-alice", name: "Alice", balance: 1000 },
+      portfolio: { totalAssets: 1500 },
+      positions: { predictions: { positions: [] } },
+    });
+    expect(real.agent?.id).toBe("feed-agent-alice");
+    expect(real.portfolio?.totalAssets).toBe(1500);
   });
 
   it("extractTeamDashboard maps the team-dashboard response (agents + summary)", () => {

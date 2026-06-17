@@ -36,7 +36,6 @@ import type {
   FeedAgentGoal,
   FeedAgentStats,
   FeedAgentStatus,
-  FeedAgentSummary,
   FeedChat,
   FeedChatMessage,
   FeedChatMessagesResponse,
@@ -535,7 +534,15 @@ declare module "./client-base" {
     // Feed agent management
     getFeedAgentGoals(): Promise<FeedAgentGoal[]>;
     getFeedAgentStats(): Promise<FeedAgentStats>;
-    getFeedAgentSummary(): Promise<FeedAgentSummary>;
+    /**
+     * Raw proxied Feed `/agent/summary` response. The client does no parsing
+     * (it just forwards the upstream body), so the type is `unknown` and the
+     * caller validates it — `plugin-feed`'s `extractAgentSummary(value: unknown)`
+     * is the authoritative parser, producing a `FeedAgentSummaryEnvelope`
+     * (`{agent,portfolio,positions}`). The former `Promise<FeedAgentSummary>`
+     * annotation was a false claim: the method never constructs that shape.
+     */
+    getFeedAgentSummary(): Promise<unknown>;
     getFeedAgentRecentTrades(): Promise<FeedActivityFeed>;
     getFeedAgentTradingBalance(): Promise<{ balance: number }>;
     sendFeedAgentChat(content: string): Promise<FeedChatResponse>;
