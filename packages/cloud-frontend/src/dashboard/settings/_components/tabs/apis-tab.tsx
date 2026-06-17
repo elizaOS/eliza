@@ -134,6 +134,7 @@ export function ApisTab({ user: _user }: ApisTabProps) {
       body: JSON.stringify({
         name: formState.name.trim(),
         description: formState.description.trim() || undefined,
+        permissions: [],
         rate_limit: 1000,
       }),
     });
@@ -317,9 +318,11 @@ export function ApisTab({ user: _user }: ApisTabProps) {
                             {apiKey.name}
                           </h4>
                           <span className="px-2 py-0.5 bg-[rgba(255,88,0,0.25)] border border-[var(--brand-orange)]/40 text-[var(--brand-orange)] text-xs font-mono uppercase flex-shrink-0">
-                            {t("cloud.apisTab.all", {
-                              defaultValue: "All",
-                            })}
+                            {apiKey.permissions.length > 0
+                              ? apiKey.permissions.join(", ")
+                              : t("cloud.apisTab.all", {
+                                  defaultValue: "All",
+                                })}
                           </span>
                         </div>
                         {apiKey.description && (
@@ -474,9 +477,11 @@ export function ApisTab({ user: _user }: ApisTabProps) {
                                 {apiKey.name}
                               </h4>
                               <span className="px-2 py-0.5 bg-[rgba(255,88,0,0.25)] border border-[var(--brand-orange)]/40 text-[var(--brand-orange)] text-xs font-mono uppercase">
-                                {t("cloud.apisTab.all", {
-                                  defaultValue: "All",
-                                })}
+                                {apiKey.permissions.length > 0
+                                  ? apiKey.permissions.join(", ")
+                                  : t("cloud.apisTab.all", {
+                                      defaultValue: "All",
+                                    })}
                               </span>
                             </div>
                             {apiKey.description && (

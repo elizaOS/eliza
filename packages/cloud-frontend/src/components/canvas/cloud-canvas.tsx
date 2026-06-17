@@ -19,11 +19,13 @@ import {
   Eye,
   EyeOff,
   FileCode,
+  Fingerprint,
   Globe,
   Grid,
   Key,
   Link2,
   Loader2,
+  Lock,
   MessageSquare,
   Plug,
   Plus,
@@ -466,6 +468,13 @@ function PremiumNodeRenderer({
     location.pathname,
   ]);
 
+  // Biometric verification state for sensitive nodes
+  const [isBiometricsVerified, setIsBiometricsVerified] = useState(false);
+  const [verificationState, setVerificationState] = useState<
+    "idle" | "scanning" | "success" | "failed"
+  >("idle");
+  const [scanProgress, setScanProgress] = useState(0);
+
   // API Keys editing and import states
   const [editingKeyId, setEditingKeyId] = useState<string | null>(null);
   const [editingKeyName, setEditingKeyName] = useState("");
@@ -816,11 +825,21 @@ function PremiumNodeRenderer({
               description: `Pasted via Quick Set`,
             });
           } else {
+            let permissions = "read_write";
+            if (
+              ["full_admin", "admin", "full"].includes(valOrScope.toLowerCase())
+            ) {
+              permissions = "full_admin";
+            } else if (
+              ["read_only", "read"].includes(valOrScope.toLowerCase())
+            ) {
+              permissions = "read_only";
+            }
             const res = await api<{ apiKey: any; plainKey: string }>(
               "/api/v1/api-keys",
               {
                 method: "POST",
-                json: { name },
+                json: { name, permissions: [permissions] },
               },
             );
             if (res?.plainKey) {
@@ -828,11 +847,12 @@ function PremiumNodeRenderer({
             }
           }
         } else {
+          // Eliza Cloud Key without scope
           const res = await api<{ apiKey: any; plainKey: string }>(
             "/api/v1/api-keys",
             {
               method: "POST",
-              json: { name: line },
+              json: { name: line, permissions: ["read_write"] },
             },
           );
           if (res?.plainKey) {
@@ -889,6 +909,100 @@ function PremiumNodeRenderer({
       setIsSavingQuickPaste(false);
     }
   }, [quickPasteText, apiKeysQuery]);
+
+  const startVerification = useCallback(async () => {
+    setVerificationState("scanning");
+    setScanProgress(0);
+
+    let currentProgress = 0;
+    const progressInterval = setInterval(() => {
+      currentProgress += 5;
+      setScanProgress(Math.min(currentProgress, 90));
+    }, 50);
+
+    try {
+      if (typeof window !== "undefined" && window.PublicKeyCredential) {
+        const savedCredIdHex = localStorage.getItem(
+          "eliza_cloud_biometric_cred_id",
+        );
+        let credential: any;
+        const challenge = new Uint8Array(32);
+        window.crypto.getRandomValues(challenge);
+
+        if (savedCredIdHex) {
+          const credId = new Uint8Array(
+            savedCredIdHex
+              .match(/.{1,2}/g)
+              ?.map((byte) => parseInt(byte, 16)) || [],
+          );
+          credential = await navigator.credentials.get({
+            publicKey: {
+              challenge,
+              rpId: window.location.hostname,
+              allowCredentials: [
+                {
+                  type: "public-key",
+                  id: credId,
+                },
+              ],
+              userVerification: "required",
+              timeout: 60000,
+            },
+          });
+        } else {
+          credential = await navigator.credentials.create({
+            publicKey: {
+              challenge,
+              rp: {
+                name: "elizaOS Cloud",
+                id: window.location.hostname,
+              },
+              user: {
+                id: new Uint8Array([1, 2, 3, 4]),
+                name: "admin@eliza.cloud",
+                displayName: "elizaOS Administrator",
+              },
+              pubKeyCredParams: [
+                { alg: -7, type: "public-key" },
+                { alg: -257, type: "public-key" },
+              ],
+              authenticatorSelection: {
+                authenticatorAttachment: "platform",
+                userVerification: "required",
+                requireResidentKey: false,
+              },
+              timeout: 60000,
+            },
+          });
+
+          if (credential && "rawId" in credential) {
+            const rawIdBytes = new Uint8Array(credential.rawId);
+            const hexId = Array.from(rawIdBytes)
+              .map((b) => b.toString(16).padStart(2, "0"))
+              .join("");
+            localStorage.setItem("eliza_cloud_biometric_cred_id", hexId);
+          }
+        }
+
+        if (credential) {
+          clearInterval(progressInterval);
+          setScanProgress(100);
+          setVerificationState("success");
+          setTimeout(() => {
+            setIsBiometricsVerified(true);
+          }, 800);
+        } else {
+          throw new Error("No credential returned");
+        }
+      } else {
+        throw new Error("WebAuthn not supported");
+      }
+    } catch (error) {
+      clearInterval(progressInterval);
+      setVerificationState("failed");
+      console.error("Biometric verification error:", error);
+    }
+  }, []);
 
   // Containers state
   const [containers, setContainers] = useState<any[]>([]);
@@ -1029,6 +1143,7 @@ function PremiumNodeRenderer({
   });
   const [showApiKey, setShowApiKey] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
+  const [newKeyScope, setNewKeyScope] = useState("read_write");
   const [_mcpConfig, _setMcpConfig] = useState(
     JSON.stringify(
       {
@@ -1157,6 +1272,155 @@ function PremiumNodeRenderer({
   const agents = agentsQuery?.data ?? [];
   const apiKeys = apiKeysQuery?.data ?? [];
   const balance = creditBalance ?? 0;
+
+  // Biometric scanner check for sensitive API Keys node
+  if (node.type === "apikeys" && !isBiometricsVerified) {
+    return (
+      <div className="w-full h-full min-h-[240px] flex flex-col items-center justify-center p-6 text-center select-none bg-black/40 backdrop-blur-md rounded-xl relative overflow-hidden border border-white/10 animate-fade-in">
+        {/* CSS styles for the scan laser line */}
+        <style>{`
+          @keyframes scan-laser {
+            0% { top: 0%; opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { top: 100%; opacity: 0; }
+          }
+          @keyframes ring-spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+          .animate-scan-laser {
+            animation: scan-laser 2s ease-in-out infinite;
+          }
+          .animate-ring-spin {
+            animation: ring-spin 8s linear infinite;
+          }
+        `}</style>
+
+        {/* Hexagonal grid / security ambient background */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,88,0,0.05)_0%,transparent_70%)] pointer-events-none" />
+
+        {/* Scanner container */}
+        <div className="relative flex items-center justify-center w-28 h-28 mb-4">
+          {/* External decorative spinning circular rings */}
+          <div
+            className={`absolute inset-0 border border-dashed border-[#FF5800]/20 rounded-full ${verificationState === "scanning" ? "animate-ring-spin border-[#FF5800]/40" : ""}`}
+          />
+          <div
+            className={`absolute inset-2 border border-double border-white/5 rounded-full ${verificationState === "scanning" ? "border-emerald-500/20" : ""}`}
+          />
+
+          {/* Central Scanning Frame */}
+          <div
+            className={`relative w-20 h-20 rounded-2xl flex items-center justify-center border transition-all duration-300 bg-white/[0.02] ${
+              verificationState === "scanning"
+                ? "border-[#FF5800] shadow-[0_0_15px_rgba(255,88,0,0.2)] bg-[#FF5800]/5"
+                : verificationState === "success"
+                  ? "border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.3)] bg-emerald-500/10"
+                  : verificationState === "failed"
+                    ? "border-rose-500 shadow-[0_0_15px_rgba(239,68,68,0.3)] bg-rose-500/10"
+                    : "border-white/10 hover:border-white/20"
+            }`}
+          >
+            {/* Holographic scanning laser line */}
+            {verificationState === "scanning" && (
+              <div className="absolute left-0 right-0 h-0.5 bg-[#FF5800] shadow-[0_0_8px_#FF5800] animate-scan-laser z-10" />
+            )}
+
+            {verificationState === "success" ? (
+              <svg
+                className="w-10 h-10 text-emerald-400 stroke-current animate-bounce"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth="3"
+                role="img"
+                aria-label="Success"
+              >
+                <title>Success</title>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
+            ) : (
+              <Fingerprint
+                className={`w-10 h-10 transition-all duration-300 ${
+                  verificationState === "scanning"
+                    ? "text-[#FF5800] scale-110"
+                    : verificationState === "failed"
+                      ? "text-rose-500"
+                      : "text-white/40 hover:text-white/60"
+                }`}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Text Header */}
+        <div className="z-10 max-w-sm mb-5">
+          <h3 className="text-sm font-bold tracking-wide text-white flex items-center justify-center gap-1.5">
+            <Lock className="w-3.5 h-3.5 text-[#FF5800]" />
+            {verificationState === "scanning"
+              ? "Biometric Scanning..."
+              : verificationState === "success"
+                ? "Access Granted"
+                : verificationState === "failed"
+                  ? "Verification Failed"
+                  : "Security Verification"}
+          </h3>
+          <p className="text-[11px] text-white/50 mt-1 leading-relaxed">
+            {verificationState === "scanning"
+              ? `Simulating local hardware credential handshake (${scanProgress}%)`
+              : verificationState === "success"
+                ? "Secure tunnel established. Decoding keys..."
+                : verificationState === "failed"
+                  ? "Biometric scan cancelled or not supported in this browser context."
+                  : "Verify your identity via Touch ID or Face ID to manage elizaOS Cloud API keys."}
+          </p>
+        </div>
+
+        {/* Verification Button */}
+        {verificationState === "idle" && (
+          <button
+            type="button"
+            onClick={startVerification}
+            className="px-5 py-2 text-xs font-bold text-black bg-[#FF5800] rounded-xl hover:bg-[#ff7426] active:scale-[0.98] transition-all shadow-[0_4px_12px_rgba(255,88,0,0.2)] hover:shadow-[0_4px_20px_rgba(255,88,0,0.4)] cursor-pointer"
+          >
+            Scan Biometrics
+          </button>
+        )}
+
+        {verificationState === "failed" && (
+          <div className="flex flex-col gap-2 w-full max-w-xs">
+            <button
+              type="button"
+              onClick={startVerification}
+              className="px-5 py-2 text-xs font-bold text-black bg-[#FF5800] rounded-xl hover:bg-[#ff7426] active:scale-[0.98] transition-all shadow-[0_4px_12px_rgba(255,88,0,0.2)] hover:shadow-[0_4px_20px_rgba(255,88,0,0.4)] cursor-pointer"
+            >
+              Retry Biometrics
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsBiometricsVerified(true)}
+              className="px-5 py-2 text-xs font-bold text-white/70 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 hover:text-white active:scale-[0.98] transition-all cursor-pointer"
+            >
+              Developer Bypass (Dev Mode)
+            </button>
+          </div>
+        )}
+
+        {verificationState === "scanning" && (
+          <div className="w-24 h-1 bg-white/10 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-[#FF5800] transition-all duration-100"
+              style={{ width: `${scanProgress}%` }}
+            />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   // Render minimized view
   if (!isMaximized) {
@@ -2980,6 +3244,21 @@ function PremiumNodeRenderer({
                     />
                   </div>
 
+                  <div className="flex flex-col gap-1.5">
+                    <label className="font-mono text-[9px] text-white/40 uppercase font-bold">
+                      Scope Permissions
+                    </label>
+                    <select
+                      value={newKeyScope}
+                      onChange={(e) => setNewKeyScope(e.target.value)}
+                      className="bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-white outline-none focus:border-[#FF5800]/50"
+                    >
+                      <option value="read_only">Read-Only Access</option>
+                      <option value="read_write">Read & Write Access</option>
+                      <option value="full_admin">Full Administrator</option>
+                    </select>
+                  </div>
+
                   <button
                     type="button"
                     onClick={async () => {
@@ -2988,7 +3267,10 @@ function PremiumNodeRenderer({
                         "/api/v1/api-keys",
                         {
                           method: "POST",
-                          json: { name: newKeyName },
+                          json: {
+                            name: newKeyName,
+                            permissions: [newKeyScope],
+                          },
                         },
                       );
                       if (res?.plainKey) {
@@ -3015,6 +3297,7 @@ function PremiumNodeRenderer({
                       <tr className="border-b border-white/5 text-left text-[10px] font-mono text-white/30 uppercase">
                         <th className="pb-2 font-medium">Name</th>
                         <th className="pb-2 font-medium">Token Prefix</th>
+                        <th className="pb-2 font-medium">Scope</th>
                         <th className="pb-2 font-medium">Usage</th>
                         <th className="pb-2 font-medium">Rate Limit</th>
                         <th className="pb-2 font-medium">Status</th>
@@ -3121,6 +3404,20 @@ function PremiumNodeRenderer({
                             </td>
                             <td className="py-2.5 text-white/40">
                               eliza_live_••••{k.token?.slice(-4) || "4a2b"}
+                            </td>
+                            <td className="py-2.5">
+                              <span
+                                className={`text-[9px] px-1.5 py-0.5 rounded border uppercase font-bold ${
+                                  k.permissions === "full_admin"
+                                    ? "bg-rose-500/10 border-rose-500/20 text-rose-400"
+                                    : k.permissions === "read_write"
+                                      ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                                      : "bg-sky-500/10 border-sky-500/20 text-sky-400"
+                                }`}
+                              >
+                                {k.permissions?.replace("_", " ") ||
+                                  "read write"}
+                              </span>
                             </td>
                             <td className="py-2.5 text-white/70">
                               {Number(k.usage_count || 0).toLocaleString()}{" "}

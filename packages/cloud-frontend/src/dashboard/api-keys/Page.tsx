@@ -84,6 +84,7 @@ function ApiKeysPageContent({
     status: getApiKeyStatus(key.is_active, key.expires_at),
     lastUsedAt: key.last_used_at,
     createdAt: key.created_at,
+    permissions: key.permissions,
     usageCount: key.usage_count,
     rateLimit: key.rate_limit,
     expiresAt: key.expires_at,
