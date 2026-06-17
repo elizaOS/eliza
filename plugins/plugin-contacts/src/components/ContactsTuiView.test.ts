@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import fc from "fast-check";
 import React from "react";
@@ -112,6 +113,141 @@ describe("ContactsTuiView", () => {
         emailAddress: "kj@example.com",
       }),
     );
+  });
+
+  it("renders the populated terminal list, a starred glyph, and selecting a row shows its detail", async () => {
+    mockBridge();
+
+    const { container } = render(React.createElement(ContactsTuiView));
+    await screen.findByText("Ada Lovelace");
+
+    // Status line reflects the loaded count.
+    expect(screen.getByText("2 contacts | refresh")).toBeTruthy();
+
+    // The starred row exposes a behavioral aria-label/title (not a "*"/"-"
+    // string) — this is the visual-copy guarantee, enforced by behavior.
+    expect(screen.getByLabelText("Starred")).toBeTruthy();
+    expect(screen.getByLabelText("Not starred")).toBeTruthy();
+    expect(
+      container.querySelector('[role="img"][title="Starred"]'),
+    ).toBeTruthy();
+
+    // Selecting a row opens its detail (id + deduped tel/mail + starred).
+    fireEvent.click(screen.getByText("Ada Lovelace"));
+    const detail = screen.getByLabelText(
+      "Contacts detail and create",
+    ) as HTMLElement;
+    expect(within(detail).getByText("ada")).toBeTruthy(); // id value
+    expect(within(detail).getByText("+15550100")).toBeTruthy(); // tel
+    expect(within(detail).getByText("ada@example.com")).toBeTruthy(); // mail
+    expect(within(detail).getByText("starred")).toBeTruthy();
+
+    const stateElement = container.querySelector("[data-view-state]");
+    expect(
+      JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}"),
+    ).toMatchObject({
+      selectedId: "ada",
+      selectedName: "Ada Lovelace",
+      lastAction: "open ada",
+    });
+  });
+
+  it("search filters the list via loadContactsState and records lastAction", async () => {
+    mockBridge();
+    // First load returns both; the post-search reload returns only Ada.
+    contactsBridge.listContacts.mockResolvedValueOnce({
+      contacts: sampleContacts,
+    });
+    contactsBridge.listContacts.mockResolvedValue({
+      contacts: [sampleContacts[0]],
+    });
+
+    const { container } = render(React.createElement(ContactsTuiView));
+    await screen.findByText("Grace Hopper");
+
+    fireEvent.change(screen.getByRole("textbox", { name: "search" }), {
+      target: { value: "ada" },
+    });
+
+    await waitFor(() => expect(screen.queryByText("Grace Hopper")).toBeNull());
+    expect(screen.getByText("Ada Lovelace")).toBeTruthy();
+    // The query is forwarded to the native bridge.
+    expect(contactsBridge.listContacts).toHaveBeenCalledWith({ query: "ada" });
+
+    await waitFor(() => {
+      const state = JSON.parse(
+        container
+          .querySelector("[data-view-state]")
+          ?.getAttribute("data-view-state") ?? "{}",
+      );
+      expect(state.query).toBe("ada");
+      expect(state.lastAction).toBe("search ada");
+    });
+  });
+
+  it("imports pasted vCard text, clears the textarea, and records the imported count", async () => {
+    mockBridge();
+
+    const { container } = render(React.createElement(ContactsTuiView));
+    await screen.findByText("Ada Lovelace");
+
+    const importBtn = screen.getByText("import-vcard") as HTMLButtonElement;
+    // Disabled until the textarea has content.
+    expect(importBtn.disabled).toBe(true);
+
+    const vcardArea = screen.getByRole("textbox", {
+      name: "vcard",
+    }) as HTMLTextAreaElement;
+    fireEvent.change(vcardArea, {
+      target: { value: "BEGIN:VCARD\nFN:Imported Person\nEND:VCARD" },
+    });
+    expect(importBtn.disabled).toBe(false);
+
+    fireEvent.click(importBtn);
+
+    await waitFor(() =>
+      expect(contactsBridge.importVCard).toHaveBeenCalledWith({
+        vcardText: "BEGIN:VCARD\nFN:Imported Person\nEND:VCARD",
+      }),
+    );
+    // Textarea is cleared after a successful import.
+    await waitFor(() => expect(vcardArea.value).toBe(""));
+    // The list is re-fetched after import (initial load + post-import refresh).
+    expect(contactsBridge.listContacts).toHaveBeenCalledTimes(2);
+    // The view returns to a non-submitting, settled state with the textarea
+    // emptied in the JSON snapshot. (lastAction settles on the trailing
+    // refresh, since importVCard awaits refresh() after recording the count.)
+    await waitFor(() => {
+      const state = JSON.parse(
+        container
+          .querySelector("[data-view-state]")
+          ?.getAttribute("data-view-state") ?? "{}",
+      );
+      expect(state.pendingVCardLength).toBe(0);
+      expect(state.submitting).toBe(false);
+      expect(state.error).toBeNull();
+    });
+  });
+
+  it("refresh button re-fetches and create is gated until a name is typed", async () => {
+    mockBridge();
+
+    render(React.createElement(ContactsTuiView));
+    await screen.findByText("Ada Lovelace");
+    expect(contactsBridge.listContacts).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByText("refresh"));
+    await waitFor(() =>
+      expect(contactsBridge.listContacts).toHaveBeenCalledTimes(2),
+    );
+
+    // Create button is disabled with an empty name, enabled once a name exists.
+    const createBtn = screen.getByText("create") as HTMLButtonElement;
+    expect(createBtn.disabled).toBe(true);
+    fireEvent.change(screen.getByRole("textbox", { name: "name" }), {
+      target: { value: "Katherine Johnson" },
+    });
+    expect(createBtn.disabled).toBe(false);
   });
 
   it("supports terminal capabilities for list, create, and vcard import", async () => {
