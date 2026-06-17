@@ -999,14 +999,6 @@ function extractWsQueryToken(url: URL): string | null {
   return token?.trim() || null;
 }
 
-function hasWsQueryToken(url: URL): boolean {
-  return (
-    url.searchParams.has("token") ||
-    url.searchParams.has("apiKey") ||
-    url.searchParams.has("api_key")
-  );
-}
-
 function extractWebSocketHandshakeToken(
   request: http.IncomingMessage,
   url: URL,

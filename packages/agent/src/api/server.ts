@@ -134,37 +134,40 @@ function getLocalInferenceServerApi(): Promise<LocalInferenceServerApi> {
   // /api/local-inference/* route 404s on-device. The deep subpaths (the `./*`
   // wildcard + `./routes` exports) aren't stubbed and carry the real impls on
   // every platform.
-  localInferenceServerApiPromise ??= (async (): Promise<LocalInferenceServerApi> => {
-    const [routes, ttsRoutes] = await Promise.all([
-      import(
-        /* @vite-ignore */ "@elizaos/plugin-local-inference/local-inference-routes"
-      ) as Promise<
-        Pick<
-          LocalInferenceServerApi,
-          "getLocalInferenceActiveModelId" | "handleLocalInferenceRoutes"
-        >
-      >,
-      import(/* @vite-ignore */ "@elizaos/plugin-local-inference/routes") as Promise<
-        Pick<
-          LocalInferenceServerApi,
-          "handleLocalInferenceTtsRoute" | "handleLocalInferenceAsrRoute"
-        >
-      >,
-    ]);
-    return {
-      getLocalInferenceActiveModelId: routes.getLocalInferenceActiveModelId,
-      handleLocalInferenceRoutes: routes.handleLocalInferenceRoutes,
-      handleLocalInferenceTtsRoute: ttsRoutes.handleLocalInferenceTtsRoute,
-      handleLocalInferenceAsrRoute: ttsRoutes.handleLocalInferenceAsrRoute,
-    };
-  })().catch((err: unknown) => {
-    // A cold-boot import failure must not poison the memoized promise: `??=`
-    // would otherwise cache the rejection and 404 EVERY /api/local-inference/*
-    // route for the lifetime of the process. Clear the memo so the next request
-    // retries once the deferred plugin closure is resolvable.
-    localInferenceServerApiPromise = null;
-    throw err;
-  });
+  localInferenceServerApiPromise ??=
+    (async (): Promise<LocalInferenceServerApi> => {
+      const [routes, ttsRoutes] = await Promise.all([
+        import(
+          /* @vite-ignore */ "@elizaos/plugin-local-inference/local-inference-routes"
+        ) as Promise<
+          Pick<
+            LocalInferenceServerApi,
+            "getLocalInferenceActiveModelId" | "handleLocalInferenceRoutes"
+          >
+        >,
+        import(
+          /* @vite-ignore */ "@elizaos/plugin-local-inference/routes"
+        ) as Promise<
+          Pick<
+            LocalInferenceServerApi,
+            "handleLocalInferenceTtsRoute" | "handleLocalInferenceAsrRoute"
+          >
+        >,
+      ]);
+      return {
+        getLocalInferenceActiveModelId: routes.getLocalInferenceActiveModelId,
+        handleLocalInferenceRoutes: routes.handleLocalInferenceRoutes,
+        handleLocalInferenceTtsRoute: ttsRoutes.handleLocalInferenceTtsRoute,
+        handleLocalInferenceAsrRoute: ttsRoutes.handleLocalInferenceAsrRoute,
+      };
+    })().catch((err: unknown) => {
+      // A cold-boot import failure must not poison the memoized promise: `??=`
+      // would otherwise cache the rejection and 404 EVERY /api/local-inference/*
+      // route for the lifetime of the process. Clear the memo so the next request
+      // retries once the deferred plugin closure is resolvable.
+      localInferenceServerApiPromise = null;
+      throw err;
+    });
   return localInferenceServerApiPromise;
 }
 
