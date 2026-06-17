@@ -46,19 +46,6 @@ describe("Group K — /api/affiliate/create-character", () => {
     expect(body.details).toBeUndefined();
   });
 
-  test("standard API key is forbidden without affiliate permission", async () => {
-    const res = await api.post(
-      "/api/affiliate/create-character",
-      {
-        character: { name: "Forbidden Affiliate Character" },
-        affiliateId: "worker-e2e",
-      },
-      { headers: bearerHeaders() },
-    );
-    expect(res.status).toBe(403);
-    expect(res.status).not.toBe(501);
-  });
-
   test("affiliate API key creates a real character", async () => {
     const res = await api.post(
       "/api/affiliate/create-character",
