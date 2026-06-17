@@ -97,7 +97,10 @@ function normalizeBaseUrl(value: string | undefined, fallback: string): string {
   return trimTrailingSlash(trimmed && trimmed.length > 0 ? trimmed : fallback);
 }
 
-function normalizeApiBaseUrl(value: string | undefined, fallback: string): string {
+function normalizeApiBaseUrl(
+  value: string | undefined,
+  fallback: string,
+): string {
   const normalized = normalizeBaseUrl(value, fallback);
   return normalized.endsWith("/api/v1") ? normalized : `${normalized}/api/v1`;
 }

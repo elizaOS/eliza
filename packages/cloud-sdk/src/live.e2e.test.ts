@@ -66,6 +66,8 @@ const profileWriteDescribe =
 // Live public endpoints regularly cross Vitest's 5s default on hosted CI.
 // This is a timeout budget for real network work, not an artificial delay.
 const LIVE_PUBLIC_ENDPOINT_TIMEOUT_MS = 15_000;
+const openApiIt =
+  apiKey || process.env.ELIZA_CLOUD_SDK_LIVE_OPENAPI === "1" ? it : it.skip;
 
 function publicClient() {
   return new ElizaCloudClient({ baseUrl, apiBaseUrl });
@@ -91,9 +93,8 @@ function clientWithSession() {
 liveDescribe(
   "ElizaCloudClient real API e2e: public, auth bootstrap, and raw access",
   () => {
-    it.skipIf(!apiKey && process.env.ELIZA_CLOUD_SDK_LIVE_OPENAPI !== "1")(
+    openApiIt(
       "fetches the live OpenAPI document through getOpenApiSpec, request, and requestRaw",
-      { timeout: 30_000 },
       async () => {
         const client = apiKey ? clientWithApiKey() : publicClient();
 
