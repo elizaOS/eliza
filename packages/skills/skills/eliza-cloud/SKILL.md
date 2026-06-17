@@ -71,7 +71,7 @@ app-specific chat endpoint:
 - Browser starts sign-in at `/app-auth/authorize` with `app_id`, `redirect_uri`, and `state`.
 - Browser stores only the returned user token, never an owner API key.
 - Browser calls the app's same-origin proxy with `x-user-token`.
-- Proxy forwards to `/api/v1/apps/{id}/chat` with `Authorization: Bearer <user_jwt>` and optional `x-affiliate-code`.
+- Proxy forwards to `/api/v1/apps/{id}/chat` with `Authorization: Bearer <user_jwt>`. The app-scoped chat route does **not** read `x-affiliate-code` — for affiliate-attributed inference send `POST /api/v1/messages` with `x-app-id` + `x-affiliate-code` instead (see `build-monetized-app`).
 - Monetization uses `PUT /api/v1/apps/{id}/monetization` with markup/share fields.
 
 ## Important Reality Check
@@ -140,7 +140,7 @@ This is the catch-all skill for any user request about apps they already own. En
 | `request payout` | `/api/v1/redemptions` | POST |
 | `show app analytics / usage` | `/api/v1/apps/{id}/analytics` | GET |
 | `regenerate my api key` | `/api/v1/apps/{id}/regenerate-api-key` | POST |
-| `manage app users` | `/api/v1/apps/{id}/users` | GET / POST |
+| `list app users` | `/api/v1/apps/{id}/users` | GET |
 | `top up org credits` | `/api/v1/credits/checkout` or `/dashboard/billing` | POST / hosted |
 | `top up app credits` | `/api/v1/app-credits/checkout` | POST |
 | `start/provision a cloud tunnel` | `/api/v1/apis/tunnels/tailscale/auth-key` via `@elizaos/plugin-tailscale` | POST |

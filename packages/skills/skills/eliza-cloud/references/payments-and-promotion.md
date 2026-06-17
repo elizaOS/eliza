@@ -199,13 +199,13 @@ High-level SDK helpers are available on `ElizaCloudClient`:
 Direct credit checkout is useful for account top-ups, not exact creator charge
 logic.
 
-- `POST /api/v1/app-credits/checkout` buys into the per-app pre-purchased credit pool (`app_credit_balances`) — note inference now debits the org balance, so these purchases are currently stranded (issue #8253):
+- `POST /api/v1/app-credits/checkout` buys into the per-app pre-purchased credit pool (`app_credit_balances`) — note inference now debits the org balance, so these purchases are currently stranded (issue #8253). `amount` is `1..10000`; `success_url` + `cancel_url` are required:
 
   ```json
   { "app_id": "app_uuid", "amount": 25, "success_url": "...", "cancel_url": "..." }
   ```
 
-- `POST /api/v1/credits/checkout` buys organization credits:
+- `POST /api/v1/credits/checkout` buys organization credits. `credits` is `1..1000` (a value above 1000 is rejected `400`); `success_url` + `cancel_url` are required:
 
   ```json
   { "credits": 25, "success_url": "...", "cancel_url": "..." }
@@ -268,7 +268,7 @@ Payout requests use redemptions:
   "pointsAmount": 500,
   "network": "base",
   "payoutAddress": "0x0000000000000000000000000000000000000001",
-  "idempotencyKey": "withdrawal-request-001"
+  "idempotencyKey": "3f9a1c2e-4b5d-4789-abcd-ef0123456789"
 }
 ```
 
