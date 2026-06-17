@@ -45,6 +45,53 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@agentradar/eliza-plugin": {
+      "git": {
+        "repo": "Bichev/agentradar-integrations",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@agentradar/eliza-plugin",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "AgentRadar trust for elizaOS — a VERIFY_AGENT action and trust provider that check a wallet/agent's on-chain trust score (ERC-8004 reputation + scam database + static analysis) before your agent interacts with or pays it.",
+      "homepage": "https://github.com/Bichev/agentradar-integrations/tree/main/eliza-plugin-agentradar",
+      "topics": [
+        "trust",
+        "verification",
+        "x402",
+        "erc-8004",
+        "security",
+        "agent-economy",
+        "reputation"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "eliza-plugin-agentradar"
+    },
     "@thecolony/elizaos-plugin": {
       "git": {
         "repo": "TheColonyCC/elizaos-plugin",
