@@ -3,6 +3,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -43,6 +44,7 @@ export const apiKeys = pgTable(
     user_id: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    permissions: jsonb("permissions").$type<string[]>().default([]).notNull(),
     rate_limit: integer("rate_limit").notNull().default(1000),
     is_active: boolean("is_active").notNull().default(true),
     usage_count: integer("usage_count").default(0).notNull(),

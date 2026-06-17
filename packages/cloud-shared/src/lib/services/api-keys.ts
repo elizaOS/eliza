@@ -266,6 +266,7 @@ export class ApiKeysService {
       description: `Auto-generated sandbox key for agent ${params.agentSandboxId}`,
       organization_id: params.organizationId,
       user_id: params.userId,
+      permissions: ["agent"],
       rate_limit: 1000,
       is_active: true,
       expires_at: null,

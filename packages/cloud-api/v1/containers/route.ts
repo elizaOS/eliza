@@ -38,6 +38,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
+import { enforceApiKeyPermission } from "@/api-app/middleware/auth";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { containersEnv } from "@/lib/config/containers-env";
@@ -181,6 +182,7 @@ function toContainerDto(container: Container | ContainerSummary): ContainerDto {
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
+    await enforceApiKeyPermission(c, "containers:read");
     const containers = await containersService.listByOrganization(
       user.organization_id,
     );
@@ -194,6 +196,7 @@ app.get("/", async (c) => {
 app.get("/quota", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
+    await enforceApiKeyPermission(c, "containers:read");
     const quota = await containersService.checkQuota(user.organization_id);
     return c.json({ success: true, quota });
   } catch (error) {
@@ -205,6 +208,7 @@ app.get("/quota", async (c) => {
 app.get("/:id", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
+    await enforceApiKeyPermission(c, "containers:read");
     const container = await containersService.getById(
       c.req.param("id"),
       user.organization_id,
@@ -222,6 +226,7 @@ app.get("/:id", async (c) => {
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
+    await enforceApiKeyPermission(c, "containers:deploy");
     const parsed = CreateContainerSchema.safeParse(
       await c.req.json().catch(() => null),
     );

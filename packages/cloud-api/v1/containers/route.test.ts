@@ -4,6 +4,7 @@ import { type Context, Hono } from "hono";
 type TestVariables = {
   authMethod?: "api_key" | "session";
   apiKeyId?: string;
+  apiKeyPermissions?: string[];
   user?: { id: string; organization_id: string };
 };
 
@@ -17,14 +18,29 @@ type ContainersBody = {
 
 /**
  * Auth resolution sets the API-key context the same way the real
- * `requireUserOrApiKeyWithOrg` does. A key is just a key with full access — no
- * per-key scopes — so the route does no scope enforcement; this mock only needs
- * to resolve the user + org.
+ * `requireUserOrApiKeyWithOrg` does: `authMethod` + `apiKeyPermissions` come
+ * from the validated key, NOT from a route-level middleware. The route enforces
+ * the scope INSIDE the handler via the REAL `enforceApiKeyPermission`, so this
+ * mock populates the context for that check to fire. A handler that forgot to
+ * call `enforceApiKeyPermission` after auth would fail the 403 tests below —
+ * which is the production regression this suite must catch.
  */
 const requireUserOrApiKeyWithOrg = mock(
   async (c: Context<{ Variables: TestVariables }>) => {
-    c.set("authMethod", "api_key");
-    c.set("apiKeyId", "key-1");
+    const permissionsHeader = c.req.header("x-test-api-key-permissions");
+    if (permissionsHeader !== undefined) {
+      c.set("authMethod", "api_key");
+      c.set("apiKeyId", "key-1");
+      c.set(
+        "apiKeyPermissions",
+        permissionsHeader
+          .split(",")
+          .map((permission: string) => permission.trim())
+          .filter(Boolean),
+      );
+    } else {
+      c.set("authMethod", "session");
+    }
     c.set("user", { id: "user-1", organization_id: "org-1" });
     return { id: "user-1", organization_id: "org-1" };
   },
@@ -38,6 +54,9 @@ const createContainer = mock();
 const codingContainerImageAllowlist = mock(() => ["ghcr.io/elizaos/*"]);
 const auditEmit = mock(async () => undefined);
 
+// Use the REAL enforceApiKeyPermission / requireApiKeyPermission from
+// `@/api-app/middleware/auth`; only stub its audit dependency so a denied
+// request does not need a live dispatcher.
 mock.module("@/api-app/services/audit-dispatcher-singleton", () => ({
   getAuditDispatcher: () => ({ emit: auditEmit }),
 }));
@@ -169,10 +188,24 @@ describe("containers route", () => {
     auditEmit.mockClear();
   });
 
-  test("returns CloudContainer data on list for any valid key", async () => {
+  test("rejects an API key without containers:read on list (real enforcement)", async () => {
+    const response = await app.request("/api/v1/containers", {
+      headers: { "x-test-api-key-permissions": "agents:read" },
+    });
+
+    expect(response.status).toBe(403);
+    // The handler reached enforceApiKeyPermission AFTER auth resolved; if it
+    // skipped enforcement the data service would have been hit.
+    expect(listByOrganization).not.toHaveBeenCalled();
+    expect(auditEmit).toHaveBeenCalledTimes(1);
+  });
+
+  test("allows a wildcard-scoped API key and returns CloudContainer data", async () => {
     listByOrganization.mockResolvedValue([rawContainer()]);
 
-    const response = await app.request("/api/v1/containers");
+    const response = await app.request("/api/v1/containers", {
+      headers: { "x-test-api-key-permissions": "containers:*" },
+    });
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as ContainersBody;
@@ -189,7 +222,9 @@ describe("containers route", () => {
   test("redacts secret and infrastructure fields from list responses", async () => {
     listByOrganization.mockResolvedValue([rawContainer()]);
 
-    const response = await app.request("/api/v1/containers");
+    const response = await app.request("/api/v1/containers", {
+      headers: { "x-test-api-key-permissions": "containers:read" },
+    });
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as ContainersBody;
@@ -204,6 +239,24 @@ describe("containers route", () => {
     expect(body.data[0]).not.toHaveProperty("user_id");
   });
 
+  test("rejects an API key without containers:deploy on POST (real enforcement)", async () => {
+    const response = await app.request("/api/v1/containers", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-test-api-key-permissions": "containers:read",
+      },
+      body: JSON.stringify({
+        name: "App",
+        image: "ghcr.io/elizaos/app:latest",
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(getActiveByProjectName).not.toHaveBeenCalled();
+    expect(createContainer).not.toHaveBeenCalled();
+  });
+
   test("provisions and returns the deployed container under `data`", async () => {
     getActiveByProjectName.mockResolvedValue(null);
     checkQuota.mockResolvedValue({ allowed: true });
@@ -211,7 +264,10 @@ describe("containers route", () => {
 
     const response = await app.request("/api/v1/containers", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "x-test-api-key-permissions": "containers:deploy",
+      },
       body: JSON.stringify({
         name: "App",
         image: "ghcr.io/elizaos/app:latest",
@@ -236,7 +292,10 @@ describe("containers route", () => {
 
     const response = await app.request("/api/v1/containers", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "x-test-api-key-permissions": "containers:deploy",
+      },
       body: JSON.stringify({
         name: "App",
         projectName: "app",
