@@ -18,7 +18,7 @@ permissions:
 jobs:
   changes:
     name: Classify changed paths
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-24.04"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
     outputs:
       docker: ${{ steps.filter.outputs.docker }}
     steps:
@@ -47,7 +47,7 @@ jobs:
     name: Build production Docker image (+ smoke boot)
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.docker == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-24.04"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
     timeout-minutes: 90
     env:
       BUN_VERSION: "canary"
