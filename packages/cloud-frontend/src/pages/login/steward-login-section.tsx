@@ -67,12 +67,7 @@ const PLAYWRIGHT_TEST_AUTH_ENABLED =
   (typeof process !== "undefined" &&
     process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
 
-type AuthStep =
-  | "idle"
-  | "loading"
-  | "email-sent"
-  | "otp-entry"
-  | "success";
+type AuthStep = "idle" | "loading" | "email-sent" | "otp-entry" | "success";
 
 function persistStewardToken(token: string): void {
   writeStoredStewardToken(token);
@@ -481,7 +476,7 @@ export default function StewardLoginSection() {
         await auth.signInWithPasskey(email.trim()),
       );
       await handleSuccess(result.token, result.refreshToken);
-    } catch (e: unknown) {
+    } catch {
       // ANY "couldn't use a passkey here" outcome — no passkey for this email,
       // none on this device, or the user cancelled the picker because nothing
       // was usable — falls through to the OTP signup. The 6-digit code proves
