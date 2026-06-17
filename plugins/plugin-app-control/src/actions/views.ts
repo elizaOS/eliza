@@ -40,7 +40,7 @@ import {
 import { runViewsEdit } from "./views-edit.js";
 import { runViewsList } from "./views-list.js";
 import { runViewsSearch, scoreView } from "./views-search.js";
-import { runViewsShow } from "./views-show.js";
+import { resolveIntentView, runViewsShow } from "./views-show.js";
 
 export type ViewsMode =
 	| "list"
@@ -393,6 +393,11 @@ function inferMode(
 		)
 	)
 		return "show";
+
+	// Passive domain intent ("what's on my calendar", "add a feature to my app",
+	// "check my messages") carries no explicit mode keyword but maps to a known
+	// view — route it to `show` so runViewsShow can open that surface.
+	if (resolveIntentView(trimmed)) return "show";
 
 	return null;
 }
@@ -1819,7 +1824,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 		descriptionCompressed:
 			"views list|current|show|open|close|search|manager|broadcast|interact|pin|window|split|tile|create|edit|delete; navigate/close UI views; invoke registered view capabilities for notes/events/dashboards/records; click/read/focus elements; split/tile layouts; scaffold/edit/remove view plugins",
 		routingHint:
-			"UI view/window/panel/app navigation and layout -> VIEWS. Use VIEWS for open/show/switch/close/hide view requests, view manager, list views, split/tile views, pin view, open view in a separate window, or invoking a capability declared by a registered plugin view, including view-backed content operations like creating/listing notes or calendar events. For add/create calendar-event requests, use action=interact view=calendar capability=create-calendar-event; do not answer by opening or splitting the calendar unless the user asked for layout. Close/hide means VIEWS action=close, not delete/remove. For view capabilities use action=interact with view=<view id> and capability=<capability id>, or pass a generated capability action name that can be resolved from the view catalog. Pass capability data as params={...} or top-level keys such as title/body/date/time/notes/color; never use dotted keys such as params.title.",
+			"UI view/window/panel/app navigation and layout -> VIEWS. Use VIEWS for open/show/switch/close/hide view requests, view manager, list views, split/tile views, pin view, open view in a separate window, or invoking a capability declared by a registered plugin view, including view-backed content operations like creating/listing notes or calendar events. For add/create calendar-event requests, use action=interact view=calendar capability=create-calendar-event; do not answer by opening or splitting the calendar unless the user asked for layout. For an implicit request to SEE a domain surface — 'what's on my calendar', 'check my messages'/'my email', 'show my wallet'/'my balance', 'I need to focus', 'take me to my goals', or 'I want to add a new feature to my app' — open that surface with action=show and the matching view id (calendar, inbox, wallet, focus, goals, task-coordinator); opening a surface to view it is action=show, only adding or creating a record inside it is action=interact. Close/hide means VIEWS action=close, not delete/remove. For view capabilities use action=interact with view=<view id> and capability=<capability id>, or pass a generated capability action name that can be resolved from the view catalog. Pass capability data as params={...} or top-level keys such as title/body/date/time/notes/color; never use dotted keys such as params.title.",
 		allowAdditionalParameters: true,
 		suppressPostActionContinuation: true,
 

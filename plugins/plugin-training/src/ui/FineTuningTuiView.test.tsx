@@ -1685,9 +1685,7 @@ describe("FineTuningTuiView", () => {
         ).value,
       ).toBe("/tmp/app-trajectories/raw.jsonl");
     });
-    const collectButton = await screen.findByText(
-      "Collect and index",
-    );
+    const collectButton = await screen.findByText("Collect and index");
     fireEvent.click(collectButton);
     await waitFor(() => {
       expect(trainingClient.runTrainingCollection).toHaveBeenCalled();
@@ -1981,9 +1979,7 @@ describe("FineTuningTuiView", () => {
 
     render(React.createElement(FineTuningView));
 
-    const readinessButton = await screen.findByText(
-      "Readiness report",
-    );
+    const readinessButton = await screen.findByText("Readiness report");
     fireEvent.click(readinessButton);
 
     await screen.findByText("All Eliza-1 tier benchmark coverage · missing");
@@ -2091,9 +2087,7 @@ describe("FineTuningTuiView", () => {
 
     render(React.createElement(FineTuningView));
 
-    const readinessButton = await screen.findByText(
-      "Readiness report",
-    );
+    const readinessButton = await screen.findByText("Readiness report");
     fireEvent.click(readinessButton);
 
     await screen.findByText("Scenario trajectories · missing");
@@ -2147,6 +2141,66 @@ describe("FineTuningTuiView", () => {
       modelCount: 1,
       trajectoryCount: 1,
     });
+  });
+
+  it("renders the TUI body status counts (running/queued/completed/failed)", async () => {
+    mockState();
+
+    const { container } = render(React.createElement(FineTuningTuiView));
+
+    await screen.findByText(/trajectory-1 calls 3 reward 0.9/);
+
+    const statusSection = container.querySelector(
+      '[aria-label="Training status"]',
+    );
+    const lineFor = (prefix: string) =>
+      Array.from(statusSection?.querySelectorAll("div") ?? []).find(
+        (node) => node.textContent?.trim() === prefix,
+      );
+    // sampleStatus: running 1, queued 1, completed 2, failed 0.
+    expect(lineFor("runtime ready")).toBeTruthy();
+    expect(lineFor("running 1")).toBeTruthy();
+    expect(lineFor("queued 1")).toBeTruthy();
+    expect(lineFor("completed 2")).toBeTruthy();
+    expect(lineFor("failed 0")).toBeTruthy();
+  });
+
+  it("reloads training state when the TUI refresh button is clicked", async () => {
+    mockState();
+
+    render(React.createElement(FineTuningTuiView));
+
+    await screen.findByText(/trajectory-1 calls 3 reward 0.9/);
+    // Initial mount triggered one load of each source.
+    expect(trainingClient.getTrainingStatus).toHaveBeenCalledTimes(1);
+    expect(trainingClient.listTrainingTrajectories).toHaveBeenCalledTimes(1);
+    expect(trainingClient.listTrainingJobs).toHaveBeenCalledTimes(1);
+    expect(trainingClient.listTrainingModels).toHaveBeenCalledTimes(1);
+
+    // Updated data on the next load proves the click re-ran loadTrainingTuiState.
+    trainingClient.getTrainingStatus.mockResolvedValue({
+      ...sampleStatus,
+      runningJobs: 4,
+      completedJobs: 9,
+    });
+
+    fireEvent.click(screen.getByLabelText("Refresh training status"));
+
+    await waitFor(() => {
+      expect(trainingClient.getTrainingStatus).toHaveBeenCalledTimes(2);
+    });
+    expect(trainingClient.listTrainingTrajectories).toHaveBeenCalledTimes(2);
+    expect(trainingClient.listTrainingJobs).toHaveBeenCalledTimes(2);
+    expect(trainingClient.listTrainingModels).toHaveBeenCalledTimes(2);
+
+    // "running {n}" is split across text nodes; match on the div's textContent.
+    const lineMatcher =
+      (expected: string) => (_content: string, node: Element | null) =>
+        Boolean(
+          node?.tagName === "DIV" && node.textContent?.trim() === expected,
+        );
+    await screen.findByText(lineMatcher("running 4"));
+    await screen.findByText(lineMatcher("completed 9"));
   });
 
   it("supports terminal training capabilities", async () => {

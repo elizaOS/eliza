@@ -31,7 +31,6 @@ export interface ApiKeyDisplay {
   status: ApiKeyStatus;
   lastUsedAt?: string | null;
   createdAt: string;
-  permissions: string[];
   usageCount: number;
   rateLimit: number;
   expiresAt?: string | null;
@@ -117,25 +116,6 @@ function renderActions(
         },
       ]}
     />
-  );
-}
-
-function PermissionPills({ permissions }: { permissions: string[] }) {
-  if (permissions.length === 0) {
-    return <p className="text-xs text-white/74">No permissions configured</p>;
-  }
-
-  return (
-    <div className="flex flex-wrap gap-1">
-      {permissions.map((permission) => (
-        <span
-          key={permission}
-          className="rounded-sm bg-white/10 px-2 py-0.5 text-xs text-white/70"
-        >
-          {permission}
-        </span>
-      ))}
-    </div>
   );
 }
 
@@ -229,13 +209,6 @@ export function ApiKeysTable({
                 </p>
               </div>
             </div>
-
-            <div className="border-t border-white/10 pt-3">
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-white/50">
-                Permissions
-              </p>
-              <PermissionPills permissions={key.permissions} />
-            </div>
           </div>
         ))}
       </DashboardDataListMobile>
@@ -246,7 +219,6 @@ export function ApiKeysTable({
             <TableRow>
               <TableHead>Key</TableHead>
               <TableHead>Usage</TableHead>
-              <TableHead>Security</TableHead>
               <TableHead>Timeline</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -302,15 +274,6 @@ export function ApiKeysTable({
                     <p className="text-xs text-white/74">
                       Rate limit {key.rateLimit.toLocaleString()} / min
                     </p>
-                  </div>
-                </TableCell>
-
-                <TableCell>
-                  <div className="flex flex-col gap-2">
-                    <span className="text-xs font-medium uppercase tracking-wide text-white/50">
-                      Permissions
-                    </span>
-                    <PermissionPills permissions={key.permissions} />
                   </div>
                 </TableCell>
 

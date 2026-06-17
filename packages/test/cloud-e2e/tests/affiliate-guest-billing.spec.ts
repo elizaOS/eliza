@@ -5,60 +5,26 @@ import { expect, test } from "../src/helpers/test-fixtures";
  * Affiliate (application) guest-session attribution contract.
  *
  * Grounded on the shipped change "bill affiliate guest sessions to the
- * application owner's credits" (commit 25be60a0d2,
- * affiliate/create-character/route.ts):
- *   • POST /api/affiliate/create-character authenticates an API key carrying the
- *     `affiliate:create-character` permission (route.ts:31,106-135).
+ * application owner's credits" (affiliate/create-character/route.ts):
+ *   • POST /api/affiliate/create-character authenticates ANY valid, active API
+ *     key (a key is just a key — full access; route.ts:106-130).
  *   • The guest user + character are created INSIDE the API-key OWNER's org
  *     (resolveApplicationOwnerOrg uses apiKey.organization_id), not a shared
- *     `affiliate-characters` pool — route.ts:149-157,224-236,283-326. The guest
- *     user is is_anonymous (route.ts:234) and the character records
- *     sponsorOrganizationId = the owner org (route.ts:312).
+ *     `affiliate-characters` pool. The guest user is is_anonymous and the
+ *     character records sponsorOrganizationId = the owner org.
  *
- * SCOPE JUDGMENT CALL: the brief asked to "drive a billable action -> owner
- * credit_balance decreased AND an app_owner_revenue_share redeemable-earnings
- * ledger entry was written." That does not match the implementation: the commit
- * does NOT bill or write any ledger entry — character creation is explicitly
- * balance-agnostic, and `app_owner_revenue_share` is only ever written from
- * credit PURCHASE splits (topup-handler.ts:439, crypto-payments.ts:1068,
- * src/queue/stripe-event.ts:296), never from a guest inference path (which uses
- * the "affiliate" earnings source — ai-billing.ts:256-269). Guest inference
- * billing is also unreachable keyless (needs a live model + reserved credits).
- * So this spec asserts the real, verifiable attribution behavior the change
- * shipped: the guest lands in the OWNER's org as an anonymous user, and no
- * magic shared affiliate pool is created.
+ * Asserts the real attribution behavior: the guest lands in the OWNER's org as
+ * an anonymous user, no magic shared affiliate pool is created, and the route
+ * still rejects a request with no valid key.
  */
-
-const AFFILIATE_PERMISSION = "affiliate:create-character";
-
-async function mintAffiliateKey(
-  organizationId: string,
-  userId: string,
-): Promise<string> {
-  const { apiKeysService } = await import(
-    "@elizaos/cloud-shared/lib/services/api-keys"
-  );
-  const { plainKey } = await apiKeysService.create({
-    name: "cloud-e2e-affiliate",
-    description: "cloud-e2e affiliate key",
-    organization_id: organizationId,
-    user_id: userId,
-    permissions: ["read", AFFILIATE_PERMISSION],
-    rate_limit: 10_000,
-    is_active: true,
-  });
-  return plainKey;
-}
 
 test.describe("affiliate guest session attribution", () => {
   test("guest character + user land in the application owner's org", async ({
     stack,
     seededUser,
   }) => {
-    const affiliateKey = await mintAffiliateKey(
-      seededUser.organizationId,
-      seededUser.userId,
-    );
+    // Any valid, active key for the owner's org works (no per-key scopes).
+    const affiliateKey = seededUser.apiKey;
     const affiliateId = `app-${randomUUID().slice(0, 8)}`;
 
     const res = await fetch(
@@ -140,30 +106,25 @@ test.describe("affiliate guest session attribution", () => {
     ).toBeFalsy();
   });
 
-  test("the key's affiliate permission is required", async ({
-    stack,
-    seededUser,
-  }) => {
-    // The default seeded key has read/write/admin but NOT
-    // affiliate:create-character, so it must be forbidden.
+  test("a request without a valid API key is rejected", async ({ stack }) => {
     const res = await fetch(
       `${stack.urls.api}/api/affiliate/create-character`,
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${seededUser.apiKey}`,
+          Authorization: "Bearer not-a-real-key",
           "Content-Type": "application/json",
           Origin: stack.urls.api,
         },
         body: JSON.stringify({
-          character: { name: "Nope", bio: "no permission" },
+          character: { name: "Nope", bio: "no key" },
           affiliateId: "denied",
         }),
       },
     );
     expect(
-      res.status,
-      `non-affiliate key should be forbidden, got ${res.status}`,
-    ).toBe(403);
+      [401, 403],
+      `invalid key should be rejected, got ${res.status}`,
+    ).toContain(res.status);
   });
 });

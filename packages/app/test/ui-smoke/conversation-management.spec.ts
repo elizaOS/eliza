@@ -197,11 +197,18 @@ test("chat overlay: a sent message persists across a full page reload", async ({
     timeout: 60_000,
   });
 
-  // The persisted user turn must reappear. The overlay surfaces recent lines on
-  // hover/expand; clicking the fullscreen toggle reveals the whole transcript.
-  const fullscreen = page.getByTestId("chat-composer-fullscreen");
-  await expect(fullscreen).toBeVisible({ timeout: 15_000 });
-  await fullscreen.click();
+  // The persisted user turn must reappear. The overlay rests as a slim peek;
+  // pull the sheet up (the grabber is keyboard-operable) to reveal the whole
+  // scrollable transcript.
+  const grabber = page.getByTestId("chat-sheet-grabber");
+  await expect(grabber).toBeVisible({ timeout: 15_000 });
+  await grabber.focus();
+  await page.keyboard.press("ArrowUp");
+  await expect(page.getByTestId("continuous-chat-overlay")).toHaveAttribute(
+    "data-open",
+    "true",
+    { timeout: 10_000 },
+  );
 
   await expect(
     page.getByTestId("thread-line").filter({ hasText: USER_TEXT }).first(),

@@ -121,9 +121,10 @@ export interface GenerateArgs extends StructuredGenerateParams {
 	 */
 	requestTimeoutMs?: number;
 	/**
-	 * Incremental accepted text from the backend. The FFI path calls this as
-	 * accepted chunks arrive; node-llama-cpp calls it once with the completed
-	 * text until that binding exposes token callbacks here.
+	 * Incremental accepted text from the backend. Both backends call this as
+	 * accepted chunks arrive: the FFI path per `llmStreamNext` step, and
+	 * node-llama-cpp per token via `session.prompt({ onTextChunk })` (which
+	 * streams even when a `grammar` is set).
 	 */
 	onTextChunk?: (chunk: string) => void | Promise<void>;
 	/**

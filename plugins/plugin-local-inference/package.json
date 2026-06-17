@@ -83,7 +83,8 @@
 		"format": "bunx @biomejs/biome format --write .",
 		"format:check": "bunx @biomejs/biome format .",
 		"typecheck": "tsgo --noEmit",
-		"test:asr:real": "bun test src/services/voice/whisper-cpp-asr.real.test.ts"
+		"test:asr:real": "bun test src/services/voice/whisper-cpp-asr.real.test.ts",
+		"test:voice:roundtrip": "vitest run --config vitest.config.ts src/services/voice/voice-roundtrip.real.test.ts"
 	},
 	"dependencies": {
 		"@elizaos/core": "workspace:*",

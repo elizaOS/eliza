@@ -505,6 +505,46 @@ describe("ensureLocalInferenceHandler", () => {
 		);
 	});
 
+	it("delivers engine onTextChunk tokens to the caller's onStreamChunk per token (chat streaming)", async () => {
+		// End-to-end guard for the local chat streaming regression: the registered
+		// RESPONSE_HANDLER handler must connect the runtime's `onStreamChunk` to the
+		// engine's `onTextChunk` so each generated token is delivered incrementally,
+		// not collapsed into one final chunk. The mocked engine fires onTextChunk
+		// per token (mirroring NodeLlamaCppBackend/FfiStreamingBackend), and we
+		// assert the caller saw multiple distinct chunks in order.
+		const tokens = ["On ", "it ", "now."];
+		engineState.generate.mockImplementationOnce(
+			async (args: { onTextChunk?: (chunk: string) => unknown }) => {
+				for (const token of tokens) {
+					await args.onTextChunk?.(token);
+				}
+				return tokens.join("");
+			},
+		);
+
+		const { registrations, runtime } = makeRuntime();
+		engineState.hasLoadedModel.mockReturnValue(true);
+
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.RESPONSE_HANDLER,
+		);
+
+		const received: string[] = [];
+		await handler(runtime, {
+			messages: [{ role: "user", content: "hello" }],
+			streamStructured: true,
+			responseSkeleton: { spans: [] },
+			onStreamChunk: (chunk: string) => {
+				received.push(chunk);
+			},
+		});
+
+		expect(received).toEqual(tokens);
+		expect(received.length).toBeGreaterThan(1);
+	});
+
 	it("threads eliza thinking provider options into local engine args", async () => {
 		const { registrations, runtime } = makeRuntime();
 		engineState.hasLoadedModel.mockReturnValue(true);

@@ -104,13 +104,50 @@ async function handleCleanupStuckProvisioning(
       logger.info("[Cleanup Stuck Provisioning] No stuck agents found");
     }
 
+    /**
+     * Second scan: ORPHANED PENDING rows. A user sandbox can be committed as
+     * `pending` but never get an `agent_provision` job enqueued if the
+     * create→enqueue window throws (KMS key mint, managed-env write, job-table
+     * write). The daemon only claims rows that HAVE a job, so these are
+     * structurally unclaimable and would sit `pending` forever with a null
+     * error_message. Mark them `error` (never re-enqueue — env-prep may have
+     * failed) so the user sees the failure and can retry. Same cutoff/threshold.
+     */
+    const orphanedPending =
+      await agentSandboxesRepository.markOrphanedPendingWithoutJobAsError(
+        cutoff,
+      );
+
+    // Orphans have no stuckSinceMinutes (the created_at staleness drives them,
+    // not updated_at), so project them once into the shared shape and reuse it
+    // for both the log and the response.
+    const orphanedPendingAgents: Array<
+      Pick<CleanupResult, "agentId" | "agentName" | "organizationId">
+    > = orphanedPending.map((row) => ({
+      agentId: row.agentId,
+      agentName: row.agentName,
+      organizationId: row.organizationId,
+    }));
+
+    if (orphanedPendingAgents.length > 0) {
+      logger.warn(
+        "[Cleanup Stuck Provisioning] Reset orphaned pending agents",
+        {
+          count: orphanedPendingAgents.length,
+          agents: orphanedPendingAgents,
+        },
+      );
+    }
+
     return Response.json({
       success: true,
       data: {
         cleaned: results.length,
+        cleanedOrphanedPending: orphanedPendingAgents.length,
         thresholdMinutes: STUCK_THRESHOLD_MINUTES,
         timestamp: new Date().toISOString(),
         agents: results,
+        orphanedPendingAgents,
       },
     });
   } catch (error) {

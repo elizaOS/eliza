@@ -174,7 +174,7 @@ function PhoneTabTrigger({
       aria-current={active ? "true" : undefined}
       className="rounded-full font-semibold transition-colors"
       style={{
-        background: active ? "var(--accent-subtle)" : "transparent",
+        backgroundColor: active ? "var(--accent-subtle)" : "transparent",
         color: active ? "var(--accent)" : "var(--muted)",
         border: active ? "1px solid var(--accent)" : "1px solid transparent",
       }}
@@ -205,7 +205,7 @@ function PhoneDialKey({
       type="button"
       className="h-16 rounded-full text-2xl font-semibold transition active:scale-95 sm:h-20"
       style={{
-        background: "var(--surface)",
+        backgroundColor: "var(--surface)",
         color: "var(--text)",
         border: "1px solid var(--border)",
       }}
@@ -245,12 +245,15 @@ function RecentCallButton({
       type="button"
       onClick={() => onCall(entry.number)}
       className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition active:scale-[0.99]"
-      style={{ background: "var(--surface)", border: "1px solid transparent" }}
+      style={{
+        backgroundColor: "var(--surface)",
+        border: "1px solid transparent",
+      }}
       {...agentProps}
     >
       <span
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
-        style={{ background: "var(--accent-subtle)" }}
+        style={{ backgroundColor: "var(--accent-subtle)" }}
       >
         {callIconFor(entry.type)}
       </span>
@@ -295,12 +298,15 @@ function ContactButton({
       onClick={() => onCall(primary)}
       disabled={primary.length === 0}
       className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition active:scale-[0.99] disabled:opacity-50"
-      style={{ background: "var(--surface)", border: "1px solid transparent" }}
+      style={{
+        backgroundColor: "var(--surface)",
+        border: "1px solid transparent",
+      }}
       {...agentProps}
     >
       <span
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
-        style={{ background: "var(--accent-subtle)" }}
+        style={{ backgroundColor: "var(--accent-subtle)" }}
       >
         <UserIcon
           className="h-4 w-4"
@@ -342,7 +348,7 @@ function TuiDialKey({
       type="button"
       onClick={() => onPress(digit)}
       style={{
-        background: "transparent",
+        backgroundColor: "transparent",
         color: "#e2e8f0",
         border: "1px solid rgba(125,211,252,0.28)",
         borderRadius: 4,
@@ -387,7 +393,7 @@ function TuiRecentCallButton({
         gap: 10,
         border: "none",
         borderTop: index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
-        background: "transparent",
+        backgroundColor: "transparent",
         color: "#cbd5e1",
         padding: "8px 0",
         cursor: "pointer",
@@ -434,6 +440,10 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
   const [contactsLoading, setContactsLoading] = useState(false);
   const [contactsError, setContactsError] = useState<string | null>(null);
   const contactsModuleRef = useRef<ContactsModule | null>(null);
+  // Guards the lazy auto-load so an empty recent-calls result does not retrigger
+  // the fetch forever (an empty list keeps `calls.length === 0`, which would
+  // otherwise re-satisfy the effect's guard on every render → infinite reload).
+  const recentAutoLoadedRef = useRef(false);
 
   const refreshCalls = useCallback(async () => {
     setCallsLoading(true);
@@ -492,7 +502,12 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
 
   // Lazy-load each tab's data on first activation.
   useEffect(() => {
-    if (activeTab === "recent" && calls.length === 0 && !callsLoading) {
+    if (
+      activeTab === "recent" &&
+      !recentAutoLoadedRef.current &&
+      !callsLoading
+    ) {
+      recentAutoLoadedRef.current = true;
       void refreshCalls();
     }
     if (
@@ -505,7 +520,6 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
     }
   }, [
     activeTab,
-    calls.length,
     callsLoading,
     contactsAvailable,
     contacts,
@@ -680,7 +694,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
         <div className="shrink-0 border-b border-border/20 bg-bg/60 px-3 py-2">
           <TabsList
             className="grid w-full max-w-sm grid-cols-3 gap-1"
-            style={{ background: "var(--surface)" }}
+            style={{ backgroundColor: "var(--surface)" }}
           >
             <PhoneTabTrigger
               tab="dialer"
@@ -711,7 +725,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
               <output
                 className="block min-h-[3rem] w-full select-text rounded-xl px-4 py-3 text-center font-mono text-2xl"
                 style={{
-                  background: "var(--surface)",
+                  backgroundColor: "var(--surface)",
                   border: "1px solid var(--border)",
                   color: "var(--text)",
                 }}
@@ -749,7 +763,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
                 type="button"
                 className="h-12 rounded-full text-lg font-semibold active:scale-95"
                 style={{
-                  background: "var(--surface)",
+                  backgroundColor: "var(--surface)",
                   border: "1px solid var(--border)",
                   color: "var(--text)",
                 }}
@@ -767,14 +781,14 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
                 disabled={calling || dialed.length === 0}
                 className="flex h-14 items-center justify-center rounded-full transition-colors active:scale-95 disabled:opacity-50"
                 style={{
-                  background: "var(--accent)",
+                  backgroundColor: "var(--accent)",
                   color: "var(--accent-foreground)",
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "var(--accent-hover)";
+                  e.currentTarget.style.backgroundColor = "var(--accent-hover)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "var(--accent)";
+                  e.currentTarget.style.backgroundColor = "var(--accent)";
                 }}
                 aria-label={callLabel}
                 data-testid="phone-dial-call"
@@ -787,7 +801,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
                 type="button"
                 className="flex h-12 items-center justify-center rounded-full active:scale-95 disabled:opacity-50"
                 style={{
-                  background: "var(--surface)",
+                  backgroundColor: "var(--surface)",
                   border: "1px solid var(--border)",
                   color: "var(--text)",
                 }}
@@ -1130,7 +1144,7 @@ export function PhoneTuiView() {
       data-view-state={JSON.stringify(state)}
       style={{
         minHeight: "100vh",
-        background: "#020617",
+        backgroundColor: "#020617",
         color: "#cbd5e1",
         fontFamily:
           'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
@@ -1182,7 +1196,7 @@ export function PhoneTuiView() {
             style={{
               width: "100%",
               boxSizing: "border-box",
-              background: "#0f172a",
+              backgroundColor: "#0f172a",
               color: "#e2e8f0",
               border: "1px solid rgba(125,211,252,0.3)",
               borderRadius: 4,
@@ -1218,7 +1232,7 @@ export function PhoneTuiView() {
                 setDialed((prev) => (prev ? prev.slice(0, -1) : ""))
               }
               style={{
-                background: "transparent",
+                backgroundColor: "transparent",
                 color: "#94a3b8",
                 border: "1px solid rgba(148,163,184,0.45)",
                 borderRadius: 4,
@@ -1235,7 +1249,7 @@ export function PhoneTuiView() {
               type="button"
               onClick={() => void openDialer()}
               style={{
-                background: "transparent",
+                backgroundColor: "transparent",
                 color: "#a7f3d0",
                 border: "1px solid rgba(167,243,208,0.45)",
                 borderRadius: 4,
@@ -1253,7 +1267,7 @@ export function PhoneTuiView() {
               onClick={() => void callNumber()}
               disabled={!normalizeNumber(dialed) || calling}
               style={{
-                background: "transparent",
+                backgroundColor: "transparent",
                 color: "#7dd3fc",
                 border: "1px solid rgba(125,211,252,0.45)",
                 borderRadius: 4,
@@ -1286,7 +1300,7 @@ export function PhoneTuiView() {
             style={{
               width: "100%",
               boxSizing: "border-box",
-              background: "#0f172a",
+              backgroundColor: "#0f172a",
               color: "#e2e8f0",
               border: "1px solid rgba(125,211,252,0.3)",
               borderRadius: 4,
@@ -1313,7 +1327,7 @@ export function PhoneTuiView() {
               width: "100%",
               boxSizing: "border-box",
               resize: "vertical",
-              background: "#0f172a",
+              backgroundColor: "#0f172a",
               color: "#e2e8f0",
               border: "1px solid rgba(125,211,252,0.3)",
               borderRadius: 4,
@@ -1338,7 +1352,7 @@ export function PhoneTuiView() {
             style={{
               width: "100%",
               boxSizing: "border-box",
-              background: "#0f172a",
+              backgroundColor: "#0f172a",
               color: "#e2e8f0",
               border: "1px solid rgba(125,211,252,0.3)",
               borderRadius: 4,
@@ -1356,7 +1370,7 @@ export function PhoneTuiView() {
               !transcriptCallId.trim() || !transcript.trim() || savingTranscript
             }
             style={{
-              background: "transparent",
+              backgroundColor: "transparent",
               color: "#a7f3d0",
               border: "1px solid rgba(167,243,208,0.45)",
               borderRadius: 4,
@@ -1399,7 +1413,7 @@ export function PhoneTuiView() {
               onClick={() => void refresh()}
               disabled={loading}
               style={{
-                background: "transparent",
+                backgroundColor: "transparent",
                 color: "#a7f3d0",
                 border: "1px solid rgba(167,243,208,0.45)",
                 borderRadius: 4,

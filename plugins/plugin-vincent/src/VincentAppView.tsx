@@ -229,22 +229,16 @@ export function VincentTuiView() {
 
   const strategy = state?.strategy.strategy ?? null;
   const profile = state?.tradingProfile.profile ?? null;
-  const walletAddresses = state?.walletAddresses as
-    | (WalletAddresses & Record<string, unknown>)
-    | null
-    | undefined;
+  const walletAddresses: WalletAddresses | null | undefined =
+    state?.walletAddresses;
   const viewState = {
     viewType: "tui",
     viewId: "vincent",
     connected: state?.status.connected ?? false,
     connectedAt: state?.status.connectedAt ?? null,
     venues: state?.status.tradingVenues ?? [],
-    evmAddress:
-      typeof walletAddresses?.evm === "string" ? walletAddresses.evm : null,
-    solanaAddress:
-      typeof walletAddresses?.solana === "string"
-        ? walletAddresses.solana
-        : null,
+    evmAddress: walletAddresses?.evmAddress ?? null,
+    solanaAddress: walletAddresses?.solanaAddress ?? null,
     strategyName: strategy?.name ?? null,
     strategyRunning: strategy?.running ?? false,
     dryRun: strategy?.dryRun ?? null,

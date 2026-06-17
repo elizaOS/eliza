@@ -100,6 +100,33 @@ here the conversation routes, message handling, response decision, and
 persistence are all real; only token generation is deterministic. Wired into
 `scenario-pr.yml`, so **every PR is gated on a genuinely-real local chat turn**.
 
+## Real voice pipeline — STT and TTS, fully local, no mocks
+
+The voice stages are validated with real engines + real models, not the
+silent-WAV / shimmed-transcript stubs the keyless ui-smoke lane uses:
+
+- **Real STT** — `plugins/plugin-local-inference/src/services/voice/whisper-cpp-asr.real.test.ts`
+  transcribes a real speech WAV through the actual whisper.cpp FFI adapter + a
+  real ggml model (`bun test`, GPU). Build `native/build-whisper.mjs`.
+- **Real TTS → STT round-trip (gold standard)** —
+  `.../voice/voice-roundtrip.real.test.ts`: text → real **OmniVoice** TTS
+  (`omnivoice-tts` CLI + OmniVoice base/tokenizer GGUF) → real 24 kHz speech WAV
+  → assert non-silent real signal → ffmpeg resample → real whisper STT → assert
+  the transcript reads back the spoken words. Subprocess-based, runs under
+  vitest; self-skips unless the built CLIs + GGUFs + whisper model + ffmpeg
+  resolve. `bun run --cwd plugins/plugin-local-inference test:voice:roundtrip`.
+  Validated on GPU: *"And so my fellow Americans, ask not what your country can
+  do for you."* synthesizes and transcribes back verbatim.
+
+Build steps: `node plugins/plugin-local-inference/native/build-omnivoice.mjs`
+(+ `cmake --build native/omnivoice.cpp/build --target omnivoice-tts`) and
+`node .../native/build-whisper.mjs`; stage the OmniVoice GGUFs from HF
+`elizaos/eliza-1` (`voice/omnivoice/omnivoice-base-q4_k_m.gguf` +
+`omnivoice-tokenizer-q4_k_m.gguf`) under
+`<stateDir>/local-inference/models/omnivoice/` and a whisper ggml model under
+`~/.cache/eliza-whisper-models/`. The Kokoro GGUF path is `missing-from-local-staging`
+in the HF repo (`voice-models.ts`); OmniVoice is the available local TTS engine.
+
 ## Real LLM through the *shipped UI*, fully local + keyless (Ollama recipe)
 
 The dev-smoke lane (`playwright.dev-smoke.config.ts` → `bun run dev` = real API +

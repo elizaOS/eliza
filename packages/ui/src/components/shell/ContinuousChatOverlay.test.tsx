@@ -88,44 +88,36 @@ describe("ContinuousChatOverlay", () => {
     expect(input.value).toBe("");
   });
 
-  it("reveals the bubbles when the composer input is focused", () => {
+  it("opens the sheet when the composer input is focused (type-to-open)", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    const thread = document.getElementById("continuous-thread");
-    expect(thread?.getAttribute("data-revealed")).toBe("false");
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
     fireEvent.focus(screen.getByLabelText("message"));
-    expect(thread?.getAttribute("data-revealed")).toBe("true");
+    expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
-  it("reveals the bubbles on hover, not only on focus", () => {
+  it("opens the sheet on a pull-up drag of the grabber", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    const thread = document.getElementById("continuous-thread");
-    expect(thread?.getAttribute("data-revealed")).toBe("false");
-    // Hovering the chat (here, the bubbles region) peeks it open.
-    fireEvent.pointerEnter(thread as Element);
-    expect(thread?.getAttribute("data-revealed")).toBe("true");
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+    // A deliberate upward drag past the distance threshold opens it.
+    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
+    expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
-  it("reveals the suggestion strip together with the bubbles", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
-    const strip = screen.getByTestId("chat-suggestions");
-    expect(strip.className).toContain("opacity-0");
-    fireEvent.pointerEnter(strip);
-    expect(strip.className).toContain("opacity-100");
-  });
-
-  it("reveals suggestions when an empty composer receives keyboard focus", () => {
+  it("shows the resting suggestion strip without hover or focus", () => {
     render(
       <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
     );
     const strip = screen.getByTestId("chat-suggestions");
     const firstSuggestion = screen.getByTestId("chat-suggestion-0");
-
-    expect(strip.className).toContain("opacity-0");
-    expect(firstSuggestion.tabIndex).toBe(-1);
-
-    fireEvent.focus(screen.getByLabelText("message"));
-
-    expect(strip.className).toContain("opacity-100");
+    // At rest (ready, nothing typed) the strip is mounted, interactive, and
+    // tabbable — there is no hover/focus gate any more; it is the closed-state
+    // affordance, and it simply unmounts once the sheet opens or a draft starts.
+    expect(strip.className).toContain("pointer-events-auto");
     expect(firstSuggestion.tabIndex).toBe(0);
   });
 
@@ -170,46 +162,44 @@ describe("ContinuousChatOverlay", () => {
     expect(typing.className).toContain("justify-start");
   });
 
-  it("collapses the bubbles on Escape", () => {
+  it("closes the sheet on Escape", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const input = screen.getByLabelText("message");
-    const thread = document.getElementById("continuous-thread");
+    const sheet = screen.getByTestId("chat-sheet");
     fireEvent.focus(input);
-    expect(thread?.getAttribute("data-revealed")).toBe("true");
+    expect(sheet.getAttribute("data-variant")).toBe("open");
     fireEvent.keyDown(input, { key: "Escape" });
-    expect(thread?.getAttribute("data-revealed")).toBe("false");
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
-  it("toggles a full-screen takeover with a lightweight focus backdrop", () => {
+  it("closes the sheet on a pull-down drag of the grabber", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    const root = screen.getByTestId("continuous-chat-overlay");
-    const backdrop = screen.getByTestId("chat-fullscreen-backdrop");
-    expect(root.getAttribute("data-fullscreen")).toBeNull();
-    // Resting: backdrop is inactive + click-through (the live view stays usable).
-    expect(backdrop.getAttribute("data-active")).toBe("false");
-    expect(backdrop.className).toContain("pointer-events-none");
-
-    // Far-left button enters full screen and fades a cheap scrim over the view.
-    fireEvent.click(screen.getByLabelText("expand to full screen"));
-    expect(root.getAttribute("data-fullscreen")).toBe("true");
-    expect(document.querySelector('[data-variant="fullscreen"]')).toBeTruthy();
-    // Backdrop becomes the active glass sheet that captures the view.
-    expect(backdrop.getAttribute("data-active")).toBe("true");
-    expect(backdrop.className).toContain("pointer-events-auto");
-
-    // Pressing it again returns to normal (ambient) mode: the partial bubbles
-    // are back (faded out) and the backdrop deactivates.
-    fireEvent.click(screen.getByLabelText("exit full screen"));
-    expect(root.getAttribute("data-fullscreen")).toBeNull();
-    expect(
-      document
-        .querySelector('[data-variant="resting"]')
-        ?.getAttribute("data-revealed"),
-    ).toBe("false");
-    expect(backdrop.getAttribute("data-active")).toBe("false");
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 360, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 360, pointerId: 1 });
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
-  it("shows only the last 2 turns with no scroll while typing, full history in fullscreen", () => {
+  it("fades the backdrop in with the sheet and never closes on a backdrop click", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const backdrop = screen.getByTestId("chat-sheet-backdrop");
+    // Closed: inactive + click-through (the live view behind stays usable).
+    expect(backdrop.getAttribute("data-active")).toBe("false");
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(backdrop.getAttribute("data-active")).toBe("true");
+    // Clicking the backdrop does NOT close the sheet (no click-out dismiss).
+    fireEvent.pointerDown(backdrop);
+    fireEvent.click(backdrop);
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+  });
+
+  it("renders the full thread; the log clips when closed and scrolls when open", () => {
     const controller = makeController({
       messages: [
         { id: "a", role: "assistant", content: "one", createdAt: 1 },
@@ -219,22 +209,17 @@ describe("ContinuousChatOverlay", () => {
     } as unknown as Partial<ShellController>);
     render(<ContinuousChatOverlay controller={controller} />);
 
-    // Typing (partial): only the last 2 turns, no scroll.
-    fireEvent.focus(screen.getByLabelText("message"));
-    const log = document.getElementById("continuous-thread");
-    expect(log?.querySelectorAll('[data-testid="thread-line"]').length).toBe(2);
+    // The full transcript is always mounted (clipped by the sheet height); the
+    // closed log clips with no scroll.
+    let log = document.getElementById("continuous-thread");
+    expect(log?.querySelectorAll('[data-testid="thread-line"]').length).toBe(3);
     expect(log?.className).toContain("overflow-hidden");
-    expect(log?.textContent).not.toContain("one");
-    expect(log?.textContent).toContain("three");
+    expect(log?.textContent).toContain("one");
 
-    // Fullscreen: full history + scroll.
-    fireEvent.click(screen.getByLabelText("expand to full screen"));
-    const fsLog = document.getElementById("continuous-thread");
-    expect(fsLog?.querySelectorAll('[data-testid="thread-line"]').length).toBe(
-      3,
-    );
-    expect(fsLog?.className).toContain("overflow-y-auto");
-    expect(fsLog?.textContent).toContain("one");
+    // Open: the same log becomes a vertical scroll region.
+    fireEvent.focus(screen.getByLabelText("message"));
+    log = document.getElementById("continuous-thread");
+    expect(log?.className).toContain("overflow-y-auto");
   });
 
   it("shows the attach (+) control", () => {
@@ -348,7 +333,7 @@ describe("ContinuousChatOverlay", () => {
     ).toHaveLength(3);
   });
 
-  it("scrolls to the latest line when a new message arrives in fullscreen", () => {
+  it("scrolls to the latest line when a new message arrives while open", () => {
     const base = [{ id: "a", role: "assistant", content: "hi", createdAt: 1 }];
     const { rerender } = render(
       <ContinuousChatOverlay
@@ -357,8 +342,7 @@ describe("ContinuousChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    // Only the fullscreen transcript scrolls; the resting/typing view does not.
-    fireEvent.click(screen.getByLabelText("expand to full screen"));
+    fireEvent.focus(screen.getByLabelText("message")); // open the sheet
     const scrollIntoView = Element.prototype.scrollIntoView as ReturnType<
       typeof vi.fn
     >;
@@ -376,49 +360,24 @@ describe("ContinuousChatOverlay", () => {
     expect(scrollIntoView).toHaveBeenCalled();
   });
 
-  it("collapses the bubbles on a pointer-down outside the bubbles and composer", () => {
+  it("does NOT close on a pointer-down outside the sheet (no click-out dismiss)", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    const thread = document.getElementById("continuous-thread");
+    const sheet = screen.getByTestId("chat-sheet");
     fireEvent.focus(screen.getByLabelText("message"));
-    expect(thread?.getAttribute("data-revealed")).toBe("true");
-    // A click on the live view behind (here, the bare document body) closes it.
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    // Clicking the live view behind (here, the bare body) must NOT close it —
+    // the only dismiss paths are a pull-down drag and Escape.
     fireEvent.pointerDown(document.body);
-    expect(thread?.getAttribute("data-revealed")).toBe("false");
+    fireEvent.click(document.body);
+    expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
-  it("collapses the bubbles when the underlying app scrolls", () => {
+  it("does NOT close when the underlying app scrolls", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    const thread = document.getElementById("continuous-thread");
-
+    const sheet = screen.getByTestId("chat-sheet");
     fireEvent.focus(screen.getByLabelText("message"));
-    expect(thread?.getAttribute("data-revealed")).toBe("true");
-
+    expect(sheet.getAttribute("data-variant")).toBe("open");
     fireEvent.scroll(document.body);
-    expect(thread?.getAttribute("data-revealed")).toBe("false");
-  });
-
-  it("keeps the bubbles revealed when a message bubble is clicked", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
-    fireEvent.focus(screen.getByLabelText("message"));
-    const bubble = document.querySelector('[data-testid="thread-line"]');
-    expect(bubble).toBeTruthy();
-    fireEvent.pointerDown(bubble as Element);
-    expect(
-      document
-        .getElementById("continuous-thread")
-        ?.getAttribute("data-revealed"),
-    ).toBe("true");
-  });
-
-  it("keeps the bubbles revealed when the composer is clicked", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
-    const input = screen.getByLabelText("message");
-    fireEvent.focus(input);
-    fireEvent.pointerDown(input);
-    expect(
-      document
-        .getElementById("continuous-thread")
-        ?.getAttribute("data-revealed"),
-    ).toBe("true");
+    expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 });

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -12,7 +12,7 @@ vi.mock("@elizaos/ui", () => ({
     children,
     ...props
   }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-    React.createElement("button", props, children),
+    React.createElement("button", { type: "button", ...props }, children),
   Skeleton: (props: React.HTMLAttributes<HTMLDivElement>) =>
     React.createElement("div", props),
   Tabs: ({ children }: { children: React.ReactNode }) =>
@@ -22,7 +22,7 @@ vi.mock("@elizaos/ui", () => ({
   TabsList: ({ children }: { children: React.ReactNode }) =>
     React.createElement("div", {}, children),
   TabsTrigger: ({ children }: { children: React.ReactNode }) =>
-    React.createElement("button", {}, children),
+    React.createElement("button", { type: "button" }, children),
 }));
 
 import { ShopifyTuiView } from "./ShopifyAppView";
@@ -115,9 +115,8 @@ function jsonResponse(body: unknown, init: ResponseInit = {}) {
 }
 
 function mockFetch() {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === "/api/shopify/status") return jsonResponse(sampleStatus);
       if (url.startsWith("/api/shopify/products") && init?.method !== "POST") {
@@ -137,8 +136,10 @@ function mockFetch() {
         return jsonResponse(sampleCustomers);
       }
       return jsonResponse({ error: `Unexpected ${url}` }, { status: 404 });
-    }),
+    },
   );
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
 }
 
 afterEach(() => {
@@ -173,6 +174,88 @@ describe("ShopifyTuiView", () => {
       lowInventoryCount: 1,
       customerCount: 1,
     });
+  });
+
+  it("renders a recent-orders commerce row with name, total and currency", async () => {
+    mockFetch();
+    render(React.createElement(ShopifyTuiView));
+    await screen.findByText("Eliza Store");
+
+    // commerce section recent-orders row.
+    expect(screen.getByText("#1001")).toBeTruthy();
+    expect(screen.getByText("buyer@example.com")).toBeTruthy();
+    // totalPrice + currencyCode share one span.
+    expect(screen.getByText("42.00 USD")).toBeTruthy();
+  });
+
+  it("flips lastAction boot→refresh and re-fetches when refresh is clicked", async () => {
+    const fetchMock = mockFetch();
+    const { container } = render(React.createElement(ShopifyTuiView));
+    await screen.findByText("Eliza Store");
+
+    const readAction = () =>
+      JSON.parse(
+        container
+          .querySelector("[data-view-state]")
+          ?.getAttribute("data-view-state") ?? "{}",
+      ).lastAction;
+    expect(readAction()).toBe("refresh"); // first load sets refresh on success
+
+    const statusCalls = () =>
+      fetchMock.mock.calls.filter(([u]) => String(u) === "/api/shopify/status")
+        .length;
+    const before = statusCalls();
+    fireEvent.click(screen.getByText("refresh"));
+    await vi.waitFor(() => expect(statusCalls()).toBeGreaterThan(before));
+    expect(readAction()).toBe("refresh");
+  });
+
+  it("renders the not-connected hint and zeroed counts when disconnected", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input) === "/api/shopify/status")
+          return jsonResponse({ connected: false, shop: null });
+        return jsonResponse({ error: "not configured" }, { status: 404 });
+      }),
+    );
+
+    const { container } = render(React.createElement(ShopifyTuiView));
+    await screen.findByText(/Configure SHOPIFY_STORE_DOMAIN/);
+
+    expect(
+      JSON.parse(
+        container
+          .querySelector("[data-view-state]")
+          ?.getAttribute("data-view-state") ?? "{}",
+      ),
+    ).toMatchObject({
+      connected: false,
+      productCount: 0,
+      orderCount: 0,
+      customerCount: 0,
+      inventoryCount: 0,
+    });
+  });
+
+  it("renders the error banner when the status fetch rejects", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("network is down");
+      }),
+    );
+
+    const { container } = render(React.createElement(ShopifyTuiView));
+    await screen.findByText("network is down");
+
+    expect(
+      JSON.parse(
+        container
+          .querySelector("[data-view-state]")
+          ?.getAttribute("data-view-state") ?? "{}",
+      ).error,
+    ).toBe("network is down");
   });
 
   it("supports terminal capabilities for state and store operations", async () => {
@@ -237,5 +320,94 @@ describe("ShopifyTuiView", () => {
       viewType: "tui",
       inventory: { adjusted: true },
     });
+  });
+
+  it("rejects invalid interact() invocations", async () => {
+    mockFetch();
+
+    await expect(
+      interact("terminal-shopify-create-product", {}),
+    ).rejects.toThrow(/title is required/);
+
+    await expect(
+      interact("terminal-shopify-adjust-inventory", { delta: 1 }),
+    ).rejects.toThrow(/itemId is required/);
+
+    await expect(
+      interact("terminal-shopify-adjust-inventory", { itemId: "inv-1" }),
+    ).rejects.toThrow(/delta is required/);
+
+    await expect(interact("bogus-capability")).rejects.toThrow(
+      /Unsupported capability/,
+    );
+  });
+
+  it("plumbs params into request URLs and bodies", async () => {
+    const fetchMock = mockFetch();
+
+    await interact("terminal-shopify-products", {
+      query: "hoodie",
+      page: 2,
+      limit: 5,
+    });
+    const productsUrl = String(
+      fetchMock.mock.calls.find(([u]) =>
+        String(u).startsWith("/api/shopify/products"),
+      )?.[0],
+    );
+    expect(productsUrl).toContain("page=2");
+    expect(productsUrl).toContain("limit=5");
+    expect(productsUrl).toContain("q=hoodie");
+
+    fetchMock.mockClear();
+    await interact("terminal-shopify-orders", {
+      status: "unfulfilled",
+      limit: 5,
+    });
+    const ordersUrl = String(
+      fetchMock.mock.calls.find(([u]) =>
+        String(u).startsWith("/api/shopify/orders"),
+      )?.[0],
+    );
+    expect(ordersUrl).toContain("status=unfulfilled");
+    expect(ordersUrl).toContain("limit=5");
+
+    fetchMock.mockClear();
+    await interact("terminal-shopify-create-product", {
+      title: "  Cap  ",
+      vendor: "Eliza",
+      productType: "Hats",
+      price: "19.99",
+    });
+    const createCall = fetchMock.mock.calls.find(
+      ([u, init]) =>
+        String(u) === "/api/shopify/products" &&
+        (init as RequestInit | undefined)?.method === "POST",
+    );
+    expect(createCall).toBeTruthy();
+    const createBody = JSON.parse(
+      (createCall?.[1] as RequestInit).body as string,
+    );
+    // title is trimmed; optional fields pass through.
+    expect(createBody).toMatchObject({
+      title: "Cap",
+      vendor: "Eliza",
+      productType: "Hats",
+      price: "19.99",
+    });
+
+    fetchMock.mockClear();
+    await interact("terminal-shopify-adjust-inventory", {
+      itemId: "inv-1",
+      delta: -2,
+      locationId: "loc-1",
+    });
+    const adjustCall = fetchMock.mock.calls.find(([u]) =>
+      String(u).includes("/api/shopify/inventory/inv-1/adjust"),
+    );
+    expect(adjustCall).toBeTruthy();
+    expect(
+      JSON.parse((adjustCall?.[1] as RequestInit).body as string),
+    ).toMatchObject({ delta: -2, locationId: "loc-1" });
   });
 });
