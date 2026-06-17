@@ -34,6 +34,7 @@
     "test:e2e": "bun run test:slow",
     "test:agent-surface-e2e": "bun run --cwd ../.. packages/ui/src/agent-surface/__e2e__/run-e2e.mjs",
     "test:chat-sheet-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-sheet-e2e.mjs",
+    "test:onboarding-e2e": "bun run --cwd ../.. packages/ui/src/first-run/__e2e__/run-onboarding-e2e.mjs",
     "lint": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",

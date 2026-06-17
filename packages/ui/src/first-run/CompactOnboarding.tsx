@@ -64,16 +64,7 @@ function OptionCard({
 
 export function CompactOnboarding(): React.ReactElement {
   const c = useFirstRunController();
-  const {
-    busyText,
-    cloudError,
-    error,
-    submitting,
-    step,
-    draft,
-    localRuntimeAvailable,
-    cloudOnly,
-  } = c;
+  const { busyText, cloudError, error, submitting, step, draft, cloudOnly } = c;
   const busy = submitting;
 
   // Detect whether this component is running inside the onboarding overlay
@@ -167,14 +158,9 @@ export function CompactOnboarding(): React.ReactElement {
 
           {onRemote ? (
             <div className="flex w-full flex-col gap-4">
-              <div className="flex flex-col gap-1 text-center">
-                <h1 className="text-lg font-semibold">
-                  Connect a remote agent
-                </h1>
-                <p className="text-xs text-white/70">
-                  Point the app at an agent you're already running.
-                </p>
-              </div>
+              <h1 className="text-center text-lg font-semibold">
+                Connect a remote agent
+              </h1>
               <input
                 // biome-ignore lint/a11y/noAutofocus: first field of an intentional form step
                 autoFocus
@@ -273,11 +259,6 @@ export function CompactOnboarding(): React.ReactElement {
                   onClick={chooseLocal}
                 />
               </div>
-              {!localRuntimeAvailable ? (
-                <p className="-mt-2 text-[11px] text-white/45">
-                  Local models download an on-device model after setup.
-                </p>
-              ) : null}
             </>
           )}
 
