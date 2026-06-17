@@ -1851,7 +1851,7 @@ async function handleRequest(
   if (
     (pathname.startsWith("/api/local-inference") ||
       pathname === "/api/tts/local-inference" ||
-      pathname === "/api/asr/local-inference") &&
+      pathname.startsWith("/api/asr/local-inference")) &&
     (await (async () => {
       const localInferenceServerApi = await getLocalInferenceServerApi();
       if (
