@@ -205,6 +205,47 @@ function toAgentListItemDto(
   };
 }
 
+/**
+ * Run the create→enqueue span and delete the just-created sandbox if ANY step
+ * throws. `createAgent` commits a `pending` row up front, but the daemon only
+ * provisions rows that have a matching `agent_provision` job — so an error
+ * before the enqueue (e.g. KMS key mint in prepareManagedElizaEnvironment, or
+ * the env/job DB writes) would otherwise leave a `pending` row no worker can
+ * ever claim. We roll the row back and rethrow so the caller still sees the
+ * failure. Cleanup is best-effort; the cleanup-stuck-provisioning cron is the
+ * safety net for rows that slip through.
+ */
+async function withOrphanCleanup<T>(
+  agentSandboxId: string,
+  organizationId: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    try {
+      await agentSandboxesRepository.delete(agentSandboxId, organizationId);
+      logger.info("[agent-api] Cleaned up agent after create→enqueue failure", {
+        agentId: agentSandboxId,
+        orgId: organizationId,
+      });
+    } catch (cleanupErr) {
+      logger.error(
+        "[agent-api] Failed to clean up agent after create→enqueue failure",
+        {
+          agentId: agentSandboxId,
+          orgId: organizationId,
+          error:
+            cleanupErr instanceof Error
+              ? cleanupErr.message
+              : String(cleanupErr),
+        },
+      );
+    }
+    throw err;
+  }
+}
+
 app.get("/", async (c) => {
   const user = await requireUserOrApiKeyWithOrg(c);
   const agents = await elizaSandboxService.listAgents(user.organization_id);
@@ -325,184 +366,169 @@ app.post("/", async (c) => {
     executionTier,
   });
 
-  const managedEnvironment = await prepareManagedElizaEnvironment({
-    existingEnv: parsed.data.environmentVars,
-    organizationId: user.organization_id,
-    userId: user.id,
-    agentSandboxId: agent.id,
-  });
+  // ── Atomicity guard: createAgent → enqueue is a split write ──────────────
+  // `createAgent` already COMMITTED a `pending` row. Everything up to the
+  // provision-job enqueue can still throw (prepareManagedElizaEnvironment mints
+  // a KMS-backed key; updateAgentEnvironment / enqueue hit the DB + job table).
+  // The daemon only claims rows that have a matching `agent_provision` job, so a
+  // throw in this window would strand a `pending` sandbox with no job — forever
+  // unclaimable. Wrap the whole span and delete the just-created row on ANY
+  // failure, then rethrow so the caller still sees the error (the reconciler in
+  // cleanup-stuck-provisioning is the safety net for rows that slip through).
+  return await withOrphanCleanup(agent.id, user.organization_id, async () => {
+    const managedEnvironment = await prepareManagedElizaEnvironment({
+      existingEnv: parsed.data.environmentVars,
+      organizationId: user.organization_id,
+      userId: user.id,
+      agentSandboxId: agent.id,
+    });
 
-  if (managedEnvironment.changed) {
-    await elizaSandboxService.updateAgentEnvironment(
-      agent.id,
-      user.organization_id,
-      managedEnvironment.environmentVars,
-    );
-  }
+    if (managedEnvironment.changed) {
+      await elizaSandboxService.updateAgentEnvironment(
+        agent.id,
+        user.organization_id,
+        managedEnvironment.environmentVars,
+      );
+    }
 
-  logger.info("[agent-api] Agent created", {
-    agentId: agent.id,
-    orgId: user.organization_id,
-    autoProvision,
-    executionTier,
-  });
+    logger.info("[agent-api] Agent created", {
+      agentId: agent.id,
+      orgId: user.organization_id,
+      autoProvision,
+      executionTier,
+    });
 
-  if (executionTier === "shared") {
-    return c.json(
-      {
-        success: true,
-        created: true,
-        source: "shared_runtime",
-        data: {
-          id: agent.id,
-          agentId: agent.id,
-          agentName: agent.agent_name,
-          status: agent.status,
-          createdAt: agent.created_at,
-          executionTier: agent.execution_tier,
-        },
-      },
-      201,
-    );
-  }
-
-  if (!shouldProvisionEagerly) {
-    return c.json(
-      {
-        success: true,
-        created: true,
-        data: {
-          id: agent.id,
-          agentId: agent.id,
-          agentName: agent.agent_name,
-          status: agent.status,
-          createdAt: agent.created_at,
-          executionTier: agent.execution_tier,
-        },
-      },
-      201,
-    );
-  }
-
-  if (executionTier !== "custom" && containersEnv.warmPoolEnabled()) {
-    try {
-      const claimed = await agentSandboxesRepository.claimWarmContainer({
-        userAgentId: agent.id,
-        organizationId: user.organization_id,
-        image: containersEnv.defaultAgentImage(),
-        agentName: agent.agent_name ?? agent.id,
-        agentConfig:
-          (agent.agent_config as Record<string, unknown> | undefined) ??
-          undefined,
-        characterId: agent.character_id,
-      });
-      if (claimed) {
-        logger.info("[agent-api] Warm pool claim succeeded on create", {
-          agentId: agent.id,
-          orgId: user.organization_id,
-          poolNodeId: claimed.node_id,
-        });
-        return c.json(
-          {
-            success: true,
-            source: "warm_pool",
-            data: {
-              id: claimed.id,
-              agentName: claimed.agent_name,
-              status: claimed.status,
-              bridgeUrl: claimed.bridge_url,
-              healthUrl: claimed.health_url,
-              executionTier: claimed.execution_tier,
-            },
+    if (executionTier === "shared") {
+      return c.json(
+        {
+          success: true,
+          created: true,
+          source: "shared_runtime",
+          data: {
+            id: agent.id,
+            agentId: agent.id,
+            agentName: agent.agent_name,
+            status: agent.status,
+            createdAt: agent.created_at,
+            executionTier: agent.execution_tier,
           },
-          201,
+        },
+        201,
+      );
+    }
+
+    if (!shouldProvisionEagerly) {
+      return c.json(
+        {
+          success: true,
+          created: true,
+          data: {
+            id: agent.id,
+            agentId: agent.id,
+            agentName: agent.agent_name,
+            status: agent.status,
+            createdAt: agent.created_at,
+            executionTier: agent.execution_tier,
+          },
+        },
+        201,
+      );
+    }
+
+    if (executionTier !== "custom" && containersEnv.warmPoolEnabled()) {
+      try {
+        const claimed = await agentSandboxesRepository.claimWarmContainer({
+          userAgentId: agent.id,
+          organizationId: user.organization_id,
+          image: containersEnv.defaultAgentImage(),
+          agentName: agent.agent_name ?? agent.id,
+          agentConfig:
+            (agent.agent_config as Record<string, unknown> | undefined) ??
+            undefined,
+          characterId: agent.character_id,
+        });
+        if (claimed) {
+          logger.info("[agent-api] Warm pool claim succeeded on create", {
+            agentId: agent.id,
+            orgId: user.organization_id,
+            poolNodeId: claimed.node_id,
+          });
+          return c.json(
+            {
+              success: true,
+              source: "warm_pool",
+              data: {
+                id: claimed.id,
+                agentName: claimed.agent_name,
+                status: claimed.status,
+                bridgeUrl: claimed.bridge_url,
+                healthUrl: claimed.health_url,
+                executionTier: claimed.execution_tier,
+              },
+            },
+            201,
+          );
+        }
+      } catch (err) {
+        // Don't block on claim errors — fall through to the async job path.
+        logger.warn(
+          "[agent-api] Warm pool claim threw on create; falling back",
+          {
+            agentId: agent.id,
+            orgId: user.organization_id,
+            error: err instanceof Error ? err.message : String(err),
+          },
         );
       }
-    } catch (err) {
-      // Don't block on claim errors — fall through to the async job path.
-      logger.warn("[agent-api] Warm pool claim threw on create; falling back", {
-        agentId: agent.id,
-        orgId: user.organization_id,
-        error: err instanceof Error ? err.message : String(err),
-      });
     }
-  }
 
-  // ── Async path (default) ────────────────────────────────────────────────
-  // `expectedUpdatedAt` is intentionally omitted: the row was just created
-  // (and possibly touched by the managed-env update above), so there is no
-  // concurrent handle to guard against — passing the stale create timestamp
-  // would spuriously trip the race check after a managed-env write.
-  let job: Awaited<
-    ReturnType<typeof provisioningJobService.enqueueAgentProvision>
-  >;
-  try {
-    job = await provisioningJobService.enqueueAgentProvision({
+    // ── Async path (default) ──────────────────────────────────────────────
+    // `expectedUpdatedAt` is intentionally omitted: the row was just created
+    // (and possibly touched by the managed-env update above), so there is no
+    // concurrent handle to guard against — passing the stale create timestamp
+    // would spuriously trip the race check after a managed-env write.
+    const job = await provisioningJobService.enqueueAgentProvision({
       agentId: agent.id,
       organizationId: user.organization_id,
       userId: user.id,
       agentName: agent.agent_name ?? agent.id,
     });
-  } catch (enqueueErr) {
-    // Roll back the just-created agent so a failed enqueue doesn't leave an
-    // unprovisionable row behind (mirrors the orphaned-record cleanup the
-    // S2S /api/v1/agents route does for its character).
-    try {
-      await agentSandboxesRepository.delete(agent.id, user.organization_id);
-      logger.info("[agent-api] Cleaned up agent after enqueue failure", {
-        agentId: agent.id,
-        orgId: user.organization_id,
-      });
-    } catch (cleanupErr) {
-      logger.error(
-        "[agent-api] Failed to clean up agent after enqueue failure",
-        {
+
+    // Inline trigger: kick the worker now instead of waiting up to a minute for
+    // the next cron tick. Fire-and-forget; the cron is the safety net.
+    void provisioningJobService.triggerImmediate(c.env).catch(() => {
+      // Logged inside the service.
+    });
+
+    logger.info("[agent-api] Agent provisioning job enqueued on create", {
+      agentId: agent.id,
+      orgId: user.organization_id,
+      jobId: job.id,
+    });
+
+    return c.json(
+      {
+        success: true,
+        created: true,
+        message:
+          "Agent created. Provisioning job started — poll the job endpoint for status.",
+        data: {
           agentId: agent.id,
-          orgId: user.organization_id,
-          error:
-            cleanupErr instanceof Error
-              ? cleanupErr.message
-              : String(cleanupErr),
+          agentName: agent.agent_name,
+          status: job.status,
+          jobId: job.id,
+          estimatedCompletionAt: job.estimated_completion_at,
+          executionTier: agent.execution_tier,
         },
-      );
-    }
-    throw enqueueErr;
-  }
-
-  // Inline trigger: kick the worker now instead of waiting up to a minute for
-  // the next cron tick. Fire-and-forget; the cron is the safety net.
-  void provisioningJobService.triggerImmediate(c.env).catch(() => {
-    // Logged inside the service.
-  });
-
-  logger.info("[agent-api] Agent provisioning job enqueued on create", {
-    agentId: agent.id,
-    orgId: user.organization_id,
-    jobId: job.id,
-  });
-
-  return c.json(
-    {
-      success: true,
-      created: true,
-      message:
-        "Agent created. Provisioning job started — poll the job endpoint for status.",
-      data: {
-        agentId: agent.id,
-        agentName: agent.agent_name,
-        status: job.status,
-        jobId: job.id,
-        estimatedCompletionAt: job.estimated_completion_at,
-        executionTier: agent.execution_tier,
+        polling: {
+          endpoint: `/api/v1/jobs/${job.id}`,
+          intervalMs: 5000,
+          expectedDurationMs: 90000,
+        },
       },
-      polling: {
-        endpoint: `/api/v1/jobs/${job.id}`,
-        intervalMs: 5000,
-        expectedDurationMs: 90000,
-      },
-    },
-    202,
-  );
+      202,
+    );
+  });
 });
 
 export default app;
