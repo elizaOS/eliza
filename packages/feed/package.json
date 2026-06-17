@@ -115,7 +115,7 @@
     "require-in-the-middle": "^8.0.1",
     "robot3": "^0.4.1",
     "server-only": "^0.0.1",
-    "tailwindcss": "4.3.0",
+    "tailwindcss": "4.3.1",
     "viem": "2.47.6",
     "ws": "8.21.0",
     "zod": "^4.3.6"
