@@ -47,7 +47,7 @@ env:
 jobs:
   changes:
     name: Classify changed paths
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-24.04"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
     outputs:
       dev_smoke: ${{ steps.filter.outputs.dev_smoke }}
     steps:
@@ -76,7 +76,7 @@ jobs:
     name: bun run dev onboarding chat
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.dev_smoke == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-24.04"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
     timeout-minutes: 35
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
