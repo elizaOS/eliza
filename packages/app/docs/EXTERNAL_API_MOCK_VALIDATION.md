@@ -63,9 +63,9 @@ not injectable need that refactor first.
 | Shopify | Admin GraphQL 2025-04 | no (store token) | **contract-tested** | `plugin-shopify-ui/src/routes.contract.test.ts` + customer fields fixed to `numberOfOrders`/`amountSpent` (verified vs live 2025-04 docs). Next: gated live-refresh. |
 | Steward | KMS/anvil bridge | no | **contract-tested** | `plugin-steward-app/src/steward-bridge.contract.test.ts`. |
 | Vincent | heyvincent.ai OAuth | no (OAuth) | **contract-tested** | `plugin-vincent/src/vincent-oauth-parser.contract.test.ts`. Next: gated live OAuth-profile capture. |
+| CoinGecko | api.coingecko.com | yes | **validated** | `plugin-wallet/src/routes/wallet-market-overview.{contract,real}.test.ts` — recorded `/coins/markets` replayed through the real route + live-drift. (plugin-social-alpha's coingecko use is still inline.) |
 | Eliza Cloud | cloud-api worker | n/a | **validated-elsewhere** | `packages/test/cloud-e2e` boots the real cloud-api worker. |
-| CoinGecko | api.coingecko.com | yes | **unvalidated** | Used by `plugin-wallet` (token-info/market-overview) + `plugin-social-alpha`. Public → easy next: contract test over a recorded `/simple/price` + `/coins/markets`. |
-| Block explorers | bscscan/etherscan/solscan | yes (key for some) | **unvalidated** | `plugin-wallet`, `plugin-steward-app`. Public read endpoints → recorded contract test. |
+| Block explorers | bscscan/etherscan/solscan | yes (key for some) | **unvalidated** | `plugin-wallet`, `plugin-steward-app`. Public read endpoints → recorded contract test (next cheapest win). |
 | Wallet RPC | EVM/Solana RPC + token providers | partial | **unvalidated** | Inline DTO fixtures, no recorded-real tie. |
 | ElevenLabs | api.elevenlabs.io | no (key) | **unvalidated** | TTS/STT; gated recorded fixture + live-refresh. |
 | Calendly | api.calendly.com | no (key) | **unvalidated** | `plugin-calendly`; gated recorded fixture. |

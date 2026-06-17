@@ -21,11 +21,28 @@ const REPO_ROOT = path.resolve(HERE, "../../..");
 
 /**
  * VALIDATED — recorded-real contract test + a live-drift test (re-fetches the
- * live API). Strongest tier; needs a public API.
+ * live API). Strongest tier; needs a public API. Each entry lists the required
+ * contract + live test files (and a recorded fixture).
  */
-const VALIDATED: Readonly<Record<string, string>> = {
-  polymarket: "plugins/plugin-polymarket-app/src",
-  hyperliquid: "plugins/plugin-hyperliquid-app/src",
+const VALIDATED: Readonly<
+  Record<string, { contract: string; real: string; fixtures: string }>
+> = {
+  polymarket: {
+    contract: "plugins/plugin-polymarket-app/src/routes.contract.test.ts",
+    real: "plugins/plugin-polymarket-app/src/routes.real.test.ts",
+    fixtures: "plugins/plugin-polymarket-app/src/__fixtures__",
+  },
+  hyperliquid: {
+    contract: "plugins/plugin-hyperliquid-app/src/routes.contract.test.ts",
+    real: "plugins/plugin-hyperliquid-app/src/routes.real.test.ts",
+    fixtures: "plugins/plugin-hyperliquid-app/src/__fixtures__",
+  },
+  coingecko: {
+    contract:
+      "plugins/plugin-wallet/src/routes/wallet-market-overview.contract.test.ts",
+    real: "plugins/plugin-wallet/src/routes/wallet-market-overview.real.test.ts",
+    fixtures: "plugins/plugin-wallet/src/routes/__fixtures__",
+  },
 };
 
 /**
@@ -50,9 +67,6 @@ const CONTRACT_TESTED: Readonly<Record<string, string>> = {
  * (move to CONTRACT_TESTED), then a live-drift test (move to VALIDATED).
  */
 const DEBT: Readonly<Record<string, string>> = {
-  coingecko:
-    "plugin-wallet (token-info/market-overview) + plugin-social-alpha call " +
-    "api.coingecko.com with inline fixtures; public API — recorded contract test next.",
   "block-explorers":
     "bscscan/etherscan/solscan reads in plugin-wallet/plugin-steward-app; public " +
     "read endpoints — recorded contract test next.",
@@ -68,19 +82,16 @@ const DEBT: Readonly<Record<string, string>> = {
 
 // True count of currently-unvalidated external integrations. The ratchet forbids
 // GROWING past this — it must only shrink as APIs are validated.
-const MAX_DEBT = 7;
+const MAX_DEBT = 6;
 
 describe("external-API mock validation ratchet", () => {
   it("every validated API keeps its recorded-contract + live-drift tests", () => {
     const missing: string[] = [];
-    for (const [api, dir] of Object.entries(VALIDATED)) {
-      for (const file of ["routes.contract.test.ts", "routes.real.test.ts"]) {
-        const full = path.join(REPO_ROOT, dir, file);
-        if (!existsSync(full)) missing.push(`${api}: ${dir}/${file}`);
-      }
-      const recordedDir = path.join(REPO_ROOT, dir, "__fixtures__");
-      if (!existsSync(recordedDir)) {
-        missing.push(`${api}: ${dir}/__fixtures__ (recorded real responses)`);
+    for (const [api, files] of Object.entries(VALIDATED)) {
+      for (const file of [files.contract, files.real, files.fixtures]) {
+        if (!existsSync(path.join(REPO_ROOT, file))) {
+          missing.push(`${api}: ${file}`);
+        }
       }
     }
     expect(
