@@ -1323,9 +1323,17 @@ export class ProvisioningJobService {
    * double-process the same job.
    *
    * @param batchSize - Max jobs to process per invocation.
+   * @param opts.jobTypes - Restrict claiming + stale-recovery to this lane of
+   *   job types (e.g. `APPS_JOB_TYPES` for the dedicated apps-control daemon).
+   *   Omitted → ALL types (the single-daemon default). Scoping is what lets two
+   *   daemons share the `jobs` table without one claiming-and-failing the
+   *   other's lane.
    * @returns Summary of processing results.
    */
-  async processPendingJobs(batchSize = 5): Promise<ProcessingResult> {
+  async processPendingJobs(
+    batchSize = 5,
+    opts: { jobTypes?: readonly ProvisioningJobType[] } = {},
+  ): Promise<ProcessingResult> {
     const result: ProcessingResult = {
       claimed: 0,
       succeeded: 0,
@@ -1333,13 +1341,16 @@ export class ProvisioningJobService {
       errors: [],
     };
 
-    // Process each job type
-    for (const jobType of Object.values(JOB_TYPES)) {
+    const jobTypes = opts.jobTypes ?? Object.values(JOB_TYPES);
+
+    // Process each job type in this daemon's lane
+    for (const jobType of jobTypes) {
       await this.processJobType(jobType, batchSize, result);
     }
 
-    // Recover stale jobs (stuck in_progress for >5 minutes)
-    const recovered = await this.recoverStaleJobs();
+    // Recover stale jobs (stuck in_progress for >5 minutes), scoped to the same
+    // lane so a lane-scoped daemon never resets the OTHER lane's stale rows.
+    const recovered = await this.recoverStaleJobs(jobTypes);
     if (recovered > 0) {
       logger.info("[provisioning-jobs] Recovered stale jobs", { recovered });
     }
@@ -2156,12 +2167,14 @@ export class ProvisioningJobService {
     return { total, succeeded, failed };
   }
 
-  private async recoverStaleJobs(): Promise<number> {
+  private async recoverStaleJobs(
+    jobTypes: readonly ProvisioningJobType[] = Object.values(JOB_TYPES),
+  ): Promise<number> {
     let totalRecovered = 0;
 
     // Recover stale jobs per type across all organizations. The repository now
     // handles org-agnostic recovery, so we can do this in one pass.
-    for (const jobType of Object.values(JOB_TYPES)) {
+    for (const jobType of jobTypes) {
       const recovered = await jobsRepository.recoverStaleJobs({
         type: jobType,
         staleThresholdMs: 5 * 60 * 1000, // 5 minutes

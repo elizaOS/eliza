@@ -72,3 +72,77 @@ export const JOB_TYPES = {
 } as const;
 
 export type ProvisioningJobType = (typeof JOB_TYPES)[keyof typeof JOB_TYPES];
+
+// ── Lanes (which daemon claims which jobs) ──────────────────────────────────
+// The one `jobs` table + ProvisioningJobService codepath is shared, but the
+// rows split into two INDEPENDENT lanes that can be claimed by SEPARATE daemons:
+//
+//   - `agent` — the AGENT_* sandbox lifecycle (Product 1). Owned by the
+//     control-plane provisioning-worker, which ALSO holds the agent-fleet
+//     singletons (liveness heartbeat, fleet upgrade, node autoscale, warm pool).
+//   - `apps`  — the CONTAINER_* / APP_* lifecycle (Product 2). Provisioning a
+//     per-tenant DB needs `pg` reach to the PRIVATE tenant Postgres, and running
+//     untrusted user containers wants isolation from the agent control plane.
+//     Owned by a dedicated apps-control daemon that lives ON the apps private
+//     network (so it can reach the tenant DB) and runs NONE of the agent
+//     singletons — so it can never race/duplicate the live fleet.
+//
+// A daemon scopes itself with `PROVISIONING_JOB_LANES` (comma list). Unset → ALL
+// types (the historical single-daemon behavior), so this split is INERT until a
+// second daemon is actually deployed and each side is pinned to its lane.
+export const AGENT_JOB_TYPES = [
+  JOB_TYPES.AGENT_PROVISION,
+  JOB_TYPES.AGENT_DELETE,
+  JOB_TYPES.AGENT_SUSPEND,
+  JOB_TYPES.AGENT_RESUME,
+  JOB_TYPES.AGENT_RESTART,
+  JOB_TYPES.AGENT_LOGS,
+  JOB_TYPES.AGENT_MESSAGE,
+  JOB_TYPES.AGENT_SNAPSHOT,
+  JOB_TYPES.AGENT_UPGRADE,
+  JOB_TYPES.AGENT_SLEEP,
+  JOB_TYPES.AGENT_WAKE,
+] as const satisfies readonly ProvisioningJobType[];
+
+export const APPS_JOB_TYPES = [
+  JOB_TYPES.CONTAINER_PROVISION,
+  JOB_TYPES.CONTAINER_DELETE,
+  JOB_TYPES.CONTAINER_RESTART,
+  JOB_TYPES.CONTAINER_UPGRADE,
+  JOB_TYPES.CONTAINER_LOGS,
+  JOB_TYPES.APP_DEPLOY,
+  JOB_TYPES.APP_DB_DEPROVISION,
+] as const satisfies readonly ProvisioningJobType[];
+
+export const JOB_LANES = {
+  agent: AGENT_JOB_TYPES,
+  apps: APPS_JOB_TYPES,
+} as const;
+
+export type JobLane = keyof typeof JOB_LANES;
+
+/**
+ * Resolve the job types a daemon should claim from a `PROVISIONING_JOB_LANES`
+ * spec (comma-separated `agent`/`apps`, case-insensitive).
+ *
+ * Fail-OPEN to the historical all-types behavior in every ambiguous case:
+ *   - empty / undefined  → ALL types (one daemon does both lanes);
+ *   - no recognized lane → ALL types (never silently claim nothing).
+ * Unknown lane tokens are ignored. The returned list preserves `JOB_TYPES`
+ * order so logs/iteration are stable.
+ */
+export function resolveJobTypesForLanes(spec: string | undefined | null): ProvisioningJobType[] {
+  const all = Object.values(JOB_TYPES);
+  if (!spec || !spec.trim()) return all;
+  const wanted = new Set<ProvisioningJobType>();
+  let matchedAnyLane = false;
+  for (const raw of spec.split(",")) {
+    const lane = raw.trim().toLowerCase();
+    if (lane in JOB_LANES) {
+      matchedAnyLane = true;
+      for (const t of JOB_LANES[lane as JobLane]) wanted.add(t);
+    }
+  }
+  if (!matchedAnyLane) return all;
+  return all.filter((t) => wanted.has(t));
+}
