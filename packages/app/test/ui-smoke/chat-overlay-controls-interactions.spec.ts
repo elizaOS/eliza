@@ -1,8 +1,8 @@
 // Interaction coverage for the continuous-chat overlay — the REAL web chat
 // surface (the per-message copy/edit/delete action rail lives on the desktop-only
 // full ChatView, which the web app never renders). Drives the overlay's own
-// controls: the pull-up history sheet (open on send / close on Escape /
-// click-out is a no-op) and the attach picker. Keyless against the stub.
+// controls: the pull-up chat (open on send / collapse on Escape / collapse on
+// click-out) and the attach picker. Keyless against the stub.
 
 import { expect, test } from "@playwright/test";
 import {
@@ -16,32 +16,33 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
-test("chat overlay: sending opens the history sheet, click-out is a no-op, Escape closes", async ({
+test("chat overlay: sending opens the chat, click-out collapses, Escape collapses", async ({
   page,
 }) => {
   await openAppPath(page, "/chat");
   const overlay = page.getByTestId("continuous-chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
 
-  // The sheet rests closed; sending a line springs it open.
+  // Collapsed at rest (just the input); sending a line springs the chat open.
   await expect(overlay).not.toHaveAttribute("data-open", "true");
   const composer = page.getByTestId("chat-composer-textarea");
-  await composer.fill("open the history sheet");
+  await composer.fill("open the chat");
   await page.getByTestId("chat-composer-action").click();
   await expect(overlay).toHaveAttribute("data-open", "true", {
     timeout: 15_000,
   });
 
-  // Clicking the dimmed view behind must NOT close it — only a pull-down on the
-  // grabber or Escape dismisses the sheet (the scrim has no click handler).
+  // Clicking the dimmed view behind collapses the chat back to the input.
   await page
     .getByTestId("chat-sheet-backdrop")
     .click({ position: { x: 14, y: 14 }, force: true });
-  await expect(overlay).toHaveAttribute("data-open", "true", {
-    timeout: 5_000,
+  await expect(overlay).not.toHaveAttribute("data-open", "true", {
+    timeout: 10_000,
   });
 
-  // Escape closes it.
+  // Typing re-opens it; Escape collapses again.
+  await composer.fill("and again");
+  await expect(overlay).toHaveAttribute("data-open", "true", { timeout: 10_000 });
   await composer.press("Escape");
   await expect(overlay).not.toHaveAttribute("data-open", "true", {
     timeout: 10_000,

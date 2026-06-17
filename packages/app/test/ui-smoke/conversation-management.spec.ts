@@ -197,8 +197,8 @@ test("chat overlay: a sent message persists across a full page reload", async ({
     timeout: 60_000,
   });
 
-  // The persisted user turn must reappear. The overlay rests as a slim peek;
-  // pull the sheet up (the grabber is keyboard-operable) to reveal the whole
+  // The persisted user turn must reappear. The chat rests collapsed (just the
+  // input); pull it up (the grabber is keyboard-operable) to reveal the whole
   // scrollable transcript.
   const grabber = page.getByTestId("chat-sheet-grabber");
   await expect(grabber).toBeVisible({ timeout: 15_000 });

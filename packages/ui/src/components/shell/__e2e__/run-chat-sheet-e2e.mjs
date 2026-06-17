@@ -74,11 +74,14 @@ const variant = (p) =>
   p.getByTestId("chat-sheet").getAttribute("data-variant");
 const detent = (p) =>
   p.getByTestId("chat-sheet").getAttribute("data-detent");
+// The history (thread) is the element whose height animates 0 → half → full;
+// the panel (chat-sheet) also holds the always-present input, so measure the
+// thread for detent heights.
 const sheetHeight = (p) =>
   p.evaluate(
     () =>
       document
-        .querySelector('[data-testid="chat-sheet"]')
+        .querySelector('[data-testid="chat-thread"]')
         ?.getBoundingClientRect().height ?? 0,
   );
 const viewportH = (p) =>
@@ -205,15 +208,16 @@ async function runDragSuite(p, pointer, tag) {
   const TOL = 36;
   await p.waitForTimeout(150);
 
-  // peek at rest
-  assert((await variant(p)) === "closed", `[${pointer}] starts at PEEK (closed)`);
-  assert(near(await sheetHeight(p), 76, 22), `[${pointer}] PEEK height ≈ 76px`);
-  await snap(p, `${tag}-peek`);
+  // fully collapsed at rest — the thread is gone (height 0), just the input
+  assert((await variant(p)) === "closed", `[${pointer}] starts COLLAPSED (closed)`);
+  assert((await detent(p)) === "collapsed", `[${pointer}] detent is collapsed at rest`);
+  assert(near(await sheetHeight(p), 0, 6), `[${pointer}] COLLAPSED thread height ≈ 0px`);
+  await snap(p, `${tag}-collapsed`);
 
   // slow pull up → HALF
   await gesture(p, 110, { pointer, slow: true });
   await p.waitForTimeout(SETTLE);
-  assert((await detent(p)) === "half", `[${pointer}] slow pull-up steps PEEK→HALF`);
+  assert((await detent(p)) === "half", `[${pointer}] slow pull-up steps COLLAPSED→HALF`);
   assert(near(await sheetHeight(p), halfH, TOL), `[${pointer}] HALF height ≈ ${halfH}px (got ${Math.round(await sheetHeight(p))})`);
   await snap(p, `${tag}-half`);
 
@@ -249,17 +253,28 @@ async function runDragSuite(p, pointer, tag) {
   await release(p, pointer, -150);
   await p.waitForTimeout(SETTLE);
 
-  // pull down → HALF, then → PEEK
+  // pull down → HALF, then → COLLAPSED
   await gesture(p, -220, { pointer, slow: true });
   await p.waitForTimeout(SETTLE);
-  // (from wherever the mid-drag settled) ensure we can step down to peek
+  // (from wherever the mid-drag settled) ensure we can step down to collapsed
   if ((await variant(p)) === "open") {
     await gesture(p, -260, { pointer, slow: true });
     await p.waitForTimeout(SETTLE);
   }
-  assert((await variant(p)) === "closed", `[${pointer}] pull-down returns to PEEK`);
-  assert(near(await sheetHeight(p), 76, 22), `[${pointer}] back at PEEK ≈ 76px`);
-  await snap(p, `${tag}-back-to-peek`);
+  assert((await variant(p)) === "closed", `[${pointer}] pull-down returns to COLLAPSED`);
+  assert(near(await sheetHeight(p), 0, 6), `[${pointer}] back COLLAPSED, thread ≈ 0px`);
+  await snap(p, `${tag}-back-to-collapsed`);
+
+  // click-out collapses: open, then click the dimmed scrim → collapses.
+  await gesture(p, 120, { pointer, slow: true });
+  await p.waitForTimeout(SETTLE);
+  assert((await variant(p)) === "open", `[${pointer}] re-opened for the click-out check`);
+  await p
+    .getByTestId("chat-sheet-backdrop")
+    .click({ position: { x: 16, y: 16 }, force: true });
+  await p.waitForTimeout(SETTLE);
+  assert((await variant(p)) === "closed", `[${pointer}] clicking outside COLLAPSES the chat`);
+  await snap(p, `${tag}-clicked-out-collapsed`);
 
   // FLICK up (short + fast → velocity threshold, distance < 56). Few steps so
   // the down→up wall-clock is tiny → high velocity, the whole point of a flick.
@@ -311,7 +326,7 @@ try {
     await p.goto(`${url}?empty`);
     await p.waitForSelector('[data-testid="chat-composer-textarea"]');
     await p.waitForTimeout(650);
-    assert((await p.locator('[data-testid="chat-sheet"]').count()) === 0, "EMPTY: no sheet mounted");
+    assert((await p.locator('[data-testid="chat-thread"]').count()) === 0, "EMPTY: no thread/history mounted (just the input panel)");
     assert(await p.getByTestId("chat-suggestions").isVisible(), "EMPTY: suggestion strip shown");
     assert(await p.getByTestId("chat-composer-attach").isVisible(), "EMPTY: attach (+) button shown");
     assert((await p.getByTestId("chat-composer-mic").count()) === 1, "EMPTY: mic button shown (no draft)");

@@ -108,7 +108,7 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
-  it("steps PEEK→HALF→FULL on successive pull-ups and back down again", () => {
+  it("steps COLLAPSED→HALF→FULL on successive pull-ups and back down again", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
@@ -117,15 +117,15 @@ describe("ContinuousChatOverlay", () => {
       fireEvent.pointerMove(grabber, { clientY: toY, pointerId: 1 });
       fireEvent.pointerUp(grabber, { clientY: toY, pointerId: 1 });
     };
-    expect(sheet.getAttribute("data-detent")).toBe("peek");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
     pull(420, 280); // up → HALF (one step, not straight to full)
     expect(sheet.getAttribute("data-detent")).toBe("half");
     pull(420, 280); // up → FULL
     expect(sheet.getAttribute("data-detent")).toBe("full");
     pull(280, 420); // down → HALF
     expect(sheet.getAttribute("data-detent")).toBe("half");
-    pull(280, 420); // down → PEEK
-    expect(sheet.getAttribute("data-detent")).toBe("peek");
+    pull(280, 420); // down → COLLAPSED
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
   });
 
   it("opens on a fast flick even below the distance threshold (velocity)", () => {
@@ -229,22 +229,21 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
-  it("fades the backdrop in with the sheet and never closes on a backdrop click", () => {
+  it("fades the backdrop in with the chat and COLLAPSES on a backdrop click", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const backdrop = screen.getByTestId("chat-sheet-backdrop");
-    // Closed: inactive + click-through (the live view behind stays usable).
+    // Collapsed: inactive + click-through (the live view behind stays usable).
     expect(backdrop.getAttribute("data-active")).toBe("false");
     fireEvent.focus(screen.getByLabelText("message"));
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(backdrop.getAttribute("data-active")).toBe("true");
-    // Clicking the backdrop does NOT close the sheet (no click-out dismiss).
-    fireEvent.pointerDown(backdrop);
+    // Clicking the dimmed view behind now collapses the chat back to the input.
     fireEvent.click(backdrop);
-    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
-  it("renders the full thread; the log clips when closed and scrolls when open", () => {
+  it("renders the full thread as one always-mounted scroll log", () => {
     const controller = makeController({
       messages: [
         { id: "a", role: "assistant", content: "one", createdAt: 1 },
@@ -254,17 +253,12 @@ describe("ContinuousChatOverlay", () => {
     } as unknown as Partial<ShellController>);
     render(<ContinuousChatOverlay controller={controller} />);
 
-    // The full transcript is always mounted (clipped by the sheet height); the
-    // closed log clips with no scroll.
-    let log = document.getElementById("continuous-thread");
+    // The full transcript is always mounted; the thread is a vertical scroll
+    // region whose height collapses to 0 when closed (the outer wrapper clips).
+    const log = document.getElementById("continuous-thread");
     expect(log?.querySelectorAll('[data-testid="thread-line"]').length).toBe(3);
-    expect(log?.className).toContain("overflow-hidden");
-    expect(log?.textContent).toContain("one");
-
-    // Open: the same log becomes a vertical scroll region.
-    fireEvent.focus(screen.getByLabelText("message"));
-    log = document.getElementById("continuous-thread");
     expect(log?.className).toContain("overflow-y-auto");
+    expect(log?.textContent).toContain("one");
   });
 
   it("shows the attach (+) control", () => {
@@ -351,14 +345,18 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.getAllByTestId("chat-composer-textarea")).toHaveLength(1);
   });
 
-  it("keeps composer controls inside one constrained input pill", () => {
+  it("keeps composer controls in one non-wrapping input row inside the constrained panel", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
 
     const input = screen.getByTestId("chat-composer-textarea");
     const bar = input.parentElement;
+    const panel = screen.getByTestId("chat-sheet");
 
     expect(screen.queryByTestId("chat-composer-clear-debug")).toBeNull();
-    expect(bar?.className).toContain("max-w-full");
+    // The width is constrained on the panel; the input row is a single,
+    // non-wrapping flex row with the field taking the remaining space.
+    expect(panel.className).toContain("max-w-3xl");
+    expect(bar?.className).toContain("flex");
     expect(bar?.className).not.toContain("flex-wrap");
     expect(input.className).toContain("flex-1");
     expect(input.className).not.toContain("basis-full");
