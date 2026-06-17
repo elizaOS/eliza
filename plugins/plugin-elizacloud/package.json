@@ -64,7 +64,7 @@
     }
   },
   "dependencies": {
-    "@ai-sdk/gateway": "3.0.109",
+    "@ai-sdk/gateway": "3.0.133",
     "@ai-sdk/openai": "^3.0.9",
     "@ai-sdk/provider": "3.0.10",
     "@ai-sdk/provider-utils": "4.0.26",
