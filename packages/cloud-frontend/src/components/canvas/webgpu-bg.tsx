@@ -1,5 +1,10 @@
 import { useEffect, useRef } from "react";
 
+interface GPUBufferUsageConstants {
+  UNIFORM: number;
+  COPY_DST: number;
+}
+
 export function WebGPUBg() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -329,7 +334,9 @@ export function WebGPUBg() {
 
         // Uniform Buffers (5 floats padded to 16 bytes alignment block)
         // [time, mouseX, mouseY, padding] -> 4 floats = 16 bytes
-        const GPUBufferUsageLocal = (window as any).GPUBufferUsage || {
+        const GPUBufferUsageLocal: GPUBufferUsageConstants = (
+          window as Window & { GPUBufferUsage?: GPUBufferUsageConstants }
+        ).GPUBufferUsage || {
           UNIFORM: 64,
           COPY_DST: 8,
         };

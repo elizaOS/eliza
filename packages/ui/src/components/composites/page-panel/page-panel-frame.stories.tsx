@@ -1,6 +1,11 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { PagePanelContentArea, PagePanelFrame } from "./page-panel-frame";
 
+const SCROLL_ROWS = Array.from({ length: 30 }, (_, i) => ({
+  id: `scroll-row-${i + 1}`,
+  label: `Item ${i + 1}`,
+}));
+
 const meta = {
   title: "Composites/PagePanel/PagePanelFrame",
   component: PagePanelFrame,
@@ -30,12 +35,12 @@ export const WithScrollableContent: Story = {
       <PagePanelContentArea className="rounded-md border border-border bg-card p-4">
         <h2 className="text-lg font-semibold">Scrollable content</h2>
         <ul className="mt-3 space-y-2 text-sm">
-          {Array.from({ length: 30 }, (_, i) => (
+          {SCROLL_ROWS.map((row) => (
             <li
-              key={`row-${i}`}
+              key={row.id}
               className="rounded border border-border/60 bg-muted/30 px-3 py-2"
             >
-              Item {i + 1}
+              {row.label}
             </li>
           ))}
         </ul>

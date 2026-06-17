@@ -51,10 +51,14 @@ import {
 } from "react";
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api-client";
-import { useApiKeys } from "@/lib/data/api-keys";
+import { type ApiKeyRecord, useApiKeys } from "@/lib/data/api-keys";
 import { useAgents } from "@/lib/data/eliza-agents";
 import { useSessionAuth, useStewardAuth } from "@/lib/hooks/use-session-auth";
-import { useCanvasStore, type WorkspaceNode } from "@/lib/stores/canvas-store";
+import {
+  useCanvasStore,
+  type WorkspaceNode,
+  type WorkspaceView,
+} from "@/lib/stores/canvas-store";
 import { useChatStore } from "@/lib/stores/chat-store";
 import {
   assessAndGreet,
@@ -72,12 +76,106 @@ const AdminPage = lazy(() => import("@/dashboard/admin/Page"));
 const AccountPage = lazy(() => import("@/dashboard/account/Page"));
 const AppsPage = lazy(() => import("@/dashboard/apps/Page"));
 
+type AgentsQuery = ReturnType<typeof useAgents>;
+type ApiKeysQuery = ReturnType<typeof useApiKeys>;
+
+// The canvas UI reads a couple of display fields the agent-list DTO does not
+// (yet) carry (`name`, `runtime`); they are optional and currently unpopulated
+// by the API, so they render as the existing fallbacks.
+type AgentListItem = NonNullable<AgentsQuery["data"]>[number];
+type CanvasAgent = AgentListItem & { name?: string; runtime?: string };
+// Likewise the keys table reads a plaintext `token` the list DTO omits.
+type ApiKeyItem = NonNullable<ApiKeysQuery["data"]>[number];
+type CanvasApiKey = ApiKeyItem & { token?: string };
+
+interface ChatMessage {
+  id: string;
+  role: "user" | "agent" | "system";
+  text: string;
+}
+
+interface AgentBridgeResponse {
+  error?: { message: string } | null;
+  result?: {
+    text?: string;
+    response?: string;
+    message?: string;
+  } | null;
+}
+
+interface InvoiceRecord {
+  id: string;
+  date?: string;
+  total?: string | number;
+  status?: string;
+  invoicePdf?: string;
+  invoiceUrl?: string;
+}
+
+interface AuditEventRecord {
+  event_id: string;
+  action: string;
+  result?: string;
+  resource?: { type: string; id: string } | null;
+  ip?: string | null;
+  ts: string;
+}
+
+interface SecretRecord {
+  id: string;
+  name: string;
+  provider?: string;
+  createdAt?: string;
+  description?: string | null;
+}
+
+interface McpRecord {
+  id?: string;
+  name: string;
+  slug?: string;
+  status?: string;
+  description?: string;
+  endpointType?: "container" | "external";
+  externalEndpoint?: string | null;
+  pricingType?: "free" | "credits" | "x402";
+  tools?: Array<{ name: string; description: string }>;
+}
+
+interface CreateAgentBody {
+  agentName: string;
+  autoProvision: boolean;
+  environmentVars?: Record<string, string>;
+  dockerImage?: string;
+}
+
+interface ContainerRecord {
+  id: string;
+  name: string;
+  status: string;
+  image?: string;
+  image_tag?: string;
+}
+
+interface DomainRecord {
+  id: string;
+  domain: string;
+  appId?: string | null;
+  verified: boolean;
+  sslStatus?: string;
+}
+
+interface RemoteSessionRecord {
+  id: string;
+  status: string;
+  deviceInfo?: string;
+}
+
 interface StreamingTextProps {
   text: string;
   isShort?: boolean;
 }
 
-function StreamingText({ text, isShort = false }: StreamingTextProps) {
+function StreamingText({ text }: StreamingTextProps) {
   const [displayedText, setDisplayedText] = useState("");
   const [isStreaming, setIsStreaming] = useState(true);
 
@@ -321,7 +419,7 @@ function DnaLoader() {
       <div className="dna-container">
         {DNA_ITEMS.map((item, idx) => (
           <div
-            key={idx}
+            key={item.color}
             className="dna-node"
             style={{
               animationDelay: `${idx * 0.12}s`,
@@ -342,11 +440,13 @@ function DnaLoader() {
             {/* Connecting line */}
             <span
               className="dna-line"
-              style={{
-                animationDelay: `${idx * 0.12}s`,
-                background: `linear-gradient(to right, ${item.color}, ${item.color}55, ${item.color})`,
-                ["--glow-color" as any]: `${item.color}88`,
-              }}
+              style={
+                {
+                  animationDelay: `${idx * 0.12}s`,
+                  background: `linear-gradient(to right, ${item.color}, ${item.color}55, ${item.color})`,
+                  "--glow-color": `${item.color}88`,
+                } as React.CSSProperties
+              }
             />
 
             {/* Right letter (Waiting side) */}
@@ -376,7 +476,6 @@ const _fmtCredits = (amount: number) => `$${Number(amount).toFixed(2)}`;
 function PremiumNodeRenderer({
   node,
   isMaximized,
-  handleAction,
   runPrompt,
   agentsQuery,
   apiKeysQuery,
@@ -386,8 +485,8 @@ function PremiumNodeRenderer({
   isMaximized: boolean;
   handleAction: (action: string, params?: Record<string, unknown>) => void;
   runPrompt: (promptText: string) => void;
-  agentsQuery: any;
-  apiKeysQuery: any;
+  agentsQuery: AgentsQuery;
+  apiKeysQuery: ApiKeysQuery;
   creditBalance: number | null | undefined;
 }) {
   const [activeTab, setActiveTab] = useState("overview");
@@ -500,7 +599,7 @@ function PremiumNodeRenderer({
   const [isCreatingAgentMin, setIsCreatingAgentMin] = useState(false);
 
   // Agent Bridge Chat states
-  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [isSendingChat, setIsSendingChat] = useState(false);
   const [_chatError, setChatError] = useState<string | null>(null);
@@ -513,15 +612,15 @@ function PremiumNodeRenderer({
   // Billing Top Up & Invoices states
   const [rechargeAmount, setRechargeAmount] = useState("50");
   const [isCreatingCheckout, setIsCreatingCheckout] = useState(false);
-  const [realInvoices, setRealInvoices] = useState<any[]>([]);
+  const [realInvoices, setRealInvoices] = useState<InvoiceRecord[]>([]);
   const [loadingInvoices, setLoadingInvoices] = useState(false);
 
   // Security audit events states
-  const [realAuditLogs, setRealAuditLogs] = useState<any[]>([]);
+  const [realAuditLogs, setRealAuditLogs] = useState<AuditEventRecord[]>([]);
   const [loadingAuditLogs, setLoadingAuditLogs] = useState(false);
 
   // MCP creation & list states
-  const [realMcps, setRealMcps] = useState<any[]>([]);
+  const [realMcps, setRealMcps] = useState<McpRecord[]>([]);
   const [loadingMcps, setLoadingMcps] = useState(false);
   const [mcpFormName, setMcpFormName] = useState("");
   const [mcpFormSlug, setMcpFormSlug] = useState("");
@@ -555,9 +654,11 @@ function PremiumNodeRenderer({
       } else {
         throw new Error("No checkout URL returned");
       }
-    } catch (e: any) {
+    } catch (e) {
       console.error("Failed to create Stripe session:", e);
-      alert(e?.message || "Failed to create checkout session");
+      alert(
+        e instanceof Error ? e.message : "Failed to create checkout session",
+      );
     } finally {
       setIsCreatingCheckout(false);
     }
@@ -568,7 +669,9 @@ function PremiumNodeRenderer({
       const fetchRealInvoices = async () => {
         try {
           setLoadingInvoices(true);
-          const data = await api<any>("/api/invoices/list");
+          const data = await api<{ invoices: InvoiceRecord[] }>(
+            "/api/invoices/list",
+          );
           if (data && Array.isArray(data.invoices)) {
             setRealInvoices(data.invoices);
           }
@@ -587,7 +690,7 @@ function PremiumNodeRenderer({
       const fetchRealAuditLogs = async () => {
         try {
           setLoadingAuditLogs(true);
-          const data = await api<{ events: any[] }>(
+          const data = await api<{ events: AuditEventRecord[] }>(
             "/api/v1/me/audit-events?limit=50",
           );
           if (data && Array.isArray(data.events)) {
@@ -606,7 +709,7 @@ function PremiumNodeRenderer({
   const fetchRealMcps = useCallback(async () => {
     try {
       setLoadingMcps(true);
-      const data = await api<{ mcps: any[] }>("/api/v1/mcps?scope=all");
+      const data = await api<{ mcps: McpRecord[] }>("/api/v1/mcps?scope=all");
       if (data && Array.isArray(data.mcps)) {
         setRealMcps(data.mcps);
         if (data.mcps.length > 0 && !selectedItem) {
@@ -631,7 +734,7 @@ function PremiumNodeRenderer({
       const text = chatInput.trim();
       if (!text || isSendingChat) return;
 
-      const userMsg = {
+      const userMsg: ChatMessage = {
         id: `user-${Date.now()}`,
         role: "user",
         text,
@@ -643,7 +746,7 @@ function PremiumNodeRenderer({
       setChatError(null);
 
       try {
-        const response = await api<any>(
+        const response = await api<AgentBridgeResponse>(
           `/api/v1/eliza/agents/${agentId}/bridge`,
           {
             method: "POST",
@@ -678,8 +781,11 @@ function PremiumNodeRenderer({
             text: reply,
           },
         ]);
-      } catch (err: any) {
-        const errMsg = err?.message || "Failed to communicate with agent";
+      } catch (err) {
+        const errMsg =
+          err instanceof Error
+            ? err.message
+            : "Failed to communicate with agent";
         setChatError(errMsg);
         setChatMessages((prev) => [
           ...prev,
@@ -715,7 +821,7 @@ function PremiumNodeRenderer({
     let active = true;
     const loadSecrets = async () => {
       try {
-        const res = await api<{ secrets: any[] }>("/api/v1/secrets");
+        const res = await api<{ secrets: SecretRecord[] }>("/api/v1/secrets");
         if (active && res?.secrets) {
           const mapped: ExternalKeyRecord[] = res.secrets.map((s) => ({
             id: s.id,
@@ -816,7 +922,7 @@ function PremiumNodeRenderer({
               description: `Pasted via Quick Set`,
             });
           } else {
-            const res = await api<{ apiKey: any; plainKey: string }>(
+            const res = await api<{ apiKey: ApiKeyRecord; plainKey: string }>(
               "/api/v1/api-keys",
               {
                 method: "POST",
@@ -828,7 +934,7 @@ function PremiumNodeRenderer({
             }
           }
         } else {
-          const res = await api<{ apiKey: any; plainKey: string }>(
+          const res = await api<{ apiKey: ApiKeyRecord; plainKey: string }>(
             "/api/v1/api-keys",
             {
               method: "POST",
@@ -844,7 +950,7 @@ function PremiumNodeRenderer({
       if (newExts.length > 0) {
         for (const k of newExts) {
           try {
-            const res = await api<{ secret: any }>("/api/v1/secrets", {
+            const res = await api<{ secret: SecretRecord }>("/api/v1/secrets", {
               method: "POST",
               json: {
                 name: k.name,
@@ -891,7 +997,7 @@ function PremiumNodeRenderer({
   }, [quickPasteText, apiKeysQuery]);
 
   // Containers state
-  const [containers, setContainers] = useState<any[]>([]);
+  const [containers, setContainers] = useState<ContainerRecord[]>([]);
   const [quota, setQuota] = useState<{
     used: number;
     limit: number;
@@ -902,15 +1008,20 @@ function PremiumNodeRenderer({
 
   const fetchContainersData = useCallback(async () => {
     try {
-      const json = await api<any>("/api/v1/containers");
+      const json = await api<{ success?: boolean; data?: ContainerRecord[] }>(
+        "/api/v1/containers",
+      );
       if (json?.success && Array.isArray(json.data)) {
-        const mapped = json.data.map((c: any) => ({
+        const mapped = json.data.map((c) => ({
           ...c,
           image: c.image || c.image_tag || "",
         }));
         setContainers(mapped);
       }
-      const qJson = await api<any>("/api/v1/containers/quota");
+      const qJson = await api<{
+        success?: boolean;
+        quota?: { used: number; limit: number; creditRunway: number | null };
+      }>("/api/v1/containers/quota");
       if (qJson?.success && qJson.quota) {
         setQuota(qJson.quota);
       }
@@ -920,13 +1031,15 @@ function PremiumNodeRenderer({
   }, []);
 
   // Domains state
-  const [domains, setDomains] = useState<any[]>([]);
+  const [domains, setDomains] = useState<DomainRecord[]>([]);
   const [newDomainName, setNewDomainName] = useState("");
   const [domainStatusMsg, setDomainStatusMsg] = useState("");
 
   const fetchDomainsData = useCallback(async () => {
     try {
-      const json = await api<any>("/api/v1/domains");
+      const json = await api<{ success?: boolean; domains?: DomainRecord[] }>(
+        "/api/v1/domains",
+      );
       if (json?.success && Array.isArray(json.domains)) {
         setDomains(json.domains);
       }
@@ -936,7 +1049,9 @@ function PremiumNodeRenderer({
   }, []);
 
   // Remote pairing / sessions state
-  const [remoteSessions, setRemoteSessions] = useState<any[]>([]);
+  const [remoteSessions, setRemoteSessions] = useState<RemoteSessionRecord[]>(
+    [],
+  );
   const [pairingCode, setPairingCode] = useState("");
   const [pairingExpiry, setPairingExpiry] = useState("");
   const [pairingStatus, setPairingStatus] = useState("idle");
@@ -944,7 +1059,10 @@ function PremiumNodeRenderer({
 
   const fetchRemoteData = useCallback(async () => {
     try {
-      const json = await api<any>("/api/v1/remote/sessions");
+      const json = await api<{
+        success?: boolean;
+        sessions?: RemoteSessionRecord[];
+      }>("/api/v1/remote/sessions");
       if (json?.success && Array.isArray(json.sessions)) {
         setRemoteSessions(json.sessions);
       }
@@ -963,7 +1081,7 @@ function PremiumNodeRenderer({
       totalConvertedToCredits: number;
     };
   } | null>(null);
-  const [loadingEarnings, setLoadingEarnings] = useState(false);
+  const [, setLoadingEarnings] = useState(false);
 
   const fetchEarningsData = useCallback(async () => {
     try {
@@ -983,7 +1101,12 @@ function PremiumNodeRenderer({
   const handleGeneratePairingCode = useCallback(async () => {
     setPairingStatus("generating...");
     try {
-      const json = await api<any>("/api/v1/remote/pair", {
+      const json = await api<{
+        success?: boolean;
+        code?: string;
+        expiresAt?: string;
+        data?: { code?: string; expiresAt?: string };
+      }>("/api/v1/remote/pair", {
         method: "POST",
       });
       const code = json.code || json.data?.code;
@@ -1154,21 +1277,19 @@ function PremiumNodeRenderer({
   ]);
 
   // Live agents data
-  const agents = agentsQuery?.data ?? [];
-  const apiKeys = apiKeysQuery?.data ?? [];
+  const agents: CanvasAgent[] = agentsQuery?.data ?? [];
+  const apiKeys: CanvasApiKey[] = apiKeysQuery?.data ?? [];
   const balance = creditBalance ?? 0;
 
   // Render minimized view
   if (!isMaximized) {
     switch (node.type) {
       case "health": {
-        const healthy = agents.filter(
-          (a: any) => a.status === "running",
-        ).length;
+        const healthy = agents.filter((a) => a.status === "running").length;
         const degraded = agents.filter(
-          (a: any) => a.status === "error" || a.status === "disconnected",
+          (a) => a.status === "error" || a.status === "disconnected",
         ).length;
-        const stopped = agents.filter((a: any) =>
+        const stopped = agents.filter((a) =>
           ["stopped", "pending", "sleeping"].includes(a.status),
         ).length;
         return (
@@ -1205,7 +1326,7 @@ function PremiumNodeRenderer({
                   No agents active.
                 </div>
               ) : (
-                agents.slice(0, 3).map((a: any) => (
+                agents.slice(0, 3).map((a) => (
                   <div
                     key={a.id}
                     className="flex justify-between items-center bg-white/[0.01] border border-white/[0.03] rounded-lg p-2 text-xs"
@@ -1298,7 +1419,7 @@ function PremiumNodeRenderer({
                       setIsDeployingAgent(true);
                       setDeployError(null);
                       try {
-                        const createBody: Record<string, any> = {
+                        const createBody: CreateAgentBody = {
                           agentName: newAgentName.trim(),
                           autoProvision: true,
                         };
@@ -1325,8 +1446,10 @@ function PremiumNodeRenderer({
                         } else {
                           throw new Error("Failed to deploy agent");
                         }
-                      } catch (err: any) {
-                        setDeployError(err.message || String(err));
+                      } catch (err) {
+                        setDeployError(
+                          err instanceof Error ? err.message : String(err),
+                        );
                       } finally {
                         setIsDeployingAgent(false);
                       }
@@ -1363,7 +1486,7 @@ function PremiumNodeRenderer({
                   No agents deployed.
                 </div>
               ) : (
-                agents.map((agent: any) => (
+                agents.map((agent) => (
                   <div
                     key={agent.id}
                     className="flex justify-between items-center bg-white/[0.02] border border-white/[0.04] rounded-lg p-2 text-xs"
@@ -1457,7 +1580,7 @@ function PremiumNodeRenderer({
                   No API keys.
                 </div>
               ) : (
-                apiKeys.slice(0, 4).map((k: any) => (
+                apiKeys.slice(0, 4).map((k) => (
                   <div
                     key={k.id}
                     className="flex justify-between items-center bg-white/[0.01] border border-white/[0.03] rounded-lg p-2 text-xs"
@@ -1521,9 +1644,7 @@ function PremiumNodeRenderer({
         );
 
       case "analytics": {
-        const runCount = agents.filter(
-          (a: any) => a.status === "running",
-        ).length;
+        const runCount = agents.filter((a) => a.status === "running").length;
         const totalCount = agents.length;
         const pct =
           totalCount > 0 ? Math.round((runCount / totalCount) * 100) : 0;
@@ -1554,7 +1675,7 @@ function PremiumNodeRenderer({
               </div>
               <span className="font-bold text-white">
                 {Array.isArray(apiKeysQuery?.data)
-                  ? apiKeysQuery.data.filter((k: any) => k.is_active).length
+                  ? apiKeysQuery.data.filter((k) => k.is_active).length
                   : 0}
               </span>
             </div>
@@ -1670,7 +1791,7 @@ function PremiumNodeRenderer({
                   No containers deployed.
                 </div>
               ) : (
-                containers.slice(0, 4).map((c: any) => (
+                containers.slice(0, 4).map((c) => (
                   <div
                     key={c.id}
                     className="flex justify-between items-center bg-white/[0.01] border border-white/[0.03] rounded-lg p-2 text-xs"
@@ -1714,7 +1835,7 @@ function PremiumNodeRenderer({
                   No domains registered.
                 </div>
               ) : (
-                domains.slice(0, 4).map((d: any) => (
+                domains.slice(0, 4).map((d) => (
                   <div
                     key={d.id}
                     className="flex justify-between items-center bg-white/[0.01] border border-white/[0.03] rounded-lg p-2 text-xs"
@@ -1779,10 +1900,13 @@ function PremiumNodeRenderer({
               </div>
               <div className="min-w-0 text-left">
                 <p className="text-xs font-bold text-white truncate">
-                  {(node as any)._userEmail?.split("@")[0] || "User"}
+                  {(
+                    node as WorkspaceNode & { _userEmail?: string }
+                  )._userEmail?.split("@")[0] || "User"}
                 </p>
                 <p className="text-[9px] text-white/40 font-mono truncate">
-                  {(node as any)._userEmail || "Loading..."}
+                  {(node as WorkspaceNode & { _userEmail?: string })
+                    ._userEmail || "Loading..."}
                 </p>
               </div>
             </div>
@@ -1993,7 +2117,7 @@ function PremiumNodeRenderer({
       const isDeploying = selectedItem === "deploy";
       const activeAgent = isDeploying
         ? null
-        : agents.find((a: any) => a.id === selectedItem) || agents[0];
+        : agents.find((a) => a.id === selectedItem) || agents[0];
       return (
         <div className="w-full h-full flex gap-6 text-left select-text p-2 animate-fade-up">
           {/* Sidebar */}
@@ -2002,7 +2126,7 @@ function PremiumNodeRenderer({
               Instances
             </span>
             <div className="flex flex-col gap-1.5 overflow-y-auto flex-1">
-              {agents.map((agent: any) => (
+              {agents.map((agent) => (
                 <button
                   key={agent.id}
                   type="button"
@@ -2525,7 +2649,7 @@ function PremiumNodeRenderer({
                             }
                           }
 
-                          const createBody: Record<string, any> = {
+                          const createBody: CreateAgentBody = {
                             agentName: newAgentName.trim(),
                             autoProvision: true,
                             environmentVars: envVarsMap,
@@ -2570,8 +2694,10 @@ function PremiumNodeRenderer({
                           } else {
                             throw new Error("Failed to deploy agent");
                           }
-                        } catch (err: any) {
-                          setDeployError(err.message || String(err));
+                        } catch (err) {
+                          setDeployError(
+                            err instanceof Error ? err.message : String(err),
+                          );
                         } finally {
                           setIsDeployingAgent(false);
                         }
@@ -2984,13 +3110,13 @@ function PremiumNodeRenderer({
                     type="button"
                     onClick={async () => {
                       if (!newKeyName.trim()) return;
-                      const res = await api<{ apiKey: any; plainKey: string }>(
-                        "/api/v1/api-keys",
-                        {
-                          method: "POST",
-                          json: { name: newKeyName },
-                        },
-                      );
+                      const res = await api<{
+                        apiKey: ApiKeyRecord;
+                        plainKey: string;
+                      }>("/api/v1/api-keys", {
+                        method: "POST",
+                        json: { name: newKeyName },
+                      });
                       if (res?.plainKey) {
                         setGeneratedPlainKey(res.plainKey);
                       }
@@ -3032,7 +3158,7 @@ function PremiumNodeRenderer({
                           </td>
                         </tr>
                       ) : (
-                        apiKeys.map((k: any) => (
+                        apiKeys.map((k) => (
                           <tr key={k.id} className="hover:bg-white/[0.01]">
                             <td className="py-2.5">
                               {editingKeyId === k.id ? (
@@ -3285,7 +3411,7 @@ function PremiumNodeRenderer({
                         return;
                       const saveSecret = async () => {
                         try {
-                          const res = await api<{ secret: any }>(
+                          const res = await api<{ secret: SecretRecord }>(
                             "/api/v1/secrets",
                             {
                               method: "POST",
@@ -3483,7 +3609,7 @@ function PremiumNodeRenderer({
                                       const saveEdit = async () => {
                                         try {
                                           const res = await api<{
-                                            secret: any;
+                                            secret: SecretRecord;
                                           }>(`/api/v1/secrets/${k.id}`, {
                                             method: "PATCH",
                                             json: {
@@ -3702,20 +3828,18 @@ function PremiumNodeRenderer({
     }
 
     case "analytics": {
-      const runningAgents = agents.filter(
-        (a: any) => a.status === "running",
-      ).length;
+      const runningAgents = agents.filter((a) => a.status === "running").length;
       const totalAgents = agents.length;
       const utilPct =
         totalAgents > 0 ? Math.round((runningAgents / totalAgents) * 100) : 0;
       const activeKeyCount = Array.isArray(apiKeysQuery?.data)
-        ? apiKeysQuery.data.filter((k: any) => k.is_active).length
+        ? apiKeysQuery.data.filter((k) => k.is_active).length
         : 0;
       const creditBal = typeof creditBalance === "number" ? creditBalance : 0;
       // Seed bar heights from agent statuses for a dynamic but deterministic chart
       const barSeed =
         agents.length > 0
-          ? agents.map((_: any, i: number) => 30 + ((i * 37 + 17) % 60))
+          ? agents.map((_agent, i) => 30 + ((i * 37 + 17) % 60))
           : [20, 35, 60, 45, 50, 75, 90, 80, 65, 55, 40, 60, 85, 95, 70];
       return (
         <div className="w-full h-full flex flex-col text-left select-text p-2 animate-fade-up">
@@ -3787,7 +3911,7 @@ function PremiumNodeRenderer({
               <div className="flex-1 flex gap-2.5 items-end justify-center px-4 pt-4 pb-2">
                 {barSeed.slice(0, 15).map((h: number, i: number) => (
                   <div
-                    key={i}
+                    key={`bar-sky-${i}-${h}`}
                     className="flex-1 bg-gradient-to-t from-sky-500/10 to-sky-400/80 rounded-t-sm transition-all duration-500"
                     style={{ height: `${h}%` }}
                   />
@@ -3814,7 +3938,7 @@ function PremiumNodeRenderer({
               <div className="flex-1 flex gap-2 items-end justify-center px-4 pt-4 pb-2">
                 {barSeed.slice(0, 15).map((h: number, i: number) => (
                   <div
-                    key={i}
+                    key={`bar-orange-${i}-${h}`}
                     className="flex-1 bg-gradient-to-t from-[#FF5800]/10 to-[#FF5800]/80 rounded-t-sm transition-all duration-500"
                     style={{ height: `${Math.max(10, 100 - h)}%` }}
                   />
@@ -3854,7 +3978,10 @@ function PremiumNodeRenderer({
                   height="100"
                   viewBox="0 0 100 100"
                   className="text-black"
+                  role="img"
+                  aria-label="QR code"
                 >
+                  <title>QR code</title>
                   <rect width="25" height="25" fill="currentColor" />
                   <rect x="75" width="25" height="25" fill="currentColor" />
                   <rect y="75" width="25" height="25" fill="currentColor" />
@@ -4262,16 +4389,19 @@ function PremiumNodeRenderer({
                       try {
                         setIsCreatingMcp(true);
                         setMcpErrorMsg("");
-                        const res = await api<any>("/api/v1/mcps", {
-                          method: "POST",
-                          json: {
-                            name: mcpFormName,
-                            slug: mcpFormSlug,
-                            description: mcpFormDesc,
-                            endpointType: "external",
-                            externalEndpoint: mcpFormExternalEndpoint,
+                        const res = await api<{ mcp?: McpRecord }>(
+                          "/api/v1/mcps",
+                          {
+                            method: "POST",
+                            json: {
+                              name: mcpFormName,
+                              slug: mcpFormSlug,
+                              description: mcpFormDesc,
+                              endpointType: "external",
+                              externalEndpoint: mcpFormExternalEndpoint,
+                            },
                           },
-                        });
+                        );
                         if (res?.mcp) {
                           setMcpFormName("");
                           setMcpFormSlug("");
@@ -4280,9 +4410,11 @@ function PremiumNodeRenderer({
                           await fetchRealMcps();
                           setSelectedItem(res.mcp.id || res.mcp.name);
                         }
-                      } catch (e: any) {
+                      } catch (e) {
                         setMcpErrorMsg(
-                          e?.message || "Failed to register MCP server.",
+                          e instanceof Error
+                            ? e.message
+                            : "Failed to register MCP server.",
                         );
                       } finally {
                         setIsCreatingMcp(false);
@@ -4338,9 +4470,11 @@ function PremiumNodeRenderer({
                               );
                               setSelectedItem(null);
                               await fetchRealMcps();
-                            } catch (e: any) {
+                            } catch (e) {
                               alert(
-                                e?.message || "Failed to delete MCP server.",
+                                e instanceof Error
+                                  ? e.message
+                                  : "Failed to delete MCP server.",
                               );
                             }
                           }
@@ -4413,7 +4547,7 @@ function PremiumNodeRenderer({
 
     case "containers": {
       const activeContainer =
-        containers.find((c: any) => c.id === selectedItem) || containers[0];
+        containers.find((c) => c.id === selectedItem) || containers[0];
       return (
         <div className="w-full h-full flex gap-6 text-left select-text p-2 animate-fade-up">
           {/* Sidebar */}
@@ -4422,7 +4556,7 @@ function PremiumNodeRenderer({
               Container Pool
             </span>
             <div className="flex flex-col gap-1.5 overflow-y-auto flex-1">
-              {containers.map((c: any) => (
+              {containers.map((c) => (
                 <button
                   key={c.id}
                   type="button"
@@ -4694,9 +4828,11 @@ function PremiumNodeRenderer({
                     setNewDomainName("");
                     setDomainStatusMsg("Success! DNS verification required.");
                     fetchDomainsData();
-                  } catch (err: any) {
+                  } catch (err) {
                     setDomainStatusMsg(
-                      err?.message || "Failed to register domain",
+                      err instanceof Error
+                        ? err.message
+                        : "Failed to register domain",
                     );
                   }
                 }}
@@ -4733,7 +4869,7 @@ function PremiumNodeRenderer({
                       </td>
                     </tr>
                   ) : (
-                    domains.map((d: any) => (
+                    domains.map((d) => (
                       <tr key={d.id} className="hover:bg-white/[0.01]">
                         <td className="py-2.5 font-bold text-white/80">
                           {d.domain}
@@ -4896,7 +5032,10 @@ function PremiumNodeRenderer({
                     height="100"
                     viewBox="0 0 100 100"
                     className="text-black"
+                    role="img"
+                    aria-label="QR code"
                   >
+                    <title>QR code</title>
                     <rect width="25" height="25" fill="currentColor" />
                     <rect x="75" width="25" height="25" fill="currentColor" />
                     <rect y="75" width="25" height="25" fill="currentColor" />
@@ -4988,7 +5127,7 @@ function PremiumNodeRenderer({
                       </td>
                     </tr>
                   ) : (
-                    remoteSessions.map((s: any) => (
+                    remoteSessions.map((s) => (
                       <tr key={s.id} className="hover:bg-white/[0.01]">
                         <td className="py-2.5 font-bold text-white/80">
                           {s.id.slice(0, 8)}...
@@ -5120,8 +5259,8 @@ interface ArtifactWindowProps {
   onReload: () => void;
   onHeaderMouseDown: (e: React.MouseEvent) => void;
   onResizeMouseDown: (e: React.MouseEvent) => void;
-  agentsQuery: any;
-  apiKeysQuery: any;
+  agentsQuery: AgentsQuery;
+  apiKeysQuery: ApiKeysQuery;
   creditBalance: number | null | undefined;
   genuiActionHandler?: ElizaGenUiActionHandler;
   runPrompt: (promptText: string) => void;
@@ -5134,7 +5273,6 @@ function ArtifactWindow({
   onMinimize,
   onMaximize,
   handleAction,
-  onReload,
   onHeaderMouseDown,
   onResizeMouseDown,
   agentsQuery,
@@ -5495,7 +5633,10 @@ function ArtifactWindow({
             height="8"
             viewBox="0 0 8 8"
             className="text-white/20 group-hover:text-[#FF5800] transition-colors"
+            role="img"
+            aria-label="Close"
           >
+            <title>Close</title>
             <line
               x1="6"
               y1="2"
@@ -6391,7 +6532,13 @@ export function CloudCanvas() {
       let migratedNodes = v.nodes || [];
       if (!Array.isArray(v.nodes)) {
         // Convert old structure on-the-fly
-        const oldView = v as any;
+        const oldView = v as WorkspaceView & {
+          spec?: WorkspaceNode["spec"];
+          genuiSpec?: WorkspaceNode["genuiSpec"];
+          type?: string;
+          isMinimized?: boolean;
+          isMaximized?: boolean;
+        };
         migratedNodes = [];
         if (oldView.spec || oldView.genuiSpec) {
           migratedNodes.push({
@@ -6414,7 +6561,9 @@ export function CloudCanvas() {
       const finalNodes = migratedNodes.map((node) => {
         if (node.spec && !node.genuiSpec) {
           try {
-            const genuiSpec = officialSpecToEliza(node.spec as any);
+            const genuiSpec = officialSpecToEliza(
+              node.spec as Parameters<typeof officialSpecToEliza>[0],
+            );
             return { ...node, spec: null, genuiSpec };
           } catch {
             return node;
@@ -6440,6 +6589,9 @@ export function CloudCanvas() {
   );
   const hasTabs = safeViews.length > 0;
   const activeNodes = activeTab?.nodes || [];
+  // These node interactions only run when a view is active; fall back to an
+  // empty id (a no-op lookup in the store) when none is selected.
+  const currentViewId = activeViewId ?? "";
 
   // Panning coordinates
   const panX = activeTab?.panX ?? 0;
@@ -6526,9 +6678,10 @@ export function CloudCanvas() {
     const initY = node.y;
 
     const onMouseMove = (moveEvent: MouseEvent) => {
+      if (!activeViewId) return;
       const dx = moveEvent.clientX - startX;
       const dy = moveEvent.clientY - startY;
-      moveNode(activeViewId!, node.id, initX + dx, initY + dy);
+      moveNode(activeViewId, node.id, initX + dx, initY + dy);
     };
 
     const onMouseUp = () => {
@@ -6550,10 +6703,11 @@ export function CloudCanvas() {
     const initH = node.height;
 
     const onMouseMove = (moveEvent: MouseEvent) => {
+      if (!activeViewId) return;
       const dx = moveEvent.clientX - startX;
       const dy = moveEvent.clientY - startY;
       resizeNode(
-        activeViewId!,
+        activeViewId,
         node.id,
         Math.max(280, initW + dx),
         Math.max(150, initH + dy),
@@ -6752,21 +6906,21 @@ export function CloudCanvas() {
                 /* Only render the maximized node as the focused view, sitting directly on the canvas */
                 <ArtifactWindow
                   key={maximizedNode.id}
-                  tabId={activeViewId!}
+                  tabId={currentViewId}
                   node={maximizedNode}
                   onClose={() =>
-                    handleCloseNodeAndNav(activeViewId!, maximizedNode.id)
+                    handleCloseNodeAndNav(currentViewId, maximizedNode.id)
                   }
                   onMinimize={() =>
                     minimizeNode(
-                      activeViewId!,
+                      currentViewId,
                       maximizedNode.id,
                       !maximizedNode.isMinimized,
                     )
                   }
                   onMaximize={() =>
                     handleMaximizeNodeAndNav(
-                      activeViewId!,
+                      currentViewId,
                       maximizedNode.id,
                       false,
                     )
@@ -6820,7 +6974,7 @@ export function CloudCanvas() {
                               pointerEvents: "auto",
                             }}
                             className="flex flex-col items-center justify-center text-center select-none cursor-pointer hover:opacity-80 transition-opacity"
-                            onClick={() => closeNode(activeViewId!, node.id)}
+                            onClick={() => closeNode(currentViewId, node.id)}
                             title="Click to dismiss"
                           >
                             <h1
@@ -6845,20 +6999,20 @@ export function CloudCanvas() {
                     return (
                       <ArtifactWindow
                         key={node.id}
-                        tabId={activeViewId!}
+                        tabId={currentViewId}
                         node={node}
                         onClose={() =>
-                          handleCloseNodeAndNav(activeViewId!, node.id)
+                          handleCloseNodeAndNav(currentViewId, node.id)
                         }
                         onMinimize={() =>
                           minimizeNode(
-                            activeViewId!,
+                            currentViewId,
                             node.id,
                             !node.isMinimized,
                           )
                         }
                         onMaximize={() =>
-                          handleMaximizeNodeAndNav(activeViewId!, node.id, true)
+                          handleMaximizeNodeAndNav(currentViewId, node.id, true)
                         }
                         handleAction={handleAction}
                         onReload={() =>

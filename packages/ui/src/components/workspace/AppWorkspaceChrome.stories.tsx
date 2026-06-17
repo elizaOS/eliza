@@ -8,6 +8,11 @@ const navPlaceholder = (
   </div>
 );
 
+const mainRows = Array.from({ length: 4 }, (_, i) => ({
+  id: `main-row-${i + 1}`,
+  label: `Item ${i + 1}`,
+}));
+
 const mainPlaceholder = (
   <div className="flex flex-1 flex-col gap-4 overflow-auto p-6">
     <h1 className="text-2xl font-semibold text-txt">Inbox</h1>
@@ -16,12 +21,12 @@ const mainPlaceholder = (
       renders into.
     </p>
     <div className="grid gap-3">
-      {Array.from({ length: 4 }).map((_, i) => (
+      {mainRows.map((row) => (
         <div
-          key={i}
+          key={row.id}
           className="rounded-md border border-border/40 bg-card/60 p-3"
         >
-          <div className="text-sm font-medium text-txt">Item {i + 1}</div>
+          <div className="text-sm font-medium text-txt">{row.label}</div>
           <div className="text-xs text-muted">
             Placeholder row demonstrating layout flow.
           </div>

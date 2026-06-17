@@ -192,14 +192,13 @@ function SheetGrabber({
   glow: boolean;
 }): React.JSX.Element {
   return (
-    <div
+    <button
       // A disclosure toggle for the chat history, not a value-bearing separator:
       // button + aria-expanded is the accurate semantic and stays keyboard-
       // operable (Enter/Space toggle, Arrow keys nudge) per WCAG 2.1.1.
-      role="button"
+      type="button"
       aria-expanded={open}
       aria-label={open ? "drag down to close chat" : "drag up to open chat"}
-      tabIndex={0}
       data-testid="chat-sheet-grabber"
       data-open={open ? "true" : "false"}
       onKeyDown={(e) => {
@@ -217,6 +216,7 @@ function SheetGrabber({
       }}
       {...binding}
       className={cn(
+        "appearance-none border-0 bg-transparent p-0 text-left",
         "pointer-events-auto mx-auto flex h-7 w-full max-w-3xl shrink-0 cursor-grab touch-none select-none items-center justify-center active:cursor-grabbing",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full",
       )}
@@ -228,7 +228,7 @@ function SheetGrabber({
           glow ? "bg-[rgba(255,180,120,0.75)]" : "bg-white/35",
         )}
       />
-    </div>
+    </button>
   );
 }
 
