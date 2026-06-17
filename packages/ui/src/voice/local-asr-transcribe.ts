@@ -58,19 +58,33 @@ export async function isLocalInferenceAsrReady(
   }
 }
 
+/** Base64-encode bytes in chunks (avoids the apply() arg-count limit on big WAVs). */
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(
+      ...(bytes.subarray(i, i + chunk) as unknown as number[]),
+    );
+  }
+  return btoa(binary);
+}
+
 export async function transcribeLocalInferenceWav(
   audio: Uint8Array,
   options?: TranscribeWavOptions,
 ): Promise<TranscribeWavResult> {
-  const audioBody = new ArrayBuffer(audio.byteLength);
-  new Uint8Array(audioBody).set(audio);
+  // Send the audio as base64 JSON (a STRING body), not a raw binary body: the
+  // Android local-agent IPC only forwards string request bodies, so a binary
+  // POST 503s with "only supports string request bodies". The ASR route accepts
+  // `{ audioBase64 }` on every platform (web/desktop decode it identically).
   const res = await fetchWithCsrf(resolveApiUrl("/api/asr/local-inference"), {
     method: "POST",
     headers: {
-      "Content-Type": "audio/wav",
+      "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: audioBody,
+    body: JSON.stringify({ audioBase64: bytesToBase64(audio) }),
     signal: options?.signal,
   });
   if (!res.ok) {
