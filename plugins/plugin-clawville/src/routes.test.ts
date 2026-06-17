@@ -248,6 +248,25 @@ describe("handleAppRoutes — buildMessageCommand NL router", () => {
     expect(visitCall?.body).toEqual({ buildingId: "tool-workshop" });
   });
 
+  it("remaps a stale hardcoded building id to the REAL live id via perception", async () => {
+    // "squidward" is a hardcoded alias of the plugin's "memory-vault", but the
+    // live backend's building (label "Squidward's House") has id "memory-rag".
+    // The backend rejects "memory-vault" with "Unknown building"; the move must
+    // carry the live id resolved from perception.
+    const { calls } = await postMessage("move to squidward's house");
+    const moveCall = calls.find((c) => c.url.endsWith("/move"));
+    expect(moveCall?.body).toEqual({ buildingId: "memory-rag" });
+    expect(moveCall?.body).not.toEqual({ buildingId: "memory-vault" });
+  });
+
+  it("remaps a second drifted building (patrick -> agent-security)", async () => {
+    // "patrick" is a hardcoded alias of "security-fortress"; the live building
+    // (label "Patrick's Rock") has id "agent-security".
+    const { calls } = await postMessage("visit patrick");
+    const visitCall = calls.find((c) => c.url.endsWith("/visit-building"));
+    expect(visitCall?.body).toEqual({ buildingId: "agent-security" });
+  });
+
   it("falls back to a chat command for conversational free text", async () => {
     const { calls } = await postMessage("ask the npc what to learn next");
     const chatCall = calls.find((c) => c.url.endsWith("/chat"));
