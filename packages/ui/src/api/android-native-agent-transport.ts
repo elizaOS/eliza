@@ -305,7 +305,7 @@ export function createAndroidNativeAgentTransport(
  */
 function nativeResponseBody(
   result: NativeAgentRequestResult,
-): Uint8Array<ArrayBuffer> | string {
+): ArrayBuffer | string {
   const base64 = result.bodyBase64;
   if (typeof base64 === "string" && base64.length > 0) {
     const binary = atob(base64);
@@ -313,7 +313,7 @@ function nativeResponseBody(
     for (let i = 0; i < binary.length; i += 1) {
       bytes[i] = binary.charCodeAt(i);
     }
-    return bytes;
+    return bytes.buffer;
   }
   return result.body ?? "";
 }
