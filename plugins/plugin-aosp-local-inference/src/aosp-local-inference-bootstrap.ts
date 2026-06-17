@@ -1265,6 +1265,7 @@ type LoadedRole = "chat" | "embedding" | null;
 function makeLoaderLifecycle(loader: AospLoader): {
   ensureChatLoaded(): Promise<void>;
   ensureEmbeddingLoaded(): Promise<void>;
+  markEvicted(): void;
 } {
   let currentRole: LoadedRole = null;
   let inflight: Promise<void> | null = null;
@@ -1345,6 +1346,17 @@ function makeLoaderLifecycle(loader: AospLoader): {
   return {
     ensureChatLoaded: () => loadRole("chat"),
     ensureEmbeddingLoaded: () => loadRole("embedding"),
+    // Out-of-band eviction (voice handlers free the chat model directly via
+    // loader.unloadModel() to reclaim RAM for the cold ASR/TTS load). That
+    // bypasses loadRole, so `currentRole` would stay stale ("chat") and the
+    // next ensureChatLoaded() would short-circuit and run generate() against a
+    // null ctx. Resetting `currentRole` here forces the next ensure*Loaded()
+    // to actually reload. Safe to call when no load is in flight; if a load is
+    // mid-flight the clear just means the subsequent ensure reloads, which is
+    // the intended post-eviction behaviour anyway.
+    markEvicted: () => {
+      currentRole = null;
+    },
   };
 }
 
@@ -1789,6 +1801,7 @@ function resolveAospOmnivoiceTtsStepOverride(
 
 export function makeAospFusedOmnivoiceTextToSpeechHandler(
   loader?: AospLoader,
+  onEvicted?: () => void,
 ): TextToSpeechHandler {
   let contextPromise: Promise<{
     ffi: BunFfiModule;
@@ -1928,6 +1941,11 @@ export function makeAospFusedOmnivoiceTextToSpeechHandler(
             typeof loader.unloadModel === "function"
           ) {
             await loader.unloadModel();
+            // Tell the lifecycle the chat model is gone so the next text turn
+            // actually reloads it (loadRole short-circuits on a stale
+            // currentRole otherwise). Done after the unload succeeds so we
+            // never mark evicted when the model is in fact still resident.
+            onEvicted?.();
             logger.info(
               "[aosp-local-inference] released chat model before cold fused-TTS load to free memory",
             );
@@ -2243,6 +2261,7 @@ async function transcribeWithAospElizaInference(
   audio: { samples: Float32Array; sampleRate: number },
   signal?: AbortSignal,
   loader?: AospLoader,
+  onEvicted?: () => void,
 ): Promise<string> {
   assertNotAborted(signal);
   const libPath = resolveElizaInferenceLibPath();
@@ -2267,6 +2286,11 @@ async function transcribeWithAospElizaInference(
   ) {
     try {
       await loader.unloadModel();
+      // Tell the lifecycle the chat model is gone so the next text turn
+      // actually reloads it (loadRole short-circuits on a stale currentRole
+      // otherwise). Done after the unload succeeds so we never mark evicted
+      // when the model is in fact still resident.
+      onEvicted?.();
       logger.info(
         "[aosp-local-inference] released chat model before fused ASR load to free memory",
       );
@@ -2354,10 +2378,11 @@ async function transcribeWithAospElizaInference(
 
 export function makeAospTranscriptionHandler(
   loader?: AospLoader,
+  onEvicted?: () => void,
 ): TranscriptionHandler {
   return async (_runtime, params) => {
     const { signal, ...audio } = extractAospTranscriptionAudio(params);
-    return transcribeWithAospElizaInference(audio, signal, loader);
+    return transcribeWithAospElizaInference(audio, signal, loader, onEvicted);
   };
 }
 
@@ -2447,7 +2472,7 @@ export async function ensureAospLocalInferenceHandlers(
     ModelType.TRANSCRIPTION,
   ];
   const baseOmnivoiceTextToSpeechHandler =
-    makeAospFusedOmnivoiceTextToSpeechHandler(loader);
+    makeAospFusedOmnivoiceTextToSpeechHandler(loader, lifecycle.markEvicted);
   let foregroundOmnivoiceTextToSpeechUsed = false;
   const textToSpeechHandler = makeAospTextToSpeechHandler({
     omnivoice: baseOmnivoiceTextToSpeechHandler,
@@ -2462,7 +2487,7 @@ export async function ensureAospLocalInferenceHandlers(
         : modelType === ModelType.TEXT_TO_SPEECH
           ? textToSpeechHandler
           : modelType === ModelType.TRANSCRIPTION
-            ? makeAospTranscriptionHandler(loader)
+            ? makeAospTranscriptionHandler(loader, lifecycle.markEvicted)
             : makeGenerateHandler(loader, lifecycle);
     runtimeWithRegistration.registerModel(
       modelType,

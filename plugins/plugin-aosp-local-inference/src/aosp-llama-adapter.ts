@@ -1418,11 +1418,26 @@ class AospLlamaAdapter implements AospLoader {
     );
   }
 
+  /**
+   * Public load. Runs the entire load (free-old + model-load + ctx-init +
+   * speculative-draft setup) as ONE task on the single-flight `decodeChain`,
+   * so it cannot interleave with a generate()/embed() decode loop and so a
+   * queued decode only ever sees a fully-initialized `ctx` (or a fully-freed
+   * one). `loadModelInner` is the unlocked body; the internal free it issues
+   * goes through the RAW `freeContext()` (not the public, locked `unloadModel`)
+   * to avoid re-entering the chain and self-deadlocking — a queued task cannot
+   * await the chain it is currently the head of.
+   */
   async loadModel(args: AospLlamaLoadOptions): Promise<void> {
+    return this.runOnContext(() => this.loadModelInner(args));
+  }
+
+  private async loadModelInner(args: AospLlamaLoadOptions): Promise<void> {
     this.ensureBackend();
     if (this.loadedPath === args.modelPath && this.ctx !== null) return;
     if (this.ctx !== null || this.model !== null) {
-      await this.unloadModel();
+      // RAW free — already holding the chain via loadModel's runOnContext.
+      this.freeContext();
     }
 
     // GGUF type discovery is self-describing for weight-quantized formats.
@@ -1636,7 +1651,8 @@ class AospLlamaAdapter implements AospLoader {
         kvCacheType,
       });
     } catch (err) {
-      await this.unloadModel();
+      // RAW free — still holding the chain via loadModel's runOnContext.
+      this.freeContext();
       throw err;
     }
     const nBatchEffective = readEnvInt("ELIZA_LLAMA_N_BATCH", 64);
@@ -1657,7 +1673,35 @@ class AospLlamaAdapter implements AospLoader {
     );
   }
 
+  /**
+   * Public unload. Routes the free through the single-flight `decodeChain`
+   * so the native context is never freed while a generate()/embed() decode
+   * loop holds the chain mid-flight (the loop yields to the event loop every
+   * few tokens via setImmediate; an out-of-band free between two yields would
+   * leave the resumed loop calling llama_decode / llama_sampler_sample on a
+   * dangling pointer → SIGSEGV). Out-of-band eviction sites (ASR / cold-TTS /
+   * route activation) call this method, so they queue behind any in-flight
+   * decode instead of racing it.
+   *
+   * `loadModelInner` issues its internal frees through the RAW `freeContext()`
+   * directly because it already holds the chain — re-entering via this locked
+   * method would self-deadlock (a task cannot await the chain it heads).
+   */
   async unloadModel(): Promise<void> {
+    return this.runOnContext(() => {
+      this.freeContext();
+      return Promise.resolve();
+    });
+  }
+
+  /**
+   * Raw context free. Frees the native model/context/draft/speculative
+   * pointers and resets all derived state. Does NOT touch `runOnContext` —
+   * callers are responsible for holding the chain (public `unloadModel`) or
+   * already holding it (`loadModelInner`). Never call this from outside the
+   * chain while a decode could be in flight.
+   */
+  private freeContext(): void {
     if (this.speculativeHandle !== null) {
       this.speculativeShim?.eliza_speculative_free(this.speculativeHandle);
       this.speculativeHandle = null;
