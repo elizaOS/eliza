@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -54,8 +60,20 @@ vi.mock("@elizaos/ui", () => ({
 
 import { StewardTuiView } from "./StewardView";
 import { interact } from "./StewardView.interact";
+import type {
+  StewardPendingApproval,
+  StewardStatusResponse,
+  StewardTxRecord,
+} from "./types/steward";
 
-const sampleStatus = {
+// These fixtures model the loopback API responses the TUI view reads
+// (/api/wallet/steward-status, -pending-approvals, -tx-records). Those routes
+// have ALREADY mapped the upstream @stwd/sdk objects into the app's contract
+// types (@elizaos/contracts): TxRecord.createdAt -> ISO string, and the SDK's
+// PolicyResult { policyId, passed, reason } -> StewardPolicyResult
+// { policyId, status, reason }. The fixtures are typed against those app
+// contract types so a contract drift breaks compilation here.
+const sampleStatus: StewardStatusResponse = {
   configured: true,
   available: true,
   connected: true,
@@ -68,7 +86,7 @@ const sampleStatus = {
   vaultHealth: "ok",
 };
 
-const sampleTx = {
+const sampleTx: StewardTxRecord = {
   id: "tx-1",
   agentId: "agent-1",
   status: "pending",
@@ -79,11 +97,18 @@ const sampleTx = {
     value: "1000000000000000000",
     chainId: 8453,
   },
-  policyResults: [],
+  // App-shaped policy result (status-based), as the loopback route emits it.
+  policyResults: [
+    {
+      policyId: "policy-spend-limit",
+      status: "pending",
+      reason: "Exceeds per-tx spending limit",
+    },
+  ],
   createdAt: "2026-05-18T12:00:00.000Z",
 };
 
-const samplePending = [
+const samplePending: StewardPendingApproval[] = [
   {
     queueId: "queue-1",
     status: "pending",
