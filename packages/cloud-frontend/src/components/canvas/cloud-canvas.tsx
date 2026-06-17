@@ -207,17 +207,31 @@ function StreamingText({ text }: StreamingTextProps) {
     };
   }, [text]);
 
-  const handleSkip = (e: React.MouseEvent) => {
+  const skip = () => {
     if (isStreaming) {
-      e.stopPropagation();
       setDisplayedText(text);
       setIsStreaming(false);
     }
   };
 
+  const handleSkip = (e: React.MouseEvent) => {
+    if (isStreaming) {
+      e.stopPropagation();
+    }
+    skip();
+  };
+
   return (
     <span
+      role="menuitem"
+      tabIndex={0}
       onClick={handleSkip}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          skip();
+        }
+      }}
       className={isStreaming ? "cursor-pointer select-none" : ""}
     >
       {displayedText}
@@ -1362,9 +1376,9 @@ function PremiumNodeRenderer({
               </span>
               <div className="flex flex-col gap-2.5 text-xs">
                 <div className="flex flex-col gap-1 text-left">
-                  <label className="font-mono text-[8px] text-white/40 uppercase font-bold">
+                  <span className="font-mono text-[8px] text-white/40 uppercase font-bold">
                     Agent Name
-                  </label>
+                  </span>
                   <input
                     type="text"
                     placeholder="e.g. trading-bot"
@@ -1375,9 +1389,9 @@ function PremiumNodeRenderer({
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-left">
                   <div className="flex flex-col gap-1">
-                    <label className="font-mono text-[8px] text-white/40 uppercase font-bold">
+                    <span className="font-mono text-[8px] text-white/40 uppercase font-bold">
                       Flavor
-                    </label>
+                    </span>
                     <select
                       value={newAgentFlavor}
                       onChange={(e) => setNewAgentFlavor(e.target.value)}
@@ -1390,9 +1404,9 @@ function PremiumNodeRenderer({
                     </select>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="font-mono text-[8px] text-white/40 uppercase font-bold">
+                    <span className="font-mono text-[8px] text-white/40 uppercase font-bold">
                       Tier
-                    </label>
+                    </span>
                     <select
                       value={newAgentTier}
                       onChange={(e) => setNewAgentTier(e.target.value)}
@@ -2449,9 +2463,9 @@ function PremiumNodeRenderer({
                     <div className="flex flex-col gap-3 max-w-lg text-xs">
                       {Object.entries(envVars).map(([key, val]) => (
                         <div key={key} className="flex flex-col gap-1.5">
-                          <label className="font-mono text-[10px] text-white/40 uppercase font-bold">
+                          <span className="font-mono text-[10px] text-white/40 uppercase font-bold">
                             {key}
-                          </label>
+                          </span>
                           <div className="flex gap-2">
                             <input
                               type={
@@ -2556,9 +2570,9 @@ function PremiumNodeRenderer({
                   {/* Left Panel: Basic Config */}
                   <div className="w-80 shrink-0 flex flex-col gap-4 border-r border-white/10 pr-6">
                     <div className="flex flex-col gap-1.5">
-                      <label className="font-mono text-[9px] text-white/40 uppercase font-bold">
+                      <span className="font-mono text-[9px] text-white/40 uppercase font-bold">
                         Agent Instance Name
-                      </label>
+                      </span>
                       <input
                         type="text"
                         placeholder="e.g. trading-assistant"
@@ -2569,9 +2583,9 @@ function PremiumNodeRenderer({
                     </div>
 
                     <div className="flex flex-col gap-1.5">
-                      <label className="font-mono text-[9px] text-white/40 uppercase font-bold">
+                      <span className="font-mono text-[9px] text-white/40 uppercase font-bold">
                         Character / Flavor
-                      </label>
+                      </span>
                       <select
                         value={newAgentFlavor}
                         onChange={(e) => {
@@ -2592,9 +2606,9 @@ function PremiumNodeRenderer({
                     </div>
 
                     <div className="flex flex-col gap-1.5">
-                      <label className="font-mono text-[9px] text-white/40 uppercase font-bold">
+                      <span className="font-mono text-[9px] text-white/40 uppercase font-bold">
                         Execution Tier
-                      </label>
+                      </span>
                       <select
                         value={newAgentTier}
                         onChange={(e) => setNewAgentTier(e.target.value)}
@@ -2613,9 +2627,9 @@ function PremiumNodeRenderer({
                     {(newAgentTier === "dedicated" ||
                       newAgentFlavor === "custom") && (
                       <div className="flex flex-col gap-1.5 animate-fade-in">
-                        <label className="font-mono text-[9px] text-white/40 uppercase font-bold">
+                        <span className="font-mono text-[9px] text-white/40 uppercase font-bold">
                           Docker Image Reference
-                        </label>
+                        </span>
                         <input
                           type="text"
                           placeholder="ghcr.io/elizaos/eliza:stable"
@@ -2745,13 +2759,14 @@ function PremiumNodeRenderer({
                       ) : (
                         newAgentEnvVars.map((pair, idx) => (
                           <div
+                            // biome-ignore lint/suspicious/noArrayIndexKey: env-var rows are positional and both fields (key/value) are edited in place, so a content-derived key would remount the input and drop focus on each keystroke.
                             key={idx}
                             className="flex gap-3 items-end group/var"
                           >
                             <div className="flex-1 flex flex-col gap-1">
-                              <label className="font-mono text-[8px] text-white/20 uppercase font-bold font-mono">
+                              <span className="font-mono text-[8px] text-white/20 uppercase font-bold font-mono">
                                 Key Name
-                              </label>
+                              </span>
                               <input
                                 type="text"
                                 placeholder="e.g. OPENAI_API_KEY"
@@ -2766,9 +2781,9 @@ function PremiumNodeRenderer({
                               />
                             </div>
                             <div className="flex-1 flex flex-col gap-1">
-                              <label className="font-mono text-[8px] text-white/20 uppercase font-bold font-mono">
+                              <span className="font-mono text-[8px] text-white/20 uppercase font-bold font-mono">
                                 Value
-                              </label>
+                              </span>
                               <input
                                 type="password"
                                 placeholder="••••••••"
@@ -3094,9 +3109,9 @@ function PremiumNodeRenderer({
                 </span>
                 <div className="flex flex-col gap-3 text-xs">
                   <div className="flex flex-col gap-1.5">
-                    <label className="font-mono text-[9px] text-white/40 uppercase font-bold">
+                    <span className="font-mono text-[9px] text-white/40 uppercase font-bold">
                       Key Label Name
-                    </label>
+                    </span>
                     <input
                       type="text"
                       placeholder="e.g. Eliza Prod Agent"
@@ -3320,9 +3335,9 @@ function PremiumNodeRenderer({
                 </span>
                 <div className="flex flex-col gap-3 text-xs">
                   <div className="flex flex-col gap-1.5">
-                    <label className="font-mono text-[9px] text-white/40 uppercase font-bold">
+                    <span className="font-mono text-[9px] text-white/40 uppercase font-bold">
                       Key Provider
-                    </label>
+                    </span>
                     <select
                       value={newExtKeyProvider}
                       onChange={(e) => {
@@ -3366,9 +3381,9 @@ function PremiumNodeRenderer({
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <label className="font-mono text-[9px] text-white/40 uppercase font-bold">
+                    <span className="font-mono text-[9px] text-white/40 uppercase font-bold">
                       Secret Name / Env Var
-                    </label>
+                    </span>
                     <input
                       type="text"
                       placeholder="e.g. OPENAI_API_KEY"
@@ -3379,9 +3394,9 @@ function PremiumNodeRenderer({
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <label className="font-mono text-[9px] text-white/40 uppercase font-bold">
+                    <span className="font-mono text-[9px] text-white/40 uppercase font-bold">
                       Secret Key Value
-                    </label>
+                    </span>
                     <input
                       type="password"
                       placeholder="Paste API Key / Token"
@@ -3392,9 +3407,9 @@ function PremiumNodeRenderer({
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <label className="font-mono text-[9px] text-white/40 uppercase font-bold">
+                    <span className="font-mono text-[9px] text-white/40 uppercase font-bold">
                       Description / Context
-                    </label>
+                    </span>
                     <input
                       type="text"
                       placeholder="e.g. Production runtime inferences"
@@ -3911,6 +3926,7 @@ function PremiumNodeRenderer({
               <div className="flex-1 flex gap-2.5 items-end justify-center px-4 pt-4 pb-2">
                 {barSeed.slice(0, 15).map((h: number, i: number) => (
                   <div
+                    // biome-ignore lint/suspicious/noArrayIndexKey: decorative fixed-length bar chart whose seed heights can repeat, so the position index is the only stable unique key.
                     key={`bar-sky-${i}-${h}`}
                     className="flex-1 bg-gradient-to-t from-sky-500/10 to-sky-400/80 rounded-t-sm transition-all duration-500"
                     style={{ height: `${h}%` }}
@@ -3938,6 +3954,7 @@ function PremiumNodeRenderer({
               <div className="flex-1 flex gap-2 items-end justify-center px-4 pt-4 pb-2">
                 {barSeed.slice(0, 15).map((h: number, i: number) => (
                   <div
+                    // biome-ignore lint/suspicious/noArrayIndexKey: decorative fixed-length bar chart whose seed heights can repeat, so the position index is the only stable unique key.
                     key={`bar-orange-${i}-${h}`}
                     className="flex-1 bg-gradient-to-t from-[#FF5800]/10 to-[#FF5800]/80 rounded-t-sm transition-all duration-500"
                     style={{ height: `${Math.max(10, 100 - h)}%` }}
@@ -4024,9 +4041,9 @@ function PremiumNodeRenderer({
             {/* Password Change Form */}
             <div className="flex flex-col gap-2.5 text-xs">
               <div className="flex flex-col gap-1">
-                <label className="font-mono text-[9px] text-white/40 uppercase font-bold">
+                <span className="font-mono text-[9px] text-white/40 uppercase font-bold">
                   Update Master Password
-                </label>
+                </span>
                 <input
                   type="password"
                   placeholder="••••••••••••••"
@@ -4173,9 +4190,9 @@ function PremiumNodeRenderer({
 
             <div className="flex-1 overflow-y-auto text-xs flex flex-col gap-3.5 max-w-md">
               <div className="flex flex-col gap-1">
-                <label className="font-mono text-[9px] text-white/40 uppercase font-bold">
+                <span className="font-mono text-[9px] text-white/40 uppercase font-bold">
                   Webhook Endpoints
-                </label>
+                </span>
                 <input
                   type="text"
                   readOnly
@@ -4185,9 +4202,9 @@ function PremiumNodeRenderer({
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="font-mono text-[9px] text-white/40 uppercase font-bold">
+                <span className="font-mono text-[9px] text-white/40 uppercase font-bold">
                   API Access Token
-                </label>
+                </span>
                 <input
                   type="password"
                   value="••••••••••••••••••••••••••••"
@@ -4197,9 +4214,9 @@ function PremiumNodeRenderer({
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="font-mono text-[9px] text-white/40 uppercase font-bold">
+                <span className="font-mono text-[9px] text-white/40 uppercase font-bold">
                   Secret Key
-                </label>
+                </span>
                 <input
                   type="password"
                   value="••••••••••••••••••••••••••••"
@@ -4311,9 +4328,9 @@ function PremiumNodeRenderer({
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="flex flex-col gap-1">
-                      <label className="font-mono text-[9px] text-white/40 uppercase font-bold">
+                      <span className="font-mono text-[9px] text-white/40 uppercase font-bold">
                         Server Name
-                      </label>
+                      </span>
                       <input
                         type="text"
                         placeholder="e.g. Weather Service"
@@ -4332,9 +4349,9 @@ function PremiumNodeRenderer({
                     </div>
 
                     <div className="flex flex-col gap-1">
-                      <label className="font-mono text-[9px] text-white/40 uppercase font-bold">
+                      <span className="font-mono text-[9px] text-white/40 uppercase font-bold">
                         Server Slug (lowercase, hyphenated)
-                      </label>
+                      </span>
                       <input
                         type="text"
                         placeholder="e.g. weather-service"
@@ -4346,9 +4363,9 @@ function PremiumNodeRenderer({
                   </div>
 
                   <div className="flex flex-col gap-1">
-                    <label className="font-mono text-[9px] text-white/40 uppercase font-bold">
+                    <span className="font-mono text-[9px] text-white/40 uppercase font-bold">
                       Description
-                    </label>
+                    </span>
                     <textarea
                       placeholder="Explain what tools and capabilities this MCP server exposes..."
                       value={mcpFormDesc}
@@ -4359,9 +4376,9 @@ function PremiumNodeRenderer({
                   </div>
 
                   <div className="flex flex-col gap-1">
-                    <label className="font-mono text-[9px] text-white/40 uppercase font-bold">
+                    <span className="font-mono text-[9px] text-white/40 uppercase font-bold">
                       External Endpoint URL (SSE endpoint)
-                    </label>
+                    </span>
                     <input
                       type="url"
                       placeholder="https://mcp.mydomain.com/sse"
@@ -4736,9 +4753,9 @@ function PremiumNodeRenderer({
               {activeTab === "deploy" && (
                 <div className="flex flex-col gap-3 max-w-lg text-xs">
                   <div className="flex flex-col gap-1.5">
-                    <label className="font-mono text-[9px] text-white/40 uppercase font-bold">
+                    <span className="font-mono text-[9px] text-white/40 uppercase font-bold">
                       Container Name
-                    </label>
+                    </span>
                     <input
                       type="text"
                       placeholder="e.g. eliza-agent-service"
@@ -4748,9 +4765,9 @@ function PremiumNodeRenderer({
                     />
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <label className="font-mono text-[9px] text-white/40 uppercase font-bold">
+                    <span className="font-mono text-[9px] text-white/40 uppercase font-bold">
                       Docker Image URI
-                    </label>
+                    </span>
                     <input
                       type="text"
                       placeholder="e.g. ghcr.io/elizaos/my-agent:latest"
@@ -4797,9 +4814,9 @@ function PremiumNodeRenderer({
             </span>
             <div className="flex flex-col gap-3 text-xs">
               <div className="flex flex-col gap-1.5">
-                <label className="font-mono text-[9px] text-white/40 uppercase font-bold">
+                <span className="font-mono text-[9px] text-white/40 uppercase font-bold">
                   Domain Name
-                </label>
+                </span>
                 <input
                   type="text"
                   placeholder="e.g. myagent.com"
@@ -5378,6 +5395,7 @@ function ArtifactWindow({
     >
       {/* Header Bar - Handles Dragging */}
       <div
+        role="application"
         onMouseDown={node.isMaximized ? undefined : onHeaderMouseDown}
         className={`flex h-8 shrink-0 items-center justify-between px-3 select-none ${
           node.type === "chat-response"
@@ -5391,6 +5409,7 @@ function ArtifactWindow({
       >
         {/* Left Side: macOS traffic lights */}
         <div
+          role="application"
           className="flex items-center gap-1.5 shrink-0 group/traffic-lights"
           onMouseDown={(e) => e.stopPropagation()}
         >
@@ -5624,6 +5643,7 @@ function ArtifactWindow({
       {/* Custom Resize Handle (Visible only if not minimized and not maximized) */}
       {!node.isMinimized && !node.isMaximized && (
         <div
+          role="application"
           onMouseDown={onResizeMouseDown}
           className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 cursor-se-resize flex items-end justify-end p-0.5 group z-10"
           title="Resize window"
@@ -6728,6 +6748,7 @@ export function CloudCanvas() {
       {/* ── Drag & Drop Snapshots Overlay ── */}
       {isDraggingSnapshot && (
         <div
+          role="application"
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
@@ -6746,6 +6767,7 @@ export function CloudCanvas() {
 
       {/* ── Main Canvas Area ── */}
       <div
+        role="application"
         className="flex-1 flex flex-col h-full overflow-hidden"
         onDragOver={handleDragOver}
       >
@@ -6765,10 +6787,21 @@ export function CloudCanvas() {
                 return (
                   <div
                     key={v.id}
+                    role="tab"
+                    tabIndex={0}
                     onClick={() => {
                       if (!isActive) {
                         useCanvasStore.getState().renameTab(v.id, v.name); // triggers focus update
                         useCanvasStore.setState({ activeViewId: v.id });
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        if (!isActive) {
+                          useCanvasStore.getState().renameTab(v.id, v.name);
+                          useCanvasStore.setState({ activeViewId: v.id });
+                        }
                       }
                     }}
                     onDoubleClick={() => {
@@ -6854,6 +6887,7 @@ export function CloudCanvas() {
 
         {/* Node Graph Display Viewport */}
         <div
+          role="application"
           onMouseDown={startPan}
           onWheel={handleWheel}
           className="flex-1 relative min-h-0 overflow-hidden select-none canvas-viewport pointer-events-auto"
@@ -6966,6 +7000,8 @@ export function CloudCanvas() {
                         return (
                           <div
                             key={node.id}
+                            role="menuitem"
+                            tabIndex={0}
                             style={{
                               position: "absolute",
                               left: `${node.x}px`,
@@ -6975,6 +7011,12 @@ export function CloudCanvas() {
                             }}
                             className="flex flex-col items-center justify-center text-center select-none cursor-pointer hover:opacity-80 transition-opacity"
                             onClick={() => closeNode(currentViewId, node.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                closeNode(currentViewId, node.id);
+                              }
+                            }}
                             title="Click to dismiss"
                           >
                             <h1
@@ -7040,6 +7082,7 @@ export function CloudCanvas() {
       </div>
 
       <div
+        role="application"
         onMouseEnter={() => setSelectorHovered(true)}
         onMouseLeave={() => {
           setSelectorHovered(false);
@@ -7135,7 +7178,15 @@ export function CloudCanvas() {
                   return (
                     <div
                       key={s.id}
+                      role="menuitem"
+                      tabIndex={0}
                       onClick={() => loadWorkspaceSnapshot(s.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          loadWorkspaceSnapshot(s.id);
+                        }
+                      }}
                       className="group relative flex-shrink-0 w-36 h-20 rounded-xl cursor-pointer transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] carousel-card border border-white/5 bg-white/[0.02] overflow-hidden"
                     >
                       {/* Visual preview map of nodes inside */}
@@ -7209,6 +7260,7 @@ export function CloudCanvas() {
                   <div className="flex-shrink-0 w-36 h-20 rounded-xl transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] carousel-card border border-dashed border-white/15 bg-white/[0.01] hover:border-[#FF5800]/40 flex flex-col items-center justify-center p-2 text-center group cursor-pointer relative">
                     {isSavingNewSnapshot ? (
                       <div
+                        role="none"
                         className="w-full flex flex-col gap-1.5"
                         onClick={(e) => e.stopPropagation()}
                       >
@@ -7254,8 +7306,16 @@ export function CloudCanvas() {
                       </div>
                     ) : (
                       <div
+                        role="menuitem"
+                        tabIndex={0}
                         className="flex flex-col items-center justify-center w-full h-full"
                         onClick={() => setIsSavingNewSnapshot(true)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setIsSavingNewSnapshot(true);
+                          }
+                        }}
                       >
                         <Plus className="h-5 w-5 text-white/30 group-hover:text-[#FF5800] group-hover:scale-110 transition-all duration-300 mb-1" />
                         <span className="text-[10px] font-mono text-white/40 group-hover:text-white/80 transition-colors">
@@ -7276,7 +7336,15 @@ export function CloudCanvas() {
                 return (
                   <div
                     key={t.id}
+                    role="menuitem"
+                    tabIndex={0}
                     onClick={() => loadTemplate(t)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        loadTemplate(t);
+                      }
+                    }}
                     className="group relative flex-shrink-0 w-36 h-20 rounded-xl cursor-pointer transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] carousel-card border border-white/5 bg-white/[0.02] overflow-hidden"
                     title={t.description}
                   >
@@ -7340,7 +7408,15 @@ export function CloudCanvas() {
                 return (
                   <div
                     key={ct.id}
+                    role="menuitem"
+                    tabIndex={0}
                     onClick={() => loadTemplate(ct)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        loadTemplate(ct);
+                      }
+                    }}
                     className="group relative flex-shrink-0 w-36 h-20 rounded-xl cursor-pointer transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] carousel-card border border-white/5 bg-white/[0.02] overflow-hidden"
                     title={`${ct.name} by ${ct.creator} - ${ct.description}`}
                   >
@@ -7403,7 +7479,15 @@ export function CloudCanvas() {
           <div className="flex items-center gap-4">
             {/* Terminal Indicator */}
             <span
+              role="menuitem"
+              tabIndex={0}
               onClick={() => openView("System Health", "health", null, null)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openView("System Health", "health", null, null);
+                }
+              }}
               className="flex items-center gap-1.5 text-white/60 hover:text-white transition-colors cursor-pointer"
               title="Cloud API connection status"
             >
@@ -7434,7 +7518,15 @@ export function CloudCanvas() {
 
             {/* Instances Counter */}
             <span
+              role="menuitem"
+              tabIndex={0}
               onClick={() => openView("Instances", "agents", null, null)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openView("Instances", "agents", null, null);
+                }
+              }}
               className="flex items-center gap-1 text-white/60 hover:text-white transition-colors cursor-pointer"
               title="Active Instances"
             >
@@ -7449,7 +7541,15 @@ export function CloudCanvas() {
 
             {/* API Keys Counter */}
             <span
+              role="menuitem"
+              tabIndex={0}
               onClick={() => openView("API Keys", "apikeys", null, null)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openView("API Keys", "apikeys", null, null);
+                }
+              }}
               className="flex items-center gap-1 text-white/60 hover:text-white transition-colors cursor-pointer"
               title="Active API Keys"
             >
@@ -7464,7 +7564,15 @@ export function CloudCanvas() {
           <div className="flex items-center gap-4">
             {/* Credits Balance */}
             <span
+              role="menuitem"
+              tabIndex={0}
               onClick={() => openView("Billing", "billing", null, null)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openView("Billing", "billing", null, null);
+                }
+              }}
               className="flex items-center gap-1.5 text-white/60 hover:text-white transition-colors cursor-pointer"
               title="Click to view billing details"
             >
@@ -7479,9 +7587,17 @@ export function CloudCanvas() {
 
             {/* Active User / Profile */}
             <span
+              role="menuitem"
+              tabIndex={0}
               onClick={() =>
                 openView("Profile Overview", "profile", null, null)
               }
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openView("Profile Overview", "profile", null, null);
+                }
+              }}
               className="hover:text-white text-white/60 transition-colors cursor-pointer truncate max-w-[120px]"
               title={`Logged in as ${user?.email || "guest"}`}
             >
@@ -7491,9 +7607,17 @@ export function CloudCanvas() {
             <span className="text-white/10 select-none">|</span>
 
             <span
+              role="menuitem"
+              tabIndex={0}
               onClick={() =>
                 openView("Security Console", "security", null, null)
               }
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openView("Security Console", "security", null, null);
+                }
+              }}
               className="flex items-center gap-1.5 text-[#FF5800] hover:text-[#ff7426] transition-colors cursor-pointer font-semibold"
             >
               <Settings className="h-3.5 w-3.5 animate-spin [animation-duration:10s]" />
