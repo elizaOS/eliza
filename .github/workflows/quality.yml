@@ -46,7 +46,7 @@ permissions:
 jobs:
   homepage-build:
     name: Homepage Build (PR smoke)
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-24.04"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: write
@@ -153,7 +153,7 @@ jobs:
 
   format-check:
     name: Format Check (biome)
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-24.04"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5

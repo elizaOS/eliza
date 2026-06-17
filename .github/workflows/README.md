@@ -42,25 +42,23 @@ Publishes TypeScript/JavaScript packages to NPM.
 
 ## Test Workflows
 
-### Linux Self-Hosted Runner Policy
+### Linux Runner Policy
 
-Linux CI jobs that previously ran on hosted Ubuntu now target the shared
-`self-hosted`, `Linux`, `X64`, `hetzner-robot` runner pool for trusted events
-such as same-repository PRs, pushes, schedules, and manual runs.
+Linux CI jobs run on GitHub-hosted Ubuntu (`ubuntu-24.04` / `ubuntu-latest`).
 
-Fork PRs still fall back to the equivalent GitHub-hosted Ubuntu image. This is
-intentional: the repo is public, and untrusted fork code should keep GitHub's
-ephemeral runner isolation rather than execute on persistent self-hosted
-machines with repository-adjacent state.
+A prior change (#8501) moved trusted-event Linux jobs to a self-hosted
+`self-hosted, Linux, X64, hetzner-robot` pool, but that fleet went offline
+(20 of 22 runners down), leaving every migrated job queued indefinitely and
+gridlocking develop CI. The placement was reverted to GitHub-hosted so CI
+stays unblocked regardless of fleet health.
 
-Why this exists:
+Re-introduce the self-hosted pool only once it is reliably online: restore the
+conditional `runs-on` (GitHub-hosted for fork PRs, self-hosted otherwise) at
+that point, and keep the runner-agnostic step hardening (no `sudo`-only
+install/cleanup) so jobs run on either runner type.
 
-- Same-repository CI can use the larger runner pool to reduce queue time and
-  unblock parallel slices without weakening the quality gate.
-- Fork contributors keep a predictable, isolated hosted environment.
-- Existing workflow commands stay the same; only runner placement changes.
-- macOS, Windows, ARM, GPU, and virtualization-dependent jobs should stay on
-  purpose-built runners until matching self-hosted labels and capacity exist.
+GPU / KVM / macOS jobs (labels `gpu-cuda-12.6`, `kvm`, `eliza-e2e-macos`) are a
+separate purpose-built fleet and are unaffected by this policy.
 
 ### PR Path Gates
 

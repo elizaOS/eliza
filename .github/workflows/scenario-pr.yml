@@ -39,7 +39,7 @@ permissions:
 jobs:
   changes:
     name: Classify changed paths
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-24.04"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    runs-on: ubuntu-24.04
     outputs:
       run_scenario_pr: ${{ steps.filter.outputs.run_scenario_pr }}
     steps:
@@ -68,7 +68,7 @@ jobs:
     name: Zero-Key unit + UI coverage
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-24.04"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -127,7 +127,7 @@ jobs:
     name: Zero-Key app browser core
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-24.04"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -186,7 +186,7 @@ jobs:
     name: Zero-Key app browser view lifecycle
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-24.04"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -240,7 +240,7 @@ jobs:
     name: Zero-Key app browser all-pages
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-24.04"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -285,7 +285,7 @@ jobs:
     name: Zero-Key app browser feature interactions
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-24.04"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 55
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -330,7 +330,7 @@ jobs:
     name: Zero-Key app browser cloud keyless
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-24.04"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -375,7 +375,7 @@ jobs:
     name: Zero-Key app browser ratcheted
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-24.04"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 55
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -420,7 +420,7 @@ jobs:
     name: Zero-Key app diagnostics
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-24.04"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -469,7 +469,7 @@ jobs:
     name: Zero-Key scenario runner E2E
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-24.04"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -527,7 +527,7 @@ jobs:
       - app-diagnostics
       - scenario-runner-e2e
     if: always() && needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-24.04"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    runs-on: ubuntu-24.04
     steps:
       - name: Check deterministic E2E slices
         shell: bash
