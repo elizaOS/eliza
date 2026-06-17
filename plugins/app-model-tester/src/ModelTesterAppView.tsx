@@ -1,6 +1,5 @@
 import { TerminalPluginView } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { MODEL_TESTER_TUI_CAPABILITIES } from "./ModelTesterAppView.interact";
 import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Spinner } from "@elizaos/ui/components/ui/spinner";
@@ -24,6 +23,7 @@ import {
   Waves,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { MODEL_TESTER_TUI_CAPABILITIES } from "./ModelTesterAppView.interact";
 
 type TestId =
   | "text-small"
