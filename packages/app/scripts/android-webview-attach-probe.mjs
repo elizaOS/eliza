@@ -32,7 +32,9 @@ async function main() {
   await delay(4_000);
 
   const device = await connectPlaywrightDevice(android, serial);
-  console.log(`[attach-probe] connected model=${device.model()} serial=${device.serial()}`);
+  console.log(
+    `[attach-probe] connected model=${device.model()} serial=${device.serial()}`,
+  );
 
   let webview;
   try {
@@ -58,7 +60,9 @@ async function main() {
   // Android WebView screenshots are slow over CDP; keep it short + non-fatal.
   await page
     .screenshot({ path: screenshot, timeout: 8_000, animations: "disabled" })
-    .catch((e) => console.warn(`[attach-probe] screenshot skipped: ${e.message}`));
+    .catch((e) =>
+      console.warn(`[attach-probe] screenshot skipped: ${e.message}`),
+    );
 
   console.log(
     JSON.stringify(

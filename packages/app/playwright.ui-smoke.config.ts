@@ -25,7 +25,12 @@ const chromiumExecutablePath =
 // plays this WAV file as the fake capture device so the REAL local-ASR recorder
 // (getUserMedia + WAV encode + POST) runs end-to-end with no human/microphone.
 // Materialized from the committed data-URL fixture (no gitignored binary).
-const fakeAudioWav = path.join(appDir, "test-results", ".voice", "known-phrase.wav");
+const fakeAudioWav = path.join(
+  appDir,
+  "test-results",
+  ".voice",
+  "known-phrase.wav",
+);
 mkdirSync(path.dirname(fakeAudioWav), { recursive: true });
 writeFileSync(
   fakeAudioWav,

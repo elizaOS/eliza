@@ -29,9 +29,11 @@ const ROUTES: RouteCase[] = [
 ];
 // Dedupe by path (some views share a path with a direct route).
 const SEEN = new Set<string>();
-const UNIQUE_ROUTES = ROUTES.filter((r) =>
-  SEEN.has(r.path) ? false : (SEEN.add(r.path), true),
-);
+const UNIQUE_ROUTES = ROUTES.filter((r) => {
+  if (SEEN.has(r.path)) return false;
+  SEEN.add(r.path);
+  return true;
+});
 
 // NOT describe.serial: the routes share one WebView so they already run serially
 // (workers=1), but a single render hiccup must not abort the rest of the sweep.
@@ -52,12 +54,17 @@ test.describe("android route coverage (real backend)", () => {
         .poll(
           () =>
             page.evaluate(() => (document.body?.innerText ?? "").trim().length),
-          { timeout: 45_000, message: `${route.name}: route never painted content` },
+          {
+            timeout: 45_000,
+            message: `${route.name}: route never painted content`,
+          },
         )
         .toBeGreaterThan(0);
       // It does not trip the React error boundary.
       const crashed = await page
-        .getByText(/Something went wrong|Application error|White screen|Unhandled exception/i)
+        .getByText(
+          /Something went wrong|Application error|White screen|Unhandled exception/i,
+        )
         .first()
         .isVisible()
         .catch(() => false);

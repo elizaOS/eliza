@@ -5,11 +5,11 @@
 // real on-device agent. There is no webServer and no network mocking — the
 // assertions exercise real render + real backend.
 import {
-  _android as android,
   type AndroidDevice,
+  _android as android,
+  test as base,
   expect,
   type Page,
-  test as base,
 } from "@playwright/test";
 // The shared device lib is plain ESM (.mjs); import the values we need.
 import {
@@ -73,7 +73,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   // One connected device per worker (workers are forced to 1 — the device has a
   // single WebView). Closed at the end so adb is released for the next run.
   device: [
-    async ({}, use) => {
+    async (_fixtures, use) => {
       const device = await connectPlaywrightDevice(
         android,
         process.env.ANDROID_SERIAL,
@@ -96,7 +96,10 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       for (let i = 0; i < 30 && !appPid(adb, device.serial()); i += 1) {
         await delay(500);
       }
-      const webview = await device.webView({ pkg: APP_ID }, { timeout: 60_000 });
+      const webview = await device.webView(
+        { pkg: APP_ID },
+        { timeout: 60_000 },
+      );
       const page = await webview.page();
       await page.waitForLoadState("domcontentloaded").catch(() => {});
       await page.evaluate((seed: Record<string, string>) => {
@@ -108,7 +111,10 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       // reload re-bootstraps the connection and can dead-end on a stock device.
       if (!(await isShellReady(page))) {
         await page
-          .goto(`${ORIGIN}/`, { waitUntil: "domcontentloaded", timeout: 20_000 })
+          .goto(`${ORIGIN}/`, {
+            waitUntil: "domcontentloaded",
+            timeout: 20_000,
+          })
           .catch(() => {});
         await waitForShellReady(page);
       }
@@ -125,7 +131,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   },
 });
 
-export { expect, android };
+export { android, expect };
 
 /** One-shot check: is the React shell rendered past the connecting splash? */
 export async function isShellReady(page: Page): Promise<boolean> {
@@ -148,13 +154,20 @@ export async function waitForShellReady(
           .evaluate(() => document.body?.innerText ?? "")
           .catch(() => "");
         if (/BACKEND UNREACHABLE/i.test(text)) {
-          throw new Error(`App reported backend unreachable: ${text.slice(0, 200)}`);
+          throw new Error(
+            `App reported backend unreachable: ${text.slice(0, 200)}`,
+          );
         }
         const stillBooting =
-          /Connecting to backend|INITIALIZING AGENT|^\s*Loading\s*$/i.test(text);
+          /Connecting to backend|INITIALIZING AGENT|^\s*Loading\s*$/i.test(
+            text,
+          );
         return !stillBooting && text.trim().length > 40;
       },
-      { timeout: timeoutMs, message: "app shell never left the connecting splash" },
+      {
+        timeout: timeoutMs,
+        message: "app shell never left the connecting splash",
+      },
     )
     .toBe(true);
 }
@@ -180,7 +193,10 @@ export async function expectRouteReady(
   page: Page,
   label: string,
   checks: readonly ReadyCheck[],
-  { mode = "any", timeoutMs = 45_000 }: { mode?: "any" | "all"; timeoutMs?: number } = {},
+  {
+    mode = "any",
+    timeoutMs = 45_000,
+  }: { mode?: "any" | "all"; timeoutMs?: number } = {},
 ): Promise<void> {
   const evaluate = async () => {
     const results = await Promise.all(

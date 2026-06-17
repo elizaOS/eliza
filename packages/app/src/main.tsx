@@ -94,7 +94,6 @@ import {
   applyForceFreshFirstRunReset,
   installForceFreshFirstRunClientPatch,
 } from "@elizaos/ui/platform/first-run-reset";
-import { isElizaOS } from "@elizaos/ui/platform/init";
 import {
   isChatOverlayWindowShell,
   isDetachedWindowShell,
@@ -1958,7 +1957,10 @@ async function getOrCreateDeviceBridgeId(): Promise<string> {
     } catch {
       // Preferences unavailable on this platform; fall through to localStorage.
     }
-    return globalThis.localStorage?.getItem(DEVICE_BRIDGE_ID_KEY)?.trim() || undefined;
+    return (
+      globalThis.localStorage?.getItem(DEVICE_BRIDGE_ID_KEY)?.trim() ||
+      undefined
+    );
   };
 
   const existing = await readPersisted();

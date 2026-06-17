@@ -34,7 +34,8 @@ function readAppConfigValue(key, fallback) {
 }
 
 export const APP_ID =
-  process.env.ELIZA_APP_ID?.trim() || readAppConfigValue("appId", "ai.elizaos.app");
+  process.env.ELIZA_APP_ID?.trim() ||
+  readAppConfigValue("appId", "ai.elizaos.app");
 export const MAIN_ACTIVITY = `${APP_ID}/.MainActivity`;
 /** Port the on-device agent serves its Hono API on (loopback). */
 export const AGENT_API_PORT = 31337;
@@ -366,9 +367,14 @@ export function clearAppData(adbBin, serial) {
 
 export function launchApp(adbBin, serial) {
   adbDevice(adbBin, serial, ["shell", "am", "force-stop", APP_ID]);
-  adbDevice(adbBin, serial, ["shell", "am", "start", "-W", "-n", MAIN_ACTIVITY], {
-    stdio: "inherit",
-  });
+  adbDevice(
+    adbBin,
+    serial,
+    ["shell", "am", "start", "-W", "-n", MAIN_ACTIVITY],
+    {
+      stdio: "inherit",
+    },
+  );
 }
 
 /**
@@ -394,7 +400,11 @@ export function appPid(adbBin, serial) {
  * for a test emulator we `adb root` + `setenforce 0`. No-op (best-effort) on
  * physical devices, which must already be branded/privileged.
  */
-export async function ensureEmulatorPermissive(adbBin, serial, { log = () => {} } = {}) {
+export async function ensureEmulatorPermissive(
+  adbBin,
+  serial,
+  { log = () => {} } = {},
+) {
   if (!serial.startsWith("emulator-")) {
     log(`skipping setenforce on non-emulator device ${serial}`);
     return false;
@@ -435,7 +445,13 @@ export function adbReverse(adbBin, serial, devicePort, hostPort = devicePort) {
   adbTry(adbBin, ["-s", serial, "reverse", "--remove", `tcp:${devicePort}`], {
     stdio: "ignore",
   });
-  adb(adbBin, ["-s", serial, "reverse", `tcp:${devicePort}`, `tcp:${hostPort}`]);
+  adb(adbBin, [
+    "-s",
+    serial,
+    "reverse",
+    `tcp:${devicePort}`,
+    `tcp:${hostPort}`,
+  ]);
 }
 
 export function forwardWebViewCdp(adbBin, serial, localPort, pid) {
@@ -458,7 +474,10 @@ export function forwardWebViewCdp(adbBin, serial, localPort, pid) {
  * message if no target appears (the usual cause is an APK built without
  * ELIZA_WEBVIEW_DEBUG=1).
  */
-export async function discoverWebViewTarget(localPort, { timeoutMs = 30_000 } = {}) {
+export async function discoverWebViewTarget(
+  localPort,
+  { timeoutMs = 30_000 } = {},
+) {
   const deadline = Date.now() + timeoutMs;
   let lastError = null;
   while (Date.now() < deadline) {
