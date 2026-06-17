@@ -140,6 +140,7 @@ describe("Foundation: agent token flow", () => {
       {
         name: `agent-token-flow-${Date.now()}`,
         description: "Foundation e2e test — created and revoked in afterAll.",
+        permissions: ["read"],
         rate_limit: 60,
       },
       { headers: { Cookie: sessionCookie } },

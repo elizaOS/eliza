@@ -238,6 +238,7 @@ export class AppsService {
       description: `API key for app: ${data.name}`,
       organization_id: data.organization_id,
       user_id: data.created_by_user_id,
+      permissions: ["apps.access", "generation.all"],
       rate_limit: 10000,
     });
 
@@ -596,6 +597,7 @@ export class AppsService {
       description: `Regenerated API key for app: ${app.name}`,
       organization_id: app.organization_id,
       user_id: app.created_by_user_id,
+      permissions: ["apps.access", "generation.all"],
       rate_limit: 10000,
     });
 

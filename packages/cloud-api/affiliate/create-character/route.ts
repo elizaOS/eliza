@@ -1,7 +1,7 @@
 /**
  * POST /api/affiliate/create-character
  * Affiliate API endpoint for creating characters without requiring user signup.
- * Requires any valid, active API key (a key is just a key — full access).
+ * Requires an API key whose `permissions` include `affiliate:create-character`.
  *
  * This Workers port performs URL pass-through for image inputs: HTTP(S) URLs
  * in `character.avatar_url` and `metadata.imageUrls` are kept verbatim, and
@@ -28,6 +28,7 @@ import { getCorsHeaders } from "@/lib/utils/cors";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
+const AFFILIATE_PERMISSION = "affiliate:create-character";
 const SESSION_TTL_DAYS = 7;
 const ANON_USER_TTL_MS = SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
 
@@ -123,8 +124,14 @@ async function authenticateAffiliate(c: AppContext) {
     throw AuthenticationError("API key has expired");
   }
 
-  // Any valid, active API key for the owner's org may create affiliate
-  // characters — a key is just a key with full access (no per-key scopes).
+  const permissions = Array.isArray(apiKey.permissions)
+    ? apiKey.permissions
+    : [];
+  if (!permissions.includes(AFFILIATE_PERMISSION)) {
+    throw ForbiddenError(
+      "This API key does not have permission to create characters via affiliate API",
+    );
+  }
   return apiKey;
 }
 

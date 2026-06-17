@@ -155,6 +155,7 @@ async function ensureTestUser({
     description: "Local cloud API e2e test key",
     organization_id: organization.id,
     user_id: user.id,
+    permissions: ["read", "write", "admin"],
     rate_limit: 10_000,
     is_active: true,
   });
@@ -190,6 +191,7 @@ const { plainKey: affiliatePlainKey } = await apiKeysService.create({
   description: "Local cloud API affiliate e2e test key",
   organization_id: affiliate.organization.id,
   user_id: affiliate.user.id,
+  permissions: ["read", "write", "affiliate:create-character"],
   rate_limit: 10_000,
   is_active: true,
 });
