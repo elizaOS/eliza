@@ -32,7 +32,9 @@ const wavPath = join(dir, "known-phrase.wav");
 
 const wav = readFileSync(wavPath);
 if (wav.length < 1000 || wav.toString("ascii", 0, 4) !== "RIFF") {
-  throw new Error(`${wavPath} is not a valid WAV (regenerate via omnivoice.cpp)`);
+  throw new Error(
+    `${wavPath} is not a valid WAV (regenerate via omnivoice.cpp)`,
+  );
 }
 const dataUrl = `data:audio/wav;base64,${wav.toString("base64")}`;
 const tsOut = join(dir, "known-phrase.ts");
