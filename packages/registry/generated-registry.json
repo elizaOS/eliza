@@ -91,6 +91,54 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@usenami/plugin-funding": {
+      "git": {
+        "repo": "namixai/plugin-funding",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@usenami/plugin-funding",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Multi-venue perpetual funding-rate data & cross-exchange funding-arbitrage for elizaOS agents — across 20+ exchanges incl. Hyperliquid HIP-3 sub-DEXes. Free FUNDING_SCREENER; paid FUNDING_ARB + FUNDING_SPREAD settle per-call over x402 (auto-pay in USDC on Base).",
+      "homepage": "https://usenami.io",
+      "topics": [
+        "funding-rate",
+        "perpetuals",
+        "arbitrage",
+        "funding-arbitrage",
+        "x402",
+        "market-data",
+        "trading",
+        "hyperliquid"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@usenami/plugin-signer": {
       "git": {
         "repo": "namixai/plugin-signer",
