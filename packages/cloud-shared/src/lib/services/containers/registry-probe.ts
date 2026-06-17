@@ -44,6 +44,20 @@ export async function resolveImageDigest(
   const cached = cache.get(imageRef);
   if (cached && cached.expiresAt > now()) return cached.digest;
 
+  // A digest-pinned ref (`repo@sha256:...`) is already resolved — the digest IS
+  // the answer, and there is no newer digest to fetch. Short-circuit before the
+  // tag path: parseImageRef would keep the `@sha256` in the repo
+  // (`elizaos/eliza@sha256`), corrupting the ghcr token scope
+  // `repository:<repo>:pull` → HTTP 400, which makes the fleet-upgrade probe
+  // skip every digest-pinned fleet (the prod agent image is digest-pinned).
+  const atIdx = imageRef.indexOf("@");
+  if (atIdx !== -1) {
+    const digest = imageRef.slice(atIdx + 1);
+    const resolved = /^sha256:[0-9a-f]{64}$/.test(digest) ? digest : null;
+    cache.set(imageRef, { digest: resolved, expiresAt: now() + CACHE_TTL_MS });
+    return resolved;
+  }
+
   const parsed = parseImageRef(imageRef);
   if (!parsed || parsed.registry !== "ghcr.io") {
     cache.set(imageRef, { digest: null, expiresAt: now() + CACHE_TTL_MS });
