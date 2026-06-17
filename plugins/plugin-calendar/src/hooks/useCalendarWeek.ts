@@ -92,6 +92,10 @@ export function useCalendarWeek(
         const next = new Date(current);
         const days = windowDaysForMode(viewMode);
         if (viewMode === "month") {
+          // Normalize to the 1st before shifting: setMonth on e.g. May 31 would
+          // overflow ("June 31" -> July 1) and silently skip a month. The grid
+          // is computed from the 1st via startOfMonthGrid, so this is safe.
+          next.setDate(1);
           next.setMonth(next.getMonth() + direction);
         } else {
           next.setDate(next.getDate() + direction * days);

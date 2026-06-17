@@ -221,12 +221,29 @@ async function fetchViaNode(
           res.resume();
           const nextUrl = new URL(location, url);
           const nextInit: RequestInit = { ...init, headers: headerObj };
+          // Carry the abort signal across the redirect (the original may have
+          // arrived as a Request, so init.signal can be absent).
+          if (signal) nextInit.signal = signal;
           if (
             status === 303 ||
             ((status === 301 || status === 302) && method === "POST")
           ) {
+            // Redirect-to-GET: drop the body AND its now-wrong framing headers,
+            // otherwise the next GET advertises a Content-Length with no body
+            // and mis-frames the connection.
             nextInit.method = "GET";
             delete (nextInit as { body?: unknown }).body;
+            delete headerObj["content-length"];
+            delete headerObj["content-type"];
+          } else {
+            // Body-preserving redirect (307/308, or a non-POST 301/302): carry
+            // the resolved method and the already-buffered body forward — they
+            // may have come from a Request object, so init.method/body are unset
+            // and would otherwise silently degrade to an empty GET.
+            nextInit.method = method;
+            // Copy into a fresh-ArrayBuffer Uint8Array so it satisfies BodyInit
+            // (a Buffer is ArrayBufferLike-backed); payloads here are small.
+            if (body) nextInit.body = new Uint8Array(body);
           }
           resolve(
             fetchViaNode(nextUrl, nextUrl, nextInit, lookup, redirectCount + 1),
@@ -292,6 +309,12 @@ async function fetchViaNode(
         onAbort();
       } else {
         signal.addEventListener("abort", onAbort, { once: true });
+        // `{ once: true }` only detaches after firing; for a request that
+        // completes normally the listener would leak on the (long-lived)
+        // caller signal, so remove it when the request settles.
+        request.on("close", () => {
+          signal.removeEventListener("abort", onAbort);
+        });
       }
     }
     if (body) request.write(body);
