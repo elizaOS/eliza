@@ -103,7 +103,7 @@
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "react-hook-form": "^7.67.0",
-    "react-resizable-panels": "2.1.7",
+    "react-resizable-panels": "4.11.2",
     "recharts": "^3.5.1",
     "serwist": "^9.5.5",
     "sonner": "^2.0.7",
