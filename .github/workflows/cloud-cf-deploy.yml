@@ -77,7 +77,7 @@ jobs:
           bun-version: "canary"
 
       - name: Install dependencies
-        run: bun install --no-save && git diff --exit-code -- bun.lock
+        run: bun install --no-save --ignore-scripts && git diff --exit-code -- bun.lock
 
       - name: Build linked elizaOS workspaces
         run: bun run build:core
@@ -207,7 +207,7 @@ jobs:
           bun-version: "canary"
 
       - name: Install dependencies
-        run: bun install --no-save && git diff --exit-code -- bun.lock
+        run: bun install --no-save --ignore-scripts && git diff --exit-code -- bun.lock
 
       - name: Build linked elizaOS core workspace
         run: bun run build:core
