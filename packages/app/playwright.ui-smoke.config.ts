@@ -1,6 +1,11 @@
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
+// The committed source of truth for the known-phrase audio is the data-URL .ts
+// (a real omnivoice.cpp speech clip). Binary .wav fixtures are gitignored, so
+// derive the on-disk WAV from it for Chromium's --use-file-for-fake-audio-capture.
+import { KNOWN_PHRASE_WAV_DATA_URL } from "../ui/src/voice/voice-selftest/fixtures/known-phrase";
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(appDir, "../..");
@@ -19,9 +24,12 @@ const chromiumExecutablePath =
 // Real audio fed to the browser mic for the voice button-press e2e: Chromium
 // plays this WAV file as the fake capture device so the REAL local-ASR recorder
 // (getUserMedia + WAV encode + POST) runs end-to-end with no human/microphone.
-const fakeAudioWav = path.join(
-  repoRoot,
-  "packages/ui/src/voice/voice-selftest/fixtures/known-phrase.wav",
+// Materialized from the committed data-URL fixture (no gitignored binary).
+const fakeAudioWav = path.join(appDir, "test-results", ".voice", "known-phrase.wav");
+mkdirSync(path.dirname(fakeAudioWav), { recursive: true });
+writeFileSync(
+  fakeAudioWav,
+  Buffer.from(KNOWN_PHRASE_WAV_DATA_URL.split(",")[1] ?? "", "base64"),
 );
 const VOICE_MIC_SPEC = /voice-realaudio\.spec\.ts/;
 const recording = !!process.env.E2E_RECORD;
