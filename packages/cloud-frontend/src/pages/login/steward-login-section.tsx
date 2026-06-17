@@ -439,35 +439,33 @@ export default function StewardLoginSection() {
     navigate(qs ? `${pathname}?${qs}` : pathname, { replace: true });
   }, [pathname, searchParams, navigate, t]);
   async function handleSuccess(token: string, refreshToken?: string | null) {
+    // Write the localStorage token mirror BEFORE navigating. The dashboard's
+    // route guard reads it synchronously; without it the guard sees no auth on
+    // mount, bounces back to /login for a beat, then redirects once the cookie
+    // catches up — the "login page flashes for ~2s after Signed in" bug. The
+    // OAuth/callback paths already persist here; the passkey/email/wallet
+    // paths did not, so do it for all of them.
+    persistStewardToken(token);
     await syncStewardSessionCookie(token, refreshToken);
-    setStep("success");
     toast.success("Signed in!");
     setRedirectTo(resolveLoginReturnTo(searchParams));
+    setStep("success");
   }
 
-  // Heuristic: did passkey login fail because this email has NO passkey yet
-  // (a brand-new or never-enrolled user), vs. a genuine error/cancel? When
-  // it's "no credential", we transparently fall into the Privy-style email
-  // OTP → passkey-register flow so a first-time user can set up a passkey.
-  function isNoPasskeyError(e: unknown): boolean {
-    const msg = getErrorMessage(e, "").toLowerCase();
-    return (
-      msg.includes("no passkey") ||
-      msg.includes("no credential") ||
-      msg.includes("not found") ||
-      msg.includes("404") ||
-      msg.includes("no matching")
-    );
-  }
-
-  // Did the user cancel the WebAuthn prompt? Don't auto-fallback on cancel.
+  // Did the user dismiss / time out the WebAuthn picker? In the passkey-LOGIN
+  // path this is NOT a dead-end: it almost always means the user had no
+  // usable passkey on this device (the OS showed only "use another device" /
+  // QR and they bailed). Mirror waifu.fun — fall through to the email-OTP
+  // signup so they can create a fresh passkey here instead of seeing an error.
   function isUserCancelled(e: unknown): boolean {
     const msg = getErrorMessage(e, "").toLowerCase();
     return (
       msg.includes("cancel") ||
       msg.includes("notallowed") ||
+      msg.includes("not allowed") ||
       msg.includes("aborted") ||
-      msg.includes("timed out")
+      msg.includes("timed out") ||
+      msg.includes("timeout")
     );
   }
 
@@ -484,14 +482,14 @@ export default function StewardLoginSection() {
       );
       await handleSuccess(result.token, result.refreshToken);
     } catch (e: unknown) {
-      // First-time user with no passkey yet → start the OTP-verified passkey
-      // signup instead of dead-ending. A real cancel stays an error.
-      if (isNoPasskeyError(e) && !isUserCancelled(e)) {
-        await startPasskeySignup();
-        return;
-      }
-      setError(getErrorMessage(e, "Passkey failed"));
-      setLoading(null);
+      // ANY "couldn't use a passkey here" outcome — no passkey for this email,
+      // none on this device, or the user cancelled the picker because nothing
+      // was usable — falls through to the OTP signup. The 6-digit code proves
+      // email ownership, then we register a fresh passkey on THIS device.
+      // (This is the fix for: tap Passkey → cancel the OS prompt → used to
+      // dead-end with a WebAuthn error; now it offers the code path, matching
+      // waifu.fun.)
+      await startPasskeySignup();
     }
   }
 
@@ -811,10 +809,9 @@ export default function StewardLoginSection() {
         )}
       </div>
 
-      <p className="text-center text-xs leading-5 text-white/62">
+      <p className="text-center text-xs text-white/55">
         {t("cloud.login.signupHint", {
-          defaultValue:
-            "New here? Enter your email and tap Passkey — we'll email you a code, then set up your passkey. Magic Link works too.",
+          defaultValue: "New here? Passkey sets up your account in seconds.",
         })}
       </p>
 
