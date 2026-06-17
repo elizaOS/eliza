@@ -92,16 +92,11 @@ export default async function globalSetup() {
   }
 
   // Bring the app to the foreground so its WebView DevTools socket is live.
+  // NOTE: do NOT `am kill-all` here — it races the just-spawned detached bun
+  // agent (whose process is briefly background-classified before it foregrounds)
+  // and kills it, so the agent never becomes healthy. The voice spec reclaims
+  // background memory itself, right before the round-trip, once the agent is up.
   launchApp(adb, serial);
-
-  // The on-device voice round-trip loads three large GGUF models in one session
-  // (the resident chat model, the ~1.4 GB ASR multimodal model, and the ~0.66 GB
-  // omnivoice TTS model). On a memory-tight phone with accumulated background
-  // apps, the model-load spikes trip lmkd's low watermark, and the detached bun
-  // agent — which an unprivileged app cannot oom-protect — becomes a kill
-  // target, surfacing as `local_agent_unavailable` mid-load. Reclaim cached
-  // background apps up front so the agent keeps the headroom it needs.
-  adbTry(adb, ["-s", serial, "shell", "am", "kill-all"]);
 
   if (!REQUIRE_AGENT) {
     console.log(

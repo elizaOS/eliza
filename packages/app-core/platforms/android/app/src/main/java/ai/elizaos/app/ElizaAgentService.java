@@ -262,6 +262,61 @@ public class ElizaAgentService extends Service {
         int timeoutMs,
         String token
     ) throws IOException, JSONException {
+        // The on-device agent is single-threaded: while bun is inside a long
+        // synchronous FFI call (a cold ASR/TTS model load, or a llama_decode for
+        // a chat reply) its HTTP listener briefly stops accepting connections, so
+        // a concurrent request — e.g. createConversation right after a voice
+        // transcription — can hit "connection refused". The request bytes were
+        // never sent, so it is safe to back off and re-dial rather than surface a
+        // spurious local_agent_unavailable that fails the whole voice turn. Only
+        // connection-establishment failures are retried; a read timeout (request
+        // already sent) propagates so non-idempotent POSTs are never replayed.
+        // The window must outlast the longest event-loop stall: after a voice
+        // transcription the agent evicts + cold-reloads the chat model (a
+        // synchronous ~10-15 s llama load on phone CPU) before generating the
+        // reply, during which the HTTP listener refuses connections.
+        final int connectRetries = 15;
+        IOException lastConnectError = null;
+        for (int attempt = 0; attempt <= connectRetries; attempt++) {
+            try {
+                return performLocalAgentRequestOnce(
+                    method, path, headers, body, timeoutMs, token);
+            } catch (java.net.ConnectException connectError) {
+                lastConnectError = connectError;
+            } catch (java.net.SocketTimeoutException timeoutError) {
+                // Distinguish connect-timeout (never sent → retry) from
+                // read-timeout (sent → must not replay). HttpURLConnection
+                // surfaces both as SocketTimeoutException; the connect phase
+                // message contains "connect".
+                String msg = timeoutError.getMessage();
+                if (msg != null && msg.toLowerCase(Locale.US).contains("connect")) {
+                    lastConnectError = timeoutError;
+                } else {
+                    throw timeoutError;
+                }
+            }
+            if (attempt < connectRetries) {
+                try {
+                    Thread.sleep(250L * (attempt + 1));
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw lastConnectError;
+                }
+            }
+        }
+        throw lastConnectError != null
+            ? lastConnectError
+            : new IOException("local agent unreachable");
+    }
+
+    private static JSONObject performLocalAgentRequestOnce(
+        String method,
+        String path,
+        JSONObject headers,
+        String body,
+        int timeoutMs,
+        String token
+    ) throws IOException, JSONException {
         byte[] bodyBytes = body == null ? null : body.getBytes(StandardCharsets.UTF_8);
         if (bodyBytes != null && bodyBytes.length > LOCAL_REQUEST_MAX_BODY_BYTES) {
             throw new IOException("Request body is too large");

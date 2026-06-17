@@ -60,20 +60,6 @@ test.describe("android on-device voice round-trip (real backend)", () => {
       { timeout: 60_000 },
     );
 
-    // Reclaim cached background apps *immediately* before the round-trip. The
-    // turn cold-loads the ~1.4 GB ASR model and the ~0.66 GB omnivoice TTS model
-    // on top of the resident chat model; on a memory-tight phone the load spikes
-    // trip lmkd's low watermark and the detached bun agent (which an unprivileged
-    // app cannot oom-protect) becomes the kill target. global-setup frees memory
-    // once at boot, but Google services respawn before TTS loads — freeing here,
-    // right before the heavy work, gives the agent the headroom when it matters.
-    try {
-      const { execFileSync } = await import("node:child_process");
-      execFileSync(adb, ["-s", device.serial(), "shell", "am", "kill-all"]);
-    } catch {
-      // Best-effort headroom; proceed even if the reclaim command is unavailable.
-    }
-
     // Drive the real harness. wav-direct: the bundled real omnivoice clip ->
     // real on-device ASR -> real agent SSE -> real on-device TTS decode.
     const report = await page.evaluate(

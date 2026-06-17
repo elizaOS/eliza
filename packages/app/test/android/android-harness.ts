@@ -73,7 +73,12 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   // One connected device per worker (workers are forced to 1 — the device has a
   // single WebView). Closed at the end so adb is released for the next run.
   device: [
-    async (_fixtures, use) => {
+    // Playwright requires the first fixture argument to be an object-destructuring
+    // pattern; this fixture depends on no other fixtures, so the empty pattern `{}`
+    // is correct. A bare identifier (`_fixtures`) makes Playwright reject it with
+    // "First argument must use the object destructuring pattern".
+    // biome-ignore lint/correctness/noEmptyPattern: Playwright fixture signature requires the empty `{}` pattern
+    async ({}, use) => {
       const device = await connectPlaywrightDevice(
         android,
         process.env.ANDROID_SERIAL,
