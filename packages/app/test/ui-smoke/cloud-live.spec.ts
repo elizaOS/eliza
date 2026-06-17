@@ -62,7 +62,7 @@ async function clickIfVisible(
 async function chooseCloudRuntime(page: Page): Promise<void> {
   const cloudCard = page
     .getByTestId("first-run-runtime-cloud")
-    .or(page.locator("button").filter({ hasText: /^Eliza Cloud$/ }));
+    .or(page.getByTestId("onboarding-option-cloud"));
   await clickIfVisible(cloudCard, 30_000);
   await clickIfVisible(
     page.getByRole("button", { name: /^(Start|Connect)$/ }),
