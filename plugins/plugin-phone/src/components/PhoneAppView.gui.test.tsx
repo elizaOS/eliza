@@ -8,6 +8,7 @@
 
 import {
   cleanup,
+  configure,
   fireEvent,
   render,
   screen,
@@ -15,6 +16,14 @@ import {
 } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// The contacts/recent panes lazy-load through a dynamic import + an async bridge
+// call before their rows or error banners render. Under the full parallel
+// `test:plugins` run the default 1000ms findBy/waitFor budget is occasionally
+// exceeded (observed: the contacts-error banner at ~1.2s), flaking the lane.
+// Give the async utils headroom; queries still resolve as soon as the element
+// appears, so this never slows the happy path.
+configure({ asyncUtilTimeout: 5000 });
 
 const phoneBridge = vi.hoisted(() => ({
   getStatus: vi.fn(),
