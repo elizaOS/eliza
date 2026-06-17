@@ -13,9 +13,10 @@
  * view-dependent action bar.
  *
  * Live updates are by short polling (5s). When the task is terminal
- * (done/failed/closed/archived) the poll stops and the row freezes. A
- * deleted task (404) renders as muted "Task removed."; we never throw into
- * the chat surface.
+ * (done/failed/archived) the poll stops and the row freezes. A deleted
+ * task (404) renders as muted "Task removed."; we never throw into the
+ * chat surface. After a run of consecutive fetch errors (e.g. a stale
+ * auth token) polling also stops so we don't hammer the endpoint.
  */
 
 import {
@@ -34,7 +35,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../../api/client";
 import type { CodingAgentTaskThreadDetail } from "../../../api/client-types-cloud";
 
-/** Mirrors the workbench's poll cadence; one source of truth lives there. */
+/**
+ * Poll cadence, deliberately matched to the workbench's `POLL_INTERVAL_MS`.
+ * The two constants are independent (different packages) but kept equal so a
+ * task opened from a chat widget and from the workbench refresh in lockstep.
+ */
 const POLL_INTERVAL_MS = 5_000;
 /**
  * After this many CONSECUTIVE fetch errors we stop polling. A 401/403 from a
@@ -169,8 +174,10 @@ export function TaskWidget({ threadId, fallbackTitle }: TaskWidgetProps) {
 
   const handleOpen = useCallback(() => {
     if (typeof window === "undefined") return;
-    const detail = { viewPath: `/orchestrator?taskId=${threadId}` };
-    window.dispatchEvent(new CustomEvent("eliza:navigate:view", { detail }));
+    const navDetail = { viewPath: `/orchestrator?taskId=${threadId}` };
+    window.dispatchEvent(
+      new CustomEvent("eliza:navigate:view", { detail: navDetail }),
+    );
   }, [threadId]);
 
   if (removed) {

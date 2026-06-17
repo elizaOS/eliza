@@ -19,8 +19,14 @@ const onlyComponents = !args.includes("--all");
 
 function* walk(dir) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (e.name === "node_modules" || e.name === "__tests__" || e.name === "__e2e__")
+    if (
+      e.name === "node_modules" ||
+      e.name === "__tests__" ||
+      e.name === "__e2e__"
+    )
       continue;
+    // Storybook harness + story fixtures are not user-facing components.
+    if (e.name === "storybook" || e.name === "stories") continue;
     if (e.name.startsWith(".")) continue;
     const full = path.join(dir, e.name);
     if (e.isDirectory()) yield* walk(full);
@@ -37,9 +43,7 @@ function* walk(dir) {
   }
 }
 
-const root = onlyComponents
-  ? componentsRoot
-  : path.resolve(pkgRoot, "src");
+const root = onlyComponents ? componentsRoot : path.resolve(pkgRoot, "src");
 
 const files = [...walk(root)];
 
@@ -48,7 +52,10 @@ const hasComponent = (src) => {
   const hasExport =
     /\bexport\s+(?:default\s+)?(?:function|class)\s+[A-Z]/.test(src) ||
     /\bexport\s+(?:default\s+)?(?:const|let|var)\s+[A-Z]\w+\s*[:=]/.test(src);
-  const hasJsx = /<\/?[A-Z]\w/.test(src) || /=>\s*</.test(src) || /return\s*\(\s*</.test(src);
+  const hasJsx =
+    /<\/?[A-Z]\w/.test(src) ||
+    /=>\s*</.test(src) ||
+    /return\s*\(\s*</.test(src);
   return hasExport && hasJsx;
 };
 
@@ -106,7 +113,9 @@ lines.push(`- Missing stories: **${missing.length}**`);
 lines.push(`- Coverage: **${report.coverage}**`);
 lines.push("");
 lines.push(`## Missing stories by area`);
-for (const [area, list] of [...byDir.entries()].sort((a, b) => b[1].length - a[1].length)) {
+for (const [area, list] of [...byDir.entries()].sort(
+  (a, b) => b[1].length - a[1].length,
+)) {
   lines.push(`\n### ${area} (${list.length})`);
   for (const f of list) lines.push(`- ${f}`);
 }
@@ -115,7 +124,10 @@ fs.writeFileSync(
   path.join(here, "stories-coverage-report.json"),
   JSON.stringify(report, null, 2),
 );
-fs.writeFileSync(path.join(here, "stories-coverage-report.md"), lines.join("\n"));
+fs.writeFileSync(
+  path.join(here, "stories-coverage-report.md"),
+  lines.join("\n"),
+);
 
 console.log(`Components: ${componentFiles.length}`);
 console.log(`With stories: ${present.length}`);
