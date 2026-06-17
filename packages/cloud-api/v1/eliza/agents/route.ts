@@ -366,15 +366,7 @@ app.post("/", async (c) => {
     executionTier,
   });
 
-  // ── Atomicity guard: createAgent → enqueue is a split write ──────────────
-  // `createAgent` already COMMITTED a `pending` row. Everything up to the
-  // provision-job enqueue can still throw (prepareManagedElizaEnvironment mints
-  // a KMS-backed key; updateAgentEnvironment / enqueue hit the DB + job table).
-  // The daemon only claims rows that have a matching `agent_provision` job, so a
-  // throw in this window would strand a `pending` sandbox with no job — forever
-  // unclaimable. Wrap the whole span and delete the just-created row on ANY
-  // failure, then rethrow so the caller still sees the error (the reconciler in
-  // cleanup-stuck-provisioning is the safety net for rows that slip through).
+  // Atomicity guard: createAgent already committed a pending row — any throw before the job is enqueued must roll it back (see withOrphanCleanup).
   return await withOrphanCleanup(agent.id, user.organization_id, async () => {
     const managedEnvironment = await prepareManagedElizaEnvironment({
       existingEnv: parsed.data.environmentVars,

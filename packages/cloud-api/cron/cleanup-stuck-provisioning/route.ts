@@ -118,16 +118,23 @@ async function handleCleanupStuckProvisioning(
         cutoff,
       );
 
-    if (orphanedPending.length > 0) {
+    // Orphans have no stuckSinceMinutes (the created_at staleness drives them,
+    // not updated_at), so project them once into the shared shape and reuse it
+    // for both the log and the response.
+    const orphanedPendingAgents: Array<
+      Pick<CleanupResult, "agentId" | "agentName" | "organizationId">
+    > = orphanedPending.map((row) => ({
+      agentId: row.agentId,
+      agentName: row.agentName,
+      organizationId: row.organizationId,
+    }));
+
+    if (orphanedPendingAgents.length > 0) {
       logger.warn(
         "[Cleanup Stuck Provisioning] Reset orphaned pending agents",
         {
-          count: orphanedPending.length,
-          agents: orphanedPending.map((r) => ({
-            agentId: r.agentId,
-            agentName: r.agentName,
-            organizationId: r.organizationId,
-          })),
+          count: orphanedPendingAgents.length,
+          agents: orphanedPendingAgents,
         },
       );
     }
@@ -136,15 +143,11 @@ async function handleCleanupStuckProvisioning(
       success: true,
       data: {
         cleaned: results.length,
-        cleanedOrphanedPending: orphanedPending.length,
+        cleanedOrphanedPending: orphanedPendingAgents.length,
         thresholdMinutes: STUCK_THRESHOLD_MINUTES,
         timestamp: new Date().toISOString(),
         agents: results,
-        orphanedPendingAgents: orphanedPending.map((r) => ({
-          agentId: r.agentId,
-          agentName: r.agentName,
-          organizationId: r.organizationId,
-        })),
+        orphanedPendingAgents,
       },
     });
   } catch (error) {
