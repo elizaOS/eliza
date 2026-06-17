@@ -49,7 +49,7 @@ permissions:
 
 jobs:
   changed-paths:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, hetzner-robot]
     outputs:
       cloud_frontend: ${{ steps.filter.outputs.cloud_frontend }}
     steps:
@@ -92,7 +92,7 @@ jobs:
           fi
 
   lint-and-types:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, hetzner-robot]
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -101,7 +101,7 @@ jobs:
         run: bun run verify:cloud
 
   unit-tests:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, hetzner-robot]
     timeout-minutes: 15
     env:
       NODE_ENV: test
@@ -112,7 +112,7 @@ jobs:
         run: bun run test:cloud
 
   integration-tests:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, hetzner-robot]
     timeout-minutes: 25
     env:
       NODE_ENV: test
@@ -126,7 +126,7 @@ jobs:
         run: bun run test:cloud:integration
 
   e2e-tests:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, hetzner-robot]
     timeout-minutes: 35
     needs: [lint-and-types]
     env:
