@@ -87,7 +87,7 @@ jobs:
         if: ${{ env.ELIZA_CLOUD_AUTH_TOKEN != '' }}
         run: bun run --cwd packages/app test:e2e:android:cloud
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: android-e2e-artifacts
