@@ -1,0 +1,18 @@
+{
+  "package": "@usenami/funding-mcp",
+  "repository": "github:namixai/funding-mcp",
+  "kind": "plugin",
+  "description": "Multi-venue perpetual funding-rate data & cross-exchange funding-arbitrage for elizaOS agents — across 20+ exchanges incl. Hyperliquid HIP-3 sub-DEXes. Free funding_screener; paid funding_arb + funding_spread settle per-call over x402 (auto-pay).",
+  "homepage": "https://usenami.io",
+  "version": "0.2.0",
+  "tags": [
+    "funding-rate",
+    "perpetuals",
+    "arbitrage",
+    "funding-arbitrage",
+    "x402",
+    "market-data",
+    "trading",
+    "hyperliquid"
+  ]
+}
