@@ -11,10 +11,7 @@
  *      Never the default in production.
  */
 
-import {
-	type KokoroPhonemeSequence,
-	type KokoroVoicePack,
-} from "./types";
+import { type KokoroPhonemeSequence, type KokoroVoicePack } from "./types";
 
 /** Pinned GGUF candidate location (carried by our llama.cpp fork). The
  *  runtime references this only for diagnostics; the fork-side builder
