@@ -94,33 +94,54 @@ no-ops for an already-provisioned CP. To roll a bootstrap fix, taint the
 VM and re-apply — but that wipes local state (headscale DB, cloudflared
 creds, /opt/eliza checkout). Plan that out before touching prod.
 
-**Headscale handoff on a fresh CP.** Cloud-init installs the `headscale`
-package (binary, systemd unit, `/var/lib/headscale` state dir owned by the
-package user) but stops the auto-started service so it doesn't bind with a
-fresh empty DB. On first deploy the operator overlays the prior CP's
-config + state:
+**Headscale arm/handoff on a CP.** Cloud-init installs the `headscale` package
+(binary, systemd unit, `/var/lib/headscale` state dir owned by the package user)
+but stops the auto-started service so it does not bind with a fresh empty DB
+before the environment is intentionally wired.
+
+For the normal staging/prod path, use the idempotent workflow:
+
+```bash
+gh workflow run arm-headscale-control-plane.yml --repo elizaOS/eliza --ref main \
+  -f environment=production \
+  -f headscale_api_url=http://127.0.0.1:8081 \
+  -f listen_addr=127.0.0.1:8081
+```
+
+That workflow installs the committed ACL, converges `server_url` and
+`listen_addr`, ensures the `agent`/`tunnel` users exist, upserts the daemon's
+Headscale env in `/opt/eliza/cloud/.env.local`, restarts both services, and
+checks local `/health`. See
+[`../../../../../cloud-services/headscale/DEPLOY.md`](../../../../../cloud-services/headscale/DEPLOY.md)
+for the required GitHub Environment secrets and the "why" behind each one.
+
+If you are replacing a CP and must preserve an existing tailnet, copy the state
+first, then run the arm workflow to converge config and daemon env:
+
 ```bash
 # From the prior CP
 ssh root@PRIOR_CP 'sudo tar czf /tmp/hs.tgz -C /var/lib/headscale db.sqlite noise_private.key'
 scp root@PRIOR_CP:/tmp/hs.tgz /tmp/hs.tgz
-ssh root@PRIOR_CP 'sudo cat /etc/headscale/config.yaml' > /tmp/headscale-config.yaml
-
-# Adjust server_url for the new CP's hostname
-sed -i -E 's|^server_url:.*|server_url: https://eliza-${env}-1.elizacloud.ai|' /tmp/headscale-config.yaml
 
 # Push to NEW CP
-scp /tmp/headscale-config.yaml /tmp/hs.tgz deploy@NEW_CP:/tmp/
+scp /tmp/hs.tgz deploy@NEW_CP:/tmp/
 ssh deploy@NEW_CP '
-  sudo mv /tmp/headscale-config.yaml /etc/headscale/config.yaml
+  sudo systemctl stop headscale || true
   sudo tar xzf /tmp/hs.tgz -C /var/lib/headscale
   sudo chown -R headscale:headscale /var/lib/headscale
-  sudo systemctl enable --now headscale
 '
 ```
 
+Why the workflow comes after the state copy: `server_url`, ACL path, API URL,
+and daemon env are environment-specific. Reusing the prior host's
+`config.yaml` risks advertising the wrong coordination server and recreating
+the exact "node registers against the wrong service" failure mode.
+
 ## What this module does NOT manage (yet)
 
-- Headscale state (preauth keys, ACLs) — manual via `headscale` CLI.
+- Headscale state (preauth keys/API key rotation) — manual via `headscale`
+  CLI; config + ACL + daemon env are converged by
+  `arm-headscale-control-plane.yml`.
 - Cloudflared tunnels — config lives at `/root/.cloudflared/` on the VM and
   is created via `cloudflared tunnel create` one-shot.
 - The systemd units — installed by `deploy-eliza-provisioning-worker.yml`

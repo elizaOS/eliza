@@ -64,12 +64,13 @@ test("first-run starts with setup choices before capability settings", async ({
   await expect(
     page
       .getByRole("heading", { name: /Where should .* run\?/ })
-      .or(page.getByRole("button", { name: "Connect" })),
+      .or(page.getByText("Choose how to run your agent"))
+      .or(page.getByTestId("onboarding-option-cloud")),
   ).toBeVisible();
   await expect(
     page
       .getByTestId("first-run-runtime-cloud")
-      .or(page.getByRole("button", { name: /^(Eliza Cloud|Connect)$/ })),
+      .or(page.getByTestId("onboarding-option-cloud")),
   ).toBeVisible();
   const localRuntime = page.getByTestId("first-run-runtime-local");
   if (await localRuntime.count()) {
@@ -80,7 +81,9 @@ test("first-run starts with setup choices before capability settings", async ({
     await expect(remoteRuntime).toBeVisible();
   }
   await expect(
-    page.getByRole("button", { name: /^(Connect|Start)$/ }),
+    page
+      .getByRole("button", { name: /^(Connect|Start)$/ })
+      .or(page.getByTestId("onboarding-option-cloud")),
   ).toBeVisible();
   await expect(
     page.getByRole("switch", { name: "Enable Computer Use" }),
