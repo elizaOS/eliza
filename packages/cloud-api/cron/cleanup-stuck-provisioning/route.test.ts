@@ -11,14 +11,14 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
  */
 
 const markStuckProvisioningWithoutActiveJobAsError = mock(
-  async () =>
+  async (_cutoff: Date) =>
     [] as Array<{
       agentId: string;
       agentName: string | null;
       organizationId: string;
     }>,
 );
-const markOrphanedPendingWithoutJobAsError = mock(async () => [
+const markOrphanedPendingWithoutJobAsError = mock(async (_cutoff: Date) => [
   {
     agentId: "sandbox-orphan-1",
     agentName: "orphaned-agent",

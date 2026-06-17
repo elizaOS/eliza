@@ -3,7 +3,6 @@ import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 
 let capturedWhere: SQL | undefined;
-let capturedSet: Record<string, unknown> | undefined;
 
 const returning = mock(() => [
   {
@@ -15,8 +14,13 @@ const where = mock((clause: SQL) => {
   capturedWhere = clause;
   return { returning };
 });
+// Read the captured update payload back from `set.mock.calls` rather than a
+// side-channel `let`: a `let` reassigned only inside this closure gets narrowed
+// to `undefined` by tsgo (it doesn't apply tsc's closure-reassignment widening),
+// turning `?.status` into a property access on `never`. `mock.calls` carries the
+// argument type verbatim, so the read below stays `Record<string, unknown>`.
 const set = mock((values: Record<string, unknown>) => {
-  capturedSet = values;
+  void values;
   return { where };
 });
 const update = mock(() => ({ set }));
@@ -46,7 +50,7 @@ describe("AgentSandboxesRepository", () => {
 
   test("marks only orphaned user-owned pending rows with no provision job as error", async () => {
     capturedWhere = undefined;
-    capturedSet = undefined;
+    set.mockClear();
 
     const { AgentSandboxesRepository } = await import("./agent-sandboxes");
 
@@ -75,6 +79,7 @@ describe("AgentSandboxesRepository", () => {
     expect(sql).not.toContain("'error'");
 
     // It MARKS ERROR (it never re-enqueues) with a clear, retry-able message.
+    const capturedSet = set.mock.calls.at(-1)?.[0];
     expect(capturedSet?.status).toBe("error");
     expect(String(capturedSet?.error_message)).toContain("no agent_provision job was enqueued");
     // updated_at is bumped so the row no longer matches the cron on the next tick.
