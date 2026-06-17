@@ -580,7 +580,7 @@ function PremiumNodeRenderer({
   const [editingKeyName, setEditingKeyName] = useState("");
   const [quickPasteText, setQuickPasteText] = useState("");
   const [isSavingQuickPaste, setIsSavingQuickPaste] = useState(false);
-  const [_generatedPlainKey, setGeneratedPlainKey] = useState<string | null>(
+  const [generatedPlainKey, setGeneratedPlainKey] = useState<string | null>(
     null,
   );
 
@@ -3136,6 +3136,37 @@ function PremiumNodeRenderer({
                   >
                     Generate API Key
                   </button>
+
+                  {generatedPlainKey && (
+                    <div className="flex flex-col gap-2 rounded-lg border border-[#FF5800]/40 bg-[#FF5800]/[0.06] p-3">
+                      <span className="font-mono text-[9px] text-[#FF5800] uppercase font-bold">
+                        New key — copy now, it won&apos;t be shown again
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 truncate font-mono text-[10px] text-white/80">
+                          {generatedPlainKey}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            navigator.clipboard.writeText(generatedPlainKey)
+                          }
+                          className="p-1 rounded hover:bg-white/5 text-white/60 hover:text-white transition-colors"
+                          title="Copy key"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setGeneratedPlainKey(null)}
+                          className="p-1 rounded hover:bg-white/5 text-white/40 hover:text-white transition-colors"
+                          title="Dismiss"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
