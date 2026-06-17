@@ -73,7 +73,7 @@ not injectable need that refactor first.
 | Strava | www.strava.com | no (OAuth) | **unvalidated** | gated recorded fixture. |
 | Google (Calendar/Gmail/Drive/YouTube) | googleapis.com | no (OAuth) | **unvalidated** | gated recorded fixtures per surface. |
 | ElevenLabs | api.elevenlabs.io | no (key) | **unvalidated** | TTS returns binary audio (no JSON parse); the `/voices` JSON list is the validation target. |
-| Web search | provider-dependent | no (key) | **unvalidated** | `plugin-web-search`; gated recorded fixture. |
+| Tavily web search | @tavily/core SDK | no (key) | **validated** | `plugin-web-search/.../webSearchService.{contract,real}.test.ts` — fixture typed as the SDK's `TavilySearchResponse` (compile-time drift guard) through the real normalizer + gated live (TAVILY_LIVE_TEST=1 + key). |
 
 ## Ratchet
 

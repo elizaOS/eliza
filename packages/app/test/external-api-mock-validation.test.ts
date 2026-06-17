@@ -48,6 +48,15 @@ const VALIDATED: Readonly<
     real: "plugins/plugin-calendly/src/calendly-client.real.test.ts",
     fixtures: "plugins/plugin-calendly/src/__fixtures__",
   },
+  "web-search": {
+    contract:
+      "plugins/plugin-web-search/src/services/webSearchService.contract.test.ts",
+    real: "plugins/plugin-web-search/src/services/webSearchService.real.test.ts",
+    // SDK-typed fixture (no recorded JSON file); the @tavily/core type IS the
+    // recorded contract. Point at the contract test itself as the artifact.
+    fixtures:
+      "plugins/plugin-web-search/src/services/webSearchService.contract.test.ts",
+  },
 };
 
 /**
@@ -82,12 +91,11 @@ const DEBT: Readonly<Record<string, string>> = {
     "validate) — the /voices JSON list is the validation target.",
   google:
     "googleapis.com Calendar/Gmail/Drive/YouTube; OAuth-gated recorded fixtures.",
-  "web-search": "plugin-web-search; key-gated recorded fixture.",
 };
 
 // True count of currently-unvalidated external integrations. The ratchet forbids
 // GROWING past this — it must only shrink as APIs are validated.
-const MAX_DEBT = 5;
+const MAX_DEBT = 4;
 
 describe("external-API mock validation ratchet", () => {
   it("every validated API keeps its recorded-contract + live-drift tests", () => {
