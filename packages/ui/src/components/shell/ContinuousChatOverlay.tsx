@@ -777,6 +777,7 @@ export function ContinuousChatOverlay({
         <motion.div
           data-testid="chat-sheet"
           data-variant={sheetOpen ? "open" : "closed"}
+          data-detent={!sheetOpen ? "peek" : expanded ? "full" : "half"}
           data-revealed={revealed > 0.5 ? "true" : "false"}
           className={cn(
             "pointer-events-auto relative mb-2 flex w-full max-w-3xl flex-col overflow-hidden",
@@ -1059,6 +1060,7 @@ export function ContinuousChatOverlay({
                 onPointerDown={beginPushToTalkPress}
                 onPointerUp={endPushToTalkPress}
                 onPointerCancel={endPushToTalkPress}
+                testId="chat-composer-mic"
               />
             )}
           </motion.div>

@@ -24634,6 +24634,16 @@
   var OVERLAY_EASE = [0.22, 1, 0.36, 1];
   var SHEET_CLOSED_H = 76;
   var SHEET_OPEN_VH = 0.72;
+  var SHEET_HALF_VH = 0.46;
+  function detentHaptic() {
+    try {
+      const cap = globalThis.Capacitor;
+      if (cap?.isNativePlatform?.()) {
+        void cap.Plugins?.Haptics?.impact?.({ style: "LIGHT" });
+      }
+    } catch {
+    }
+  }
   var SHEET_SPRING = {
     type: "spring",
     stiffness: 320,
@@ -24825,6 +24835,7 @@
     const reduce = useReducedMotion() ?? false;
     const [draft, setDraft] = React5.useState("");
     const [sheetOpen, setSheetOpen] = React5.useState(false);
+    const [expanded, setExpanded] = React5.useState(false);
     const [drag2, setDrag] = React5.useState(0);
     const [dragging, setDragging] = React5.useState(false);
     const [pushToTalkActive, setPushToTalkActive] = React5.useState(false);
@@ -24912,6 +24923,8 @@
         send(text);
       }
       setSheetOpen(true);
+      setExpanded(true);
+      detentHaptic();
       inputRef.current?.focus();
     }, [draft, pendingImages, canSend, send]);
     const pickSuggestion = React5.useCallback(
@@ -24920,6 +24933,8 @@
         setDraft("");
         send(text);
         setSheetOpen(true);
+        setExpanded(true);
+        detentHaptic();
         inputRef.current?.focus();
       },
       [canSend, send]
@@ -24987,8 +25002,18 @@
     }, []);
     const closeSheet = React5.useCallback(() => {
       setSheetOpen(false);
+      setExpanded(false);
       settleDrag();
     }, [settleDrag]);
+    const goToDetent = React5.useCallback(
+      (detent) => {
+        setSheetOpen(detent !== "peek");
+        setExpanded(detent === "full");
+        settleDrag();
+        detentHaptic();
+      },
+      [settleDrag]
+    );
     const suppressOpenOnFocusRef = React5.useRef(false);
     const collapse = React5.useCallback(() => {
       closeSheet();
@@ -25007,22 +25032,33 @@
     const onDragOffset = React5.useCallback(
       (offset) => {
         setDragging(true);
-        setDrag(sheetOpen ? Math.min(0, offset) : Math.max(0, offset));
+        if (!sheetOpen) setDrag(Math.max(0, offset));
+        else if (expanded) setDrag(Math.min(0, offset));
+        else setDrag(offset);
       },
-      [sheetOpen]
+      [sheetOpen, expanded]
     );
     const pullBinding = usePullGesture({
       onDrag: onDragOffset,
+      // Pulls STEP one detent at a time (peek→half→full and back) rather than
+      // jumping straight to the ends — the iOS sheet feel. The inline closures are
+      // rebuilt every render, so they always read the current detent.
       onPullUp: () => {
-        settleDrag();
-        if (hasThread) {
-          setSheetOpen(true);
+        if (!sheetOpen) {
+          if (!hasThread) return settleDrag();
+          goToDetent("half");
           focusThreadRef.current = true;
+        } else if (!expanded) {
+          goToDetent("full");
+          focusThreadRef.current = true;
+        } else {
+          settleDrag();
         }
       },
       onPullDown: () => {
-        settleDrag();
-        closeSheet();
+        if (expanded) goToDetent("half");
+        else if (sheetOpen) goToDetent("peek");
+        else settleDrag();
       }
     });
     const readViewportH = React5.useCallback(
@@ -25042,7 +25078,8 @@
       };
     }, [readViewportH]);
     const openH = Math.round(viewportH * SHEET_OPEN_VH);
-    const baseH = sheetOpen ? openH : SHEET_CLOSED_H;
+    const halfH = Math.round(viewportH * SHEET_HALF_VH);
+    const baseH = !sheetOpen ? SHEET_CLOSED_H : expanded ? openH : halfH;
     const rawH = baseH + drag2;
     const sheetH = rawH > openH ? openH + rubberBand(rawH - openH) : rawH < SHEET_CLOSED_H ? SHEET_CLOSED_H + rubberBand(rawH - SHEET_CLOSED_H) : rawH;
     const revealed = Math.min(
@@ -25088,6 +25125,7 @@
             {
               "data-testid": "chat-sheet",
               "data-variant": sheetOpen ? "open" : "closed",
+              "data-detent": !sheetOpen ? "peek" : expanded ? "full" : "half",
               "data-revealed": revealed > 0.5 ? "true" : "false",
               className: cn(
                 "pointer-events-auto relative mb-2 flex w-full max-w-3xl flex-col overflow-hidden",
@@ -25103,7 +25141,7 @@
                   {
                     open: sheetOpen,
                     onOpen: () => {
-                      setSheetOpen(true);
+                      goToDetent("half");
                       focusThreadRef.current = true;
                     },
                     onClose: collapse,
@@ -25167,6 +25205,7 @@
               className: cn(
                 "pointer-events-auto relative m-0 mb-2 flex w-full max-w-3xl flex-wrap items-center justify-center gap-2 border-0 p-0"
               ),
+              style: { order: -1, opacity: Math.max(0, 1 - revealed) },
               "data-testid": "chat-suggestions",
               children: suggestions.map((s, i) => /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
                 "button",
@@ -25334,7 +25373,8 @@
                           onClick: handleMicClick,
                           onPointerDown: beginPushToTalkPress,
                           onPointerUp: endPushToTalkPress,
-                          onPointerCancel: endPushToTalkPress
+                          onPointerCancel: endPushToTalkPress,
+                          testId: "chat-composer-mic"
                         }
                       )
                     },
@@ -25397,15 +25437,27 @@
       createdAt: 12
     }
   ];
-  var startEmpty = typeof location !== "undefined" && new URLSearchParams(location.search).has("empty");
+  var params = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
+  var startEmpty = params.has("empty");
+  var initialPhase = params.get("phase") ?? "summoned";
+  var initialRecording = params.has("recording");
+  var initialTranscript = params.get("transcript") ?? (initialRecording ? "tell me the plan for\u2026" : "");
+  var initialSpeaking = params.has("speaking");
+  var initialMuted = params.has("muted");
+  var initialCanSend = !params.has("nosend");
   function Harness() {
     const [messages, setMessages] = React6.useState(
       startEmpty ? [] : SEED
     );
-    const [phase, setPhase] = React6.useState("summoned");
+    const [phase, setPhase] = React6.useState(initialPhase);
+    const [recording, setRecording] = React6.useState(initialRecording);
+    const [transcript, setTranscript] = React6.useState(initialTranscript);
+    const [agentVoiceMuted, setAgentVoiceMuted] = React6.useState(initialMuted);
     React6.useEffect(() => {
-      console.log(`[fixture] phase=${phase} messages=${messages.length}`);
-    }, [phase, messages.length]);
+      console.log(
+        `[fixture] phase=${phase} messages=${messages.length} recording=${recording}`
+      );
+    }, [phase, messages.length, recording]);
     const send = React6.useCallback((text) => {
       const trimmed = text.trim();
       if (!trimmed) return;
@@ -25428,23 +25480,46 @@
         setPhase("summoned");
       }, 500);
     }, []);
+    const startRecording = React6.useCallback(() => {
+      console.log("[fixture] startRecording");
+      setRecording(true);
+      setTranscript("tell me the plan for\u2026");
+      setPhase("listening");
+    }, []);
+    const stopRecording = React6.useCallback(() => {
+      console.log("[fixture] stopRecording");
+      setRecording(false);
+      setTranscript("");
+      setPhase("summoned");
+    }, []);
+    const toggleRecording = React6.useCallback(() => {
+      setRecording((r2) => {
+        const next = !r2;
+        console.log(`[fixture] toggleRecording -> ${next}`);
+        setTranscript(next ? "tell me the plan for\u2026" : "");
+        setPhase(next ? "listening" : "summoned");
+        return next;
+      });
+    }, []);
+    const toggleAgentVoiceMute = React6.useCallback(() => {
+      setAgentVoiceMuted((m2) => {
+        console.log(`[fixture] toggleAgentVoiceMute -> ${!m2}`);
+        return !m2;
+      });
+    }, []);
     const controller = {
       phase,
       messages,
-      canSend: true,
-      recording: false,
-      transcript: "",
-      speaking: false,
-      agentVoiceMuted: false,
+      canSend: initialCanSend && phase !== "booting",
+      recording,
+      transcript,
+      speaking: initialSpeaking,
+      agentVoiceMuted,
       send,
-      toggleRecording: () => {
-      },
-      startRecording: () => {
-      },
-      stopRecording: () => {
-      },
-      toggleAgentVoiceMute: () => {
-      }
+      toggleRecording,
+      startRecording,
+      stopRecording,
+      toggleAgentVoiceMute
     };
     return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
       "div",

@@ -64,21 +64,41 @@ const SEED: ShellMessage[] = [
   },
 ];
 
-const startEmpty =
-  typeof location !== "undefined" &&
-  new URLSearchParams(location.search).has("empty");
+// Every controller state the harness needs to screenshot is seeded from URL
+// params so each state is a deterministic page load: `?empty`, `?phase=booting`
+// (also listening/responding/summoned), `?recording`, `?transcript=…`,
+// `?speaking`, `?muted`, `?nosend` (canSend=false). The toggles below stay live
+// so interactive flows (mic press, voice mute) still work from the default page.
+const params =
+  typeof location !== "undefined"
+    ? new URLSearchParams(location.search)
+    : new URLSearchParams();
+const startEmpty = params.has("empty");
+const initialPhase = (params.get("phase") as ShellController["phase"]) ?? "summoned";
+const initialRecording = params.has("recording");
+const initialTranscript =
+  params.get("transcript") ?? (initialRecording ? "tell me the plan for…" : "");
+const initialSpeaking = params.has("speaking");
+const initialMuted = params.has("muted");
+const initialCanSend = !params.has("nosend");
 
 function Harness(): React.JSX.Element {
   const [messages, setMessages] = React.useState<ShellMessage[]>(
     startEmpty ? [] : SEED,
   );
-  const [phase, setPhase] = React.useState<ShellController["phase"]>("summoned");
+  const [phase, setPhase] =
+    React.useState<ShellController["phase"]>(initialPhase);
+  const [recording, setRecording] = React.useState(initialRecording);
+  const [transcript, setTranscript] = React.useState(initialTranscript);
+  const [agentVoiceMuted, setAgentVoiceMuted] = React.useState(initialMuted);
 
   // Log lifecycle so the e2e harness can assert the interaction flow from the
   // console (the user asked for logs to be checked alongside the visuals).
   React.useEffect(() => {
-    console.log(`[fixture] phase=${phase} messages=${messages.length}`);
-  }, [phase, messages.length]);
+    console.log(
+      `[fixture] phase=${phase} messages=${messages.length} recording=${recording}`,
+    );
+  }, [phase, messages.length, recording]);
 
   const send = React.useCallback((text: string) => {
     const trimmed = text.trim();
@@ -103,19 +123,47 @@ function Harness(): React.JSX.Element {
     }, 500);
   }, []);
 
+  const startRecording = React.useCallback(() => {
+    console.log("[fixture] startRecording");
+    setRecording(true);
+    setTranscript("tell me the plan for…");
+    setPhase("listening");
+  }, []);
+  const stopRecording = React.useCallback(() => {
+    console.log("[fixture] stopRecording");
+    setRecording(false);
+    setTranscript("");
+    setPhase("summoned");
+  }, []);
+  const toggleRecording = React.useCallback(() => {
+    setRecording((r) => {
+      const next = !r;
+      console.log(`[fixture] toggleRecording -> ${next}`);
+      setTranscript(next ? "tell me the plan for…" : "");
+      setPhase(next ? "listening" : "summoned");
+      return next;
+    });
+  }, []);
+  const toggleAgentVoiceMute = React.useCallback(() => {
+    setAgentVoiceMuted((m) => {
+      console.log(`[fixture] toggleAgentVoiceMute -> ${!m}`);
+      return !m;
+    });
+  }, []);
+
   const controller = {
     phase,
     messages,
-    canSend: true,
-    recording: false,
-    transcript: "",
-    speaking: false,
-    agentVoiceMuted: false,
+    canSend: initialCanSend && phase !== "booting",
+    recording,
+    transcript,
+    speaking: initialSpeaking,
+    agentVoiceMuted,
     send,
-    toggleRecording: () => {},
-    startRecording: () => {},
-    stopRecording: () => {},
-    toggleAgentVoiceMute: () => {},
+    toggleRecording,
+    startRecording,
+    stopRecording,
+    toggleAgentVoiceMute,
   } as unknown as ShellController;
 
   return (

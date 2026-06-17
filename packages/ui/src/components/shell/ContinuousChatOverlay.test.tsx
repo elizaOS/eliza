@@ -108,6 +108,51 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
+  it("steps PEEK→HALF→FULL on successive pull-ups and back down again", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    const pull = (fromY: number, toY: number) => {
+      fireEvent.pointerDown(grabber, { clientY: fromY, pointerId: 1 });
+      fireEvent.pointerMove(grabber, { clientY: toY, pointerId: 1 });
+      fireEvent.pointerUp(grabber, { clientY: toY, pointerId: 1 });
+    };
+    expect(sheet.getAttribute("data-detent")).toBe("peek");
+    pull(420, 280); // up → HALF (one step, not straight to full)
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    pull(420, 280); // up → FULL
+    expect(sheet.getAttribute("data-detent")).toBe("full");
+    pull(280, 420); // down → HALF
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    pull(280, 420); // down → PEEK
+    expect(sheet.getAttribute("data-detent")).toBe("peek");
+  });
+
+  it("opens on a fast flick even below the distance threshold (velocity)", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    // 15px travel (< 56px distance threshold) but synchronous → high velocity.
+    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 405, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 405, pointerId: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+  });
+
+  it("opens straight to FULL when sending (not the stepped HALF)", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const input = screen.getByLabelText("message");
+    fireEvent.change(input, { target: { value: "ping" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(sheet.getAttribute("data-detent")).toBe("full");
+  });
+
+  it("exposes the mic control with a stable test id at rest", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
+  });
+
   it("shows the resting suggestion strip without hover or focus", () => {
     render(
       <ContinuousChatOverlay controller={makeController({ messages: [] })} />,

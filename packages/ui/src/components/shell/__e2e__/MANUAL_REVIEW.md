@@ -2,42 +2,49 @@
 
 Run: `bun run --cwd packages/ui test:chat-sheet-e2e` (real headless chromium, no
 app server — esbuild bundles `chat-sheet-fixture.tsx`, Playwright drives real
-pointer-drag gestures). Screenshots land in `output/`; the browser console is
-captured and the run fails on any page error.
+pointer gestures). Screenshots land in `output/`; the browser console is
+captured and the run fails on any page error or error-level log.
 
 ## Verdict: **good**
 
 The harness mounts the real `ContinuousChatOverlay` over a fake "Workspace" view
-and exercises every state of the pull-up chat sheet with **real drag gestures**,
-asserting each transition (25 assertions) and screenshotting every interaction
-for visual review.
+and exhaustively exercises the iOS-style **three-detent** sheet (PEEK 76px → HALF
+46vh → FULL 72vh) with **real drag gestures**, on **both input types**, plus
+every control and state. 52 assertions; the detent is asserted via the semantic
+`data-detent` attribute and corroborated by the measured pixel height.
 
-What the run proves, in a real browser:
+### Gestures — run for MOUSE (desktop 1180×820) and TOUCH (mobile 402×874)
+Files prefixed `desktop-*` (real Playwright mouse, pointerType=mouse) and
+`mobile-*` (dispatched PointerEvents, pointerType=touch):
 
-- **closed peek** (`01-closed.png`) whispers the LATEST line at the bottom (the
-  ResizeObserver re-pins across the animated collapse — not the oldest line).
-- **pull-up** (`02-pull-up-mid-drag.png` → `03-open.png`) springs the sheet open
-  via a real grabber drag; the transcript is pinned to the newest line.
-- **click-out is a no-op** (`04-open-after-scrim-click.png`) — clicking the scrim
-  leaves the sheet open (it has no click handler by design).
-- **scroll history** (`05-open-scrolled-history.png`) reveals earlier turns;
-  scrolling never closes the sheet.
-- **pull-down** (`06-pull-down-mid-drag.png` → `07-closed-after-pulldown.png`)
-  closes it, and the closed peek re-pins to the latest line even when closed
-  from scrolled-up history.
-- **keyboard a11y** (`08`/`09`) — the grabber's ArrowUp/ArrowDown open/close.
-- **type-to-open** (`10-open-via-typing.png`) — typing in the composer pulls the
-  sheet up.
-- **send → responding → reply** (`11-open-responding.png` with typing-dots →
-  `12-open-after-reply.png`) — the sent line and the reply both view, latest
-  pinned to the bottom near the composer.
-- **Escape** (`13-closed-after-escape.png`) closes the sheet.
-- **empty thread** (`14-empty-no-thread.png`) renders no sheet — just the
-  composer + resting suggestion strip.
-- **reduced-motion** (`15-reduced-motion-open.png`) still opens (cross-fade, no
-  spring).
-- **desktop** (`16`/`17`) — the sheet is centered with a max-width and the closed
-  peek shows the latest line there too.
+- **peek** — rest at 76px (`*-peek`).
+- **slow pull-up → HALF** (`*-half`) — distance-threshold step, height ≈ 46vh.
+- **slow pull-up → FULL** (`*-full`) — second step, height ≈ 72vh.
+- **drag BEYOND full, held** (`*-beyond-full-rubberband`) — a 260px overshoot
+  resolves to only a small rubber-banded delta over FULL (not 1:1), then springs
+  back to FULL on release.
+- **mid-drag hold** (`*-mid-drag-hold`) — the sheet tracks the finger 1:1 at an
+  arbitrary height between detents.
+- **pull-down stepping** (`*-back-to-peek`) — FULL→HALF→PEEK.
+- **flick** (`*-flick-open`) — a 48px, <56px-travel but fast gesture opens via the
+  velocity threshold (proves flick ≠ distance).
+- **sub-threshold nudge** (`*-nudge-snapback`) — a small, slow gesture crosses
+  neither threshold and snaps back with no detent change.
 
-Console is asserted clean (no page errors, no error-level logs) and the fixture's
-send / phase-transition log flow is verified.
+### Controls + input states (deterministic fixture loads + interactions)
+- `state-empty` — no sheet; suggestion strip + composer (+ attach, mic).
+- `state-booting` — composer placeholder "connecting…", attach + mic disabled.
+- `state-recording-listening` — mic active (aria-pressed), warm grabber glow,
+  italic interim transcript.
+- `state-speaking` / `state-muted` — assistant-voice control appears and toggles
+  label/icon (speaker ↔ speaker-muted).
+- `state-responding` — typing-dots inside the opened sheet.
+- `state-typing-send` — typing morphs mic→send and pulls the sheet open.
+- `state-image-attached` — a real PNG through the hidden file input renders a
+  pending thumbnail + per-image remove (×); remove clears it.
+- `state-mic-clicked-recording` — clicking the mic toggles recording on/off.
+- `state-suggestions` — tapping a suggestion sends and opens the sheet.
+- `state-reduced-motion-open` — opens under `prefers-reduced-motion`.
+
+Console is asserted clean (no page errors / error-level logs) and the fixture's
+recording-interaction log flow is verified.
