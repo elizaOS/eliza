@@ -72,6 +72,7 @@ import {
 } from "./navigation";
 import { isIOS, isNative } from "./platform/init";
 import { type ActionNotice, useApp } from "./state";
+import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
 
 const MOBILE_NAV_PADDING_CLASS =
   "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem))]";
@@ -250,6 +251,7 @@ function useIsPopout(): boolean {
 type ShellMode =
   | "chat-overlay"
   | "onboarding-overlay"
+  | "voice-selftest"
   | "launcher"
   | "kiosk"
   | "full";
@@ -266,6 +268,7 @@ function readShellMode(): ShellMode {
     "";
   if (raw === "chat-overlay") return "chat-overlay";
   if (raw === "onboarding-overlay") return "onboarding-overlay";
+  if (raw === "voice-selftest") return "voice-selftest";
   if (raw === "launcher") return "launcher";
   if (raw === "kiosk") return "kiosk";
   return "full";
@@ -1504,6 +1507,13 @@ export function App() {
         </LazyViewBoundary>
       </div>
     );
+  }
+
+  // Self-driving voice round-trip test screen — runs the real STT->agent->TTS
+  // loop against a known phrase and reports PASS/FAIL with no human in the loop.
+  // Self-contained (its own ElizaClient + AudioContext); no app chrome / gate.
+  if (shellMode === "voice-selftest") {
+    return <VoiceSelfTestShell />;
   }
 
   // OS chat-overlay window — render JUST the floating assistant pill +

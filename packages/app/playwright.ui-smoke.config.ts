@@ -16,6 +16,14 @@ const uiSmokePort = Number(process.env.ELIZA_UI_SMOKE_PORT || "2138");
 const reuseExistingServer = process.env.ELIZA_UI_SMOKE_REUSE_SERVER === "1";
 const chromiumExecutablePath =
   process.env.ELIZA_UI_SMOKE_CHROMIUM_EXECUTABLE?.trim();
+// Real audio fed to the browser mic for the voice button-press e2e: Chromium
+// plays this WAV file as the fake capture device so the REAL local-ASR recorder
+// (getUserMedia + WAV encode + POST) runs end-to-end with no human/microphone.
+const fakeAudioWav = path.join(
+  repoRoot,
+  "packages/ui/src/voice/voice-selftest/fixtures/known-phrase.wav",
+);
+const VOICE_MIC_SPEC = /voice-realaudio\.spec\.ts/;
 const recording = !!process.env.E2E_RECORD;
 const videoMode =
   process.env.ELIZA_UI_SMOKE_DISABLE_VIDEO === "1"
@@ -52,11 +60,33 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
+      // The voice button-press spec needs the fake-audio launch flags; it runs
+      // in the dedicated `chromium-voice-mic` project below, not here.
+      testIgnore: VOICE_MIC_SPEC,
       use: {
         ...devices["Desktop Chrome"],
         ...(chromiumExecutablePath
           ? { launchOptions: { executablePath: chromiumExecutablePath } }
           : {}),
+      },
+    },
+    {
+      name: "chromium-voice-mic",
+      testMatch: VOICE_MIC_SPEC,
+      use: {
+        ...devices["Desktop Chrome"],
+        permissions: ["microphone"],
+        launchOptions: {
+          args: [
+            "--use-fake-ui-for-media-stream",
+            "--use-fake-device-for-media-stream",
+            `--use-file-for-fake-audio-capture=${fakeAudioWav}`,
+            "--autoplay-policy=no-user-gesture-required",
+          ],
+          ...(chromiumExecutablePath
+            ? { executablePath: chromiumExecutablePath }
+            : {}),
+        },
       },
     },
     {
