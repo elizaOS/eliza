@@ -293,7 +293,14 @@ public class ElizaAgentService extends Service {
 
             int status = conn.getResponseCode();
             InputStream stream = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
-            String responseBody = readResponseBody(stream, LOCAL_REQUEST_MAX_RESPONSE_BYTES);
+            // Read the raw response bytes so binary payloads (e.g. local TTS WAV
+            // audio, images) survive the bridge intact. `body` is a best-effort
+            // UTF-8 view for text callers; `bodyBase64` carries the lossless raw
+            // bytes that binary callers decode — encoding the bytes as a UTF-8
+            // String first (the old path) replaced every non-UTF-8 byte with
+            // U+FFFD, corrupting WAV/PNG payloads beyond recovery.
+            byte[] responseBytes = readResponseBytes(stream, LOCAL_REQUEST_MAX_RESPONSE_BYTES);
+            String responseBody = new String(responseBytes, StandardCharsets.UTF_8);
             JSONObject responseHeaders = new JSONObject();
             for (Map.Entry<String, List<String>> entry : conn.getHeaderFields().entrySet()) {
                 String key = entry.getKey();
@@ -308,12 +315,9 @@ public class ElizaAgentService extends Service {
                 .put("body", responseBody)
                 .put(
                     "bodyBase64",
-                    android.util.Base64.encodeToString(
-                        responseBody.getBytes(StandardCharsets.UTF_8),
-                        android.util.Base64.NO_WRAP
-                    )
+                    android.util.Base64.encodeToString(responseBytes, android.util.Base64.NO_WRAP)
                 )
-                .put("bodyEncoding", "utf-8");
+                .put("bodyEncoding", "base64");
         } finally {
             if (conn != null) conn.disconnect();
         }
@@ -1815,7 +1819,11 @@ public class ElizaAgentService extends Service {
     }
 
     private static String readResponseBody(InputStream in, int maxBytes) throws IOException {
-        if (in == null) return "";
+        return new String(readResponseBytes(in, maxBytes), StandardCharsets.UTF_8);
+    }
+
+    private static byte[] readResponseBytes(InputStream in, int maxBytes) throws IOException {
+        if (in == null) return new byte[0];
         try (InputStream input = in) {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             byte[] buf = new byte[8192];
@@ -1828,7 +1836,7 @@ public class ElizaAgentService extends Service {
                 }
                 out.write(buf, 0, n);
             }
-            return out.toString(StandardCharsets.UTF_8.name());
+            return out.toByteArray();
         }
     }
 

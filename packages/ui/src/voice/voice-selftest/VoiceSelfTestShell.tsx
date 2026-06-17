@@ -37,8 +37,10 @@ function detectPlatform(): VoiceSelfTestPlatform {
 function resolveTtsRoute(
   platform: VoiceSelfTestPlatform,
 ): "/api/tts/local-inference" | "/api/tts/cloud" {
-  // desktop+local defaults to local-inference TTS; web/mobile to cloud.
-  return platform === "desktop" ? "/api/tts/local-inference" : "/api/tts/cloud";
+  // Desktop and Android both run the on-device fused omnivoice TTS, so the
+  // self-test exercises the real local voice path on those platforms. Only the
+  // web build (no on-device inference engine) falls back to cloud TTS.
+  return platform === "web" ? "/api/tts/cloud" : "/api/tts/local-inference";
 }
 
 function getAudioCtx(): AudioContext {

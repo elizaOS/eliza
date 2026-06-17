@@ -9,9 +9,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  AGENT_API_PORT,
   adbReverse,
   adbTry,
-  AGENT_API_PORT,
   isInstalled,
   launchApp,
   resolveAdb,
@@ -19,7 +19,9 @@ import {
   resolveSerial,
 } from "../../scripts/lib/android-device.mjs";
 
-const HEALTH_POLL_MS = Number(process.env.ELIZA_ANDROID_HEALTH_TIMEOUT_MS ?? 180_000);
+const HEALTH_POLL_MS = Number(
+  process.env.ELIZA_ANDROID_HEALTH_TIMEOUT_MS ?? 180_000,
+);
 const REQUIRE_AGENT = process.env.ELIZA_ANDROID_REQUIRE_AGENT !== "0";
 const BACKEND = (process.env.ELIZA_ANDROID_BACKEND ?? "local").toLowerCase();
 
@@ -92,8 +94,19 @@ export default async function globalSetup() {
   // Bring the app to the foreground so its WebView DevTools socket is live.
   launchApp(adb, serial);
 
+  // The on-device voice round-trip loads three large GGUF models in one session
+  // (the resident chat model, the ~1.4 GB ASR multimodal model, and the ~0.66 GB
+  // omnivoice TTS model). On a memory-tight phone with accumulated background
+  // apps, the model-load spikes trip lmkd's low watermark, and the detached bun
+  // agent — which an unprivileged app cannot oom-protect — becomes a kill
+  // target, surfacing as `local_agent_unavailable` mid-load. Reclaim cached
+  // background apps up front so the agent keeps the headroom it needs.
+  adbTry(adb, ["-s", serial, "shell", "am", "kill-all"]);
+
   if (!REQUIRE_AGENT) {
-    console.log("[android-e2e] ELIZA_ANDROID_REQUIRE_AGENT=0 — skipping health gate");
+    console.log(
+      "[android-e2e] ELIZA_ANDROID_REQUIRE_AGENT=0 — skipping health gate",
+    );
     return;
   }
 

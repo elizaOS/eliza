@@ -21,6 +21,13 @@ export interface NativeAgentRequestResult {
   statusText?: string;
   headers?: Record<string, string>;
   body?: string | null;
+  /**
+   * Lossless base64 of the raw response bytes. Preferred over `body` so binary
+   * payloads (e.g. local TTS WAV audio) survive the bridge — `body` is a
+   * best-effort UTF-8 view that mangles non-text bytes into U+FFFD.
+   */
+  bodyBase64?: string | null;
+  bodyEncoding?: string;
 }
 
 type NativeAgentPlugin = {
@@ -282,13 +289,33 @@ export function createAndroidNativeAgentTransport(
         timeoutMs: context?.timeoutMs,
       });
 
-      return new Response(result.body ?? "", {
+      return new Response(nativeResponseBody(result), {
         status: result.status,
         statusText: result.statusText ?? "",
         headers: result.headers,
       });
     },
   };
+}
+
+/**
+ * Reconstruct the response body from the native bridge result. Prefer the
+ * lossless `bodyBase64` (raw bytes) so binary payloads survive; fall back to the
+ * UTF-8 `body` string when the native side did not supply base64.
+ */
+function nativeResponseBody(
+  result: NativeAgentRequestResult,
+): Uint8Array | string {
+  const base64 = result.bodyBase64;
+  if (typeof base64 === "string" && base64.length > 0) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  }
+  return result.body ?? "";
 }
 
 function createNativeAgentUnavailableResponse(message: string): Response {
