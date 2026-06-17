@@ -182,9 +182,10 @@ export async function handleLocalInferenceAsrRoute(
 		// The POST handler also falls back to the runtime TRANSCRIPTION model
 		// handler (e.g. the on-device aosp-llama loader), so report ready when
 		// EITHER whisper-cpp OR a registered TRANSCRIPTION handler can serve it.
-		const runtimeAsr = Boolean(
-			state.current?.getModel(ModelType.TRANSCRIPTION),
-		);
+		const getModel = state.current?.getModel;
+		const runtimeAsr =
+			typeof getModel === "function" &&
+			Boolean(getModel.call(state.current, ModelType.TRANSCRIPTION));
 		sendJson(res, 200, {
 			ready: whisper !== null || runtimeAsr,
 			provider: whisper ? "whisper-cpp" : runtimeAsr ? "local-inference" : null,

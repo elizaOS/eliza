@@ -11,6 +11,12 @@ const agentApiSourceDir = fileURLToPath(
 const uiAgentSurfaceSource = fileURLToPath(
   new URL("../../packages/ui/src/agent-surface/index.ts", import.meta.url),
 );
+const healthMobileSignalSetupSource = fileURLToPath(
+  new URL(
+    "../plugin-health/src/screen-time/mobile-signal-setup.ts",
+    import.meta.url,
+  ),
+);
 
 export default defineConfig({
   resolve: {
@@ -22,6 +28,10 @@ export default defineConfig({
       {
         find: /^@elizaos\/ui\/agent-surface$/,
         replacement: uiAgentSurfaceSource,
+      },
+      {
+        find: /^@elizaos\/plugin-health\/screen-time\/mobile-signal-setup$/,
+        replacement: healthMobileSignalSetupSource,
       },
       // Pin a single React copy so jsdom view tests do not mix the workspace
       // and hoisted React peers (which breaks hooks). Mirrors plugin-documents.
