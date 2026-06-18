@@ -13,6 +13,7 @@
  */
 
 import { Hono } from "hono";
+import { appsDeployOrganizationDecision } from "@/api-app/lib/apps-deploy-gate";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appDeploymentsService } from "@/lib/services/app-deployments";
@@ -38,6 +39,23 @@ app.post("/", async (c) => {
     if (appRow.organization_id !== user.organization_id) {
       // 403 — the caller is authed but not the owning org.
       return c.json({ success: false, error: "Access denied" }, 403);
+    }
+
+    const deployGate = appsDeployOrganizationDecision(c.env, user.organization_id);
+    if (!deployGate.allowed) {
+      logger.warn("[Deploy POST] deployment blocked by production allowlist", {
+        appId,
+        userId: user.id,
+        organizationId: user.organization_id,
+        reason: deployGate.reason,
+      });
+      return c.json(
+        {
+          success: false,
+          error: "App deploys are not enabled for this organization",
+        },
+        403,
+      );
     }
 
     // Body is fully optional — accept an empty/absent body as `{}`.

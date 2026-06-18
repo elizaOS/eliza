@@ -328,6 +328,14 @@ __filename = '"/worker.js"'
 
 [env.production.vars]
 NODE_ENV = "production"
+# Apps (Product 2): arm the deploy trigger for production only behind the
+# route-level org allowlist. Without APPS_DEPLOY_ALLOWED_ORG_IDS, bootstrap
+# refuses to configure the real deploy/deprovision runners and deploy POSTs fail
+# closed with 403.
+APPS_DEPLOY_ENABLED = "1"
+# Set as a Cloudflare secret/var containing comma-separated org UUIDs before
+# piloting or widening production app deploys:
+# APPS_DEPLOY_ALLOWED_ORG_IDS = "00000000-0000-0000-0000-000000000000"
 NEXT_PUBLIC_APP_URL = "https://elizacloud.ai"
 NEXT_PUBLIC_API_URL = "https://api.elizacloud.ai"
 ELIZA_CLOUD_URL = "https://elizacloud.ai"
