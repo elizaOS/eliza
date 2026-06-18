@@ -6328,13 +6328,15 @@ export function CloudCanvas() {
       // Clear chat data (rooms, entityId, localStorage)
       useChatStore.getState().clearChatData();
 
+      // Server-side logout first (ends sessions + clears cookies while the
+      // session cookie is still present), then drop local Steward state.
+      await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
       if (stewardAuthenticated) {
         stewardSignOut();
         await fetch(STEWARD_SESSION_ENDPOINT, { method: "DELETE" }).catch(
           () => {},
         );
       }
-      await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
 
       // Use replace to avoid browser history pollution
       navigate("/", { replace: true });
