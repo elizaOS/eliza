@@ -71,6 +71,32 @@ describe("AttachmentManager", () => {
 		);
 	});
 
+	it("falls back without calling the model when IMAGE_DESCRIPTION is not registered", async () => {
+		// 2026-06-10 incident: Cerebras-mode deploys register no IMAGE_DESCRIPTION
+		// handler; the graceful-skip path must produce the fallback media (empty
+		// text) instead of attempting a doomed vision call.
+		const runtime = makeRuntime();
+		(runtime.getModel as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
+		const manager = new AttachmentManager(runtime);
+
+		const media = await manager.processAttachment(
+			attachment({
+				id: "image-2",
+				url: "https://cdn.discordapp.com/image.png",
+				name: "image.png",
+				contentType: "image/png",
+			}),
+		);
+
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(media).toMatchObject({
+			id: "image-2",
+			contentType: ContentType.IMAGE,
+			description: "An image attachment (recognition failed)",
+			text: "",
+		});
+	});
+
 	it("uses the image description model for normal remote image URLs", async () => {
 		const runtime = makeRuntime();
 		const manager = new AttachmentManager(runtime);

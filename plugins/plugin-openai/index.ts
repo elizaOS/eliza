@@ -33,7 +33,7 @@ import {
   handleTranscription,
 } from "./models";
 import type { ImageGenerationResult, OpenAIPluginConfig, TextStreamResult } from "./types";
-import { getAuthHeader, getBaseURL } from "./utils/config";
+import { getAuthHeader, getBaseURL, getSetting, isCerebrasMode } from "./utils/config";
 
 function getProcessEnv(): ProcessEnvLike {
   if (typeof process === "undefined") {
@@ -48,6 +48,83 @@ const TEXT_MEDIUM_MODEL_TYPE = ModelType.TEXT_MEDIUM as string;
 const TEXT_MEGA_MODEL_TYPE = ModelType.TEXT_MEGA as string;
 const RESPONSE_HANDLER_MODEL_TYPE = ModelType.RESPONSE_HANDLER as string;
 const ACTION_PLANNER_MODEL_TYPE = ModelType.ACTION_PLANNER as string;
+
+function hasExplicitCapabilityOverride(
+  runtime: IAgentRuntime,
+  overrideKeys: readonly string[]
+): boolean {
+  return overrideKeys.some((key) => {
+    const value = getSetting(runtime, key);
+    return typeof value === "string" && value.trim().length > 0;
+  });
+}
+
+// Per-capability endpoint overrides: when set, the capability does not POST to
+// getBaseURL, so it stays registered even in Cerebras mode. Only the base URL
+// counts: OPENAI_IMAGE_DESCRIPTION_API_KEY alone still posts to getBaseURL
+// (getImageDescriptionBaseURL falls back to it), i.e. straight at Cerebras.
+// TRANSCRIPTION, TEXT_TO_SPEECH, and IMAGE have no such override today.
+const mediaModelOverrideKeys: Record<string, readonly string[]> = {
+  [ModelType.IMAGE_DESCRIPTION]: ["OPENAI_IMAGE_DESCRIPTION_BASE_URL"],
+};
+
+const mediaModels: NonNullable<Plugin["models"]> = {
+  [ModelType.IMAGE]: async (
+    runtime: IAgentRuntime,
+    params: ImageGenerationParams
+  ): Promise<ImageGenerationResult[]> => {
+    return handleImageGeneration(runtime, params);
+  },
+
+  [ModelType.IMAGE_DESCRIPTION]: async (
+    runtime: IAgentRuntime,
+    params: ImageDescriptionParams | string
+  ): Promise<{ title: string; description: string }> => {
+    return handleImageDescription(runtime, params);
+  },
+
+  [ModelType.TRANSCRIPTION]: async (
+    runtime: IAgentRuntime,
+    input: CoreTranscriptionParams | Buffer | string
+  ): Promise<string> => {
+    return handleTranscription(runtime, input);
+  },
+
+  [ModelType.TEXT_TO_SPEECH]: async (
+    runtime: IAgentRuntime,
+    input: CoreTextToSpeechParams | string
+  ): Promise<ArrayBuffer> => {
+    return handleTextToSpeech(runtime, input);
+  },
+};
+
+// Cerebras serves text models only: vision chat completions, /audio/transcriptions,
+// /audio/speech, and /images/generations all fail against its endpoint. Mirror the
+// embedding shouldUseLocalEmbeddingFallback gate (models/embedding.ts): in Cerebras
+// mode these capabilities stay unregistered unless an explicit per-capability
+// override points them at an endpoint that serves them, so consumers (e.g.
+// plugin-discord's isImageDescriptionEnabled) skip gracefully instead of failing
+// on every attachment.
+function registerMediaModels(runtime: IAgentRuntime): void {
+  const cerebras = isCerebrasMode(runtime);
+  for (const [modelType, handler] of Object.entries(mediaModels)) {
+    if (
+      cerebras &&
+      !hasExplicitCapabilityOverride(runtime, mediaModelOverrideKeys[modelType] ?? [])
+    ) {
+      logger.info(
+        `[OpenAI] Not registering ${modelType}: the Cerebras endpoint does not serve it`
+      );
+      continue;
+    }
+    runtime.registerModel(
+      modelType,
+      handler as Parameters<IAgentRuntime["registerModel"]>[1],
+      openaiPlugin.name,
+      openaiPlugin.priority
+    );
+  }
+}
 
 export const openaiPlugin: Plugin = {
   name: "openai",
@@ -95,6 +172,7 @@ export const openaiPlugin: Plugin = {
 
   async init(config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
     initializeOpenAI(config as OpenAIPluginConfig | undefined, runtime);
+    registerMediaModels(runtime);
   },
 
   models: {
@@ -168,33 +246,9 @@ export const openaiPlugin: Plugin = {
       return handleActionPlanner(runtime, params);
     },
 
-    [ModelType.IMAGE]: async (
-      runtime: IAgentRuntime,
-      params: ImageGenerationParams
-    ): Promise<ImageGenerationResult[]> => {
-      return handleImageGeneration(runtime, params);
-    },
-
-    [ModelType.IMAGE_DESCRIPTION]: async (
-      runtime: IAgentRuntime,
-      params: ImageDescriptionParams | string
-    ): Promise<{ title: string; description: string }> => {
-      return handleImageDescription(runtime, params);
-    },
-
-    [ModelType.TRANSCRIPTION]: async (
-      runtime: IAgentRuntime,
-      input: CoreTranscriptionParams | Buffer | string
-    ): Promise<string> => {
-      return handleTranscription(runtime, input);
-    },
-
-    [ModelType.TEXT_TO_SPEECH]: async (
-      runtime: IAgentRuntime,
-      input: CoreTextToSpeechParams | string
-    ): Promise<ArrayBuffer> => {
-      return handleTextToSpeech(runtime, input);
-    },
+    // IMAGE / IMAGE_DESCRIPTION / TRANSCRIPTION / TEXT_TO_SPEECH are registered
+    // in init() via registerMediaModels so registration can be gated on the
+    // resolved endpoint actually serving them (see Cerebras gate above).
 
     [ModelType.RESEARCH]: async (
       runtime: IAgentRuntime,
