@@ -427,6 +427,8 @@ apps/*/src/**/*.d.ts
 apps/*/src/**/*.d.ts.map
 !apps/app-companion/src/three-subpath.d.ts
 plugins/*/src/**/*.d.ts
+# hand-written ambient declaration for fake-indexeddb/auto (untyped subpath), not a build artifact
+!plugins/plugin-matrix/src/fake-indexeddb-auto.d.ts
 plugins/*/src/**/*.d.ts.map
 !apps/app-companion/src/types/three-vrm-shim.d.ts
 !apps/app-lifeops/src/website-blocker/elizaos-core-roles.ts

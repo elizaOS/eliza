@@ -271,6 +271,7 @@
     "@elizaos/capacitor-camera": "workspace:*"
   },
   "dependencies": {
+    "@capacitor/core": "8.4.0",
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/logger": "workspace:*",
@@ -331,7 +332,6 @@
     "ws": "^8.19.0"
   },
   "devDependencies": {
-    "@capacitor/core": "8.4.0",
     "@capacitor/haptics": "8.0.2",
     "@capacitor/keyboard": "8.0.3",
     "@capacitor/preferences": "^8.0.1",

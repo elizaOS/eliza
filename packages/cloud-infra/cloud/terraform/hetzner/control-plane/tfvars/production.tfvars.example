@@ -1,10 +1,16 @@
 environment           = "production"
 hcloud_location       = "fsn1"
-# Production VM eliza-1 runs cax21 (ARM) today. Keep tfvars on x86 cpx32 for now
-# — flipping prod to cax21 via TF needs the cloud-init arm64 fix (followup).
+# Production VM eliza-production-1 runs x86 cpx32, same type as staging.
+# An ARM (cax-series) move is a possible future cost optimization, not current
+# state — it needs the cloud-init arm64 fix first.
 hcloud_server_type    = "cpx32"
 control_plane_count   = 1
 cloudflare_zone_id    = "<zone-id-for-elizacloud.ai>"
+
+# Public headscale coordination hostname for this env's CP. Prod drops the
+# `-staging` suffix. Must match HEADSCALE_PUBLIC_URL in the
+# arm-headscale-control-plane workflow.
+headscale_hostname    = "headscale.elizacloud.ai"
 
 ssh_public_keys = [
   # "ssh-ed25519 AAAA... operator@laptop"

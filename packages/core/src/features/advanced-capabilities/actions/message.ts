@@ -9,6 +9,7 @@
 //
 // Former leaf message actions are gone — MESSAGE is the only registration.
 
+import { getConnectorAccountManager } from "../../../connectors/account-manager.ts";
 import { findEntityByName } from "../../../entities.ts";
 import { getActionSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
@@ -67,6 +68,7 @@ export const MESSAGE_OPS = [
 	"search",
 	"list_channels",
 	"list_servers",
+	"list_connections",
 	"join",
 	"leave",
 	"react",
@@ -93,7 +95,7 @@ const MESSAGE_CONTEXTS = ["messaging", "email", "contacts", "connectors"];
 const MESSAGE_DESCRIPTION =
 	"Addressed messaging action: DMs, groups, channels, rooms, threads, servers, users, inboxes, drafts. Use action. Public feed publishing uses POST.";
 const MESSAGE_COMPRESSED =
-	"primary message action send read_channel read_with_contact search list_channels list_servers join leave react edit delete pin get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server inbox draft";
+	"primary message action send read_channel read_with_contact search list_channels list_servers list_connections join leave react edit delete pin get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server inbox draft connections platforms reachable";
 
 // ---------------------------------------------------------------------------
 // Param coercion / op normalization
@@ -182,6 +184,11 @@ const OP_ALIASES: Record<string, MessageOperation> = {
 	list_chats: "list_channels",
 	list_workspaces: "list_servers",
 	list_guilds: "list_servers",
+	list_platforms: "list_connections",
+	list_accounts: "list_connections",
+	connected_platforms: "list_connections",
+	where_am_i_connected: "list_connections",
+	what_am_i_connected_to: "list_connections",
 	react_to_message: "react",
 	reaction: "react",
 	edit_message: "edit",
@@ -296,6 +303,10 @@ function inferOp(message: Memory, params: ParamRecord): MessageOperation {
 	if (/\bjoin\b/.test(text)) return "join";
 	if (/\bleave\b/.test(text)) return "leave";
 	if (/\b(user info|lookup user|get user)\b/.test(text)) return "get_user";
+	// list_connections is intentionally NOT inferred from free text: it is a
+	// meta-query the planner selects explicitly via the op schema, aliases, and
+	// param description, so a message merely mentioning "platform"/"connection"
+	// can never misroute here.
 	if (/\blist\b.*(server|workspace|guild)\b/.test(text)) return "list_servers";
 	if (/\blist\b.*(channel|room|chat|group)\b/.test(text))
 		return "list_channels";
@@ -1928,6 +1939,70 @@ async function persistCurrentChatMemory(args: {
 	}
 }
 
+/**
+ * Gate "act as the user" sends behind a verified owner binding. Sending through
+ * the agent's OWN account (an AGENT account on the `open` gate) is frictionless;
+ * sending through the human owner's personal account (an OWNER account on the
+ * `owner_binding` gate) must not fire until the user has proven that account is
+ * theirs. Returns an opFailure to abort the send, or undefined to allow it.
+ *
+ * Resolves only for targets that name an explicit accountId — the legacy
+ * source-only route (the agent's default account) is never an owner account and
+ * skips the check entirely, so this adds zero friction to normal agent sends.
+ */
+async function ensureSendAccountAllowed(
+	runtime: IAgentRuntime,
+	message: Memory,
+	source: string,
+	accountId: string | undefined,
+): Promise<ActionResult | undefined> {
+	if (!accountId) {
+		return undefined;
+	}
+	const manager = getConnectorAccountManager(runtime);
+	let account: Awaited<ReturnType<typeof manager.getAccount>>;
+	try {
+		account = await manager.getAccount(source, accountId);
+	} catch (error) {
+		// Fail CLOSED: a lookup failure must never silently bypass the gate. If we
+		// cannot resolve the account, we cannot prove it is a frictionless
+		// agent/`open` account, so we refuse the "act as the user" send rather than
+		// risk firing it ungated on what may be an unverified owner account.
+		return opFailure(
+			"send",
+			"OWNER_BINDING_REQUIRED",
+			`Could not verify the access policy for ${accountId} on ${source}; refusing to send until the account can be resolved.`,
+			{
+				source,
+				accountId,
+				error: error instanceof Error ? error.message : String(error),
+			},
+		);
+	}
+	// Only owner-bound accounts are gated; agent/`open` accounts (and a resolved
+	// target with no stored account record) pass straight through. Other gates
+	// (`disabled`/`manual_approval`/`pairing`) are intentionally out of scope here:
+	// this gate guards the owner-impersonation threat only.
+	if (account?.accessGate !== "owner_binding") {
+		return undefined;
+	}
+	const evaluation = await manager.evaluatePolicy(
+		{ provider: source, accessGates: ["owner_binding"], required: true },
+		{ message, accountId, purpose: "messaging" },
+	);
+	if (evaluation.allowed) {
+		return undefined;
+	}
+	return opFailure(
+		"send",
+		"OWNER_BINDING_REQUIRED",
+		`Sending as ${account.displayHandle ?? accountId} needs a verified owner binding first (${
+			evaluation.reason ?? "owner binding has not been verified"
+		}). Link and verify that account before the agent can act as you on it.`,
+		{ source, accountId, accessGate: account.accessGate },
+	);
+}
+
 async function handleSend(
 	runtime: IAgentRuntime,
 	message: Memory,
@@ -1981,6 +2056,19 @@ async function handleSend(
 	const target: TargetInfo = normalized.thread
 		? { ...selected.target, threadId: normalized.thread }
 		: selected.target;
+
+	// Block "act as the user" until the owner account is verified; agent-owned
+	// accounts (open gate) and source-only routes pass through untouched.
+	const gate = await ensureSendAccountAllowed(
+		runtime,
+		message,
+		selected.connector.source,
+		target.accountId,
+	);
+	if (gate) {
+		return gate;
+	}
+
 	const content = applyContentShaping(
 		selected.connector,
 		buildContent({ ...normalized, source: selected.connector.source }),
@@ -2822,6 +2910,78 @@ async function handleListServers(
 	}
 }
 
+// At most this many connectors in the cross-connector roster, so a deployment
+// wired to many accounts can't produce an unbounded result.
+const MAX_LISTED_CONNECTIONS = 8;
+
+// Cross-connector: unlike list_channels/list_servers (which pick ONE connector
+// via selectConnectorForOp), this iterates EVERY connector exposing listRooms
+// and reports a per-platform summary — platform + label + account + room count,
+// not the rooms themselves (full room lists are list_channels' job).
+async function handleListConnections(
+	runtime: IAgentRuntime,
+	message: Memory,
+	state: State | undefined,
+	_params: ParamRecord,
+): Promise<ActionResult> {
+	const connectors = connectorsWithHook(runtime, "listRooms");
+
+	// The framework registers each connector twice for routing: a source-only
+	// fallback (no accountId) plus one entry per real account. Skip the
+	// source-only fallback when the same source also has a per-account entry, so
+	// a single account isn't double-counted; genuinely distinct accounts stay.
+	const sourcesWithAccount = new Set(
+		connectors.filter((c) => c.accountId).map((c) => c.source),
+	);
+
+	const connections: Array<{
+		platform: string;
+		label: string;
+		accountId: string | undefined;
+		roomCount: number;
+	}> = [];
+
+	for (const connector of connectors) {
+		if (!connector.accountId && sourcesWithAccount.has(connector.source)) {
+			continue;
+		}
+		if (connections.length >= MAX_LISTED_CONNECTIONS) break;
+
+		const context = buildQueryContext(
+			runtime,
+			message,
+			state,
+			connector.source,
+			undefined,
+			connector,
+		);
+		let roomCount = 0;
+		try {
+			const targets = (await connector.listRooms?.(context)) ?? [];
+			roomCount = targets.length;
+		} catch (error) {
+			logger.debug(
+				`[MESSAGE/list_connections] listRooms failed for ${connector.source}: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+		}
+		connections.push({
+			platform: connector.source,
+			label: connector.label,
+			accountId: connector.accountId,
+			roomCount,
+		});
+	}
+
+	const labels = connections.map((c) => c.label);
+	return opSuccess(
+		"list_connections",
+		`Connected via ${connections.length} connection(s): ${labels.join(", ")}.`,
+		{ connections, connectionCount: connections.length },
+	);
+}
+
 // ---------------------------------------------------------------------------
 // op=join / leave
 // ---------------------------------------------------------------------------
@@ -3163,7 +3323,9 @@ async function delegateToTriage(
 export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	{
 		name: "action",
-		description: `Message action. One of: ${MESSAGE_OPS.join(", ")}.`,
+		description:
+			`Message action. One of: ${MESSAGE_OPS.join(", ")}. ` +
+			"list_connections — every messaging platform/server this agent is currently connected to. Use to answer where you are reachable / what platforms or accounts you're on; never assume you are limited to one platform.",
 		required: false,
 		schema: { type: "string", enum: [...MESSAGE_OPS] },
 	},
@@ -3606,6 +3768,10 @@ export const messageAction: Action = {
 				"conversation with",
 				"list channels",
 				"list servers",
+				"list connections",
+				"connected platforms",
+				"what platforms",
+				"where am i reachable",
 				"react",
 				"edit message",
 				"delete message",
@@ -3671,6 +3837,8 @@ export const messageAction: Action = {
 				return handleListChannels(runtime, message, state, params);
 			case "list_servers":
 				return handleListServers(runtime, message, state, params);
+			case "list_connections":
+				return handleListConnections(runtime, message, state, params);
 			case "join":
 			case "leave":
 				return handleJoinLeave(runtime, message, state, params, op);

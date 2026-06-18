@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gte, inArray, isNotNull, lt, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, lt, ne, notInArray, sql } from "drizzle-orm";
 import {
   applyBackupDelta,
   type BackupChainNode,
@@ -188,6 +188,13 @@ export class AgentSandboxesRepository {
       );
   }
 
+  /**
+   * Running sandboxes the heartbeat cycle should dial. Excludes the `shared`
+   * execution tier: those run container-free in the hosted shared runtime
+   * (node_id / container_name are NULL by design), so there is nothing to
+   * dial over the Headscale tunnel — heartbeating them only ever fails and
+   * spams the logs. Only dedicated/custom tiers have a real container.
+   */
   async listRunning(): Promise<Array<{ id: string; organization_id: string }>> {
     return dbRead
       .select({
@@ -195,7 +202,9 @@ export class AgentSandboxesRepository {
         organization_id: agentSandboxes.organization_id,
       })
       .from(agentSandboxes)
-      .where(eq(agentSandboxes.status, "running"));
+      .where(
+        and(eq(agentSandboxes.status, "running"), ne(agentSandboxes.execution_tier, "shared")),
+      );
   }
 
   /**

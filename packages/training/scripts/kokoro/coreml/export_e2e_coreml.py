@@ -40,6 +40,41 @@ AdaLayerNorm = MODS.AdaLayerNorm
 SineGen = ISTFT.SineGen
 SourceModuleHnNSF = ISTFT.SourceModuleHnNSF
 
+# ---- CoreML-friendly 1D linear resample (replaces F.interpolate(mode="linear")) ----
+def _linear_resample(x: torch.Tensor, out_len: int) -> torch.Tensor:
+    """Resize the LAST dim of `x` ([B, C, in_len]) to `out_len` with the exact
+    semantics of `F.interpolate(..., mode="linear", align_corners=False)` — but
+    using a static gather + linear blend instead of coremltools' `resize` op.
+
+    coremltools lowers `F.interpolate(linear)` to a resize whose sampling-grid /
+    boundary handling diverges from PyTorch (the root cause of the fused-Kokoro
+    CoreML fidelity gap: stft-mag corr ~0.67, amplitude ~½). All shapes here are
+    static in the traced graph, so the source indices `i0/i1` and blend weights
+    `w0/w1` are compile-time constants and this lowers to gather+mul+add, which
+    CoreML reproduces bit-for-bit. Verified float32-exact vs `F.interpolate`.
+    """
+    in_len = int(x.shape[-1])
+    if in_len == out_len:
+        return x
+    # Indices + weights are pure functions of the (static) in/out lengths, so
+    # compute them HOST-SIDE as numpy constants. Deriving them with traced torch
+    # ops (arange/floor/clamp) makes coremltools type the gather indices as fp32
+    # (gather rejects fp32). Baking them as constant int tensors avoids that.
+    pos = (np.arange(out_len, dtype=np.float64) + 0.5) * (
+        float(in_len) / float(out_len)
+    ) - 0.5
+    pos = np.clip(pos, 0.0, in_len - 1)
+    i0 = np.floor(pos).astype(np.int64)
+    i1 = np.minimum(i0 + 1, in_len - 1)
+    w1 = (pos - i0).astype(np.float32)
+    i0_t = torch.tensor(i0, dtype=torch.long)
+    i1_t = torch.tensor(i1, dtype=torch.long)
+    w1_t = torch.tensor(w1, dtype=torch.float32).view(1, 1, out_len)
+    x0 = torch.index_select(x, -1, i0_t)
+    x1 = torch.index_select(x, -1, i1_t)
+    return x0 * (1.0 - w1_t) + x1 * w1_t
+
+
 # ---- deterministic hn-NSF: injected phase + zero excitation noise ----
 def _f02sine_injected(self, f0_values):
     rad_values = (f0_values / self.sampling_rate) % 1
@@ -53,10 +88,10 @@ def _f02sine_injected(self, f0_values):
     )
     B, L, D = rad_values.shape
     down_len = max(1, int((L + self.upsample_scale - 1) // self.upsample_scale))
-    rad_values_ds = F.interpolate(rad_values.transpose(1, 2), size=down_len, mode="linear").transpose(1, 2)
+    rad_values_ds = _linear_resample(rad_values.transpose(1, 2), down_len).transpose(1, 2)
     phase_c = torch.cumsum(rad_values_ds, dim=1) * 2 * torch.pi
     up_len = down_len * self.upsample_scale
-    phase_up = F.interpolate((phase_c.transpose(1, 2) * self.upsample_scale), size=up_len, mode="linear").transpose(1, 2)
+    phase_up = _linear_resample(phase_c.transpose(1, 2) * self.upsample_scale, up_len).transpose(1, 2)
     return torch.sin(phase_up)
 
 def _sinegen_forward_nonoise(self, f0):
@@ -73,6 +108,9 @@ def _sinegen_forward_nonoise(self, f0):
 def _srcmod_forward_nonoise(self, x):
     sine_wavs, uv, _ = self.l_sin_gen(x)
     sine_merge = self.l_tanh(self.l_linear(sine_wavs))
+    # Stash the harmonic source for the diag exporter (localizes whether the
+    # SineGen/source path is where CoreML diverges).
+    self._last_har_source = sine_merge
     return sine_merge, torch.zeros_like(uv), uv
 
 SineGen._f02sine = _f02sine_injected
@@ -188,6 +226,8 @@ class KokoroE2E(nn.Module):
             delattr(self.k.bert.embeddings, "token_type_ids")
         self.bucket_frames = bucket_frames
         self.lsin = self.k.decoder.generator.m_source.l_sin_gen
+        self.msource = self.k.decoder.generator.m_source
+        self._diag = False
 
     def _f0ntrain_masked(self, en, s, frame_valid_2d):
         pred = self.k.predictor
@@ -232,17 +272,17 @@ class KokoroE2E(nn.Module):
         t_en = k.text_encoder(input_ids, input_lengths, text_mask)  # [1,Ht,N]
         asr = t_en.matmul(aln)  # [1,Ht,Fr]
         self.lsin._inj_phase = random_phases
-        gen = k.decoder.generator
-        f0_up = gen.f0_upsamp(F0_pred[:, None]).transpose(1, 2)
-        har_source, _noi, _uv = gen.m_source(f0_up)
         audio = k.decoder(asr, F0_pred, N_pred, ref_s[:, :128]).reshape(1, -1)
         # int32 length: float16 compute precision overflows past 65504, so any
         # utterance > ~1.8s (>109 frames) would yield inf in an fp16 scalar.
         pred_dur_i = pred_dur.to(torch.int32)
         total_frames = pred_dur_i.sum(dim=1)  # int32 [1]
         audio_length_samples = total_frames * SAMPLES_PER_FRAME  # int32, overflow-safe
-        if getattr(self, "_diag", False):
-            return audio, audio_length_samples, pred_dur_i, F0_pred, har_source.reshape(1, -1)
+        if self._diag:
+            # Stage outputs for the divergence localizer (diag_stages.py): the
+            # predicted F0 and the harmonic source captured during decode.
+            har = getattr(self.msource, "_last_har_source", torch.zeros(1))
+            return audio, audio_length_samples, pred_dur_i, F0_pred, har
         return audio, audio_length_samples, pred_dur_i
 
 

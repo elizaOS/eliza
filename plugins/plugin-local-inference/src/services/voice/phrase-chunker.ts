@@ -46,6 +46,26 @@ function resolveDefaultMaxAccumulationMs(): number {
 }
 const DEFAULT_MAX_ACCUMULATION_MS = resolveDefaultMaxAccumulationMs();
 
+/**
+ * First-audio (TTFA) optimization: the FIRST phrase of a reply uses a shorter
+ * time budget than the rest. First-audio latency is the dominant voice-UX
+ * metric, and a punctuation-sparse opening otherwise waits the full
+ * {@link DEFAULT_MAX_ACCUMULATION_MS} before any sound plays. Once audio is
+ * flowing, later phrases keep the full budget so the bulk of the reply is not
+ * fragmented into word-sized chunks (the failure mode the 700ms default fixed).
+ * Override via `ELIZA_PHRASE_FLUSH_FIRST_MS`; defaults to half the full budget,
+ * capped at 350ms. A non-positive full budget disables both.
+ */
+function resolveFirstPhraseMs(fullBudgetMs: number): number {
+	if (fullBudgetMs <= 0) return 0;
+	const raw = process.env.ELIZA_PHRASE_FLUSH_FIRST_MS?.trim();
+	if (raw) {
+		const v = Number.parseInt(raw, 10);
+		if (Number.isFinite(v) && v > 0) return Math.min(v, fullBudgetMs);
+	}
+	return Math.min(350, Math.ceil(fullBudgetMs / 2));
+}
+
 /** Wall-clock source the chunker uses. Tests inject a deterministic clock. */
 export type ClockMs = () => number;
 
@@ -68,8 +88,12 @@ export class PhraseChunker {
 	 * disables the time budget.
 	 */
 	private readonly maxAccumulationMs: number;
+	/** Shorter budget applied only while no phrase has flushed yet this reply. */
+	private readonly firstPhraseMaxAccumulationMs: number;
 	private readonly clock: ClockMs;
 	private firstTokenAtMs = 0;
+	/** Phrases emitted since the last {@link reset}; gates the first-phrase budget. */
+	private phrasesEmitted = 0;
 
 	constructor(
 		config: PhraseChunkerConfig,
@@ -90,6 +114,13 @@ export class PhraseChunker {
 			config.maxAccumulationMs !== undefined
 				? Math.max(0, config.maxAccumulationMs)
 				: DEFAULT_MAX_ACCUMULATION_MS;
+		this.firstPhraseMaxAccumulationMs =
+			config.firstPhraseMaxAccumulationMs !== undefined
+				? Math.min(
+						this.maxAccumulationMs,
+						Math.max(0, config.firstPhraseMaxAccumulationMs),
+					)
+				: resolveFirstPhraseMs(this.maxAccumulationMs);
 		this.clock = clock;
 		this.tokenizer = tokenizer;
 		if (this.chunkOn === "phoneme-stream" && this.tokenizer === null) {
@@ -125,16 +156,21 @@ export class PhraseChunker {
 
 		// T3 — time-budget flush. Re-uses the `"max-cap"` terminator because
 		// adding a new terminator value would require editing the shared
-		// `Phrase` type in `types.ts`, which is owned by another agent in
-		// this sweep. Structurally "the chunker forced a flush" is what
-		// max-cap already means.
-		if (
-			this.maxAccumulationMs > 0 &&
-			this.clock() - this.firstTokenAtMs >= this.maxAccumulationMs
-		) {
+		// `Phrase` type in `types.ts`. Structurally "the chunker forced a
+		// flush" is what max-cap already means.
+		const budget = this.currentBudgetMs();
+		if (budget > 0 && this.clock() - this.firstTokenAtMs >= budget) {
 			return this.flushAs("max-cap");
 		}
 		return null;
+	}
+
+	/** Active time budget: the shorter first-phrase budget until the reply's
+	 * first phrase has flushed, then the full budget. */
+	private currentBudgetMs(): number {
+		return this.phrasesEmitted === 0
+			? this.firstPhraseMaxAccumulationMs
+			: this.maxAccumulationMs;
 	}
 
 	/**
@@ -145,8 +181,9 @@ export class PhraseChunker {
 	 */
 	flushIfTimeBudgetExceeded(): Phrase | null {
 		if (this.buffer.length === 0) return null;
-		if (this.maxAccumulationMs <= 0) return null;
-		if (this.clock() - this.firstTokenAtMs < this.maxAccumulationMs) {
+		const budget = this.currentBudgetMs();
+		if (budget <= 0) return null;
+		if (this.clock() - this.firstTokenAtMs < budget) {
 			return null;
 		}
 		return this.flushAs("max-cap");
@@ -160,8 +197,9 @@ export class PhraseChunker {
 	 */
 	msUntilTimeBudget(): number {
 		if (this.buffer.length === 0) return Number.POSITIVE_INFINITY;
-		if (this.maxAccumulationMs <= 0) return Number.POSITIVE_INFINITY;
-		return this.firstTokenAtMs + this.maxAccumulationMs - this.clock();
+		const budget = this.currentBudgetMs();
+		if (budget <= 0) return Number.POSITIVE_INFINITY;
+		return this.firstTokenAtMs + budget - this.clock();
 	}
 
 	flushPending(): Phrase | null {
@@ -196,6 +234,7 @@ export class PhraseChunker {
 		this.buffer = [];
 		this.phonemeCount = 0;
 		this.firstTokenAtMs = 0;
+		this.phrasesEmitted = 0;
 	}
 
 	private endsWithTerminator(text: string): boolean {
@@ -209,6 +248,7 @@ export class PhraseChunker {
 		this.buffer = [];
 		this.phonemeCount = 0;
 		this.firstTokenAtMs = 0;
+		this.phrasesEmitted++;
 		const fromIndex = tokens[0].index;
 		const toIndex = tokens[tokens.length - 1].index;
 		const text = tokens.map((t) => t.text).join("");

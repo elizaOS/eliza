@@ -26,8 +26,18 @@ const set = mock((values: Record<string, unknown>) => {
 const update = mock(() => ({ set }));
 const ensureAgentSandboxSchema = mock(async () => {});
 
+// Read-side select() chain: select(...).from(...).where(clause) -> rows.
+// `where` captures the clause into the shared `capturedWhere` so a test can
+// assert on the generated SQL, mirroring the write-side capture above.
+const selectWhere = mock((clause: SQL) => {
+  capturedWhere = clause;
+  return [] as unknown[];
+});
+const selectFrom = mock(() => ({ where: selectWhere }));
+const select = mock(() => ({ from: selectFrom }));
+
 mock.module("../helpers", () => ({
-  dbRead: {},
+  dbRead: { select },
   dbWrite: { update },
 }));
 
@@ -46,6 +56,28 @@ describe("AgentSandboxesRepository", () => {
     expect(ensureAgentSandboxSchema).toHaveBeenCalled();
     if (!capturedWhere) throw new Error("trySetProvisioning did not build a where clause");
     expect(new PgDialect().sqlToQuery(capturedWhere).sql).toContain("'sleeping'");
+  });
+
+  test("heartbeat selection excludes shared-runtime agents (no container to dial)", async () => {
+    capturedWhere = undefined;
+
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+
+    await new AgentSandboxesRepository().listRunning();
+
+    if (!capturedWhere) throw new Error("listRunning did not build a where clause");
+    const query = new PgDialect().sqlToQuery(capturedWhere);
+    const sql = query.sql.toLowerCase();
+    // Only running rows are heartbeated...
+    expect(sql).toContain("status");
+    // ...and shared-tier rows are filtered out: they run container-free in the
+    // hosted shared runtime, so dialing them over Headscale always fails. The
+    // `<>` keeps that exclusion (NOT just `= 'shared'`).
+    expect(sql).toContain("execution_tier");
+    expect(sql).toContain("<>");
+    // eq/ne bind their operands, so the values land in `params`, not the SQL.
+    expect(query.params).toContain("running");
+    expect(query.params).toContain("shared");
   });
 
   test("marks only orphaned user-owned pending rows with no provision job as error", async () => {

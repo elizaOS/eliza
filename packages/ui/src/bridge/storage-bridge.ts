@@ -14,14 +14,25 @@ import { Capacitor } from "@capacitor/core";
 import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../first-run/mobile-runtime-mode";
 
 /**
- * Lazy-load @capacitor/preferences on demand. Keeping it out of the static
- * module graph means server consumers that pull in the @elizaos/ui barrel (e.g.
- * plugin-inbox in the Node agent image) don't crash resolving a native-only,
- * mobile-only devDependency. Only ever invoked behind an `isNativePlatform()`
- * guard.
+ * Lazy-load the @capacitor/preferences module on demand. Keeping it out of the
+ * static module graph means server consumers that pull in the @elizaos/ui barrel
+ * (e.g. plugin-inbox in the Node agent image) don't crash resolving a
+ * native-only, mobile-only devDependency. Only ever invoked behind an
+ * `isNativePlatform()` guard.
+ *
+ * Returns the module namespace, NOT the bare `Preferences` plugin. The plugin is
+ * a Capacitor proxy whose `.then` resolves to a function, which makes it
+ * *thenable*: resolving any promise (an async return or a `.then` callback)
+ * with the bare proxy triggers the Promise resolution procedure, which calls
+ * `proxy.then(resolve, reject)`. On Android that throws
+ * `"Preferences.then()" is not implemented` AND the proxy's `.then` ignores the
+ * resolve/reject it was handed, so the adopting promise never settles —
+ * `await loadPreferences()` would hang forever and block boot. The module
+ * namespace has no `then` export, so it is safe to await; callers destructure
+ * `{ Preferences }` and only ever resolve promises with method-call results.
  */
 function loadPreferences() {
-  return import("@capacitor/preferences").then((m) => m.Preferences);
+  return import("@capacitor/preferences");
 }
 
 function isNativePlatform(): boolean {
@@ -77,7 +88,7 @@ async function readPreferenceWithTimeout(key: string): Promise<string | null> {
     const timeout = new Promise<null>((resolve) => {
       timeoutId = setTimeout(() => resolve(null), PREFERENCE_READ_TIMEOUT_MS);
     });
-    const Preferences = await loadPreferences();
+    const { Preferences } = await loadPreferences();
     const result = await Promise.race([Preferences.get({ key }), timeout]);
     return result?.value ?? null;
   } catch {
@@ -158,7 +169,7 @@ function setupStorageProxy(): void {
       // during early WebView startup; localStorage writes must stay sync-fast.
       setTimeout(() => {
         loadPreferences()
-          .then((Preferences) => Preferences.set({ key, value }))
+          .then(({ Preferences }) => Preferences.set({ key, value }))
           .catch(() => {});
       }, 0);
     }
@@ -181,7 +192,7 @@ function setupStorageProxy(): void {
       preferencesCache.delete(key);
       setTimeout(() => {
         loadPreferences()
-          .then((Preferences) => Preferences.remove({ key }))
+          .then(({ Preferences }) => Preferences.remove({ key }))
           .catch(() => {});
       }, 0);
     }
@@ -195,7 +206,7 @@ function setupStorageProxy(): void {
  */
 export async function getStorageValue(key: string): Promise<string | null> {
   if (isNativePlatform() && SYNCED_KEYS.has(key)) {
-    const Preferences = await loadPreferences();
+    const { Preferences } = await loadPreferences();
     const result = await Preferences.get({ key });
     return result.value;
   }
@@ -212,7 +223,7 @@ export async function setStorageValue(
   window.localStorage.setItem(key, value);
 
   if (isNativePlatform() && SYNCED_KEYS.has(key)) {
-    const Preferences = await loadPreferences();
+    const { Preferences } = await loadPreferences();
     await Preferences.set({ key, value });
   }
 }
@@ -224,7 +235,7 @@ export async function removeStorageValue(key: string): Promise<void> {
   window.localStorage.removeItem(key);
 
   if (isNativePlatform() && SYNCED_KEYS.has(key)) {
-    const Preferences = await loadPreferences();
+    const { Preferences } = await loadPreferences();
     await Preferences.remove({ key });
   }
 }

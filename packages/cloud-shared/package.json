@@ -72,7 +72,7 @@
     "json5": "^2.2.3",
     "libphonenumber-js": "^1.12.42",
     "nanoid": "^5.1.9",
-    "nodemailer": "^8.0.7",
+    "nodemailer": "^9.0.1",
     "pg": "^8.20.0",
     "redis": "^5.0.0",
     "ssh2": "^1.17.0",

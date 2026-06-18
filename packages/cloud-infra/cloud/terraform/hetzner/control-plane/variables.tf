@@ -27,7 +27,7 @@ variable "hcloud_location" {
 }
 
 variable "hcloud_server_type" {
-  description = "Hetzner server type for the control-plane VM. cpx32 = 4 vCPU / 8 GB / 160 GB SSD ≈ €11/mo, matches the existing staging eliza-staging-1 manually-provisioned VM. Previously cpx21 (3 vCPU / 4 GB) but Hetzner retired cpx21 in fsn1. Production runs cax21 (ARM) — switching staging to ARM would save ~€4/mo and unblock future cpx retirement, but needs a few cloud-init template tweaks (docker apt arch + bun-linux-aarch64 archive). Staging stays on x86 cpx32 here for parity with the proven-working setup; ARM migration is followup."
+  description = "Hetzner server type for the control-plane VM. cpx32 = 4 vCPU / 8 GB / 160 GB SSD ≈ €11/mo, matches the existing staging eliza-staging-1 manually-provisioned VM. Previously cpx21 (3 vCPU / 4 GB) but Hetzner retired cpx21 in fsn1. Both staging and production run x86 cpx32 — staging eliza-staging-1 and prod eliza-production-1 are the same type, for parity with the proven-working setup. Moving the control plane to ARM (cax-series) would save ~€4/mo but needs a few cloud-init template tweaks (docker apt arch + bun-linux-aarch64 archive); it's a possible future cost optimization, not current state."
   type        = string
   default     = "cpx32"
 }
@@ -76,6 +76,27 @@ variable "control_plane_hostname_prefix" {
   description = "DNS subdomain prefix. Final record: <prefix>-<environment>-<n>.elizacloud.ai (e.g. eliza-production-1.elizacloud.ai)"
   type        = string
   default     = "eliza"
+}
+
+# ── Headscale public hostname ────────────────────────────────────────────────
+# The headscale coordination server is reachable at a SEPARATE, stable hostname
+# from the agent-router VM record — agent nodes + the daemon bake this URL into
+# their tailscale `--login-server`, so it must NOT follow the per-VM-index
+# `eliza-<env>-N` naming (that changes on a CP rebuild). The convention is also
+# NOT a simple `headscale-<environment>` because prod drops the suffix:
+#   - production → headscale.elizacloud.ai
+#   - staging    → headscale-staging.elizacloud.ai
+# so it's an explicit variable rather than derived from var.environment. This
+# record points at the CP's public ipv4 with proxied=false (Let's Encrypt
+# HTTP-01 on the box needs to terminate TLS itself for the headscale TS2021/
+# noise protocol — a proxied CF record would break the Upgrade handshake).
+variable "headscale_hostname" {
+  description = "Public FQDN for the headscale coordination server on this env's CP (prod: headscale.elizacloud.ai, staging: headscale-staging.elizacloud.ai). Must match HEADSCALE_PUBLIC_URL in the arm-headscale-control-plane workflow and the nginx vhost / LE cert that script provisions."
+  type        = string
+  validation {
+    condition     = endswith(var.headscale_hostname, ".elizacloud.ai")
+    error_message = "headscale_hostname must be a subdomain of elizacloud.ai (the zone this module manages)"
+  }
 }
 
 variable "deploy_branch" {

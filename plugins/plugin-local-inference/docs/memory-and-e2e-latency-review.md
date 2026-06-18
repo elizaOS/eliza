@@ -151,14 +151,24 @@ High confidence (implement + verify):
 4. **Pin VAD + active text model in voice mode; pre-warm next stage** — removes
    cold-load stalls between ASR and TTS. (`pipeline.ts`, `memory-arbiter.ts`)
 5. **Lower/condition the phrase-flush budget + flush on first clause** — cut up to
-   ~700 ms off TTFA. (`phrase-chunker.ts`)
+   ~700 ms off TTFA. (`phrase-chunker.ts`) — ✅ **done.** The first phrase of each
+   reply now flushes on a shorter `firstPhraseMaxAccumulationMs` budget (derived =
+   `min(350, maxAccumulationMs/2)`, env `ELIZA_PHRASE_FLUSH_FIRST_MS`, reset per
+   reply); later phrases keep the full 700 ms so the bulk is not fragmented.
+   Clause-boundary flush (`, : ;`) already shipped. The scheduler picks the
+   shorter window up automatically via `msUntilTimeBudget()`.
 
 Medium:
 6. KV reuse for voice partials (don't reset history when the prefix is stable). (`engine.ts:721`)
 7. Verify-before-TTS-dispatch for the last K draft tokens to cut rollback re-synth. (`pipeline.ts`)
 8. iOS token streaming over IPC (incremental `host_result` frames) so the message
    handler + TTS act on first tokens. (`bridge.ts`, `FullBunEngineHost.swift`)
-9. Cache RAM-budget resolution. (`ram-budget.ts`)
+9. Cache RAM-budget resolution. (`ram-budget.ts`) — ✅ **done.**
+   `defaultManifestLoader` now memoizes the manifest read+parse+validate keyed on
+   `modelId + manifestSha256`, so the recommender (scores the whole catalog per
+   refresh) and the load gate stop re-hitting disk. The SHA is the validated
+   manifest's content hash → a re-downloaded bundle self-invalidates (no stale
+   budgets); the legacy no-SHA path reads through unchanged. Tests 4/4.
 
 ---
 

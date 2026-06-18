@@ -70,9 +70,7 @@ describe("tui framing — linter catches real breakage", () => {
       "╰──────────────╯",
     ];
     const report = analyzeFraming(nested);
-    expect(report.issues.filter((i) => i.kind === "nested-box")).toHaveLength(
-      2,
-    );
+    expect(report.issues.filter((i) => i.kind === "nested-box")).toHaveLength(2);
   });
 
   it("detects a titled outer frame (╭─ Title ─╮)", () => {
@@ -84,8 +82,8 @@ describe("tui framing — linter catches real breakage", () => {
 
   it("flags a truncated button (cut-off ` ]`)", () => {
     const report = analyzeFraming(["[ Refresh ] [ Conf"]);
-    expect(report.issues.some((i) => i.kind === "truncated-affordance")).toBe(
-      true,
-    );
+    expect(
+      report.issues.some((i) => i.kind === "truncated-affordance"),
+    ).toBe(true);
   });
 });

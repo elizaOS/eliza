@@ -14,6 +14,9 @@ import { useHomeModelStatus } from "../local-inference/useHomeModelStatus";
 import type { ShellMessage, ShellPhase } from "./shell-state";
 import { useShellVoiceOutput } from "./useShellVoiceOutput";
 
+/** How a voice capture turn is consumed when it produces a final transcript. */
+export type CaptureIntent = "converse" | "dictate";
+
 export interface ShellController {
   phase: ShellPhase;
   messages: readonly ShellMessage[];
@@ -40,8 +43,10 @@ export interface ShellController {
   ) => void;
   /** Toggle continuous ("open voice") capture. Used by a quick tap on the mic. */
   toggleRecording: () => void;
-  /** Begin capture unconditionally. Used by push-to-talk press. */
-  startRecording: () => void;
+  /** Begin capture unconditionally. Used by push-to-talk press. `"dictate"`
+   *  routes the final transcript to the dictation sink (composer draft) and does
+   *  not send; `"converse"` (default) sends a VOICE_DM so the reply is spoken. */
+  startRecording: (intent?: CaptureIntent) => void;
   /** End capture unconditionally. Used by push-to-talk release. */
   stopRecording: () => void;
   /** True while the mic is muted (paused) but the voice session stays open. */
@@ -60,6 +65,14 @@ export interface ShellController {
   needsAudioUnlock: boolean;
   /** Resume audio output in response to a user gesture (enable sound). */
   unlockAudio: () => void;
+  /** True while the hands-free voice conversation loop is active — the mic
+   *  re-opens automatically after each spoken reply. Toggled by a tap on the mic. */
+  handsFree: boolean;
+  /** Toggle the hands-free conversation loop (mic ↔ spoken reply ↔ mic). */
+  toggleHandsFree: () => void;
+  /** Register where push-to-talk dictation drops its final transcript (the
+   *  overlay wires this to its composer draft). Pass null to clear. */
+  setDictationSink: (sink: ((text: string) => void) | null) => void;
   /** DEV-only: clear the conversation and start a fresh, greeted one. */
   clearConversation: () => void;
   /** Jump to Settings (where ProviderSwitcher lives) — used by the chat's
@@ -120,6 +133,21 @@ export function useShellController(): ShellController {
   // whether the agent's reply is spoken back — typed turns stay silent.
   const [lastTurnVoice, setLastTurnVoice] = React.useState(false);
   const captureRef = React.useRef<VoiceCaptureHandle | null>(null);
+  // Hands-free conversation loop (tap the mic): the mic re-opens after each
+  // spoken reply. A ref mirrors the state so the debounced re-listen timer reads
+  // the live value at fire time.
+  const [handsFree, setHandsFree] = React.useState(false);
+  const handsFreeRef = React.useRef(false);
+  handsFreeRef.current = handsFree;
+  // Push-to-talk dictation routes its final transcript here (the overlay wires
+  // this to its composer draft) instead of sending it.
+  const onDictatedTextRef = React.useRef<((text: string) => void) | null>(null);
+  const setDictationSink = React.useCallback(
+    (sink: ((text: string) => void) | null) => {
+      onDictatedTextRef.current = sink;
+    },
+    [],
+  );
 
   const messages = React.useMemo<ShellMessage[]>(() => {
     const source = Array.isArray(conversationMessages)
@@ -175,56 +203,65 @@ export function useShellController(): ShellController {
     setTranscript("");
   }, []);
 
-  const startCapture = React.useCallback(() => {
-    if (!ready) return;
-    if (captureRef.current) return;
-    // Read the user's VAD thresholds synchronously (local mirror of the
-    // `messages.voice` setting) so end-of-turn silence detection honors the
-    // configured sensitivity. Only consumed by the local-inference backend.
-    const handle = createVoiceCapture({
-      localAsrAutoStop: loadVadAutoStop(),
-      onTranscript: (segment) => {
-        const text = segment.text.trim();
-        if (!segment.final) {
-          // Surface the interim best-guess as live transcription.
-          setTranscript(text);
-          return;
-        }
-        setTranscript("");
-        if (text) {
-          send(text, {
-            channelType: "VOICE_DM",
-            metadata: {
-              voiceSource: segment.backend,
-            },
-          });
-        }
-      },
-      onStateChange: (state: VoiceCaptureState) => {
-        if (state === "error" || state === "stopped" || state === "idle") {
-          // Capture ended (clean stop, dispose, or error). Drop the handle and
-          // analyser so the shell phase returns to idle/summoned and a later
-          // startCapture is not blocked by a stale ref.
-          if (captureRef.current === handle) captureRef.current = null;
+  const startCapture = React.useCallback(
+    (intent?: CaptureIntent) => {
+      if (!ready) return;
+      if (captureRef.current) return;
+      // Read the user's VAD thresholds synchronously (local mirror of the
+      // `messages.voice` setting) so end-of-turn silence detection honors the
+      // configured sensitivity. Only consumed by the local-inference backend.
+      const handle = createVoiceCapture({
+        localAsrAutoStop: loadVadAutoStop(),
+        onTranscript: (segment) => {
+          const text = segment.text.trim();
+          if (!segment.final) {
+            // Surface the interim best-guess as live transcription.
+            setTranscript(text);
+            return;
+          }
+          setTranscript("");
+          if (text) {
+            if (intent === "dictate") {
+              // Push-to-talk dictation: hand the text to the composer draft —
+              // don't send, and leave lastTurnVoice false so no reply is spoken.
+              onDictatedTextRef.current?.(text);
+            } else {
+              send(text, {
+                channelType: "VOICE_DM",
+                metadata: {
+                  voiceSource: segment.backend,
+                },
+              });
+            }
+          }
+        },
+        onStateChange: (state: VoiceCaptureState) => {
+          if (state === "error" || state === "stopped" || state === "idle") {
+            // Capture ended (clean stop, dispose, or error). Drop the handle and
+            // analyser so the shell phase returns to idle/summoned and a later
+            // startCapture is not blocked by a stale ref.
+            if (captureRef.current === handle) captureRef.current = null;
+            setAnalyser(null);
+            setRecording(false);
+            setTranscript("");
+          }
+        },
+      });
+      captureRef.current = handle;
+      setRecording(true);
+      handle
+        .start()
+        .then(() => {
+          if (captureRef.current === handle) setAnalyser(handle.getAnalyser());
+        })
+        .catch(() => {
+          captureRef.current = null;
           setAnalyser(null);
           setRecording(false);
-          setTranscript("");
-        }
-      },
-    });
-    captureRef.current = handle;
-    setRecording(true);
-    handle
-      .start()
-      .then(() => {
-        if (captureRef.current === handle) setAnalyser(handle.getAnalyser());
-      })
-      .catch(() => {
-        captureRef.current = null;
-        setAnalyser(null);
-        setRecording(false);
-      });
-  }, [ready, send]);
+        });
+    },
+    [ready, send],
+  );
 
   const toggleRecording = React.useCallback(() => {
     if (recording) stopCapture();
@@ -264,6 +301,7 @@ export function useShellController(): ShellController {
   const close = React.useCallback(() => {
     setIsOpen(false);
     setMuted(false);
+    setHandsFree(false);
     if (captureRef.current) stopCapture();
   }, [stopCapture]);
 
@@ -292,6 +330,51 @@ export function useShellController(): ShellController {
     uiLanguage,
     cloudConnected: elizaCloudVoiceProxyAvailable,
   });
+
+  // Tap-to-talk: toggle a hands-free conversation. Enabling unlocks audio (the
+  // tap is the gesture) and opens the mic in "converse" mode; disabling stops
+  // both the mic and any in-flight reply.
+  const toggleHandsFree = React.useCallback(() => {
+    setHandsFree((on) => {
+      const next = !on;
+      if (next) {
+        setIsOpen(true);
+        voiceOutput.unlockAudio();
+        startCapture("converse");
+      } else {
+        if (captureRef.current) stopCapture();
+        voiceOutput.stopSpeaking();
+      }
+      return next;
+    });
+  }, [startCapture, stopCapture, voiceOutput]);
+
+  // Hands-free loop: once a spoken reply finishes (and nothing is recording or
+  // mid-send), re-open the mic so the conversation continues without a tap. The
+  // 250ms debounce + live re-check via handsFreeRef guard against double-start.
+  React.useEffect(() => {
+    if (!handsFree || !ready) return;
+    if (recording || captureRef.current) return;
+    if (chatSending || voiceOutput.speaking) return;
+    const timer = window.setTimeout(() => {
+      if (
+        handsFreeRef.current &&
+        !captureRef.current &&
+        !chatSending &&
+        !voiceOutput.speaking
+      ) {
+        startCapture("converse");
+      }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [
+    handsFree,
+    ready,
+    recording,
+    chatSending,
+    voiceOutput.speaking,
+    startCapture,
+  ]);
 
   const waveformMode =
     phase === "listening"
@@ -324,6 +407,9 @@ export function useShellController(): ShellController {
     toggleRecording,
     startRecording: startCapture,
     stopRecording: stopCapture,
+    handsFree,
+    toggleHandsFree,
+    setDictationSink,
     muted,
     toggleMute,
     transcript,

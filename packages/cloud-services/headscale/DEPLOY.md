@@ -2,9 +2,10 @@
 
 End-to-end checklist to bring the Headscale-backed tailnet online. Headscale is
 the coordination server for both internal agent containers and customer tunnel
-nodes. The runtime can be hosted on Railway for the customer-tunnel service, but
-the launch control-plane path runs Headscale on the Hetzner control-plane VM so
-agent provisioning and the provisioning worker share a private, loopback API.
+nodes. It runs on the Hetzner control-plane VM so agent provisioning and the
+provisioning worker share a private, loopback API. The customer-facing
+**tunnel-proxy** service stays on Railway, but Headscale itself is no longer
+Railway-hosted (that runtime was decommissioned 2026-06-17 — see below).
 
 Why this matters: when `HEADSCALE_API_KEY` is configured, the sandbox provider
 requires a real `headscale_ip` before a container is marked `running`. That is
@@ -76,68 +77,43 @@ Do not paste a newly generated API key into issue comments or workflow inputs.
 Generate it on the host, store it as a GitHub/Worker secret, and let the script
 consume it from the environment.
 
-## Railway runtime (customer-tunnel legacy/service path)
+## Railway runtime (customer-tunnel path only)
 
-The rest of this document covers the Railway-hosted tunnel stack. Keep it for
-the customer-tunnel service and for historical context, but do not use it to arm
-the Hetzner provisioning-worker host.
+The rest of this document covers the Railway-hosted **tunnel-proxy** stack — the
+customer-tunnel path that legitimately stays on Railway. Do not use it to arm the
+Hetzner provisioning-worker host.
+
+> **Headscale itself no longer runs on Railway.** The previous Railway-hosted
+> Headscale runtime was decommissioned on 2026-06-17, along with its
+> `Dockerfile`, `entrypoint.sh`, `railway.toml`, `config.yaml`, and the
+> `.github/workflows/cloud-headscale.yml` deploy workflow (this directory now
+> ships only `DEPLOY.md`, `README.md`, and `acl.hujson`). The headscale
+> coordination server runs **on the Hetzner control-plane VM** — see the
+> "Hetzner control-plane runtime (agent launch path)" section above. There is no
+> headscale Railway service to `railway up`; users/api-keys are created on the
+> CP host (`headscale users create agent`, `headscale apikeys create
+> --expiration=8760h`), and `server_url` is converged into
+> `/etc/headscale/config.yaml` on the CP by `arm-headscale-control-plane.yml`.
 
 ## 1. DNS
 
-- `headscale.elizacloud.ai` → CNAME/ALIAS → Railway public domain for the headscale service.
+- `headscale.elizacloud.ai` / `headscale-staging.elizacloud.ai` → A-record → the
+  Hetzner control-plane VM (`eliza-production-1` / `eliza-staging-1`), with
+  nginx + Let's Encrypt terminating TLS in front of local headscale. NOT a CNAME
+  to Railway — the Railway headscale service was removed (see note above).
 - `tunnel.elizacloud.ai` AND `*.tunnel.elizacloud.ai` → CNAME/ALIAS → Railway public domain for the tunnel-proxy service.
 - Railway terminates public TLS for the tunnel-proxy custom domains; the proxy then uses `tsnet` to reach private tailnet hosts.
 
-## 2. Headscale Railway service
+## 2. Long-lived headscale preauth key for the proxy
 
 ```
-cd packages/cloud-services/headscale
-# Push to a Railway service backed by this Dockerfile.
-railway up
-```
-
-Then inside the running container:
-
-```
-headscale users create agent
-headscale users create tunnel
-headscale apikeys create --expiration=8760h
-```
-
-Mount a Railway volume at `/var/lib/headscale` so the SQLite DB and generated keys persist across restarts.
-Do not set a Railway start-command override; the Dockerfile starts Headscale with `CMD ["headscale", "serve"]`.
-
-### Per-environment variables
-
-`server_url` must equal the public-facing custom domain (agents/tunnels register and re-derive control/DERP/MagicDNS against it). The entrypoint templates it from an explicit `HEADSCALE_PUBLIC_URL` Railway variable, NOT from `RAILWAY_PUBLIC_DOMAIN` (Railway injects that as the auto-generated `*.up.railway.app` host, not the custom domain). Per env:
-
-| Environment | `HEADSCALE_PUBLIC_URL` |
-|---|---|
-| production | `https://headscale.elizacloud.ai` |
-| staging | `https://headscale-staging.elizacloud.ai` |
-
-You do not set this on the Railway service by hand: it lives as a **GitHub Environment variable** (below) and the CI/CD workflow syncs it onto the Railway service (`railway variables --set … --skip-deploys`) before each `railway up`. The GitHub var is the single source of truth. When the var is unset entirely, the committed `config.yaml` prod value stands.
-
-### CI/CD (`.github/workflows/cloud-headscale.yml`)
-
-`develop -> staging`, `main -> production`, deployed explicitly with `railway up`. Required one-time setup so this is the SOLE deploy path and it targets the right env:
-
-- **Disable Railway's native GitHub auto-deploy** on the headscale service (Settings -> disconnect repo / no auto-deploy). Otherwise a single push triggers BOTH the native Railway deploy and the workflow's `railway up`, racing two concurrent builds of the live control plane against the single SQLite volume.
-- Define two **GitHub Environments** (`staging`, `production`), each holding its own project-scoped `RAILWAY_TOKEN` bound to that Railway environment. A Railway project token is scoped to one project+environment, so per-env tokens are what make the branch->env mapping actually land in the right place; the workflow's `environment:` key resolves the matching token and applies production protection rules.
-- Set `HEADSCALE_PUBLIC_URL` (above) as a GitHub Environment variable. The workflow uses it twice: it syncs it onto the Railway service (so the entrypoint's `server_url` is correct) AND points its post-deploy `/health` gate at that host. `railway up --ci` only validates the BUILD, not runtime health — the health gate is what catches a container that builds but crash-loops (bad server_url, missing volume).
-
-> **IaC scope.** The Railway **volume** (`/var/lib/headscale`) and the **custom domain** are stateful Railway service resources — Railway's `railway.toml` only declares build + deploy config (`[build]`, `[deploy]`), so neither can be expressed there. They are one-time setup, created via the Railway dashboard or API and persisted as service state; this file is their reproducible record. `HEADSCALE_PUBLIC_URL` is the exception: it IS codified, as the GitHub Environment variable the workflow pushes to Railway on every deploy.
-
-## 3. Long-lived headscale preauth key for the proxy
-
-```
-# Run inside the headscale container
+# Run on the control-plane VM (where headscale lives)
 headscale preauthkeys create --reusable --expiration 8760h --tags tag:eliza-proxy
 ```
 
 Save the returned key as Railway secret `TUNNEL_PROXY_TS_AUTHKEY` on the tunnel-proxy service.
 
-## 4. Tunnel-proxy Railway service
+## 3. Tunnel-proxy Railway service
 
 ```
 cd packages/cloud-services/tunnel-proxy
@@ -156,12 +132,12 @@ Required env vars on the proxy service:
 
 Mount a Railway volume at `/var/lib/tunnel-proxy` so the `tsnet` node identity persists across restarts.
 
-## 5. API Worker secrets
+## 4. API Worker secrets
 
 On the cloud-api Worker (Cloudflare):
 
 ```
-wrangler secret put HEADSCALE_API_KEY          # from step 2
+wrangler secret put HEADSCALE_API_KEY          # created on the CP host
 wrangler secret put CLOUD_INTERNAL_TOKEN       # same value as the proxy
 wrangler secret put HEADSCALE_INTERNAL_TOKEN   # same value as CLOUD_INTERNAL_TOKEN
 wrangler secret put TUNNEL_HOSTNAME_SIGNING_SECRET
@@ -169,7 +145,7 @@ wrangler secret put TUNNEL_HOSTNAME_SIGNING_SECRET
 
 `HEADSCALE_PUBLIC_URL`, `HEADSCALE_API_URL`, `HEADSCALE_USER`, `TUNNEL_PROXY_HOST`, `TUNNEL_TAILNET_DOMAIN`, and `TUNNEL_AUTH_KEY_COST_USD` are non-secret Worker vars in `apps/api/wrangler.toml`. The tunnel cost is a small on-demand org-credit debit per successful auth-key provisioning, not a subscription. Do not set `TUNNEL_ALLOW_UNSIGNED_HOSTNAMES` in production.
 
-## 6. Worker deploy
+## 5. Worker deploy
 
 ```
 cd cloud
@@ -178,7 +154,7 @@ bun run build:api
 bun run deploy:api -- --env production
 ```
 
-## 7. Smoke test
+## 6. Smoke test
 
 From a machine with the tailscale CLI installed and `@elizaos/plugin-tailscale` enabled with `ELIZAOS_CLOUD_API_KEY` set:
 
@@ -192,7 +168,7 @@ You should see:
 - A 200 response from `https://<sessionId>.tunnel.elizacloud.ai`
 - An immediate debit row in `credit_transactions` with `metadata.type = "tunnel"` and `metadata.billing_model = "on_demand"`
 
-## 8. Verify ACL isolation
+## 7. Verify ACL isolation
 
 The agent fleet (`tag:agent`) must NOT be reachable from a customer tunnel (`tag:eliza-tunnel`). After a tunnel is up, run from the tunnel node:
 

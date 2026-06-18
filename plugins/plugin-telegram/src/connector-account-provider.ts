@@ -13,39 +13,71 @@
  */
 import type {
   ConnectorAccount,
+  ConnectorAccountAccessGate,
   ConnectorAccountManager,
   ConnectorAccountPatch,
   ConnectorAccountProvider,
+  ConnectorAccountRole,
   IAgentRuntime,
 } from "@elizaos/core";
 import {
   DEFAULT_ACCOUNT_ID,
   listEnabledTelegramAccounts,
+  listPersonalTelegramAccounts,
   resolveTelegramAccount,
+  telegramPersonalExternalId,
 } from "./accounts";
 import { TELEGRAM_SERVICE_NAME } from "./constants";
+
+// Suffix for the synthesized OWNER (user-account) entry so the agent's bot
+// identity and the human owner's personal identity for the same config never
+// collide on a single ConnectorAccount id.
+const PERSONAL_ACCOUNT_SUFFIX = ":personal";
 
 function nowMs(): number {
   return Date.now();
 }
 
 /**
- * Build a synthetic ConnectorAccount for a resolved Telegram account that has
- * a usable bot token (i.e. a working single-account config from environment
- * variables or character.settings.telegram).
+ * Derive the role and access gate for a Telegram identity. The agent's own bot
+ * identity is an open AGENT account (acting as the bot is frictionless); the
+ * human owner's personal account is an OWNER account behind the owner_binding
+ * gate, so "act as the user" can't fire until the user has proven the account is
+ * theirs (via the /eliza_pair owner-binding flow).
+ */
+function deriveAccountRole(personal: boolean): {
+  role: ConnectorAccountRole;
+  accessGate: ConnectorAccountAccessGate;
+  purpose: string[];
+} {
+  return personal
+    ? {
+        role: "OWNER",
+        accessGate: "owner_binding",
+        purpose: ["messaging", "reading"],
+      }
+    : { role: "AGENT", accessGate: "open", purpose: ["messaging"] };
+}
+
+/**
+ * Build a synthetic ConnectorAccount for a resolved Telegram identity — either
+ * the agent's bot account (from a bot token) or the owner's personal account
+ * (from an MTProto user identity). Role/gate are derived from `personal`.
  */
 function synthesizeAccount(
   accountId: string,
   name: string | undefined,
   externalId: string | undefined,
+  personal: boolean,
 ): ConnectorAccount {
+  const { role, accessGate, purpose } = deriveAccountRole(personal);
   return {
     id: accountId,
     provider: TELEGRAM_SERVICE_NAME,
     label: name ?? `Telegram (${accountId})`,
-    role: "AGENT",
-    purpose: ["messaging"],
-    accessGate: "open",
+    role,
+    purpose,
+    accessGate,
     status: "connected",
     externalId,
     displayHandle: name,
@@ -54,6 +86,7 @@ function synthesizeAccount(
     metadata: {
       synthesized: true,
       source: "env",
+      personal,
     },
   };
 }
@@ -76,12 +109,31 @@ export function createTelegramConnectorAccountProvider(
         .listAccounts(TELEGRAM_SERVICE_NAME);
       const persistedById = new Map(persisted.map((a) => [a.id, a]));
 
+      // Agent's own bot identities (AGENT, open gate).
       const enabled = listEnabledTelegramAccounts(runtime);
       const synthesized: ConnectorAccount[] = enabled
         .filter((account) => !persistedById.has(account.accountId))
         .map((account) =>
-          synthesizeAccount(account.accountId, account.name, undefined),
+          synthesizeAccount(account.accountId, account.name, undefined, false),
         );
+
+      // Owner's personal identities (OWNER, owner_binding gate) — a distinct
+      // account id (<accountId>:personal) so a config declaring both a bot and a
+      // user surfaces two accounts.
+      for (const account of listPersonalTelegramAccounts(runtime)) {
+        const id = `${account.accountId}${PERSONAL_ACCOUNT_SUFFIX}`;
+        if (persistedById.has(id)) {
+          continue;
+        }
+        synthesized.push(
+          synthesizeAccount(
+            id,
+            account.name,
+            telegramPersonalExternalId(account),
+            true,
+          ),
+        );
+      }
 
       // If env-only single-account flow is configured but the resolved
       // accounts list is empty (e.g. token not yet validated), fall back to
@@ -90,7 +142,12 @@ export function createTelegramConnectorAccountProvider(
         const fallback = resolveTelegramAccount(runtime, DEFAULT_ACCOUNT_ID);
         if (fallback.botToken) {
           synthesized.push(
-            synthesizeAccount(DEFAULT_ACCOUNT_ID, fallback.name, undefined),
+            synthesizeAccount(
+              DEFAULT_ACCOUNT_ID,
+              fallback.name,
+              undefined,
+              false,
+            ),
           );
         }
       }

@@ -816,6 +816,27 @@ real test on real hardware. So Android-native is GREEN.
 Remaining: iOS-native (needs macOS+Xcode — no macOS host here) and Windows-native (needs a
 Windows host / wine — neither present). Those two are the only genuinely host-absent cells.
 
+### OWNER DECISION (2026-06-18): "Accept 4/5 + turnkey as done"
+The owner was asked how to proceed on the two host-absent platforms and chose **"Accept
+4/5 + turnkey as done"**: the lifeops decomposition + cross-platform-testing goal is
+CLOSED in this environment. Accepted done-state:
+- Decomposition: complete + integration-verified.
+- e2e GREEN on 4 of 5 platforms — Linux web (8/8), Android-NATIVE on a real Pixel 9a
+  (62 passed, incl. a live on-device STT→agent→TTS voice loop), mobile-viewport (8/8),
+  desktop Electrobun packaged (launch+render headless).
+- Mock-API contract tests green; live real testing comprehensive across all 10 decomposed
+  plugins (8 real-PGlite DB round-trips + 3 live local-LLM + health connector-contract +
+  remote-desktop engine) + the real-hardware Android voice loop; every view's states
+  screenshot-reviewed.
+- iOS-native + Windows-native: TURNKEY-READY (specs wired, route cases cover all views,
+  commands documented) but execution DEFERRED to a macOS / Windows CI lane — verified
+  unrunnable in a Linux-only sandbox (no host OS, device, VM image, ISO, remote, cloud,
+  or accessible LAN runner; microsoft.com network-blocked). Run when a host is available:
+    macOS:   bun run --cwd packages/app build:ios && bun run --cwd packages/app test:sim:local-chat:ios
+    Windows: bun run --cwd packages/app test:desktop:packaged  (windows-startup spec auto-runs on win32)
+This decision supersedes the open "5-platform e2e" item; no further in-sandbox action is
+expected for iOS/Windows.
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
