@@ -103,6 +103,22 @@ describe("coding-account-bridge", () => {
     expect(authJson.tokens.id_token).toBe("codex-id-token-1");
   });
 
+  it("rotates opencode across least-used cerebras-api accounts → CEREBRAS_API_KEY", async () => {
+    writeAccount("cerebras-api", "cb-busy", "cb-key-busy");
+    writeAccount("cerebras-api", "cb-idle", "cb-key-idle");
+    getDefaultAccountPool();
+    await setUsage("cerebras-api", "cb-busy", 88);
+    await setUsage("cerebras-api", "cb-idle", 4);
+    const sel = await getCodingAgentSelectorBridge()?.select("opencode", {
+      strategy: "least-used",
+    });
+    expect(sel?.providerId).toBe("cerebras-api");
+    expect(sel?.accountId).toBe("cb-idle");
+    // buildOpencodeSpawnConfig reads CEREBRAS_API_KEY from the injected env.
+    expect(sel?.envPatch.CEREBRAS_API_KEY).toBe("cb-key-idle");
+    expect(sel?.source).toBe("api-key");
+  });
+
   it("returns null when no accounts are linked (single-account fallback)", async () => {
     const bridge = getDefaultAccountPool() && getCodingAgentSelectorBridge();
     expect(await bridge?.select("claude")).toBeNull();
