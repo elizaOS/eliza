@@ -1,13 +1,18 @@
 /**
- * Tiny in-memory mock that mirrors the subset of the `@upstash/redis` client
- * surface used by the Discord gateway. Selected only when `MOCK_REDIS=1` is
- * set in the environment — never used as a silent fallback.
+ * Adapts an `ioredis`-shaped client to the subset of the `@upstash/redis`
+ * surface the Discord gateway uses (`get`/`set`/`setex`/`del`/`expire`/
+ * `sadd`/`srem`/`smembers`), so the same call sites work against either:
+ *   - a real TCP Redis (Railway) via `ioredis` — `createNativeRedis(url)`, or
+ *   - the in-memory `ioredis-mock` for tests/CI — `createMockRedis()`.
  *
- * Backed by `ioredis-mock`; methods are normalized so callers can keep using
- * Upstash-style option objects (e.g. `set(key, value, { ex, nx })`).
+ * Upstash's REST client exposes the same Upstash-style option objects (e.g.
+ * `set(key, value, { ex, nx })`); this adapter normalizes those to the
+ * positional RESP arguments `ioredis` expects, and returns the same values
+ * (`"OK"`/`null` for `set NX`) the gateway's leader-election code compares on.
  */
 
 import { createRequire } from "node:module";
+import IORedis from "ioredis";
 
 let _requireCJS: NodeJS.Require | null = null;
 function getRequireCJS(): NodeJS.Require {
@@ -15,7 +20,7 @@ function getRequireCJS(): NodeJS.Require {
   const url = import.meta.url;
   if (!url) {
     throw new Error(
-      "mock-redis: import.meta.url is undefined; cannot resolve ioredis-mock via createRequire",
+      "redis-adapter: import.meta.url is undefined; cannot resolve ioredis-mock via createRequire",
     );
   }
   _requireCJS = createRequire(url);
@@ -50,14 +55,14 @@ interface SetOptions {
 }
 
 /**
- * Drop-in mock for the subset of `@upstash/redis` methods the Discord
- * gateway uses. Not exhaustive — extend only as new call sites appear.
+ * Upstash-compatible facade over an `ioredis`-shaped client. Not exhaustive —
+ * extend only as new call sites appear.
  */
-export class MockUpstashRedis {
+export class UpstashCompatRedis {
   private readonly client: IoRedisLike;
 
-  constructor(client?: IoRedisLike) {
-    this.client = client ?? createIoRedisMock();
+  constructor(client: IoRedisLike) {
+    this.client = client;
   }
 
   async get<T = string>(key: string): Promise<T | null> {
@@ -70,13 +75,8 @@ export class MockUpstashRedis {
     }
   }
 
-  async set(
-    key: string,
-    value: unknown,
-    options?: SetOptions,
-  ): Promise<string | null> {
-    const serialized =
-      typeof value === "string" ? value : JSON.stringify(value);
+  async set(key: string, value: unknown, options?: SetOptions): Promise<string | null> {
+    const serialized = typeof value === "string" ? value : JSON.stringify(value);
     const args: Array<string | number> = [key, serialized];
     if (options?.ex !== undefined) args.push("EX", options.ex);
     if (options?.px !== undefined) args.push("PX", options.px);
@@ -127,4 +127,16 @@ export class MockUpstashRedis {
       // ignore
     }
   }
+}
+
+/** In-memory adapter for tests/CI (`MOCK_REDIS=1`). */
+export function createMockRedis(): UpstashCompatRedis {
+  return new UpstashCompatRedis(createIoRedisMock());
+}
+
+/** Real TCP Redis adapter (e.g. Railway `redis://` / `rediss://`). */
+export function createNativeRedis(url: string): UpstashCompatRedis {
+  // lazyConnect: defer the socket until the first command (the gateway issues
+  // one immediately) so construction never throws on a transient outage.
+  return new UpstashCompatRedis(new IORedis(url, { lazyConnect: true }) as unknown as IoRedisLike);
 }

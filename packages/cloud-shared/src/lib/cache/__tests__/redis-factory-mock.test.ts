@@ -63,3 +63,28 @@ describe("buildRedisClient (MOCK_REDIS=1)", () => {
     expect(members.sort()).toEqual(["alice", "bob"]);
   });
 });
+
+describe("hasRedisConfig", () => {
+  test("mirrors buildRedisClient resolution (incl. TCP REDIS_URL)", async () => {
+    const { hasRedisConfig } = await import("../redis-factory");
+    // no config -> false
+    expect(hasRedisConfig({})).toBe(false);
+    // TCP REDIS_URL (Railway) -> true  [the B1 fix: was previously Upstash-only]
+    expect(hasRedisConfig({ REDIS_URL: "redis://default:pw@host:6379" })).toBe(true);
+    // legacy Upstash REST creds -> true
+    expect(
+      hasRedisConfig({ KV_REST_API_URL: "https://x.upstash.io", KV_REST_API_TOKEN: "tok" }),
+    ).toBe(true);
+    // Upstash alias creds -> true
+    expect(
+      hasRedisConfig({
+        UPSTASH_REDIS_REST_URL: "https://x.upstash.io",
+        UPSTASH_REDIS_REST_TOKEN: "tok",
+      }),
+    ).toBe(true);
+    // half-configured Upstash -> false
+    expect(hasRedisConfig({ KV_REST_API_URL: "https://x.upstash.io" })).toBe(false);
+    // explicit mock -> true
+    expect(hasRedisConfig({ MOCK_REDIS: "1" })).toBe(true);
+  });
+});

@@ -19,7 +19,7 @@ import {
   type User,
 } from "discord.js";
 import { logger } from "./logger";
-import { MockUpstashRedis } from "./mock-redis";
+import { createMockRedis, createNativeRedis } from "./redis-adapter";
 import {
   forwardToServer,
   refreshKedaActivity,
@@ -311,24 +311,32 @@ export class GatewayManager {
     this.config = config;
     this.voiceHandler = new VoiceMessageHandler();
 
-    // Initialize Redis for failover coordination
+    // Initialize Redis for failover coordination.
     // MOCK_REDIS=1 is an explicit opt-in for tests/CI; never silently used
     // when unset, so real credentials are still honored when present.
+    const isTcpRedisUrl = (u: string): boolean => /^rediss?:\/\//i.test(u);
     if (process.env.MOCK_REDIS === "1") {
-      this.redis = new MockUpstashRedis() as unknown as Redis;
+      this.redis = createMockRedis() as unknown as Redis;
       logger.info("[GatewayManager] using in-memory mock Redis (MOCK_REDIS=1)");
+    } else if (config.redisUrl && isTcpRedisUrl(config.redisUrl)) {
+      // Railway (and any TCP Redis): RESP over ioredis, wrapped in the
+      // Upstash-compatible adapter so call sites stay unchanged.
+      this.redis = createNativeRedis(config.redisUrl) as unknown as Redis;
+      logger.info("[GatewayManager] using native TCP Redis client");
     } else if (config.redisUrl && config.redisToken) {
+      // Upstash REST (https URL + token) — legacy fallback.
       this.redis = new Redis({
         url: config.redisUrl,
         token: config.redisToken,
       });
+      logger.info("[GatewayManager] using Upstash REST Redis client");
     } else if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
       // Fall back to environment variables if explicit config not provided
       this.redis = Redis.fromEnv();
     } else if (config.redisUrl) {
       // URL provided but no token - log warning and skip Redis
       logger.warn(
-        "Redis URL provided without token - failover disabled. Set KV_REST_API_TOKEN or redisToken.",
+        "Redis URL provided without token - failover disabled. Set REDIS_URL (TCP) or KV_REST_API_TOKEN/redisToken (Upstash).",
       );
     }
   }

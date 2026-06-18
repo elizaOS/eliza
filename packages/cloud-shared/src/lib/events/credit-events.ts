@@ -5,6 +5,7 @@
  */
 
 import { EventEmitter } from "events";
+import { hasRedisConfig } from "../cache/redis-factory";
 import { assertPersistentCloudStateConfigured } from "../utils/persistence-guard";
 import type { CreditUpdateEvent } from "./credit-events-redis";
 import { redisCreditEventEmitter } from "./credit-events-redis";
@@ -63,7 +64,10 @@ class CreditEventEmitter {
     const isServerless =
       process.env.NODE_ENV === "production" || process.env.FORCE_REDIS_EVENTS === "true";
 
-    const redisConfigured = !!(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
+    // Accept a TCP `REDIS_URL` (Railway) as well as the legacy Upstash REST
+    // creds — mirrors `buildRedisClient` so a Railway-only deploy doesn't
+    // silently degrade credit events to a single-process in-memory emitter.
+    const redisConfigured = hasRedisConfig();
     assertPersistentCloudStateConfigured("credit-events", redisConfigured);
 
     const useRedis = isServerless && redisConfigured;
