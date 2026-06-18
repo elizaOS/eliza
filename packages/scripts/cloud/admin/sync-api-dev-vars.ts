@@ -106,6 +106,10 @@ const providerOverrideKeys = new Set([
   "OPENAI_API_KEY",
   "OPENAI_BASE_URL",
   "ANTHROPIC_API_KEY",
+  // Cerebras is the cloud's DEFAULT text provider — a shell-exported key must
+  // reach the booted worker (e.g. the creator-monetization e2e real-LLM lane),
+  // same as the other providers below.
+  "CEREBRAS_API_KEY",
   "GROQ_API_KEY",
   "AI_GATEWAY_API_KEY",
   "AIGATEWAY_API_KEY",
