@@ -42,6 +42,47 @@ function createClientRecorder(
 }
 
 describe("ElizaCloudClient payment and monetization helpers", () => {
+  it("normalizes origin-only apiBaseUrl inputs to the Cloud API v1 base", async () => {
+    const requests: RecordedRequest[] = [];
+    const fetchImpl = (async (input, init = {}) => {
+      requests.push({
+        url: String(input),
+        method: init.method ?? "GET",
+        headers: Object.fromEntries(new Headers(init.headers).entries()),
+      });
+      return new Response(JSON.stringify({ data: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    const client = new ElizaCloudClient({
+      apiBaseUrl: "https://api-staging.elizacloud.ai",
+      fetchImpl,
+    });
+
+    expect(client.apiBaseUrl).toBe("https://api-staging.elizacloud.ai/api/v1");
+    await client.listModels();
+    expect(requests[0]?.url).toBe(
+      "https://api-staging.elizacloud.ai/api/v1/models",
+    );
+  });
+
+  it("rejects apiBaseUrl values that already include a resource path or URL components", () => {
+    expect(
+      () =>
+        new ElizaCloudClient({
+          apiBaseUrl: "https://api-staging.elizacloud.ai/api/v1/models",
+        }),
+    ).toThrow("/api/v1");
+    expect(
+      () =>
+        new ElizaCloudClient({
+          apiBaseUrl: "https://api-staging.elizacloud.ai/api/v1?debug=1",
+        }),
+    ).toThrow("query or hash");
+  });
+
   it("creates durable x402 payment requests with callback channel metadata", async () => {
     const { client, requests } = createClientRecorder({
       success: true,

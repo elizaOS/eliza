@@ -22,6 +22,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 import jwksRoute from "../.well-known/jwks.json/route";
 import { handleBlueBubblesWebhook } from "../webhooks/bluebubbles/route";
 import { mountRoutes } from "./_router.generated";
+import { appsDeployTriggerDecision } from "./lib/apps-deploy-gate";
 import { authMiddleware } from "./middleware/auth";
 import { initAuditDispatcher } from "./services/audit-dispatcher-singleton";
 import { embeddedStewardHandler } from "./steward/embedded";
@@ -145,14 +146,20 @@ export function createApp(): Hono<AppEnv> {
   // Apps (Product 2): when enabled, wire the deploy trigger so
   // POST /api/v1/apps/:id/deploy enqueues a real isolated APP_DEPLOY job (the
   // provisioning-worker daemon runs it). Gated OFF by default — until
-  // APPS_DEPLOY_ENABLED=1, createDeployment keeps its legacy stub behavior. No
-  // `pg` is imported here; process.env is populated on workerd via nodejs_compat.
-  if (process.env.APPS_DEPLOY_ENABLED === "1") {
+  // APPS_DEPLOY_ENABLED=1, createDeployment keeps its legacy stub behavior.
+  // Production also requires APPS_DEPLOY_ALLOWED_ORG_IDS so a cutover cannot
+  // accidentally arm every org at once.
+  const appsDeployDecision = appsDeployTriggerDecision(process.env);
+  if (appsDeployDecision.enabled) {
     configureAppsDeployTrigger();
     // Same lane: when an app with an isolated tenant DB is deleted, enqueue an
     // APP_DB_DEPROVISION job so the daemon DROPs the DB + frees the cluster slot
     // (the Worker can't — no `pg`). Without it the DB + slot leak (#8342).
     configureAppsDeprovisionTrigger();
+  } else if (appsDeployDecision.reason === "production_allowlist_missing") {
+    logger.warn(
+      "[bootstrap-app] APPS_DEPLOY_ENABLED=1 ignored in production without APPS_DEPLOY_ALLOWED_ORG_IDS",
+    );
   }
 
   const app = new Hono<AppEnv>({ strict: false });

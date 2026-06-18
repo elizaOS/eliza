@@ -24,7 +24,11 @@ function apiKeyForRuntime(runtime: IAgentRuntime, embedding = false): string | u
 
 export function createCloudApiClient(runtime: IAgentRuntime, embedding = false): CloudApiClient {
   const baseUrl = embedding ? getEmbeddingBaseURL(runtime) : getBaseURL(runtime);
-  return new CloudApiClient(trimTrailingSlash(baseUrl), apiKeyForRuntime(runtime, embedding));
+  return new ElizaCloudClient({
+    apiBaseUrl: trimTrailingSlash(baseUrl),
+    baseUrl: apiBaseToSiteBaseUrl(baseUrl),
+    apiKey: apiKeyForRuntime(runtime, embedding),
+  }).v1;
 }
 
 export function createElizaCloudClient(runtime: IAgentRuntime): ElizaCloudClient {
