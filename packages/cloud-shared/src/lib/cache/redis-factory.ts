@@ -48,3 +48,18 @@ export function buildRedisClient(env?: RedisFactoryEnv): CompatibleRedis | null 
 
   return null;
 }
+
+/**
+ * True when {@link buildRedisClient} would return a real client for this env —
+ * i.e. a Redis backend is configured. Mirrors the resolution order above so
+ * callers gate on the same condition the factory uses, instead of hard-coding
+ * an Upstash-only `KV_REST_API_*` check that misses a TCP `REDIS_URL` deploy.
+ */
+export function hasRedisConfig(env?: RedisFactoryEnv): boolean {
+  const e = env ?? (process.env as RedisFactoryEnv);
+  if (e.MOCK_REDIS === "1") return true;
+  if (e.REDIS_URL) return true;
+  const restUrl = e.KV_REST_API_URL || e.UPSTASH_REDIS_REST_URL;
+  const restToken = e.KV_REST_API_TOKEN || e.UPSTASH_REDIS_REST_TOKEN;
+  return !!(restUrl && restToken);
+}
