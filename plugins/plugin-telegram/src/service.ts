@@ -8,6 +8,8 @@ import {
   logger,
   type Memory,
   type MessageConnectorChatContext,
+  type MessageConnectorCreateThreadParams,
+  type MessageConnectorPostToThreadParams,
   type MessageConnectorQueryContext,
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
@@ -15,6 +17,7 @@ import {
   type Room,
   Service,
   type TargetInfo,
+  type ThreadHandle,
   type UUID,
   type World,
   type WorldPayload,
@@ -54,6 +57,8 @@ const TELEGRAM_CONNECTOR_CAPABILITIES = [
   "list_rooms",
   "chat_context",
   "user_context",
+  "create_thread",
+  "post_to_thread",
 ];
 const TELEGRAM_CHAT_ID_PATTERN = /^-?\d+$/;
 const TELEGRAM_THREADED_CHANNEL_PATTERN = /^(-?\d+)-(\d+)$/;
@@ -1937,6 +1942,58 @@ export class TelegramService extends Service {
     }
   }
 
+  /**
+   * Create a forum topic for the target chat and return a thread handle. Backs
+   * the runtime's connector-agnostic `createThreadOnTarget` (parity with
+   * Discord) so the orchestrator can give each task its own Telegram thread.
+   * Requires a forum-enabled supergroup; throws otherwise.
+   */
+  public async createConnectorThread(
+    _runtime: IAgentRuntime,
+    params: MessageConnectorCreateThreadParams,
+  ): Promise<ThreadHandle> {
+    const target = params.target as AccountScopedTargetInfo;
+    const accountId = target.accountId ?? this.defaultAccountId;
+    const bot = this.getAccountState(accountId)?.bot ?? this.bot;
+    if (!bot) {
+      throw new Error("Telegram bot is not available — cannot create thread");
+    }
+    const chatId = target.channelId ?? target.serverId;
+    if (!chatId) {
+      throw new Error("createConnectorThread requires a target chatId");
+    }
+    const name = (params.name ?? "thread").slice(0, 128);
+    const topic = await bot.telegram.createForumTopic(chatId, name);
+    return {
+      threadId: String(topic.message_thread_id),
+      parentChannelId: String(chatId),
+    };
+  }
+
+  /** Post `params.content` into a forum topic created by createConnectorThread. */
+  public async postToConnectorThread(
+    _runtime: IAgentRuntime,
+    params: MessageConnectorPostToThreadParams,
+  ): Promise<Memory | undefined> {
+    const target = params.target as AccountScopedTargetInfo;
+    const accountId = target.accountId ?? this.defaultAccountId;
+    const bot = this.getAccountState(accountId)?.bot ?? this.bot;
+    if (!bot) {
+      throw new Error("Telegram bot is not available — cannot post to thread");
+    }
+    const chatId =
+      params.thread.parentChannelId ?? target.channelId ?? target.serverId;
+    const text = params.content.text ?? "";
+    if (!chatId || !text.trim()) {
+      return undefined;
+    }
+    const threadId = Number(params.thread.threadId);
+    await bot.telegram.sendMessage(chatId, text, {
+      message_thread_id: Number.isFinite(threadId) ? threadId : undefined,
+    });
+    return undefined;
+  }
+
   async resolveConnectorTargets(
     query: string,
     context: MessageConnectorQueryContext,
@@ -2321,6 +2378,10 @@ export class TelegramService extends Service {
             service: TELEGRAM_SERVICE_NAME,
             ...(normalizedAccountId ? { accountId: normalizedAccountId } : {}),
           },
+          createThreadHandler: (runtime, params) =>
+            serviceInstance.createConnectorThread(runtime, params),
+          postToThreadHandler: (runtime, params) =>
+            serviceInstance.postToConnectorThread(runtime, params),
           resolveTargets: (query, context) =>
             serviceInstance.resolveConnectorTargets(
               query,
