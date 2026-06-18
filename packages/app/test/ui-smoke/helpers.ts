@@ -1222,6 +1222,70 @@ function populatedInbox(url: URL) {
   };
 }
 
+// Valid populated goals payload for the /api/lifeops/goals endpoint the
+// decomposed GoalsView fetches, so `goals:gui` renders its `goals-populated`
+// branch (status groups + goal rows) instead of the set-a-goal empty state.
+// Shape mirrors the PA route response { goals: LifeOpsGoalRecord[] } where each
+// record is { goal: LifeOpsGoalDefinition; links: LifeOpsGoalLink[] } from
+// @elizaos/shared.
+function populatedGoals() {
+  return {
+    goals: [
+      {
+        goal: {
+          id: "goal-smoke-1",
+          agentId: "ui-smoke-agent",
+          domain: "personal",
+          subjectType: "owner",
+          subjectId: "owner-smoke",
+          visibilityScope: "private",
+          contextPolicy: "owner_only",
+          title: "Run a half marathon",
+          description: "Build up to 21km by autumn.",
+          cadence: { kind: "weekly" },
+          successCriteria: { targetText: "21km continuous run" },
+          status: "active",
+          reviewState: "on_track",
+          metadata: {},
+          createdAt: SMOKE_GENERATED_AT,
+          updatedAt: SMOKE_GENERATED_AT,
+        },
+        links: [
+          {
+            id: "link-smoke-1",
+            agentId: "ui-smoke-agent",
+            goalId: "goal-smoke-1",
+            linkedType: "occurrence",
+            linkedId: "occ-smoke-1",
+            createdAt: SMOKE_GENERATED_AT,
+          },
+        ],
+      },
+      {
+        goal: {
+          id: "goal-smoke-2",
+          agentId: "ui-smoke-agent",
+          domain: "personal",
+          subjectType: "owner",
+          subjectId: "owner-smoke",
+          visibilityScope: "private",
+          contextPolicy: "owner_only",
+          title: "Learn conversational Spanish",
+          description: "",
+          cadence: { kind: "daily" },
+          successCriteria: {},
+          status: "paused",
+          reviewState: "needs_attention",
+          metadata: {},
+          createdAt: SMOKE_GENERATED_AT,
+          updatedAt: SMOKE_GENERATED_AT,
+        },
+        links: [],
+      },
+    ],
+  };
+}
+
 // Valid populated DTOs for the /api/documents* endpoints the decomposed
 // DocumentsView fetches, so `documents:gui` renders its `documents-populated`
 // branch (a document row + stats line) instead of the empty/upload-prompt
@@ -2721,6 +2785,20 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(populatedMoneyRecurring()),
+    });
+  });
+
+  // GoalsView fetches GET /api/lifeops/goals (no query); the bare pattern keeps
+  // the POST create + /goals/:id sub-resource routes falling through to the API.
+  await page.route("**/api/lifeops/goals", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedGoals()),
     });
   });
 

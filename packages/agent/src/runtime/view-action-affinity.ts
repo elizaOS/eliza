@@ -112,6 +112,7 @@ export function setActiveViewElements(
  *              actions/{listActiveBlocks,releaseBlock}.ts (LIST_ACTIVE_BLOCKS, RELEASE_BLOCK)
  *   finances — plugins/plugin-finances/src/actions/finances.ts (OWNER_FINANCES)
  *   inbox    — plugins/plugin-inbox/src/actions/inbox.ts (literal name: "INBOX")
+ *   goals    — plugins/plugin-goals/src/actions/goals.ts (literal name: "OWNER_GOALS")
  */
 export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
   companion: ["PLAY_EMOTE"],
@@ -154,6 +155,7 @@ export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
   focus: ["LIST_ACTIVE_BLOCKS", "RELEASE_BLOCK"],
   finances: ["OWNER_FINANCES"],
   inbox: ["INBOX"],
+  goals: ["OWNER_GOALS"],
 };
 
 /**
