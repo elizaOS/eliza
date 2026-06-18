@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 import numpy as np
 import torch
-import export_e2e as E
+import export_e2e_coreml as E
 
 ROOT = E.REF
 OUT = Path("/tmp/kokoro-coreml-work/out")

@@ -74,19 +74,33 @@ into a bundle's `tts/kokoro-coreml/` (see `KokoroCoreMlEngine.modelDirectory`).
 - **torch fused vs real Kokoro `forward_with_tokens`: stft-mag corr 0.99**,
   log-mel L1 0.02, rms matches — the fused PyTorch module is perceptually
   identical to ground truth and bucket-invariant (0.99 at 200/320/512 frames).
-- **CoreML vs torch: KNOWN FIDELITY GAP (WIP).** The compiled model is
-  structurally correct — `pred_dur`, `audio_length_samples`, and I/O names all
-  match exactly — but the audio diverges from the torch module (stft-mag corr
-  ~0.67, amplitude ~½). Root-cause isolated by elimination:
+- **CoreML vs torch: KNOWN FIDELITY GAP (WIP) — now LOCALIZED to the iSTFT.**
+  The compiled model is structurally correct — `pred_dur`,
+  `audio_length_samples`, and I/O names all match exactly — but the audio
+  diverges from the torch module (stft-mag corr ~0.68, waveform corr ~0.33,
+  amplitude ~½). Root-cause isolated by elimination AND by direct staged
+  comparison (`diag_stages.py`, which exports `F0_pred` + `har_source` as extra
+  CoreML outputs and correlates them against torch):
   - NOT precision: identical under fp16 and fp32.
   - NOT the AdaIN padding mask: identical with `F.interpolate(nearest)` and the
     `arange`-based exact mask.
   - NOT alignment/duration: those convert exactly.
-  → The divergence is in the vocoder's `F.interpolate(linear)` hn-NSF phase
-  resample (`istftnet.SineGen._f02sine`) and/or the `CustomSTFT` overlap-add,
-  where coremltools' resize/conv-transpose semantics differ from PyTorch.
-  Next step: stage F0Ntrain/decoder intermediate outputs to localize, then
-  replace the offending `F.interpolate`/iSTFT ops with conv/matmul equivalents.
+  - NOT F0Ntrain (masked LSTM / AdaIN): **`diag_stages.py` reports F0_pred corr
+    = 1.00000** — the predictor path is bit-faithful in CoreML.
+  - NOT the `F.interpolate(linear)` hn-NSF phase resample: replacing both linear
+    resamples in `SineGen._f02sine` with a numerically-exact host-constant
+    gather+blend (`_linear_resample`, matches `align_corners=False` to fp32) left
+    the audio corr **unchanged at ~0.33**. So the resample was never the cause
+    (the gather+blend stays anyway — it is a deterministic CoreML-clean form).
+  → **Verdict: `iSTFT / decoder convs diverge`** (`diag_stages.py` final line).
+  F0 and the harmonic source reach the decoder intact; the gap is introduced by
+  the `CustomSTFT` inverse (two `conv_transpose1d` overlap-adds, `custom_stft.py`
+  `inverse()`) and/or the iSTFTNet decoder upsample convs, where coremltools'
+  `conv_transpose1d` (output_padding / overlap-add scaling) diverges from
+  PyTorch. **Next step:** stage the decoder's pre-iSTFT spec vs the final audio to
+  confirm which conv, then replace the `conv_transpose1d` overlap-add with an
+  explicit gather/scatter (or `fold`-equivalent) overlap-add whose semantics
+  CoreML reproduces exactly — same approach that fixed the index typing here.
 
 **Until parity lands, do NOT stage this `.mlmodelc` into a shipping bundle** —
 the iOS Swift `synthesizeSpeech` tries CoreML first, so a degraded model would
