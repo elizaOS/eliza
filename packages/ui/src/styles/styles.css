@@ -275,22 +275,11 @@ kbd {
   }
 }
 
-/* Dark mode contrast improvements */
-[data-theme="dark"] .text-muted {
-  color: hsl(240 5% 64.9%);
-}
-
-[data-theme="dark"] .text-muted-strong {
-  color: hsl(240 4% 74%);
-}
-
-[data-theme="dark"] .bg-bg-accent {
-  background-color: hsl(240 5.9% 14%);
-}
-
-[data-theme="dark"] .bg-bg-elevated {
-  background-color: hsl(240 4.8% 10%);
-}
+/* (Removed the dark-mode .text-muted / .bg-bg-* overrides: they hardcoded
+   blue-biased hsl(240 …) values on top of the design tokens. The tokens
+   (--muted, --muted-strong, --bg-accent, --bg-elevated) are now the single
+   source of truth — neutral, no blue, default UI kit. Tune the token if a
+   value needs adjusting; do not reintroduce a utility-level override.) */
 
 /* Product policy: focus rings are intentionally disabled globally. */
 /* biome-ignore-start lint/complexity/noImportantStyles: focus rings are banned globally and component-level focus utilities must not win. */
