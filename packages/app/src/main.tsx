@@ -519,9 +519,6 @@ function initializeAppModules(): Promise<void> {
       importAppPhone(),
       importAppSteward(),
       importAppTraining(),
-      ...SIDE_EFFECT_APP_MODULE_LOADERS.map(({ key, load }) =>
-        importSideEffectAppModule(key, load),
-      ),
     ]);
 
     companionModule.registerCompanionApp();
@@ -537,6 +534,17 @@ function initializeAppModules(): Promise<void> {
         resolveCompanionInferenceNotice:
           companionModule.resolveCompanionInferenceNotice,
       }),
+    );
+
+    // The side-effect plugins (games, wallet-ui, trajectory-logger, feature
+    // registrations) export no components used at first paint and the boot
+    // config doesn't depend on them — load them OFF the first-paint critical
+    // path so the initial render isn't blocked on ~20 extra module loads. Their
+    // nav tabs / overlay apps register a tick later; React.lazy covers the gap.
+    void Promise.all(
+      SIDE_EFFECT_APP_MODULE_LOADERS.map(({ key, load }) =>
+        importSideEffectAppModule(key, load),
+      ),
     );
   })();
 
