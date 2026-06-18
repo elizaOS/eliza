@@ -16,11 +16,16 @@ export interface PullGestureOptions {
   onPullDown?: () => void;
   /** Live drag offset while pressed, in px. Positive = dragging up. */
   onDrag?: (offset: number) => void;
+  /** A near-stationary press/release — a tap, not a pull. */
+  onTap?: () => void;
   /** Minimum travel (px) to count as a pull. Default 56. */
   distanceThreshold?: number;
   /** Minimum speed (px/ms) to count as a flick. Default 0.5. */
   velocityThreshold?: number;
 }
+
+/** Movement (px) under which a release is treated as a tap, not a drag. */
+const TAP_SLOP = 8;
 
 export interface PullGestureBinding {
   onPointerDown: (event: React.PointerEvent) => void;
@@ -50,6 +55,7 @@ export function usePullGesture(
     onPullUp,
     onPullDown,
     onDrag,
+    onTap,
     distanceThreshold = 56,
     velocityThreshold = 0.5,
   } = options;
@@ -90,12 +96,15 @@ export function usePullGesture(
       );
       if (direction === null) {
         onDrag?.(0); // snap back
+        // A near-stationary release is a tap (e.g. tapping the collapsed bar to
+        // focus the composer), not an aborted drag.
+        if (Math.abs(deltaUp) < TAP_SLOP) onTap?.();
         return;
       }
       if (direction === "up") onPullUp?.();
       else onPullDown?.();
     },
-    [onDrag, onPullUp, onPullDown, distanceThreshold, velocityThreshold],
+    [onDrag, onPullUp, onPullDown, onTap, distanceThreshold, velocityThreshold],
   );
 
   return {

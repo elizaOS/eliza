@@ -24,7 +24,11 @@ import {
 import * as React from "react";
 
 import { client } from "../../api";
-import { useActivityEvents } from "../../hooks/useActivityEvents";
+import {
+  type ActivityEvent,
+  useActivityEvents,
+} from "../../hooks/useActivityEvents";
+import { useAvailableViews } from "../../hooks/useAvailableViews";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { cn } from "../../lib/utils";
 
@@ -53,8 +57,14 @@ interface HomeTile {
   label: string;
   icon: LucideIcon;
   target: HomeTileTarget;
-  /** AOSP/native-OS only (phone, contacts) — hidden on stock installs. */
+  /** AOSP/native-OS only (phone, contacts, messages) — hidden on stock installs. */
   nativeOs?: boolean;
+  /**
+   * Only render when this view path is actually registered (from /api/views).
+   * Keeps the tile from dead-ending into the apps catalog on builds where the
+   * backing plugin/view isn't loaded.
+   */
+  requiresViewPath?: string;
 }
 
 const HOME_TILES: HomeTile[] = [
@@ -69,12 +79,14 @@ const HOME_TILES: HomeTile[] = [
     label: "Orchestrator",
     icon: Network,
     target: { kind: "view", path: "/orchestrator" },
+    requiresViewPath: "/orchestrator",
   },
   {
     id: "workflows",
     label: "Workflows",
     icon: Workflow,
     target: { kind: "view", path: "/automations" },
+    requiresViewPath: "/automations",
   },
   {
     id: "views",
@@ -87,12 +99,16 @@ const HOME_TILES: HomeTile[] = [
     label: "Inbox",
     icon: Inbox,
     target: { kind: "view", path: "/inbox" },
+    requiresViewPath: "/inbox",
   },
   {
+    // The only "messages" surface is the AOSP SMS view (MessagesPageView), which
+    // falls back to the apps catalog off-Android — so gate it like phone/contacts.
     id: "messages",
     label: "Messages",
     icon: MessageSquare,
     target: { kind: "tab", tab: "messages" },
+    nativeOs: true,
   },
   {
     id: "phone",
@@ -202,12 +218,7 @@ function ClockBlock(): React.JSX.Element {
 function ActivityRows({
   events,
 }: {
-  events: readonly {
-    id: string;
-    eventType: string;
-    summary: string;
-    timestamp: number;
-  }[];
+  events: readonly ActivityEvent[];
 }): React.JSX.Element {
   return (
     <ul data-testid="home-activity" className="flex flex-col gap-2.5">
@@ -310,7 +321,19 @@ export function HomeScreen({
   onOpenTile,
   showNativeOsTiles = false,
 }: HomeScreenProps): React.JSX.Element {
-  const tiles = HOME_TILES.filter((t) => !t.nativeOs || showNativeOsTiles);
+  // Gate tiles on what actually resolves: native-OS tiles need an AOSP build,
+  // and view tiles need their path registered (from /api/views) so a tap never
+  // dead-ends into the apps catalog.
+  const { views } = useAvailableViews();
+  const registeredPaths = React.useMemo(
+    () => new Set(views.map((v) => v.path).filter((p): p is string => !!p)),
+    [views],
+  );
+  const tiles = HOME_TILES.filter(
+    (t) =>
+      (!t.nativeOs || showNativeOsTiles) &&
+      (!t.requiresViewPath || registeredPaths.has(t.requiresViewPath)),
+  );
   // Recent activity + messages render ONLY when there's something to show — the
   // home stays clean (clock + tiles) otherwise.
   const { events } = useActivityEvents();

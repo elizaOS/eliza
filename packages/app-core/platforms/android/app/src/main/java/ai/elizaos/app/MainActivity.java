@@ -11,6 +11,7 @@ import android.webkit.WebView;
 
 import androidx.core.content.ContextCompat;
 import androidx.core.splashscreen.SplashScreen;
+import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -112,6 +113,7 @@ public class MainActivity extends BridgeActivity {
             getBridge().getWebView().addJavascriptInterface(
                 new ElizaNativeBridge(this), ElizaNativeBridge.JS_NAME);
             ElizaAndroidSystemBridge.install(getBridge().getWebView(), this);
+            publishGestureInset();
         }
 
         // Auto-start the local Eliza agent runtime as a foreground service.
@@ -175,6 +177,35 @@ public class MainActivity extends BridgeActivity {
         } catch (Exception e) {
             Log.w(TAG, "Failed to apply immersive navigation bar", e);
         }
+    }
+
+    /**
+     * Publish the bottom gesture-navigation inset (the home-pill zone apps must
+     * not put critical UI under) to the WebView as the CSS var
+     * `--android-gesture-inset-bottom`. We hide the navigation bar, which zeroes
+     * `env(safe-area-inset-bottom)`, so the floating chat composer would
+     * otherwise sit on top of the gesture-home zone. The renderer folds this var
+     * into its bottom clearance via max(); it defaults to 0px off-Android.
+     */
+    private void publishGestureInset() {
+        final WebView webView = getBridge() != null ? getBridge().getWebView() : null;
+        if (webView == null) {
+            return;
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(
+            getWindow().getDecorView(),
+            (v, insets) -> {
+                int px = insets
+                    .getInsets(WindowInsetsCompat.Type.mandatorySystemGestures())
+                    .bottom;
+                float dp = px / getResources().getDisplayMetrics().density;
+                String js =
+                    "document.documentElement.style.setProperty("
+                        + "'--android-gesture-inset-bottom','" + dp + "px')";
+                webView.post(() -> webView.evaluateJavascript(js, null));
+                return insets;
+            });
+        ViewCompat.requestApplyInsets(getWindow().getDecorView());
     }
 
     private static int resolveMixedContentMode() {

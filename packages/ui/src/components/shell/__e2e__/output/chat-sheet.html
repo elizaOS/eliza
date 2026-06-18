@@ -25247,6 +25247,7 @@
 
   // packages/ui/src/components/shell/use-pull-gesture.ts
   var React4 = __toESM(require_react(), 1);
+  var TAP_SLOP = 8;
   function resolvePull(deltaUp, velocityUp, distanceThreshold, velocityThreshold) {
     const passed = Math.abs(deltaUp) >= distanceThreshold || Math.abs(velocityUp) >= velocityThreshold;
     if (!passed) return null;
@@ -25257,6 +25258,7 @@
       onPullUp,
       onPullDown,
       onDrag,
+      onTap,
       distanceThreshold = 56,
       velocityThreshold = 0.5
     } = options;
@@ -25292,12 +25294,13 @@
         );
         if (direction === null) {
           onDrag?.(0);
+          if (Math.abs(deltaUp) < TAP_SLOP) onTap?.();
           return;
         }
         if (direction === "up") onPullUp?.();
         else onPullDown?.();
       },
-      [onDrag, onPullUp, onPullDown, distanceThreshold, velocityThreshold]
+      [onDrag, onPullUp, onPullDown, onTap, distanceThreshold, velocityThreshold]
     );
     return {
       onPointerDown,
@@ -25320,7 +25323,6 @@
   var import_jsx_runtime6 = __toESM(require_jsx_runtime(), 1);
   var FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
   var OVERLAY_EASE = [0.22, 1, 0.36, 1];
-  var SHEET_OPEN_VH = 0.95;
   var SHEET_HALF_VH = 0.46;
   var SHEET_TOP_MARGIN = 72;
   var MAX_RENDERED_MESSAGES = 80;
@@ -25424,7 +25426,12 @@
           // than the bar) so it's easy to grab without covering the edge buttons.
           // z-20 keeps it above the input row (z-10) so it always wins the drag.
           "pointer-events-auto absolute left-1/2 top-0.5 z-20 -translate-x-1/2 flex cursor-grab touch-none select-none items-center justify-center px-16 py-2 active:cursor-grabbing",
-          "before:absolute before:-inset-x-4 before:-top-10 before:-bottom-3 before:content-['']",
+          "before:absolute before:-inset-x-4 before:-top-10 before:content-['']",
+          // Hit zone reaches UP into the empty space above the panel always; when
+          // COLLAPSED it also reaches DOWN over the composer's center so a pull-down
+          // there collapses to the pill (a tap still focuses the input via onTap).
+          // When open it stays shallow so the thread/textarea below own their taps.
+          open ? "before:-bottom-3" : "before:-bottom-14",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full"
         ),
         children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
@@ -25891,7 +25898,7 @@
     const viewportH = viewport.height;
     const keyboardInset = viewport.keyboardInset;
     const panelMaxH = Math.max(200, viewportH - bottomPad - SHEET_TOP_MARGIN);
-    const openH = Math.min(Math.round(viewportH * SHEET_OPEN_VH), panelMaxH);
+    const openH = panelMaxH;
     const halfH = Math.round(viewportH * SHEET_HALF_VH);
     const baseH = !sheetOpen ? 0 : expanded ? openH : halfH;
     const clampHeight = React5.useCallback(
@@ -25907,6 +25914,12 @@
       (h) => Math.max(0, 1 - h / Math.max(1, openH * 0.5))
     );
     const threadFlexBasis = useTransform(threadHeight, (h) => `${h}px`);
+    const panelRadius = useTransform(
+      threadHeight,
+      [0, 12],
+      [9999, 24],
+      { clamp: true }
+    );
     const settleDrag = React5.useCallback(() => {
       draggingRef.current = false;
       if (reduce) threadHeight.set(baseH);
@@ -25936,6 +25949,9 @@
       []
     );
     const collapse = React5.useCallback(() => {
+      if (typeof document !== "undefined" && threadRef.current && document.activeElement instanceof HTMLElement && threadRef.current.contains(document.activeElement)) {
+        document.activeElement.blur();
+      }
       closeSheet();
       inputRef.current?.blur();
     }, [closeSheet]);
@@ -25976,6 +25992,7 @@
       onPullUp: () => {
         if (pilled) {
           setPilled(false);
+          settleDrag();
           detentHaptic();
           return;
         }
@@ -25996,9 +26013,21 @@
         else if (sheetOpen) goToDetent("collapsed");
         else {
           setPilled(true);
+          draggingRef.current = false;
           inputRef.current?.blur();
           detentHaptic();
         }
+      },
+      // A tap (no drag) on the handle. When collapsed the handle's hit zone covers
+      // the composer's center, so a tap there must focus the input to type — and a
+      // tap on the pill brings the input back.
+      onTap: () => {
+        if (pilled) {
+          setPilled(false);
+          detentHaptic();
+          return;
+        }
+        if (!sheetOpen) inputRef.current?.focus();
       }
     });
     return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
@@ -26007,7 +26036,11 @@
         ref: overlayRef,
         className: cn(
           "pointer-events-none fixed inset-x-0 bottom-0 flex w-full min-w-0 flex-col items-center px-3 sm:px-4",
-          "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+1.5rem)]"
+          // max(safe-area, android gesture inset): when the nav bar is hidden the
+          // safe-area-inset-bottom is 0, so fall back to the real gesture-home zone
+          // (--android-gesture-inset-bottom, published by MainActivity; 0 elsewhere)
+          // so the composer never sits under the home pill.
+          "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+1.5rem)]"
         ),
         style: { zIndex: Z_SHELL_OVERLAY, bottom: keyboardInset },
         "data-testid": "continuous-chat-overlay",
@@ -26114,7 +26147,7 @@
               }
             ) : null,
             /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-              "fieldset",
+              motion.fieldset,
               {
                 ref: panelRef,
                 "aria-label": "Chat composer",
@@ -26122,7 +26155,7 @@
                 "data-variant": sheetOpen ? "open" : "closed",
                 "data-detent": pilled ? "pill" : !sheetOpen ? "collapsed" : expanded ? "full" : "half",
                 "data-revealed": sheetOpen ? "true" : "false",
-                style: pilled ? void 0 : { maxHeight: panelMaxH },
+                style: pilled ? void 0 : { maxHeight: panelMaxH, borderRadius: panelRadius },
                 className: cn(
                   "pointer-events-auto relative m-0 flex min-w-0 flex-col border-0 p-0",
                   pilled ? (
@@ -26131,10 +26164,6 @@
                     "w-auto"
                   ) : cn(
                     "w-full overflow-hidden",
-                    // Collapsed = a pill (fully round, matching the round buttons);
-                    // opened = a calmer 24px panel — a tall sheet at the full
-                    // viewport looked over-rounded at 28px.
-                    sheetOpen ? "rounded-3xl" : "rounded-full",
                     // Liquid glass: a translucent, blurred, slightly over-saturated
                     // pane with a bright top specular edge + a faint refractive stroke.
                     "border border-white/[0.14] bg-black/55 backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
@@ -26272,14 +26301,15 @@
                     "div",
                     {
                       className: cn(
-                        // items-end keeps the +/mic controls pinned to the bottom as the
-                        // textarea grows upward with multi-line input. shrink-0 keeps the
-                        // input fully visible when the panel hits its maxHeight cap (only the
-                        // thread above gives way).
+                        // items-center vertically centers a single-line composer with
+                        // the round +/mic buttons (the common case); a multi-line draft
+                        // grows the textarea and the buttons stay centered. shrink-0
+                        // keeps the input fully visible when the panel hits its
+                        // maxHeight cap (only the thread above gives way).
                         // Equal inset on all sides (px == py): a round button nested in
                         // the pill's round end-cap reads as concentric, with the same
                         // gap on the sides as top/bottom.
-                        "relative z-10 flex min-w-0 shrink-0 items-end gap-1.5 px-2 py-2 sm:gap-2",
+                        "relative z-10 flex min-w-0 shrink-0 items-center gap-1.5 px-2 py-2 sm:gap-2",
                         sheetOpen ? "border-t border-white/10" : ""
                       ),
                       children: [
@@ -26319,7 +26349,7 @@
                             "aria-describedby": booting ? "cc-booting-hint" : void 0,
                             "aria-disabled": booting,
                             readOnly: booting,
-                            className: "max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-end border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
+                            className: "max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
                           }
                         ),
                         /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { id: "cc-booting-hint", className: "sr-only", children: "connecting \u2014 you can\u2019t send yet" }),
@@ -26360,7 +26390,7 @@
                                 {
                                   glyph: STOP_GLYPH,
                                   label: "stop generating",
-                                  onClick: () => stop?.(),
+                                  onClick: () => stop(),
                                   testId: "chat-composer-stop"
                                 }
                               )

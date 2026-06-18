@@ -65,10 +65,8 @@ const OVERLAY_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 // the latest line — the pull-up target) and OPEN (most of the viewport above
 // the input). The live drag tracks the finger 1:1; release snaps with an
 // Apple-style spring. The whole sheet is unmounted when there's no thread yet.
-// FULL fills nearly the whole viewport (clamped by panelMaxH) so the sheet rises
-// to just under the status bar — you pull it back DOWN to dismiss. HALF is a
-// comfortable mid-stop.
-const SHEET_OPEN_VH = 0.95; // fraction of viewport height at the FULL detent
+// HALF is a comfortable mid-stop; FULL fills all the way to panelMaxH (the sheet
+// rises to just under the status bar) — you pull it back DOWN to dismiss.
 const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
 // px kept clear above the panel. Sized to clear an edge-to-edge status bar
 // (~58px) plus a buffer so the grabber sits BELOW the notification-shade pull
@@ -238,7 +236,12 @@ function SheetGrabber({
         // than the bar) so it's easy to grab without covering the edge buttons.
         // z-20 keeps it above the input row (z-10) so it always wins the drag.
         "pointer-events-auto absolute left-1/2 top-0.5 z-20 -translate-x-1/2 flex cursor-grab touch-none select-none items-center justify-center px-16 py-2 active:cursor-grabbing",
-        "before:absolute before:-inset-x-4 before:-top-10 before:-bottom-3 before:content-['']",
+        "before:absolute before:-inset-x-4 before:-top-10 before:content-['']",
+        // Hit zone reaches UP into the empty space above the panel always; when
+        // COLLAPSED it also reaches DOWN over the composer's center so a pull-down
+        // there collapses to the pill (a tap still focuses the input via onTap).
+        // When open it stays shallow so the thread/textarea below own their taps.
+        open ? "before:-bottom-3" : "before:-bottom-14",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full",
       )}
     >
@@ -856,10 +859,10 @@ export function ContinuousChatOverlay({
   const panelMaxH = Math.max(200, viewportH - bottomPad - SHEET_TOP_MARGIN);
 
   // History-height detents: COLLAPSED (0) → HALF → FULL — the thread's ideal
-  // flex-basis; `panelMaxH` + flex-shrink clamp the real height to fit. FULL is
-  // capped at panelMaxH so the detent target matches the visible height (no
-  // dead slack at the top of a pull-down) while still rising to the top.
-  const openH = Math.min(Math.round(viewportH * SHEET_OPEN_VH), panelMaxH);
+  // flex-basis; flex-shrink clamps the real height to fit. FULL == panelMaxH so
+  // the detent target matches the visible height (no dead slack at the top of a
+  // pull-down) while the sheet rises all the way to the top.
+  const openH = panelMaxH;
   const halfH = Math.round(viewportH * SHEET_HALF_VH);
   const baseH = !sheetOpen ? 0 : expanded ? openH : halfH;
   // Map a raw drag height: rubber-band past FULL, hard-clamp the bottom to 0.
@@ -877,6 +880,12 @@ export function ContinuousChatOverlay({
     Math.max(0, 1 - h / Math.max(1, openH * 0.5)),
   );
   const threadFlexBasis = useTransform(threadHeight, (h) => `${h}px`);
+  // Corner radius tracks the live height so it can't flash as a tall full-pill
+  // mid-pull: a perfect pill at rest (collapsed input, matching the round
+  // buttons) relaxing to a calm 24px the instant the thread starts opening.
+  const panelRadius = useTransform(threadHeight, [0, 12], [9999, 24], {
+    clamp: true,
+  });
 
   // Sub-threshold release: spring back to the current detent (no state change).
   const settleDrag = React.useCallback(() => {
@@ -926,6 +935,16 @@ export function ContinuousChatOverlay({
   // no longer "focused". Blurring (rather than the old refocus dance) also means
   // there's no focus→expand bounce to guard against, so the model stays simple.
   const collapse = React.useCallback(() => {
+    // If focus is sitting inside the thread log, pull it out before the log
+    // becomes aria-hidden / tabIndex=-1 — never park focus on a hidden element.
+    if (
+      typeof document !== "undefined" &&
+      threadRef.current &&
+      document.activeElement instanceof HTMLElement &&
+      threadRef.current.contains(document.activeElement)
+    ) {
+      document.activeElement.blur();
+    }
     closeSheet();
     inputRef.current?.blur();
   }, [closeSheet]);
@@ -992,8 +1011,11 @@ export function ContinuousChatOverlay({
     // rebuilt every render, so they always read the current detent.
     onPullUp: () => {
       if (pilled) {
-        // PILL → INPUT: a flick/pull up brings the input bar back.
+        // PILL → INPUT: a flick/pull up brings the input bar back. settleDrag
+        // clears draggingRef and springs the thread height back to its detent
+        // (0) — without it the leftover drag state parks the peek wrong.
         setPilled(false);
+        settleDrag();
         detentHaptic();
         return;
       }
@@ -1015,9 +1037,21 @@ export function ContinuousChatOverlay({
       else {
         // INPUT → PILL: collapse the input away into a pill at the bottom.
         setPilled(true);
+        draggingRef.current = false;
         inputRef.current?.blur();
         detentHaptic();
       }
+    },
+    // A tap (no drag) on the handle. When collapsed the handle's hit zone covers
+    // the composer's center, so a tap there must focus the input to type — and a
+    // tap on the pill brings the input back.
+    onTap: () => {
+      if (pilled) {
+        setPilled(false);
+        detentHaptic();
+        return;
+      }
+      if (!sheetOpen) inputRef.current?.focus();
     },
   });
 
@@ -1029,7 +1063,11 @@ export function ContinuousChatOverlay({
       ref={overlayRef}
       className={cn(
         "pointer-events-none fixed inset-x-0 bottom-0 flex w-full min-w-0 flex-col items-center px-3 sm:px-4",
-        "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+1.5rem)]",
+        // max(safe-area, android gesture inset): when the nav bar is hidden the
+        // safe-area-inset-bottom is 0, so fall back to the real gesture-home zone
+        // (--android-gesture-inset-bottom, published by MainActivity; 0 elsewhere)
+        // so the composer never sits under the home pill.
+        "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+1.5rem)]",
       )}
       // Lift the whole overlay above the on-screen keyboard so the input + chat
       // stay visible; `keyboardInset` is 0 when no keyboard is shown.
@@ -1153,7 +1191,7 @@ export function ContinuousChatOverlay({
             glow={listening || responding}
           />
         ) : null}
-        <fieldset
+        <motion.fieldset
           ref={panelRef}
           aria-label="Chat composer"
           data-testid="chat-sheet"
@@ -1170,8 +1208,14 @@ export function ContinuousChatOverlay({
           data-revealed={sheetOpen ? "true" : "false"}
           // Never taller than the visible viewport (above the keyboard) minus the
           // overlay's safe-area padding + a top margin: the thread scrolls instead
-          // of the panel spilling off the top of the screen.
-          style={pilled ? undefined : { maxHeight: panelMaxH }}
+          // of the panel spilling off the top of the screen. borderRadius is a
+          // live motion value (pill → 24px) so the corners never flash as a tall
+          // full-pill mid-pull.
+          style={
+            pilled
+              ? undefined
+              : { maxHeight: panelMaxH, borderRadius: panelRadius }
+          }
           className={cn(
             "pointer-events-auto relative m-0 flex min-w-0 flex-col border-0 p-0",
             pilled
@@ -1180,10 +1224,6 @@ export function ContinuousChatOverlay({
                 "w-auto"
               : cn(
                   "w-full overflow-hidden",
-                  // Collapsed = a pill (fully round, matching the round buttons);
-                  // opened = a calmer 24px panel — a tall sheet at the full
-                  // viewport looked over-rounded at 28px.
-                  sheetOpen ? "rounded-3xl" : "rounded-full",
                   // Liquid glass: a translucent, blurred, slightly over-saturated
                   // pane with a bright top specular edge + a faint refractive stroke.
                   "border border-white/[0.14] bg-black/55 backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
@@ -1336,14 +1376,15 @@ export function ContinuousChatOverlay({
             divider sits above it whenever the history is open. */}
               <div
                 className={cn(
-                  // items-end keeps the +/mic controls pinned to the bottom as the
-                  // textarea grows upward with multi-line input. shrink-0 keeps the
-                  // input fully visible when the panel hits its maxHeight cap (only the
-                  // thread above gives way).
+                  // items-center vertically centers a single-line composer with
+                  // the round +/mic buttons (the common case); a multi-line draft
+                  // grows the textarea and the buttons stay centered. shrink-0
+                  // keeps the input fully visible when the panel hits its
+                  // maxHeight cap (only the thread above gives way).
                   // Equal inset on all sides (px == py): a round button nested in
                   // the pill's round end-cap reads as concentric, with the same
                   // gap on the sides as top/bottom.
-                  "relative z-10 flex min-w-0 shrink-0 items-end gap-1.5 px-2 py-2 sm:gap-2",
+                  "relative z-10 flex min-w-0 shrink-0 items-center gap-1.5 px-2 py-2 sm:gap-2",
                   sheetOpen ? "border-t border-white/10" : "",
                 )}
               >
@@ -1379,7 +1420,7 @@ export function ContinuousChatOverlay({
                   aria-describedby={booting ? "cc-booting-hint" : undefined}
                   aria-disabled={booting}
                   readOnly={booting}
-                  className="max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-end border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
+                  className="max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
                 />
                 <span id="cc-booting-hint" className="sr-only">
                   connecting — you can’t send yet
@@ -1438,7 +1479,7 @@ export function ContinuousChatOverlay({
                     <SoftButton
                       glyph={STOP_GLYPH}
                       label="stop generating"
-                      onClick={() => stop?.()}
+                      onClick={() => stop()}
                       testId="chat-composer-stop"
                     />
                   ) : (
@@ -1464,7 +1505,7 @@ export function ContinuousChatOverlay({
               </div>
             </>
           )}
-        </fieldset>
+        </motion.fieldset>
       </div>
     </div>
   );

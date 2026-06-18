@@ -39,6 +39,9 @@ const stubResolver = {
     b.onResolve({ filter: /useDocumentVisibility$/ }, () => ({
       path: join(here, "home-screen-fixture.docvis-stub.ts"),
     }));
+    b.onResolve({ filter: /useAvailableViews$/ }, () => ({
+      path: join(here, "home-screen-fixture.views-stub.ts"),
+    }));
   },
 };
 
