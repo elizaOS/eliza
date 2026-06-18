@@ -41,6 +41,11 @@ export function setViewChatBinding(binding: ViewChatBinding | null): void {
   for (const l of s.listeners) l();
 }
 
+/** Read the active binding imperatively (for tests / non-React callers). */
+export function getViewChatBinding(): ViewChatBinding | null {
+  return store().current;
+}
+
 export function useViewChatBinding(): ViewChatBinding | null {
   const s = store();
   return React.useSyncExternalStore(

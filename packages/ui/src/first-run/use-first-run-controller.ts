@@ -20,7 +20,6 @@ import {
   useApp,
 } from "../state";
 import { isCloudStatusAuthenticated, preOpenWindow } from "../utils";
-import { isDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
 import {
   createVoiceCapture,
   type VoiceCaptureHandle,

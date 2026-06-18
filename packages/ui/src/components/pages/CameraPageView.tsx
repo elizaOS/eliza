@@ -204,7 +204,6 @@ export function CameraPageView(): React.JSX.Element {
       {/* Captured-photo review overlay. */}
       {photo ? (
         <div data-testid="camera-photo" className="absolute inset-0 bg-black">
-          {/* biome-ignore lint/performance/noImgElement: captured still, no Next.js */}
           <img
             src={photoDataUrl(photo)}
             alt={t("camera.capturedAlt", { defaultValue: "Captured photo" })}

@@ -6,10 +6,8 @@ import {
   Globe2,
   Layers,
   Lock,
-  Search,
   Shield,
   User,
-  X,
 } from "lucide-react";
 import {
   type ChangeEvent,
@@ -28,6 +26,7 @@ import type {
 } from "../../api/client-types-chat";
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { useApp } from "../../state/useApp";
+import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { confirmDesktopAction } from "../../utils/desktop-dialogs";
 import {
   isDocumentImageFile,
@@ -425,6 +424,21 @@ export function DocumentsView({
   setActionNoticeRef.current = setActionNotice;
   const [searchQuery, setSearchQuery] = useState("");
   const [scopeFilter, setScopeFilter] = useState<DocumentScopeFilter>("all");
+  // The active view drives the one floating chat composer as its search box:
+  // each keystroke flows in via onQuery, filtering documents in place.
+  const handleSearchQuery = useCallback((value: string) => {
+    setSearchQuery(value);
+    // Clearing the draft drops out of any live search-results view.
+    setSearchResults((prev) => (prev !== null ? null : prev));
+  }, []);
+  const searchBinding = useMemo(
+    () => ({
+      placeholder: t("documents.ui.searchPlaceholder"),
+      onQuery: handleSearchQuery,
+    }),
+    [t, handleSearchQuery],
+  );
+  useRegisterViewChatBinding(searchBinding);
   // Seed from the shared cache so a revisit paints the last-known documents
   // instantly and revalidates silently, instead of flashing a spinner.
   const documentsCacheKey = `documents:list:${scopeFilter}`;
@@ -442,7 +456,6 @@ export function DocumentsView({
     total: number;
     filename: string;
   } | null>(null);
-  const [searching, setSearching] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [internalSelectedDocId, setInternalSelectedDocId] = useState<
     string | null
@@ -988,7 +1001,6 @@ export function DocumentsView({
 
   const handleSearch = useCallback(
     async (query: string) => {
-      setSearching(true);
       try {
         const result = await client.searchDocuments(query, {
           threshold: 0.3,
@@ -1012,8 +1024,6 @@ export function DocumentsView({
           4000,
         );
         setSearchResults([]);
-      } finally {
-        setSearching(false);
       }
     },
     [scopeFilter, setActionNotice, t],
@@ -1130,66 +1140,6 @@ export function DocumentsView({
     </div>
   );
 
-  /* ── Search input ──────────────────────────────────────────────── */
-
-  const { ref: searchRef, agentProps: searchAgentProps } =
-    useAgentElement<HTMLInputElement>({
-      id: "documents-search",
-      role: "text-input",
-      label: t("documents.ui.searchPlaceholder"),
-      group: "documents-toolbar",
-      description: "Search documents by filename, topic, or body text",
-      getValue: () => searchQuery,
-      onFill: (value) => {
-        setSearchQuery(value);
-        if (isShowingSearchResults) {
-          setSearchResults(null);
-        }
-      },
-    });
-
-  const searchInput = (
-    <div className="relative">
-      <input
-        ref={searchRef}
-        {...searchAgentProps}
-        type="text"
-        placeholder={t("documents.ui.searchPlaceholder")}
-        value={searchQuery}
-        onChange={(e) => {
-          setSearchQuery(e.target.value);
-          if (isShowingSearchResults) {
-            setSearchResults(null);
-          }
-        }}
-        autoComplete="off"
-        spellCheck={false}
-        className="w-full rounded-sm border border-border/50 bg-bg px-3 py-2 pl-9 text-sm text-txt placeholder:text-muted/50 focus:border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent/30"
-      />
-      <Search
-        className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/50"
-        aria-hidden
-      />
-      {(searchQuery || searching) && (
-        <button
-          type="button"
-          aria-label={t("common.clear", { defaultValue: "Clear" })}
-          onClick={() => {
-            setSearchQuery("");
-            setSearchResults(null);
-          }}
-          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-medium text-muted hover:text-txt"
-        >
-          {searching ? (
-            <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-          ) : (
-            <X className="h-3.5 w-3.5" aria-hidden />
-          )}
-        </button>
-      )}
-    </div>
-  );
-
   const documentContent = (
     <div className="order-2 flex min-w-0 flex-1 lg:order-1">
       <DocumentViewer
@@ -1248,7 +1198,11 @@ export function DocumentsView({
                 })}
           </div>
         </div>
-        {searchInput}
+        <p className="px-1 text-2xs text-muted/70">
+          {t("documents.ui.searchHint", {
+            defaultValue: "Search your documents from the chat below.",
+          })}
+        </p>
         <div className="mt-2">{scopeFilterStrip}</div>
 
         <div className="custom-scrollbar mt-2 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-0.5 py-0.5">
@@ -1324,7 +1278,11 @@ export function DocumentsView({
       className="flex shrink-0 flex-col gap-2 px-0 py-0 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
     >
       <div className="flex flex-col gap-2 md:flex-row md:items-center">
-        <div className="min-w-0 flex-1">{searchInput}</div>
+        <p className="min-w-0 flex-1 text-2xs text-muted/70">
+          {t("documents.ui.searchHint", {
+            defaultValue: "Search your documents from the chat below.",
+          })}
+        </p>
         {fileInputId ? (
           <label
             htmlFor={fileInputId}

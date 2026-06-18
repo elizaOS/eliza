@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -9,6 +10,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SkillInfo } from "../../api";
+import { getViewChatBinding } from "../../state/view-chat-binding";
 import { SkillsView } from "./SkillsView";
 
 // SkillsView reads all of its data + handlers from the app context (useApp).
@@ -147,8 +149,11 @@ describe("SkillsView", () => {
 
     render(<SkillsView />);
 
-    const search = screen.getByLabelText("skillsview.filterSkills");
-    fireEvent.change(search, { target: { value: "zzz-no-match" } });
+    // Search is driven by the floating chat composer now (SkillsView registers a
+    // view→chat binding); drive its onQuery the way the composer would.
+    act(() => {
+      getViewChatBinding()?.onQuery?.("zzz-no-match");
+    });
 
     expect(screen.queryByTestId("skill-row-skill-alpha")).toBeNull();
     expect(screen.getByTestId("skills-filter-empty")).toBeTruthy();

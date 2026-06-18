@@ -49,6 +49,9 @@ function makeController(
     transcript: "",
     send: vi.fn(),
     toggleRecording: vi.fn(),
+    handsFree: false,
+    toggleHandsFree: vi.fn(),
+    setDictationSink: vi.fn(),
     ...overrides,
   } as unknown as ShellController;
 }
@@ -337,11 +340,11 @@ describe("ContinuousChatOverlay", () => {
     );
   });
 
-  it("toggles recording when the mic is pressed", () => {
+  it("toggles hands-free conversation when the mic is tapped", () => {
     const controller = makeController();
     render(<ContinuousChatOverlay controller={controller} />);
     fireEvent.click(screen.getByLabelText("talk"));
-    expect(controller.toggleRecording).toHaveBeenCalled();
+    expect(controller.toggleHandsFree).toHaveBeenCalled();
   });
 
   it("shows a waking-up placeholder while booting (typing allowed)", () => {

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 import type { AgentSandbox, AgentSandboxBackup } from "../../db/repositories/agent-sandboxes";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
-import { cache } from "../cache/client";
+import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
 import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import { apiKeysService } from "./api-keys";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
@@ -224,8 +224,10 @@ describe("ElizaSandboxService shared runtime bridge", () => {
       agentSandboxesRepository,
       "findRunningSandbox",
     ).mockResolvedValue(sandbox);
-    const cacheGetSpy = spyOn(cache, "get").mockResolvedValue([]);
-    const cacheSetSpy = spyOn(cache, "set").mockResolvedValue(undefined);
+    const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
+    const historyUpsertSpy = spyOn(sharedRuntimeHistoryRepository, "upsert").mockResolvedValue(
+      undefined,
+    );
 
     try {
       const response = await runWithCloudBindings(
@@ -254,12 +256,12 @@ describe("ElizaSandboxService shared runtime bridge", () => {
           runtime: "shared",
         },
       });
-      expect(cacheGetSpy).toHaveBeenCalled();
-      expect(cacheSetSpy).not.toHaveBeenCalled();
+      expect(historyGetSpy).toHaveBeenCalled();
+      expect(historyUpsertSpy).not.toHaveBeenCalled();
     } finally {
       findRunningSandboxSpy.mockRestore();
-      cacheGetSpy.mockRestore();
-      cacheSetSpy.mockRestore();
+      historyGetSpy.mockRestore();
+      historyUpsertSpy.mockRestore();
     }
   });
 });

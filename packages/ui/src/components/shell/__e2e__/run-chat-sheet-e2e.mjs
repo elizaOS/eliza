@@ -515,9 +515,29 @@ try {
     assert((await p.getByTestId("chat-composer-mic").count()) === 0, "TYPING: mic hidden while a draft exists");
     assert((await variant(p)) === "open", "TYPING: composing pulls the sheet open");
     await snap(p, "state-typing-send");
-    await input.press("Enter");
-    await p.waitForTimeout(300);
-    assert((await input.inputValue()) === "", "SEND: composer clears after Enter");
+    // SEND-TAP: tapping the send button must keep the composer focused so the
+    // FIRST tap sends. Regression guard — previously the button stole focus, the
+    // textarea blurred, the keyboard retracted and the composer relayouted
+    // between pointerdown and click, so the first tap only dismissed the
+    // keyboard and a second tap was needed. A preventDefault on the send
+    // button's pointerdown keeps focus; Chromium still dispatches click.
+    const focusedTestId = () =>
+      p.evaluate(() => document.activeElement?.getAttribute("data-testid"));
+    await input.focus();
+    assert(
+      (await focusedTestId()) === "chat-composer-textarea",
+      "SEND-TAP: composer focused before send",
+    );
+    await p.getByTestId("chat-composer-action").click();
+    await p.waitForTimeout(200);
+    assert(
+      (await focusedTestId()) === "chat-composer-textarea",
+      "SEND-TAP: composer keeps focus after tapping send (keyboard stays up)",
+    );
+    assert(
+      (await input.inputValue()) === "",
+      "SEND-TAP: composer clears after tapping send",
+    );
     await p.close();
   }
 
@@ -842,8 +862,13 @@ assert(sink.errors.length === 0, `no uncaught page errors (${sink.errors.length}
 if (sink.errors.length) for (const e of sink.errors) console.error(`  ⚠ ${e}`);
 assert(errorLevel.length === 0, `no error-level console messages (${errorLevel.length})`);
 assert(
-  sink.logs.some((l) => l.includes("[fixture] toggleRecording") || l.includes("startRecording")),
-  "fixture logged a recording interaction",
+  sink.logs.some(
+    (l) =>
+      l.includes("[fixture] toggleHandsFree") ||
+      l.includes("[fixture] toggleRecording") ||
+      l.includes("startRecording"),
+  ),
+  "fixture logged a voice interaction (mic tap → hands-free / recording)",
 );
 
 console.log(`\nScreenshots (${shot}) written to ${outDir}`);

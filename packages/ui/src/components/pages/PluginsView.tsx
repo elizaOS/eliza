@@ -14,10 +14,10 @@ import { useLinkedSidebarSelection } from "../../hooks/useLinkedSidebarSelection
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { PageLayoutHeader } from "../../layouts/page-layout/page-layout-header";
 import { useApp } from "../../state";
+import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { openExternalUrl } from "../../utils";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
 import { PluginCard } from "./PluginCard";
 import {
   buildPluginListState,
@@ -76,6 +76,23 @@ function PluginListView({
     setState,
     t,
   } = useApp();
+
+  // The floating chat composer is this view's search box. While Plugins is the
+  // active view it takes over the composer (placeholder + live draft) and feeds
+  // each keystroke into the shared `pluginSearch` filter — there's no in-page
+  // search input.
+  const searchPlaceholder = t("pluginsview.SearchPlaceholder", {
+    defaultValue: "Search plugins…",
+  });
+  const handleSearchQuery = useCallback(
+    (value: string) => setState("pluginSearch", value),
+    [setState],
+  );
+  const chatBinding = useMemo(
+    () => ({ placeholder: searchPlaceholder, onQuery: handleSearchQuery }),
+    [searchPlaceholder, handleSearchQuery],
+  );
+  useRegisterViewChatBinding(chatBinding);
 
   const [pluginConfigs, setPluginConfigs] = useState<
     Record<string, Record<string, string>>
@@ -1284,18 +1301,11 @@ function PluginListView({
                 </span>
               </div>
 
-              <div className="mt-4 max-w-md">
-                <Input
-                  type="search"
-                  value={pluginSearch}
-                  onChange={(e) => setState("pluginSearch", e.target.value)}
-                  placeholder={t("pluginsview.SearchPlaceholder", {
-                    defaultValue: "Search plugins…",
-                  })}
-                  className="h-9 rounded-full border-border/50 bg-card/50 px-4 text-sm backdrop-blur-sm"
-                  data-testid="plugins-search"
-                />
-              </div>
+              <p className="mt-2 text-xs-tight text-muted">
+                {t("pluginsview.SearchHint", {
+                  defaultValue: "Type in the chat below to search plugins.",
+                })}
+              </p>
 
               {showSubgroupFilters && subgroupTags.length > 1 && (
                 <div

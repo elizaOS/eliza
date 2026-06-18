@@ -13,6 +13,7 @@ import { useAgentElement } from "../../agent-surface";
 import type { TriggerSummary } from "../../api/client";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
+import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { confirmDesktopAction } from "../../utils";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import { detectUiHostCapabilities } from "../../utils/host-capabilities";
@@ -22,7 +23,6 @@ import { WidgetHost } from "../../widgets/WidgetHost";
 import { PagePanel } from "../composites/page-panel";
 import { SidebarCollapsedActionButton } from "../composites/sidebar/sidebar-collapsed-rail";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarHeader } from "../composites/sidebar/sidebar-header";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
@@ -478,6 +478,14 @@ function HeartbeatsLayout() {
   const searchLabel = t("heartbeatsview.searchHeartbeats", {
     defaultValue: "Search heartbeats",
   });
+  // The floating chat composer is this view's search box. While Heartbeats is
+  // the active view it takes over the composer (placeholder + live draft) and
+  // feeds each keystroke into the `searchQuery` filter — no in-page search input.
+  const chatBinding = useMemo(
+    () => ({ placeholder: searchLabel, onQuery: setSearchQuery }),
+    [searchLabel],
+  );
+  useRegisterViewChatBinding(chatBinding);
   const noMatchingHeartbeatsLabel = t("heartbeatsview.noMatchingHeartbeats", {
     defaultValue: "No matching heartbeats",
   });
@@ -617,19 +625,6 @@ function HeartbeatsLayout() {
       expandButtonTestId="heartbeats-sidebar-expand-toggle"
       collapseButtonAriaLabel="Collapse heartbeats"
       expandButtonAriaLabel="Expand heartbeats"
-      header={
-        <SidebarHeader
-          search={{
-            value: searchQuery,
-            onChange: (event) => setSearchQuery(event.target.value),
-            onClear: () => setSearchQuery(""),
-            placeholder: searchLabel,
-            "aria-label": searchLabel,
-            autoComplete: "off",
-            spellCheck: false,
-          }}
-        />
-      }
       collapsedRailAction={
         <SidebarCollapsedActionButton
           aria-label={newHeartbeatLabel}

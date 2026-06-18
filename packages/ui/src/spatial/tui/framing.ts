@@ -45,8 +45,11 @@ export interface FramingReport {
 
 /** Strip ANSI SGR/OSC sequences, returning the visible glyph string. */
 export function stripAnsi(line: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI stripping
-  return line.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").replace(/\x1b\][^\x07]*\x07/g, "");
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: strips ANSI ESC (\x1b) CSI sequences
+  const csiPattern = /\x1b\[[0-9;?]*[A-Za-z]/g;
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: strips ANSI OSC (\x1b ... \x07) sequences
+  const oscPattern = /\x1b\][^\x07]*\x07/g;
+  return line.replace(csiPattern, "").replace(oscPattern, "");
 }
 
 /**

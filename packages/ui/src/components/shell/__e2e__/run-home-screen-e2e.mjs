@@ -102,15 +102,18 @@ try {
     (await mobile.getByText("Alex Rivera").count()) > 0,
     "message threads render",
   );
+  // The home pins the 4 default tiles on every platform; the AOSP fork adds the
+  // 4 native-OS surfaces (messages/phone/contacts/camera) for 8 total. With
+  // ?native set, all 8 are expected (see HomeScreen.tsx HOME_TILES).
   for (const id of [
+    "tutorial",
+    "help",
     "settings",
-    "orchestrator",
-    "workflows",
     "views",
-    "inbox",
     "messages",
     "phone",
     "contacts",
+    "camera",
   ]) {
     assert(
       await mobile.getByTestId(`home-tile-${id}`).isVisible(),

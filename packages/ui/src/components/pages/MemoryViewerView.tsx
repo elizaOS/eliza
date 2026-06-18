@@ -11,6 +11,7 @@ import {
   useCallback,
   useDeferredValue,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -29,6 +30,7 @@ import {
   type TranslationContextValue,
   useTranslation,
 } from "../../state/TranslationContext.hooks";
+import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { formatDateTime } from "../../utils/format";
 import { PagePanel } from "../composites/page-panel";
 import { MetaPill } from "../composites/page-panel/page-panel-header";
@@ -380,6 +382,21 @@ function MemoryBrowserPanel({
   const { t } = useTranslation();
   const [searchInput, setSearchInput] = useState("");
   const deferredSearch = useDeferredValue(searchInput);
+
+  // The floating chat IS the memory-text search box while Browse is open (and
+  // not scoped to a person — entity mode has no free-text search). Typing in the
+  // composer drives `searchInput`; the binding clears when the view unmounts.
+  const searchPlaceholder = t("memoryviewer.searchMemoryText", {
+    defaultValue: "Search memory text…",
+  });
+  const chatBinding = useMemo(
+    () =>
+      entityId
+        ? null
+        : { placeholder: searchPlaceholder, onQuery: setSearchInput },
+    [entityId, searchPlaceholder],
+  );
+  useRegisterViewChatBinding(chatBinding);
   // Cache key spans every fetch parameter so each filter/search/page combo
   // revisits instantly without colliding. Offset is appended per-call below.
   const browseKeyBase = entityId
@@ -449,22 +466,6 @@ function MemoryBrowserPanel({
 
   return (
     <div className="space-y-3" data-testid="memory-browser">
-      {!entityId ? (
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted/50" />
-          <input
-            type="text"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder={t("memoryviewer.searchMemoryText", {
-              defaultValue: "Search memory text…",
-            })}
-            className="h-9 w-full rounded-sm border border-border/32 bg-card/40 pl-9 pr-3 text-sm text-txt placeholder:text-muted/50 focus:border-accent/50 focus:outline-none"
-            data-testid="memory-browser-search"
-          />
-        </div>
-      ) : null}
-
       {loading && !result ? (
         <ListSkeleton rows={6} />
       ) : error ? (

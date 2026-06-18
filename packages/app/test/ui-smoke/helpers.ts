@@ -1812,6 +1812,41 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  // Slash-command catalog (chat composer) + custom-actions list — both are
+  // shell-level GETs on the chat/home surface. The booted zero-key smoke stack
+  // returns 501 (Not Implemented) for them, which the diagnostics guard treats
+  // as a failure. A fresh agent genuinely exposes only the built-in command set
+  // and no custom actions, so empty defaults match real zero-key behaviour.
+  await page.route("**/api/commands**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const surface = new URL(route.request().url()).searchParams.get("surface");
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        commands: [],
+        surface,
+        agentId: null,
+        generatedAt: SMOKE_GENERATED_AT,
+      }),
+    });
+  });
+
+  await page.route("**/api/custom-actions", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ actions: [] }),
+    });
+  });
+
   await page.route("**/api/first-run/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();

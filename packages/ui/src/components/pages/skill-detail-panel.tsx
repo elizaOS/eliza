@@ -10,6 +10,7 @@ import { useAgentElement } from "../../agent-surface";
 import type { SkillInfo } from "../../api";
 import { client } from "../../api";
 import { useApp } from "../../state";
+import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import {
   AdminCodeEditor,
   AdminDialogContent,
@@ -18,7 +19,6 @@ import {
 } from "../ui/admin-dialog";
 import { Button } from "../ui/button";
 import { Dialog, DialogDescription, DialogTitle } from "../ui/dialog";
-import { Input } from "../ui/input";
 import { InstallModal } from "./skill-marketplace";
 
 const BINANCE_SKILL_IDS = new Set([
@@ -289,6 +289,15 @@ export function SkillsModalView() {
   const [editingSkill, setEditingSkill] = useState<SkillInfo | null>(null);
   const [installModalOpen, setInstallModalOpen] = useState(false);
 
+  const searchPlaceholder = t("skillsview.SearchSkills", {
+    defaultValue: "Search skills...",
+  });
+  const chatBinding = useMemo(
+    () => ({ placeholder: searchPlaceholder, onQuery: setFilterText }),
+    [searchPlaceholder],
+  );
+  useRegisterViewChatBinding(chatBinding);
+
   useEffect(() => {
     void loadSkills();
   }, [loadSkills]);
@@ -346,18 +355,6 @@ export function SkillsModalView() {
         </div>
         <div className="plugins-game-list-search">
           <div className="plugins-game-list-search-row">
-            <Input
-              type="text"
-              placeholder={t("skillsview.SearchSkills", {
-                defaultValue: "Search skills...",
-              })}
-              aria-label={t("skillsview.SearchSkills", {
-                defaultValue: "Search skills",
-              })}
-              value={filterText}
-              onChange={(e) => setFilterText(e.target.value)}
-              className="plugins-game-search-input"
-            />
             <Button
               variant="default"
               size="sm"

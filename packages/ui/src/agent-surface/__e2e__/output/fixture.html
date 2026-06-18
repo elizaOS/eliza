@@ -7,7 +7,11 @@
   var __getProtoOf = Object.getPrototypeOf;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
   var __commonJS = (cb, mod) => function __require() {
-    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+    try {
+      return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+    } catch (e) {
+      throw mod = 0, e;
+    }
   };
   var __copyProps = (to, from, except, desc) => {
     if (from && typeof from === "object" || typeof from === "function") {
@@ -26,9 +30,9 @@
     mod
   ));
 
-  // ../../node_modules/.bun/react@19.2.5/node_modules/react/cjs/react.production.js
+  // node_modules/.bun/react@19.2.5/node_modules/react/cjs/react.production.js
   var require_react_production = __commonJS({
-    "../../node_modules/.bun/react@19.2.5/node_modules/react/cjs/react.production.js"(exports) {
+    "node_modules/.bun/react@19.2.5/node_modules/react/cjs/react.production.js"(exports) {
       "use strict";
       var REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element");
       var REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal");
@@ -467,9 +471,9 @@
     }
   });
 
-  // ../../node_modules/.bun/react@19.2.5/node_modules/react/index.js
+  // node_modules/.bun/react@19.2.5/node_modules/react/index.js
   var require_react = __commonJS({
-    "../../node_modules/.bun/react@19.2.5/node_modules/react/index.js"(exports, module) {
+    "node_modules/.bun/react@19.2.5/node_modules/react/index.js"(exports, module) {
       "use strict";
       if (true) {
         module.exports = require_react_production();
@@ -479,9 +483,9 @@
     }
   });
 
-  // ../../node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/cjs/scheduler.production.js
+  // node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/cjs/scheduler.production.js
   var require_scheduler_production = __commonJS({
-    "../../node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/cjs/scheduler.production.js"(exports) {
+    "node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/cjs/scheduler.production.js"(exports) {
       "use strict";
       function push(heap, node) {
         var index = heap.length;
@@ -752,9 +756,9 @@
     }
   });
 
-  // ../../node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/index.js
+  // node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/index.js
   var require_scheduler = __commonJS({
-    "../../node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/index.js"(exports, module) {
+    "node_modules/.bun/scheduler@0.27.0/node_modules/scheduler/index.js"(exports, module) {
       "use strict";
       if (true) {
         module.exports = require_scheduler_production();
@@ -764,9 +768,9 @@
     }
   });
 
-  // ../../node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom.production.js
+  // node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom.production.js
   var require_react_dom_production = __commonJS({
-    "../../node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom.production.js"(exports) {
+    "node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom.production.js"(exports) {
       "use strict";
       var React = require_react();
       function formatProdErrorMessage(code) {
@@ -913,9 +917,9 @@
     }
   });
 
-  // ../../node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/index.js
+  // node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/index.js
   var require_react_dom = __commonJS({
-    "../../node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/index.js"(exports, module) {
+    "node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/index.js"(exports, module) {
       "use strict";
       function checkDCE() {
         if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ === "undefined" || typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.checkDCE !== "function") {
@@ -939,9 +943,9 @@
     }
   });
 
-  // ../../node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom-client.production.js
+  // node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom-client.production.js
   var require_react_dom_client_production = __commonJS({
-    "../../node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom-client.production.js"(exports) {
+    "node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom-client.production.js"(exports) {
       "use strict";
       var Scheduler = require_scheduler();
       var React = require_react();
@@ -12680,9 +12684,9 @@
     }
   });
 
-  // ../../node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/client.js
+  // node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/client.js
   var require_client = __commonJS({
-    "../../node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/client.js"(exports, module) {
+    "node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/client.js"(exports, module) {
       "use strict";
       function checkDCE() {
         if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ === "undefined" || typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.checkDCE !== "function") {
@@ -12706,9 +12710,9 @@
     }
   });
 
-  // ../../node_modules/.bun/react@19.2.5/node_modules/react/cjs/react-jsx-runtime.production.js
+  // node_modules/.bun/react@19.2.5/node_modules/react/cjs/react-jsx-runtime.production.js
   var require_react_jsx_runtime_production = __commonJS({
-    "../../node_modules/.bun/react@19.2.5/node_modules/react/cjs/react-jsx-runtime.production.js"(exports) {
+    "node_modules/.bun/react@19.2.5/node_modules/react/cjs/react-jsx-runtime.production.js"(exports) {
       "use strict";
       var REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element");
       var REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment");
@@ -12736,9 +12740,9 @@
     }
   });
 
-  // ../../node_modules/.bun/react@19.2.5/node_modules/react/jsx-runtime.js
+  // node_modules/.bun/react@19.2.5/node_modules/react/jsx-runtime.js
   var require_jsx_runtime = __commonJS({
-    "../../node_modules/.bun/react@19.2.5/node_modules/react/jsx-runtime.js"(exports, module) {
+    "node_modules/.bun/react@19.2.5/node_modules/react/jsx-runtime.js"(exports, module) {
       "use strict";
       if (true) {
         module.exports = require_react_jsx_runtime_production();
@@ -12748,18 +12752,112 @@
     }
   });
 
-  // src/agent-surface/__e2e__/fixture.tsx
-  var import_react4 = __toESM(require_react(), 1);
+  // packages/ui/src/agent-surface/__e2e__/fixture.tsx
+  var import_react5 = __toESM(require_react(), 1);
   var import_client = __toESM(require_client(), 1);
 
-  // src/agent-surface/AgentElementOverlay.tsx
+  // packages/ui/src/agent-surface/AgentElementOverlay.tsx
   var import_react2 = __toESM(require_react(), 1);
   var import_react_dom = __toESM(require_react_dom(), 1);
 
-  // src/agent-surface/AgentSurfaceContext.tsx
+  // packages/ui/src/agent-surface/AgentSurfaceContext.hooks.ts
   var import_react = __toESM(require_react(), 1);
+  var AgentSurfaceContext = (0, import_react.createContext)(null);
+  function useAgentSurface() {
+    return (0, import_react.useContext)(AgentSurfaceContext);
+  }
 
-  // src/agent-surface/types.ts
+  // packages/ui/src/agent-surface/AgentElementOverlay.tsx
+  var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
+  var noopSubscribe = () => () => {
+  };
+  function AgentElementOverlay() {
+    const surface = useAgentSurface();
+    const registry = surface?.registry ?? null;
+    (0, import_react2.useSyncExternalStore)(
+      registry ? registry.subscribe : noopSubscribe,
+      registry ? registry.getVersion : () => 0,
+      () => 0
+    );
+    const [, setTick] = (0, import_react2.useState)(0);
+    const highlighting = registry?.isHighlighting() ?? false;
+    (0, import_react2.useEffect)(() => {
+      if (!highlighting || typeof window === "undefined") return;
+      const onChange = () => setTick((t) => t + 1);
+      window.addEventListener("scroll", onChange, true);
+      window.addEventListener("resize", onChange);
+      return () => {
+        window.removeEventListener("scroll", onChange, true);
+        window.removeEventListener("resize", onChange);
+      };
+    }, [highlighting]);
+    if (!registry || !highlighting || typeof document === "undefined")
+      return null;
+    const snapshot = registry.snapshot();
+    const visible = snapshot.elements.filter((e) => e.visible && e.bounds);
+    return (0, import_react_dom.createPortal)(
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "div",
+        {
+          "data-agent-overlay": true,
+          "aria-hidden": true,
+          style: {
+            position: "fixed",
+            inset: 0,
+            zIndex: 9e3,
+            pointerEvents: "none"
+          },
+          children: visible.map((element) => {
+            const b = element.bounds;
+            if (!b) return null;
+            return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "div",
+              {
+                "data-agent-indicator": element.id,
+                style: {
+                  position: "fixed",
+                  left: b.x,
+                  top: b.y,
+                  width: b.width,
+                  height: b.height,
+                  border: element.focused ? "2px solid var(--accent, #ff7300)" : "1px dashed var(--accent, #ff7300)",
+                  borderRadius: 6,
+                  boxShadow: element.focused ? "0 0 0 2px var(--accent-muted, rgba(255,115,0,0.35))" : "none",
+                  boxSizing: "border-box"
+                },
+                children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "span",
+                  {
+                    style: {
+                      position: "absolute",
+                      top: -16,
+                      left: 0,
+                      fontSize: 10,
+                      lineHeight: "14px",
+                      padding: "0 4px",
+                      borderRadius: 4,
+                      color: "var(--accent-foreground, #fff)",
+                      background: "var(--accent, #ff7300)",
+                      whiteSpace: "nowrap",
+                      fontFamily: "var(--font-mono, monospace)"
+                    },
+                    children: element.id
+                  }
+                )
+              },
+              element.id
+            );
+          })
+        }
+      ),
+      document.body
+    );
+  }
+
+  // packages/ui/src/agent-surface/AgentSurfaceContext.tsx
+  var import_react3 = __toESM(require_react(), 1);
+
+  // packages/ui/src/agent-surface/types.ts
   var FILLABLE_ROLES = /* @__PURE__ */ new Set([
     "text-input",
     "number-input",
@@ -12777,7 +12875,7 @@
     "card"
   ]);
 
-  // src/agent-surface/registry.ts
+  // packages/ui/src/agent-surface/registry.ts
   function isFillable(descriptor) {
     if (typeof descriptor.fillable === "boolean") return descriptor.fillable;
     return FILLABLE_ROLES.has(descriptor.role ?? "region");
@@ -13005,17 +13103,14 @@
     viewRegistries.delete(key(viewId, viewType));
   }
 
-  // src/agent-surface/AgentSurfaceContext.tsx
-  var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
-  var AgentSurfaceContext = (0, import_react.createContext)(
-    null
-  );
+  // packages/ui/src/agent-surface/AgentSurfaceContext.tsx
+  var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
   function AgentSurfaceProvider({
     viewId,
     viewType = "gui",
     children
   }) {
-    const valueRef = (0, import_react.useRef)(null);
+    const valueRef = (0, import_react3.useRef)(null);
     if (!valueRef.current || valueRef.current.viewId !== viewId || valueRef.current.viewType !== viewType) {
       valueRef.current = {
         registry: getOrCreateViewRegistry(viewId, viewType),
@@ -13023,104 +13118,14 @@
         viewType
       };
     }
-    (0, import_react.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       getOrCreateViewRegistry(viewId, viewType);
       return () => removeViewRegistry(viewId, viewType);
     }, [viewId, viewType]);
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AgentSurfaceContext.Provider, { value: valueRef.current, children });
-  }
-  function useAgentSurface() {
-    return (0, import_react.useContext)(AgentSurfaceContext);
+    return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(AgentSurfaceContext.Provider, { value: valueRef.current, children });
   }
 
-  // src/agent-surface/AgentElementOverlay.tsx
-  var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
-  var noopSubscribe = () => () => {
-  };
-  function AgentElementOverlay() {
-    const surface = useAgentSurface();
-    const registry = surface?.registry ?? null;
-    (0, import_react2.useSyncExternalStore)(
-      registry ? registry.subscribe : noopSubscribe,
-      registry ? registry.getVersion : () => 0,
-      () => 0
-    );
-    const [, setTick] = (0, import_react2.useState)(0);
-    const highlighting = registry?.isHighlighting() ?? false;
-    (0, import_react2.useEffect)(() => {
-      if (!highlighting || typeof window === "undefined") return;
-      const onChange = () => setTick((t) => t + 1);
-      window.addEventListener("scroll", onChange, true);
-      window.addEventListener("resize", onChange);
-      return () => {
-        window.removeEventListener("scroll", onChange, true);
-        window.removeEventListener("resize", onChange);
-      };
-    }, [highlighting]);
-    if (!registry || !highlighting || typeof document === "undefined")
-      return null;
-    const snapshot = registry.snapshot();
-    const visible = snapshot.elements.filter((e) => e.visible && e.bounds);
-    return (0, import_react_dom.createPortal)(
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-        "div",
-        {
-          "data-agent-overlay": true,
-          "aria-hidden": true,
-          style: {
-            position: "fixed",
-            inset: 0,
-            zIndex: 9e3,
-            pointerEvents: "none"
-          },
-          children: visible.map((element) => {
-            const b = element.bounds;
-            if (!b) return null;
-            return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-              "div",
-              {
-                "data-agent-indicator": element.id,
-                style: {
-                  position: "fixed",
-                  left: b.x,
-                  top: b.y,
-                  width: b.width,
-                  height: b.height,
-                  border: element.focused ? "2px solid var(--accent, #ff7300)" : "1px dashed var(--accent, #ff7300)",
-                  borderRadius: 6,
-                  boxShadow: element.focused ? "0 0 0 2px var(--accent-muted, rgba(255,115,0,0.35))" : "none",
-                  boxSizing: "border-box"
-                },
-                children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                  "span",
-                  {
-                    style: {
-                      position: "absolute",
-                      top: -16,
-                      left: 0,
-                      fontSize: 10,
-                      lineHeight: "14px",
-                      padding: "0 4px",
-                      borderRadius: 4,
-                      color: "var(--accent-foreground, #fff)",
-                      background: "var(--accent, #ff7300)",
-                      whiteSpace: "nowrap",
-                      fontFamily: "var(--font-mono, monospace)"
-                    },
-                    children: element.id
-                  }
-                )
-              },
-              element.id
-            );
-          })
-        }
-      ),
-      document.body
-    );
-  }
-
-  // src/agent-surface/capabilities.ts
+  // packages/ui/src/agent-surface/capabilities.ts
   function asString(value) {
     return typeof value === "string" ? value : null;
   }
@@ -13185,7 +13190,7 @@
     }
   }
 
-  // ../../node_modules/.bun/clsx@2.1.1/node_modules/clsx/dist/clsx.mjs
+  // node_modules/.bun/clsx@2.1.1/node_modules/clsx/dist/clsx.mjs
   function r(e) {
     var t, f, n = "";
     if ("string" == typeof e || "number" == typeof e) n += e;
@@ -13200,7 +13205,7 @@
     return n;
   }
 
-  // ../../node_modules/.bun/tailwind-merge@3.4.0/node_modules/tailwind-merge/dist/bundle-mjs.mjs
+  // node_modules/.bun/tailwind-merge@3.4.0/node_modules/tailwind-merge/dist/bundle-mjs.mjs
   var concatArrays = (array1, array2) => {
     const combinedArray = new Array(array1.length + array2.length);
     for (let i = 0; i < array1.length; i++) {
@@ -16209,20 +16214,20 @@
   };
   var twMerge = /* @__PURE__ */ createTailwindMerge(getDefaultConfig);
 
-  // src/lib/utils.ts
+  // packages/ui/src/lib/utils.ts
   function cn(...inputs) {
     return twMerge(clsx(inputs));
   }
 
-  // src/agent-surface/useAgentElement.ts
-  var import_react3 = __toESM(require_react(), 1);
+  // packages/ui/src/agent-surface/useAgentElement.ts
+  var import_react4 = __toESM(require_react(), 1);
   function useAgentElement(descriptor) {
     const surface = useAgentSurface();
     const registry = surface?.registry ?? null;
-    const elRef = (0, import_react3.useRef)(null);
-    const latest = (0, import_react3.useRef)(descriptor);
+    const elRef = (0, import_react4.useRef)(null);
+    const latest = (0, import_react4.useRef)(descriptor);
     latest.current = descriptor;
-    const stableRef = (0, import_react3.useRef)(null);
+    const stableRef = (0, import_react4.useRef)(null);
     if (!stableRef.current || stableRef.current.id !== descriptor.id) {
       const stable = {
         id: descriptor.id,
@@ -16265,12 +16270,12 @@
       }
       stableRef.current = stable;
     }
-    (0, import_react3.useEffect)(() => {
+    (0, import_react4.useEffect)(() => {
       const stable = stableRef.current;
       if (!registry || !stable) return;
       return registry.register(stable, () => elRef.current);
     }, [registry]);
-    (0, import_react3.useEffect)(() => {
+    (0, import_react4.useEffect)(() => {
       registry?.touch();
     }, [registry, descriptor.label, descriptor.status, descriptor.role]);
     return {
@@ -16284,7 +16289,7 @@
     };
   }
 
-  // src/agent-surface/components.tsx
+  // packages/ui/src/agent-surface/components.tsx
   var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
   function AgentButton({
     agentId,
@@ -16360,7 +16365,7 @@
     );
   }
 
-  // src/agent-surface/__e2e__/fixture.tsx
+  // packages/ui/src/agent-surface/__e2e__/fixture.tsx
   var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
   var VIEW = "e2e";
   function StatusPill({ label, on }) {
@@ -16387,8 +16392,8 @@
     );
   }
   function ViewBody() {
-    const [name, setName] = (0, import_react4.useState)("");
-    const [count, setCount] = (0, import_react4.useState)(0);
+    const [name, setName] = (0, import_react5.useState)("");
+    const [count, setCount] = (0, import_react5.useState)(0);
     return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 14 }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("h2", { style: { margin: 0, fontSize: 18 }, children: "Demo view" }),
       /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "flex", gap: 8, alignItems: "center" }, children: [
