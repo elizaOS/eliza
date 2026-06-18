@@ -11,6 +11,9 @@ import android.webkit.WebView;
 
 import androidx.core.content.ContextCompat;
 import androidx.core.splashscreen.SplashScreen;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -92,6 +95,13 @@ public class MainActivity extends BridgeActivity {
         // every video / voice-calling app (Snapchat, YouTube, Zoom, Meet).
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
+        // Hide the bottom system navigation bar (the white gesture pill) for a
+        // clean, full-bleed agent home — iOS-style. We hide ONLY the navigation
+        // bars, never the status bar (the system clock/battery stay). Transient-
+        // by-swipe so the user can still reveal it with an edge swipe; re-applied
+        // in onWindowFocusChanged so it stays hidden after dialogs / resume.
+        applyImmersiveNavigationBar();
+
         if (getBridge() != null && getBridge().getWebView() != null) {
             WebSettings settings = getBridge().getWebView().getSettings();
             settings.setMixedContentMode(resolveMixedContentMode());
@@ -128,6 +138,38 @@ public class MainActivity extends BridgeActivity {
         }
 
         ElizaWorkScheduler.enqueuePeriodic(getApplicationContext());
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        // The system restores the nav bar after dialogs / resume; re-hide it
+        // whenever we regain focus so the full-bleed home stays clean.
+        if (hasFocus) {
+            applyImmersiveNavigationBar();
+        }
+    }
+
+    /**
+     * Hide the bottom navigation bar (gesture pill) while keeping the status
+     * bar. Uses the AndroidX controller so it is correct across API levels;
+     * transient-by-swipe so the bar is still reachable.
+     */
+    private void applyImmersiveNavigationBar() {
+        try {
+            WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+            WindowInsetsControllerCompat controller =
+                WindowCompat.getInsetsController(
+                    getWindow(), getWindow().getDecorView());
+            if (controller != null) {
+                controller.hide(WindowInsetsCompat.Type.navigationBars());
+                controller.setSystemBarsBehavior(
+                    WindowInsetsControllerCompat
+                        .BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to apply immersive navigation bar", e);
+        }
     }
 
     private static int resolveMixedContentMode() {
