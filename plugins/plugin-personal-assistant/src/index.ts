@@ -1,7 +1,24 @@
 export {
+  buildSelfControlBlockPolicy,
+  formatWebsiteList,
+  getAppBlockerStatus,
+  getCachedSelfControlStatus,
+  getSelfControlPluginConfig,
+  isWebsiteBlockedByPolicy,
+  normalizeWebsiteTargets,
+  reconcileSelfControlBlockState,
+  resetSelfControlStatusCache,
+  resolveSelfControlElevationPromptMethod,
+  resolveSelfControlHostsFilePath,
+  type SelfControlBlockMatchMode,
+  type SelfControlBlockMetadata,
+  type SelfControlBlockPolicy,
+} from "@elizaos/plugin-blocker";
+export {
   handleTravelProviderRelayRoute,
   type TravelProviderRelayRouteState,
 } from "@elizaos/plugin-elizacloud/routes/travel-provider-relay-routes";
+export { detectRemoteDesktopBackend } from "@elizaos/plugin-remote-desktop";
 // External consumers that still import `websiteBlockAction` get the canonical
 // BLOCK umbrella.
 export {
@@ -28,7 +45,6 @@ export { remoteDesktopAction } from "./actions/remote-desktop.js";
 export { resolveRequestAction } from "./actions/resolve-request.js";
 export { voiceCallAction } from "./actions/voice-call.js";
 export * from "./api/client-lifeops.js";
-export { getAppBlockerStatus } from "@elizaos/plugin-blocker";
 export * from "./client.js";
 export * from "./inbox/types.js";
 export {
@@ -38,7 +54,6 @@ export {
 } from "./lifeops/approval-queue.js";
 export * from "./lifeops/index.js";
 export * from "./lifeops/messaging/index.js";
-export { detectRemoteDesktopBackend } from "@elizaos/plugin-remote-desktop";
 export { LifeOpsRepository } from "./lifeops/repository.js";
 export { LifeOpsService, LifeOpsServiceError } from "./lifeops/service.js";
 export * from "./platform/index.js";
@@ -47,7 +62,6 @@ export type {
   WebsiteBlockerRouteContext,
 } from "./plugin.js";
 export {
-  personalAssistantPlugin,
   BrowserBridgePluginService,
   browserBridgeProvider,
   ensureLifeOpsSchedulerTask,
@@ -60,6 +74,7 @@ export {
   LIFEOPS_TASK_NAME,
   LIFEOPS_TASK_TAGS,
   lifeOpsProvider,
+  personalAssistantPlugin,
   registerLifeOpsTaskWorker,
   resolveLifeOpsTaskIntervalMs,
 } from "./plugin.js";
@@ -78,21 +93,6 @@ export type {
 } from "./types/index.js";
 export * from "./types/index.js";
 export * from "./types/website-blocker-settings-card.js";
-export {
-  buildSelfControlBlockPolicy,
-  formatWebsiteList,
-  getCachedSelfControlStatus,
-  getSelfControlPluginConfig,
-  isWebsiteBlockedByPolicy,
-  normalizeWebsiteTargets,
-  reconcileSelfControlBlockState,
-  resetSelfControlStatusCache,
-  resolveSelfControlElevationPromptMethod,
-  resolveSelfControlHostsFilePath,
-  type SelfControlBlockMatchMode,
-  type SelfControlBlockMetadata,
-  type SelfControlBlockPolicy,
-} from "@elizaos/plugin-blocker";
 export type {
   NativeWebsiteBlockerBackend,
   SelfControlBlockRequest,
@@ -124,3 +124,14 @@ export {
   WebsiteBlockerService,
   websiteBlockerProvider,
 } from "./website-blocker/public.js";
+
+// In a terminal host (the Node agent, no DOM), register the LifeOps view so it
+// renders inline in the terminal. Lazy + DOM-guarded so the terminal engine
+// stays out of browser/mobile bundles.
+if (typeof window === "undefined") {
+  void import("./register-terminal-view.js")
+    .then((m) => m.registerLifeOpsTerminalView())
+    .catch(() => {
+      // Terminal rendering is best-effort; never block plugin load.
+    });
+}

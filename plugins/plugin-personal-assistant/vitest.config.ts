@@ -131,6 +131,27 @@ const telegramSessionsEntry = path.join(
   "index.js",
 );
 const pluginHealthSrc = path.join(elizaRoot, "plugins", "plugin-health", "src");
+// The tri-modal spatial view framework (`@elizaos/ui/spatial`) is browser-safe
+// and self-contained; the LifeOps spatial-view test needs the REAL renderer
+// (not the `@elizaos/ui` stub) to exercise the GUI/XR/TUI surfaces. Anchor those
+// two subpaths to source ahead of the broad `@elizaos/ui/(.+)` stub alias below.
+const uiSpatialSrc = path.join(
+  elizaRoot,
+  "packages",
+  "ui",
+  "src",
+  "spatial",
+  "index.ts",
+);
+const uiSpatialTuiSrc = path.join(
+  elizaRoot,
+  "packages",
+  "ui",
+  "src",
+  "spatial",
+  "tui",
+  "index.ts",
+);
 
 const defaultUnitExcludes = [
   "dist/**",
@@ -212,6 +233,10 @@ export default defineConfig({
         find: new RegExp(`^/@fs${escapedAgentSourceRoot}/(.+)\\.js$`),
         replacement: `${agentSourceRoot}/$1.ts`,
       },
+      // Real spatial renderer for the tri-modal view test. These must precede
+      // the broad `@elizaos/ui/(.+)` stub alias so they win the match.
+      { find: /^@elizaos\/ui\/spatial\/tui$/, replacement: uiSpatialTuiSrc },
+      { find: /^@elizaos\/ui\/spatial$/, replacement: uiSpatialSrc },
       {
         find: /^@elizaos\/ui\/(.+)$/,
         replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),

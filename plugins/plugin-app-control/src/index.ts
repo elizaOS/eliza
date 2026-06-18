@@ -79,6 +79,17 @@ export type {
 } from "./types.js";
 export { appAction, availableAppsProvider, createAppAction };
 
+// In a terminal host (the Node agent, no DOM), register the views-manager view
+// so it renders inline in the terminal. Lazy + DOM-guarded so the terminal
+// engine stays out of browser/mobile bundles.
+if (typeof window === "undefined") {
+	void import("./register-terminal-view.js")
+		.then((m) => m.registerViewManagerTerminalView())
+		.catch(() => {
+			// Terminal rendering is best-effort; never block plugin load.
+		});
+}
+
 export const appControlPlugin: Plugin = {
 	name: "@elizaos/plugin-app-control",
 	description:

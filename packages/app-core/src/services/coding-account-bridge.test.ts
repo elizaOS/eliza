@@ -109,6 +109,14 @@ describe("coding-account-bridge", () => {
     expect(authJson.auth_mode).toBe("chatgpt");
     // id_token must be present or codex-acp fails "Authentication required".
     expect(authJson.tokens.id_token).toBe("codex-id-token-1");
+    // A minimal config.toml with a model — without it codex-acp falls back to a
+    // default model ChatGPT-account auth rejects. (Live-verified: with this the
+    // codex sub-agent built a file.)
+    const configToml = readFileSync(
+      path.join(codexHome as string, "config.toml"),
+      "utf-8",
+    );
+    expect(configToml).toMatch(/^model = ".+"/m);
   });
 
   it("rotates opencode across least-used cerebras-api accounts → CEREBRAS_API_KEY", async () => {

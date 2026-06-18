@@ -66,6 +66,17 @@ const feedPlugin: Plugin = {
   ],
 };
 
+// In a terminal host (the Node agent, no DOM), register the Feed view so it
+// renders inline in the terminal. Lazy + DOM-guarded so the terminal engine
+// stays out of browser/mobile bundles.
+if (typeof window === "undefined") {
+  void import("./register-terminal-view.js")
+    .then((m) => m.registerFeedTerminalView())
+    .catch(() => {
+      // Terminal rendering is best-effort; never block plugin load.
+    });
+}
+
 export default feedPlugin;
 export * from "./routes.js";
 export * from "./ui/feed-data.js";
