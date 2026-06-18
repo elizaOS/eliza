@@ -11,8 +11,18 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import { Preferences } from "@capacitor/preferences";
 import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../first-run/mobile-runtime-mode";
+
+/**
+ * Lazy-load @capacitor/preferences on demand. Keeping it out of the static
+ * module graph means server consumers that pull in the @elizaos/ui barrel (e.g.
+ * plugin-inbox in the Node agent image) don't crash resolving a native-only,
+ * mobile-only devDependency. Only ever invoked behind an `isNativePlatform()`
+ * guard.
+ */
+function loadPreferences() {
+  return import("@capacitor/preferences").then((m) => m.Preferences);
+}
 
 function isNativePlatform(): boolean {
   try {
@@ -67,6 +77,7 @@ async function readPreferenceWithTimeout(key: string): Promise<string | null> {
     const timeout = new Promise<null>((resolve) => {
       timeoutId = setTimeout(() => resolve(null), PREFERENCE_READ_TIMEOUT_MS);
     });
+    const Preferences = await loadPreferences();
     const result = await Promise.race([Preferences.get({ key }), timeout]);
     return result?.value ?? null;
   } catch {
@@ -146,7 +157,9 @@ function setupStorageProxy(): void {
       // Fire and forget on a later task. Some native bridge calls can stall
       // during early WebView startup; localStorage writes must stay sync-fast.
       setTimeout(() => {
-        Preferences.set({ key, value }).catch(() => {});
+        loadPreferences()
+          .then((Preferences) => Preferences.set({ key, value }))
+          .catch(() => {});
       }, 0);
     }
   };
@@ -167,7 +180,9 @@ function setupStorageProxy(): void {
     if (SYNCED_KEYS.has(key)) {
       preferencesCache.delete(key);
       setTimeout(() => {
-        Preferences.remove({ key }).catch(() => {});
+        loadPreferences()
+          .then((Preferences) => Preferences.remove({ key }))
+          .catch(() => {});
       }, 0);
     }
   };
@@ -180,6 +195,7 @@ function setupStorageProxy(): void {
  */
 export async function getStorageValue(key: string): Promise<string | null> {
   if (isNativePlatform() && SYNCED_KEYS.has(key)) {
+    const Preferences = await loadPreferences();
     const result = await Preferences.get({ key });
     return result.value;
   }
@@ -196,6 +212,7 @@ export async function setStorageValue(
   window.localStorage.setItem(key, value);
 
   if (isNativePlatform() && SYNCED_KEYS.has(key)) {
+    const Preferences = await loadPreferences();
     await Preferences.set({ key, value });
   }
 }
@@ -207,6 +224,7 @@ export async function removeStorageValue(key: string): Promise<void> {
   window.localStorage.removeItem(key);
 
   if (isNativePlatform() && SYNCED_KEYS.has(key)) {
+    const Preferences = await loadPreferences();
     await Preferences.remove({ key });
   }
 }

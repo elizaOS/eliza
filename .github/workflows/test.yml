@@ -173,6 +173,13 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
+      # @elizaos/tui first: the packages/ui spatial-view tests
+      # (src/spatial/__tests__/*) import @elizaos/ui/spatial/tui, whose terminal
+      # renderer externalizes @elizaos/tui — without its dist, vitest fails to
+      # resolve the package and the test files load "0 test".
+      - name: Build @elizaos/tui for spatial-view tests
+        run: bun run --cwd packages/tui build
+
       - name: Run client tests
         run: bun run test:client
 
