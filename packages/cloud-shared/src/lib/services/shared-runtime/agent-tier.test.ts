@@ -1,11 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import {
-  type AgentTier,
-  getAgentTier,
-  isSharedEligible,
-  tierProvisionsEagerly,
-  tierRequiresContainer,
-} from "./agent-tier";
+import { getAgentTier, tierProvisionsEagerly } from "./agent-tier";
 import { runSharedAgentTurn } from "./run-shared-agent-turn";
 
 describe("getAgentTier", () => {
@@ -39,22 +33,6 @@ describe("getAgentTier", () => {
 });
 
 describe("tier helpers", () => {
-  it("isSharedEligible is true only for the shared tier", () => {
-    expect(isSharedEligible({})).toBe(true);
-    expect(isSharedEligible({ alwaysOn: true })).toBe(false);
-    expect(isSharedEligible({ dockerImage: "x:1" })).toBe(false);
-  });
-
-  it("tierRequiresContainer is false only for shared", () => {
-    const cases: Array<[AgentTier, boolean]> = [
-      ["shared", false],
-      ["dedicated-lazy", true],
-      ["dedicated-always", true],
-      ["custom", true],
-    ];
-    for (const [tier, expected] of cases) expect(tierRequiresContainer(tier)).toBe(expected);
-  });
-
   it("tierProvisionsEagerly only for always-on + custom", () => {
     expect(tierProvisionsEagerly("shared")).toBe(false);
     expect(tierProvisionsEagerly("dedicated-lazy")).toBe(false);

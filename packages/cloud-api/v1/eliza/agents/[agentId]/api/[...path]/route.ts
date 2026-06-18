@@ -1,7 +1,6 @@
 import { type Context, Hono } from "hono";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
+import { resolveSharedAgent } from "@/lib/services/shared-runtime/resolve-shared-agent";
 import {
   sharedRestAuthMe,
   sharedRestCharacter,
@@ -57,30 +56,6 @@ function shellPath(c: Context<AppEnv>): string {
     .split("/")
     .filter((s) => s.length > 0)
     .join("/");
-}
-
-async function resolveSharedAgent(
-  c: Context<AppEnv>,
-): Promise<
-  | { error: string; status: 400 | 404 }
-  | { agentId: string; agentName: string; orgId: string }
-> {
-  const user = await requireUserOrApiKeyWithOrg(c);
-  const agentId = c.req.param("agentId");
-  if (!agentId) return { error: "Missing agent id", status: 400 };
-  const agent = await agentSandboxesRepository.findByIdAndOrg(
-    agentId,
-    user.organization_id,
-  );
-  if (!agent) return { error: "Agent not found", status: 404 };
-  if (agent.execution_tier !== "shared") {
-    return { error: "Not a shared-runtime agent", status: 404 };
-  }
-  return {
-    agentId,
-    agentName: agent.agent_name ?? "Eliza",
-    orgId: user.organization_id,
-  };
 }
 
 app.options("/", () => handleCorsOptions(CORS_METHODS));
