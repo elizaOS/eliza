@@ -27,7 +27,8 @@ function serializeForm(block: FormInteraction): string {
 
 function serializeChoice(block: ChoiceInteraction): string {
 	const lines = block.options.map((o) => `${o.value}=${o.label}`).join("\n");
-	return `[CHOICE:${block.scope} id=${block.id}]\n${lines}\n[/CHOICE]`;
+	const flags = block.allowCustom ? " allow_custom" : "";
+	return `[CHOICE:${block.scope} id=${block.id}${flags}]\n${lines}\n[/CHOICE]`;
 }
 
 function serializeFollowups(block: FollowupsInteraction): string {

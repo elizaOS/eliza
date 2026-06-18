@@ -7,8 +7,10 @@
 
 import type { ChoiceOption } from "./widgets/ChoiceWidget";
 
+// Header attributes (`id=…`, `allow_custom`) are captured as a single string in
+// group 2 and parsed below, so they can appear in any order.
 export const CHOICE_RE =
-  /\[CHOICE:([\w-]+)(?:\s+id=(\S+))?\]\n([\s\S]*?)\n\[\/CHOICE\]/g;
+  /\[CHOICE:([\w-]+)([^\]]*)\]\n([\s\S]*?)\n\[\/CHOICE\]/g;
 
 export function generateChoiceId(): string {
   if (
@@ -41,6 +43,8 @@ export interface ChoiceMatch {
   id: string;
   scope: string;
   options: ChoiceOption[];
+  /** `allow_custom` flag — render an "Other…" free-text affordance. */
+  allowCustom: boolean;
 }
 
 /** Find every CHOICE block in `text` and return their character regions. */
@@ -50,7 +54,10 @@ export function findChoiceRegions(text: string): ChoiceMatch[] {
   let m: RegExpExecArray | null = CHOICE_RE.exec(text);
   while (m !== null) {
     const scope = m[1];
-    const id = m[2] && m[2].length > 0 ? m[2] : generateChoiceId();
+    const attrs = m[2] ?? "";
+    const idMatch = attrs.match(/\bid=(\S+)/);
+    const id = idMatch?.[1] ?? generateChoiceId();
+    const allowCustom = /\ballow_custom\b/.test(attrs);
     const options = parseChoiceBody(m[3]);
     if (options.length > 0) {
       results.push({
@@ -59,6 +66,7 @@ export function findChoiceRegions(text: string): ChoiceMatch[] {
         id,
         scope,
         options,
+        allowCustom,
       });
     }
     m = CHOICE_RE.exec(text);

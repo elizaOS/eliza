@@ -32,8 +32,8 @@ export const MAX_FORM_FIELDS = 20;
 export const MAX_FOLLOWUPS = 4;
 export const MAX_TASK_TITLE_LEN = 200;
 
-const CHOICE_RE =
-	/\[CHOICE:([\w-]+)(?:\s+id=(\S+))?\]\n([\s\S]*?)\n\[\/CHOICE\]/g;
+// Group 2 captures the header attributes (`id=…`, `allow_custom`) in any order.
+const CHOICE_RE = /\[CHOICE:([\w-]+)([^\]]*)\]\n([\s\S]*?)\n\[\/CHOICE\]/g;
 const FOLLOWUPS_RE = /\[FOLLOWUPS(?:\s+id=(\S+))?\]\n([\s\S]*?)\n\[\/FOLLOWUPS\]/g;
 const FORM_RE = /\[FORM\]\n([\s\S]*?)\n\[\/FORM\]/g;
 const TASK_RE = /\[TASK:([a-f0-9-]{8,64})\]([\s\S]*?)\[\/TASK\]/g;
@@ -187,12 +187,11 @@ export function findInteractionRegions(text: string): InteractionRegion[] {
 		(m): ChoiceInteraction | null => {
 			const options = parseOptionLines(m[3]);
 			if (options.length === 0) return null;
-			return {
-				kind: "choice",
-				id: m[2] || randomId("choice"),
-				scope: m[1],
-				options,
-			};
+			const attrs = m[2] ?? "";
+			const id = attrs.match(/\bid=(\S+)/)?.[1] ?? randomId("choice");
+			const block: ChoiceInteraction = { kind: "choice", id, scope: m[1], options };
+			if (/\ballow_custom\b/.test(attrs)) block.allowCustom = true;
+			return block;
 		},
 		regions,
 	);

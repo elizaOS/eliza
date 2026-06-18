@@ -36,6 +36,15 @@ describe("parse", () => {
 		expect(cleanedText).toBe("Pick one:");
 	});
 
+	it("parses the allow_custom flag and round-trips it", () => {
+		const { blocks } = parseInteractionBlocks(
+			"[CHOICE:approve id=abc allow_custom]\nyes=Yes\n[/CHOICE]",
+		);
+		expect((blocks[0] as ChoiceInteraction).allowCustom).toBe(true);
+		const rt = parseInteractionBlocks(serializeInteractionBlock(blocks[0]));
+		expect((rt.blocks[0] as ChoiceInteraction).allowCustom).toBe(true);
+	});
+
 	it("parses a form block from JSON and caps fields", () => {
 		const fields = Array.from({ length: 25 }, (_, i) => ({ name: `f${i}`, type: "text" }));
 		const text = `[FORM]\n${JSON.stringify({ title: "Login", fields })}\n[/FORM]`;
