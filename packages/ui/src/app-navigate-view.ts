@@ -20,6 +20,69 @@ export type ActiveViewLayout = {
   placement?: string;
 };
 
+// Cross-view phone-number handoff.
+//
+// `NavigateViewDetail` (and `createNavigateViewHandler`) route only by view
+// id/path — there is no payload channel that reaches a *mounted* target view.
+// So when one in-app surface wants to open the Phone or Messages view
+// pre-seeded with a number (e.g. a Contacts "Call"/"Message" control, or a
+// phone-recent row), we stash the number here before dispatching the navigate
+// event, and the target view consumes it on mount/focus. The handoff is
+// single-shot: each `consume*` clears the value so a later plain navigation to
+// that view does not re-seed a stale number.
+
+/** Strip whitespace/separators, keeping a leading + and digits. */
+function normalizePhoneNumber(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return "";
+  const leadingPlus = trimmed.startsWith("+") ? "+" : "";
+  return `${leadingPlus}${trimmed.replace(/[^0-9]/g, "")}`;
+}
+
+let pendingPhoneNumber: string | null = null;
+let pendingMessageRecipient: string | null = null;
+
+export function consumePendingPhoneNumber(): string | null {
+  const number = pendingPhoneNumber;
+  pendingPhoneNumber = null;
+  return number;
+}
+
+export function consumePendingMessageRecipient(): string | null {
+  const address = pendingMessageRecipient;
+  pendingMessageRecipient = null;
+  return address;
+}
+
+/**
+ * Open the Phone view via the navigation bus, pre-seeding the dialer with
+ * `number`. Used by Contacts "Call" controls and phone-recent rows.
+ */
+export function navigateToPhoneWithNumber(number: string): void {
+  if (typeof window === "undefined") return;
+  pendingPhoneNumber = normalizePhoneNumber(number) || null;
+  window.dispatchEvent(
+    new CustomEvent("eliza:navigate:view", {
+      detail: { viewId: "phone", viewPath: "/phone" },
+    }),
+  );
+}
+
+/**
+ * Open the Messages view via the navigation bus, pre-seeding the composer "To"
+ * field with `address`. Used by Contacts "Message" controls.
+ */
+export function navigateToMessagesWithNumber(address: string): void {
+  if (typeof window === "undefined") return;
+  const trimmed = address.trim();
+  pendingMessageRecipient = trimmed || null;
+  window.dispatchEvent(
+    new CustomEvent("eliza:navigate:view", {
+      detail: { viewId: "messages", viewPath: "/messages" },
+    }),
+  );
+}
+
 export type DesktopTabOpen = (
   view: ViewRegistryEntry,
   options?: { pinned?: boolean },

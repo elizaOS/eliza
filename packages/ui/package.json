@@ -101,6 +101,11 @@
       "import": "./dist/components/ui/input.js",
       "default": "./dist/components/ui/input.js"
     },
+    "./app-navigate-view": {
+      "types": "./dist/app-navigate-view.d.ts",
+      "import": "./dist/app-navigate-view.js",
+      "default": "./dist/app-navigate-view.js"
+    },
     "./api/client-types-cloud": "./dist/api/client-types-cloud.js",
     "./components/character/CharacterEditor": "./dist/components/character/CharacterEditor.js",
     "./components/chat/widgets/types": "./dist/components/chat/widgets/types.js",

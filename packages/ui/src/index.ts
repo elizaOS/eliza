@@ -38,6 +38,7 @@ export type {
 export * from "./api";
 export * from "./api/android-native-agent-transport";
 export * from "./api/ios-local-agent-transport";
+export * from "./app-navigate-view";
 export * from "./app-shell-components";
 export * from "./app-shell-registry";
 export { registerAppShellPage } from "./app-shell-registry";

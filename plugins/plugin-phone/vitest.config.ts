@@ -46,6 +46,10 @@ export default defineConfig({
         replacement: resolve(rootDir, "test/stubs/ui.tsx"),
       },
       {
+        find: /^@elizaos\/ui\/app-navigate-view$/,
+        replacement: resolve(rootDir, "test/stubs/ui.tsx"),
+      },
+      {
         find: /^@elizaos\/capacitor-phone$/,
         replacement: resolve(
           rootDir,

@@ -160,7 +160,7 @@ describe("ContactsAppView — search", () => {
 });
 
 describe("ContactsAppView — list → detail navigation", () => {
-  it("opens the detail panel with tel:/mailto: links, deduped phones, starred badge, and the read-only note", async () => {
+  it("opens the detail panel with in-app Call/Text controls, mailto: email, deduped phones, starred badge, and the read-only note", async () => {
     await renderView();
 
     fireEvent.click(screen.getByText("Ada Lovelace"));
@@ -174,15 +174,17 @@ describe("ContactsAppView — list → detail navigation", () => {
       screen.getByRole("heading", { level: 2, name: "Ada Lovelace" }),
     ).toBeTruthy();
 
-    // Phone numbers render as tel: anchors; the duplicate "+15550100" collapses
-    // to a single entry (dedupePreservingOrder).
-    const telLinks = screen
-      .getAllByRole("link")
-      .filter((a) => a.getAttribute("href")?.startsWith("tel:"));
-    const telHrefs = telLinks.map((a) => a.getAttribute("href"));
-    expect(telHrefs).toEqual(["tel:+15550100", "tel:+15559999"]);
+    // Phone numbers no longer use a tel: OS handoff — each renders the number
+    // text plus in-app "Call" and "Text" controls. The duplicate "+15550100"
+    // collapses to a single entry (dedupePreservingOrder), so two phone rows →
+    // two Call + two Text controls.
+    expect(screen.queryByRole("link", { name: /tel:/ })).toBeNull();
+    expect(screen.getByText("+15550100")).toBeTruthy();
+    expect(screen.getByText("+15559999")).toBeTruthy();
+    expect(screen.getAllByTestId("contacts-detail-call")).toHaveLength(2);
+    expect(screen.getAllByTestId("contacts-detail-text")).toHaveLength(2);
 
-    // Email renders as a mailto: anchor (also deduped — two identical entries).
+    // Email keeps the mailto: anchor (also deduped — two identical entries).
     const mailLinks = screen
       .getAllByRole("link")
       .filter((a) => a.getAttribute("href")?.startsWith("mailto:"));
@@ -201,16 +203,32 @@ describe("ContactsAppView — list → detail navigation", () => {
     ).toBeTruthy();
   });
 
+  it("Call/Text controls navigate to the Phone/Messages views via the eliza:navigate:view bus", async () => {
+    await renderView();
+    fireEvent.click(screen.getByText("Grace Hopper")); // single phone +15550200
+
+    const events: CustomEvent[] = [];
+    const listener = (e: Event) => events.push(e as CustomEvent);
+    window.addEventListener("eliza:navigate:view", listener);
+    try {
+      fireEvent.click(screen.getByTestId("contacts-detail-call"));
+      fireEvent.click(screen.getByTestId("contacts-detail-text"));
+    } finally {
+      window.removeEventListener("eliza:navigate:view", listener);
+    }
+
+    expect(events.map((e) => e.detail?.viewId)).toEqual(["phone", "messages"]);
+  });
+
   it("shows the per-group emptyLabel when a contact has no emails", async () => {
     await renderView();
 
     fireEvent.click(screen.getByText("Grace Hopper")); // phone only, no email
     expect(screen.getByText("No email addresses")).toBeTruthy();
-    // The phone it does have renders as a tel: link.
-    const tel = screen
-      .getAllByRole("link")
-      .find((a) => a.getAttribute("href") === "tel:+15550200");
-    expect(tel).toBeTruthy();
+    // The phone it does have renders as in-app Call/Text controls.
+    expect(screen.getByText("+15550200")).toBeTruthy();
+    expect(screen.getByTestId("contacts-detail-call")).toBeTruthy();
+    expect(screen.getByTestId("contacts-detail-text")).toBeTruthy();
   });
 });
 

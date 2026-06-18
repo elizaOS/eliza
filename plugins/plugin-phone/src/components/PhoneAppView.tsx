@@ -1,25 +1,24 @@
 /**
  * PhoneAppView — full-screen overlay for the Phone app.
  *
- * Three tabs:
+ * Two tabs:
  *   - Dialer: number pad, in-progress display, place-call button.
  *   - Recent: scrollable call log with type icon, name/number, timestamp.
- *   - Contacts: optional, only when `@elizaos/capacitor-contacts` is loadable
- *     and contact permission has been granted.
+ *
+ * The address book lives in the separate Contacts view; the header "Contacts"
+ * affordance navigates there via the `eliza:navigate:view` bus rather than
+ * embedding a duplicate contacts pane here.
  *
  * The native dependency (`@elizaos/capacitor-phone`) is imported eagerly —
  * Capacitor's `registerPlugin` returns a proxy that resolves the web fallback
  * on web/iOS, so the import is safe even on non-Android platforms.
- *
- * Contacts are loaded with a soft import so the Phone app still mounts on
- * devices without contacts permission (or where the contacts plugin is not
- * compiled into the host APK).
  */
 
 import type { CallLogEntry, CallLogType } from "@elizaos/capacitor-phone";
 import { Phone } from "@elizaos/capacitor-phone";
 import type { OverlayAppContext } from "@elizaos/ui";
 import { Button, useAgentElement } from "@elizaos/ui";
+import { consumePendingPhoneNumber } from "@elizaos/ui/app-navigate-view";
 import {
   Tabs,
   TabsContent,
@@ -34,7 +33,7 @@ import {
   PhoneMissed,
   PhoneOutgoing,
   RefreshCw,
-  User as UserIcon,
+  Users as UsersIcon,
   Voicemail,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -43,12 +42,6 @@ import {
   loadPhoneState,
   normalizeNumber,
 } from "./PhoneAppView.helpers.ts";
-
-interface ContactRow {
-  id: string;
-  displayName: string;
-  phoneNumbers: string[];
-}
 
 const DIAL_KEYS: readonly string[] = [
   "1",
@@ -65,7 +58,7 @@ const DIAL_KEYS: readonly string[] = [
   "#",
 ];
 
-type PhoneTab = "dialer" | "recent" | "contacts";
+type PhoneTab = "dialer" | "recent";
 
 function defaultOverlayContext(): OverlayAppContext {
   return {
@@ -115,35 +108,6 @@ function callIconFor(type: CallLogType) {
       return <Voicemail className="h-4 w-4 text-muted" aria-hidden />;
     default:
       return <PhoneIcon className="h-4 w-4 text-muted" aria-hidden />;
-  }
-}
-
-interface ContactsModule {
-  Contacts: {
-    listContacts(options?: {
-      limit?: number;
-    }): Promise<{ contacts: ContactRow[] }>;
-  };
-}
-
-/**
- * Lazily import `@elizaos/capacitor-contacts`. Soft-fails so the Phone app
- * still mounts on devices where contacts is not compiled in.
- *
- * The dynamic specifier is built at runtime so TypeScript does not require the
- * package's type declarations during typecheck, and Vite skips static analysis
- * via the inline ignore comment.
- */
-async function loadContactsModule(): Promise<ContactsModule | null> {
-  const specifier = "@elizaos/capacitor-contacts";
-  try {
-    const mod = (await import(/* @vite-ignore */ specifier)) as ContactsModule;
-    if (mod && typeof mod.Contacts.listContacts === "function") {
-      return mod;
-    }
-    return null;
-  } catch {
-    return null;
   }
 }
 
@@ -271,62 +235,6 @@ function RecentCallButton({
   );
 }
 
-function ContactButton({
-  contact,
-  onCall,
-}: {
-  contact: ContactRow;
-  onCall: (number: string) => void;
-}) {
-  const primary = contact.phoneNumbers[0] ?? "";
-  const displayName = contact.displayName || primary || "Unknown";
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `contact-${contact.id}`,
-    role: "list-item",
-    label: `Call ${displayName}`,
-    group: "phone-contacts",
-    status: primary.length === 0 ? "inactive" : "active",
-    description: `Place a call to ${displayName}`,
-    onActivate: () => {
-      if (primary.length > 0) onCall(primary);
-    },
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      onClick={() => onCall(primary)}
-      disabled={primary.length === 0}
-      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition active:scale-[0.99] disabled:opacity-50"
-      style={{
-        backgroundColor: "var(--surface)",
-        border: "1px solid transparent",
-      }}
-      {...agentProps}
-    >
-      <span
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
-        style={{ backgroundColor: "var(--accent-subtle)" }}
-      >
-        <UserIcon
-          className="h-4 w-4"
-          style={{ color: "var(--accent)" }}
-          aria-hidden
-        />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold text-txt">
-          {displayName}
-        </span>
-        {primary ? (
-          <span className="block truncate text-xs text-muted">{primary}</span>
-        ) : null}
-      </span>
-      <PhoneIcon className="h-4 w-4 shrink-0 text-muted" />
-    </button>
-  );
-}
-
 function TuiDialKey({
   digit,
   onPress,
@@ -435,11 +343,6 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
   const [callsLoading, setCallsLoading] = useState(false);
   const [callsError, setCallsError] = useState<string | null>(null);
 
-  const [contacts, setContacts] = useState<ContactRow[] | null>(null);
-  const [contactsAvailable, setContactsAvailable] = useState(false);
-  const [contactsLoading, setContactsLoading] = useState(false);
-  const [contactsError, setContactsError] = useState<string | null>(null);
-  const contactsModuleRef = useRef<ContactsModule | null>(null);
   // Guards the lazy auto-load so an empty recent-calls result does not retrigger
   // the fetch forever (an empty list keeps `calls.length === 0`, which would
   // otherwise re-satisfy the effect's guard on every render → infinite reload).
@@ -459,48 +362,19 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
     }
   }, []);
 
-  const loadContacts = useCallback(async () => {
-    let mod = contactsModuleRef.current;
-    if (!mod) {
-      mod = await loadContactsModule();
-      contactsModuleRef.current = mod;
-    }
-    if (!mod) {
-      setContactsAvailable(false);
-      return;
-    }
-    setContactsAvailable(true);
-    setContactsLoading(true);
-    setContactsError(null);
-    try {
-      const { contacts: fetched } = await mod.Contacts.listContacts({
-        limit: 500,
-      });
-      const filtered = fetched.filter((c) => c.phoneNumbers.length > 0);
-      setContacts(filtered);
-    } catch (err) {
-      setContactsError(err instanceof Error ? err.message : String(err));
-      setContacts([]);
-    } finally {
-      setContactsLoading(false);
-    }
-  }, []);
-
-  // Probe contacts availability on mount so the tab strip can hide the
-  // contacts pane on devices without the plugin.
+  // Seed the dialer from a cross-view handoff (e.g. a Contacts "Call" control
+  // that navigated here with a number). Single-shot: the number is consumed so
+  // a later plain navigation to Phone does not re-seed a stale value.
   useEffect(() => {
-    let cancelled = false;
-    loadContactsModule().then((mod) => {
-      if (cancelled) return;
-      contactsModuleRef.current = mod;
-      setContactsAvailable(mod !== null);
-    });
-    return () => {
-      cancelled = true;
-    };
+    const pending = consumePendingPhoneNumber();
+    if (pending) {
+      setCallError(null);
+      setDialed(pending);
+      setActiveTab("dialer");
+    }
   }, []);
 
-  // Lazy-load each tab's data on first activation.
+  // Lazy-load the recent-calls tab on first activation.
   useEffect(() => {
     if (
       activeTab === "recent" &&
@@ -510,23 +384,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
       recentAutoLoadedRef.current = true;
       void refreshCalls();
     }
-    if (
-      activeTab === "contacts" &&
-      contactsAvailable &&
-      contacts === null &&
-      !contactsLoading
-    ) {
-      void loadContacts();
-    }
-  }, [
-    activeTab,
-    callsLoading,
-    contactsAvailable,
-    contacts,
-    contactsLoading,
-    loadContacts,
-    refreshCalls,
-  ]);
+  }, [activeTab, callsLoading, refreshCalls]);
 
   const appendDigit = useCallback((digit: string) => {
     setCallError(null);
@@ -573,6 +431,18 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
 
   const dialerDisplay = useMemo(() => dialed || "", [dialed]);
 
+  // Open the separate Contacts view via the navigation bus. Contacts live in
+  // their own plugin/view; the Phone app links to them rather than embedding a
+  // duplicate address book.
+  const openContacts = useCallback(() => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent("eliza:navigate:view", {
+        detail: { viewId: "contacts", viewPath: "/contacts" },
+      }),
+    );
+  }, []);
+
   const backLabel = t("nav.back", { defaultValue: "Back" });
   const refreshLabel = t("actions.refresh", { defaultValue: "Refresh" });
   const callLabel = t("phone.dialer.call", { defaultValue: "Call" });
@@ -589,6 +459,15 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
     label: backLabel,
     group: "phone-nav",
     description: "Leave the Phone app and return to the app grid",
+  });
+  const contactsLabel = t("phone.tabs.contacts", { defaultValue: "Contacts" });
+  const contactsNavAgent = useAgentElement<HTMLButtonElement>({
+    id: "action-contacts",
+    role: "button",
+    label: contactsLabel,
+    group: "phone-nav",
+    description: "Open the Contacts app to browse the address book",
+    onActivate: openContacts,
   });
   const refreshAgent = useAgentElement<HTMLButtonElement>({
     id: "action-refresh",
@@ -662,27 +541,41 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
             </h1>
             <p className="text-xs-tight text-muted leading-none">
               {t("phone.subtitle", {
-                defaultValue: "Dialer, recent calls, and contacts",
+                defaultValue: "Dialer and recent calls",
               })}
             </p>
           </div>
         </div>
-        {activeTab === "recent" ? (
+        <div className="flex items-center gap-1">
+          {activeTab === "recent" ? (
+            <Button
+              ref={refreshAgent.ref}
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 rounded-xl text-muted hover:text-txt"
+              onClick={() => void refreshCalls()}
+              disabled={callsLoading}
+              aria-label={refreshLabel}
+              {...refreshAgent.agentProps}
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${callsLoading ? "animate-spin" : ""}`}
+              />
+            </Button>
+          ) : null}
           <Button
-            ref={refreshAgent.ref}
+            ref={contactsNavAgent.ref}
             variant="ghost"
             size="icon"
             className="h-9 w-9 rounded-xl text-muted hover:text-txt"
-            onClick={() => void refreshCalls()}
-            disabled={callsLoading}
-            aria-label={refreshLabel}
-            {...refreshAgent.agentProps}
+            onClick={openContacts}
+            aria-label={contactsLabel}
+            data-testid="phone-open-contacts"
+            {...contactsNavAgent.agentProps}
           >
-            <RefreshCw
-              className={`h-4 w-4 ${callsLoading ? "animate-spin" : ""}`}
-            />
+            <UsersIcon className="h-4 w-4" />
           </Button>
-        ) : null}
+        </div>
       </div>
 
       {/* Tabs */}
@@ -693,7 +586,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
       >
         <div className="shrink-0 border-b border-border/20 bg-bg/60 px-3 py-2">
           <TabsList
-            className="grid w-full max-w-sm grid-cols-3 gap-1"
+            className="grid w-full max-w-sm grid-cols-2 gap-1"
             style={{ backgroundColor: "var(--surface)" }}
           >
             <PhoneTabTrigger
@@ -705,12 +598,6 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
               tab="recent"
               label={t("phone.tabs.recent", { defaultValue: "Recent" })}
               active={activeTab === "recent"}
-            />
-            <PhoneTabTrigger
-              tab="contacts"
-              label={t("phone.tabs.contacts", { defaultValue: "Contacts" })}
-              active={activeTab === "contacts"}
-              disabled={!contactsAvailable}
             />
           </TabsList>
         </div>
@@ -878,68 +765,6 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
               {calls.map((entry) => (
                 <li key={entry.id}>
                   <RecentCallButton entry={entry} onCall={onCallEntry} />
-                </li>
-              ))}
-            </ul>
-          </div>
-        </TabsContent>
-
-        {/* Contacts */}
-        <TabsContent
-          value="contacts"
-          className="flex-1 overflow-hidden focus-visible:outline-none"
-        >
-          <div className="chat-native-scrollbar h-full overflow-y-auto px-4 pb-32 pt-3">
-            {!contactsAvailable ? (
-              <div className="flex h-full items-center justify-center px-6 text-center">
-                <div className="max-w-sm">
-                  <UserIcon className="mx-auto h-12 w-12 text-muted" />
-                  <div className="mt-3 text-sm font-medium text-txt">
-                    {t("phone.contacts.unavailable", {
-                      defaultValue:
-                        "Contacts are not available on this device.",
-                    })}
-                  </div>
-                  <p className="mt-1 text-xs text-muted">
-                    {t("phone.contacts.unavailableBody", {
-                      defaultValue:
-                        "Install the Contacts bridge or open the standalone Contacts app to add phone numbers.",
-                    })}
-                  </p>
-                </div>
-              </div>
-            ) : null}
-            {contactsAvailable && contactsError ? (
-              <p className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
-                {contactsError}
-              </p>
-            ) : null}
-            {contactsAvailable &&
-            !contactsError &&
-            contacts !== null &&
-            contacts.length === 0 &&
-            !contactsLoading ? (
-              <div className="flex h-full items-center justify-center px-6 text-center">
-                <div className="max-w-sm">
-                  <UserIcon className="mx-auto h-12 w-12 text-muted" />
-                  <div className="mt-3 text-sm font-medium text-txt">
-                    {t("phone.contacts.empty", {
-                      defaultValue: "No contacts with phone numbers.",
-                    })}
-                  </div>
-                  <p className="mt-1 text-xs text-muted">
-                    {t("phone.contacts.emptyBody", {
-                      defaultValue:
-                        "Contacts with callable phone numbers will appear here.",
-                    })}
-                  </p>
-                </div>
-              </div>
-            ) : null}
-            <ul className="flex flex-col gap-1">
-              {(contacts ?? []).map((contact) => (
-                <li key={contact.id}>
-                  <ContactButton contact={contact} onCall={onCallEntry} />
                 </li>
               ))}
             </ul>

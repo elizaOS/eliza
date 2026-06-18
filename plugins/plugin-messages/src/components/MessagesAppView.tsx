@@ -2,6 +2,7 @@ import type { SmsMessageSummary } from "@elizaos/capacitor-messages";
 import { Messages } from "@elizaos/capacitor-messages";
 import { System, type SystemStatus } from "@elizaos/capacitor-system";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { consumePendingMessageRecipient } from "@elizaos/ui/app-navigate-view";
 import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Input } from "@elizaos/ui/components/ui/input";
@@ -295,6 +296,22 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Seed the composer from a cross-view handoff (e.g. a Contacts "Message"
+  // control that navigated here with a number). Single-shot: the recipient is
+  // consumed so a later plain navigation to Messages does not re-seed a stale
+  // "To" field.
+  useEffect(() => {
+    const pending = consumePendingMessageRecipient();
+    if (pending) {
+      setSelectedThreadId(null);
+      setComposeAddress(pending);
+      setComposeBody("");
+      setShowComposer(true);
+      setNotice(null);
+      setError(null);
+    }
+  }, []);
 
   const threads = useMemo(() => buildThreads(messages), [messages]);
   const selectedThread = useMemo(
