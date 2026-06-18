@@ -1713,6 +1713,20 @@ public struct LlamaTtsSynthesizeResult {
     }
 }
 
+public struct LlamaAsrTranscribeResult {
+    public let text: String
+    public let durationMs: Double
+    public let error: String?
+
+    public static func success(text: String, durationMs: Double) -> LlamaAsrTranscribeResult {
+        .init(text: text, durationMs: durationMs, error: nil)
+    }
+
+    public static func failure(_ msg: String) -> LlamaAsrTranscribeResult {
+        .init(text: "", durationMs: 0, error: msg)
+    }
+}
+
 public enum SpecDecodeMode {
     case auto
     case on
