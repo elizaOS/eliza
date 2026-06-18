@@ -217,6 +217,24 @@ hits two cross-cutting prerequisites that must be tackled deliberately FIRST:
    every concurrent actor depends on; a transient break disrupts the whole shared
    develop tree. Do it COORDINATED / when not sharing the tree, with a full core +
    PA + one-domain-plugin build verify.
+2a. **Finances carve-out (owner picked: migrate to `app_finances` w/ data migration) —
+   de-risked 2026-06-17, but high-stakes.** The 5 real finance tables live in
+   `lifeops/schema.ts`: `lifeSubscriptionAudits` (311), `lifeSubscriptionCandidates`
+   (330), `lifeSubscriptionCancellations` (353), `lifePaymentSources` (401),
+   `lifePaymentTransactions` (419), re-exported via the schema barrel ~1810. The
+   `plugin-finances` stub schema declares a DIFFERENT design (`transactions` table,
+   never populated) — so the carve-out must (a) adopt PA's real table defs verbatim
+   under `pgSchema("app_finances")` (replacing the unused stub design), (b) PA
+   import them from `@elizaos/plugin-finances` (add dep; no cycle), and (c) ship a
+   DATA MIGRATION copying existing `app_lifeops.life_{payment_*,subscription_*}`
+   rows → `app_finances.*`, wired into the schema-bootstrap path (the bootstrap
+   method in `repository.ts`). The data migration is the risky part (data-loss
+   potential) — must be done as a dedicated, deeply-verified slice + owner review,
+   NOT rushed. Then extract the 139 finance repo methods + 4.7k mixin LOC + the
+   OWNER_FINANCES action (now unblocked — resolveActionArgs is in core) + real
+   FinancesView. The schema rename + data migration MUST land together (renaming
+   alone orphans existing data).
+
 2. **`app_lifeops` schema carve-out** — gates filling inbox/finances/goals/todos
    (their data is in the monolith). Schema is `appLifeopsPgSchema.table(...)` in
    `lifeops/schema.ts` (40+ tables). Finance owns `lifePaymentSources`,
@@ -250,6 +268,25 @@ decomposition (blocker), production-grade views w/ all states + floating-chat
 (blocker/health/calendar), mock+live external-API contract tests (health). The
 4th — platform (5-platform e2e + the mobile-BLOCK P0) — is the least-advanced;
 documented above, blocked on the engine-process-instance architecture check.
+
+### Session 2026-06-17 (round 2) — 5 more commits, pushed
+Owner asked to pursue all streams in parallel + migrate finances to `app_finances`
++ push. Shipped + pushed:
+- `ffbc46596f` action-resolution stack → `@elizaos/core/actions/` (prereq #1 DONE
+  — unblocks all domain action extractions; core does NOT dep shared, so the
+  recent-messages accessor was inlined; also fixed app-block.test stale mock).
+- `9e14ddbe03` mobile native blocking backends (P0): adapters + registrars +
+  WebView-startup registration. RESIDUAL: agent-process engine needs an
+  agent→WebView channel (task #15).
+- `29b1a0bc88` Fitbit/Withings/Google-Calendar recorded+live contract tests.
+- `0888ee938b` real FinancesView over /api/lifeops/money/* + VIEW_ACTION_MAP
+  finances→OWNER_FINANCES. (Finances SCHEMA carve-out + data migration is still
+  the dedicated remaining effort — view shipped safely without touching schema.)
+
+Net across the day: **4 production-grade decomposed views** (blocker/health/
+calendar/finances) w/ all states + floating-chat; the core action-resolution
+unblock; platform P0 wiring; recorded+live contract tests for 5 connectors. All
+pushed to origin/develop.
 
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
