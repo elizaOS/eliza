@@ -3245,10 +3245,9 @@ export class ElizaSandboxService {
     // is a host-only docker port mapping that is NOT reachable over the tailnet,
     // so the web-base-url path `getAgentApiEndpoint` prefers is a dead poll for
     // the on-prem worker and was flipping every running agent to `disconnected`.
-    const heartbeatEndpoint = await this.getSafeBridgeEndpoint(
-      rec,
-      "/api/health",
-    );
+    // `bridge_url` is the trusted tailnet bridge (verified non-null above), so
+    // build the health URL from it directly.
+    const heartbeatEndpoint = new URL("/api/health", rec.bridge_url).toString();
     let res: Response | null = null;
     for (let attempt = 0; attempt < HEARTBEAT_PROBE_ATTEMPTS; attempt++) {
       if (attempt > 0) {
