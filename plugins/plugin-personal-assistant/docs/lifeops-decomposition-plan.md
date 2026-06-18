@@ -682,6 +682,27 @@ bridges + renderer); WebKitGTK SIGTRAPs on the no-GPU render path" + a real CI-u
 fix shipped (XAUTHORITY). (A model-env-passthrough experiment was tried then reverted — the
 app is external-mode, so it had no effect; the blocker is the WebKitGTK GL crash.)
 
+### Session 2026-06-18 (round 23) — live real-LLM testing extended to ALL LLM-bearing decomposed plugins
+Closed the "live testing limited to inbox" gap. Added gated live-LLM tests (local Ollama,
+no external creds; skip by default) for the two other decomposed plugins that actually call
+a model:
+- `plugins/plugin-goals/test/goals.live-llm.test.ts` — drives production
+  `evaluateGoalProgressWithLlm` (TEXT_LARGE + repair pass) via a minimal `useModel` stub;
+  asserts a valid `reviewState` + scores. 1/1 green (GOALS_LLM_LIVE_TEST=1).
+- `plugins/plugin-calendar/test/calendar.live-llm.test.ts` — drives production
+  `extractCalendarPlanWithLlm`; the planner runs the model through injected
+  `CalendarActionDeps` (runTextModel/runJsonModel), so inject an Ollama-backed deps stub via
+  `createCalendarActionRunner()`; asserts a calendar-read → read subaction (feed/search) and
+  an appointment → create_event. 2/2 green (CALENDAR_LLM_LIVE_TEST=1).
+Commits c85bdca0b9 (goals), 0feea48781 (calendar). Suites green with live tests skipped
+(goals 28/1-skip, calendar 74/2-skip). Live real testing now spans inbox + goals + calendar
+— EVERY decomposed plugin with an LLM path. The remaining decomposed plugins (finances,
+blocker, relationships, todos, documents, health, remote-desktop) have NO LLM path (CRUD /
+data / connector views) so live-LLM testing is N/A for them; they're covered by mock-API
+contract tests + real-PGlite + the e2e lanes. Confirms my inbox prompt-robustness pattern:
+goals/calendar prompts already use "one of X, Y, Z" (not the `a|b|c` template), so small
+models handle them — which is why they passed first try.
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
