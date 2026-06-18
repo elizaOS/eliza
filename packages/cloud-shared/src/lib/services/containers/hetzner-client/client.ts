@@ -56,6 +56,22 @@ import {
   type HetznerContainerMetadata,
 } from "./types";
 
+/**
+ * Convert the stored `cpu` allocation (ECS/Fargate-style CPU units, where
+ * 1024 units = 1 vCPU — the same convention `calculateDailyContainerCost`
+ * bills on) into a Docker `--cpus` decimal. Without this flag the container
+ * is unbounded and can burn the whole node while billing assumes the
+ * allocated share, so provisioning and billing must agree on the same number.
+ *
+ * Floored at 0.1 vCPU so a malformed/tiny `cpu` value can't throttle a
+ * container to a fraction of a percent of a core; rounded to 3 decimals
+ * (Docker's `--cpus` granularity).
+ */
+function cpuUnitsToDockerCpus(cpuUnits: number): string {
+  const vcpus = Math.max(0.1, cpuUnits / 1024);
+  return (Math.round(vcpus * 1000) / 1000).toString();
+}
+
 export class HetznerContainersClient {
   // ----------------------------------------------------------------------
   // CRUD
@@ -248,6 +264,7 @@ export class HetznerContainersClient {
           `--name ${shellQuote(containerName)}`,
           "--restart unless-stopped",
           `--network ${shellQuote(DEFAULT_NODE_NETWORK)}`,
+          `--cpus ${cpuUnitsToDockerCpus(input.cpu)}`,
           `--memory ${input.memoryMb}m`,
           ...(volumePath ? [`-v ${shellQuote(volumePath)}:${shellQuote(volumeMountPath)}`] : []),
           `-p ${hostPort}:${input.port}`,
@@ -588,6 +605,7 @@ export class HetznerContainersClient {
           `--name ${shellQuote(meta.containerName)}`,
           "--restart unless-stopped",
           `--network ${shellQuote(DEFAULT_NODE_NETWORK)}`,
+          `--cpus ${cpuUnitsToDockerCpus(row.row.cpu)}`,
           `--memory ${row.row.memory}m`,
           ...(meta.volumePath
             ? [
