@@ -214,11 +214,16 @@ Confirmed in this environment (no cloud credentials needed):
 - `typecheck:cloud` clean for all touched files.
 
 **Cannot be confirmed here (requires secrets / live infra):** real Hetzner
-server create/teardown, real Neon branch provisioning, real R2 backup offload,
-and the production Cloudflare Worker deploy. These are exercised by the gated
-nightly `.github/workflows/hetzner-e2e.yml` against live Hetzner. Running the
-real-infra path is the remaining step for 100% production confidence and needs
+server create/teardown, real R2 backup offload, and the production Cloudflare
+Worker deploy. These are exercised by the gated nightly
+`.github/workflows/hetzner-e2e.yml` against live Hetzner. Running the real-infra
+path is the remaining step for 100% production confidence and needs
 `HCLOUD_TOKEN` + Neon/R2/Cloudflare credentials.
+
+> **Note (Neon topology):** per-agent Neon branch provisioning is **legacy** —
+> retired after the shared-DB cutover. Each env now runs ONE shared Neon DB
+> (prod `ep-wild-smoke`, staging `ep-wild-dawn`); agent state is multi-tenant
+> inside that shared DB, not a Neon branch per agent.
 
 ## 7e. REAL Hetzner provision — CONFIRMED GREEN (2026-06-02)
 

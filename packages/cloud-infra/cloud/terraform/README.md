@@ -28,7 +28,9 @@ service runs today. Short version:
 - `gateway-discord`, `gateway-webhook` → Docker (target: Railway).
 - `agent-server`, per-customer compute → Hetzner via
   `container-control-plane`.
-- Database → Neon (Postgres).
+- Database → Neon (Postgres) — ONE shared DB per env (prod `ep-wild-smoke`,
+  staging `ep-wild-dawn`); Steward is an embedded `steward` schema in that same
+  shared DB, not a separate DB. Per-agent Neon branches are legacy/retired.
 - Object storage → Cloudflare R2 (S3-compatible).
 - Secrets/KMS → local AES-256-GCM with `SECRETS_MASTER_KEY`; optional AWS
   KMS provider retained for callers that have already provisioned a key.

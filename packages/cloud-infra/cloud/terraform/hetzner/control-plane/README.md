@@ -58,8 +58,9 @@ hostname) was created by hand in May 2026. To bring it under Terraform
 without recreating it, look up the Hetzner Cloud server ID
 (`hcloud server list`), then `terraform import 'hcloud_server.control_plane["1"]' <id>`
 plus a `terraform import` for each existing `hcloud_ssh_key`. The first
-plan after import shows the in-place rename to `eliza-1`, the new
-labels, and the Cloudflare DNS record creation; `user_data` and `image`
+plan after import shows the in-place rename to `eliza-production-1` (the
+env-suffixed name), the new labels, and the Cloudflare DNS record creation;
+`user_data` and `image`
 diffs are suppressed by `lifecycle { ignore_changes }`. One-shot — never
 re-run.
 

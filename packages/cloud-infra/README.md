@@ -20,7 +20,9 @@ See `cloud/RAILWAY.md` for the canonical service map. Short version:
 - `cloud-api` → Cloudflare Worker
 - `headscale` → Hetzner control-plane VM (agent path); `tunnel-proxy` → Railway (customer-tunnel path)
 - `agent-server` (per-customer compute) → Hetzner via `container-control-plane`
-- Database → Neon (Postgres)
+- Database → Neon (Postgres) — ONE shared DB per env (prod `ep-wild-smoke`,
+  staging `ep-wild-dawn`); Steward lives as an embedded `steward` schema inside
+  that same shared DB, not a separate DB. Per-agent Neon branches are legacy/retired.
 - Object storage → Cloudflare R2
 
 ## Local development cluster

@@ -20,7 +20,7 @@ split so we stop treating manually-created VMs as "infrastructure-by-prayer".
 │                                                              │
 │   Lifecycle: long-lived. Replaced on demand, not autoscaled.│
 │   Cost: ~€11/mo per VM (cpx32, both envs).                  │
-│   See variables.tf for cpx21→cpx32 retirement + ARM notes.  │
+│   See variables.tf for the cpx21→cpx32 retirement note.     │
 └──────────────────────────────────────────────────────────────┘
                               │ enqueue / SSH
                               ▼
@@ -66,42 +66,24 @@ to coordinate it.
 
 | Layer | Prefix | Example | Where it's set |
 |---|---|---|---|
-| Control plane VM | `eliza-<n>` | `eliza-1` | Terraform `hcloud_server.control_plane` |
-| Data plane node (NEW) | `eliza-core-<hex>` | `eliza-core-38ea87b1` | [`generateNodeId()`](../../../../cloud-shared/src/lib/services/containers/node-autoscaler.ts) |
-| Data plane node (LEGACY) | `milady-core-<n>` | `milady-core-1` | DEPRECATED — see [Legacy migration](#legacy-milady-core-migration) |
+| Control plane VM | `eliza-<env>-1` | `eliza-staging-1`, `eliza-production-1` | Terraform `hcloud_server.control_plane` |
+| Data plane node — dedicated | `eliza-core-<env>-<n>` | `eliza-core-staging-1`, `eliza-core-prod-2` | `docker_nodes` table (authoritative); `CONTAINERS_DOCKER_NODES` env only seeds it when empty |
+| Data plane node — autoscaled burst | `eliza-core-<hex>` | `eliza-core-38ea87b1` | [`generateNodeId()`](../../../../cloud-shared/src/lib/services/containers/node-autoscaler.ts) at runtime |
 
-## Legacy `milady-core-*` migration
+Two distinct data-plane node shapes share the `eliza-core-` prefix:
 
-Pre-2026-05 the data plane was 6 manually-created `milady-core-*` VMs (Hetzner
-cpx32 in fsn1) inserted by-hand into `docker_nodes` with `capacity = 100`.
-By 2026-05-22:
+- **Dedicated / onboarded robot nodes** carry an env-suffixed id
+  (`eliza-core-{env}-N`, e.g. staging `eliza-core-staging-1`, prod
+  `eliza-core-prod-2..6`) and OS hostname `eliza-{env}-robot-N`. They are
+  registered in the `docker_nodes` table, which is the **authoritative** source
+  of truth; the `CONTAINERS_DOCKER_NODES` env var is only a seed-when-empty.
+- **Autoscaled burst nodes** carry a random hex suffix
+  (`eliza-core-<hex>`) minted by `generateNodeId()` when the autoscaler spins up
+  extra capacity on demand.
 
-- All 6 cores were `status: offline` (SSH health-check failing for weeks)
-- Several user sandboxes still ran on the underlying Docker daemons
-- The cloud autoscaler couldn't account for them
-
-Migration 0132 (`0132_legacy_milady_cores_disable.sql`) flips them to
-`enabled = false` + fixes `capacity = 8`. This:
-
-1. Removes them from autoscaler capacity decisions
-2. Stops the health-check noise
-3. Lets the autoscaler spin up replacement `eliza-core-<hex>` nodes on demand
-
-Existing sandboxes keep running until next restart. On user-triggered
-restart / recreate, the daemon provisions them on a fresh autoscaled core.
-
-Once `SELECT SUM(allocated_count) FROM docker_nodes WHERE node_id LIKE 'milady-core-%'`
-is `0`, ops can:
-
-```bash
-# 1. Delete the Hetzner Cloud servers (one-time, via Hetzner console or):
-hcloud server delete milady-core-1
-hcloud server delete milady-core-2
-# ... etc.
-
-# 2. Drop the DB rows:
-DELETE FROM docker_nodes WHERE node_id LIKE 'milady-core-%';
-```
+The old `milady-core-*` data-plane names are **retired** (migration 0132,
+`0132_legacy_milady_cores_disable.sql`, disabled them and cross-env cleanup
+removed the rows); they are not part of the live topology.
 
 ## Multi-project layout
 
@@ -115,14 +97,16 @@ is no `hcloud_project` Terraform resource — projects are management-plane only
 Hetzner Cloud account (one human)
 ├── Project "eliza-prod"      (env-scoped HCLOUD_TOKEN, 5/5 servers max)
 │   ├── eliza-production-1     (control-plane, cpx32)
-│   └── eliza-core-<hex>      (worker, ccx33, autoscaled by node-autoscaler.ts)
+│   ├── eliza-core-prod-2..6   (dedicated workers, cpx32; docker_nodes table)
+│   └── eliza-core-<hex>       (worker, cpx32, autoscaled burst by node-autoscaler.ts)
 ├── Project "eliza-staging"   (env-scoped HCLOUD_TOKEN, 5/5 servers max)
 │   ├── eliza-staging-1               (control-plane, cpx32)
-│   └── eliza-core-<hex>              (worker, cpx32, autoscaled)
+│   ├── eliza-core-staging-1          (dedicated worker, cpx32; docker_nodes table)
+│   └── eliza-core-<hex>              (worker, cpx32, autoscaled burst)
 └── Project "apps"            (repo-level HCLOUD_APPS_TOKEN, shared)
     ├── eliza-app-tenant              (tenant Postgres — SHARED across envs; apps-shared/)
-    ├── eliza-apps-node-staging-1     (apps Product-2 worker, staging; apps-data-plane/)
-    └── eliza-apps-node-production-1  (apps Product-2 worker, production; apps-data-plane/)
+    └── eliza-apps-node-staging-1     (apps Product-2 worker, staging; apps-data-plane/)
+       # production apps node not yet live — apps prod deploy is behind the cutover
 ```
 
 The tenant DB is intentionally shared across staging + production app workers
