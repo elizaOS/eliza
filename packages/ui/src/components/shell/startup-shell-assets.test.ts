@@ -10,7 +10,6 @@ const repoRoot = resolve(
 
 const shellSourcePaths = [
   "packages/ui/src/components/shell/StartupShell.tsx",
-  "packages/ui/src/components/shell/FirstRunShell.tsx",
 ];
 
 describe("startup shell assets", () => {
