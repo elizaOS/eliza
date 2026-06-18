@@ -124,16 +124,22 @@ class SoftwareBspEvidenceTest(unittest.TestCase):
             capture_output=True,
         )
 
-        # With --require-evidence, targets with captured PASS logs may pass,
-        # while targets with missing or invalid external evidence must fail
-        # closed.
+        # With --require-evidence, a target passes only when real captured PASS
+        # logs exist; targets whose external evidence is missing must fail
+        # closed. The E1 software stack is pre-hardware, so every external BSP
+        # evidence bundle (buildroot/linux/opensbi/aosp build + smoke
+        # transcripts) is still BLOCKED — each target must fail closed. When
+        # real captured PASS logs land for a target, flip its assertion here.
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("buildroot BSP scaffold and evidence checks passed.", result.stdout)
-        self.assertIn("linux BSP scaffold and evidence checks passed.", result.stdout)
-        self.assertIn("opensbi BSP scaffold and evidence checks passed.", result.stdout)
-        self.assertIn("aosp BSP check failed", result.stdout)
+        for target in ("buildroot", "linux", "opensbi", "aosp"):
+            with self.subTest(target=target):
+                self.assertIn(f"{target} BSP check failed", result.stdout)
+                self.assertIn(
+                    f"{target} BSP BLOCKED: missing evidence", result.stdout
+                )
+        # u-boot is not a required-evidence target; it must not be reported as a
+        # missing-evidence blocker.
         self.assertNotIn("u-boot BSP BLOCKED: missing evidence", result.stdout)
-        self.assertIn("aosp BSP BLOCKED: external evidence", result.stdout)
 
     def test_status_helper_reports_missing_external_logs(self) -> None:
         result = subprocess.run(
