@@ -102,6 +102,14 @@ export function setActiveViewElements(
  *   facewear    — plugins/plugin-facewear/src/index.ts (FACEWEAR_, SMARTGLASSES_, XR_ actions)
  *   scape       — plugins/plugin-scape/src/actions (SCAPE)
  *   2004scape   — plugins/plugin-2004scape/src/actions (RS_2004, RS_2004_INVENTORY)
+ *
+ * Verified action names + view ids (2026-06-17) — LifeOps decomposition views,
+ * now real + agent-surface-instrumented:
+ *   calendar — plugins/plugin-calendar/src/actions/calendar.ts (CALENDAR)
+ *   health   — plugins/plugin-health/src/actions/{health,screen-time}.ts
+ *              (OWNER_HEALTH, OWNER_SCREENTIME)
+ *   focus    — plugins/plugin-personal-assistant/src/website-blocker/chat-integration/
+ *              actions/{listActiveBlocks,releaseBlock}.ts (LIST_ACTIVE_BLOCKS, RELEASE_BLOCK)
  */
 export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
   companion: ["PLAY_EMOTE"],
@@ -139,6 +147,9 @@ export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
   ],
   scape: ["SCAPE"],
   "2004scape": ["RS_2004", "RS_2004_INVENTORY"],
+  calendar: ["CALENDAR"],
+  health: ["OWNER_HEALTH", "OWNER_SCREENTIME"],
+  focus: ["LIST_ACTIVE_BLOCKS", "RELEASE_BLOCK"],
 };
 
 /**
