@@ -57,6 +57,15 @@ jobs:
             RANGE_ARGS=(--log-opts "${PR_BASE_SHA}..${PR_HEAD_SHA}")
           elif [[ -n "$BEFORE_SHA" && "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]]; then
             RANGE_ARGS=(--log-opts "${BEFORE_SHA}..${CURRENT_SHA}")
+          else
+            # Push with no usable before-SHA (force-push, branch (re)creation, or
+            # an unknown range — common on main when it is reset/force-pushed).
+            # Scan only the tip commit, NOT the whole history: a full-history
+            # scan re-flags long-known historical artifacts (e.g. token-like
+            # strings inside vendored *.patch blobs) on every such push and costs
+            # ~8 min / 3 GB. New content still gets scanned via the PR range and
+            # this tip-commit scan; history is audited by the scheduled deep scan.
+            RANGE_ARGS=(--log-opts "-1 ${CURRENT_SHA}")
           fi
 
           gitleaks detect \
