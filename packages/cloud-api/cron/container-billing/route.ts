@@ -27,7 +27,10 @@ import {
   computeContainerBillingPeriod,
   computeContainerBillingPlan,
 } from "@/lib/services/container-billing-policy";
+import { containerJobsWriter } from "@/lib/services/container-jobs-writer";
+import { enqueueContainerStop } from "@/lib/services/container-stop-job-service";
 import { emailService } from "@/lib/services/email";
+import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
@@ -123,6 +126,33 @@ async function processContainerBilling(
     );
 
     await containerBillingRepository.suspendContainer(containerId, now);
+
+    // Flipping the DB row stops billing but does NOT stop the live container:
+    // it runs with `--restart unless-stopped` on the Hetzner node, and this
+    // cron is a Cloudflare Worker that can't SSH. Enqueue a CONTAINER_STOP job
+    // the provisioning-worker daemon runs to actually `docker stop` it (volume
+    // preserved, node slot freed) — otherwise the org gets unbounded free
+    // compute after billing ends (#8342). Best-effort: a failed enqueue must
+    // not crash the per-container billing pass (the row is already suspended,
+    // and a reconciler/operator can re-stop) — so log and continue.
+    try {
+      await enqueueContainerStop(containerJobsWriter, {
+        containerId,
+        organizationId,
+        userId: container.user_id,
+      });
+    } catch (enqueueError) {
+      logger.error(
+        `[Container Billing] Failed to enqueue stop job for ${containerName}`,
+        {
+          containerId,
+          error:
+            enqueueError instanceof Error
+              ? enqueueError.message
+              : String(enqueueError),
+        },
+      );
+    }
 
     return {
       containerId,
@@ -473,6 +503,13 @@ async function handleContainerBilling(c: AppContext): Promise<Response> {
         });
         errors++;
       }
+    }
+
+    // Kick the provisioning-worker daemon so any CONTAINER_STOP jobs enqueued
+    // above run now instead of waiting for the next process-provisioning-jobs
+    // tick. Fire-and-forget — the daemon's own cron is the safety net.
+    if (containersShutdown > 0) {
+      void provisioningJobService.triggerImmediate(c.env).catch(() => {});
     }
 
     const duration = Date.now() - startTime;

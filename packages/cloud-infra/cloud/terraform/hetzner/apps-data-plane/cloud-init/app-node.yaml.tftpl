@@ -42,6 +42,23 @@ packages:
   - jq
 
 write_files:
+  # Docker daemon config. Each app runs on its OWN per-app `--internal` bridge
+  # network. Docker's stock default-address-pool (172.17-172.31.0.0/16, /24
+  # subnets) exhausts at ~31 networks/node, capping a node at a few dozen
+  # tenants. Widen the pool to 10.100.0.0/16 carved into /24 subnets (256
+  # per-app networks/node). 10.100.0.0/16 is reserved here for docker bridges
+  # only — it does NOT overlap the apps private subnet (10.30.0.0/16), the
+  # control-plane net (10.42.0.0/16), or any other range referenced in this
+  # data plane. This file is written before the first `docker start` below, so
+  # fresh nodes pick it up on initial daemon boot (no restart needed).
+  - path: /etc/docker/daemon.json
+    content: |
+      {
+        "default-address-pools": [
+          { "base": "10.100.0.0/16", "size": 24 }
+        ]
+      }
+
   # Default-deny egress proxy: app containers (HTTP_PROXY -> :3128) can only
   # reach explicitly allowlisted hosts. STAN: extend allowed_dst as needed
   # (package registries the apps legitimately need). The tenant DB is reached
