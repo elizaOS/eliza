@@ -11,6 +11,11 @@ import type {
 import { packageNameToAppRouteSlug } from "@elizaos/shared";
 import { ElizaClient } from "./client-base";
 import type {
+  CommandsCatalogResponse,
+  CommandSurface,
+  SlashCommandCatalogItem,
+} from "./client-types-commands";
+import type {
   AppLaunchResult,
   AppRunActionResult,
   AppRunSummary,
@@ -303,6 +308,7 @@ declare module "./client-base" {
     ): Promise<AppSessionActionResult>;
     listRegistryPlugins(): Promise<RegistryPluginItem[]>;
     searchRegistryPlugins(query: string): Promise<RegistryPluginItem[]>;
+    listCommands(surface?: CommandSurface): Promise<SlashCommandCatalogItem[]>;
     listCustomActions(): Promise<CustomActionDef[]>;
     createCustomAction(
       action: Omit<CustomActionDef, "id" | "createdAt" | "updatedAt">,
@@ -1058,6 +1064,17 @@ ElizaClient.prototype.searchRegistryPlugins = async function (
   query,
 ) {
   return this.fetch(`/api/apps/plugins/search?q=${encodeURIComponent(query)}`);
+};
+
+ElizaClient.prototype.listCommands = async function (
+  this: ElizaClient,
+  surface,
+) {
+  const query = surface ? `?surface=${encodeURIComponent(surface)}` : "";
+  const data = await this.fetch<CommandsCatalogResponse>(
+    `/api/commands${query}`,
+  );
+  return data.commands;
 };
 
 ElizaClient.prototype.listCustomActions = async function (this: ElizaClient) {

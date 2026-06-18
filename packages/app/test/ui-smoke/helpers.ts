@@ -341,9 +341,6 @@ async function expectMainShellReadyForRoute(
   await expect(page.getByTestId("startup-shell-loading")).toHaveCount(0, {
     timeout: STARTUP_SETTLED_TIMEOUT_MS,
   });
-  await expect(page.getByTestId("first-run-shell")).toHaveCount(0, {
-    timeout: STARTUP_SETTLED_TIMEOUT_MS,
-  });
   if (!options.allowOnboardingToast) {
     await expect(page.getByTestId("onboarding-toast")).toHaveCount(0, {
       timeout: STARTUP_SETTLED_TIMEOUT_MS,

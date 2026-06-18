@@ -78,6 +78,14 @@ jobs:
       DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
       DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
       DEPLOY_BRANCH: ${{ needs.determine-env.outputs.branch }}
+      # Headscale wiring for the provisioning worker (the CONSUMER of the
+      # control plane). These are reconciled into /opt/eliza/cloud/.env.local
+      # on every deploy so the box can never silently drift to a stale,
+      # hand-edited headscale URL/key again. Reuse the canonical GH names
+      # already established by arm-headscale-control-plane.yml.
+      HEADSCALE_API_URL: ${{ vars.HEADSCALE_API_URL }}
+      HEADSCALE_PUBLIC_URL: ${{ vars.HEADSCALE_PUBLIC_URL }}
+      HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
     steps:
       - name: Check deploy configuration
         id: deploy_config
@@ -155,7 +163,7 @@ jobs:
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
           command_timeout: 10m
-          envs: DEPLOY_BRANCH,SYSTEMD_UNIT
+          envs: DEPLOY_BRANCH,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY
           script: |
             set -euo pipefail
             echo "=== Deploying eliza-provisioning-worker (branch: $DEPLOY_BRANCH) ==="
@@ -262,6 +270,33 @@ jobs:
               /etc/systemd/system/eliza-agent-router.service
             sudo systemctl daemon-reload
             sudo systemctl enable "$SYSTEMD_UNIT" eliza-agent-router.service
+
+            # Reconcile Headscale wiring into the systemd EnvironmentFile so CI
+            # is the single source of truth and the box self-heals on every
+            # deploy. The daemon + cloud-shared read HEADSCALE_API_URL /
+            # HEADSCALE_PUBLIC_URL / HEADSCALE_API_KEY straight from process.env
+            # (headscale-client.ts, headscale-integration.ts,
+            # docker-sandbox-provider.ts), fed by EnvironmentFile=
+            # /opt/eliza/cloud/.env.local. The deploy's `git clean -e
+            # cloud/.env.local` preserves that file verbatim, so before this it
+            # was only ever hand-edited on the box and could drift to a stale
+            # headscale (the CP-box outage). Only rewrite a key when the CI value
+            # is non-empty — an unset GH var must never blank a working box (a
+            # blank HEADSCALE_API_KEY makes docker-sandbox-provider throw
+            # "HEADSCALE_API_KEY is not configured" when a route is required).
+            ENV_FILE=/opt/eliza/cloud/.env.local
+            sudo touch "$ENV_FILE"
+            for kv in \
+              "HEADSCALE_API_URL=$HEADSCALE_API_URL" \
+              "HEADSCALE_PUBLIC_URL=$HEADSCALE_PUBLIC_URL" \
+              "HEADSCALE_API_KEY=$HEADSCALE_API_KEY"; do
+              key="${kv%%=*}"
+              val="${kv#*=}"
+              [ -n "$val" ] || continue
+              sudo sed -i "/^${key}=/d" "$ENV_FILE"
+              printf '%s=%s\n' "$key" "$val" | sudo tee -a "$ENV_FILE" >/dev/null
+            done
+            sudo chmod 600 "$ENV_FILE"
 
             sudo systemctl restart "$SYSTEMD_UNIT"
             sudo systemctl restart eliza-agent-router.service

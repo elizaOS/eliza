@@ -1,4 +1,9 @@
-import type { Terminal } from "@elizaos/tui";
+import {
+  type Component,
+  registerTerminalView,
+  type Terminal,
+  truncateToWidth,
+} from "@elizaos/tui";
 import { describe, expect, it, vi } from "vitest";
 import { runAutonomousCli } from "../cli/index.ts";
 import { startAgentTerminalTui } from "../tui/agent-terminal-tui.ts";
@@ -59,7 +64,11 @@ function response(body: unknown): Response {
 }
 
 async function flushTicks(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  // Drain a few macrotasks so chained awaited fetches (e.g. create-conversation
+  // then post-message) all settle before assertions run.
+  for (let i = 0; i < 5; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
 }
 
 describe("agent terminal tui", () => {
@@ -150,6 +159,62 @@ describe("agent terminal tui", () => {
     });
 
     handle?.stop();
+  });
+
+  it("renders a registered terminal view inline instead of only navigating", async () => {
+    let rendered = 0;
+    const liveView: Component = {
+      render: (width) => [
+        truncateToWidth("LIVE PHONE VIEW", width),
+        truncateToWidth(`render #${++rendered}`, width),
+      ],
+      handleInput: () => {},
+      invalidate: () => {},
+    };
+    const unregister = registerTerminalView("phone", liveView);
+
+    const terminal = new TestTerminal();
+    const fetchImpl = vi.fn(async (input: URL | RequestInfo) => {
+      const url = String(input);
+      if (url.endsWith("/api/views?viewType=tui")) {
+        return response({
+          views: [
+            {
+              id: "phone",
+              label: "Phone TUI",
+              path: "/phone/tui",
+              viewType: "tui",
+            },
+          ],
+        });
+      }
+      return new Response("not found", { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const handle = startAgentTerminalTui({
+      apiBaseUrl: "http://127.0.0.1:2138",
+      terminal,
+      fetchImpl,
+    });
+    await handle?.ready;
+    await flushTicks();
+
+    // The registered view is flagged in the list…
+    expect(terminal.text()).toContain("Phone TUI ▣");
+
+    // …and quick-opening it renders the view's real content inline.
+    terminal.send("1");
+    await flushTicks();
+    expect(terminal.text()).toContain("LIVE PHONE VIEW");
+    expect(terminal.text()).toContain("esc/q returns to views");
+
+    // Esc returns to the list (no GUI-navigate fetch was issued for it).
+    terminal.send("");
+    await flushTicks();
+    expect(terminal.text()).toContain("registered tui views");
+
+    handle?.stop();
+    unregister();
   });
 
   it("has a CLI smoke mode that starts the TUI and emits a boot marker", async () => {

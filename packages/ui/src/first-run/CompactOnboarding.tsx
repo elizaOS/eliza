@@ -7,6 +7,7 @@ import {
   Server,
 } from "lucide-react";
 import * as React from "react";
+import { ElizaMark } from "../components/brand/eliza-mark";
 import { TRAY_ACTION_EVENT } from "../events";
 import { openExternalUrl } from "../utils/openExternalUrl";
 import { trayActionToOnboardingChoice } from "./onboarding-intent";
@@ -64,16 +65,7 @@ function OptionCard({
 
 export function CompactOnboarding(): React.ReactElement {
   const c = useFirstRunController();
-  const {
-    busyText,
-    cloudError,
-    error,
-    submitting,
-    step,
-    draft,
-    localRuntimeAvailable,
-    cloudOnly,
-  } = c;
+  const { busyText, cloudError, error, submitting, step, draft, cloudOnly } = c;
   const busy = submitting;
 
   // Detect whether this component is running inside the onboarding overlay
@@ -154,12 +146,7 @@ export function CompactOnboarding(): React.ReactElement {
         >
           {/* Brand lockup — matches the loading screen for visual continuity. */}
           <div className="flex items-center justify-center gap-3">
-            <img
-              src="./brand/logos/logo_white_nobg.svg"
-              alt=""
-              aria-hidden="true"
-              className="h-11 w-11"
-            />
+            <ElizaMark className="h-11 w-11" />
             <span className="text-3xl font-medium leading-none tracking-normal">
               elizaOS
             </span>
@@ -257,14 +244,6 @@ export function CompactOnboarding(): React.ReactElement {
                   onClick={chooseCloud}
                 />
                 <OptionCard
-                  testId="onboarding-option-remote"
-                  icon={Server}
-                  title="Remote server"
-                  subtitle="Connect to your own running agent"
-                  disabled={busy || cloudOnly}
-                  onClick={chooseRemote}
-                />
-                <OptionCard
                   testId="onboarding-option-local"
                   icon={HardDrive}
                   title="Local models"
@@ -272,12 +251,15 @@ export function CompactOnboarding(): React.ReactElement {
                   disabled={busy || cloudOnly}
                   onClick={chooseLocal}
                 />
+                <OptionCard
+                  testId="onboarding-option-remote"
+                  icon={Server}
+                  title="Remote server"
+                  subtitle="Connect to your own running agent"
+                  disabled={busy || cloudOnly}
+                  onClick={chooseRemote}
+                />
               </div>
-              {!localRuntimeAvailable ? (
-                <p className="-mt-2 text-[11px] text-white/45">
-                  Local models download an on-device model after setup.
-                </p>
-              ) : null}
             </>
           )}
 

@@ -17,7 +17,6 @@
     "@anthropic-ai/sdk": "^0.71.0",
     "@aws-sdk/client-s3": "^3.943.0",
     "@aws-sdk/lib-storage": "^3.943.0",
-    "@feed/agents": "workspace:*",
     "@feed/shared": "workspace:*",
     "@vercel/blob": "2.3.2",
     "graphql": "16.13.2",

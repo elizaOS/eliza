@@ -11,7 +11,7 @@
  * `@elizaos/ui/spatial/tui` subpath and is never imported by the browser barrel.
  */
 
-import type { Component } from "@elizaos/tui";
+import { type Component, registerTerminalView } from "@elizaos/tui";
 import type { ReactNode } from "react";
 import {
   createSpatialStateStore,
@@ -84,4 +84,23 @@ export function createSpatialTuiComponent(
       cache = null;
     },
   };
+}
+
+/**
+ * Author a terminal-rendered view once and register it so a terminal host (the
+ * agent terminal) can mount it by id. This is the single call a plugin makes to
+ * make a `viewType: "tui"` view render for real in the terminal:
+ *
+ * ```ts
+ * registerSpatialTerminalView("phone", () => <PhoneSpatialView snapshot={get()} />);
+ * ```
+ *
+ * Returns an unregister function.
+ */
+export function registerSpatialTerminalView(
+  id: string,
+  view: () => ReactNode,
+  options: SpatialTuiComponentOptions = {},
+): () => void {
+  return registerTerminalView(id, createSpatialTuiComponent(view, options));
 }

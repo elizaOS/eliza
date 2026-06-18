@@ -81,6 +81,10 @@ const allowedCallsites = new Map<string, string>([
 		"plugins/plugin-app-control/src/workers/app-worker-entry.ts",
 		"internal app sandbox RPC; not a chat/user message surface",
 	],
+	[
+		"plugins/plugin-app-control/src/actions/views.ts",
+		"VIEWS close-alias dispatcher (CLOSE_VIEW / CLOSE_ALL_VIEWS); forwards to the underlying VIEWS handler",
+	],
 ]);
 
 const actionHandlerCallPattern = new RegExp(

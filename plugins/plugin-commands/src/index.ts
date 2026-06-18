@@ -42,6 +42,8 @@ import {
 } from "./registry";
 import type { CommandContext, CommandDefinition, CommandResult } from "./types";
 
+export * from "./connector-commands";
+export * from "./navigation-commands";
 export * from "./parser";
 export * from "./registry";
 // Re-export everything

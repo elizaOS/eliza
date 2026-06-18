@@ -1,6 +1,12 @@
 import UIKit
 import Capacitor
+// `@capacitor/background-runner` is an optional plugin: the iOS build pipeline
+// only adds its pod when the package resolves (run-mobile-build.mjs gates each
+// IOS_OFFICIAL_PODS entry on resolvePackagePath). Mirror that here so a build
+// without the plugin still compiles instead of failing on a missing module.
+#if canImport(CapacitorBackgroundRunner)
 import CapacitorBackgroundRunner
+#endif
 import UserNotifications
 
 @UIApplicationMain
@@ -10,8 +16,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        #if canImport(CapacitorBackgroundRunner)
         BackgroundRunnerPlugin.registerBackgroundTask()
         BackgroundRunnerPlugin.handleApplicationDidFinishLaunching(launchOptions: launchOptions)
+        #endif
 
         // APNs registration is gated on a build-time Info.plist flag
         // (ELIZA_APNS_ENABLED=1). Registration does not request alert

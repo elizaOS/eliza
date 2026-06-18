@@ -7,7 +7,13 @@
  * plugin file should clone before mutating to avoid cross-agent contamination.
  */
 
-import type { CommandDefinition } from "./types";
+import { NAVIGATION_COMMANDS } from "./navigation-commands";
+import type {
+	CommandDefinition,
+	CommandSurface,
+	SerializedCommand,
+	SerializedCommandArg,
+} from "./types";
 
 // Default command definitions (frozen reference — never mutate these directly)
 const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
@@ -97,6 +103,8 @@ const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		scope: "both",
 		category: "session",
 		acceptsArgs: false,
+		surfaces: ["gui", "tui"],
+		target: { kind: "client", clientAction: "new-conversation" },
 	},
 	{
 		key: "compact",
@@ -304,6 +312,15 @@ const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 	},
 ];
 
+/**
+ * The full default catalog: agent-capability commands + the universal
+ * navigation / client commands. Seeded into every runtime store.
+ */
+const ALL_DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
+	...DEFAULT_COMMANDS,
+	...NAVIGATION_COMMANDS,
+];
+
 // ── Per-runtime command storage ──────────────────────────────────────────
 // Each agent runtime gets its own isolated command set via `initForRuntime()`.
 // The module-level state is used as a fallback for convenience (tests, etc.).
@@ -320,7 +337,7 @@ interface CommandStore {
 const runtimeStores = new Map<string, CommandStore>();
 /** Fallback store for when no runtime context is set */
 const fallbackStore: CommandStore = {
-	commands: DEFAULT_COMMANDS.map((c) => ({ ...c })),
+	commands: ALL_DEFAULT_COMMANDS.map((c) => ({ ...c })),
 	aliasMap: null,
 };
 /** Currently active store (set during init, reset on test teardown) */
@@ -332,7 +349,7 @@ let activeStore: CommandStore = fallbackStore;
  */
 export function initForRuntime(agentId: string): void {
 	const store: CommandStore = {
-		commands: DEFAULT_COMMANDS.map((c) => ({ ...c })),
+		commands: ALL_DEFAULT_COMMANDS.map((c) => ({ ...c })),
 		aliasMap: null,
 	};
 	runtimeStores.set(agentId, store);
@@ -466,4 +483,65 @@ export function startsWithCommand(text: string): CommandDefinition | undefined {
 	}
 
 	return undefined;
+}
+
+/**
+ * Get enabled commands available on a given surface. A command with no
+ * `surfaces` is available everywhere.
+ */
+export function getCommandsForSurface(
+	surface: CommandSurface,
+): CommandDefinition[] {
+	return getEnabledCommands().filter(
+		(cmd) => !cmd.surfaces || cmd.surfaces.includes(surface),
+	);
+}
+
+/**
+ * Serialize a command into its wire-safe form: drops function-valued `choices`
+ * (keeping static string arrays), fills required defaults, and normalizes the
+ * `target` to a concrete value (`{ kind: "agent" }` when unset).
+ */
+export function serializeCommand(cmd: CommandDefinition): SerializedCommand {
+	const args: SerializedCommandArg[] = (cmd.args ?? []).map((arg) => {
+		const serialized: SerializedCommandArg = {
+			name: arg.name,
+			description: arg.description,
+		};
+		if (arg.required) serialized.required = true;
+		if (Array.isArray(arg.choices)) serialized.choices = [...arg.choices];
+		if (arg.dynamicChoices) serialized.dynamicChoices = arg.dynamicChoices;
+		if (arg.captureRemaining) serialized.captureRemaining = true;
+		return serialized;
+	});
+
+	const serialized: SerializedCommand = {
+		key: cmd.key,
+		nativeName: cmd.nativeName ?? cmd.key,
+		description: cmd.description,
+		textAliases: [...cmd.textAliases],
+		scope: cmd.scope,
+		acceptsArgs: cmd.acceptsArgs ?? args.length > 0,
+		args,
+		requiresAuth: cmd.requiresAuth ?? false,
+		requiresElevated: cmd.requiresElevated ?? false,
+		target: cmd.target ?? { kind: "agent" },
+	};
+	if (cmd.category) serialized.category = cmd.category;
+	if (cmd.surfaces) serialized.surfaces = [...cmd.surfaces];
+	if (cmd.icon) serialized.icon = cmd.icon;
+	return serialized;
+}
+
+/**
+ * Serialize all enabled commands (optionally scoped to a surface) for HTTP
+ * transport or native connector registration.
+ */
+export function serializeCommands(
+	surface?: CommandSurface,
+): SerializedCommand[] {
+	const commands = surface
+		? getCommandsForSurface(surface)
+		: getEnabledCommands();
+	return commands.map(serializeCommand);
 }

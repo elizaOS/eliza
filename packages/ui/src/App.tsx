@@ -40,6 +40,11 @@ import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
+import {
+  type NavigateSettingsDetail,
+  NAVIGATE_SETTINGS_EVENT,
+  useSlashCommandController,
+} from "./chat/useSlashCommandController";
 import { HomePill } from "./components/shell/HomePill";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
 import { ShellControllerProvider } from "./components/shell/ShellControllerContext";
@@ -58,7 +63,6 @@ import {
   type FocusConnectorEventDetail,
 } from "./events";
 import { CompactOnboarding } from "./first-run/CompactOnboarding";
-import { FirstRunScreen } from "./first-run/FirstRunScreen";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
@@ -715,7 +719,6 @@ function renderStaticViewRouterTab({
   LifeOpsPageView: ComponentType | null | undefined;
 }): ReactNode {
   const directViews: Record<string, ReactNode> = {
-    onboarding: <FirstRunScreen />,
     chat: <ViewUnavailableFallback />,
     browser: <BrowserWorkspaceView />,
     companion: <ViewUnavailableFallback />,
@@ -1132,8 +1135,9 @@ function ShellFoundationMount() {
  */
 function ContinuousChatOverlayMount(): ReactNode {
   const controller = useShellControllerContext();
+  const slash = useSlashCommandController();
   if (!controller) return null;
-  return <ContinuousChatOverlay controller={controller} />;
+  return <ContinuousChatOverlay controller={controller} slash={slash} />;
 }
 
 export function App() {
@@ -1313,6 +1317,23 @@ export function App() {
       document.removeEventListener(FOCUS_CONNECTOR_EVENT, handleFocusConnector);
   }, [setTab]);
 
+  // Slash-command settings navigation (e.g. `/settings model`): open the
+  // settings tab focused on the requested section (or the hub when absent).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleNavigateSettings = (event: Event) => {
+      const detail = (event as CustomEvent<NavigateSettingsDetail>).detail;
+      setSettingsInitialSection(detail?.section ?? null);
+      setTab("settings");
+    };
+    window.addEventListener(NAVIGATE_SETTINGS_EVENT, handleNavigateSettings);
+    return () =>
+      window.removeEventListener(
+        NAVIGATE_SETTINGS_EVENT,
+        handleNavigateSettings,
+      );
+  }, [setTab]);
+
   // Handle agent-dispatched view navigation events.
   // The VIEWS action (and future agent commands) dispatch this event to navigate
   // the user to a specific view by path or view ID.
@@ -1334,6 +1355,9 @@ export function App() {
     window.addEventListener("eliza:navigate:view", handleNavigateView);
     return () =>
       window.removeEventListener("eliza:navigate:view", handleNavigateView);
+    // invokeDesktopBridgeRequest (module import), setActiveDesktopTabId and
+    // setViewLayout (state setters) are stable, so they are deliberately not
+    // in this dependency array — biome's exhaustive-deps treats them as extra.
   }, [
     setTab,
     availableViewsForDesktopTabs,

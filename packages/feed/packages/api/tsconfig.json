@@ -14,9 +14,7 @@
       "@feed/db": ["../db/src/index.ts"],
       "@feed/db/*": ["../db/src/*"],
       "@feed/engine": ["../engine/src/index.ts"],
-      "@feed/engine/*": ["../engine/src/*"],
-      "@feed/agents": ["../agents/dist/index.d.ts"],
-      "@feed/agents/*": ["../agents/dist/*"]
+      "@feed/engine/*": ["../engine/src/*"]
     }
   },
   "include": ["src/**/*", "src/**/*.d.ts"],

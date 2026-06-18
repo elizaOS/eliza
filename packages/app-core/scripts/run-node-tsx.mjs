@@ -44,7 +44,18 @@ function withWorkspaceNodePath(env) {
   };
 }
 
-const child = spawn(resolveNodeCmd(), ["--import", "tsx", ...args], {
+const nodeArgs = [
+  // WHY: this runner executes TypeScript workspace scripts before every
+  // workspace package has a fresh dist build. Prefer source exports for
+  // packages that declare the eliza-source condition, matching Vitest's
+  // source-mode aliases and avoiding stale/missing dist imports in CI probes.
+  "--conditions=eliza-source",
+  "--import",
+  "tsx",
+  ...args,
+];
+
+const child = spawn(resolveNodeCmd(), nodeArgs, {
   cwd: process.cwd(),
   env: withWorkspaceNodePath(process.env),
   stdio: "inherit",
