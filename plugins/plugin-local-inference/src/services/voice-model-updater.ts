@@ -80,6 +80,7 @@ export interface VoiceModelUpdateCheckResult {
 		| "not-installed"
 		| "net-regression"
 		| "bundle-incompatible"
+		| "unpublished"
 		| "update-available";
 }
 
@@ -129,6 +130,17 @@ export function shouldAutoUpdateVoiceModel(args: {
 	);
 	if (cmp === null || cmp <= 0) {
 		return { allow: false, reason: "up-to-date" };
+	}
+	// A "pending" revision (or a placeholder carrying no downloadable assets)
+	// marks a catalogued-but-unpublished release: its HF tree can't be fetched,
+	// so approving it would 404 the download. Never auto-update to one — even
+	// when it is a newer semver with a net improvement (e.g. vad@0.2.0, whose
+	// HF revision is not yet pinned).
+	if (
+		args.candidate.hfRevision === "pending" ||
+		args.candidate.ggufAssets.length === 0
+	) {
+		return { allow: false, reason: "unpublished" };
 	}
 	if (!args.candidate.evalDeltas.netImprovement) {
 		return { allow: false, reason: "net-regression" };

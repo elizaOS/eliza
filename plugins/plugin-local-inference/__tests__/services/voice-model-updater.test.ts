@@ -17,6 +17,7 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { VoiceModelVersion } from "@elizaos/shared";
+import { latestVoiceModelVersion } from "@elizaos/shared";
 import {
 	cloudCatalogSource,
 	downloadVoiceModel,
@@ -37,7 +38,17 @@ function makeVersion(overrides: Partial<VoiceModelVersion>): VoiceModelVersion {
 		publishedToHfAt: "2026-05-14T00:00:00Z",
 		hfRepo: "test/repo",
 		hfRevision: "main",
-		ggufAssets: [],
+		// A published, downloadable asset by default so candidates clear the
+		// "unpublished" gate and reach the gate each test exercises. Cases that
+		// want an unpublished placeholder override ggufAssets/hfRevision.
+		ggufAssets: [
+			{
+				filename: "voice/kokoro/model.gguf",
+				sha256: "a".repeat(64),
+				sizeBytes: 1_024,
+				quant: "q8_0",
+			},
+		],
 		evalDeltas: { netImprovement: true },
 		changelogEntry: "test",
 		minBundleVersion: "0.0.0",
@@ -131,6 +142,48 @@ describe("shouldAutoUpdateVoiceModel", () => {
 		});
 		expect(res.allow).toBe(true);
 		expect(res.reason).toBe("update-available");
+	});
+
+	it("refuses an UNPUBLISHED candidate (pending revision)", () => {
+		// Newer semver + net improvement, but the HF revision is not yet pinned:
+		// fetching its tree would 404, so it must never be approved.
+		const res = shouldAutoUpdateVoiceModel({
+			installedVersion: "1.0.0",
+			candidate: makeVersion({ version: "1.1.0", hfRevision: "pending" }),
+			bundleVersion: "2.0.0",
+			pinned: false,
+		});
+		expect(res).toEqual({ allow: false, reason: "unpublished" });
+	});
+
+	it("refuses a placeholder with no downloadable assets", () => {
+		const res = shouldAutoUpdateVoiceModel({
+			installedVersion: "1.0.0",
+			candidate: makeVersion({ version: "1.1.0", ggufAssets: [] }),
+			bundleVersion: "2.0.0",
+			pinned: false,
+		});
+		expect(res).toEqual({ allow: false, reason: "unpublished" });
+	});
+
+	it("never selects the catalog's latest VAD while its revision is pending", () => {
+		// Regression guard for the real catalog: latestVoiceModelVersion("vad") is
+		// the newer v0.2.0 whose hfRevision is still "pending" (GGUF-only release
+		// not yet pinned), so the updater must not approve it for download.
+		const latest = latestVoiceModelVersion("vad");
+		expect(latest).toBeDefined();
+		if (
+			latest &&
+			(latest.hfRevision === "pending" || latest.ggufAssets.length === 0)
+		) {
+			const res = shouldAutoUpdateVoiceModel({
+				installedVersion: "0.1.0",
+				candidate: latest,
+				bundleVersion: "1.0.0",
+				pinned: false,
+			});
+			expect(res).toEqual({ allow: false, reason: "unpublished" });
+		}
 	});
 
 	it("skips bundle gate when bundleVersion is empty string (UI listing)", () => {
