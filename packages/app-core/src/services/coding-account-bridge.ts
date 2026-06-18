@@ -23,7 +23,8 @@
  * `applySubscriptionCredentialsLocal` does.
  */
 
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { loadAccount } from "@elizaos/agent/auth/account-storage";
 import { getAccessToken } from "@elizaos/agent/auth/credentials";
@@ -163,6 +164,34 @@ function materializeCodexHome(accountId: string, accessToken: string): string {
     last_refresh: new Date().toISOString(),
   };
   writeJsonAtomicSync(path.join(dir, "auth.json"), authJson);
+
+  // Codex reads its model from CODEX_HOME/config.toml; with none, codex-acp
+  // falls back to a built-in default (e.g. gpt-5.3-codex) that ChatGPT-account
+  // auth rejects ("model is not supported when using Codex with a ChatGPT
+  // account"). Write a MINIMAL config.toml with just the model — reusing the
+  // operator's working model (extracted from ~/.codex/config.toml) but NOT the
+  // rest of their config, which can carry fields the pinned codex-acp rejects
+  // (e.g. newer reasoning-effort variants). Falls back to a compatible default.
+  const targetConfig = path.join(dir, "config.toml");
+  try {
+    let model = process.env.ELIZA_CODEX_MODEL?.trim();
+    if (!model) {
+      const machineConfig = path.join(os.homedir(), ".codex", "config.toml");
+      if (existsSync(machineConfig)) {
+        const m = readFileSync(machineConfig, "utf-8").match(
+          /^\s*model\s*=\s*"([^"]+)"/m,
+        );
+        if (m?.[1]) model = m[1];
+      }
+    }
+    writeFileSync(targetConfig, `model = "${model || "gpt-5.1-codex"}"\n`, {
+      mode: 0o600,
+    });
+  } catch (err) {
+    logger.warn(
+      `[coding-account-bridge] could not materialize codex config.toml: ${String(err)}`,
+    );
+  }
   return dir;
 }
 
