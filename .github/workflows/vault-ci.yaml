@@ -154,10 +154,21 @@ jobs:
         working-directory: packages/shared
         run: bun run build:i18n
 
-      - name: Run vault wiring tests
+      # The cloud-direct-auth + active-server-persistence consumer code (and its
+      # tests) moved from app-core into @elizaos/ui during the app-core
+      # React/types split; run them there. The ui suite needs Node's
+      # experimental webstorage disabled so jsdom's localStorage (with .clear)
+      # is used.
+      - name: Run cloud-wiring tests (in @elizaos/ui)
+        working-directory: packages/ui
+        run: |
+          NODE_OPTIONS="--no-experimental-webstorage --disable-warning=ExperimentalWarning" \
+          bunx vitest run --config vitest.config.ts \
+            src/api/client-cloud-direct-auth.test.ts \
+            src/state/persistence-cloud-active-server.test.ts
+
+      - name: Run startup-integration drift test (app-core)
         working-directory: packages/app-core
         run: |
           bunx vitest run --config vitest.config.ts \
-            src/api/client-cloud-direct-auth.test.ts \
-            src/state/persistence-cloud-active-server.test.ts \
             scripts/startup-integration-script-drift.test.ts
