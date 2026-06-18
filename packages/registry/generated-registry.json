@@ -92,6 +92,52 @@
       "registryKind": "plugin",
       "directory": "eliza-plugin-agentradar"
     },
+    "@human.tech/plugin-waap": {
+      "git": {
+        "repo": "holonym-foundation/eliza-plugin-waap",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@human.tech/plugin-waap",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.3"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "WaaP wallet plugin for ElizaOS — 2-of-2 MPC signing for EVM and Sui, with native 2FA and server-enforced spending policies; the agent never holds private keys.",
+      "homepage": "https://github.com/holonym-foundation/eliza-plugin-waap",
+      "topics": [
+        "wallet",
+        "mpc",
+        "2pc",
+        "evm",
+        "sui",
+        "2fa"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@thecolony/elizaos-plugin": {
       "git": {
         "repo": "TheColonyCC/elizaos-plugin",
