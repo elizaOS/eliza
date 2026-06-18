@@ -172,12 +172,22 @@ export async function runModelGrind(deps: ModelGrindDeps): Promise<ModelGrindRep
 		const r: ModelGrindResult = { model: "text", ok: false };
 		try {
 			const lt = now();
-			await deps.ensureTextModelLoaded("TEXT_SMALL");
+			const state = (await deps.ensureTextModelLoaded("TEXT_SMALL")) as {
+				contextId?: unknown;
+			};
+			const contextId =
+				typeof state.contextId === "number" && Number.isFinite(state.contextId)
+					? state.contextId
+					: null;
+			if (contextId == null) {
+				throw new Error("Text model load returned no contextId");
+			}
 			r.loadMs = Math.round(now() - lt);
 			const gt = now();
 			const res = (await deps.callIosHost(
 				"llama_generate",
 				{
+					context_id: contextId,
 					prompt: "User: Say hello in one short sentence.\nAssistant:",
 					max_tokens: 48,
 					temperature: 0.7,
