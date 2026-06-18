@@ -1,16 +1,41 @@
+import { hasInteractionBlocks } from "@elizaos/core";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import * as React from "react";
 
-import type { ImageAttachment } from "../../api/client-types-chat";
+import type {
+  ConversationMessage,
+  ImageAttachment,
+} from "../../api/client-types-chat";
+import {
+  parseSlashDraft,
+  runSlashExecution,
+  type SlashExecution,
+} from "../../chat/slash-menu";
+import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import {
   filesToImageAttachments,
   MAX_CHAT_IMAGES,
 } from "../../utils/image-attachment";
+import { MessageContent } from "../chat/MessageContent";
+import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import type { ShellMessage } from "./shell-state";
 import { usePromptSuggestions } from "./usePromptSuggestions";
 import type { ShellController } from "./useShellController";
+
+/** No-op slash controller so the overlay renders without a provider (stories). */
+const EMPTY_SLASH_CONTROLLER: SlashCommandController = {
+  commands: [],
+  loading: false,
+  resolveChoices: () => [],
+  resolveSection: () => undefined,
+  navigateTab: () => {},
+  navigateSettings: () => {},
+  navigateView: () => {},
+  clearChat: () => {},
+  openCommandPalette: () => {},
+};
 
 /**
  * The continuous-chat overlay: one always-present, ambient glass conversation
@@ -213,7 +238,22 @@ function ThreadLine({
               : "bg-white/10 text-white/90",
         )}
       >
-        {message.content}
+        {!isUser && hasInteractionBlocks(message.content) ? (
+          // Assistant turns carrying interaction blocks (choices, forms, task
+          // cards) render through the shared segment renderer so the floating
+          // overlay shows the same native widgets as the full chat surface.
+          <MessageContent
+            message={{
+              id: message.id,
+              role: message.role,
+              text: message.content,
+              timestamp: message.createdAt,
+              failureKind: message.failureKind,
+            }}
+          />
+        ) : (
+          message.content
+        )}
       </div>
     </motion.div>
   );
@@ -221,8 +261,11 @@ function ThreadLine({
 
 export function ContinuousChatOverlay({
   controller,
+  slash: slashProp,
 }: {
   controller: ShellController;
+  /** Universal slash-command catalog + app-level nav effects. */
+  slash?: SlashCommandController;
 }): React.JSX.Element {
   const {
     messages,
@@ -239,11 +282,15 @@ export function ContinuousChatOverlay({
     toggleAgentVoiceMute,
   } = controller;
 
+  const slash = slashProp ?? EMPTY_SLASH_CONTROLLER;
+
   // Honor the OS "reduce motion" setting: every overlay animation collapses to
   // a near-instant cross-fade with no positional movement when this is true.
   const reduce = useReducedMotion() ?? false;
 
   const [draft, setDraft] = React.useState("");
+  // Escape dismisses the slash menu without clearing the draft; typing reopens.
+  const [slashDismissed, setSlashDismissed] = React.useState(false);
   const [expanded, setExpanded] = React.useState(false);
   const [fullscreen, setFullscreen] = React.useState(false);
   const [hovered, setHovered] = React.useState(false);
@@ -368,22 +415,32 @@ export function ContinuousChatOverlay({
     }
   }, [lastId, lastContent, fullscreen]);
 
+  // Send `text` (and optional images) through the normal chat pipeline, clearing
+  // the composer. Shared by the send button, the slash menu (agent commands),
+  // and suggestion taps.
+  const submitText = React.useCallback(
+    (text: string, images: ImageAttachment[] = []) => {
+      const trimmed = text.trim();
+      // An image-only turn is valid; only bail when there's nothing to send.
+      if ((!trimmed && images.length === 0) || !canSend) return;
+      setDraft("");
+      setSlashDismissed(false);
+      setPendingImages([]);
+      setImageError(null);
+      if (images.length) {
+        send(trimmed, { images });
+      } else {
+        send(trimmed);
+      }
+      setExpanded(true);
+      inputRef.current?.focus();
+    },
+    [canSend, send],
+  );
+
   const submit = React.useCallback(() => {
-    const text = draft.trim();
-    const images = pendingImages;
-    // An image-only turn is valid; only bail when there's nothing to send.
-    if ((!text && images.length === 0) || !canSend) return;
-    setDraft("");
-    setPendingImages([]);
-    setImageError(null);
-    if (images.length) {
-      send(text, { images });
-    } else {
-      send(text);
-    }
-    setExpanded(true);
-    inputRef.current?.focus();
-  }, [draft, pendingImages, canSend, send]);
+    submitText(draft, pendingImages);
+  }, [submitText, draft, pendingImages]);
 
   // Tapping a suggestion sends it immediately (same path as submit), so the
   // strip is a one-tap shortcut, not just a draft pre-fill.
@@ -531,6 +588,67 @@ export function ContinuousChatOverlay({
     // Entering fullscreen supersedes the partial panel; leaving it collapses.
     setExpanded(false);
   }, [hasThread]);
+
+  // ── Slash commands ─────────────────────────────────────────────────────────
+  // Inline command autocomplete: the menu derives from the draft + the loaded
+  // catalog; Escape dismisses it (without clearing the draft); typing reopens.
+  const slashMenu = useSlashMenu(draft, slash);
+  const isSlashDraft = parseSlashDraft(draft).isSlash;
+  const slashOpen = slashMenu.open && !slashDismissed;
+  // Combobox a11y for the composer input — only when a slash catalog is wired
+  // in. Spread so the input is a plain message box (no role) otherwise.
+  const comboboxAria: React.AriaAttributes & { role?: "combobox" } = slashProp
+    ? {
+        role: "combobox",
+        "aria-autocomplete": "list",
+        "aria-expanded": slashOpen,
+        "aria-controls": slashOpen ? "slash-command-listbox" : undefined,
+        "aria-activedescendant":
+          slashOpen && slashMenu.items[slashMenu.activeIndex]
+            ? `slash-option-${slashMenu.items[slashMenu.activeIndex].id}`
+            : undefined,
+      }
+    : {};
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: draft IS the trigger — any edit re-arms the menu after an Escape dismissal.
+  React.useEffect(() => {
+    setSlashDismissed(false);
+  }, [draft]);
+
+  // Run a resolved slash execution: agent commands flow through the normal send
+  // pipeline; navigation/client commands run their app- or overlay-level effect
+  // and clear the composer.
+  const runExecution = React.useCallback(
+    (exec: SlashExecution) => {
+      if (exec.kind === "send") {
+        submitText(exec.text);
+        return;
+      }
+      runSlashExecution(exec, {
+        navigateTab: slash.navigateTab,
+        navigateSettings: slash.navigateSettings,
+        navigateView: slash.navigateView,
+        clearChat: slash.clearChat,
+        newConversation: () => controller.clearConversation(),
+        toggleFullscreen,
+        openCommandPalette: slash.openCommandPalette,
+        showCommands: slash.openCommandPalette,
+        send: (text) => submitText(text),
+      });
+      setDraft("");
+      setSlashDismissed(true);
+      inputRef.current?.focus();
+    },
+    [slash, controller, toggleFullscreen, submitText],
+  );
+
+  const pickSlashItem = React.useCallback(
+    (index: number) => {
+      const exec = slashMenu.resolve(index);
+      if (exec) runExecution(exec);
+    },
+    [slashMenu, runExecution],
+  );
 
   // Click into the composer → reveal the thread, but keep keyboard focus in the
   // input (don't arm the thread-focus move) so the user can type immediately.
@@ -854,6 +972,14 @@ export function ContinuousChatOverlay({
           }}
         />
         <div className={cn(GLASS_BAR, "relative")}>
+          {/* Inline slash-command autocomplete, floating just above the bar. */}
+          {slashProp && !slashDismissed ? (
+            <SlashCommandMenu
+              state={slashMenu}
+              loading={isSlashDraft && slash.loading}
+              onPick={pickSlashItem}
+            />
+          ) : null}
           {/* No expand/collapse chevron: focusing the input opens the thread,
               and Escape / clicking outside collapses it. */}
           <SoftButton
@@ -876,6 +1002,41 @@ export function ContinuousChatOverlay({
             onChange={(e) => setDraft(e.target.value)}
             onFocus={expand}
             onKeyDown={(e) => {
+              // The slash menu intercepts navigation/commit keys when open.
+              if (slashOpen) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  slashMenu.move(1);
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  slashMenu.move(-1);
+                  return;
+                }
+                if (e.key === "Tab") {
+                  const completed = slashMenu.complete();
+                  if (completed != null) {
+                    e.preventDefault();
+                    setDraft(completed);
+                    return;
+                  }
+                }
+                if (e.key === "Enter" && !e.shiftKey) {
+                  const exec = slashMenu.resolve();
+                  if (exec) {
+                    e.preventDefault();
+                    runExecution(exec);
+                    return;
+                  }
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setSlashDismissed(true);
+                  return;
+                }
+              }
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 submit();
@@ -889,6 +1050,10 @@ export function ContinuousChatOverlay({
             data-testid="chat-composer-textarea"
             aria-describedby={booting ? "cc-booting-hint" : undefined}
             aria-disabled={booting}
+            // Combobox semantics (role + aria-*) are applied as one spread, and
+            // only when a slash catalog is wired in — a plain message box
+            // otherwise.
+            {...comboboxAria}
             readOnly={booting}
             className="h-8 min-w-0 flex-1 border-none bg-transparent px-1 text-sm text-white/[0.92] outline-none placeholder:text-white/45"
           />
