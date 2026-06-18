@@ -1,0 +1,540 @@
+schema: eliza.e1_phone_first_article_executed_log_contract_gate.v1
+status: blocked_fail_closed_executed_first_article_log_contract
+date: '2026-05-22'
+claim_boundary: Schema and field contract for the highest-leverage executed first-article
+  bench logs. It validates future lab-result JSON logs for required fields but is
+  not release evidence, not a first-article pass, not enclosure signoff, and grants
+  no release credit.
+inputs:
+  first_article_bench_acceptance_matrix: board/kicad/e1-phone/production/test/readiness/e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml
+  missing_evidence_diagnostic: board/kicad/e1-phone/production/test/readiness/e1-phone-first-article-missing-evidence-2026-05-22.yaml
+  report_path: board/kicad/e1-phone/production/test/readiness/e1-phone-first-article-executed-log-contract-2026-05-22.yaml
+summary:
+  release_allowed: false
+  release_credit: false
+  target_log_count: 14
+  missing_log_count: 0
+  present_invalid_log_count: 14
+  present_contract_valid_log_count: 0
+  highest_leverage_packet: executed_first_article_bench_logs
+contract:
+  log_schema: eliza.e1_phone_executed_first_article_bench_log.v1
+  required_top_level_fields:
+  - schema
+  - artifact_id
+  - source_requirement_id
+  - evidence_role
+  - release_credit
+  - board_serial
+  - board_revision
+  - board_configuration
+  - supplier_lot_ids
+  - fixture_id
+  - fixture_calibration_id
+  - test_software_revision
+  - operator
+  - started_at
+  - completed_at
+  - limits_file
+  - measured_results
+  - pass_fail_disposition
+  - waivers
+  - reviewer
+  - reviewed_at
+  - disposition
+  required_measured_result_fields:
+  - measurement_id
+  - metric
+  - value
+  - unit
+  - limit
+  - result
+  allowed_pass_fail_disposition:
+  - fail
+  - pass
+  allowed_measured_result_values:
+  - fail
+  - not_applicable
+  - pass
+  required_evidence_role: executed_first_article_bench_log
+  required_disposition: reviewed_lab_record
+  release_credit_required_value: false
+acceptance_policy:
+  missing_logs_are_release_evidence: false
+  template_guidance_is_release_evidence: false
+  contract_valid_logs_unlock_release: false
+  signed_traveler_and_release_gate_still_required: true
+  release_allowed: false
+executed_log_contract_rows:
+- path: board/kicad/e1-phone/production/reports/camera-capture-log.json
+  resolved_path: board/kicad/e1-phone/production/reports/camera-capture-log.json
+  current_presence:
+    present: true
+    artifact_kind: file
+  schema_contract: eliza.e1_phone_executed_first_article_bench_log.v1
+  contract_valid: false
+  release_credit: false
+  acceptance_state: blocked_fail_closed_missing_or_invalid_executed_log
+  validation_failures:
+  - disposition_not_reviewed_lab_record
+  - evidence_role_not_executed_first_article_bench_log
+  - invalid_pass_fail_disposition
+  - measured_results_missing_or_empty
+  - missing_required_field:board_configuration
+  - missing_required_field:board_revision
+  - missing_required_field:board_serial
+  - missing_required_field:completed_at
+  - missing_required_field:evidence_role
+  - missing_required_field:fixture_calibration_id
+  - missing_required_field:fixture_id
+  - missing_required_field:limits_file
+  - missing_required_field:measured_results
+  - missing_required_field:operator
+  - missing_required_field:pass_fail_disposition
+  - missing_required_field:release_credit
+  - missing_required_field:started_at
+  - missing_required_field:supplier_lot_ids
+  - missing_required_field:test_software_revision
+  - missing_required_field:waivers
+  - release_credit_must_remain_false_in_contract_gate
+  - supplier_lot_ids_missing_or_empty
+  - unexpected_schema
+  - waivers_not_list
+  next_unblock_action: Capture the executed first-article JSON bench log with the
+    required schema fields, reviewed_lab_record disposition, measured results, limits
+    binding, board serial, supplier lots, fixture ID, calibration ID, operator, and
+    test software revision. This contract gate still grants no release credit by itself.
+- path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+  resolved_path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+  current_presence:
+    present: true
+    artifact_kind: file
+  schema_contract: eliza.e1_phone_executed_first_article_bench_log.v1
+  contract_valid: false
+  release_credit: false
+  acceptance_state: blocked_fail_closed_missing_or_invalid_executed_log
+  validation_failures:
+  - disposition_not_reviewed_lab_record
+  - evidence_role_not_executed_first_article_bench_log
+  - invalid_pass_fail_disposition
+  - measured_results_missing_or_empty
+  - missing_required_field:board_configuration
+  - missing_required_field:board_revision
+  - missing_required_field:board_serial
+  - missing_required_field:completed_at
+  - missing_required_field:evidence_role
+  - missing_required_field:fixture_calibration_id
+  - missing_required_field:fixture_id
+  - missing_required_field:limits_file
+  - missing_required_field:measured_results
+  - missing_required_field:operator
+  - missing_required_field:pass_fail_disposition
+  - missing_required_field:release_credit
+  - missing_required_field:started_at
+  - missing_required_field:supplier_lot_ids
+  - missing_required_field:test_software_revision
+  - missing_required_field:waivers
+  - release_credit_must_remain_false_in_contract_gate
+  - supplier_lot_ids_missing_or_empty
+  - unexpected_schema
+  - waivers_not_list
+  next_unblock_action: Capture the executed first-article JSON bench log with the
+    required schema fields, reviewed_lab_record disposition, measured results, limits
+    binding, board serial, supplier lots, fixture ID, calibration ID, operator, and
+    test software revision. This contract gate still grants no release credit by itself.
+- path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+  resolved_path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+  current_presence:
+    present: true
+    artifact_kind: file
+  schema_contract: eliza.e1_phone_executed_first_article_bench_log.v1
+  contract_valid: false
+  release_credit: false
+  acceptance_state: blocked_fail_closed_missing_or_invalid_executed_log
+  validation_failures:
+  - disposition_not_reviewed_lab_record
+  - evidence_role_not_executed_first_article_bench_log
+  - invalid_pass_fail_disposition
+  - measured_results_missing_or_empty
+  - missing_required_field:board_configuration
+  - missing_required_field:board_revision
+  - missing_required_field:board_serial
+  - missing_required_field:completed_at
+  - missing_required_field:evidence_role
+  - missing_required_field:fixture_calibration_id
+  - missing_required_field:fixture_id
+  - missing_required_field:limits_file
+  - missing_required_field:measured_results
+  - missing_required_field:operator
+  - missing_required_field:pass_fail_disposition
+  - missing_required_field:release_credit
+  - missing_required_field:started_at
+  - missing_required_field:supplier_lot_ids
+  - missing_required_field:test_software_revision
+  - missing_required_field:waivers
+  - release_credit_must_remain_false_in_contract_gate
+  - supplier_lot_ids_missing_or_empty
+  - unexpected_schema
+  - waivers_not_list
+  next_unblock_action: Capture the executed first-article JSON bench log with the
+    required schema fields, reviewed_lab_record disposition, measured results, limits
+    binding, board serial, supplier lots, fixture ID, calibration ID, operator, and
+    test software revision. This contract gate still grants no release credit by itself.
+- path: board/kicad/e1-phone/production/reports/drc.json
+  resolved_path: board/kicad/e1-phone/production/reports/drc.json
+  current_presence:
+    present: true
+    artifact_kind: file
+  schema_contract: eliza.e1_phone_executed_first_article_bench_log.v1
+  contract_valid: false
+  release_credit: false
+  acceptance_state: blocked_fail_closed_missing_or_invalid_executed_log
+  validation_failures:
+  - disposition_not_reviewed_lab_record
+  - evidence_role_not_executed_first_article_bench_log
+  - invalid_pass_fail_disposition
+  - measured_results_missing_or_empty
+  - missing_required_field:board_configuration
+  - missing_required_field:board_revision
+  - missing_required_field:completed_at
+  - missing_required_field:evidence_role
+  - missing_required_field:release_credit
+  - missing_required_field:started_at
+  - release_credit_must_remain_false_in_contract_gate
+  - unexpected_schema
+  next_unblock_action: Capture the executed first-article JSON bench log with the
+    required schema fields, reviewed_lab_record disposition, measured results, limits
+    binding, board serial, supplier lots, fixture ID, calibration ID, operator, and
+    test software revision. This contract gate still grants no release credit by itself.
+- path: board/kicad/e1-phone/production/reports/erc.json
+  resolved_path: board/kicad/e1-phone/production/reports/erc.json
+  current_presence:
+    present: true
+    artifact_kind: file
+  schema_contract: eliza.e1_phone_executed_first_article_bench_log.v1
+  contract_valid: false
+  release_credit: false
+  acceptance_state: blocked_fail_closed_missing_or_invalid_executed_log
+  validation_failures:
+  - disposition_not_reviewed_lab_record
+  - evidence_role_not_executed_first_article_bench_log
+  - invalid_pass_fail_disposition
+  - measured_results_missing_or_empty
+  - missing_required_field:board_configuration
+  - missing_required_field:board_revision
+  - missing_required_field:completed_at
+  - missing_required_field:evidence_role
+  - missing_required_field:release_credit
+  - missing_required_field:started_at
+  - release_credit_must_remain_false_in_contract_gate
+  - unexpected_schema
+  next_unblock_action: Capture the executed first-article JSON bench log with the
+    required schema fields, reviewed_lab_record disposition, measured results, limits
+    binding, board serial, supplier lots, fixture ID, calibration ID, operator, and
+    test software revision. This contract gate still grants no release credit by itself.
+- path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
+  resolved_path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
+  current_presence:
+    present: true
+    artifact_kind: file
+  schema_contract: eliza.e1_phone_executed_first_article_bench_log.v1
+  contract_valid: false
+  release_credit: false
+  acceptance_state: blocked_fail_closed_missing_or_invalid_executed_log
+  validation_failures:
+  - disposition_not_reviewed_lab_record
+  - evidence_role_not_executed_first_article_bench_log
+  - invalid_pass_fail_disposition
+  - measured_results_missing_or_empty
+  - missing_required_field:board_configuration
+  - missing_required_field:board_revision
+  - missing_required_field:board_serial
+  - missing_required_field:completed_at
+  - missing_required_field:evidence_role
+  - missing_required_field:fixture_calibration_id
+  - missing_required_field:fixture_id
+  - missing_required_field:limits_file
+  - missing_required_field:measured_results
+  - missing_required_field:operator
+  - missing_required_field:pass_fail_disposition
+  - missing_required_field:release_credit
+  - missing_required_field:started_at
+  - missing_required_field:supplier_lot_ids
+  - missing_required_field:test_software_revision
+  - missing_required_field:waivers
+  - release_credit_must_remain_false_in_contract_gate
+  - supplier_lot_ids_missing_or_empty
+  - unexpected_schema
+  - waivers_not_list
+  next_unblock_action: Capture the executed first-article JSON bench log with the
+    required schema fields, reviewed_lab_record disposition, measured results, limits
+    binding, board serial, supplier lots, fixture ID, calibration ID, operator, and
+    test software revision. This contract gate still grants no release credit by itself.
+- path: board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
+  resolved_path: board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
+  current_presence:
+    present: true
+    artifact_kind: file
+  schema_contract: eliza.e1_phone_executed_first_article_bench_log.v1
+  contract_valid: false
+  release_credit: false
+  acceptance_state: blocked_fail_closed_missing_or_invalid_executed_log
+  validation_failures:
+  - disposition_not_reviewed_lab_record
+  - evidence_role_not_executed_first_article_bench_log
+  - invalid_pass_fail_disposition
+  - measured_results_missing_or_empty
+  - missing_required_field:board_configuration
+  - missing_required_field:board_revision
+  - missing_required_field:board_serial
+  - missing_required_field:completed_at
+  - missing_required_field:evidence_role
+  - missing_required_field:fixture_calibration_id
+  - missing_required_field:fixture_id
+  - missing_required_field:limits_file
+  - missing_required_field:measured_results
+  - missing_required_field:operator
+  - missing_required_field:pass_fail_disposition
+  - missing_required_field:release_credit
+  - missing_required_field:started_at
+  - missing_required_field:supplier_lot_ids
+  - missing_required_field:test_software_revision
+  - missing_required_field:waivers
+  - release_credit_must_remain_false_in_contract_gate
+  - supplier_lot_ids_missing_or_empty
+  - unexpected_schema
+  - waivers_not_list
+  next_unblock_action: Capture the executed first-article JSON bench log with the
+    required schema fields, reviewed_lab_record disposition, measured results, limits
+    binding, board serial, supplier lots, fixture ID, calibration ID, operator, and
+    test software revision. This contract gate still grants no release credit by itself.
+- path: board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
+  resolved_path: board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
+  current_presence:
+    present: true
+    artifact_kind: file
+  schema_contract: eliza.e1_phone_executed_first_article_bench_log.v1
+  contract_valid: false
+  release_credit: false
+  acceptance_state: blocked_fail_closed_missing_or_invalid_executed_log
+  validation_failures:
+  - disposition_not_reviewed_lab_record
+  - evidence_role_not_executed_first_article_bench_log
+  - invalid_pass_fail_disposition
+  - measured_results_missing_or_empty
+  - missing_required_field:board_configuration
+  - missing_required_field:board_revision
+  - missing_required_field:board_serial
+  - missing_required_field:completed_at
+  - missing_required_field:evidence_role
+  - missing_required_field:fixture_calibration_id
+  - missing_required_field:fixture_id
+  - missing_required_field:limits_file
+  - missing_required_field:measured_results
+  - missing_required_field:operator
+  - missing_required_field:pass_fail_disposition
+  - missing_required_field:release_credit
+  - missing_required_field:started_at
+  - missing_required_field:supplier_lot_ids
+  - missing_required_field:test_software_revision
+  - missing_required_field:waivers
+  - release_credit_must_remain_false_in_contract_gate
+  - supplier_lot_ids_missing_or_empty
+  - unexpected_schema
+  - waivers_not_list
+  next_unblock_action: Capture the executed first-article JSON bench log with the
+    required schema fields, reviewed_lab_record disposition, measured results, limits
+    binding, board serial, supplier lots, fixture ID, calibration ID, operator, and
+    test software revision. This contract gate still grants no release credit by itself.
+- path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+  resolved_path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+  current_presence:
+    present: true
+    artifact_kind: file
+  schema_contract: eliza.e1_phone_executed_first_article_bench_log.v1
+  contract_valid: false
+  release_credit: false
+  acceptance_state: blocked_fail_closed_missing_or_invalid_executed_log
+  validation_failures:
+  - disposition_not_reviewed_lab_record
+  - evidence_role_not_executed_first_article_bench_log
+  - invalid_pass_fail_disposition
+  - measured_results_missing_or_empty
+  - missing_required_field:board_configuration
+  - missing_required_field:board_revision
+  - missing_required_field:board_serial
+  - missing_required_field:completed_at
+  - missing_required_field:evidence_role
+  - missing_required_field:fixture_calibration_id
+  - missing_required_field:fixture_id
+  - missing_required_field:limits_file
+  - missing_required_field:measured_results
+  - missing_required_field:operator
+  - missing_required_field:pass_fail_disposition
+  - missing_required_field:release_credit
+  - missing_required_field:started_at
+  - missing_required_field:supplier_lot_ids
+  - missing_required_field:test_software_revision
+  - missing_required_field:waivers
+  - release_credit_must_remain_false_in_contract_gate
+  - supplier_lot_ids_missing_or_empty
+  - unexpected_schema
+  - waivers_not_list
+  next_unblock_action: Capture the executed first-article JSON bench log with the
+    required schema fields, reviewed_lab_record disposition, measured results, limits
+    binding, board serial, supplier lots, fixture ID, calibration ID, operator, and
+    test software revision. This contract gate still grants no release credit by itself.
+- path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+  resolved_path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+  current_presence:
+    present: true
+    artifact_kind: file
+  schema_contract: eliza.e1_phone_executed_first_article_bench_log.v1
+  contract_valid: false
+  release_credit: false
+  acceptance_state: blocked_fail_closed_missing_or_invalid_executed_log
+  validation_failures:
+  - disposition_not_reviewed_lab_record
+  - evidence_role_not_executed_first_article_bench_log
+  - invalid_pass_fail_disposition
+  - measured_results_missing_or_empty
+  - missing_required_field:board_configuration
+  - missing_required_field:board_revision
+  - missing_required_field:board_serial
+  - missing_required_field:completed_at
+  - missing_required_field:evidence_role
+  - missing_required_field:fixture_calibration_id
+  - missing_required_field:fixture_id
+  - missing_required_field:limits_file
+  - missing_required_field:measured_results
+  - missing_required_field:operator
+  - missing_required_field:pass_fail_disposition
+  - missing_required_field:release_credit
+  - missing_required_field:started_at
+  - missing_required_field:supplier_lot_ids
+  - missing_required_field:test_software_revision
+  - missing_required_field:waivers
+  - release_credit_must_remain_false_in_contract_gate
+  - supplier_lot_ids_missing_or_empty
+  - unexpected_schema
+  - waivers_not_list
+  next_unblock_action: Capture the executed first-article JSON bench log with the
+    required schema fields, reviewed_lab_record disposition, measured results, limits
+    binding, board serial, supplier lots, fixture ID, calibration ID, operator, and
+    test software revision. This contract gate still grants no release credit by itself.
+- path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+  resolved_path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+  current_presence:
+    present: true
+    artifact_kind: file
+  schema_contract: eliza.e1_phone_executed_first_article_bench_log.v1
+  contract_valid: false
+  release_credit: false
+  acceptance_state: blocked_fail_closed_missing_or_invalid_executed_log
+  validation_failures:
+  - disposition_not_reviewed_lab_record
+  - evidence_role_not_executed_first_article_bench_log
+  - invalid_pass_fail_disposition
+  - measured_results_missing_or_empty
+  - missing_required_field:board_configuration
+  - missing_required_field:board_revision
+  - missing_required_field:completed_at
+  - missing_required_field:evidence_role
+  - missing_required_field:release_credit
+  - missing_required_field:started_at
+  - release_credit_must_remain_false_in_contract_gate
+  - unexpected_schema
+  next_unblock_action: Capture the executed first-article JSON bench log with the
+    required schema fields, reviewed_lab_record disposition, measured results, limits
+    binding, board serial, supplier lots, fixture ID, calibration ID, operator, and
+    test software revision. This contract gate still grants no release credit by itself.
+- path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
+  resolved_path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
+  current_presence:
+    present: true
+    artifact_kind: file
+  schema_contract: eliza.e1_phone_executed_first_article_bench_log.v1
+  contract_valid: false
+  release_credit: false
+  acceptance_state: blocked_fail_closed_missing_or_invalid_executed_log
+  validation_failures:
+  - disposition_not_reviewed_lab_record
+  - evidence_role_not_executed_first_article_bench_log
+  - invalid_pass_fail_disposition
+  - measured_results_missing_or_empty
+  - missing_required_field:board_configuration
+  - missing_required_field:board_revision
+  - missing_required_field:completed_at
+  - missing_required_field:evidence_role
+  - missing_required_field:release_credit
+  - missing_required_field:started_at
+  - release_credit_must_remain_false_in_contract_gate
+  - unexpected_schema
+  next_unblock_action: Capture the executed first-article JSON bench log with the
+    required schema fields, reviewed_lab_record disposition, measured results, limits
+    binding, board serial, supplier lots, fixture ID, calibration ID, operator, and
+    test software revision. This contract gate still grants no release credit by itself.
+- path: board/kicad/e1-phone/production/reports/zone-fill.json
+  resolved_path: board/kicad/e1-phone/production/reports/zone-fill.json
+  current_presence:
+    present: true
+    artifact_kind: file
+  schema_contract: eliza.e1_phone_executed_first_article_bench_log.v1
+  contract_valid: false
+  release_credit: false
+  acceptance_state: blocked_fail_closed_missing_or_invalid_executed_log
+  validation_failures:
+  - disposition_not_reviewed_lab_record
+  - evidence_role_not_executed_first_article_bench_log
+  - invalid_pass_fail_disposition
+  - measured_results_missing_or_empty
+  - missing_required_field:board_configuration
+  - missing_required_field:board_revision
+  - missing_required_field:board_serial
+  - missing_required_field:completed_at
+  - missing_required_field:evidence_role
+  - missing_required_field:fixture_calibration_id
+  - missing_required_field:fixture_id
+  - missing_required_field:limits_file
+  - missing_required_field:measured_results
+  - missing_required_field:operator
+  - missing_required_field:pass_fail_disposition
+  - missing_required_field:release_credit
+  - missing_required_field:started_at
+  - missing_required_field:supplier_lot_ids
+  - missing_required_field:test_software_revision
+  - missing_required_field:waivers
+  - release_credit_must_remain_false_in_contract_gate
+  - supplier_lot_ids_missing_or_empty
+  - unexpected_schema
+  - waivers_not_list
+  next_unblock_action: Capture the executed first-article JSON bench log with the
+    required schema fields, reviewed_lab_record disposition, measured results, limits
+    binding, board serial, supplier lots, fixture ID, calibration ID, operator, and
+    test software revision. This contract gate still grants no release credit by itself.
+- path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
+  resolved_path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
+  current_presence:
+    present: true
+    artifact_kind: file
+  schema_contract: eliza.e1_phone_executed_first_article_bench_log.v1
+  contract_valid: false
+  release_credit: false
+  acceptance_state: blocked_fail_closed_missing_or_invalid_executed_log
+  validation_failures:
+  - disposition_not_reviewed_lab_record
+  - evidence_role_not_executed_first_article_bench_log
+  - invalid_pass_fail_disposition
+  - measured_results_missing_or_empty
+  - missing_required_field:board_configuration
+  - missing_required_field:board_revision
+  - missing_required_field:completed_at
+  - missing_required_field:evidence_role
+  - missing_required_field:release_credit
+  - missing_required_field:started_at
+  - release_credit_must_remain_false_in_contract_gate
+  - unexpected_schema
+  next_unblock_action: Capture the executed first-article JSON bench log with the
+    required schema fields, reviewed_lab_record disposition, measured results, limits
+    binding, board serial, supplier lots, fixture ID, calibration ID, operator, and
+    test software revision. This contract gate still grants no release credit by itself.

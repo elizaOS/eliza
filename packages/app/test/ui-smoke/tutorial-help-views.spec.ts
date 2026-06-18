@@ -35,10 +35,9 @@ test("Tutorial + Help are pinned to home and both work", async ({ page }) => {
   expect(tileIds[0]).toBe("tutorial");
   expect(tileIds).toContain("help");
 
-  // 2. Tutorial → launcher → Start → the interactive spotlight overlay appears.
+  // 2. Tutorial tile → the /tutorial launcher starts the overlay directly (no
+  // separate splash) → the interactive spotlight overlay's welcome step appears.
   await tutorialTile.click();
-  await expect(page.getByTestId("tutorial-launcher")).toBeVisible();
-  await page.getByTestId("tutorial-start-text").click();
   const card = page.getByTestId("tutorial-card");
   await expect(card).toBeVisible();
   await expect(card).toContainText(/Step 1 of/i);

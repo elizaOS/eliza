@@ -551,6 +551,23 @@ export class TelegramService extends Service {
           break;
         } catch (error) {
           lastError = error instanceof Error ? error : new Error(String(error));
+          const errorCode = (error as { response?: { error_code?: number } })
+            .response?.error_code;
+          // A revoked/malformed bot token (401/404) is permanent — don't burn
+          // ~30s of exponential backoff retrying it; fail fast with a clear
+          // operator message.
+          if (errorCode === 401 || errorCode === 404) {
+            logger.error(
+              {
+                src: "plugin:telegram",
+                agentId: runtime.agentId,
+                accountId: state.accountId,
+                errorCode,
+              },
+              "Telegram bot token rejected — check TELEGRAM_BOT_TOKEN for this account",
+            );
+            break;
+          }
           logger.error(
             {
               src: "plugin:telegram",
@@ -986,10 +1003,26 @@ export class TelegramService extends Service {
     if (!allowedChats) {
       return true;
     }
+    if (typeof allowedChats !== "string") {
+      logger.warn(
+        { src: "plugin:telegram", agentId: this.runtime.agentId, accountId },
+        "TELEGRAM_ALLOWED_CHATS must be a JSON array of chat-id strings; blocking all chats until fixed",
+      );
+      return false;
+    }
 
     try {
-      const allowedChatsList = JSON.parse(allowedChats as string);
-      return allowedChatsList.includes(chatId);
+      const parsed = JSON.parse(allowedChats);
+      if (!Array.isArray(parsed)) {
+        // A bare JSON string (e.g. "-1001234567") would make `.includes` a
+        // substring match and silently over-authorize — fail closed instead.
+        logger.warn(
+          { src: "plugin:telegram", agentId: this.runtime.agentId, accountId },
+          "TELEGRAM_ALLOWED_CHATS must be a JSON array of chat-id strings; blocking all chats until fixed",
+        );
+        return false;
+      }
+      return parsed.map((entry) => String(entry)).includes(chatId);
     } catch (error) {
       logger.error(
         {

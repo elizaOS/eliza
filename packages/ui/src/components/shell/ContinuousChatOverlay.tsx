@@ -1,4 +1,5 @@
 import {
+  Home,
   Maximize2,
   Minimize2,
   RotateCcw,
@@ -94,6 +95,16 @@ const OVERLAY_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 // Apple-style spring. The whole sheet is unmounted when there's no thread yet.
 // HALF is a comfortable mid-stop; FULL fills all the way to panelMaxH (the sheet
 // rises to just under the status bar) — you pull it back DOWN to dismiss.
+/** The five explicit states of the floating chat surface. Derived from the
+ * resting height + flags so it always matches what's rendered (see the
+ * `chatState` derivation in the component). */
+export type ChatState =
+  | "CLOSED"
+  | "INPUT"
+  | "OPEN_UNDER_HALF"
+  | "OPEN_HALF_OR_OVER"
+  | "MAXIMIZED";
+
 const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
 // px kept clear above the panel. Sized to clear an edge-to-edge status bar
 // (~58px) plus a buffer so the grabber sits BELOW the notification-shade pull
@@ -628,6 +639,8 @@ export function ContinuousChatOverlay({
     needsAudioUnlock,
     unlockAudio,
     openSettings,
+    navigateHome,
+    currentTab,
     clearConversation,
     stop,
   } = controller;
@@ -892,7 +905,10 @@ export function ContinuousChatOverlay({
 
   const beginPushToTalkPress = React.useCallback(
     (event: React.PointerEvent<HTMLButtonElement>) => {
-      if (hasDraft || recording || booting || event.button !== 0) return;
+      // No `booting` guard: voice capture is independent of agent-respond
+      // readiness (the transcript fills the draft for dictation; converse sends
+      // through the warm-tolerant path), so push-to-talk works while warming.
+      if (hasDraft || recording || event.button !== 0) return;
       event.currentTarget.setPointerCapture(event.pointerId);
       clearPushToTalkTimer();
       pushToTalkTimerRef.current = window.setTimeout(() => {
@@ -904,7 +920,7 @@ export function ContinuousChatOverlay({
         startRecording("dictate");
       }, 200);
     },
-    [booting, clearPushToTalkTimer, hasDraft, recording, startRecording],
+    [clearPushToTalkTimer, hasDraft, recording, startRecording],
   );
 
   const endPushToTalkPress = React.useCallback(
@@ -997,6 +1013,32 @@ export function ContinuousChatOverlay({
   const detentH = !sheetOpen ? 0 : expanded ? openH : halfH;
   // A free-drag rest height wins over the detent until a detent is re-taken.
   const baseH = freeH != null ? Math.min(freeH, panelMaxH) : detentH;
+
+  // The single explicit state of the chat surface — the named machine the rest
+  // of the component (header gate, data attribute, transitions) reads from. It
+  // is DERIVED from the resting height so it always agrees with what's on
+  // screen; the live drag stays on the `threadHeight` motion value (no
+  // re-render per frame). The five states:
+  //   CLOSED            — pill only (sheet pilled away)
+  //   INPUT             — composer bar, no thread (the resting closed state)
+  //   OPEN_UNDER_HALF   — opened but below the half detent (a deliberate slow
+  //                       pull rested here); header buttons stay hidden
+  //   OPEN_HALF_OR_OVER — at the half detent or taller (header buttons show)
+  //   MAXIMIZED         — full-bleed edge-to-edge
+  // Transitions: pill tap / flick-up → INPUT; focus·type·flick·send → an OPEN_*
+  // state; pull-down → INPUT → CLOSED; maximize toggle ↔ MAXIMIZED; Home/Settings
+  // animate out of MAXIMIZED then collapse (see navigateAndClose).
+  const chatState: ChatState = pilled
+    ? "CLOSED"
+    : !sheetOpen
+      ? "INPUT"
+      : maximized
+        ? "MAXIMIZED"
+        : baseH >= halfH - 1
+          ? "OPEN_HALF_OR_OVER"
+          : "OPEN_UNDER_HALF";
+  const headerVisible =
+    chatState === "OPEN_HALF_OR_OVER" || chatState === "MAXIMIZED";
   // Map a raw drag height: rubber-band past FULL, hard-clamp the bottom to 0.
   const clampHeight = React.useCallback(
     (raw: number) =>
@@ -1033,6 +1075,21 @@ export function ContinuousChatOverlay({
     setSheetOpen(false);
     setExpanded(false);
   }, []);
+
+  // Leaving the chat for Settings/Home: animate OUT of maximize and collapse the
+  // sheet (closeSheet un-maximizes + springs the thread height down) BEFORE
+  // swapping the page underneath, so it reads as the chat closing into the new
+  // view rather than a jump-cut from full-screen. The page swap waits a beat for
+  // the collapse spring to start (a touch longer when leaving MAXIMIZED, since
+  // there's more to unwind); reduced motion navigates immediately.
+  const navigateAndClose = React.useCallback(
+    (go: () => void) => {
+      const wasMaximized = maximized;
+      closeSheet();
+      window.setTimeout(go, reduce ? 0 : wasMaximized ? 260 : 190);
+    },
+    [closeSheet, maximized, reduce],
+  );
 
   // The single detent→detent animator: whenever the settled detent (or viewport)
   // changes and we're not mid finger-drag, spring the history height to it. The
@@ -1543,6 +1600,7 @@ export function ContinuousChatOverlay({
           }
           data-maximized={fullBleed ? "true" : undefined}
           data-revealed={sheetOpen ? "true" : "false"}
+          data-chat-state={chatState}
           // Never taller than the visible viewport (above the keyboard) minus the
           // overlay's safe-area padding + a top margin: the thread scrolls instead
           // of the panel spilling off the top of the screen. borderRadius is a
@@ -1570,7 +1628,11 @@ export function ContinuousChatOverlay({
                   // pane with a bright top specular edge + a faint refractive stroke.
                   // Full-bleed drops the refractive stroke so it's truly edge-to-edge.
                   fullBleed ? "border-0" : "border border-white/[0.14]",
-                  "bg-black/55 backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
+                  // backdrop-blur-lg (16px), not -2xl (40px): the sheet height
+                  // resizes this surface every drag frame, and a 40px backdrop
+                  // re-blur per frame is the dominant paint cost — lg keeps the
+                  // glass look at a fraction of the GPU cost.
+                  "bg-black/55 backdrop-blur-lg backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
                   fullBleed
                     ? "shadow-none"
                     : "shadow-[inset_0_1px_0_rgba(255,255,255,0.20),inset_0_0_0_0.5px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(0,0,0,0.72)]",
@@ -1593,25 +1655,31 @@ export function ContinuousChatOverlay({
               />
               {/* Soft live-state glow at the base — bright warm while listening, a
             dimmer warm while replying. Orange is the only accent (no blue).
-            Clipped to the panel (the glass already grounds it). */}
+            Two FIXED-color blurred layers crossfaded by opacity ONLY (the old
+            single layer tweened backgroundColor, a per-frame paint on a blurred
+            element); opacity is compositor-cheap. */}
               <motion.div
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-2xl"
+                className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-xl bg-[rgba(255,180,120,0.30)]"
                 initial={false}
-                animate={{
-                  opacity: listening || responding ? 1 : 0,
-                  backgroundColor: listening
-                    ? "rgba(255,180,120,0.30)"
-                    : "rgba(255,140,80,0.18)",
-                }}
+                animate={{ opacity: listening ? 1 : 0 }}
+                transition={{ duration: reduce ? 0 : 1.1, ease: "easeInOut" }}
+              />
+              <motion.div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-xl bg-[rgba(255,140,80,0.18)]"
+                initial={false}
+                animate={{ opacity: responding ? 1 : 0 }}
                 transition={{ duration: reduce ? 0 : 1.1, ease: "easeInOut" }}
               />
 
-              {/* Full-state header — only at the FULL detent. Maximize (toggles
-              edge-to-edge full-screen) and Clear (resets to a fresh greeted
-              thread) sit together on the left; Settings opens preferences from
-              the right. */}
-              {sheetOpen && expanded && !pilled ? (
+              {/* Sheet header — shown at the HALF detent and up (not just FULL).
+              Left: Maximize (toggle edge-to-edge full-screen) + Clear (reset to
+              a fresh greeted thread, RotateCcw — it resets, it doesn't delete).
+              Right: Home (back to the home dashboard) + Settings. Home is hidden
+              while already on the home screen ("chat"); Settings is hidden while
+              already on the settings screen. */}
+              {headerVisible ? (
                 <div
                   className={cn(
                     "relative z-10 flex shrink-0 items-center justify-between gap-1.5 px-3",
@@ -1638,12 +1706,24 @@ export function ContinuousChatOverlay({
                       testId="chat-full-clear"
                     />
                   </div>
-                  <HeaderButton
-                    icon={SettingsIcon}
-                    label="settings"
-                    onClick={() => openSettings()}
-                    testId="chat-full-settings"
-                  />
+                  <div className="flex items-center gap-1.5">
+                    {currentTab !== "chat" ? (
+                      <HeaderButton
+                        icon={Home}
+                        label="home"
+                        onClick={() => navigateAndClose(() => navigateHome?.())}
+                        testId="chat-full-home"
+                      />
+                    ) : null}
+                    {currentTab !== "settings" ? (
+                      <HeaderButton
+                        icon={SettingsIcon}
+                        label="settings"
+                        onClick={() => navigateAndClose(() => openSettings())}
+                        testId="chat-full-settings"
+                      />
+                    ) : null}
+                  </div>
                 </div>
               ) : null}
 
@@ -1887,27 +1967,11 @@ export function ContinuousChatOverlay({
                 ) : null}
                 {/* One trailing control, ChatGPT-style: mic when there's nothing to
               send (or while recording, to stop), swapping to send once the user
-              starts typing or attaches an image. */}
-                {/* The trailing control morphs between mic and send. The `key` flip
-              remounts on each swap, so React removes the old control instantly
-              (no exit lag) and the new one pops in — a quick scale/fade that
-              reads as a morph without an AnimatePresence exit delay. */}
-                <motion.div
-                  key={
-                    (hasDraft || hasImages) && !recording
-                      ? "send"
-                      : !recording && responding
-                        ? "stop"
-                        : "mic"
-                  }
-                  className="shrink-0"
-                  initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.6 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{
-                    duration: reduce ? 0 : 0.3,
-                    ease: OVERLAY_EASE,
-                  }}
-                >
+              starts typing or attaches an image. It morphs IN PLACE (one
+              persistent <div>, no `key`): React reconciles the SoftButton's
+              glyph/label/handlers without a remount, so there's no scale/fade
+              pop on every keystroke that crosses the draft boundary. */}
+                <div className="shrink-0">
                   {(hasDraft || hasImages) && !recording ? (
                     <SoftButton
                       glyph={SEND_GLYPH}
@@ -1947,7 +2011,6 @@ export function ContinuousChatOverlay({
                               : "talk"
                       }
                       active={recording || handsFree}
-                      disabled={booting}
                       onClick={handleMicClick}
                       onPointerDown={beginPushToTalkPress}
                       onPointerUp={endPushToTalkPress}
@@ -1955,7 +2018,7 @@ export function ContinuousChatOverlay({
                       testId="chat-composer-mic"
                     />
                   )}
-                </motion.div>
+                </div>
               </div>
             </>
           )}

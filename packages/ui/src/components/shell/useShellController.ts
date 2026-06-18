@@ -78,6 +78,12 @@ export interface ShellController {
   /** Jump to Settings (where ProviderSwitcher lives) — used by the chat's
    *  `no_provider` failure gate to let the user wire a provider in one tap. */
   openSettings: () => void;
+  /** Return to the home dashboard (the /chat route). Drives the chat header's
+   *  Home button, which is hidden while already on the home screen. */
+  navigateHome?: () => void;
+  /** The active app tab. Lets the chat header hide the Home button on the home
+   *  screen ("chat") and the Settings button on the settings screen. */
+  currentTab?: string;
   /** Stop an in-flight reply stream (the composer's stop control). */
   stop: () => void;
 }
@@ -108,6 +114,9 @@ export function useShellController(): ShellController {
 
   // Jump to Settings from the chat's no_provider gate. Stable identity.
   const openSettings = React.useCallback(() => setTab("settings"), [setTab]);
+  // Return to the home dashboard (the /chat route) from the chat header's Home
+  // button. Stable identity.
+  const navigateHome = React.useCallback(() => setTab("chat"), [setTab]);
 
   // DEV-only debug affordance: drop the current conversation and start a fresh,
   // greeted one (handleNewConversation resets draft state + creates a new
@@ -205,7 +214,13 @@ export function useShellController(): ShellController {
 
   const startCapture = React.useCallback(
     (intent?: CaptureIntent) => {
-      if (!ready) return;
+      // Voice capture is independent of agent-respond readiness. A converse
+      // transcript goes through the same warm-tolerant send() (the server holds
+      // the turn until first-turn capability is online), and dictation only
+      // fills the composer draft. Gating on `ready` here wrongly disabled voice
+      // whenever the agent could not respond yet (e.g. no model loaded) even
+      // though typing-and-sending worked. Only guard against a capture already
+      // in flight.
       if (captureRef.current) return;
       // Read the user's VAD thresholds synchronously (local mirror of the
       // `messages.voice` setting) so end-of-turn silence detection honors the
@@ -260,7 +275,7 @@ export function useShellController(): ShellController {
           setRecording(false);
         });
     },
-    [ready, send],
+    [send],
   );
 
   const toggleRecording = React.useCallback(() => {
@@ -420,6 +435,8 @@ export function useShellController(): ShellController {
     unlockAudio: voiceOutput.unlockAudio,
     clearConversation,
     openSettings,
+    navigateHome,
+    currentTab: app.tab,
     stop: handleChatStop,
   };
 }

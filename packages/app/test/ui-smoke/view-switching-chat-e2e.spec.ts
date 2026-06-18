@@ -145,11 +145,10 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "what's on my calendar this week",
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
-    onView: (page) =>
-      page
-        .getByRole("heading", { name: "Calendar" })
-        .first()
-        .or(page.locator('section[aria-label="Calendar"]').first()),
+    // The registered calendar view (CalendarView.tsx) marks its container with
+    // data-testid="calendar-view" (it renders the month label + segmented
+    // control, not a literal "Calendar" heading).
+    onView: (page) => page.getByTestId("calendar-view").first(),
   },
   {
     name: 'PASSIVE: "check my messages" opens the inbox',
@@ -176,6 +175,55 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     // intent there). URL is the cross-mode-stable assertion; no separate testid
     // is asserted so the deterministic + live tiers stay identical.
     expectedPath: "/task-coordinator",
+  },
+  // --- Multilingual: the same navigate→render pipeline (deterministic tier) and
+  // real-LLM routing (live tier) must work for non-English utterances. ---
+  {
+    name: 'PASSIVE (es): "muéstrame mi calendario" opens the calendar view',
+    kind: "passive",
+    command: "muéstrame mi calendario",
+    view: { id: "calendar", path: "/calendar", label: "Calendar" },
+    expectedPath: "/calendar",
+    // The registered calendar view (CalendarView.tsx) marks its container with
+    // data-testid="calendar-view" (it renders the month label + segmented
+    // control, not a literal "Calendar" heading).
+    onView: (page) => page.getByTestId("calendar-view").first(),
+  },
+  {
+    name: 'ACTIVE (fr): "montre-moi mon portefeuille" opens the wallet view',
+    kind: "active",
+    command: "montre-moi mon portefeuille",
+    view: { id: "wallet", path: "/wallet", label: "Wallet" },
+    expectedPath: "/wallet",
+    onView: (page) =>
+      page
+        .getByTestId("wallet-shell")
+        .first()
+        .or(page.getByRole("heading", { name: "Wallet" }).first()),
+  },
+  {
+    name: 'PASSIVE (es): "revisa mi correo" opens the inbox',
+    kind: "passive",
+    command: "revisa mi correo",
+    view: { id: "inbox", path: "/inbox", label: "Inbox" },
+    expectedPath: "/inbox",
+    onView: (page) =>
+      page
+        .getByRole("heading", { name: "Inbox" })
+        .first()
+        .or(page.locator('section[aria-label="Inbox"]').first()),
+  },
+  {
+    name: 'PASSIVE (zh): "我的待办事项" opens the todos view',
+    kind: "passive",
+    command: "我的待办事项",
+    view: { id: "todos", path: "/todos", label: "Todos" },
+    expectedPath: "/todos",
+    onView: (page) =>
+      page
+        .getByRole("heading", { name: "Todos" })
+        .first()
+        .or(page.locator('section[aria-label="Todos"]').first()),
   },
 ];
 

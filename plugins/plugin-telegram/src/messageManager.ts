@@ -534,6 +534,69 @@ export class MessageManager {
   }
 
   /**
+   * Issue a Telegram send with bounded resilience so a transient error doesn't
+   * silently drop the agent's reply. On a 429 it honors the server-supplied
+   * `retry_after` (capped) and retries; on a MarkdownV2 400 (parse/length) it
+   * retries once via `plainTextFallback` so the user gets unformatted content
+   * instead of nothing. Other errors (e.g. 403 blocked) propagate unchanged.
+   * The inbound polling path is already resilient in telegraf; this covers the
+   * outbound path it does not.
+   */
+  private async sendWithRetry<T>(
+    send: () => Promise<T>,
+    plainTextFallback?: () => Promise<T>,
+  ): Promise<T> {
+    const MAX_RATE_LIMIT_RETRIES = 2;
+    const MAX_RETRY_AFTER_SECONDS = 30;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await send();
+      } catch (error) {
+        const response = (
+          error as {
+            response?: {
+              error_code?: number;
+              description?: string;
+              parameters?: { retry_after?: number };
+            };
+          }
+        ).response;
+        const code = response?.error_code;
+        if (code === 429 && attempt < MAX_RATE_LIMIT_RETRIES) {
+          const retryAfter = Math.min(
+            response?.parameters?.retry_after ?? 1,
+            MAX_RETRY_AFTER_SECONDS,
+          );
+          logger.warn(
+            {
+              src: "plugin:telegram",
+              agentId: this.runtime.agentId,
+              retryAfter,
+            },
+            "Telegram rate-limited (429); retrying after retry_after",
+          );
+          await new Promise((resolve) =>
+            setTimeout(resolve, retryAfter * 1000),
+          );
+          continue;
+        }
+        if (
+          code === 400 &&
+          plainTextFallback &&
+          /parse|entit|too long/i.test(response?.description ?? "")
+        ) {
+          logger.warn(
+            { src: "plugin:telegram", agentId: this.runtime.agentId },
+            "Telegram rejected formatted message (400); retrying as plain text",
+          );
+          return await plainTextFallback();
+        }
+        throw error;
+      }
+    }
+  }
+
+  /**
    * Sends a message in chunks, handling attachments and splitting the message if necessary
    *
    * @param {Context} ctx - The context object representing the current state of the bot
@@ -607,7 +670,20 @@ export class MessageManager {
         );
         return [];
       }
-      await ctx.telegram.sendChatAction(ctx.chat.id, "typing");
+      // The typing indicator is cosmetic and best-effort — a failure here must
+      // never abort the actual reply on the critical path below.
+      try {
+        await ctx.telegram.sendChatAction(ctx.chat.id, "typing");
+      } catch (error) {
+        logger.debug(
+          {
+            src: "plugin:telegram",
+            agentId: this.runtime.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "sendChatAction (typing) failed; continuing",
+        );
+      }
 
       for (let i = 0; i < chunks.length; i++) {
         const chunk = convertMarkdownToTelegram(chunks[i]);
@@ -631,18 +707,24 @@ export class MessageManager {
             ? Markup.inlineKeyboard(keyboardRows).reply_markup
             : undefined;
 
-        const sentMessage = (await ctx.telegram.sendMessage(
-          ctx.chat.id,
-          chunk,
-          {
-            reply_parameters:
-              i === 0 && replyToMessageId
-                ? { message_id: replyToMessageId }
-                : undefined,
-            message_thread_id: messageThreadId,
-            parse_mode: "MarkdownV2",
-            reply_markup: replyMarkup,
-          },
+        const chatId = ctx.chat.id;
+        const sendOptions = {
+          reply_parameters:
+            i === 0 && replyToMessageId
+              ? { message_id: replyToMessageId }
+              : undefined,
+          message_thread_id: messageThreadId,
+          reply_markup: replyMarkup,
+        };
+        const sentMessage = (await this.sendWithRetry(
+          () =>
+            ctx.telegram.sendMessage(chatId, chunk, {
+              ...sendOptions,
+              parse_mode: "MarkdownV2",
+            }),
+          // Fallback: Telegram rejected the MarkdownV2 — send the raw text so the
+          // user gets the content unformatted rather than nothing.
+          () => ctx.telegram.sendMessage(chatId, chunk, sendOptions),
         )) as Message.TextMessage;
 
         sentMessages.push(sentMessage);
@@ -959,16 +1041,19 @@ export class MessageManager {
           let sentMessages: boolean | Message.TextMessage[] = false;
           // channelType target === 'telegram'
           if (content.channelType === "DM") {
-            sentMessages = [];
-            if (ctx.from) {
-              for (const chunk of this.splitMessage(content.text)) {
-                const res = await this.bot.telegram.sendMessage(
-                  ctx.from.id,
-                  chunk,
-                );
-                sentMessages.push(res);
-              }
-            }
+            // Route through sendMessageInChunks so DM replies get the same
+            // markdown conversion + inline interactions as group replies. Target
+            // ctx.from.id (the user's private chat) via a ctx shim, since a DM
+            // response to a group message must not go to ctx.chat.id.
+            sentMessages = ctx.from
+              ? await this.sendMessageInChunks(
+                  {
+                    chat: { id: ctx.from.id },
+                    telegram: this.bot.telegram,
+                  } as Context,
+                  content,
+                )
+              : [];
           } else {
             sentMessages = await this.sendMessageInChunks(
               ctx,
@@ -1268,8 +1353,10 @@ export class MessageManager {
     if (!firstReaction) {
       return;
     }
-    const reactionType = firstReaction.type;
-    const reactionEmoji = (firstReaction as ReactionType).type; // Assuming ReactionType has 'type' for emoji
+    // Emoji reactions carry the glyph on `.emoji`; non-emoji reactions
+    // (custom_emoji / paid) are identified by `.type`.
+    const reactionLabel =
+      firstReaction.type === "emoji" ? firstReaction.emoji : firstReaction.type;
 
     try {
       const entityId = createUniqueUuid(
@@ -1296,7 +1383,7 @@ export class MessageManager {
         roomId,
         content: {
           channelType: getChannelType(reaction.chat as Chat),
-          text: `Reacted with: ${reactionType === "emoji" ? reactionEmoji : reactionType}`,
+          text: `Reacted with: ${reactionLabel}`,
           source: "telegram",
           inReplyTo: createUniqueUuid(
             this.runtime,
@@ -1369,7 +1456,7 @@ export class MessageManager {
         metadata: { accountId: this.accountId },
         ctx,
         originalMessage: syntheticReactionMessage,
-        reactionString: reactionType === "emoji" ? reactionEmoji : reactionType,
+        reactionString: reactionLabel,
         originalReaction: firstReaction as ReactionType,
       } as TelegramReactionReceivedPayload);
 
@@ -1383,7 +1470,7 @@ export class MessageManager {
         metadata: { accountId: this.accountId },
         ctx,
         originalMessage: syntheticReactionMessage,
-        reactionString: reactionType === "emoji" ? reactionEmoji : reactionType,
+        reactionString: reactionLabel,
         originalReaction: firstReaction as ReactionType,
       } as TelegramReactionReceivedPayload);
     } catch (error) {

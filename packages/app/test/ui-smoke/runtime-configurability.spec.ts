@@ -94,7 +94,7 @@ test("onboarding exposes local, cloud, and remote runtimes and each is configura
   if (!(await hasDetailedFirstRunShell(page))) {
     const toast = page.getByTestId("onboarding-toast");
     await expect(toast).toBeVisible();
-    await expect(page.getByText("Choose how to run your agent")).toBeVisible();
+    await expect(page.getByText("Let's get you started")).toBeVisible();
     // All three runtimes are offered as option cards on the compact surface.
     await expect(page.getByTestId("onboarding-option-cloud")).toBeVisible();
     await expect(page.getByTestId("onboarding-option-remote")).toBeVisible();

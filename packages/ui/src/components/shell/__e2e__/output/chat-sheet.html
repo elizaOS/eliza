@@ -12869,33 +12869,46 @@
     return Component3;
   };
 
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/maximize-2.mjs
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/house.mjs
   var __iconNode = [
+    ["path", { d: "M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8", key: "5wwlr5" }],
+    [
+      "path",
+      {
+        d: "M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
+        key: "r6nss1"
+      }
+    ]
+  ];
+  var House = createLucideIcon("house", __iconNode);
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/maximize-2.mjs
+  var __iconNode2 = [
     ["path", { d: "M15 3h6v6", key: "1q9fwt" }],
     ["path", { d: "m21 3-7 7", key: "1l2asr" }],
     ["path", { d: "m3 21 7-7", key: "tjx5ai" }],
     ["path", { d: "M9 21H3v-6", key: "wtvkvv" }]
   ];
-  var Maximize2 = createLucideIcon("maximize-2", __iconNode);
+  var Maximize2 = createLucideIcon("maximize-2", __iconNode2);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/minimize-2.mjs
-  var __iconNode2 = [
+  var __iconNode3 = [
     ["path", { d: "m14 10 7-7", key: "oa77jy" }],
     ["path", { d: "M20 10h-6V4", key: "mjg0md" }],
     ["path", { d: "m3 21 7-7", key: "tjx5ai" }],
     ["path", { d: "M4 14h6v6", key: "rmj7iw" }]
   ];
-  var Minimize2 = createLucideIcon("minimize-2", __iconNode2);
+  var Minimize2 = createLucideIcon("minimize-2", __iconNode3);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/rotate-ccw.mjs
-  var __iconNode3 = [
+  var __iconNode4 = [
     ["path", { d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", key: "1357e3" }],
     ["path", { d: "M3 3v5h5", key: "1xhq8a" }]
   ];
-  var RotateCcw = createLucideIcon("rotate-ccw", __iconNode3);
+  var RotateCcw = createLucideIcon("rotate-ccw", __iconNode4);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/settings.mjs
-  var __iconNode4 = [
+  var __iconNode5 = [
     [
       "path",
       {
@@ -12905,7 +12918,7 @@
     ],
     ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
   ];
-  var Settings = createLucideIcon("settings", __iconNode4);
+  var Settings = createLucideIcon("settings", __iconNode5);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/components/AnimatePresence/index.mjs
   var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
@@ -26326,6 +26339,8 @@
       needsAudioUnlock,
       unlockAudio,
       openSettings,
+      navigateHome,
+      currentTab,
       clearConversation,
       stop
     } = controller;
@@ -26480,7 +26495,7 @@
     }, []);
     const beginPushToTalkPress = React7.useCallback(
       (event) => {
-        if (hasDraft || recording || booting || event.button !== 0) return;
+        if (hasDraft || recording || event.button !== 0) return;
         event.currentTarget.setPointerCapture(event.pointerId);
         clearPushToTalkTimer();
         pushToTalkTimerRef.current = window.setTimeout(() => {
@@ -26490,7 +26505,7 @@
           startRecording("dictate");
         }, 200);
       },
-      [booting, clearPushToTalkTimer, hasDraft, recording, startRecording]
+      [clearPushToTalkTimer, hasDraft, recording, startRecording]
     );
     const endPushToTalkPress = React7.useCallback(
       (event) => {
@@ -26554,6 +26569,8 @@
     const halfH = Math.round(viewportH * SHEET_HALF_VH);
     const detentH = !sheetOpen ? 0 : expanded ? openH : halfH;
     const baseH = freeH != null ? Math.min(freeH, panelMaxH) : detentH;
+    const chatState = pilled ? "CLOSED" : !sheetOpen ? "INPUT" : maximized ? "MAXIMIZED" : baseH >= halfH - 1 ? "OPEN_HALF_OR_OVER" : "OPEN_UNDER_HALF";
+    const headerVisible = chatState === "OPEN_HALF_OR_OVER" || chatState === "MAXIMIZED";
     const clampHeight = React7.useCallback(
       (raw) => raw > openH ? openH + rubberBand(raw - openH) : Math.max(0, raw),
       [openH]
@@ -26582,6 +26599,14 @@
       setSheetOpen(false);
       setExpanded(false);
     }, []);
+    const navigateAndClose = React7.useCallback(
+      (go) => {
+        const wasMaximized = maximized;
+        closeSheet();
+        window.setTimeout(go, reduce ? 0 : wasMaximized ? 260 : 190);
+      },
+      [closeSheet, maximized, reduce]
+    );
     React7.useEffect(() => {
       if (draggingRef.current) return;
       if (reduce) {
@@ -26939,6 +26964,7 @@
                     "data-detent": pilled ? "pill" : !sheetOpen ? "collapsed" : freeH != null ? Math.min(freeH, panelMaxH) >= openH - 1 ? "full" : "half" : expanded ? "full" : "half",
                     "data-maximized": fullBleed ? "true" : void 0,
                     "data-revealed": sheetOpen ? "true" : "false",
+                    "data-chat-state": chatState,
                     style: pilled ? void 0 : {
                       maxHeight: panelMaxH,
                       // Full-bleed (maximized) → square edge-to-edge; otherwise the
@@ -26957,7 +26983,11 @@
                         // pane with a bright top specular edge + a faint refractive stroke.
                         // Full-bleed drops the refractive stroke so it's truly edge-to-edge.
                         fullBleed ? "border-0" : "border border-white/[0.14]",
-                        "bg-black/55 backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
+                        // backdrop-blur-lg (16px), not -2xl (40px): the sheet height
+                        // resizes this surface every drag frame, and a 40px backdrop
+                        // re-blur per frame is the dominant paint cost — lg keeps the
+                        // glass look at a fraction of the GPU cost.
+                        "bg-black/55 backdrop-blur-lg backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
                         fullBleed ? "shadow-none" : "shadow-[inset_0_1px_0_rgba(255,255,255,0.20),inset_0_0_0_0.5px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(0,0,0,0.72)]"
                       )
                     ),
@@ -26980,16 +27010,23 @@
                         motion.div,
                         {
                           "aria-hidden": "true",
-                          className: "pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-2xl",
+                          className: "pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-xl bg-[rgba(255,180,120,0.30)]",
                           initial: false,
-                          animate: {
-                            opacity: listening || responding ? 1 : 0,
-                            backgroundColor: listening ? "rgba(255,180,120,0.30)" : "rgba(255,140,80,0.18)"
-                          },
+                          animate: { opacity: listening ? 1 : 0 },
                           transition: { duration: reduce ? 0 : 1.1, ease: "easeInOut" }
                         }
                       ),
-                      sheetOpen && expanded && !pilled ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                        motion.div,
+                        {
+                          "aria-hidden": "true",
+                          className: "pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-xl bg-[rgba(255,140,80,0.18)]",
+                          initial: false,
+                          animate: { opacity: responding ? 1 : 0 },
+                          transition: { duration: reduce ? 0 : 1.1, ease: "easeInOut" }
+                        }
+                      ),
+                      headerVisible ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
                         "div",
                         {
                           className: cn(
@@ -27021,15 +27058,26 @@
                                 }
                               )
                             ] }),
-                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                              HeaderButton,
-                              {
-                                icon: Settings,
-                                label: "settings",
-                                onClick: () => openSettings(),
-                                testId: "chat-full-settings"
-                              }
-                            )
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "flex items-center gap-1.5", children: [
+                              currentTab !== "chat" ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                HeaderButton,
+                                {
+                                  icon: House,
+                                  label: "home",
+                                  onClick: () => navigateAndClose(() => navigateHome?.()),
+                                  testId: "chat-full-home"
+                                }
+                              ) : null,
+                              currentTab !== "settings" ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                HeaderButton,
+                                {
+                                  icon: Settings,
+                                  label: "settings",
+                                  onClick: () => navigateAndClose(() => openSettings()),
+                                  testId: "chat-full-settings"
+                                }
+                              ) : null
+                            ] })
                           ]
                         }
                       ) : null,
@@ -27247,55 +27295,41 @@
                                 testId: "chat-voice-mute"
                               }
                             ) : null,
-                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                              motion.div,
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "shrink-0", children: (hasDraft || hasImages) && !recording ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              SoftButton,
                               {
-                                className: "shrink-0",
-                                initial: reduce ? { opacity: 0 } : { opacity: 0, scale: 0.6 },
-                                animate: { opacity: 1, scale: 1 },
-                                transition: {
-                                  duration: reduce ? 0 : 0.3,
-                                  ease: OVERLAY_EASE
-                                },
-                                children: (hasDraft || hasImages) && !recording ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                                  SoftButton,
-                                  {
-                                    glyph: SEND_GLYPH,
-                                    label: canSend ? "send" : "send (waiting for reply)",
-                                    disabled: !canSend,
-                                    onPointerDown: (e) => e.preventDefault(),
-                                    onClick: submit,
-                                    testId: "chat-composer-action"
-                                  }
-                                ) : !recording && responding ? (
-                                  // While a reply is streaming and nothing is typed, the mic becomes a
-                                  // stop control so the user can interrupt a runaway generation.
-                                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                                    SoftButton,
-                                    {
-                                      glyph: STOP_GLYPH,
-                                      label: "stop generating",
-                                      onClick: () => stop(),
-                                      testId: "chat-composer-stop"
-                                    }
-                                  )
-                                ) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                                  SoftButton,
-                                  {
-                                    glyph: MIC_GLYPH,
-                                    label: pushToTalkActive ? "release to send" : handsFree ? "end conversation" : recording ? "stop listening" : "talk",
-                                    active: recording || handsFree,
-                                    disabled: booting,
-                                    onClick: handleMicClick,
-                                    onPointerDown: beginPushToTalkPress,
-                                    onPointerUp: endPushToTalkPress,
-                                    onPointerCancel: endPushToTalkPress,
-                                    testId: "chat-composer-mic"
-                                  }
-                                )
-                              },
-                              (hasDraft || hasImages) && !recording ? "send" : !recording && responding ? "stop" : "mic"
-                            )
+                                glyph: SEND_GLYPH,
+                                label: canSend ? "send" : "send (waiting for reply)",
+                                disabled: !canSend,
+                                onPointerDown: (e) => e.preventDefault(),
+                                onClick: submit,
+                                testId: "chat-composer-action"
+                              }
+                            ) : !recording && responding ? (
+                              // While a reply is streaming and nothing is typed, the mic becomes a
+                              // stop control so the user can interrupt a runaway generation.
+                              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                SoftButton,
+                                {
+                                  glyph: STOP_GLYPH,
+                                  label: "stop generating",
+                                  onClick: () => stop(),
+                                  testId: "chat-composer-stop"
+                                }
+                              )
+                            ) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              SoftButton,
+                              {
+                                glyph: MIC_GLYPH,
+                                label: pushToTalkActive ? "release to send" : handsFree ? "end conversation" : recording ? "stop listening" : "talk",
+                                active: recording || handsFree,
+                                onClick: handleMicClick,
+                                onPointerDown: beginPushToTalkPress,
+                                onPointerUp: endPushToTalkPress,
+                                onPointerCancel: endPushToTalkPress,
+                                testId: "chat-composer-mic"
+                              }
+                            ) })
                           ]
                         }
                       )
@@ -27472,6 +27506,10 @@
       toggleAgentVoiceMute,
       unlockAudio: () => console.log("[fixture] unlockAudio"),
       openSettings: () => console.log("[fixture] openSettings"),
+      // `?tab=chat` hides the Home button (already home); `?tab=settings` hides
+      // the Settings button. Unset → both header buttons show.
+      currentTab: params.get("tab") ?? void 0,
+      navigateHome: () => console.log("[fixture] navigateHome"),
       clearConversation: () => console.log("[fixture] clearConversation"),
       stop: () => {
         console.log("[fixture] stop");
@@ -27592,6 +27630,7 @@ lucide-react/dist/esm/shared/src/utils/hasA11yProp.mjs:
 lucide-react/dist/esm/context.mjs:
 lucide-react/dist/esm/Icon.mjs:
 lucide-react/dist/esm/createLucideIcon.mjs:
+lucide-react/dist/esm/icons/house.mjs:
 lucide-react/dist/esm/icons/maximize-2.mjs:
 lucide-react/dist/esm/icons/minimize-2.mjs:
 lucide-react/dist/esm/icons/rotate-ccw.mjs:

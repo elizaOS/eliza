@@ -1,0 +1,2181 @@
+{
+  "all_pad_visuals_have_contract": true,
+  "at_mm": {
+    "rotation": 0.0,
+    "x": 30.5,
+    "y": 10.0
+  },
+  "claim_boundary": "Per-reference local model metadata only. This is not a discrete supplier-approved STEP/B-rep model and cannot satisfy routed-board release or enclosure clearance.",
+  "combined_step_assembly_name": "11_U_SOC_LPDDR_UFS_SODIMM_260P_0P5_COMPUTE_SOM_DEV",
+  "combined_step_locator_status": "development_envelope_named_subshape_in_combined_routed_step",
+  "coverage": "public_som_pinout_pad_count_aligned",
+  "discrete_supplier_step_file": "",
+  "discrete_supplier_step_status": "missing_supplier_approved_component_step",
+  "electrical_pad_count": 260,
+  "envelope_mm": {
+    "depth": 5.0,
+    "height": 4.0,
+    "width": 69.6
+  },
+  "expected_supplier_brep_or_step_status": "missing_supplier_approved_discrete_component_model",
+  "expected_supplier_step_file": "U_SOC_LPDDR_UFS.step",
+  "footprint": "SODIMM_260P_0P5_COMPUTE_SOM_DEV",
+  "land_pattern_basis": "public 260-position SoM connector count with local dual-row development footprint; pending selected connector and SoM pin-order drawing",
+  "layer": "F.Cu",
+  "local_discrete_step_bbox_matches_envelope": true,
+  "local_discrete_step_bbox_mm": {
+    "depth": 5.0000002,
+    "height": 4.0000002,
+    "width": 69.6000002
+  },
+  "local_discrete_step_bytes": 15516,
+  "local_discrete_step_expected_bbox_mm": {
+    "depth": 5.0,
+    "height": 4.0,
+    "width": 69.6
+  },
+  "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/U_SOC_LPDDR_UFS.local-envelope.step",
+  "local_discrete_step_import_status": "pass",
+  "local_discrete_step_imported_as_solid": true,
+  "local_discrete_step_sha256": "8c530e2f68b2229d69e0e60c676d687b17a62a00ef58eebf4d506d07306493ec",
+  "local_discrete_step_solid_type": "Solid",
+  "local_discrete_step_status": "local_development_envelope_not_supplier_model",
+  "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
+  "local_step_bound": true,
+  "local_terminal_contract": [
+    "A1",
+    "B1",
+    "A2",
+    "B2",
+    "A3",
+    "B3",
+    "A4",
+    "B4",
+    "A5",
+    "B5",
+    "A6",
+    "B6",
+    "A7",
+    "B7",
+    "A8",
+    "B8",
+    "A9",
+    "B9",
+    "A10",
+    "B10",
+    "A11",
+    "B11",
+    "A12",
+    "B12",
+    "A13",
+    "B13",
+    "A14",
+    "B14",
+    "A15",
+    "B15",
+    "A16",
+    "B16",
+    "A17",
+    "B17",
+    "A18",
+    "B18",
+    "A19",
+    "B19",
+    "A20",
+    "B20",
+    "A21",
+    "B21",
+    "A22",
+    "B22",
+    "A23",
+    "B23",
+    "A24",
+    "B24",
+    "A25",
+    "B25",
+    "A26",
+    "B26",
+    "A27",
+    "B27",
+    "A28",
+    "B28",
+    "A29",
+    "B29",
+    "A30",
+    "B30",
+    "A31",
+    "B31",
+    "A32",
+    "B32",
+    "A33",
+    "B33",
+    "A34",
+    "B34",
+    "A35",
+    "B35",
+    "A36",
+    "B36",
+    "A37",
+    "B37",
+    "A38",
+    "B38",
+    "A39",
+    "B39",
+    "A40",
+    "B40",
+    "A41",
+    "B41",
+    "A42",
+    "B42",
+    "A43",
+    "B43",
+    "A44",
+    "B44",
+    "A45",
+    "B45",
+    "A46",
+    "B46",
+    "A47",
+    "B47",
+    "A48",
+    "B48",
+    "A49",
+    "B49",
+    "A50",
+    "B50",
+    "A51",
+    "B51",
+    "A52",
+    "B52",
+    "A53",
+    "B53",
+    "A54",
+    "B54",
+    "A55",
+    "B55",
+    "A56",
+    "B56",
+    "A57",
+    "B57",
+    "A58",
+    "B58",
+    "A59",
+    "B59",
+    "A60",
+    "B60",
+    "A61",
+    "B61",
+    "A62",
+    "B62",
+    "A63",
+    "B63",
+    "A64",
+    "B64",
+    "A65",
+    "B65",
+    "A66",
+    "B66",
+    "A67",
+    "B67",
+    "A68",
+    "B68",
+    "A69",
+    "B69",
+    "A70",
+    "B70",
+    "A71",
+    "B71",
+    "A72",
+    "B72",
+    "A73",
+    "B73",
+    "A74",
+    "B74",
+    "A75",
+    "B75",
+    "A76",
+    "B76",
+    "A77",
+    "B77",
+    "A78",
+    "B78",
+    "A79",
+    "B79",
+    "A80",
+    "B80",
+    "A81",
+    "B81",
+    "A82",
+    "B82",
+    "A83",
+    "B83",
+    "A84",
+    "B84",
+    "A85",
+    "B85",
+    "A86",
+    "B86",
+    "A87",
+    "B87",
+    "A88",
+    "B88",
+    "A89",
+    "B89",
+    "A90",
+    "B90",
+    "A91",
+    "B91",
+    "A92",
+    "B92",
+    "A93",
+    "B93",
+    "A94",
+    "B94",
+    "A95",
+    "B95",
+    "A96",
+    "B96",
+    "A97",
+    "B97",
+    "A98",
+    "B98",
+    "A99",
+    "B99",
+    "A100",
+    "B100",
+    "A101",
+    "B101",
+    "A102",
+    "B102",
+    "A103",
+    "B103",
+    "A104",
+    "B104",
+    "A105",
+    "B105",
+    "A106",
+    "B106",
+    "A107",
+    "B107",
+    "A108",
+    "B108",
+    "A109",
+    "B109",
+    "A110",
+    "B110",
+    "A111",
+    "B111",
+    "A112",
+    "B112",
+    "A113",
+    "B113",
+    "A114",
+    "B114",
+    "A115",
+    "B115",
+    "A116",
+    "B116",
+    "A117",
+    "B117",
+    "A118",
+    "B118",
+    "A119",
+    "B119",
+    "A120",
+    "B120",
+    "A121",
+    "B121",
+    "A122",
+    "B122",
+    "A123",
+    "B123",
+    "A124",
+    "B124",
+    "A125",
+    "B125",
+    "A126",
+    "B126",
+    "A127",
+    "B127",
+    "A128",
+    "B128",
+    "A129",
+    "B129",
+    "A130",
+    "B130"
+  ],
+  "local_terminal_contract_source": "captured_public_pinout_expected_pins",
+  "mechanical_pad_count": 0,
+  "mechanical_pads": [],
+  "model_binding_status": "blocked_pending_supplier_step_or_verified_package_drawing",
+  "model_source": "local_development_envelope",
+  "non_signal_pad_contract": [],
+  "non_signal_pad_contract_matches_pad_visuals": true,
+  "non_signal_pad_contract_source": "",
+  "npth_mechanical_feature_contract": [],
+  "npth_mechanical_feature_contract_matches_footprint": true,
+  "npth_mechanical_feature_contract_source": "",
+  "npth_mechanical_feature_count": 0,
+  "npth_mechanical_features": [],
+  "pad_contract_covered_count": 260,
+  "pad_contract_records": [
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A3"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B3"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A4"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B4"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A5"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B5"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A6"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B6"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A7"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B7"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A8"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B8"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A9"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B9"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A10"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B10"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A11"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B11"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A12"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B12"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A13"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B13"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A14"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B14"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A15"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B15"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A16"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B16"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A17"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B17"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A18"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B18"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A19"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B19"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A20"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B20"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A21"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B21"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A22"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B22"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A23"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B23"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A24"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B24"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A25"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B25"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A26"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B26"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A27"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B27"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A28"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B28"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A29"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B29"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A30"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B30"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A31"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B31"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A32"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B32"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A33"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B33"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A34"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B34"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A35"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B35"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A36"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B36"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A37"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B37"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A38"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B38"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A39"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B39"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A40"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B40"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A41"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B41"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A42"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B42"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A43"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B43"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A44"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B44"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A45"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B45"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A46"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B46"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A47"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B47"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A48"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B48"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A49"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B49"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A50"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B50"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A51"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B51"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A52"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B52"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A53"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B53"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A54"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B54"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A55"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B55"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A56"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B56"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A57"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B57"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A58"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B58"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A59"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B59"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A60"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B60"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A61"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B61"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A62"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B62"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A63"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B63"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A64"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B64"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A65"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B65"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A66"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B66"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A67"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B67"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A68"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B68"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A69"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B69"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A70"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B70"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A71"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B71"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A72"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B72"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A73"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B73"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A74"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B74"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A75"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B75"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A76"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B76"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A77"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B77"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A78"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B78"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A79"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B79"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A80"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B80"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A81"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B81"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A82"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B82"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A83"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B83"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A84"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B84"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A85"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B85"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A86"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B86"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A87"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B87"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A88"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B88"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A89"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B89"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A90"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B90"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A91"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B91"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A92"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B92"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A93"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B93"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A94"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B94"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A95"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B95"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A96"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B96"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A97"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B97"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A98"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B98"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A99"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B99"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A100"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B100"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A101"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B101"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A102"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B102"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A103"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B103"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A104"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B104"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A105"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B105"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A106"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B106"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A107"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B107"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A108"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B108"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A109"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B109"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A110"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B110"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A111"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B111"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A112"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B112"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A113"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B113"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A114"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B114"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A115"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B115"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A116"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B116"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A117"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B117"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A118"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B118"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A119"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B119"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A120"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B120"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A121"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B121"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A122"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B122"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A123"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B123"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A124"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B124"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A125"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B125"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A126"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B126"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A127"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B127"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A128"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B128"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A129"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B129"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "A130"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+      "covered": true,
+      "pad": "B130"
+    }
+  ],
+  "pad_count": 260,
+  "pad_names": [
+    "A1",
+    "B1",
+    "A2",
+    "B2",
+    "A3",
+    "B3",
+    "A4",
+    "B4",
+    "A5",
+    "B5",
+    "A6",
+    "B6",
+    "A7",
+    "B7",
+    "A8",
+    "B8",
+    "A9",
+    "B9",
+    "A10",
+    "B10",
+    "A11",
+    "B11",
+    "A12",
+    "B12",
+    "A13",
+    "B13",
+    "A14",
+    "B14",
+    "A15",
+    "B15",
+    "A16",
+    "B16",
+    "A17",
+    "B17",
+    "A18",
+    "B18",
+    "A19",
+    "B19",
+    "A20",
+    "B20",
+    "A21",
+    "B21",
+    "A22",
+    "B22",
+    "A23",
+    "B23",
+    "A24",
+    "B24",
+    "A25",
+    "B25",
+    "A26",
+    "B26",
+    "A27",
+    "B27",
+    "A28",
+    "B28",
+    "A29",
+    "B29",
+    "A30",
+    "B30",
+    "A31",
+    "B31",
+    "A32",
+    "B32",
+    "A33",
+    "B33",
+    "A34",
+    "B34",
+    "A35",
+    "B35",
+    "A36",
+    "B36",
+    "A37",
+    "B37",
+    "A38",
+    "B38",
+    "A39",
+    "B39",
+    "A40",
+    "B40",
+    "A41",
+    "B41",
+    "A42",
+    "B42",
+    "A43",
+    "B43",
+    "A44",
+    "B44",
+    "A45",
+    "B45",
+    "A46",
+    "B46",
+    "A47",
+    "B47",
+    "A48",
+    "B48",
+    "A49",
+    "B49",
+    "A50",
+    "B50",
+    "A51",
+    "B51",
+    "A52",
+    "B52",
+    "A53",
+    "B53",
+    "A54",
+    "B54",
+    "A55",
+    "B55",
+    "A56",
+    "B56",
+    "A57",
+    "B57",
+    "A58",
+    "B58",
+    "A59",
+    "B59",
+    "A60",
+    "B60",
+    "A61",
+    "B61",
+    "A62",
+    "B62",
+    "A63",
+    "B63",
+    "A64",
+    "B64",
+    "A65",
+    "B65",
+    "A66",
+    "B66",
+    "A67",
+    "B67",
+    "A68",
+    "B68",
+    "A69",
+    "B69",
+    "A70",
+    "B70",
+    "A71",
+    "B71",
+    "A72",
+    "B72",
+    "A73",
+    "B73",
+    "A74",
+    "B74",
+    "A75",
+    "B75",
+    "A76",
+    "B76",
+    "A77",
+    "B77",
+    "A78",
+    "B78",
+    "A79",
+    "B79",
+    "A80",
+    "B80",
+    "A81",
+    "B81",
+    "A82",
+    "B82",
+    "A83",
+    "B83",
+    "A84",
+    "B84",
+    "A85",
+    "B85",
+    "A86",
+    "B86",
+    "A87",
+    "B87",
+    "A88",
+    "B88",
+    "A89",
+    "B89",
+    "A90",
+    "B90",
+    "A91",
+    "B91",
+    "A92",
+    "B92",
+    "A93",
+    "B93",
+    "A94",
+    "B94",
+    "A95",
+    "B95",
+    "A96",
+    "B96",
+    "A97",
+    "B97",
+    "A98",
+    "B98",
+    "A99",
+    "B99",
+    "A100",
+    "B100",
+    "A101",
+    "B101",
+    "A102",
+    "B102",
+    "A103",
+    "B103",
+    "A104",
+    "B104",
+    "A105",
+    "B105",
+    "A106",
+    "B106",
+    "A107",
+    "B107",
+    "A108",
+    "B108",
+    "A109",
+    "B109",
+    "A110",
+    "B110",
+    "A111",
+    "B111",
+    "A112",
+    "B112",
+    "A113",
+    "B113",
+    "A114",
+    "B114",
+    "A115",
+    "B115",
+    "A116",
+    "B116",
+    "A117",
+    "B117",
+    "A118",
+    "B118",
+    "A119",
+    "B119",
+    "A120",
+    "B120",
+    "A121",
+    "B121",
+    "A122",
+    "B122",
+    "A123",
+    "B123",
+    "A124",
+    "B124",
+    "A125",
+    "B125",
+    "A126",
+    "B126",
+    "A127",
+    "B127",
+    "A128",
+    "B128",
+    "A129",
+    "B129",
+    "A130",
+    "B130"
+  ],
+  "pad_visual_count": 260,
+  "pattern_binding_status": "pinout_bound_public_or_captured_contract",
+  "pattern_bound": true,
+  "pinout_bound": true,
+  "pinout_file": "board/kicad/e1-phone/supplier-pinouts/compute-som-pinout.yaml",
+  "public_cad_source_record": "",
+  "public_cad_step_overlay_bytes": 0,
+  "public_cad_step_overlay_file": "",
+  "public_cad_step_overlay_release_credit": false,
+  "public_cad_step_overlay_sha256": "",
+  "public_cad_step_overlay_status": "not_applicable_or_not_downloaded",
+  "reference": "U_SOC_LPDDR_UFS",
+  "release_allowed": false,
+  "release_credit": false,
+  "schema": "eliza.e1_phone_local_component_model_record.v1",
+  "source_assembly_item": "U_SOC_LPDDR_UFS",
+  "source_routed_step": "board/kicad/e1-phone/production/step/routed-board-with-components.step",
+  "source_routed_step_bytes": 33644627,
+  "source_routed_step_sha256": "ea98f73d805f237ed397d5b6f190b86c31a9fc4ea270ea983a472220470043d6",
+  "source_step_intake": "board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml",
+  "status": "blocked_local_development_envelope_not_supplier_step",
+  "supplier_approved": false,
+  "supplier_sourcing_lane": "board_support_passives_mechanicals",
+  "supplier_step_intake_bytes": 0,
+  "supplier_step_intake_file": "",
+  "supplier_step_intake_release_credit": false,
+  "supplier_step_intake_sha256": "",
+  "supplier_step_intake_status": "not_applicable_board_level_support_pattern",
+  "support_pattern_bound": false,
+  "support_pattern_has_explicit_provenance": false,
+  "terminal_contract_bound": true,
+  "terminal_contract_count": 260,
+  "terminal_contract_matches_pad_visuals": true,
+  "uncovered_pad_visuals": [],
+  "visual_package_class": "pinout_bound_package_or_connector"
+}

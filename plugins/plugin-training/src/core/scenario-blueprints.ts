@@ -902,10 +902,108 @@ function dedupeBlueprints(
   });
 }
 
+// ==================== View switching (navigation) ====================
+// GEPA/MIPRO optimization seed for the `action_planner` task: navigation
+// requests — explicit ("open my calendar"), passive/implicit ("what's on my
+// calendar"), and NON-ENGLISH — must resolve to the VIEWS action with the
+// matching view. These blueprints generate the synthetic training data that
+// teaches the planner to treat view switching as a common, default response;
+// scorePlannerAction rewards picking VIEWS. Multilingual generationHints make
+// the optimizer cover es/fr/de/zh navigation too (Milady is local-first; small
+// models need the reinforcement).
+const viewSwitchingScenarios: ScenarioBlueprint[] = [
+  {
+    id: "respond-views-active-direct-001",
+    decision: "RESPOND",
+    primaryContext: "general",
+    pattern: "group_direct_mention",
+    description:
+      "User explicitly asks the agent to open/switch to a named app view",
+    minContextTurns: 1,
+    maxContextTurns: 4,
+    expectedAction: "VIEWS",
+    groundingKeywords: [
+      "open",
+      "show me",
+      "go to",
+      "take me to",
+      "switch to",
+      "calendar",
+      "wallet",
+      "inbox",
+    ],
+    generationHint:
+      "Generate a short chat where the user directly asks the agent to open or switch to a specific app surface — e.g. 'open my calendar', 'show me my wallet', 'take me to my inbox', 'go to settings'. The agent should navigate via the VIEWS action (action=show, the matching view id). Vary the named surface across calendar/inbox/wallet/finances/goals/health/todos/documents.",
+  },
+  {
+    id: "respond-views-passive-intent-001",
+    decision: "RESPOND",
+    primaryContext: "general",
+    pattern: "group_action_emergence",
+    description:
+      "User expresses an intent that implies seeing a surface, without naming a view",
+    minContextTurns: 2,
+    maxContextTurns: 8,
+    expectedAction: "VIEWS",
+    groundingKeywords: [
+      "what's on my",
+      "check my",
+      "how much did I spend",
+      "I need to focus",
+      "I want to add a feature",
+      "who do I know",
+    ],
+    generationHint:
+      "Generate a chat where the user expresses an intent that maps to an app surface WITHOUT saying 'view' — e.g. 'what's on my calendar this week', 'check my messages', 'how much did I spend this month' (finances), 'I need to focus' (focus), 'I want to add a new feature to my app' (task-coordinator), 'who do I know at Acme' (relationships). The agent should proactively open the matching view via VIEWS action=show. Reinforce that opening the relevant surface — not just answering in text — is the preferred response.",
+  },
+  {
+    id: "respond-views-multilingual-001",
+    decision: "RESPOND",
+    primaryContext: "general",
+    pattern: "group_direct_mention",
+    description:
+      "Non-English navigation request must still route to the VIEWS action",
+    minContextTurns: 1,
+    maxContextTurns: 4,
+    expectedAction: "VIEWS",
+    groundingKeywords: [
+      "muéstrame",
+      "mi calendario",
+      "montre-moi",
+      "mon portefeuille",
+      "我的待办",
+      "zeig mir",
+    ],
+    generationHint:
+      "Generate short navigation requests in NON-ENGLISH languages and route each to the VIEWS action with the matching view id. Cover Spanish ('muéstrame mi calendario'→calendar, 'revisa mi correo'→inbox, 'mis finanzas'→finances), French ('montre-moi mon portefeuille'→wallet, 'mes tâches'→todos), German ('zeig mir meine ziele'→goals), and Chinese ('我的待办事项'→todos, '我的日历'→calendar). The agent replies in the user's language and opens the view via VIEWS action=show.",
+  },
+  {
+    id: "respond-views-followup-002",
+    decision: "RESPOND",
+    primaryContext: "system",
+    pattern: "group_multi_turn_intent",
+    description:
+      "After discussing a domain, the user asks to actually see it — open the view",
+    minContextTurns: 3,
+    maxContextTurns: 10,
+    expectedAction: "VIEWS",
+    groundingKeywords: [
+      "let me see it",
+      "pull it up",
+      "show that",
+      "open it",
+      "can I see",
+    ],
+    generationHint:
+      "Generate a multi-turn conversation about a domain (e.g. upcoming meetings, spending, unread mail) where the user finally asks to SEE it — 'let me see it', 'pull it up', 'can you show that'. The agent resolves the in-context surface and opens it with VIEWS action=show <view id>.",
+  },
+];
+
 /**
  * All scenario blueprints, flattened.
  */
 export const ALL_BLUEPRINTS: ScenarioBlueprint[] = dedupeBlueprints([
+  ...viewSwitchingScenarios,
   ...respondGeneral,
   ...respondWallet,
   ...respondKnowledge,
@@ -935,7 +1033,8 @@ export const BLUEPRINT_STATS = {
     respondSystem.length +
     ignoreScenarios.length +
     stopScenarios.length +
-    multiTurnIntentScenarios.length,
+    multiTurnIntentScenarios.length +
+    viewSwitchingScenarios.length,
   generatedActionCount: generatedActionScenarios.length,
   generatedProviderCount: generatedProviderScenarios.length,
   generatedIgnoreCount: generatedIgnoreScenarios.length,

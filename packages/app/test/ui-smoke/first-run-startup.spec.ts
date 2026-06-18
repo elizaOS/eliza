@@ -77,7 +77,7 @@ test("first-run onboarding renders without a render loop and lets the runtime be
   // outer container testid is stable across the redesign.
   const onboarding = page.getByTestId("onboarding-toast");
   await expect(onboarding).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText("Choose how to run your agent")).toBeVisible({
+  await expect(page.getByText("Let's get you started")).toBeVisible({
     timeout: 15_000,
   });
 
@@ -100,10 +100,10 @@ test("first-run onboarding renders without a render loop and lets the runtime be
     const remoteConnect = page.getByTestId("onboarding-remote-connect");
     await expect(remoteConnect).toBeVisible({ timeout: 10_000 });
     // The remote step exposes the agent URL + access-token fields.
-    const apiBase = page.getByPlaceholder("https://agent.example.com");
+    const apiBase = page.locator("#onboarding-remote-address");
     await expect(apiBase).toBeVisible();
     await apiBase.fill("https://agent.example.com");
-    await page.getByPlaceholder("Access token (if required)").fill("");
+    await page.locator("#onboarding-remote-password").fill("");
     await expect(remoteConnect).toBeEnabled();
     await page.getByRole("button", { name: "Back" }).click();
     await expect(cloud).toBeVisible({ timeout: 10_000 });

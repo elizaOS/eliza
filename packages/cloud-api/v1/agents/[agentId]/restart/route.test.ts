@@ -9,10 +9,14 @@ const getAgentById = mock(async () => ({
   id: "cloud-agent-1",
   organization_id: "agent-org",
 }));
-const shutdown = mock(async () => ({ success: true }));
-const provision = mock(async () => ({
-  success: true,
-  sandboxRecord: { status: "running" },
+const getAgentForWrite = mock(async () => ({
+  id: "cloud-agent-1",
+  organization_id: "agent-org",
+  status: "running",
+}));
+const enqueueAgentRestartOnce = mock(async () => ({
+  jobId: "restart-job-1",
+  deduped: false,
 }));
 const reactivateSandboxBillingAfterFunding = mock(async () => undefined);
 const checkAgentCreditGate = mock(async () => ({
@@ -45,8 +49,15 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
 mock.module("@/lib/services/eliza-sandbox", () => ({
   elizaSandboxService: {
     getAgentById,
-    shutdown,
-    provision,
+    getAgentForWrite,
+  },
+}));
+
+// The route no longer runs shutdown()+provision() inline; it enqueues an
+// `agent_restart` job that the orchestrator daemon executes atomically.
+mock.module("@/lib/services/provisioning-jobs", () => ({
+  provisioningJobService: {
+    enqueueAgentRestartOnce,
   },
 }));
 
@@ -67,8 +78,13 @@ describe("service agent restart route", () => {
   beforeEach(() => {
     requireServiceKey.mockClear();
     getAgentById.mockClear();
-    shutdown.mockClear();
-    provision.mockClear();
+    getAgentForWrite.mockClear();
+    getAgentForWrite.mockResolvedValue({
+      id: "cloud-agent-1",
+      organization_id: "agent-org",
+      status: "running",
+    });
+    enqueueAgentRestartOnce.mockClear();
     reactivateSandboxBillingAfterFunding.mockClear();
     checkAgentCreditGate.mockClear();
     checkAgentCreditGate.mockResolvedValue({
@@ -78,7 +94,7 @@ describe("service agent restart route", () => {
     });
   });
 
-  test("blocks service-key restart before shutdown when the agent wallet org has insufficient credits", async () => {
+  test("blocks a service-key restart when the agent wallet org has insufficient credits", async () => {
     const response = await app.fetch(
       new Request(
         "https://api.example.test/api/v1/agents/cloud-agent-1/restart",
@@ -97,12 +113,13 @@ describe("service agent restart route", () => {
       currentBalance: 0,
     });
     expect(checkAgentCreditGate).toHaveBeenCalledWith("agent-org");
-    expect(shutdown).not.toHaveBeenCalled();
-    expect(provision).not.toHaveBeenCalled();
+    // The restart job is never enqueued and billing is never reactivated when
+    // the credit gate fails — the gate short-circuits before either.
+    expect(enqueueAgentRestartOnce).not.toHaveBeenCalled();
     expect(reactivateSandboxBillingAfterFunding).not.toHaveBeenCalled();
   });
 
-  test("reactivates billing after funded service-key restart reprovisions the agent", async () => {
+  test("enqueues a restart job and reactivates billing after a funded service-key restart", async () => {
     checkAgentCreditGate.mockResolvedValueOnce({
       allowed: true,
       balance: 5,
@@ -124,11 +141,44 @@ describe("service agent restart route", () => {
     await expect(response.json()).resolves.toMatchObject({
       success: true,
     });
-    expect(shutdown).toHaveBeenCalledWith("cloud-agent-1", "agent-org");
-    expect(provision).toHaveBeenCalledWith("cloud-agent-1", "agent-org");
+    // The restart is delegated to the orchestrator via an enqueued job carrying
+    // the service-key identity, then sandbox billing is reactivated.
+    expect(enqueueAgentRestartOnce).toHaveBeenCalledWith({
+      agentId: "cloud-agent-1",
+      organizationId: "service-org",
+      userId: "service-user",
+    });
     expect(reactivateSandboxBillingAfterFunding).toHaveBeenCalledWith(
       "cloud-agent-1",
       expect.any(Date),
     );
+  });
+
+  test("rejects a restart while the agent is still provisioning", async () => {
+    checkAgentCreditGate.mockResolvedValueOnce({
+      allowed: true,
+      balance: 5,
+      error: "",
+    });
+    getAgentForWrite.mockResolvedValueOnce({
+      id: "cloud-agent-1",
+      organization_id: "agent-org",
+      status: "provisioning",
+    });
+
+    const response = await app.fetch(
+      new Request(
+        "https://api.example.test/api/v1/agents/cloud-agent-1/restart",
+        {
+          method: "POST",
+          headers: { "X-Service-Key": "svc" },
+        },
+      ),
+      { WAIFU_SERVICE_KEY: "svc" },
+    );
+
+    expect(response.status).toBe(409);
+    expect(enqueueAgentRestartOnce).not.toHaveBeenCalled();
+    expect(reactivateSandboxBillingAfterFunding).not.toHaveBeenCalled();
   });
 });

@@ -145,6 +145,7 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
     import("@elizaos/plugin-health/screen-time/mobile-signal-setup"),
   "@elizaos/plugin-training": () => import("@elizaos/plugin-training"),
   "@elizaos/ui/agent-surface": async () => AgentSurfaceHost,
+  "@elizaos/ui/app-navigate-view": () => import("../../app-navigate-view.ts"),
   "@elizaos/ui/api": () => import("../../api/index.ts"),
   "@elizaos/ui/bridge": () => import("../../bridge/index.ts"),
   "@elizaos/ui/components": () => import("../index.ts"),

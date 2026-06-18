@@ -36,6 +36,7 @@ import {
   parseAgentStatusFromMainMenuResetPayload,
 } from "./internal";
 import type { FirstRunMode, SetupStep } from "./types";
+import { deriveAgentReady } from "./types";
 
 // ── Helpers (file-local) ────────────────────────────────────────────
 
@@ -559,6 +560,42 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     },
     [showDesktopNotification],
   );
+
+  // Until the agent can respond, keep refreshing its status so readiness
+  // (`canRespond`) flips the moment it becomes true — e.g. a slow on-device
+  // model still warming after boot, or a status snapshot that landed before
+  // `/api/status` confirmed first-turn capability. The startup poll returns at
+  // `state:"running"` and nothing else re-polls, so without this the chat stays
+  // gated on a stale not-ready snapshot ("waking up…") forever and voice /
+  // hands-free never unblocks. Runs whenever we're not ready and not in a
+  // terminal state (covers a null/early status, not just `state:"running"`);
+  // self-limiting — the boolean dep flips false the instant the agent is ready.
+  const agentLifecycleState = agentStatus?.state;
+  const awaitingAgentReadiness =
+    !deriveAgentReady(agentStatus) &&
+    agentLifecycleState !== "error" &&
+    agentLifecycleState !== "stopped" &&
+    agentLifecycleState !== "not_started";
+  useEffect(() => {
+    if (!awaitingAgentReadiness) return;
+    let active = true;
+    const refresh = async () => {
+      if (!active) return;
+      if (typeof document !== "undefined" && document.hidden) return;
+      try {
+        const next = await client.getStatus();
+        if (active) setAgentStatus(next);
+      } catch {
+        // Transient (agent restarting / IPC hiccup) — keep polling.
+      }
+    };
+    void refresh();
+    const intervalId = window.setInterval(refresh, 3000);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [awaitingAgentReadiness, setAgentStatus]);
 
   useEffect(() => {
     if (!pendingRestart) {

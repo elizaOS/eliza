@@ -63,7 +63,7 @@ const tscPath = join(
   ROOT,
   "node_modules",
   ".bin",
-  process.platform === "win32" ? "tsc.cmd" : "tsc"
+  process.platform === "win32" ? "tsc.exe" : "tsc"
 );
 
 try {

@@ -26,7 +26,7 @@ below for the one or two things that differ from a VPS.
 
 ## What the bundle installs
 
-All files live under `deploy/systemd/` in the repo:
+All files live under `packages/deploy/systemd/` in the repo:
 
 | File | Role |
 |---|---|
@@ -50,14 +50,14 @@ All files live under `deploy/systemd/` in the repo:
 ```bash
 git clone https://github.com/elizaOS/eliza.git
 cd eliza
-./deploy/systemd/install.sh
+./packages/deploy/systemd/install.sh
 ```
 
 Pass an absolute path as the first argument if the checkout lives
 somewhere other than where you want the service to run:
 
 ```bash
-./deploy/systemd/install.sh /opt/eliza
+./packages/deploy/systemd/install.sh /opt/eliza
 ```
 
 The installer substitutes the resolved workdir, your `bun` binary path,

@@ -1,0 +1,573 @@
+{
+  "all_pad_visuals_have_contract": true,
+  "at_mm": {
+    "rotation": 0.0,
+    "x": 28.75,
+    "y": 22.0
+  },
+  "claim_boundary": "Per-reference local model metadata only. This is not a discrete supplier-approved STEP/B-rep model and cannot satisfy routed-board release or enclosure clearance.",
+  "combined_step_assembly_name": "09_U_USB_PD_TI_TPS65987_RSH_56QFN_DEV",
+  "combined_step_locator_status": "development_envelope_named_subshape_in_combined_routed_step",
+  "coverage": "exact_public_pin_table",
+  "discrete_supplier_step_file": "",
+  "discrete_supplier_step_status": "missing_supplier_approved_component_step",
+  "electrical_pad_count": 59,
+  "envelope_mm": {
+    "depth": 9.0,
+    "height": 0.9,
+    "width": 9.0
+  },
+  "expected_supplier_brep_or_step_status": "missing_supplier_approved_discrete_component_model",
+  "expected_supplier_step_file": "U_USB_PD.step",
+  "footprint": "TI_TPS65987_RSH_56QFN_DEV",
+  "land_pattern_basis": "public TPS65987 RSH56 QFN pin table with local exposed-pad development pattern; pending TI land-pattern/DFM release review",
+  "layer": "F.Cu",
+  "local_discrete_step_bbox_matches_envelope": true,
+  "local_discrete_step_bbox_mm": {
+    "depth": 9.0000002,
+    "height": 0.9000002,
+    "width": 9.0000002
+  },
+  "local_discrete_step_bytes": 15538,
+  "local_discrete_step_expected_bbox_mm": {
+    "depth": 9.0,
+    "height": 0.9,
+    "width": 9.0
+  },
+  "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/U_USB_PD.local-envelope.step",
+  "local_discrete_step_import_status": "pass",
+  "local_discrete_step_imported_as_solid": true,
+  "local_discrete_step_sha256": "cb0a920f48f79721658cabebde8b694ca91725fa543a0eaeda98747b8a431f72",
+  "local_discrete_step_solid_type": "Solid",
+  "local_discrete_step_status": "local_development_envelope_not_supplier_model",
+  "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
+  "local_step_bound": true,
+  "local_terminal_contract": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "18",
+    "19",
+    "20",
+    "21",
+    "22",
+    "23",
+    "24",
+    "25",
+    "26",
+    "27",
+    "28",
+    "29",
+    "30",
+    "31",
+    "32",
+    "33",
+    "34",
+    "35",
+    "36",
+    "37",
+    "38",
+    "39",
+    "40",
+    "41",
+    "42",
+    "43",
+    "44",
+    "45",
+    "46",
+    "47",
+    "48",
+    "49",
+    "50",
+    "51",
+    "52",
+    "53",
+    "54",
+    "55",
+    "56",
+    "57",
+    "58",
+    "59"
+  ],
+  "local_terminal_contract_source": "captured_public_pinout_expected_pins",
+  "mechanical_pad_count": 0,
+  "mechanical_pads": [],
+  "model_binding_status": "blocked_pending_supplier_step_or_verified_package_drawing",
+  "model_source": "local_development_envelope",
+  "non_signal_pad_contract": [],
+  "non_signal_pad_contract_matches_pad_visuals": true,
+  "non_signal_pad_contract_source": "",
+  "npth_mechanical_feature_contract": [],
+  "npth_mechanical_feature_contract_matches_footprint": true,
+  "npth_mechanical_feature_contract_source": "",
+  "npth_mechanical_feature_count": 0,
+  "npth_mechanical_features": [],
+  "pad_contract_covered_count": 59,
+  "pad_contract_records": [
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "3"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "4"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "5"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "6"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "7"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "8"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "9"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "10"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "11"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "12"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "13"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "14"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "15"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "16"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "17"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "18"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "19"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "20"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "21"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "22"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "23"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "24"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "25"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "26"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "27"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "28"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "29"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "30"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "31"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "32"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "33"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "34"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "35"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "36"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "37"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "38"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "39"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "40"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "41"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "42"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "43"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "44"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "45"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "46"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "47"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "48"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "49"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "50"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "51"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "52"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "53"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "54"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "55"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "56"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "57"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "58"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+      "covered": true,
+      "pad": "59"
+    }
+  ],
+  "pad_count": 59,
+  "pad_names": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "18",
+    "19",
+    "20",
+    "21",
+    "22",
+    "23",
+    "24",
+    "25",
+    "26",
+    "27",
+    "28",
+    "29",
+    "30",
+    "31",
+    "32",
+    "33",
+    "34",
+    "35",
+    "36",
+    "37",
+    "38",
+    "39",
+    "40",
+    "41",
+    "42",
+    "43",
+    "44",
+    "45",
+    "46",
+    "47",
+    "48",
+    "49",
+    "50",
+    "51",
+    "52",
+    "53",
+    "54",
+    "55",
+    "56",
+    "57",
+    "58",
+    "59"
+  ],
+  "pad_visual_count": 59,
+  "pattern_binding_status": "pinout_bound_public_or_captured_contract",
+  "pattern_bound": true,
+  "pinout_bound": true,
+  "pinout_file": "board/kicad/e1-phone/supplier-pinouts/tps65987-pinout.yaml",
+  "public_cad_source_record": "",
+  "public_cad_step_overlay_bytes": 0,
+  "public_cad_step_overlay_file": "",
+  "public_cad_step_overlay_release_credit": false,
+  "public_cad_step_overlay_sha256": "",
+  "public_cad_step_overlay_status": "not_applicable_or_not_downloaded",
+  "reference": "U_USB_PD",
+  "release_allowed": false,
+  "release_credit": false,
+  "schema": "eliza.e1_phone_local_component_model_record.v1",
+  "source_assembly_item": "U_USB_PD",
+  "source_routed_step": "board/kicad/e1-phone/production/step/routed-board-with-components.step",
+  "source_routed_step_bytes": 33644627,
+  "source_routed_step_sha256": "ea98f73d805f237ed397d5b6f190b86c31a9fc4ea270ea983a472220470043d6",
+  "source_step_intake": "board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml",
+  "status": "blocked_local_development_envelope_not_supplier_step",
+  "supplier_approved": false,
+  "supplier_sourcing_lane": "usb_pd_controller",
+  "supplier_step_intake_bytes": 15538,
+  "supplier_step_intake_file": "board/kicad/e1-phone/production/sourcing/usb_pd_controller/supplier-model.step",
+  "supplier_step_intake_release_credit": false,
+  "supplier_step_intake_sha256": "c30c61bf1c2a2a7b18962ffcec843278ed09ac6c5d18bcdda91a7b1fa6fa5b16",
+  "supplier_step_intake_status": "present_local_surrogate_step_not_supplier_approved",
+  "support_pattern_bound": false,
+  "support_pattern_has_explicit_provenance": false,
+  "terminal_contract_bound": true,
+  "terminal_contract_count": 59,
+  "terminal_contract_matches_pad_visuals": true,
+  "uncovered_pad_visuals": [],
+  "visual_package_class": "pinout_bound_package_or_connector"
+}
