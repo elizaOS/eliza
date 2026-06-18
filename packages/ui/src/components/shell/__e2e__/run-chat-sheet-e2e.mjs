@@ -280,22 +280,14 @@ async function runDragSuite(p, pointer, tag) {
     (await p.locator('[data-testid="chat-sheet"][data-maximized="true"]').count()) === 0,
     `[${pointer}] restore → no longer maximized`,
   );
-  // Clear + Home + Settings route to the controller.
+  // Clear routes to the controller and keeps the sheet open (it resets the
+  // thread in place). Home/Settings instead collapse the sheet (navigate-and-
+  // close) — tested in their own block so they don't tear down this flow.
   await p.getByTestId("chat-full-clear").click();
-  await p.getByTestId("chat-full-home").click();
-  await p.getByTestId("chat-full-settings").click();
   await p.waitForTimeout(120);
   assert(
     sink.logs.some((l) => l.includes("clearConversation")),
     `[${pointer}] clear button calls clearConversation`,
-  );
-  assert(
-    sink.logs.some((l) => l.includes("navigateHome")),
-    `[${pointer}] home button calls navigateHome`,
-  );
-  assert(
-    sink.logs.some((l) => l.includes("openSettings")),
-    `[${pointer}] settings button calls openSettings`,
   );
 
   // drag BEYOND full (held) → rubber-band, not 1:1
@@ -888,6 +880,47 @@ try {
     assert(
       (await p.getByTestId(shown).count()) === 1,
       `HIDE[${tab}]: ${shown} still shown on the ${tab} screen`,
+    );
+    await p.close();
+  }
+
+  // NAVIGATE-AND-CLOSE: tapping Settings/Home animates OUT of maximize (if
+  // maximized) and collapses the sheet, THEN navigates — the page swap waits for
+  // the close animation to start, so it reads as the chat closing into the new
+  // view rather than a jump-cut from full-screen.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(600);
+    await gesture(p, 90, { pointer: "mouse", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    await gesture(p, 140, { pointer: "mouse", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    await p.getByTestId("chat-full-maximize").click();
+    await p.waitForTimeout(SETTLE);
+    assert(
+      (await p
+        .locator('[data-testid="chat-sheet"][data-maximized="true"]')
+        .count()) === 1,
+      "NAV-CLOSE: maximized before tapping settings",
+    );
+    await p.getByTestId("chat-full-settings").click();
+    await p.waitForTimeout(600);
+    assert(
+      (await p
+        .locator('[data-testid="chat-sheet"][data-maximized="true"]')
+        .count()) === 0,
+      "NAV-CLOSE: tapping settings animates OUT of maximize",
+    );
+    assert(
+      (await detent(p)) === "collapsed",
+      "NAV-CLOSE: tapping settings collapses the sheet (close)",
+    );
+    assert(
+      sink.logs.some((l) => l.includes("openSettings")),
+      "NAV-CLOSE: settings navigation fires after the close starts",
     );
     await p.close();
   }

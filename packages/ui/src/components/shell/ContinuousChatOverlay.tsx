@@ -95,6 +95,16 @@ const OVERLAY_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 // Apple-style spring. The whole sheet is unmounted when there's no thread yet.
 // HALF is a comfortable mid-stop; FULL fills all the way to panelMaxH (the sheet
 // rises to just under the status bar) — you pull it back DOWN to dismiss.
+/** The five explicit states of the floating chat surface. Derived from the
+ * resting height + flags so it always matches what's rendered (see the
+ * `chatState` derivation in the component). */
+export type ChatState =
+  | "CLOSED"
+  | "INPUT"
+  | "OPEN_UNDER_HALF"
+  | "OPEN_HALF_OR_OVER"
+  | "MAXIMIZED";
+
 const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
 // px kept clear above the panel. Sized to clear an edge-to-edge status bar
 // (~58px) plus a buffer so the grabber sits BELOW the notification-shade pull
@@ -1003,6 +1013,32 @@ export function ContinuousChatOverlay({
   const detentH = !sheetOpen ? 0 : expanded ? openH : halfH;
   // A free-drag rest height wins over the detent until a detent is re-taken.
   const baseH = freeH != null ? Math.min(freeH, panelMaxH) : detentH;
+
+  // The single explicit state of the chat surface — the named machine the rest
+  // of the component (header gate, data attribute, transitions) reads from. It
+  // is DERIVED from the resting height so it always agrees with what's on
+  // screen; the live drag stays on the `threadHeight` motion value (no
+  // re-render per frame). The five states:
+  //   CLOSED            — pill only (sheet pilled away)
+  //   INPUT             — composer bar, no thread (the resting closed state)
+  //   OPEN_UNDER_HALF   — opened but below the half detent (a deliberate slow
+  //                       pull rested here); header buttons stay hidden
+  //   OPEN_HALF_OR_OVER — at the half detent or taller (header buttons show)
+  //   MAXIMIZED         — full-bleed edge-to-edge
+  // Transitions: pill tap / flick-up → INPUT; focus·type·flick·send → an OPEN_*
+  // state; pull-down → INPUT → CLOSED; maximize toggle ↔ MAXIMIZED; Home/Settings
+  // animate out of MAXIMIZED then collapse (see navigateAndClose).
+  const chatState: ChatState = pilled
+    ? "CLOSED"
+    : !sheetOpen
+      ? "INPUT"
+      : maximized
+        ? "MAXIMIZED"
+        : baseH >= halfH - 1
+          ? "OPEN_HALF_OR_OVER"
+          : "OPEN_UNDER_HALF";
+  const headerVisible =
+    chatState === "OPEN_HALF_OR_OVER" || chatState === "MAXIMIZED";
   // Map a raw drag height: rubber-band past FULL, hard-clamp the bottom to 0.
   const clampHeight = React.useCallback(
     (raw: number) =>
@@ -1039,6 +1075,21 @@ export function ContinuousChatOverlay({
     setSheetOpen(false);
     setExpanded(false);
   }, []);
+
+  // Leaving the chat for Settings/Home: animate OUT of maximize and collapse the
+  // sheet (closeSheet un-maximizes + springs the thread height down) BEFORE
+  // swapping the page underneath, so it reads as the chat closing into the new
+  // view rather than a jump-cut from full-screen. The page swap waits a beat for
+  // the collapse spring to start (a touch longer when leaving MAXIMIZED, since
+  // there's more to unwind); reduced motion navigates immediately.
+  const navigateAndClose = React.useCallback(
+    (go: () => void) => {
+      const wasMaximized = maximized;
+      closeSheet();
+      window.setTimeout(go, reduce ? 0 : wasMaximized ? 260 : 190);
+    },
+    [closeSheet, maximized, reduce],
+  );
 
   // The single detent→detent animator: whenever the settled detent (or viewport)
   // changes and we're not mid finger-drag, spring the history height to it. The
@@ -1549,6 +1600,7 @@ export function ContinuousChatOverlay({
           }
           data-maximized={fullBleed ? "true" : undefined}
           data-revealed={sheetOpen ? "true" : "false"}
+          data-chat-state={chatState}
           // Never taller than the visible viewport (above the keyboard) minus the
           // overlay's safe-area padding + a top margin: the thread scrolls instead
           // of the panel spilling off the top of the screen. borderRadius is a
@@ -1627,7 +1679,7 @@ export function ContinuousChatOverlay({
               Right: Home (back to the home dashboard) + Settings. Home is hidden
               while already on the home screen ("chat"); Settings is hidden while
               already on the settings screen. */}
-              {sheetOpen && !pilled ? (
+              {headerVisible ? (
                 <div
                   className={cn(
                     "relative z-10 flex shrink-0 items-center justify-between gap-1.5 px-3",
@@ -1659,7 +1711,7 @@ export function ContinuousChatOverlay({
                       <HeaderButton
                         icon={Home}
                         label="home"
-                        onClick={() => navigateHome?.()}
+                        onClick={() => navigateAndClose(() => navigateHome?.())}
                         testId="chat-full-home"
                       />
                     ) : null}
@@ -1667,7 +1719,7 @@ export function ContinuousChatOverlay({
                       <HeaderButton
                         icon={SettingsIcon}
                         label="settings"
-                        onClick={() => openSettings()}
+                        onClick={() => navigateAndClose(() => openSettings())}
                         testId="chat-full-settings"
                       />
                     ) : null}

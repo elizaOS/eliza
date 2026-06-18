@@ -26569,6 +26569,8 @@
     const halfH = Math.round(viewportH * SHEET_HALF_VH);
     const detentH = !sheetOpen ? 0 : expanded ? openH : halfH;
     const baseH = freeH != null ? Math.min(freeH, panelMaxH) : detentH;
+    const chatState = pilled ? "CLOSED" : !sheetOpen ? "INPUT" : maximized ? "MAXIMIZED" : baseH >= halfH - 1 ? "OPEN_HALF_OR_OVER" : "OPEN_UNDER_HALF";
+    const headerVisible = chatState === "OPEN_HALF_OR_OVER" || chatState === "MAXIMIZED";
     const clampHeight = React7.useCallback(
       (raw) => raw > openH ? openH + rubberBand(raw - openH) : Math.max(0, raw),
       [openH]
@@ -26597,6 +26599,14 @@
       setSheetOpen(false);
       setExpanded(false);
     }, []);
+    const navigateAndClose = React7.useCallback(
+      (go) => {
+        const wasMaximized = maximized;
+        closeSheet();
+        window.setTimeout(go, reduce ? 0 : wasMaximized ? 260 : 190);
+      },
+      [closeSheet, maximized, reduce]
+    );
     React7.useEffect(() => {
       if (draggingRef.current) return;
       if (reduce) {
@@ -26954,6 +26964,7 @@
                     "data-detent": pilled ? "pill" : !sheetOpen ? "collapsed" : freeH != null ? Math.min(freeH, panelMaxH) >= openH - 1 ? "full" : "half" : expanded ? "full" : "half",
                     "data-maximized": fullBleed ? "true" : void 0,
                     "data-revealed": sheetOpen ? "true" : "false",
+                    "data-chat-state": chatState,
                     style: pilled ? void 0 : {
                       maxHeight: panelMaxH,
                       // Full-bleed (maximized) → square edge-to-edge; otherwise the
@@ -27015,7 +27026,7 @@
                           transition: { duration: reduce ? 0 : 1.1, ease: "easeInOut" }
                         }
                       ),
-                      sheetOpen && !pilled ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                      headerVisible ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
                         "div",
                         {
                           className: cn(
@@ -27053,7 +27064,7 @@
                                 {
                                   icon: House,
                                   label: "home",
-                                  onClick: () => navigateHome?.(),
+                                  onClick: () => navigateAndClose(() => navigateHome?.()),
                                   testId: "chat-full-home"
                                 }
                               ) : null,
@@ -27062,7 +27073,7 @@
                                 {
                                   icon: Settings,
                                   label: "settings",
-                                  onClick: () => openSettings(),
+                                  onClick: () => navigateAndClose(() => openSettings()),
                                   testId: "chat-full-settings"
                                 }
                               ) : null
