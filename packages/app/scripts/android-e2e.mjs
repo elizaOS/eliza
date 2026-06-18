@@ -49,6 +49,71 @@ const SMOKE_MODEL = {
   ),
 };
 
+// On-device voice (STT/TTS) GGUFs the voice-selftest needs alongside the chat
+// model. Unlike the chat smoke model these are not auto-downloaded by the
+// harness; they live in the host's local-inference cache. Defaults match where
+// the desktop runtime stores them; override per env for CI.
+const VOICE_MODELS = (() => {
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? ".";
+  const asrDir =
+    process.env.ELIZA_ANDROID_ASR_MODEL_DIR ??
+    path.join(home, ".cache/eliza/asr-model");
+  const ttsDir =
+    process.env.ELIZA_ANDROID_TTS_MODEL_DIR ??
+    path.join(home, ".local/state/milady/local-inference/models/omnivoice");
+  const dev = "/data/data/ai.elizaos.app/files/.eliza/local-inference/models";
+  return [
+    { host: path.join(asrDir, "eliza-1-asr.gguf"), dev: `${dev}/asr/eliza-1-asr.gguf` },
+    { host: path.join(asrDir, "eliza-1-asr-mmproj.gguf"), dev: `${dev}/asr/eliza-1-asr-mmproj.gguf` },
+    { host: path.join(ttsDir, "omnivoice-base-q4_k_m.gguf"), dev: `${dev}/tts/omnivoice-base-q4_k_m.gguf` },
+    { host: path.join(ttsDir, "omnivoice-tokenizer-q4_k_m.gguf"), dev: `${dev}/tts/omnivoice-tokenizer-q4_k_m.gguf` },
+  ];
+})();
+
+// Stage the ASR/TTS GGUFs the voice round-trip needs. Idempotent (skips files
+// already present at the right size, so it no-ops on a real device that already
+// carries them), and never the failure point — if the host cache lacks them we
+// log and move on so voice-selftest fails loudly with the real "ASR assets
+// missing" rather than a push error. Emulators are root (ensureEmulatorPermissive
+// ran), so the push into the app data dir succeeds.
+function stageVoiceModels(adb, serial) {
+  const toStage = VOICE_MODELS.filter((m) => {
+    if (!fs.existsSync(m.host)) return false;
+    const probe = spawnSync(adb, ["-s", serial, "shell", "stat", "-c", "%s", m.dev], {
+      encoding: "utf8",
+    });
+    return (probe.stdout ?? "").trim() !== String(fs.statSync(m.host).size);
+  });
+  const missingHost = VOICE_MODELS.filter((m) => !fs.existsSync(m.host));
+  if (missingHost.length > 0) {
+    log(
+      `voice models: ${missingHost.length}/${VOICE_MODELS.length} absent from the host cache ` +
+        `(${missingHost.map((m) => path.basename(m.host)).join(", ")}) — skipping voice-model staging; ` +
+        `voice-selftest will report the real on-device gap. Set ELIZA_ANDROID_ASR_MODEL_DIR / ELIZA_ANDROID_TTS_MODEL_DIR.`,
+    );
+    return;
+  }
+  if (toStage.length === 0) {
+    log("voice models already staged on device.");
+    return;
+  }
+  const devModels = "/data/data/ai.elizaos.app/files/.eliza/local-inference/models";
+  spawnSync(adb, ["-s", serial, "shell", "mkdir", "-p", `${devModels}/asr`, `${devModels}/tts`], {
+    stdio: "ignore",
+  });
+  for (const m of toStage) {
+    log(`staging voice model ${path.basename(m.host)}…`);
+    const res = spawnSync(adb, ["-s", serial, "push", m.host, m.dev], { stdio: "inherit" });
+    if (res.status !== 0) {
+      throw new Error(`adb push ${m.host} exited with code ${res.status}`);
+    }
+  }
+  spawnSync(adb, ["-s", serial, "shell", "chmod", "-R", "755", `${devModels}/asr`, `${devModels}/tts`], {
+    stdio: "ignore",
+  });
+  log(`voice models staged for on-device ASR/TTS (${toStage.length} pushed).`);
+}
+
 function run(cmd, args, env = {}) {
   const res = spawnSync(cmd, args, {
     cwd: appDir,
@@ -125,6 +190,11 @@ async function main() {
   }
 
   if (!has("--skip-route-coverage")) {
+    // The Playwright config runs route-coverage AND the on-device voice
+    // round-trip; the latter needs the ASR/TTS GGUFs staged (the chat smoke only
+    // stages the text model, and an `adb install -r` cycle can drop the
+    // separately-pushed voice models).
+    stageVoiceModels(adb, serial);
     log("route coverage: driving every route on the real WebView…");
     run("node", [
       "scripts/run-ui-playwright.mjs",
