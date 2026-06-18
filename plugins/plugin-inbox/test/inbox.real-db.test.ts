@@ -259,4 +259,69 @@ describe("InboxService + InboxRepository — real PGLite", () => {
     // Ignored entries are excluded from the digest.
     expect(ids).not.toContain("msg-digest-ignore");
   });
+
+  // The curation engine is pure (no model, no DB), but these run it against the
+  // live runtime: the runtime has no KnowledgeGraphService registered, so the
+  // default identity hook resolves nothing and the engine's heuristics apply.
+  it("curate() produces an action per inbound message against the live runtime", async () => {
+    const out = await service.curate([
+      inbound({
+        id: "cur-marketing",
+        source: "gmail",
+        senderName: "Deals Daily",
+        senderEmail: "no-reply@deals.example",
+        channelName: "50% off — limited time sale",
+        text: "Limited time sale! Unsubscribe here. View in browser.",
+      }),
+      inbound({
+        id: "cur-personal",
+        source: "gmail",
+        senderName: "Mom",
+        senderEmail: "mom@family.example",
+        channelName: "miss you",
+        text: "Miss you! Dinner was great, love you. Photos attached.",
+      }),
+    ]);
+
+    expect(out.decisions).toHaveLength(2);
+    const byId = new Map(out.decisions.map((d) => [d.candidateId, d]));
+    // No-reply marketing/list mail is never saved.
+    expect(byId.get("cur-marketing")?.action).not.toBe("save");
+    // Personal relationship cues keep the message out of delete.
+    expect(byId.get("cur-personal")?.action).not.toBe("delete");
+  });
+
+  it("triageWithCuration() keeps triage intact and attaches curation, with an injected VIP identity blocking delete", async () => {
+    const result = await service.triageWithCuration(
+      [
+        inbound({
+          id: "cur-vip",
+          source: "gmail",
+          senderName: "Alice VIP",
+          senderEmail: "alice@vip.example",
+          text: "Newsletter unsubscribe here, delete all emails now.",
+        }),
+      ],
+      {
+        classifyOnly: true,
+        identityHook: () => ({
+          kind: "vip",
+          label: "Alice (VIP)",
+          matchedBy: ["test.injected"],
+          blockDelete: true,
+          personId: "ent_alice",
+        }),
+      },
+    );
+
+    expect(result.triaged).toHaveLength(1);
+    const item = result.triaged[0]!;
+    // Triage still classifies (deterministic stub).
+    expect(item.classification).toBeDefined();
+    // Curation decision attached, VIP identity honored, delete blocked.
+    expect(item.curation.candidateId).toBe("cur-vip");
+    expect(item.curation.identity.kind).toBe("vip");
+    expect(item.curation.blockedActions).toContain("delete");
+    expect(item.curation.action).not.toBe("delete");
+  });
 });

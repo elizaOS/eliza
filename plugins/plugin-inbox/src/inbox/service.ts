@@ -17,8 +17,20 @@
  *     pulling connectors itself.
  */
 
+import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import type { IAgentRuntime } from "@elizaos/core";
+import type { EntityResolveCandidate } from "@elizaos/shared";
 import { loadInboxTriageConfig } from "./config.ts";
+import {
+  type CurationDecision,
+  curateEmailCandidates,
+  type EmailCurationCandidate,
+  type EmailCurationIdentityHook,
+  type EmailCurationOutput,
+  type EmailCurationPolicy,
+  type EmailCurationPolicyHook,
+  type EmailCurationResolvedIdentity,
+} from "./email-curation.ts";
 import { InboxRepository } from "./repository.ts";
 import { classifyMessages } from "./triage-classifier.ts";
 import type {
@@ -27,6 +39,51 @@ import type {
   TriageClassification,
   TriageEntry,
 } from "./types.ts";
+
+/** Lower-cased, angle-bracket-stripped sender email, or null. */
+function normalizeSenderEmail(
+  candidate: EmailCurationCandidate,
+): string | null {
+  const raw = candidate.fromEmail ?? candidate.from;
+  if (!raw) return null;
+  const angle = raw.match(/<([^>]+)>/);
+  const value = (angle?.[1] ?? raw).trim().toLowerCase();
+  const email = value.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i);
+  return email?.[0]?.toLowerCase() ?? null;
+}
+
+/**
+ * Map a resolved knowledge-graph entity onto the engine's identity contract.
+ * A `vip`-tagged entity is a VIP; any other graph person/org is a known
+ * sender. Both block bulk delete (the graph deliberately tracked them).
+ */
+function entityToCurationIdentity(
+  candidate: EntityResolveCandidate,
+): EmailCurationResolvedIdentity {
+  const { entity } = candidate;
+  const isVip = entity.tags.some((tag) => tag.toLowerCase() === "vip");
+  return {
+    kind: isVip ? "vip" : "known_person",
+    label: entity.preferredName,
+    matchedBy: ["knowledge_graph.identity.email"],
+    blockDelete: true,
+    personId: entity.entityId,
+  };
+}
+
+/** Project a normalized inbound message onto the engine's candidate shape. */
+function toCurationCandidate(message: InboundMessage): EmailCurationCandidate {
+  return {
+    id: message.id,
+    ...(message.threadId ? { threadId: message.threadId } : {}),
+    subject: message.channelName,
+    snippet: message.snippet,
+    from: message.senderName,
+    ...(message.senderEmail ? { fromEmail: message.senderEmail } : {}),
+    bodyText: message.text,
+    receivedAt: new Date(message.timestamp).toISOString(),
+  };
+}
 
 export interface TriageOptions {
   /** Override the loaded triage config (priority senders/channels, rules). */
@@ -58,6 +115,38 @@ export interface SearchOptions {
   classification?: TriageClassification;
   limit?: number;
   unresolvedOnly?: boolean;
+}
+
+export interface CurateOptions {
+  /**
+   * Identity resolver. Defaults to a hook backed by the runtime
+   * {@link resolveKnowledgeGraphService | knowledge-graph service}, which
+   * resolves the sender's entity from the runtime graph. Injectable as a test
+   * seam and to let callers override the identity source.
+   */
+  identityHook?: EmailCurationIdentityHook;
+  /**
+   * Policy hook applied after the engine's provisional decision. Defaults to a
+   * no-op (the engine's built-in `DEFAULT_POLICY` thresholds and delete
+   * blockers still apply). No PA-owned policy store is reachable from the
+   * inbox plugin without importing PA, so there is no default policy source
+   * beyond the engine's own defaults.
+   */
+  policyHook?: EmailCurationPolicyHook;
+  /** Static policy overrides merged onto the engine defaults. */
+  policy?: EmailCurationPolicy;
+  /** Override the curation timestamp (defaults to engine `now`). */
+  now?: string;
+}
+
+/** The curation decision attached to a triaged message. */
+export interface CuratedMessage extends TriagedMessage {
+  curation: CurationDecision;
+}
+
+export interface TriageWithCurationResult {
+  triaged: CuratedMessage[];
+  curation: EmailCurationOutput;
 }
 
 /**
@@ -148,6 +237,107 @@ export class InboxService {
     }
 
     return { triaged };
+  }
+
+  /**
+   * Run the pure email-curation engine over a batch of inbound messages and
+   * return the per-candidate decision (save / archive / delete / review with
+   * evidence, citations, and a bulk-review block).
+   *
+   * This is the richer decision path that complements {@link triage}: triage
+   * answers "how urgent is this and should I reply", curation answers "what
+   * should happen to this message in the owner's mailbox". It does not persist
+   * anything — callers decide what to do with the suggested action.
+   *
+   * The identity hook is backed by the runtime knowledge-graph service so the
+   * sender's entity (VIP / known person / service) feeds the engine's
+   * delete-blockers. Both hooks are injectable as a test seam.
+   */
+  async curate(
+    messages: InboundMessage[],
+    opts: CurateOptions = {},
+  ): Promise<EmailCurationOutput> {
+    const candidates = messages.map((message) => toCurationCandidate(message));
+    // The engine's identity hook is synchronous, but the knowledge-graph read
+    // is async, so we pre-resolve every candidate's identity here and hand the
+    // engine a synchronous lookup over that map. An explicitly injected hook
+    // wins (test seam / caller override).
+    const identityHook =
+      opts.identityHook ??
+      (await this.buildKnowledgeGraphIdentityHook(candidates));
+    return curateEmailCandidates({
+      candidates,
+      identityHook,
+      ...(opts.policyHook ? { policyHook: opts.policyHook } : {}),
+      ...(opts.policy ? { policy: opts.policy } : {}),
+      ...(opts.now ? { now: opts.now } : {}),
+    });
+  }
+
+  /**
+   * Triage a batch, then attach a curation decision to each message in the
+   * same input order. Triage behavior is unchanged (the existing
+   * classification + persistence still runs); curation is additive.
+   */
+  async triageWithCuration(
+    messages: InboundMessage[],
+    opts: TriageOptions & CurateOptions = {},
+  ): Promise<TriageWithCurationResult> {
+    const { identityHook, policyHook, policy, now, ...triageOpts } = opts;
+    const triageResult = await this.triage(messages, triageOpts);
+    const curation = await this.curate(messages, {
+      ...(identityHook ? { identityHook } : {}),
+      ...(policyHook ? { policyHook } : {}),
+      ...(policy ? { policy } : {}),
+      ...(now ? { now } : {}),
+    });
+
+    const decisionByCandidateId = new Map(
+      curation.decisions.flatMap((decision) =>
+        decision.canonicalMessageIds.map((id) => [id, decision] as const),
+      ),
+    );
+
+    const triaged: CuratedMessage[] = triageResult.triaged.flatMap(
+      (triagedMessage) => {
+        const decision = decisionByCandidateId.get(triagedMessage.message.id);
+        if (!decision) return [];
+        return [{ ...triagedMessage, curation: decision }];
+      },
+    );
+
+    return { triaged, curation };
+  }
+
+  /**
+   * Build an {@link EmailCurationIdentityHook} backed by the runtime
+   * knowledge-graph service. Pre-resolves every candidate's sender against the
+   * entity graph (the engine hook itself must be synchronous, so the async
+   * graph reads happen here) and maps the resolved entity onto the engine's
+   * identity kinds. Candidates the graph cannot resolve fall through to the
+   * engine's built-in sender heuristics. When the graph service is absent the
+   * hook resolves nothing.
+   */
+  private async buildKnowledgeGraphIdentityHook(
+    candidates: readonly EmailCurationCandidate[],
+  ): Promise<EmailCurationIdentityHook> {
+    const kg = resolveKnowledgeGraphService(this.runtime);
+    if (!kg) return () => null;
+    const store = kg.getEntityStore();
+
+    const resolved = new Map<string, EmailCurationResolvedIdentity>();
+    for (const candidate of candidates) {
+      const senderEmail = normalizeSenderEmail(candidate);
+      if (!senderEmail) continue;
+      const matches = await store.resolve({
+        identity: { platform: "email", handle: senderEmail },
+      });
+      const best = matches[0];
+      if (!best) continue;
+      resolved.set(candidate.id, entityToCurationIdentity(best));
+    }
+
+    return (candidate) => resolved.get(candidate.id) ?? null;
   }
 
   /**
