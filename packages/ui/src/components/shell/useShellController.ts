@@ -204,62 +204,64 @@ export function useShellController(): ShellController {
   }, []);
 
   const startCapture = React.useCallback(
-    (intent: CaptureIntent = "converse") => {
-    if (!ready) return;
-    if (captureRef.current) return;
-    // Read the user's VAD thresholds synchronously (local mirror of the
-    // `messages.voice` setting) so end-of-turn silence detection honors the
-    // configured sensitivity. Only consumed by the local-inference backend.
-    const handle = createVoiceCapture({
-      localAsrAutoStop: loadVadAutoStop(),
-      onTranscript: (segment) => {
-        const text = segment.text.trim();
-        if (!segment.final) {
-          // Surface the interim best-guess as live transcription.
-          setTranscript(text);
-          return;
-        }
-        setTranscript("");
-        if (text) {
-          if (intent === "dictate") {
-            // Push-to-talk dictation: hand the text to the composer draft —
-            // don't send, and leave lastTurnVoice false so no reply is spoken.
-            onDictatedTextRef.current?.(text);
-          } else {
-            send(text, {
-              channelType: "VOICE_DM",
-              metadata: {
-                voiceSource: segment.backend,
-              },
-            });
+    (intent?: CaptureIntent) => {
+      if (!ready) return;
+      if (captureRef.current) return;
+      // Read the user's VAD thresholds synchronously (local mirror of the
+      // `messages.voice` setting) so end-of-turn silence detection honors the
+      // configured sensitivity. Only consumed by the local-inference backend.
+      const handle = createVoiceCapture({
+        localAsrAutoStop: loadVadAutoStop(),
+        onTranscript: (segment) => {
+          const text = segment.text.trim();
+          if (!segment.final) {
+            // Surface the interim best-guess as live transcription.
+            setTranscript(text);
+            return;
           }
-        }
-      },
-      onStateChange: (state: VoiceCaptureState) => {
-        if (state === "error" || state === "stopped" || state === "idle") {
-          // Capture ended (clean stop, dispose, or error). Drop the handle and
-          // analyser so the shell phase returns to idle/summoned and a later
-          // startCapture is not blocked by a stale ref.
-          if (captureRef.current === handle) captureRef.current = null;
+          setTranscript("");
+          if (text) {
+            if (intent === "dictate") {
+              // Push-to-talk dictation: hand the text to the composer draft —
+              // don't send, and leave lastTurnVoice false so no reply is spoken.
+              onDictatedTextRef.current?.(text);
+            } else {
+              send(text, {
+                channelType: "VOICE_DM",
+                metadata: {
+                  voiceSource: segment.backend,
+                },
+              });
+            }
+          }
+        },
+        onStateChange: (state: VoiceCaptureState) => {
+          if (state === "error" || state === "stopped" || state === "idle") {
+            // Capture ended (clean stop, dispose, or error). Drop the handle and
+            // analyser so the shell phase returns to idle/summoned and a later
+            // startCapture is not blocked by a stale ref.
+            if (captureRef.current === handle) captureRef.current = null;
+            setAnalyser(null);
+            setRecording(false);
+            setTranscript("");
+          }
+        },
+      });
+      captureRef.current = handle;
+      setRecording(true);
+      handle
+        .start()
+        .then(() => {
+          if (captureRef.current === handle) setAnalyser(handle.getAnalyser());
+        })
+        .catch(() => {
+          captureRef.current = null;
           setAnalyser(null);
           setRecording(false);
-          setTranscript("");
-        }
-      },
-    });
-    captureRef.current = handle;
-    setRecording(true);
-    handle
-      .start()
-      .then(() => {
-        if (captureRef.current === handle) setAnalyser(handle.getAnalyser());
-      })
-      .catch(() => {
-        captureRef.current = null;
-        setAnalyser(null);
-        setRecording(false);
-      });
-  }, [ready, send]);
+        });
+    },
+    [ready, send],
+  );
 
   const toggleRecording = React.useCallback(() => {
     if (recording) stopCapture();
