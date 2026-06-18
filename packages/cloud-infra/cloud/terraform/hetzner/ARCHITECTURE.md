@@ -104,9 +104,10 @@ Hetzner Cloud account (one human)
 │   ├── eliza-core-staging-1          (dedicated worker, cpx32; docker_nodes table)
 │   └── eliza-core-<hex>              (worker, cpx32, autoscaled burst)
 └── Project "apps"            (repo-level HCLOUD_APPS_TOKEN, shared)
-    ├── eliza-app-tenant              (tenant Postgres — SHARED across envs; apps-shared/)
-    └── eliza-apps-node-staging-1     (apps Product-2 worker, staging; apps-data-plane/)
-       # production apps node not yet live — apps prod deploy is behind the cutover
+    ├── eliza-app-tenant                 (tenant Postgres — SHARED across envs; apps-shared/)
+    ├── eliza-apps-node-staging-1        (apps Product-2 worker, staging; apps-data-plane/)
+    ├── eliza-apps-node-production-1     (apps Product-2 worker, production; apps-data-plane/)
+    └── eliza-apps-control-production-1  (apps-control daemon, production; role=apps-control)
 ```
 
 The tenant DB is intentionally shared across staging + production app workers
