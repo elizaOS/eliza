@@ -2,6 +2,7 @@ import type { IAgentRuntime, Memory, ProviderDataRecord } from "@elizaos/core";
 import {
   assertActiveTrajectoryForLlmCall,
   ModelType,
+  parseJsonModelRecord,
   runWithTrajectoryContext,
 } from "@elizaos/core";
 import type {
@@ -16,7 +17,6 @@ import type {
   LifeOpsOccurrenceView,
   LifeOpsOverview,
 } from "../../contracts/index.js";
-import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import { getLocalDateKey, getZonedDateParts } from "../time.js";
 
 // Truncate snippet/preview text and append an ellipsis when we actually cut.

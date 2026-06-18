@@ -5,7 +5,14 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
+import {
+  recentConversationTexts as collectRecentConversationTexts,
+  ModelType,
+  parseJsonModelRecord,
+  resolveActionArgs,
+  runWithTrajectoryContext,
+  type SubactionsMap,
+} from "@elizaos/core";
 import {
   APP_BLOCKER_ACCESS_ERROR,
   getAppBlockerAccess,
@@ -14,13 +21,7 @@ import {
   startAppBlock,
   stopAppBlock,
 } from "@elizaos/plugin-blocker";
-import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { formatPromptSection } from "./lib/prompt-format.js";
-import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
-import {
-  resolveActionArgs,
-  type SubactionsMap,
-} from "./lib/resolve-action-args.js";
 
 const ACTION_NAME = "BLOCK";
 

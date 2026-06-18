@@ -1,9 +1,12 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
-import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
+import {
+  ModelType,
+  parseJsonModelRecord,
+  runExtractorPipeline,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
 import { resolveContextWindow } from "../../lifeops/defaults.js";
-import { runExtractorPipeline } from "../../lifeops/llm/extractor-pipeline.js";
-import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 
 export const LIFE_OPERATION_VALUES = [
   "create",

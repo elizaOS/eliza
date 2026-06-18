@@ -6,6 +6,8 @@ import {
   logger,
   type Memory,
   requireConfirmation,
+  resolveActionArgs,
+  type SubactionsMap,
 } from "@elizaos/core";
 import {
   readTwilioCredentialsFromEnv,
@@ -13,10 +15,6 @@ import {
   type TwilioDeliveryResult,
 } from "@elizaos/plugin-phone/twilio";
 import { LifeOpsService } from "../lifeops/service.js";
-import {
-  resolveActionArgs,
-  type SubactionsMap,
-} from "./lib/resolve-action-args.js";
 
 const ACTION_NAME = "VOICE_CALL";
 

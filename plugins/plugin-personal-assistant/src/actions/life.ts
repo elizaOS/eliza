@@ -12,6 +12,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { resolveActionArgs, type SubactionsMap } from "@elizaos/core";
 import type {
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGoalRequest,
@@ -81,10 +82,6 @@ import {
   applyOwnerPolicyConfigureEscalation,
   applyOwnerPolicySetReminder,
 } from "./lib/owner-policy-writes.js";
-import {
-  resolveActionArgs,
-  type SubactionsMap,
-} from "./lib/resolve-action-args.js";
 
 // ── Types ─────────────────────────────────────────────
 

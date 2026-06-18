@@ -10,13 +10,11 @@
  *        RemoteDesktopSession)
  *   - `plugins/plugin-personal-assistant/src/remote/remote-session-service.ts`
  *       (getRemoteSessionService, RemoteSessionError)
- *   - `plugins/plugin-personal-assistant/src/actions/lib/resolve-action-args.ts`
- *       (resolveActionArgs, SubactionsMap)
+ *   - `resolveActionArgs` / `SubactionsMap` (now exported from `@elizaos/core`)
  *
  * TODO(remote-desktop migration): in the follow-up migration pass:
  *   1. Move the lifeops helpers above into this plugin (src/lifeops/, src/remote/).
- *   2. Move the resolve-action-args helper into a shared location accessible
- *      from both plugin-lifeops and plugin-remote-desktop, or vendor a copy here.
+ *   2. Import `resolveActionArgs` / `SubactionsMap` from `@elizaos/core`.
  *   3. Port the full handler body (handleStart/handleStatus/handleEnd/handleList/
  *      handleRevoke) verbatim into this file.
  *   4. Replace this stub with the real implementation.
@@ -218,7 +216,8 @@ export const remoteDesktopAction: RemoteDesktopAction = {
       data: {
         actionName: ACTION_NAME,
         reason: "migration_in_progress",
-        canonicalLocation: "plugins/plugin-personal-assistant/src/actions/remote-desktop.ts",
+        canonicalLocation:
+          "plugins/plugin-personal-assistant/src/actions/remote-desktop.ts",
       },
     };
   },

@@ -5,7 +5,11 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { requireConfirmation } from "@elizaos/core";
+import {
+  requireConfirmation,
+  resolveActionArgs,
+  type SubactionsMap,
+} from "@elizaos/core";
 import {
   detectRemoteDesktopBackend,
   endRemoteSession as endStoredRemoteSession,
@@ -16,10 +20,6 @@ import {
   getRemoteSessionService,
   RemoteSessionError,
 } from "../remote/remote-session-service.js";
-import {
-  resolveActionArgs,
-  type SubactionsMap,
-} from "./lib/resolve-action-args.js";
 
 const ACTION_NAME = "REMOTE_DESKTOP";
 
@@ -95,8 +95,7 @@ async function handleStart(
   params: RemoteParams,
 ): Promise<ActionResult> {
   const backend = await detectRemoteDesktopBackend();
-  const startPrompt =
-    `Starting a remote desktop session will expose this machine to the network via ${backend}.`;
+  const startPrompt = `Starting a remote desktop session will expose this machine to the network via ${backend}.`;
   const decision = await requireConfirmation({
     runtime,
     message,
@@ -114,9 +113,7 @@ async function handleStart(
       values: {
         success: false,
         error:
-          decision.status === "pending"
-            ? "CONFIRMATION_REQUIRED"
-            : "CANCELLED",
+          decision.status === "pending" ? "CONFIRMATION_REQUIRED" : "CANCELLED",
         requiresConfirmation: decision.status === "pending",
         backend,
       },

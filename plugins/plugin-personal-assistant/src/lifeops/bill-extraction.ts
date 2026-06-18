@@ -12,8 +12,12 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, ModelType, runWithTrajectoryContext } from "@elizaos/core";
-import { parseJsonModelRecord } from "../utils/json-model-output.js";
+import {
+  logger,
+  ModelType,
+  parseJsonModelRecord,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
 import type { EmailLikeMessage } from "./email-classifier.js";
 import { getConfiguredEmailClassifierModel } from "./email-classifier.js";
 import { wrapUntrustedEmailContent } from "./service-normalize-gmail.js";

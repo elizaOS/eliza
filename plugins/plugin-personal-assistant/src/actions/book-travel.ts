@@ -6,7 +6,16 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
+import {
+  recentConversationTexts as collectRecentConversationTexts,
+  ModelType,
+  parseJsonModelRecord,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
+import {
+  PaymentRequiredError,
+  type X402PaymentRequirement,
+} from "@elizaos/plugin-elizacloud/cloud/x402-payment-handler";
 import { INTERNAL_URL } from "../lifeops/access.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import type {
@@ -20,12 +29,6 @@ import type {
   TravelBookingPassenger,
   TravelCalendarSyncPlan,
 } from "../lifeops/travel-booking.types.js";
-import {
-  PaymentRequiredError,
-  type X402PaymentRequirement,
-} from "@elizaos/plugin-elizacloud/cloud/x402-payment-handler";
-import { parseJsonModelRecord } from "../utils/json-model-output.js";
-import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
 
 type BookTravelPassengerInput = {
   offerPassengerId?: string | null;
