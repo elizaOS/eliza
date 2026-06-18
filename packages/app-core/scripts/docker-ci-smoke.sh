@@ -577,6 +577,7 @@ for plugin in \
   plugin-browser \
   plugin-capacitor-bridge \
   plugin-coding-tools \
+  plugin-commands \
   plugin-computeruse \
   plugin-discord \
   plugin-elizacloud \

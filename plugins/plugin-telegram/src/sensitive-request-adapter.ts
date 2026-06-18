@@ -18,131 +18,139 @@
  */
 
 import {
-	type DeliveryResult,
-	type DispatchSensitiveRequest,
-	type IAgentRuntime,
-	logger,
-	type SensitiveRequest,
-	type SensitiveRequestDeliveryAdapter,
+  type DeliveryResult,
+  type DispatchSensitiveRequest,
+  type IAgentRuntime,
+  logger,
+  type SensitiveRequest,
+  type SensitiveRequestDeliveryAdapter,
 } from "@elizaos/core";
 import { Markup } from "telegraf";
 import { TELEGRAM_SERVICE_NAME } from "./constants";
 
-type TelegramDispatchRequest = DispatchSensitiveRequest & Partial<SensitiveRequest>;
+type TelegramDispatchRequest = DispatchSensitiveRequest &
+  Partial<SensitiveRequest>;
 
 const SENSITIVE_REQUEST_DISPATCH_REGISTRY_SERVICE_NAME =
-	"SensitiveRequestDispatchRegistry";
+  "SensitiveRequestDispatchRegistry";
 
 interface TelegramBotLike {
-	telegram: {
-		sendMessage: (
-			chatId: number,
-			text: string,
-			extra?: Record<string, unknown>,
-		) => Promise<unknown>;
-	};
+  telegram: {
+    sendMessage: (
+      chatId: number,
+      text: string,
+      extra?: Record<string, unknown>,
+    ) => Promise<unknown>;
+  };
 }
 
 function getTelegramBot(runtime: IAgentRuntime): TelegramBotLike | null {
-	const svc = runtime.getService?.(TELEGRAM_SERVICE_NAME) as
-		| { bot?: unknown }
-		| null
-		| undefined;
-	const bot =
-		svc && typeof svc === "object" && "bot" in svc
-			? (svc as { bot?: unknown }).bot
-			: null;
-	if (bot && typeof bot === "object" && "telegram" in bot) {
-		return bot as TelegramBotLike;
-	}
-	return null;
+  const svc = runtime.getService?.(TELEGRAM_SERVICE_NAME) as
+    | { bot?: unknown }
+    | null
+    | undefined;
+  const bot =
+    svc && typeof svc === "object" && "bot" in svc
+      ? (svc as { bot?: unknown }).bot
+      : null;
+  if (bot && typeof bot === "object" && "telegram" in bot) {
+    return bot as TelegramBotLike;
+  }
+  return null;
 }
 
 function resolveLink(request: TelegramDispatchRequest): string | undefined {
-	return request.callback?.url ?? request.delivery?.linkBaseUrl ?? undefined;
+  return request.callback?.url ?? request.delivery?.linkBaseUrl ?? undefined;
 }
 
 function buildDmText(request: TelegramDispatchRequest, link?: string): string {
-	const reason = request.delivery?.reason ?? "A sensitive value is required.";
-	const lines = ["A sensitive value is needed to continue.", reason];
-	if (!link) {
-		lines.push(
-			request.delivery?.instruction ??
-				"Please open the Eliza app to provide this value.",
-		);
-	}
-	if (request.expiresAt) lines.push(`This request expires at ${request.expiresAt}.`);
-	return lines.join("\n");
+  const reason = request.delivery?.reason ?? "A sensitive value is required.";
+  const lines = ["A sensitive value is needed to continue.", reason];
+  if (!link) {
+    lines.push(
+      request.delivery?.instruction ??
+        "Please open the Eliza app to provide this value.",
+    );
+  }
+  if (request.expiresAt)
+    lines.push(`This request expires at ${request.expiresAt}.`);
+  return lines.join("\n");
 }
 
 async function deliverViaTelegramDm(args: {
-	request: DispatchSensitiveRequest;
-	channelId?: string;
-	runtime: unknown;
+  request: DispatchSensitiveRequest;
+  channelId?: string;
+  runtime: unknown;
 }): Promise<DeliveryResult> {
-	const runtime = args.runtime as IAgentRuntime;
-	const request = args.request as TelegramDispatchRequest;
-	const candidate =
-		args.channelId ?? request.requesterEntityId ?? request.originUserId;
-	const chatId = typeof candidate === "string" ? Number(candidate) : Number.NaN;
-	if (!Number.isFinite(chatId) || chatId <= 0) {
-		return {
-			delivered: false,
-			target: "dm",
-			error: "No Telegram user id available (need targetChannelId or originUserId)",
-		};
-	}
+  const runtime = args.runtime as IAgentRuntime;
+  const request = args.request as TelegramDispatchRequest;
+  const candidate =
+    args.channelId ?? request.requesterEntityId ?? request.originUserId;
+  const chatId = typeof candidate === "string" ? Number(candidate) : Number.NaN;
+  if (!Number.isFinite(chatId) || chatId <= 0) {
+    return {
+      delivered: false,
+      target: "dm",
+      error:
+        "No Telegram user id available (need targetChannelId or originUserId)",
+    };
+  }
 
-	const bot = getTelegramBot(runtime);
-	if (!bot) {
-		return { delivered: false, target: "dm", error: "Telegram service unavailable" };
-	}
+  const bot = getTelegramBot(runtime);
+  if (!bot) {
+    return {
+      delivered: false,
+      target: "dm",
+      error: "Telegram service unavailable",
+    };
+  }
 
-	const link = resolveLink(request);
-	const text = buildDmText(request, link);
-	const provider =
-		typeof request.provider === "string" ? request.provider : "account";
-	const label =
-		request.kind === "oauth" ? `Connect ${provider}` : "Provide securely";
+  const link = resolveLink(request);
+  const text = buildDmText(request, link);
+  const provider =
+    typeof request.provider === "string" ? request.provider : "account";
+  const label =
+    request.kind === "oauth" ? `Connect ${provider}` : "Provide securely";
 
-	try {
-		await bot.telegram.sendMessage(
-			chatId,
-			text,
-			link
-				? {
-						reply_markup: Markup.inlineKeyboard([
-							Markup.button.url(label, link),
-						]).reply_markup,
-					}
-				: undefined,
-		);
-		return {
-			delivered: true,
-			target: "dm",
-			channelId: String(chatId),
-			url: link,
-			expiresAt: request.expiresAt,
-		};
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		logger.warn(
-			{ src: "telegram:sensitive-request-adapter", err: message },
-			"Failed to deliver sensitive request DM",
-		);
-		return { delivered: false, target: "dm", error: message };
-	}
+  try {
+    await bot.telegram.sendMessage(
+      chatId,
+      text,
+      link
+        ? {
+            reply_markup: Markup.inlineKeyboard([
+              Markup.button.url(label, link),
+            ]).reply_markup,
+          }
+        : undefined,
+    );
+    return {
+      delivered: true,
+      target: "dm",
+      channelId: String(chatId),
+      url: link,
+      expiresAt: request.expiresAt,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn(
+      { src: "telegram:sensitive-request-adapter", err: message },
+      "Failed to deliver sensitive request DM",
+    );
+    return { delivered: false, target: "dm", error: message };
+  }
 }
 
-export const telegramDmSensitiveRequestAdapter: SensitiveRequestDeliveryAdapter = {
-	target: "dm",
-	supportsChannel: (_channelId, runtime) =>
-		Boolean(getTelegramBot(runtime as IAgentRuntime)),
-	deliver: (args) => deliverViaTelegramDm(args),
-};
+export const telegramDmSensitiveRequestAdapter: SensitiveRequestDeliveryAdapter =
+  {
+    target: "dm",
+    supportsChannel: (_channelId, runtime) =>
+      Boolean(getTelegramBot(runtime as IAgentRuntime)),
+    deliver: (args) => deliverViaTelegramDm(args),
+  };
 
 interface DispatchRegistryLike {
-	register: (adapter: SensitiveRequestDeliveryAdapter) => void;
+  register: (adapter: SensitiveRequestDeliveryAdapter) => void;
 }
 
 /**
@@ -151,30 +159,30 @@ interface DispatchRegistryLike {
  * times and from any plugin lifecycle hook; never throws.
  */
 export function registerTelegramDmSensitiveRequestAdapter(
-	runtime: IAgentRuntime,
+  runtime: IAgentRuntime,
 ): void {
-	const tryRegister = (): boolean => {
-		const registry = runtime.getService?.(
-			SENSITIVE_REQUEST_DISPATCH_REGISTRY_SERVICE_NAME,
-		) as unknown as DispatchRegistryLike | null | undefined;
-		if (!registry || typeof registry.register !== "function") return false;
-		try {
-			registry.register(telegramDmSensitiveRequestAdapter);
-			return true;
-		} catch (err) {
-			logger.warn(
-				{
-					src: "telegram:sensitive-request-adapter",
-					err: err instanceof Error ? err.message : String(err),
-				},
-				"Failed to register Telegram DM adapter with SensitiveRequestDispatchRegistry",
-			);
-			return true;
-		}
-	};
+  const tryRegister = (): boolean => {
+    const registry = runtime.getService?.(
+      SENSITIVE_REQUEST_DISPATCH_REGISTRY_SERVICE_NAME,
+    ) as unknown as DispatchRegistryLike | null | undefined;
+    if (!registry || typeof registry.register !== "function") return false;
+    try {
+      registry.register(telegramDmSensitiveRequestAdapter);
+      return true;
+    } catch (err) {
+      logger.warn(
+        {
+          src: "telegram:sensitive-request-adapter",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register Telegram DM adapter with SensitiveRequestDispatchRegistry",
+      );
+      return true;
+    }
+  };
 
-	if (tryRegister()) return;
-	setImmediate(() => {
-		tryRegister();
-	});
+  if (tryRegister()) return;
+  setImmediate(() => {
+    tryRegister();
+  });
 }

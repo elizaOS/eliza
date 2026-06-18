@@ -285,10 +285,12 @@ jobs:
         # SPA's index.html instead of being proxied to the API Worker).
         run: bunx wrangler pages deploy --project-name=eliza-cloud --branch=${{ steps.pages.outputs.branch }}
 
-      - name: Verify same-origin API proxy
+      # Same-origin checks against the SITE_URL custom domains were removed: those
+      # domains were served by Vercel, which has been decommissioned. We verify the
+      # freshly-deployed Cloudflare API Worker directly instead.
+      - name: Verify API Worker health
         if: steps.cf.outputs.configured == 'true' && github.event_name != 'pull_request'
         env:
-          SITE_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
           API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
         run: |
           check_json() {
@@ -316,6 +318,4 @@ jobs:
           }
 
           check_json "direct API health" "${API_URL%/}/api/health" 200
-          check_json "same-origin API health" "${SITE_URL%/}/api/health" 200
           check_json "direct Steward providers" "${API_URL%/}/steward/auth/providers" 200
-          check_json "same-origin Steward providers" "${SITE_URL%/}/steward/auth/providers" 200
