@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   DockerSandboxProvider,
+  headscaleVpnEnabled,
   requiresHeadscaleRoute,
   resolveContainerPort,
   resolveDockerSandboxImage,
@@ -75,6 +76,48 @@ describe("requiresHeadscaleRoute", () => {
         AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: "1",
       }),
     ).toBe(false);
+  });
+});
+
+describe("headscaleVpnEnabled", () => {
+  test("enabled when an API key is configured and no fallback is requested", () => {
+    expect(headscaleVpnEnabled({ HEADSCALE_API_KEY: "secret" })).toBe(true);
+  });
+
+  test("disabled when no API key is configured", () => {
+    expect(headscaleVpnEnabled({})).toBe(false);
+    expect(headscaleVpnEnabled({ HEADSCALE_API_KEY: "" })).toBe(false);
+    expect(headscaleVpnEnabled({ HEADSCALE_API_KEY: "   " })).toBe(false);
+  });
+
+  test("disabled when the operator opts into legacy bridge-host fallback", () => {
+    // The fallback flag must also stop TS_AUTHKEY injection, not just relax the
+    // route-required guard — otherwise the container entrypoint hard-`tailscale
+    // up`s and dies under `set -e` on nodes that aren't on the mesh, which is
+    // exactly what the flag is meant to bypass.
+    expect(
+      headscaleVpnEnabled({
+        HEADSCALE_API_KEY: "secret",
+        AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: "1",
+      }),
+    ).toBe(false);
+    expect(
+      headscaleVpnEnabled({
+        HEADSCALE_API_KEY: "secret",
+        AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: "true",
+      }),
+    ).toBe(false);
+  });
+
+  test("stays consistent with requiresHeadscaleRoute under the fallback flag", () => {
+    // When the fallback is on, neither the route nor the VPN enrollment is
+    // required — the container boots over the legacy bridge-host path.
+    const env = {
+      HEADSCALE_API_KEY: "secret",
+      AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: "1",
+    };
+    expect(requiresHeadscaleRoute(env)).toBe(false);
+    expect(headscaleVpnEnabled(env)).toBe(false);
   });
 });
 

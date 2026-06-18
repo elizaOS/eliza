@@ -10,6 +10,7 @@ import { logger } from "@elizaos/logger";
 import { getStylePresets } from "@elizaos/shared";
 import type { FirstRunOptions } from "../api";
 import { client } from "../api";
+import { isDirectCloudSharedAgentBase } from "../api/client-cloud";
 import { getBackendStartupTimeoutMs, scanProviderCredentials } from "../bridge";
 import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import type { UiLanguage } from "../i18n";
@@ -460,6 +461,16 @@ export async function runPollingBackend(
               continue;
             }
             if (ae?.status === 404) {
+              if (isDirectCloudSharedAgentBase(client.getBaseUrl())) {
+                // Shared-runtime cloud bridge: no /api/first-run* shell
+                // endpoints exist (we provisioned it, so first-run IS done).
+                // Treat the 404 as complete and go to chat — the bridge serves
+                // /api/conversations via the REST chat adapter.
+                deps.setFirstRunComplete(true);
+                deps.setFirstRunLoading(false);
+                dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
+                return;
+              }
               deps.setStartupError(describeBackendFailure(err, false));
               deps.setFirstRunLoading(false);
               dispatch({ type: "BACKEND_NOT_FOUND" });
@@ -539,6 +550,16 @@ export async function runPollingBackend(
         // to retry.
       }
       if (ae?.status === 404) {
+        if (isDirectCloudSharedAgentBase(client.getBaseUrl())) {
+          // Shared-runtime cloud bridge: no /api/first-run* shell endpoints
+          // exist (we provisioned it, so first-run IS done). Treat the 404 as
+          // complete and go to chat — the bridge serves /api/conversations via
+          // the REST chat adapter — instead of wedging on BACKEND_NOT_FOUND.
+          deps.setFirstRunComplete(true);
+          deps.setFirstRunLoading(false);
+          dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
+          return;
+        }
         deps.setStartupError(describeBackendFailure(err, false));
         deps.setFirstRunLoading(false);
         dispatch({ type: "BACKEND_NOT_FOUND" });
