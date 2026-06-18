@@ -401,7 +401,11 @@ export async function resolveActionArgs<
 		return {
 			ok: false,
 			missing: finalMissing.length > 0 ? finalMissing : ["subaction"],
-			clarification: buildClarificationMessage(actionName, chosen, finalMissing),
+			clarification: buildClarificationMessage(
+				actionName,
+				chosen,
+				finalMissing,
+			),
 			partial: mergedParams as Partial<TParams>,
 		};
 	}
