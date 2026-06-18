@@ -98,6 +98,11 @@ const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
 // (~58px) plus a buffer so the grabber sits BELOW the notification-shade pull
 // zone — the full sheet reaches the top without fighting the system gesture.
 const SHEET_TOP_MARGIN = 72;
+// Detent magnetism: on a deliberate (non-flick) drag release, a height within
+// this many px of a detent (collapsed/half/full) snaps to that detent instead
+// of resting free — so near-detent releases are deterministic + clean, and only
+// the clear gaps between detents keep the free-drag rest height.
+const SHEET_DETENT_MAGNET = 64;
 // Cap how many turns are actually rendered. Older messages stay in state (the
 // agent's context is untouched) — this only bounds DOM nodes so a long thread
 // can't jank scrolling on a phone, without pulling in a virtualizer.
@@ -1316,18 +1321,23 @@ export function ContinuousChatOverlay({
         return;
       }
       const h = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
-      if (h < 28) {
-        // Dragged essentially shut → collapse to the input peek.
+      // DETENT MAGNETISM — the resting positions are the detents {collapsed:0,
+      // half, full}; a release within SHEET_DETENT_MAGNET of one snaps to it
+      // (deterministic, no janky near-detent slivers), and only the clear gaps
+      // between them keep the free-drag rest height. goToDetent commits the
+      // honest flags so data-detent + the maximize header match the height.
+      if (h <= SHEET_DETENT_MAGNET) {
+        // Near the bottom → collapse to the input peek.
         closeSheet();
         return;
       }
       focusThreadRef.current = true;
-      // At/near the top, commit the FULL detent rather than parking a near-full
-      // freeH — so the flags + data-detent honestly read "full" (and the maximize
-      // header shows). Otherwise rest exactly where released.
-      if (h >= openH - 1) {
+      if (h >= openH - SHEET_DETENT_MAGNET) {
         goToDetent("full");
+      } else if (Math.abs(h - halfH) <= SHEET_DETENT_MAGNET) {
+        goToDetent("half");
       } else {
+        // In a gap between detents → rest exactly where released.
         setFreeH(h);
         setSheetOpen(true);
         setExpanded(false);
@@ -1466,7 +1476,7 @@ export function ContinuousChatOverlay({
           fullBleed ? "max-w-none" : "max-w-3xl",
         )}
       >
-        {!pilled ? (
+        {!pilled && !fullBleed ? (
           <SheetGrabber
             open={sheetOpen}
             onOpen={() => {
@@ -1570,7 +1580,17 @@ export function ContinuousChatOverlay({
               edge-to-edge full-screen, Clear resets the conversation (a fresh
               greeted thread), Settings opens preferences. */}
               {sheetOpen && expanded && !pilled ? (
-                <div className="relative z-10 flex shrink-0 items-center justify-end gap-1.5 px-3 pt-2.5">
+                <div
+                  className={cn(
+                    "relative z-10 flex shrink-0 items-center justify-end gap-1.5 px-3",
+                    // Maximized goes edge-to-edge under the status bar, so the
+                    // buttons must clear the safe-area inset (the clock/battery)
+                    // or they sit under it and become untappable.
+                    fullBleed
+                      ? "pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]"
+                      : "pt-2.5",
+                  )}
+                >
                   <HeaderButton
                     icon={maximized ? Minimize2 : Maximize2}
                     label={maximized ? "exit full screen" : "full screen"}

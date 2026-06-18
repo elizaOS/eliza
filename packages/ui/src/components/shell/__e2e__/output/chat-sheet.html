@@ -781,7 +781,7 @@
   var require_react_dom_production = __commonJS({
     "node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom.production.js"(exports) {
       "use strict";
-      var React7 = require_react();
+      var React8 = require_react();
       function formatProdErrorMessage(code) {
         var url = "https://react.dev/errors/" + code;
         if (1 < arguments.length) {
@@ -821,7 +821,7 @@
           implementation
         };
       }
-      var ReactSharedInternals = React7.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var ReactSharedInternals = React8.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       function getCrossOriginStringAs(as, input) {
         if ("font" === as) return "";
         if ("string" === typeof input)
@@ -957,7 +957,7 @@
     "node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom-client.production.js"(exports) {
       "use strict";
       var Scheduler = require_scheduler();
-      var React7 = require_react();
+      var React8 = require_react();
       var ReactDOM = require_react_dom();
       function formatProdErrorMessage(code) {
         var url = "https://react.dev/errors/" + code;
@@ -1148,7 +1148,7 @@
         return null;
       }
       var isArrayImpl = Array.isArray;
-      var ReactSharedInternals = React7.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var ReactSharedInternals = React8.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       var ReactDOMSharedInternals = ReactDOM.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       var sharedNotPendingObject = {
         pending: false,
@@ -12594,7 +12594,7 @@
           0 === i && attemptExplicitHydrationTarget(target);
         }
       };
-      var isomorphicReactPackageVersion$jscomp$inline_1840 = React7.version;
+      var isomorphicReactPackageVersion$jscomp$inline_1840 = React8.version;
       if ("19.2.5" !== isomorphicReactPackageVersion$jscomp$inline_1840)
         throw Error(
           formatProdErrorMessage(
@@ -12762,7 +12762,7 @@
   });
 
   // packages/ui/src/components/shell/__e2e__/chat-sheet-fixture.tsx
-  var React6 = __toESM(require_react(), 1);
+  var React7 = __toESM(require_react(), 1);
   var import_client = __toESM(require_client(), 1);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/createLucideIcon.mjs
@@ -22275,7 +22275,192 @@
   var animate = createScopedAnimate();
 
   // packages/ui/src/components/shell/ContinuousChatOverlay.tsx
-  var React5 = __toESM(require_react(), 1);
+  var React6 = __toESM(require_react(), 1);
+
+  // packages/ui/src/chat/slash-menu.ts
+  var NONE = {
+    isSlash: false,
+    raw: "",
+    commandToken: "",
+    hasSpace: false,
+    argTokens: [],
+    argQuery: ""
+  };
+  function parseSlashDraft(draft) {
+    if (!draft) return NONE;
+    if (draft.includes("\n")) return NONE;
+    const raw = draft.replace(/^\s+/, "");
+    if (!raw.startsWith("/")) return NONE;
+    const body = raw.slice(1);
+    const firstSpace = body.indexOf(" ");
+    if (firstSpace === -1) {
+      return {
+        isSlash: true,
+        raw,
+        commandToken: body.toLowerCase(),
+        hasSpace: false,
+        argTokens: [],
+        argQuery: body.toLowerCase()
+      };
+    }
+    const commandToken = body.slice(0, firstSpace).toLowerCase();
+    const argsPart = body.slice(firstSpace + 1);
+    const argTokens = argsPart.length ? argsPart.split(/\s+/) : [];
+    const endsWithSpace = /\s$/.test(argsPart);
+    const argQuery = endsWithSpace ? "" : argTokens[argTokens.length - 1] ?? "";
+    return {
+      isSlash: true,
+      raw,
+      commandToken,
+      hasSpace: true,
+      argTokens,
+      argQuery
+    };
+  }
+  function aliasMatches(command, token) {
+    const normalized = `/${token}`.toLowerCase();
+    return command.textAliases.some((a) => a.toLowerCase() === normalized);
+  }
+  function matchCommand(commands, commandToken) {
+    return commands.find((c) => aliasMatches(c, commandToken));
+  }
+  function scoreCommand(command, query) {
+    if (!query) return 0;
+    const q = query.toLowerCase();
+    let best = -1;
+    const consider = (haystack, weight) => {
+      const h = haystack.toLowerCase();
+      if (h === q) {
+        best = best === -1 ? weight : Math.min(best, weight);
+      } else if (h.startsWith(q)) {
+        const s = weight + 1;
+        best = best === -1 ? s : Math.min(best, s);
+      } else if (h.includes(q)) {
+        const s = weight + 2;
+        best = best === -1 ? s : Math.min(best, s);
+      }
+    };
+    for (const alias of command.textAliases)
+      consider(alias.replace(/^\//, ""), 0);
+    consider(command.nativeName, 3);
+    consider(command.key, 3);
+    consider(command.description, 6);
+    return best;
+  }
+  function filterCommands(commands, query) {
+    if (!query) return [...commands];
+    const scored = commands.map((command, index) => ({
+      command,
+      index,
+      score: scoreCommand(command, query)
+    })).filter((entry) => entry.score >= 0);
+    scored.sort(
+      (a, b) => a.score === b.score ? a.index - b.index : a.score - b.score
+    );
+    return scored.map((entry) => entry.command);
+  }
+  function activeArgIndex(command, draft) {
+    if (!command.acceptsArgs || command.args.length === 0) return -1;
+    if (!draft.hasSpace) return -1;
+    const typed = draft.argTokens.length;
+    const endsWithSpace = draft.argQuery === "" && typed > 0;
+    const idx = endsWithSpace ? typed : Math.max(0, typed - 1);
+    return Math.min(idx, command.args.length - 1);
+  }
+  function filterArgChoices(choices, query) {
+    if (!query) return [...choices];
+    const q = query.toLowerCase();
+    const starts = choices.filter((c) => c.toLowerCase().startsWith(q));
+    const includes = choices.filter(
+      (c) => !c.toLowerCase().startsWith(q) && c.toLowerCase().includes(q)
+    );
+    return [...starts, ...includes];
+  }
+  function completeCommand(command) {
+    const alias = command.textAliases[0] ?? `/${command.nativeName}`;
+    return command.acceptsArgs && command.args.length > 0 ? `${alias} ` : alias;
+  }
+  function completeArg(draft, choice) {
+    const tokens = [...draft.argTokens];
+    const endsWithSpace = draft.argQuery === "" && tokens.length > 0;
+    if (endsWithSpace) {
+      tokens.push(choice);
+    } else if (tokens.length === 0) {
+      tokens.push(choice);
+    } else {
+      tokens[tokens.length - 1] = choice;
+    }
+    return `/${draft.commandToken} ${tokens.join(" ")}`;
+  }
+  function resolveSlashExecution(command, rawText, resolveSection = (t) => t) {
+    const target = command.target;
+    if (target.kind === "client") {
+      return { kind: "client", clientAction: target.clientAction };
+    }
+    if (target.kind === "navigate") {
+      const draft = parseSlashDraft(rawText);
+      const firstArg = draft.argTokens[0];
+      if (target.tab === "settings") {
+        const section = firstArg ? resolveSection(firstArg) : target.section;
+        return section ? { kind: "navigate-settings", section } : { kind: "navigate-settings" };
+      }
+      if (target.viewId) {
+        return {
+          kind: "navigate-view",
+          viewId: target.viewId,
+          viewPath: target.path
+        };
+      }
+      if (firstArg && commandHasArgSource(command, "views")) {
+        return { kind: "navigate-view", viewId: firstArg };
+      }
+      if (target.tab) {
+        return { kind: "navigate-tab", tab: target.tab };
+      }
+      if (target.path) {
+        return { kind: "navigate-view", viewPath: target.path };
+      }
+    }
+    return { kind: "send", text: rawText.trim() };
+  }
+  function commandHasArgSource(command, source) {
+    return command.args.some((a) => a.dynamicChoices === source);
+  }
+  function runSlashExecution(exec, deps) {
+    switch (exec.kind) {
+      case "navigate-tab":
+        deps.navigateTab(exec.tab);
+        return;
+      case "navigate-settings":
+        deps.navigateSettings(exec.section);
+        return;
+      case "navigate-view":
+        deps.navigateView({ viewId: exec.viewId, viewPath: exec.viewPath });
+        return;
+      case "client":
+        switch (exec.clientAction) {
+          case "clear-chat":
+            deps.clearChat();
+            return;
+          case "new-conversation":
+            deps.newConversation();
+            return;
+          case "toggle-fullscreen":
+            deps.toggleFullscreen();
+            return;
+          case "open-command-palette":
+            deps.openCommandPalette();
+            return;
+          case "show-commands":
+            deps.showCommands();
+            return;
+        }
+        return;
+      case "send":
+        deps.send(exec.text);
+        return;
+    }
+  }
 
   // packages/ui/src/lib/floating-layers.ts
   var Z_SHELL_OVERLAY = 9e3;
@@ -25390,8 +25575,234 @@
     );
   }
 
-  // packages/ui/src/components/shell/use-pull-gesture.ts
+  // packages/ui/src/components/shell/SlashCommandMenu.tsx
   var React4 = __toESM(require_react(), 1);
+  var import_jsx_runtime6 = __toESM(require_jsx_runtime(), 1);
+  var FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
+  function useSlashMenu(draft, controller) {
+    const parsed = React4.useMemo(() => parseSlashDraft(draft), [draft]);
+    const matched = React4.useMemo(
+      () => parsed.isSlash && parsed.hasSpace ? matchCommand(controller.commands, parsed.commandToken) : void 0,
+      [parsed, controller.commands]
+    );
+    const argInfo = React4.useMemo(() => {
+      if (!matched) return null;
+      const argIndex = activeArgIndex(matched, parsed);
+      if (argIndex < 0) return null;
+      const arg = matched.args[argIndex];
+      if (!arg) return null;
+      const dynamic = arg.dynamicChoices ? controller.resolveChoices(arg.dynamicChoices) : [];
+      const all = Array.from(/* @__PURE__ */ new Set([...arg.choices ?? [], ...dynamic]));
+      if (all.length === 0) return null;
+      return { arg, choices: filterArgChoices(all, parsed.argQuery) };
+    }, [matched, parsed, controller]);
+    const mode = !parsed.isSlash ? "none" : parsed.hasSpace ? argInfo ? "arg" : "none" : "command";
+    const commandResults = React4.useMemo(
+      () => mode === "command" ? filterCommands(controller.commands, parsed.commandToken) : [],
+      [mode, controller.commands, parsed.commandToken]
+    );
+    const items = React4.useMemo(() => {
+      if (mode === "command") {
+        return commandResults.map((c) => ({
+          id: c.key,
+          primary: c.textAliases[0] ?? `/${c.nativeName}`,
+          secondary: c.description,
+          isCommand: true,
+          hasArgs: c.acceptsArgs && c.args.length > 0
+        }));
+      }
+      if (mode === "arg" && argInfo) {
+        return argInfo.choices.map((choice) => ({
+          id: `arg:${choice}`,
+          primary: choice,
+          secondary: "",
+          isCommand: false,
+          hasArgs: false
+        }));
+      }
+      return [];
+    }, [mode, commandResults, argInfo]);
+    const [activeIndex, setActiveIndexState] = React4.useState(0);
+    const itemsSignature = items.map((i) => i.id).join("|");
+    React4.useEffect(() => {
+      setActiveIndexState(0);
+    }, [itemsSignature]);
+    const open = mode !== "none" && items.length > 0;
+    const setActiveIndex = React4.useCallback(
+      (index) => {
+        if (items.length === 0) return;
+        const clamped = (index % items.length + items.length) % items.length;
+        setActiveIndexState(clamped);
+      },
+      [items.length]
+    );
+    const move = React4.useCallback(
+      (delta) => {
+        if (items.length === 0) return;
+        setActiveIndexState((prev) => {
+          const next = prev + delta;
+          return (next % items.length + items.length) % items.length;
+        });
+      },
+      [items.length]
+    );
+    const complete = React4.useCallback(
+      (index = activeIndex) => {
+        if (mode === "command") {
+          const command = commandResults[index];
+          return command ? completeCommand(command) : null;
+        }
+        if (mode === "arg" && argInfo) {
+          const choice = argInfo.choices[index];
+          return choice ? completeArg(parsed, choice) : null;
+        }
+        return null;
+      },
+      [activeIndex, mode, commandResults, argInfo, parsed]
+    );
+    const resolve = React4.useCallback(
+      (index = activeIndex) => {
+        if (mode === "command") {
+          const command = commandResults[index];
+          if (!command) return null;
+          const alias = command.textAliases[0] ?? `/${command.nativeName}`;
+          return resolveSlashExecution(command, alias, controller.resolveSection);
+        }
+        if (mode === "arg" && matched && argInfo) {
+          const choice = argInfo.choices[index];
+          if (!choice) return null;
+          return resolveSlashExecution(
+            matched,
+            completeArg(parsed, choice),
+            controller.resolveSection
+          );
+        }
+        return null;
+      },
+      [activeIndex, mode, commandResults, matched, argInfo, parsed, controller]
+    );
+    const headerLabel = mode === "arg" && matched ? `${matched.textAliases[0]} \xB7 ${argInfo?.arg.name ?? "argument"}` : "Commands";
+    return {
+      open,
+      mode,
+      items,
+      activeIndex: Math.min(activeIndex, Math.max(0, items.length - 1)),
+      headerLabel,
+      setActiveIndex,
+      move,
+      complete,
+      resolve
+    };
+  }
+  function SlashCommandMenu({
+    state,
+    onPick,
+    loading
+  }) {
+    const listboxId = "slash-command-listbox";
+    if (!state.open) {
+      if (loading) {
+        return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+          "div",
+          {
+            className: cn(
+              "absolute bottom-full left-0 right-0 z-10 mb-2 rounded-2xl border border-white/12 bg-black/70 px-4 py-3 text-xs text-white/55 backdrop-blur-xl",
+              FLOAT_SHADOW
+            ),
+            role: "status",
+            "data-testid": "slash-menu-loading",
+            children: "loading commands\u2026"
+          }
+        );
+      }
+      return null;
+    }
+    return (
+      // The combobox input (in the composer) owns aria-activedescendant + focus;
+      // this listbox is a non-focusable popup the input points to via aria-controls.
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+        "div",
+        {
+          id: listboxId,
+          role: "listbox",
+          "aria-label": "Slash commands",
+          "data-testid": "slash-command-menu",
+          className: cn(
+            "absolute bottom-full left-0 right-0 z-10 mb-2 max-h-[min(46vh,22rem)] overflow-y-auto",
+            "rounded-2xl border border-white/14 bg-black/70 py-1.5 backdrop-blur-xl",
+            "shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_18px_50px_-16px_rgba(0,0,0,0.7)]",
+            "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          ),
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+              "div",
+              {
+                className: cn(
+                  "px-3.5 pb-1 pt-0.5 text-[10px] font-medium uppercase tracking-wider text-white/40",
+                  FLOAT_SHADOW
+                ),
+                children: state.headerLabel
+              }
+            ),
+            state.items.map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+              "button",
+              {
+                type: "button",
+                id: `slash-option-${item.id}`,
+                role: "option",
+                "aria-selected": index === state.activeIndex,
+                "data-testid": `slash-option-${index}`,
+                "data-active": index === state.activeIndex ? "true" : void 0,
+                onMouseEnter: () => state.setActiveIndex(index),
+                onPointerDown: (e) => {
+                  e.preventDefault();
+                  onPick(index);
+                },
+                className: cn(
+                  "flex w-full items-center gap-3 px-3.5 py-2 text-left transition-colors",
+                  index === state.activeIndex ? "bg-white/15" : "hover:bg-white/8"
+                ),
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                    "span",
+                    {
+                      className: cn(
+                        "min-w-0 shrink-0 font-mono text-[13px] text-white/95",
+                        FLOAT_SHADOW
+                      ),
+                      children: item.primary
+                    }
+                  ),
+                  item.secondary ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                    "span",
+                    {
+                      className: cn(
+                        "min-w-0 flex-1 truncate text-[12px] text-white/55",
+                        FLOAT_SHADOW
+                      ),
+                      children: item.secondary
+                    }
+                  ) : /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "flex-1" }),
+                  item.isCommand && item.hasArgs ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                    "span",
+                    {
+                      "aria-hidden": "true",
+                      className: "shrink-0 text-[11px] text-white/35",
+                      children: "\u21E5"
+                    }
+                  ) : null
+                ]
+              },
+              item.id
+            ))
+          ]
+        }
+      )
+    );
+  }
+
+  // packages/ui/src/components/shell/use-pull-gesture.ts
+  var React5 = __toESM(require_react(), 1);
   var TAP_SLOP = 8;
   function usePullGesture(options) {
     const {
@@ -25403,15 +25814,15 @@
       distanceThreshold = 56,
       velocityThreshold = 0.5
     } = options;
-    const start = React4.useRef(null);
-    const onPointerDown = React4.useCallback((event) => {
+    const start = React5.useRef(null);
+    const onPointerDown = React5.useCallback((event) => {
       start.current = { y: event.clientY, t: performance.now() };
       try {
         event.currentTarget.setPointerCapture(event.pointerId);
       } catch {
       }
     }, []);
-    const onPointerMove = React4.useCallback(
+    const onPointerMove = React5.useCallback(
       (event) => {
         const s = start.current;
         if (!s || !onDrag) return;
@@ -25419,7 +25830,7 @@
       },
       [onDrag]
     );
-    const finish = React4.useCallback(
+    const finish = React5.useCallback(
       (event) => {
         const s = start.current;
         start.current = null;
@@ -25476,11 +25887,28 @@
   }
 
   // packages/ui/src/components/shell/ContinuousChatOverlay.tsx
-  var import_jsx_runtime6 = __toESM(require_jsx_runtime(), 1);
-  var FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
+  var import_jsx_runtime7 = __toESM(require_jsx_runtime(), 1);
+  var EMPTY_SLASH_CONTROLLER = {
+    commands: [],
+    loading: false,
+    resolveChoices: () => [],
+    resolveSection: () => void 0,
+    navigateTab: () => {
+    },
+    navigateSettings: () => {
+    },
+    navigateView: () => {
+    },
+    clearChat: () => {
+    },
+    openCommandPalette: () => {
+    }
+  };
+  var FLOAT_SHADOW2 = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
   var OVERLAY_EASE = [0.22, 1, 0.36, 1];
   var SHEET_HALF_VH = 0.46;
   var SHEET_TOP_MARGIN = 72;
+  var SHEET_DETENT_MAGNET = 64;
   var MAX_RENDERED_MESSAGES = 80;
   var SHOW_PROMPT_SUGGESTIONS = false;
   function detentHaptic() {
@@ -25508,7 +25936,7 @@
   var SPEAKER_GLYPH = "M7 15H12L18 10V26L12 21H7Z M21 14Q25 18 21 22L23 22Q27 18 23 14Z M25 11Q31 18 25 25L27 25Q33 18 27 11Z";
   var SPEAKER_MUTED_GLYPH = "M7 15H12L18 10V26L12 21H7Z M21 12.4L22.4 11L31 19.6L29.6 21Z";
   function Glyph({ d }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("svg", { viewBox: "0 0 36 36", className: "h-[26px] w-[26px]", "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("path", { fill: "currentColor", fillRule: "evenodd", d }) });
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("svg", { viewBox: "0 0 36 36", className: "h-[26px] w-[26px]", "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("path", { fill: "currentColor", fillRule: "evenodd", d }) });
   }
   function SoftButton({
     glyph,
@@ -25521,7 +25949,7 @@
     active,
     testId
   }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
       "button",
       {
         type: "button",
@@ -25541,7 +25969,7 @@
           active ? "border-white/40 bg-white/85 text-black" : "border-white/15 bg-white/10 text-white/75 hover:bg-white/20 hover:text-white",
           disabled && "opacity-40"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Glyph, { d: glyph })
+        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Glyph, { d: glyph })
       }
     );
   }
@@ -25552,7 +25980,7 @@
     active,
     testId
   }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
       "button",
       {
         type: "button",
@@ -25565,7 +25993,7 @@
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
           active ? "border-white/40 bg-white/85 text-black" : "border-white/15 bg-white/10 text-white/75 hover:bg-white/20 hover:text-white"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Icon2, { className: "h-[18px] w-[18px]", "aria-hidden": true })
+        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Icon2, { className: "h-[18px] w-[18px]", "aria-hidden": true })
       }
     );
   }
@@ -25576,7 +26004,7 @@
     binding,
     glow
   }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
       "button",
       {
         type: "button",
@@ -25615,7 +26043,7 @@
           "before:absolute before:-inset-x-4 before:-top-10 before:bottom-0 before:content-['']",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
           "span",
           {
             "aria-hidden": "true",
@@ -25634,7 +26062,7 @@
     onOpen,
     glow
   }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
       "button",
       {
         type: "button",
@@ -25654,7 +26082,7 @@
           "pointer-events-auto flex cursor-grab touch-none select-none items-end justify-center px-12 pb-1.5 pt-7 active:cursor-grabbing",
           "focus-visible:rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
           "span",
           {
             "aria-hidden": "true",
@@ -25670,7 +26098,7 @@
     );
   }
   function TypingDots({ reduce }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
       motion.div,
       {
         className: "mb-2.5 flex w-full justify-start",
@@ -25681,14 +26109,14 @@
         animate: { opacity: 1 },
         exit: { opacity: 0 },
         transition: { duration: reduce ? 0 : 0.45, ease: OVERLAY_EASE },
-        children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
           "div",
           {
             className: cn(
               "rounded-2xl rounded-bl-md border border-white/10 bg-black/45 px-3.5 py-2 text-white/90",
-              FLOAT_SHADOW
+              FLOAT_SHADOW2
             ),
-            children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "flex gap-1.5", children: [0, 1, 2].map((i) => /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+            children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "flex gap-1.5", children: [0, 1, 2].map((i) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
               "span",
               {
                 className: "h-1.5 w-1.5 animate-pulse rounded-full bg-white/70 motion-reduce:animate-none",
@@ -25703,7 +26131,7 @@
   }
   var COPY_HOLD_MS = 420;
   var COPY_MOVE_CANCEL_PX = 10;
-  var ThreadLine = React5.memo(function ThreadLine2({
+  var ThreadLine = React6.memo(function ThreadLine2({
     message,
     floating,
     reduce,
@@ -25712,18 +26140,18 @@
   }) {
     const isUser = message.role === "user";
     const isAssistant = message.role === "assistant";
-    const [copied, setCopied] = React5.useState(false);
-    const holdTimer = React5.useRef(null);
-    const holdStart = React5.useRef(null);
-    const copiedTimer = React5.useRef(null);
-    const clearHold = React5.useCallback(() => {
+    const [copied, setCopied] = React6.useState(false);
+    const holdTimer = React6.useRef(null);
+    const holdStart = React6.useRef(null);
+    const copiedTimer = React6.useRef(null);
+    const clearHold = React6.useCallback(() => {
       if (holdTimer.current !== null) {
         window.clearTimeout(holdTimer.current);
         holdTimer.current = null;
       }
       holdStart.current = null;
     }, []);
-    React5.useEffect(
+    React6.useEffect(
       () => () => {
         if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
         if (copiedTimer.current !== null)
@@ -25758,7 +26186,7 @@
       onPointerCancel: clearHold
     } : null;
     if (isAssistant && message.failureKind === "no_provider") {
-      return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+      return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
         motion.div,
         {
           "data-testid": "thread-line",
@@ -25772,17 +26200,17 @@
             "flex w-full justify-start",
             floating ? "mb-1.5" : "mb-2.5"
           ),
-          children: /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+          children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
             "div",
             {
               className: cn(
                 "max-w-[85%] rounded-2xl rounded-bl-md border border-amber-300/30 bg-black/60 px-3.5 py-3 text-white",
-                FLOAT_SHADOW
+                FLOAT_SHADOW2
               ),
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "mb-1 text-[14px] font-medium", children: "Connect a provider to chat" }),
-                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "mb-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-white/80 [overflow-wrap:anywhere]", children: message.content }),
-                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "mb-1 text-[14px] font-medium", children: "Connect a provider to chat" }),
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "mb-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-white/80 [overflow-wrap:anywhere]", children: message.content }),
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                   "button",
                   {
                     type: "button",
@@ -25798,7 +26226,7 @@
         }
       );
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
       motion.div,
       {
         "data-testid": "thread-line",
@@ -25812,7 +26240,7 @@
           floating ? "mb-1.5" : "mb-2.5",
           isUser ? "justify-end" : "justify-start"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
           "div",
           {
             ...copyHandlers ?? {},
@@ -25831,12 +26259,12 @@
               floating ? cn(
                 "border",
                 isUser ? "border-white/15 bg-black/55 text-white" : "border-white/10 bg-black/45 text-white/90",
-                FLOAT_SHADOW
+                FLOAT_SHADOW2
               ) : isUser ? "bg-white/20 text-white" : "bg-white/10 text-white/90"
             ),
             children: [
               message.content,
-              /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(AnimatePresence, { children: copied ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AnimatePresence, { children: copied ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                 motion.span,
                 {
                   "data-testid": "thread-line-copied",
@@ -25857,7 +26285,8 @@
   });
   function ContinuousChatOverlay({
     controller,
-    agentName = "Eliza"
+    agentName = "Eliza",
+    slash: slashProp
   }) {
     const {
       messages,
@@ -25878,41 +26307,43 @@
       clearConversation,
       stop
     } = controller;
-    const handleCopyMessage = React5.useCallback((text) => {
+    const handleCopyMessage = React6.useCallback((text) => {
       void copyTextToClipboard(text);
     }, []);
+    const slash = slashProp ?? EMPTY_SLASH_CONTROLLER;
     const reduce = useReducedMotion() ?? false;
-    const [draft, setDraft] = React5.useState("");
-    const [sheetOpen, setSheetOpen] = React5.useState(false);
-    const [expanded, setExpanded] = React5.useState(false);
-    const [pilled, setPilled] = React5.useState(false);
-    const [freeH, setFreeH] = React5.useState(null);
-    const [maximized, setMaximized] = React5.useState(false);
-    const preFocusCollapsedRef = React5.useRef(true);
+    const [draft, setDraft] = React6.useState("");
+    const [slashDismissed, setSlashDismissed] = React6.useState(false);
+    const [sheetOpen, setSheetOpen] = React6.useState(false);
+    const [expanded, setExpanded] = React6.useState(false);
+    const [pilled, setPilled] = React6.useState(false);
+    const [freeH, setFreeH] = React6.useState(null);
+    const [maximized, setMaximized] = React6.useState(false);
+    const preFocusCollapsedRef = React6.useRef(true);
     const threadHeight = useMotionValue(0);
-    const draggingRef = React5.useRef(false);
-    const [pushToTalkActive, setPushToTalkActive] = React5.useState(false);
-    const [pendingImages, setPendingImages] = React5.useState(
+    const draggingRef = React6.useRef(false);
+    const [pushToTalkActive, setPushToTalkActive] = React6.useState(false);
+    const [pendingImages, setPendingImages] = React6.useState(
       []
     );
-    const [imageError, setImageError] = React5.useState(null);
-    const endRef = React5.useRef(null);
-    const inputRef = React5.useRef(null);
-    const fileInputRef = React5.useRef(null);
-    const overlayRef = React5.useRef(null);
-    const panelRef = React5.useRef(null);
-    const threadRef = React5.useRef(null);
-    const focusThreadRef = React5.useRef(false);
-    const pushToTalkTimerRef = React5.useRef(null);
-    const pushToTalkActiveRef = React5.useRef(false);
-    const suppressMicClickRef = React5.useRef(false);
-    const visibleMessages = React5.useMemo(
+    const [imageError, setImageError] = React6.useState(null);
+    const endRef = React6.useRef(null);
+    const inputRef = React6.useRef(null);
+    const fileInputRef = React6.useRef(null);
+    const overlayRef = React6.useRef(null);
+    const panelRef = React6.useRef(null);
+    const threadRef = React6.useRef(null);
+    const focusThreadRef = React6.useRef(false);
+    const pushToTalkTimerRef = React6.useRef(null);
+    const pushToTalkActiveRef = React6.useRef(false);
+    const suppressMicClickRef = React6.useRef(false);
+    const visibleMessages = React6.useMemo(
       () => messages.filter((m2) => m2.content.trim()).slice(-MAX_RENDERED_MESSAGES),
       [messages]
     );
     const lastId = visibleMessages.at(-1)?.id ?? null;
     const lastContent = visibleMessages.at(-1)?.content ?? "";
-    const scrollPinnedIdRef = React5.useRef(lastId);
+    const scrollPinnedIdRef = React6.useRef(lastId);
     const booting = phase === "booting";
     const listening = phase === "listening";
     const responding = phase === "responding";
@@ -25922,7 +26353,7 @@
     const suggestions = usePromptSuggestions(messages, {
       enabled: suggestionsVisible
     });
-    React5.useEffect(
+    React6.useEffect(
       () => () => {
         if (pushToTalkTimerRef.current !== null) {
           window.clearTimeout(pushToTalkTimerRef.current);
@@ -25930,8 +26361,8 @@
       },
       []
     );
-    const wasOpenRef = React5.useRef(false);
-    React5.useLayoutEffect(() => {
+    const wasOpenRef = React6.useRef(false);
+    React6.useLayoutEffect(() => {
       const el = threadRef.current;
       if (!el) return;
       const isNewLine = lastId !== scrollPinnedIdRef.current;
@@ -25954,7 +26385,7 @@
         focusThreadRef.current = false;
       }
     }, [lastId, lastContent, sheetOpen]);
-    React5.useEffect(() => {
+    React6.useEffect(() => {
       const el = threadRef.current;
       if (!el || sheetOpen || typeof ResizeObserver === "undefined") return;
       const pin = () => {
@@ -25965,25 +26396,31 @@
       ro.observe(el);
       return () => ro.disconnect();
     }, [sheetOpen]);
-    const submit = React5.useCallback(() => {
-      const text = draft.trim();
-      const images = pendingImages;
-      if (!text && images.length === 0 || !canSend) return;
-      setDraft("");
-      setPendingImages([]);
-      setImageError(null);
-      if (images.length) {
-        send(text, { images });
-      } else {
-        send(text);
-      }
-      setFreeH(null);
-      setSheetOpen(true);
-      setExpanded(true);
-      detentHaptic();
-      inputRef.current?.focus();
-    }, [draft, pendingImages, canSend, send]);
-    const pickSuggestion = React5.useCallback(
+    const submitText = React6.useCallback(
+      (text, images = []) => {
+        const trimmed = text.trim();
+        if (!trimmed && images.length === 0 || !canSend) return;
+        setDraft("");
+        setSlashDismissed(false);
+        setPendingImages([]);
+        setImageError(null);
+        if (images.length) {
+          send(trimmed, { images });
+        } else {
+          send(trimmed);
+        }
+        setFreeH(null);
+        setSheetOpen(true);
+        setExpanded(true);
+        detentHaptic();
+        inputRef.current?.focus();
+      },
+      [canSend, send]
+    );
+    const submit = React6.useCallback(() => {
+      submitText(draft, pendingImages);
+    }, [submitText, draft, pendingImages]);
+    const pickSuggestion = React6.useCallback(
       (text) => {
         if (!canSend) return;
         setDraft("");
@@ -25996,7 +26433,7 @@
       },
       [canSend, send]
     );
-    const addImageFiles = React5.useCallback((files) => {
+    const addImageFiles = React6.useCallback((files) => {
       void filesToImageAttachments(files).then((attachments) => {
         if (!attachments.length) return;
         setImageError(null);
@@ -26009,15 +26446,15 @@
         );
       });
     }, []);
-    const removeImage = React5.useCallback((index) => {
+    const removeImage = React6.useCallback((index) => {
       setPendingImages((prev) => prev.filter((_, i) => i !== index));
     }, []);
-    const clearPushToTalkTimer = React5.useCallback(() => {
+    const clearPushToTalkTimer = React6.useCallback(() => {
       if (pushToTalkTimerRef.current === null) return;
       window.clearTimeout(pushToTalkTimerRef.current);
       pushToTalkTimerRef.current = null;
     }, []);
-    const beginPushToTalkPress = React5.useCallback(
+    const beginPushToTalkPress = React6.useCallback(
       (event) => {
         if (hasDraft || recording || booting || event.button !== 0) return;
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -26031,7 +26468,7 @@
       },
       [booting, clearPushToTalkTimer, hasDraft, recording, startRecording]
     );
-    const endPushToTalkPress = React5.useCallback(
+    const endPushToTalkPress = React6.useCallback(
       (event) => {
         clearPushToTalkTimer();
         if (!pushToTalkActiveRef.current) return;
@@ -26045,7 +26482,7 @@
       },
       [clearPushToTalkTimer, stopRecording]
     );
-    const handleMicClick = React5.useCallback(() => {
+    const handleMicClick = React6.useCallback(() => {
       if (suppressMicClickRef.current) {
         suppressMicClickRef.current = false;
         return;
@@ -26053,16 +26490,16 @@
       toggleRecording();
     }, [toggleRecording]);
     const hasThread = visibleMessages.length > 0;
-    const readViewport = React5.useCallback(() => {
+    const readViewport = React6.useCallback(() => {
       if (typeof window === "undefined") return { height: 800, keyboardInset: 0 };
       const vv = window.visualViewport;
       const height = vv?.height ?? window.innerHeight;
       const keyboardInset2 = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
       return { height, keyboardInset: keyboardInset2 };
     }, []);
-    const [viewport, setViewport] = React5.useState(readViewport);
-    const [bottomPad, setBottomPad] = React5.useState(0);
-    React5.useEffect(() => {
+    const [viewport, setViewport] = React6.useState(readViewport);
+    const [bottomPad, setBottomPad] = React6.useState(0);
+    React6.useEffect(() => {
       if (typeof window === "undefined") return void 0;
       const sync = () => {
         setViewport(readViewport());
@@ -26093,7 +26530,7 @@
     const halfH = Math.round(viewportH * SHEET_HALF_VH);
     const detentH = !sheetOpen ? 0 : expanded ? openH : halfH;
     const baseH = freeH != null ? Math.min(freeH, panelMaxH) : detentH;
-    const clampHeight = React5.useCallback(
+    const clampHeight = React6.useCallback(
       (raw) => raw > openH ? openH + rubberBand(raw - openH) : Math.max(0, raw),
       [openH]
     );
@@ -26109,19 +26546,19 @@
     const panelRadius = useTransform(threadHeight, [0, 12], [9999, 24], {
       clamp: true
     });
-    const settleDrag = React5.useCallback(() => {
+    const settleDrag = React6.useCallback(() => {
       draggingRef.current = false;
       if (reduce) threadHeight.set(baseH);
       else animate(threadHeight, baseH, SHEET_SPRING);
     }, [threadHeight, baseH, reduce]);
-    const closeSheet = React5.useCallback(() => {
+    const closeSheet = React6.useCallback(() => {
       draggingRef.current = false;
       setFreeH(null);
       setMaximized(false);
       setSheetOpen(false);
       setExpanded(false);
     }, []);
-    React5.useEffect(() => {
+    React6.useEffect(() => {
       if (draggingRef.current) return;
       if (reduce) {
         threadHeight.set(baseH);
@@ -26130,7 +26567,7 @@
       const controls = animate(threadHeight, baseH, SHEET_SPRING);
       return () => controls.stop();
     }, [baseH, reduce]);
-    const goToDetent = React5.useCallback(
+    const goToDetent = React6.useCallback(
       (detent) => {
         draggingRef.current = false;
         setFreeH(null);
@@ -26142,20 +26579,65 @@
       },
       []
     );
-    const collapse = React5.useCallback(() => {
+    const collapse = React6.useCallback(() => {
       if (typeof document !== "undefined" && threadRef.current && document.activeElement instanceof HTMLElement && threadRef.current.contains(document.activeElement)) {
         document.activeElement.blur();
       }
       closeSheet();
       inputRef.current?.blur();
     }, [closeSheet]);
-    const expand = React5.useCallback(() => {
+    const expand = React6.useCallback(() => {
       if (!hasThread) return;
       preFocusCollapsedRef.current = !sheetOpen;
       setFreeH(null);
       setSheetOpen(true);
     }, [hasThread, sheetOpen]);
-    React5.useEffect(() => {
+    const slashMenu = useSlashMenu(draft, slash);
+    const isSlashDraft = parseSlashDraft(draft).isSlash;
+    const slashOpen = slashMenu.open && !slashDismissed;
+    const comboboxAria = slashProp ? {
+      role: "combobox",
+      "aria-autocomplete": "list",
+      "aria-expanded": slashOpen,
+      "aria-controls": slashOpen ? "slash-command-listbox" : void 0,
+      "aria-activedescendant": slashOpen && slashMenu.items[slashMenu.activeIndex] ? `slash-option-${slashMenu.items[slashMenu.activeIndex].id}` : void 0
+    } : {};
+    React6.useEffect(() => {
+      setSlashDismissed(false);
+    }, [draft]);
+    const runExecution = React6.useCallback(
+      (exec) => {
+        if (exec.kind === "send") {
+          submitText(exec.text);
+          return;
+        }
+        runSlashExecution(exec, {
+          navigateTab: slash.navigateTab,
+          navigateSettings: slash.navigateSettings,
+          navigateView: slash.navigateView,
+          clearChat: slash.clearChat,
+          newConversation: () => controller.clearConversation(),
+          // The overlay owns full-screen via the `maximized` detent flag, not a
+          // controller method, so toggle it directly here.
+          toggleFullscreen: () => setMaximized((v) => !v),
+          openCommandPalette: slash.openCommandPalette,
+          showCommands: slash.openCommandPalette,
+          send: (text) => submitText(text)
+        });
+        setDraft("");
+        setSlashDismissed(true);
+        inputRef.current?.focus();
+      },
+      [slash, controller, submitText]
+    );
+    const pickSlashItem = React6.useCallback(
+      (index) => {
+        const exec = slashMenu.resolve(index);
+        if (exec) runExecution(exec);
+      },
+      [slashMenu, runExecution]
+    );
+    React6.useEffect(() => {
       if (typeof document === "undefined") return void 0;
       const onPointerDown = (event) => {
         const input = inputRef.current;
@@ -26170,7 +26652,7 @@
       document.addEventListener("pointerdown", onPointerDown, true);
       return () => document.removeEventListener("pointerdown", onPointerDown, true);
     }, []);
-    React5.useEffect(() => {
+    React6.useEffect(() => {
       if (typeof document === "undefined" || !sheetOpen) return void 0;
       const onKey = (e) => {
         if (e.key === "Escape") {
@@ -26181,13 +26663,13 @@
       document.addEventListener("keydown", onKey);
       return () => document.removeEventListener("keydown", onKey);
     }, [sheetOpen, collapse]);
-    React5.useLayoutEffect(() => {
+    React6.useLayoutEffect(() => {
       const el = inputRef.current;
       if (!el) return;
       el.style.height = "auto";
       el.style.height = `${el.scrollHeight}px`;
     }, [draft]);
-    const onDragOffset = React5.useCallback(
+    const onDragOffset = React6.useCallback(
       (offset) => {
         if (pilled) return;
         draggingRef.current = true;
@@ -26275,13 +26757,15 @@
           return;
         }
         const h = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
-        if (h < 28) {
+        if (h <= SHEET_DETENT_MAGNET) {
           closeSheet();
           return;
         }
         focusThreadRef.current = true;
-        if (h >= openH - 1) {
+        if (h >= openH - SHEET_DETENT_MAGNET) {
           goToDetent("full");
+        } else if (Math.abs(h - halfH) <= SHEET_DETENT_MAGNET) {
+          goToDetent("half");
         } else {
           setFreeH(h);
           setSheetOpen(true);
@@ -26289,7 +26773,7 @@
         }
       }
     });
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
       "div",
       {
         ref: overlayRef,
@@ -26308,7 +26792,7 @@
         "data-testid": "continuous-chat-overlay",
         "data-open": sheetOpen ? "true" : void 0,
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
             motion.div,
             {
               "aria-hidden": "true",
@@ -26322,7 +26806,7 @@
               }
             }
           ),
-          recording && transcript ? /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+          recording && transcript ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
             "div",
             {
               role: "status",
@@ -26330,21 +26814,21 @@
               "aria-atomic": "true",
               className: cn(
                 "pointer-events-none relative mb-2 w-full max-w-3xl text-center text-sm italic text-white/85",
-                FLOAT_SHADOW
+                FLOAT_SHADOW2
               ),
               children: [
                 transcript,
-                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { "aria-hidden": "true", children: "\u2026" })
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { "aria-hidden": "true", children: "\u2026" })
               ]
             }
           ) : null,
-          needsAudioUnlock ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+          needsAudioUnlock ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
             "div",
             {
               role: "status",
               "aria-live": "polite",
               className: "pointer-events-none relative mb-2 flex w-full justify-center",
-              children: /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+              children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
                 "button",
                 {
                   type: "button",
@@ -26354,17 +26838,17 @@
                     "pointer-events-auto inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
                     "border-warn/40 bg-warn/15 text-warn hover:bg-warn/25",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/70",
-                    FLOAT_SHADOW
+                    FLOAT_SHADOW2
                   ),
                   children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Glyph, { d: SPEAKER_MUTED_GLYPH }),
-                    /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { children: "Tap to enable sound" })
+                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Glyph, { d: SPEAKER_MUTED_GLYPH }),
+                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { children: "Tap to enable sound" })
                   ]
                 }
               )
             }
           ) : null,
-          suggestionsVisible ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+          suggestionsVisible ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
             motion.fieldset,
             {
               "aria-label": "Suggested prompts",
@@ -26373,7 +26857,7 @@
               ),
               style: { order: -1, opacity: suggestionsOpacity },
               "data-testid": "chat-suggestions",
-              children: suggestions.map((s, i) => /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+              children: suggestions.map((s, i) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                 "button",
                 {
                   type: "button",
@@ -26393,7 +26877,7 @@
               ))
             }
           ) : null,
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
             "div",
             {
               className: cn(
@@ -26401,7 +26885,7 @@
                 fullBleed ? "max-w-none" : "max-w-3xl"
               ),
               children: [
-                !pilled ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                !pilled && !fullBleed ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                   SheetGrabber,
                   {
                     open: sheetOpen,
@@ -26415,7 +26899,7 @@
                     glow: listening || responding
                   }
                 ) : null,
-                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                   motion.fieldset,
                   {
                     ref: panelRef,
@@ -26447,22 +26931,22 @@
                         fullBleed ? "shadow-none" : "shadow-[inset_0_1px_0_rgba(255,255,255,0.20),inset_0_0_0_0.5px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(0,0,0,0.72)]"
                       )
                     ),
-                    children: pilled ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                    children: pilled ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                       PillHandle,
                       {
                         binding: pullBinding,
                         onOpen: () => setPilled(false),
                         glow: listening || responding
                       }
-                    ) : /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(import_jsx_runtime6.Fragment, { children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                    ) : /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                         "div",
                         {
                           "aria-hidden": "true",
                           className: "pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-white/[0.07] to-transparent"
                         }
                       ),
-                      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                         motion.div,
                         {
                           "aria-hidden": "true",
@@ -26475,37 +26959,49 @@
                           transition: { duration: reduce ? 0 : 1.1, ease: "easeInOut" }
                         }
                       ),
-                      sheetOpen && expanded && !pilled ? /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "relative z-10 flex shrink-0 items-center justify-end gap-1.5 px-3 pt-2.5", children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-                          HeaderButton,
-                          {
-                            icon: maximized ? Minimize2 : Maximize2,
-                            label: maximized ? "exit full screen" : "full screen",
-                            active: maximized,
-                            onClick: () => setMaximized((v) => !v),
-                            testId: "chat-full-maximize"
-                          }
-                        ),
-                        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-                          HeaderButton,
-                          {
-                            icon: Trash2,
-                            label: "clear conversation",
-                            onClick: () => clearConversation(),
-                            testId: "chat-full-clear"
-                          }
-                        ),
-                        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-                          HeaderButton,
-                          {
-                            icon: Settings,
-                            label: "settings",
-                            onClick: () => openSettings(),
-                            testId: "chat-full-settings"
-                          }
-                        )
-                      ] }) : null,
-                      hasThread ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                      sheetOpen && expanded && !pilled ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                        "div",
+                        {
+                          className: cn(
+                            "relative z-10 flex shrink-0 items-center justify-end gap-1.5 px-3",
+                            // Maximized goes edge-to-edge under the status bar, so the
+                            // buttons must clear the safe-area inset (the clock/battery)
+                            // or they sit under it and become untappable.
+                            fullBleed ? "pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]" : "pt-2.5"
+                          ),
+                          children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              HeaderButton,
+                              {
+                                icon: maximized ? Minimize2 : Maximize2,
+                                label: maximized ? "exit full screen" : "full screen",
+                                active: maximized,
+                                onClick: () => setMaximized((v) => !v),
+                                testId: "chat-full-maximize"
+                              }
+                            ),
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              HeaderButton,
+                              {
+                                icon: Trash2,
+                                label: "clear conversation",
+                                onClick: () => clearConversation(),
+                                testId: "chat-full-clear"
+                              }
+                            ),
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              HeaderButton,
+                              {
+                                icon: Settings,
+                                label: "settings",
+                                onClick: () => openSettings(),
+                                testId: "chat-full-settings"
+                              }
+                            )
+                          ]
+                        }
+                      ) : null,
+                      hasThread ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                         motion.div,
                         {
                           "data-testid": "chat-thread",
@@ -26517,7 +27013,7 @@
                             sheetOpen && "[mask-image:linear-gradient(to_bottom,transparent_0,#000_34px)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0,#000_34px)]"
                           ),
                           style: { flexBasis: threadFlexBasis },
-                          children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                          children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                             "div",
                             {
                               id: "continuous-thread",
@@ -26534,8 +27030,8 @@
                                 }
                               },
                               className: "relative flex h-full w-full touch-pan-y flex-col overflow-y-auto px-5 [scrollbar-width:none] focus-visible:outline-none [&::-webkit-scrollbar]:hidden",
-                              children: /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "mt-auto flex flex-col pb-3 pt-1", children: [
-                                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(AnimatePresence, { initial: false, children: visibleMessages.map((m2) => /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                              children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "mt-auto flex flex-col pb-3 pt-1", children: [
+                                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AnimatePresence, { initial: false, children: visibleMessages.map((m2) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                                   ThreadLine,
                                   {
                                     message: m2,
@@ -26546,20 +27042,20 @@
                                   },
                                   m2.id
                                 )) }),
-                                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(AnimatePresence, { children: responding ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(TypingDots, { reduce }) : null }),
-                                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { ref: endRef })
+                                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AnimatePresence, { children: responding ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(TypingDots, { reduce }) : null }),
+                                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { ref: endRef })
                               ] })
                             }
                           )
                         }
                       ) : null,
-                      hasImages || imageError ? /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2", children: [
-                        hasImages ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "flex flex-wrap gap-2", children: pendingImages.map((img, i) => /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+                      hasImages || imageError ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2", children: [
+                        hasImages ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "flex flex-wrap gap-2", children: pendingImages.map((img, i) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
                           "div",
                           {
                             className: "group relative h-14 w-14 shrink-0",
                             children: [
-                              /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                                 "img",
                                 {
                                   src: `data:${img.mimeType};base64,${img.data}`,
@@ -26567,7 +27063,7 @@
                                   className: "h-14 w-14 rounded-lg border border-white/20 object-cover"
                                 }
                               ),
-                              /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                                 "button",
                                 {
                                   type: "button",
@@ -26581,16 +27077,16 @@
                           },
                           `${img.name}-${img.mimeType}-${img.data.length}`
                         )) }) : null,
-                        imageError ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                        imageError ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                           "p",
                           {
                             role: "alert",
-                            className: cn("text-xs text-red-200/90", FLOAT_SHADOW),
+                            className: cn("text-xs text-red-200/90", FLOAT_SHADOW2),
                             children: imageError
                           }
                         ) : null
                       ] }) : null,
-                      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                         "input",
                         {
                           ref: fileInputRef,
@@ -26604,7 +27100,7 @@
                           }
                         }
                       ),
-                      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+                      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
                         "div",
                         {
                           className: cn(
@@ -26620,7 +27116,15 @@
                             sheetOpen ? "border-t border-white/10" : ""
                           ),
                           children: [
-                            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                            slashProp && !slashDismissed ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              SlashCommandMenu,
+                              {
+                                state: slashMenu,
+                                loading: isSlashDraft && slash.loading,
+                                onPick: pickSlashItem
+                              }
+                            ) : null,
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                               SoftButton,
                               {
                                 glyph: PLUS_GLYPH,
@@ -26630,7 +27134,7 @@
                                 testId: "chat-composer-attach"
                               }
                             ),
-                            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                               "textarea",
                               {
                                 ref: inputRef,
@@ -26642,6 +27146,40 @@
                                 },
                                 onFocus: expand,
                                 onKeyDown: (e) => {
+                                  if (slashOpen) {
+                                    if (e.key === "ArrowDown") {
+                                      e.preventDefault();
+                                      slashMenu.move(1);
+                                      return;
+                                    }
+                                    if (e.key === "ArrowUp") {
+                                      e.preventDefault();
+                                      slashMenu.move(-1);
+                                      return;
+                                    }
+                                    if (e.key === "Tab") {
+                                      const completed = slashMenu.complete();
+                                      if (completed != null) {
+                                        e.preventDefault();
+                                        setDraft(completed);
+                                        return;
+                                      }
+                                    }
+                                    if (e.key === "Enter" && !e.shiftKey) {
+                                      const exec = slashMenu.resolve();
+                                      if (exec) {
+                                        e.preventDefault();
+                                        runExecution(exec);
+                                        return;
+                                      }
+                                    }
+                                    if (e.key === "Escape") {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setSlashDismissed(true);
+                                      return;
+                                    }
+                                  }
                                   if (e.key === "Enter" && !e.shiftKey) {
                                     e.preventDefault();
                                     submit();
@@ -26654,14 +27192,15 @@
                                 "aria-label": "message",
                                 "data-testid": "chat-composer-textarea",
                                 "aria-describedby": booting ? "cc-booting-hint" : void 0,
+                                ...comboboxAria,
                                 className: "max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
                               }
                             ),
-                            /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("span", { id: "cc-booting-hint", className: "sr-only", children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("span", { id: "cc-booting-hint", className: "sr-only", children: [
                               agentName,
                               " is waking up \u2014 you can type now; your message sends and the reply arrives in a moment."
                             ] }),
-                            speaking || agentVoiceMuted ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                            speaking || agentVoiceMuted ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                               SoftButton,
                               {
                                 glyph: agentVoiceMuted ? SPEAKER_MUTED_GLYPH : SPEAKER_GLYPH,
@@ -26671,7 +27210,7 @@
                                 testId: "chat-voice-mute"
                               }
                             ) : null,
-                            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                               motion.div,
                               {
                                 className: "shrink-0",
@@ -26681,7 +27220,7 @@
                                   duration: reduce ? 0 : 0.3,
                                   ease: OVERLAY_EASE
                                 },
-                                children: (hasDraft || hasImages) && !recording ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                                children: (hasDraft || hasImages) && !recording ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                                   SoftButton,
                                   {
                                     glyph: SEND_GLYPH,
@@ -26693,7 +27232,7 @@
                                 ) : !recording && responding ? (
                                   // While a reply is streaming and nothing is typed, the mic becomes a
                                   // stop control so the user can interrupt a runaway generation.
-                                  /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                                     SoftButton,
                                     {
                                       glyph: STOP_GLYPH,
@@ -26702,7 +27241,7 @@
                                       testId: "chat-composer-stop"
                                     }
                                   )
-                                ) : /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                                ) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                                   SoftButton,
                                   {
                                     glyph: MIC_GLYPH,
@@ -26734,7 +27273,7 @@
   }
 
   // packages/ui/src/components/shell/__e2e__/chat-sheet-fixture.tsx
-  var import_jsx_runtime7 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime8 = __toESM(require_jsx_runtime(), 1);
   var nextId = 100;
   var uid = () => `m${nextId++}`;
   var SEED = [
@@ -26801,19 +27340,19 @@
     }
   ] : SEED;
   function Harness() {
-    const [messages, setMessages] = React6.useState(
+    const [messages, setMessages] = React7.useState(
       startEmpty ? [] : SEED_WITH_FAILURE
     );
-    const [phase, setPhase] = React6.useState(initialPhase);
-    const [recording, setRecording] = React6.useState(initialRecording);
-    const [transcript, setTranscript] = React6.useState(initialTranscript);
-    const [agentVoiceMuted, setAgentVoiceMuted] = React6.useState(initialMuted);
-    React6.useEffect(() => {
+    const [phase, setPhase] = React7.useState(initialPhase);
+    const [recording, setRecording] = React7.useState(initialRecording);
+    const [transcript, setTranscript] = React7.useState(initialTranscript);
+    const [agentVoiceMuted, setAgentVoiceMuted] = React7.useState(initialMuted);
+    React7.useEffect(() => {
       console.log(
         `[fixture] phase=${phase} messages=${messages.length} recording=${recording}`
       );
     }, [phase, messages.length, recording]);
-    const send = React6.useCallback((text) => {
+    const send = React7.useCallback((text) => {
       const trimmed = text.trim();
       if (!trimmed) return;
       console.log(`[fixture] send: ${JSON.stringify(trimmed)}`);
@@ -26835,19 +27374,19 @@
         setPhase("summoned");
       }, 500);
     }, []);
-    const startRecording = React6.useCallback(() => {
+    const startRecording = React7.useCallback(() => {
       console.log("[fixture] startRecording");
       setRecording(true);
       setTranscript("tell me the plan for\u2026");
       setPhase("listening");
     }, []);
-    const stopRecording = React6.useCallback(() => {
+    const stopRecording = React7.useCallback(() => {
       console.log("[fixture] stopRecording");
       setRecording(false);
       setTranscript("");
       setPhase("summoned");
     }, []);
-    const toggleRecording = React6.useCallback(() => {
+    const toggleRecording = React7.useCallback(() => {
       setRecording((r2) => {
         const next = !r2;
         console.log(`[fixture] toggleRecording -> ${next}`);
@@ -26856,7 +27395,7 @@
         return next;
       });
     }, []);
-    const toggleAgentVoiceMute = React6.useCallback(() => {
+    const toggleAgentVoiceMute = React7.useCallback(() => {
       setAgentVoiceMuted((m2) => {
         console.log(`[fixture] toggleAgentVoiceMute -> ${!m2}`);
         return !m2;
@@ -26882,7 +27421,7 @@
         setPhase("summoned");
       }
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
       "div",
       {
         "data-testid": "fake-view",
@@ -26897,15 +27436,15 @@
           overflow: "hidden"
         },
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+          /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
             "div",
             {
               "data-testid": "view-content",
               style: { padding: "48px 28px", maxWidth: 720 },
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("h1", { style: { fontSize: 30, fontWeight: 600, margin: 0 }, children: "Workspace" }),
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { style: { opacity: 0.7, marginTop: 12, lineHeight: 1.6 }, children: "This is the live view behind the floating chat. Clicking here must NOT close the chat \u2014 the sheet only closes on a pull-down or Escape." }),
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { style: { display: "flex", gap: 10, marginTop: 20 }, children: ["Files", "Tasks", "Notes", "Settings"].map((t) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("h1", { style: { fontSize: 30, fontWeight: 600, margin: 0 }, children: "Workspace" }),
+                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { style: { opacity: 0.7, marginTop: 12, lineHeight: 1.6 }, children: "This is the live view behind the floating chat. Clicking here must NOT close the chat \u2014 the sheet only closes on a pull-down or Escape." }),
+                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { style: { display: "flex", gap: 10, marginTop: 20 }, children: ["Files", "Tasks", "Notes", "Settings"].map((t) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                   "span",
                   {
                     style: {
@@ -26922,13 +27461,13 @@
               ]
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(ContinuousChatOverlay, { controller })
+          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(ContinuousChatOverlay, { controller })
         ]
       }
     );
   }
   var root = document.getElementById("root");
-  if (root) (0, import_client.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Harness, {}));
+  if (root) (0, import_client.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime8.jsx)(Harness, {}));
 })();
 /*! Bundled license information:
 
