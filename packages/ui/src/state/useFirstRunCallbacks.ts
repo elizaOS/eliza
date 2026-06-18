@@ -647,7 +647,18 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
             name: firstRunName,
             bio: style?.bio ?? ["An autonomous AI agent."],
             onProgress: () => {},
-            allowSharedRuntime: shouldUseIosCloudLocalAgent(),
+            // Shared runtime is the shipping cloud provisioning mode —
+            // dedicated per-agent container-deploy is gated off for launch, so
+            // the cloud provisions every agent on the shared runtime and the
+            // client must accept it on EVERY platform (not just iOS). Without
+            // this, Android/desktop first-run threw "shared runtime has no
+            // sandbox bridge" right after a successful sign-in. The iOS-only
+            // on-device IPC routing below stays gated on
+            // shouldUseIosCloudLocalAgent(); only the accept decision is
+            // platform-independent. When dedicated sandboxes return, the
+            // provision response carries a bridgeUrl and the non-shared branch
+            // handles it unchanged.
+            allowSharedRuntime: true,
           });
 
           const iosCloudLocalAgent = shouldUseIosCloudLocalAgent();
