@@ -36,6 +36,7 @@ import {
   parseAgentStatusFromMainMenuResetPayload,
 } from "./internal";
 import type { FirstRunMode, SetupStep } from "./types";
+import { deriveAgentReady } from "./types";
 
 // ── Helpers (file-local) ────────────────────────────────────────────
 
@@ -559,6 +560,37 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     },
     [showDesktopNotification],
   );
+
+  // While the agent reports `state:"running"` but isn't yet able to respond —
+  // e.g. a slow on-device model still warming after boot — keep refreshing the
+  // status so readiness (`canRespond`) flips the moment it becomes true. The
+  // startup poll returns at `state:"running"` and nothing else re-polls, so
+  // without this the chat stays gated on a stale not-ready snapshot ("waking
+  // up…") forever and the mic/voice control never enables. Self-limiting: the
+  // boolean dep flips false the instant the agent is ready, tearing the poll
+  // down; it never runs once the agent can respond.
+  const awaitingAgentReadiness =
+    agentStatus?.state === "running" && !deriveAgentReady(agentStatus);
+  useEffect(() => {
+    if (!awaitingAgentReadiness) return;
+    let active = true;
+    const refresh = async () => {
+      if (!active) return;
+      if (typeof document !== "undefined" && document.hidden) return;
+      try {
+        const next = await client.getStatus();
+        if (active) setAgentStatus(next);
+      } catch {
+        // Transient (agent restarting / IPC hiccup) — keep polling.
+      }
+    };
+    void refresh();
+    const intervalId = window.setInterval(refresh, 3000);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [awaitingAgentReadiness, setAgentStatus]);
 
   useEffect(() => {
     if (!pendingRestart) {

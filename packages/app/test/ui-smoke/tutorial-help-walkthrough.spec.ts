@@ -31,8 +31,9 @@ test("the tutorial runs all the way to completion (every step screenshotted)", a
   await installDefaultAppRoutes(page);
   await openAppPath(page, "/chat");
 
+  // The /tutorial launcher starts the overlay directly (the splash with its own
+  // "Start" button was removed — the overlay's welcome step is the one intro).
   await page.getByTestId("home-tile-tutorial").click({ timeout: 25_000 });
-  await page.getByTestId("tutorial-start-text").click();
 
   const card = page.getByTestId("tutorial-card");
   const cont = page.getByTestId("tutorial-continue");

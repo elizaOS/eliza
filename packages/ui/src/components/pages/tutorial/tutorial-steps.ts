@@ -144,7 +144,10 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     body: "Tap the mic in the chat and say “go home”. Eliza listens and navigates — hands-free.",
     voiceLine:
       "Let's try voice. Tap the microphone in the chat and say, go home. Eliza will take you there, hands free.",
-    targetSelector: '[data-testid="chat-pill"]',
+    // Spotlight the actual mic control (the step says "tap the mic"), not the
+    // collapsed chat pill — the composer (and its mic) is what's on screen once
+    // the chat is open, so targeting the pill left the step with no glow.
+    targetSelector: '[data-testid="chat-composer-mic"]',
     blockOutside: false,
     isComplete: (s) => s.tab === "chat" || s.tab === "views",
     manualContinue: true,
