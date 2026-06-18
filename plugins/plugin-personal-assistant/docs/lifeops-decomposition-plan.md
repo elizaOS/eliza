@@ -703,6 +703,38 @@ contract tests + real-PGlite + the e2e lanes. Confirms my inbox prompt-robustnes
 goals/calendar prompts already use "one of X, Y, Z" (not the `a|b|c` template), so small
 models handle them — which is why they passed first try.
 
+### Session 2026-06-18 (round 24) — live real (DB-backed) testing extended across ALL decomposed domains
+Closed "live testing covers only 3 of 10 plugins". For non-LLM decomposed plugins the
+equivalent of live real testing is a REAL database round-trip (real PGlite + plugin-sql
+migration, no mocked adapter). Added real-DB round-trip tests:
+- `plugin-todos/test/todos.real-db.test.ts` (6) — TodosService create→list/get→update/
+  complete→writeList-reconcile→delete/clear + the real currentTodosProvider over live rows.
+- `plugin-calendar/test/calendar.real-db.test.ts` (5) — CalendarRepository (upsert/list/
+  sync-state, ON CONFLICT) + CalendarService (create→feed/next-event→delete; only the
+  Apple feed mocked). Commit 1626a077d0.
+- `plugin-blocker/test/blocker.real-db.test.ts` (4) — migrates app_blocker + INSERT→SELECT
+  round-trip incl. jsonb/Date cols (hosts engine kept off /etc/hosts). FINDING: no
+  service/repo references the app_blocker tables today (blocker state lives in the hosts
+  file + Task records) → this is a schema-soundness round-trip; the blocking engine is
+  hosts-file/native (covered by its unit tests + focus-view e2e). Possible dead-schema
+  cleanup candidate. Commit 1626a077d0.
+- `plugin-relationships/test/relationships.real-db.test.ts` (3) — relationships is a viewer
+  over the runtime KnowledgeGraphService (@elizaos/agent); registered the KG service +
+  schema on a real runtime and round-tripped entity upsert→get/list/resolve (real SELECT on
+  app_lifeops.life_entities) + relationship observe→list (life_relationships). Commit 5ef5440635.
+
+LIVE REAL TESTING IS NOW COMPREHENSIVE across every decomposed domain, via the test type
+that matches each plugin's real backing:
+- DB-backed (8): inbox, goals, finances, documents, todos, calendar, blocker, relationships
+  → real-PGlite round-trips.
+- LLM-bearing (3): inbox, goals, calendar → live local-LLM (round 21/23).
+- connector-backed (1): health → recorded+live contract tests (real Strava/Oura/Fitbit/
+  Withings/GCal wire shapes; live gated on tokens).
+- session/engine (1): remote-desktop → engine + session-service unit tests + REMOTE_DESKTOP
+  action (no persistent DB store, so a DB round-trip is N/A).
+All new tests: no PA import, suites green (todos 47, calendar 79/2-skip, blocker 16,
+relationships 34).
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
