@@ -77,7 +77,10 @@ describe("hasRedisConfig", () => {
     ).toBe(true);
     // Upstash alias creds -> true
     expect(
-      hasRedisConfig({ UPSTASH_REDIS_REST_URL: "https://x.upstash.io", UPSTASH_REDIS_REST_TOKEN: "tok" }),
+      hasRedisConfig({
+        UPSTASH_REDIS_REST_URL: "https://x.upstash.io",
+        UPSTASH_REDIS_REST_TOKEN: "tok",
+      }),
     ).toBe(true);
     // half-configured Upstash -> false
     expect(hasRedisConfig({ KV_REST_API_URL: "https://x.upstash.io" })).toBe(false);
