@@ -1806,16 +1806,34 @@ function resolveAospOmnivoiceTtsStepOverride(
 // agent's HTTP listener (a concurrent createConversation then sees a spurious
 // local_agent_unavailable). When there is enough headroom to hold both models
 // the eviction is pure cost, so gate it on actual memory pressure.
-const VOICE_COLOAD_KEEP_AVAIL_MB = 2200;
+export const VOICE_COLOAD_KEEP_AVAIL_MB = 2200;
+
+/**
+ * Parse `MemAvailable` (in MiB) from `/proc/meminfo` text. Returns `null` when
+ * the field is absent (e.g. a non-Linux / unexpected layout). Exported for unit
+ * testing the pure parse without touching the filesystem.
+ */
+export function parseMemAvailableMb(meminfo: string): number | null {
+  const match = meminfo.match(/MemAvailable:\s+(\d+)\s+kB/);
+  return match ? Number(match[1]) / 1024 : null;
+}
+
+/**
+ * Decide whether to evict the resident chat model before a cold voice-model
+ * load, given free RAM in MiB (`null` = unknown). Unknown memory falls back to
+ * eviction, preserving the original always-evict safety on platforms where
+ * `/proc/meminfo` is unavailable. Pure; exported for unit testing.
+ */
+export function shouldEvictChatForAvailMb(availMb: number | null): boolean {
+  if (availMb === null) return true;
+  return availMb < VOICE_COLOAD_KEEP_AVAIL_MB;
+}
 
 function shouldEvictChatForVoiceLoad(): boolean {
   try {
-    const match = readFileSync("/proc/meminfo", "utf8").match(
-      /MemAvailable:\s+(\d+)\s+kB/,
+    return shouldEvictChatForAvailMb(
+      parseMemAvailableMb(readFileSync("/proc/meminfo", "utf8")),
     );
-    // Unknown memory → evict, preserving the original always-evict safety.
-    if (!match) return true;
-    return Number(match[1]) / 1024 < VOICE_COLOAD_KEEP_AVAIL_MB;
   } catch {
     return true;
   }
