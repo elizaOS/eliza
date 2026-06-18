@@ -8,34 +8,13 @@ import {
   DashboardStatGrid,
   DashboardToolbar,
 } from "@elizaos/ui";
-import {
-  Activity,
-  ChevronDown,
-  Grid3x3,
-  TrendingUp,
-  Users,
-} from "lucide-react";
+import { Activity, Grid3x3, TrendingUp, Users } from "lucide-react";
 import { Helmet } from "react-helmet-async";
 import { useT } from "@/providers/I18nProvider";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { useApps } from "../../lib/data/apps";
 import { AppsTable } from "./_components/apps-table";
 import { CreateAppButton } from "./_components/create-app-button";
-
-function AdvancedRegisterApp() {
-  const t = useT();
-  return (
-    <details className="group inline-block w-full sm:w-auto">
-      <summary className="inline-flex w-full cursor-pointer list-none items-center justify-center gap-1 text-sm font-mono text-white/60 transition-colors hover:text-white sm:w-auto">
-        <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
-        {t("cloud.apps.advanced", { defaultValue: "Advanced" })}
-      </summary>
-      <div className="mt-2 flex justify-stretch sm:justify-end">
-        <CreateAppButton />
-      </div>
-    </details>
-  );
-}
 
 /** /dashboard/apps */
 export default function AppsPage() {
@@ -63,7 +42,7 @@ export default function AppsPage() {
       <AppsPageWrapper>
         <DashboardPageContainer className="space-y-4 md:space-y-6">
           <DashboardToolbar className="justify-end">
-            <AdvancedRegisterApp />
+            <CreateAppButton />
           </DashboardToolbar>
           <DashboardStatGrid data-onboarding="apps-stats">
             <DashboardStatCard
@@ -108,7 +87,7 @@ export default function AppsPage() {
               }
             />
           ) : apps.length === 0 ? (
-            <AppsEmptyState action={<AdvancedRegisterApp />} />
+            <AppsEmptyState action={<CreateAppButton />} />
           ) : (
             <AppsTable apps={apps} />
           )}
