@@ -1,9 +1,6 @@
-/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind CSS directive processed by PostCSS. */
-@tailwind base;
-/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind CSS directive processed by PostCSS. */
-@tailwind components;
-/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind CSS directive processed by PostCSS. */
-@tailwind utilities;
+@import "tailwindcss";
+/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind CSS v4 @config directive processed by @tailwindcss/postcss. */
+@config "../tailwind.config.ts";
 
 :root {
   --background: #ffffff;

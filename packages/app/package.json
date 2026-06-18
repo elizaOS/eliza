@@ -146,7 +146,7 @@
   "devDependencies": {
     "@capacitor/cli": "8.4.0",
     "@playwright/test": "^1.59.1",
-    "@tailwindcss/vite": "^4.1.18",
+    "@tailwindcss/vite": "^4.3.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.0.0",
@@ -157,7 +157,7 @@
     "pathe": "^2.0.3",
     "rollup-plugin-visualizer": "^7.0.1",
     "sharp": "^0.34.5",
-    "tailwindcss": "^4.1.18",
+    "tailwindcss": "^4.3.1",
     "typescript": "^6.0.3",
     "uuid": "^14.0.0",
     "vite": "^8.0.0",

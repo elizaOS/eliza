@@ -308,7 +308,7 @@
     "sonner": "^2.0.7",
     "streamdown": "^2.0.0",
     "tailwind-merge": "^3.4.0",
-    "tailwindcss": "^4.1.18",
+    "tailwindcss": "^4.3.1",
     "three": "^0.184.0",
     "vaul": "^1.1.2",
     "ws": "^8.19.0"
@@ -324,7 +324,7 @@
     "@storybook/addon-themes": "^10.0.0",
     "@storybook/react": "^10.0.0",
     "@storybook/react-vite": "^10.0.0",
-    "@tailwindcss/vite": "^4.1.18",
+    "@tailwindcss/vite": "^4.3.1",
     "storybook": "^10.0.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.2",
