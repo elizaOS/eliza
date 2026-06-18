@@ -193,9 +193,35 @@ inside the view bundle, and (b) a DESIGN PASS — it uses Tailwind
 `bg-blue-500`/`violet`/`emerald` event-category colors that violate the no-blue
 rule. Treat as a full view slice, not a wiring fix.
 
-### Next domains (replicate template, sequentially — each edits PA)
-remote-desktop (tiny, safest) → finances (first schema carve-out) → documents
-(routes already real) → inbox (largest) → goals/todos (reminders fused w/ spine).
+### TWO foundational prerequisites gating further extraction (discovered 2026-06-17)
+The slice-1 template moved *services/engines/providers* cleanly. Moving the rest
+hits two cross-cutting prerequisites that must be tackled deliberately FIRST:
+
+1. **Shared action-resolution + LLM-extraction layer** — gates moving ANY domain
+   *action* out of PA. `actions/lib/resolve-action-args.ts` (`resolveActionArgs`,
+   423 LOC, used by 10 PA actions) depends on `lifeops/llm/extractor-pipeline.ts`
+   + `utils/json-model-output.ts` + `actions/lib/recent-context.ts`. Until this
+   stack is promoted to a shared package (likely `@elizaos/agent` — has LLM
+   access, all plugins depend on it), domain actions (remote-desktop, finances,
+   inbox, goals, todos) cannot move. This is why slice 1 left the BLOCK action in
+   PA. Do this untangle as its own slice; check extractor-pipeline's further
+   coupling before moving.
+2. **`app_lifeops` schema carve-out** — gates filling inbox/finances/goals/todos
+   (their data is in the monolith). Schema is `appLifeopsPgSchema.table(...)` in
+   `lifeops/schema.ts` (40+ tables). Finance owns `lifePaymentSources`,
+   `lifePaymentTransactions`, `lifeSubscription{Audits,Candidates,Cancellations}`.
+   repository.ts (8.9k LOC) has 139 finance refs interwoven w/ other domains +
+   shared `executeRawSql` helpers. **Owner decision:** keep the `app_lifeops`
+   schema name (table defs live in the plugin, no data migration) vs move to
+   `app_finances` (clean ownership, needs a data migration for existing installs).
+
+remote-desktop specifics: engine (`lifeops/remote-desktop.ts`) + `remote/`
+(remote-session-service + pairing-code, remote-desktop-specific) are clean; the
+action is blocked on prerequisite #1.
+
+### Next domains (after the two prerequisites, sequentially — each edits PA)
+finances (schema carve-out) → documents (routes already real) → inbox (largest)
+→ goals/todos (reminders fused w/ spine) → remote-desktop.
 
 - 2026-06-17: **Slice 4 DONE + committed** (`1b1848cd8a`) — real `CalendarView`
   mounts the rich, instrumented `CalendarSection` (floating chat now drives the
