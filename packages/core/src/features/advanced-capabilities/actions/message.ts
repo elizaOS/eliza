@@ -1960,8 +1960,29 @@ async function ensureSendAccountAllowed(
 		return undefined;
 	}
 	const manager = getConnectorAccountManager(runtime);
-	const account = await manager.getAccount(source, accountId).catch(() => null);
-	// Only owner-bound accounts are gated; agent/open accounts pass straight through.
+	let account: Awaited<ReturnType<typeof manager.getAccount>>;
+	try {
+		account = await manager.getAccount(source, accountId);
+	} catch (error) {
+		// Fail CLOSED: a lookup failure must never silently bypass the gate. If we
+		// cannot resolve the account, we cannot prove it is a frictionless
+		// agent/`open` account, so we refuse the "act as the user" send rather than
+		// risk firing it ungated on what may be an unverified owner account.
+		return opFailure(
+			"send",
+			"OWNER_BINDING_REQUIRED",
+			`Could not verify the access policy for ${accountId} on ${source}; refusing to send until the account can be resolved.`,
+			{
+				source,
+				accountId,
+				error: error instanceof Error ? error.message : String(error),
+			},
+		);
+	}
+	// Only owner-bound accounts are gated; agent/`open` accounts (and a resolved
+	// target with no stored account record) pass straight through. Other gates
+	// (`disabled`/`manual_approval`/`pairing`) are intentionally out of scope here:
+	// this gate guards the owner-impersonation threat only.
 	if (account?.accessGate !== "owner_binding") {
 		return undefined;
 	}
@@ -2956,8 +2977,8 @@ async function handleListConnections(
 	const labels = connections.map((c) => c.label);
 	return opSuccess(
 		"list_connections",
-		`Connected to ${connections.length} platform(s): ${labels.join(", ")}.`,
-		{ connections, platformCount: connections.length },
+		`Connected via ${connections.length} connection(s): ${labels.join(", ")}.`,
+		{ connections, connectionCount: connections.length },
 	);
 }
 

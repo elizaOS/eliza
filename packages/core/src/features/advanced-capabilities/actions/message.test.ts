@@ -69,12 +69,12 @@ describe("MESSAGE op=list_connections", () => {
 		const result = await listConnections(runtime);
 		const data = result.data as {
 			operation: string;
-			platformCount: number;
+			connectionCount: number;
 			connections: { platform: string; roomCount: number }[];
 		};
 		expect(result.success).toBe(true);
 		expect(data.operation).toBe("list_connections");
-		expect(data.platformCount).toBe(2);
+		expect(data.connectionCount).toBe(2);
 		expect(data.connections.map((c) => c.platform).sort()).toEqual([
 			"discord",
 			"matrix",
@@ -100,7 +100,7 @@ describe("MESSAGE op=list_connections", () => {
 		]);
 		const result = await listConnections(runtime);
 		const data = result.data as {
-			platformCount: number;
+			connectionCount: number;
 			connections: {
 				platform: string;
 				accountId?: string;
@@ -112,7 +112,7 @@ describe("MESSAGE op=list_connections", () => {
 		// the listed entry is the per-account connector (2 rooms), not the fallback
 		expect(discord[0].accountId).toBe("default");
 		expect(discord[0].roomCount).toBe(2);
-		expect(data.platformCount).toBe(2);
+		expect(data.connectionCount).toBe(2);
 	});
 
 	it("a failing connector still appears with roomCount 0", async () => {
@@ -146,11 +146,11 @@ describe("MESSAGE op=list_connections", () => {
 		const runtime = mockRuntime(many);
 		const result = await listConnections(runtime);
 		const data = result.data as {
-			platformCount: number;
+			connectionCount: number;
 			connections: unknown[];
 		};
 		expect(data.connections.length).toBe(8);
-		expect(data.platformCount).toBe(8);
+		expect(data.connectionCount).toBe(8);
 	});
 
 	it("returns zero platforms when no connector exposes listRooms", async () => {
@@ -164,8 +164,8 @@ describe("MESSAGE op=list_connections", () => {
 			},
 		]);
 		const result = await listConnections(runtime);
-		const data = result.data as { platformCount: number };
-		expect(data.platformCount).toBe(0);
+		const data = result.data as { connectionCount: number };
+		expect(data.connectionCount).toBe(0);
 	});
 
 	it("does not misroute a bare connection-themed message (no explicit action)", async () => {
@@ -199,10 +199,10 @@ describe("MESSAGE op=list_connections", () => {
 			result = undefined;
 		}
 		const data = result?.data as
-			| { operation?: string; platformCount?: number }
+			| { operation?: string; connectionCount?: number }
 			| undefined;
 		expect(data?.operation).not.toBe("list_connections");
-		expect(data?.platformCount).toBeUndefined();
+		expect(data?.connectionCount).toBeUndefined();
 	});
 });
 

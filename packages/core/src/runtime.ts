@@ -8761,6 +8761,11 @@ ${section_end}`;
 			);
 	}
 
+	// NOTE: The owner-binding send gate (the "act as the user" guard) is enforced
+	// at the MESSAGE action layer (ensureSendAccountAllowed in
+	// features/advanced-capabilities/actions/message.ts), NOT here. This is the
+	// low-level transport for every send path; direct callers that route through
+	// an owner-bound account must apply their own gate before calling this.
 	async sendMessageToTarget(
 		target: TargetInfo,
 		content: Content,
