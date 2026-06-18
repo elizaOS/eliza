@@ -64,6 +64,34 @@ Live status at the time of writing (read-only probes):
   (`ai-pricing/lookup.ts:146`). Needs real prices reconciled (flagged as a task).
 - **Monetization PUT silently ignores wrong-cased keys** (snake_case → 200 no-op;
   use camelCase — see §1).
+- **Stripe `success_url` allowlist is strict** — only `https://elizacloud.ai` is
+  accepted by `getDefaultPlatformRedirectOrigins()`; `www.` and `app.` subdomains
+  are rejected ("Invalid success_url"). A UX footgun if the frontend ever passes a
+  www/app origin.
+
+#### Money loop — now proven live except the two user-only money-moves
+
+- **Card IN — machinery proven.** `POST /api/v1/credits/checkout`
+  (`{credits, success_url, cancel_url}`, `success_url` origin must be
+  `https://elizacloud.ai`) created a **real live Stripe checkout session**
+  (`https://checkout.stripe.com/c/pay/cs_live_…`). Entering card details on that
+  page is the user's action.
+- **Earning → redeemable points — proven live.** 6 inference calls attributed to
+  PayPerPixel (`X-App-Id`, markup temporarily set to 1000%) grew the creator's
+  redeemable balance from **$0 → $0.1819** (`bySource: miniapp, count:6`) with
+  matching `app_earnings` ($0.18185). Markup reset to 20% afterward. So
+  charging → markup → `app_earnings` → `redeemable_earnings` (points) all fire
+  live.
+- **Remaining = two money-moves only the account owner should execute** (and which
+  an agent must not perform on the user's behalf): complete the Stripe checkout
+  with a card, and execute the final token redemption (balance is now funded; once
+  ≥ $1 the on-chain elizaOS payout fires via `process-redemptions` +
+  `payout-processor`).
+
+#### Example app fixes shipped this session
+- **clone-ur-crush rendered unstyled** — it's on Tailwind v4 but `app/globals.css`
+  used the dead v3 `@tailwind base/components/utilities` directives (zero utilities
+  generated). Fixed to v4 `@import "tailwindcss"` + `@config`. Verified live.
 
 ## 0. Steward: confirm login + signup work (goal: "make sure we can log in and create an account")
 
