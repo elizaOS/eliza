@@ -101,7 +101,7 @@ export function convertMarkdownToTelegram(markdown: string): string {
 
   // 3. Links: [link text](url)
   converted = converted.replace(
-    /$begin:math:display$([^$end:math:display$]+)]$begin:math:text$([^)]+)$end:math:text$/g,
+    /\[([^\]]+)\]\(([^)]+)\)/g,
     (_match, text, url) => {
       // For link text we escape as plain text.
       const formattedText = escapePlainText(text);
@@ -184,41 +184,6 @@ export function convertMarkdownToTelegram(markdown: string): string {
   });
 
   return finalResult;
-}
-
-/**
- * Splits a message into chunks that fit within Telegram's message length limit
- */
-/**
- * Splits a text message into chunks based on a maximum length for each chunk.
- *
- * @param {string} text - The text message to split.
- * @param {number} maxLength - The maximum length for each chunk (default is 4096).
- * @returns {string[]} An array containing the text message split into chunks.
- */
-export function splitMessage(text: string, maxLength = 4096): string[] {
-  const chunks: string[] = [];
-  if (!text) {
-    return chunks;
-  }
-  let currentChunk = "";
-
-  const lines = text.split("\n");
-  for (const line of lines) {
-    if (currentChunk.length + line.length + 1 <= maxLength) {
-      currentChunk += (currentChunk ? "\n" : "") + line;
-    } else {
-      if (currentChunk) {
-        chunks.push(currentChunk);
-      }
-      currentChunk = line;
-    }
-  }
-
-  if (currentChunk) {
-    chunks.push(currentChunk);
-  }
-  return chunks;
 }
 
 /**

@@ -358,3 +358,89 @@ describe("MessageManager malformed payload handling", () => {
     });
   });
 });
+
+describe("MessageManager send resilience (sendWithRetry)", () => {
+  function managerWith(sendMessage: ReturnType<typeof vi.fn>) {
+    const telegram = {
+      sendMessage,
+      sendChatAction: vi.fn(async () => undefined),
+    };
+    const manager = new MessageManager(
+      { telegram } as never,
+      { agentId: "agent-1" } as never,
+    );
+    const ctx = { chat: { id: 123 }, telegram } as never;
+    return { manager, ctx };
+  }
+
+  it("retries on 429 honoring retry_after, then succeeds", async () => {
+    let calls = 0;
+    const sendMessage = vi.fn(async (chatId: number | string, text: string) => {
+      calls += 1;
+      if (calls === 1) {
+        throw { response: { error_code: 429, parameters: { retry_after: 0 } } };
+      }
+      return {
+        message_id: 1,
+        date: 1,
+        text,
+        chat: { id: chatId, type: "private" },
+      };
+    });
+    const { manager, ctx } = managerWith(sendMessage);
+    const sent = await manager.sendMessageInChunks(ctx, { text: "hi" });
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(sent).toHaveLength(1);
+  });
+
+  it("falls back to plain text on a MarkdownV2 400 parse error", async () => {
+    const sendMessage = vi.fn(
+      async (
+        chatId: number | string,
+        text: string,
+        opts?: { parse_mode?: string },
+      ) => {
+        if (opts?.parse_mode === "MarkdownV2") {
+          throw {
+            response: {
+              error_code: 400,
+              description: "Bad Request: can't parse entities",
+            },
+          };
+        }
+        return {
+          message_id: 1,
+          date: 1,
+          text,
+          chat: { id: chatId, type: "private" },
+        };
+      },
+    );
+    const { manager, ctx } = managerWith(sendMessage);
+    const sent = await manager.sendMessageInChunks(ctx, { text: "**bold**" });
+    expect(sent).toHaveLength(1);
+    // the successful (fallback) send must NOT carry parse_mode
+    const fallbackCall = sendMessage.mock.calls.find(
+      (call) =>
+        (call[2] as { parse_mode?: string } | undefined)?.parse_mode ===
+        undefined,
+    );
+    expect(fallbackCall).toBeDefined();
+  });
+
+  it("does not retry a 403 (blocked) and propagates the error", async () => {
+    const sendMessage = vi.fn(async () => {
+      throw {
+        response: {
+          error_code: 403,
+          description: "Forbidden: bot was blocked",
+        },
+      };
+    });
+    const { manager, ctx } = managerWith(sendMessage);
+    await expect(
+      manager.sendMessageInChunks(ctx, { text: "hi" }),
+    ).rejects.toBeTruthy();
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+});
