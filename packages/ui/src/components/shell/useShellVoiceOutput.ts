@@ -22,6 +22,8 @@ function findLatestAssistantText(
 export interface ShellVoiceOutput {
   /** True while an assistant reply is being spoken aloud. */
   speaking: boolean;
+  /** Immediately stop any in-flight assistant speech (e.g. on hands-free exit). */
+  stopSpeaking: () => void;
   /** True while assistant voice output is muted by the user. */
   agentVoiceMuted: boolean;
   /** Mute/unmute assistant voice output. Muting stops any in-flight speech. */
@@ -132,6 +134,7 @@ export function useShellVoiceOutput(
 
   return {
     speaking: isSpeaking,
+    stopSpeaking,
     agentVoiceMuted,
     toggleAgentVoiceMute,
     // useVoiceChat always returns these; VoiceChatState types them optional, so
