@@ -112,7 +112,69 @@ heaviest schema splits.
    add the recorded+live contract harness; commit a LifeOps view screenshot/
    manual-review loop; get android `_android` + an iOS sim smoke onto a CI lane.
 
+## Proven migration template (validated on plugin-blocker)
+
+The calendar/health pattern, now re-validated end-to-end and reusable:
+
+1. **Dependency direction:** focused plugin owns the impl and MUST NOT import
+   `@elizaos/plugin-personal-assistant` (`rg plugin-personal-assistant
+   plugins/<plugin>/src` must be empty). PA adds `"@elizaos/<plugin>":
+   "workspace:*"` and re-exports the moved symbols for back-compat.
+2. **Move the dependency-clean core first** (engine/service/access/providers —
+   anything importing only node + `@elizaos/core`/`@capacitor/core`). Leave
+   modules coupled to `lifeops/*` (e.g. `lifeops/sql`, `lifeops/defaults`) in PA
+   for a later sub-slice; rewire them to import the moved code from the plugin.
+3. **Registration handoff is per-surface and atomic** — to avoid double
+   registration, move a whole surface (service/provider/action/view) or none.
+   Partial is OK across surfaces (e.g. services+providers move, action stays) as
+   long as exactly one plugin registers each.
+4. **Preserve exact runtime string values** (serviceType, action/provider
+   `name`, task-name consts) — runtime lookups depend on them.
+5. **Real view:** fetch from the plugin's HTTP route via `client.getBaseUrl()`
+   with an injectable fetcher seam for offline jsdom tests; render all states
+   (loading/error/unavailable/permission/empty/active) each with a `data-testid`;
+   instrument primary controls with `useAgentElement` from `@elizaos/ui/agent-surface`
+   (extract child components — hooks can't run in `.map()`). That alone wires the
+   floating chat (generic list-elements/agent-click capabilities). `VIEW_ACTION_MAP`
+   in `packages/agent/src/runtime/view-action-affinity.ts` is an optional planner
+   refinement — only add names that exist as literal `name: "X"` (a git-grep drift
+   test in `view-action-affinity.test.ts` enforces this; promoted/const-derived
+   names like `BLOCK_*` will fail it).
+6. **Verify gates:** plugin typecheck + test + `build:views`; PA `build:types`;
+   dependency-rule grep; no dangling imports to moved files.
+
+### Shared working-tree hazard (critical)
+`develop` is edited by multiple concurrent actors. Files appear/disappear from
+`git status` between commands. NEVER `git add -A`. Stage only your slice's files
+by explicit path. Confirm `git diff --cached --name-only` has no foreign churn
+before committing.
+
 ## Progress log
 
 - 2026-06-17: Four-dimension audit complete (decomposition / tests / views /
-  platform). Plan written. Starting slice 1 (plugin-blocker).
+  platform). Plan written.
+- 2026-06-17: **Slice 1a DONE + committed** (`99b8866199`) — extracted
+  website/app block engine + services + providers from PA into `plugin-blocker`.
+  plugin-blocker typecheck+build+test green (7/7); PA blocker tests 22/22; PA
+  build:types green; dependency rule clean.
+- 2026-06-17: **Slice 1b DONE + committed** (`9436f31bab`) — real `FocusView`
+  over GET /api/website-blocker with all 6 states + `useAgentElement` controls;
+  12 render tests green; design-compliant (orange-only). Floating-chat control
+  achieved via agent-surface generic capabilities.
+
+### Remaining for slice 1 (plugin-blocker) to be fully "production grade"
+- BLOCK action + chat-integration persistence port (raw `lifeops/sql` →
+  `app_blocker` drizzle schema), then move the action to plugin-blocker.
+- P0 native wiring: register a `NativeWebsiteBlockerBackend` adapter (wrapping
+  `@elizaos/capacitor-websiteblocker`) at mobile webview startup
+  (`packages/app/src/main.tsx` `initializePlatform`) — FIRST verify the agent
+  engine instance is in the same JS context as the webview on mobile, else the
+  registration won't reach it. App-blocker needs a registrar (none exists) + an
+  `/api/app-blocker` status route for the view's app section.
+- `VIEW_ACTION_MAP["focus"]` once a literal-named blocker action exists.
+- Strengthen ui-smoke: per-state visual cases (active/permission/error) via the
+  interaction-spec `page.route` override pattern.
+
+### Next domains (replicate template, sequentially — each edits PA)
+remote-desktop (tiny, safest) → finances (first schema carve-out) → documents
+(routes already real) → inbox (largest) → goals/todos (reminders fused w/ spine).
