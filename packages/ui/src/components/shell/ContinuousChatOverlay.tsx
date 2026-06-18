@@ -632,6 +632,7 @@ export function ContinuousChatOverlay({
     handsFree,
     toggleHandsFree,
     setDictationSink,
+    setComposerHasDraft,
     transcript,
     speaking,
     agentVoiceMuted,
@@ -718,6 +719,10 @@ export function ContinuousChatOverlay({
   const pushToTalkTimerRef = React.useRef<number | null>(null);
   const pushToTalkActiveRef = React.useRef(false);
   const suppressMicClickRef = React.useRef(false);
+  // Tracks the previous `pilled` so the composer can animate IN only when it
+  // just opened FROM the pill (CLOSED→INPUT) — not on app load or when the
+  // thread opens above an already-visible input. Updated after every render.
+  const prevPilledRef = React.useRef(pilled);
 
   // Recomputed only when the thread changes — NOT on every drag/draft re-render.
   // Filter empty turns, then keep only the most recent window (cap DOM nodes).
@@ -738,6 +743,14 @@ export function ContinuousChatOverlay({
   const responding = phase === "responding";
   const hasDraft = draft.trim().length > 0;
   const hasImages = pendingImages.length > 0;
+  // True on the render where the sheet just left the pill — drives the input
+  // bar's rise-in entrance so opening from the pill (slow-drag OR flick) reads
+  // as a smooth morph rather than an instant swap. The ref is advanced after
+  // render (effect below), so this is true for exactly that one transition.
+  const justUnpilled = prevPilledRef.current && !pilled;
+  React.useEffect(() => {
+    prevPilledRef.current = pilled;
+  });
 
   // The suggestion strip is a keyboard-style row of one-tap prompts shown in the
   // RESTING (closed) state — ready, nothing typed or attached, not recording. It
@@ -1091,6 +1104,22 @@ export function ContinuousChatOverlay({
     [closeSheet, maximized, reduce],
   );
 
+  // Maximize toggle. Maximizing from ANY open detent (half or a free rest) first
+  // rises to the FULL detent, then drops the inset — so the height spring
+  // animates up and the panel goes edge-to-edge in one gesture (previously
+  // full-bleed required `expanded`, so tapping maximize at the half detent did
+  // nothing). Un-maximizing drops back to the inset FULL detent.
+  const toggleMaximize = React.useCallback(() => {
+    if (maximized) {
+      setMaximized(false);
+      return;
+    }
+    setFreeH(null);
+    setSheetOpen(true);
+    setExpanded(true);
+    setMaximized(true);
+  }, [maximized]);
+
   // The single detent→detent animator: whenever the settled detent (or viewport)
   // changes and we're not mid finger-drag, spring the history height to it. The
   // gesture / open paths just flip sheetOpen/expanded and this reacts — no
@@ -1171,6 +1200,13 @@ export function ContinuousChatOverlay({
     return () => setDictationSink(null);
   }, [setDictationSink, expand]);
 
+  // Tell the controller whether a draft is pending so the hands-free always-on
+  // loop pauses while the user is typing (or editing a PTT dictation) and
+  // resumes the prior voice state once the draft clears on send.
+  React.useEffect(() => {
+    setComposerHasDraft(hasDraft);
+  }, [hasDraft, setComposerHasDraft]);
+
   // ── Slash commands ─────────────────────────────────────────────────────────
   // Inline command autocomplete: the menu derives from the draft + the loaded
   // catalog; Escape dismisses it (without clearing the draft); typing reopens.
@@ -1214,7 +1250,7 @@ export function ContinuousChatOverlay({
         newConversation: () => controller.clearConversation(),
         // The overlay owns full-screen via the `maximized` detent flag, not a
         // controller method, so toggle it directly here.
-        toggleFullscreen: () => setMaximized((v) => !v),
+        toggleFullscreen: toggleMaximize,
         openCommandPalette: slash.openCommandPalette,
         showCommands: slash.openCommandPalette,
         send: (text) => submitText(text),
@@ -1223,7 +1259,7 @@ export function ContinuousChatOverlay({
       setSlashDismissed(true);
       inputRef.current?.focus();
     },
-    [slash, controller, submitText],
+    [slash, controller, submitText, toggleMaximize],
   );
 
   const pickSlashItem = React.useCallback(
@@ -1449,9 +1485,16 @@ export function ContinuousChatOverlay({
       style={{
         zIndex: Z_SHELL_OVERLAY,
         bottom: keyboardInset,
-        paddingBottom: composerFocused
-          ? "0.75rem"
-          : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.25rem)",
+        // Full-bleed fills the screen edge-to-edge: NO overlay bottom padding,
+        // so the glass panel reaches the true bottom (no orange gap). The
+        // gesture-zone clearance moves INSIDE the composer row (below) so the
+        // input still sits above the home-gesture bar. Non-full-bleed keeps the
+        // chat lifted off the gesture zone as before.
+        paddingBottom: fullBleed
+          ? 0
+          : composerFocused
+            ? "0.75rem"
+            : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.25rem)",
       }}
       data-testid="continuous-chat-overlay"
       data-open={sheetOpen ? "true" : undefined}
@@ -1696,7 +1739,7 @@ export function ContinuousChatOverlay({
                       icon={maximized ? Minimize2 : Maximize2}
                       label={maximized ? "exit full screen" : "full screen"}
                       active={maximized}
-                      onClick={() => setMaximized((v) => !v)}
+                      onClick={toggleMaximize}
                       testId="chat-full-maximize"
                     />
                     <HeaderButton
@@ -1839,8 +1882,15 @@ export function ContinuousChatOverlay({
                 }}
               />
               {/* The input row — the base of the panel, always visible. A hairline
-            divider sits above it whenever the history is open. */}
-              <div
+            divider sits above it whenever the history is open. Opening FROM the
+            pill, it rises + fades in (transform/opacity only) so pill→input is a
+            smooth morph in both slow-drag and flick; otherwise it's static. */}
+              <motion.div
+                initial={
+                  justUnpilled && !reduce ? { opacity: 0, y: 14 } : false
+                }
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: reduce ? 0 : 0.26, ease: OVERLAY_EASE }}
                 className={cn(
                   // items-center vertically centers a single-line composer with
                   // the round +/mic buttons (the common case); a multi-line draft
@@ -1853,6 +1903,18 @@ export function ContinuousChatOverlay({
                   "relative z-10 flex min-w-0 shrink-0 items-center gap-1.5 px-2 py-2 sm:gap-2",
                   sheetOpen ? "border-t border-white/10" : "",
                 )}
+                // Full-bleed has no overlay bottom padding (the panel is
+                // edge-to-edge), so the composer carries the home-gesture
+                // clearance itself — except while the keyboard is up, which
+                // already covers that zone.
+                style={
+                  fullBleed && !composerFocused
+                    ? {
+                        paddingBottom:
+                          "calc(0.5rem + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)))",
+                      }
+                    : undefined
+                }
               >
                 {/* Inline slash-command autocomplete, floating just above the
                     input row. */}
@@ -2019,7 +2081,7 @@ export function ContinuousChatOverlay({
                     />
                   )}
                 </div>
-              </div>
+              </motion.div>
             </>
           )}
         </motion.fieldset>

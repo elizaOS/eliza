@@ -924,6 +924,37 @@ try {
     );
     await p.close();
   }
+
+  // MAXIMIZE-FROM-HALF: tapping maximize at the HALF detent rises to FULL and
+  // goes edge-to-edge (was a no-op — full-bleed required the FULL flag). And the
+  // full-screen panel fills top-to-bottom with no gap at the bottom.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(600);
+    await gesture(p, 90, { pointer: "mouse", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    assert((await detent(p)) === "half", "MAX-HALF: at half before maximize");
+    await p.getByTestId("chat-full-maximize").click();
+    await p.waitForTimeout(SETTLE);
+    assert(
+      (await p
+        .locator('[data-testid="chat-sheet"][data-maximized="true"]')
+        .count()) === 1,
+      "MAX-HALF: maximize from HALF goes full-screen",
+    );
+    const box = await p.getByTestId("chat-sheet").boundingBox();
+    const vh = await p.evaluate(() => window.innerHeight);
+    assert(
+      !!box && box.y <= 8 && box.y + box.height >= vh - 2,
+      `MAX-HALF: full-screen fills top-to-bottom — no bottom gap (y=${Math.round(
+        box?.y ?? -1,
+      )}, bottom=${Math.round((box?.y ?? 0) + (box?.height ?? 0))}, vh=${vh})`,
+    );
+    await p.close();
+  }
 } finally {
   await browser.close();
 }

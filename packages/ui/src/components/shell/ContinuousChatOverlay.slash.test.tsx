@@ -33,6 +33,7 @@ function makeController(
     handsFree: false,
     toggleHandsFree: vi.fn(),
     setDictationSink: vi.fn(),
+    setComposerHasDraft: vi.fn(),
     clearConversation: vi.fn(),
     ...overrides,
   } as unknown as ShellController;

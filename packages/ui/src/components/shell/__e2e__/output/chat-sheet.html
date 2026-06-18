@@ -26332,6 +26332,7 @@
       handsFree,
       toggleHandsFree,
       setDictationSink,
+      setComposerHasDraft,
       transcript,
       speaking,
       agentVoiceMuted,
@@ -26376,6 +26377,7 @@
     const pushToTalkTimerRef = React7.useRef(null);
     const pushToTalkActiveRef = React7.useRef(false);
     const suppressMicClickRef = React7.useRef(false);
+    const prevPilledRef = React7.useRef(pilled);
     const visibleMessages = React7.useMemo(
       () => messages.filter((m2) => m2.content.trim()).slice(-MAX_RENDERED_MESSAGES),
       [messages]
@@ -26388,6 +26390,10 @@
     const responding = phase === "responding";
     const hasDraft = draft.trim().length > 0;
     const hasImages = pendingImages.length > 0;
+    const justUnpilled = prevPilledRef.current && !pilled;
+    React7.useEffect(() => {
+      prevPilledRef.current = pilled;
+    });
     const suggestionsVisible = SHOW_PROMPT_SUGGESTIONS && !pilled && !sheetOpen && !recording && !booting && canSend && !hasDraft && !hasImages;
     const suggestions = usePromptSuggestions(messages, {
       enabled: suggestionsVisible
@@ -26607,6 +26613,16 @@
       },
       [closeSheet, maximized, reduce]
     );
+    const toggleMaximize = React7.useCallback(() => {
+      if (maximized) {
+        setMaximized(false);
+        return;
+      }
+      setFreeH(null);
+      setSheetOpen(true);
+      setExpanded(true);
+      setMaximized(true);
+    }, [maximized]);
     React7.useEffect(() => {
       if (draggingRef.current) return;
       if (reduce) {
@@ -26649,6 +26665,9 @@
       });
       return () => setDictationSink(null);
     }, [setDictationSink, expand]);
+    React7.useEffect(() => {
+      setComposerHasDraft(hasDraft);
+    }, [hasDraft, setComposerHasDraft]);
     const slashMenu = useSlashMenu(draft, slash);
     const isSlashDraft = parseSlashDraft(draft).isSlash;
     const slashOpen = slashMenu.open && !slashDismissed;
@@ -26676,7 +26695,7 @@
           newConversation: () => controller.clearConversation(),
           // The overlay owns full-screen via the `maximized` detent flag, not a
           // controller method, so toggle it directly here.
-          toggleFullscreen: () => setMaximized((v) => !v),
+          toggleFullscreen: toggleMaximize,
           openCommandPalette: slash.openCommandPalette,
           showCommands: slash.openCommandPalette,
           send: (text) => submitText(text)
@@ -26685,7 +26704,7 @@
         setSlashDismissed(true);
         inputRef.current?.focus();
       },
-      [slash, controller, submitText]
+      [slash, controller, submitText, toggleMaximize]
     );
     const pickSlashItem = React7.useCallback(
       (index) => {
@@ -26842,7 +26861,12 @@
         style: {
           zIndex: Z_SHELL_OVERLAY,
           bottom: keyboardInset,
-          paddingBottom: composerFocused ? "0.75rem" : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.25rem)"
+          // Full-bleed fills the screen edge-to-edge: NO overlay bottom padding,
+          // so the glass panel reaches the true bottom (no orange gap). The
+          // gesture-zone clearance moves INSIDE the composer row (below) so the
+          // input still sits above the home-gesture bar. Non-full-bleed keeps the
+          // chat lifted off the gesture zone as before.
+          paddingBottom: fullBleed ? 0 : composerFocused ? "0.75rem" : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.25rem)"
         },
         "data-testid": "continuous-chat-overlay",
         "data-open": sheetOpen ? "true" : void 0,
@@ -27044,7 +27068,7 @@
                                   icon: maximized ? Minimize2 : Maximize2,
                                   label: maximized ? "exit full screen" : "full screen",
                                   active: maximized,
-                                  onClick: () => setMaximized((v) => !v),
+                                  onClick: toggleMaximize,
                                   testId: "chat-full-maximize"
                                 }
                               ),
@@ -27181,8 +27205,11 @@
                         }
                       ),
                       /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
-                        "div",
+                        motion.div,
                         {
+                          initial: justUnpilled && !reduce ? { opacity: 0, y: 14 } : false,
+                          animate: { opacity: 1, y: 0 },
+                          transition: { duration: reduce ? 0 : 0.26, ease: OVERLAY_EASE },
                           className: cn(
                             // items-center vertically centers a single-line composer with
                             // the round +/mic buttons (the common case); a multi-line draft
@@ -27195,6 +27222,9 @@
                             "relative z-10 flex min-w-0 shrink-0 items-center gap-1.5 px-2 py-2 sm:gap-2",
                             sheetOpen ? "border-t border-white/10" : ""
                           ),
+                          style: fullBleed && !composerFocused ? {
+                            paddingBottom: "calc(0.5rem + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)))"
+                          } : void 0,
                           children: [
                             slashProp && !slashDismissed ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                               SlashCommandMenu,
@@ -27501,6 +27531,8 @@
       toggleRecording,
       toggleHandsFree,
       setDictationSink,
+      setComposerHasDraft: (_hasDraft) => {
+      },
       startRecording,
       stopRecording,
       toggleAgentVoiceMute,

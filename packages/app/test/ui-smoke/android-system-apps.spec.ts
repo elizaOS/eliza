@@ -216,19 +216,15 @@ test("Phone, Contacts, WiFi, Messages, and Device Settings handle core interacti
   await expect(
     page.getByText(/^(No recent calls\.|phone\.recent\.empty)$/),
   ).toBeVisible();
-  const phoneContactsTab = page.getByRole("tab", {
-    name: /^(Contacts|phone\.tabs\.contacts)$/,
-  });
-  if (await phoneContactsTab.isEnabled()) {
-    await phoneContactsTab.click();
-    await expect(
-      page.getByText(
-        /^(No contacts with phone numbers\.|phone\.contacts\.empty)$/,
-      ),
-    ).toBeVisible();
-  } else {
-    await expect(phoneContactsTab).toBeDisabled();
-  }
+  // Phone no longer embeds a Contacts tab — it links to the separate Contacts
+  // view via a header button (refactor 446382f90a). Assert the Contacts tab is
+  // gone and the Contacts nav affordance is present + enabled instead.
+  await expect(
+    page.getByRole("tab", { name: /^(Contacts|phone\.tabs\.contacts)$/ }),
+  ).toHaveCount(0);
+  const phoneContactsNav = page.getByTestId("phone-open-contacts");
+  await expect(phoneContactsNav).toBeVisible();
+  await expect(phoneContactsNav).toBeEnabled();
   await expectNoIssues(page, issues.splice(0), "phone interactions");
   await page.close();
 
