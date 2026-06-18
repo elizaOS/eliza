@@ -7,14 +7,7 @@
  * plugin file should clone before mutating to avoid cross-agent contamination.
  */
 
-import { NAVIGATION_COMMANDS } from "./navigation-commands";
-import type {
-	CommandCategory,
-	CommandDefinition,
-	CommandScope,
-	CommandSurface,
-	CommandTarget,
-} from "./types";
+import type { CommandDefinition } from "./types";
 
 // Default command definitions (frozen reference — never mutate these directly)
 export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
@@ -104,10 +97,6 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		scope: "both",
 		category: "session",
 		acceptsArgs: false,
-		// Client-side action (new conversation in the UI) — no agent round-trip,
-		// and no connector surface, so chat connectors don't expose it.
-		surfaces: ["gui", "tui"],
-		target: { kind: "client", clientAction: "new-conversation" },
 	},
 	{
 		key: "compact",
@@ -343,11 +332,7 @@ let activeStore: CommandStore = fallbackStore;
  */
 export function initForRuntime(agentId: string): void {
 	const store: CommandStore = {
-		// Agent-capability commands + the surface-agnostic navigation/client
-		// catalog form one registry (keys are disjoint between the two sets).
-		commands: [...DEFAULT_COMMANDS, ...NAVIGATION_COMMANDS].map((c) => ({
-			...c,
-		})),
+		commands: DEFAULT_COMMANDS.map((c) => ({ ...c })),
 		aliasMap: null,
 	};
 	runtimeStores.set(agentId, store);
@@ -481,96 +466,4 @@ export function startsWithCommand(text: string): CommandDefinition | undefined {
 	}
 
 	return undefined;
-}
-
-/** A command arg projected to a JSON-safe shape (function choices resolved out). */
-export interface SerializedCommandArg {
-	name: string;
-	description: string;
-	required: boolean;
-	/** Static choices only; `undefined` for function-resolved (`dynamicChoices`) args. */
-	choices: string[] | undefined;
-	dynamicChoices: string | undefined;
-	captureRemaining: boolean | undefined;
-}
-
-/** A command projected to a plain, JSON-round-trippable shape connectors read. */
-export interface SerializedCommand {
-	key: string;
-	nativeName: string;
-	description: string;
-	textAliases: string[];
-	scope: CommandScope;
-	category: CommandCategory | undefined;
-	acceptsArgs: boolean;
-	args: SerializedCommandArg[];
-	argsParsing: "none" | "positional" | undefined;
-	requiresAuth: boolean;
-	requiresElevated: boolean;
-	enabled: boolean;
-	surfaces: CommandSurface[] | undefined;
-	target: CommandTarget;
-	icon: string | undefined;
-}
-
-/**
- * Enabled commands available on a given surface. A command with no `surfaces`
- * is available everywhere; one with an explicit list is restricted to it (so a
- * GUI-only command is never returned for `discord`/`telegram`).
- */
-export function getCommandsForSurface(
-	surface: CommandSurface,
-): CommandDefinition[] {
-	return activeStore.commands.filter(
-		(cmd) =>
-			cmd.enabled !== false &&
-			(cmd.surfaces === undefined || cmd.surfaces.includes(surface)),
-	);
-}
-
-/**
- * Project a command to a connector-neutral, JSON-safe descriptor: native name,
- * static arg choices (function-valued choices resolve to `undefined`; the
- * `dynamicChoices` hint is preserved for in-app surfaces), the boolean flags
- * defaulted, and the routing target (defaulting to the agent). Each connector
- * adapts this to its native command API.
- */
-export function serializeCommand(command: CommandDefinition): SerializedCommand {
-	return {
-		key: command.key,
-		nativeName: command.nativeName ?? command.key,
-		description: command.description,
-		textAliases: command.textAliases,
-		scope: command.scope,
-		category: command.category,
-		acceptsArgs: command.acceptsArgs ?? false,
-		args: (command.args ?? []).map((arg) => ({
-			name: arg.name,
-			description: arg.description,
-			required: arg.required ?? false,
-			choices: Array.isArray(arg.choices) ? arg.choices : undefined,
-			dynamicChoices: arg.dynamicChoices,
-			captureRemaining: arg.captureRemaining,
-		})),
-		argsParsing: command.argsParsing,
-		requiresAuth: command.requiresAuth ?? false,
-		requiresElevated: command.requiresElevated ?? false,
-		enabled: command.enabled !== false,
-		surfaces: command.surfaces,
-		target: command.target ?? { kind: "agent" },
-		icon: command.icon,
-	};
-}
-
-/**
- * Serialize the whole enabled catalog, optionally filtered to a surface. The
- * data source for navigation/connector clients building a command list.
- */
-export function serializeCommands(
-	surface?: CommandSurface,
-): SerializedCommand[] {
-	const commands = surface
-		? getCommandsForSurface(surface)
-		: getEnabledCommands();
-	return commands.map(serializeCommand);
 }
