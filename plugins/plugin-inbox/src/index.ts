@@ -11,6 +11,21 @@ export { InboxView } from "./components/inbox/InboxView.tsx";
 // subpath `@elizaos/plugin-inbox/inbox/gmail-normalize` (avoids pulling the
 // React view / plugin definition into service-layer callers).
 export * from "./inbox/gmail-normalize.ts";
+export type {
+  EmailSubscriptionScanResult,
+  EmailSubscriptionScanSummary,
+  EmailSubscriptionSender,
+  EmailUnsubscribeMethod,
+  EmailUnsubscribeRecord,
+  EmailUnsubscribeRequest,
+  EmailUnsubscribeResult,
+  EmailUnsubscribeScanRequest,
+  EmailUnsubscribeStatus,
+} from "./inbox/email-unsubscribe-types.ts";
+export {
+  createInboxGmailGateway,
+  type InboxGmailGateway,
+} from "./inbox/google-gmail-seam.ts";
 export { InboxRepository } from "./inbox/repository.ts";
 export {
   InboxService,
@@ -19,6 +34,11 @@ export {
   type TriageOptions,
   type TriageRunResult,
 } from "./inbox/service.ts";
+export { InboxUnsubscribeRepository } from "./inbox/unsubscribe-repository.ts";
+export {
+  InboxUnsubscribeService,
+  type InboxUnsubscribeServiceDeps,
+} from "./inbox/unsubscribe-service.ts";
 export type {
   InboundMessage,
   OwnerAction,
