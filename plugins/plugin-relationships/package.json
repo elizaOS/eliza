@@ -88,6 +88,12 @@
   "publishConfig": {
     "access": "public"
   },
+  "elizaos": {
+    "app": {
+      "displayName": "Relationships",
+      "category": "personal"
+    }
+  },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {}
