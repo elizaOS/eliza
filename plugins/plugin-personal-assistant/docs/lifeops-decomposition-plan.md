@@ -657,6 +657,25 @@ live-LLM seam extends to goals' semantic-evaluator and calendar (both use useMod
 NOTE: external-connector live tests (Gmail/Strava/Plaid) still need real OAuth tokens —
 the local-LLM lane covers the model-driven decomposed logic, not the connector fetches.
 
+### Session 2026-06-18 (round 22) — desktop (Electrobun) platform lane: shell boots headlessly on Linux + a real fix
+Pursued the desktop platform (the 3rd of 5; same Electrobun shell ships on mac/windows).
+A Linux Electrobun build already exists (`build/dev-linux-x64/Eliza-dev/bin/launcher` +
+bundled bun) and xvfb is available. The packaged desktop e2e
+(`test:desktop:packaged` → `playwright.electrobun.packaged.config.ts`, suite in
+`test/electrobun-packaged/`) initially failed: the spawned WebKitGTK webview died with
+"Authorization required … cannot open display :99". Root cause + FIX (commit 859117b4e0):
+the Linux env builder in `packaged-app-helpers.ts` forwarded DISPLAY but not XAUTHORITY,
+and `buildMinimalMacEnv` is an allowlist that drops it — so under any headless X server
+(xvfb / CI) the child can't authenticate. Forwarded XAUTHORITY when present. After the
+fix the packaged Eliza desktop app LAUNCHES under xvfb, the webview RENDERS the startup
+shell ("elizaOS Initializing agent…"), and the Playwright test bridge CONNECTS — i.e. the
+desktop SHELL e2e infrastructure runs on Linux headlessly now (was completely unrunnable
+before). The remaining gate is the embedded agent-runtime reaching `ready` (stuck at
+`startupPhase:"starting-runtime"` within 60s) — the same heavy-embedded-full-agent-boot
+constraint as Android-native in a constrained sandbox, NOT a display/shell problem. Net:
+desktop went from "can't run here" → "shell launches+renders+bridges on headless Linux;
+agent-ready boot is the residual constraint", plus a real CI-unblocking fix shipped.
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
