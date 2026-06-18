@@ -113,9 +113,20 @@ public class MainActivity extends BridgeActivity {
         // the user opens the app.
         if (ElizaAgentService.shouldAutoStart(this)) {
             ElizaAgentService.start(this);
+            // Ask for notification consent only once the user (or the device
+            // image) has actually committed to running the on-device agent.
+            // A fresh stock install auto-starts the service so the dashboard
+            // has something to talk to, but the user has chosen nothing yet —
+            // cold-asking there is the first-run nag we want to avoid
+            // (iOS-style: ask only when there is a reason). The foreground
+            // service still runs without the grant; its notification is just
+            // suppressed until later granted in settings or on a later launch
+            // once a runtime mode is persisted.
+            if (ElizaAgentService.hasCommittedRuntimeChoice(this)) {
+                requestPostNotificationsIfNeeded();
+            }
         }
 
-        requestPostNotificationsIfNeeded();
         ElizaWorkScheduler.enqueuePeriodic(getApplicationContext());
     }
 

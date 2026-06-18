@@ -121,7 +121,14 @@ resource "hcloud_server_network" "app_node" {
 
   server_id  = each.value.id
   network_id = local.apps_network_id
-  ip         = cidrhost(local.apps_subnet_cidr, 20 + tonumber(each.key))
+  # staging + production app nodes share the apps-shared subnet, so the private-IP
+  # offset MUST be partitioned per environment or the prod node #1 collides with
+  # the staging node #1 (both at host 21 → "API request failed" on attach).
+  # staging → 21,22,…  production → 31,32,… (DB node is host 10).
+  ip = cidrhost(
+    local.apps_subnet_cidr,
+    (var.environment == "production" ? 30 : 20) + tonumber(each.key),
+  )
 }
 
 # ── Ingress DNS: wildcard for per-app URLs -> app node (single-node draft) ─────

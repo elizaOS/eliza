@@ -334,13 +334,16 @@ function UserMenuInner({ preserveWhileUnauthed = false }: UserMenuProps) {
       // Clear chat data (rooms, entityId, localStorage)
       clearChatData();
 
+      // Server-side logout first, while the Steward session cookie is still
+      // present, so it can end all sessions + clear cookies. Then drop the
+      // local Steward token and belt-and-suspenders the cookie clear.
+      await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
       if (stewardAuthenticated) {
         stewardSignOut();
         await fetch(STEWARD_SESSION_ENDPOINT, { method: "DELETE" }).catch(
           () => {},
         );
       }
-      await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
 
       // Use replace to avoid browser history pollution
       // This prevents back button issues after re-login
