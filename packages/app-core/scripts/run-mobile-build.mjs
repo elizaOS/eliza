@@ -6176,6 +6176,29 @@ function auditAndroidSideloadArtifact({ javaHome } = {}) {
   return artifact;
 }
 
+function auditAndroidSystemArtifact({ javaHome } = {}) {
+  // The AOSP/system target gets the web-payload mirror like the other three
+  // sync targets, but the privileged release APK still needs the same positive
+  // artifact audit or it could ship web-less (ERR_CONNECTION_REFUSED) silently —
+  // the exact regression class #8387 closes. `-PelizaAospBuild=true` preserves
+  // assets/agent, so requireAgent stays true here like the sideload path.
+  const artifact = findAndroidSystemApk();
+  if (!artifact) {
+    throw new Error(
+      "[mobile-build] android-system release APK was not found under app/build/outputs/apk/release/.",
+    );
+  }
+  const entries = listAndroidArtifactEntries(artifact, javaHome);
+  assertAndroidArtifactShipsWebPayload(artifact, entries, {
+    requireAgent: true,
+    label: "android-system",
+  });
+  console.log(
+    `[mobile-build] android-system artifact audit passed: ${artifact}`,
+  );
+  return artifact;
+}
+
 function findAndroidCloudAab() {
   const releaseBundleDir = path.join(
     androidDir,
@@ -6810,6 +6833,7 @@ async function buildAndroidSystem() {
     cwd: androidDir,
     env,
   });
+  auditAndroidSystemArtifact({ javaHome: jdk });
   stageAndroidSystemApk();
 }
 

@@ -973,6 +973,10 @@ export class OrchestratorTaskService extends Service {
           evidence: verdict.rawResponse || completionEvidence,
           verifier: LLM_GOAL_VERIFIER_NAME,
         });
+        // Notify live subscribers (SSE/UI) — this is a fire-and-forget hook with
+        // no HTTP response to refresh the client, so emitChange is the only
+        // signal that the task left `validating`. Every other branch emits too.
+        this.emitChange(taskId);
         return;
       }
 
