@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="Todos">
+  <defs>
+    <linearGradient id="bg-todos" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#282615"/>
+      <stop offset="1" stop-color="#18190b"/>
+    </linearGradient>
+    <radialGradient id="blobA-todos" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#dac32f" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#dac32f" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="blobB-todos" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#8fc328" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#8fc328" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="vig-todos" cx="0.5" cy="0.42" r="0.75">
+      <stop offset="0" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="0.72" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.5"/>
+    </radialGradient>
+    <linearGradient id="label-todos" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.55"/>
+    </linearGradient>
+    <filter id="soft-todos" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="46"/>
+    </filter>
+    <filter id="iglow-todos" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="0" stdDeviation="14" flood-color="#edd645" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" fill="url(#bg-todos)"/>
+
+  <g opacity="0.9">
+    <circle cx="232" cy="220" r="300" fill="url(#blobA-todos)" filter="url(#soft-todos)"/>
+    <circle cx="840" cy="800" r="340" fill="url(#blobB-todos)" filter="url(#soft-todos)"/>
+  </g>
+
+  <g stroke="#eae7d7" stroke-width="1.4" opacity="0.06">
+    <line x1="0" y1="256" x2="1024" y2="256"/>
+    <line x1="0" y1="512" x2="1024" y2="512"/>
+    <line x1="0" y1="768" x2="1024" y2="768"/>
+    <line x1="256" y1="0" x2="256" y2="1024"/>
+    <line x1="512" y1="0" x2="512" y2="1024"/>
+    <line x1="768" y1="0" x2="768" y2="1024"/>
+  </g>
+
+  <g opacity="0.5">
+    <path d="M120 470 A 400 400 0 0 1 904 470" fill="none" stroke="#edd645" stroke-width="3" opacity="0.35"/>
+  </g>
+
+  <g transform="translate(512 432)" filter="url(#iglow-todos)"
+     color="#eae7d7" stroke="#eae7d7" stroke-width="20"
+     stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <rect x="-150" y="-150" width="300" height="300" rx="36"/>
+    <polyline points="-92,-6 -36,52 92,-78" fill="none"/>
+  </g>
+
+  <rect x="0" y="784" width="1024" height="240" fill="url(#label-todos)"/>
+  <text x="512" y="892" text-anchor="middle"
+        font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+        font-size="76" font-weight="600" letter-spacing="0.5"
+        fill="#eae7d7">Todos</text>
+  <rect x="460" y="924" width="104" height="6" rx="3" fill="#edd645"/>
+
+  <rect width="1024" height="1024" fill="url(#vig-todos)"/>
+</svg>
