@@ -21,7 +21,24 @@ export class DirectPgExecutor implements TenantDbSqlExecutor {
   }
 
   private async run(connectionString: string, statements: readonly string[]): Promise<void> {
-    const client = new Client({ connectionString });
+    // The apps tenant Postgres is a self-managed node on the PRIVATE apps
+    // network (10.30.x), provisioned with a self-signed cert. Current `pg`
+    // parses `sslmode=require` in the DSN as `verify-full` and rejects the
+    // self-signed chain ("self-signed certificate") — which would fail EVERY
+    // tenant-DB provision in prod. Strip `sslmode` from the DSN textually (NOT
+    // via `new URL().toString()`, which re-encodes the userinfo and can corrupt
+    // the admin password) and set `ssl` explicitly: still TLS in-transit, but
+    // skip CA-chain verification (safe — already private-network isolated). A
+    // DSN-level `sslmode` would otherwise win over an explicit `ssl` object.
+    // Verified live against the prod tenant DB (10.30.1.10) via the apps-control
+    // node e2e (connection reaches auth; the self-signed reject is gone).
+    const cleaned = connectionString
+      .replace(/[?&]sslmode=[^&]*/gi, (m) => (m[0] === "?" ? "?" : ""))
+      .replace(/\?$/, "");
+    const client = new Client({
+      connectionString: cleaned,
+      ssl: { rejectUnauthorized: false },
+    });
     await client.connect();
     try {
       for (const sql of statements) {
