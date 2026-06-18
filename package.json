@@ -418,7 +418,6 @@
   },
   "trustedDependencies": [
     "@biomejs/biome",
-    "@discordjs/opus",
     "@elizaos/plugin-starter",
     "@nestjs/core",
     "@openapitools/openapi-generator-cli",
