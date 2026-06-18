@@ -350,6 +350,26 @@ Remaining back-end: goals (service-mixin-goals 1.5k + lifeGoal* tables — tract
 next) and inbox (~9k, gmail/triage/curation — largest, entangled w/ connectors +
 approval-queue). Same proven pattern + the partial-extraction discipline.
 
+### Session 2026-06-18 (rounds 6-7) — inbox + goals back-ends migrated
+- `d33e9ed042` **inbox triage back-end** → plugin-inbox: INBOX action +
+  InboxService + InboxRepository + inboxTriage provider + domain modules; 40 tests.
+  Repo schema decision (a): keep `app_lifeops.life_inbox_triage_entries` (PA
+  getInbox spine co-owns it). DELEGATED (stays in PA): service-mixin-inbox.getInbox
+  (backs the route/view), gmail/email-curation/bulk-review/cross-channel-search.
+- `b9698f8675` **goal CRUD back-end** → plugin-goals: GoalsService + GoalsRepository
+  + real OWNER_GOALS action; 23 tests. Schema (a) shared (reminders read life_goal_*).
+  DELEGATED: reminder-plan coupling + cross-domain goal review/overview + audit/
+  ownership (injected hooks).
+
+DECOMPOSITION STATUS: backends migrated for **finances (full), inbox (triage core),
+goals (CRUD core)** + blocker engine + ALL 8 views. Each: focused plugin owns the
+movable domain; PA delegates; connector/spine/cross-domain coupling stays in PA
+behind a documented seam (the recurring, correct boundary).
+Remaining: remote-desktop (small, low-coupling — next), relationships (entity graph
+— OWNER DECISION), and the legitimately-hub reminders/scheduling spine. Plus the
+delegated sub-backends (subscriptions, gmail-curation, goal-review, getInbox) which
+need connector-contract seams first. 5-OS e2e remains environment-bounded.
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
