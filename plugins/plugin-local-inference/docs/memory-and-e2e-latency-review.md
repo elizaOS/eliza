@@ -143,7 +143,12 @@ High confidence (implement + verify):
 4. **Pin VAD + active text model in voice mode; pre-warm next stage** — removes
    cold-load stalls between ASR and TTS. (`pipeline.ts`, `memory-arbiter.ts`)
 5. **Lower/condition the phrase-flush budget + flush on first clause** — cut up to
-   ~700 ms off TTFA. (`phrase-chunker.ts`)
+   ~700 ms off TTFA. (`phrase-chunker.ts`) — ✅ **done.** The first phrase of each
+   reply now flushes on a shorter `firstPhraseMaxAccumulationMs` budget (derived =
+   `min(350, maxAccumulationMs/2)`, env `ELIZA_PHRASE_FLUSH_FIRST_MS`, reset per
+   reply); later phrases keep the full 700 ms so the bulk is not fragmented.
+   Clause-boundary flush (`, : ;`) already shipped. The scheduler picks the
+   shorter window up automatically via `msUntilTimeBudget()`.
 
 Medium:
 6. KV reuse for voice partials (don't reset history when the prefix is stable). (`engine.ts:721`)
