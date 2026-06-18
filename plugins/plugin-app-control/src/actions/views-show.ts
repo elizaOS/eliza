@@ -128,32 +128,99 @@ function readStringOpt(
 // routes to the task-coordinator (coding-agent) view.
 const INTENT_VIEW_RULES: ReadonlyArray<{ re: RegExp; viewId: string }> = [
 	{
-		re: /\b(add (a |an )?(new )?feature|build (me )?(an? )?(new )?app|app builder|work on my app|coding view|code something|write some code)\b/i,
+		re: /\b(add (a |an )?(new )?feature|build (me )?(an? )?(new )?app|app builder|work on my app|coding view|code something|write some code|ship (a |an )?feature)\b/i,
 		viewId: "task-coordinator",
 	},
 	{
-		re: /\b(what'?s on my (calendar|agenda|schedule)|what is on my (calendar|agenda|schedule)|my (calendar|agenda|schedule))\b/i,
+		re: /\b(what'?s on my (calendar|agenda|schedule)|what is on my (calendar|agenda|schedule)|my (calendar|agenda|schedule)|my next (meeting|event|appointment)|am i free)\b/i,
 		viewId: "calendar",
 	},
 	{
-		re: /\b(check (my )?messages|my messages|my (e-?mail|inbox|mail)|check my (e-?mail|inbox|mail))\b/i,
+		re: /\b(check (my )?messages|my messages|my (e-?mail|inbox|mail)|check my (e-?mail|inbox|mail)|any new (e-?mail|messages|mail)|triage my inbox)\b/i,
 		viewId: "inbox",
 	},
 	{
-		re: /\b(my wallet|my balance|my portfolio|my crypto|my funds)\b/i,
+		re: /\b(my wallet|my balance|my portfolio|my crypto|my funds|my tokens|my holdings)\b/i,
 		viewId: "wallet",
 	},
 	{
-		re: /\b(i need to focus|help me focus|focus mode|block (out )?distractions|stop distractions)\b/i,
+		re: /\b(my finances|my spending|my money|my budget|my transactions|my bank|how much (did|have) i (spend|spent)|recurring charges|my subscriptions)\b/i,
+		viewId: "finances",
+	},
+	{
+		re: /\b(i need to focus|help me focus|focus mode|block (out )?distractions|stop distractions|deep work)\b/i,
 		viewId: "focus",
 	},
 	{
-		re: /\b(my goals|my routines|my reminders)\b/i,
+		re: /\b(my goals|my routines|my reminders|my alarms|my habits)\b/i,
 		viewId: "goals",
 	},
 	{
-		re: /\b(my health|my sleep|my screen time|my activity)\b/i,
+		re: /\b(my health|my sleep|my screen ?time|my activity|my steps|my workouts?|how did i sleep)\b/i,
 		viewId: "health",
+	},
+	{
+		re: /\b(my (to-?dos?|tasks|task list|checklist)|what('?s| is) on my (to-?do|task) list|things to do)\b/i,
+		viewId: "todos",
+	},
+	{
+		re: /\b(my (documents?|files?|notes?|papers?)|my docs|pull up (the |my )?(documents?|files?|notes?))\b/i,
+		viewId: "documents",
+	},
+	{
+		re: /\b(my (contacts?|relationships?|people|network|address book)|who do i know|my rolodex)\b/i,
+		viewId: "relationships",
+	},
+	{
+		re: /\b(my companion|the companion|companion view|my avatar)\b/i,
+		viewId: "companion",
+	},
+	// --- Multilingual deterministic rules ---
+	// Milady is local-first; a small/local model may not reliably route a
+	// non-English navigation request, so the deterministic safety net handles the
+	// common surfaces in major languages too. Anchored on a possessive
+	// (mi/mon/mein/我的/내) or a navigation verb (muéstrame/montre-moi/zeig/打开/
+	// 보여줘/열어) immediately around a surface noun, so they only fire on genuine
+	// navigation intent. Match against the lowercased message.
+	{
+		re: /(?:mi|mon|mein|我的|내\s?)\s*(?:calendario|calendrier|kalender|日历|カレンダー|캘린더|agenda)|(?:mu[eé]strame|montre-moi|zeig mir|打开|显示|보여줘|열어)[\s\S]{0,12}(?:calendario|calendrier|kalender|日历|캘린더)/i,
+		viewId: "calendar",
+	},
+	{
+		re: /(?:mi|mis|mon|mes|mein|meine|我的|내\s?)\s*(?:correo|bandeja|mensajes|courrier|messages|nachrichten|postfach|邮件|消息|메시지|메일)|(?:mu[eé]strame|montre-moi|zeig mir|打开|显示|보여줘|열어)[\s\S]{0,12}(?:correo|mensajes|messages|nachrichten|邮件|메시지)/i,
+		viewId: "inbox",
+	},
+	{
+		re: /(?:mi|mis|mon|mes|mein|meine|我的|내\s?)\s*(?:cartera|billetera|portefeuille|brieftasche|geldb[oö]rse|钱包|지갑|wallet)/i,
+		viewId: "wallet",
+	},
+	{
+		re: /(?:mis|mes|meine|我的)\s*(?:finanzas|gastos|finances|d[eé]penses|finanzen|财务|花费|开销)|(?:cu[aá]nto (?:gast[eé]|he gastado)|combien (?:j'ai d[eé]pens[eé]))/i,
+		viewId: "finances",
+	},
+	{
+		re: /(?:mis|mes|meine|我的|내\s?)\s*(?:metas|objetivos|objectifs|ziele|目标|목표|routines?|rutinas)/i,
+		viewId: "goals",
+	},
+	{
+		re: /(?:mi|ma|mein|meine|我的|내\s?)\s*(?:salud|sue[nñ]o|sant[eé]|sommeil|gesundheit|健康|睡眠|건강)/i,
+		viewId: "health",
+	},
+	{
+		re: /(?:mis|mes|meine|我的|내\s?)\s*(?:tareas|pendientes|t[aâ]ches|aufgaben|待办|任务|할\s?일|todos?)/i,
+		viewId: "todos",
+	},
+	{
+		re: /(?:mis|mes|meine|我的|내\s?)\s*(?:documentos|archivos|documents|fichiers|dokumente|dateien|文档|文件|문서)/i,
+		viewId: "documents",
+	},
+	{
+		re: /(?:mis|mes|meine|我的|내\s?)\s*(?:contactos|contacts|kontakte|联系人|연락처|relaciones|relations)/i,
+		viewId: "relationships",
+	},
+	{
+		re: /(?:concentrarme|necesito concentrarme|me concentrer|konzentrieren|专注|集中|집중)|modo (?:enfoque|concentraci[oó]n)|mode concentration/i,
+		viewId: "focus",
 	},
 ];
 

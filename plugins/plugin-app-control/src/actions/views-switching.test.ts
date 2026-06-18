@@ -15,6 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createViewsAction } from "./views.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
+import { resolveIntentView } from "./views-show.js";
 
 const coreMock = vi.hoisted(() => ({
 	logger: {
@@ -573,5 +574,128 @@ describe("view switching — VIEWS action resolver", () => {
 				).toBeFalsy();
 			}
 		});
+	});
+});
+
+// Deterministic intent->view mapping (resolveIntentView) — the local-first
+// safety net that routes passive/implicit navigation to a concrete view id
+// without an LLM. Covers the expanded English surfaces, generic phrasings, AND
+// major non-English languages so view switching works even on small/local
+// models. resolveIntentView is pure (text -> viewId|null).
+describe("resolveIntentView — expanded surfaces + multilingual", () => {
+	describe("English: every domain surface routes to its view", () => {
+		const EN_CASES: ReadonlyArray<readonly [string, string]> = [
+			["what's on my calendar", "calendar"],
+			["am I free this afternoon", "calendar"],
+			["check my email", "inbox"],
+			["any new messages", "inbox"],
+			["show my wallet", "wallet"],
+			["my portfolio", "wallet"],
+			["how much did I spend this month", "finances"],
+			["my subscriptions", "finances"],
+			["I need to focus", "focus"],
+			["block out distractions", "focus"],
+			["my goals", "goals"],
+			["my routines", "goals"],
+			["my health", "health"],
+			["how did I sleep", "health"],
+			["what's on my to-do list", "todos"],
+			["my tasks", "todos"],
+			["pull up my documents", "documents"],
+			["my notes", "documents"],
+			["who do I know at Acme", "relationships"],
+			["my contacts", "relationships"],
+			["I want to add a new feature to my app", "task-coordinator"],
+			["open the app builder", "task-coordinator"],
+		];
+		it.each(EN_CASES)('"%s" -> %s', (phrase, viewId) => {
+			expect(resolveIntentView(phrase)).toBe(viewId);
+		});
+	});
+
+	describe("Spanish (es)", () => {
+		const ES_CASES: ReadonlyArray<readonly [string, string]> = [
+			["muéstrame mi calendario", "calendar"],
+			["mi calendario", "calendar"],
+			["revisa mi correo", "inbox"],
+			["mis mensajes", "inbox"],
+			["abre mi cartera", "wallet"],
+			["mi billetera", "wallet"],
+			["cuánto gasté este mes", "finances"],
+			["mis finanzas", "finances"],
+			["necesito concentrarme", "focus"],
+			["mis metas", "goals"],
+			["mis objetivos", "goals"],
+			["mi salud", "health"],
+			["mis tareas", "todos"],
+			["mis documentos", "documents"],
+			["mis contactos", "relationships"],
+		];
+		it.each(ES_CASES)('"%s" -> %s', (phrase, viewId) => {
+			expect(resolveIntentView(phrase)).toBe(viewId);
+		});
+	});
+
+	describe("French (fr)", () => {
+		const FR_CASES: ReadonlyArray<readonly [string, string]> = [
+			["montre-moi mon calendrier", "calendar"],
+			["mon agenda", "calendar"],
+			["mon courrier", "inbox"],
+			["mes messages", "inbox"],
+			["mon portefeuille", "wallet"],
+			["mes finances", "finances"],
+			["mes objectifs", "goals"],
+			["ma santé", "health"],
+			["mes tâches", "todos"],
+			["mes documents", "documents"],
+			["mes contacts", "relationships"],
+			["mode concentration", "focus"],
+		];
+		it.each(FR_CASES)('"%s" -> %s', (phrase, viewId) => {
+			expect(resolveIntentView(phrase)).toBe(viewId);
+		});
+	});
+
+	describe("German (de)", () => {
+		const DE_CASES: ReadonlyArray<readonly [string, string]> = [
+			["mein kalender", "calendar"],
+			["meine nachrichten", "inbox"],
+			["mein postfach", "inbox"],
+			["meine brieftasche", "wallet"],
+			["meine finanzen", "finances"],
+			["meine ziele", "goals"],
+			["meine gesundheit", "health"],
+			["meine aufgaben", "todos"],
+			["meine dokumente", "documents"],
+			["meine kontakte", "relationships"],
+		];
+		it.each(DE_CASES)('"%s" -> %s', (phrase, viewId) => {
+			expect(resolveIntentView(phrase)).toBe(viewId);
+		});
+	});
+
+	describe("Chinese (zh)", () => {
+		const ZH_CASES: ReadonlyArray<readonly [string, string]> = [
+			["我的日历", "calendar"],
+			["我的邮件", "inbox"],
+			["我的消息", "inbox"],
+			["我的钱包", "wallet"],
+			["我的财务", "finances"],
+			["我的目标", "goals"],
+			["我的健康", "health"],
+			["我的待办", "todos"],
+			["我的文档", "documents"],
+			["我的联系人", "relationships"],
+		];
+		it.each(ZH_CASES)('"%s" -> %s', (phrase, viewId) => {
+			expect(resolveIntentView(phrase)).toBe(viewId);
+		});
+	});
+
+	it("returns null for non-navigational text (no false routing)", () => {
+		expect(resolveIntentView("thanks, that's all for now")).toBeNull();
+		expect(resolveIntentView("what's the weather like")).toBeNull();
+		expect(resolveIntentView("")).toBeNull();
+		expect(resolveIntentView(undefined)).toBeNull();
 	});
 });
