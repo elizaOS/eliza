@@ -23,7 +23,7 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
 
 // Explicit allowlist. Add a path here to opt a component in.
-const TARGETS = ["packages/ui/src/components/voice-pill/voice-pill.css"];
+const TARGETS = [];
 
 function constNameFor(cssPath) {
   const base = path.basename(cssPath, ".css");

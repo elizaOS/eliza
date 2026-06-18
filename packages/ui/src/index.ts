@@ -250,11 +250,6 @@ export { Textarea } from "./components/ui/textarea";
 export { IconTooltip } from "./components/ui/tooltip-extended";
 export { TerminalPluginView } from "./components/views/TerminalPluginView";
 export type {
-  VoicePillMessage,
-  VoicePillProps,
-} from "./components/voice-pill";
-export { VoicePill } from "./components/voice-pill";
-export type {
   ActionConfirm,
   ActionDefinition,
   ActionHandler,

@@ -314,6 +314,5 @@ export * from "./ui/textarea";
 export * from "./ui/toggle";
 export * from "./ui/tooltip";
 export * from "./ui/tooltip-extended";
-export * from "./voice-pill";
 export * from "./workspace/AppWorkspaceChrome";
 export * from "./workspace/AppWorkspaceChrome.hooks";

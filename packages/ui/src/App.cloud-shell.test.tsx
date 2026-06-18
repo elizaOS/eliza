@@ -154,7 +154,8 @@ describe("window-shell route classification (behavioral)", () => {
       mode: "surface",
       tab: "browser",
     });
-    expect(parseWindowShellRoute("?shell=pill")).toEqual({ mode: "pill" });
+    // ?shell=pill is gone (the separate voice pill was removed) → main.
+    expect(parseWindowShellRoute("?shell=pill")).toEqual({ mode: "main" });
     // Unknown surface tab is not a valid detached target → main.
     expect(parseWindowShellRoute("?shell=surface&tab=bogus")).toEqual({
       mode: "main",

@@ -1,5 +1,4 @@
 import { ErrorBoundary } from "@elizaos/ui/components/ui/error-boundary";
-import { VoicePill } from "@elizaos/ui/components/voice-pill";
 import "@elizaos/ui/styles";
 
 import { App as CapacitorApp } from "@capacitor/app";
@@ -1640,11 +1639,6 @@ function isPhoneCompanionMode(): boolean {
   return getWindowUrlSearchParams().get("mode") === "companion";
 }
 
-function isVoicePillShellMode(): boolean {
-  if (typeof window === "undefined") return false;
-  return getWindowUrlSearchParams().get("shell") === "pill";
-}
-
 function resolveAppWindowSlug(): string | null {
   if (!isAppWindowRoute()) return null;
   const path = getWindowNavigationPath();
@@ -1667,17 +1661,6 @@ function shouldLoadModelTesterShellRoute(): boolean {
 function mountReactApp(): void {
   const rootEl = document.getElementById("root");
   if (!rootEl) throw new Error("Root element #root not found");
-
-  if (isVoicePillShellMode()) {
-    createRoot(rootEl).render(
-      <ErrorBoundary>
-        <StrictMode>
-          <VoicePill ariaLabel={APP_BRANDING_BASE.appName ?? "Eliza"} />
-        </StrictMode>
-      </ErrorBoundary>,
-    );
-    return;
-  }
 
   const phoneCompanion = isPhoneCompanionMode();
   const detachedShell = isDetachedWindowShell(windowShellRoute);
@@ -2282,12 +2265,6 @@ async function main(): Promise<void> {
       "@elizaos/app-model-tester",
       () => import("@elizaos/app-model-tester"),
     );
-  }
-
-  if (isVoicePillShellMode()) {
-    setupPlatformStyles();
-    mountReactApp();
-    return;
   }
 
   await initializeAppModules();
