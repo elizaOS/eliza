@@ -371,8 +371,8 @@ agentDescribe("ElizaCloudClient real API e2e: shared agent lifecycle", () => {
       agentName: `sdk-e2e-${Date.now()}`,
       agentConfig: {},
     });
-    expect(agent).toBeDefined();
     const agent = created.data;
+    expect(agent).toBeDefined();
     if (!agent) throw new Error("createAgent returned no agent data");
     const agentId = agent.id;
     expect(agentId).toBeTruthy();
