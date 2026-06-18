@@ -279,12 +279,22 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
     setLoading(true);
     setError(null);
     try {
-      const [messageResult, statusResult] = await Promise.all([
-        Messages.listMessages({ limit: 200 }),
-        System.getStatus().catch(() => null),
-      ]);
-      setMessages(messageResult.messages);
+      // System status (default-SMS role) loads regardless so the role banner
+      // always shows. Reading/sending SMS via the bridge needs READ/SEND_SMS —
+      // request it on first open (feature-gated; idempotent). Tolerates older
+      // bridges without the request path by falling through to listMessages.
+      const statusResult = await System.getStatus().catch(() => null);
       setSystemStatus(statusResult);
+      const perm = await Messages.requestPermissions().catch(() => null);
+      if (perm && perm.sms !== "granted") {
+        setMessages([]);
+        setError(
+          "SMS access is needed to read and send messages. Grant it in your device settings, then retry.",
+        );
+        return;
+      }
+      const messageResult = await Messages.listMessages({ limit: 200 });
+      setMessages(messageResult.messages);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setMessages([]);

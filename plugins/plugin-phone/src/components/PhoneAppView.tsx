@@ -352,6 +352,17 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
     setCallsLoading(true);
     setCallsError(null);
     try {
+      // Feature-gated: request phone access on first open (idempotent — already
+      // granted never re-prompts). Tolerates older bridges without the request
+      // path by falling through to listRecentCalls.
+      const status = await Phone.requestPermissions().catch(() => null);
+      if (status && status.phone !== "granted") {
+        setCalls([]);
+        setCallsError(
+          "Phone access is needed for recent calls and dialing. Grant it in your device settings, then retry.",
+        );
+        return;
+      }
       const { calls: fetched } = await Phone.listRecentCalls({ limit: 50 });
       setCalls(fetched);
     } catch (err) {

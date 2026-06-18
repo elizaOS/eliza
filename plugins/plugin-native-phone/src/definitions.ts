@@ -58,4 +58,15 @@ export interface PhonePlugin {
   saveCallTranscript(options: SaveCallTranscriptOptions): Promise<{
     updatedAt: number;
   }>;
+  /** Current phone (CALL_PHONE/READ_CALL_LOG/READ_PHONE_STATE) permission state.
+   *  Web: granted. */
+  checkPermissions(): Promise<PhonePermissionStatus>;
+  /** Prompt for phone access (no-op grant on web). Feature-gated to the Phone
+   *  view; never requested at launch. */
+  requestPermissions(): Promise<PhonePermissionStatus>;
+}
+
+/** Runtime permission state for the phone (CALL_PHONE/READ_CALL_LOG) alias. */
+export interface PhonePermissionStatus {
+  phone: import("@capacitor/core").PermissionState;
 }

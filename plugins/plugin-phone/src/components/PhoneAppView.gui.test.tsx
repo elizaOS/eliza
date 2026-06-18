@@ -31,6 +31,8 @@ const phoneBridge = vi.hoisted(() => ({
   placeCall: vi.fn(),
   openDialer: vi.fn(),
   saveCallTranscript: vi.fn(),
+  checkPermissions: vi.fn(async () => ({ phone: "granted" })),
+  requestPermissions: vi.fn(async () => ({ phone: "granted" })),
 }));
 
 vi.mock("@elizaos/capacitor-phone", () => ({
