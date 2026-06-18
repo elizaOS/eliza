@@ -25,7 +25,7 @@ const FIRST_RUN_VARS = {
   "--first-run-text-muted": "rgba(35, 45, 60, 0.84)",
   "--first-run-card-bg": "rgba(255, 255, 255, 0.42)",
   "--first-run-card-bg-hover": "rgba(255, 255, 255, 0.52)",
-  "--first-run-card-border": "rgba(11, 53, 241, 0.14)",
+  "--first-run-card-border": "rgba(255, 88, 0, 0.16)",
 } as React.CSSProperties;
 
 function FullShell(): React.JSX.Element {
