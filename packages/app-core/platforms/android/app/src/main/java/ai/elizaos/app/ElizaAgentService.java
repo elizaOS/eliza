@@ -2198,6 +2198,23 @@ public class ElizaAgentService extends Service {
         return !"cloud".equals(mode);
     }
 
+    /**
+     * True once the user (or the device image) has actually committed to
+     * running the on-device agent — a branded device, or a stock phone whose
+     * runtime mode has been explicitly persisted by the onboarding picker.
+     *
+     * Distinct from {@link #shouldAutoStart}: a fresh stock install has no
+     * persisted mode yet, so the agent still auto-starts (so the dashboard has
+     * something to talk to) but the user has chosen nothing. We use this to
+     * avoid cold-asking for notification consent during first-run onboarding —
+     * iOS-style, we ask only after there is a committed reason (the foreground
+     * service still runs without the grant; its notification is just
+     * suppressed until later granted).
+     */
+    public static boolean hasCommittedRuntimeChoice(Context context) {
+        return isBrandedDevice() || readRuntimeMode(context) != null;
+    }
+
     private static boolean isBrandedDevice() {
         // AOSP / ElizaOS images set ro.elizaos.product. White-label forks
         // that use a different sysprop should override shouldAutoStart locally.
