@@ -173,3 +173,39 @@ harness (`stories/spatial.html`, served by `bun run --cwd packages/ui stories:de
 at `/spatial.html`) renders all three modalities side-by-side per screen;
 `?screen=<id>` isolates one. Regenerate the terminal column with
 `bun packages/ui/src/spatial/gallery-tui-gen.mjs`.
+
+## Verifying — TUI framing linter
+
+`tui/framing.ts` (`analyzeFraming`) checks a rendered block for *structural*
+correctness, not just width: uniform line width, closed + column-aligned box
+borders (including titled `╭─ Title ─╮` frames), **no nested boxes** (a single
+outer frame per view is the house style; sections use labelled dividers), and
+**no truncated buttons** (`[ label` with the closing ` ]` cut off). It gates the
+gallery (`__tests__/framing.test.ts`) and every registered plugin terminal view
+(`__tests__/plugin-framing.test.ts`) at realistic widths (56/40). Export every
+render for a human read with `tui/review-export.mjs` (gallery) and
+`tui/review-plugins.mjs` (all plugin views) → `/tmp/tui-*-review.txt`.
+
+## Verifying — TUI keyboard interaction
+
+Terminal views are interactive: `createSpatialTuiComponent` builds a focus model
+over the view's activatable buttons. **Tab / ↓ / Ctrl-N** and **Shift-Tab / ↑ /
+Ctrl-P** move focus (the focused control renders inverse + underlined); **Enter /
+Space** activate it (running its `onPress` → `useSpatialState` update →
+re-render) and fire `onActivate(agentId)`. The agent terminal's detail mode
+forwards input straight through, so every `viewType:"tui"` view is keyboard
+drivable. See `__tests__/tui-interaction.test.tsx`.
+
+## Verifying — XR headset simulation
+
+`stories/xr-sim.html` + `stories/xr/main.tsx` render the real spatial views
+(XR-modality DOM) as holographic panels positioned in front of the user with
+CSS 3D (perspective + transforms) — the screen-space-DOM approach `app-xr` uses
+for real headsets, but driveable and screenshottable in Playwright without
+hardware. `window.__xrsim` exposes `setView` / `setPose` / `aimAt` / `select` /
+`setChat` / `toggleVoice`. The Playwright spec (`stories/xr/xr-sim.spec.ts`,
+config `xr-sim.config.ts`) verifies views render in front of the user, head pose
+moves them with world-locked parallax, the controller aims + selects a panel
+button, the rail switches views, and the chat bar + voice work — screenshotting
+the headset POV for each. Run: `bunx playwright test --config
+packages/ui/stories/xr/xr-sim.config.ts`.
