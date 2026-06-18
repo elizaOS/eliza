@@ -36,10 +36,6 @@ const WINDOW_SHELL_TS = readFileSync(
   resolve(__dirname, "./platform/window-shell.ts"),
   "utf8",
 );
-const HEADER_TSX = readFileSync(
-  resolve(__dirname, "./components/shell/Header.tsx"),
-  "utf8",
-);
 const OVERLAY_TSX = readFileSync(
   resolve(__dirname, "./components/shell/ContinuousChatOverlay.tsx"),
   "utf8",
@@ -62,15 +58,13 @@ describe("App standalone chat-overlay wiring", () => {
 
   it("renders a header-less app shell", () => {
     // The app shell mounts no Header anywhere — navigation is conversational
-    // (the always-present chat overlay + the command palette). The Header
-    // component still ships from the library; the app just never mounts it.
+    // (the always-present chat overlay). The Header component has been removed
+    // from the library entirely (pill-only nav), so nothing can mount it.
     expect(APP_TSX).toContain("function ChatRouteShellContent");
     expect(APP_TSX).toContain("ChatAmbientBackground");
     expect(APP_TSX).not.toContain("<Header");
     expect(APP_TSX).not.toContain('from "./components/shell/Header"');
     expect(APP_TSX).not.toContain("function FullChatWorkspaceShellContent");
-    // Header remains a real library component (still navigation-capable).
-    expect(HEADER_TSX).toContain("getTabGroups");
   });
 
   it("renders the ambient chat route as a header-less, wordless backdrop home", () => {

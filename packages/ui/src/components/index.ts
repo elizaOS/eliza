@@ -260,7 +260,6 @@ export * from "./shell/BugReportModal";
 export * from "./shell/CommandPalette";
 export * from "./shell/ConnectionFailedBanner";
 export * from "./shell/ConnectionLostOverlay";
-export * from "./shell/Header";
 export * from "./shell/LoadingScreen";
 export * from "./shell/PairingView";
 export * from "./shell/RestartBanner";
