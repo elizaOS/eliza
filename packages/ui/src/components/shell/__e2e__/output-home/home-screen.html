@@ -13048,21 +13048,8 @@
   ];
   var OctagonAlert = createLucideIcon("octagon-alert", __iconNode14);
 
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/pencil.mjs
-  var __iconNode15 = [
-    [
-      "path",
-      {
-        d: "M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z",
-        key: "1a8usu"
-      }
-    ],
-    ["path", { d: "m15 5 4 4", key: "1mk7zo" }]
-  ];
-  var Pencil = createLucideIcon("pencil", __iconNode15);
-
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/phone.mjs
-  var __iconNode16 = [
+  var __iconNode15 = [
     [
       "path",
       {
@@ -13071,17 +13058,17 @@
       }
     ]
   ];
-  var Phone = createLucideIcon("phone", __iconNode16);
+  var Phone = createLucideIcon("phone", __iconNode15);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/plus.mjs
-  var __iconNode17 = [
+  var __iconNode16 = [
     ["path", { d: "M5 12h14", key: "1ays0h" }],
     ["path", { d: "M12 5v14", key: "s699le" }]
   ];
-  var Plus = createLucideIcon("plus", __iconNode17);
+  var Plus = createLucideIcon("plus", __iconNode16);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/settings.mjs
-  var __iconNode18 = [
+  var __iconNode17 = [
     [
       "path",
       {
@@ -13091,16 +13078,16 @@
     ],
     ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
   ];
-  var Settings = createLucideIcon("settings", __iconNode18);
+  var Settings = createLucideIcon("settings", __iconNode17);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/square.mjs
-  var __iconNode19 = [
+  var __iconNode18 = [
     ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }]
   ];
-  var Square = createLucideIcon("square", __iconNode19);
+  var Square = createLucideIcon("square", __iconNode18);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/triangle-alert.mjs
-  var __iconNode20 = [
+  var __iconNode19 = [
     [
       "path",
       {
@@ -13111,15 +13098,15 @@
     ["path", { d: "M12 9v4", key: "juzpu7" }],
     ["path", { d: "M12 17h.01", key: "p32p05" }]
   ];
-  var TriangleAlert = createLucideIcon("triangle-alert", __iconNode20);
+  var TriangleAlert = createLucideIcon("triangle-alert", __iconNode19);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/workflow.mjs
-  var __iconNode21 = [
+  var __iconNode20 = [
     ["rect", { width: "8", height: "8", x: "3", y: "3", rx: "2", key: "by2w9f" }],
     ["path", { d: "M7 11v4a2 2 0 0 0 2 2h4", key: "xkn7yn" }],
     ["rect", { width: "8", height: "8", x: "13", y: "13", rx: "2", key: "1cgmvn" }]
   ];
-  var Workflow = createLucideIcon("workflow", __iconNode21);
+  var Workflow = createLucideIcon("workflow", __iconNode20);
 
   // packages/ui/src/components/shell/HomeScreen.tsx
   var React = __toESM(require_react(), 1);
@@ -16186,14 +16173,56 @@
   // packages/ui/src/components/shell/HomeScreen.tsx
   var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
   var HOME_TILES = [
-    { id: "settings", label: "Settings", icon: Settings, target: { kind: "tab", tab: "settings" } },
-    { id: "orchestrator", label: "Orchestrator", icon: Network, target: { kind: "view", path: "/orchestrator" } },
-    { id: "workflows", label: "Workflows", icon: Workflow, target: { kind: "view", path: "/automations" } },
-    { id: "views", label: "Views", icon: LayoutGrid, target: { kind: "tab", tab: "views" } },
-    { id: "inbox", label: "Inbox", icon: Inbox, target: { kind: "view", path: "/inbox" } },
-    { id: "messages", label: "Messages", icon: MessageSquare, target: { kind: "tab", tab: "messages" } },
-    { id: "phone", label: "Phone", icon: Phone, target: { kind: "tab", tab: "phone" }, nativeOs: true },
-    { id: "contacts", label: "Contacts", icon: Contact, target: { kind: "tab", tab: "contacts" }, nativeOs: true }
+    {
+      id: "settings",
+      label: "Settings",
+      icon: Settings,
+      target: { kind: "tab", tab: "settings" }
+    },
+    {
+      id: "orchestrator",
+      label: "Orchestrator",
+      icon: Network,
+      target: { kind: "view", path: "/orchestrator" }
+    },
+    {
+      id: "workflows",
+      label: "Workflows",
+      icon: Workflow,
+      target: { kind: "view", path: "/automations" }
+    },
+    {
+      id: "views",
+      label: "Views",
+      icon: LayoutGrid,
+      target: { kind: "tab", tab: "views" }
+    },
+    {
+      id: "inbox",
+      label: "Inbox",
+      icon: Inbox,
+      target: { kind: "view", path: "/inbox" }
+    },
+    {
+      id: "messages",
+      label: "Messages",
+      icon: MessageSquare,
+      target: { kind: "tab", tab: "messages" }
+    },
+    {
+      id: "phone",
+      label: "Phone",
+      icon: Phone,
+      target: { kind: "tab", tab: "phone" },
+      nativeOs: true
+    },
+    {
+      id: "contacts",
+      label: "Contacts",
+      icon: Contact,
+      target: { kind: "tab", tab: "contacts" },
+      nativeOs: true
+    }
   ];
   var ACTIVITY_ICONS = {
     task_registered: { icon: Plus, tone: "text-white/70" },
@@ -16224,29 +16253,10 @@
     if (h < 24) return `${h}h`;
     return `${Math.floor(h / 24)}d`;
   }
-  var WIDGET_VIS_KEY = "eliza:home:widgets";
-  function loadWidgetVisibility() {
-    const defaults = { activity: true, messages: true };
-    if (typeof localStorage === "undefined") return defaults;
-    try {
-      const raw = localStorage.getItem(WIDGET_VIS_KEY);
-      if (!raw) return defaults;
-      const parsed = JSON.parse(raw);
-      return {
-        activity: parsed.activity !== false,
-        messages: parsed.messages !== false
-      };
-    } catch {
-      return defaults;
-    }
-  }
   function HomeCard({
     title,
     icon: Icon2,
     children,
-    editing,
-    visible,
-    onToggle,
     testId
   }) {
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
@@ -16255,23 +16265,12 @@
         "data-testid": testId,
         className: cn(
           "relative rounded-3xl border border-white/12 bg-black/35 p-4 backdrop-blur-2xl",
-          "shadow-[inset_0_1px_0_rgba(255,255,255,0.10),0_18px_50px_-26px_rgba(0,0,0,0.7)]",
-          editing && !visible && "opacity-45"
+          "shadow-[inset_0_1px_0_rgba(255,255,255,0.10),0_18px_50px_-26px_rgba(0,0,0,0.7)]"
         ),
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("header", { className: "mb-2.5 flex items-center gap-2", children: [
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Icon2, { className: "h-4 w-4 text-white/70", "aria-hidden": true }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("h2", { className: "text-[13px] font-semibold uppercase tracking-wide text-white/70", children: title }),
-            editing ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-              "button",
-              {
-                type: "button",
-                onClick: onToggle,
-                "aria-label": visible ? `Hide ${title}` : `Show ${title}`,
-                className: "ml-auto rounded-full border border-white/20 bg-white/10 px-2.5 py-0.5 text-[11px] font-medium text-white/80 transition-colors hover:bg-white/20",
-                children: visible ? "Hide" : "Show"
-              }
-            ) : null
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("h2", { className: "text-[13px] font-semibold uppercase tracking-wide text-white/70", children: title })
           ] }),
           children
         ]
@@ -16295,19 +16294,19 @@
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "mt-1.5 text-sm font-medium text-white/75", children: date })
     ] });
   }
-  function ActivityWidget() {
-    const { events } = useActivityEvents();
-    const recent = events.slice(0, 5);
-    return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { "data-testid": "home-activity", children: recent.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "py-1 text-[13px] text-white/55", children: "Nothing yet \u2014 the agent's recent activity shows up here." }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("ul", { className: "flex flex-col gap-2.5", children: recent.map((ev) => {
+  function ActivityRows({
+    events
+  }) {
+    return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("ul", { "data-testid": "home-activity", className: "flex flex-col gap-2.5", children: events.map((ev) => {
       const { icon: Icon2, tone } = activityIcon(ev.eventType);
       return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("li", { className: "flex items-start gap-2.5", children: [
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Icon2, { className: cn("mt-0.5 h-4 w-4 shrink-0", tone), "aria-hidden": true }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "min-w-0 flex-1 truncate text-[13px] leading-snug text-white/85", children: ev.summary }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "shrink-0 text-[11px] tabular-nums text-white/45", children: relativeTime(ev.timestamp) })
       ] }, ev.id);
-    }) }) });
+    }) });
   }
-  function MessagesWidget() {
+  function useRecentChats() {
     const [chats, setChats] = React.useState([]);
     const load = React.useCallback(() => {
       void client.getInboxChats({}).then((res) => setChats(res.chats.slice(0, 4))).catch(() => {
@@ -16317,7 +16316,12 @@
       load();
     }, [load]);
     useIntervalWhenDocumentVisible(load, 2e4);
-    return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { "data-testid": "home-messages", children: chats.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: "py-1 text-[13px] text-white/55", children: "No recent messages." }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("ul", { className: "flex flex-col gap-2.5", children: chats.map((c) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("li", { className: "flex items-center gap-2.5", children: [
+    return chats;
+  }
+  function MessagesRows({
+    chats
+  }) {
+    return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { "data-testid": "home-messages", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("ul", { className: "flex flex-col gap-2.5", children: chats.map((c) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("li", { className: "flex items-center gap-2.5", children: [
       c.avatarUrl ? (
         // biome-ignore lint/performance/noImgElement: avatar thumbnail, no Next.js
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
@@ -16340,94 +16344,67 @@
     onOpenTile,
     showNativeOsTiles: showNativeOsTiles2 = false
   }) {
-    const [editing, setEditing] = React.useState(false);
-    const [visibility, setVisibility] = React.useState(loadWidgetVisibility);
-    const toggleWidget = React.useCallback((id) => {
-      setVisibility((prev) => {
-        const next = { ...prev, [id]: !prev[id] };
-        try {
-          localStorage.setItem(WIDGET_VIS_KEY, JSON.stringify(next));
-        } catch {
-        }
-        return next;
-      });
-    }, []);
     const tiles = HOME_TILES.filter((t) => !t.nativeOs || showNativeOsTiles2);
+    const { events } = useActivityEvents();
+    const recentActivity = events.slice(0, 5);
+    const recentChats = useRecentChats();
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
       "div",
       {
         "data-testid": "home-screen",
         className: cn(
           "eliza-continuous-chat-scroll absolute inset-0 z-[1] overflow-y-auto",
-          "px-4 pt-[calc(env(safe-area-inset-top,0px)+1.5rem)]",
+          // Sit right under the status bar — no empty band above the clock.
+          "px-4 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]",
           // Clear the floating chat composer at the bottom.
           "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]"
         ),
         children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "mx-auto flex w-full max-w-2xl flex-col gap-4", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "flex items-end justify-between", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ClockBlock, {}),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-              "button",
-              {
-                type: "button",
-                "data-testid": "home-edit-toggle",
-                onClick: () => setEditing((e) => !e),
-                "aria-pressed": editing,
-                className: "mb-1 flex items-center gap-1.5 rounded-full border border-white/20 bg-black/30 px-3 py-1.5 text-[12px] font-medium text-white/80 backdrop-blur transition-colors hover:bg-white/15",
-                children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Pencil, { className: "h-3.5 w-3.5", "aria-hidden": true }),
-                  editing ? "Done" : "Edit"
-                ]
-              }
-            )
-          ] }),
-          visibility.activity || editing ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ClockBlock, {}),
+          recentActivity.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             HomeCard,
             {
               title: "Recent activity",
               icon: Activity,
               testId: "home-widget-activity",
-              editing,
-              visible: visibility.activity,
-              onToggle: () => toggleWidget("activity"),
-              children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ActivityWidget, {})
+              children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ActivityRows, { events: recentActivity })
             }
           ) : null,
-          visibility.messages || editing ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          recentChats.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             HomeCard,
             {
               title: "Recent messages",
               icon: MessageSquare,
               testId: "home-widget-messages",
-              editing,
-              visible: visibility.messages,
-              onToggle: () => toggleWidget("messages"),
-              children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(MessagesWidget, {})
+              children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(MessagesRows, { chats: recentChats })
             }
           ) : null,
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("nav", { "aria-label": "Pinned views", "data-testid": "home-tiles", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("h2", { className: "mb-2.5 px-1 text-[13px] font-semibold uppercase tracking-wide text-white/55", children: "Pinned" }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "grid grid-cols-4 gap-3", children: tiles.map((tile) => {
-              const Icon2 = tile.icon;
-              return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-                "button",
-                {
-                  type: "button",
-                  "data-testid": `home-tile-${tile.id}`,
-                  onClick: () => onOpenTile(tile.target),
-                  className: cn(
-                    "flex flex-col items-center gap-1.5 rounded-2xl border border-white/12 bg-black/30 px-1 py-3 backdrop-blur-xl transition-colors",
-                    "hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-                  ),
-                  children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "grid h-11 w-11 place-items-center rounded-2xl bg-white/12", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Icon2, { className: "h-[22px] w-[22px] text-white/90", "aria-hidden": true }) }),
-                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "max-w-full truncate text-[11px] font-medium text-white/80", children: tile.label })
-                  ]
-                },
-                tile.id
-              );
-            }) })
-          ] })
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("nav", { "aria-label": "Pinned views", "data-testid": "home-tiles", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "grid grid-cols-4 gap-3", children: tiles.map((tile) => {
+            const Icon2 = tile.icon;
+            return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+              "button",
+              {
+                type: "button",
+                "data-testid": `home-tile-${tile.id}`,
+                onClick: () => onOpenTile(tile.target),
+                className: cn(
+                  "flex flex-col items-center gap-1.5 rounded-2xl border border-white/12 bg-black/30 px-1 py-3 backdrop-blur-xl transition-colors",
+                  "hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+                ),
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "grid h-11 w-11 place-items-center rounded-2xl bg-white/12", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                    Icon2,
+                    {
+                      className: "h-[22px] w-[22px] text-white/90",
+                      "aria-hidden": true
+                    }
+                  ) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "max-w-full truncate text-[11px] font-medium text-white/80", children: tile.label })
+                ]
+              },
+              tile.id
+            );
+          }) }) })
         ] })
       }
     );
@@ -16539,7 +16516,6 @@ lucide-react/dist/esm/icons/message-circle.mjs:
 lucide-react/dist/esm/icons/message-square.mjs:
 lucide-react/dist/esm/icons/network.mjs:
 lucide-react/dist/esm/icons/octagon-alert.mjs:
-lucide-react/dist/esm/icons/pencil.mjs:
 lucide-react/dist/esm/icons/phone.mjs:
 lucide-react/dist/esm/icons/plus.mjs:
 lucide-react/dist/esm/icons/settings.mjs:

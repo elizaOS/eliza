@@ -400,9 +400,9 @@ describe("ContinuousChatOverlay", () => {
     const panel = screen.getByTestId("chat-sheet");
 
     expect(screen.queryByTestId("chat-composer-clear-debug")).toBeNull();
-    // The width is constrained on the panel; the input row is a single,
-    // non-wrapping flex row with the field taking the remaining space.
-    expect(panel.className).toContain("max-w-3xl");
+    // Width is constrained on the panel's wrapper (which also holds the absolute
+    // drag handle); the input row is a single, non-wrapping flex row.
+    expect(panel.parentElement?.className).toContain("max-w-3xl");
     expect(bar?.className).toContain("flex");
     expect(bar?.className).not.toContain("flex-wrap");
     expect(input.className).toContain("flex-1");

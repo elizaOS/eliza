@@ -164,9 +164,9 @@ function SoftButton({
       onPointerUp={disabled ? undefined : onPointerUp}
       onPointerCancel={disabled ? undefined : onPointerCancel}
       className={cn(
-        // 48×48 hit target (>= WCAG 2.5.5) so the attach / mic / send / stop
-        // chips are comfortably thumb-tappable, with a slightly larger glyph.
-        "grid h-12 w-12 shrink-0 place-items-center rounded-full border transition-colors",
+        // 44×44 hit target (WCAG 2.5.5) — comfortably thumb-tappable without
+        // crowding the bar (split the difference back down from 48).
+        "grid h-11 w-11 shrink-0 place-items-center rounded-full border transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
         active
           ? "border-white/40 bg-white/85 text-black"
@@ -225,20 +225,23 @@ function SheetGrabber({
       {...binding}
       className={cn(
         "appearance-none border-0 bg-transparent text-left",
-        // ABSOLUTELY positioned at the top-center of the panel, so the handle
-        // adds ZERO layout height — it floats slightly on top of the input row
-        // (collapsed height == the input bar). Generous wide+tall padding makes
-        // the hitbox much larger than the thin bar; z-20 keeps it above the
-        // input row (z-10) so it always wins the drag.
-        "pointer-events-auto absolute left-1/2 top-0 z-20 -translate-x-1/2 flex cursor-grab touch-none select-none items-center justify-center px-14 py-3 active:cursor-grabbing",
+        // ABSOLUTELY positioned over the panel top (zero layout height — it
+        // floats slightly on top of the input row, so collapsed height == the
+        // input bar). The bar sits a touch lower; the BIG invisible `before` hit
+        // zone reaches UP into the empty space above the panel (3× taller/wider
+        // than the bar) so it's easy to grab without covering the edge buttons.
+        // z-20 keeps it above the input row (z-10) so it always wins the drag.
+        "pointer-events-auto absolute left-1/2 top-1.5 z-20 -translate-x-1/2 flex cursor-grab touch-none select-none items-center justify-center px-16 py-2.5 active:cursor-grabbing",
+        "before:absolute before:-inset-x-4 before:-top-10 before:-bottom-3 before:content-['']",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full",
       )}
     >
       <span
         aria-hidden="true"
         className={cn(
-          "h-1.5 w-11 rounded-full transition-colors duration-300",
-          glow ? "bg-[rgba(255,180,120,0.75)]" : "bg-white/40",
+          // 30% wider bar (w-11 → w-14), a touch taller, brighter.
+          "h-2 w-14 rounded-full transition-colors duration-300",
+          glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45",
         )}
       />
     </button>
@@ -1119,319 +1122,326 @@ export function ContinuousChatOverlay({
 
       {/* THE chat — one connected object. Its base is the always-present input;
           the conversation grows UP out of it on a pull, inside this same panel.
-          Fully collapsed at rest (just the input, plus a grabber handle once
-          there's a thread). Pull the grabber up to reveal history; pull down,
-          press Escape, or click outside to collapse. The thread height animates
-          0 → half → full within this element — the chat and the input are never
-          two separate pieces. */}
-      <fieldset
-        ref={panelRef}
-        aria-label="Chat composer"
-        data-testid="chat-sheet"
-        data-variant={sheetOpen ? "open" : "closed"}
-        data-detent={
-          pilled
-            ? "pill"
-            : !sheetOpen
-              ? "collapsed"
-              : expanded
-                ? "full"
-                : "half"
-        }
-        data-revealed={sheetOpen ? "true" : "false"}
-        // Never taller than the visible viewport (above the keyboard) minus the
-        // overlay's safe-area padding + a top margin: the thread scrolls instead
-        // of the panel spilling off the top of the screen.
-        style={pilled ? undefined : { maxHeight: panelMaxH }}
-        className={cn(
-          "pointer-events-auto relative m-0 flex min-w-0 flex-col border-0 p-0",
-          pilled
-            ? // PILL: a bare, transparent container — the capsule carries its own
-              // glass, and the panel shrinks to fit it.
-              "w-auto"
-            : cn(
-                "w-full max-w-3xl overflow-hidden",
-                // Liquid glass: a translucent, blurred, slightly over-saturated
-                // pane with a bright top specular edge + a faint refractive stroke.
-                "rounded-[28px] border border-white/[0.14] bg-black/55 backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
-                "shadow-[inset_0_1px_0_rgba(255,255,255,0.20),inset_0_0_0_0.5px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(0,0,0,0.72)]",
-              ),
-        )}
-      >
-        {pilled ? (
-          <PillHandle
+          The drag handle floats above the panel in THIS non-clipped wrapper
+          (the fieldset itself is overflow-hidden), so its big hit zone can reach
+          up into the empty space above the input. Pull the handle up to reveal
+          history; pull down to collapse the input into the pill. */}
+      <div className="pointer-events-none relative flex w-full max-w-3xl flex-col items-center">
+        {!pilled ? (
+          <SheetGrabber
+            open={sheetOpen}
+            onOpen={() => {
+              if (!hasThread) return;
+              goToDetent("half");
+              focusThreadRef.current = true;
+            }}
+            onClose={collapse}
             binding={pullBinding}
-            onOpen={() => setPilled(false)}
             glow={listening || responding}
           />
-        ) : (
-          <>
-            {/* Specular sheen — a soft light from the top edge, the liquid-glass
-            highlight. Subtle + non-interactive. */}
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-white/[0.07] to-transparent"
-            />
-            {/* Soft live-state glow at the base — bright warm while listening, a
-            dimmer warm while replying. Orange is the only accent (no blue).
-            Clipped to the panel (the glass already grounds it). */}
-            <motion.div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-2xl"
-              initial={false}
-              animate={{
-                opacity: listening || responding ? 1 : 0,
-                backgroundColor: listening
-                  ? "rgba(255,180,120,0.30)"
-                  : "rgba(255,140,80,0.18)",
-              }}
-              transition={{ duration: reduce ? 0 : 1.1, ease: "easeInOut" }}
-            />
-
-            {/* Grabber — the pull handle. Always present (absolute, no layout
-            height): pull DOWN to collapse the input into the pill; pull UP (with
-            a thread) to reveal history. */}
-            <SheetGrabber
-              open={sheetOpen}
-              onOpen={() => {
-                if (!hasThread) return;
-                goToDetent("half");
-                focusThreadRef.current = true;
-              }}
-              onClose={collapse}
+        ) : null}
+        <fieldset
+          ref={panelRef}
+          aria-label="Chat composer"
+          data-testid="chat-sheet"
+          data-variant={sheetOpen ? "open" : "closed"}
+          data-detent={
+            pilled
+              ? "pill"
+              : !sheetOpen
+                ? "collapsed"
+                : expanded
+                  ? "full"
+                  : "half"
+          }
+          data-revealed={sheetOpen ? "true" : "false"}
+          // Never taller than the visible viewport (above the keyboard) minus the
+          // overlay's safe-area padding + a top margin: the thread scrolls instead
+          // of the panel spilling off the top of the screen.
+          style={pilled ? undefined : { maxHeight: panelMaxH }}
+          className={cn(
+            "pointer-events-auto relative m-0 flex min-w-0 flex-col border-0 p-0",
+            pilled
+              ? // PILL: a bare, transparent container — the capsule carries its own
+                // glass, and the panel shrinks to fit it.
+                "w-auto"
+              : cn(
+                  "w-full overflow-hidden",
+                  // Collapsed = a pill (fully round, matching the round buttons);
+                  // opened = a softer 28px panel so tall history doesn't look odd.
+                  sheetOpen ? "rounded-[28px]" : "rounded-full",
+                  // Liquid glass: a translucent, blurred, slightly over-saturated
+                  // pane with a bright top specular edge + a faint refractive stroke.
+                  "border border-white/[0.14] bg-black/55 backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
+                  "shadow-[inset_0_1px_0_rgba(255,255,255,0.20),inset_0_0_0_0.5px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(0,0,0,0.72)]",
+                ),
+          )}
+        >
+          {pilled ? (
+            <PillHandle
               binding={pullBinding}
+              onOpen={() => setPilled(false)}
               glow={listening || responding}
             />
+          ) : (
+            <>
+              {/* Specular sheen — a soft light from the top edge, the liquid-glass
+            highlight. Subtle + non-interactive. */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-white/[0.07] to-transparent"
+              />
+              {/* Soft live-state glow at the base — bright warm while listening, a
+            dimmer warm while replying. Orange is the only accent (no blue).
+            Clipped to the panel (the glass already grounds it). */}
+              <motion.div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-2xl"
+                initial={false}
+                animate={{
+                  opacity: listening || responding ? 1 : 0,
+                  backgroundColor: listening
+                    ? "rgba(255,180,120,0.30)"
+                    : "rgba(255,140,80,0.18)",
+                }}
+                transition={{ duration: reduce ? 0 : 1.1, ease: "easeInOut" }}
+              />
 
-            {/* The conversation. Height animates 0 (collapsed) → half → full; the
+              {/* The conversation. Height animates 0 (collapsed) → half → full; the
             inner log scrolls. The grabber owns the drag, so dragging the messages
             just scrolls them. */}
-            {hasThread ? (
-              <motion.div
-                data-testid="chat-thread"
-                className="relative z-10 min-h-0 w-full shrink grow-0 overflow-hidden"
-                // Flex-basis IS the motion value (px string) — set 1:1 during a drag,
-                // spring-animated to a detent on release; no `animate`/`transition`,
-                // so no re-render. `shrink min-h-0` lets the panel's `maxHeight` cap
-                // win: a tall detent (or the keyboard) shrinks the thread (it
-                // scrolls) instead of pushing the panel off-screen.
-                style={{ flexBasis: threadFlexBasis }}
+              {hasThread ? (
+                <motion.div
+                  data-testid="chat-thread"
+                  className="relative z-10 min-h-0 w-full shrink grow-0 overflow-hidden"
+                  // Flex-basis IS the motion value (px string) — set 1:1 during a drag,
+                  // spring-animated to a detent on release; no `animate`/`transition`,
+                  // so no re-render. `shrink min-h-0` lets the panel's `maxHeight` cap
+                  // win: a tall detent (or the keyboard) shrinks the thread (it
+                  // scrolls) instead of pushing the panel off-screen.
+                  style={{ flexBasis: threadFlexBasis }}
+                >
+                  <div
+                    id="continuous-thread"
+                    ref={threadRef}
+                    role="log"
+                    aria-label="conversation history"
+                    aria-live="polite"
+                    aria-hidden={!sheetOpen ? true : undefined}
+                    tabIndex={sheetOpen ? 0 : -1}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        collapse();
+                      }
+                    }}
+                    className="relative flex h-full w-full touch-pan-y flex-col overflow-y-auto px-5 [scrollbar-width:none] focus-visible:outline-none [&::-webkit-scrollbar]:hidden"
+                  >
+                    {/* `mt-auto` keeps the latest line at the bottom (nearest the input)
+                  until the thread overflows, then it scrolls. */}
+                    <div className="mt-auto flex flex-col pb-3 pt-1">
+                      <AnimatePresence initial={false}>
+                        {visibleMessages.map((m) => (
+                          <ThreadLine
+                            key={m.id}
+                            message={m}
+                            floating
+                            reduce={reduce}
+                            onCopy={handleCopyMessage}
+                            onOpenSettings={openSettings}
+                          />
+                        ))}
+                      </AnimatePresence>
+                      <AnimatePresence>
+                        {responding ? <TypingDots reduce={reduce} /> : null}
+                      </AnimatePresence>
+                      <div ref={endRef} />
+                    </div>
+                  </div>
+                </motion.div>
+              ) : null}
+              {/* Pending image attachments + any read error, just above the input. */}
+              {hasImages || imageError ? (
+                <div className="relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2">
+                  {hasImages ? (
+                    <div className="flex flex-wrap gap-2">
+                      {pendingImages.map((img, i) => (
+                        <div
+                          key={`${img.name}-${img.mimeType}-${img.data.length}`}
+                          className="group relative h-14 w-14 shrink-0"
+                        >
+                          <img
+                            src={`data:${img.mimeType};base64,${img.data}`}
+                            alt={img.name}
+                            className="h-14 w-14 rounded-lg border border-white/20 object-cover"
+                          />
+                          <button
+                            type="button"
+                            aria-label={`remove ${img.name}`}
+                            onClick={() => removeImage(i)}
+                            // Small visual disc on a 56px thumbnail, but a 44px-class
+                            // hit zone via the invisible `before` overlay so it's
+                            // thumb-tappable without crowding the image.
+                            className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-white/20 bg-black/70 text-xs text-white/90 backdrop-blur transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-black/90"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {imageError ? (
+                    <p
+                      role="alert"
+                      className={cn("text-xs text-red-200/90", FLOAT_SHADOW)}
+                    >
+                      {imageError}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files) addImageFiles(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+              {/* The input row — the base of the panel, always visible. A hairline
+            divider sits above it whenever the history is open. */}
+              <div
+                className={cn(
+                  // items-end keeps the +/mic controls pinned to the bottom as the
+                  // textarea grows upward with multi-line input. shrink-0 keeps the
+                  // input fully visible when the panel hits its maxHeight cap (only the
+                  // thread above gives way).
+                  "relative z-10 flex min-w-0 shrink-0 items-end gap-1.5 px-3 py-2 sm:gap-2 sm:px-3.5",
+                  sheetOpen ? "border-t border-white/10" : "",
+                )}
               >
-                <div
-                  id="continuous-thread"
-                  ref={threadRef}
-                  role="log"
-                  aria-label="conversation history"
-                  aria-live="polite"
-                  aria-hidden={!sheetOpen ? true : undefined}
-                  tabIndex={sheetOpen ? 0 : -1}
+                <SoftButton
+                  glyph={PLUS_GLYPH}
+                  label="attach image"
+                  disabled={booting || pendingImages.length >= MAX_CHAT_IMAGES}
+                  onClick={() => fileInputRef.current?.click()}
+                  testId="chat-composer-attach"
+                />
+                <textarea
+                  ref={inputRef}
+                  rows={1}
+                  value={draft}
+                  onChange={(e) => {
+                    setDraft(e.target.value);
+                    if (e.target.value.trim().length > 0) expand();
+                  }}
+                  onFocus={expand}
                   onKeyDown={(e) => {
-                    if (e.key === "Escape") {
+                    // Enter sends; Shift+Enter inserts a newline (multi-line compose).
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      submit();
+                    } else if (e.key === "Escape" && sheetOpen) {
                       e.preventDefault();
                       collapse();
                     }
                   }}
-                  className="relative flex h-full w-full touch-pan-y flex-col overflow-y-auto px-5 [scrollbar-width:none] focus-visible:outline-none [&::-webkit-scrollbar]:hidden"
-                >
-                  {/* `mt-auto` keeps the latest line at the bottom (nearest the input)
-                  until the thread overflows, then it scrolls. */}
-                  <div className="mt-auto flex flex-col pb-3 pt-1">
-                    <AnimatePresence initial={false}>
-                      {visibleMessages.map((m) => (
-                        <ThreadLine
-                          key={m.id}
-                          message={m}
-                          floating
-                          reduce={reduce}
-                          onCopy={handleCopyMessage}
-                          onOpenSettings={openSettings}
-                        />
-                      ))}
-                    </AnimatePresence>
-                    <AnimatePresence>
-                      {responding ? <TypingDots reduce={reduce} /> : null}
-                    </AnimatePresence>
-                    <div ref={endRef} />
-                  </div>
-                </div>
-              </motion.div>
-            ) : null}
-            {/* Pending image attachments + any read error, just above the input. */}
-            {hasImages || imageError ? (
-              <div className="relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2">
-                {hasImages ? (
-                  <div className="flex flex-wrap gap-2">
-                    {pendingImages.map((img, i) => (
-                      <div
-                        key={`${img.name}-${img.mimeType}-${img.data.length}`}
-                        className="group relative h-14 w-14 shrink-0"
-                      >
-                        <img
-                          src={`data:${img.mimeType};base64,${img.data}`}
-                          alt={img.name}
-                          className="h-14 w-14 rounded-lg border border-white/20 object-cover"
-                        />
-                        <button
-                          type="button"
-                          aria-label={`remove ${img.name}`}
-                          onClick={() => removeImage(i)}
-                          // Small visual disc on a 56px thumbnail, but a 44px-class
-                          // hit zone via the invisible `before` overlay so it's
-                          // thumb-tappable without crowding the image.
-                          className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-white/20 bg-black/70 text-xs text-white/90 backdrop-blur transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-black/90"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                {imageError ? (
-                  <p
-                    role="alert"
-                    className={cn("text-xs text-red-200/90", FLOAT_SHADOW)}
-                  >
-                    {imageError}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                if (e.target.files) addImageFiles(e.target.files);
-                e.target.value = "";
-              }}
-            />
-            {/* The input row — the base of the panel, always visible. A hairline
-            divider sits above it whenever the history is open. */}
-            <div
-              className={cn(
-                // items-end keeps the +/mic controls pinned to the bottom as the
-                // textarea grows upward with multi-line input. shrink-0 keeps the
-                // input fully visible when the panel hits its maxHeight cap (only the
-                // thread above gives way).
-                "relative z-10 flex min-w-0 shrink-0 items-end gap-1.5 px-3 py-2 sm:gap-2 sm:px-3.5",
-                sheetOpen ? "border-t border-white/10" : "",
-              )}
-            >
-              <SoftButton
-                glyph={PLUS_GLYPH}
-                label="attach image"
-                disabled={booting || pendingImages.length >= MAX_CHAT_IMAGES}
-                onClick={() => fileInputRef.current?.click()}
-                testId="chat-composer-attach"
-              />
-              <textarea
-                ref={inputRef}
-                rows={1}
-                value={draft}
-                onChange={(e) => {
-                  setDraft(e.target.value);
-                  if (e.target.value.trim().length > 0) expand();
-                }}
-                onFocus={expand}
-                onKeyDown={(e) => {
-                  // Enter sends; Shift+Enter inserts a newline (multi-line compose).
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    submit();
-                  } else if (e.key === "Escape" && sheetOpen) {
-                    e.preventDefault();
-                    collapse();
-                  }
-                }}
-                placeholder={booting ? "connecting…" : "say anything…"}
-                aria-label="message"
-                data-testid="chat-composer-textarea"
-                aria-describedby={booting ? "cc-booting-hint" : undefined}
-                aria-disabled={booting}
-                readOnly={booting}
-                className="max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-end border-none bg-transparent px-1 py-1 text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
-              />
-              <span id="cc-booting-hint" className="sr-only">
-                connecting — you can’t send yet
-              </span>
-              {/* Assistant-voice mute: shown only while the agent is speaking or
-              already muted, so the resting bar stays uncluttered. */}
-              {speaking || agentVoiceMuted ? (
-                <SoftButton
-                  glyph={agentVoiceMuted ? SPEAKER_MUTED_GLYPH : SPEAKER_GLYPH}
-                  label={
-                    agentVoiceMuted
-                      ? "unmute assistant voice"
-                      : "mute assistant voice"
-                  }
-                  active={agentVoiceMuted}
-                  onClick={toggleAgentVoiceMute}
-                  testId="chat-voice-mute"
+                  placeholder={booting ? "connecting…" : "say anything…"}
+                  aria-label="message"
+                  data-testid="chat-composer-textarea"
+                  aria-describedby={booting ? "cc-booting-hint" : undefined}
+                  aria-disabled={booting}
+                  readOnly={booting}
+                  className="max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-end border-none bg-transparent px-1 py-1 text-center text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
                 />
-              ) : null}
-              {/* One trailing control, ChatGPT-style: mic when there's nothing to
+                <span id="cc-booting-hint" className="sr-only">
+                  connecting — you can’t send yet
+                </span>
+                {/* Assistant-voice mute: shown only while the agent is speaking or
+              already muted, so the resting bar stays uncluttered. */}
+                {speaking || agentVoiceMuted ? (
+                  <SoftButton
+                    glyph={
+                      agentVoiceMuted ? SPEAKER_MUTED_GLYPH : SPEAKER_GLYPH
+                    }
+                    label={
+                      agentVoiceMuted
+                        ? "unmute assistant voice"
+                        : "mute assistant voice"
+                    }
+                    active={agentVoiceMuted}
+                    onClick={toggleAgentVoiceMute}
+                    testId="chat-voice-mute"
+                  />
+                ) : null}
+                {/* One trailing control, ChatGPT-style: mic when there's nothing to
               send (or while recording, to stop), swapping to send once the user
               starts typing or attaches an image. */}
-              {/* The trailing control morphs between mic and send. The `key` flip
+                {/* The trailing control morphs between mic and send. The `key` flip
               remounts on each swap, so React removes the old control instantly
               (no exit lag) and the new one pops in — a quick scale/fade that
               reads as a morph without an AnimatePresence exit delay. */}
-              <motion.div
-                key={
-                  (hasDraft || hasImages) && !recording
-                    ? "send"
-                    : !recording && responding
-                      ? "stop"
-                      : "mic"
-                }
-                className="shrink-0"
-                initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.6 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: reduce ? 0 : 0.3, ease: OVERLAY_EASE }}
-              >
-                {(hasDraft || hasImages) && !recording ? (
-                  <SoftButton
-                    glyph={SEND_GLYPH}
-                    label={canSend ? "send" : "send (waiting for reply)"}
-                    disabled={!canSend}
-                    onClick={submit}
-                    testId="chat-composer-action"
-                  />
-                ) : !recording && responding ? (
-                  // While a reply is streaming and nothing is typed, the mic becomes a
-                  // stop control so the user can interrupt a runaway generation.
-                  <SoftButton
-                    glyph={STOP_GLYPH}
-                    label="stop generating"
-                    onClick={() => stop?.()}
-                    testId="chat-composer-stop"
-                  />
-                ) : (
-                  <SoftButton
-                    glyph={MIC_GLYPH}
-                    label={
-                      pushToTalkActive
-                        ? "release to send"
-                        : recording
-                          ? "stop listening"
-                          : "talk"
-                    }
-                    active={recording}
-                    disabled={booting}
-                    onClick={handleMicClick}
-                    onPointerDown={beginPushToTalkPress}
-                    onPointerUp={endPushToTalkPress}
-                    onPointerCancel={endPushToTalkPress}
-                    testId="chat-composer-mic"
-                  />
-                )}
-              </motion.div>
-            </div>
-          </>
-        )}
-      </fieldset>
+                <motion.div
+                  key={
+                    (hasDraft || hasImages) && !recording
+                      ? "send"
+                      : !recording && responding
+                        ? "stop"
+                        : "mic"
+                  }
+                  className="shrink-0"
+                  initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.6 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{
+                    duration: reduce ? 0 : 0.3,
+                    ease: OVERLAY_EASE,
+                  }}
+                >
+                  {(hasDraft || hasImages) && !recording ? (
+                    <SoftButton
+                      glyph={SEND_GLYPH}
+                      label={canSend ? "send" : "send (waiting for reply)"}
+                      disabled={!canSend}
+                      onClick={submit}
+                      testId="chat-composer-action"
+                    />
+                  ) : !recording && responding ? (
+                    // While a reply is streaming and nothing is typed, the mic becomes a
+                    // stop control so the user can interrupt a runaway generation.
+                    <SoftButton
+                      glyph={STOP_GLYPH}
+                      label="stop generating"
+                      onClick={() => stop?.()}
+                      testId="chat-composer-stop"
+                    />
+                  ) : (
+                    <SoftButton
+                      glyph={MIC_GLYPH}
+                      label={
+                        pushToTalkActive
+                          ? "release to send"
+                          : recording
+                            ? "stop listening"
+                            : "talk"
+                      }
+                      active={recording}
+                      disabled={booting}
+                      onClick={handleMicClick}
+                      onPointerDown={beginPushToTalkPress}
+                      onPointerUp={endPushToTalkPress}
+                      onPointerCancel={endPushToTalkPress}
+                      testId="chat-composer-mic"
+                    />
+                  )}
+                </motion.div>
+              </div>
+            </>
+          )}
+        </fieldset>
+      </div>
     </div>
   );
 }

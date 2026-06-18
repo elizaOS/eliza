@@ -55,12 +55,14 @@ afterEach(() => {
 });
 
 describe("HomeScreen", () => {
-  it("renders the clock, activity, messages, and pinned tiles", () => {
+  it("renders the clock, activity (when present), messages, and pinned tiles", async () => {
     render(<HomeScreen onOpenTile={vi.fn()} />);
     expect(screen.getByTestId("home-clock")).toBeTruthy();
+    // Activity card shows because the mock has events.
     expect(screen.getByTestId("home-widget-activity")).toBeTruthy();
-    expect(screen.getByTestId("home-widget-messages")).toBeTruthy();
     expect(screen.getByText("Finished the build")).toBeTruthy();
+    // Messages card appears once the (async) inbox fetch resolves with a chat.
+    expect(await screen.findByTestId("home-widget-messages")).toBeTruthy();
     // The 6 non-native tiles always show.
     for (const id of [
       "settings",
@@ -95,18 +97,9 @@ describe("HomeScreen", () => {
     });
   });
 
-  it("customizes the widget area: edit → hide a widget → it stays hidden", () => {
+  it("has no Edit button or Pinned label (clean, action-driven dashboard)", () => {
     render(<HomeScreen onOpenTile={vi.fn()} />);
-    // Enter edit mode and hide the activity widget.
-    fireEvent.click(screen.getByTestId("home-edit-toggle"));
-    fireEvent.click(screen.getByLabelText("Hide Recent activity"));
-    // Leave edit mode → the hidden widget is gone.
-    fireEvent.click(screen.getByTestId("home-edit-toggle"));
-    expect(screen.queryByTestId("home-widget-activity")).toBeNull();
-    expect(screen.getByTestId("home-widget-messages")).toBeTruthy();
-    // Persisted: a fresh mount reads localStorage and keeps it hidden.
-    cleanup();
-    render(<HomeScreen onOpenTile={vi.fn()} />);
-    expect(screen.queryByTestId("home-widget-activity")).toBeNull();
+    expect(screen.queryByTestId("home-edit-toggle")).toBeNull();
+    expect(screen.queryByText("Pinned")).toBeNull();
   });
 });

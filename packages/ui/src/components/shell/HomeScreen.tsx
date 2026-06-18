@@ -13,7 +13,6 @@ import {
   MessageSquare,
   Network,
   OctagonAlert,
-  Pencil,
   Phone,
   Plus,
   Settings,
@@ -130,55 +129,25 @@ function relativeTime(ts: number): string {
   return `${Math.floor(h / 24)}d`;
 }
 
-// Which optional widgets are shown. Persisted so the home is customizable while
-// shipping sensible all-on defaults.
-const WIDGET_VIS_KEY = "eliza:home:widgets";
-const OPTIONAL_WIDGETS = ["activity", "messages"] as const;
-type OptionalWidget = (typeof OPTIONAL_WIDGETS)[number];
-
-function loadWidgetVisibility(): Record<OptionalWidget, boolean> {
-  const defaults = { activity: true, messages: true };
-  if (typeof localStorage === "undefined") return defaults;
-  try {
-    const raw = localStorage.getItem(WIDGET_VIS_KEY);
-    if (!raw) return defaults;
-    const parsed = JSON.parse(raw) as Partial<Record<OptionalWidget, boolean>>;
-    return {
-      activity: parsed.activity !== false,
-      messages: parsed.messages !== false,
-    };
-  } catch {
-    return defaults;
-  }
-}
-
-interface HomeCardProps {
-  title: string;
-  icon: LucideIcon;
-  children: React.ReactNode;
-  editing?: boolean;
-  visible?: boolean;
-  onToggle?: () => void;
-  testId?: string;
-}
-
-/** A blocked, glassy home widget card — the iOS-style building block. */
+/** A blocked, glassy home widget card — the iOS-style building block. Only
+ *  rendered when it has content (the home stays clean when nothing's happening). */
 function HomeCard({
   title,
   icon: Icon,
   children,
-  editing,
-  visible,
-  onToggle,
   testId,
-}: HomeCardProps): React.JSX.Element {
+}: {
+  title: string;
+  icon: LucideIcon;
+  children: React.ReactNode;
+  testId?: string;
+}): React.JSX.Element {
   return (
     <section
       data-testid={testId}
       className={cn(
         "relative rounded-3xl border border-white/12 bg-black/35 p-4 backdrop-blur-2xl",
         "shadow-[inset_0_1px_0_rgba(255,255,255,0.10),0_18px_50px_-26px_rgba(0,0,0,0.7)]",
-        editing && !visible && "opacity-45",
       )}
     >
       <header className="mb-2.5 flex items-center gap-2">
@@ -186,16 +155,6 @@ function HomeCard({
         <h2 className="text-[13px] font-semibold uppercase tracking-wide text-white/70">
           {title}
         </h2>
-        {editing ? (
-          <button
-            type="button"
-            onClick={onToggle}
-            aria-label={visible ? `Hide ${title}` : `Show ${title}`}
-            className="ml-auto rounded-full border border-white/20 bg-white/10 px-2.5 py-0.5 text-[11px] font-medium text-white/80 transition-colors hover:bg-white/20"
-          >
-            {visible ? "Hide" : "Show"}
-          </button>
-        ) : null}
       </header>
       {children}
     </section>
@@ -225,37 +184,33 @@ function ClockBlock(): React.JSX.Element {
   );
 }
 
-function ActivityWidget(): React.JSX.Element {
-  const { events } = useActivityEvents();
-  const recent = events.slice(0, 5);
+function ActivityRows({
+  events,
+}: {
+  events: readonly {
+    id: string;
+    eventType: string;
+    summary: string;
+    timestamp: number;
+  }[];
+}): React.JSX.Element {
   return (
-    <div data-testid="home-activity">
-      {recent.length === 0 ? (
-        <p className="py-1 text-[13px] text-white/55">
-          Nothing yet — the agent's recent activity shows up here.
-        </p>
-      ) : (
-        <ul className="flex flex-col gap-2.5">
-          {recent.map((ev) => {
-            const { icon: Icon, tone } = activityIcon(ev.eventType);
-            return (
-              <li key={ev.id} className="flex items-start gap-2.5">
-                <Icon
-                  className={cn("mt-0.5 h-4 w-4 shrink-0", tone)}
-                  aria-hidden
-                />
-                <span className="min-w-0 flex-1 truncate text-[13px] leading-snug text-white/85">
-                  {ev.summary}
-                </span>
-                <span className="shrink-0 text-[11px] tabular-nums text-white/45">
-                  {relativeTime(ev.timestamp)}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
+    <ul data-testid="home-activity" className="flex flex-col gap-2.5">
+      {events.map((ev) => {
+        const { icon: Icon, tone } = activityIcon(ev.eventType);
+        return (
+          <li key={ev.id} className="flex items-start gap-2.5">
+            <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", tone)} aria-hidden />
+            <span className="min-w-0 flex-1 truncate text-[13px] leading-snug text-white/85">
+              {ev.summary}
+            </span>
+            <span className="shrink-0 text-[11px] tabular-nums text-white/45">
+              {relativeTime(ev.timestamp)}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -263,7 +218,8 @@ type InboxChat = Awaited<
   ReturnType<typeof client.getInboxChats>
 >["chats"][number];
 
-function MessagesWidget(): React.JSX.Element {
+/** Poll recent inbox chats; returns [] until/unless there are any. */
+function useRecentChats(): InboxChat[] {
   const [chats, setChats] = React.useState<InboxChat[]>([]);
   const load = React.useCallback(() => {
     void client
@@ -277,11 +233,17 @@ function MessagesWidget(): React.JSX.Element {
     load();
   }, [load]);
   useIntervalWhenDocumentVisible(load, 20_000);
+  return chats;
+}
+
+function MessagesRows({
+  chats,
+}: {
+  chats: readonly InboxChat[];
+}): React.JSX.Element {
   return (
     <div data-testid="home-messages">
-      {chats.length === 0 ? (
-        <p className="py-1 text-[13px] text-white/55">No recent messages.</p>
-      ) : (
+      {
         <ul className="flex flex-col gap-2.5">
           {chats.map((c) => (
             <li key={c.id} className="flex items-center gap-2.5">
@@ -311,7 +273,7 @@ function MessagesWidget(): React.JSX.Element {
             </li>
           ))}
         </ul>
-      )}
+      }
     </div>
   );
 }
@@ -333,78 +295,48 @@ export function HomeScreen({
   onOpenTile,
   showNativeOsTiles = false,
 }: HomeScreenProps): React.JSX.Element {
-  const [editing, setEditing] = React.useState(false);
-  const [visibility, setVisibility] = React.useState(loadWidgetVisibility);
-
-  const toggleWidget = React.useCallback((id: OptionalWidget) => {
-    setVisibility((prev) => {
-      const next = { ...prev, [id]: !prev[id] };
-      try {
-        localStorage.setItem(WIDGET_VIS_KEY, JSON.stringify(next));
-      } catch {
-        /* storage unavailable — keep in-memory */
-      }
-      return next;
-    });
-  }, []);
-
   const tiles = HOME_TILES.filter((t) => !t.nativeOs || showNativeOsTiles);
+  // Recent activity + messages render ONLY when there's something to show — the
+  // home stays clean (clock + tiles) otherwise.
+  const { events } = useActivityEvents();
+  const recentActivity = events.slice(0, 5);
+  const recentChats = useRecentChats();
 
   return (
     <div
       data-testid="home-screen"
       className={cn(
         "eliza-continuous-chat-scroll absolute inset-0 z-[1] overflow-y-auto",
-        "px-4 pt-[calc(env(safe-area-inset-top,0px)+1.5rem)]",
+        // Sit right under the status bar — no empty band above the clock.
+        "px-4 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]",
         // Clear the floating chat composer at the bottom.
         "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]",
       )}
     >
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-        <div className="flex items-end justify-between">
-          <ClockBlock />
-          <button
-            type="button"
-            data-testid="home-edit-toggle"
-            onClick={() => setEditing((e) => !e)}
-            aria-pressed={editing}
-            className="mb-1 flex items-center gap-1.5 rounded-full border border-white/20 bg-black/30 px-3 py-1.5 text-[12px] font-medium text-white/80 backdrop-blur transition-colors hover:bg-white/15"
-          >
-            <Pencil className="h-3.5 w-3.5" aria-hidden />
-            {editing ? "Done" : "Edit"}
-          </button>
-        </div>
+        <ClockBlock />
 
-        {visibility.activity || editing ? (
+        {recentActivity.length > 0 ? (
           <HomeCard
             title="Recent activity"
             icon={Activity}
             testId="home-widget-activity"
-            editing={editing}
-            visible={visibility.activity}
-            onToggle={() => toggleWidget("activity")}
           >
-            <ActivityWidget />
+            <ActivityRows events={recentActivity} />
           </HomeCard>
         ) : null}
 
-        {visibility.messages || editing ? (
+        {recentChats.length > 0 ? (
           <HomeCard
             title="Recent messages"
             icon={MessageSquare}
             testId="home-widget-messages"
-            editing={editing}
-            visible={visibility.messages}
-            onToggle={() => toggleWidget("messages")}
           >
-            <MessagesWidget />
+            <MessagesRows chats={recentChats} />
           </HomeCard>
         ) : null}
 
         <nav aria-label="Pinned views" data-testid="home-tiles">
-          <h2 className="mb-2.5 px-1 text-[13px] font-semibold uppercase tracking-wide text-white/55">
-            Pinned
-          </h2>
           <div className="grid grid-cols-4 gap-3">
             {tiles.map((tile) => {
               const Icon = tile.icon;
