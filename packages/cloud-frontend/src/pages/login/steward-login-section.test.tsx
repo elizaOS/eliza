@@ -135,7 +135,7 @@ describe("StewardLoginSection", () => {
     expect(screen.getByRole("button", { name: /passkey/i })).toBeVisible();
     expect(screen.getByRole("button", { name: /magic link/i })).toBeVisible();
     expect(
-      screen.getByText(/choose magic link to create your account/i),
+      screen.getByText(/passkey sets up your account in seconds/i),
     ).toBeVisible();
     expect(screen.getByText(/provider endpoint down/i)).toBeVisible();
   });
