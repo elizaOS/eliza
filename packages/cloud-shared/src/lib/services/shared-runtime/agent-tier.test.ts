@@ -64,11 +64,19 @@ describe("tier helpers", () => {
 });
 
 describe("runSharedAgentTurn (degraded path — no model configured)", () => {
-  // resolveSharedModel() only consults CEREBRAS_API_KEY and OPENAI_API_KEY. The
+  // resolveSharedAgentTurnModel() degrades only when NO inference provider is
+  // configured for the model (via hasLanguageModelProviderConfigured). The
   // cloud-shared suite runs single-process under bun, so a sibling test can leak
-  // either key into process.env and flip this off the degraded path. Snapshot and
-  // clear both keys regardless of lane order, restoring afterward.
-  const MODEL_KEYS = ["CEREBRAS_API_KEY", "OPENAI_API_KEY"] as const;
+  // any provider key into process.env and flip this off the degraded path.
+  // Snapshot and clear every provider key the resolver consults, restoring after.
+  const MODEL_KEYS = [
+    "CEREBRAS_API_KEY",
+    "OPENAI_API_KEY",
+    "BITROUTER_API_KEY",
+    "AI_GATEWAY_API_KEY",
+    "AIGATEWAY_API_KEY",
+    "GROQ_API_KEY",
+  ] as const;
   const saved: Record<string, string | undefined> = {};
 
   beforeEach(() => {
@@ -87,8 +95,8 @@ describe("runSharedAgentTurn (degraded path — no model configured)", () => {
   });
 
   it("never throws and appends user+assistant to history when no shared model is set", async () => {
-    // With both model keys cleared, resolveSharedModel() is null, so this
-    // exercises the degraded path with NO network call.
+    // With every provider key cleared, resolveSharedAgentTurnModel() is null, so
+    // this exercises the degraded path with NO network call.
     const result = await runSharedAgentTurn({
       character: { name: "Nova", system: "You are Nova, a concise helper." },
       history: [],
