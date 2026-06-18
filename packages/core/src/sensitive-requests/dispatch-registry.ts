@@ -97,25 +97,55 @@ export interface SensitiveRequestDeliveryAdapter {
 export interface SensitiveRequestDispatchRegistry {
 	register(adapter: SensitiveRequestDeliveryAdapter): void;
 	unregister(target: DeliveryTarget): void;
+	/** Most-recently-registered adapter for `target` (back-compat). */
 	get(target: DeliveryTarget): SensitiveRequestDeliveryAdapter | undefined;
+	/**
+	 * The adapter for `target` that supports `channelId` — the first whose
+	 * `supportsChannel` does not return false, falling back to the most recent.
+	 * This is what lets several connectors (Discord + Telegram) each register a
+	 * "dm" adapter and have the right one selected per request.
+	 */
+	resolve?(
+		target: DeliveryTarget,
+		channelId: string | undefined,
+		runtime: unknown,
+	): SensitiveRequestDeliveryAdapter | undefined;
 	list(): SensitiveRequestDeliveryAdapter[];
 }
 
 export function createSensitiveRequestDispatchRegistry(): SensitiveRequestDispatchRegistry {
-	const adapters = new Map<DeliveryTarget, SensitiveRequestDeliveryAdapter>();
+	const adapters = new Map<DeliveryTarget, SensitiveRequestDeliveryAdapter[]>();
+	const listFor = (target: DeliveryTarget): SensitiveRequestDeliveryAdapter[] =>
+		adapters.get(target) ?? [];
 
 	return {
 		register(adapter) {
-			adapters.set(adapter.target, adapter);
+			const arr = adapters.get(adapter.target) ?? [];
+			// Idempotent: registering the same adapter object twice is a no-op.
+			if (!arr.includes(adapter)) arr.push(adapter);
+			adapters.set(adapter.target, arr);
 		},
 		unregister(target) {
 			adapters.delete(target);
 		},
 		get(target) {
-			return adapters.get(target);
+			const arr = listFor(target);
+			return arr[arr.length - 1];
+		},
+		resolve(target, channelId, runtime) {
+			const arr = listFor(target);
+			for (const adapter of arr) {
+				if (
+					!adapter.supportsChannel ||
+					adapter.supportsChannel(channelId, runtime) !== false
+				) {
+					return adapter;
+				}
+			}
+			return arr[arr.length - 1];
 		},
 		list() {
-			return Array.from(adapters.values());
+			return Array.from(adapters.values()).flat();
 		},
 	};
 }

@@ -190,7 +190,16 @@ export const deliverOAuthLinkAction: Action = {
 			};
 		}
 
-		const adapter = registry.get(target);
+		const channelId =
+			typeof params.targetChannelId === "string" &&
+			params.targetChannelId.length > 0
+				? params.targetChannelId
+				: typeof message.roomId === "string"
+					? message.roomId
+					: undefined;
+
+		const adapter =
+			registry.resolve?.(target, channelId, runtime) ?? registry.get(target);
 		if (!adapter) {
 			logger.warn(
 				`[DELIVER_OAUTH_LINK] oauthIntentId=${oauthIntentId} no adapter for target=${target}`,
@@ -201,14 +210,6 @@ export const deliverOAuthLinkAction: Action = {
 				data: { actionName: "DELIVER_OAUTH_LINK", oauthIntentId },
 			};
 		}
-
-		const channelId =
-			typeof params.targetChannelId === "string" &&
-			params.targetChannelId.length > 0
-				? params.targetChannelId
-				: typeof message.roomId === "string"
-					? message.roomId
-					: undefined;
 
 		const result: DeliveryResult = await adapter.deliver({
 			request: envelopeToDispatchRequest(envelope),

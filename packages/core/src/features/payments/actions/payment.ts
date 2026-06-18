@@ -345,7 +345,16 @@ async function handleDeliverLink(
 		};
 	}
 
-	const adapter = registry.get(target);
+	const channelId =
+		typeof params.targetChannelId === "string" &&
+		params.targetChannelId.length > 0
+			? params.targetChannelId
+			: typeof message.roomId === "string"
+				? message.roomId
+				: undefined;
+
+	const adapter =
+		registry.resolve?.(target, channelId, runtime) ?? registry.get(target);
 	if (!adapter) {
 		logger.warn(
 			`[Payment:deliver_link] requestId=${paymentRequestId} no adapter for target=${target}`,
@@ -356,14 +365,6 @@ async function handleDeliverLink(
 			data: dataFor(action, { paymentRequestId }),
 		};
 	}
-
-	const channelId =
-		typeof params.targetChannelId === "string" &&
-		params.targetChannelId.length > 0
-			? params.targetChannelId
-			: typeof message.roomId === "string"
-				? message.roomId
-				: undefined;
 
 	const result: DeliveryResult = await adapter.deliver({
 		request: envelopeToDispatchRequest(envelope),
