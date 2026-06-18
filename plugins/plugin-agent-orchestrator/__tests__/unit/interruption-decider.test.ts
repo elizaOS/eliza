@@ -53,6 +53,20 @@ describe("decideInterruption", () => {
     ).toBe("interrupt");
   });
 
+  it("queues (does NOT interrupt) addressed ADDITIVE instructions mid-turn", () => {
+    // "actually" / "don't" appear in benign additive instructions — these must
+    // augment after the turn, not cancel it.
+    for (const text of [
+      "Ada, actually also handle the null case",
+      "Ada, don't forget tests",
+      "Ada, and also add docs",
+    ]) {
+      expect(
+        decideInterruption({ ...base, text, sessionBusy: true }).action,
+      ).toBe("queue");
+    }
+  });
+
   it("ignores ambient chatter not addressed to the agent in a crowded room", () => {
     expect(
       decideInterruption({

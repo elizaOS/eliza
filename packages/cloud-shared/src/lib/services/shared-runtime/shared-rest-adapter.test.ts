@@ -96,8 +96,8 @@ describe("shared-rest-adapter — startup shell surface", () => {
     expect(sharedRestFirstRun()).toEqual({ complete: true, ok: true });
   });
 
-  test("config advertises no websocket (shared agents stream via SSE/REST)", () => {
-    expect(sharedRestConfig()).toEqual({ websocket: false });
+  test("config declares no websocket + no streaming (client uses non-stream REST)", () => {
+    expect(sharedRestConfig()).toEqual({ websocket: false, streaming: false });
   });
 
   test("views returns the builtin chat view by default", () => {

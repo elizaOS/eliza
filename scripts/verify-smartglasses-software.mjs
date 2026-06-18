@@ -7,22 +7,22 @@ const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
 const steps = [
   {
-    label: "Hearwear plugin lint",
+    label: "Facewear plugin lint",
     command: "bun",
     args: ["run", "--cwd", "plugins/plugin-facewear", "lint"],
   },
   {
-    label: "Hearwear plugin typecheck",
+    label: "Facewear plugin typecheck",
     command: "bun",
     args: ["run", "--cwd", "plugins/plugin-facewear", "typecheck"],
   },
   {
-    label: "Hearwear plugin tests",
+    label: "Facewear plugin tests",
     command: "bun",
     args: ["run", "--cwd", "plugins/plugin-facewear", "test"],
   },
   {
-    label: "Hearwear app registration verification",
+    label: "Facewear app registration verification",
     command: "bun",
     args: ["run", "--cwd", "plugins/plugin-facewear", "verify:app"],
   },
@@ -30,17 +30,6 @@ const steps = [
     label: "smartglasses example software verification",
     command: "bun",
     args: ["run", "--cwd", "packages/examples/smartglasses", "verify:software"],
-  },
-  {
-    label: "repair Hearwear consolidation lock entries",
-    command: "npm",
-    args: ["run", "audit:hearwear-consolidation:fix-lock", "--silent"],
-    settleMs: 1_500,
-  },
-  {
-    label: "Hearwear consolidation audit",
-    command: "node",
-    args: ["scripts/check-hearwear-consolidation.mjs"],
   },
   {
     label: "Even Realities research audit self-test",

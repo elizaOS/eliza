@@ -2,7 +2,7 @@ import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.
 
 export default createViewBundleConfig({
   packageName: "@elizaos/plugin-facewear",
-  viewId: "hearwear",
+  viewId: "facewear",
   entry: "./src/ui/facewear-view-bundle.ts",
   outDir: "dist/views",
   componentExport: "FacewearView",

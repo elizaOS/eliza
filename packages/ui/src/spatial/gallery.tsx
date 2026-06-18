@@ -122,18 +122,19 @@ function DashboardScreen() {
     { label: "Active", value: "9", tone: "success" as const },
     { label: "Errors", value: "1", tone: "danger" as const },
   ];
+  // Borderless stat blocks (tone-coloured numbers) — no nested boxes.
   return (
     <Card title="Overview" gap={1} padding={1}>
-      <HStack gap={1} wrap>
+      <HStack gap={3} wrap>
         {stats.map((s) => (
-          <Card key={s.label} gap={0} padding={1} grow={1} tone={s.tone}>
+          <VStack key={s.label} gap={0} grow={1}>
             <Text style="heading" tone={s.tone}>
               {s.value}
             </Text>
             <Text style="caption" tone="muted">
               {s.label}
             </Text>
-          </Card>
+          </VStack>
         ))}
       </HStack>
       <Divider label="recent" />
@@ -147,24 +148,22 @@ function DashboardScreen() {
 
 // 5 — Chat transcript --------------------------------------------------------
 function ChatScreen() {
+  // Speaker label + message, no bubble boxes — clean terminal chat rhythm.
   return (
     <Card title="Chat" gap={1} padding={1}>
-      <HStack gap={1}>
+      <VStack gap={0}>
         <Text tone="muted" style="caption">
           you
         </Text>
-        <Card gap={0} padding={1} grow={1} tone="muted">
-          <Text>What's the deploy status?</Text>
-        </Card>
-      </HStack>
-      <HStack gap={1}>
+        <Text>What's the deploy status?</Text>
+      </VStack>
+      <VStack gap={0}>
         <Text tone="primary" style="caption">
           eliza
         </Text>
-        <Card gap={0} padding={1} grow={1} tone="primary">
-          <Text>Build #482 is live. All checks green.</Text>
-        </Card>
-      </HStack>
+        <Text>Build #482 is live. All checks green.</Text>
+      </VStack>
+      <Divider />
       <Field placeholder="Message…" agent="composer" />
     </Card>
   );

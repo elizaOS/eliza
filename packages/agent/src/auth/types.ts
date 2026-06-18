@@ -6,6 +6,13 @@ export interface OAuthCredentials {
   access: string;
   refresh: string;
   expires: number;
+  /**
+   * OIDC id_token, when the provider issues one. Codex (`openai-codex`)
+   * requires it in `~/.codex/auth.json` (`tokens.id_token`) for chatgpt-mode
+   * auth, so a pooled account must persist it for its materialized CODEX_HOME
+   * to authenticate. Optional — other providers don't use it.
+   */
+  idToken?: string;
 }
 
 export type SubscriptionProvider =

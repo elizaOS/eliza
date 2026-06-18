@@ -63,7 +63,7 @@ function softwareGateFailures() {
     "plugins/plugin-facewear/src/__tests__/smartglasses-control-action.test.ts",
     "plugins/plugin-facewear/src/transport/web-bluetooth.ts",
     "plugins/plugin-facewear/src/transport/noble.ts",
-    "packages/app-core/src/registry/entries/plugins/hearwear.json",
+    "packages/app-core/src/registry/entries/plugins/facewear.json",
     "packages/app/src/plugin-registrations.ts",
     "plugins/plugin-facewear/native/android/even-realities/app/src/main/java/com/elizaos/facewear/evenrealities/G1BleService.kt",
     "plugins/plugin-facewear/native/android/even-realities/app/src/main/java/com/elizaos/facewear/evenrealities/AgentBridgeService.kt",
@@ -136,8 +136,6 @@ function softwareGateFailures() {
       "verify:app",
       "packages/examples/smartglasses",
       "verify:software",
-      "audit:hearwear-consolidation:fix-lock",
-      "scripts/check-hearwear-consolidation.mjs",
       "scripts/check-even-research-audit.mjs",
       '"--self-test"',
       "scripts/check-smartglasses-completion-gate.mjs",
@@ -224,7 +222,7 @@ function softwareGateFailures() {
     !typecheckScript.includes("hardware-local-bluetooth.ts")
   ) {
     failures.push(
-      "packages/examples/smartglasses/package.json: typecheck must build Hearwear dependencies before tsc and include hardware-local-bluetooth.ts",
+      "packages/examples/smartglasses/package.json: typecheck must build Facewear dependencies before tsc and include hardware-local-bluetooth.ts",
     );
   }
 
@@ -345,7 +343,7 @@ function softwareGateFailures() {
         "bun run --cwd packages/examples/smartglasses verify:software",
         "software gate includes `hardware:test-doctor`",
         "scanned 34,567 files",
-        "completion gate now also checks critical lockfile/manifest paths plus the stable Hearwear build scripts",
+        "completion gate now also checks critical lockfile/manifest paths plus the stable Facewear build scripts",
         "Blocked on physical headset advertising/availability",
       ],
     ),
@@ -618,12 +616,12 @@ function softwareGateFailures() {
   );
   failures.push(
     ...sourceTokenFailures(
-      "packages/app-core/src/registry/entries/plugins/hearwear.json",
+      "packages/app-core/src/registry/entries/plugins/facewear.json",
       [
         '"npmName": "@elizaos/plugin-facewear"',
         "whole-headset pairing",
         "side-tap mic control",
-        '"target": "hearwear"',
+        '"target": "facewear"',
       ],
     ),
   );
@@ -914,7 +912,6 @@ function softwareGateFailures() {
     "npm run smartglasses:dev:simulator",
     "npm run smartglasses:simulator",
     "npm run smartglasses:smoke:simulator",
-    "Hearwear consolidation audit",
     "Even Realities research audit self-test",
     "Even Realities research audit",
     "smartglasses completion self-test",
@@ -931,9 +928,6 @@ function softwareGateFailures() {
   }
 
   for (const scriptName of [
-    "audit:hearwear-consolidation",
-    "audit:hearwear-consolidation:fix-lock",
-    "audit:hearwear-consolidation:self-test",
     "audit:even-research",
     "audit:even-research:self-test",
     "audit:smartglasses-completion",

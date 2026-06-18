@@ -143,10 +143,15 @@ function materializeCodexHome(accountId: string, accessToken: string): string {
   const record = loadAccount("openai-codex", accountId);
   const refreshToken = record?.credentials.refresh ?? "";
   const chatgptAccountId = record?.organizationId;
+  // Codex's chatgpt-mode auth loader requires `tokens.id_token`; omitting it
+  // fails with "Authentication required" even when access_token is valid (an
+  // expired id_token is tolerated — Codex refreshes — but it must be present).
+  const idToken = record?.credentials.idToken;
   const authJson = {
     auth_mode: "chatgpt",
     OPENAI_API_KEY: null as string | null,
     tokens: {
+      ...(idToken ? { id_token: idToken } : {}),
       access_token: accessToken,
       refresh_token: refreshToken,
       ...(chatgptAccountId ? { account_id: chatgptAccountId } : {}),

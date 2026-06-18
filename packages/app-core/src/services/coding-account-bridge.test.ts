@@ -18,17 +18,23 @@ function writeAccount(
   providerId: AccountCredentialProvider,
   id: string,
   access: string,
-  extra: { organizationId?: string } = {},
+  extra: { organizationId?: string; idToken?: string } = {},
 ): void {
+  const { idToken, ...record } = extra;
   saveAccount({
     id,
     providerId,
     label: id,
     source: "oauth",
-    credentials: { access, refresh: `${access}-refresh`, expires: FAR_FUTURE },
+    credentials: {
+      access,
+      refresh: `${access}-refresh`,
+      expires: FAR_FUTURE,
+      ...(idToken ? { idToken } : {}),
+    },
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    ...extra,
+    ...record,
   });
 }
 
@@ -77,9 +83,10 @@ describe("coding-account-bridge", () => {
     expect(sel?.source).toBe("oauth");
   });
 
-  it("materializes a per-account CODEX_HOME/auth.json for Codex", async () => {
+  it("materializes a per-account CODEX_HOME/auth.json for Codex (incl. id_token)", async () => {
     writeAccount("openai-codex", "codex-1", "codex-access-1", {
       organizationId: "acct_123",
+      idToken: "codex-id-token-1",
     });
     const bridge = getDefaultAccountPool() && getCodingAgentSelectorBridge();
     const sel = await bridge?.select("codex");
@@ -92,6 +99,8 @@ describe("coding-account-bridge", () => {
     expect(authJson.tokens.access_token).toBe("codex-access-1");
     expect(authJson.tokens.account_id).toBe("acct_123");
     expect(authJson.auth_mode).toBe("chatgpt");
+    // id_token must be present or codex-acp fails "Authentication required".
+    expect(authJson.tokens.id_token).toBe("codex-id-token-1");
   });
 
   it("returns null when no accounts are linked (single-account fallback)", async () => {

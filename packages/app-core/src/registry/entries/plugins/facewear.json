@@ -1,7 +1,7 @@
 {
   "id": "facewear",
   "name": "Facewear",
-  "description": "Unified hearwear integration for Meta Quest, XReal, Apple Vision Pro, and Even Realities G1/G2 whole-headset pairing, display text, microphone audio, side-tap mic control, bridge Wi-Fi setup, and diagnostics.",
+  "description": "Unified facewear integration for Meta Quest, XReal, Apple Vision Pro, and Even Realities G1/G2 whole-headset pairing, display text, microphone audio, side-tap mic control, bridge Wi-Fi setup, and diagnostics.",
   "npmName": "@elizaos/plugin-facewear",
   "version": "0.1.0",
   "source": "bundled",

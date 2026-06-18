@@ -184,16 +184,20 @@ export function sharedRestViews(viewType?: string): {
 /**
  * GET .../api/config — the dashboard's open-ended agent config. A shared agent
  * exposes no editable config through this adapter, but it DOES declare its
- * realtime transport: a Tier-0 agent runs in a stateless Worker with no
- * persistent process, so there is no WebSocket to connect (per-turn streaming is
- * the SSE `/stream` endpoint; chat send already works over REST). It advertises
- * `websocket: false` so a client that honors it skips opening a WS to the shared
- * base — avoiding the doomed reconnect loop + "Lost backend connection" overlay
- * that otherwise paints over a fully working REST/SSE chat. The client still
- * reads the rest of the object defensively (`ui`/`cloud`) and falls back.
+ * transport capabilities so the client adapts by negotiation instead of
+ * URL-sniffing the agent base. A Tier-0 agent runs in a stateless Worker with no
+ * persistent process, so it has:
+ *  - `websocket: false` — no per-agent socket to connect; the client skips the
+ *    WS (avoiding the doomed reconnect loop + "Lost backend connection" overlay
+ *    that otherwise paints over a working chat).
+ *  - `streaming: false` — no token-by-token SSE chat stream
+ *    (`/messages/stream`); the client uses the non-stream `POST .../messages`
+ *    (which returns the full reply) cleanly, without probing a 404 first.
+ * The client still reads the rest of the object defensively (`ui`/`cloud`) and
+ * falls back. These flags let the app delete its per-base special-casing.
  */
-export function sharedRestConfig(): { websocket: false } {
-  return { websocket: false };
+export function sharedRestConfig(): { websocket: false; streaming: false } {
+  return { websocket: false, streaming: false };
 }
 
 /** The authed-identity shape `authMe()` (ui/src/api/auth-client.ts) parses. */
