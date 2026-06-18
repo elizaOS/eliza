@@ -2,7 +2,6 @@
  * Root App component — routing shell.
  */
 
-import { Keyboard } from "@capacitor/keyboard";
 import { X } from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {
@@ -1430,9 +1429,15 @@ export function App() {
       return;
     }
 
-    void Keyboard.setScroll({ isDisabled: true }).catch(() => {
-      // Ignore bridge failures so web and desktop shells keep working.
-    });
+    // Dynamic import keeps @capacitor/keyboard (a native-only, devDependency
+    // plugin) out of the static module graph, so server consumers that pull in
+    // the @elizaos/ui barrel (e.g. plugin-inbox in the Node agent image) don't
+    // crash trying to resolve a package that's only installed for mobile.
+    void import("@capacitor/keyboard")
+      .then(({ Keyboard }) => Keyboard.setScroll({ isDisabled: true }))
+      .catch(() => {
+        // Ignore bridge failures so web and desktop shells keep working.
+      });
   }, []);
 
   useEffect(() => {

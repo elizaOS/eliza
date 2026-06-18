@@ -20,6 +20,7 @@ paths = [
   '''(^|/)__mocks__/''',
   '''(^|/)test/fixtures/''',
   '''(^|/)tests/fixtures/''',
+  '''(^|/)tests/e2e/.*\.spec\.ts$''',
   '''.*\.example$''',
   '''\.env\.example$''',
   '''\.env\.sample$''',
