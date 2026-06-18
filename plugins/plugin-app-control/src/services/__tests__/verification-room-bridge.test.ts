@@ -176,9 +176,8 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 		);
 
 		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
-		const [memory, table] = (
-			runtime.createMemory as ReturnType<typeof vi.fn>
-		).mock.calls[0];
+		const [memory, table] = (runtime.createMemory as ReturnType<typeof vi.fn>)
+			.mock.calls[0];
 		expect(table).toBe("messages");
 		expect(memory.roomId).toBe("room-42");
 		const text = memory.content.text as string;

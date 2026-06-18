@@ -19,7 +19,8 @@ for (const screen of GALLERY) {
     const lines = renderViewToLines(React.createElement(screen.view), w);
     const r = analyzeFraming(lines);
     totalIssues += r.issues.length;
-    if (r.issues.length) summary.push(`${screen.id}@${w}: ${r.issues.length} issues`);
+    if (r.issues.length)
+      summary.push(`${screen.id}@${w}: ${r.issues.length} issues`);
     report += `\n========= ${screen.id} @ ${w}  (boxes=${r.boxes} uniform=${r.uniformWidth} issues=${r.issues.length}) =========\n`;
     report += `${columnRuler(w)}\n`;
     report += `${lines.map(stripAnsi).join("\n")}\n`;

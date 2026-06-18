@@ -8,10 +8,7 @@ const repoRoot = resolve(
   "../../../../../",
 );
 
-const shellSourcePaths = [
-  "packages/ui/src/components/shell/StartupShell.tsx",
-  "packages/ui/src/components/shell/FirstRunShell.tsx",
-];
+const shellSourcePaths = ["packages/ui/src/components/shell/StartupShell.tsx"];
 
 describe("startup shell assets", () => {
   it("keeps shared shell renderers free of startup behavior imports", () => {

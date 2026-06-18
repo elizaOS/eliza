@@ -66,6 +66,7 @@ export enum MediaType {
 }
 
 const MAX_MESSAGE_LENGTH = 4096; // Telegram's max message length
+const INTERACTION_ONLY_FALLBACK_TEXT = "Choose an option:";
 
 type PdfTextService = {
   convertPdfToText(pdfBuffer: Buffer): Promise<string>;
@@ -586,10 +587,18 @@ export class MessageManager {
       // embedded in the text onto native inline keyboards, and send the prose
       // with the markers stripped. Plain replies pass through unchanged.
       const rendered = renderTelegramInteractions(content);
-      const chunks = this.splitMessage(rendered.text);
       const sentMessages: Message.TextMessage[] = [];
 
       const telegramButtons = convertToTelegramButtons(content.buttons ?? []);
+      const hasKeyboardRows =
+        rendered.keyboardRows.length > 0 || telegramButtons.length > 0;
+      const textToSend =
+        rendered.text.trim().length > 0
+          ? rendered.text
+          : hasKeyboardRows
+            ? INTERACTION_ONLY_FALLBACK_TEXT
+            : "";
+      const chunks = this.splitMessage(textToSend);
 
       if (!ctx.chat) {
         logger.error(
@@ -1214,7 +1223,6 @@ export class MessageManager {
         ? Number(threadId)
         : undefined;
     const callback: HandlerCallback = async (content: Content) => {
-      if (!content.text) return [];
       await this.sendMessageInChunks(
         ctx,
         content,

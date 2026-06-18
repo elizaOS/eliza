@@ -65,7 +65,6 @@ import {
   type FocusConnectorEventDetail,
 } from "./events";
 import { CompactOnboarding } from "./first-run/CompactOnboarding";
-import { FirstRunScreen } from "./first-run/FirstRunScreen";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
@@ -739,7 +738,6 @@ function renderStaticViewRouterTab({
   LifeOpsPageView: ComponentType | null | undefined;
 }): ReactNode {
   const directViews: Record<string, ReactNode> = {
-    onboarding: <FirstRunScreen />,
     tutorial: (
       <TabContentView>
         <TutorialView />

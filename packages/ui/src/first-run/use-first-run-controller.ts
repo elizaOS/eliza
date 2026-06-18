@@ -20,6 +20,7 @@ import {
   useApp,
 } from "../state";
 import { isCloudStatusAuthenticated, preOpenWindow } from "../utils";
+import { isDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
 import {
   createVoiceCapture,
   type VoiceCaptureHandle,
@@ -617,10 +618,6 @@ export function useFirstRunController(): FirstRunController {
         name,
         bio,
         onProgress: () => {},
-        // Cloud returns a shared-runtime agent (no dedicated container) for the
-        // default tier on every non-iOS platform. Without this flag the client
-        // throws "shared runtime has no sandbox bridge" and first-run bricks for
-        // new Android/desktop users. Mirrors the useFirstRunCallbacks path.
         allowSharedRuntime: true,
       });
       // Target the REST adapter base (webUiUrl = .../agents/<id>), NOT the raw
