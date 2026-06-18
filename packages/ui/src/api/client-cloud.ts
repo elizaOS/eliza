@@ -1041,6 +1041,18 @@ declare module "./client-base" {
       success: boolean;
       data: { jobId: string; status: string; message: string };
     }>;
+    /**
+     * Edit a cloud agent in place — rename and/or update its config
+     * (e.g. system prompt / bio). Backed by `PATCH /api/v1/eliza/agents/:id`.
+     */
+    updateCloudCompatAgent(
+      agentId: string,
+      edit: { agentName?: string; agentConfig?: Record<string, unknown> },
+    ): Promise<{
+      success: boolean;
+      error?: string;
+      data: { agentId: string; agentName: string };
+    }>;
     getCloudCompatAgentStatus(agentId: string): Promise<{
       success: boolean;
       data: CloudCompatAgentStatus;
@@ -1944,6 +1956,61 @@ ElizaClient.prototype.deleteCloudCompatAgent = async function (
 
   return this.fetch(`/api/cloud/compat/agents/${encodeURIComponent(agentId)}`, {
     method: "DELETE",
+  });
+};
+
+ElizaClient.prototype.updateCloudCompatAgent = async function (
+  this: ElizaClient,
+  agentId,
+  edit,
+) {
+  const path = `/api/v1/eliza/agents/${encodeURIComponent(agentId)}`;
+  const body = JSON.stringify({
+    ...(edit.agentName !== undefined ? { agentName: edit.agentName } : {}),
+    ...(edit.agentConfig !== undefined
+      ? { agentConfig: edit.agentConfig }
+      : {}),
+  });
+  const normalize = (response: {
+    success?: boolean;
+    data?: { agentId?: string; agentName?: string };
+    error?: string;
+  }) => ({
+    success: response.success === true,
+    ...(response.error ? { error: response.error } : {}),
+    data: {
+      agentId: response.data?.agentId ?? agentId,
+      agentName: response.data?.agentName ?? edit.agentName ?? "",
+    },
+  });
+
+  const direct = await directCloudRequest<{
+    success: boolean;
+    data?: { agentId?: string; agentName?: string };
+    error?: string;
+  }>(this, path, { method: "PATCH", body });
+  if (direct) return normalize(direct);
+
+  if (isNativeDirectCloudAuthMissing(this)) {
+    return {
+      success: false,
+      error: nativeDirectCloudAuthMissingMessage(),
+      data: { agentId, agentName: edit.agentName ?? "" },
+    };
+  }
+
+  if (isDirectCloudBase(this)) {
+    const response = await this.fetch<{
+      success: boolean;
+      data?: { agentId?: string; agentName?: string };
+      error?: string;
+    }>(path, { method: "PATCH", body }, { allowNonOk: true });
+    return normalize(response);
+  }
+
+  return this.fetch(`/api/cloud/compat/agents/${encodeURIComponent(agentId)}`, {
+    method: "PATCH",
+    body,
   });
 };
 
