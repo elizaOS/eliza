@@ -26,7 +26,8 @@ export interface FramingIssue {
     | "misaligned-vertical"
     | "broken-top-edge"
     | "broken-bottom-edge"
-    | "nested-box";
+    | "nested-box"
+    | "truncated-affordance";
   row: number;
   col?: number;
   detail: string;

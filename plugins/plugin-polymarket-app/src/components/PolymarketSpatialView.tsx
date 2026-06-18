@@ -18,7 +18,6 @@ import {
   Divider,
   HStack,
   List,
-  Spacer,
   type SpatialTone,
   Text,
   VStack,
