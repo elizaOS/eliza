@@ -69,6 +69,17 @@ export const rs2004scapePlugin: Plugin = gatePluginSessionForHostedApp(
 
 export default rs2004scapePlugin;
 
+// In a terminal host (the Node agent, no DOM), register the 2004scape view so it
+// renders inline in the terminal. Lazy + DOM-guarded so the terminal engine
+// stays out of browser/mobile bundles.
+if (typeof window === "undefined") {
+  void import("./register-terminal-view.js")
+    .then((m) => m.registerTwoThousandFourScapeTerminalView())
+    .catch(() => {
+      // Terminal rendering is best-effort; never block plugin load.
+    });
+}
+
 export type { GatewayHandle, GatewayOptions } from "./gateway/index.js";
 export { startGateway } from "./gateway/index.js";
 export * from "./routes.js";

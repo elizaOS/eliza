@@ -56,3 +56,14 @@ const hyperscapePlugin: Plugin = {
 export default hyperscapePlugin;
 export * from "./routes.js";
 export * from "./ui/index.js";
+
+// In a terminal host (the Node agent, no DOM), register the Hyperscape operator
+// view so it renders inline in the terminal. Lazy + DOM-guarded so the terminal
+// engine stays out of browser/mobile view bundles.
+if (typeof window === "undefined") {
+  void import("./register-terminal-view.js")
+    .then((m) => m.registerHyperscapeTerminalView())
+    .catch(() => {
+      // Terminal rendering is best-effort; never block plugin load.
+    });
+}

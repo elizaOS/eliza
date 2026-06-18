@@ -40,6 +40,7 @@ test("the tutorial runs all the way to completion (every step screenshotted)", a
   await expect(card).toBeVisible();
 
   const stepsSeen = new Set<string>();
+  let reachedSettings = false;
   for (let i = 0; i < 14; i++) {
     if ((await card.count()) === 0) break; // tour finished
     const txt = (await card.textContent().catch(() => "")) ?? "";
@@ -47,9 +48,18 @@ test("the tutorial runs all the way to completion (every step screenshotted)", a
     stepsSeen.add(stepNum);
     await shot(page, `step-${pad(i)}-of-${stepNum}`);
 
-    // Drive the real action where we can: the "ask to navigate" step actually
-    // types + sends the command (exercising advanceOnSend), gesture steps tap
-    // the grabber/pill.
+    // When the "ask to navigate" step lands on Settings, confirm the tour
+    // ACTUALLY switched screens (the real Settings view is showing).
+    if (/You're in Settings/i.test(txt)) {
+      await expect(page.getByText("Models & Providers")).toBeVisible({
+        timeout: 6000,
+      });
+      reachedSettings = true;
+      await shot(page, "nav-settings-view");
+    }
+
+    // Drive the real action where we can: the "ask to navigate" step types +
+    // sends the command, gesture steps tap the grabber/pill.
     if (/open settings/i.test(txt)) {
       await composer.fill("open settings").catch(() => {});
       await page.keyboard.press("Enter").catch(() => {});
@@ -78,34 +88,8 @@ test("the tutorial runs all the way to completion (every step screenshotted)", a
   await shot(page, "step-99-complete");
   // It visited most of the ten steps (some auto-advance instantly).
   expect(stepsSeen.size).toBeGreaterThanOrEqual(8);
-});
-
-test("asking 'open settings' in the tour actually switches to Settings", async ({
-  page,
-}) => {
-  await seedAppStorage(page, { "eliza:tutorial-autolaunched": "1" });
-  await installDefaultAppRoutes(page);
-  await openAppPath(page, "/chat");
-  await page.getByTestId("home-tile-tutorial").click({ timeout: 25_000 });
-  await page.getByTestId("tutorial-start-text").click();
-
-  const card = page.getByTestId("tutorial-card");
-  const cont = page.getByTestId("tutorial-continue");
-  // Click through until we reach the "ask to navigate" step.
-  for (let i = 0; i < 8; i++) {
-    const txt = (await card.textContent().catch(() => "")) ?? "";
-    if (/open settings/i.test(txt)) break;
-    await cont.waitFor({ state: "visible", timeout: 9000 }).catch(() => {});
-    await cont.click({ timeout: 2000 }).catch(() => {});
-    await page.waitForTimeout(450);
-  }
-  // Send the command — the tour should navigate to Settings.
-  await page.getByTestId("chat-composer-textarea").fill("open settings");
-  await page.keyboard.press("Enter");
-  // SettingsView mounts (its content) — the step after navigation is "You're in
-  // Settings".
-  await expect(card).toContainText(/You're in Settings/i, { timeout: 8000 });
-  await shot(page, "nav-reached-settings");
+  // And it actually navigated to the real Settings view mid-tour.
+  expect(reachedSettings).toBe(true);
 });
 
 test("Help is searched through the floating chat", async ({ page }) => {

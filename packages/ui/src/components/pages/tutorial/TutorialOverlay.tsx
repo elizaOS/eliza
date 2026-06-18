@@ -71,20 +71,11 @@ function readObservable(
 
 export function TutorialOverlay(): React.ReactElement | null {
   const { active, stepIndex, mode } = useTutorial();
-  const { tab, setTab, conversationMessages } = useApp();
+  const { tab, setTab } = useApp();
 
   const [secondsOnStep, setSecondsOnStep] = React.useState(0);
   const [succeeded, setSucceeded] = React.useState(false);
   const stepStartRef = React.useRef<number>(0);
-  // Live message count, mirrored to a ref so the sampling interval reads the
-  // current value; `baselineMsgRef` snapshots it at each step so we can tell when
-  // the user has SENT a turn during this step (drives advanceOnSend).
-  const msgCount = Array.isArray(conversationMessages)
-    ? conversationMessages.length
-    : 0;
-  const msgCountRef = React.useRef(0);
-  msgCountRef.current = msgCount;
-  const baselineMsgRef = React.useRef(0);
 
   const step = active ? TUTORIAL_STEPS[stepIndex] : undefined;
 
@@ -107,12 +98,6 @@ export function TutorialOverlay(): React.ReactElement | null {
     advance();
   }, [step, setTab, advance]);
 
-  // Ref so the sampling interval can invoke the (proven) manual-continue path
-  // when a send is detected, without re-creating the interval each render.
-  const handleManualContinueRef = React.useRef(handleManualContinue);
-  handleManualContinueRef.current = handleManualContinue;
-  const sentHandledRef = React.useRef(false);
-
   // First-run auto-launch: once ever, the first time a brand-new user lands on
   // the home base (tab "chat"), start the tour after a short beat so the home
   // screen settles first. Gating on the home tab keeps it from firing during
@@ -132,8 +117,6 @@ export function TutorialOverlay(): React.ReactElement | null {
   // biome-ignore lint/correctness/useExhaustiveDependencies: stepIndex/active are reset triggers
   React.useEffect(() => {
     stepStartRef.current = Date.now();
-    baselineMsgRef.current = msgCountRef.current;
-    sentHandledRef.current = false;
     setSecondsOnStep(0);
     setSucceeded(false);
   }, [stepIndex, active]);
@@ -151,18 +134,6 @@ export function TutorialOverlay(): React.ReactElement | null {
     const id = window.setInterval(() => {
       const secs = (Date.now() - stepStartRef.current) / 1000;
       setSecondsOnStep(secs);
-      // The user typed/spoke a command and sent it → demonstrate the navigation
-      // it was asking for (so it works even with no model wired to route it).
-      // Routes through the proven manual-continue path (navigate + advance).
-      if (
-        step.advanceOnSend &&
-        !sentHandledRef.current &&
-        msgCountRef.current > baselineMsgRef.current
-      ) {
-        sentHandledRef.current = true;
-        handleManualContinueRef.current();
-        return;
-      }
       if (step.isComplete?.(readObservable(tab, secs))) {
         setSucceeded(true);
       }
