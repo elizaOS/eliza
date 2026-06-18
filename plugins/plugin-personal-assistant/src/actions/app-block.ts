@@ -9,13 +9,11 @@ import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import {
   APP_BLOCKER_ACCESS_ERROR,
   getAppBlockerAccess,
-} from "../app-blocker/access.js";
-import {
   getAppBlockerStatus,
   getInstalledApps,
   startAppBlock,
   stopAppBlock,
-} from "../app-blocker/engine.js";
+} from "@elizaos/plugin-blocker";
 import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { formatPromptSection } from "./lib/prompt-format.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";

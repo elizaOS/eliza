@@ -1,15 +1,13 @@
 /**
  * Public types + constants for @elizaos/plugin-blocker.
- *
- * MIGRATION NOTE: these types replace the local types previously embedded in
- *   plugins/plugin-personal-assistant/src/website-blocker/types.ts (not yet extracted)
- *   plugins/plugin-personal-assistant/src/app-blocker/types.ts
- * Once the real migration phase lands, those source files will move into this
- * package under src/services/ and src/actions/.
  */
 
 export const BLOCKER_LOG_PREFIX = "[Blocker]";
-export const WEBSITE_BLOCKER_SERVICE_TYPE = "website-blocker";
+// Runtime serviceType strings — must match the values registered at runtime.
+// WebsiteBlockerService extends SelfControlBlockerService and registers as
+// `website_blocker`; the SelfControl base registers as `selfcontrol_blocker`.
+export const WEBSITE_BLOCKER_SERVICE_TYPE = "website_blocker";
+export const SELFCONTROL_BLOCKER_SERVICE_TYPE = "selfcontrol_blocker";
 export const APP_BLOCKER_SERVICE_TYPE = "app-blocker";
 
 export const BLOCK_TARGETS = ["app", "website"] as const;

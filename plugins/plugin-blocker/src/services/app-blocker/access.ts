@@ -1,9 +1,12 @@
 import { hasOwnerAccess } from "@elizaos/agent";
 import { type IAgentRuntime, logger, type Memory } from "@elizaos/core";
-import { checkSenderRole, type RoleCheckResult } from "./roles.js";
+import {
+  checkSenderRole,
+  type RoleCheckResult,
+} from "../website-blocker/roles.ts";
 
-export const SELFCONTROL_ACCESS_ERROR =
-  "Website blocking is restricted to OWNER users.";
+export const APP_BLOCKER_ACCESS_ERROR =
+  "App blocking is restricted to OWNER users.";
 
 function hasPrincipal(runtime: IAgentRuntime, message: Memory): boolean {
   return (
@@ -14,7 +17,7 @@ function hasPrincipal(runtime: IAgentRuntime, message: Memory): boolean {
   );
 }
 
-export async function getSelfControlAccess(
+export async function getAppBlockerAccess(
   runtime: IAgentRuntime,
   message: Memory,
 ): Promise<{
@@ -35,18 +38,14 @@ export async function getSelfControlAccess(
   try {
     roleCheck = await checkSenderRole(runtime, message);
   } catch (err) {
-    // checkSenderRole throws when the world/room/entity setup is broken.
-    // Log loudly so the root cause gets fixed, but don't crash the whole
-    // action-validation pass (Promise.all in the actions provider would
-    // reject and kill every action, not just this one).
     logger.error(
       { err, roomId: message.roomId, entityId: message.entityId },
-      "[selfcontrol] Role check failed — world/room/entity setup is broken",
+      "[app-blocker] Role check failed — world/room/entity setup is broken",
     );
     return {
       allowed: false,
       role: null,
-      reason: `Website blocking is unavailable: ${err instanceof Error ? err.message : String(err)}`,
+      reason: `App blocking is unavailable: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
 
@@ -54,7 +53,7 @@ export async function getSelfControlAccess(
     return {
       allowed: false,
       role: roleCheck.role,
-      reason: SELFCONTROL_ACCESS_ERROR,
+      reason: APP_BLOCKER_ACCESS_ERROR,
     };
   }
 

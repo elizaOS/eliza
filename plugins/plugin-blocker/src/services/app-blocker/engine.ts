@@ -8,7 +8,7 @@ import type {
   InstalledApp,
   SelectAppsResult,
   UnblockAppsResult,
-} from "./types.js";
+} from "./types.ts";
 
 const STATUS_CACHE_TTL_MS = 5_000;
 let statusCache: { expiresAt: number; value: AppBlockerStatus } | null = null;

@@ -142,7 +142,7 @@ describe("platform guards — website blocker engine", () => {
   it("reports unavailable when the hosts file path is missing on win32", async () => {
     overridePlatform("win32");
     const { getSelfControlStatus } = await import(
-      "../website-blocker/engine.js"
+      "@elizaos/plugin-blocker/services/website-blocker/engine"
     );
     const missing = path.join(
       os.tmpdir(),

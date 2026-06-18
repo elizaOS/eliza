@@ -25,6 +25,11 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import {
+  buildSelfControlBlockPolicy,
+  isWebsiteBlockedByPolicy,
+  startSelfControlBlock,
+} from "@elizaos/plugin-blocker";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import {
   type EnforcementWindow,
@@ -32,11 +37,6 @@ import {
 } from "../lifeops/enforcement-windows.js";
 import type { BlockRule } from "./chat-integration/block-rule-schema.js";
 import { BlockRuleReader } from "./chat-integration/block-rule-service.js";
-import {
-  buildSelfControlBlockPolicy,
-  isWebsiteBlockedByPolicy,
-  startSelfControlBlock,
-} from "./engine.js";
 
 export type ProactiveBlockBridgeReason =
   | "blocked"

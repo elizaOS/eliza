@@ -125,7 +125,6 @@ import { isDarwin } from "./platform/host.js";
 import { browserBridgeProvider } from "./provider.js";
 // Activity-profile (proactive agent: GM/GN/nudges)
 import { activityProfileProvider } from "./providers/activity-profile.js";
-import { appBlockerProvider } from "./providers/app-blocker.js";
 import { crossChannelContextProvider } from "./providers/cross-channel-context.js";
 // LifeOps core providers
 import { firstRunProvider } from "./providers/first-run.js";
@@ -135,16 +134,9 @@ import { lifeOpsProvider } from "./providers/lifeops.js";
 import { pendingPromptsProvider } from "./providers/pending-prompts.js";
 import { recentTaskStatesProvider } from "./providers/recent-task-states.js";
 import { roomPolicyProvider } from "./providers/room-policy.js";
-import { websiteBlockerProvider } from "./providers/website-blocker.js";
 import { workThreadsProvider } from "./providers/work-threads.js";
 import { BrowserBridgePluginService } from "./service.js";
 import { registerBlockRuleReconcilerWorker } from "./website-blocker/chat-integration/index.js";
-import {
-  getSelfControlStatus,
-  type SelfControlPluginConfig,
-  setSelfControlPluginConfig,
-} from "./website-blocker/engine.js";
-import { WebsiteBlockerService } from "./website-blocker/service.js";
 
 const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google";
 const GOOGLE_CONNECTOR_PLUGIN_NAME = "google";
@@ -671,8 +663,6 @@ const rawPersonalAssistantPlugin: Plugin = {
   ],
   providers: [
     browserBridgeProvider,
-    websiteBlockerProvider,
-    appBlockerProvider,
     firstRunProvider,
     roomPolicyProvider,
     lifeOpsProvider,
@@ -686,7 +676,6 @@ const rawPersonalAssistantPlugin: Plugin = {
   ],
   services: [
     BrowserBridgePluginService,
-    WebsiteBlockerService,
     ActivityTrackerService,
     PresenceSignalBridgeService,
     ScheduledTaskRunnerService,
@@ -743,7 +732,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     [EventType.VOICE_TURN_OBSERVED]: [handleVoiceTurnObserved],
   },
   init: async (
-    pluginConfig: Record<string, unknown>,
+    _pluginConfig: Record<string, unknown>,
     runtime: IAgentRuntime,
   ) => {
     // When LIFEOPS_USE_MOCKOON=1, redirect every external connector base URL
@@ -780,19 +769,6 @@ const rawPersonalAssistantPlugin: Plugin = {
           }`,
         );
       });
-
-    setSelfControlPluginConfig(pluginConfig as SelfControlPluginConfig);
-    const status = await getSelfControlStatus();
-
-    if (status.available) {
-      logger.info(
-        `[selfcontrol] Hosts-file blocker ready${status.active && status.endsAt ? ` until ${status.endsAt}` : status.active ? " until manually unblocked" : ""}`,
-      );
-    } else {
-      logger.warn(
-        `[selfcontrol] Plugin loaded, but local website blocking is unavailable: ${status.reason ?? "unknown reason"}`,
-      );
-    }
 
     const connectorRegistry = createConnectorRegistry();
     registerDefaultConnectorPack(connectorRegistry, runtime);
@@ -1042,7 +1018,7 @@ export {
   selectAppsForBlocking,
   startAppBlock,
   stopAppBlock,
-} from "./app-blocker/engine.js";
+} from "@elizaos/plugin-blocker";
 export type {
   OverdueDigest,
   OverdueFollowup,
@@ -1226,7 +1202,7 @@ export {
   type WorkThreadStatus,
   type WorkThreadStore,
 } from "./lifeops/work-threads/index.js";
-export { appBlockerProvider } from "./providers/app-blocker.js";
+export { appBlockerProvider } from "@elizaos/plugin-blocker";
 export type { FirstRunAffordance } from "./providers/first-run.js";
 export { firstRunProvider } from "./providers/first-run.js";
 export { healthProvider } from "./providers/health.js";

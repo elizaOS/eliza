@@ -74,7 +74,7 @@ import {
   getSelfControlStatus,
   startSelfControlBlock,
   stopSelfControlBlock,
-} from "../website-blocker/engine.js";
+} from "@elizaos/plugin-blocker";
 import {
   buildNativeAppleReminderMetadata,
   createNativeAppleReminderLikeItem,

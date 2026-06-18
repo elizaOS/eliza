@@ -10,8 +10,8 @@ import {
   parseSelfControlBlockRequest,
   startSelfControlBlock,
   stopSelfControlBlock,
-} from "../website-blocker/engine.js";
-import { syncWebsiteBlockerExpiryTask } from "../website-blocker/service.js";
+  syncWebsiteBlockerExpiryTask,
+} from "@elizaos/plugin-blocker";
 
 type WebsiteBlockerRequestBody = {
   websites?: string[] | string;

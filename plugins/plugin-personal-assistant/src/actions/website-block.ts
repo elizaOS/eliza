@@ -10,26 +10,24 @@ import {
   requireConfirmation,
   runWithTrajectoryContext,
 } from "@elizaos/core";
-import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import {
+  formatWebsiteList,
+  type getSelfControlPermissionState,
   getSelfControlAccess,
+  getSelfControlStatus,
+  normalizeWebsiteTargets,
+  parseSelfControlBlockRequest,
+  requestSelfControlPermission,
   SELFCONTROL_ACCESS_ERROR,
-} from "../website-blocker/access.js";
+  stopSelfControlBlock,
+} from "@elizaos/plugin-blocker";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { activateBlockRule } from "../website-blocker/chat-integration/block-activator.js";
 import {
   BlockRuleReader,
   BlockRuleWriter,
 } from "../website-blocker/chat-integration/block-rule-service.js";
 import { hasActiveHarshNoBypassRule } from "../website-blocker/chat-integration/harsh-mode-check.js";
-import {
-  formatWebsiteList,
-  type getSelfControlPermissionState,
-  getSelfControlStatus,
-  normalizeWebsiteTargets,
-  parseSelfControlBlockRequest,
-  requestSelfControlPermission,
-  stopSelfControlBlock,
-} from "../website-blocker/engine.js";
 import {
   resolveActionArgs,
   type SubactionsMap,
