@@ -98,6 +98,11 @@ public class ElizaAgentService extends Service {
     private static final String LOCAL_AGENT_BASE_URL = "http://127.0.0.1:" + AGENT_PORT;
     private static final int LOCAL_REQUEST_DEFAULT_TIMEOUT_MS = 10_000;
     private static final int LOCAL_REQUEST_MAX_TIMEOUT_MS = 600_000;
+    // Read-timeout budget applied to slow on-device inference routes (ASR / TTS
+    // / transcription / chat generation) when the caller doesn't pin its own —
+    // matches LOCAL_REQUEST_MAX_TIMEOUT_MS and the agent's chat-generation
+    // budget so a cold model load never trips a spurious local_agent_unavailable.
+    private static final int LOCAL_INFERENCE_REQUEST_TIMEOUT_MS = 600_000;
     private static final int LOCAL_REQUEST_MAX_BODY_BYTES = 10 * 1024 * 1024;
     private static final int LOCAL_REQUEST_MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
 
@@ -136,6 +141,11 @@ public class ElizaAgentService extends Service {
     private static final long STARTUP_HEALTH_POLL_MS = 5_000L;
     private static final int MAX_RESTART_ATTEMPTS = 5;
     private static final long PROCESS_TERMINATE_GRACE_MS = 5_000L;
+    // How long after a detached launch we treat a not-yet-listening agent as
+    // "still cold-booting" and refuse to relaunch it (the boot — plugin
+    // resolution + first model load — runs ~60-90s on an emulated CPU). Past
+    // this the boot is considered failed and a relaunch is allowed.
+    private static final long AGENT_BOOT_GRACE_MS = 120_000L;
 
     private final Object processLock = new Object();
     private Process agentProcess;
@@ -219,6 +229,26 @@ public class ElizaAgentService extends Service {
      * opening their own sockets. That keeps auth, header filtering, body caps,
      * and future Binder/stdio replacement behind one app-owned boundary.
      */
+    /**
+     * Routes whose on-device handler does a synchronous, multi-second (cold
+     * model load) or open-ended (token-by-token generation) llama call before
+     * the HTTP response completes — they need the long inference read-timeout
+     * budget, not the 10s default used for ordinary CRUD API calls.
+     */
+    private static boolean isLongRunningInferencePath(String path) {
+        if (path == null) return false;
+        String p = path.toLowerCase(Locale.US);
+        return p.contains("/asr")
+            || p.contains("/tts")
+            || p.contains("/transcription")
+            || p.contains("/speech")
+            || p.contains("/local-inference")
+            || p.contains("/messages/stream")
+            || p.contains("/messages")
+            || p.contains("/greeting")
+            || p.contains("/voice");
+    }
+
     public static String requestLocalAgent(String requestJson) throws IOException, JSONException {
         JSONObject request = requestJson == null || requestJson.trim().isEmpty()
             ? new JSONObject()
@@ -234,6 +264,19 @@ public class ElizaAgentService extends Service {
             throw new IllegalArgumentException("Unsupported HTTP method");
         }
         int timeoutMs = request.optInt("timeoutMs", LOCAL_REQUEST_DEFAULT_TIMEOUT_MS);
+        // On-device inference is inherently slow: a cold model load alone — the
+        // ~1 GB ASR GGUF, the OmniVoice TTS GGUFs, or evicting + reloading the
+        // chat model — is a multi-second synchronous llama load before the agent
+        // emits a single byte, and transcription/synthesis/generation on
+        // emulated or low-end CPU runs well past 10 s. The WebView transport
+        // sends its generic 10 s fetch timeout for these calls too, which aborts
+        // them mid-decode and surfaces "Local agent request failed" /
+        // local_agent_unavailable, failing the whole voice turn (and every route
+        // that touches inference). FLOOR inference/voice routes at the inference
+        // budget — raise a too-short caller timeout, never lower a longer one.
+        if (isLongRunningInferencePath(path)) {
+            timeoutMs = Math.max(timeoutMs, LOCAL_INFERENCE_REQUEST_TIMEOUT_MS);
+        }
         timeoutMs = Math.max(1_000, Math.min(timeoutMs, LOCAL_REQUEST_MAX_TIMEOUT_MS));
         JSONObject headers = request.optJSONObject("headers");
         Object rawBody = request.opt("body");
@@ -982,6 +1025,25 @@ public class ElizaAgentService extends Service {
                 }
                 Log.i(TAG, "Detached agent already listening on port " + AGENT_PORT
                     + "; adopting it (no relaunch).");
+                return;
+            }
+
+            // The agent may have been launched moments ago and still be in its
+            // (slow) cold boot — plugin resolution + first model load can take
+            // 60-90s on an emulated CPU before bun binds the port. During that
+            // window isLoopbackAgentListening() is false, so without this guard a
+            // recreated Activity/FGS (onStartCommand fires repeatedly as the e2e
+            // foregrounds/navigates) would relaunch.sh-pkill the booting bun and
+            // restart the whole boot — an endless churn that never reaches ready.
+            // If we launched within the boot grace window, assume it is still
+            // coming up and leave it alone rather than kill + restart it.
+            if (detachedAgentMode
+                    && detachedLaunchStartedAtMs > 0
+                    && (System.currentTimeMillis() - detachedLaunchStartedAtMs)
+                        < AGENT_BOOT_GRACE_MS) {
+                Log.i(TAG, "Detached agent still in cold boot (launched "
+                    + (System.currentTimeMillis() - detachedLaunchStartedAtMs)
+                    + "ms ago); not relaunching.");
                 return;
             }
 
