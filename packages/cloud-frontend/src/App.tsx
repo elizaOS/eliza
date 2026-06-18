@@ -197,12 +197,6 @@ const CanvasLayout = lazy(() =>
   })),
 );
 
-const CloudAssistantPill = lazy(() =>
-  import("./components/canvas/cloud-assistant-pill").then((m) => ({
-    default: m.CloudAssistantPill,
-  })),
-);
-
 /**
  * Map of React Router path pattern → preload function. Hovering or focusing
  * a link with an `href` matching one of these routes warms the matched branch
@@ -561,10 +555,19 @@ function DashboardRouteElement() {
       )}
     >
       <Suspense fallback={<RouteChunkFallback />}>
-        <div className="relative h-dvh w-full overflow-hidden">
-          {canvasOpen ? <CanvasLayout /> : <DashboardLayout />}
-          {!canvasOpen && <CloudAssistantPill />}
-        </div>
+        {canvasOpen ? (
+          // The canvas is a fixed-viewport WebGL stage: clamp it to the dvh and
+          // clip overflow so it never scrolls the document behind it.
+          <div className="relative h-dvh w-full overflow-hidden">
+            <CanvasLayout />
+          </div>
+        ) : (
+          // Classic dashboard: render bare so the shell's natural `min-h-dvh`
+          // body flow is preserved and long pages (the agents grid, billing,
+          // analytics, …) scroll. Wrapping it in `h-dvh overflow-hidden` clipped
+          // every long page — that was the no-scroll bug.
+          <DashboardLayout />
+        )}
       </Suspense>
     </RouteErrorBoundary>
   );
