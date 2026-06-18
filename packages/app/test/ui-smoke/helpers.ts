@@ -1165,6 +1165,60 @@ function populatedMoneyRecurring() {
   };
 }
 
+// Valid populated DTOs for the /api/documents* endpoints the decomposed
+// DocumentsView fetches, so `documents:gui` renders its `documents-populated`
+// branch (a document row + stats line) instead of the empty/upload-prompt
+// state. Shapes mirror the PresentedDocument + stats responses from
+// plugin-documents/src/routes.ts.
+function populatedDocumentsList() {
+  return {
+    ok: true,
+    available: true,
+    agentId: "ui-smoke-agent",
+    documents: [
+      {
+        id: "doc-smoke-1",
+        filename: "Quarterly Plan.md",
+        contentType: "text/markdown",
+        fileSize: 4096,
+        createdAt: Date.parse(SMOKE_GENERATED_AT),
+        fragmentCount: 7,
+        source: "upload",
+        scope: "global",
+        provenance: { kind: "upload", label: "Manual upload" },
+        canEditText: true,
+        canDelete: true,
+      },
+    ],
+    total: 1,
+    limit: 100,
+    offset: 0,
+  };
+}
+function populatedDocumentsStats() {
+  return { documentCount: 1, fragmentCount: 7, agentId: "ui-smoke-agent" };
+}
+function populatedDocumentsSearch(url: URL) {
+  const query = (url.searchParams.get("q") ?? "").trim();
+  return {
+    query,
+    threshold: 0.3,
+    results: query
+      ? [
+          {
+            id: "frag-smoke-1",
+            text: "Deterministic search fragment for UI smoke.",
+            similarity: 0.81,
+            documentId: "doc-smoke-1",
+            documentTitle: "Quarterly Plan.md",
+            position: 0,
+          },
+        ]
+      : [],
+    count: query ? 1 : 0,
+  };
+}
+
 // Valid empty-state SelfControlStatus (engine available, no active block) so the
 // decomposed FocusView lands on its `focus-empty` branch ("No active focus
 // session.") instead of the unavailable/disconnected branch.
@@ -2614,6 +2668,41 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(populatedMoneyRecurring()),
+    });
+  });
+
+  await page.route("**/api/documents/stats**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedDocumentsStats()),
+    });
+  });
+  await page.route("**/api/documents/search**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedDocumentsSearch(new URL(route.request().url()))),
+    });
+  });
+  // List route last so the more specific /stats and /search routes win.
+  await page.route("**/api/documents**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedDocumentsList()),
     });
   });
 
