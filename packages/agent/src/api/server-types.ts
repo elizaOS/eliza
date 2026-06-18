@@ -178,6 +178,15 @@ export interface ServerState {
   shareIngestQueue: ShareIngestItem[];
   /** Broadcast current agent status to all WebSocket clients. Set by startApiServer. */
   broadcastStatus: (() => void) | null;
+  /**
+   * Resolves with the live runtime once it is wired (capability online), or with
+   * the current runtime (possibly null) after `timeoutMs`. Lets chat handlers
+   * HOLD a turn through the brief warming window (early API bind → runtime ready)
+   * instead of 503-dropping it. Set by startApiServer; backed by a
+   * RuntimeReadyGate woken on updateRuntime. */
+  awaitRuntimeReady:
+    | ((timeoutMs: number) => Promise<AgentRuntime | null>)
+    | null;
   /** Broadcast an arbitrary JSON message to all WebSocket clients. Set by startApiServer. */
   broadcastWs: ((data: object) => void) | null;
   /** Broadcast a JSON payload to WebSocket clients bound to a specific client id. */

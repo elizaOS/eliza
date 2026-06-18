@@ -68,18 +68,14 @@ describe("useShellController", () => {
     expect(result.current.canSend).toBe(true);
   });
 
-  it("queues a send while booting and flushes it once ready", () => {
+  it("sends through immediately even while warming — the server holds the turn", () => {
     appMock.value.agentStatus = { ...WARMING_STATUS };
 
-    const { result, rerender } = renderHook(() => useShellController());
+    const { result } = renderHook(() => useShellController());
 
+    // No client-side queue: sendChatText fires now (optimistic bubble + typing
+    // indicator), and the server holds the turn until capability comes online.
     act(() => result.current.send("hello while booting"));
-    // Queued, not sent yet.
-    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
-
-    // First-turn capability comes online — the queued message flushes.
-    appMock.value.agentStatus = { ...READY_STATUS };
-    rerender();
 
     expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
     expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe(

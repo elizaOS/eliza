@@ -203,6 +203,16 @@ function persistDeletedConversationIdsToState(ids: Set<string>): void {
 
 export interface ConversationRouteState {
   runtime: AgentRuntime | null;
+  /** Current agent lifecycle state (mirrors ServerState.agentState). */
+  agentState?: string;
+  /**
+   * Hold a chat turn through the warming window (early API bind → runtime ready)
+   * instead of 503-dropping it; resolves with the live runtime or null on
+   * timeout. Provided by the coerced ServerState; see ServerState.awaitRuntimeReady.
+   */
+  awaitRuntimeReady?:
+    | ((timeoutMs: number) => Promise<AgentRuntime | null>)
+    | null;
   config: ElizaConfig;
   agentName: string;
   adminEntityId: UUID | null;
@@ -218,6 +228,35 @@ export interface ConversationRouteState {
 
 export interface ConversationRouteContext extends RouteRequestContext {
   state: ConversationRouteState;
+}
+
+/**
+ * How long a chat turn may HOLD waiting for first-turn capability during the
+ * warming window (early API bind → runtime ready). Normal boots resolve in ~2s;
+ * the cap bounds the hold so a genuinely-stuck boot still fails fast.
+ */
+const WARMING_TURN_HOLD_MS = 30_000;
+
+/**
+ * Resolve the runtime for a chat turn, HOLDING through the warming window
+ * instead of 503-dropping. Returns the live runtime immediately if present;
+ * otherwise, only while the agent is actively warming up (`starting`/
+ * `restarting`), waits up to WARMING_TURN_HOLD_MS for capability to come online.
+ * A genuinely stopped/errored agent (or one with no gate wired) returns null so
+ * the caller fails fast with the usual 503.
+ */
+async function resolveRuntimeForChatTurn(
+  state: ConversationRouteState,
+): Promise<AgentRuntime | null> {
+  if (state.runtime) {
+    return state.runtime;
+  }
+  const warming =
+    state.agentState === "starting" || state.agentState === "restarting";
+  if (!warming || !state.awaitRuntimeReady) {
+    return state.runtime ?? null;
+  }
+  return state.awaitRuntimeReady(WARMING_TURN_HOLD_MS);
 }
 
 // ---------------------------------------------------------------------------
@@ -1613,7 +1652,10 @@ export async function handleConversationRoutes(
       metadata: chatMetadata,
     } = chatPayload;
 
-    const runtime = state.runtime;
+    // Hold the streaming turn through the warming window instead of dropping it
+    // — the client already shows the optimistic bubble + typing indicator, and
+    // the response streams the instant first-turn capability comes online.
+    const runtime = await resolveRuntimeForChatTurn(state);
     if (!runtime) {
       disconnectTracker.markCompleted();
       disconnectTracker.dispose();
@@ -1959,7 +2001,9 @@ export async function handleConversationRoutes(
       source,
       metadata: restMetadata,
     } = chatPayload;
-    const runtime = state.runtime;
+    // Hold the turn through the warming window (early API bind → runtime ready)
+    // instead of dropping it; the client already shows the optimistic bubble.
+    const runtime = await resolveRuntimeForChatTurn(state);
     if (!runtime) {
       error(res, "Agent is not running", 503);
       return true;

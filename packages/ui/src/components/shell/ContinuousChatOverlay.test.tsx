@@ -167,17 +167,13 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
   });
 
-  it("shows the resting suggestion strip without hover or focus", () => {
+  it("does not render the resting suggestion strip (feature-flagged off)", () => {
     render(
       <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
     );
-    const strip = screen.getByTestId("chat-suggestions");
-    const firstSuggestion = screen.getByTestId("chat-suggestion-0");
-    // At rest (ready, nothing typed) the strip is mounted, interactive, and
-    // tabbable — there is no hover/focus gate any more; it is the closed-state
-    // affordance, and it simply unmounts once the sheet opens or a draft starts.
-    expect(strip.className).toContain("pointer-events-auto");
-    expect(firstSuggestion.tabIndex).toBe(0);
+    // SHOW_PROMPT_SUGGESTIONS is off — the resting strip must not mount.
+    expect(screen.queryByTestId("chat-suggestions")).toBeNull();
+    expect(screen.queryByTestId("chat-suggestion-0")).toBeNull();
   });
 
   it("filters whitespace-only messages from the expanded thread", () => {
@@ -348,15 +344,16 @@ describe("ContinuousChatOverlay", () => {
     expect(controller.toggleRecording).toHaveBeenCalled();
   });
 
-  it("shows a connecting placeholder and read-only input while booting", () => {
+  it("shows a waking-up placeholder while booting (typing allowed)", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({ phase: "booting", canSend: false })}
       />,
     );
     const input = screen.getByLabelText("message");
-    expect(input.getAttribute("placeholder")).toContain("connecting");
-    expect(input.hasAttribute("readonly")).toBe(true);
+    expect(input.getAttribute("placeholder")).toContain("waking up");
+    // You can type while the agent boots; the message sends once it's ready.
+    expect(input.hasAttribute("readonly")).toBe(false);
   });
 
   it("renders the live interim transcript while recording", () => {
@@ -409,7 +406,7 @@ describe("ContinuousChatOverlay", () => {
     expect(input.className).not.toContain("basis-full");
   });
 
-  it("shows exactly three resting prompt suggestions", () => {
+  it("renders no prompt-suggestion chips while the strip is flagged off", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({
@@ -417,10 +414,9 @@ describe("ContinuousChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    const strip = screen.getByTestId("chat-suggestions");
     expect(
-      strip.querySelectorAll('[data-testid^="chat-suggestion-"]'),
-    ).toHaveLength(3);
+      document.querySelectorAll('[data-testid^="chat-suggestion-"]'),
+    ).toHaveLength(0);
   });
 
   it("scrolls to the latest line when a new message arrives while open", () => {
