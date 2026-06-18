@@ -18,6 +18,7 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import {
+  type ClientCommandAction,
   type ConnectorCommand,
   type ConnectorCommandOption,
   getConnectorCommands,
@@ -49,8 +50,14 @@ interface SlashCommandArg {
 
 type SlashCommandTarget =
   | { kind: "agent" }
-  | { kind: "navigate"; tab?: string; viewId?: string; path?: string }
-  | { kind: "client" };
+  | {
+      kind: "navigate";
+      tab?: string;
+      viewId?: string;
+      path?: string;
+      section?: string;
+    }
+  | { kind: "client"; clientAction: ClientCommandAction };
 
 interface SlashCommandCatalogItem {
   key: string;
@@ -93,14 +100,20 @@ function mapOption(option: ConnectorCommandOption): SlashCommandArg {
 /** Map the connector-neutral target onto the client target shape. */
 function mapTarget(target: ConnectorCommand["target"]): SlashCommandTarget {
   if (target.kind === "navigate") {
-    // The settings hub is special: the client opens the settings tab and
-    // focuses the section sub-argument. Other navigations are deep-link paths.
-    if (target.path === "/settings") {
-      return { kind: "navigate", tab: "settings", path: target.path };
-    }
-    return { kind: "navigate", path: target.path };
+    // Pass the catalog's routing hints through verbatim: the GUI opens `tab`
+    // (or `viewId`) directly; `path` is the connector deep link; `section`
+    // focuses a settings sub-section.
+    return {
+      kind: "navigate",
+      path: target.path,
+      ...(target.tab ? { tab: target.tab } : {}),
+      ...(target.viewId ? { viewId: target.viewId } : {}),
+      ...(target.section ? { section: target.section } : {}),
+    };
   }
-  if (target.kind === "client") return { kind: "client" };
+  if (target.kind === "client") {
+    return { kind: "client", clientAction: target.clientAction };
+  }
   return { kind: "agent" };
 }
 

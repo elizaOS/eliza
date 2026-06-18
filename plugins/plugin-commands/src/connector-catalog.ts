@@ -23,11 +23,24 @@ import { DEFAULT_COMMANDS } from "./registry";
 import { getSettingsSectionChoices } from "./settings-sections";
 import type { CommandArgDefinition, CommandDefinition } from "./types";
 
+/**
+ * Client-only behaviors the in-app surfaces (GUI/TUI) run directly, with no
+ * agent round-trip and no remote surface. Mirrors the GUI's `ClientCommandAction`
+ * (packages/ui `client-types-commands.ts`); kept here so the catalog stays
+ * connector-neutral without depending on the UI package.
+ */
+export type ClientCommandAction =
+	| "clear-chat"
+	| "new-conversation"
+	| "toggle-fullscreen"
+	| "open-command-palette"
+	| "show-commands";
+
 /** Where a connector command executes. */
 export type ConnectorCommandTarget =
 	| { kind: "agent" }
-	| { kind: "navigate"; path: string }
-	| { kind: "client" };
+	| { kind: "navigate"; path: string; tab?: string; viewId?: string; section?: string }
+	| { kind: "client"; clientAction: ClientCommandAction };
 
 /** A single argument of a connector command. */
 export interface ConnectorCommandOption {
@@ -86,16 +99,21 @@ function mapRegistryCommand(command: CommandDefinition): ConnectorCommand {
 }
 
 /**
- * Navigation commands the app surfaces in addition to the agent capabilities.
- * These open a destination in the Eliza app rather than routing through the
- * agent. `path` is the in-app deep link the connector can advertise.
+ * Navigation + client commands the app surfaces in addition to the agent
+ * capabilities. Navigation commands open a destination in the Eliza app rather
+ * than routing through the agent; `path` is the in-app deep link a connector can
+ * advertise, and `tab`/`viewId` are routing hints the GUI/TUI use to open the
+ * destination deterministically. Client commands run a GUI/TUI-only behavior.
+ *
+ * The `path`/`tab` values mirror the canonical route table in
+ * `@elizaos/ui` (`navigation/index.ts` `TAB_PATHS`); keep them in sync there.
  */
 function navigationCommands(): ConnectorCommand[] {
 	return [
 		{
 			name: "settings",
 			description: "Open agent settings",
-			target: { kind: "navigate", path: "/settings" },
+			target: { kind: "navigate", path: "/settings", tab: "settings" },
 			options: [
 				{
 					name: "section",
@@ -106,49 +124,117 @@ function navigationCommands(): ConnectorCommand[] {
 			],
 		},
 		{
+			name: "chat",
+			description: "Return to the chat",
+			target: { kind: "navigate", path: "/chat", tab: "chat" },
+			options: [],
+		},
+		{
 			name: "views",
 			description: "Open the agent's views",
-			target: { kind: "navigate", path: "/views" },
+			target: { kind: "navigate", path: "/views", tab: "views" },
 			options: [],
 		},
 		{
 			name: "orchestrator",
 			description: "Open the agent orchestrator",
-			target: { kind: "navigate", path: "/orchestrator" },
+			target: { kind: "navigate", path: "/orchestrator", viewId: "orchestrator" },
+			options: [],
+		},
+		{
+			name: "character",
+			description: "Open the character editor",
+			target: { kind: "navigate", path: "/character", tab: "character" },
 			options: [],
 		},
 		{
 			name: "knowledge",
 			description: "Open the knowledge base",
-			target: { kind: "navigate", path: "/knowledge" },
+			target: { kind: "navigate", path: "/character/documents", tab: "documents" },
+			options: [],
+		},
+		{
+			name: "wallet",
+			description: "Open the wallet & inventory",
+			target: { kind: "navigate", path: "/wallet", tab: "inventory" },
+			options: [],
+		},
+		{
+			name: "automations",
+			description: "Open automations",
+			target: { kind: "navigate", path: "/automations", tab: "automations" },
+			options: [],
+		},
+		{
+			name: "tasks",
+			description: "Open tasks",
+			target: { kind: "navigate", path: "/apps/tasks", tab: "tasks" },
+			options: [],
+		},
+		{
+			name: "skills",
+			description: "Open the skills library",
+			target: { kind: "navigate", path: "/apps/skills", tab: "skills" },
 			options: [],
 		},
 		{
 			name: "plugins",
 			description: "Open installed plugins",
-			target: { kind: "navigate", path: "/plugins" },
+			target: { kind: "navigate", path: "/apps/plugins", tab: "plugins" },
+			options: [],
+		},
+		{
+			name: "logs",
+			description: "Open the logs",
+			target: { kind: "navigate", path: "/apps/logs", tab: "logs" },
+			options: [],
+		},
+		{
+			name: "database",
+			description: "Open the database browser",
+			target: { kind: "navigate", path: "/apps/database", tab: "database" },
+			options: [],
+		},
+		// Client-only behaviors — run in the GUI/TUI, filtered off chat connectors
+		// (a Discord/Telegram user has nothing to clear or full-screen).
+		{
+			name: "clear",
+			description: "Clear the current chat",
+			target: { kind: "client", clientAction: "clear-chat" },
+			options: [],
+		},
+		{
+			name: "fullscreen",
+			description: "Toggle full-screen chat",
+			target: { kind: "client", clientAction: "toggle-fullscreen" },
 			options: [],
 		},
 	];
 }
 
 /**
- * Build the connector command catalog for a given connector.
+ * Build the connector command catalog for a given surface.
  *
  * The catalog is the union of:
  *   - agent-capability commands derived from the enabled, connector-scoped text
  *     command registry, and
- *   - the app navigation commands.
+ *   - the app navigation + client commands.
  *
- * @param _connector the connector key (e.g. "discord"). Reserved for
- *   per-connector filtering; the current catalog is uniform across connectors.
+ * Client-only commands (GUI/TUI behaviors like clear / full-screen) are emitted
+ * to the in-app surfaces but filtered off chat connectors, which have no surface
+ * to run them on.
+ *
+ * @param surface the target surface ("gui" | "tui" | "discord" | "telegram").
  */
-export function getConnectorCommands(_connector: string): ConnectorCommand[] {
+export function getConnectorCommands(surface: string): ConnectorCommand[] {
 	const agentCommands = DEFAULT_COMMANDS.filter(
 		(command) => command.enabled !== false && isConnectorScoped(command),
 	).map(mapRegistryCommand);
 
-	const navigation = navigationCommands();
+	const isChatConnector = surface === "discord" || surface === "telegram";
+	const navigation = navigationCommands().filter(
+		(command) => !(isChatConnector && command.target.kind === "client"),
+	);
 
 	// Navigation commands win on name collisions (they own those surfaces).
 	const navigationNames = new Set(navigation.map((command) => command.name));
