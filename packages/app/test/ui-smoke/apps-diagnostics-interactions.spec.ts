@@ -29,8 +29,10 @@ test("logs page search really filters entries and clear restores them", async ({
   const entries = page.getByTestId("log-entry");
   await expect(entries).toHaveCount(1);
 
-  // Client-side filter: a non-matching query must hide the entry.
-  const search = view.getByRole("textbox").first();
+  // #8597 moved the logs search box into the floating chat composer: while Logs
+  // is open the composer adopts the "Search logs..." placeholder and feeds the
+  // live query into the view via onQuery.
+  const search = page.getByPlaceholder(/Search logs/i);
   await search.fill("zzqq-no-such-log-line");
   await expect(entries).toHaveCount(0);
 
@@ -38,9 +40,10 @@ test("logs page search really filters entries and clear restores them", async ({
   await search.fill("smoke");
   await expect(entries).toHaveCount(1);
 
-  // Clear filters resets the query and restores the full list.
+  // Clear filters resets the view's filter state and restores the full list. It
+  // clears the view's searchQuery (not the shared composer draft), so assert on
+  // the restored entries rather than the composer value.
   await view.getByRole("button", { name: /clear/i }).click();
-  await expect(search).toHaveValue("");
   await expect(entries).toHaveCount(1);
 });
 

@@ -213,7 +213,11 @@ async function openConnectors(page: Page): Promise<void> {
   await openAppPath(page, "/settings");
   await openSettingsSection(page, /^Connectors\b/);
   await expect(page.locator("#connectors")).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole("heading", { name: "Connectors" })).toBeVisible();
+  // The page now has both an h1 page title and an h3 section header reading
+  // "Connectors"; assert the page-title (h1) to stay unambiguous in strict mode.
+  await expect(
+    page.getByRole("heading", { name: "Connectors", level: 1 }),
+  ).toBeVisible();
 }
 
 async function expandConnector(page: Page, connectorId: string): Promise<void> {
