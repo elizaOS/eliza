@@ -735,6 +735,28 @@ that matches each plugin's real backing:
 All new tests: no PA import, suites green (todos 47, calendar 79/2-skip, blocker 16,
 relationships 34).
 
+### Session 2026-06-18 (round 25) — desktop SIGTRAP fixed (webview renders headless); residual is the agent-readiness lifecycle gate
+Pushed the desktop platform further. After XAUTHORITY (round 22), the packaged app boots
+all bridges but the WebKitGTK webview died with SIGTRAP. FIX (commit c8c492a7d1): WebKitGTK's
+bubblewrap web/network-process sandbox aborts under a restricted/headless env (container / CI
+behind xvfb); set `WEBKIT_DISABLE_SANDBOX=1` (caller-overridable) in the Linux packaged env.
+After the fix the webview SURVIVES and RENDERS the React startup shell headlessly ("elizaOS
+Initializing agent…") — no crash. So the two committed fixes (XAUTHORITY + WEBKIT_DISABLE_SANDBOX)
+take the desktop app from "completely unrunnable headless" → "boots all bridges + renders the
+webview (the decomposed-views renderer) headlessly on Linux." Both are correct headless-CI
+enablement for any GPU-less Linux runner.
+
+PRECISE remaining gate (traced via `packages/ui/src/state/startup-coordinator.ts`): the machine
+stalls at `starting-runtime` because the transition to `ready` needs an `AGENT_RUNNING` event.
+The desktop test sets `desktopRuntimeMode=external`, but `connectionModeToTarget` only maps
+`cloud`→cloud-managed / `remote`→remote-backend and DEFAULTS everything else (incl. "external")
+to `embedded-local` — which runs the LOCAL agent-readiness poll loop (300s budget) instead of
+treating the external test backend as already-running. The test's per-step `waitForEval` is 60s,
+and a no-network registry fetch (`[registry-client] generated-registry/index TimeoutError`) adds
+boot latency. So the residual is NOT display / GL / sandbox (all fixed) — it's the startup
+coordinator's agent-readiness gate + how `external` desktop mode resolves its runtime target.
+Resolving it cleanly is a PRODUCT-SEMANTICS owner decision (see decision #5 below), not a unilateral fix.
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
@@ -745,6 +767,15 @@ relationships 34).
 4. Next priority: breadth (finances/inbox/remote-desktop extractions + the
    `app_lifeops` schema carve-out) vs depth (5-platform e2e + committed
    screenshot/design-review loop for the 3 real views).
+5. (round 25) Desktop packaged e2e ready-gate: how should `desktopRuntimeMode=external`
+   resolve its runtime target? Today `connectionModeToTarget` defaults it to
+   `embedded-local`, so the packaged desktop test runs the LOCAL agent-readiness poll
+   (300s) against an external test backend and never gets `AGENT_RUNNING`, stalling at
+   `starting-runtime`. If "external" is meant to be a remote backend it should map to
+   `remote-backend` (treats the running backend as ready → skips the local poll). This
+   changes real app boot behavior, so it's an owner decision — not guessed. With it (or a
+   backend that signals agent-running), the headless desktop e2e should reach `ready`
+   given the XAUTHORITY + WEBKIT_DISABLE_SANDBOX fixes already let the webview render.
 
 NOTE: all commits are on LOCAL develop (shared tree, many concurrent actors,
 incl. an origin/develop merge mid-session) — NOT pushed; pushing needs
