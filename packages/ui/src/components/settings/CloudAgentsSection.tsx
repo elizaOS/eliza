@@ -1,4 +1,4 @@
-import { Bot, Check, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Bot, Check, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
 import { resolveCloudAgentApiBase } from "../../api/client-cloud";
@@ -38,9 +38,8 @@ function currentCloudToken(): string {
 
 /**
  * Eliza Cloud agent manager. Lists the signed-in user's cloud agents and lets
- * them switch the active agent, create + name a new one, or delete one — the
- * in-app counterpart to the cloud web dashboard. (Rename is intentionally
- * omitted: the cloud API exposes no agent-rename endpoint yet.)
+ * them switch the active agent, create + name a new one, rename one, or delete
+ * one — the in-app counterpart to the cloud web dashboard.
  */
 export function CloudAgentsSection() {
   const { elizaCloudConnected, setActionNotice } = useApp();
@@ -49,6 +48,8 @@ export function CloudAgentsSection() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
   const activeId = useMemo(() => activeCloudAgentId(), []);
 
   const cloudApiBase =
@@ -167,6 +168,46 @@ export function CloudAgentsSection() {
     [setActionNotice],
   );
 
+  const startRename = useCallback((agent: CloudCompatAgent) => {
+    setEditingId(agent.agent_id);
+    setEditName(agent.agent_name || "");
+  }, []);
+
+  const saveRename = useCallback(
+    async (agent: CloudCompatAgent) => {
+      const name = editName.trim();
+      if (!name || name === agent.agent_name) {
+        setEditingId(null);
+        return;
+      }
+      setBusyId(agent.agent_id);
+      try {
+        const res = await client.updateCloudCompatAgent(agent.agent_id, {
+          agentName: name,
+        });
+        if (!res.success) {
+          throw new Error(res.error || "Rename failed");
+        }
+        setAgents((prev) =>
+          prev.map((a) =>
+            a.agent_id === agent.agent_id ? { ...a, agent_name: name } : a,
+          ),
+        );
+        setActionNotice(`Renamed to ${name}.`, "success", 3000);
+        setEditingId(null);
+      } catch (err) {
+        setActionNotice(
+          err instanceof Error ? err.message : "Failed to rename agent.",
+          "error",
+          4000,
+        );
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [editName, setActionNotice],
+  );
+
   const hasToken = Boolean(currentCloudToken());
   if (!elizaCloudConnected && !hasToken) {
     return (
@@ -192,6 +233,48 @@ export function CloudAgentsSection() {
           agents.map((agent) => {
             const isActive = agent.agent_id === activeId;
             const busy = busyId === agent.agent_id;
+            if (editingId === agent.agent_id) {
+              return (
+                <div
+                  key={agent.agent_id}
+                  className="flex items-center gap-2 px-4 py-3"
+                >
+                  <Bot
+                    className="h-5 w-5 shrink-0 text-txt-muted"
+                    aria-hidden
+                  />
+                  {/* biome-ignore lint/a11y/noAutofocus: focus the rename field on open */}
+                  <Input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void saveRename(agent);
+                      if (e.key === "Escape") setEditingId(null);
+                    }}
+                    className="flex-1"
+                    aria-label="Agent name"
+                    disabled={busy}
+                    autoFocus
+                  />
+                  <Button
+                    variant="default"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => void saveRename(agent)}
+                  >
+                    {busy ? "Saving…" : "Save"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => setEditingId(null)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              );
+            }
             return (
               <SettingsRow
                 key={agent.agent_id}
@@ -216,6 +299,15 @@ export function CloudAgentsSection() {
                         {busy ? "Switching…" : "Use"}
                       </Button>
                     )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy}
+                      aria-label={`Rename ${agent.agent_name || agent.agent_id}`}
+                      onClick={() => startRename(agent)}
+                    >
+                      <Pencil className="h-4 w-4" aria-hidden />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"
