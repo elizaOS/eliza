@@ -514,10 +514,10 @@ benchmark-calibration-test:
 benchmark-parser-test:
 	@$(PYTHON) scripts/test_benchmark_parsers.py
 
-benchmark-efficiency-scope-check:
+benchmark-efficiency-scope-check: cpu-ap-capture-wire
 	@$(PYTHON) scripts/check_benchmark_efficiency_scope.py
 
-benchmark-efficiency-scope-test:
+benchmark-efficiency-scope-test: cpu-ap-capture-wire
 	@$(PYTHON) scripts/test_benchmark_efficiency_scope.py
 
 soc-thermal-sweep:
