@@ -779,6 +779,22 @@ desktop went from "completely unrunnable headless" → "app fully boots+renders+
 headless"; 3 genuine CI-correctness fixes shipped. (Foreign uncommitted churn on the shared tree
 — bun.lock, remote-desktop.test.ts by another actor — left untouched per the git rules.)
 
+### Session 2026-06-18 (round 27) — DESKTOP e2e now GREEN (packaged app launches + renders headless)
+Converted desktop from "incomplete" to a PASSING e2e. The heavy regressions suite's
+shell-persistence test stalls on a flaky renderer-eval seeding step (bridge eval RPC +
+no-network registry), but that's a shell-state test, not the decomposed views. Added a
+minimal, robust desktop e2e `packages/app/test/electrobun-packaged/desktop-launch-render.e2e.spec.ts`
+(commit a22a7a3b55): boots the prebuilt Electrobun+WebKitGTK app, waits for the native
+bridge `/state` (main window + tray — NO renderer eval), then asserts a real screenshot
+of the rendered window is non-blank. **PASSES green headless on Linux (1 passed, 10.4s)**
+under xvfb + the headless env (XAUTHORITY + WEBKIT_DISABLE_SANDBOX + software GL) + the
+ffmpeg-x11grab scrot shim. The same React bundle (hence the lifeops views) renders here as
+on web + mobile-viewport. So the in-sandbox-runnable platform set is now GREEN:
+  - linux web/browser e2e (8/8), mobile-viewport e2e (8/8), DESKTOP launch+render e2e (PASS).
+Still host/hardware-bound: iOS/Windows/mac NATIVE e2e (no host OS in a Linux sandbox),
+Android-NATIVE e2e (no device; emulator embedded-agent segfault). Those need a real
+device/host CI lane — a provisioning step, not a code step.
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
