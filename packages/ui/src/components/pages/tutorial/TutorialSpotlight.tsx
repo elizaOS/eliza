@@ -120,9 +120,13 @@ export function TutorialSpotlight({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[2147483000]"
-      // Pass clicks through when not blocking AND not over a backdrop rect.
-      style={{ pointerEvents: "none" }}
+      className="fixed inset-0"
+      // Inline z-index (not a Tailwind arbitrary class — that huge value isn't
+      // reliably generated) so the spotlight + card always sit ABOVE the chat
+      // overlay (z 9000), even when the chat is expanded full-screen while the
+      // user types the instructed command. Pass clicks through except over the
+      // card / backdrop rects.
+      style={{ pointerEvents: "none", zIndex: 2147483000 }}
       aria-live="polite"
     >
       <style>{SPOTLIGHT_KEYFRAMES}</style>

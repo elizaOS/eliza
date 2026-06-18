@@ -49,12 +49,6 @@ export interface TutorialStep {
    * next step's screen. Not applied on auto-detected success (they already moved).
    */
   advanceNavigateTo?: string;
-  /**
-   * Navigate (advanceNavigateTo) + advance as soon as the user SENDS a message
-   * during this step — so "type/say a command" steps reliably reach their
-   * destination even when no model is wired to route the request itself.
-   */
-  advanceOnSend?: boolean;
   /** In voice mode, the command the user should speak for this step. */
   voiceCommandHint?: string;
 }
@@ -131,7 +125,6 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     continueAfterSec: 18,
     continueLabel: "Take me to Settings",
     advanceNavigateTo: "settings",
-    advanceOnSend: true,
     voiceCommandHint: "open settings",
   },
   {
@@ -158,7 +151,6 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     continueAfterSec: 16,
     continueLabel: "Skip voice",
     advanceNavigateTo: "chat",
-    advanceOnSend: true,
     voiceCommandHint: "go home",
   },
   {
