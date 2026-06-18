@@ -108,16 +108,14 @@ The floating chat overlay (`ContinuousChatOverlay`) also renders these widgets
   timeline (sub-agent / orchestrator / user / system senders), the sessions
   (sub-agents) list, plan, artifacts, usage, and recovery — with near-live room
   polling. The task widget links here via `/orchestrator?taskId=<threadId>`.
+- ✅ **Multi-connector `dm` resolution.** The dispatch registry now holds a list
+  of adapters per target and resolves via `supportsChannel`
+  (`resolve(target, channelId, runtime)`), so Discord and Telegram can each
+  register a DM secret/OAuth adapter and the right one is selected per request.
 
-## Remaining work — exact seams
+## Remaining work — optional
 
-1. **Multi-connector `dm` resolution (registry follow-up).** The dispatch registry
-   holds one adapter per target; with both Discord and Telegram loaded, the last
-   `register("dm")` wins. Make the registry hold a list per target and resolve via
-   `supportsChannel` (the hook already exists), then update the 3 consumers
-   (`features/payments|oauth|plugin-config` `deliver-*`). Single-connector
-   deployments already resolve correctly.
-2. **Central normalization (optional).** Register `normalizeContentInteractions`
+1. **Central normalization (optional).** Register `normalizeContentInteractions`
    on the `outgoing_before_deliver` pipeline hook so every consumer gets
    `Content.interactions` without re-parsing. Connectors are already self-sufficient
    (they call `parseInteractionBlocks` directly), so this is a convenience, not a
