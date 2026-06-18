@@ -72,9 +72,10 @@ crons = [
 binding = "BLOB"
 bucket_name = "eliza-cloud-blob"
 
-# Cache + rate-limit storage runs through Upstash Redis REST in cloud (set
-# KV_REST_API_URL / KV_REST_API_TOKEN as Wrangler secrets). Local dev uses
-# embedded Wadis (CACHE_BACKEND=auto with no creds → wadis fallback).
+# Cache + rate-limit storage runs through Upstash Redis REST in Worker envs
+# (set KV_REST_API_URL / KV_REST_API_TOKEN as Wrangler secrets). Shared-runtime
+# chat history depends on this being durable across Worker requests. Local dev
+# still uses embedded Wadis by default when no Redis credentials are present.
 
 # Vectorize — embeddings (uncomment after `wrangler vectorize create`)
 # [[vectorize]]
@@ -131,8 +132,8 @@ CRYPTO_DIRECT_SOLANA_SECURE_ADDRESS = "97oFR38EpWEaLuKc13AnyL6GrqBZTBCVCh9rAHAXW
 CRYPTO_DIRECT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 CRYPTO_DIRECT_SOLANA_TOKEN_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 CRYPTO_DIRECT_SOLANA_TOKEN_DECIMALS = "6"
-CACHE_ENABLED = "false"
-CACHE_DISABLE_REASON = "CF Workers cross-request I/O isolation: CacheClient module-level singleton is incompatible until refactored to per-request scope"
+CACHE_ENABLED = "true"
+CACHE_BACKEND = "redis-rest"
 REDIS_RATE_LIMITING = "false"
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
@@ -291,8 +292,8 @@ CRYPTO_DIRECT_SOLANA_SECURE_ADDRESS = "97oFR38EpWEaLuKc13AnyL6GrqBZTBCVCh9rAHAXW
 CRYPTO_DIRECT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 CRYPTO_DIRECT_SOLANA_TOKEN_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 CRYPTO_DIRECT_SOLANA_TOKEN_DECIMALS = "6"
-CACHE_ENABLED = "false"
-CACHE_DISABLE_REASON = "CF Workers cross-request I/O isolation: CacheClient module-level singleton is incompatible until refactored to per-request scope"
+CACHE_ENABLED = "true"
+CACHE_BACKEND = "redis-rest"
 REDIS_RATE_LIMITING = "false"
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
@@ -376,8 +377,8 @@ CRYPTO_DIRECT_SOLANA_SECURE_ADDRESS = "97oFR38EpWEaLuKc13AnyL6GrqBZTBCVCh9rAHAXW
 CRYPTO_DIRECT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 CRYPTO_DIRECT_SOLANA_TOKEN_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 CRYPTO_DIRECT_SOLANA_TOKEN_DECIMALS = "6"
-CACHE_ENABLED = "false"
-CACHE_DISABLE_REASON = "CF Workers cross-request I/O isolation: CacheClient module-level singleton is incompatible until refactored to per-request scope"
+CACHE_ENABLED = "true"
+CACHE_BACKEND = "redis-rest"
 REDIS_RATE_LIMITING = "false"
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"

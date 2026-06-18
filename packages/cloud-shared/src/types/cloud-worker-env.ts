@@ -114,6 +114,7 @@ export interface Bindings {
   // ---- Feature flags ----
   REDIS_RATE_LIMITING?: string;
   CACHE_ENABLED?: string;
+  CACHE_BACKEND?: string;
   APPS_DEPLOY_ENABLED?: string;
   APPS_DEPLOY_ALLOWED_ORG_IDS?: string;
   RATE_LIMIT_DISABLED?: string;
