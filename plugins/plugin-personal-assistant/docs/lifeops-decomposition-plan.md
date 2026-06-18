@@ -514,6 +514,25 @@ still needs creds: the EXTERNAL-API connector live tests (Strava/Oura/Fitbit/Wit
 GCal/Gmail/Plaid) + verifying the gmail-curation step-5 connector-flow wiring.
 What still needs devices: multi-OS e2e EXECUTION (ios/android/mac/windows).
 
+### Session 2026-06-18 (round 16) — gmail-curation step 5: email-unsubscribe → plugin-inbox
+The connector re-architecture WORKS via runtime-service seams (no PA import, code-
+verified). Extracted the `withEmailUnsubscribe` mixin → plugin-inbox `InboxUnsubscribeService`
++ `InboxUnsubscribeRepository` + an `InboxGmailGateway` (resolves the Google Workspace
+runtime service via requireGoogleWorkspaceService — Gmail is a runtime service, not a
+hard import). No approval-queue seam needed (confirmation is route-layer; the service
+takes a pre-confirmed flag). Table `life_email_unsubscribes` kept (no migration). PA
+mixin delegates; 9 new unit tests; plugin-inbox 54 tests; PA suite 614. Live Gmail
+behavior verified later on a credentialed lane (same as all connector code).
+PATTERN PROVEN: Gmail-coupled domains extract by resolving the Google Workspace runtime
+service + keeping app_lifeops tables via the runtime DB handle.
+
+REMAINING decomposition (each a substantial dedicated effort, now de-risked by the
+proven seam pattern): email-curation engine (1648, unwired — wiring it into the inbox
+flow pulls in PA identity/policy subsystems), subscriptions (service-mixin-subscriptions
+— Gmail+browser+computeruse orchestration), goal-review (cross-domain occurrences/
+reminders/calendar/activity aggregation). All code-extractable via the seam pattern;
+live behavior needs a credentialed Gmail/browser lane to verify.
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
