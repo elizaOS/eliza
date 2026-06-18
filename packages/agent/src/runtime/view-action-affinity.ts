@@ -102,6 +102,19 @@ export function setActiveViewElements(
  *   facewear    — plugins/plugin-facewear/src/index.ts (FACEWEAR_, SMARTGLASSES_, XR_ actions)
  *   scape       — plugins/plugin-scape/src/actions (SCAPE)
  *   2004scape   — plugins/plugin-2004scape/src/actions (RS_2004, RS_2004_INVENTORY)
+ *
+ * Verified action names + view ids (2026-06-18) — each LifeOps/utility view's
+ * own domain actions, so they are emphasised (not just universally
+ * element-controllable) when that view is the foreground surface. Names
+ * confirmed registered in each plugin's actions/ source; plugin-conditional like
+ * the rest (a missing-plugin skip when not loaded). Sources:
+ *   calendar  — plugins/plugin-calendar/src/actions (CALENDAR, CONFLICT_DETECT)
+ *   health    — plugins/plugin-health/src/actions (OWNER_HEALTH, OWNER_SCREENTIME)
+ *   todos     — plugins/plugin-personal-assistant/src/actions/owner-surfaces (OWNER_TODOS)
+ *   goals     — plugins/plugin-goals/src/actions (OWNER_GOALS, OWNER_ALARMS, OWNER_REMINDERS, OWNER_ROUTINES)
+ *   inbox     — plugins/plugin-inbox/src/actions/inbox (INBOX)
+ *   finances  — plugins/plugin-finances/src/actions/finances (OWNER_FINANCES)
+ *   lifeops   — plugins/plugin-personal-assistant/src/actions (PERSONAL_ASSISTANT)
  */
 export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
   companion: ["PLAY_EMOTE"],
@@ -111,6 +124,13 @@ export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
   training: ["RUNTIME"],
   "plugins-page": ["RUNTIME"],
   settings: ["RUNTIME"],
+  calendar: ["CALENDAR", "CONFLICT_DETECT"],
+  health: ["OWNER_HEALTH", "OWNER_SCREENTIME"],
+  todos: ["OWNER_TODOS"],
+  goals: ["OWNER_GOALS", "OWNER_ALARMS", "OWNER_REMINDERS", "OWNER_ROUTINES"],
+  inbox: ["INBOX"],
+  finances: ["OWNER_FINANCES"],
+  lifeops: ["PERSONAL_ASSISTANT"],
   wallet: [
     "WALLET",
     "EVM_SWAP",
