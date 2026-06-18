@@ -290,7 +290,6 @@ function MessagesRows({
           {chats.map((c) => (
             <li key={c.id} className="flex items-center gap-2.5">
               {c.avatarUrl ? (
-                // biome-ignore lint/performance/noImgElement: avatar thumbnail, no Next.js
                 <img
                   src={c.avatarUrl}
                   alt=""

@@ -798,8 +798,12 @@ describe("ElizaClient direct Cloud auth on native", () => {
         method === "POST"
       ) {
         return {
-          status: 200,
-          data: { success: true, data: { jobId: "sandbox-job" } },
+          status: 409,
+          data: {
+            success: true,
+            alreadyInProgress: true,
+            data: { jobId: "sandbox-job" },
+          },
         };
       }
       if (url === "https://api.elizacloud.ai/api/v1/jobs/sandbox-job") {
@@ -849,6 +853,8 @@ describe("ElizaClient direct Cloud auth on native", () => {
         }),
         data: expect.objectContaining({
           agentName: "Sandbox Agent",
+          alwaysOn: true,
+          autoProvision: false,
           agentConfig: { bio: ["Native package-mode test agent."] },
         }),
       }),
@@ -877,7 +883,58 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expectNoLocalPersistOrStatusProbe();
   });
 
-  it("accepts shared-runtime Cloud agents when native iOS keeps the local app API", async () => {
+  it("rejects shared-runtime Cloud agents by default", async () => {
+    capacitorMocks.request.mockImplementation(async ({ url, method }) => {
+      if (
+        url === "https://api.elizacloud.ai/api/v1/eliza/agents" &&
+        method === "POST"
+      ) {
+        return {
+          status: 201,
+          data: {
+            success: true,
+            source: "shared_runtime",
+            data: {
+              id: "shared-agent",
+              executionTier: "shared",
+            },
+          },
+        };
+      }
+      if (
+        url ===
+          "https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent/provision" &&
+        method === "POST"
+      ) {
+        return {
+          status: 200,
+          data: {
+            success: true,
+            source: "shared_runtime",
+            data: {
+              id: "shared-agent",
+              executionTier: "shared",
+            },
+          },
+        };
+      }
+      throw new Error(`Unexpected shared provision request: ${method} ${url}`);
+    });
+
+    const client = new ElizaClient("http://localhost:31337");
+    await expect(
+      client.provisionCloudSandbox({
+        cloudApiBase: "https://www.elizacloud.ai",
+        authToken: "dev-js-bearer",
+        name: "Shared Agent",
+        bio: ["Native package-mode test agent."],
+      }),
+    ).rejects.toThrow(/requires a dedicated sandbox/);
+    expect(capacitorMocks.request).toHaveBeenCalledTimes(2);
+    expectNoLocalPersistOrStatusProbe();
+  });
+
+  it("accepts shared-runtime Cloud agents only when explicitly opted in", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockRejectedValue(

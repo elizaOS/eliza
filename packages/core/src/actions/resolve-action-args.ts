@@ -12,10 +12,11 @@
  * params, nothing else. Domain-specific param normalization, post-extraction
  * confirmation flows, and side-effect dispatch stay in the umbrella action.
  */
+
+import type { HandlerOptions, IAgentRuntime, Memory, State } from "../types";
 import { runExtractorPipeline } from "./extractor-pipeline";
 import { parseJsonModelRecord } from "./json-model-output";
 import { recentConversationTextsFromState } from "./recent-context";
-import type { HandlerOptions, IAgentRuntime, Memory, State } from "../types";
 
 // ── Public types ──────────────────────────────────────
 
