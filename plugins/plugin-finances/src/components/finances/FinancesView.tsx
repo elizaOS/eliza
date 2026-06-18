@@ -147,9 +147,7 @@ function usdToMinor(amountUsd: number): number {
  * Currency-aware status the DTO carries. The wire transaction has no posted/
  * pending split; debits/credits all settle to "posted" once imported.
  */
-function mapBalance(
-  dashboard: MoneyDashboardWire,
-): FinanceBalanceSummaryDTO {
+function mapBalance(dashboard: MoneyDashboardWire): FinanceBalanceSummaryDTO {
   const { spending } = dashboard;
   return {
     netBalanceMinor: usdToMinor(spending.netUsd),
@@ -165,7 +163,10 @@ function mapTransaction(tx: MoneyTransactionWire): FinanceTransactionDTO {
   // wire amount is unsigned, so the direction carries the sign.
   const signedUsd = tx.direction === "debit" ? -tx.amountUsd : tx.amountUsd;
   const description =
-    tx.description ?? tx.merchantDisplay ?? tx.merchantNormalized ?? "Transaction";
+    tx.description ??
+    tx.merchantDisplay ??
+    tx.merchantNormalized ??
+    "Transaction";
   return {
     id: tx.id,
     occurredAt: tx.postedAt,
@@ -187,9 +188,7 @@ const RECURRING_CADENCES = new Set([
   "yearly",
 ]);
 
-function mapRecurring(
-  charge: MoneyRecurringWire,
-): RecurringChargeDTO {
+function mapRecurring(charge: MoneyRecurringWire): RecurringChargeDTO {
   // The wire cadence has more variants (biweekly/annual/irregular) than the
   // display enum; normalize annual -> yearly and fall back to monthly for the
   // ones the display enum cannot represent. Display only — no math.
@@ -412,8 +411,7 @@ function ConnectButton({ onActivate }: { onActivate: () => void }): ReactNode {
     role: "button",
     label: "Connect a payment source",
     group: "finances-actions",
-    description:
-      "Connect a bank, PayPal, or CSV so Eliza can track your money",
+    description: "Connect a bank, PayPal, or CSV so Eliza can track your money",
     onActivate,
   });
   return (
@@ -614,9 +612,7 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
         setState({
           kind: "error",
           message:
-            error instanceof Error
-              ? error.message
-              : "Could not load finances.",
+            error instanceof Error ? error.message : "Could not load finances.",
         });
       });
     return () => {
@@ -627,7 +623,9 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
   useEffect(() => load(), [load]);
 
   const requestConnect = useCallback(() => {
-    client.sendChatMessage?.("Connect a payment source so you can track my money.");
+    client.sendChatMessage?.(
+      "Connect a payment source so you can track my money.",
+    );
   }, []);
 
   if (state.kind === "loading") {
@@ -673,8 +671,8 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
           <div style={{ fontWeight: 600 }}>No money sources connected</div>
           <div style={dimStyle}>
             Connect a bank, PayPal, or import a CSV so Eliza can track your
-            balance, transactions, and recurring charges. Nothing is shown
-            until a source is linked.
+            balance, transactions, and recurring charges. Nothing is shown until
+            a source is linked.
           </div>
           <div>
             <ConnectButton onActivate={requestConnect} />

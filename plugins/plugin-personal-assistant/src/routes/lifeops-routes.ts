@@ -76,11 +76,15 @@ import {
   loadLifeOpsAppState,
   saveLifeOpsAppState,
 } from "../lifeops/app-state.js";
+import {
+  type AddPaymentSourceRequest,
+  FinancesService,
+  FinancesServiceError,
+  sanitizePaymentSourceForClient,
+} from "@elizaos/plugin-finances";
 import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
-import type { AddPaymentSourceRequest } from "../lifeops/payment-types.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
-import { sanitizePaymentSourceForClient } from "../lifeops/service-mixin-payments.js";
 
 export interface LifeOpsRouteContext {
   req: http.IncomingMessage;
@@ -137,6 +141,19 @@ function getService(ctx: LifeOpsRouteContext): LifeOpsService | null {
     return null;
   }
   return new LifeOpsService(runtime, {
+    ownerEntityId: ctx.state.adminEntityId,
+  });
+}
+
+function getFinancesService(ctx: LifeOpsRouteContext): FinancesService | null {
+  if (!requireAuthorizedRouteContext(ctx)) {
+    return null;
+  }
+  const runtime = ctx.state.runtime;
+  if (!runtime) {
+    return null;
+  }
+  return new FinancesService(runtime, {
     ownerEntityId: ctx.state.adminEntityId,
   });
 }
@@ -706,6 +723,85 @@ async function runRoute(
     return true;
   } catch (error) {
     if (error instanceof LifeOpsServiceError) {
+      const logFn =
+        error.status === 401
+          ? logger.debug.bind(logger)
+          : logger.warn.bind(logger);
+      logFn(
+        {
+          boundary: "lifeops",
+          operation,
+          statusCode: error.status,
+        },
+        `[lifeops] Route failed: ${error.message}`,
+      );
+      span.failure({
+        statusCode: error.status,
+        error,
+        errorKind:
+          error.status === 401
+            ? "lifeops_auth_invalid"
+            : "lifeops_service_error",
+      });
+      ctx.error(ctx.res, error.message, error.status);
+      return true;
+    }
+    logger.error(
+      {
+        boundary: "lifeops",
+        operation,
+      },
+      `[lifeops] Route crashed: ${errorMessage(error)}`,
+    );
+    span.failure({
+      error,
+      errorKind: "unhandled_error",
+    });
+    throw error;
+  }
+}
+
+/**
+ * Variant of {@link runRoute} that injects a {@link FinancesService} (the
+ * finance back-end in @elizaos/plugin-finances) instead of LifeOpsService, and
+ * maps {@link FinancesServiceError} to the same HTTP shape. Used by the
+ * /api/lifeops/money/* routes whose payments logic moved to plugin-finances.
+ * URLs and response shapes are unchanged.
+ */
+async function runFinancesRoute(
+  ctx: LifeOpsRouteContext,
+  fn: (service: FinancesService) => Promise<void>,
+): Promise<boolean> {
+  const operation = routeOperation(ctx);
+  const span = createIntegrationTelemetrySpan({
+    boundary: "lifeops",
+    operation,
+  });
+  const service = getFinancesService(ctx);
+  if (!service) {
+    logger.info(
+      {
+        boundary: "lifeops",
+        operation,
+        statusCode: 503,
+      },
+      "[lifeops] Route rejected because agent runtime is unavailable",
+    );
+    span.failure({
+      statusCode: 503,
+      errorKind: "runtime_unavailable",
+    });
+    return true;
+  }
+  try {
+    await ensureRouteSchema(ctx.state.runtime);
+    await fn(service);
+    span.success({
+      statusCode: ctx.res.statusCode >= 400 ? ctx.res.statusCode : 200,
+    });
+    return true;
+  } catch (error) {
+    if (error instanceof FinancesServiceError) {
       const logFn =
         error.status === 401
           ? logger.debug.bind(logger)
@@ -2211,7 +2307,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "GET" && pathname === "/api/lifeops/money/dashboard") {
-    return runRoute(ctx, async (service) => {
+    return runFinancesRoute(ctx, async (service) => {
       const windowDaysRaw = url.searchParams.get("windowDays");
       const windowDays = windowDaysRaw ? Number(windowDaysRaw) : null;
       json(
@@ -2224,7 +2320,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "GET" && pathname === "/api/lifeops/money/sources") {
-    return runRoute(ctx, async (service) => {
+    return runFinancesRoute(ctx, async (service) => {
       json(res, { sources: await service.listPaymentSources() });
     });
   }
@@ -2233,7 +2329,7 @@ export async function handleLifeOpsRoutes(
     if (rateLimitRequest(ctx, "connector_write")) return true;
     const body = await readJsonBody<AddPaymentSourceRequest>(req, res);
     if (!body) return true;
-    return runRoute(ctx, async (service) => {
+    return runFinancesRoute(ctx, async (service) => {
       const source = await service.addPaymentSource(body);
       json(res, { source: sanitizePaymentSourceForClient(source) }, 201);
     });
@@ -2249,7 +2345,7 @@ export async function handleLifeOpsRoutes(
       ctx.error(res, "sourceId required", 400);
       return true;
     }
-    return runRoute(ctx, async (service) => {
+    return runFinancesRoute(ctx, async (service) => {
       await service.deletePaymentSource(decodeURIComponent(sourceId));
       json(res, { ok: true });
     });
@@ -2267,14 +2363,14 @@ export async function handleLifeOpsRoutes(
       categoryColumn?: string;
     }>(req, res);
     if (!body) return true;
-    return runRoute(ctx, async (service) => {
+    return runFinancesRoute(ctx, async (service) => {
       const result = await service.importTransactionsCsv(body);
       json(res, result);
     });
   }
 
   if (method === "GET" && pathname === "/api/lifeops/money/transactions") {
-    return runRoute(ctx, async (service) => {
+    return runFinancesRoute(ctx, async (service) => {
       const sourceId = url.searchParams.get("sourceId");
       const limitRaw = url.searchParams.get("limit");
       const limit = limitRaw ? Number(limitRaw) : null;
@@ -2291,7 +2387,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "GET" && pathname === "/api/lifeops/money/recurring") {
-    return runRoute(ctx, async (service) => {
+    return runFinancesRoute(ctx, async (service) => {
       const sourceId = url.searchParams.get("sourceId");
       const sinceDaysRaw = url.searchParams.get("sinceDays");
       const sinceDays = sinceDaysRaw ? Number(sinceDaysRaw) : null;
@@ -2305,7 +2401,7 @@ export async function handleLifeOpsRoutes(
 
   if (method === "POST" && pathname === "/api/lifeops/money/plaid/link-token") {
     if (rateLimitRequest(ctx, "oauth_init")) return true;
-    return runRoute(ctx, async (service) => {
+    return runFinancesRoute(ctx, async (service) => {
       const result = await service.createPlaidLinkToken();
       json(res, result);
     });
@@ -2318,7 +2414,7 @@ export async function handleLifeOpsRoutes(
       label?: string | null;
     }>(req, res);
     if (!body) return true;
-    return runRoute(ctx, async (service) => {
+    return runFinancesRoute(ctx, async (service) => {
       const source = await service.completePlaidLink({
         publicToken: body.publicToken,
         label: body.label ?? null,
@@ -2337,7 +2433,7 @@ export async function handleLifeOpsRoutes(
     if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<{ sourceId: string }>(req, res);
     if (!body) return true;
-    return runRoute(ctx, async (service) => {
+    return runFinancesRoute(ctx, async (service) => {
       const result = await service.syncPlaidTransactions({
         sourceId: body.sourceId,
       });
@@ -2352,7 +2448,7 @@ export async function handleLifeOpsRoutes(
     if (rateLimitRequest(ctx, "oauth_init")) return true;
     const body = await readJsonBody<{ state: string }>(req, res);
     if (!body) return true;
-    return runRoute(ctx, async (service) => {
+    return runFinancesRoute(ctx, async (service) => {
       const result = await service.createPaypalAuthorizeUrl({
         state: body.state,
       });
@@ -2367,7 +2463,7 @@ export async function handleLifeOpsRoutes(
       label?: string | null;
     }>(req, res);
     if (!body) return true;
-    return runRoute(ctx, async (service) => {
+    return runFinancesRoute(ctx, async (service) => {
       const { source, capability } = await service.completePaypalLink({
         code: body.code,
         label: body.label ?? null,
@@ -2390,7 +2486,7 @@ export async function handleLifeOpsRoutes(
       windowDays?: number | null;
     }>(req, res);
     if (!body) return true;
-    return runRoute(ctx, async (service) => {
+    return runFinancesRoute(ctx, async (service) => {
       const result = await service.syncPaypalTransactions({
         sourceId: body.sourceId,
         windowDays: body.windowDays ?? null,
@@ -2460,7 +2556,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "GET" && pathname === "/api/lifeops/money/bills") {
-    return runRoute(ctx, async (service) => {
+    return runFinancesRoute(ctx, async (service) => {
       const bills = await service.getUpcomingBills({});
       json(res, { bills });
     });
@@ -2473,7 +2569,7 @@ export async function handleLifeOpsRoutes(
       res,
     );
     if (!body) return true;
-    return runRoute(ctx, async (service) => {
+    return runFinancesRoute(ctx, async (service) => {
       const result = await service.markBillPaid({
         billId: body.billId,
         paidAt: body.paidAt ?? null,
@@ -2489,7 +2585,7 @@ export async function handleLifeOpsRoutes(
       res,
     );
     if (!body) return true;
-    return runRoute(ctx, async (service) => {
+    return runFinancesRoute(ctx, async (service) => {
       const result = await service.snoozeBill({
         billId: body.billId,
         days: body.days ?? 7,

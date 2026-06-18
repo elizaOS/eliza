@@ -166,35 +166,35 @@ interface LifeOpsElizaClientMethods {
   getLifeOpsOverview(): Promise<LifeOpsOverview>;
   getLifeOpsPaymentsDashboard(data?: {
     windowDays?: number | null;
-  }): Promise<import("../lifeops/payment-types.js").LifeOpsPaymentsDashboard>;
+  }): Promise<import("@elizaos/plugin-finances").LifeOpsPaymentsDashboard>;
   listLifeOpsPaymentSources(): Promise<{
-    sources: import("../lifeops/payment-types.js").LifeOpsPaymentSource[];
+    sources: import("@elizaos/plugin-finances").LifeOpsPaymentSource[];
   }>;
   addLifeOpsPaymentSource(
-    data: import("../lifeops/payment-types.js").AddPaymentSourceRequest,
+    data: import("@elizaos/plugin-finances").AddPaymentSourceRequest,
   ): Promise<{
-    source: import("../lifeops/payment-types.js").LifeOpsPaymentSource;
+    source: import("@elizaos/plugin-finances").LifeOpsPaymentSource;
   }>;
   deleteLifeOpsPaymentSource(sourceId: string): Promise<{ ok: true }>;
   importLifeOpsPaymentCsv(
-    data: import("../lifeops/payment-types.js").ImportTransactionsCsvRequest,
-  ): Promise<import("../lifeops/payment-types.js").ImportTransactionsCsvResult>;
+    data: import("@elizaos/plugin-finances").ImportTransactionsCsvRequest,
+  ): Promise<import("@elizaos/plugin-finances").ImportTransactionsCsvResult>;
   listLifeOpsPaymentTransactions(data?: {
     sourceId?: string | null;
     limit?: number | null;
     merchantContains?: string | null;
     onlyDebits?: boolean | null;
   }): Promise<{
-    transactions: import("../lifeops/payment-types.js").LifeOpsPaymentTransaction[];
+    transactions: import("@elizaos/plugin-finances").LifeOpsPaymentTransaction[];
   }>;
   listLifeOpsRecurringCharges(data?: {
     sourceId?: string | null;
     sinceDays?: number | null;
   }): Promise<{
-    charges: import("../lifeops/payment-types.js").LifeOpsRecurringCharge[];
+    charges: import("@elizaos/plugin-finances").LifeOpsRecurringCharge[];
   }>;
   listLifeOpsUpcomingBills(): Promise<{
-    bills: import("../lifeops/payment-types.js").LifeOpsUpcomingBill[];
+    bills: import("@elizaos/plugin-finances").LifeOpsUpcomingBill[];
   }>;
   getLifeOpsSmartFeatureSettings(): Promise<{
     emailClassifierEnabled: boolean;
@@ -250,7 +250,7 @@ interface LifeOpsElizaClientMethods {
     publicToken: string;
     label?: string | null;
   }): Promise<{
-    source: import("../lifeops/payment-types.js").LifeOpsPaymentSource;
+    source: import("@elizaos/plugin-finances").LifeOpsPaymentSource;
   }>;
   syncLifeOpsPlaidTransactions(data: { sourceId: string }): Promise<{
     inserted: number;
@@ -266,7 +266,7 @@ interface LifeOpsElizaClientMethods {
     code: string;
     label?: string | null;
   }): Promise<{
-    source: import("../lifeops/payment-types.js").LifeOpsPaymentSource;
+    source: import("@elizaos/plugin-finances").LifeOpsPaymentSource;
     capability: { hasReporting: boolean; hasIdentity: boolean };
   }>;
   syncLifeOpsPaypalTransactions(data: {

@@ -12,7 +12,20 @@ import {
   createLifeOpsSubscriptionAudit,
   createLifeOpsSubscriptionCancellation,
   createLifeOpsSubscriptionCandidate,
-} from "./repository.js";
+  findLifeOpsSubscriptionPlaybook,
+  type LifeOpsSubscriptionAudit,
+  type LifeOpsSubscriptionAuditSummary,
+  type LifeOpsSubscriptionCancellation,
+  type LifeOpsSubscriptionCancellationRequest,
+  type LifeOpsSubscriptionCancellationSummary,
+  type LifeOpsSubscriptionCandidate,
+  type LifeOpsSubscriptionDiscoveryRequest,
+  type LifeOpsSubscriptionExecutor,
+  type LifeOpsSubscriptionPlaybook,
+  listLifeOpsSubscriptionPlaybooks,
+  PLAYBOOK_UNSUPPORTED_FLOW_ERROR,
+  type SubscriptionAutomationStep,
+} from "@elizaos/plugin-finances";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import {
   fail,
@@ -20,23 +33,6 @@ import {
   normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
-import {
-  findLifeOpsSubscriptionPlaybook,
-  type LifeOpsSubscriptionPlaybook,
-  listLifeOpsSubscriptionPlaybooks,
-  PLAYBOOK_UNSUPPORTED_FLOW_ERROR,
-  type SubscriptionAutomationStep,
-} from "./subscriptions-playbooks.js";
-import type {
-  LifeOpsSubscriptionAudit,
-  LifeOpsSubscriptionAuditSummary,
-  LifeOpsSubscriptionCancellation,
-  LifeOpsSubscriptionCancellationRequest,
-  LifeOpsSubscriptionCancellationSummary,
-  LifeOpsSubscriptionCandidate,
-  LifeOpsSubscriptionDiscoveryRequest,
-  LifeOpsSubscriptionExecutor,
-} from "./subscriptions-types.js";
 
 type BrowserArtifact = {
   kind: "screenshot" | "page_probe";

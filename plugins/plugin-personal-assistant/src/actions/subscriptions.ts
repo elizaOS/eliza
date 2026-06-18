@@ -12,11 +12,13 @@ import {
   requireConfirmation,
   runWithTrajectoryContext,
 } from "@elizaos/core";
+import {
+  type LifeOpsSubscriptionExecutor,
+  PLAYBOOK_UNSUPPORTED_FLOW_ERROR,
+} from "@elizaos/plugin-finances";
 import { INTERNAL_URL } from "../lifeops/access.js";
 import { messageText } from "../lifeops/google/format-helpers.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
-import { PLAYBOOK_UNSUPPORTED_FLOW_ERROR } from "../lifeops/subscriptions-playbooks.js";
-import type { LifeOpsSubscriptionExecutor } from "../lifeops/subscriptions-types.js";
 import { formatPromptSection } from "./lib/prompt-format.js";
 
 type SubscriptionSubaction = "audit" | "cancel" | "status";

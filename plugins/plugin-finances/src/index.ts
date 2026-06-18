@@ -2,12 +2,27 @@
  * Public entry for @elizaos/plugin-finances.
  *
  * Default export is the runtime Plugin object. Named exports expose the
- * action, schema/types, and the React view component so other packages can
- * import them directly (e.g. for tests, storybook, or embedding the view).
+ * finance back-end (service, repository, action handler + parameter schema),
+ * the schema/types, and the React view component so other packages can import
+ * them directly — most notably `@elizaos/plugin-personal-assistant`, which
+ * registers the OWNER_FINANCES umbrella action + the /api/lifeops/money/*
+ * routes and delegates the payments back-end here.
  */
 
-export { ownerFinancesAction } from "./actions/finances.ts";
+export {
+  MONEY_CONTEXTS,
+  MONEY_PARAMETERS,
+  MONEY_TAGS,
+  OWNER_FINANCE_SIMILES,
+  runPaymentsHandler,
+} from "./actions/finances.ts";
 export { FinancesView } from "./components/finances/FinancesView.tsx";
+export {
+  createLifeOpsSubscriptionAudit,
+  createLifeOpsSubscriptionCancellation,
+  createLifeOpsSubscriptionCandidate,
+  FinancesRepository,
+} from "./db/finances-repository.ts";
 export {
   financesDbSchema,
   financesSchema,
@@ -27,6 +42,29 @@ export {
   lifeSubscriptionCancellations,
   lifeSubscriptionCandidates,
 } from "./db/schema.ts";
+export {
+  FinancesServiceError,
+  financeErrorMessage,
+} from "./finance-normalize.ts";
+export {
+  encryptPaymentMetadataToken,
+  FinancesService,
+  type FinancesServiceOptions,
+  readPaymentMetadataToken,
+  sanitizePaymentSourceForClient,
+} from "./finances-service.ts";
+export * from "./payment-csv-import.ts";
+export * from "./payment-recurrence.ts";
+export * from "./payment-types.ts";
 export { default, financesPlugin } from "./plugin.ts";
 export { FinancesMigrationService } from "./services/migration.ts";
+export * from "./subscriptions-playbooks.ts";
+export * from "./subscriptions-types.ts";
+export {
+  decryptTokenEnvelope,
+  type EncryptedTokenEnvelope,
+  encryptTokenPayload,
+  isEncryptedTokenEnvelope,
+  resolveTokenEncryptionKey,
+} from "./token-encryption.ts";
 export * from "./types.ts";

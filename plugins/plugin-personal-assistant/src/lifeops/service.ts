@@ -26,7 +26,6 @@ import { withGoogle } from "./service-mixin-google.js";
 import { withHealth } from "./service-mixin-health.js";
 import { withIMessage } from "./service-mixin-imessage.js";
 import { withInbox } from "./service-mixin-inbox.js";
-import { withPayments } from "./service-mixin-payments.js";
 import { withRelationships } from "./service-mixin-relationships.js";
 import { withReminders } from "./service-mixin-reminders.js";
 import { withScheduling } from "./service-mixin-scheduling.js";
@@ -66,8 +65,13 @@ const LIFEOPS_WITH_CONNECTORS = withWhatsApp(
 );
 const LIFEOPS_WITH_TRAVEL = withTravel(LIFEOPS_WITH_CONNECTORS);
 const LIFEOPS_WITH_SCHEDULING = withScheduling(LIFEOPS_WITH_TRAVEL);
-const LIFEOPS_WITH_PAYMENTS = withPayments(LIFEOPS_WITH_SCHEDULING);
-const LIFEOPS_WITH_SUBS = withSubscriptions(LIFEOPS_WITH_PAYMENTS);
+// Payment-source / transaction / spending logic moved to
+// @elizaos/plugin-finances (FinancesService). LifeOpsService no longer mixes
+// in payments; the OWNER_FINANCES payments handler + the /api/lifeops/money/*
+// routes delegate to FinancesService. Subscription discovery / cancellation
+// stays here because it orchestrates the agent's Gmail triage + browser bridge
+// surfaces and reaches the finance tables through LifeOpsRepository.
+const LIFEOPS_WITH_SUBS = withSubscriptions(LIFEOPS_WITH_SCHEDULING);
 // TypeScript loses track of constraint satisfaction past ~6 chained generic
 // mixins, so we cast explicitly. The runtime composition has every method
 // `withStatus` depends on (getScheduleMergedState from withScheduling,
