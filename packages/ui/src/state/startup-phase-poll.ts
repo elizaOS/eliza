@@ -15,6 +15,7 @@ import { getBackendStartupTimeoutMs, scanProviderCredentials } from "../bridge";
 import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import type { UiLanguage } from "../i18n";
 import { isAndroid, isIOS } from "../platform";
+import { isElizaCloudControlPlaneAgentlessBase } from "../utils/cloud-agent-base";
 import {
   asApiLikeError,
   clearPersistedSetupStep,
@@ -471,6 +472,14 @@ export async function runPollingBackend(
                 dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
                 return;
               }
+              if (isElizaCloudControlPlaneAgentlessBase(client.getBaseUrl())) {
+                // Signed into Eliza Cloud but no agent selected yet (base is the
+                // control-plane / agents-collection URL with no /<agentId>).
+                // Route to first-run agent selection, not "Backend Unreachable".
+                deps.setFirstRunLoading(false);
+                dispatch({ type: "BACKEND_REACHED", firstRunComplete: false });
+                return;
+              }
               deps.setStartupError(describeBackendFailure(err, false));
               deps.setFirstRunLoading(false);
               dispatch({ type: "BACKEND_NOT_FOUND" });
@@ -558,6 +567,13 @@ export async function runPollingBackend(
           deps.setFirstRunComplete(true);
           deps.setFirstRunLoading(false);
           dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
+          return;
+        }
+        if (isElizaCloudControlPlaneAgentlessBase(client.getBaseUrl())) {
+          // Signed into Eliza Cloud but no agent selected yet — route to
+          // first-run agent selection instead of "Backend Unreachable".
+          deps.setFirstRunLoading(false);
+          dispatch({ type: "BACKEND_REACHED", firstRunComplete: false });
           return;
         }
         deps.setStartupError(describeBackendFailure(err, false));

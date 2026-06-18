@@ -5,6 +5,11 @@ vi.mock("@capacitor/core", () => ({
   CapacitorHttp: { get: vi.fn(), post: vi.fn(), request: vi.fn() },
 }));
 
+import {
+  buildCloudSharedAgentApiBase,
+  isCloudAgentsCollectionBase,
+  isElizaCloudControlPlaneAgentlessBase,
+} from "../utils/cloud-agent-base";
 import { resolveCloudAgentApiBase } from "./client-cloud";
 
 /**
@@ -72,5 +77,98 @@ describe("resolveCloudAgentApiBase", () => {
 
   it("returns empty when neither is available", () => {
     expect(resolveCloudAgentApiBase({ bridgeUrl: null })).toBe("");
+  });
+
+  // Regression: the cloud occasionally returns a webUiUrl/bridgeUrl that is the
+  // agent-id-LESS collection (`.../api/v1/eliza/agents`). Pinning that made every
+  // /api/* call resolve to `.../agents/api/...` and 404 ("Backend Unreachable").
+  it("derives the per-agent base from agentId when the server URL is the id-less collection", () => {
+    expect(
+      resolveCloudAgentApiBase({
+        bridgeUrl: null,
+        webUiUrl: "https://api.elizacloud.ai/api/v1/eliza/agents",
+        agentId: "agent-123",
+        cloudApiBase: "https://www.elizacloud.ai",
+      }),
+    ).toBe("https://api.elizacloud.ai/api/v1/eliza/agents/agent-123");
+  });
+
+  it("derives from agentId when both server URLs are missing", () => {
+    expect(
+      resolveCloudAgentApiBase({
+        bridgeUrl: null,
+        webUiUrl: null,
+        agentId: "agent-xyz",
+        cloudApiBase: "https://api.elizacloud.ai",
+      }),
+    ).toBe("https://api.elizacloud.ai/api/v1/eliza/agents/agent-xyz");
+  });
+
+  it("does NOT clobber a raw dedicated bridge even when agentId is supplied", () => {
+    // A dedicated agent's raw http://ip:port bridge is a valid base on a
+    // non-cloud host — it must be left untouched, not rewritten to a shared base.
+    expect(
+      resolveCloudAgentApiBase({
+        bridgeUrl: "http://195.201.57.227:19411",
+        agentId: "agent-123",
+        cloudApiBase: "https://api.elizacloud.ai",
+      }),
+    ).toBe("http://195.201.57.227:19411");
+  });
+
+  it("keeps a valid per-agent server base instead of re-deriving", () => {
+    expect(
+      resolveCloudAgentApiBase({
+        bridgeUrl: null,
+        webUiUrl: "https://api.elizacloud.ai/api/v1/eliza/agents/real-id",
+        agentId: "other-id",
+        cloudApiBase: "https://api.elizacloud.ai",
+      }),
+    ).toBe("https://api.elizacloud.ai/api/v1/eliza/agents/real-id");
+  });
+});
+
+describe("cloud-agent-base helpers", () => {
+  it("buildCloudSharedAgentApiBase appends the per-agent REST path", () => {
+    expect(
+      buildCloudSharedAgentApiBase("https://api.elizacloud.ai/", "abc"),
+    ).toBe("https://api.elizacloud.ai/api/v1/eliza/agents/abc");
+  });
+
+  it("isCloudAgentsCollectionBase flags blank/bare/collection bases", () => {
+    expect(isCloudAgentsCollectionBase("")).toBe(true);
+    expect(isCloudAgentsCollectionBase(null)).toBe(true);
+    expect(isCloudAgentsCollectionBase("https://api.elizacloud.ai")).toBe(true);
+    expect(
+      isCloudAgentsCollectionBase(
+        "https://api.elizacloud.ai/api/v1/eliza/agents",
+      ),
+    ).toBe(true);
+    expect(
+      isCloudAgentsCollectionBase(
+        "https://api.elizacloud.ai/api/v1/eliza/agents/abc",
+      ),
+    ).toBe(false);
+    expect(isCloudAgentsCollectionBase("http://10.0.0.1:3000")).toBe(true);
+  });
+
+  it("isElizaCloudControlPlaneAgentlessBase is host-checked (only cloud hosts)", () => {
+    expect(
+      isElizaCloudControlPlaneAgentlessBase("https://api.elizacloud.ai"),
+    ).toBe(true);
+    expect(
+      isElizaCloudControlPlaneAgentlessBase(
+        "https://api.elizacloud.ai/api/v1/eliza/agents",
+      ),
+    ).toBe(true);
+    expect(
+      isElizaCloudControlPlaneAgentlessBase(
+        "https://api.elizacloud.ai/api/v1/eliza/agents/abc",
+      ),
+    ).toBe(false);
+    // A raw dedicated bridge (non-cloud host) is NOT agentless.
+    expect(
+      isElizaCloudControlPlaneAgentlessBase("http://195.201.57.227:19411"),
+    ).toBe(false);
   });
 });

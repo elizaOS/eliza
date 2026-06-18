@@ -46,10 +46,12 @@ const mocks = vi.hoisted(() => ({
   submitFirstRun: vi.fn(async () => null),
   synthesizeFirstRunSpeech: vi.fn(async () => new ArrayBuffer(0)),
   getCloudStatus: vi.fn(),
-  provisionCloudSandbox: vi.fn(async () => ({
+  selectOrProvisionCloudAgent: vi.fn(async () => ({
     agentId: "agent-1",
-    bridgeUrl: "https://agent-1.runtime.elizacloud.ai",
-    webUiUrl: null,
+    agentName: "Demo Agent",
+    apiBase: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1",
+    bridgeUrl: null,
+    created: true,
   })),
 }));
 
@@ -62,7 +64,7 @@ vi.mock("@capacitor/core", () => ({
 vi.mock("../api", () => ({
   client: {
     getCloudStatus: mocks.getCloudStatus,
-    provisionCloudSandbox: mocks.provisionCloudSandbox,
+    selectOrProvisionCloudAgent: mocks.selectOrProvisionCloudAgent,
     setBaseUrl: mocks.setBaseUrl,
     setToken: mocks.setToken,
     submitFirstRun: mocks.submitFirstRun,
@@ -174,7 +176,7 @@ describe("useFirstRunController cloud first-run", () => {
     });
     mocks.persistMobileRuntimeModeForServerTarget.mockClear();
     mocks.preOpenWindow.mockClear();
-    mocks.provisionCloudSandbox.mockClear();
+    mocks.selectOrProvisionCloudAgent.mockClear();
     mocks.savePersistedActiveServer.mockClear();
     mocks.setBaseUrl.mockClear();
     mocks.setState.mockClear();
@@ -195,7 +197,7 @@ describe("useFirstRunController cloud first-run", () => {
     });
 
     expect(mocks.handleCloudLogin).toHaveBeenCalledTimes(1);
-    expect(mocks.provisionCloudSandbox).toHaveBeenCalledWith(
+    expect(mocks.selectOrProvisionCloudAgent).toHaveBeenCalledWith(
       expect.objectContaining({
         cloudApiBase: "https://www.elizacloud.ai",
         authToken: "cloud-token",
@@ -204,18 +206,15 @@ describe("useFirstRunController cloud first-run", () => {
         onProgress: expect.any(Function),
       }),
     );
-    const provisionCall = mocks.provisionCloudSandbox.mock
-      .calls[0] as unknown as [Record<string, unknown>] | undefined;
-    expect(provisionCall?.[0]).toHaveProperty("allowSharedRuntime", true);
     expect(mocks.setBaseUrl).toHaveBeenCalledWith(
-      "https://agent-1.runtime.elizacloud.ai",
+      "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1",
     );
     expect(mocks.setToken).toHaveBeenCalledWith("cloud-token");
     expect(mocks.savePersistedActiveServer).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "cloud",
         label: "Demo Agent",
-        apiBase: "https://agent-1.runtime.elizacloud.ai",
+        apiBase: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1",
         accessToken: "cloud-token",
       }),
     );
@@ -223,7 +222,7 @@ describe("useFirstRunController cloud first-run", () => {
       expect.objectContaining({
         kind: "cloud",
         label: "Demo Agent",
-        apiBase: "https://agent-1.runtime.elizacloud.ai",
+        apiBase: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1",
         accessToken: "cloud-token",
       }),
     );

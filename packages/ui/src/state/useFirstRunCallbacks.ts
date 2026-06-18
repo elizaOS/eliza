@@ -18,14 +18,13 @@ import {
 import { type RefObject, useCallback } from "react";
 import type { StylePreset, VoiceConfig } from "../api";
 import { ElizaClient } from "../api/client-base";
-import { resolveCloudAgentApiBase } from "../api/client-cloud";
 
 type FirstRunClient = Pick<
   ElizaClient,
   | "getAuthStatus"
   | "getBaseUrl"
   | "getStatus"
-  | "provisionCloudSandbox"
+  | "selectOrProvisionCloudAgent"
   | "setBaseUrl"
   | "setToken"
   | "startAgent"
@@ -648,29 +647,28 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
             );
           }
 
-          const provisionedAgent = await client.provisionCloudSandbox({
+          // Reuse the user's existing cloud agent instead of creating a new one
+          // on every setup (matches finishCloud). Returns a valid per-agent REST
+          // adapter base, never the agent-id-less collection URL.
+          const selectedAgent = await client.selectOrProvisionCloudAgent({
             cloudApiBase,
             authToken,
             name: firstRunName,
             bio: style?.bio ?? ["An autonomous AI agent."],
             onProgress: () => {},
-            allowSharedRuntime: true,
           });
 
           const iosCloudLocalAgent = shouldUseIosCloudLocalAgent();
           const cloudAgentApiBase = iosCloudLocalAgent
             ? IOS_LOCAL_AGENT_IPC_BASE
-            : resolveCloudAgentApiBase({
-                bridgeUrl: provisionedAgent.bridgeUrl,
-                webUiUrl: provisionedAgent.webUiUrl,
-              });
+            : selectedAgent.apiBase;
           client.setBaseUrl(cloudAgentApiBase);
           client.setToken(authToken);
           persistMobileRuntimeModeForServerTarget(firstRunRuntimeTarget);
           savePersistedActiveServer(
             createPersistedActiveServer({
               kind: "cloud",
-              id: `cloud:${provisionedAgent.agentId}`,
+              id: `cloud:${selectedAgent.agentId}`,
               apiBase: cloudAgentApiBase,
               accessToken: authToken,
               label: firstRunName || "Eliza Cloud",

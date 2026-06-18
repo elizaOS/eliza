@@ -936,15 +936,17 @@ function isElizaCloudControlPlaneApiBase(value: unknown): boolean {
     if (!ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has(url.hostname.toLowerCase())) {
       return false;
     }
-    // Only the BARE control-plane origin (no path) is the "managed cloud"
-    // endpoint whose apiBase is derived at runtime and intentionally NOT
-    // persisted. A specific per-agent base on the same host — e.g. a
-    // shared-runtime REST adapter at /api/v1/eliza/agents/<id> — is a concrete
-    // endpoint that MUST be persisted; dropping it makes the restored active
-    // server lose the agent the client must talk to (every /api/* call then
-    // 404s and first-run bounces). Treat any non-trivial path as concrete.
+    // The BARE control-plane origin (no path) AND the agent-id-less agents
+    // COLLECTION (`/api/v1/eliza/agents`, no `/<id>`) are both "managed cloud"
+    // endpoints with no agent selected — their apiBase is derived at runtime and
+    // must NOT be persisted (persisting the id-less collection makes every
+    // /api/* call concat to `.../agents/api/...` and 404 with "Backend
+    // Unreachable"). A specific per-agent base on the same host — a shared-runtime
+    // REST adapter at /api/v1/eliza/agents/<id> — IS concrete and MUST be
+    // persisted; dropping it loses the agent the client must talk to. Treat any
+    // other non-trivial path as concrete.
     const pathname = url.pathname.replace(/\/+$/, "");
-    return pathname === "";
+    return pathname === "" || pathname === "/api/v1/eliza/agents";
   } catch (err) {
     logger.debug(
       `[persistence] failed to parse apiBase URL while checking Eliza Cloud control plane: apiBase=${apiBase}; error=${describePersistenceError(err)}`,
