@@ -230,7 +230,7 @@ function SheetGrabber({
         // under it, so the handle adds ~no height (collapsed = the input row, no
         // extra top margin above the buttons vs below). z-20 keeps the handle
         // above the input row (z-10) in the overlap so it still catches the drag.
-        "pointer-events-auto relative z-20 mx-auto flex w-full max-w-3xl shrink-0 cursor-grab touch-none select-none items-center justify-center pt-1 -mb-2 active:cursor-grabbing",
+        "pointer-events-auto relative z-20 mx-auto flex w-full max-w-3xl shrink-0 cursor-grab touch-none select-none items-center justify-center pt-0.5 -mb-2 active:cursor-grabbing",
         // Generous invisible drag target, larger than the thin bar (without
         // reaching down onto the textarea/buttons). Adds no layout height.
         "before:absolute before:inset-x-0 before:-top-2 before:bottom-0 before:content-['']",
@@ -974,12 +974,6 @@ export function ContinuousChatOverlay({
           opacity: revealed,
           pointerEvents: sheetOpen ? "auto" : "none",
         }}
-      />
-
-      {/* Cinematic bottom vignette — grounds the floating bar over bright views. */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-72 bg-gradient-to-t from-black/45 via-black/15 to-transparent"
       />
 
       {/* Live interim transcript while listening */}

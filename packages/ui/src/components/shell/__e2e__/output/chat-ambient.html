@@ -12760,17 +12760,22 @@
 
   // packages/ui/src/components/shell/ChatAmbientBackground.tsx
   var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
-  var PULSE_CSS = `
-@keyframes chat-ambient-pulse {
-  0%   { background-color: rgba(46, 96, 210, 0.13); }   /* blue */
-  25%  { background-color: rgba(8, 6, 12, 0.22); }      /* black */
-  50%  { background-color: rgba(255, 130, 56, 0); }     /* orange (base shows) */
-  75%  { background-color: rgba(255, 248, 240, 0.10); } /* white */
-  100% { background-color: rgba(46, 96, 210, 0.13); }
+  var EDGE_CSS = `
+@keyframes chat-ambient-edge {
+  0%   { box-shadow: inset 0 0 160px 8px rgba(255, 248, 240, 0.34); } /* white */
+  25%  { box-shadow: inset 0 0 150px 6px rgba(255, 130, 56, 0.30); }  /* orange */
+  50%  { box-shadow: inset 0 0 170px 10px rgba(46, 96, 210, 0.34); }  /* blue */
+  75%  { box-shadow: inset 0 0 180px 14px rgba(6, 5, 10, 0.46); }     /* black */
+  100% { box-shadow: inset 0 0 160px 8px rgba(255, 248, 240, 0.34); }
 }
-.chat-ambient-pulse { animation: chat-ambient-pulse 32s ease-in-out infinite; }
+.chat-ambient-edge {
+  animation: chat-ambient-edge 30s ease-in-out infinite;
+}
 @media (prefers-reduced-motion: reduce) {
-  .chat-ambient-pulse { animation: none; background-color: rgba(255, 130, 56, 0); }
+  .chat-ambient-edge {
+    animation: none;
+    box-shadow: inset 0 0 150px 6px rgba(255, 130, 56, 0.22);
+  }
 }
 `;
   function ChatAmbientBackground() {
@@ -12782,8 +12787,8 @@
         className: "pointer-events-none absolute inset-0 overflow-hidden",
         style: { zIndex: 0, backgroundColor: "#ef5a1f" },
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("style", { children: PULSE_CSS }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "chat-ambient-pulse absolute inset-0" })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("style", { children: EDGE_CSS }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "chat-ambient-edge absolute inset-0" })
         ]
       }
     );
