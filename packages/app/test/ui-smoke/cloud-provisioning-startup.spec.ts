@@ -636,7 +636,7 @@ for (const viewport of VIEWPORTS) {
         }),
       )
       .toMatchObject({
-        id: `cloud:${apiBase}`,
+        id: "cloud:agent-1",
         kind: "cloud",
         label: "Eliza Cloud",
         apiBase,
@@ -945,7 +945,7 @@ test("new cloud agent provisions through direct cloud sandbox and reaches chat",
       }),
     )
     .toMatchObject({
-      id: `cloud:${apiBase}`,
+      id: "cloud:agent-new",
       kind: "cloud",
       label: "Eliza Cloud",
       apiBase,

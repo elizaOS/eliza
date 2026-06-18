@@ -2542,8 +2542,7 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
     // it (so chat works even before the create/provision response is updated).
     // resolveCloudAgentApiBase() prefers webUiUrl over bridgeUrl, so the REST
     // client targets the adapter while the bridgeUrl stays as a JSON-RPC
-    // fallback. (The allowSharedRuntime gate is retained for callers that opt
-    // out, but all first-run paths pass it true.)
+    // fallback for callers that explicitly allow shared runtime.
     const sharedWebUiUrl =
       immediateWebUiUrl ??
       `${resolvedCloudApiBase.replace(/\/+$/, "")}/api/v1/eliza/agents/${encodeURIComponent(agentId)}`;
