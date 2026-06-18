@@ -203,7 +203,10 @@ describe("multi-account coding-agent spawn", () => {
     }
   });
 
-  it("injects a per-account CODEX_HOME for Codex", async () => {
+  it("injects a per-account CODEX_HOME for Codex and drops a forwarded OPENAI_API_KEY", async () => {
+    const prev = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "sk-openai-should-be-dropped";
+    // Path carries the per-account `_codex-home` marker buildEnv keys off of.
     installBridge({
       codex: {
         providerId: "openai-codex",
@@ -211,23 +214,30 @@ describe("multi-account coding-agent spawn", () => {
         label: "Personal",
         source: "oauth",
         strategy: "least-used",
-        envPatch: { CODEX_HOME: "/tmp/codex-home/acc-personal" },
+        envPatch: { CODEX_HOME: "/tmp/auth/_codex-home/acc-personal" },
       },
     });
-    const service = new AcpService(runtime());
-    await service.start();
-    const result = await service.spawnSession({
-      name: "codex-mt",
-      agentType: "codex",
-      workdir: "/tmp/acp-test",
-    });
-    const env = firstNativeClient().opts.env ?? {};
-    expect(env.CODEX_HOME).toBe("/tmp/codex-home/acc-personal");
-    const account = (result.metadata as Record<string, unknown>)?.account as
-      | Record<string, unknown>
-      | undefined;
-    expect(account?.providerId).toBe("openai-codex");
-    await service.stop();
+    try {
+      const service = new AcpService(runtime());
+      await service.start();
+      const result = await service.spawnSession({
+        name: "codex-mt",
+        agentType: "codex",
+        workdir: "/tmp/acp-test",
+      });
+      const env = firstNativeClient().opts.env ?? {};
+      expect(env.CODEX_HOME).toBe("/tmp/auth/_codex-home/acc-personal");
+      // A forwarded api key would override the per-account ChatGPT auth.json.
+      expect(env.OPENAI_API_KEY).toBeUndefined();
+      const account = (result.metadata as Record<string, unknown>)?.account as
+        | Record<string, unknown>
+        | undefined;
+      expect(account?.providerId).toBe("openai-codex");
+      await service.stop();
+    } finally {
+      if (prev === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = prev;
+    }
   });
 
   it("falls back to single-account behavior when no bridge is installed", async () => {
