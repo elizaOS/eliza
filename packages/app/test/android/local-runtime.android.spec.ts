@@ -14,12 +14,28 @@ test.describe
       await waitForShellReady(page);
       // Call the agent through the WebView's own fetch so this exercises the same
       // path the app uses (Capacitor HTTP / loopback), proving the runtime is real.
-      const health = await page.evaluate(async (port) => {
-        const res = await fetch(`http://127.0.0.1:${port}/api/health`, {
-          headers: { "X-ElizaOS-Client-Id": "android-e2e" },
-        });
-        return { status: res.status, body: await res.text() };
-      }, AGENT_API_PORT);
+      // Playwright COLD-launches the activity, which restarts the on-device agent;
+      // its HTTP server can return 503 (local_agent_unavailable) for the first few
+      // seconds while the runtime binds. Poll for the real cold-start window so a
+      // startup race doesn't read as an outage — it still fails if it never serves.
+      const probeHealth = () =>
+        page.evaluate(async (port) => {
+          try {
+            const res = await fetch(`http://127.0.0.1:${port}/api/health`, {
+              headers: { "X-ElizaOS-Client-Id": "android-e2e" },
+            });
+            return { status: res.status, body: await res.text() };
+          } catch (error) {
+            return { status: 0, body: String(error) };
+          }
+        }, AGENT_API_PORT);
+      let health = await probeHealth();
+      await expect
+        .poll(async () => (health = await probeHealth()).status, {
+          timeout: 30_000,
+          intervals: [500, 1000, 2000],
+        })
+        .toBe(200);
       expect(health.status, `health body: ${health.body}`).toBe(200);
     });
 
