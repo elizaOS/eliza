@@ -47,10 +47,18 @@ test.describe("dashboard session", () => {
       expect(result.failed, JSON.stringify(result.errors)).toBe(0);
     };
 
-    await authenticatedPage.goto(`${stack.urls.frontend}/dashboard/agents`);
-    await authenticatedPage
-      .getByPlaceholder("e.g. trading-assistant")
-      .fill("e2e-dashboard-agent");
+    // Post-#8339 canvas redesign: the deploy form only mounts at the
+    // `/dashboard/agents/deploy` route (cloud-canvas.tsx selects the "deploy"
+    // item + maximizes there), not on the bare `/dashboard/agents` list. Go
+    // straight to it and wait for the name field before filling.
+    await authenticatedPage.goto(
+      `${stack.urls.frontend}/dashboard/agents/deploy`,
+    );
+    const nameField = authenticatedPage.getByPlaceholder(
+      "e.g. trading-assistant",
+    );
+    await nameField.waitFor({ state: "visible" });
+    await nameField.fill("e2e-dashboard-agent");
     // The dashboard now exposes the deploy flow inside the canvas workspace.
     // Custom images are always deployed to dedicated sandboxes; the UI
     // auto-selects and locks that tier so the API receives a routable image.
