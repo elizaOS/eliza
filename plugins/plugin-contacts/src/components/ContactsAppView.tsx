@@ -109,6 +109,18 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
     setLoading(true);
     setError(null);
     try {
+      // Feature-gated permission: prompt for contacts access the first time the
+      // Contacts view opens (idempotent — already-granted returns granted with
+      // no prompt). Nothing requests this at app launch. Tolerates older bridges
+      // without the request path by falling through to listContacts.
+      const status = await Contacts.requestPermissions().catch(() => null);
+      if (status && status.contacts !== "granted") {
+        setContacts([]);
+        setError(
+          "Contacts access is needed to show your address book. Grant it in your device settings, then retry.",
+        );
+        return;
+      }
       const result = await Contacts.listContacts({});
       setContacts(result.contacts);
     } catch (err) {

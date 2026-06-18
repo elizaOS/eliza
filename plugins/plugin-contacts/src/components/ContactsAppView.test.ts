@@ -20,6 +20,8 @@ const contactsBridge = vi.hoisted(() => ({
   listContacts: vi.fn(),
   createContact: vi.fn(),
   importVCard: vi.fn(),
+  checkPermissions: vi.fn(async () => ({ contacts: "granted" })),
+  requestPermissions: vi.fn(async () => ({ contacts: "granted" })),
 }));
 
 const platform = vi.hoisted(() => ({ isNative: true }));

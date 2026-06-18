@@ -9,8 +9,25 @@ import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import com.getcapacitor.annotation.Permission
 
-@CapacitorPlugin(name = "ElizaContacts")
+// Declares the `contacts` alias so the Capacitor base Plugin auto-provides
+// checkPermissions()/requestPermissions() — the app can REQUEST contacts access
+// on first use of the Contacts feature instead of only rejecting (which forced
+// the user to grant it from system Settings). Nothing requests this at launch;
+// it is feature-gated to the Contacts view.
+@CapacitorPlugin(
+    name = "ElizaContacts",
+    permissions = [
+        Permission(
+            alias = "contacts",
+            strings = [
+                Manifest.permission.READ_CONTACTS,
+                Manifest.permission.WRITE_CONTACTS,
+            ],
+        ),
+    ],
+)
 class ContactsPlugin : Plugin() {
     @PluginMethod
     fun listContacts(call: PluginCall) {
