@@ -757,6 +757,28 @@ boot latency. So the residual is NOT display / GL / sandbox (all fixed) — it's
 coordinator's agent-readiness gate + how `external` desktop mode resolves its runtime target.
 Resolving it cleanly is a PRODUCT-SEMANTICS owner decision (see decision #5 below), not a unilateral fix.
 
+### Session 2026-06-18 (round 26) — desktop app BOOTS+RENDERS+READY+SCREENSHOTS headless (3 committed fixes + rebuild verified)
+Rebuilt the Electrobun Linux binary (so it includes the round-25 startup fix) and ran the
+packaged desktop e2e under xvfb, peeling back FIVE distinct layers — each a real fix:
+  1. display auth → `XAUTHORITY` forward (round 22, committed 859117b4e0).
+  2. WebKitGTK SIGTRAP → `WEBKIT_DISABLE_SANDBOX=1` (round 25, committed c8c492a7d1).
+  3. ready-gate stall → external→remote-backend startup fix (round 25, committed 1fab2c9407):
+     CONFIRMED working — the app now reaches `ready` (no more `starting-runtime` stall).
+  4. screenshot capture → the test's `assertScreenshotNotBlank` needs scrot/import (absent,
+     no root); shimmed `scrot`/`import` via `ffmpeg -f x11grab` (verified captures a real
+     1280x1024 PNG of the rendered window under xvfb). Test-env shim (in /tmp, not committed).
+  5. backend route crash → `@elizaos/plugin-commands` stale `dist` (missing `getConnectorCommands`,
+     which IS in src since d77155b2ed); `bun run --cwd plugins/plugin-commands build` fixed it.
+After all five, the packaged desktop app on headless Linux: boots → all bridges up → webview
+RENDERS the React app → reaches READY → screenshots the rendered window. The decomposed VIEWS
+render in this same webview (same bundle proven green on web + mobile-viewport). The ONE
+remaining failure is in the heavy SHELL-persistence test's `seedReturningInstallState`
+bridge-eval choreography ("No renderer result captured" / 90s) — a desktop-test-infra eval-timing
+layer in a test that verifies shell relaunch/state-persistence, NOT the decomposed views. Net:
+desktop went from "completely unrunnable headless" → "app fully boots+renders+ready+screenshots
+headless"; 3 genuine CI-correctness fixes shipped. (Foreign uncommitted churn on the shared tree
+— bun.lock, remote-desktop.test.ts by another actor — left untouched per the git rules.)
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
