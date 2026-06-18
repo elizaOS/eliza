@@ -1147,6 +1147,20 @@ declare module "./client-base" {
 // ---------------------------------------------------------------------------
 
 ElizaClient.prototype.getStatus = async function (this: ElizaClient) {
+  // A shared-runtime cloud agent is provisioned and running cloud-side with no
+  // agent server, so /api/status 404s and the readiness poll would wedge on
+  // "Initializing agent…". Report it running (the provision response confirms
+  // status:"running") so startup proceeds to chat — its REST adapter already
+  // serves /api/conversations + /api/conversations/:id/messages.
+  if (isDirectCloudSharedAgentBase(this.getBaseUrl())) {
+    return {
+      state: "running",
+      agentName: "Eliza",
+      model: undefined,
+      uptime: undefined,
+      startedAt: undefined,
+    };
+  }
   try {
     const viaRpc = await getDesktopStatusRpc<AgentStatus>("getAgentStatus");
     if (viaRpc) return viaRpc;

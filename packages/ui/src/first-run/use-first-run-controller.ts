@@ -1,7 +1,10 @@
 import { Capacitor } from "@capacitor/core";
 import * as React from "react";
 import { client } from "../api";
-import { resolveCloudAgentApiBase } from "../api/client-cloud";
+import {
+  isDirectCloudSharedAgentBase,
+  resolveCloudAgentApiBase,
+} from "../api/client-cloud";
 import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
 import { getBootConfig } from "../config/boot-config";
 import {
@@ -648,7 +651,16 @@ export function useFirstRunController(): FirstRunController {
       });
       persistMobileRuntimeModeForServerTarget("elizacloud");
       setBusyText("Saving first-run profile");
-      await client.submitFirstRun(plan.payload);
+      // A shared-runtime cloud agent has no agent server, so POST /api/first-run
+      // (submitFirstRun) 404s — there is no per-agent first-run config store to
+      // write to, and the agent is already provisioned + named cloud-side. Don't
+      // let that 404 throw and strand onboarding before completeFirstRun() runs;
+      // tolerate it for a shared-agent base and finish the transition to chat.
+      try {
+        await client.submitFirstRun(plan.payload);
+      } catch (err) {
+        if (!isDirectCloudSharedAgentBase(client.getBaseUrl())) throw err;
+      }
       clearPersistedFirstRunState();
       setBusyText(null);
       completeFirstRun("chat", { launchCompanionOverlay: true });
