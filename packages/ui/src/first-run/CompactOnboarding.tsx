@@ -316,7 +316,14 @@ export function CompactOnboarding(): React.ReactElement {
             )}
 
             {statusMessage ? (
-              <p className="min-h-5 text-sm leading-snug text-white/85">
+              // Announce progress/error changes to screen readers (TalkBack) —
+              // polite, since this is the shared progress + error status node.
+              <p
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                className="min-h-5 text-sm leading-snug text-white/85"
+              >
                 {statusMessage}
               </p>
             ) : null}
