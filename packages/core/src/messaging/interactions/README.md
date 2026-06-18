@@ -77,48 +77,50 @@ FollowupsInteraction | TaskInteraction | SecretInteraction`) in
 | followups | `FollowupsWidget` ✅ | callback buttons ✅ | button action row ✅ |
 | form | `FormRequest` ✅ | link-out (multi-field is awkward as a keyboard) ⏳ | link-out ⏳ |
 | task | `TaskWidget` (live poll) ✅ | link button + title ✅ (live status ⏳) | link button + title ✅ |
-| secret/oauth | `SensitiveRequestBlock` ✅ | DM link via adapter ⏳ | DM link via `sensitive-request-adapter` ✅ |
+| secret/oauth | `SensitiveRequestBlock` ✅ | DM link via `sensitive-request-adapter` ✅ | DM link via `sensitive-request-adapter` ✅ |
 
-✅ implemented · ⏳ remaining (seams below). Choice/followups round-trip:
+✅ implemented · ⏳ remaining (seams below). Choice/followups round-trip works on
+**both** connectors:
 - **Telegram**: `handleCallbackQuery` decodes the tap and replays it through
   `handleMessage` as a user turn (`plugin-telegram/src/messageManager.ts`).
-- **Discord**: the click already emits `DISCORD_INTERACTION` with the `customId`
-  (= the callback payload) in `discord-interactions.ts` — decode it with
-  `decodeCallback` and re-inject (seam below).
+- **Discord**: the `isButton` handler in `discord-interactions.ts` decodes the
+  `customId` with `decodeCallback` and dispatches via `messageService.handleMessage`.
+
+The floating chat overlay (`ContinuousChatOverlay`) also renders these widgets
+(it routes assistant turns with blocks through `MessageContent`).
+
+## Shipped
+
+- ✅ Keystone protocol (parse / serialize / layout / codec / normalize) — `@elizaos/core`.
+- ✅ Telegram: choice/followups/task rendering + `callback_query` round-trip + secret/OAuth DM link-out adapter.
+- ✅ Discord: choice/followups/task rendering (buttons + link buttons) + `isButton` round-trip.
+- ✅ Floating chat overlay renders interaction widgets.
 
 ## Remaining work — exact seams
 
-1. **Discord inbound round-trip.** In `plugin-discord/discord-interactions.ts`
-   `isButton()` handler (~L259): if `isInteractionCallback(interaction.customId)`,
-   `decodeCallback` → build a Memory (mirror `inbound-envelope.ts` /
-   `formatInboundEnvelope`) with `text = decoded.value` and dispatch via
-   `messageService.handleMessage`, then `interaction.deferUpdate()`. Use a turn id
-   derived from `interaction.id` to avoid colliding with the source message memory
-   (same pattern as Telegram's `handleCallbackQuery`).
-2. **Thread per task.** On task create, materialize `OrchestratorTaskRecord.taskRoomId`
+1. **Thread per task.** On task create, materialize `OrchestratorTaskRecord.taskRoomId`
    as a platform thread and route that task's sub-agent messages + status into it.
    - Discord: `DiscordService.createConnectorThread` (`service.ts` ~L2375) +
      `postToConnectorThread` (~L2415).
    - Telegram: `bot.telegram.createForumTopic(chatId, name)` → `message_thread_id`;
      rooms already key on `<chatId>-<threadId>` (`buildForumTopicRoom`). Send into
      it via `sendMessageInChunks(ctx, content, undefined, message_thread_id)`.
-3. **Secret link-out auto-pick (cloud vs local).** Resolve the delivery target by
-   deployment: `cloud_authenticated_link` when Eliza Cloud is linked, else the
-   local dashboard URL (loopback/tunnel). Wire as the `resolveUrl` passed to
-   `toNeutralLayout`, and add a Telegram `sensitive-request-adapter` mirroring
-   `plugin-discord/sensitive-request-adapter.ts` (register against
-   `SENSITIVE_REQUEST_DISPATCH_REGISTRY_SERVICE_NAME`; Discord's already branches on
-   `isCloudPaired`).
-4. **Task view parity + floating chat UI.**
-   - Task detail view (Codex/Claude-Code parity): header (goal, status, live
-     timeline), sub-agent message room, plan/diff, forms-and-asks inbox. Data is
-     already there: `GET /api/orchestrator/tasks/:id` + `/timeline` + `/stream`
-     (SSE). Widget link target is `/orchestrator?taskId=<threadId>`
-     (`plugin-agent-orchestrator` + `TasksPageView`).
-   - Floating chat UI: `ContinuousChatOverlay.tsx` is currently text-only — route
-     its messages through the `MessageContent` segment renderer so choices, forms,
-     task cards, and secret blocks appear inline there too.
-5. **Central normalization (optional).** Register `normalizeContentInteractions`
+   - The orchestrator owns the trigger: call the connector thread API from the
+     task-create path in `plugin-agent-orchestrator` and persist the thread id on
+     `taskRoomId`.
+2. **Task detail view (Codex/Claude-Code parity).** Header (goal, status, live
+   timeline), sub-agent message room, plan/diff, forms-and-asks inbox. Data is
+   already exposed: `GET /api/orchestrator/tasks/:id` + `/timeline` + `/stream`
+   (SSE). The widget link target is `/orchestrator?taskId=<threadId>`; the view is
+   a prebuilt bundle (`agent-orchestrator.json` registry entry) — enhance that
+   bundle (build:views + API bounce) to add the sub-agent room panel.
+3. **Multi-connector `dm` resolution (registry follow-up).** The dispatch registry
+   holds one adapter per target; with both Discord and Telegram loaded, the last
+   `register("dm")` wins. Make the registry hold a list per target and resolve via
+   `supportsChannel` (the hook already exists), then update the 3 consumers
+   (`features/payments|oauth|plugin-config` `deliver-*`). Single-connector
+   deployments already resolve correctly.
+4. **Central normalization (optional).** Register `normalizeContentInteractions`
    on the `outgoing_before_deliver` pipeline hook so every consumer gets
    `Content.interactions` without re-parsing. Connectors are already self-sufficient
    (they call `parseInteractionBlocks` directly), so this is a convenience, not a
