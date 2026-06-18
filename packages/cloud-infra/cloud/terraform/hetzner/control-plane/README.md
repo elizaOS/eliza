@@ -112,7 +112,24 @@ gh workflow run arm-headscale-control-plane.yml --repo elizaOS/eliza --ref main 
 That workflow installs the committed ACL, converges `server_url` and
 `listen_addr`, ensures the `agent`/`tunnel` users exist, upserts the daemon's
 Headscale env in `/opt/eliza/cloud/.env.local`, restarts both services, and
-checks local `/health`. See
+checks local `/health`. It also converges the last-mile public-edge bits that
+used to be hand-run on every CP (and lost on a rebuild — a DR gap):
+
+- the **nginx vhost + Let's Encrypt cert** that front the public headscale URL
+  (`/etc/nginx/conf.d/headscale.conf` → `127.0.0.1:<listen-port>`), as a
+  no-http2 vhost with `Upgrade`/`Connection` passthrough + 86400s timeouts (the
+  TS2021/noise control protocol needs it). Renewal rides certbot's own
+  `certbot.timer`. Cert issuance is idempotent (`certbot certonly`, skipped when
+  a valid cert already exists).
+- the **`cp-<env>-router` tailscale self-enrollment** (`tag:eliza-proxy`, owned
+  by the `tunnel` user) so the daemon on the CP can reach agent `tag:agent`
+  `100.64.x` IPs. Idempotent (skips if already enrolled).
+
+The matching **DNS record** (`headscale[-staging].elizacloud.ai` → CP ipv4,
+`proxied=false`) is managed by this Terraform module (`cloudflare_dns_record.headscale`
+in `main.tf`), set the env's FQDN via the `headscale_hostname` tfvar. So the
+full chain — DNS, nginx, cert, cp-router — now reproduces from IaC on a clean CP
+rebuild (`terraform apply` for DNS, then the arm workflow for the rest). See
 [`../../../../../cloud-services/headscale/DEPLOY.md`](../../../../../cloud-services/headscale/DEPLOY.md)
 for the required GitHub Environment secrets and the "why" behind each one.
 
@@ -141,8 +158,10 @@ the exact "node registers against the wrong service" failure mode.
 ## What this module does NOT manage (yet)
 
 - Headscale state (preauth keys/API key rotation) — manual via `headscale`
-  CLI; config + ACL + daemon env are converged by
-  `arm-headscale-control-plane.yml`.
+  CLI; config + ACL + daemon env + the public nginx vhost / LE cert / the
+  `cp-<env>-router` self-enrollment are all converged by
+  `arm-headscale-control-plane.yml`. The headscale public **DNS record** IS
+  managed here (`cloudflare_dns_record.headscale`).
 - Cloudflared tunnels — config lives at `/root/.cloudflared/` on the VM and
   is created via `cloudflared tunnel create` one-shot.
 - The systemd units — installed by `deploy-eliza-provisioning-worker.yml`

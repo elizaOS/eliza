@@ -78,6 +78,27 @@ variable "control_plane_hostname_prefix" {
   default     = "eliza"
 }
 
+# ── Headscale public hostname ────────────────────────────────────────────────
+# The headscale coordination server is reachable at a SEPARATE, stable hostname
+# from the agent-router VM record — agent nodes + the daemon bake this URL into
+# their tailscale `--login-server`, so it must NOT follow the per-VM-index
+# `eliza-<env>-N` naming (that changes on a CP rebuild). The convention is also
+# NOT a simple `headscale-<environment>` because prod drops the suffix:
+#   - production → headscale.elizacloud.ai
+#   - staging    → headscale-staging.elizacloud.ai
+# so it's an explicit variable rather than derived from var.environment. This
+# record points at the CP's public ipv4 with proxied=false (Let's Encrypt
+# HTTP-01 on the box needs to terminate TLS itself for the headscale TS2021/
+# noise protocol — a proxied CF record would break the Upgrade handshake).
+variable "headscale_hostname" {
+  description = "Public FQDN for the headscale coordination server on this env's CP (prod: headscale.elizacloud.ai, staging: headscale-staging.elizacloud.ai). Must match HEADSCALE_PUBLIC_URL in the arm-headscale-control-plane workflow and the nginx vhost / LE cert that script provisions."
+  type        = string
+  validation {
+    condition     = endswith(var.headscale_hostname, ".elizacloud.ai")
+    error_message = "headscale_hostname must be a subdomain of elizacloud.ai (the zone this module manages)"
+  }
+}
+
 variable "deploy_branch" {
   description = "Git branch the host's auto-deploy workflow follows. Staging defaults to 'develop'; production MUST be 'main' (enforced by the validation below) so a staging fix doesn't accidentally land in prod via the wrong branch pin."
   type        = string

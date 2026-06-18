@@ -17,6 +17,11 @@ output "ssh_login_commands" {
   }
 }
 
+output "headscale_url" {
+  description = "Public headscale coordination URL for this env's CP. Wire this as HEADSCALE_PUBLIC_URL (workflow var) + the tailscale --login-server for agent nodes. The arm-headscale-control-plane workflow serves it via nginx + a Let's Encrypt cert on the CP."
+  value       = "https://${var.headscale_hostname}"
+}
+
 output "data_plane_network_id" {
   description = "Hetzner ID of the private network the autoscaler attaches workers to. Set this as CONTAINERS_HCLOUD_NETWORK_IDS in /opt/eliza/cloud/.env.local on the CP."
   value       = hcloud_network.data_plane.id
