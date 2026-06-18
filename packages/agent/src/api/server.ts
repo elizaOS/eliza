@@ -3232,6 +3232,15 @@ export async function startApiServer(opts?: {
   ) => void;
 }> {
   const apiStartTime = Date.now();
+  // Gated boot profiler (off unless ELIZA_BOOT_PROFILE=1) to time the API-bind
+  // critical path. Stderr, since the structured logger level may suppress it.
+  const apiLap = (label: string): void => {
+    if (process.env.ELIZA_BOOT_PROFILE === "1") {
+      process.stderr.write(
+        `[boot-profile] api:${label} +${Date.now() - apiStartTime}ms\n`,
+      );
+    }
+  };
   logger.debug(`[eliza-api] startApiServer called`);
 
   // Honor ELIZA_API_PORT first (set by the desktop launcher → 31337) so
@@ -3598,6 +3607,7 @@ export async function startApiServer(opts?: {
   logger.debug(
     `[eliza-api] Creating http server (${Date.now() - apiStartTime}ms)`,
   );
+  apiLap("pre-createServer (route imports + middleware setup done)");
   const server = http.createServer(async (req, res) => {
     try {
       await handleRequest(req, res, state, {
@@ -4875,7 +4885,9 @@ export async function startApiServer(opts?: {
       reject(err);
     });
 
+    apiLap("before server.listen");
     server.listen(port, host, () => {
+      apiLap("LISTENING (API bound)");
       logger.debug(
         `[eliza-api] server.listen callback fired (${Date.now() - apiStartTime}ms)`,
       );

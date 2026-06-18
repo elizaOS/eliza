@@ -82,6 +82,7 @@ import {
 const _require = createRequire(import.meta.url);
 
 import { invalidateCorsAllowedPorts } from "../api/server-cors.js";
+import { bootLap } from "../boot-profile.js";
 import { isRuntimeAutonomyEnabled } from "./autonomy-policy.js";
 import {
   ensureTextToSpeechHandler,
@@ -1588,6 +1589,7 @@ export async function startEliza(
     }
 
     if (options?.serverOnly) {
+      bootLap("startEliza:serverOnly entry");
       let currentRuntime: AgentRuntime | undefined;
 
       // Boot (or re-boot) the runtime headless + repair, and hand the live
@@ -1624,6 +1626,9 @@ export async function startEliza(
       let updateStartup:
         | Awaited<ReturnType<typeof startApiServer>>["updateStartup"]
         | undefined;
+      bootLap(
+        "startEliza:before startApiServer (config/registry/embedding setup done)",
+      );
       try {
         // Bind the API server FIRST with no runtime yet (state "starting"), so
         // the desktop webview connects + hydrates in PARALLEL with the heavier
@@ -1676,6 +1681,7 @@ export async function startEliza(
         `[eliza] API server listening on http://localhost:${actualApiPort} (agent booting…)`,
       );
       console.log(`[eliza] Control UI: http://localhost:${actualApiPort}`);
+      bootLap("startEliza:API bound (webview can connect, ready:false)");
 
       // Now boot the runtime; the API is already reachable (state "starting"),
       // so the UI is connecting + hydrating while this runs, then flips to
@@ -1687,6 +1693,7 @@ export async function startEliza(
       }
       updateRuntime?.(currentRuntime);
       updateStartup?.({ phase: "running", attempt: 0, state: "running" });
+      bootLap("startEliza:runtime booted + ready:true");
 
       console.log("[eliza] Server running. Press Ctrl+C to stop.");
 
