@@ -324,6 +324,12 @@ function createPackagedDesktopEnv(args: {
   }
 
   if (process.platform === "linux") {
+    // Forward the X auth cookie (xvfb-run / a locked-down X server sets
+    // XAUTHORITY) so the spawned WebKitGTK webview can authenticate to the
+    // display. buildMinimalMacEnv is an allowlist that drops it; without it the
+    // child dies with "Authorization required ... cannot open display" under
+    // any headless X server (e.g. CI behind xvfb).
+    const xauthority = args.baseEnv.XAUTHORITY || process.env.XAUTHORITY;
     return {
       ...buildMinimalMacEnv(args.baseEnv),
       ...commonEnv,
@@ -331,6 +337,7 @@ function createPackagedDesktopEnv(args: {
       // the webview renders under a headless / GPU-less display (the bare GPU
       // path raises GLXBadWindow).
       DISPLAY: args.baseEnv.DISPLAY || process.env.DISPLAY || ":0",
+      ...(xauthority ? { XAUTHORITY: xauthority } : {}),
       WEBKIT_DISABLE_DMABUF_RENDERER: "1",
       WEBKIT_DISABLE_COMPOSITING_MODE: "1",
       LIBGL_ALWAYS_SOFTWARE: "1",
