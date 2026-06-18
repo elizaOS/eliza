@@ -4,7 +4,10 @@ import { useApp } from "../../../state";
 import { TutorialSpotlight } from "./TutorialSpotlight";
 import {
   goToStep,
+  markTutorialAutoLaunched,
   setTutorialMode,
+  shouldAutoLaunchTutorial,
+  startTutorial,
   stopTutorial,
   useTutorial,
 } from "./tutorial-controller";
@@ -84,6 +87,20 @@ export function TutorialOverlay(): React.ReactElement | null {
       goToStep(stepIndex + 1);
     }
   }, [stepIndex]);
+
+  // First-run auto-launch: once ever, the first time a brand-new user lands on
+  // the home base (tab "chat"), start the tour after a short beat so the home
+  // screen settles first. Gating on the home tab keeps it from firing during
+  // onboarding/pairing; the once-ever flag means it never nags again.
+  React.useEffect(() => {
+    if (active || tab !== "chat" || !shouldAutoLaunchTutorial()) return;
+    const t = window.setTimeout(() => {
+      if (!shouldAutoLaunchTutorial()) return;
+      markTutorialAutoLaunched();
+      startTutorial();
+    }, 1500);
+    return () => window.clearTimeout(t);
+  }, [active, tab]);
 
   // Reset per-step timers whenever the step (or active) changes. stepIndex/active
   // are intentional re-run triggers, not values read in the body.

@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { installDefaultAppRoutes, openAppPath } from "./helpers";
+import {
+  installDefaultAppRoutes,
+  openAppPath,
+  seedAppStorage,
+} from "./helpers";
 
 /**
  * Verifies the two new home-pinned views:
@@ -7,9 +11,12 @@ import { installDefaultAppRoutes, openAppPath } from "./helpers";
  *  - The Tutorial tile opens the launcher, and Start activates the interactive
  *    spotlight overlay (the tour card) that survives navigation.
  *  - The Help view searches the knowledge base and shows matching answers.
+ *  - The tour auto-launches once for a brand-new user.
  */
 
 test("Tutorial + Help are pinned to home and both work", async ({ page }) => {
+  // Mark the tour already auto-launched so it doesn't pop during the tile flow.
+  await seedAppStorage(page, { "eliza:tutorial-autolaunched": "1" });
   await installDefaultAppRoutes(page);
   await openAppPath(page, "/chat"); // the home screen (tiles)
 
@@ -36,7 +43,7 @@ test("Tutorial + Help are pinned to home and both work", async ({ page }) => {
   await expect(card).toBeVisible();
   await expect(card).toContainText(/Step 1 of/i);
 
-  // It survives navigation and can be dismissed.
+  // It can be dismissed.
   await page.getByText("Skip tutorial").click();
   await expect(card).toHaveCount(0);
 
@@ -48,4 +55,16 @@ test("Tutorial + Help are pinned to home and both work", async ({ page }) => {
   await expect(entry).toBeVisible();
   await entry.click();
   await expect(entry).toContainText(/AI Model/i);
+});
+
+test("the tour auto-launches once for a first-time user", async ({ page }) => {
+  // No seed: a brand-new user with no tutorial flags set.
+  await installDefaultAppRoutes(page);
+  await openAppPath(page, "/chat");
+
+  // The tour card appears on its own (auto-launch, after a short beat).
+  await expect(page.getByTestId("tutorial-card")).toBeVisible({
+    timeout: 25_000,
+  });
+  await expect(page.getByTestId("tutorial-card")).toContainText(/Step 1 of/i);
 });
