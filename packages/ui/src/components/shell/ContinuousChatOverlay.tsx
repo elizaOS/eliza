@@ -1,4 +1,10 @@
 import {
+  Maximize2,
+  Minimize2,
+  Settings as SettingsIcon,
+  Trash2,
+} from "lucide-react";
+import {
   AnimatePresence,
   animate,
   motion,
@@ -183,6 +189,42 @@ function SoftButton({
       )}
     >
       <Glyph d={glyph} />
+    </button>
+  );
+}
+
+/** A compact glass control for the full-state header (maximize / clear /
+ *  settings). Smaller than SoftButton; same neutral resting → neutral-hover
+ *  language (no blue), `active` gets the white fill. Renders a lucide icon. */
+function HeaderButton({
+  icon: Icon,
+  label,
+  onClick,
+  active,
+  testId,
+}: {
+  icon: typeof Maximize2;
+  label: string;
+  onClick: () => void;
+  active?: boolean;
+  testId?: string;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      aria-label={label}
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        "grid h-9 w-9 shrink-0 place-items-center rounded-full border transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
+        active
+          ? "border-white/40 bg-white/85 text-black"
+          : "border-white/15 bg-white/10 text-white/75 hover:bg-white/20 hover:text-white",
+      )}
+    >
+      <Icon className="h-[18px] w-[18px]" aria-hidden />
     </button>
   );
 }
@@ -555,6 +597,7 @@ export function ContinuousChatOverlay({
     needsAudioUnlock,
     unlockAudio,
     openSettings,
+    clearConversation,
     stop,
   } = controller;
 
@@ -589,6 +632,15 @@ export function ContinuousChatOverlay({
   // a detent is taken (tap/flick/focus/collapse) so the detents stay the
   // snap-to targets and free-positioning is purely the drag affordance.
   const [freeH, setFreeH] = React.useState<number | null>(null);
+  // FULL-SCREEN (maximized): at the FULL detent the user can drop the inset
+  // (max-width, side padding, top margin, rounding) so the chat is edge-to-edge.
+  // Invariant: only true while at FULL (sheetOpen && expanded && !pilled); every
+  // leave-full transition resets it.
+  const [maximized, setMaximized] = React.useState(false);
+  // Whether the sheet was collapsed when the composer last gained focus — so
+  // dismissing the keyboard (tap the handle) returns to the prior resting state
+  // (collapsed) instead of leaving the sheet hanging open.
+  const preFocusCollapsedRef = React.useRef(true);
   // The live thread (history) height in px, as a MOTION VALUE — driven directly
   // by the pointer during a drag and spring-animated to a detent on release.
   // Keeping it off React state means a drag updates the DOM height every frame
@@ -733,6 +785,9 @@ export function ContinuousChatOverlay({
     } else {
       send(text);
     }
+    // Programmatic open → FULL detent (see the reply). Clear any free-rest so the
+    // height can't stay pinned below full while the flags claim full.
+    setFreeH(null);
     setSheetOpen(true);
     setExpanded(true);
     detentHaptic();
@@ -746,6 +801,7 @@ export function ContinuousChatOverlay({
       if (!canSend) return;
       setDraft("");
       send(text);
+      setFreeH(null);
       setSheetOpen(true);
       setExpanded(true);
       detentHaptic();
@@ -864,11 +920,17 @@ export function ContinuousChatOverlay({
   const viewportH = viewport.height;
   const keyboardInset = viewport.keyboardInset;
 
+  // FULL-SCREEN derived gate: maximized only takes effect AT the full detent, so
+  // a stale flag can never leak into half/collapsed/pill. Drives the edge-to-edge
+  // panel styles + a zero top margin.
+  const fullBleed = maximized && expanded && sheetOpen && !pilled;
+
   // The chat panel may never exceed the visible height minus its own
   // safe-area/nav padding and a top margin — so it can't spill above the screen.
   // The thread (flex-shrink) gives way to this cap, scrolling instead of pushing
-  // the panel off-screen.
-  const panelMaxH = Math.max(200, viewportH - bottomPad - SHEET_TOP_MARGIN);
+  // the panel off-screen. Maximized drops the top margin so it reaches the top.
+  const topMargin = fullBleed ? 0 : SHEET_TOP_MARGIN;
+  const panelMaxH = Math.max(200, viewportH - bottomPad - topMargin);
 
   // History-height detents: COLLAPSED (0) → HALF → FULL — the thread's ideal
   // flex-basis; flex-shrink clamps the real height to fit. FULL == panelMaxH so
@@ -911,6 +973,7 @@ export function ContinuousChatOverlay({
   const closeSheet = React.useCallback(() => {
     draggingRef.current = false;
     setFreeH(null);
+    setMaximized(false);
     setSheetOpen(false);
     setExpanded(false);
   }, []);
@@ -937,11 +1000,15 @@ export function ContinuousChatOverlay({
   const goToDetent = React.useCallback(
     (detent: "collapsed" | "half" | "full") => {
       // Flip the settled detent; the [baseH] effect springs the height to it.
-      // A detent always clears any free-drag rest height.
+      // A detent always clears any free-drag rest height and (since only FULL
+      // can be maximized) drops full-bleed when stepping anywhere else.
       draggingRef.current = false;
       setFreeH(null);
+      if (detent !== "full") setMaximized(false);
       setSheetOpen(detent !== "collapsed");
       setExpanded(detent === "full");
+      // Stepping all the way down closes the keyboard (the chat is dismissed).
+      if (detent === "collapsed") inputRef.current?.blur();
       detentHaptic();
     },
     [],
@@ -966,11 +1033,18 @@ export function ContinuousChatOverlay({
     inputRef.current?.blur();
   }, [closeSheet]);
 
-  // Focusing or typing in the composer pulls the chat up (open) when there's a
-  // thread to show. No-op with no thread — the first send opens it.
+  // Focusing or typing in the composer opens the chat (keyboard + history) when
+  // there's a thread to show. Opens to HALF — the conversation is visible above
+  // the keyboard without a full-screen takeover; the maximize button is for that.
+  // Remember whether we opened from collapsed so dismissing the keyboard (tap the
+  // handle) can return to that prior resting state. Clears any free-rest so the
+  // height matches the detent (no stale freeH pinning it below half).
   const expand = React.useCallback(() => {
-    if (hasThread) setSheetOpen(true);
-  }, [hasThread]);
+    if (!hasThread) return;
+    preFocusCollapsedRef.current = !sheetOpen;
+    setFreeH(null);
+    setSheetOpen(true);
+  }, [hasThread, sheetOpen]);
 
   // Tapping ANYWHERE outside the chat panel drops the keyboard: if the composer
   // holds focus and the pointer lands outside the panel, blur it. This is the
@@ -989,6 +1063,21 @@ export function ContinuousChatOverlay({
     return () =>
       document.removeEventListener("pointerdown", onPointerDown, true);
   }, []);
+
+  // Escape collapses the chat from ANY open state, even a free-drag open with no
+  // focused element (the element-level handlers on the textarea/thread only fire
+  // when one of them holds focus). Registered only while open.
+  React.useEffect(() => {
+    if (typeof document === "undefined" || !sheetOpen) return undefined;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        collapse();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [sheetOpen, collapse]);
 
   // Auto-grow the composer with multi-line input: snap to the content height
   // (capped by `max-h` in CSS, which then scrolls). Runs on every draft change
@@ -1054,23 +1143,41 @@ export function ContinuousChatOverlay({
     },
     onPullDown: () => {
       if (pilled) return settleDrag(); // already the lowest detent
-      if (expanded) goToDetent("half");
-      else if (sheetOpen) goToDetent("collapsed");
-      else {
+      // Step down ONE detent based on the EFFECTIVE height (so a free-rest above
+      // half steps to half first, never skipping it). A downward flick also
+      // closes the keyboard — goToDetent("collapsed") blurs; half-step blurs too.
+      const effectiveH = freeH != null ? Math.min(freeH, panelMaxH) : detentH;
+      if (sheetOpen && effectiveH > halfH + 1) {
+        inputRef.current?.blur();
+        goToDetent("half");
+      } else if (sheetOpen) {
+        goToDetent("collapsed");
+      } else {
         // INPUT → PILL: collapse the input away into a pill at the bottom.
         setPilled(true);
+        setMaximized(false);
         draggingRef.current = false;
         inputRef.current?.blur();
         detentHaptic();
       }
     },
     // A tap (no drag) on the handle. When collapsed the handle's hit zone covers
-    // the composer's center, so a tap there must focus the input to type — and a
-    // tap on the pill brings the input back.
+    // the composer's center, so a tap there focuses the input to type. While the
+    // keyboard is up (composer focused), a tap on the handle DISMISSES it and
+    // returns to the pre-focus resting state (collapsed if that's where we came
+    // from). A tap on the pill brings the input back.
     onTap: () => {
       if (pilled) {
         setPilled(false);
         detentHaptic();
+        return;
+      }
+      const composerFocused =
+        typeof document !== "undefined" &&
+        document.activeElement === inputRef.current;
+      if (composerFocused) {
+        inputRef.current?.blur();
+        if (preFocusCollapsedRef.current) collapse();
         return;
       }
       if (!sheetOpen) inputRef.current?.focus();
@@ -1085,8 +1192,10 @@ export function ContinuousChatOverlay({
         // (onPullUp). With no thread there's nothing to open → just the input.
         if (direction === "up") {
           setPilled(false);
-          if (hasThread) goToDetent("half");
-          else settleDrag();
+          if (hasThread) {
+            focusThreadRef.current = true;
+            goToDetent("half");
+          } else settleDrag();
         }
         return;
       }
@@ -1104,10 +1213,17 @@ export function ContinuousChatOverlay({
         closeSheet();
         return;
       }
-      // Park the thread at the released height; expanded only when it reached the top.
-      setFreeH(h);
-      setSheetOpen(true);
-      setExpanded(h >= openH - 1);
+      focusThreadRef.current = true;
+      // At/near the top, commit the FULL detent rather than parking a near-full
+      // freeH — so the flags + data-detent honestly read "full" (and the maximize
+      // header shows). Otherwise rest exactly where released.
+      if (h >= openH - 1) {
+        goToDetent("full");
+      } else {
+        setFreeH(h);
+        setSheetOpen(true);
+        setExpanded(false);
+      }
     },
   });
 
@@ -1118,7 +1234,9 @@ export function ContinuousChatOverlay({
     <div
       ref={overlayRef}
       className={cn(
-        "pointer-events-none fixed inset-x-0 bottom-0 flex w-full min-w-0 flex-col items-center px-3 sm:px-4",
+        "pointer-events-none fixed inset-x-0 bottom-0 flex w-full min-w-0 flex-col items-center",
+        // Full-bleed (maximized) removes the side inset so the chat is edge-to-edge.
+        fullBleed ? "px-0" : "px-3 sm:px-4",
         // max(safe-area, android gesture inset): when the nav bar is hidden the
         // safe-area-inset-bottom is 0, so fall back to the real gesture-home zone
         // (--android-gesture-inset-bottom, published by MainActivity; 0 elsewhere)
@@ -1234,7 +1352,12 @@ export function ContinuousChatOverlay({
           (the fieldset itself is overflow-hidden), so its big hit zone can reach
           up into the empty space above the input. Pull the handle up to reveal
           history; pull down to collapse the input into the pill. */}
-      <div className="pointer-events-none relative flex w-full max-w-3xl flex-col items-center">
+      <div
+        className={cn(
+          "pointer-events-none relative flex w-full flex-col items-center",
+          fullBleed ? "max-w-none" : "max-w-3xl",
+        )}
+      >
         {!pilled ? (
           <SheetGrabber
             open={sheetOpen}
@@ -1253,15 +1376,23 @@ export function ContinuousChatOverlay({
           aria-label="Chat composer"
           data-testid="chat-sheet"
           data-variant={sheetOpen ? "open" : "closed"}
+          // The label reflects the EFFECTIVE height: a free-rest at/near the top
+          // reads "full", a mid free-rest folds into "half" — so the label never
+          // disagrees with the rendered height.
           data-detent={
             pilled
               ? "pill"
               : !sheetOpen
                 ? "collapsed"
-                : expanded
-                  ? "full"
-                  : "half"
+                : freeH != null
+                  ? Math.min(freeH, panelMaxH) >= openH - 1
+                    ? "full"
+                    : "half"
+                  : expanded
+                    ? "full"
+                    : "half"
           }
+          data-maximized={fullBleed ? "true" : undefined}
           data-revealed={sheetOpen ? "true" : "false"}
           // Never taller than the visible viewport (above the keyboard) minus the
           // overlay's safe-area padding + a top margin: the thread scrolls instead
@@ -1271,7 +1402,12 @@ export function ContinuousChatOverlay({
           style={
             pilled
               ? undefined
-              : { maxHeight: panelMaxH, borderRadius: panelRadius }
+              : {
+                  maxHeight: panelMaxH,
+                  // Full-bleed (maximized) → square edge-to-edge; otherwise the
+                  // live motion radius (pill → 24px).
+                  borderRadius: fullBleed ? 0 : panelRadius,
+                }
           }
           className={cn(
             "pointer-events-auto relative m-0 flex min-w-0 flex-col border-0 p-0",
@@ -1283,8 +1419,12 @@ export function ContinuousChatOverlay({
                   "w-full overflow-hidden",
                   // Liquid glass: a translucent, blurred, slightly over-saturated
                   // pane with a bright top specular edge + a faint refractive stroke.
-                  "border border-white/[0.14] bg-black/55 backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
-                  "shadow-[inset_0_1px_0_rgba(255,255,255,0.20),inset_0_0_0_0.5px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(0,0,0,0.72)]",
+                  // Full-bleed drops the refractive stroke so it's truly edge-to-edge.
+                  fullBleed ? "border-0" : "border border-white/[0.14]",
+                  "bg-black/55 backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
+                  fullBleed
+                    ? "shadow-none"
+                    : "shadow-[inset_0_1px_0_rgba(255,255,255,0.20),inset_0_0_0_0.5px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(0,0,0,0.72)]",
                 ),
           )}
         >
@@ -1317,6 +1457,33 @@ export function ContinuousChatOverlay({
                 }}
                 transition={{ duration: reduce ? 0 : 1.1, ease: "easeInOut" }}
               />
+
+              {/* Full-state header — only at the FULL detent. Maximize toggles
+              edge-to-edge full-screen, Clear resets the conversation (a fresh
+              greeted thread), Settings opens preferences. */}
+              {sheetOpen && expanded && !pilled ? (
+                <div className="relative z-10 flex shrink-0 items-center justify-end gap-1.5 px-3 pt-2.5">
+                  <HeaderButton
+                    icon={maximized ? Minimize2 : Maximize2}
+                    label={maximized ? "exit full screen" : "full screen"}
+                    active={maximized}
+                    onClick={() => setMaximized((v) => !v)}
+                    testId="chat-full-maximize"
+                  />
+                  <HeaderButton
+                    icon={Trash2}
+                    label="clear conversation"
+                    onClick={() => clearConversation()}
+                    testId="chat-full-clear"
+                  />
+                  <HeaderButton
+                    icon={SettingsIcon}
+                    label="settings"
+                    onClick={() => openSettings()}
+                    testId="chat-full-settings"
+                  />
+                </div>
+              ) : null}
 
               {/* The conversation. Height animates 0 (collapsed) → half → full; the
             inner log scrolls. The grabber owns the drag, so dragging the messages
