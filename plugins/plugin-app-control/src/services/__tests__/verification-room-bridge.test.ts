@@ -119,6 +119,25 @@ describe("VerificationRoomBridgeService — boot-order retry", () => {
 });
 
 describe("VerificationRoomBridgeService — verdict posting", () => {
+	// A plugin pass triggers a loopback POST to /api/plugins/load-from-directory;
+	// stub fetch so the load outcome is deterministic. `flush` lets the async
+	// handleEvent chain (fetch → json → createMemory) settle.
+	const flush = () => new Promise((r) => setTimeout(r, 0));
+	beforeEach(() => {
+		vi.useRealTimers();
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => ({
+				ok: true,
+				status: 200,
+				json: async () => ({ ok: true, pluginName: "plugin-habit-tracker" }),
+			})),
+		);
+	});
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
 	function pluginEvent(verdict: "pass" | "fail") {
 		return {
 			type: "task_complete",
@@ -142,13 +161,19 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 		};
 	}
 
-	it("posts a verifyPlugin pass verdict without advertising reinject", async () => {
+	it("live-loads the plugin and posts a 'loaded live' verdict (never reinject)", async () => {
 		const coordinator = makeCoordinator();
 		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
 		const service = await VerificationRoomBridgeService.start(runtime);
 
 		coordinator.__emit(pluginEvent("pass"));
-		await Promise.resolve();
+		await flush();
+
+		// It POSTed the workdir to the live-load route.
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			expect.stringContaining("/api/plugins/load-from-directory"),
+			expect.objectContaining({ method: "POST" }),
+		);
 
 		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
 		const [memory, table] = (
@@ -157,10 +182,35 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 		expect(table).toBe("messages");
 		expect(memory.roomId).toBe("room-42");
 		const text = memory.content.text as string;
-		expect(text).toContain("plugin-habit-tracker plugin built and verified");
+		expect(text).toContain("plugin-habit-tracker plugin built, verified, and");
+		expect(text).toContain("loaded live");
 		expect(text).not.toContain("reinject");
-		expect(text).toContain("Reload the agent");
 		expect(memory.content.metadata).toMatchObject({ verdict: "pass" });
+
+		await service.stop();
+	});
+
+	it("reports a build-passed-but-load-failed verdict honestly", async () => {
+		vi.mocked(globalThis.fetch).mockResolvedValue({
+			ok: false,
+			status: 422,
+			json: async () => ({ ok: false, error: "import threw: bad export" }),
+		} as Response);
+		const coordinator = makeCoordinator();
+		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
+		const service = await VerificationRoomBridgeService.start(runtime);
+
+		coordinator.__emit(pluginEvent("pass"));
+		await flush();
+
+		const [memory] = (runtime.createMemory as ReturnType<typeof vi.fn>).mock
+			.calls[0];
+		const text = memory.content.text as string;
+		expect(text).toContain("built and verified");
+		expect(text).toContain("live-load failed");
+		expect(text).toContain("import threw: bad export");
+		expect(text).toContain("Reload the agent");
+		expect(text).not.toContain("reinject");
 
 		await service.stop();
 	});
@@ -171,7 +221,7 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 		const service = await VerificationRoomBridgeService.start(runtime);
 
 		coordinator.__emit(pluginEvent("fail"));
-		await Promise.resolve();
+		await flush();
 
 		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
 		const [memory] = (runtime.createMemory as ReturnType<typeof vi.fn>).mock
@@ -192,7 +242,7 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 		// biome-ignore lint/performance/noDelete: test mutation
 		delete (event.data.verification as { params?: unknown }).params;
 		coordinator.__emit(event);
-		await Promise.resolve();
+		await flush();
 
 		expect(runtime.createMemory).not.toHaveBeenCalled();
 		await service.stop();

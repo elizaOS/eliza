@@ -34,7 +34,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import { logger, Service } from "@elizaos/core";
+import { logger, resolveServerOnlyPort, Service } from "@elizaos/core";
 
 export const VERIFICATION_ROOM_BRIDGE_SERVICE_TYPE = "verification-room-bridge";
 
@@ -177,18 +177,66 @@ function decodeEvent(event: SwarmEventLike): BridgeEventPayload | null {
 	};
 }
 
-function buildPassMessage(payload: BridgeEventPayload): string {
+/**
+ * Live-load a freshly built plugin directory into the running runtime via the
+ * loopback agent API. Returns the load outcome so the verdict message can tell
+ * the user whether the plugin is actually live or just built on disk.
+ */
+async function loadPluginFromWorkdir(
+	workdir: string,
+): Promise<{ ok: boolean; pluginName?: string; error?: string }> {
+	const port = resolveServerOnlyPort(process.env);
+	try {
+		const resp = await fetch(
+			`http://127.0.0.1:${port}/api/plugins/load-from-directory`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ directory: workdir }),
+				signal: AbortSignal.timeout(30_000),
+			},
+		);
+		const body = (await resp.json().catch(() => ({}))) as Record<
+			string,
+			unknown
+		>;
+		if (resp.ok && body.ok === true) {
+			return {
+				ok: true,
+				pluginName:
+					typeof body.pluginName === "string" ? body.pluginName : undefined,
+			};
+		}
+		return {
+			ok: false,
+			error:
+				typeof body.error === "string"
+					? body.error
+					: `load returned HTTP ${resp.status}`,
+		};
+	} catch (err) {
+		return { ok: false, error: err instanceof Error ? err.message : String(err) };
+	}
+}
+
+async function buildPassMessage(payload: BridgeEventPayload): Promise<string> {
 	const isApp = payload.method === VERIFY_APP_METHOD;
-	const noun = isApp ? "app" : "plugin";
-	// For apps the launch path resolves the registry entry. For plugins there is
-	// no "load a freshly-scaffolded local plugin" command — `reinject` only drops
-	// an *ejected* plugin to fall back to the npm copy, so don't advertise it.
-	// The verified source is on disk; reloading the agent picks it up.
-	const where = payload.workdir ? ` at ${payload.workdir}` : "";
-	const action = isApp
-		? `Reply 'launch ${payload.targetName}' to open it.`
-		: `Reload the agent to load it${where ? ` (source${where})` : ""}.`;
-	return `${payload.targetName} ${noun} built and verified. ${action}`;
+	if (isApp) {
+		// Apps resolve through the launch/registry path.
+		return `${payload.targetName} app built and verified. Reply 'launch ${payload.targetName}' to open it.`;
+	}
+
+	// Plugins: attempt to live-load the built source so its views/actions appear
+	// without a restart. `reinject` is NOT advertised — it only drops an *ejected*
+	// plugin to fall back to the npm copy and cannot load a new local plugin.
+	if (payload.workdir) {
+		const load = await loadPluginFromWorkdir(payload.workdir);
+		if (load.ok) {
+			return `${payload.targetName} plugin built, verified, and loaded live — its views and actions are now available.`;
+		}
+		return `${payload.targetName} plugin built and verified at ${payload.workdir}, but live-load failed: ${load.error}. Reload the agent to pick it up.`;
+	}
+	return `${payload.targetName} plugin built and verified. Reload the agent to load it.`;
 }
 
 function buildFailMessage(payload: BridgeEventPayload): string {
@@ -329,7 +377,7 @@ export class VerificationRoomBridgeService extends Service {
 
 		const text =
 			payload.verdict === "pass"
-				? buildPassMessage(payload)
+				? await buildPassMessage(payload)
 				: buildFailMessage(payload);
 
 		const memory: Memory = {
