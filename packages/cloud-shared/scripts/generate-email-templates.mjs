@@ -40,6 +40,4 @@ ${entries}
 `;
 
 writeFileSync(outFile, out);
-console.log(
-  `[generate-email-templates] wrote ${outFile} with ${files.length} templates`,
-);
+console.log(`[generate-email-templates] wrote ${outFile} with ${files.length} templates`);

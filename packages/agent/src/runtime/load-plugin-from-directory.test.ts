@@ -82,9 +82,9 @@ describe("loadPluginFromDirectory", () => {
     )) as { pong?: boolean } | undefined;
     expect(result?.pong).toBe(true);
 
-    expect(
-      getLoadedDirectoryPlugins().map((e) => e.pluginName),
-    ).toContain("dir-loader-test-plugin");
+    expect(getLoadedDirectoryPlugins().map((e) => e.pluginName)).toContain(
+      "dir-loader-test-plugin",
+    );
 
     const unloaded = await unloadPluginFromDirectory({
       runtime,

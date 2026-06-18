@@ -26,7 +26,9 @@ describe("ErrorBoundary", () => {
   });
 
   it("renders the default fallback with the error message and a retry button", () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     render(
       <ErrorBoundary errorLabel="View crashed" retryLabel="Reload">
         <Boom explode />
@@ -39,8 +41,12 @@ describe("ErrorBoundary", () => {
   });
 
   it("passes the error and a reset callback to a custom fallback", () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    const fallback = vi.fn((error: Error) => <div>custom: {error.message}</div>);
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const fallback = vi.fn((error: Error) => (
+      <div>custom: {error.message}</div>
+    ));
     render(
       <ErrorBoundary fallback={fallback}>
         <Boom explode />
@@ -55,7 +61,9 @@ describe("ErrorBoundary", () => {
   });
 
   it("recovers via the reset callback once the child stops throwing", () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     // A wrapper whose child throws on first render, then renders cleanly after
     // the reset callback flips `explode` to false.

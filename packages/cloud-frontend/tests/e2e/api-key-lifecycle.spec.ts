@@ -5,7 +5,7 @@
 // drives the real "Manage key" row menu + confirm dialog and asserts the exact
 // mutation request the UI sends — the gap left by api-key-flow.spec (create only).
 
-import { expect, test, type Route } from "@playwright/test";
+import { expect, type Route, test } from "@playwright/test";
 
 test.skip(
   Boolean(process.env.CLOUD_E2E_LIVE_URL),
@@ -124,9 +124,7 @@ test("api-key: disable sends PATCH { is_active: false }", async ({ page }) => {
   await page.getByRole("menuitem", { name: /disable key/i }).click();
   await confirm(page);
 
-  await expect
-    .poll(() => calls.find((c) => c.method === "PATCH"))
-    .toBeTruthy();
+  await expect.poll(() => calls.find((c) => c.method === "PATCH")).toBeTruthy();
   const patch = calls.find((c) => c.method === "PATCH");
   expect(patch?.url).toBe(`/api/v1/api-keys/${KEY_ID}`);
   expect(patch?.body).toMatchObject({ is_active: false });

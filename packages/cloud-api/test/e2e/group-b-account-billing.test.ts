@@ -245,7 +245,12 @@ describe("PATCH /api/v1/api-keys/:id", () => {
     );
     expect(patchRes.status).toBe(200);
     const patched = (await patchRes.json()) as {
-      apiKey?: { id?: string; name?: string; is_active?: boolean; rate_limit?: number };
+      apiKey?: {
+        id?: string;
+        name?: string;
+        is_active?: boolean;
+        rate_limit?: number;
+      };
     };
     expect(patched.apiKey?.id).toBe(created.apiKey?.id ?? "");
     expect(patched.apiKey?.name).toBe("group-b-patched");

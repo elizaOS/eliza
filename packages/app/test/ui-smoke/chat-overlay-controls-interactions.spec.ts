@@ -42,7 +42,9 @@ test("chat overlay: sending opens the chat, click-out collapses, Escape collapse
 
   // Typing re-opens it; Escape collapses again.
   await composer.fill("and again");
-  await expect(overlay).toHaveAttribute("data-open", "true", { timeout: 10_000 });
+  await expect(overlay).toHaveAttribute("data-open", "true", {
+    timeout: 10_000,
+  });
   await composer.press("Escape");
   await expect(overlay).not.toHaveAttribute("data-open", "true", {
     timeout: 10_000,

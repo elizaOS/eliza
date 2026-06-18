@@ -13,7 +13,9 @@
       "@elizaos/plugin-companion": [
         "../../plugins/plugin-companion/src/index.ts"
       ],
-      "@elizaos/plugin-personal-assistant": ["../../plugins/plugin-personal-assistant/src/index.ts"],
+      "@elizaos/plugin-personal-assistant": [
+        "../../plugins/plugin-personal-assistant/src/index.ts"
+      ],
       "@elizaos/plugin-phone": ["../../plugins/plugin-phone/src/index.ts"],
       "@elizaos/plugin-phone/*": ["../../plugins/plugin-phone/src/*"],
       "@elizaos/plugin-vector-browser/register": [

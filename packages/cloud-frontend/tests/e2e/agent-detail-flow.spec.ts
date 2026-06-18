@@ -105,7 +105,9 @@ async function installAgentDetailRoutes(
   await page.route(`**/api/v1/eliza/agents/${AGENT_ID}`, (route) => {
     const method = route.request().method();
     if (method === "GET") {
-      return route.fulfill({ json: { success: true, data: agentDetail(status) } });
+      return route.fulfill({
+        json: { success: true, data: agentDetail(status) },
+      });
     }
     capture(route);
     return route.fulfill({ json: { success: true, data: {} } });
@@ -189,9 +191,7 @@ test("agent-detail: Suspend Agent sends PATCH { action: 'suspend' }", async ({
     .first()
     .click();
 
-  await expect
-    .poll(() => calls.find((c) => c.method === "PATCH"))
-    .toBeTruthy();
+  await expect.poll(() => calls.find((c) => c.method === "PATCH")).toBeTruthy();
   const patch = calls.find((c) => c.method === "PATCH");
   expect(patch?.path).toBe(`/api/v1/eliza/agents/${AGENT_ID}`);
   expect(patch?.body).toMatchObject({ action: "suspend" });

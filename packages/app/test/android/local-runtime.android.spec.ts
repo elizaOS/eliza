@@ -31,10 +31,16 @@ test.describe
         }, AGENT_API_PORT);
       let health = await probeHealth();
       await expect
-        .poll(async () => (health = await probeHealth()).status, {
-          timeout: 30_000,
-          intervals: [500, 1000, 2000],
-        })
+        .poll(
+          async () => {
+            health = await probeHealth();
+            return health.status;
+          },
+          {
+            timeout: 30_000,
+            intervals: [500, 1000, 2000],
+          },
+        )
         .toBe(200);
       expect(health.status, `health body: ${health.body}`).toBe(200);
     });

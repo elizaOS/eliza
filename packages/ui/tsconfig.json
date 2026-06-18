@@ -11,7 +11,9 @@
     "declaration": false,
     "noEmit": true,
     "paths": {
-      "@elizaos/plugin-personal-assistant": ["../../plugins/plugin-personal-assistant/src/index.ts"],
+      "@elizaos/plugin-personal-assistant": [
+        "../../plugins/plugin-personal-assistant/src/index.ts"
+      ],
       "@elizaos/plugin-task-coordinator": [
         "../../plugins/plugin-task-coordinator/src/index.ts"
       ],
