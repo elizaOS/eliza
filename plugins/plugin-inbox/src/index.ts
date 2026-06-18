@@ -7,6 +7,10 @@ export {
   setInboxFetchers,
 } from "./actions/inbox.ts";
 export { InboxView } from "./components/inbox/InboxView.tsx";
+// Gmail-domain normalization primitives. Pure; consumable via the narrow
+// subpath `@elizaos/plugin-inbox/inbox/gmail-normalize` (avoids pulling the
+// React view / plugin definition into service-layer callers).
+export * from "./inbox/gmail-normalize.ts";
 export { InboxRepository } from "./inbox/repository.ts";
 export {
   InboxService,

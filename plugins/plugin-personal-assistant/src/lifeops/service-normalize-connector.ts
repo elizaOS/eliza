@@ -34,9 +34,9 @@ import {
   resolveDefaultWindowPolicy,
 } from "./defaults.js";
 import { normalizeGoogleCapabilities } from "./google-scopes.js";
+import { DEFAULT_BROWSER_PERMISSION_STATE } from "./browser-constants.js";
 import {
   DAY_MINUTES,
-  DEFAULT_BROWSER_PERMISSION_STATE,
   DEFAULT_WORKFLOW_PERMISSION_POLICY,
 } from "./service-constants.js";
 import {

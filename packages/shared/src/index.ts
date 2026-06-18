@@ -233,6 +233,16 @@ export * from "./elizacloud/index.js";
 // @elizaos/plugin-personal-assistant.
 export * from "./email-classification/index.js";
 export * from "./env-utils.js";
+// LifeOps service constants — canonical constant tables for the
+// personal-assistant scheduled-task / reminder / connector pipelines. Depends
+// only on the LifeOps contract types; consumed by
+// @elizaos/plugin-personal-assistant via a thin re-export shim.
+export * from "./lifeops-constants/index.js";
+// LifeOps normalize/validation primitives — pure input normalization helpers,
+// time-zone helpers, and the status-carrying LifeOpsServiceError. Depends only
+// on @elizaos/core and the LifeOps contract types/constants; consumed by
+// @elizaos/plugin-personal-assistant via thin re-export shims.
+export * from "./lifeops-normalize/index.js";
 export * from "./events/index.js";
 export * from "./format-error.js";
 // Knowledge-graph primitives — canonical Entity/Relationship types + the

@@ -212,7 +212,7 @@ import {
 } from "./browser-session-lifecycle.js";
 // Imports from repository
 import { createLifeOpsBrowserSession } from "./repository.js";
-import { DEFAULT_BROWSER_PERMISSION_STATE } from "./service-constants.js";
+import { DEFAULT_BROWSER_PERMISSION_STATE } from "./browser-constants.js";
 
 // ---------------------------------------------------------------------------
 // Browser mixin

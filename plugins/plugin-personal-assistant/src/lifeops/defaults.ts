@@ -1,9 +1,22 @@
+import {
+  isValidTimeZone,
+  normalizeTimeZone,
+  resolveDefaultTimeZone,
+} from "@elizaos/shared";
 import type { ActivityProfile } from "../activity-profile/types";
 import type {
   LifeOpsReminderStep,
   LifeOpsTimeWindowDefinition,
   LifeOpsWindowPolicy,
 } from "../contracts/index.js";
+
+// The time-zone helpers are now runtime-level primitives in `@elizaos/shared`;
+// re-exported here so historical `./defaults.js` callers keep working.
+export {
+  isValidTimeZone,
+  normalizeTimeZone,
+  resolveDefaultTimeZone,
+} from "@elizaos/shared";
 
 export const DEFAULT_TIME_WINDOWS: LifeOpsTimeWindowDefinition[] = [
   {
@@ -39,28 +52,6 @@ export const DEFAULT_REMINDER_STEPS: LifeOpsReminderStep[] = [
     label: "In-app reminder",
   },
 ];
-
-export function resolveDefaultTimeZone(): string {
-  const resolved = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  return resolved && resolved.trim().length > 0 ? resolved : "UTC";
-}
-
-export function isValidTimeZone(timeZone: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date());
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function normalizeTimeZone(timeZone?: string | null): string {
-  const candidate = typeof timeZone === "string" ? timeZone.trim() : "";
-  if (candidate && isValidTimeZone(candidate)) {
-    return candidate;
-  }
-  return resolveDefaultTimeZone();
-}
 
 export function resolveDefaultWindowPolicy(
   timeZone?: string | null,
