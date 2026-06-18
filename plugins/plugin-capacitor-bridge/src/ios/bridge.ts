@@ -2579,10 +2579,12 @@ async function handleNativeIosLocalAsrRoute(
 	}
 
 	const body = parseRequestBody(payload);
-	// Wire contract: mono fp32 PCM in [-1, 1] as a JSON number array under `pcm`.
+	// Internal fast path: mono fp32 PCM in [-1, 1] as a JSON number array under
+	// `pcm`. Raw audio and JSON `audioBase64` intentionally fall through to the
+	// canonical local-inference ASR route so the public HTTP contract is intact.
 	const pcm = parsePcmFloatArray(body.pcm ?? body.audio);
 	if (!pcm) {
-		return jsonResponse(400, { error: "Missing pcm" });
+		return null;
 	}
 
 	const voiceReadiness = nativeVoiceReadiness();
