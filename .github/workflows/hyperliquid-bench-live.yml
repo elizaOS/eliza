@@ -77,6 +77,7 @@ jobs:
       - name: Check HL_PRIVATE_KEY secret
         id: gate
         run: |
+          set -euo pipefail
           if [ -z "${HL_PRIVATE_KEY:-}" ]; then
             echo "::notice::HyperliquidBench live run skipped — HL_PRIVATE_KEY is not configured. Add it as a repo secret to enable publishable live runs."
             echo "skip=true" >> "$GITHUB_OUTPUT"

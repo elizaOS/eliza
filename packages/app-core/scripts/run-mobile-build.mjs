@@ -3413,7 +3413,6 @@ function shouldIncludeIosFullBunEngine(env = process.env) {
 export function isIosAppStoreBuild(env = process.env) {
   return (
     env.ELIZA_RELEASE_AUTHORITY === "apple-app-store" ||
-    env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store" ||
     env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store"
   );
 }
@@ -6064,8 +6063,6 @@ async function buildAndroid() {
   // env vars, fail loudly and point them at the right target.
   const playStoreFlagged =
     process.env.ELIZA_PLAY_STORE_BUILD === "1" ||
-    process.env.ELIZA_PLAY_STORE_BUILD === "1" ||
-    process.env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store" ||
     process.env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store";
   if (playStoreFlagged) {
     console.error(

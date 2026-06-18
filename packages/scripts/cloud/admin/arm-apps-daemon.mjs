@@ -25,6 +25,7 @@
  *     --tenant-admin-dsn 'postgresql://postgres:***@10.30.1.10:5432/postgres?sslmode=require' \
  *     --node-ssh-key-path /home/deploy/.ssh/apps-node \   # key the APP NODE's deploy user accepts
  *     [--node-ssh-user deploy] [--egress-proxy http://127.0.0.1:3128] [--dry-run]
+ *     [--target cp-daemon|apps-worker]      # which unit to restart (default cp-daemon)
  *
  * Re-run with the same args = no-op (env already converged) + a daemon restart.
  */
@@ -32,7 +33,6 @@
 import { spawnSync } from "node:child_process";
 
 const ENV_PATH = "/opt/eliza/cloud/.env.local";
-const SYSTEMD_UNIT = "eliza-provisioning-worker.service";
 
 function parseArgs(argv) {
   const out = {};
@@ -63,6 +63,19 @@ const sshKey = args["ssh-key"];
 if (!host) die("--host <control-plane-ip> is required");
 if (!sshKey)
   die("--ssh-key <path> is required (a key the CP's deploy user accepts)");
+
+// Which daemon to restart. Default = the shared control-plane provisioning
+// worker; `--target apps-worker` arms the dedicated apps-control daemon's unit
+// instead (mirrors the `target` input in arm-apps-daemon.yml). The host/key
+// still come from --host/--ssh-key, so no secret-selection is needed here.
+const target = args.target || "cp-daemon";
+if (target !== "cp-daemon" && target !== "apps-worker") {
+  die(`--target must be 'cp-daemon' or 'apps-worker' (got '${target}')`);
+}
+const SYSTEMD_UNIT =
+  target === "apps-worker"
+    ? "eliza-apps-worker.service"
+    : "eliza-provisioning-worker.service";
 
 // The apps env block the daemon needs. Only keys with a value are written;
 // CONTAINERS_DOCKER_NODES is intentionally NOT overwritten if --app-node is
