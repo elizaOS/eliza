@@ -1,5 +1,6 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
+import { hasTextGenerationHandler } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
@@ -447,6 +448,31 @@ function serializeForRuntimeDebug(
 // ---------------------------------------------------------------------------
 
 /**
+ * "First-turn capability online": the agent can actually produce a response.
+ *
+ * Distinct from `ready` (which is `true` even for stopped/error/paused states —
+ * it only negates `starting`/`restarting`). `canRespond` ANDs a live runtime, a
+ * `running` state, AND a registered TEXT_GENERATION handler — so it is `false`
+ * when no model provider is wired (local-inference is optional) and only flips
+ * `true` at the exact moment the agent can answer a first turn. This is the
+ * signal the UI uses to fade in first-turn capability: the shell paints early
+ * (agentState "starting"), and the composer goes live when this flips.
+ */
+function computeCanRespond(
+  runtime: AgentRuntime | null,
+  agentState: string,
+): boolean {
+  if (!runtime || agentState !== "running") {
+    return false;
+  }
+  try {
+    return hasTextGenerationHandler(runtime);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Handle health / status / runtime introspection routes.
  * Returns `true` if the request was handled.
  */
@@ -514,6 +540,7 @@ export async function handleHealthRoutes(
       state: state.agentState,
       agentName: state.agentName,
       model,
+      canRespond: computeCanRespond(state.runtime, state.agentState),
       startedAt: state.startedAt,
       uptime,
       startup: state.startup,
@@ -566,6 +593,7 @@ export async function handleHealthRoutes(
 
     json(res, {
       ready,
+      canRespond: computeCanRespond(runtime, state.agentState),
       runtime: runtime ? "ok" : "not_initialized",
       database: runtime ? "ok" : "unknown",
       plugins: {

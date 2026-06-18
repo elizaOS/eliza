@@ -213,6 +213,28 @@ export const AGENT_STATES: ReadonlySet<AgentStatus["state"]> = new Set([
   "error",
 ]);
 
+/**
+ * Single source for "first-turn capability is online" — the agent can actually
+ * answer, so the chat composer can go live and any queued sends can flush. This
+ * is DISTINCT from the startup-coordinator phase (which gates full hydration):
+ * the shell paints early (see `isShellPaintable`), and this flips when the
+ * agent's response capability fades in behind it.
+ *
+ * Prefers the server-authoritative `canRespond` (`/api/health` + `/api/status`);
+ * falls back to running+model for older agents/transports that don't report it.
+ * A reported `canRespond: false` (running but no model provider) correctly keeps
+ * the composer in its "set up a provider" state rather than going live.
+ */
+export function deriveAgentReady(agentStatus: AgentStatus | null): boolean {
+  if (!agentStatus) {
+    return false;
+  }
+  return (
+    agentStatus.canRespond ??
+    (agentStatus.state === "running" && Boolean(agentStatus.model))
+  );
+}
+
 export type SlashCommandInput = {
   name: string;
   argsRaw: string;

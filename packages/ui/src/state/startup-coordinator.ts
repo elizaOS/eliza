@@ -440,6 +440,24 @@ export function isStartupTerminal(state: StartupState): boolean {
 }
 
 /**
+ * True once the live app shell may MOUNT — the backend is reached and the active
+ * conversation is hydratable — even though the agent's first-turn capability may
+ * still be warming up (`agentState: "starting"`). This un-gates the shell + chat
+ * composer early so first-turn capability can fade in BEHIND a live UI, instead
+ * of replacing the whole app with a full-screen loader until full `ready`.
+ *
+ * Deliberately FALSE for phases that legitimately own the whole screen — session
+ * restore, backend polling, first-run, pairing — and for terminal `error`; those
+ * still render StartupScreen. Effects that need a live runtime must stay gated on
+ * agent readiness (`canRespond`), NOT on this — this un-gates RENDERING only.
+ */
+export function isShellPaintable(phase: StartupPhaseValue): boolean {
+  return (
+    phase === "starting-runtime" || phase === "hydrating" || phase === "ready"
+  );
+}
+
+/**
  * Derive the legacy StartupPhase from the coordinator state.
  *
  * NOTE: pairing-required, first-run-required, error, and hydrating all map

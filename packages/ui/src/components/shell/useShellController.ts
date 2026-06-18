@@ -4,6 +4,7 @@ import type { ImageAttachment } from "../../api/client-types-chat";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
 import { useApp } from "../../state";
 import { loadVadAutoStop } from "../../state/persistence";
+import { deriveAgentReady } from "../../state/types";
 import {
   createVoiceCapture,
   type VoiceCaptureHandle,
@@ -81,7 +82,6 @@ export interface ShellController {
 export function useShellController(): ShellController {
   const app = useApp();
   const {
-    startupCoordinator,
     conversationMessages,
     chatSending,
     sendChatText,
@@ -103,7 +103,13 @@ export function useShellController(): ShellController {
     void handleNewConversation();
   }, [handleNewConversation]);
 
-  const ready = startupCoordinator.phase === "ready";
+  // "Ready" here means the agent's FIRST-TURN CAPABILITY is online (it can
+  // answer) — NOT that the startup coordinator finished hydrating. The shell now
+  // mounts early (isShellPaintable) while the agent warms up; the composer stays
+  // interactive but queues sends until this flips, then flushes — so first-turn
+  // capability fades in behind a live UI. Server-authoritative via
+  // agentStatus.canRespond (falls back to running+model on older agents).
+  const ready = deriveAgentReady(agentStatus);
   const modelStatus = useHomeModelStatus();
   const [isOpen, setIsOpen] = React.useState(false);
   const [recording, setRecording] = React.useState(false);
