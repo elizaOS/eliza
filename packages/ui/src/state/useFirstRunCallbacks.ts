@@ -654,7 +654,6 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
             name: firstRunName,
             bio: style?.bio ?? ["An autonomous AI agent."],
             onProgress: () => {},
-            allowSharedRuntime: true,
           });
 
           const iosCloudLocalAgent = shouldUseIosCloudLocalAgent();
