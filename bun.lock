@@ -2882,6 +2882,7 @@
       },
       "optionalDependencies": {
         "@elizaos/capacitor-bun-runtime": "workspace:*",
+        "@elizaos/capacitor-camera": "workspace:*",
       },
       "peerDependencies": {
         "react": "19.2.5",

@@ -74,6 +74,7 @@ import {
   getAppSlugFromPath,
   getWindowNavigationPath,
   isAndroidPhoneSurfaceEnabled,
+  isAospShellEnabled,
   isRouteRootPath,
   shouldUseHashNavigation,
 } from "./navigation";
@@ -147,6 +148,10 @@ const AutomationsFeed = lazyNamedView(
 const BrowserWorkspaceView = lazyNamedView(
   () => import("./components/pages/BrowserWorkspaceView"),
   "BrowserWorkspaceView",
+);
+const CameraPageView = lazyNamedView(
+  () => import("./components/pages/CameraPageView"),
+  "CameraPageView",
 );
 const ContactsPageView = lazyNamedView(
   () => import("./components/pages/ElizaOsAppsView"),
@@ -745,6 +750,11 @@ function renderStaticViewRouterTab({
         <HelpView />
       </TabContentView>
     ),
+    camera: (
+      <TabContentView>
+        <CameraPageView />
+      </TabContentView>
+    ),
     chat: <ViewUnavailableFallback />,
     browser: <BrowserWorkspaceView />,
     companion: <ViewUnavailableFallback />,
@@ -1169,7 +1179,7 @@ function HomeScreenMount(): ReactNode {
   return (
     <HomeScreen
       onOpenTile={onOpenTile}
-      showNativeOsTiles={isAndroidPhoneSurfaceEnabled()}
+      showNativeOsTiles={isAospShellEnabled()}
     />
   );
 }

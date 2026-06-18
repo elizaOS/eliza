@@ -16,6 +16,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { listAppShellPages } from "../app-shell-registry";
+import { userAgentHasElizaOSMarker } from "../platform/aosp-user-agent";
 import { resolveDefaultLandingTab } from "./main-tab";
 
 type RuntimeImportMeta = ImportMeta & {
@@ -48,6 +49,7 @@ export type BuiltinTab =
   | "phone"
   | "messages"
   | "contacts"
+  | "camera"
   | "lifeops"
   | "tasks"
   | "automations"
@@ -135,6 +137,33 @@ export function isAndroidPhoneSurfaceEnabled(
   const platform = detection.platform ?? Capacitor.getPlatform();
   const isNative = detection.isNative ?? Capacitor.isNativePlatform();
   return isNative && platform === "android";
+}
+
+/**
+ * True only on the **AOSP ElizaOS fork** (the system image whose WebView
+ * user-agent carries the `ElizaOS/<tag>` marker), or under an explicit
+ * `?android=true` dev-preview flag. This is the gate for the native-OS home
+ * tiles (phone, messages, contacts, camera): they are an AOSP-fork surface, so
+ * they stay hidden on web, desktop, iOS, and stock Play-Store Android.
+ *
+ * Distinct from `isAndroidPhoneSurfaceEnabled` (any Android-native build): the
+ * native-OS overlay plugins only register on the fork (`isElizaOS()`), so the
+ * tiles must match that, not merely "is Android".
+ */
+export function isAospShellEnabled(
+  detection: AndroidPhoneSurfaceDetection = {},
+): boolean {
+  const search =
+    detection.search ??
+    (typeof window === "undefined" ? "" : window.location.search);
+  const hash =
+    detection.hash ??
+    (typeof window === "undefined" ? "" : window.location.hash);
+  if (hasAndroidTestFlag(search, hash)) return true;
+  return (
+    typeof navigator !== "undefined" &&
+    userAgentHasElizaOSMarker(navigator.userAgent ?? "")
+  );
 }
 
 interface WindowNavigationLocation {
@@ -254,6 +283,7 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   phone: "/phone",
   messages: "/messages",
   contacts: "/contacts",
+  camera: "/camera",
   lifeops: "/apps/lifeops",
   tasks: "/apps/tasks",
   browser: "/browser",
@@ -490,6 +520,8 @@ export function titleForTab(tab: Tab): string {
       return "Messages";
     case "contacts":
       return "Contacts";
+    case "camera":
+      return "Camera";
     case "lifeops":
       return "LifeOps";
     case "browser":

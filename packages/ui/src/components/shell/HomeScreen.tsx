@@ -2,18 +2,17 @@ import {
   Activity,
   Bell,
   CalendarCheck,
+  Camera,
   CheckCircle2,
   Contact,
   GraduationCap,
   Hand,
-  Inbox,
   LayoutGrid,
   LifeBuoy,
   Loader2,
   type LucideIcon,
   MessageCircle,
   MessageSquare,
-  Network,
   OctagonAlert,
   Phone,
   Plus,
@@ -69,6 +68,10 @@ interface HomeTile {
   requiresViewPath?: string;
 }
 
+// The four default tiles, pinned on every platform: the interactive tour, the
+// searchable help, settings, and the views catalog. The AOSP ElizaOS fork adds
+// four native-OS tiles (messages, phone, contacts, camera) for a total of eight;
+// they are `nativeOs` so they stay hidden everywhere else.
 const HOME_TILES: HomeTile[] = [
   {
     // Pinned first: the interactive tour that teaches the whole UI. Opens a
@@ -91,31 +94,10 @@ const HOME_TILES: HomeTile[] = [
     target: { kind: "tab", tab: "settings" },
   },
   {
-    id: "orchestrator",
-    label: "Orchestrator",
-    icon: Network,
-    target: { kind: "view", path: "/orchestrator" },
-    requiresViewPath: "/orchestrator",
-  },
-  {
-    id: "workflows",
-    label: "Workflows",
-    icon: Workflow,
-    target: { kind: "view", path: "/automations" },
-    requiresViewPath: "/automations",
-  },
-  {
     id: "views",
     label: "Views",
     icon: LayoutGrid,
     target: { kind: "tab", tab: "views" },
-  },
-  {
-    id: "inbox",
-    label: "Inbox",
-    icon: Inbox,
-    target: { kind: "view", path: "/inbox" },
-    requiresViewPath: "/inbox",
   },
   {
     // The only "messages" surface is the AOSP SMS view (MessagesPageView), which
@@ -138,6 +120,13 @@ const HOME_TILES: HomeTile[] = [
     label: "Contacts",
     icon: Contact,
     target: { kind: "tab", tab: "contacts" },
+    nativeOs: true,
+  },
+  {
+    id: "camera",
+    label: "Camera",
+    icon: Camera,
+    target: { kind: "tab", tab: "camera" },
     nativeOs: true,
   },
 ];
