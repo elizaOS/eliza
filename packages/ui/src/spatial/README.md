@@ -1,0 +1,157 @@
+# `@elizaos/ui/spatial` — one view, three modalities
+
+elizaOS renders views in three modalities: **GUI** (the dashboard), **XR**
+(headset panels via `plugin-facewear` / `plugin-xr`), and **TUI** (the agent
+terminal). Historically a plugin shipped a *separate* component per modality —
+`PhonePluginView` for GUI/XR and a hand-written `PhoneTuiView` for the terminal —
+declared three times in `plugin.views` with three `componentExport`s. The TUI
+variant in particular had no renderer at all: `@elizaos/tui` is an imperative
+string library with no React bridge, so the declared `*TuiView` exports were
+dead.
+
+This module removes the per-modality split. You author a view **once** with a
+small primitive vocabulary; the same React tree renders correctly to all three
+surfaces, because all three consume one **layout IR** (`ir.ts`).
+
+```
+            ┌─────────────────────────┐
+            │   <AgentProfileView/>   │   ← authored once (React + primitives)
+            └────────────┬────────────┘
+              GUI / XR    │    TUI
+        ┌────────────────┐│┌──────────────────────┐
+        │ primitives →   │││ evaluate → SpatialNode│
+        │ DOM (dom.tsx)  │││ → engine → terminal    │
+        └────────────────┘│└──────────────────────┘
+                          ▼
+                 same SpatialNode IR
+```
+
+## Quick start
+
+```tsx
+import { Card, HStack, Text, Button, useSpatialState } from "@elizaos/ui/spatial";
+
+export function Counter({ start = 0 }) {
+  const [n, setN] = useSpatialState(start); // works on every surface
+  return (
+    <Card title="Counter" gap={1}>
+      <Text style="heading">{`Count: ${n}`}</Text>
+      <HStack gap={1}>
+        <Button onPress={() => setN((v) => v + 1)}>+1</Button>
+        <Button variant="outline" onPress={() => setN(0)}>Reset</Button>
+      </HStack>
+    </Card>
+  );
+}
+```
+
+Render it:
+
+```tsx
+// GUI
+import { SpatialSurface } from "@elizaos/ui/spatial";
+<SpatialSurface modality="gui"><Counter /></SpatialSurface>
+
+// XR — identical tree, spatially scaled up
+<SpatialSurface modality="xr"><Counter /></SpatialSurface>
+
+// TUI (Node-only subpath)
+import { renderViewToLines } from "@elizaos/ui/spatial/tui";
+const lines = renderViewToLines(<Counter />, 40); // string[] of width 40
+```
+
+The reference view is [`example.tsx`](./example.tsx); the proof that one source
+renders to all three is [`__tests__/parity.test.tsx`](./__tests__/parity.test.tsx).
+
+## The vocabulary
+
+| Primitive | IR node | Purpose |
+| --- | --- | --- |
+| `Stack` / `HStack` / `VStack` | `box` | flex container (`direction`, `gap`, `padding`, `align`, `justify`, `wrap`, `grow`) |
+| `Card` | `box` | bordered, padded, optionally titled surface |
+| `List` | `box` | vertical list (a column with a default gap) |
+| `Text` | `text` | typed text (`style`, `tone`, `bold`, `dim`, `align`, `wrap`) |
+| `Button` | `button` | action (`tone`, `variant`, `disabled`, `onPress`) |
+| `Field` | `field` | labelled input (`text`/`number`/`password`/`textarea`/`select`) |
+| `Divider` | `divider` | rule, optionally captioned |
+| `Spacer` | `spacer` | fixed (`size`) or flexible (`grow`) space |
+| `Image` | `image` | image (real `<img>` on DOM, alt placeholder in TUI) |
+
+Layout props mean the same thing in every modality. The renderers only differ in
+the unit a cell maps to: a CSS rem on GUI/XR, a terminal column in the TUI.
+
+## Cross-modal state
+
+Use the `useSpatial*` hooks for any state that must work on every surface:
+
+- `useSpatialState(initial)` — on a DOM surface delegates to React's `useState`;
+  during TUI evaluation it reads/writes the host's persistent store keyed by
+  component path + hook order, and re-snapshots the frame on change.
+- `useSpatialMemo(factory, deps)`, `useSpatialRef(initial)` — same dual behaviour.
+
+**Authoring constraint:** in a view you want to run in the terminal, use the
+`useSpatial*` hooks rather than React's `useState`/`useEffect`/`useContext` — the
+React hooks only run on the DOM surface. Purely presentational components (props
+in, primitives out) need no hooks and work everywhere with no constraints.
+
+The TUI evaluator is a **snapshot** renderer: it produces one frame and does not
+run effects (which is exactly right for a terminal frame). Interactivity comes
+from the host re-snapshotting after a `useSpatialState` setter fires — see
+`createSpatialTuiComponent`.
+
+## Wiring into the existing view system
+
+The framework is additive — it does not change how views are *declared*
+(`ViewDeclaration` in `@elizaos/core`) or *served* (`/api/views`). It changes how
+a view is *authored* and *rendered*:
+
+- **GUI** — a unified view's bundle export is an ordinary React component; the
+  existing `DynamicViewLoader` mounts it. Wrap the root in `<SpatialSurface
+  modality="gui">`. Agent-surface attributes (`data-agent-id`, `data-agent-role`)
+  are emitted automatically from each primitive's `agent` prop, so the existing
+  view-interact capabilities (`list-elements`, `agent-click`, …) work unchanged.
+- **XR** — the `plugin-facewear` view-host sets `window.__elizaXRContext`; mount
+  with `<SpatialSurface modality="xr">` (or read `getActiveViewModality()`). Same
+  bundle, same export — no separate XR component.
+- **TUI** — the agent terminal mounts the view with
+  `createSpatialTuiComponent(() => <View/>, { onChange: () => tui.requestRender() })`,
+  which yields a `@elizaos/tui` `Component`. This replaces the hand-written
+  `*TuiView` and is the first time `viewType: "tui"` declarations actually render.
+
+## Migration: collapsing three views into one
+
+Before — three components, two of them duplicating layout, one (TUI) unbuilt:
+
+```tsx
+export function PhonePluginView() { return <div className="…">…</div>; }   // gui + xr
+export function PhoneTuiView() { /* hand-rolled terminal strings, never rendered */ }
+```
+
+After — one component, authored with the primitives:
+
+```tsx
+import { VStack, Text, List, Button } from "@elizaos/ui/spatial";
+export function PhoneView({ calls }: { calls: Call[] }) {
+  return (
+    <VStack gap={1} padding={1}>
+      <Text style="heading">Recent calls</Text>
+      <List>{calls.map((c) => <Text key={c.id}>{c.name}</Text>)}</List>
+      <Button agent="dial">Dial</Button>
+    </VStack>
+  );
+}
+```
+
+Then collapse the three `plugin.views` entries to one bundle export reused by all
+modalities (the `viewType` declarations still distinguish surface behaviour like
+`xrOptions`, but they point at the same export).
+
+## Limitations (v1)
+
+- TUI rendering is snapshot-based: no React effects in the terminal path; drive
+  interactivity through `useSpatialState` + host re-snapshot.
+- Raw DOM elements (`<div>`, `<span>`) have no terminal layout — a view that must
+  run in the terminal should be built from the primitives. The evaluator degrades
+  an unknown host element to its children so text still flows.
+- Percentage lengths and vertical `justify`/`grow` in the TUI engine apply only
+  when a fixed height is supplied; content-height columns lay out top-to-bottom.
