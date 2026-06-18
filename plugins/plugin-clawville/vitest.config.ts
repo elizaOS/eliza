@@ -1,4 +1,3 @@
-import { existsSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,63 +6,47 @@ import { defineConfig } from "vitest/config";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 
-// react is a peer dep resolvable from the plugin; react-dom is hoisted to the
-// monorepo's node_modules/.bun under a content-hashed dir. Resolve react first,
-// then locate the react-dom@<version>+<hash> dir that matches it so jsdom mounts
-// against a single React copy.
-const reactPkgJson = require.resolve("react/package.json");
-const reactDir = path.dirname(reactPkgJson);
-const reactVersion = require(reactPkgJson).version as string;
-
-function locateBunModulesDir(start: string): string {
-  let current = start;
-  while (true) {
-    const candidate = path.join(current, "node_modules/.bun");
-    if (existsSync(candidate)) return candidate;
-    const parent = path.dirname(current);
-    if (parent === current) {
-      throw new Error("Unable to locate node_modules/.bun");
-    }
-    current = parent;
-  }
-}
-
-const bunModulesDir = locateBunModulesDir(here);
-const reactDomEntry = readdirSync(bunModulesDir).find((entry) =>
-  entry.startsWith(`react-dom@${reactVersion}+`),
+// Resolve react + react-dom through @testing-library/react so every consumer —
+// the stubbed @elizaos/ui view tests AND the real @elizaos/ui/spatial tri-modal
+// test — mounts against a single, version-matched React copy. (Resolving react
+// from the plugin's own peer dep yields a different minor than the hoisted
+// react-dom, which makes SpatialSurface's hooks throw "Invalid hook call".)
+const testingLibraryRequire = createRequire(
+  require.resolve("@testing-library/react/package.json"),
 );
-if (!reactDomEntry) {
-  throw new Error(
-    `Unable to locate react-dom@${reactVersion} in ${bunModulesDir}`,
-  );
-}
-const reactDomDir = path.join(
-  bunModulesDir,
-  reactDomEntry,
-  "node_modules/react-dom",
+const reactDir = path.dirname(
+  testingLibraryRequire.resolve("react/package.json"),
+);
+const reactDomDir = path.dirname(
+  testingLibraryRequire.resolve("react-dom/package.json"),
 );
 
 export default defineConfig({
   root: here,
   resolve: {
+    dedupe: ["react", "react-dom"],
     alias: [
       { find: /^react$/, replacement: reactDir },
       {
         find: /^react\/jsx-runtime$/,
-        replacement: path.join(reactDir, "jsx-runtime.js"),
+        replacement: testingLibraryRequire.resolve("react/jsx-runtime"),
       },
       {
         find: /^react\/jsx-dev-runtime$/,
-        replacement: path.join(reactDir, "jsx-dev-runtime.js"),
+        replacement: testingLibraryRequire.resolve("react/jsx-dev-runtime"),
       },
       { find: /^react-dom$/, replacement: reactDomDir },
       {
+        find: /^react-dom\/server$/,
+        replacement: testingLibraryRequire.resolve("react-dom/server"),
+      },
+      {
         find: /^react-dom\/client$/,
-        replacement: path.join(reactDomDir, "client.js"),
+        replacement: testingLibraryRequire.resolve("react-dom/client"),
       },
       {
         find: /^react-dom\/test-utils$/,
-        replacement: path.join(reactDomDir, "test-utils.js"),
+        replacement: testingLibraryRequire.resolve("react-dom/test-utils"),
       },
       // The view components import @elizaos/ui subpaths (agent-surface). Every
       // test mocks @elizaos/ui, so collapse the subpaths onto the root spec so a

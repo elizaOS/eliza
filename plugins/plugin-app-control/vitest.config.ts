@@ -44,12 +44,29 @@ export default defineConfig({
 				find: /^react-dom\/client$/,
 				replacement: tlRequire.resolve("react-dom/client"),
 			},
+			{
+				find: /^react-dom\/server$/,
+				replacement: tlRequire.resolve("react-dom/server"),
+			},
 			// The view component imports only `useAgentElement` from the
 			// agent-surface subpath. Resolve it to source so the hook shares the
 			// same React singleton instead of the prebuilt dist bundle.
 			{
 				find: "@elizaos/ui/agent-surface",
 				replacement: path.join(uiSrc, "agent-surface/useAgentElement.ts"),
+			},
+			// The spatial view + terminal renderer import the spatial primitives
+			// and the TUI engine. Resolve both to source so their internal React
+			// hooks share the same singleton as the test renderer (otherwise the
+			// prebuilt dist bundle pulls in a second React copy). Order matters:
+			// the `/tui` subpath must match before the bare `/spatial` barrel.
+			{
+				find: "@elizaos/ui/spatial/tui",
+				replacement: path.join(uiSrc, "spatial/tui/index.ts"),
+			},
+			{
+				find: "@elizaos/ui/spatial",
+				replacement: path.join(uiSrc, "spatial/index.ts"),
 			},
 			// Use workspace source for @elizaos/shared and @elizaos/core so
 			// recently-added exports resolve at test time without requiring

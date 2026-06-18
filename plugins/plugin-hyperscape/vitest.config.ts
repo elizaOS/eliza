@@ -46,6 +46,10 @@ const reactDomDir = path.join(
 export default defineConfig({
   root: here,
   resolve: {
+    // Collapse every react / react-dom import (including the transitive copy
+    // inside @elizaos/ui's spatial DOM host and `react-dom/server`) onto a
+    // single module copy, so jsdom/SSR rendering shares one React instance.
+    dedupe: ["react", "react-dom"],
     alias: [
       { find: /^react$/, replacement: reactDir },
       {
@@ -60,6 +64,10 @@ export default defineConfig({
       {
         find: /^react-dom\/client$/,
         replacement: path.join(reactDomDir, "client.js"),
+      },
+      {
+        find: /^react-dom\/server$/,
+        replacement: path.join(reactDomDir, "server.node.js"),
       },
       {
         find: /^react-dom\/test-utils$/,

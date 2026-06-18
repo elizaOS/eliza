@@ -1,3 +1,14 @@
+// In a terminal host (the Node agent, no DOM), register the Steward view so it
+// renders inline in the terminal. Lazy + DOM-guarded so the terminal engine
+// stays out of browser/mobile bundles.
+if (typeof window === "undefined") {
+  void import("./register-terminal-view")
+    .then((m) => m.registerStewardTerminalView())
+    .catch(() => {
+      // Terminal rendering is best-effort; never block plugin load.
+    });
+}
+
 export * from "./ApprovalQueue";
 export * from "./api/tx-service";
 export * from "./api/wallet-dex-prices";

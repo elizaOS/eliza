@@ -79,6 +79,10 @@ export default defineConfig({
         find: /^react-dom\/test-utils$/,
         replacement: path.join(reactDomDir, "test-utils.js"),
       },
+      {
+        find: /^react-dom\/server$/,
+        replacement: path.join(reactDomDir, "server.node.js"),
+      },
       // The view components import @elizaos/ui subpaths (agent-surface). Every
       // component test mocks @elizaos/ui, so collapse the subpaths onto the
       // root spec so a single vi.mock("@elizaos/ui") covers them all.
