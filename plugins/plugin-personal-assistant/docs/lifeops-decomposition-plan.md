@@ -305,6 +305,29 @@ So the VIEW dimension is essentially done for everything that has a data source;
 what remains is the back-end extraction (schema carve-out + repo/services/action
 moves), which unblocks todos' view and makes the others' data plugin-owned.
 
+### Session 2026-06-17/18 (round 4) — finances schema carve-out + view sweep complete
+- `1cdfe95249` **finances app_finances schema carve-out** (the first carve-out;
+  proven pattern): moved the 5 finance table defs PA→plugin-finances on
+  `pgSchema("app_finances")`, removed from PA's lifeOpsSchema registration,
+  repointed all 20 raw finance SQL refs in repository.ts via a `FINANCE_SCHEMA`
+  const (completeness gate `rg app_lifeops.life_(payment|subscription)` = empty),
+  wired plugin-finances to load with PA + OPTIONAL_CORE_PLUGINS, and added a
+  NON-DESTRUCTIVE idempotent `FinancesMigrationService` (per table: copy
+  app_lifeops.*→app_finances.* only if source exists via to_regclass AND target
+  empty; never drops source; 17 tests).
+- `683f63011f` **TodosView real** via a new thin `GET /api/lifeops/todos` route
+  (reuses `getOverview`; the task tables are SHARED SPINE, stay in the hub — todos
+  is a projection, NOT a carve-out). **All 8 decomposable views now production-grade.**
+
+KEY PATTERN LEARNINGS:
+- Movable-schema domain (finances): tables are domain-specific → carve out to the
+  plugin's pgSchema + non-destructive data migration + repoint raw SQL refs.
+- Spine-backed domain (todos): tables (`life_task_*`) are shared scheduled-task
+  infra → DO NOT move; expose a thin read route and project.
+- Every carve-out: completeness grep gate + plugin-must-not-import-PA + the
+  movable plugin must be LOADED (PA init ensure + OPTIONAL_CORE_PLUGINS) so its
+  schema gets created.
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
