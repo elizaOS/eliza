@@ -30,6 +30,9 @@ function makeController(
     transcript: "",
     send: vi.fn(),
     toggleRecording: vi.fn(),
+    handsFree: false,
+    toggleHandsFree: vi.fn(),
+    setDictationSink: vi.fn(),
     clearConversation: vi.fn(),
     ...overrides,
   } as unknown as ShellController;
