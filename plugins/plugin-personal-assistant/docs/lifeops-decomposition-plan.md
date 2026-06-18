@@ -533,6 +533,24 @@ flow pulls in PA identity/policy subsystems), subscriptions (service-mixin-subsc
 reminders/calendar/activity aggregation). All code-extractable via the seam pattern;
 live behavior needs a credentialed Gmail/browser lane to verify.
 
+### Session 2026-06-18 (round 17) — subscriptions → plugin-finances (browser+gmail seams)
+Extracted the most cross-cutting domain (the README-flagged "stays in PA"
+subscriptions orchestration) into plugin-finances `SubscriptionsService` via runtime
+seams: browser-bridge-seam (resolves BROWSER_BRIDGE_ROUTE_SERVICE_TYPE), gmail-seam
+(resolves the google runtime service; Gmail search only — no PA triage needed),
+computeruse via runtime service. FinancesRepository (already there) for persistence.
+PA mixin → 105-line forwarding shim; /api/lifeops/subscriptions/* routes + actions
+byte-untouched. 27 plugin-finances tests (incl. real-PGlite subscriptions test); PA
+suite 614; no PA import. +@elizaos/plugin-browser/plugin-google deps.
+
+DECOMPOSITION now near-complete. Remaining PA orchestration: (a) email-curation
+engine (1648, UNWIRED — wiring it into the inbox flow is new integration touching PA
+identity/policy, then move), (b) goal-review/overview (cross-domain aggregation of
+occurrences/reminders/calendar/activity — extractable via seams like subscriptions).
+Both code-extractable via the proven seam pattern; live behavior needs a credentialed
+connector lane. The legitimate hub (life.ts orchestration, scheduling spine,
+registries, owner brief/prioritize) stays per the README.
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
