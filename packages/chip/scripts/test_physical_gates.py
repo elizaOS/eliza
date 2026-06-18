@@ -627,7 +627,10 @@ class PhysicalGateTests(unittest.TestCase):
             report_path.parent.mkdir(parents=True)
             report_path.write_text("", encoding="utf-8")
 
-            package_relative = run_dir.relative_to(ROOT.parents[1])
+            # Use the module's own repo-root resolver (guards against the CI
+            # Docker /work mount where the chip dir has no grandparent and
+            # ROOT.parents[1] would IndexError).
+            package_relative = run_dir.relative_to(openlane_pd_blocker_summary.REPO_ROOT)
             report = openlane_pd_blocker_summary.build_report(
                 run_dir=package_relative,
                 process_table="",
