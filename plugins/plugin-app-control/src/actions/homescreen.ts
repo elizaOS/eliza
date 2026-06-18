@@ -150,10 +150,19 @@ async function defaultEmit(payload: HomescreenEventPayload): Promise<void> {
 			signal: AbortSignal.timeout(5_000),
 		},
 	);
+	// A non-2xx means the broadcast did not go out. Throw so the handler reports
+	// failure instead of claiming the homescreen changed when it didn't.
 	if (!resp.ok) {
-		logger.warn(
-			`[plugin-app-control] HOMESCREEN broadcast returned ${resp.status}`,
-		);
+		throw new Error(`broadcast returned ${resp.status}`);
+	}
+}
+
+function isParseableJson(value: string): boolean {
+	try {
+		const parsed = JSON.parse(value);
+		return typeof parsed === "object" && parsed !== null;
+	} catch {
+		return false;
 	}
 }
 
@@ -253,7 +262,15 @@ export function createHomescreenAction(
 			// History ops carry no document — just signal the client.
 			if ((HISTORY_OPS as readonly string[]).includes(mode)) {
 				const op = mode as HomescreenHistoryOp;
-				await emit({ op });
+				try {
+					await emit({ op });
+				} catch (err) {
+					const reply = `I couldn't apply the homescreen ${op}: ${
+						err instanceof Error ? err.message : String(err)
+					}.`;
+					await callback?.({ text: reply });
+					return { success: false, text: reply, error: reply };
+				}
 				const reply = historyReply(op);
 				await callback?.({ text: reply });
 				return { success: true, text: reply, values: { mode: op } };
@@ -294,14 +311,25 @@ export function createHomescreenAction(
 			}
 
 			const sceneJson = extractSceneJson(raw);
-			if (!sceneJson) {
+			// extractSceneJson only brace-matches — validate it parses as JSON so a
+			// truncated/malformed-but-brace-balanced document is rejected here
+			// rather than emitted for the client to choke on.
+			if (!sceneJson || !isParseableJson(sceneJson)) {
 				const reply =
 					"The model didn't return a usable scene document, so I kept the current homescreen.";
 				await callback?.({ text: reply });
 				return { success: false, text: reply };
 			}
 
-			await emit({ op: mode, sceneJson });
+			try {
+				await emit({ op: mode, sceneJson });
+			} catch (err) {
+				const reply = `I built the new homescreen but couldn't apply it: ${
+					err instanceof Error ? err.message : String(err)
+				}.`;
+				await callback?.({ text: reply });
+				return { success: false, text: reply, error: reply };
+			}
 			const reply =
 				mode === "create"
 					? "Created a new homescreen from your description."
