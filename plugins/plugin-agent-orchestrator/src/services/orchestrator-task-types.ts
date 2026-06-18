@@ -172,6 +172,50 @@ export interface OrchestratorAccountOverview {
   assignments: OrchestratorAccountAssignment[];
 }
 
+export type OrchestratorRoomParticipantKind =
+  | "orchestrator"
+  | "user"
+  | "sub_agent";
+
+/** One participant in a task room. `sub_agent` rows carry their pooled account
+ * + live spend; `orchestrator`/`user` rows identify the two human-facing ends. */
+export interface OrchestratorRoomParticipant {
+  kind: OrchestratorRoomParticipantKind;
+  /** sessionId for a sub_agent; "orchestrator" or the ownerUserId otherwise. */
+  id: string;
+  label: string;
+  framework?: string;
+  status?: string;
+  active?: boolean;
+  activeTool?: string;
+  accountProviderId?: string;
+  accountId?: string;
+  accountLabel?: string;
+  totalTokens?: number;
+  usageState?: UsageState;
+}
+
+/** A single task room with its grouped participant roster — the orchestrator,
+ * the owning user, and every sub-agent attached to THIS room. The accounts
+ * overview is a flat global map; this groups the same sessions by room. */
+export interface OrchestratorRoomRoster {
+  taskId: string;
+  taskTitle: string;
+  status: OrchestratorTaskStatus;
+  roomId?: string;
+  taskRoomId?: string;
+  /** Non-terminal sub-agent sessions live in the room right now. */
+  activeAgentCount: number;
+  /** More than one sub-agent live in the room (drives ambient suppression). */
+  multiParty: boolean;
+  participants: OrchestratorRoomParticipant[];
+}
+
+/** Per-room roster surface for the orchestrator dashboard. */
+export interface OrchestratorRoomRosterOverview {
+  rooms: OrchestratorRoomRoster[];
+}
+
 export interface OrchestratorTaskEvent {
   id: string;
   taskId: string;
