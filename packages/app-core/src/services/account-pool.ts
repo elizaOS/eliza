@@ -547,6 +547,10 @@ interface PoolMetaFields {
   health: LinkedAccountHealth;
   healthDetail?: LinkedAccountHealthDetail;
   usage?: LinkedAccountUsage;
+  /** Persisted so recordCall's "last used" survives restarts and feeds both the
+   * dashboard and the least-used age tiebreak (the credential record's own
+   * lastUsedAt is only bumped by touchAccount, not by usage recording). */
+  lastUsedAt?: number;
 }
 
 type PoolMetaStore = Record<PoolProviderId, Record<string, PoolMetaFields>>;
@@ -571,7 +575,8 @@ function isPoolProviderId(value: string): value is PoolProviderId {
     value === "openai-api" ||
     value === "deepseek-api" ||
     value === "zai-api" ||
-    value === "moonshot-api"
+    value === "moonshot-api" ||
+    value === "cerebras-api"
   );
 }
 
@@ -621,8 +626,10 @@ function recordToLinked(
     priority: meta?.priority ?? defaultPriority,
     createdAt: record.createdAt,
     health: meta?.health ?? "ok",
-    ...(record.lastUsedAt !== undefined
-      ? { lastUsedAt: record.lastUsedAt }
+    // Prefer the pool-meta lastUsedAt (bumped by recordCall) over the credential
+    // record's (bumped only by touchAccount); fall back to the record's.
+    ...((meta?.lastUsedAt ?? record.lastUsedAt) !== undefined
+      ? { lastUsedAt: meta?.lastUsedAt ?? record.lastUsedAt }
       : {}),
     ...(meta?.healthDetail ? { healthDetail: meta.healthDetail } : {}),
     ...(meta?.usage ? { usage: meta.usage } : {}),
@@ -666,6 +673,9 @@ async function persistAccount(account: LinkedAccountConfig): Promise<void> {
     health: account.health,
     ...(account.healthDetail ? { healthDetail: account.healthDetail } : {}),
     ...(account.usage ? { usage: account.usage } : {}),
+    ...(account.lastUsedAt !== undefined
+      ? { lastUsedAt: account.lastUsedAt }
+      : {}),
   };
   writeMetaStore(store);
 }
