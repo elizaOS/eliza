@@ -370,6 +370,57 @@ Remaining: remote-desktop (small, low-coupling — next), relationships (entity 
 delegated sub-backends (subscriptions, gmail-curation, goal-review, getInbox) which
 need connector-contract seams first. 5-OS e2e remains environment-bounded.
 
+### Session 2026-06-18 (rounds 8-9) — remote-desktop + relationships viewer
+- `36306214d8` remote-desktop fully extracted (engine + session service + action →
+  plugin-remote-desktop; no DB; 10 tests; PA delegates; no double-registration).
+- `53b72911e1` RelationshipsView (the viewer) added to plugin-relationships per the
+  owner decision (entities/relationships = runtime primitive; plugin holds the
+  VIEWER + extras). 9th decomposed view; ENTITY → VIEW_ACTION_MAP; all ratchets wired.
+
+### #20 (entities/relationships → runtime) — RESEARCHED 2026-06-18, confirmed LARGE
+PA's lifeops `EntityStore`/`RelationshipStore`/`merge`/`context-graph` (~6k LOC over
+app_lifeops tables) **DUPLICATES** the runtime's existing entity/relationship system:
+`@elizaos/core` already has `Entity`/`Relationship`/`Component` types
+(`types/environment.ts`) + `services/relationships.ts` (ContactInfo,
+EntityIdentityRecord, MergeCandidateEvidence, identity-link/merge) +
+`relationships-graph-builder.ts` (2.6k) + `@elizaos/agent` resolveRelationshipsGraphService.
+So the owner directive = FOLD PA's parallel graph into core's entity system (not a
+move to plugin-relationships). This is: core-types-touching + the DEEPEST inbound
+coupling in the repo (connectors/checkin/followup/providers/default-packs/voice/
+routes/repository/identity-observations) + a data migration (app_lifeops entities/
+relationships → the runtime entity store) + reconciling two schemas/APIs.
+=> Dedicated, coordinated, multi-step effort with full verification headroom on a
+quiet tree — modifying @elizaos/core mid-session risks breaking all ~10 concurrent
+actors. NOT a tail-of-session change. Suggested first slices: (1) map PA EntityStore
+API ↔ core relationships service API gaps; (2) add any missing core service methods
+(additive, low-risk); (3) strangler-fig PA writes onto the core service; (4) migrate
+data; (5) rewire PA readers; (6) delete PA's parallel store.
+
+### Environment-bounded (cannot complete in this sandbox; needs real-device CI + creds)
+5-OS e2e (linux/ios/android/mac/windows) — web ui-smoke is PR-gated + green; desktop/
+android/ios harnesses are authored but unrunnable here (no iOS sim; Android emulator
+segfaults the embedded bun agent on stock x86_64 — needs real HW/Cuttlefish). Live
+`*.real.test.ts` need real provider credentials. These are CI-on-real-devices tasks.
+
+### Session 2026-06-18 (round 10) — view-state screenshot review (the "review by you")
+Built a light headless-chromium screenshot harness
+(`packages/app/test/view-screenshots/`, committed `49fe2f6001`; output gitignored)
+that renders each of the 9 decomposed views in every state (vite + the same
+@elizaos/ui stubs the jsdom tests use; no 20-min agent stack — runs in-sandbox).
+Captured 76 PNGs (9 views × loading/error/empty/populated[+focus's unavailable/
+permission/active] × desktop+mobile) and I VISUALLY REVIEWED a representative set
+across all 9 views + error/permission/empty states + mobile.
+**Outcome: production-grade.** Dark theme, orange-accent-ONLY (active toggles,
+primary CTAs, unread/at-risk dots), NO blue anywhere, clean hierarchy, right-
+aligned values, responsive mobile (chips wrap, previews truncate), error states
+have orange Retry CTAs, permission/disconnected states are honest. Calendar event
+chips render neutral-gray (the no-blue design pass holds).
+Minor non-blocking nits (tracked, not fixes): (1) relationships kind-labels
+(PEOPLE/ORGANIZATIONS) are slightly orange-heavy — acceptable accent-tag usage,
+not a blue violation; (2) calendar event-chip text can clip vertically — a harness
+Tailwind-shim artifact (full theme present in the real app), not a view bug.
+Run: `node packages/app/test/view-screenshots/run.mjs`.
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to

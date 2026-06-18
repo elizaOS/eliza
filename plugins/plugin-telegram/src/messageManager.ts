@@ -1210,7 +1210,9 @@ export class MessageManager {
     };
 
     const threadIdNum =
-      threadId && Number.isFinite(Number(threadId)) ? Number(threadId) : undefined;
+      threadId && Number.isFinite(Number(threadId))
+        ? Number(threadId)
+        : undefined;
     const callback: HandlerCallback = async (content: Content) => {
       if (!content.text) return [];
       await this.sendMessageInChunks(

@@ -3,6 +3,8 @@ import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import {
+  sharedRestAuthMe,
+  sharedRestCharacter,
   sharedRestConfig,
   sharedRestFirstRun,
   sharedRestFirstRunStatus,
@@ -60,7 +62,8 @@ function shellPath(c: Context<AppEnv>): string {
 async function resolveSharedAgent(
   c: Context<AppEnv>,
 ): Promise<
-  { error: string; status: 400 | 404 } | { agentId: string; agentName: string }
+  | { error: string; status: 400 | 404 }
+  | { agentId: string; agentName: string; orgId: string }
 > {
   const user = await requireUserOrApiKeyWithOrg(c);
   const agentId = c.req.param("agentId");
@@ -73,7 +76,11 @@ async function resolveSharedAgent(
   if (agent.execution_tier !== "shared") {
     return { error: "Not a shared-runtime agent", status: 404 };
   }
-  return { agentId, agentName: agent.agent_name ?? "Eliza" };
+  return {
+    agentId,
+    agentName: agent.agent_name ?? "Eliza",
+    orgId: user.organization_id,
+  };
 }
 
 app.options("/", () => handleCorsOptions(CORS_METHODS));
@@ -95,6 +102,15 @@ app.get("/", async (c) => {
       return json(sharedRestViews(c.req.query("viewType")));
     case "config":
       return json(sharedRestConfig());
+    case "auth/me":
+      // The app's hard startup auth gate. The caller is already an authed API
+      // key (resolveSharedAgent validated it), so report the authed machine
+      // identity instead of 404'ing into "server_unavailable".
+      return json(sharedRestAuthMe(r.agentId, r.agentName));
+    case "character":
+      // The exact character the shared turn answers as (reuses
+      // buildSharedRuntimeCharacter via the service).
+      return json(await sharedRestCharacter(r.agentId, r.orgId, r.agentName));
     default:
       // Genuinely-unknown shell endpoint — don't mask it with a default.
       return json(
