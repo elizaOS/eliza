@@ -180,9 +180,14 @@ function decodeEvent(event: SwarmEventLike): BridgeEventPayload | null {
 function buildPassMessage(payload: BridgeEventPayload): string {
 	const isApp = payload.method === VERIFY_APP_METHOD;
 	const noun = isApp ? "app" : "plugin";
+	// For apps the launch path resolves the registry entry. For plugins there is
+	// no "load a freshly-scaffolded local plugin" command — `reinject` only drops
+	// an *ejected* plugin to fall back to the npm copy, so don't advertise it.
+	// The verified source is on disk; reloading the agent picks it up.
+	const where = payload.workdir ? ` at ${payload.workdir}` : "";
 	const action = isApp
 		? `Reply 'launch ${payload.targetName}' to open it.`
-		: `Reply 'reinject ${payload.targetName}' to load it.`;
+		: `Reload the agent to load it${where ? ` (source${where})` : ""}.`;
 	return `${payload.targetName} ${noun} built and verified. ${action}`;
 }
 

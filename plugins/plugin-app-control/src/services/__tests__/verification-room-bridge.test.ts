@@ -117,3 +117,84 @@ describe("VerificationRoomBridgeService — boot-order retry", () => {
 		expect(coordinator.__listenerCount()).toBe(0);
 	});
 });
+
+describe("VerificationRoomBridgeService — verdict posting", () => {
+	function pluginEvent(verdict: "pass" | "fail") {
+		return {
+			type: "task_complete",
+			sessionId: `sess-${verdict}`,
+			data: {
+				originRoomId: "room-42",
+				label: "create-view:habit-tracker",
+				workdir: "/repo/plugins/plugin-habit-tracker",
+				summary: verdict === "fail" ? "tsc error in src/index.ts" : undefined,
+				verification: {
+					source: "custom-validator",
+					verdict,
+					validator: { service: "app-verification", method: "verifyPlugin" },
+					params: {
+						pluginName: "plugin-habit-tracker",
+						workdir: "/repo/plugins/plugin-habit-tracker",
+						profile: "full",
+					},
+				},
+			},
+		};
+	}
+
+	it("posts a verifyPlugin pass verdict without advertising reinject", async () => {
+		const coordinator = makeCoordinator();
+		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
+		const service = await VerificationRoomBridgeService.start(runtime);
+
+		coordinator.__emit(pluginEvent("pass"));
+		await Promise.resolve();
+
+		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+		const [memory, table] = (
+			runtime.createMemory as ReturnType<typeof vi.fn>
+		).mock.calls[0];
+		expect(table).toBe("messages");
+		expect(memory.roomId).toBe("room-42");
+		const text = memory.content.text as string;
+		expect(text).toContain("plugin-habit-tracker plugin built and verified");
+		expect(text).not.toContain("reinject");
+		expect(text).toContain("Reload the agent");
+		expect(memory.content.metadata).toMatchObject({ verdict: "pass" });
+
+		await service.stop();
+	});
+
+	it("posts a verifyPlugin fail verdict with the failure summary", async () => {
+		const coordinator = makeCoordinator();
+		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
+		const service = await VerificationRoomBridgeService.start(runtime);
+
+		coordinator.__emit(pluginEvent("fail"));
+		await Promise.resolve();
+
+		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+		const [memory] = (runtime.createMemory as ReturnType<typeof vi.fn>).mock
+			.calls[0];
+		const text = memory.content.text as string;
+		expect(text).toContain("tsc error in src/index.ts");
+		expect(memory.content.metadata).toMatchObject({ verdict: "fail" });
+
+		await service.stop();
+	});
+
+	it("drops a verdict event missing the validator params (no targetName)", async () => {
+		const coordinator = makeCoordinator();
+		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
+		const service = await VerificationRoomBridgeService.start(runtime);
+
+		const event = pluginEvent("pass");
+		// biome-ignore lint/performance/noDelete: test mutation
+		delete (event.data.verification as { params?: unknown }).params;
+		coordinator.__emit(event);
+		await Promise.resolve();
+
+		expect(runtime.createMemory).not.toHaveBeenCalled();
+		await service.stop();
+	});
+});
