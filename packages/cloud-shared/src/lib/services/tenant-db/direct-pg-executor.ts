@@ -20,7 +20,7 @@ export class DirectPgExecutor implements TenantDbSqlExecutor {
     this.adminDsn = adminDsn;
   }
 
-  private async run(connectionString: string, statements: readonly string[]): Promise<void> {
+  private async connect(connectionString: string): Promise<Client> {
     // The apps tenant Postgres is a self-managed node on the PRIVATE apps
     // network (10.30.x), provisioned with a self-signed cert. Current `pg`
     // parses `sslmode=require` in the DSN as `verify-full` and rejects the
@@ -40,6 +40,11 @@ export class DirectPgExecutor implements TenantDbSqlExecutor {
       ssl: { rejectUnauthorized: false },
     });
     await client.connect();
+    return client;
+  }
+
+  private async run(connectionString: string, statements: readonly string[]): Promise<void> {
+    const client = await this.connect(connectionString);
     try {
       for (const sql of statements) {
         await client.query(sql);
@@ -57,5 +62,17 @@ export class DirectPgExecutor implements TenantDbSqlExecutor {
     const url = new URL(this.adminDsn);
     url.pathname = `/${encodeURIComponent(dbName)}`;
     await this.run(url.toString(), statements);
+  }
+
+  async databaseExists(dbName: string): Promise<boolean> {
+    // `pg_database` is a shared catalog visible from the admin/maintenance
+    // connection, so no per-tenant connection is needed.
+    const client = await this.connect(this.adminDsn);
+    try {
+      const result = await client.query("SELECT 1 FROM pg_database WHERE datname = $1", [dbName]);
+      return (result.rowCount ?? 0) > 0;
+    } finally {
+      await client.end();
+    }
   }
 }
