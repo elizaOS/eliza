@@ -12,6 +12,7 @@ const profile = {
 };
 
 const hasInverse = (lines: string[]) =>
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: matching the raw ANSI inverse-video escape sequence
   lines.some((l) => /\x1b\[[0-9;]*7[;m]/.test(l));
 
 describe("tui interaction — keyboard focus + activation", () => {

@@ -1,6 +1,12 @@
 import * as http from "node:http";
 import { Socket } from "node:net";
-import { SETTINGS_SECTION_META, TAB_PATHS } from "@elizaos/ui/navigation";
+// Import SETTINGS_SECTION_META from its canonical source module (the same file
+// dev-route-catalog.ts documents as the source of truth) rather than the
+// navigation barrel: tsgo does not propagate this re-exported value through the
+// compiled barrel .d.ts across packages, and the source module is where the data
+// actually lives.
+import { SETTINGS_SECTION_META } from "@elizaos/ui/components/settings/settings-section-meta";
+import { TAB_PATHS } from "@elizaos/ui/navigation";
 import {
   afterEach,
   beforeAll,

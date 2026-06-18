@@ -233,6 +233,12 @@ export * from "./elizacloud/index.js";
 // @elizaos/plugin-personal-assistant.
 export * from "./email-classification/index.js";
 export * from "./env-utils.js";
+export * from "./events/index.js";
+export * from "./format-error.js";
+// Knowledge-graph primitives — canonical Entity/Relationship types + the
+// identity-merge engine. Dependency-free; the DB-backed stores stay in
+// @elizaos/plugin-personal-assistant.
+export * from "./knowledge-graph/index.js";
 // LifeOps service constants — canonical constant tables for the
 // personal-assistant scheduled-task / reminder / connector pipelines. Depends
 // only on the LifeOps contract types; consumed by
@@ -243,12 +249,6 @@ export * from "./lifeops-constants/index.js";
 // on @elizaos/core and the LifeOps contract types/constants; consumed by
 // @elizaos/plugin-personal-assistant via thin re-export shims.
 export * from "./lifeops-normalize/index.js";
-export * from "./events/index.js";
-export * from "./format-error.js";
-// Knowledge-graph primitives — canonical Entity/Relationship types + the
-// identity-merge engine. Dependency-free; the DB-backed stores stay in
-// @elizaos/plugin-personal-assistant.
-export * from "./knowledge-graph/index.js";
 // Local-inference shared subset (types, paths, routing-preferences, verify).
 // Server runtime (KV cache, llama-server lifecycle, etc.) stays in @elizaos/app-core.
 export * from "./local-inference/index.js";

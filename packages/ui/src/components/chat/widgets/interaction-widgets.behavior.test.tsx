@@ -8,13 +8,7 @@
  * logic (validation, single-decision locking, custom input) runs for real.
  */
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  within,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChoiceWidget } from "./ChoiceWidget";
 import type { FormRequestSpec } from "./form-request";

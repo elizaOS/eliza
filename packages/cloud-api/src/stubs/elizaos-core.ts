@@ -241,7 +241,8 @@ export function parseJsonModelRecord<
   if (candidate.length === 0) return null;
   try {
     const parsed = JSON.parse(candidate);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+      return null;
     return parsed as T;
   } catch {
     return null;

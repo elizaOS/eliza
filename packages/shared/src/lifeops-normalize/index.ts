@@ -8,5 +8,5 @@
  */
 
 export * from "./service-error.js";
-export * from "./time-zone.js";
 export * from "./service-normalize.js";
+export * from "./time-zone.js";
