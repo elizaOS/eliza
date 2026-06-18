@@ -1,0 +1,188 @@
+# HyperliquidBench — publishable live harness runs
+#
+# Runs the HyperliquidBench live harness (eliza / hermes / openclaw) against a
+# real Hyperliquid network so the resulting rows are publishable (demo-mode rows
+# are intentionally rejected by the publishability gate). This is the only path
+# that produces release-comparable Hyperliquid numbers.
+#
+# OPERATOR PREREQUISITE: add an `HL_PRIVATE_KEY` repo secret holding the funded
+# signing key for the chosen network (testnet recommended; mainnet trades real
+# funds). With no secret configured this workflow SKIPS GRACEFULLY — it never
+# fails CI when the key is absent.
+#
+# Manual trigger only (workflow_dispatch). Live trading must be an explicit
+# operator decision, so there is deliberately no schedule.
+#
+# Required repo secret (self-documented):
+#   HL_PRIVATE_KEY        — Hyperliquid signing key (0x...) for --no-demo runs.
+# Optional repo secret:
+#   CEREBRAS_API_KEY      — gpt-oss-120b plan generation for the eliza/hermes/
+#                           openclaw harnesses. Without it the harnesses cannot
+#                           generate live plans; the run still skips when the
+#                           private key is absent.
+
+name: HyperliquidBench (live)
+
+on:
+  workflow_dispatch:
+    inputs:
+      network:
+        description: "Hyperliquid network for live execution"
+        required: false
+        type: choice
+        default: "testnet"
+        options:
+          - testnet
+          - mainnet
+      provider:
+        description: "Model provider for plan generation"
+        required: false
+        type: string
+        default: "cerebras"
+      model:
+        description: "Model name for plan generation"
+        required: false
+        type: string
+        default: "gpt-oss-120b"
+
+concurrency:
+  group: hyperliquid-bench-live-${{ github.ref }}
+  cancel-in-progress: false
+
+# Default to least privilege.
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  BUN_VERSION: "canary"
+  NODE_VERSION: "24"
+  HL_DIR: packages/benchmarks/HyperliquidBench
+
+jobs:
+  live-bench:
+    name: live-bench
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      HL_PRIVATE_KEY: ${{ secrets.HL_PRIVATE_KEY }}
+      CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+    steps:
+      # ------------------------------------------------------------------
+      # Gate: skip everything (exit 0) when HL_PRIVATE_KEY is unset, so this
+      # workflow never fails CI when the secret is not configured. Mirrors the
+      # `can_publish` guard in snap-publish.yml and the live-bench skip in
+      # lifeops-bench-python.yml.
+      # ------------------------------------------------------------------
+      - name: Check HL_PRIVATE_KEY secret
+        id: gate
+        run: |
+          if [ -z "${HL_PRIVATE_KEY:-}" ]; then
+            echo "::notice::HyperliquidBench live run skipped — HL_PRIVATE_KEY is not configured. Add it as a repo secret to enable publishable live runs."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Setup Python
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Setup Node.js
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        if: steps.gate.outputs.skip != 'true'
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+
+      - name: Install Rust toolchain
+        if: steps.gate.outputs.skip != 'true'
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+        with:
+          toolchain: stable
+
+      - name: Cache cargo registry
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/benchmarks/HyperliquidBench/target
+          key: ${{ runner.os }}-cargo-hyperliquid-${{ hashFiles('packages/benchmarks/HyperliquidBench/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-hyperliquid-
+
+      - name: Build HyperliquidBench Rust crates
+        if: steps.gate.outputs.skip != 'true'
+        working-directory: ${{ env.HL_DIR }}
+        run: cargo build --release -p hl-runner -p hl-evaluator
+
+      # ------------------------------------------------------------------
+      # The orchestrator package is `benchmarks` under `packages/`, so the
+      # module is invoked as `python -m benchmarks.orchestrator` with
+      # `PYTHONPATH=packages` from the repo root.
+      # ------------------------------------------------------------------
+      - name: Validate runtime gates
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -e
+          PYTHONPATH=packages python -m benchmarks.orchestrator validate-runtime-gates --json
+
+      - name: Run HyperliquidBench live harnesses (no demo)
+        if: steps.gate.outputs.skip != 'true'
+        id: run
+        env:
+          NETWORK: ${{ inputs.network || 'testnet' }}
+          PROVIDER: ${{ inputs.provider || 'cerebras' }}
+          MODEL: ${{ inputs.model || 'gpt-oss-120b' }}
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -e
+          PYTHONPATH=packages python -m benchmarks.orchestrator run \
+            --benchmarks hyperliquid_bench \
+            --all-harnesses \
+            --provider "$PROVIDER" \
+            --model "$MODEL" \
+            --extra "{\"no_demo\": true, \"network\": \"$NETWORK\"}" \
+            --force \
+            --show-incompatible \
+            2>&1 | tee hyperliquid-live.log
+
+      - name: Validate latest publishability (rejects any demo rows)
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -e
+          PYTHONPATH=packages python -m benchmarks.orchestrator validate-latest-publishability \
+            --include-benchmarks hyperliquid_bench
+
+      - name: Upload live artifacts
+        if: always() && steps.gate.outputs.skip != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: hyperliquid-bench-live-${{ github.run_id }}
+          path: |
+            packages/benchmarks/benchmark_results/**
+            packages/benchmarks/HyperliquidBench/runs/**/hyperliquid_bench-*.json
+            hyperliquid-live.log
+          if-no-files-found: warn
+          retention-days: 90

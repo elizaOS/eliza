@@ -187,6 +187,80 @@ python -m benchmarks.orchestrator run \
 The normalized orchestrator path passes `--no-demo`; demo-mode Hyperliquid
 artifacts are intentionally rejected by the publishability gate.
 
+### Publishable live harness runs (testnet key + CI)
+
+Only live (`--no-demo`) rows are publishable. Demo-mode output is intentionally
+**unpublishable** — `validate-latest-publishability` rejects any row carrying
+demo/sample markers — so a real Hyperliquid signing key is the one hard
+requirement for a release-comparable run. The orchestrator enforces this with a
+runtime gate: `_has_hyperliquid_live_backend()` returns true iff `HL_PRIVATE_KEY`
+is set, and `validate-runtime-gates` fails (non-zero) for `hyperliquid_bench`
+when the key is absent.
+
+#### Get a Hyperliquid TESTNET key (low-risk)
+
+Run live execution on **testnet** first. Testnet keys are ephemeral and trade
+play funds, so a leaked or burned key costs nothing real; mainnet keys sign
+trades that move real funds.
+
+1. Open the Hyperliquid testnet UI: <https://app.hyperliquid-testnet.xyz>.
+2. Connect a fresh wallet (use a dedicated throwaway, never a personal mainnet
+   wallet) and fund it from the testnet faucet.
+3. Export the wallet's Ethereum private key (`0x…`). The runner signs requests
+   with this key via the Hyperliquid Rust SDK.
+
+Keep mainnet and testnet keys separate. `--network testnet` (the default for
+live runs here) maps to the Hyperliquid testnet base URLs; `--network mainnet`
+trades real funds.
+
+#### Local env path
+
+```bash
+# 1. Build the Rust execution crates once (required for live runs).
+cd packages/benchmarks/HyperliquidBench
+cargo build --release -p hl-runner -p hl-evaluator
+cd -
+
+# 2. Export the signing key (testnet) and the plan-generation provider key.
+export HL_PRIVATE_KEY=0x...        # testnet wallet private key
+export CEREBRAS_API_KEY=csk-...    # gpt-oss-120b plan generation
+
+# 3. Run the live harnesses (eliza, hermes, openclaw) with --no-demo,
+#    invoked from the repo root with PYTHONPATH=packages.
+PYTHONPATH=packages python -m benchmarks.orchestrator run \
+  --benchmarks hyperliquid_bench \
+  --all-harnesses \
+  --provider cerebras \
+  --model gpt-oss-120b \
+  --extra '{"no_demo": true, "network": "testnet"}' \
+  --force \
+  --show-incompatible
+
+# 4. Confirm the stored rows are publishable (rejects any demo row).
+PYTHONPATH=packages python -m benchmarks.orchestrator validate-latest-publishability \
+  --include-benchmarks hyperliquid_bench
+```
+
+`--extra '{"no_demo": true}'` is what flips the run to live execution; the
+`--demo` default (used whenever `HL_PRIVATE_KEY` is unset) produces rows the
+publishability gate discards.
+
+#### CI: `hyperliquid-bench-live.yml`
+
+The [`.github/workflows/hyperliquid-bench-live.yml`](../../../.github/workflows/hyperliquid-bench-live.yml)
+workflow runs exactly this pipeline (validate gates → live `--no-demo` run →
+publishability check) on manual dispatch.
+
+1. **Operator:** add `HL_PRIVATE_KEY` (and `CEREBRAS_API_KEY` for plan
+   generation) as GitHub **repo secrets**.
+2. Dispatch the **HyperliquidBench (live)** workflow (Actions tab → Run
+   workflow), choosing `network` (default `testnet`).
+
+With no `HL_PRIVATE_KEY` secret configured the workflow **skips gracefully**
+(emits a notice and exits 0) — it never fails CI when the key is unset. It is
+manual-dispatch only by design: live trading must be an explicit operator
+decision, never a scheduled run.
+
 #### Option B – Live network execution
 
 ```bash
