@@ -8,10 +8,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { EMAIL_TEMPLATES } from "./email-templates.generated";
-import {
-  renderLowCreditsTemplate,
-  renderWelcomeTemplate,
-} from "./template-renderer";
+import { renderLowCreditsTemplate, renderWelcomeTemplate } from "./template-renderer";
 
 describe("email template renderer", () => {
   test("renders the low-credits email with interpolated data (no fs access)", () => {

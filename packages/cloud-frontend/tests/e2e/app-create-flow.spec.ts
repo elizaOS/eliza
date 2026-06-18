@@ -114,7 +114,7 @@ test("app: create dialog → check-name → POST /api/v1/apps → reveals API ke
     name: NEW_APP_NAME,
     app_url: NEW_APP_URL,
   });
-  await expect(
-    dialog.locator(`input[value="${NEW_APP_KEY}"]`),
-  ).toBeVisible({ timeout: 10_000 });
+  await expect(dialog.locator(`input[value="${NEW_APP_KEY}"]`)).toBeVisible({
+    timeout: 10_000,
+  });
 });

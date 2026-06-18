@@ -48,7 +48,8 @@ test("app: Delete App row action sends DELETE for the app id", async ({
 
   await page.route("**/api/v1/apps/*", (route) => {
     if (route.request().method() === "DELETE") {
-      deletedId = new URL(route.request().url()).pathname.split("/").pop() ?? "";
+      deletedId =
+        new URL(route.request().url()).pathname.split("/").pop() ?? "";
       return route.fulfill({ json: { success: true } });
     }
     return route.fulfill({ json: { app: existingApp() } });

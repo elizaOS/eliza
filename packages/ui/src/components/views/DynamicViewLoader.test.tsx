@@ -637,7 +637,9 @@ describe("DynamicViewLoader", () => {
     // A render crash must not latch the ErrorBoundary forever: clicking Retry
     // evicts the cached module, bumps reloadKey (which re-keys the boundary so
     // its caught error clears), and re-imports — so a fixed bundle mounts.
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     const bundleUrl = "https://capability.example.test/assets/crashy.js";
     let importCount = 0;
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => {
@@ -658,9 +660,7 @@ describe("DynamicViewLoader", () => {
     // First import renders a component that throws → ErrorBoundary fallback.
     const retry = await screen.findByRole("button", { name: /retry/i });
     expect(screen.getByText("Failed to load view")).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: /back to views/i }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: /back to views/i })).toBeTruthy();
 
     await act(async () => {
       retry.click();

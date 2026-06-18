@@ -3,7 +3,6 @@
  */
 
 import { getEmailMessages, interpolateMessage } from "../messages";
-import { EMAIL_TEMPLATES } from "./email-templates.generated";
 import type {
   AutoTopUpDisabledEmailData,
   AutoTopUpSuccessEmailData,
@@ -13,6 +12,7 @@ import type {
   PurchaseConfirmationEmailData,
   WelcomeEmailData,
 } from "../types";
+import { EMAIL_TEMPLATES } from "./email-templates.generated";
 
 /**
  * Loads an email template file from disk.
