@@ -24,6 +24,11 @@ import { type IAgentRuntime, Service } from "@elizaos/core";
 import { AcpService } from "./acp-service.js";
 import { assignAgentName } from "./agent-name-assignment.js";
 import {
+  accountMetaFromSessionMetadata,
+  getCodingAccountBridge,
+  resolveCodingAccountStrategy,
+} from "./coding-account-selection.js";
+import {
   buildAutoVerifyCorrection,
   LLM_GOAL_VERIFIER_NAME,
   MAX_AUTO_VERIFY_ATTEMPTS,
@@ -56,6 +61,8 @@ import {
 import { OrchestratorTaskStore } from "./orchestrator-task-store.js";
 import {
   type CreateTaskInput,
+  type OrchestratorAccountAssignment,
+  type OrchestratorAccountOverview,
   type OrchestratorTaskDocument,
   type OrchestratorTaskRecord,
   type OrchestratorTaskSession,
@@ -604,6 +611,11 @@ export class OrchestratorTaskService extends Service {
       case "login_required":
         await this.store.updateSession(sessionId, { status: "blocked" });
         await this.advanceTaskStatus(taskId, "waiting_on_user");
+        await this.markSessionAccountUnhealthy(
+          sessionId,
+          "auth",
+          "login_required",
+        );
         break;
       case "task_complete": {
         const summary = str(record.response);
@@ -621,12 +633,27 @@ export class OrchestratorTaskService extends Service {
         void this.autoVerifyCompletion(taskId, sessionId, summary ?? "");
         break;
       }
-      case "error":
+      case "error": {
         await this.store.updateSession(sessionId, {
           status: "errored",
           stoppedAt: Date.now(),
         });
+        const failureKind = str(record.failureKind);
+        const message = str(record.message) ?? "";
+        if (
+          failureKind === "auth" ||
+          /401|403|invalid api key|unauthor/i.test(message)
+        ) {
+          await this.markSessionAccountUnhealthy(sessionId, "auth", message);
+        } else if (/429|rate.?limit|quota|overloaded/i.test(message)) {
+          await this.markSessionAccountUnhealthy(
+            sessionId,
+            "rate-limit",
+            message,
+          );
+        }
         break;
+      }
       case "stopped":
         await this.store.updateSession(sessionId, {
           status: "stopped",
@@ -661,6 +688,41 @@ export class OrchestratorTaskService extends Service {
     // `active` is the weakest signal: only promote into it from `open`.
     if (next === "active" && current !== "open") return;
     await this.store.updateTask(taskId, { status: next });
+  }
+
+  /**
+   * Flag the pooled account a sub-agent used as rate-limited or needing
+   * re-auth, so the pool's next least-used selection skips it. Best-effort and
+   * no-op when the session has no linked account or no pool bridge is present.
+   */
+  private async markSessionAccountUnhealthy(
+    sessionId: string,
+    reason: "auth" | "rate-limit",
+    detail?: string,
+  ): Promise<void> {
+    const found = await this.store.findSession(sessionId);
+    const session = found?.session;
+    if (!session?.accountProviderId || !session.accountId) return;
+    const bridge = getCodingAccountBridge();
+    if (!bridge) return;
+    try {
+      if (reason === "rate-limit") {
+        await bridge.markRateLimited(
+          session.accountProviderId,
+          session.accountId,
+          Date.now() + 5 * 60_000,
+          detail,
+        );
+      } else {
+        await bridge.markNeedsReauth(
+          session.accountProviderId,
+          session.accountId,
+          detail,
+        );
+      }
+    } catch {
+      // best-effort — account health is advisory for selection
+    }
   }
 
   private async recordUsage(
@@ -711,6 +773,24 @@ export class OrchestratorTaskService extends Service {
       costUsd: session.costUsd + (usage.costUsd ?? 0),
       usageState: usage.state,
     });
+
+    // Attribute the turn's tokens to the pooled account that served it, so the
+    // pool's least-used selection and the per-account usage counters reflect
+    // real coding-agent spend (not just main-runtime inference).
+    if (session.accountProviderId && session.accountId) {
+      const turnTokens =
+        usage.inputTokens +
+        usage.outputTokens +
+        usage.reasoningTokens +
+        usage.cacheTokens;
+      void getCodingAccountBridge()
+        ?.recordUsage(session.accountProviderId, session.accountId, {
+          tokens: turnTokens,
+          ok: true,
+          ...(model ? { model } : {}),
+        })
+        .catch(() => undefined);
+    }
   }
 
   private async recordMessage(
@@ -1546,6 +1626,9 @@ export class OrchestratorTaskService extends Service {
       },
     });
 
+    const account = accountMetaFromSessionMetadata(
+      result.metadata as Record<string, unknown> | undefined,
+    );
     const ts = nowIso();
     const session: OrchestratorTaskSession = {
       id: randomUUID(),
@@ -1554,6 +1637,13 @@ export class OrchestratorTaskService extends Service {
       framework: result.agentType,
       providerSource: opts.providerSource ?? policy.providerSource,
       model: opts.model ?? policy.model,
+      ...(account
+        ? {
+            accountProviderId: account.providerId,
+            accountId: account.accountId,
+            accountLabel: account.label,
+          }
+        : {}),
       label: agentName,
       originalTask: opts.task ?? doc.task.goal,
       goalPrompt,
@@ -1691,6 +1781,54 @@ export class OrchestratorTaskService extends Service {
       usage: usageRows.length > 0 ? summarizeUsageRows(usageRows) : EMPTY_USAGE,
       byStatus,
     };
+  }
+
+  /**
+   * Accounts surface for the orchestrator dashboard: which pooled accounts can
+   * serve each coding-agent type, the active selection strategy, and the live
+   * map of running sub-agents → accounts (with each one's spend).
+   */
+  async getAccountOverview(): Promise<OrchestratorAccountOverview> {
+    const records = await this.store.listTasks({ includeArchived: false });
+    const docs = (
+      await Promise.all(records.map((record) => this.store.getTask(record.id)))
+    ).filter((doc): doc is OrchestratorTaskDocument => doc !== null);
+
+    const assignments: OrchestratorAccountAssignment[] = [];
+    for (const doc of docs) {
+      for (const session of doc.sessions) {
+        if (!session.accountId || !session.accountProviderId) continue;
+        assignments.push({
+          taskId: doc.task.id,
+          taskTitle: doc.task.title,
+          sessionId: session.sessionId,
+          label: session.label,
+          framework: session.framework,
+          status: session.status,
+          active: !TERMINAL_TASK_SESSION_STATUSES.has(session.status),
+          accountProviderId: session.accountProviderId,
+          accountId: session.accountId,
+          accountLabel: session.accountLabel ?? session.accountId,
+          inputTokens: session.inputTokens,
+          outputTokens: session.outputTokens,
+          reasoningTokens: session.reasoningTokens,
+          cacheTokens: session.cacheTokens,
+          costUsd: session.costUsd,
+          usageState: session.usageState,
+        });
+      }
+    }
+
+    const rawStrategy = this.runtime.getSetting?.(
+      "ELIZA_CODING_ACCOUNT_STRATEGY",
+    );
+    const strategy =
+      resolveCodingAccountStrategy(
+        typeof rawStrategy === "string" ? rawStrategy : undefined,
+      ) ?? "least-used";
+    const availability = getCodingAccountBridge()?.describe() ?? {};
+
+    return { strategy, availability, assignments };
   }
 
   async pauseAll(): Promise<number> {

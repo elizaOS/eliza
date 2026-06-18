@@ -1,0 +1,137 @@
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { saveAccount } from "@elizaos/agent/auth/account-storage";
+import type { AccountCredentialProvider } from "@elizaos/agent/auth/types";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  __resetDefaultAccountPoolForTests,
+  getDefaultAccountPool,
+} from "./account-pool.js";
+import { getCodingAgentSelectorBridge } from "./coding-account-bridge.js";
+
+const FAR_FUTURE = Date.now() + 10 * 365 * 24 * 60 * 60 * 1000;
+let home: string;
+let prevHome: string | undefined;
+
+function writeAccount(
+  providerId: AccountCredentialProvider,
+  id: string,
+  access: string,
+  extra: { organizationId?: string } = {},
+): void {
+  saveAccount({
+    id,
+    providerId,
+    label: id,
+    source: "oauth",
+    credentials: { access, refresh: `${access}-refresh`, expires: FAR_FUTURE },
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    ...extra,
+  });
+}
+
+async function setUsage(
+  providerId: AccountCredentialProvider,
+  id: string,
+  sessionPct: number,
+): Promise<void> {
+  const pool = getDefaultAccountPool();
+  const account = pool.list(providerId as never).find((a) => a.id === id);
+  if (!account) throw new Error(`no account ${id}`);
+  await pool.upsert({
+    ...account,
+    usage: { sessionPct, refreshedAt: Date.now() },
+  });
+}
+
+beforeEach(() => {
+  prevHome = process.env.ELIZA_HOME;
+  home = mkdtempSync(path.join(tmpdir(), "coding-acct-"));
+  process.env.ELIZA_HOME = home;
+  __resetDefaultAccountPoolForTests();
+});
+
+afterEach(() => {
+  __resetDefaultAccountPoolForTests();
+  if (prevHome === undefined) delete process.env.ELIZA_HOME;
+  else process.env.ELIZA_HOME = prevHome;
+  rmSync(home, { recursive: true, force: true });
+});
+
+describe("coding-account-bridge", () => {
+  it("selects the least-used Claude subscription and returns CLAUDE_CODE_OAUTH_TOKEN", async () => {
+    writeAccount("anthropic-subscription", "busy", "sk-ant-oat-BUSY");
+    writeAccount("anthropic-subscription", "idle", "sk-ant-oat-IDLE");
+    getDefaultAccountPool();
+    await setUsage("anthropic-subscription", "busy", 90);
+    await setUsage("anthropic-subscription", "idle", 5);
+
+    const bridge = getCodingAgentSelectorBridge();
+    expect(bridge).not.toBeNull();
+    const sel = await bridge?.select("claude", { strategy: "least-used" });
+    expect(sel?.providerId).toBe("anthropic-subscription");
+    expect(sel?.accountId).toBe("idle");
+    expect(sel?.envPatch.CLAUDE_CODE_OAUTH_TOKEN).toBe("sk-ant-oat-IDLE");
+    expect(sel?.source).toBe("oauth");
+  });
+
+  it("materializes a per-account CODEX_HOME/auth.json for Codex", async () => {
+    writeAccount("openai-codex", "codex-1", "codex-access-1", {
+      organizationId: "acct_123",
+    });
+    const bridge = getDefaultAccountPool() && getCodingAgentSelectorBridge();
+    const sel = await bridge?.select("codex");
+    expect(sel?.providerId).toBe("openai-codex");
+    const codexHome = sel?.envPatch.CODEX_HOME;
+    expect(codexHome).toBeTruthy();
+    const authJson = JSON.parse(
+      readFileSync(path.join(codexHome as string, "auth.json"), "utf-8"),
+    );
+    expect(authJson.tokens.access_token).toBe("codex-access-1");
+    expect(authJson.tokens.account_id).toBe("acct_123");
+    expect(authJson.auth_mode).toBe("chatgpt");
+  });
+
+  it("returns null when no accounts are linked (single-account fallback)", async () => {
+    const bridge = getDefaultAccountPool() && getCodingAgentSelectorBridge();
+    expect(await bridge?.select("claude")).toBeNull();
+  });
+
+  it("skips a rate-limited account on the next selection", async () => {
+    writeAccount("anthropic-subscription", "a", "tok-a");
+    writeAccount("anthropic-subscription", "b", "tok-b");
+    const pool = getDefaultAccountPool();
+    const bridge = getCodingAgentSelectorBridge();
+    // Force "a" out: rate-limit it well into the future.
+    await bridge?.markRateLimited(
+      "anthropic-subscription",
+      "a",
+      Date.now() + 60 * 60 * 1000,
+      "429",
+    );
+    const sel = await bridge?.select("claude", { strategy: "priority" });
+    expect(sel?.accountId).toBe("b");
+    expect(
+      pool.list("anthropic-subscription").find((x) => x.id === "a")?.health,
+    ).toBe("rate-limited");
+  });
+
+  it("describe() reports per-agent provider availability", async () => {
+    writeAccount("anthropic-subscription", "c1", "t1");
+    writeAccount("openai-codex", "x1", "t2");
+    getDefaultAccountPool();
+    const desc = getCodingAgentSelectorBridge()?.describe() ?? {};
+    expect(
+      desc.claude?.some(
+        (p) => p.providerId === "anthropic-subscription" && p.enabled === 1,
+      ),
+    ).toBe(true);
+    expect(
+      desc.codex?.some(
+        (p) => p.providerId === "openai-codex" && p.enabled === 1,
+      ),
+    ).toBe(true);
+  });
+});

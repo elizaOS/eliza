@@ -57,6 +57,9 @@ export interface TaskSessionDto {
   framework: string;
   providerSource: string | null;
   model: string | null;
+  accountProviderId: string | null;
+  accountId: string | null;
+  accountLabel: string | null;
   label: string;
   originalTask: string;
   workdir: string;
@@ -423,6 +426,9 @@ export function toTaskThreadDetail(
       framework: session.framework,
       providerSource: session.providerSource ?? null,
       model: session.model ?? null,
+      accountProviderId: session.accountProviderId ?? null,
+      accountId: session.accountId ?? null,
+      accountLabel: session.accountLabel ?? null,
       label: session.label,
       originalTask: session.originalTask,
       workdir: session.workdir,
