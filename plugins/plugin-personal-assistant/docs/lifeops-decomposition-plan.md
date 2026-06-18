@@ -421,6 +421,23 @@ not a blue violation; (2) calendar event-chip text can clip vertically — a har
 Tailwind-shim artifact (full theme present in the real app), not a view bug.
 Run: `node packages/app/test/view-screenshots/run.mjs`.
 
+### Session 2026-06-18 (round 11) — #20 slice 1: KG types+merge → @elizaos/shared
+`2ab980bd64` moved the PURE entity/relationship knowledge-graph TYPES + identity-
+MERGE engine PA→`@elizaos/shared/src/knowledge-graph/` (runtime-level primitive
+consumed by core/agent/all plugins), de-duplicating two dead `LifeOps*` mirrors
+(shared contracts + plugin-health contracts) → exactly one definition. PA's
+entities/relationships type+merge files are now re-export shims. Pure-code,
+additive, no DB/data/behavior change. Gates: shared no-PA-import + typecheck +
+776 tests + build; PA build:types exit 0; core typecheck + plugin-health
+build:types green; PA entity/merge behavior tests 44 pass.
+=> #20 is no longer 0% — the type/merge foundation is in the runtime layer.
+REMAINING #20 slices (harder, DB-backed + deep coupling, dedicated): EntityStore/
+RelationshipStore (raw SQL over app_lifeops) → a registered runtime service
+(@elizaos/agent) + ENTITY action/routes; rewire ~16 PA consumers; reconcile data
+ownership. Per owner: stores→runtime; viewer+extras→plugin-relationships (viewer
+already shipped). Distinct: core's environment Entity + plugin-relationships
+scaffold types are different concepts, left alone.
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
