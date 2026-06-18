@@ -19,7 +19,7 @@ from typing import Any
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-REPO = ROOT.parents[1]
+REPO = ROOT.parents[1] if len(ROOT.parents) > 1 else ROOT
 OLD_DEFAULT_CLAIM_BOUNDARY = (
     "generated_report_metadata_only_not_chip_boot_runtime_release_or_no_issues_evidence"
 )

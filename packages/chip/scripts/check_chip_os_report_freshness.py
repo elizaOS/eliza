@@ -13,7 +13,7 @@ from typing import Any
 import aggregate_tapeout_readiness as aggregate
 
 ROOT = Path(__file__).resolve().parents[1]
-REPO = ROOT.parents[1]
+REPO = ROOT.parents[1] if len(ROOT.parents) > 1 else ROOT
 REPORT = ROOT / "build/reports/chip-os-report-freshness.json"
 
 SCHEMA = "eliza.chip_os_report_freshness.v1"

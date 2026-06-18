@@ -15,7 +15,7 @@ from typing import Any
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-REPO_ROOT = ROOT.parents[1]
+REPO_ROOT = ROOT.parents[1] if len(ROOT.parents) > 1 else ROOT
 REPORT_DATE = "2026-05-22"
 
 DEFAULT_OUTBOUND_MANIFEST = (

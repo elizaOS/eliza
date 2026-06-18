@@ -17,7 +17,7 @@ from typing import Any
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-REPO_ROOT = ROOT.parents[1]
+REPO_ROOT = ROOT.parents[1] if len(ROOT.parents) > 1 else ROOT
 DEFAULT_BURNDOWN = ROOT / "board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml"
 DEFAULT_REPORT = (
     ROOT / "board/kicad/e1-phone/production/readiness/"

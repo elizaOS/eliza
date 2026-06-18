@@ -37,7 +37,7 @@ from typing import Any
 from jsonschema import Draft202012Validator
 
 ROOT = Path(__file__).resolve().parents[1]
-REPO_ROOT = ROOT.parents[1]
+REPO_ROOT = ROOT.parents[1] if len(ROOT.parents) > 1 else ROOT
 DEFAULT_MANIFEST = ROOT / "sw/confidential/e1-elizaos-linux.manifest.json"
 OS_SCHEMA = REPO_ROOT / "packages/os/release/schema/confidential-image-manifest.schema.json"
 OUT = ROOT / "build/reports/tee_image_manifest.json"

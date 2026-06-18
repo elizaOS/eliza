@@ -26,7 +26,7 @@ import check_radio_sensor_pmic_scope
 import check_security_lifecycle_scope
 
 ROOT = Path(__file__).resolve().parents[1]
-REPO_ROOT = ROOT.parents[1]
+REPO_ROOT = ROOT.parents[1] if len(ROOT.parents) > 1 else ROOT
 REPORT = ROOT / "build/reports/phone_runtime_readiness_contract.json"
 ANDROID_APK_PAYLOAD_REPORT = ROOT / "build/reports/android_system_apk_payload.json"
 PLANNED_EVIDENCE_TEMPLATE_MANIFEST = (
