@@ -1601,6 +1601,23 @@ export class ElizaSandboxService {
     };
   }
 
+  /**
+   * Read the persisted turn history for a shared-runtime agent's room, keyed by
+   * the SAME stable channel id the bridge `message.send` path writes under — so
+   * the REST conversation adapter (cloud-api `.../agents/:id/api/*`) returns the
+   * exact transcript the bridge produced. `roomId` defaults to the agent id (the
+   * canonical single-conversation channel the adapter uses).
+   */
+  async getSharedConversationHistory(
+    agentId: string,
+    roomId?: string,
+  ): Promise<SharedTurnMessage[]> {
+    const channelId = this.stableBridgeChannelId(agentId, {
+      roomId: roomId ?? agentId,
+    });
+    return this.loadSharedRuntimeHistory(agentId, channelId);
+  }
+
   // Bridge
 
   async bridge(agentId: string, orgId: string, rpc: BridgeRequest): Promise<BridgeResponse> {
