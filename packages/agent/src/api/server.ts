@@ -2299,6 +2299,44 @@ async function handleRequest(
     return;
   }
 
+  // Unload a plugin previously live-loaded from a directory (the symmetric
+  // counterpart to load-from-directory). Directly-registered plugins are not
+  // known to the plugin-manager, so /api/plugins/uninstall can't remove them —
+  // this delegates to runtime.unloadPlugin, which also deregisters its views.
+  if (method === "POST" && pathname === "/api/plugins/unload-from-directory") {
+    if (!state.runtime) {
+      error(res, "Agent runtime is not available", 503);
+      return;
+    }
+    const body = await readJsonBody<{ pluginName?: unknown }>(req, res);
+    if (body === null) return;
+    const pluginName =
+      typeof body.pluginName === "string" ? body.pluginName.trim() : "";
+    if (!pluginName) {
+      error(res, "'pluginName' is required", 400);
+      return;
+    }
+    try {
+      const { unloadPluginFromDirectory } = await import(
+        "../runtime/load-plugin-from-directory.ts"
+      );
+      const result = await unloadPluginFromDirectory({
+        runtime: state.runtime as Parameters<
+          typeof unloadPluginFromDirectory
+        >[0]["runtime"],
+        pluginName,
+      });
+      json(res, { ok: result.unloaded, ...result });
+    } catch (err) {
+      json(
+        res,
+        { ok: false, error: err instanceof Error ? err.message : String(err) },
+        422,
+      );
+    }
+    return;
+  }
+
   if (
     pathname === "/api/plugins" ||
     pathname.startsWith("/api/plugins/") ||
