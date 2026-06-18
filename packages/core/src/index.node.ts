@@ -245,6 +245,7 @@ export * from "./secrets";
 // Export security utilities
 export * from "./security";
 export * from "./sensitive-request-policy";
+export * from "./messaging/interactions";
 export * from "./sensitive-requests";
 export * from "./services";
 export * from "./services/agentEvent";

@@ -11,9 +11,9 @@ import { ApplicationCommandOptionType } from "discord.js";
 import { getPreset, listPresets } from "./actions/setup-credentials";
 import type { DiscordSlashCommand } from "./types";
 
-type SlashCommandRole = "OWNER" | "ADMIN" | "USER" | "GUEST";
+export type SlashCommandRole = "OWNER" | "ADMIN" | "USER" | "GUEST";
 
-interface SlashCommand {
+export interface SlashCommand {
 	name: string;
 	description: string;
 	options?: SlashCommandOption[];
@@ -35,7 +35,7 @@ export interface SlashCommandContext {
 	roomId: string;
 }
 
-interface SlashCommandOption {
+export interface SlashCommandOption {
 	name: string;
 	description: string;
 	type: "string" | "number" | "boolean" | "user" | "channel" | "role";

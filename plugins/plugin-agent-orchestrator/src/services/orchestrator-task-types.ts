@@ -97,6 +97,13 @@ export interface OrchestratorTaskSession {
   framework: string;
   providerSource?: string;
   model?: string;
+  /** Linked-account provider id (e.g. `anthropic-subscription`) when the
+   * sub-agent was spawned against a specific pooled account. */
+  accountProviderId?: string;
+  /** Pooled account id this sub-agent authenticated as. */
+  accountId?: string;
+  /** Human label of the pooled account (e.g. "Work"). */
+  accountLabel?: string;
   label: string;
   originalTask: string;
   goalPrompt?: string;
@@ -125,6 +132,41 @@ export interface OrchestratorTaskSession {
   metadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
+}
+
+/** One coding sub-agent's binding to a pooled account, with its spend. */
+export interface OrchestratorAccountAssignment {
+  taskId: string;
+  taskTitle: string;
+  sessionId: string;
+  label: string;
+  framework: string;
+  status: string;
+  active: boolean;
+  accountProviderId: string;
+  accountId: string;
+  accountLabel: string;
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  cacheTokens: number;
+  costUsd: number;
+  usageState: UsageState;
+}
+
+export interface OrchestratorAccountProviderAvailability {
+  providerId: string;
+  total: number;
+  enabled: number;
+  healthy: number;
+}
+
+/** Accounts surface for the orchestrator dashboard: which accounts can serve
+ * which agent type, the active strategy, and the live sub-agent → account map. */
+export interface OrchestratorAccountOverview {
+  strategy: string;
+  availability: Record<string, OrchestratorAccountProviderAvailability[]>;
+  assignments: OrchestratorAccountAssignment[];
 }
 
 export interface OrchestratorTaskEvent {

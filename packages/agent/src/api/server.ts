@@ -331,6 +331,7 @@ import {
   handleBugReportRoutes,
   handleCharacterRoutes,
   handleCloudAndCoreRouteGroup,
+  handleCommandsRoutes,
   handleConfigRoutes,
   handleConnectorRoutes,
   handleConversationRouteGroup,
@@ -2308,6 +2309,58 @@ async function handleRequest(
     return;
   }
 
+  // Live-load a plugin from an on-disk directory into the running runtime. This
+  // is what makes a freshly scaffolded/edited local plugin (VIEWS/APP create)
+  // actually appear without an agent restart — its views register via
+  // runtime.registerPlugin. Must run BEFORE the generic /api/plugins/* handler.
+  if (method === "POST" && pathname === "/api/plugins/load-from-directory") {
+    const { isLocalCodeExecutionAllowed, buildStoreVariantBlockedMessage } =
+      await import("@elizaos/core");
+    if (!isLocalCodeExecutionAllowed()) {
+      error(res, buildStoreVariantBlockedMessage("Local plugin loading"), 403);
+      return;
+    }
+    if (!state.runtime) {
+      error(res, "Agent runtime is not available", 503);
+      return;
+    }
+    const body = await readJsonBody<{ directory?: unknown; entry?: unknown }>(
+      req,
+      res,
+    );
+    if (body === null) return;
+    const directory =
+      typeof body.directory === "string" ? body.directory.trim() : "";
+    if (!directory || !path.isAbsolute(directory)) {
+      error(res, "'directory' must be an absolute path", 400);
+      return;
+    }
+    const entry = typeof body.entry === "string" ? body.entry : undefined;
+    try {
+      const { loadPluginFromDirectory } = await import(
+        "../runtime/load-plugin-from-directory.ts"
+      );
+      const result = await loadPluginFromDirectory({
+        runtime: state.runtime as Parameters<
+          typeof loadPluginFromDirectory
+        >[0]["runtime"],
+        directory,
+        ...(entry ? { entry } : {}),
+      });
+      json(res, { ok: true, ...result });
+    } catch (err) {
+      json(
+        res,
+        {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        422,
+      );
+    }
+    return;
+  }
+
   if (
     pathname === "/api/plugins" ||
     pathname.startsWith("/api/plugins/") ||
@@ -2993,6 +3046,22 @@ async function handleRequest(
     ) {
       return;
     }
+  }
+
+  // ── Slash-command catalog (/api/commands) ─────────────────────────────────
+  if (
+    await handleCommandsRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      json,
+      error,
+      runtime: state.runtime,
+    })
+  ) {
+    return;
   }
 
   // ── Prompt suggestions (/api/suggestions) ─────────────────────────────────

@@ -25,6 +25,8 @@ export type ChoiceWidgetProps = {
   scope: string;
   options: ChoiceOption[];
   onChoose: (value: string) => void;
+  /** When true, offer an "Other…" affordance so the user can type their own answer. */
+  allowCustom?: boolean;
 };
 
 function isCancelLike(value: string, label: string): boolean {
@@ -38,8 +40,11 @@ export function ChoiceWidget({
   scope,
   options,
   onChoose,
+  allowCustom = false,
 }: ChoiceWidgetProps) {
   const [selected, setSelected] = useState<ChoiceOption | null>(null);
+  const [customMode, setCustomMode] = useState(false);
+  const [customText, setCustomText] = useState("");
 
   const handleChoose = useCallback(
     (option: ChoiceOption) => {
@@ -50,7 +55,15 @@ export function ChoiceWidget({
     [onChoose, selected],
   );
 
-  if (options.length === 0) return null;
+  const submitCustom = useCallback(() => {
+    const value = customText.trim();
+    if (!value || selected) return;
+    const option = { value, label: value };
+    setSelected(option);
+    onChoose(value);
+  }, [customText, onChoose, selected]);
+
+  if (options.length === 0 && !allowCustom) return null;
 
   return (
     <fieldset
@@ -91,6 +104,51 @@ export function ChoiceWidget({
           </Button>
         );
       })}
+      {allowCustom && !selected ? (
+        customMode ? (
+          <span className="inline-flex items-center gap-1">
+            <input
+              type="text"
+              aria-label="Your own answer"
+              data-testid="choice-custom-input"
+              value={customText}
+              placeholder="Type your answer…"
+              className="h-7 min-w-40 rounded-md border border-border bg-transparent px-2 text-xs outline-none focus:border-accent"
+              onChange={(e) => setCustomText(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  submitCustom();
+                }
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              data-testid="choice-custom-send"
+              aria-label="Send your answer"
+              disabled={customText.trim().length === 0}
+              className="h-7 px-3 text-xs disabled:opacity-40"
+              onClick={submitCustom}
+            >
+              Send
+            </Button>
+          </span>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            data-testid="choice-custom-open"
+            aria-label="Other"
+            className="h-7 px-3 text-xs"
+            onClick={() => setCustomMode(true)}
+          >
+            Other…
+          </Button>
+        )
+      ) : null}
       {selected ? (
         <span className="text-2xs text-muted" role="status">
           Selected: {selected.label}

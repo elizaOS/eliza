@@ -154,6 +154,16 @@
       "import": "./dist/genui/index.js",
       "default": "./dist/genui/index.js"
     },
+    "./spatial": {
+      "types": "./dist/spatial/index.d.ts",
+      "import": "./dist/spatial/index.js",
+      "default": "./dist/spatial/index.js"
+    },
+    "./spatial/tui": {
+      "types": "./dist/spatial/tui/index.d.ts",
+      "import": "./dist/spatial/tui/index.js",
+      "default": "./dist/spatial/tui/index.js"
+    },
     "./first-run/*": {
       "types": "./dist/first-run/*.d.ts",
       "import": "./dist/first-run/*.js",
@@ -259,6 +269,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/logger": "workspace:*",
     "@elizaos/shared": "workspace:*",
+    "@elizaos/tui": "workspace:*",
     "@fontsource/poppins": "^5.2.7",
     "@json-render/core": "0.19.0",
     "@json-render/react": "0.19.0",

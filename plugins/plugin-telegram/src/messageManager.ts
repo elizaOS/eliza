@@ -3,6 +3,7 @@ import {
   ChannelType,
   type Content,
   createUniqueUuid,
+  decodeCallback,
   EventType,
   type HandlerCallback,
   type IAgentRuntime,
@@ -18,12 +19,14 @@ import {
 import type {
   Chat,
   Document,
+  InlineKeyboardButton,
   Message,
   ReactionType,
   Update,
 } from "@telegraf/types";
 import type { Context, NarrowedContext, Telegraf } from "telegraf";
 import { Markup } from "telegraf";
+import { renderTelegramInteractions } from "./interactions";
 import {
   type TelegramContent,
   TelegramEventTypes,
@@ -579,7 +582,11 @@ export class MessageManager {
       );
       return [];
     } else {
-      const chunks = this.splitMessage(content.text ?? "");
+      // Project any interactive blocks (choices, task cards, …) the agent
+      // embedded in the text onto native inline keyboards, and send the prose
+      // with the markers stripped. Plain replies pass through unchanged.
+      const rendered = renderTelegramInteractions(content);
+      const chunks = this.splitMessage(rendered.text);
       const sentMessages: Message.TextMessage[] = [];
 
       const telegramButtons = convertToTelegramButtons(content.buttons ?? []);
@@ -602,6 +609,19 @@ export class MessageManager {
           );
           continue;
         }
+        // Interaction controls go on the final chunk only; explicit
+        // `content.buttons` keep their existing per-chunk behavior.
+        const isLast = i === chunks.length - 1;
+        const keyboardRows: InlineKeyboardButton[][] = [];
+        if (isLast && rendered.keyboardRows.length > 0) {
+          keyboardRows.push(...rendered.keyboardRows);
+        }
+        if (telegramButtons.length > 0) keyboardRows.push(telegramButtons);
+        const replyMarkup =
+          keyboardRows.length > 0
+            ? Markup.inlineKeyboard(keyboardRows).reply_markup
+            : undefined;
+
         const sentMessage = (await ctx.telegram.sendMessage(
           ctx.chat.id,
           chunk,
@@ -612,7 +632,7 @@ export class MessageManager {
                 : undefined,
             message_thread_id: messageThreadId,
             parse_mode: "MarkdownV2",
-            ...Markup.inlineKeyboard(telegramButtons),
+            reply_markup: replyMarkup,
           },
         )) as Message.TextMessage;
 
@@ -772,9 +792,17 @@ export class MessageManager {
   /**
    * Handle incoming messages from Telegram and process them accordingly.
    * @param {Context} ctx - The context object containing information about the message.
+   * @param {object} [options] - Handling options.
+   * @param {boolean} [options.forceReply] - When true, always route the message
+   *   through the agent and force a reply, bypassing the TELEGRAM_AUTO_REPLY gate.
+   *   Used for explicit slash-command invocations where the user intent to get a
+   *   response is unambiguous.
    * @returns {Promise<void>}
    */
-  public async handleMessage(ctx: Context): Promise<void> {
+  public async handleMessage(
+    ctx: Context,
+    options?: { forceReply?: boolean },
+  ): Promise<void> {
     if (!ctx.message || !ctx.from) {
       return;
     }
@@ -1005,14 +1033,18 @@ export class MessageManager {
       // Inbound messages are always persisted to memory above. The agent only
       // auto-generates a reply when TELEGRAM_AUTO_REPLY is explicitly enabled —
       // default-off prevents the runtime from speaking on the user's behalf.
+      // A forced reply (explicit slash-command invocation) always routes to the
+      // agent regardless of the auto-reply gate, since the user explicitly asked
+      // for a response by typing a command.
       const telegramAutoReplyRaw = this.runtime.getSetting(
         "TELEGRAM_AUTO_REPLY",
       );
       const telegramAutoReply =
         !lifeOpsPassiveConnectorsEnabled(this.runtime) &&
         (telegramAutoReplyRaw === true || telegramAutoReplyRaw === "true");
+      const shouldReply = options?.forceReply === true || telegramAutoReply;
 
-      if (!telegramAutoReply) {
+      if (!shouldReply) {
         try {
           await this.runtime.createMemory(memory, "messages");
         } catch (persistError) {
@@ -1060,6 +1092,142 @@ export class MessageManager {
         "Error handling Telegram message",
       );
       throw error;
+    }
+  }
+
+  /**
+   * Handle an inline-keyboard button tap whose payload was produced by the
+   * shared interaction codec (a choice or followup answer). The chosen value is
+   * replayed as an ordinary user turn — mirroring the dashboard's "send the
+   * chosen value as a message" behavior — so downstream routing (choice scopes,
+   * orchestrator turns) is identical across surfaces. Foreign callbacks are
+   * acknowledged and ignored.
+   */
+  public async handleCallbackQuery(
+    ctx: NarrowedContext<Context<Update>, Update.CallbackQueryUpdate>,
+  ): Promise<void> {
+    const query = ctx.callbackQuery;
+    const data =
+      query && "data" in query && typeof query.data === "string"
+        ? query.data
+        : undefined;
+    const decoded = decodeCallback(data);
+
+    // Always acknowledge so Telegram clears the button's loading spinner.
+    try {
+      await ctx.answerCbQuery();
+    } catch {
+      // best-effort: a stale callback may already have expired
+    }
+    if (!decoded || !ctx.from || !query?.message) return;
+
+    const sourceMessage = query.message;
+    const chat = sourceMessage.chat as Chat;
+    const telegramUserId = ctx.from.id.toString();
+    const entityId = createUniqueUuid(
+      this.runtime,
+      this.scopedTelegramKey(telegramUserId),
+    ) as UUID;
+
+    const threadId =
+      "is_topic_message" in sourceMessage && sourceMessage.is_topic_message
+        ? sourceMessage.message_thread_id?.toString()
+        : undefined;
+    const telegramChatId = chat.id.toString();
+    const telegramRoomid = threadId
+      ? `${telegramChatId}-${threadId}`
+      : telegramChatId;
+    const roomId = createUniqueUuid(
+      this.runtime,
+      this.scopedTelegramKey(telegramRoomid),
+    ) as UUID;
+    const worldId = createUniqueUuid(
+      this.runtime,
+      this.scopedTelegramKey(telegramChatId),
+    ) as UUID;
+    // Derive the turn id from the unique callback-query id so it never collides
+    // with the bot message the buttons were attached to.
+    const callbackKey = `cbq-${query.id}`;
+    const messageId = createUniqueUuid(
+      this.runtime,
+      this.scopedTelegramKey(callbackKey),
+    );
+    const channelType = getChannelType(chat);
+
+    await this.runtime.ensureConnection({
+      entityId,
+      roomId,
+      roomName: telegramRoomid,
+      userName: ctx.from.username,
+      name: ctx.from.first_name,
+      userId: telegramUserId as UUID,
+      source: "telegram",
+      channelId: telegramRoomid,
+      type: channelType,
+      worldId,
+      worldName: telegramRoomid,
+    });
+
+    const nowMs = Date.now();
+    const memory: Memory = {
+      id: messageId,
+      entityId,
+      agentId: this.runtime.agentId,
+      roomId,
+      content: {
+        text: decoded.value,
+        source: "telegram",
+        metadata: { accountId: this.accountId },
+        channelType,
+      },
+      metadata: {
+        type: "message",
+        source: "telegram",
+        accountId: this.accountId,
+        provider: "telegram",
+        timestamp: nowMs,
+        entityName: ctx.from.first_name,
+        entityUserName: ctx.from.username,
+        fromBot: false,
+        fromId: telegramUserId,
+        sourceId: entityId,
+        chatType: chat.type,
+        messageIdFull: callbackKey,
+        sender: {
+          id: telegramUserId,
+          name: ctx.from.first_name,
+          username: ctx.from.username,
+        },
+        telegram: {
+          chatId: telegramChatId,
+          messageId: callbackKey,
+          threadId,
+        },
+        telegramUserId,
+        telegramChatId,
+      } satisfies Memory["metadata"],
+      createdAt: nowMs,
+    };
+
+    const threadIdNum =
+      threadId && Number.isFinite(Number(threadId)) ? Number(threadId) : undefined;
+    const callback: HandlerCallback = async (content: Content) => {
+      if (!content.text) return [];
+      await this.sendMessageInChunks(
+        ctx,
+        content,
+        sourceMessage.message_id,
+        threadIdNum,
+      );
+      return [];
+    };
+
+    if (this.runtime.messageService) {
+      await this.runtime.messageService.handleMessage(
+        this.runtime,
+        memory,
+        callback,
+      );
     }
   }
 

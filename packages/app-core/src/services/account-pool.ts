@@ -51,6 +51,7 @@ import {
   pollCodexUsage,
   recordCall as recordUsageEntry,
 } from "./account-usage.js";
+import { installCodingAgentSelectorBridge } from "./coding-account-bridge.js";
 
 export type Strategy =
   | "priority"
@@ -767,6 +768,7 @@ export function getDefaultAccountPool(): AccountPool {
     });
     installAnthropicBridge(cachedDefaultPool);
     installSubscriptionSelectorBridge(cachedDefaultPool);
+    installCodingAgentSelectorBridge(cachedDefaultPool);
   }
   return cachedDefaultPool;
 }

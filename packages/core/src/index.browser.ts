@@ -99,6 +99,7 @@ export * from "./schemas/character";
 export { type BaseTables, buildBaseTables } from "./schemas/index";
 export * from "./search";
 export * from "./sensitive-request-policy";
+export * from "./messaging/interactions";
 export * from "./sensitive-requests";
 export * from "./services";
 export * from "./services/agentEvent";

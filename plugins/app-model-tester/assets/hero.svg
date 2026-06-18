@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="Model Tester">
+  <defs>
+    <linearGradient id="bg-model-tester" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#281d15"/>
+      <stop offset="1" stop-color="#19140b"/>
+    </linearGradient>
+    <radialGradient id="blobA-model-tester" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#da762f" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#da762f" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="blobB-model-tester" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#c3b128" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#c3b128" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="vig-model-tester" cx="0.5" cy="0.42" r="0.75">
+      <stop offset="0" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="0.72" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.5"/>
+    </radialGradient>
+    <linearGradient id="label-model-tester" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.55"/>
+    </linearGradient>
+    <filter id="soft-model-tester" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="46"/>
+    </filter>
+    <filter id="iglow-model-tester" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="0" stdDeviation="14" flood-color="#ed8b45" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" fill="url(#bg-model-tester)"/>
+
+  <g opacity="0.9">
+    <circle cx="232" cy="220" r="300" fill="url(#blobA-model-tester)" filter="url(#soft-model-tester)"/>
+    <circle cx="840" cy="800" r="340" fill="url(#blobB-model-tester)" filter="url(#soft-model-tester)"/>
+  </g>
+
+  <g stroke="#eadfd7" stroke-width="1.4" opacity="0.06">
+    <line x1="0" y1="256" x2="1024" y2="256"/>
+    <line x1="0" y1="512" x2="1024" y2="512"/>
+    <line x1="0" y1="768" x2="1024" y2="768"/>
+    <line x1="256" y1="0" x2="256" y2="1024"/>
+    <line x1="512" y1="0" x2="512" y2="1024"/>
+    <line x1="768" y1="0" x2="768" y2="1024"/>
+  </g>
+
+  <g opacity="0.5">
+    <path d="M120 470 A 400 400 0 0 1 904 470" fill="none" stroke="#ed8b45" stroke-width="3" opacity="0.35"/>
+  </g>
+
+  <g transform="translate(512 432)" filter="url(#iglow-model-tester)"
+     color="#eadfd7" stroke="#eadfd7" stroke-width="20"
+     stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <rect x="-110" y="-110" width="220" height="220" rx="28"/>
+    <rect x="-58" y="-58" width="116" height="116" rx="14"/>
+    <line x1="-110" y1="-66" x2="-150" y2="-66"/>
+    <line x1="-110" y1="0" x2="-150" y2="0"/>
+    <line x1="-110" y1="66" x2="-150" y2="66"/>
+    <line x1="110" y1="-66" x2="150" y2="-66"/>
+    <line x1="110" y1="0" x2="150" y2="0"/>
+    <line x1="110" y1="66" x2="150" y2="66"/>
+    <line x1="-66" y1="-110" x2="-66" y2="-150"/>
+    <line x1="0" y1="-110" x2="0" y2="-150"/>
+    <line x1="66" y1="-110" x2="66" y2="-150"/>
+    <line x1="-66" y1="110" x2="-66" y2="150"/>
+    <line x1="0" y1="110" x2="0" y2="150"/>
+    <line x1="66" y1="110" x2="66" y2="150"/>
+    <circle cx="0" cy="0" r="14" stroke-width="0" fill="currentColor"/>
+  </g>
+
+  <rect x="0" y="784" width="1024" height="240" fill="url(#label-model-tester)"/>
+  <text x="512" y="892" text-anchor="middle"
+        font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+        font-size="76" font-weight="600" letter-spacing="0.5"
+        fill="#eadfd7">Model Tester</text>
+  <rect x="460" y="924" width="104" height="6" rx="3" fill="#ed8b45"/>
+
+  <rect width="1024" height="1024" fill="url(#vig-model-tester)"/>
+</svg>

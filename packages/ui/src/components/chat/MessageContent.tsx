@@ -90,6 +90,7 @@ type Segment =
       id: string;
       scope: string;
       options: ChoiceOption[];
+      allowCustom: boolean;
     }
   | { kind: "followups"; id: string; options: FollowupOption[] }
   | { kind: "form"; form: FormRequestSpec }
@@ -379,6 +380,7 @@ function parseSegments(text: string, analysisMode: boolean): Segment[] {
         id: choice.id,
         scope: choice.scope,
         options: choice.options,
+        allowCustom: choice.allowCustom,
       },
     });
   }
@@ -1436,6 +1438,7 @@ export function MessageContent({
                   id={seg.id}
                   scope={seg.scope}
                   options={seg.options}
+                  allowCustom={seg.allowCustom}
                   onChoose={handleChoice}
                 />
               );

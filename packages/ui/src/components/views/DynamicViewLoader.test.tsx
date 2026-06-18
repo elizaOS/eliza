@@ -633,6 +633,45 @@ describe("DynamicViewLoader", () => {
     expect(screen.getByText("View ID: broken.view")).toBeTruthy();
   });
 
+  it("recovers a view that crashes at render when Retry re-imports a fixed bundle", async () => {
+    // A render crash must not latch the ErrorBoundary forever: clicking Retry
+    // evicts the cached module, bumps reloadKey (which re-keys the boundary so
+    // its caught error clears), and re-imports — so a fixed bundle mounts.
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const bundleUrl = "https://capability.example.test/assets/crashy.js";
+    let importCount = 0;
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => {
+      importCount += 1;
+      const crashes = importCount === 1;
+      return {
+        default: function CrashyPanel() {
+          if (crashes) {
+            throw new Error("boom on first render");
+          }
+          return <div>Recovered panel v{importCount}</div>;
+        },
+      };
+    });
+
+    render(<DynamicViewLoader bundleUrl={bundleUrl} viewId="crashy.view" />);
+
+    // First import renders a component that throws → ErrorBoundary fallback.
+    const retry = await screen.findByRole("button", { name: /retry/i });
+    expect(screen.getByText("Failed to load view")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /back to views/i }),
+    ).toBeTruthy();
+
+    await act(async () => {
+      retry.click();
+    });
+
+    // Second import returns a component that renders cleanly.
+    await screen.findByText("Recovered panel v2");
+    expect(screen.queryByText("Failed to load view")).toBeNull();
+    consoleError.mockRestore();
+  });
+
   it("runs cleanup on unmount and ignores cleanup failures", async () => {
     const bundleUrl = "https://capability.example.test/assets/cleanup.js";
     const cleanupBundle = vi.fn(() => {

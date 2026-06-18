@@ -63,6 +63,7 @@ The local examples sweep has been run in this worktree with these outcomes:
 | `chat` | `test`, `typecheck`, `build` | Provider-selection tests; one configured provider key for live chat. |
 | `cloud/clone-ur-crush` | `typecheck`, `test`, `build` | Live Next.js flow with required model/image provider keys. |
 | `cloud/edad` | `typecheck`, `test`, `build` | Manual server launch with Eliza Cloud app ID, affiliate code, and signed-in user token. |
+| `cloud/x402-image-gen` | `typecheck`, `test`, `build` | Local flow test runs against a mock cloud (no crypto). Live use needs an Eliza Cloud API key, app ID, and a funded wallet on the chosen x402 network. |
 | `cloudflare` | `typecheck`, `test`, `build` | Wrangler login, Worker secret, deployed or local Worker endpoint. |
 | `code` | `typecheck`, `test`, `build` | Provider-key E2E flows for subagents/game generation. |
 | `convex` | `typecheck`, `test`, `build` | `convex dev` or deployed Convex URL plus provider key in Convex env. |

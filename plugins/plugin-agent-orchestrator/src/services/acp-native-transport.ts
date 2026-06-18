@@ -139,6 +139,13 @@ export class NativeAcpClient {
     const result = asRecord(
       await this.request("session/new", {
         cwd,
+        // PARITY GAP (documented in docs/SUBAGENT_FLOW_AND_PARITY.md): sub-agents
+        // start with no MCP servers, so they can't use the parent's MCP tools the
+        // way standalone Codex / Claude Code can. Forwarding requires a design
+        // decision on where sub-agent MCP servers are configured (no runtime MCP
+        // config surface exists today); once defined, map it to the ACP
+        // `session/new.mcpServers` array (`{ name, command, args, env }` for
+        // stdio, `{ name, type: "http", url }` for http) here.
         mcpServers: [],
       }),
     );

@@ -1554,16 +1554,16 @@ async function runViewsClose({
 }): Promise<ActionResult> {
 	const text = message.content.text ?? "";
 	if (isCloseAllRequest(text, options)) {
-		const resultText = await navigateViewWithShellAction(
+		const result = await navigateViewWithShellAction(
 			"__all__",
 			"close-all",
 			"Closed all views.",
 			"Requested closing all views.",
 		);
-		await callback?.({ text: resultText });
+		await callback?.({ text: result.text });
 		return {
-			success: true,
-			text: resultText,
+			success: result.ok,
+			text: result.text,
 			values: { mode: "close", scope: "all" },
 			data: { viewId: "__all__", action: "close-all" },
 		};
@@ -1610,17 +1610,17 @@ async function runViewsClose({
 		resolvedViewType = viewType ?? resolution.view.viewType;
 	}
 
-	const resultText = await navigateViewWithShellAction(
+	const result = await navigateViewWithShellAction(
 		viewId,
 		"close",
 		`Closed ${label ?? viewId}.`,
 		`Requested closing ${label ?? viewId}.`,
 		resolvedViewType === "gui" ? undefined : resolvedViewType,
 	);
-	await callback?.({ text: resultText });
+	await callback?.({ text: result.text });
 	return {
-		success: true,
-		text: resultText,
+		success: result.ok,
+		text: result.text,
 		values: {
 			mode: "close",
 			viewId,
@@ -1695,7 +1695,7 @@ async function runViewsLayout({
 	const resolvedViewType = layoutOnlyFollowup
 		? (primary.viewType ?? viewType)
 		: (viewType ?? primary.viewType);
-	const resultText = await navigateViewLayout({
+	const result = await navigateViewLayout({
 		viewId: primary.id,
 		action,
 		viewIds,
@@ -1713,10 +1713,10 @@ async function runViewsLayout({
 				? `Requested split layout for views: ${labels}.`
 				: `Requested tiled layout for views: ${labels}.`,
 	});
-	await callback?.({ text: resultText });
+	await callback?.({ text: result.text });
 	return {
-		success: true,
-		text: resultText,
+		success: result.ok,
+		text: result.text,
 		continueChain: false,
 		values: {
 			mode,
@@ -2031,6 +2031,8 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 		validate: async (
 			runtime: IAgentRuntime,
 			message: Memory,
+			_state?: State,
+			options?: Record<string, unknown>,
 		): Promise<boolean> => {
 			const text = message.content.text ?? "";
 			const roomId =
@@ -2046,8 +2048,12 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				if (await hasPendingDeleteConfirm(runtime, roomId)) return true;
 			}
 
-			// Create/edit/delete require owner access.
-			const mode = inferMode(text, undefined);
+			// Create/edit/delete require owner access. The mode must be inferred the
+			// same way the handler infers it — including the planner-supplied options
+			// the runtime passes here (handlerOptions.parameters). Inferring from text
+			// alone let a planner `{action:"delete"}` whose text lacked a "view"/
+			// "plugin" noun escape the gate while the handler still mutated.
+			const mode = inferMode(text, normalizeActionOptions(options));
 			if (
 				mode === "create" ||
 				mode === "edit" ||
@@ -2213,14 +2219,14 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							pluginName: "core",
 							available: true,
 						};
-						const resultText = await navigateToPath(
+						const result = await navigateToPath(
 							managerView.path,
 							managerView.label,
 						);
-						await callback?.({ text: resultText });
+						await callback?.({ text: result.text });
 						return {
-							success: true,
-							text: resultText,
+							success: result.ok,
+							text: result.text,
 							values: { mode: "manager" },
 							data: { view: managerView },
 						};
@@ -2243,11 +2249,11 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							!Array.isArray(actionOptions?.payload)
 								? (actionOptions.payload as Record<string, unknown>)
 								: {};
-						const resultText = await broadcastViewEvent(eventType, payload);
-						await callback?.({ text: resultText });
+						const result = await broadcastViewEvent(eventType, payload);
+						await callback?.({ text: result.text });
 						return {
-							success: true,
-							text: resultText,
+							success: result.ok,
+							text: result.text,
 							values: { mode: "broadcast", eventType },
 							data: { eventType, payload },
 						};
@@ -2417,14 +2423,14 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							viewType ??
 							pinView.viewType ??
 							(await resolveViewTypeForId(client, pinView.id));
-						const pinResultText = await pinViewAsTab(
+						const pinResult = await pinViewAsTab(
 							pinView.id,
 							resolvedViewType === "gui" ? undefined : resolvedViewType,
 						);
-						await callback?.({ text: pinResultText });
+						await callback?.({ text: pinResult.text });
 						return {
-							success: true,
-							text: pinResultText,
+							success: pinResult.ok,
+							text: pinResult.text,
 							values: {
 								mode: "pin",
 								viewId: pinView.id,
@@ -2466,15 +2472,15 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							viewType ??
 							windowView.viewType ??
 							(await resolveViewTypeForId(client, windowView.id));
-						const windowResultText = await openViewInWindow(
+						const windowResult = await openViewInWindow(
 							windowView.id,
 							resolvedViewType === "gui" ? undefined : resolvedViewType,
 							alwaysOnTop,
 						);
-						await callback?.({ text: windowResultText });
+						await callback?.({ text: windowResult.text });
 						return {
-							success: true,
-							text: windowResultText,
+							success: windowResult.ok,
+							text: windowResult.text,
 							values: {
 								mode: "window",
 								viewId: windowView.id,
@@ -2769,7 +2775,22 @@ export function isRestrictedPlatform(): boolean {
 	return platform === "ios" || platform === "android";
 }
 
-async function navigateToPath(pathStr: string, label: string): Promise<string> {
+/**
+ * Outcome of a shell-navigation request. `ok` is true when the shell accepted
+ * the request (2xx) or genuinely does not implement the route (501/404) — the
+ * latter is a soft success on shells that don't support a given capability.
+ * `ok` is false for real transport failures (other non-2xx, network, timeout)
+ * so the action surfaces a failure instead of claiming the UI changed.
+ */
+interface ShellNavResult {
+	ok: boolean;
+	text: string;
+}
+
+async function navigateToPath(
+	pathStr: string,
+	label: string,
+): Promise<ShellNavResult> {
 	const { resolveServerOnlyPort } = await import("@elizaos/core");
 	const port = resolveServerOnlyPort(process.env);
 	const base = `http://127.0.0.1:${port}`;
@@ -2782,16 +2803,21 @@ async function navigateToPath(pathStr: string, label: string): Promise<string> {
 			signal: AbortSignal.timeout(5_000),
 		});
 		if (resp.ok || resp.status === 501 || resp.status === 404) {
-			return `Navigated to ${label}.`;
+			return { ok: true, text: `Navigated to ${label}.` };
 		}
 		logger.warn(
 			`[plugin-app-control] VIEWS/manager navigate returned ${resp.status}`,
 		);
-	} catch {
-		// Network or timeout — not fatal.
+	} catch (err) {
+		logger.warn(
+			`[plugin-app-control] VIEWS/manager navigate failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
 	}
 
-	return `Opened ${label} at ${pathStr}.`;
+	return {
+		ok: false,
+		text: `Couldn't navigate to ${label} — the shell did not confirm the change.`,
+	};
 }
 
 async function navigateViewWithShellAction(
@@ -2801,7 +2827,7 @@ async function navigateViewWithShellAction(
 	fallbackText: string,
 	viewType?: ViewType,
 	alwaysOnTop = false,
-): Promise<string> {
+): Promise<ShellNavResult> {
 	const { resolveServerOnlyPort } = await import("@elizaos/core");
 	const port = resolveServerOnlyPort(process.env);
 	const base = `http://127.0.0.1:${port}`;
@@ -2817,16 +2843,18 @@ async function navigateViewWithShellAction(
 			},
 		);
 		if (resp.ok || resp.status === 501 || resp.status === 404) {
-			return successText;
+			return { ok: true, text: successText };
 		}
 		logger.warn(
 			`[plugin-app-control] VIEWS/${action} navigate returned ${resp.status}`,
 		);
-	} catch {
-		// Network or timeout — not fatal.
+	} catch (err) {
+		logger.warn(
+			`[plugin-app-control] VIEWS/${action} navigate failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
 	}
 
-	return fallbackText;
+	return { ok: false, text: fallbackText };
 }
 
 async function navigateViewLayout({
@@ -2847,7 +2875,7 @@ async function navigateViewLayout({
 	viewType?: ViewType;
 	successText: string;
 	fallbackText: string;
-}): Promise<string> {
+}): Promise<ShellNavResult> {
 	const { resolveServerOnlyPort } = await import("@elizaos/core");
 	const port = resolveServerOnlyPort(process.env);
 	const base = `http://127.0.0.1:${port}`;
@@ -2869,19 +2897,24 @@ async function navigateViewLayout({
 			},
 		);
 		if (resp.ok || resp.status === 501 || resp.status === 404) {
-			return successText;
+			return { ok: true, text: successText };
 		}
 		logger.warn(
 			`[plugin-app-control] VIEWS/${action} navigate returned ${resp.status}`,
 		);
-	} catch {
-		// Network or timeout — not fatal.
+	} catch (err) {
+		logger.warn(
+			`[plugin-app-control] VIEWS/${action} navigate failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
 	}
 
-	return fallbackText;
+	return { ok: false, text: fallbackText };
 }
 
-function pinViewAsTab(viewId: string, viewType?: ViewType): Promise<string> {
+function pinViewAsTab(
+	viewId: string,
+	viewType?: ViewType,
+): Promise<ShellNavResult> {
 	return navigateViewWithShellAction(
 		viewId,
 		"pin-tab",
@@ -2895,7 +2928,7 @@ function openViewInWindow(
 	viewId: string,
 	viewType?: ViewType,
 	alwaysOnTop = false,
-): Promise<string> {
+): Promise<ShellNavResult> {
 	return navigateViewWithShellAction(
 		viewId,
 		"open-window",
@@ -3058,7 +3091,7 @@ function successFromInteractionResult(result: unknown): boolean {
 async function broadcastViewEvent(
 	eventType: string,
 	payload: Record<string, unknown>,
-): Promise<string> {
+): Promise<ShellNavResult> {
 	const { resolveServerOnlyPort } = await import("@elizaos/core");
 	const port = resolveServerOnlyPort(process.env);
 	const base = `http://127.0.0.1:${port}`;
@@ -3071,14 +3104,22 @@ async function broadcastViewEvent(
 			signal: AbortSignal.timeout(5_000),
 		});
 		if (resp.ok) {
-			return `Broadcast view event "${eventType}" to all connected views.`;
+			return {
+				ok: true,
+				text: `Broadcast view event "${eventType}" to all connected views.`,
+			};
 		}
 		logger.warn(`[plugin-app-control] VIEWS/broadcast returned ${resp.status}`);
-	} catch {
-		// Network or timeout — not fatal.
+	} catch (err) {
+		logger.warn(
+			`[plugin-app-control] VIEWS/broadcast failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
 	}
 
-	return `Attempted to broadcast view event "${eventType}".`;
+	return {
+		ok: false,
+		text: `Couldn't broadcast view event "${eventType}" — the shell did not respond.`,
+	};
 }
 
 export const viewsAction: Action = createViewsAction();

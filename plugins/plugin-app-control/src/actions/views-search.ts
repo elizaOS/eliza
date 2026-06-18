@@ -18,7 +18,11 @@
 
 import type { ActionResult, HandlerCallback, ViewType } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/core";
-import type { ViewSummary, ViewsClient } from "./views-client.js";
+import {
+	parseViewSummary,
+	type ViewSummary,
+	type ViewsClient,
+} from "./views-client.js";
 
 export interface ScoredView {
 	view: ViewSummary;
@@ -88,15 +92,23 @@ async function fetchSemanticSearch(
 		const body = (await resp.json()) as { results?: unknown[] };
 		if (!Array.isArray(body.results)) return null;
 
-		return body.results
-			.filter(
-				(r): r is Record<string, unknown> =>
-					r !== null && typeof r === "object" && !Array.isArray(r),
-			)
-			.map((r) => ({
-				view: r as unknown as ViewSummary,
-				score: typeof r._score === "number" ? r._score : 0,
-			}));
+		const scored: ScoredView[] = [];
+		for (const r of body.results) {
+			if (r === null || typeof r !== "object" || Array.isArray(r)) continue;
+			const entry = r as Record<string, unknown>;
+			// Validate each entry through the same boundary parser the client uses
+			// rather than blindly casting unvalidated server JSON into ViewSummary.
+			// Malformed entries are skipped, not silently typed.
+			try {
+				scored.push({
+					view: parseViewSummary(entry),
+					score: typeof entry._score === "number" ? entry._score : 0,
+				});
+			} catch {
+				// Skip entries missing required fields.
+			}
+		}
+		return scored;
 	} catch {
 		return null;
 	}

@@ -70,6 +70,7 @@ export const facewearPlugin: Plugin = {
       description:
         "Manage all connected XR devices and smartglasses — Meta Quest, XReal, Even Realities, Apple Vision Pro.",
       icon: "Glasses",
+      heroImagePath: "assets/hero-facewear.svg",
       bundlePath: "dist/views/bundle.js",
       componentExport: "FacewearView",
       tags: ["hearwear", "xr", "smartglasses", "wearable"],
@@ -122,6 +123,7 @@ export const facewearPlugin: Plugin = {
       description:
         "Pair, test, configure, and export diagnostics for a complete Even Realities headset.",
       icon: "Glasses",
+      heroImagePath: "assets/hero-smartglasses.svg",
       bundlePath: "dist/views/bundle.js",
       componentExport: "SmartglassesView",
       tags: [
