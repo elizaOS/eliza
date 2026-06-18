@@ -27,6 +27,7 @@ export * from "./payment";
 export * from "./pipeline-hooks";
 export * from "./plugin";
 export * from "./plugin-store";
+export * from "./interactions";
 export type { JsonPrimitive } from "./primitives";
 export * from "./primitives";
 export * from "./prompt-batcher";

@@ -1,3 +1,5 @@
+import type { InteractionBlock } from "./interactions";
+
 /**
  * JSON-serializable primitive value.
  */
@@ -149,6 +151,13 @@ export interface Content {
 	type?: string;
 
 	/**
+	 * Structured interactive controls (forms, choice pickers, task cards,
+	 * secret requests) parsed from `text` and rendered as native widgets on each
+	 * surface. See `@elizaos/core` `types/interactions`.
+	 */
+	interactions?: InteractionBlock[];
+
+	/**
 	 * Additional dynamic properties for plugin extensions
 	 */
 	[key: string]:
@@ -156,6 +165,7 @@ export interface Content {
 		| ChannelType
 		| MentionContext
 		| Media[]
+		| InteractionBlock[]
 		| Content
 		| undefined;
 }
