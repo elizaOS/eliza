@@ -261,8 +261,7 @@ type HeadscaleRouteEnv = Partial<
 function currentHeadscaleRouteEnv(): HeadscaleRouteEnv {
   const cloudEnv = getCloudAwareEnv();
   return {
-    AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK:
-      cloudEnv.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK,
+    AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: cloudEnv.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK,
     CONTAINERS_PUBLIC_BASE_DOMAIN: cloudEnv.CONTAINERS_PUBLIC_BASE_DOMAIN,
     ELIZA_CLOUD_AGENT_BASE_DOMAIN: cloudEnv.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
     ENVIRONMENT: cloudEnv.ENVIRONMENT,
@@ -322,10 +321,7 @@ export function requiresHeadscaleRoute(
  * meant to bypass on nodes that aren't on the mesh.
  */
 export function headscaleVpnEnabled(env: HeadscaleRouteEnv): boolean {
-  return (
-    hasConfiguredValue(env.HEADSCALE_API_KEY) &&
-    !isBridgeHostFallbackEnabled(env)
-  );
+  return hasConfiguredValue(env.HEADSCALE_API_KEY) && !isBridgeHostFallbackEnabled(env);
 }
 
 export function shouldCleanupHeadscaleVpn(

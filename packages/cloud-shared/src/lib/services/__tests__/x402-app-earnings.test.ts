@@ -132,9 +132,15 @@ beforeEach(() => {
     m.mockReset();
   }
 
-  findAppById.mockResolvedValue({ id: APP_ID, name: "PayPerPixel", created_by_user_id: CREATOR_ID });
+  findAppById.mockResolvedValue({
+    id: APP_ID,
+    name: "PayPerPixel",
+    created_by_user_id: CREATOR_ID,
+  });
   findPaymentById.mockResolvedValue(paymentRecord());
-  markAsConfirmed.mockResolvedValue(paymentRecord({ status: "confirmed", transaction_hash: "0xtx" }));
+  markAsConfirmed.mockResolvedValue(
+    paymentRecord({ status: "confirmed", transaction_hash: "0xtx" }),
+  );
   updatePayment.mockResolvedValue(paymentRecord({ status: "confirmed", transaction_hash: "0xtx" }));
   addPurchaseEarnings.mockResolvedValue(undefined);
   createTransaction.mockResolvedValue(undefined);
@@ -157,7 +163,11 @@ test("settling an app-scoped x402 request credits the creator's earnings", async
   // App-level earnings: a purchase_share credit for the full amount.
   expect(addPurchaseEarnings).toHaveBeenCalledWith(APP_ID, 0.05);
   expect(createTransaction).toHaveBeenCalledTimes(1);
-  const txArg = createTransaction.mock.calls[0][0] as { type: string; app_id: string; user_id: string };
+  const txArg = createTransaction.mock.calls[0][0] as {
+    type: string;
+    app_id: string;
+    user_id: string;
+  };
   expect(txArg.type).toBe("purchase_share");
   expect(txArg.app_id).toBe(APP_ID);
   expect(txArg.user_id).toBe(CREATOR_ID);

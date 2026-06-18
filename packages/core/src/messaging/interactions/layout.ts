@@ -10,7 +10,10 @@
  * A button always carries exactly one of the two.
  */
 
-import type { InteractionBlock, InteractionOption } from "../../types/interactions";
+import type {
+	InteractionBlock,
+	InteractionOption,
+} from "../../types/interactions";
 import { encodeReplyCallback } from "./callback";
 
 export interface NeutralButton {
@@ -58,7 +61,8 @@ export interface LayoutOptions {
 
 function chunk<T>(items: T[], size: number): T[][] {
 	const rows: T[][] = [];
-	for (let i = 0; i < items.length; i += size) rows.push(items.slice(i, i + size));
+	for (let i = 0; i < items.length; i += size)
+		rows.push(items.slice(i, i + size));
 	return rows;
 }
 
@@ -76,7 +80,10 @@ function optionButtons(
 		}
 		buttons.push({ label: o.label, callbackData, style: "secondary" });
 	}
-	return { rows: chunk(buttons, perRow).map((b) => ({ buttons: b })), anyDropped };
+	return {
+		rows: chunk(buttons, perRow).map((b) => ({ buttons: b })),
+		anyDropped,
+	};
 }
 
 /** Build a platform-neutral control layout for a single interaction block. */
@@ -100,7 +107,8 @@ export function toNeutralLayout(
 			const buttons: NeutralButton[] = [];
 			for (const o of block.options) {
 				const callbackData = encodeReplyCallback(o.payload);
-				if (callbackData) buttons.push({ label: o.label, callbackData, style: "secondary" });
+				if (callbackData)
+					buttons.push({ label: o.label, callbackData, style: "secondary" });
 			}
 			return { rows: chunk(buttons, perRow).map((b) => ({ buttons: b })) };
 		}
@@ -108,7 +116,9 @@ export function toNeutralLayout(
 			const url = resolveUrl?.(block);
 			return {
 				text: block.title,
-				rows: url ? [{ buttons: [{ label: "Open task", url, style: "primary" }] }] : [],
+				rows: url
+					? [{ buttons: [{ label: "Open task", url, style: "primary" }] }]
+					: [],
 				needsFallback: !url,
 			};
 		}
@@ -117,7 +127,17 @@ export function toNeutralLayout(
 			return {
 				text: block.title ?? block.description,
 				rows: url
-					? [{ buttons: [{ label: block.submitLabel ?? "Open form", url, style: "primary" }] }]
+					? [
+							{
+								buttons: [
+									{
+										label: block.submitLabel ?? "Open form",
+										url,
+										style: "primary",
+									},
+								],
+							},
+						]
 					: [],
 				needsFallback: !url,
 			};

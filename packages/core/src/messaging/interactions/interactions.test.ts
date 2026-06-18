@@ -12,7 +12,10 @@ import {
 	MAX_CALLBACK_BYTES,
 } from "./callback";
 import { toNeutralLayout } from "./layout";
-import { normalizeContentInteractions, stripInteractionMarkers } from "./normalize";
+import {
+	normalizeContentInteractions,
+	stripInteractionMarkers,
+} from "./normalize";
 import {
 	findInteractionRegions,
 	hasInteractionBlocks,
@@ -22,7 +25,8 @@ import { appendInteractionBlock, serializeInteractionBlock } from "./serialize";
 
 describe("parse", () => {
 	it("parses a choice block with scope and id", () => {
-		const text = "Pick one:\n[CHOICE:approve id=abc]\nyes=Yes, ship it\nno=Cancel\n[/CHOICE]";
+		const text =
+			"Pick one:\n[CHOICE:approve id=abc]\nyes=Yes, ship it\nno=Cancel\n[/CHOICE]";
 		const { blocks, cleanedText } = parseInteractionBlocks(text);
 		expect(blocks).toHaveLength(1);
 		const block = blocks[0] as ChoiceInteraction;
@@ -46,7 +50,10 @@ describe("parse", () => {
 	});
 
 	it("parses a form block from JSON and caps fields", () => {
-		const fields = Array.from({ length: 25 }, (_, i) => ({ name: `f${i}`, type: "text" }));
+		const fields = Array.from({ length: 25 }, (_, i) => ({
+			name: `f${i}`,
+			type: "text",
+		}));
 		const text = `[FORM]\n${JSON.stringify({ title: "Login", fields })}\n[/FORM]`;
 		const { blocks } = parseInteractionBlocks(text);
 		const form = blocks[0] as FormInteraction;
@@ -65,14 +72,21 @@ describe("parse", () => {
 
 	it("parses a task block and validates the threadId shape", () => {
 		const id = "abc12345-def6-7890-abcd-ef1234567890";
-		const { blocks } = parseInteractionBlocks(`[TASK:${id}]Ship the thing[/TASK]`);
-		expect(blocks[0]).toMatchObject({ kind: "task", threadId: id, title: "Ship the thing" });
+		const { blocks } = parseInteractionBlocks(
+			`[TASK:${id}]Ship the thing[/TASK]`,
+		);
+		expect(blocks[0]).toMatchObject({
+			kind: "task",
+			threadId: id,
+			title: "Ship the thing",
+		});
 		// prose-shaped id must not trigger a widget
 		expect(hasInteractionBlocks("[TASK: do the thing]")).toBe(false);
 	});
 
 	it("parses followups with kinds, defaulting to reply", () => {
-		const text = "[FOLLOWUPS id=f1]\nnavigate:/tasks=Open tasks\nprompt:Draft a reply=Draft\nyes=Yes\n[/FOLLOWUPS]";
+		const text =
+			"[FOLLOWUPS id=f1]\nnavigate:/tasks=Open tasks\nprompt:Draft a reply=Draft\nyes=Yes\n[/FOLLOWUPS]";
 		const { blocks } = parseInteractionBlocks(text);
 		expect(blocks[0]).toMatchObject({
 			kind: "followups",
@@ -98,7 +112,9 @@ describe("parse", () => {
 		const text = "x[CHOICE:s id=i]\na=A\n[/CHOICE]y";
 		const regions = findInteractionRegions(text);
 		expect(regions).toHaveLength(1);
-		expect(text.slice(regions[0].start, regions[0].end)).toContain("[CHOICE:s id=i]");
+		expect(text.slice(regions[0].start, regions[0].end)).toContain(
+			"[CHOICE:s id=i]",
+		);
 	});
 });
 
@@ -115,7 +131,11 @@ describe("serialize", () => {
 		};
 		const text = serializeInteractionBlock(block);
 		const { blocks } = parseInteractionBlocks(text);
-		expect(blocks[0]).toMatchObject({ kind: "choice", scope: "approve", id: "abc" });
+		expect(blocks[0]).toMatchObject({
+			kind: "choice",
+			scope: "approve",
+			id: "abc",
+		});
 	});
 
 	it("round-trips a form block", () => {
@@ -127,11 +147,20 @@ describe("serialize", () => {
 			fields: [{ name: "key", type: "text", required: true }],
 		};
 		const { blocks } = parseInteractionBlocks(serializeInteractionBlock(block));
-		expect(blocks[0]).toMatchObject({ kind: "form", id: "f1", title: "Creds", submitLabel: "Go" });
+		expect(blocks[0]).toMatchObject({
+			kind: "form",
+			id: "f1",
+			title: "Creds",
+			submitLabel: "Go",
+		});
 	});
 
 	it("secret blocks have no text form", () => {
-		const block: SecretInteraction = { kind: "secret", id: "s1", secretKind: "secret" };
+		const block: SecretInteraction = {
+			kind: "secret",
+			id: "s1",
+			secretKind: "secret",
+		};
 		expect(serializeInteractionBlock(block)).toBe("");
 	});
 
@@ -184,7 +213,10 @@ describe("layout", () => {
 		expect(layout.text).toBe("Pick");
 		expect(layout.rows).toHaveLength(2);
 		const first = layout.rows[0].buttons?.[0];
-		expect(decodeCallback(first?.callbackData)).toEqual({ kind: "reply", value: "a" });
+		expect(decodeCallback(first?.callbackData)).toEqual({
+			kind: "reply",
+			value: "a",
+		});
 	});
 
 	it("marks allowCustom choices as needing a free-text fallback", () => {
@@ -205,7 +237,9 @@ describe("layout", () => {
 			secretKind: "oauth",
 			provider: "GitHub",
 		};
-		const layout = toNeutralLayout(block, { resolveUrl: () => "https://x/secure" });
+		const layout = toNeutralLayout(block, {
+			resolveUrl: () => "https://x/secure",
+		});
 		expect(layout.rows[0].buttons?.[0]).toMatchObject({
 			label: "Connect GitHub",
 			url: "https://x/secure",
@@ -238,6 +272,8 @@ describe("normalize", () => {
 	});
 
 	it("stripInteractionMarkers returns prose only", () => {
-		expect(stripInteractionMarkers("Hi\n[CHOICE:s id=i]\na=A\n[/CHOICE]")).toBe("Hi");
+		expect(stripInteractionMarkers("Hi\n[CHOICE:s id=i]\na=A\n[/CHOICE]")).toBe(
+			"Hi",
+		);
 	});
 });

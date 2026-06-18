@@ -124,15 +124,10 @@ describe("headscaleVpnEnabled", () => {
 
 describe("shouldCleanupHeadscaleVpn", () => {
   test("cleans up only when VPN is enabled and a registered node name is present", () => {
-    expect(
-      shouldCleanupHeadscaleVpn(
-        { HEADSCALE_API_KEY: "secret" },
-        "agent-org-example",
-      ),
-    ).toBe(true);
-    expect(
-      shouldCleanupHeadscaleVpn({ HEADSCALE_API_KEY: "secret" }, undefined),
-    ).toBe(false);
+    expect(shouldCleanupHeadscaleVpn({ HEADSCALE_API_KEY: "secret" }, "agent-org-example")).toBe(
+      true,
+    );
+    expect(shouldCleanupHeadscaleVpn({ HEADSCALE_API_KEY: "secret" }, undefined)).toBe(false);
   });
 
   test("does not clean up fallback-mode containers even when an API key is configured", () => {
