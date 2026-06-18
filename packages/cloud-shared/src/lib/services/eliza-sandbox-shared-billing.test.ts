@@ -2,7 +2,7 @@ import { afterAll, afterEach, describe, expect, mock, spyOn, test } from "bun:te
 
 import type { AgentSandbox } from "../../db/repositories/agent-sandboxes";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
-import { cache } from "../cache/client";
+import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
 import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import * as realAiBillingNs from "./ai-billing";
 import * as realAiBillingRecordsNs from "./ai-billing-records";
@@ -192,8 +192,10 @@ describe("ElizaSandboxService shared runtime billing", () => {
       agentSandboxesRepository,
       "findRunningSandbox",
     ).mockResolvedValue(sandbox);
-    const cacheGetSpy = spyOn(cache, "get").mockResolvedValue([]);
-    const cacheSetSpy = spyOn(cache, "set").mockResolvedValue(undefined);
+    const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
+    const historyUpsertSpy = spyOn(sharedRuntimeHistoryRepository, "upsert").mockResolvedValue(
+      undefined,
+    );
 
     try {
       const response = await runWithCloudBindings(
@@ -254,12 +256,12 @@ describe("ElizaSandboxService shared runtime billing", () => {
           }),
         }),
       );
-      expect(cacheGetSpy).toHaveBeenCalled();
-      expect(cacheSetSpy).toHaveBeenCalled();
+      expect(historyGetSpy).toHaveBeenCalled();
+      expect(historyUpsertSpy).toHaveBeenCalled();
     } finally {
       findRunningSandboxSpy.mockRestore();
-      cacheGetSpy.mockRestore();
-      cacheSetSpy.mockRestore();
+      historyGetSpy.mockRestore();
+      historyUpsertSpy.mockRestore();
     }
   });
 });
