@@ -14,13 +14,20 @@ import {
 	validateManifest,
 } from "./manifest/index.js";
 import type { Eliza1Manifest } from "./manifest/types.js";
-import { __resetManifestCacheForTests, defaultManifestLoader } from "./ram-budget.js";
+import {
+	__resetManifestCacheForTests,
+	defaultManifestLoader,
+} from "./ram-budget.js";
 import type { InstalledModel } from "./types.js";
 
 const SHA = "0".repeat(64);
 
 function validManifest(): Eliza1Manifest {
-	const backend = { status: "pass" as const, atCommit: "abc1234", report: "r.txt" };
+	const backend = {
+		status: "pass" as const,
+		atCommit: "abc1234",
+		report: "r.txt",
+	};
 	const manifest: Eliza1Manifest = {
 		id: "eliza-1-9b",
 		tier: "9b",
@@ -137,7 +144,10 @@ describe("defaultManifestLoader manifest cache", () => {
 
 	it("does not cache when no manifestSha256 is present (legacy installs)", () => {
 		const spy = vi.spyOn(fs, "readFileSync");
-		const legacy: InstalledModel = { ...installed("ignored"), manifestSha256: undefined };
+		const legacy: InstalledModel = {
+			...installed("ignored"),
+			manifestSha256: undefined,
+		};
 		defaultManifestLoader("eliza-1-9b", legacy);
 		defaultManifestLoader("eliza-1-9b", legacy);
 		expect(manifestReadCount(spy)).toBe(2);

@@ -167,7 +167,9 @@ describe("PhraseChunker first-phrase budget (TTFA)", () => {
 
 		// Second phrase now uses the FULL 700ms budget (no fragmentation).
 		now = 1000;
-		expect(chunker.push({ index: 1, text: " there", acceptedAt: 0 })).toBeNull();
+		expect(
+			chunker.push({ index: 1, text: " there", acceptedAt: 0 }),
+		).toBeNull();
 		expect(chunker.msUntilTimeBudget()).toBe(700);
 		now = 1300; // 300ms in — would have flushed the first phrase, not this one
 		expect(chunker.flushIfTimeBudgetExceeded()).toBeNull();
