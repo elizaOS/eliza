@@ -5,8 +5,18 @@ import { apps } from "./apps";
 /**
  * App billing table schema.
  *
- * Stores monetization settings, pricing overrides, rate limits, and creator earnings.
- * Split from the main apps table to reduce row size on the heavily-read core table.
+ * DEPRECATED / STRANDED — do NOT read or write the monetization columns here.
+ * The `apps` table is the single source of truth for monetization
+ * (`monetization_enabled`, `inference_markup_percentage`,
+ * `purchase_share_percentage`, `platform_offset_amount`,
+ * `total_creator_earnings`, `total_platform_revenue`). The hot path
+ * (`app-credits.ts`, `app-earnings.ts`, `x402-payment-requests.ts`) reads/writes
+ * `apps` exclusively. The columns below duplicate those with divergent defaults
+ * (e.g. purchase_share 10.00 vs apps' 0) but are never queried — only this
+ * schema and the drizzle `apps.billing` relation reference the table, and the
+ * `AppBilling` type has no consumers. Reading these columns would reintroduce
+ * source-of-truth drift. This table is a drop candidate pending a migration that
+ * first confirms it holds no rows in production.
  */
 export const appBilling = pgTable(
   "app_billing",
