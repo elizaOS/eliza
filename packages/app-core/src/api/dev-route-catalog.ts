@@ -400,23 +400,30 @@ const ROUTES: DevRouteEntry[] = [
 ];
 
 /**
- * Mirror of `SETTINGS_SECTIONS` from `packages/ui/src/components/pages/SettingsView.tsx`.
- * Labels use the default (English) defaultLabel, not the i18n key.
+ * Mirror of `SETTINGS_SECTION_META` from
+ * `@elizaos/ui` (`packages/ui/src/components/settings/settings-section-meta.ts`).
+ * Importing the UI package into this HTTP-handler module would drag the renderer
+ * graph into the API process, so the list is mirrored here; `dev-route-catalog.test.ts`
+ * imports the real `SETTINGS_SECTION_META` and asserts id+label parity, catching
+ * drift at test time. Labels are the English `defaultLabel`, not the i18n key.
  */
 const SETTINGS_SECTIONS: DevRouteSettingsSection[] = [
   { id: "identity", label: "Basics" },
-  { id: "ai-model", label: "Providers" },
-  { id: "runtime", label: "Runtime" },
-  { id: "appearance", label: "Appearance" },
+  { id: "ai-model", label: "Models & Providers" },
+  { id: "voice", label: "Voice" },
   { id: "capabilities", label: "Capabilities" },
   { id: "apps", label: "Apps" },
-  { id: "app-permissions", label: "App Permissions" },
+  { id: "connectors", label: "Connectors" },
+  { id: "runtime", label: "Runtime" },
+  { id: "appearance", label: "Appearance" },
+  { id: "remote-plugins", label: "Remote Plugins" },
   { id: "wallet-rpc", label: "Wallet & RPC" },
+  { id: "updates", label: "Updates" },
+  { id: "advanced", label: "Backup & Reset" },
+  { id: "app-permissions", label: "App Permissions" },
   { id: "permissions", label: "Permissions" },
   { id: "secrets", label: "Vault" },
   { id: "security", label: "Security" },
-  { id: "updates", label: "Updates" },
-  { id: "advanced", label: "Backup & Reset" },
 ];
 
 /**

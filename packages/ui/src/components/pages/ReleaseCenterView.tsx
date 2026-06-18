@@ -29,8 +29,13 @@ import type {
   AppReleaseStatus,
   DesktopUpdaterSnapshot,
 } from "../release-center/types";
+import { SettingsInputRow } from "../settings/settings-agent-rows";
+import {
+  SettingsGroup,
+  SettingsRow,
+  SettingsStack,
+} from "../settings/settings-layout";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
 
 function CheckUpdateButton({
   label,
@@ -42,7 +47,7 @@ function CheckUpdateButton({
   onActivate: () => void;
 }) {
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "check-update",
+    id: "updates-check",
     role: "button",
     label,
     group: "release-actions",
@@ -73,7 +78,7 @@ function ApplyUpdateButton({
   onActivate: () => void;
 }) {
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "apply-update",
+    id: "updates-apply",
     role: "button",
     label,
     group: "release-actions",
@@ -104,7 +109,7 @@ function DetachReleaseCenterButton({
   onActivate: () => void;
 }) {
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "open-detached",
+    id: "updates-open-detached",
     role: "button",
     label,
     group: "release-actions",
@@ -453,31 +458,24 @@ export function ReleaseCenterView() {
   const resetUrlLabel = t("releasecenter.ResetUrl", {
     defaultValue: "Reset URL",
   });
+  const releaseDetail =
+    [
+      applicationUpdate && !desktopRuntime ? applicationUpdate.detail : null,
+      agentUpdate ? (agentUpdate.error ?? agentUpdate.detail) : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || null;
 
   const refreshAgent = useAgentElement<HTMLButtonElement>({
-    id: "refresh",
+    id: "updates-refresh",
     role: "button",
     label: t("common.refresh"),
     group: "release-actions",
     description: "Refresh the release and update status",
     onActivate: refreshReleaseStateAction,
   });
-  const releaseNotesUrlAgent = useAgentElement<HTMLInputElement>({
-    id: "release-notes-url",
-    role: "text-input",
-    label: t("releasecenterview.ReleaseNotes", {
-      defaultValue: "Release Notes",
-    }),
-    group: "release-notes",
-    description: "The URL opened when viewing release notes",
-    getValue: () => releaseNotesUrl,
-    onFill: (value) => {
-      setReleaseNotesUrlDirty(true);
-      setReleaseNotesUrl(value);
-    },
-  });
   const openReleaseNotesAgent = useAgentElement<HTMLButtonElement>({
-    id: "open-release-notes",
+    id: "updates-open-release-notes",
     role: "button",
     label: t("common.open", { defaultValue: "Open" }),
     group: "release-notes",
@@ -485,7 +483,7 @@ export function ReleaseCenterView() {
     onActivate: openReleaseNotesAction,
   });
   const resetReleaseNotesUrlAgent = useAgentElement<HTMLButtonElement>({
-    id: "reset-release-url",
+    id: "updates-reset-release-url",
     role: "button",
     label: resetUrlLabel,
     group: "release-notes",
@@ -494,11 +492,11 @@ export function ReleaseCenterView() {
   });
 
   return (
-    <div className="space-y-5">
+    <SettingsStack>
       {actionError && (
         <div
           role="alert"
-          className="rounded-sm border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+          className="rounded-sm border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
         >
           {actionError}
         </div>
@@ -506,7 +504,7 @@ export function ReleaseCenterView() {
       {actionMessage && (
         <div
           role="status"
-          className="rounded-sm border border-ok/30 bg-ok/10 px-3 py-2 text-xs text-ok"
+          className="rounded-sm border border-ok/30 bg-ok/10 px-3 py-2 text-sm text-ok"
         >
           {actionMessage}
         </div>
@@ -514,140 +512,130 @@ export function ReleaseCenterView() {
       {autoUpdateDisabled && nativeUpdater?.autoUpdateDisabledReason && (
         <div
           role="status"
-          className="rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning"
+          className="rounded-sm border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-warn"
         >
           {nativeUpdater.autoUpdateDisabledReason}
         </div>
       )}
-      {applicationUpdate && !desktopRuntime && (
-        <div
-          role="status"
-          className="rounded-sm border border-border/60 bg-bg/40 px-3 py-2 text-xs text-muted"
-        >
-          {applicationUpdate.detail}
-        </div>
-      )}
-      {agentUpdate && (
-        <div
-          role="status"
-          className="rounded-sm border border-border/60 bg-bg/40 px-3 py-2 text-xs text-muted"
-        >
-          {agentUpdate.error ?? agentUpdate.detail}
-        </div>
-      )}
 
-      <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-xs sm:grid-cols-2">
+      <SettingsGroup
+        title={t("releasecenterview.Versions", { defaultValue: "Versions" })}
+        footer={releaseDetail || undefined}
+      >
         {versionRows.map((row) => (
-          <div
+          <SettingsRow
             key={row.label}
-            className="flex items-baseline justify-between gap-3 border-b border-border/30 py-1.5"
-          >
-            <dt className="text-muted">{row.label}</dt>
-            <dd className="break-all text-right font-medium text-txt">
-              {row.value}
-            </dd>
-          </div>
+            label={row.label}
+            control={
+              <span className="break-all text-right text-sm font-medium text-txt">
+                {row.value}
+              </span>
+            }
+          />
         ))}
-      </dl>
+      </SettingsGroup>
 
-      <div className="flex flex-wrap gap-2">
-        {desktopRuntime ? (
-          <CheckUpdateButton
-            label={t("releasecenter.CheckDownloadUpdate", {
-              defaultValue: "Check / Download Update",
-            })}
-            disabled={
-              busyAction === "check-updates" ||
-              updateLoading ||
-              autoUpdateDisabled ||
-              !canManualCheck
-            }
-            onActivate={() =>
-              void runAction(
-                "check-updates",
-                checkForDesktopUpdate,
-                t("releasecenterview.CheckStarted", {
-                  defaultValue: "Desktop update check started.",
-                }),
-              )
-            }
-          />
-        ) : null}
-        {desktopRuntime && nativeUpdater?.updateReady && (
-          <ApplyUpdateButton
-            label={t("releasecenter.ApplyDownloadedUpdate", {
-              defaultValue: "Apply Downloaded Update",
-            })}
-            disabled={busyAction === "apply-update" || autoUpdateDisabled}
-            onActivate={() =>
-              void runAction(
-                "apply-update",
-                applyDesktopUpdate,
-                t("releasecenterview.ApplyStarted", {
-                  defaultValue: "Applying downloaded update.",
-                }),
-              )
-            }
-          />
-        )}
-        <Button
-          ref={refreshAgent.ref}
-          size="icon"
-          variant="outline"
-          className="h-9 w-9 rounded-sm"
-          disabled={busyAction === "refresh" || updateLoading}
-          aria-label={t("common.refresh")}
-          title={t("common.refresh")}
-          onClick={refreshReleaseStateAction}
-          {...refreshAgent.agentProps}
-        >
-          <RefreshCw
-            className={`h-4 w-4 ${busyAction === "refresh" || updateLoading ? "animate-spin" : ""}`}
-            aria-hidden
-          />
-        </Button>
-        {desktopRuntime ? (
-          <DetachReleaseCenterButton
-            label={t("releasecenter.OpenDetachedReleaseCenter", {
-              defaultValue: "Open Detached Release Center",
-            })}
-            disabled={busyAction === "detach-release"}
-            onActivate={() =>
-              void runAction(
-                "detach-release",
-                detachReleaseCenter,
-                t("releasecenterview.DetachedOpened", {
-                  defaultValue: "Detached release center opened.",
-                }),
-              )
-            }
-          />
-        ) : null}
-      </div>
+      <SettingsGroup bare>
+        <div className="flex flex-wrap gap-2">
+          {desktopRuntime ? (
+            <CheckUpdateButton
+              label={t("releasecenter.CheckDownloadUpdate", {
+                defaultValue: "Check / Download Update",
+              })}
+              disabled={
+                busyAction === "check-updates" ||
+                updateLoading ||
+                autoUpdateDisabled ||
+                !canManualCheck
+              }
+              onActivate={() =>
+                void runAction(
+                  "check-updates",
+                  checkForDesktopUpdate,
+                  t("releasecenterview.CheckStarted", {
+                    defaultValue: "Desktop update check started.",
+                  }),
+                )
+              }
+            />
+          ) : null}
+          {desktopRuntime && nativeUpdater?.updateReady && (
+            <ApplyUpdateButton
+              label={t("releasecenter.ApplyDownloadedUpdate", {
+                defaultValue: "Apply Downloaded Update",
+              })}
+              disabled={busyAction === "apply-update" || autoUpdateDisabled}
+              onActivate={() =>
+                void runAction(
+                  "apply-update",
+                  applyDesktopUpdate,
+                  t("releasecenterview.ApplyStarted", {
+                    defaultValue: "Applying downloaded update.",
+                  }),
+                )
+              }
+            />
+          )}
+          <Button
+            ref={refreshAgent.ref}
+            size="icon"
+            variant="outline"
+            className="h-9 w-9 rounded-sm"
+            disabled={busyAction === "refresh" || updateLoading}
+            aria-label={t("common.refresh")}
+            title={t("common.refresh")}
+            onClick={refreshReleaseStateAction}
+            {...refreshAgent.agentProps}
+          >
+            <RefreshCw
+              className={`h-4 w-4 ${busyAction === "refresh" || updateLoading ? "animate-spin" : ""}`}
+              aria-hidden
+            />
+          </Button>
+          {desktopRuntime ? (
+            <DetachReleaseCenterButton
+              label={t("releasecenter.OpenDetachedReleaseCenter", {
+                defaultValue: "Open Detached Release Center",
+              })}
+              disabled={busyAction === "detach-release"}
+              onActivate={() =>
+                void runAction(
+                  "detach-release",
+                  detachReleaseCenter,
+                  t("releasecenterview.DetachedOpened", {
+                    defaultValue: "Detached release center opened.",
+                  }),
+                )
+              }
+            />
+          ) : null}
+        </div>
+      </SettingsGroup>
 
-      <div className="border-t border-border/40 pt-4">
-        <label
-          htmlFor="release-notes-url"
-          className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted"
-        >
-          {t("releasecenterview.ReleaseNotes", {
+      <SettingsGroup
+        title={t("releasecenterview.ReleaseNotes", {
+          defaultValue: "Release Notes",
+        })}
+      >
+        <SettingsInputRow
+          agentId="updates-release-notes-url"
+          label={t("releasecenterview.ReleaseNotesUrl", {
+            defaultValue: "Release notes URL",
+          })}
+          type="url"
+          value={releaseNotesUrl}
+          onValueChange={(value) => {
+            setReleaseNotesUrlDirty(true);
+            setReleaseNotesUrl(value);
+          }}
+        />
+        <SettingsRow
+          label={t("releasecenterview.ReleaseNotes", {
             defaultValue: "Release Notes",
           })}
-        </label>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <Input
-            ref={releaseNotesUrlAgent.ref}
-            id="release-notes-url"
-            type="text"
-            className="h-9 flex-1 rounded-sm bg-bg text-xs"
-            value={releaseNotesUrl}
-            onChange={(e) => {
-              setReleaseNotesUrlDirty(true);
-              setReleaseNotesUrl(e.target.value);
-            }}
-            {...releaseNotesUrlAgent.agentProps}
-          />
-          <div className="flex flex-wrap gap-2 sm:justify-end">
+          stacked
+        >
+          <div className="flex flex-wrap gap-2">
             <Button
               ref={openReleaseNotesAgent.ref}
               size="sm"
@@ -673,8 +661,8 @@ export function ReleaseCenterView() {
               <RotateCcw className="h-4 w-4" aria-hidden />
             </Button>
           </div>
-        </div>
-      </div>
-    </div>
+        </SettingsRow>
+      </SettingsGroup>
+    </SettingsStack>
   );
 }

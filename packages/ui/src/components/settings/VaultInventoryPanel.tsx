@@ -221,8 +221,7 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
           </p>
           <p className="text-2xs text-muted">
             {t("vaultinventory.storedSecrets.description", {
-              defaultValue:
-                "Every secret stored locally, grouped by category. Add API keys, wallet keys, and plugin tokens here.",
+              defaultValue: "Stored locally, grouped by category.",
             })}
           </p>
         </div>
@@ -271,7 +270,7 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
           data-testid="vault-inventory-empty"
           className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
         >
-          No secrets stored yet. Add an API key to get started.
+          No secrets yet. Add an API key.
         </div>
       ) : (
         <div className="space-y-3">
@@ -1134,8 +1133,7 @@ function AddSecretForm({
     >
       <p className="text-2xs text-muted">
         {t("vaultinventory.addForm.help", {
-          defaultValue:
-            "Stored locally and encrypted at rest. The key is the env-var-style identifier; the value is what plugins read at runtime.",
+          defaultValue: "Stored locally and encrypted at rest.",
         })}
       </p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

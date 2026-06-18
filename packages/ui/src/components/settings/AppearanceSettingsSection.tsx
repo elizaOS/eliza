@@ -6,6 +6,7 @@ import { LANGUAGES } from "../shared/LanguageDropdown.helpers";
 import { selectableTileClass } from "./appearance-primitives.helpers";
 import { LoadContentPackForm } from "./LoadContentPackForm";
 import { LoadedPacksList } from "./LoadedPacksList";
+import { SettingsGroup, SettingsStack } from "./settings-layout";
 
 function LanguageTileButton({
   languageId,
@@ -95,11 +96,11 @@ export function AppearanceSettingsSection() {
   const { activePack, loadedPacks, toggle } = useContentPack();
 
   return (
-    <div className="space-y-6">
-      <section className="space-y-2">
-        <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
-          {t("settings.language", { defaultValue: "Language" })}
-        </h3>
+    <SettingsStack>
+      <SettingsGroup
+        bare
+        title={t("settings.language", { defaultValue: "Language" })}
+      >
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           {LANGUAGES.map((language) => (
             <LanguageTileButton
@@ -112,12 +113,12 @@ export function AppearanceSettingsSection() {
             />
           ))}
         </div>
-      </section>
+      </SettingsGroup>
 
-      <section className="space-y-2">
-        <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
-          {t("settings.appearance.mode", { defaultValue: "Mode" })}
-        </h3>
+      <SettingsGroup
+        bare
+        title={t("settings.appearance.mode", { defaultValue: "Mode" })}
+      >
         <div className="flex gap-2">
           <ThemeModeButton
             modeId="system"
@@ -141,7 +142,7 @@ export function AppearanceSettingsSection() {
             onClick={() => setUiThemeMode("dark")}
           />
         </div>
-      </section>
+      </SettingsGroup>
 
       <LoadedPacksList
         loadedPacks={loadedPacks}
@@ -150,6 +151,6 @@ export function AppearanceSettingsSection() {
       />
 
       <LoadContentPackForm />
-    </div>
+    </SettingsStack>
   );
 }

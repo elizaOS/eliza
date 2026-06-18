@@ -1,11 +1,8 @@
 /**
  * Routing tab — full-width per-context routing rules table plus the
  * "Default profile" setting. One source of truth: `GET/PUT
- * /api/secrets/routing`.
- *
- * Replaces the cramped per-row routing editor that used to live inside
- * `VaultInventoryPanel`. This tab shows every rule in the system and
- * supports wildcard key patterns (e.g. `OPENROUTER_*`).
+ * /api/secrets/routing`. Supports wildcard key patterns (e.g.
+ * `OPENROUTER_*`).
  */
 
 import { ArrowRight, Loader2, Plus, Trash2 } from "lucide-react";
@@ -316,7 +313,7 @@ export function RoutingTab(props: RoutingTabProps) {
             <p className="text-2xs text-muted">
               {t("routing.defaultProfile.description", {
                 defaultValue:
-                  'Applied when no rule below matches a (key × scope) lookup. "default" is the fallback when this is empty.',
+                  'Applied when no rule matches. Falls back to "default".',
               })}
             </p>
           </div>
@@ -346,19 +343,10 @@ export function RoutingTab(props: RoutingTabProps) {
               {t("routing.rules.title", { defaultValue: "Routing rules" })}
             </p>
             <p className="text-2xs text-muted">
-              {t("routing.rules.descriptionPrefix", {
-                defaultValue: "Per-context overrides. Match keys exactly (e.g.",
+              {t("routing.rules.description", {
+                defaultValue:
+                  "Per-context overrides. Match keys exactly (e.g. OPENROUTER_API_KEY) or use wildcards (e.g. OPENROUTER_*).",
               })}
-              <code className="mx-1 rounded-sm bg-bg/40 px-1 font-mono">
-                OPENROUTER_API_KEY
-              </code>
-              {t("routing.rules.descriptionMid", {
-                defaultValue: ") or use wildcards (e.g.",
-              })}
-              <code className="mx-1 rounded-sm bg-bg/40 px-1 font-mono">
-                OPENROUTER_*
-              </code>
-              {t("routing.rules.descriptionSuffix", { defaultValue: ")." })}
             </p>
           </div>
           <Button

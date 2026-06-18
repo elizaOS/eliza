@@ -1,12 +1,6 @@
 /**
- * Remote Plugin Manager — installs, starts, stops, and uninstalls Electrobun
- * remote plugins through the typed desktop bridge. Lives in Settings rather
- * than AppsView until the catalog→remote-plugin product mapping is decided
- * (see PR #7624 follow-up notes). Scope is deliberately MVP: no
- * remote install, no permission diff/re-consent dialog, no
- * window-mode webview opening, no inter-plugin invoke surface. Just:
- * list, install from a local directory, start/stop, tail logs,
- * uninstall.
+ * Remote Plugin Manager — install from a local directory, start/stop, tail
+ * logs, and uninstall Electrobun remote plugins via the typed desktop bridge.
  */
 
 import {
@@ -42,7 +36,8 @@ import {
   useTranslation,
 } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
+import { SettingsInput } from "../ui/settings-controls";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 type TranslateFn = TranslationContextValue["t"];
 
@@ -58,16 +53,16 @@ type RemotePluginStoreSnapshotCompat = DesktopRemotePluginStoreSnapshot & {
 };
 
 const STATE_TONE: Record<RemotePluginViewState, string> = {
-  stopped: "bg-bg/40 text-muted",
+  stopped: "bg-surface text-muted",
   starting: "bg-warn/20 text-warn",
   running: "bg-ok/20 text-ok",
-  error: "bg-err/20 text-err",
+  error: "bg-warn/20 text-warn",
 };
 
 function StateBadge({ state }: { state: RemotePluginViewState }) {
   return (
     <span
-      className={`inline-flex items-center rounded-sm px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${STATE_TONE[state]}`}
+      className={`inline-flex items-center rounded-sm px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${STATE_TONE[state]}`}
     >
       {state}
     </span>
@@ -199,20 +194,18 @@ function RemotePluginRow({
     });
 
   return (
-    <div className="rounded-sm border border-bg-3 bg-bg-2 p-3">
+    <div className="rounded-lg border border-border bg-card p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
             <span className="truncate text-sm font-medium text-txt">
               {remotePlugin.name}
             </span>
-            <span className="text-[10px] font-mono text-muted">
+            <span className="text-xs font-mono text-muted">
               {remotePlugin.id}
             </span>
-            <span className="text-[10px] text-muted">
-              v{remotePlugin.version}
-            </span>
-            <span className="rounded-sm bg-bg/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted">
+            <span className="text-xs text-muted">v{remotePlugin.version}</span>
+            <span className="rounded-sm bg-bg/40 px-1.5 py-0.5 text-xs uppercase tracking-wide text-muted">
               {remotePlugin.mode}
             </span>
             <StateBadge state={state} />
@@ -221,7 +214,7 @@ function RemotePluginRow({
             {remotePlugin.description}
           </p>
           {status?.error ? (
-            <p className="mt-1 text-xs text-err">{status.error}</p>
+            <p className="mt-1 text-xs text-warn">{status.error}</p>
           ) : null}
         </div>
         <div className="flex shrink-0 gap-1">
@@ -271,7 +264,7 @@ function RemotePluginRow({
         </div>
       </div>
 
-      <div className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-muted sm:grid-cols-3">
+      <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-muted sm:grid-cols-3">
         <div>
           <span className="font-medium text-txt/80">host:</span>{" "}
           {host.length === 0
@@ -290,7 +283,7 @@ function RemotePluginRow({
         </div>
       </div>
 
-      <div className="mt-1 flex gap-3 text-[10px] text-muted/70">
+      <div className="mt-1 flex gap-3 text-xs text-muted/70">
         <span title={new Date(remotePlugin.installedAt).toISOString()}>
           {t("remotepluginhost.installed", {
             time: formatRelative(remotePlugin.installedAt, t),
@@ -313,7 +306,7 @@ function RemotePluginRow({
       </div>
 
       {logsOpen ? (
-        <pre className="mt-2 max-h-48 overflow-auto rounded-sm bg-bg-3 p-2 text-[11px] text-txt/80">
+        <pre className="mt-2 max-h-48 overflow-auto rounded-md bg-surface p-2 text-xs text-txt/80">
           {logs.length === 0
             ? t("remotepluginhost.noLogs", { defaultValue: "(no logs yet)" })
             : logs}
@@ -503,116 +496,124 @@ export function RemotePluginHostSection() {
     });
 
   return (
-    <div className="space-y-4">
-      <section className="space-y-1">
-        <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
-          {t("remotepluginhost.aboutTitle", {
+    <SettingsStack>
+      <SettingsGroup
+        title={t("remotepluginhost.aboutTitle", {
+          defaultValue: "About remote plugins",
+        })}
+      >
+        <SettingsRow
+          label={t("remotepluginhost.aboutTitle", {
             defaultValue: "About remote plugins",
           })}
-        </h3>
-        <p className="text-xs text-muted">
-          {t("remotepluginhost.aboutIntro", {
-            defaultValue:
-              "Remote plugins are Electrobun's sandboxed mini-app primitive. Each runs in its own Bun Worker with a scoped state path, log file, and auth token.",
-          })}{" "}
-          <span className="text-warn">
-            {t("remotepluginhost.aboutWarnLeadIn", {
-              defaultValue:
-                "Permissions are declared in the manifest and shown here at install — runtime enforcement is not wired yet.",
-            })}{" "}
-            <code>bun:*</code>{" "}
-            {t("remotepluginhost.aboutWarnTrailing", {
-              defaultValue:
-                "grants also depend on a Bun runtime feature (Worker permissions) that doesn't ship today.",
-            })}
-          </span>{" "}
-          {t("remotepluginhost.aboutIsolation", {
-            defaultValue:
-              "Process isolation lands when a Bun.spawn-based runner is wired.",
-          })}
-        </p>
-        <p className="text-xs text-muted">
-          <span className="text-warn">
-            {t("remotepluginhost.authTokenLabel", {
-              defaultValue: "Auth token:",
-            })}
-          </span>{" "}
-          {t("remotepluginhost.authTokenDesc", {
-            defaultValue:
-              "a remote plugin can request your API token via the host bridge and call Eliza's HTTP API as you. Future versions will issue per-plugin scoped tokens; the current bridge forwards the host token verbatim. Only install remote plugins from sources you trust.",
-          })}
-        </p>
-        {storeRoot ? (
-          <p className="flex items-center gap-1 text-[11px] text-muted/80">
-            <span>
-              {t("remotepluginhost.storeLabel", { defaultValue: "Store:" })}{" "}
-              <code>{storeRoot}</code>
-            </span>
-            <button
-              ref={revealStoreRef}
-              type="button"
-              className="rounded-sm p-0.5 hover:bg-bg-3"
-              title={t("remotepluginhost.revealInFileManager", {
-                defaultValue: "Reveal in file manager",
+          stacked
+        >
+          <div className="space-y-2">
+            <p className="text-xs text-muted">
+              {t("remotepluginhost.aboutIntro", {
+                defaultValue:
+                  "Each remote plugin runs in its own Bun Worker with a scoped state path, log file, and auth token.",
+              })}{" "}
+              <span className="text-warn">
+                {t("remotepluginhost.aboutWarnLeadIn", {
+                  defaultValue:
+                    "Permissions are declared in the manifest and shown here at install.",
+                })}
+              </span>
+            </p>
+            <p className="text-xs text-muted">
+              <span className="text-warn">
+                {t("remotepluginhost.authTokenLabel", {
+                  defaultValue: "Auth token:",
+                })}
+              </span>{" "}
+              {t("remotepluginhost.authTokenDesc", {
+                defaultValue:
+                  "a remote plugin can request your API token and call Eliza's HTTP API as you. Only install remote plugins from sources you trust.",
               })}
-              onClick={() => void desktopOpenPath(storeRoot)}
-              {...revealStoreAgentProps}
-            >
-              <ExternalLink className="h-3 w-3" />
-            </button>
-          </p>
-        ) : null}
-      </section>
+            </p>
+            {storeRoot ? (
+              <p className="flex items-center gap-1 text-xs text-muted/80">
+                <span>
+                  {t("remotepluginhost.storeLabel", { defaultValue: "Store:" })}{" "}
+                  <code>{storeRoot}</code>
+                </span>
+                <button
+                  ref={revealStoreRef}
+                  type="button"
+                  className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-surface"
+                  title={t("remotepluginhost.revealInFileManager", {
+                    defaultValue: "Reveal in file manager",
+                  })}
+                  onClick={() => void desktopOpenPath(storeRoot)}
+                  {...revealStoreAgentProps}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </button>
+              </p>
+            ) : null}
+          </div>
+        </SettingsRow>
+      </SettingsGroup>
 
-      <section className="space-y-2">
-        <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
-          {t("remotepluginhost.installFromDirectory", {
+      <SettingsGroup
+        title={t("remotepluginhost.installFromDirectory", {
+          defaultValue: "Install from directory",
+        })}
+        footer={error ? <span className="text-warn">{error}</span> : undefined}
+      >
+        <SettingsRow
+          label={t("remotepluginhost.installFromDirectory", {
             defaultValue: "Install from directory",
           })}
-        </h3>
-        <div className="flex gap-2">
-          <Input
-            ref={sourceDirRef}
-            value={sourceDir}
-            onChange={(e) => setSourceDir(e.target.value)}
-            placeholder="/absolute/path/to/remote-plugin/source"
-            disabled={busy}
-            {...sourceDirAgentProps}
-          />
-          <Button
-            ref={pickFolderRef}
-            type="button"
-            variant="outline"
-            onClick={() => void handlePickFolder()}
-            disabled={busy}
-            title={t("remotepluginhost.pickFolder", {
-              defaultValue: "Pick a folder…",
-            })}
-            {...pickFolderAgentProps}
-          >
-            <FolderOpen className="h-4 w-4" />
-          </Button>
-          <Button
-            ref={installRef}
-            type="button"
-            onClick={() => void handleInstall()}
-            disabled={busy || sourceDir.trim().length === 0}
-            {...installAgentProps}
-          >
-            {t("remotepluginhost.install", { defaultValue: "Install" })}
-          </Button>
-        </div>
-        {error ? <p className="text-xs text-err">{error}</p> : null}
-      </section>
+          stacked
+        >
+          <div className="flex gap-2">
+            <SettingsInput
+              ref={sourceDirRef}
+              variant="touch"
+              value={sourceDir}
+              onChange={(e) => setSourceDir(e.target.value)}
+              placeholder="/absolute/path/to/remote-plugin/source"
+              disabled={busy}
+              className="flex-1"
+              {...sourceDirAgentProps}
+            />
+            <Button
+              ref={pickFolderRef}
+              type="button"
+              variant="outline"
+              onClick={() => void handlePickFolder()}
+              disabled={busy}
+              className="h-11 w-11 shrink-0 rounded-md p-0"
+              title={t("remotepluginhost.pickFolder", {
+                defaultValue: "Pick a folder…",
+              })}
+              {...pickFolderAgentProps}
+            >
+              <FolderOpen className="h-4 w-4" />
+            </Button>
+            <Button
+              ref={installRef}
+              type="button"
+              onClick={() => void handleInstall()}
+              disabled={busy || sourceDir.trim().length === 0}
+              className="h-11 shrink-0 rounded-md px-4 text-sm"
+              {...installAgentProps}
+            >
+              {t("remotepluginhost.install", { defaultValue: "Install" })}
+            </Button>
+          </div>
+        </SettingsRow>
+      </SettingsGroup>
 
-      <section className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
-            {t("remotepluginhost.installedCount", {
-              count: remotePlugins.length,
-              defaultValue: "Installed ({{count}})",
-            })}
-          </h3>
+      <SettingsGroup
+        bare
+        title={t("remotepluginhost.installedCount", {
+          count: remotePlugins.length,
+          defaultValue: "Installed ({{count}})",
+        })}
+        action={
           <Button
             ref={refreshRef}
             size="sm"
@@ -624,17 +625,14 @@ export function RemotePluginHostSection() {
             <RefreshCw className="mr-1 h-3 w-3" />{" "}
             {t("remotepluginhost.refresh", { defaultValue: "Refresh" })}
           </Button>
-        </div>
+        }
+      >
         {remotePlugins.length === 0 ? (
-          <p className="text-xs text-muted">
+          <p className="rounded-lg border border-border bg-card px-4 py-3 text-xs text-muted">
             {t("remotepluginhost.emptyLeadIn", {
               defaultValue:
-                "No remote plugins installed. Try installing the bundled example at",
-            })}{" "}
-            <code>
-              packages/plugin-remote-manifest/examples/hello-remote-plugin
-            </code>
-            .
+                "No remote plugins installed. Install one from a local directory above.",
+            })}
           </p>
         ) : (
           <div className="space-y-2">
@@ -651,7 +649,7 @@ export function RemotePluginHostSection() {
             ))}
           </div>
         )}
-      </section>
-    </div>
+      </SettingsGroup>
+    </SettingsStack>
   );
 }

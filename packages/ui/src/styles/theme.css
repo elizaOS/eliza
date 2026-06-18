@@ -40,6 +40,10 @@
   --status-warning-bg: rgba(255, 88, 0, 0.14);
   --status-info: rgba(0, 0, 0, 0.7);
   --status-info-bg: rgba(0, 0, 0, 0.06);
+  /* `--info` (base.css) maps to brand-blue; neutralize it here too so any
+     `info` utility renders neutral, not blue. */
+  --info: rgba(0, 0, 0, 0.7);
+  --info-bg: rgba(0, 0, 0, 0.06);
   --font-sans: "Poppins", Arial, system-ui, sans-serif;
   --font-body: var(--font-sans);
   --font-display: var(--font-body);
@@ -80,5 +84,7 @@
   --status-warning-bg: rgba(255, 88, 0, 0.12);
   --status-info: rgba(255, 255, 255, 0.7);
   --status-info-bg: rgba(255, 255, 255, 0.06);
+  --info: rgba(255, 255, 255, 0.7);
+  --info-bg: rgba(255, 255, 255, 0.06);
   color-scheme: dark;
 }

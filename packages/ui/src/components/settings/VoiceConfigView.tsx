@@ -36,10 +36,12 @@ import {
 } from "../ui/card";
 import { Input } from "../ui/input";
 import { SaveFooter } from "../ui/save-footer";
+import { SettingsInput } from "../ui/settings-controls";
 import { Switch } from "../ui/switch";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
 import { useSettingsSave } from "./settings-control-primitives.hooks";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 const DEFAULT_ELEVEN_FAST_MODEL = "eleven_flash_v2_5";
 
@@ -208,7 +210,7 @@ export function DesktopTalkModePanel() {
             : t("voiceconfigview.TalkModeStarted"),
         ),
     });
-  const { ref: _speakRef, agentProps: _speakAgentProps } =
+  const { ref: speakRef, agentProps: speakAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "voice-talkmode-speak",
       role: "button",
@@ -229,7 +231,7 @@ export function DesktopTalkModePanel() {
           false,
         ),
     });
-  const { ref: _stopSpeakingRef, agentProps: _stopSpeakingAgentProps } =
+  const { ref: stopSpeakingRef, agentProps: stopSpeakingAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "voice-talkmode-stop-speaking",
       role: "button",
@@ -306,7 +308,7 @@ export function DesktopTalkModePanel() {
         <div className="grid gap-2 sm:grid-cols-3">
           <Card className="border-border/50 bg-bg-hover/60 shadow-none">
             <CardContent className="px-2.5 py-2 text-xs-tight">
-              <div className="text-2xs text-muted">
+              <div className="text-xs text-muted">
                 {t("voiceconfigview.State")}
               </div>
               <div className="font-semibold text-txt">{panelState.state}</div>
@@ -314,7 +316,7 @@ export function DesktopTalkModePanel() {
           </Card>
           <Card className="border-border/50 bg-bg-hover/60 shadow-none">
             <CardContent className="px-2.5 py-2 text-xs-tight">
-              <div className="text-2xs text-muted">{t("common.enabled")}</div>
+              <div className="text-xs text-muted">{t("common.enabled")}</div>
               <div className="font-semibold text-txt">
                 {panelState.enabled ? t("common.yes") : t("common.no")}
               </div>
@@ -322,7 +324,7 @@ export function DesktopTalkModePanel() {
           </Card>
           <Card className="border-border/50 bg-bg-hover/60 shadow-none">
             <CardContent className="px-2.5 py-2 text-xs-tight">
-              <div className="text-2xs text-muted">
+              <div className="text-xs text-muted">
                 {t("voiceconfigview.Speaking")}
               </div>
               <div className="font-semibold text-txt">
@@ -386,6 +388,7 @@ export function DesktopTalkModePanel() {
               : t("voiceconfigview.StartTalkMode")}
           </Button>
           <Button
+            ref={speakRef}
             variant="outline"
             size="sm"
             className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
@@ -404,10 +407,12 @@ export function DesktopTalkModePanel() {
               )
             }
             disabled={!phrase.trim() || busyAction === "voice-talkmode-speak"}
+            {...speakAgentProps}
           >
             {t("voiceconfigview.SpeakTestPhrase")}
           </Button>
           <Button
+            ref={stopSpeakingRef}
             variant="outline"
             size="sm"
             className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
@@ -424,12 +429,78 @@ export function DesktopTalkModePanel() {
               )
             }
             disabled={busyAction === "voice-talkmode-stop-speaking"}
+            {...stopSpeakingAgentProps}
           >
             {t("voiceconfigview.StopSpeaking")}
           </Button>
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function RemoveTriggerButton({
+  trigger,
+  onRemove,
+  label,
+}: {
+  trigger: string;
+  onRemove: () => void;
+  label: string;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `voice-wakeword-remove-${trigger}`,
+    role: "button",
+    label,
+    group: "voice-wakeword",
+    onActivate: onRemove,
+  });
+  return (
+    <Button
+      ref={ref}
+      variant="ghost"
+      size="icon"
+      className="ml-1 h-5 w-5 rounded-full p-0 leading-none text-muted-strong hover:bg-bg-hover hover:text-txt"
+      onClick={onRemove}
+      aria-label={label}
+      {...agentProps}
+    >
+      ×
+    </Button>
+  );
+}
+
+function ModelSizeButton({
+  id,
+  active,
+  hint,
+  onSelect,
+}: {
+  id: NonNullable<SwabbleConfig["modelSize"]>;
+  active: boolean;
+  hint?: string;
+  onSelect: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `voice-wakeword-model-${id}`,
+    role: "button",
+    label: id,
+    group: "voice-wakeword",
+    status: active ? "active" : undefined,
+    onActivate: onSelect,
+  });
+  return (
+    <Button
+      ref={ref}
+      variant={active ? "default" : "outline"}
+      size="sm"
+      className="h-auto min-h-12 flex-col rounded-sm py-2"
+      onClick={onSelect}
+      {...agentProps}
+    >
+      <div className="font-semibold">{id}</div>
+      {hint && <div className="mt-0.5 text-xs opacity-90">{hint}</div>}
+    </Button>
   );
 }
 
@@ -447,7 +518,6 @@ function WakeWordSection({
   const [audioLevel, setAudioLevel] = useState(0);
   const [enabled, setEnabled] = useState(false);
 
-  // Load initial state from Swabble on mount
   useEffect(() => {
     void (async () => {
       try {
@@ -456,7 +526,6 @@ function WakeWordSection({
           swabble.getConfig(),
           swabble.isListening(),
         ]);
-        // Use plugin config if available, fall back to server-persisted config
         const resolved = config ?? serverConfig ?? null;
         if (resolved) {
           if (resolved.triggers?.length) setTriggers(resolved.triggers);
@@ -471,7 +540,6 @@ function WakeWordSection({
     })();
   }, [serverConfig]);
 
-  // Subscribe to audio level events
   useEffect(() => {
     let handle: { remove: () => Promise<void> } | null = null;
     void (async () => {
@@ -565,19 +633,63 @@ function WakeWordSection({
     }
   }, [enabled, buildConfig]);
 
+  const { ref: enableRef, agentProps: enableAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "voice-wakeword-enable",
+      role: "toggle",
+      label: t("voiceconfigview.EnableWakeWord", {
+        defaultValue: "Enable wake word",
+      }),
+      group: "voice-wakeword",
+      status: enabled ? "on" : "off",
+      getValue: () => enabled,
+      onActivate: () => void handleToggle(),
+    });
+  const { ref: addTriggerRef, agentProps: addTriggerAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "voice-wakeword-add-trigger",
+      role: "text-input",
+      label: t("voiceconfigview.AddTrigger", { defaultValue: "Add trigger" }),
+      group: "voice-wakeword",
+      getValue: () => triggerInput,
+      onFill: (value) => {
+        addTrigger(value);
+        setTriggerInput("");
+      },
+    });
+  const { ref: gapRef, agentProps: gapAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "voice-wakeword-post-trigger-gap",
+      role: "slider",
+      label: t("voiceconfigview.PostTriggerGap", {
+        defaultValue: "Post-trigger gap",
+      }),
+      group: "voice-wakeword",
+      getValue: () => postTriggerGap,
+      onFill: (value) => {
+        const n = Number(value);
+        if (Number.isFinite(n)) {
+          void handlePostTriggerGapChange(Math.min(2, Math.max(0.1, n)));
+        }
+      },
+    });
+
   return (
-    <div className="flex flex-col gap-4 pt-4">
+    <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-xs font-semibold text-muted">
-          {t("voiceconfigview.WakeWord")}
+        <div className="text-sm font-medium text-txt-strong">
+          {t("voiceconfigview.EnableWakeWord", {
+            defaultValue: "Enable wake word",
+          })}
         </div>
-        <div className="flex min-h-10 items-center gap-2 rounded-sm border border-border/50 bg-bg-hover px-3">
+        <div className="flex min-h-11 items-center gap-2 rounded-md border border-border bg-surface px-3">
           <span className="text-xs-tight font-medium text-muted-strong">
             {enabled
               ? t("common.enabled", { defaultValue: "Enabled" })
               : t("common.disabled", { defaultValue: "Disabled" })}
           </span>
           <Switch
+            ref={enableRef}
             checked={enabled}
             onCheckedChange={() => void handleToggle()}
             aria-label={
@@ -589,6 +701,7 @@ function WakeWordSection({
                     defaultValue: "Enable wake word",
                   })
             }
+            {...enableAgentProps}
           />
         </div>
       </div>
@@ -600,26 +713,23 @@ function WakeWordSection({
           {triggers.map((trigger) => (
             <span
               key={trigger}
-              className="flex min-h-7 items-center gap-1 rounded-full border border-accent/30 bg-accent/10 px-2 py-1 text-2xs text-txt"
+              className="flex min-h-7 items-center gap-1 rounded-full border border-accent/30 bg-accent/10 px-2 py-1 text-xs text-txt"
             >
               {trigger}
               {triggers.length > 1 && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="ml-1 h-5 w-5 rounded-full p-0 leading-none text-muted-strong hover:bg-bg-hover hover:text-txt"
-                  onClick={() => removeTrigger(trigger)}
-                  aria-label={t("voiceconfigview.RemoveTrigger", {
+                <RemoveTriggerButton
+                  trigger={trigger}
+                  onRemove={() => removeTrigger(trigger)}
+                  label={t("voiceconfigview.RemoveTrigger", {
                     defaultValue: 'Remove trigger "{{trigger}}"',
                     trigger,
                   })}
-                >
-                  ×
-                </Button>
+                />
               )}
             </span>
           ))}
           <Input
+            ref={addTriggerRef}
             type="text"
             className="h-7 min-w-[120px] flex-1 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0"
             placeholder={t("voiceconfigview.AddTrigger")}
@@ -632,9 +742,10 @@ function WakeWordSection({
                 setTriggerInput("");
               }
             }}
+            {...addTriggerAgentProps}
           />
         </div>
-        <div className="text-2xs text-muted">
+        <div className="text-xs text-muted">
           {t("voiceconfigview.PressEnterOrComma")}
         </div>
       </div>
@@ -645,25 +756,30 @@ function WakeWordSection({
               defaultValue: "Post-trigger gap",
             })}
           </span>
-          <span className="text-2xs text-muted">
+          <span className="text-xs text-muted">
             {postTriggerGap.toFixed(2)}s
           </span>
         </div>
         <input
+          ref={gapRef}
           type="range"
           min={0.1}
           max={2.0}
           step={0.05}
           value={postTriggerGap}
           className="w-full accent-accent"
+          aria-label={t("voiceconfigview.PostTriggerGap", {
+            defaultValue: "Post-trigger gap",
+          })}
           onChange={(e) =>
             void handlePostTriggerGapChange(parseFloat(e.target.value))
           }
+          {...gapAgentProps}
         />
-        <div className="text-2xs text-muted">
+        <div className="text-xs text-muted">
           {t("voiceconfigview.PostTriggerGapHint", {
             defaultValue:
-              "Minimum quiet time required after the wake word before listening resumes.",
+              "Quiet time after the wake word before listening resumes.",
           })}
         </div>
       </div>
@@ -672,25 +788,15 @@ function WakeWordSection({
           {t("voiceconfigview.ModelSize")}
         </span>
         <div className="grid grid-cols-2 gap-1.5 xl:grid-cols-5">
-          {MODEL_SIZES.map((m) => {
-            const active = modelSize === m.id;
-            return (
-              <Button
-                key={m.id}
-                variant={active ? "default" : "outline"}
-                size="sm"
-                className="h-auto min-h-12 flex-col rounded-sm py-2"
-                onClick={() => void handleModelSizeChange(m.id)}
-              >
-                <div className="font-semibold">{m.id}</div>
-                {m.hintKey && (
-                  <div className="text-2xs opacity-70 mt-0.5">
-                    {t(m.hintKey)}
-                  </div>
-                )}
-              </Button>
-            );
-          })}
+          {MODEL_SIZES.map((m) => (
+            <ModelSizeButton
+              key={m.id}
+              id={m.id}
+              active={modelSize === m.id}
+              hint={m.hintKey ? t(m.hintKey) : undefined}
+              onSelect={() => void handleModelSizeChange(m.id)}
+            />
+          ))}
         </div>
       </div>
       <div className="flex flex-col gap-1">
@@ -708,11 +814,45 @@ function WakeWordSection({
   );
 }
 
+function AsrProviderButton({
+  id,
+  label,
+  hint,
+  active,
+  onSelect,
+}: {
+  id: AsrProvider;
+  label: string;
+  hint: string;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `voice-asr-provider-${id}`,
+    role: "button",
+    label,
+    group: "voice-asr",
+    status: active ? "active" : undefined,
+    onActivate: onSelect,
+  });
+  return (
+    <Button
+      ref={ref}
+      variant={active ? "default" : "outline"}
+      size="sm"
+      className="h-auto min-h-14 flex-col rounded-sm py-2"
+      onClick={onSelect}
+      {...agentProps}
+    >
+      <div className="font-semibold">{label}</div>
+      <div className="mt-0.5 text-xs opacity-90">{hint}</div>
+    </Button>
+  );
+}
+
 /**
- * Advanced ASR (speech-to-text) provider picker. Surfaces an opt-in
- * override of the device+mode default chosen by
- * `pickDefaultVoiceProvider`. Renders nothing visible until the user
- * flips the AdvancedToggle on the parent VoiceConfigView.
+ * Advanced speech-to-text provider picker. Overrides the device default;
+ * hidden until the AdvancedToggle is on.
  */
 function AsrAdvancedSection({
   currentAsrProvider,
@@ -723,13 +863,11 @@ function AsrAdvancedSection({
   onChange: (provider: AsrProvider) => void;
   defaultAsrProvider: AsrProvider;
 }) {
+  const { t } = useApp();
   const [localStatusBusy, setLocalStatusBusy] = useState(false);
 
-  // When the user picks "local-inference" we poll once for the active
-  // local-inference downloads. A non-empty downloads list means the
-  // model bundle (Qwen3-ASR) isn't ready yet and we should show a
-  // "downloading..." indicator instead of pretending the pipeline is
-  // online.
+  // A non-empty local-inference downloads list means the model bundle isn't
+  // ready yet, so we show "downloading" rather than implying it's online.
   useEffect(() => {
     if (currentAsrProvider !== "local-inference") {
       setLocalStatusBusy(false);
@@ -745,8 +883,6 @@ function AsrAdvancedSection({
           : false;
         setLocalStatusBusy(hasActiveDownloads);
       } catch {
-        // If the endpoint isn't reachable (e.g. cloud-only deployment),
-        // we just skip the indicator. The save path still works.
         if (!cancelled) setLocalStatusBusy(false);
       }
     })();
@@ -759,42 +895,119 @@ function AsrAdvancedSection({
     <div className="rounded-sm border border-border/60 bg-card/92 p-4 flex flex-col gap-3">
       <div className="flex flex-col gap-0.5">
         <span className="text-xs font-semibold text-muted">
-          ASR (speech-to-text) provider
+          {t("voiceconfigview.AsrProvider", {
+            defaultValue: "Speech-to-text",
+          })}
         </span>
-        <span className="text-2xs text-muted">
-          Default for this device: <code>{defaultAsrProvider}</code>. Override
-          per provider here.
+        <span className="text-xs text-muted">
+          {t("voiceconfigview.AsrDeviceDefault", {
+            defaultValue: "Device default: {{provider}}",
+            provider: defaultAsrProvider,
+          })}
         </span>
       </div>
       <div className="grid gap-2 sm:grid-cols-3">
-        {ASR_PROVIDERS.map((p) => {
-          const active = currentAsrProvider === p.id;
-          return (
-            <Button
-              key={p.id}
-              variant={active ? "default" : "outline"}
-              size="sm"
-              className="h-auto min-h-14 flex-col rounded-sm py-2"
-              onClick={() => onChange(p.id)}
-            >
-              <div className="font-semibold">{p.label}</div>
-              <div className="text-2xs opacity-70 mt-0.5">{p.hint}</div>
-            </Button>
-          );
-        })}
+        {ASR_PROVIDERS.map((p) => (
+          <AsrProviderButton
+            key={p.id}
+            id={p.id}
+            label={p.label}
+            hint={p.hint}
+            active={currentAsrProvider === p.id}
+            onSelect={() => onChange(p.id)}
+          />
+        ))}
       </div>
       {currentAsrProvider === "local-inference" && localStatusBusy && (
-        <div className="rounded-sm border border-warn/35 bg-warn/10 px-3 py-2 text-xs-tight leading-5 text-warn">
-          Downloading Qwen3-ASR bundle... ASR will use the cloud fallback until
-          the local model is ready.
+        <div className="rounded-sm border border-warn/35 bg-warn/10 px-3 py-2 text-xs leading-5 text-warn">
+          {t("voiceconfigview.AsrDownloading", {
+            defaultValue: "Downloading local model — using cloud until ready.",
+          })}
         </div>
       )}
       {currentAsrProvider === "openai" && (
-        <div className="rounded-sm border border-border/40 bg-bg-hover/60 px-3 py-2 text-2xs leading-5 text-muted">
-          Uses your OpenAI API key from the Providers section.
+        <div className="rounded-sm border border-border/40 bg-bg-hover/60 px-3 py-2 text-xs leading-5 text-muted">
+          {t("voiceconfigview.AsrUsesOpenAiKey", {
+            defaultValue:
+              "Uses your OpenAI API key from the Providers section.",
+          })}
         </div>
       )}
     </div>
+  );
+}
+
+function TtsProviderButton({
+  id,
+  label,
+  hint,
+  active,
+  onSelect,
+}: {
+  id: VoiceProvider;
+  label: string;
+  hint: string;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `voice-tts-provider-${id}`,
+    role: "button",
+    label,
+    group: "voice-tts",
+    status: active ? "active" : undefined,
+    onActivate: onSelect,
+  });
+  return (
+    <Button
+      ref={ref}
+      variant={active ? "default" : "outline"}
+      className="h-auto min-h-14 flex-col rounded-md py-2"
+      onClick={onSelect}
+      {...agentProps}
+    >
+      <div className="font-semibold">{label}</div>
+      <div className="mt-0.5 text-xs opacity-90">{hint}</div>
+    </Button>
+  );
+}
+
+function PremadeVoiceButton({
+  voiceId,
+  name,
+  hint,
+  active,
+  onSelect,
+}: {
+  voiceId: string;
+  name: string;
+  hint: string;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `voice-tts-voice-${voiceId}`,
+    role: "button",
+    label: name,
+    group: "voice-tts",
+    status: active ? "active" : undefined,
+    onActivate: onSelect,
+  });
+  return (
+    <Button
+      ref={ref}
+      variant={active ? "default" : "outline"}
+      className={`h-auto min-h-16 flex-col items-start rounded-md px-3 py-2.5 text-left transition-all ${
+        active
+          ? "border-accent/45 bg-accent/12 text-txt "
+          : "border-border/60 bg-bg text-txt hover:border-border-strong hover:bg-surface"
+      }`}
+      onClick={onSelect}
+      {...agentProps}
+    >
+      <div className="font-semibold text-xs truncate w-full">{name}</div>
+      <div className="text-xs text-muted truncate w-full">{hint}</div>
+    </Button>
   );
 }
 
@@ -808,7 +1021,6 @@ export function VoiceConfigView() {
   const [testing, setTesting] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Load config on mount
   useEffect(() => {
     void (async () => {
       setLoading(true);
@@ -832,7 +1044,6 @@ export function VoiceConfigView() {
     })();
   }, []);
 
-  // Cleanup audio on unmount
   useEffect(() => {
     return () => {
       if (audioRef.current) {
@@ -845,9 +1056,7 @@ export function VoiceConfigView() {
   const { defaults: providerDefaults } = useDefaultProviderPresets();
   const advancedEnabled = useAdvancedSettingsEnabled();
 
-  // Apply the device+mode default TTS provider whenever the user hasn't
-  // chosen one yet. The user can override per-provider via the picker
-  // below — the value below `??` only kicks in for fresh installs.
+  // Falls back to the device default until the user picks a provider.
   const currentProvider = voiceConfig.provider ?? providerDefaults.tts;
   const currentAsrProvider: AsrProvider =
     voiceConfig.asr?.provider ?? providerDefaults.asr;
@@ -904,6 +1113,18 @@ export function VoiceConfigView() {
     setDirty(true);
   }, []);
 
+  const { ref: apiKeyRef, agentProps: apiKeyAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "voice-tts-elevenlabs-key",
+      role: "text-input",
+      label: t("settings.voice.elevenLabsApiKey", {
+        defaultValue: "ElevenLabs API key",
+      }),
+      group: "voice-tts",
+      getValue: () => voiceConfig.elevenlabs?.apiKey ?? "",
+      onFill: handleApiKeyChange,
+    });
+
   const handleTestVoice = useCallback((previewUrl: string) => {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -933,9 +1154,8 @@ export function VoiceConfigView() {
       if (sanitizedKey) normalizedElevenLabs.apiKey = sanitizedKey;
       else delete normalizedElevenLabs.apiKey;
     }
-    // Persist the ASR pick verbatim. We only write `asr` to storage when
-    // the user has actually surfaced (or overridden) it in the advanced
-    // section — the device+mode default is recomputed on every load.
+    // Persist `asr` only when the user has set it; the default is recomputed
+    // on every load.
     const normalizedAsr: VoiceConfig["asr"] | undefined = voiceConfig.asr
       ? {
           provider: voiceConfig.asr.provider,
@@ -994,200 +1214,202 @@ export function VoiceConfigView() {
   );
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="rounded-sm border border-border/60 bg-card/92 p-4 ">
-        <div className="text-xs font-semibold text-muted">
-          {t("voiceconfigview.TTSProvider")}
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {VOICE_PROVIDERS.map((p) => {
-            const active = currentProvider === p.id;
-            return (
-              <Button
-                key={p.id}
-                variant={active ? "default" : "outline"}
-                size="sm"
-                className="h-auto min-h-14 flex-col rounded-sm py-2"
-                onClick={() => handleProviderChange(p.id)}
-              >
-                <div className="font-semibold">
-                  {t(p.labelKey, { defaultValue: p.label })}
-                </div>
-                <div className="text-2xs opacity-70 mt-0.5">
-                  {t(p.hintKey, { defaultValue: p.hint })}
-                </div>
-              </Button>
-            );
-          })}
-        </div>
-      </div>
-      <div className="flex flex-col gap-2 rounded-sm border border-border/60 bg-card/92 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <span className="text-xs leading-5 text-txt">
-          {currentProvider === "elevenlabs"
-            ? `ElevenLabs — ${currentMode === "cloud" ? t("voiceconfigview.ServedViaElizaCloud") : t("voiceconfigview.RequiresApiKey")}`
-            : `${providerInfo ? t(providerInfo.labelKey, { defaultValue: providerInfo.label }) : ""} — ${t("voiceconfigview.NoApiKeyNeeded")}`}
-        </span>
-        <span
-          className={`inline-flex items-center rounded-full border px-2 py-1 text-2xs font-medium ${
-            isConfigured
-              ? "border-ok/35 bg-ok/10 text-ok"
-              : "border-warn/35 bg-warn/10 text-warn"
-          }`}
-        >
-          {isConfigured
-            ? t("config-field.Configured")
-            : t("mediasettingssection.NeedsSetup")}
-        </span>
-      </div>
-      {currentProvider === "elevenlabs" && (
-        <div className="rounded-sm border border-border/60 bg-card/92 p-4 flex flex-col gap-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <span className="text-xs font-semibold text-muted">
-              {t("voiceconfigview.APISource")}
+    <SettingsStack>
+      <SettingsGroup
+        bare
+        title={t("voiceconfigview.TTSProvider")}
+        footer={
+          <span className="flex items-center gap-2">
+            <span className="text-txt">
+              {currentProvider === "elevenlabs"
+                ? `ElevenLabs — ${currentMode === "cloud" ? t("voiceconfigview.ServedViaElizaCloud") : t("voiceconfigview.RequiresApiKey")}`
+                : `${providerInfo ? t(providerInfo.labelKey, { defaultValue: providerInfo.label }) : ""} — ${t("voiceconfigview.NoApiKeyNeeded")}`}
             </span>
+            <span
+              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${
+                isConfigured
+                  ? "border-ok/35 bg-ok/10 text-ok"
+                  : "border-warn/35 bg-warn/10 text-warn"
+              }`}
+            >
+              {isConfigured
+                ? t("config-field.Configured")
+                : t("mediasettingssection.NeedsSetup")}
+            </span>
+          </span>
+        }
+      >
+        <div className="grid gap-2 sm:grid-cols-2">
+          {VOICE_PROVIDERS.map((p) => (
+            <TtsProviderButton
+              key={p.id}
+              id={p.id}
+              label={t(p.labelKey, { defaultValue: p.label })}
+              hint={t(p.hintKey, { defaultValue: p.hint })}
+              active={currentProvider === p.id}
+              onSelect={() => handleProviderChange(p.id)}
+            />
+          ))}
+        </div>
+      </SettingsGroup>
+
+      {currentProvider === "elevenlabs" && (
+        <SettingsGroup
+          title={t("voiceconfigview.APISource")}
+          action={
             <CloudSourceModeToggle
               mode={currentMode}
               onChange={handleModeChange}
             />
-          </div>
-          {currentMode === "cloud" && (
-            <CloudConnectionStatus
-              connected={elizaCloudConnected}
-              disconnectedText={t("elizaclouddashboard.ElizaCloudNotConnected")}
-            />
-          )}
-          {currentMode === "own-key" && (
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs font-semibold">
-                {t("settings.voice.elevenLabsApiKey")}
-              </span>
-              <Input
+          }
+        >
+          {currentMode === "cloud" ? (
+            <SettingsRow label={t("voiceconfigview.APISource")} stacked>
+              <CloudConnectionStatus
+                connected={elizaCloudConnected}
+                disconnectedText={t(
+                  "elizaclouddashboard.ElizaCloudNotConnected",
+                )}
+              />
+            </SettingsRow>
+          ) : null}
+          {currentMode === "own-key" ? (
+            <SettingsRow
+              label={t("settings.voice.elevenLabsApiKey")}
+              description={
+                <>
+                  {t("voiceconfigview.GetYourKeyAt")}{" "}
+                  <a
+                    href="https://elevenlabs.io"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-txt underline decoration-accent underline-offset-2 hover:opacity-80"
+                  >
+                    {t("voiceconfigview.elevenlabsIo")}
+                  </a>
+                  {" · "}
+                  {t("voiceconfigview.FastPathDefaultE")}
+                  <code>{DEFAULT_ELEVEN_FAST_MODEL}</code>
+                </>
+              }
+              stacked
+            >
+              <SettingsInput
+                ref={apiKeyRef}
+                variant="touch"
+                className="w-full"
                 type="password"
-                className="min-h-10 rounded-sm bg-bg text-xs"
                 placeholder={
                   voiceConfig.elevenlabs?.apiKey
                     ? t("mediasettingssection.ApiKeySetLeaveBlank")
                     : t("mediasettingssection.EnterApiKey")
                 }
                 onChange={(e) => handleApiKeyChange(e.target.value)}
+                {...apiKeyAgentProps}
               />
-              <div className="text-2xs text-muted">
-                {t("voiceconfigview.GetYourKeyAt")}{" "}
-                <a
-                  href="https://elevenlabs.io"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-txt underline decoration-accent underline-offset-2 hover:opacity-80"
-                >
-                  {t("voiceconfigview.elevenlabsIo")}
-                </a>
-              </div>
-              <div className="text-2xs text-muted">
-                {t("voiceconfigview.FastPathDefaultE")}
-                {DEFAULT_ELEVEN_FAST_MODEL}`).
-              </div>
-            </div>
-          )}
-          <div className="flex flex-col gap-2">
-            <div className="text-xs font-semibold">{t("common.voice")}</div>
+            </SettingsRow>
+          ) : null}
+          <SettingsRow label={t("common.voice")} stacked>
             <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
-              {PREMADE_VOICES.map((preset) => {
-                const active = selectedVoiceId === preset.voiceId;
-                return (
-                  <Button
-                    key={preset.id}
-                    variant={active ? "default" : "outline"}
-                    className={`h-auto min-h-16 flex-col items-start rounded-sm px-3 py-2.5 text-left transition-all ${
-                      active
-                        ? "border-accent/45 bg-accent/12 text-txt "
-                        : "border-border/60 bg-bg text-txt hover:border-border-strong hover:bg-bg-hover"
-                    }`}
-                    onClick={() => handleVoiceSelect(preset.voiceId)}
-                  >
-                    <div className="font-semibold text-xs truncate w-full">
-                      {preset.nameKey
-                        ? t(preset.nameKey, { defaultValue: preset.name })
-                        : preset.name}
-                    </div>
-                    <div className="text-2xs text-muted truncate w-full">
-                      {preset.hintKey
-                        ? t(preset.hintKey, { defaultValue: preset.hint })
-                        : preset.hint}
-                    </div>
-                  </Button>
-                );
-              })}
+              {PREMADE_VOICES.map((preset) => (
+                <PremadeVoiceButton
+                  key={preset.id}
+                  voiceId={preset.voiceId}
+                  name={
+                    preset.nameKey
+                      ? t(preset.nameKey, { defaultValue: preset.name })
+                      : preset.name
+                  }
+                  hint={
+                    preset.hintKey
+                      ? t(preset.hintKey, { defaultValue: preset.hint })
+                      : preset.hint
+                  }
+                  active={selectedVoiceId === preset.voiceId}
+                  onSelect={() => handleVoiceSelect(preset.voiceId)}
+                />
+              ))}
             </div>
-          </div>
-          {selectedPreset && (
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
-                disabled={testing}
-                onClick={() => handleTestVoice(selectedPreset.previewUrl)}
-              >
-                {testing
-                  ? t("voiceconfigview.Playing")
-                  : t("voiceconfigview.TestVoice", {
-                      name: selectedPreset.name,
-                    })}
-              </Button>
-              {testing && (
+          </SettingsRow>
+          {selectedPreset ? (
+            <SettingsRow label={t("voiceconfigview.Microphone")} stacked>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <Button
                   variant="outline"
-                  size="sm"
-                  className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
-                  onClick={() => {
-                    if (audioRef.current) {
-                      audioRef.current.pause();
-                      setTesting(false);
-                    }
-                  }}
+                  className="h-11 rounded-md px-3 text-sm font-semibold"
+                  disabled={testing}
+                  onClick={() => handleTestVoice(selectedPreset.previewUrl)}
                 >
-                  {t("common.stop")}
+                  {testing
+                    ? t("voiceconfigview.Playing")
+                    : t("voiceconfigview.TestVoice", {
+                        name: selectedPreset.name,
+                      })}
                 </Button>
-              )}
-            </div>
-          )}
-        </div>
+                {testing ? (
+                  <Button
+                    variant="outline"
+                    className="h-11 rounded-md px-3 text-sm font-semibold"
+                    onClick={() => {
+                      if (audioRef.current) {
+                        audioRef.current.pause();
+                        setTesting(false);
+                      }
+                    }}
+                  >
+                    {t("common.stop")}
+                  </Button>
+                ) : null}
+              </div>
+            </SettingsRow>
+          ) : null}
+        </SettingsGroup>
       )}
       {currentProvider === "edge" && (
-        <div className="rounded-sm border border-border/60 bg-card/92 px-4 py-3 text-xs leading-5 text-muted ">
-          {t("voiceconfigview.EdgeTTSUsesMicros")}
-        </div>
+        <SettingsGroup bare>
+          <div className="rounded-lg border border-border bg-card px-4 py-3 text-xs leading-5 text-muted">
+            {t("voiceconfigview.EdgeTTSUsesMicros")}
+          </div>
+        </SettingsGroup>
       )}
       {currentProvider === "robot-voice" && (
-        <div className="rounded-sm border border-border/60 bg-card/92 px-4 py-3 text-xs leading-5 text-muted ">
-          {t("voiceconfigview.SimpleVoiceUsesYo")}
-        </div>
+        <SettingsGroup bare>
+          <div className="rounded-lg border border-border bg-card px-4 py-3 text-xs leading-5 text-muted">
+            {t("voiceconfigview.SimpleVoiceUsesYo")}
+          </div>
+        </SettingsGroup>
       )}
 
-      <div className="flex items-center justify-between rounded-sm border border-border/60 bg-card/92 px-4 py-3 ">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-xs font-semibold text-txt">
-            Advanced settings
-          </span>
-          <span className="text-2xs text-muted">
-            Show ASR (speech-to-text) provider picker and per-provider
-            overrides.
-          </span>
-        </div>
-        <AdvancedToggle label="Advanced" />
-      </div>
+      <SettingsGroup>
+        <SettingsRow
+          label={t("voiceconfigview.advancedSettings", {
+            defaultValue: "Advanced settings",
+          })}
+          description={t("voiceconfigview.advancedSettingsHint", {
+            defaultValue:
+              "Show ASR (speech-to-text) provider picker and per-provider overrides.",
+          })}
+          control={<AdvancedToggle label="Advanced" />}
+        />
+      </SettingsGroup>
 
       {advancedEnabled && (
-        <AsrAdvancedSection
-          currentAsrProvider={currentAsrProvider}
-          onChange={handleAsrProviderChange}
-          defaultAsrProvider={providerDefaults.asr}
-        />
+        <SettingsGroup bare>
+          <AsrAdvancedSection
+            currentAsrProvider={currentAsrProvider}
+            onChange={handleAsrProviderChange}
+            defaultAsrProvider={providerDefaults.asr}
+          />
+        </SettingsGroup>
       )}
 
-      <WakeWordSection serverConfig={swabbleServerConfig} />
+      <SettingsGroup bare title={t("voiceconfigview.WakeWord")}>
+        <WakeWordSection serverConfig={swabbleServerConfig} />
+      </SettingsGroup>
 
-      <DesktopTalkModePanel />
+      <SettingsGroup bare>
+        <DesktopTalkModePanel />
+      </SettingsGroup>
 
       <SaveFooter
         dirty={dirty}
@@ -1196,6 +1418,6 @@ export function VoiceConfigView() {
         saveSuccess={saveSuccess}
         onSave={() => void handleSave()}
       />
-    </div>
+    </SettingsStack>
   );
 }

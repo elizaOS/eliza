@@ -1,11 +1,12 @@
 import { ConfigPageView } from "../pages/ConfigPageView";
+import { SettingsStack } from "./settings-layout";
 import { WalletKeysSection } from "./WalletKeysSection";
 
 export function WalletRpcSection() {
   return (
-    <div className="space-y-6">
+    <SettingsStack>
       <WalletKeysSection />
       <ConfigPageView embedded />
-    </div>
+    </SettingsStack>
   );
 }

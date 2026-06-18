@@ -1,10 +1,4 @@
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../ui/card";
+import { SettingsGroup, SettingsRow } from "./settings-layout";
 
 type Translator = (key: string, options?: Record<string, unknown>) => string;
 
@@ -16,20 +10,15 @@ export function DesktopWorkspaceDisplay({
   t: Translator;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-sm">
-          {t("desktopworkspacesection.Diagnostics")}
-        </CardTitle>
-        <CardDescription>
-          {t("desktopworkspacesection.DiagnosticsDescription")}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <SettingsGroup
+      title={t("desktopworkspacesection.Diagnostics")}
+      description={t("desktopworkspacesection.DiagnosticsDescription")}
+    >
+      <SettingsRow label={t("desktopworkspacesection.Diagnostics")} stacked>
         <pre className="overflow-x-auto break-all rounded-sm border border-border bg-bg px-3 py-3 text-xs-tight leading-5 text-txt">
           {diagnosticsText}
         </pre>
-      </CardContent>
-    </Card>
+      </SettingsRow>
+    </SettingsGroup>
   );
 }
