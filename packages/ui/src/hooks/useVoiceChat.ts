@@ -374,7 +374,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   const unlockAudio = useCallback(() => {
     if (typeof window === "undefined") return;
     if (!sharedAudioCtx) {
-      sharedAudioCtx = new AudioContext();
+      sharedAudioCtx = new AudioContext({ latencyHint: "interactive" });
     }
     void sharedAudioCtx.resume().catch(() => {});
     setVoiceUnlockedGeneration((g) => g + 1);
@@ -1074,7 +1074,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     ) => {
       let ctx = sharedAudioCtx;
       if (!ctx) {
-        ctx = new AudioContext();
+        ctx = new AudioContext({ latencyHint: "interactive" });
         sharedAudioCtx = ctx;
       }
       if (ctx.state === "suspended") {
@@ -1361,7 +1361,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     async (text: string, task: SpeakTask, generation: number) => {
       let ctx = sharedAudioCtx;
       if (!ctx) {
-        ctx = new AudioContext();
+        ctx = new AudioContext({ latencyHint: "interactive" });
         sharedAudioCtx = ctx;
       }
       if (ctx.state === "suspended") {

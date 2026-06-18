@@ -55,6 +55,10 @@ export interface ShellController {
   agentVoiceMuted: boolean;
   /** Mute/unmute assistant voice output. Muting stops any in-flight speech. */
   toggleAgentVoiceMute: () => void;
+  /** True when autoplay policy blocked playback and a tap is needed to hear it. */
+  needsAudioUnlock: boolean;
+  /** Resume audio output in response to a user gesture (enable sound). */
+  unlockAudio: () => void;
   /** DEV-only: clear the conversation and start a fresh, greeted one. */
   clearConversation: () => void;
   /** Jump to Settings (where ProviderSwitcher lives) — used by the chat's
@@ -346,6 +350,8 @@ export function useShellController(): ShellController {
     speaking: voiceOutput.speaking,
     agentVoiceMuted: voiceOutput.agentVoiceMuted,
     toggleAgentVoiceMute: voiceOutput.toggleAgentVoiceMute,
+    needsAudioUnlock: voiceOutput.needsAudioUnlock,
+    unlockAudio: voiceOutput.unlockAudio,
     clearConversation,
     openSettings,
     stop: handleChatStop,

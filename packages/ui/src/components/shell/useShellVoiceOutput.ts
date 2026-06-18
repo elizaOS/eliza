@@ -26,6 +26,10 @@ export interface ShellVoiceOutput {
   agentVoiceMuted: boolean;
   /** Mute/unmute assistant voice output. Muting stops any in-flight speech. */
   toggleAgentVoiceMute: () => void;
+  /** True when autoplay policy blocked playback and a user gesture is needed. */
+  needsAudioUnlock: boolean;
+  /** Resume the audio context in response to a user gesture (enable sound). */
+  unlockAudio: () => void;
 }
 
 export interface ShellVoiceOutputOptions {
@@ -65,7 +69,13 @@ export function useShellVoiceOutput(
   const { voiceConfig, voiceBootstrapTick } = useVoiceConfig(uiLanguage);
   const [agentVoiceMuted, setAgentVoiceMuted] = React.useState(false);
 
-  const { queueAssistantSpeech, stopSpeaking, isSpeaking } = useVoiceChat({
+  const {
+    queueAssistantSpeech,
+    stopSpeaking,
+    isSpeaking,
+    needsAudioUnlock,
+    unlockAudio,
+  } = useVoiceChat({
     voiceConfig,
     cloudConnected,
     // Output-only here: the overlay's capture owns the mic, so `useVoiceChat`'s
@@ -120,5 +130,11 @@ export function useShellVoiceOutput(
     setAgentVoiceMuted((muted) => !muted);
   }, []);
 
-  return { speaking: isSpeaking, agentVoiceMuted, toggleAgentVoiceMute };
+  return {
+    speaking: isSpeaking,
+    agentVoiceMuted,
+    toggleAgentVoiceMute,
+    needsAudioUnlock,
+    unlockAudio,
+  };
 }

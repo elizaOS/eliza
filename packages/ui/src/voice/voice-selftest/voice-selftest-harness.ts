@@ -135,6 +135,83 @@ async function captureMicWav(signal?: AbortSignal): Promise<Uint8Array> {
 const now = (): number =>
   typeof performance !== "undefined" ? performance.now() : 0;
 
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Peak + RMS amplitude across every channel of a decoded buffer. A buffer of
+ * pure silence decodes fine and reports a positive `duration`, so duration
+ * alone never proves the TTS produced audible sound — these levels do.
+ */
+function measureBufferLevel(buffer: AudioBuffer): { peak: number; rms: number } {
+  let peak = 0;
+  let sumSquares = 0;
+  let count = 0;
+  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+    const data = buffer.getChannelData(channel);
+    for (let i = 0; i < data.length; i += 1) {
+      const v = Math.abs(data[i] ?? 0);
+      if (v > peak) peak = v;
+      sumSquares += v * v;
+      count += 1;
+    }
+  }
+  return { peak, rms: count > 0 ? Math.sqrt(sumSquares / count) : 0 };
+}
+
+/**
+ * Push the decoded buffer through a real source → analyser → destination graph
+ * (the same shape `useVoiceChat` uses) so the actual speaker path — Web Audio →
+ * WebView → Android AudioTrack — is exercised, not just `decodeAudioData`.
+ * `started` is a hard signal (the graph began playing without throwing);
+ * `outputObserved` is best-effort — on a no-audio CI device the render thread
+ * may not advance, which must not fail the stage since the non-silent buffer
+ * check already proved the content is audible.
+ */
+async function playThroughDestination(
+  ctx: AudioContext,
+  buffer: AudioBuffer,
+  signal?: AbortSignal,
+): Promise<{ started: boolean; outputObserved: boolean }> {
+  try {
+    if (ctx.state === "suspended") {
+      await ctx.resume().catch(() => {});
+    }
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 2048;
+    source.connect(analyser);
+    analyser.connect(ctx.destination);
+    source.start();
+
+    let outputObserved = false;
+    const probe = new Float32Array(analyser.fftSize);
+    const deadline = now() + 500;
+    while (now() < deadline && !outputObserved && !signal?.aborted) {
+      analyser.getFloatTimeDomainData(probe);
+      for (let i = 0; i < probe.length; i += 1) {
+        if (Math.abs(probe[i] ?? 0) > 1e-4) {
+          outputObserved = true;
+          break;
+        }
+      }
+      if (!outputObserved) await sleep(20);
+    }
+
+    try {
+      source.stop();
+    } catch {
+      // already stopped
+    }
+    source.disconnect();
+    analyser.disconnect();
+    return { started: true, outputObserved };
+  } catch {
+    return { started: false, outputObserved: false };
+  }
+}
+
 export async function runVoiceSelfTest(
   opts: VoiceSelfTestOptions,
 ): Promise<VoiceSelfTestReport> {
@@ -273,7 +350,19 @@ export async function runVoiceSelfTest(
       const bytes = await res.arrayBuffer();
       if (bytes.byteLength === 0) throw new Error("TTS returned empty audio");
       const audioBuffer = await opts.audioCtx.decodeAudioData(bytes.slice(0));
-      const ok = audioBuffer.duration > 0;
+      const { peak, rms } = measureBufferLevel(audioBuffer);
+      // Require real signal, not just a positive duration: synthesized speech
+      // peaks near full-scale and its RMS sits well above the quantization
+      // floor. A silent (all-zero) buffer would otherwise false-green.
+      const nonSilent = peak >= 0.02 && rms >= 1e-4;
+      // Exercise the real playback path (source → destination) that drives the
+      // device speaker, so "it plays out the speakers" is verified end to end.
+      const playback = await playThroughDestination(
+        opts.audioCtx,
+        audioBuffer,
+        opts.signal,
+      );
+      const ok = audioBuffer.duration > 0 && nonSilent && playback.started;
       stages.push({
         stage: "tts",
         status: ok ? "pass" : "fail",
@@ -282,8 +371,18 @@ export async function runVoiceSelfTest(
           route: opts.ttsRoute,
           audioBytes: bytes.byteLength,
           durationSec: Number(audioBuffer.duration.toFixed(3)),
+          peak: Number(peak.toFixed(4)),
+          rms: Number(rms.toFixed(5)),
+          played: playback.started,
+          outputObserved: playback.outputObserved,
         },
-        error: ok ? undefined : "decoded audio has zero duration",
+        error: ok
+          ? undefined
+          : !nonSilent
+            ? `TTS audio is silent (peak=${peak.toFixed(4)}, rms=${rms.toFixed(5)})`
+            : !playback.started
+              ? "playback graph did not start"
+              : "decoded audio has zero duration",
       });
     } catch (error) {
       stages.push({

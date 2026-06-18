@@ -227,6 +227,9 @@ export async function startLocalAsrRecorder(
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
       channelCount: 1,
+      // Whisper/eliza-1-asr ingest 16 kHz mono; request it at capture so the
+      // browser resamples once instead of us downsampling a 48 kHz buffer.
+      sampleRate: 16000,
       echoCancellation: true,
       noiseSuppression: true,
       autoGainControl: true,

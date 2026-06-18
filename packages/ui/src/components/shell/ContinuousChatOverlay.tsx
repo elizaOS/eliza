@@ -483,6 +483,8 @@ export function ContinuousChatOverlay({
     speaking,
     agentVoiceMuted,
     toggleAgentVoiceMute,
+    needsAudioUnlock,
+    unlockAudio,
     openSettings,
     stop,
   } = controller;
@@ -990,6 +992,33 @@ export function ContinuousChatOverlay({
         </div>
       ) : null}
 
+      {/* Audio-unlock prompt. When autoplay policy blocks the first spoken
+          reply, the ambient overlay would otherwise go silent with no recourse
+          (the in-view status bar has its own unlock; this is the floating-shell
+          equivalent). Warm accent = call-to-action; no blue. */}
+      {needsAudioUnlock ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-none relative mb-2 flex w-full justify-center"
+        >
+          <button
+            type="button"
+            onClick={unlockAudio}
+            data-testid="overlay-voice-audio-unlock"
+            className={cn(
+              "pointer-events-auto inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
+              "border-warn/40 bg-warn/15 text-warn hover:bg-warn/25",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/70",
+              FLOAT_SHADOW,
+            )}
+          >
+            <Glyph d={SPEAKER_MUTED_GLYPH} />
+            <span>Tap to enable sound</span>
+          </button>
+        </div>
+      ) : null}
+
       {/* Three tailored prompt suggestions — a keyboard-style strip shown in the
           resting (closed) state when nothing is typed. Tapping one sends it
           immediately, which also pulls the chat sheet up. `order: -1` floats the
@@ -1058,8 +1087,9 @@ export function ContinuousChatOverlay({
           aria-hidden="true"
           className="pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-white/[0.07] to-transparent"
         />
-        {/* Soft live-state glow at the base — warm while listening, cool while
-            replying. Clipped to the panel (the glass already grounds it). */}
+        {/* Soft live-state glow at the base — bright warm while listening, a
+            dimmer warm while replying. Orange is the only accent (no blue).
+            Clipped to the panel (the glass already grounds it). */}
         <motion.div
           aria-hidden="true"
           className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-2xl"
@@ -1068,7 +1098,7 @@ export function ContinuousChatOverlay({
             opacity: listening || responding ? 1 : 0,
             backgroundColor: listening
               ? "rgba(255,180,120,0.30)"
-              : "rgba(190,210,255,0.20)",
+              : "rgba(255,140,80,0.18)",
           }}
           transition={{ duration: reduce ? 0 : 1.1, ease: "easeInOut" }}
         />
