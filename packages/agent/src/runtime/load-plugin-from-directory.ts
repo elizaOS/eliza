@@ -50,10 +50,7 @@ function asRelativeEntry(value: unknown): string | null {
   return value;
 }
 
-function assertPathInsideDirectory(
-  directory: string,
-  file: string,
-): void {
+function assertPathInsideDirectory(directory: string, file: string): void {
   const relative = path.relative(directory, file);
   if (
     relative === "" ||
