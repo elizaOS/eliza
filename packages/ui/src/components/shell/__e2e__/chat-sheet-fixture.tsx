@@ -81,10 +81,27 @@ const initialTranscript =
 const initialSpeaking = params.has("speaking");
 const initialMuted = params.has("muted");
 const initialCanSend = !params.has("nosend");
+// `?failure=no_provider` ends the thread with a failed assistant turn so the
+// recovery gate (Connect a provider → Open Settings) can be screenshot.
+const failureKind = params.get("failure");
+const SEED_WITH_FAILURE: ShellMessage[] =
+  failureKind === "no_provider"
+    ? [
+        ...SEED,
+        {
+          id: "m-fail",
+          role: "assistant",
+          content:
+            "No model provider is configured, so I can't reply yet. Connect one to start chatting.",
+          createdAt: 13,
+          failureKind: "no_provider",
+        } as ShellMessage,
+      ]
+    : SEED;
 
 function Harness(): React.JSX.Element {
   const [messages, setMessages] = React.useState<ShellMessage[]>(
-    startEmpty ? [] : SEED,
+    startEmpty ? [] : SEED_WITH_FAILURE,
   );
   const [phase, setPhase] =
     React.useState<ShellController["phase"]>(initialPhase);
@@ -164,6 +181,11 @@ function Harness(): React.JSX.Element {
     startRecording,
     stopRecording,
     toggleAgentVoiceMute,
+    openSettings: () => console.log("[fixture] openSettings"),
+    stop: () => {
+      console.log("[fixture] stop");
+      setPhase("summoned");
+    },
   } as unknown as ShellController;
 
   return (

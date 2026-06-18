@@ -11,6 +11,7 @@ import * as React from "react";
 import type { ImageAttachment } from "../../api/client-types-chat";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
+import { copyTextToClipboard } from "../../utils/clipboard";
 import {
   filesToImageAttachments,
   MAX_CHAT_IMAGES,
@@ -67,6 +68,10 @@ const OVERLAY_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 const SHEET_OPEN_VH = 0.72; // fraction of viewport height at the FULL detent
 const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
 const SHEET_TOP_MARGIN = 56; // px kept clear above the panel (notch / breathing room)
+// Cap how many turns are actually rendered. Older messages stay in state (the
+// agent's context is untouched) — this only bounds DOM nodes so a long thread
+// can't jank scrolling on a phone, without pulling in a virtualizer.
+const MAX_RENDERED_MESSAGES = 80;
 
 // A light iOS-style impact on each detent cross. Self-contained + guarded so it
 // is a no-op off-native (and in jsdom tests) without coupling the overlay to the
@@ -107,6 +112,8 @@ const SEND_GLYPH = "M18 10L25 18H21V27H15V18H11Z";
 const MIC_GLYPH =
   "M6 14H9V22H6Z M11.5 10H14.5V26H11.5Z M16.5 7H19.5V29H16.5Z M22 10H25V26H22Z M27 14H30V22H27Z";
 const PLUS_GLYPH = "M16 8H20V16H28V20H20V28H16V20H8V16H16Z";
+// Stop generating: a centered rounded square (the universal "stop" affordance).
+const STOP_GLYPH = "M12 12H24V24H12Z";
 // Assistant voice output: a speaker (distinct from the mic waveform above) —
 // "on" = speaker + sound waves, "muted" = speaker + slash.
 const SPEAKER_GLYPH =
@@ -157,7 +164,9 @@ function SoftButton({
       onPointerUp={disabled ? undefined : onPointerUp}
       onPointerCancel={disabled ? undefined : onPointerCancel}
       className={cn(
-        "grid h-8 w-8 shrink-0 place-items-center rounded-full border transition-colors",
+        // 44×44 hit target (WCAG 2.5.5) so the attach / mic / send / stop chips
+        // are comfortably thumb-tappable; the glyph stays small inside.
+        "grid h-11 w-11 shrink-0 place-items-center rounded-full border transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
         active
           ? "border-white/40 bg-white/85 text-black"
@@ -272,16 +281,126 @@ function TypingDots({ reduce }: { reduce?: boolean }): React.JSX.Element {
  * the right. Memoized so a live drag (which re-renders the overlay on every
  * pointer-move frame) doesn't re-render every message in a long thread.
  */
+// Press-and-hold copy: a still hold this long fires; any finger travel past the
+// move threshold first cancels it (so it yields to the thread's scroll).
+const COPY_HOLD_MS = 420;
+const COPY_MOVE_CANCEL_PX = 10;
+
 const ThreadLine = React.memo(function ThreadLine({
   message,
   floating,
   reduce,
+  onCopy,
+  onOpenSettings,
 }: {
   message: ShellMessage;
   floating?: boolean;
   reduce?: boolean;
+  /** Copy this message's text (assistant bubbles only). Stable identity. */
+  onCopy?: (text: string) => void;
+  /** Jump to Settings from the no_provider gate. Stable identity. */
+  onOpenSettings?: () => void;
 }): React.JSX.Element {
   const isUser = message.role === "user";
+  const isAssistant = message.role === "assistant";
+
+  // Press-and-hold to copy an assistant answer — the only extraction affordance
+  // on touch (no hover row). A still hold past COPY_HOLD_MS copies + flashes
+  // "Copied" + a light haptic; real finger travel cancels so it never fights the
+  // thread's touch-pan-y scroll.
+  const [copied, setCopied] = React.useState(false);
+  const holdTimer = React.useRef<number | null>(null);
+  const holdStart = React.useRef<{ x: number; y: number } | null>(null);
+  const copiedTimer = React.useRef<number | null>(null);
+  const clearHold = React.useCallback(() => {
+    if (holdTimer.current !== null) {
+      window.clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+    holdStart.current = null;
+  }, []);
+  React.useEffect(
+    () => () => {
+      if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
+      if (copiedTimer.current !== null)
+        window.clearTimeout(copiedTimer.current);
+    },
+    [],
+  );
+  const canCopy = isAssistant && !!onCopy && message.content.trim().length > 0;
+  const copyHandlers = canCopy
+    ? {
+        onPointerDown: (e: React.PointerEvent) => {
+          holdStart.current = { x: e.clientX, y: e.clientY };
+          holdTimer.current = window.setTimeout(() => {
+            onCopy?.(message.content);
+            detentHaptic();
+            setCopied(true);
+            if (copiedTimer.current !== null)
+              window.clearTimeout(copiedTimer.current);
+            copiedTimer.current = window.setTimeout(
+              () => setCopied(false),
+              1100,
+            );
+            holdTimer.current = null;
+          }, COPY_HOLD_MS);
+        },
+        onPointerMove: (e: React.PointerEvent) => {
+          const s = holdStart.current;
+          if (!s) return;
+          if (
+            Math.abs(e.clientX - s.x) > COPY_MOVE_CANCEL_PX ||
+            Math.abs(e.clientY - s.y) > COPY_MOVE_CANCEL_PX
+          )
+            clearHold();
+        },
+        onPointerUp: clearHold,
+        onPointerCancel: clearHold,
+      }
+    : null;
+
+  // A failed turn the user can't recover from without wiring a provider: render
+  // a structured gate (not the raw error text) with a one-tap jump to Settings.
+  if (isAssistant && message.failureKind === "no_provider") {
+    return (
+      <motion.div
+        data-testid="thread-line"
+        data-role={message.role}
+        data-failure="no_provider"
+        initial={reduce ? { opacity: 0 } : { opacity: 0, y: 14 }}
+        animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0 }}
+        exit={reduce ? { opacity: 0 } : { opacity: 0, y: -8 }}
+        transition={{ duration: reduce ? 0.15 : 0.52, ease: OVERLAY_EASE }}
+        className={cn(
+          "flex w-full justify-start",
+          floating ? "mb-1.5" : "mb-2.5",
+        )}
+      >
+        <div
+          className={cn(
+            "max-w-[85%] rounded-2xl rounded-bl-md border border-amber-300/30 bg-black/60 px-3.5 py-3 text-white",
+            FLOAT_SHADOW,
+          )}
+        >
+          <div className="mb-1 text-[14px] font-medium">
+            Connect a provider to chat
+          </div>
+          <div className="mb-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-white/80 [overflow-wrap:anywhere]">
+            {message.content}
+          </div>
+          <button
+            type="button"
+            data-testid="chat-no-provider-settings"
+            onClick={() => onOpenSettings?.()}
+            className="rounded-full border border-white/20 bg-white/15 px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+          >
+            Open Settings
+          </button>
+        </div>
+      </motion.div>
+    );
+  }
+
   return (
     <motion.div
       data-testid="thread-line"
@@ -299,13 +418,19 @@ const ThreadLine = React.memo(function ThreadLine({
       )}
     >
       <div
+        {...(copyHandlers ?? {})}
         className={cn(
-          "max-w-[80%] rounded-2xl px-3.5 py-2 text-[14px] leading-relaxed",
+          // whitespace-pre-wrap keeps newlines; overflow-wrap breaks long URLs /
+          // hashes / paths so they can't blow out the bubble width on a phone.
+          "relative max-w-[80%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-[14px] leading-relaxed [overflow-wrap:anywhere]",
           // The chrome-free transcript renders floating: each bubble carries its
           // own dark glass so it stays legible directly over whatever view is
           // behind. The light tone is for any embedding that supplies its own
           // surrounding scrim.
           isUser ? "rounded-br-md" : "rounded-bl-md",
+          // Assistant bubbles own the press-and-hold copy gesture, so suppress
+          // the native long-press selection/callout that would fight it.
+          canCopy && "select-none [-webkit-touch-callout:none]",
           floating
             ? cn(
                 "border",
@@ -320,6 +445,21 @@ const ThreadLine = React.memo(function ThreadLine({
         )}
       >
         {message.content}
+        <AnimatePresence>
+          {copied ? (
+            <motion.span
+              key="copied"
+              data-testid="thread-line-copied"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="pointer-events-none absolute -top-2 right-2 rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium text-black shadow"
+            >
+              Copied
+            </motion.span>
+          ) : null}
+        </AnimatePresence>
       </div>
     </motion.div>
   );
@@ -343,7 +483,15 @@ export function ContinuousChatOverlay({
     speaking,
     agentVoiceMuted,
     toggleAgentVoiceMute,
+    openSettings,
+    stop,
   } = controller;
+
+  // Copy an assistant answer (press-and-hold on its bubble). Stable identity so
+  // the memoized ThreadLine isn't re-rendered every parent tick.
+  const handleCopyMessage = React.useCallback((text: string) => {
+    void copyTextToClipboard(text);
+  }, []);
 
   // Honor the OS "reduce motion" setting: every overlay animation collapses to
   // a near-instant cross-fade with no positional movement when this is true.
@@ -384,8 +532,10 @@ export function ContinuousChatOverlay({
   const suppressMicClickRef = React.useRef(false);
 
   // Recomputed only when the thread changes — NOT on every drag/draft re-render.
+  // Filter empty turns, then keep only the most recent window (cap DOM nodes).
   const visibleMessages = React.useMemo(
-    () => messages.filter((m) => m.content.trim()),
+    () =>
+      messages.filter((m) => m.content.trim()).slice(-MAX_RENDERED_MESSAGES),
     [messages],
   );
   const lastId = visibleMessages.at(-1)?.id ?? null;
@@ -977,6 +1127,8 @@ export function ContinuousChatOverlay({
                       message={m}
                       floating
                       reduce={reduce}
+                      onCopy={handleCopyMessage}
+                      onOpenSettings={openSettings}
                     />
                   ))}
                 </AnimatePresence>
@@ -1007,7 +1159,10 @@ export function ContinuousChatOverlay({
                       type="button"
                       aria-label={`remove ${img.name}`}
                       onClick={() => removeImage(i)}
-                      className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-white/20 bg-black/70 text-xs text-white/90 backdrop-blur transition-colors hover:bg-black/90"
+                      // Small visual disc on a 56px thumbnail, but a 44px-class
+                      // hit zone via the invisible `before` overlay so it's
+                      // thumb-tappable without crowding the image.
+                      className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-white/20 bg-black/70 text-xs text-white/90 backdrop-blur transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-black/90"
                     >
                       ×
                     </button>
@@ -1108,7 +1263,13 @@ export function ContinuousChatOverlay({
               (no exit lag) and the new one pops in — a quick scale/fade that
               reads as a morph without an AnimatePresence exit delay. */}
           <motion.div
-            key={(hasDraft || hasImages) && !recording ? "send" : "mic"}
+            key={
+              (hasDraft || hasImages) && !recording
+                ? "send"
+                : !recording && responding
+                  ? "stop"
+                  : "mic"
+            }
             className="shrink-0"
             initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.6 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -1121,6 +1282,15 @@ export function ContinuousChatOverlay({
                 disabled={!canSend}
                 onClick={submit}
                 testId="chat-composer-action"
+              />
+            ) : !recording && responding ? (
+              // While a reply is streaming and nothing is typed, the mic becomes a
+              // stop control so the user can interrupt a runaway generation.
+              <SoftButton
+                glyph={STOP_GLYPH}
+                label="stop generating"
+                onClick={() => stop?.()}
+                testId="chat-composer-stop"
               />
             ) : (
               <SoftButton

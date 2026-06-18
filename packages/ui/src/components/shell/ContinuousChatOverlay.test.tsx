@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 // The resting overlay's suggestion strip fetches model suggestions via the
@@ -8,6 +14,14 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 vi.mock("../../api/client", () => ({
   client: { fetch: vi.fn().mockRejectedValue(new Error("no api in test")) },
 }));
+
+// The press-and-hold copy path writes to the clipboard; stub it so the gesture
+// is assertable (and never throws "Clipboard API unavailable" in jsdom).
+vi.mock("../../utils/clipboard", () => ({
+  copyTextToClipboard: vi.fn().mockResolvedValue(undefined),
+}));
+
+import { copyTextToClipboard } from "../../utils/clipboard";
 
 import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
 import type { ShellController } from "./useShellController";
@@ -455,5 +469,122 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("open");
     fireEvent.scroll(document.body);
     expect(sheet.getAttribute("data-variant")).toBe("open");
+  });
+
+  it("shows a stop control while a reply streams (and wires it)", () => {
+    const stop = vi.fn();
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          phase: "responding",
+          stop,
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    // No draft + responding → the trailing control is STOP, not mic or send.
+    expect(screen.queryByTestId("chat-composer-mic")).toBeNull();
+    expect(screen.queryByLabelText("send")).toBeNull();
+    const stopBtn = screen.getByTestId("chat-composer-stop");
+    expect(stopBtn).toBeTruthy();
+    fireEvent.click(stopBtn);
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("reverts the trailing control to send the moment a draft exists mid-stream", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({ phase: "responding" })}
+      />,
+    );
+    expect(screen.getByTestId("chat-composer-stop")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("message"), {
+      target: { value: "queued" },
+    });
+    expect(screen.queryByTestId("chat-composer-stop")).toBeNull();
+    expect(screen.getByLabelText(/send/)).toBeTruthy();
+  });
+
+  it("renders the no_provider failure as a recovery gate with a Settings jump", () => {
+    const openSettings = vi.fn();
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          openSettings,
+          messages: [
+            {
+              id: "np",
+              role: "assistant",
+              content: "No model provider is configured.",
+              createdAt: 1,
+              failureKind: "no_provider",
+            },
+          ],
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    expect(screen.getByText("Connect a provider to chat")).toBeTruthy();
+    const cta = screen.getByTestId("chat-no-provider-settings");
+    fireEvent.click(cta);
+    expect(openSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("press-and-hold copies an assistant message and flashes confirmation", () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(copyTextToClipboard).mockClear();
+      render(
+        <ContinuousChatOverlay
+          controller={makeController({
+            messages: [
+              {
+                id: "a",
+                role: "assistant",
+                content: "the answer is 42",
+                createdAt: 1,
+              },
+            ],
+          } as unknown as Partial<ShellController>)}
+        />,
+      );
+      const bubble = screen
+        .getByText("the answer is 42")
+        .closest('[data-testid="thread-line"]')
+        ?.querySelector("div") as HTMLElement;
+      fireEvent.pointerDown(bubble, { clientX: 10, clientY: 10, pointerId: 1 });
+      act(() => {
+        vi.advanceTimersByTime(450); // past the hold threshold
+      });
+      expect(copyTextToClipboard).toHaveBeenCalledWith("the answer is 42");
+      expect(screen.getByTestId("thread-line-copied")).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a quick tap (released before the hold threshold) does NOT copy", () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(copyTextToClipboard).mockClear();
+      render(
+        <ContinuousChatOverlay
+          controller={makeController({
+            messages: [
+              { id: "a", role: "assistant", content: "tap me", createdAt: 1 },
+            ],
+          } as unknown as Partial<ShellController>)}
+        />,
+      );
+      const bubble = screen
+        .getByText("tap me")
+        .closest('[data-testid="thread-line"]')
+        ?.querySelector("div") as HTMLElement;
+      fireEvent.pointerDown(bubble, { clientX: 10, clientY: 10, pointerId: 1 });
+      vi.advanceTimersByTime(200);
+      fireEvent.pointerUp(bubble, { clientX: 10, clientY: 10, pointerId: 1 });
+      vi.advanceTimersByTime(400);
+      expect(copyTextToClipboard).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

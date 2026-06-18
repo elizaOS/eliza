@@ -25164,6 +25164,63 @@
     return twMerge(clsx(inputs));
   }
 
+  // packages/ui/src/bridge/electrobun-rpc.ts
+  function getDesktopBridgeWindow() {
+    const g = globalThis;
+    if (typeof g.window !== "undefined") {
+      return g.window;
+    }
+    if (typeof window !== "undefined") {
+      return window;
+    }
+    return null;
+  }
+  function getElectrobunRendererRpc() {
+    return getDesktopBridgeWindow()?.__ELIZA_ELECTROBUN_RPC__;
+  }
+  async function invokeDesktopBridgeRequest(options) {
+    const rpc = getElectrobunRendererRpc();
+    const request = rpc?.request?.[options.rpcMethod];
+    if (request && rpc?.request) {
+      return await request.call(rpc.request, options.params);
+    }
+    return null;
+  }
+
+  // packages/ui/src/utils/clipboard.ts
+  function copyWithLegacyDomApi(text) {
+    if (typeof document === "undefined") return false;
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "true");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    textarea.style.pointerEvents = "none";
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      return document.execCommand("copy");
+    } catch {
+      return false;
+    } finally {
+      textarea.remove();
+    }
+  }
+  async function copyTextToClipboard(text) {
+    const bridged = await invokeDesktopBridgeRequest({
+      rpcMethod: "desktopWriteToClipboard",
+      ipcChannel: "desktop:writeToClipboard",
+      params: { text }
+    });
+    if (bridged !== null) return;
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    if (copyWithLegacyDomApi(text)) return;
+    throw new Error("Clipboard API unavailable.");
+  }
+
   // packages/ui/src/utils/image-attachment.ts
   var MAX_CHAT_IMAGES = 4;
   function filesToImageAttachments(files) {
@@ -25266,6 +25323,7 @@
   var SHEET_OPEN_VH = 0.72;
   var SHEET_HALF_VH = 0.46;
   var SHEET_TOP_MARGIN = 56;
+  var MAX_RENDERED_MESSAGES = 80;
   function detentHaptic() {
     try {
       const cap = globalThis.Capacitor;
@@ -25287,6 +25345,7 @@
   var SEND_GLYPH = "M18 10L25 18H21V27H15V18H11Z";
   var MIC_GLYPH = "M6 14H9V22H6Z M11.5 10H14.5V26H11.5Z M16.5 7H19.5V29H16.5Z M22 10H25V26H22Z M27 14H30V22H27Z";
   var PLUS_GLYPH = "M16 8H20V16H28V20H20V28H16V20H8V16H16Z";
+  var STOP_GLYPH = "M12 12H24V24H12Z";
   var SPEAKER_GLYPH = "M7 15H12L18 10V26L12 21H7Z M21 14Q25 18 21 22L23 22Q27 18 23 14Z M25 11Q31 18 25 25L27 25Q33 18 27 11Z";
   var SPEAKER_MUTED_GLYPH = "M7 15H12L18 10V26L12 21H7Z M21 12.4L22.4 11L31 19.6L29.6 21Z";
   function Glyph({ d }) {
@@ -25316,7 +25375,9 @@
         onPointerUp: disabled ? void 0 : onPointerUp,
         onPointerCancel: disabled ? void 0 : onPointerCancel,
         className: cn(
-          "grid h-8 w-8 shrink-0 place-items-center rounded-full border transition-colors",
+          // 44×44 hit target (WCAG 2.5.5) so the attach / mic / send / stop chips
+          // are comfortably thumb-tappable; the glyph stays small inside.
+          "grid h-11 w-11 shrink-0 place-items-center rounded-full border transition-colors",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
           active ? "border-white/40 bg-white/85 text-black" : "border-white/15 bg-white/10 text-white/75 hover:bg-white/20 hover:text-white",
           disabled && "opacity-40"
@@ -25406,12 +25467,103 @@
       }
     );
   }
+  var COPY_HOLD_MS = 420;
+  var COPY_MOVE_CANCEL_PX = 10;
   var ThreadLine = React5.memo(function ThreadLine2({
     message,
     floating,
-    reduce
+    reduce,
+    onCopy,
+    onOpenSettings
   }) {
     const isUser = message.role === "user";
+    const isAssistant = message.role === "assistant";
+    const [copied, setCopied] = React5.useState(false);
+    const holdTimer = React5.useRef(null);
+    const holdStart = React5.useRef(null);
+    const copiedTimer = React5.useRef(null);
+    const clearHold = React5.useCallback(() => {
+      if (holdTimer.current !== null) {
+        window.clearTimeout(holdTimer.current);
+        holdTimer.current = null;
+      }
+      holdStart.current = null;
+    }, []);
+    React5.useEffect(
+      () => () => {
+        if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
+        if (copiedTimer.current !== null)
+          window.clearTimeout(copiedTimer.current);
+      },
+      []
+    );
+    const canCopy = isAssistant && !!onCopy && message.content.trim().length > 0;
+    const copyHandlers = canCopy ? {
+      onPointerDown: (e) => {
+        holdStart.current = { x: e.clientX, y: e.clientY };
+        holdTimer.current = window.setTimeout(() => {
+          onCopy?.(message.content);
+          detentHaptic();
+          setCopied(true);
+          if (copiedTimer.current !== null)
+            window.clearTimeout(copiedTimer.current);
+          copiedTimer.current = window.setTimeout(
+            () => setCopied(false),
+            1100
+          );
+          holdTimer.current = null;
+        }, COPY_HOLD_MS);
+      },
+      onPointerMove: (e) => {
+        const s = holdStart.current;
+        if (!s) return;
+        if (Math.abs(e.clientX - s.x) > COPY_MOVE_CANCEL_PX || Math.abs(e.clientY - s.y) > COPY_MOVE_CANCEL_PX)
+          clearHold();
+      },
+      onPointerUp: clearHold,
+      onPointerCancel: clearHold
+    } : null;
+    if (isAssistant && message.failureKind === "no_provider") {
+      return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+        motion.div,
+        {
+          "data-testid": "thread-line",
+          "data-role": message.role,
+          "data-failure": "no_provider",
+          initial: reduce ? { opacity: 0 } : { opacity: 0, y: 14 },
+          animate: reduce ? { opacity: 1 } : { opacity: 1, y: 0 },
+          exit: reduce ? { opacity: 0 } : { opacity: 0, y: -8 },
+          transition: { duration: reduce ? 0.15 : 0.52, ease: OVERLAY_EASE },
+          className: cn(
+            "flex w-full justify-start",
+            floating ? "mb-1.5" : "mb-2.5"
+          ),
+          children: /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+            "div",
+            {
+              className: cn(
+                "max-w-[85%] rounded-2xl rounded-bl-md border border-amber-300/30 bg-black/60 px-3.5 py-3 text-white",
+                FLOAT_SHADOW
+              ),
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "mb-1 text-[14px] font-medium", children: "Connect a provider to chat" }),
+                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "mb-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-white/80 [overflow-wrap:anywhere]", children: message.content }),
+                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                  "button",
+                  {
+                    type: "button",
+                    "data-testid": "chat-no-provider-settings",
+                    onClick: () => onOpenSettings?.(),
+                    className: "rounded-full border border-white/20 bg-white/15 px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+                    children: "Open Settings"
+                  }
+                )
+              ]
+            }
+          )
+        }
+      );
+    }
     return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
       motion.div,
       {
@@ -25426,23 +25578,44 @@
           floating ? "mb-1.5" : "mb-2.5",
           isUser ? "justify-end" : "justify-start"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
           "div",
           {
+            ...copyHandlers ?? {},
             className: cn(
-              "max-w-[80%] rounded-2xl px-3.5 py-2 text-[14px] leading-relaxed",
+              // whitespace-pre-wrap keeps newlines; overflow-wrap breaks long URLs /
+              // hashes / paths so they can't blow out the bubble width on a phone.
+              "relative max-w-[80%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-[14px] leading-relaxed [overflow-wrap:anywhere]",
               // The chrome-free transcript renders floating: each bubble carries its
               // own dark glass so it stays legible directly over whatever view is
               // behind. The light tone is for any embedding that supplies its own
               // surrounding scrim.
               isUser ? "rounded-br-md" : "rounded-bl-md",
+              // Assistant bubbles own the press-and-hold copy gesture, so suppress
+              // the native long-press selection/callout that would fight it.
+              canCopy && "select-none [-webkit-touch-callout:none]",
               floating ? cn(
                 "border",
                 isUser ? "border-white/15 bg-black/55 text-white" : "border-white/10 bg-black/45 text-white/90",
                 FLOAT_SHADOW
               ) : isUser ? "bg-white/20 text-white" : "bg-white/10 text-white/90"
             ),
-            children: message.content
+            children: [
+              message.content,
+              /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(AnimatePresence, { children: copied ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                motion.span,
+                {
+                  "data-testid": "thread-line-copied",
+                  initial: { opacity: 0, y: 4 },
+                  animate: { opacity: 1, y: 0 },
+                  exit: { opacity: 0 },
+                  transition: { duration: 0.18 },
+                  className: "pointer-events-none absolute -top-2 right-2 rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium text-black shadow",
+                  children: "Copied"
+                },
+                "copied"
+              ) : null })
+            ]
           }
         )
       }
@@ -25463,8 +25636,13 @@
       transcript,
       speaking,
       agentVoiceMuted,
-      toggleAgentVoiceMute
+      toggleAgentVoiceMute,
+      openSettings,
+      stop
     } = controller;
+    const handleCopyMessage = React5.useCallback((text) => {
+      void copyTextToClipboard(text);
+    }, []);
     const reduce = useReducedMotion() ?? false;
     const [draft, setDraft] = React5.useState("");
     const [sheetOpen, setSheetOpen] = React5.useState(false);
@@ -25487,7 +25665,7 @@
     const pushToTalkActiveRef = React5.useRef(false);
     const suppressMicClickRef = React5.useRef(false);
     const visibleMessages = React5.useMemo(
-      () => messages.filter((m2) => m2.content.trim()),
+      () => messages.filter((m2) => m2.content.trim()).slice(-MAX_RENDERED_MESSAGES),
       [messages]
     );
     const lastId = visibleMessages.at(-1)?.id ?? null;
@@ -25646,7 +25824,9 @@
         setViewport(readViewport());
         const el = overlayRef.current;
         if (el) {
-          setBottomPad(Number.parseFloat(getComputedStyle(el).paddingBottom) || 0);
+          setBottomPad(
+            Number.parseFloat(getComputedStyle(el).paddingBottom) || 0
+          );
         }
       };
       sync();
@@ -25922,7 +26102,9 @@
                             {
                               message: m2,
                               floating: true,
-                              reduce
+                              reduce,
+                              onCopy: handleCopyMessage,
+                              onOpenSettings: openSettings
                             },
                             m2.id
                           )) }),
@@ -25953,7 +26135,7 @@
                             type: "button",
                             "aria-label": `remove ${img.name}`,
                             onClick: () => removeImage(i),
-                            className: "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-white/20 bg-black/70 text-xs text-white/90 backdrop-blur transition-colors hover:bg-black/90",
+                            className: "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-white/20 bg-black/70 text-xs text-white/90 backdrop-blur transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-black/90",
                             children: "\xD7"
                           }
                         )
@@ -26062,6 +26244,18 @@
                               onClick: submit,
                               testId: "chat-composer-action"
                             }
+                          ) : !recording && responding ? (
+                            // While a reply is streaming and nothing is typed, the mic becomes a
+                            // stop control so the user can interrupt a runaway generation.
+                            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                              SoftButton,
+                              {
+                                glyph: STOP_GLYPH,
+                                label: "stop generating",
+                                onClick: () => stop?.(),
+                                testId: "chat-composer-stop"
+                              }
+                            )
                           ) : /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
                             SoftButton,
                             {
@@ -26077,7 +26271,7 @@
                             }
                           )
                         },
-                        (hasDraft || hasImages) && !recording ? "send" : "mic"
+                        (hasDraft || hasImages) && !recording ? "send" : !recording && responding ? "stop" : "mic"
                       )
                     ]
                   }
@@ -26146,9 +26340,20 @@
   var initialSpeaking = params.has("speaking");
   var initialMuted = params.has("muted");
   var initialCanSend = !params.has("nosend");
+  var failureKind = params.get("failure");
+  var SEED_WITH_FAILURE = failureKind === "no_provider" ? [
+    ...SEED,
+    {
+      id: "m-fail",
+      role: "assistant",
+      content: "No model provider is configured, so I can't reply yet. Connect one to start chatting.",
+      createdAt: 13,
+      failureKind: "no_provider"
+    }
+  ] : SEED;
   function Harness() {
     const [messages, setMessages] = React6.useState(
-      startEmpty ? [] : SEED
+      startEmpty ? [] : SEED_WITH_FAILURE
     );
     const [phase, setPhase] = React6.useState(initialPhase);
     const [recording, setRecording] = React6.useState(initialRecording);
@@ -26220,7 +26425,12 @@
       toggleRecording,
       startRecording,
       stopRecording,
-      toggleAgentVoiceMute
+      toggleAgentVoiceMute,
+      openSettings: () => console.log("[fixture] openSettings"),
+      stop: () => {
+        console.log("[fixture] stop");
+        setPhase("summoned");
+      }
     };
     return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
       "div",

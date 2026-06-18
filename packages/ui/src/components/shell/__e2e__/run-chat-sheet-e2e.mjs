@@ -660,6 +660,32 @@ try {
     await p.close();
   }
 
+  // no_provider failure → recovery gate (Connect a provider → Open Settings)
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(`${url}?failure=no_provider`);
+    await p.waitForSelector('[data-testid="chat-sheet-grabber"]');
+    await p.waitForTimeout(500);
+    await p.getByTestId("chat-sheet-grabber").focus();
+    await p.keyboard.press("ArrowUp"); // open the sheet to reveal the gate
+    await p.waitForTimeout(450);
+    assert(
+      await p.getByText("Connect a provider to chat").isVisible(),
+      "NO_PROVIDER: structured recovery gate is rendered (not raw error text)",
+    );
+    const cta = p.getByTestId("chat-no-provider-settings");
+    assert(await cta.isVisible(), "NO_PROVIDER: 'Open Settings' CTA shown");
+    await snap(p, "state-no-provider-gate");
+    await cta.click();
+    await p.waitForTimeout(150);
+    assert(
+      sink.logs.some((l) => l.includes("[fixture] openSettings")),
+      "NO_PROVIDER: tapping the CTA jumps to Settings",
+    );
+    await p.close();
+  }
+
   // reduced-motion still opens via flick
   {
     const p = await ctrl();

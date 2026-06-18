@@ -57,6 +57,11 @@ export interface ShellController {
   toggleAgentVoiceMute: () => void;
   /** DEV-only: clear the conversation and start a fresh, greeted one. */
   clearConversation: () => void;
+  /** Jump to Settings (where ProviderSwitcher lives) — used by the chat's
+   *  `no_provider` failure gate to let the user wire a provider in one tap. */
+  openSettings: () => void;
+  /** Stop an in-flight reply stream (the composer's stop control). */
+  stop: () => void;
 }
 
 /**
@@ -80,7 +85,12 @@ export function useShellController(): ShellController {
     uiLanguage,
     elizaCloudVoiceProxyAvailable,
     handleNewConversation,
+    setTab,
+    handleChatStop,
   } = app;
+
+  // Jump to Settings from the chat's no_provider gate. Stable identity.
+  const openSettings = React.useCallback(() => setTab("settings"), [setTab]);
 
   // DEV-only debug affordance: drop the current conversation and start a fresh,
   // greeted one (handleNewConversation resets draft state + creates a new
@@ -337,5 +347,7 @@ export function useShellController(): ShellController {
     agentVoiceMuted: voiceOutput.agentVoiceMuted,
     toggleAgentVoiceMute: voiceOutput.toggleAgentVoiceMute,
     clearConversation,
+    openSettings,
+    stop: handleChatStop,
   };
 }
