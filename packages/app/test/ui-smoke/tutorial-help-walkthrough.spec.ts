@@ -6,10 +6,12 @@ import {
 } from "./helpers";
 
 /**
- * Screenshot-driven walkthrough of the full Tutorial tour + Help view, for
- * manual visual verification. Captures every key state to /tmp/tut-shots so the
- * spotlight glow, targeting, cards, and Help layout can be eyeballed. Drives the
- * real chat detents where possible; falls back to the card's Continue button.
+ * Full, screenshot-driven verification of the Tutorial + Help.
+ *  - Runs the ENTIRE tutorial to completion, screenshotting every step.
+ *  - Verifies "ask to navigate" actually switches to Settings (advanceOnSend).
+ *  - Verifies Help is driven by the floating chat (placeholder override + live
+ *    filter + auto-expanded best match + deep-link).
+ * Screenshots land in /tmp/tut-shots for manual review.
  */
 
 const SHOTS = "/tmp/tut-shots";
@@ -18,131 +20,118 @@ async function shot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: `${SHOTS}/${name}.png` });
 }
 
-async function cardText(page: Page): Promise<string> {
-  return (await page.getByTestId("tutorial-card").textContent()) ?? "";
+function pad(n: number): string {
+  return String(n).padStart(2, "0");
 }
 
-// Click the card's Continue button if present (label varies per step).
-async function clickContinue(page: Page): Promise<boolean> {
-  const card = page.getByTestId("tutorial-card");
-  const btn = card.getByRole("button").last();
-  if (await btn.isVisible().catch(() => false)) {
-    const label = (await btn.textContent())?.toLowerCase() ?? "";
-    if (!label.includes("voice") && !label.includes("text")) {
-      await btn.click().catch(() => {});
-      return true;
-    }
-  }
-  return false;
-}
-
-test("full tutorial walkthrough + Help — screenshots", async ({ page }) => {
+test("the tutorial runs all the way to completion (every step screenshotted)", async ({
+  page,
+}) => {
   await seedAppStorage(page, { "eliza:tutorial-autolaunched": "1" });
   await installDefaultAppRoutes(page);
   await openAppPath(page, "/chat");
 
-  // 1. Home screen with the pinned tiles.
-  await expect(page.getByTestId("home-tile-tutorial")).toBeVisible({
-    timeout: 25_000,
-  });
-  await shot(page, "01-home-tiles");
-
-  // 2. Tutorial launcher.
-  await page.getByTestId("home-tile-tutorial").click();
-  await expect(page.getByTestId("tutorial-launcher")).toBeVisible();
-  await shot(page, "02-launcher");
-
-  // 3. Start the tour → welcome card (spotlight overlay).
+  await page.getByTestId("home-tile-tutorial").click({ timeout: 25_000 });
   await page.getByTestId("tutorial-start-text").click();
-  await expect(page.getByTestId("tutorial-card")).toBeVisible();
-  expect(await cardText(page)).toMatch(/Step 1 of/);
-  await shot(page, "03-step1-welcome");
 
-  // 4. Continue → meet-chat. Regression: it must NOT auto-skip (the chat starts
-  // in "peek", so a chatOpen-only check would instantly complete) — it shows a
-  // real step-2 card with the spotlight on the composer.
-  await clickContinue(page);
-  await expect(page.getByTestId("tutorial-card")).toContainText(
-    /This is your chat/i,
-  );
-  await shot(page, "04-step2-meet-chat-spotlight");
+  const card = page.getByTestId("tutorial-card");
+  const cont = page.getByTestId("tutorial-continue");
+  const composer = page.getByTestId("chat-composer-textarea");
+  await expect(card).toBeVisible();
 
-  // 5. Drive the chat: tap the pill to open it (best-effort).
-  await page
-    .getByTestId("chat-pill")
-    .click({ timeout: 3000 })
-    .catch(() => {});
-  await page.waitForTimeout(1200);
-  await shot(page, "05-after-open-chat");
+  const stepsSeen = new Set<string>();
+  for (let i = 0; i < 14; i++) {
+    if ((await card.count()) === 0) break; // tour finished
+    const txt = (await card.textContent().catch(() => "")) ?? "";
+    const stepNum = txt.match(/Step (\d+) of/)?.[1] ?? `x${i}`;
+    stepsSeen.add(stepNum);
+    await shot(page, `step-${pad(i)}-of-${stepNum}`);
 
-  // 6. Walk the remaining steps via Continue, screenshotting each, until "done".
-  for (let i = 0; i < 8; i++) {
-    const txt = await cardText(page).catch(() => "");
-    if (!txt) break;
-    await shot(page, `06-walk-${i}`);
-    // Try driving the chat grabber on the expand/minimize steps.
-    await page
-      .getByTestId("chat-sheet-grabber")
-      .click({ timeout: 800 })
-      .catch(() => {});
-    await page.waitForTimeout(400);
-    const advanced = await clickContinue(page);
-    if (!advanced) {
-      // auto-only step that didn't advance — record and bail the loop.
-      await shot(page, `06-stuck-${i}`);
+    // Drive the real action where we can: the "ask to navigate" step actually
+    // types + sends the command (exercising advanceOnSend), gesture steps tap
+    // the grabber/pill.
+    if (/open settings/i.test(txt)) {
+      await composer.fill("open settings").catch(() => {});
+      await page.keyboard.press("Enter").catch(() => {});
+    } else if (/handle|pill|bigger|shrink|bring it back/i.test(txt)) {
+      await page
+        .getByTestId("chat-sheet-grabber")
+        .click({ timeout: 500 })
+        .catch(() => {});
+      await page
+        .getByTestId("chat-pill")
+        .click({ timeout: 500 })
+        .catch(() => {});
     }
-    await page.waitForTimeout(500);
-    if (
-      (await page
-        .getByTestId("tutorial-card")
-        .count()
-        .catch(() => 0)) === 0
-    ) {
-      break; // tour finished
+
+    // Advance: the Continue button is immediate on manual steps and appears
+    // after ~6s on gesture steps. Wait for it, then click.
+    await cont.waitFor({ state: "visible", timeout: 9000 }).catch(() => {});
+    if ((await cont.count()) > 0) {
+      await cont.click({ timeout: 2000 }).catch(() => {});
     }
+    await page.waitForTimeout(450);
   }
-  await shot(page, "07-after-walk");
 
-  // 8. Voice mode toggle on a fresh tour.
-  await page.evaluate(() => {
-    try {
-      localStorage.removeItem("eliza:tutorial-completed");
-    } catch {}
-  });
-  await openAppPath(page, "/tutorial");
-  await page.getByTestId("tutorial-start-voice").click();
-  await expect(page.getByTestId("tutorial-card")).toBeVisible();
-  await shot(page, "08-voice-mode");
-  await page
-    .getByText("Skip tutorial")
-    .click({ timeout: 3000 })
-    .catch(() => {});
-
-  // 9. Help view: open, search, expand, deep-link.
-  await openAppPath(page, "/help");
-  await expect(page.getByTestId("help-view")).toBeVisible();
-  await shot(page, "09-help-home");
-  await page.getByTestId("help-search").fill("voice");
-  await page.waitForTimeout(300);
-  await shot(page, "10-help-search-voice");
-  const firstEntry = page.locator('[data-testid^="help-entry-"]').first();
-  await firstEntry.click();
-  await page.waitForTimeout(300);
-  await shot(page, "11-help-entry-expanded");
-
-  // 10. Help category filter.
-  await page.getByRole("button", { name: "AI models" }).click();
-  await page.waitForTimeout(300);
-  await shot(page, "12-help-category-ai-models");
-
-  expect(true).toBe(true);
+  // The whole tour completed and dismissed itself.
+  await expect(card).toHaveCount(0);
+  await shot(page, "step-99-complete");
+  // It visited most of the ten steps (some auto-advance instantly).
+  expect(stepsSeen.size).toBeGreaterThanOrEqual(8);
 });
 
-test("auto-launch screenshot for a brand-new user", async ({ page }) => {
+test("asking 'open settings' in the tour actually switches to Settings", async ({
+  page,
+}) => {
+  await seedAppStorage(page, { "eliza:tutorial-autolaunched": "1" });
   await installDefaultAppRoutes(page);
   await openAppPath(page, "/chat");
-  await expect(page.getByTestId("tutorial-card")).toBeVisible({
-    timeout: 25_000,
-  });
-  await page.screenshot({ path: `${SHOTS}/13-auto-launch.png` });
+  await page.getByTestId("home-tile-tutorial").click({ timeout: 25_000 });
+  await page.getByTestId("tutorial-start-text").click();
+
+  const card = page.getByTestId("tutorial-card");
+  const cont = page.getByTestId("tutorial-continue");
+  // Click through until we reach the "ask to navigate" step.
+  for (let i = 0; i < 8; i++) {
+    const txt = (await card.textContent().catch(() => "")) ?? "";
+    if (/open settings/i.test(txt)) break;
+    await cont.waitFor({ state: "visible", timeout: 9000 }).catch(() => {});
+    await cont.click({ timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(450);
+  }
+  // Send the command — the tour should navigate to Settings.
+  await page.getByTestId("chat-composer-textarea").fill("open settings");
+  await page.keyboard.press("Enter");
+  // SettingsView mounts (its content) — the step after navigation is "You're in
+  // Settings".
+  await expect(card).toContainText(/You're in Settings/i, { timeout: 8000 });
+  await shot(page, "nav-reached-settings");
+});
+
+test("Help is searched through the floating chat", async ({ page }) => {
+  await seedAppStorage(page, { "eliza:tutorial-autolaunched": "1" });
+  await installDefaultAppRoutes(page);
+  await openAppPath(page, "/help");
+  await expect(page.getByTestId("help-view")).toBeVisible({ timeout: 25_000 });
+  await shot(page, "help-01-home");
+
+  // The chat composer is Help's search box (placeholder override).
+  const composer = page.getByTestId("chat-composer-textarea");
+  await expect(composer).toHaveAttribute(
+    "placeholder",
+    /question about eliza/i,
+  );
+
+  // Typing a question filters the knowledge base + pulls up the best match.
+  await composer.fill("how do I change the model");
+  await page.waitForTimeout(500);
+  await shot(page, "help-02-filtered");
+  const entry = page.getByTestId("help-entry-change-model");
+  await expect(entry).toBeVisible();
+  // Auto-expanded → its answer + the deep-link button are shown.
+  await expect(entry).toContainText(/AI Model/i);
+  await expect(
+    entry.getByRole("button", { name: /Open AI Model settings/i }),
+  ).toBeVisible();
+  await shot(page, "help-03-auto-expanded");
 });

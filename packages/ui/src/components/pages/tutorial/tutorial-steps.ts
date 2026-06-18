@@ -49,6 +49,12 @@ export interface TutorialStep {
    * next step's screen. Not applied on auto-detected success (they already moved).
    */
   advanceNavigateTo?: string;
+  /**
+   * Navigate (advanceNavigateTo) + advance as soon as the user SENDS a message
+   * during this step — so "type/say a command" steps reliably reach their
+   * destination even when no model is wired to route the request itself.
+   */
+  advanceOnSend?: boolean;
   /** In voice mode, the command the user should speak for this step. */
   voiceCommandHint?: string;
 }
@@ -83,9 +89,10 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     voiceLine:
       "Now make the chat bigger. Drag the handle at the top of the chat upward, or just tap it, to expand it to full screen.",
     targetSelector: '[data-testid="chat-sheet-grabber"]',
-    blockOutside: true,
+    blockOutside: false,
     isComplete: (s) => s.chatExpanded,
-    continueAfterSec: 12,
+    continueLabel: "Skip this",
+    continueAfterSec: 6,
   },
   {
     id: "minimize-chat",
@@ -94,9 +101,10 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     voiceLine:
       "Great. Now shrink it down. Swipe down on the handle, or tap it, to collapse the chat into a small floating pill.",
     targetSelector: '[data-testid="chat-sheet-grabber"]',
-    blockOutside: true,
+    blockOutside: false,
     isComplete: (s) => s.chatPilled,
-    continueAfterSec: 12,
+    continueLabel: "Skip this",
+    continueAfterSec: 6,
   },
   {
     id: "reopen-chat",
@@ -105,9 +113,10 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     voiceLine:
       "There's your pill. Tap it to open the chat again. It's always one tap away, on every screen.",
     targetSelector: '[data-testid="chat-pill"]',
-    blockOutside: true,
+    blockOutside: false,
     isComplete: (s) => s.chatOpen && !s.chatPilled,
-    continueAfterSec: 12,
+    continueLabel: "Skip this",
+    continueAfterSec: 6,
   },
   {
     id: "switch-by-text",
@@ -122,6 +131,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     continueAfterSec: 18,
     continueLabel: "Take me to Settings",
     advanceNavigateTo: "settings",
+    advanceOnSend: true,
     voiceCommandHint: "open settings",
   },
   {
@@ -148,6 +158,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     continueAfterSec: 16,
     continueLabel: "Skip voice",
     advanceNavigateTo: "chat",
+    advanceOnSend: true,
     voiceCommandHint: "go home",
   },
   {

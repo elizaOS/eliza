@@ -23,6 +23,7 @@ import {
 import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
+import { useViewChatBinding } from "../../state/view-chat-binding";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import {
   filesToImageAttachments,
@@ -642,6 +643,9 @@ export function ContinuousChatOverlay({
   const reduce = useReducedMotion() ?? false;
 
   const [draft, setDraft] = React.useState("");
+  // The active view can take over the composer: override the placeholder and
+  // receive the live draft (e.g. Help uses the chat as its search box).
+  const viewChatBinding = useViewChatBinding();
   // Escape dismisses the slash menu without clearing the draft; typing reopens.
   const [slashDismissed, setSlashDismissed] = React.useState(false);
   // The chat-history sheet: closed (a slim peek + grabber) ↔ open (full
@@ -1771,6 +1775,8 @@ export function ContinuousChatOverlay({
                   value={draft}
                   onChange={(e) => {
                     setDraft(e.target.value);
+                    // Mirror the live draft to the active view (Help search etc.).
+                    viewChatBinding?.onQuery?.(e.target.value);
                     if (e.target.value.trim().length > 0) expand();
                   }}
                   onFocus={() => {
@@ -1826,7 +1832,7 @@ export function ContinuousChatOverlay({
                   placeholder={
                     booting
                       ? `Ask ${agentName} — waking up…`
-                      : `Ask ${agentName}`
+                      : (viewChatBinding?.placeholder ?? `Ask ${agentName}`)
                   }
                   aria-label="message"
                   data-testid="chat-composer-textarea"
