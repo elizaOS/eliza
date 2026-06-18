@@ -547,6 +547,119 @@ try {
     await p.close();
   }
 
+  // KEYBOARD SIZING: when the on-screen keyboard opens it shrinks the VISUAL
+  // viewport. The overlay must (a) lift above the keyboard and (b) never grow
+  // past the visible area — the thread scrolls instead of the panel spilling off
+  // the top of the screen. We mock `window.visualViewport` (Playwright has no
+  // soft keyboard) by shadowing it with an EventTarget whose `height` we shrink
+  // and whose `resize` we dispatch — exactly the signal a real keyboard emits.
+  {
+    const p = await browser.newPage({
+      viewport: { width: 402, height: 874 },
+      deviceScaleFactor: 2,
+      hasTouch: true,
+    });
+    attachConsole(p, sink);
+    await p.addInitScript(() => {
+      const innerH = window.innerHeight;
+      const fake = new EventTarget();
+      Object.assign(fake, {
+        width: window.innerWidth,
+        height: innerH,
+        offsetTop: 0,
+        offsetLeft: 0,
+        pageTop: 0,
+        pageLeft: 0,
+        scale: 1,
+      });
+      Object.defineProperty(window, "visualViewport", {
+        configurable: true,
+        get: () => fake,
+      });
+      window.__setKeyboard = (kb) => {
+        fake.height = innerH - kb;
+        fake.offsetTop = 0;
+        fake.dispatchEvent(new Event("resize"));
+      };
+    });
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(600);
+
+    const metrics = () =>
+      p.evaluate(() => {
+        const overlay = document.querySelector(
+          '[data-testid="continuous-chat-overlay"]',
+        );
+        const panel = document.querySelector('[data-testid="chat-sheet"]');
+        const r = panel.getBoundingClientRect();
+        return {
+          overlayBottom: Number.parseFloat(getComputedStyle(overlay).bottom),
+          panelTop: r.top,
+          panelBottom: r.bottom,
+          panelHeight: r.height,
+          innerH: window.innerHeight,
+          vvH: window.visualViewport.height, // visible bottom = keyboard line
+        };
+      });
+
+    // rest, no keyboard: overlay sits flush at the bottom (inset 0)
+    const rest = await metrics();
+    assert(
+      near(rest.overlayBottom, 0, 1),
+      `KEYBOARD: overlay rests at the bottom with no keyboard (bottom ${rest.overlayBottom}px)`,
+    );
+
+    // raise a 334px keyboard while COLLAPSED — just the input lifts above it
+    const KB = 334;
+    await p.evaluate((kb) => window.__setKeyboard(kb), KB);
+    await p.waitForTimeout(SETTLE);
+    const collapsed = await metrics();
+    assert(
+      near(collapsed.overlayBottom, KB, 2),
+      `KEYBOARD(collapsed): overlay lifts to sit above the keyboard (bottom ${Math.round(collapsed.overlayBottom)}px ≈ ${KB})`,
+    );
+    assert(
+      collapsed.panelBottom <= collapsed.vvH + 1,
+      `KEYBOARD(collapsed): input panel sits above the keyboard line (bottom ${Math.round(collapsed.panelBottom)} ≤ ${collapsed.vvH})`,
+    );
+    await snap(p, "state-keyboard-collapsed");
+
+    // pull to FULL with the keyboard still up — the WORST case for height
+    await gesture(p, 120, { pointer: "touch", slow: true }); // → HALF
+    await p.waitForTimeout(SETTLE);
+    await gesture(p, 240, { pointer: "touch", slow: true }); // → FULL
+    await p.waitForTimeout(SETTLE);
+    assert(
+      (await detent(p)) === "full",
+      "KEYBOARD: pulled to FULL with the keyboard open",
+    );
+    const full = await metrics();
+    assert(
+      full.panelTop >= -1,
+      `KEYBOARD(full): tall panel does NOT spill above the screen top (top ${Math.round(full.panelTop)} ≥ 0)`,
+    );
+    assert(
+      full.panelBottom <= full.vvH + 1,
+      `KEYBOARD(full): panel stays above the keyboard line (bottom ${Math.round(full.panelBottom)} ≤ ${full.vvH})`,
+    );
+    assert(
+      full.panelHeight <= full.vvH - 56 + 1,
+      `KEYBOARD(full): panel height capped to the visible area (h ${Math.round(full.panelHeight)} ≤ ${full.vvH - 56})`,
+    );
+    await snap(p, "state-keyboard-full");
+
+    // close the keyboard → the overlay drops back to the bottom
+    await p.evaluate(() => window.__setKeyboard(0));
+    await p.waitForTimeout(SETTLE);
+    const reclosed = await metrics();
+    assert(
+      near(reclosed.overlayBottom, 0, 1),
+      `KEYBOARD: overlay returns to the bottom when the keyboard closes (bottom ${Math.round(reclosed.overlayBottom)}px)`,
+    );
+    await p.close();
+  }
+
   // reduced-motion still opens via flick
   {
     const p = await ctrl();

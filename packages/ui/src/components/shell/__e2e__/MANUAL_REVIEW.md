@@ -48,6 +48,13 @@ Files prefixed `desktop-*` (real Playwright mouse, pointerType=mouse) and
   pending thumbnail + per-image remove (×); remove clears it.
 - `state-mic-clicked-recording` — clicking the mic toggles recording on/off.
 - `state-suggestions` — tapping a suggestion sends and opens the sheet.
+- `state-keyboard-collapsed` / `state-keyboard-full` — the on-screen keyboard
+  case. We mock `window.visualViewport` (Playwright has no soft keyboard),
+  shrink its `height`, and dispatch `resize`. The overlay LIFTS above the
+  keyboard (`bottom` = the visual-viewport inset) and the panel is capped to the
+  visible height: the FULL panel's top stays on-screen (≥ 0) and its bottom stays
+  above the keyboard line (≤ visual-viewport height) — the thread scrolls instead
+  of the panel spilling off the top. Closing the keyboard drops the overlay back.
 - `state-reduced-motion-open` — opens under `prefers-reduced-motion`.
 
 Console is asserted clean (no page errors / error-level logs) and the fixture's

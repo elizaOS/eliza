@@ -66,6 +66,7 @@ const OVERLAY_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 // Apple-style spring. The whole sheet is unmounted when there's no thread yet.
 const SHEET_OPEN_VH = 0.72; // fraction of viewport height at the FULL detent
 const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
+const SHEET_TOP_MARGIN = 56; // px kept clear above the panel (notch / breathing room)
 
 // A light iOS-style impact on each detent cross. Self-contained + guarded so it
 // is a no-op off-native (and in jsdom tests) without coupling the overlay to the
@@ -374,6 +375,7 @@ export function ContinuousChatOverlay({
   const endRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const overlayRef = React.useRef<HTMLDivElement>(null);
   const panelRef = React.useRef<HTMLFieldSetElement>(null);
   const threadRef = React.useRef<HTMLDivElement>(null);
   const focusThreadRef = React.useRef(false);
@@ -582,30 +584,56 @@ export function ContinuousChatOverlay({
 
   const hasThread = visibleMessages.length > 0;
 
-  // Viewport height drives the OPEN detent. Track the VISUAL viewport so the
-  // open chat sizes to the space left above the mobile keyboard (visualViewport
-  // shrinks when the keyboard shows / on rotation; innerHeight does not on iOS).
-  const readViewportH = React.useCallback(
-    () =>
-      typeof window === "undefined"
-        ? 800
-        : (window.visualViewport?.height ?? window.innerHeight),
-    [],
-  );
-  const [viewportH, setViewportH] = React.useState(readViewportH);
+  // Track the VISUAL viewport so the chat sizes to — and sits above — whatever
+  // the mobile keyboard leaves visible. `height` shrinks when the keyboard opens
+  // (on iOS innerHeight does not, so read visualViewport); `keyboardInset` is how
+  // far the keyboard intrudes from the layout bottom, used to lift the whole
+  // overlay above it. `bottomPad` is the overlay's own safe-area/nav padding,
+  // reserved when bounding the panel height.
+  const readViewport = React.useCallback(() => {
+    if (typeof window === "undefined") return { height: 800, keyboardInset: 0 };
+    const vv = window.visualViewport;
+    const height = vv?.height ?? window.innerHeight;
+    const keyboardInset = vv
+      ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+      : 0;
+    return { height, keyboardInset };
+  }, []);
+  const [viewport, setViewport] = React.useState(readViewport);
+  const [bottomPad, setBottomPad] = React.useState(0);
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    const onResize = () => setViewportH(readViewportH());
-    const vv = window.visualViewport;
-    window.addEventListener("resize", onResize);
-    vv?.addEventListener("resize", onResize);
-    return () => {
-      window.removeEventListener("resize", onResize);
-      vv?.removeEventListener("resize", onResize);
+    const sync = () => {
+      setViewport(readViewport());
+      const el = overlayRef.current;
+      if (el) {
+        setBottomPad(
+          Number.parseFloat(getComputedStyle(el).paddingBottom) || 0,
+        );
+      }
     };
-  }, [readViewportH]);
+    sync();
+    const vv = window.visualViewport;
+    window.addEventListener("resize", sync);
+    vv?.addEventListener("resize", sync);
+    vv?.addEventListener("scroll", sync);
+    return () => {
+      window.removeEventListener("resize", sync);
+      vv?.removeEventListener("resize", sync);
+      vv?.removeEventListener("scroll", sync);
+    };
+  }, [readViewport]);
+  const viewportH = viewport.height;
+  const keyboardInset = viewport.keyboardInset;
 
-  // History-height detents: COLLAPSED (0) → HALF → FULL.
+  // The chat panel may never exceed the visible height minus its own
+  // safe-area/nav padding and a top margin — so it can't spill above the screen.
+  // The thread (flex-shrink) gives way to this cap, scrolling instead of pushing
+  // the panel off-screen.
+  const panelMaxH = Math.max(200, viewportH - bottomPad - SHEET_TOP_MARGIN);
+
+  // History-height detents: COLLAPSED (0) → HALF → FULL — the thread's ideal
+  // flex-basis; `panelMaxH` + flex-shrink clamp the real height to fit.
   const openH = Math.round(viewportH * SHEET_OPEN_VH);
   const halfH = Math.round(viewportH * SHEET_HALF_VH);
   const baseH = !sheetOpen ? 0 : expanded ? openH : halfH;
@@ -615,14 +643,15 @@ export function ContinuousChatOverlay({
       raw > openH ? openH + rubberBand(raw - openH) : Math.max(0, raw),
     [openH],
   );
-  // Backdrop dimming + the suggestion-strip fade both follow the live height —
-  // derived motion values so they update during a drag with no re-render.
+  // Backdrop dimming + the suggestion-strip fade follow the live height; the
+  // thread's flex-basis is the live height as a px string.
   const revealed = useTransform(threadHeight, (h) =>
     Math.min(1, Math.max(0, h / Math.max(1, openH))),
   );
   const suggestionsOpacity = useTransform(threadHeight, (h) =>
     Math.max(0, 1 - h / Math.max(1, openH * 0.5)),
   );
+  const threadFlexBasis = useTransform(threadHeight, (h) => `${h}px`);
 
   // Sub-threshold release: spring back to the current detent (no state change).
   const settleDrag = React.useCallback(() => {
@@ -760,11 +789,14 @@ export function ContinuousChatOverlay({
 
   return (
     <div
+      ref={overlayRef}
       className={cn(
         "pointer-events-none fixed inset-x-0 bottom-0 flex w-full min-w-0 flex-col items-center px-3 sm:px-4",
         "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+1.5rem)]",
       )}
-      style={{ zIndex: Z_SHELL_OVERLAY }}
+      // Lift the whole overlay above the on-screen keyboard so the input + chat
+      // stay visible; `keyboardInset` is 0 when no keyboard is shown.
+      style={{ zIndex: Z_SHELL_OVERLAY, bottom: keyboardInset }}
       data-testid="continuous-chat-overlay"
       data-open={sheetOpen ? "true" : undefined}
     >
@@ -857,6 +889,10 @@ export function ContinuousChatOverlay({
         data-variant={sheetOpen ? "open" : "closed"}
         data-detent={!sheetOpen ? "collapsed" : expanded ? "full" : "half"}
         data-revealed={sheetOpen ? "true" : "false"}
+        // Never taller than the visible viewport (above the keyboard) minus the
+        // overlay's safe-area padding + a top margin: the thread scrolls instead
+        // of the panel spilling off the top of the screen.
+        style={{ maxHeight: panelMaxH }}
         className={cn(
           "pointer-events-auto relative m-0 flex w-full min-w-0 max-w-3xl flex-col overflow-hidden border-0 p-0",
           // Liquid glass: a translucent, blurred, slightly over-saturated pane
@@ -907,10 +943,13 @@ export function ContinuousChatOverlay({
         {hasThread ? (
           <motion.div
             data-testid="chat-thread"
-            className="relative z-10 w-full overflow-hidden"
-            // Height is the motion value — set 1:1 during a drag, spring-animated
-            // to a detent on release. No `animate`/`transition`: no re-render.
-            style={{ height: threadHeight }}
+            className="relative z-10 min-h-0 w-full shrink grow-0 overflow-hidden"
+            // Flex-basis IS the motion value (px string) — set 1:1 during a drag,
+            // spring-animated to a detent on release; no `animate`/`transition`,
+            // so no re-render. `shrink min-h-0` lets the panel's `maxHeight` cap
+            // win: a tall detent (or the keyboard) shrinks the thread (it
+            // scrolls) instead of pushing the panel off-screen.
+            style={{ flexBasis: threadFlexBasis }}
           >
             <div
               id="continuous-thread"
@@ -951,7 +990,7 @@ export function ContinuousChatOverlay({
         ) : null}
         {/* Pending image attachments + any read error, just above the input. */}
         {hasImages || imageError ? (
-          <div className="relative z-10 flex flex-col gap-1.5 px-3 pt-2">
+          <div className="relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2">
             {hasImages ? (
               <div className="flex flex-wrap gap-2">
                 {pendingImages.map((img, i) => (
@@ -1002,8 +1041,10 @@ export function ContinuousChatOverlay({
         <div
           className={cn(
             // items-end keeps the +/mic controls pinned to the bottom as the
-            // textarea grows upward with multi-line input.
-            "relative z-10 flex min-w-0 items-end gap-1.5 px-3 py-2 sm:gap-2 sm:px-3.5",
+            // textarea grows upward with multi-line input. shrink-0 keeps the
+            // input fully visible when the panel hits its maxHeight cap (only the
+            // thread above gives way).
+            "relative z-10 flex min-w-0 shrink-0 items-end gap-1.5 px-3 py-2 sm:gap-2 sm:px-3.5",
             sheetOpen ? "border-t border-white/10" : "",
           )}
         >

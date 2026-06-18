@@ -25265,6 +25265,7 @@
   var OVERLAY_EASE = [0.22, 1, 0.36, 1];
   var SHEET_OPEN_VH = 0.72;
   var SHEET_HALF_VH = 0.46;
+  var SHEET_TOP_MARGIN = 56;
   function detentHaptic() {
     try {
       const cap = globalThis.Capacitor;
@@ -25478,6 +25479,7 @@
     const endRef = React5.useRef(null);
     const inputRef = React5.useRef(null);
     const fileInputRef = React5.useRef(null);
+    const overlayRef = React5.useRef(null);
     const panelRef = React5.useRef(null);
     const threadRef = React5.useRef(null);
     const focusThreadRef = React5.useRef(false);
@@ -25629,22 +25631,38 @@
       toggleRecording();
     }, [toggleRecording]);
     const hasThread = visibleMessages.length > 0;
-    const readViewportH = React5.useCallback(
-      () => typeof window === "undefined" ? 800 : window.visualViewport?.height ?? window.innerHeight,
-      []
-    );
-    const [viewportH, setViewportH] = React5.useState(readViewportH);
+    const readViewport = React5.useCallback(() => {
+      if (typeof window === "undefined") return { height: 800, keyboardInset: 0 };
+      const vv = window.visualViewport;
+      const height = vv?.height ?? window.innerHeight;
+      const keyboardInset2 = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+      return { height, keyboardInset: keyboardInset2 };
+    }, []);
+    const [viewport, setViewport] = React5.useState(readViewport);
+    const [bottomPad, setBottomPad] = React5.useState(0);
     React5.useEffect(() => {
       if (typeof window === "undefined") return void 0;
-      const onResize = () => setViewportH(readViewportH());
-      const vv = window.visualViewport;
-      window.addEventListener("resize", onResize);
-      vv?.addEventListener("resize", onResize);
-      return () => {
-        window.removeEventListener("resize", onResize);
-        vv?.removeEventListener("resize", onResize);
+      const sync = () => {
+        setViewport(readViewport());
+        const el = overlayRef.current;
+        if (el) {
+          setBottomPad(Number.parseFloat(getComputedStyle(el).paddingBottom) || 0);
+        }
       };
-    }, [readViewportH]);
+      sync();
+      const vv = window.visualViewport;
+      window.addEventListener("resize", sync);
+      vv?.addEventListener("resize", sync);
+      vv?.addEventListener("scroll", sync);
+      return () => {
+        window.removeEventListener("resize", sync);
+        vv?.removeEventListener("resize", sync);
+        vv?.removeEventListener("scroll", sync);
+      };
+    }, [readViewport]);
+    const viewportH = viewport.height;
+    const keyboardInset = viewport.keyboardInset;
+    const panelMaxH = Math.max(200, viewportH - bottomPad - SHEET_TOP_MARGIN);
     const openH = Math.round(viewportH * SHEET_OPEN_VH);
     const halfH = Math.round(viewportH * SHEET_HALF_VH);
     const baseH = !sheetOpen ? 0 : expanded ? openH : halfH;
@@ -25660,6 +25678,7 @@
       threadHeight,
       (h) => Math.max(0, 1 - h / Math.max(1, openH * 0.5))
     );
+    const threadFlexBasis = useTransform(threadHeight, (h) => `${h}px`);
     const settleDrag = React5.useCallback(() => {
       draggingRef.current = false;
       if (reduce) threadHeight.set(baseH);
@@ -25747,11 +25766,12 @@
     return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
       "div",
       {
+        ref: overlayRef,
         className: cn(
           "pointer-events-none fixed inset-x-0 bottom-0 flex w-full min-w-0 flex-col items-center px-3 sm:px-4",
           "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+1.5rem)]"
         ),
-        style: { zIndex: Z_SHELL_OVERLAY },
+        style: { zIndex: Z_SHELL_OVERLAY, bottom: keyboardInset },
         "data-testid": "continuous-chat-overlay",
         "data-open": sheetOpen ? "true" : void 0,
         children: [
@@ -25830,6 +25850,7 @@
               "data-variant": sheetOpen ? "open" : "closed",
               "data-detent": !sheetOpen ? "collapsed" : expanded ? "full" : "half",
               "data-revealed": sheetOpen ? "true" : "false",
+              style: { maxHeight: panelMaxH },
               className: cn(
                 "pointer-events-auto relative m-0 flex w-full min-w-0 max-w-3xl flex-col overflow-hidden border-0 p-0",
                 // Liquid glass: a translucent, blurred, slightly over-saturated pane
@@ -25876,8 +25897,8 @@
                   motion.div,
                   {
                     "data-testid": "chat-thread",
-                    className: "relative z-10 w-full overflow-hidden",
-                    style: { height: threadHeight },
+                    className: "relative z-10 min-h-0 w-full shrink grow-0 overflow-hidden",
+                    style: { flexBasis: threadFlexBasis },
                     children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
                       "div",
                       {
@@ -25912,7 +25933,7 @@
                     )
                   }
                 ) : null,
-                hasImages || imageError ? /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "relative z-10 flex flex-col gap-1.5 px-3 pt-2", children: [
+                hasImages || imageError ? /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2", children: [
                   hasImages ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "flex flex-wrap gap-2", children: pendingImages.map((img, i) => /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
                     "div",
                     {
@@ -25968,8 +25989,10 @@
                   {
                     className: cn(
                       // items-end keeps the +/mic controls pinned to the bottom as the
-                      // textarea grows upward with multi-line input.
-                      "relative z-10 flex min-w-0 items-end gap-1.5 px-3 py-2 sm:gap-2 sm:px-3.5",
+                      // textarea grows upward with multi-line input. shrink-0 keeps the
+                      // input fully visible when the panel hits its maxHeight cap (only the
+                      // thread above gives way).
+                      "relative z-10 flex min-w-0 shrink-0 items-end gap-1.5 px-3 py-2 sm:gap-2 sm:px-3.5",
                       sheetOpen ? "border-t border-white/10" : ""
                     ),
                     children: [
