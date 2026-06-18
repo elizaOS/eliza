@@ -82,11 +82,22 @@ into a bundle's `tts/kokoro-coreml/` (see `KokoroCoreMlEngine.modelDirectory`).
   - NOT the AdaIN padding mask: identical with `F.interpolate(nearest)` and the
     `arange`-based exact mask.
   - NOT alignment/duration: those convert exactly.
-  → The divergence is in the vocoder's `F.interpolate(linear)` hn-NSF phase
-  resample (`istftnet.SineGen._f02sine`) and/or the `CustomSTFT` overlap-add,
-  where coremltools' resize/conv-transpose semantics differ from PyTorch.
-  Next step: stage F0Ntrain/decoder intermediate outputs to localize, then
-  replace the offending `F.interpolate`/iSTFT ops with conv/matmul equivalents.
+  → **LOCALIZED (staged-output diagnostic, `diag_stages.py`):** `F0_pred` matches
+  CoreML-vs-torch at **corr 1.0** (F0Ntrain + masked LSTM + masked AdaIN all
+  convert perfectly), but the hn-NSF **`har_source` is constant/dead in CoreML**
+  (corr = nan / zero variance). So the divergence is isolated to
+  **`istftnet.SineGen` (the harmonic source)** — its `F.interpolate(mode="linear")`
+  phase resample and/or the injected-`random_phases` attribute path — **NOT** the
+  iSTFT and **NOT** F0Ntrain. Audio still scores 0.68 spectral because the
+  spectral envelope from `asr`→decoder survives; only the voiced harmonic
+  excitation is lost (→ halved amplitude, degraded voiced speech).
+  Fix: reimplement `SineGen._f02sine`'s phase cumsum/resample without
+  `F.interpolate` (explicit fixed-shape linear resample via matmul, or thread the
+  phase as a real graph input rather than a module attribute), then re-run
+  `diag_stages.py` until `har_source` corr ≈ 1.0.
+
+NOTE: with iOS TTS routed through OmniVoice (the tier default), this CoreML path
+is an **ANE-speed optimization, not a blocker** for working iOS voice.
 
 **Until parity lands, do NOT stage this `.mlmodelc` into a shipping bundle** —
 the iOS Swift `synthesizeSpeech` tries CoreML first, so a degraded model would

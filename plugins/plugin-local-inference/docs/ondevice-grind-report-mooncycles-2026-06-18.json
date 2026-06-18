@@ -1,0 +1,43 @@
+{
+  "startedAtEpochMs": 1781773726526,
+  "finishedAtEpochMs": 1781774376651,
+  "totalMs": 650137,
+  "bundleDir": null,
+  "device": {
+    "metal_supported": true,
+    "mtp_reason": "linked llama slice has no common_speculative_draft_gen",
+    "cpu_cores": 6,
+    "backend": "metal",
+    "mtp_supported": false,
+    "total_ram_gb": 7.467376708984375,
+    "available_ram_gb": 6.45448050647974,
+    "is_simulator": false
+  },
+  "memory": {
+    "beforeAvailGb": 6.45448050647974,
+    "afterAvailGb": 0,
+    "peakUsedDeltaGb": 6.454
+  },
+  "models": [
+    {
+      "model": "text",
+      "ok": false,
+      "error": "Native iOS host call llama_load_model timed out after 600000ms"
+    },
+    {
+      "model": "tts",
+      "ok": false,
+      "error": "No Eliza-1 voice bundle is installed"
+    },
+    {
+      "model": "asr",
+      "ok": false,
+      "error": "no TTS audio to transcribe (TTS failed)"
+    }
+  ],
+  "overall": {
+    "allPassed": false,
+    "passed": 0,
+    "failed": 3
+  }
+}
