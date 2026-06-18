@@ -8,7 +8,7 @@ import {
 /**
  * Full, screenshot-driven verification of the Tutorial + Help.
  *  - Runs the ENTIRE tutorial to completion, screenshotting every step.
- *  - Verifies "ask to navigate" actually switches to Settings (advanceOnSend).
+ *  - Verifies the tour navigates to the real Settings view mid-run (reachedSettings).
  *  - Verifies Help is driven by the floating chat (placeholder override + live
  *    filter + auto-expanded best match + deep-link).
  * Screenshots land in /tmp/tut-shots for manual review.
