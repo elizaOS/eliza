@@ -1,10 +1,8 @@
 /**
  * Overview tab — backends list, install / sign-in / sign-out, ordering,
- * and the "Save preferences" action.
- *
- * Extracted from the original `SecretsManagerModal` body. The parent
- * Vault modal owns data fetching and the save flow; this component
- * only renders the rows + the editable preference state.
+ * and the "Save preferences" action. The parent Vault modal owns data
+ * fetching and the save flow; this component only renders the rows + the
+ * editable preference state.
  */
 
 import {
@@ -401,7 +399,7 @@ export function BackendRow(props: BackendRowProps) {
             {backend.authMode === "desktop-app" && (
               <span
                 data-testid={`auth-mode-badge-${backend.id}`}
-                className="rounded-full border border-info/40 bg-info/10 px-1.5 py-0.5 text-2xs font-medium text-info"
+                className="rounded-full border border-status-info/40 bg-status-info/10 px-1.5 py-0.5 text-2xs font-medium text-status-info"
                 title={t("vault.backend.desktopAppTitle", {
                   defaultValue: "Authenticated via 1Password desktop app",
                 })}

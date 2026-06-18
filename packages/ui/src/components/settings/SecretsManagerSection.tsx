@@ -7,7 +7,6 @@ import {
   type VaultTab,
 } from "../../hooks/useSecretsManagerModal";
 import { getShortcutLabel } from "../../hooks/useSecretsManagerShortcut";
-import { Button } from "../ui/button";
 import {
   Dialog,
   DialogContent,
@@ -17,6 +16,8 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
+import { SettingsActionButton } from "./settings-agent-rows";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 import { LoginsTab } from "./vault-tabs/LoginsTab";
 import { OverviewTab } from "./vault-tabs/OverviewTab";
 import { RoutingTab } from "./vault-tabs/RoutingTab";
@@ -36,20 +37,14 @@ import type {
 /**
  * Settings → Vault section.
  *
- * Two exports:
- *  - `SecretsManagerSection` — the inline launcher row in Settings.
- *    Shows current primary backend + status; clicking dispatches the
- *    global open event for the modal. Doesn't mount the modal itself.
- *  - `SecretsManagerModalRoot` — the modal's top-level mount. Should
- *    be rendered ONCE at app root (alongside SaveCommandModal etc.
- *    in App.tsx). Subscribes to global open/close state so any
- *    trigger (Settings launcher, ⌘⌥⌃V keyboard chord, application
- *    menu accelerator) shows it.
+ *  - `SecretsManagerSection` — the inline launcher row in Settings;
+ *    clicking dispatches the global open event for the modal.
+ *  - `SecretsManagerModalRoot` — the modal's top-level mount, rendered
+ *    once at app root. Subscribes to global open/close state so any
+ *    trigger (launcher, ⌘⌥⌃V chord, menu accelerator) shows it.
  *
- * The modal itself is a tabbed Vault interface: Overview / Secrets /
- * Logins / Routing. Each tab is a separate file under `vault-tabs/`.
- * Data is fetched once per modal-open and shared across tabs via
- * props; mutations call back to the modal to refresh.
+ * The modal is a tabbed Vault interface (Overview / Secrets / Logins /
+ * Routing). Data is fetched once per open and shared across tabs.
  */
 
 const HASH_PREFIX = "vault";
@@ -66,8 +61,7 @@ function writeHashTab(tab: VaultTab): void {
   if (typeof window === "undefined") return;
   const next = `#${HASH_PREFIX}/${tab}`;
   if (window.location.hash === next) return;
-  // Replace, not push, so closing the modal doesn't litter the back stack
-  // with intermediate tab states.
+  // Replace, not push, so closing the modal doesn't litter the back stack.
   history.replaceState(null, "", next);
 }
 
@@ -110,53 +104,55 @@ export function SecretsManagerSection() {
   }, [isOpen, refreshSummary]);
 
   return (
-    <section className="space-y-3">
-      <div className="flex items-center justify-between gap-3 rounded-sm border border-border/60 bg-card/40 px-3 py-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-border/50 bg-bg/50 text-muted">
-            <KeyRound className="h-3.5 w-3.5" aria-hidden />
-          </span>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="truncate font-medium text-sm text-txt">
+    <SettingsStack>
+      <SettingsGroup
+        title="Vault"
+        description="API keys, tokens, and saved logins."
+        footer={`Open the full vault with ${getShortcutLabel()}.`}
+      >
+        <SettingsRow
+          icon={KeyRound}
+          label={
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="truncate">
                 {primary?.label ?? "Local (encrypted)"}
               </span>
-              {primary && (
+              {primary ? (
                 <span className="rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
                   Primary
                 </span>
-              )}
-              {enabledCount > 1 && (
-                <span className="rounded-full border border-border/50 bg-bg/40 px-1.5 py-0.5 text-2xs text-muted">
+              ) : null}
+              {enabledCount > 1 ? (
+                <span className="rounded-full border border-border bg-surface px-1.5 py-0.5 text-2xs text-muted">
                   +{enabledCount - 1} more
                 </span>
-              )}
-            </div>
-            <p className="mt-0.5 truncate text-2xs text-muted">
-              Where sensitive values like API keys are stored.
-              <span className="ml-1 text-muted/70">({getShortcutLabel()})</span>
-            </p>
-          </div>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-9 shrink-0 rounded-sm"
-          onClick={() => dispatchSecretsManagerOpen()}
-        >
-          Manage…
-        </Button>
-      </div>
-    </section>
+              ) : null}
+            </span>
+          }
+          description="Primary secrets backend for this device."
+          control={
+            <SettingsActionButton
+              agentId="secrets-manage"
+              agentLabel="Open the vault"
+              agentDescription="Open the full vault manager modal"
+              agentGroup="secrets"
+              variant="outline"
+              size="sm"
+              className="h-9 shrink-0 rounded-md"
+              onClick={() => dispatchSecretsManagerOpen()}
+            >
+              Manage…
+            </SettingsActionButton>
+          }
+        />
+      </SettingsGroup>
+    </SettingsStack>
   );
 }
 
 export function SecretsManagerModalRoot() {
-  // The modal-state hook is the single source of truth. We forward
-  // its initial-tab / focus payload directly to `VaultModal` as props
-  // rather than re-subscribing to the event from the modal body — that
-  // would double the listeners and risk dropping the dispatch payload
-  // for the body's hook (which mounts after the dispatch fires).
+  // Forward the modal-state hook's initial-tab / focus payload directly to
+  // `VaultModal` as props so only one listener is subscribed.
   const { isOpen, initialTab, focusKey, focusProfileId, setOpen, clearFocus } =
     useSecretsManagerModalState();
   return (
@@ -226,10 +222,8 @@ function VaultBody({
   initialFocusProfileId: string | null;
   onConsumeInitial?: () => void;
 }) {
-  // Stash the hash that was present when the modal opened so closing
-  // the modal restores it. Without this we'd nuke `#secrets` (settings
-  // section anchor) every time the user popped the modal open and
-  // closed it, breaking the SettingsView deep-link contract.
+  // The hash present when the modal opened, restored on close so the
+  // SettingsView deep-link anchor (e.g. `#secrets`) survives.
   const priorHashRef = useRef<string>("");
 
   // Tab state. Resolved in this order: (1) initial dispatch detail,
@@ -501,8 +495,8 @@ function VaultBody({
           </span>
         </DialogTitle>
         <DialogDescription>
-          One stop for backends, secrets, saved logins, and per-context routing.
-          Local storage is always available as the fallback.
+          Backends, secrets, logins, and routing. Local storage is always
+          available.
         </DialogDescription>
       </DialogHeader>
 
@@ -612,11 +606,14 @@ function VaultBody({
       </div>
 
       <DialogFooter className="flex shrink-0 flex-row items-center justify-between gap-3 border-t border-border/30 pt-3 sm:justify-between">
-        <p className="text-2xs text-muted sm:max-w-sm">
+        <p className="text-xs text-muted sm:max-w-sm">
           Non-sensitive config always stays in-house.
         </p>
         <div className="flex shrink-0 items-center gap-2">
-          <Button
+          <SettingsActionButton
+            agentId="secrets-close"
+            agentLabel="Close the vault"
+            agentGroup="secrets"
             variant="ghost"
             size="sm"
             className="h-9 rounded-sm"
@@ -624,7 +621,7 @@ function VaultBody({
             disabled={saving}
           >
             Close
-          </Button>
+          </SettingsActionButton>
         </div>
       </DialogFooter>
     </>

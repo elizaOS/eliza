@@ -34,6 +34,7 @@ import { Slider } from "../ui/slider";
 import { Spinner } from "../ui/spinner";
 import { Switch } from "../ui/switch";
 import { useSettingsSave } from "./settings-control-primitives.hooks";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   asSharedRecord(value) ?? {};
@@ -259,243 +260,241 @@ export function PolicyControlsView() {
   }
 
   return (
-    <div className="space-y-0 divide-y divide-border/20">
+    <SettingsStack>
       {error && (
-        <div className="flex items-center gap-2 rounded-sm border border-danger/30 bg-danger/10 px-3 py-2 mb-4">
+        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2">
           <AlertTriangle className="h-4 w-4 text-danger shrink-0" />
           <span className="text-xs text-danger">{error}</span>
         </div>
       )}
 
-      {/* Auto-Approve */}
-      <PolicyRow
-        agentId="auto-approve"
-        title={t("policycontrols.autoApprove.title", {
-          defaultValue: "Auto-Approve",
-        })}
-        desc={
-          autoApprovePolicy?.enabled
-            ? t("policycontrols.autoApprove.desc", {
-                threshold: autoApproveConfig.threshold ?? "5",
-                defaultValue: "Under $" + "{{threshold}}",
-              })
-            : t("policycontrols.off", { defaultValue: "Off" })
-        }
-        enabled={autoApprovePolicy?.enabled ?? false}
-        onToggle={(v) =>
-          togglePolicy(
-            "auto-approve-threshold",
-            v,
-            asRecord(DEFAULT_AUTO_APPROVE),
-          )
-        }
-      >
-        <div className="flex items-center gap-2">
-          <Label className="text-xs text-muted whitespace-nowrap">
-            {t("policycontrols.threshold", { defaultValue: "Threshold" })}
-          </Label>
-          <UsdField
-            agentId="auto-approve-threshold"
-            agentLabel={t("policycontrols.threshold", {
-              defaultValue: "Threshold",
-            })}
-            value={autoApproveConfig.threshold ?? "5"}
-            onChange={(v) =>
-              updatePolicy("auto-approve-threshold", {
-                config: asRecord({ threshold: v }),
-              })
-            }
-          />
-        </div>
-      </PolicyRow>
-
-      {/* Spending Limits */}
-      <PolicyRow
-        agentId="spending-limit"
-        title={t("policycontrols.spending.title", {
-          defaultValue: "Spending Limits",
-        })}
-        desc={
-          spendingPolicy?.enabled
-            ? t("policycontrols.spending.desc", {
-                perTx: spendingConfig.maxPerTx,
-                perDay: spendingConfig.maxPerDay,
-                perWeek: spendingConfig.maxPerWeek,
-                defaultValue:
-                  "$" +
-                  "{{perTx}}" +
-                  "/tx · $" +
-                  "{{perDay}}" +
-                  "/day · $" +
-                  "{{perWeek}}" +
-                  "/wk",
-              })
-            : t("policycontrols.off", { defaultValue: "Off" })
-        }
-        enabled={spendingPolicy?.enabled ?? false}
-        onToggle={(v) =>
-          togglePolicy("spending-limit", v, asRecord(DEFAULT_SPENDING))
-        }
-      >
-        <div className="grid grid-cols-3 gap-3">
-          <UsdFieldLabeled
-            agentId="spending-per-tx"
-            label={t("policycontrols.spending.perTx", {
-              defaultValue: "Per Tx",
-            })}
-            value={spendingConfig.maxPerTx}
-            onChange={(v) =>
-              updatePolicy("spending-limit", {
-                config: asRecord({ ...spendingConfig, maxPerTx: v }),
-              })
-            }
-          />
-          <UsdFieldLabeled
-            agentId="spending-daily"
-            label={t("policycontrols.spending.daily", {
-              defaultValue: "Daily",
-            })}
-            value={spendingConfig.maxPerDay}
-            onChange={(v) =>
-              updatePolicy("spending-limit", {
-                config: asRecord({ ...spendingConfig, maxPerDay: v }),
-              })
-            }
-          />
-          <UsdFieldLabeled
-            agentId="spending-weekly"
-            label={t("policycontrols.spending.weekly", {
-              defaultValue: "Weekly",
-            })}
-            value={spendingConfig.maxPerWeek}
-            onChange={(v) =>
-              updatePolicy("spending-limit", {
-                config: asRecord({ ...spendingConfig, maxPerWeek: v }),
-              })
-            }
-          />
-        </div>
-      </PolicyRow>
-
-      {/* Rate Limits */}
-      <PolicyRow
-        agentId="rate-limit"
-        title={t("policycontrols.rateLimit.title", {
-          defaultValue: "Rate Limits",
-        })}
-        desc={
-          rateLimitPolicy?.enabled
-            ? t("policycontrols.rateLimit.desc", {
-                perHour: rateLimitConfig.maxTxPerHour,
-                perDay: rateLimitConfig.maxTxPerDay,
-                defaultValue: "{{perHour}}/hr · {{perDay}}/day",
-              })
-            : t("policycontrols.off", { defaultValue: "Off" })
-        }
-        enabled={rateLimitPolicy?.enabled ?? false}
-        onToggle={(v) =>
-          togglePolicy("rate-limit", v, asRecord(DEFAULT_RATE_LIMIT))
-        }
-      >
-        <div className="grid grid-cols-2 gap-4">
-          <SliderField
-            agentId="rate-limit-per-hour"
-            label={t("policycontrols.rateLimit.perHour", {
-              defaultValue: "Per Hour",
-            })}
-            value={rateLimitConfig.maxTxPerHour}
-            min={1}
-            max={100}
-            onChange={(v) =>
-              updatePolicy("rate-limit", {
-                config: asRecord({ ...rateLimitConfig, maxTxPerHour: v }),
-              })
-            }
-          />
-          <SliderField
-            agentId="rate-limit-per-day"
-            label={t("policycontrols.rateLimit.perDay", {
-              defaultValue: "Per Day",
-            })}
-            value={rateLimitConfig.maxTxPerDay}
-            min={1}
-            max={500}
-            onChange={(v) =>
-              updatePolicy("rate-limit", {
-                config: asRecord({ ...rateLimitConfig, maxTxPerDay: v }),
-              })
-            }
-          />
-        </div>
-      </PolicyRow>
-
-      {/* Address Controls */}
-      <PolicyRow
-        agentId="approved-addresses"
-        title={t("policycontrols.address.title", {
-          defaultValue: "Address Controls",
-        })}
-        desc={
-          addressPolicy?.enabled
-            ? addressConfig.mode === "whitelist"
-              ? t("policycontrols.address.descAllowed", {
-                  count: normalizedAddresses.length,
-                  defaultValue: "{{count}} allowed",
+      <SettingsGroup>
+        {/* Auto-Approve */}
+        <PolicyRow
+          agentId="auto-approve"
+          title={t("policycontrols.autoApprove.title", {
+            defaultValue: "Auto-Approve",
+          })}
+          desc={
+            autoApprovePolicy?.enabled
+              ? t("policycontrols.autoApprove.desc", {
+                  threshold: autoApproveConfig.threshold ?? "5",
+                  // biome-ignore lint/suspicious/noTemplateCurlyInString: i18n currency format ($ + {{var}}), not a JS template literal
+                  defaultValue: "Under ${{threshold}}",
                 })
-              : t("policycontrols.address.descBlocked", {
-                  count: normalizedAddresses.length,
-                  defaultValue: "{{count}} blocked",
+              : t("policycontrols.off", { defaultValue: "Off" })
+          }
+          enabled={autoApprovePolicy?.enabled ?? false}
+          onToggle={(v) =>
+            togglePolicy(
+              "auto-approve-threshold",
+              v,
+              asRecord(DEFAULT_AUTO_APPROVE),
+            )
+          }
+        >
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-muted whitespace-nowrap">
+              {t("policycontrols.threshold", { defaultValue: "Threshold" })}
+            </Label>
+            <UsdField
+              agentId="auto-approve-threshold"
+              agentLabel={t("policycontrols.threshold", {
+                defaultValue: "Threshold",
+              })}
+              value={autoApproveConfig.threshold ?? "5"}
+              onChange={(v) =>
+                updatePolicy("auto-approve-threshold", {
+                  config: asRecord({ threshold: v }),
                 })
-            : t("policycontrols.off", { defaultValue: "Off" })
-        }
-        enabled={addressPolicy?.enabled ?? false}
-        onToggle={(v) =>
-          togglePolicy(
-            "approved-addresses",
-            v,
-            asRecord(DEFAULT_APPROVED_ADDRESSES),
-          )
-        }
-      >
-        <AddressSection
-          config={addressConfig}
-          addresses={normalizedAddresses}
-          onUpdate={(cfg) =>
-            updatePolicy("approved-addresses", { config: asRecord(cfg) })
-          }
-        />
-      </PolicyRow>
+              }
+            />
+          </div>
+        </PolicyRow>
 
-      {/* Time Restrictions */}
-      <PolicyRow
-        agentId="time-window"
-        title={t("policycontrols.time.title", {
-          defaultValue: "Time Restrictions",
-        })}
-        desc={
-          timeWindowPolicy?.enabled
-            ? t("policycontrols.time.desc", {
-                count: timeWindowConfig.allowedDays?.length ?? 0,
-                defaultValue: "{{count}} days",
-              })
-            : t("policycontrols.off", { defaultValue: "Off" })
-        }
-        enabled={timeWindowPolicy?.enabled ?? false}
-        onToggle={(v) =>
-          togglePolicy("time-window", v, asRecord(DEFAULT_TIME_WINDOW))
-        }
-      >
-        <TimeSection
-          config={timeWindowConfig}
-          onUpdate={(cfg) =>
-            updatePolicy("time-window", { config: asRecord(cfg) })
+        {/* Spending Limits */}
+        <PolicyRow
+          agentId="spending-limit"
+          title={t("policycontrols.spending.title", {
+            defaultValue: "Spending Limits",
+          })}
+          desc={
+            spendingPolicy?.enabled
+              ? t("policycontrols.spending.desc", {
+                  perTx: spendingConfig.maxPerTx,
+                  perDay: spendingConfig.maxPerDay,
+                  perWeek: spendingConfig.maxPerWeek,
+                  defaultValue:
+                    // biome-ignore lint/suspicious/noTemplateCurlyInString: i18n currency format ($ + {{var}}), not a JS template literal
+                    "${{perTx}}/tx · ${{perDay}}/day · ${{perWeek}}/wk",
+                })
+              : t("policycontrols.off", { defaultValue: "Off" })
           }
-        />
-      </PolicyRow>
+          enabled={spendingPolicy?.enabled ?? false}
+          onToggle={(v) =>
+            togglePolicy("spending-limit", v, asRecord(DEFAULT_SPENDING))
+          }
+        >
+          <div className="grid grid-cols-3 gap-3">
+            <UsdFieldLabeled
+              agentId="spending-per-tx"
+              label={t("policycontrols.spending.perTx", {
+                defaultValue: "Per Tx",
+              })}
+              value={spendingConfig.maxPerTx}
+              onChange={(v) =>
+                updatePolicy("spending-limit", {
+                  config: asRecord({ ...spendingConfig, maxPerTx: v }),
+                })
+              }
+            />
+            <UsdFieldLabeled
+              agentId="spending-daily"
+              label={t("policycontrols.spending.daily", {
+                defaultValue: "Daily",
+              })}
+              value={spendingConfig.maxPerDay}
+              onChange={(v) =>
+                updatePolicy("spending-limit", {
+                  config: asRecord({ ...spendingConfig, maxPerDay: v }),
+                })
+              }
+            />
+            <UsdFieldLabeled
+              agentId="spending-weekly"
+              label={t("policycontrols.spending.weekly", {
+                defaultValue: "Weekly",
+              })}
+              value={spendingConfig.maxPerWeek}
+              onChange={(v) =>
+                updatePolicy("spending-limit", {
+                  config: asRecord({ ...spendingConfig, maxPerWeek: v }),
+                })
+              }
+            />
+          </div>
+        </PolicyRow>
+
+        {/* Rate Limits */}
+        <PolicyRow
+          agentId="rate-limit"
+          title={t("policycontrols.rateLimit.title", {
+            defaultValue: "Rate Limits",
+          })}
+          desc={
+            rateLimitPolicy?.enabled
+              ? t("policycontrols.rateLimit.desc", {
+                  perHour: rateLimitConfig.maxTxPerHour,
+                  perDay: rateLimitConfig.maxTxPerDay,
+                  defaultValue: "{{perHour}}/hr · {{perDay}}/day",
+                })
+              : t("policycontrols.off", { defaultValue: "Off" })
+          }
+          enabled={rateLimitPolicy?.enabled ?? false}
+          onToggle={(v) =>
+            togglePolicy("rate-limit", v, asRecord(DEFAULT_RATE_LIMIT))
+          }
+        >
+          <div className="grid grid-cols-2 gap-4">
+            <SliderField
+              agentId="rate-limit-per-hour"
+              label={t("policycontrols.rateLimit.perHour", {
+                defaultValue: "Per Hour",
+              })}
+              value={rateLimitConfig.maxTxPerHour}
+              min={1}
+              max={100}
+              onChange={(v) =>
+                updatePolicy("rate-limit", {
+                  config: asRecord({ ...rateLimitConfig, maxTxPerHour: v }),
+                })
+              }
+            />
+            <SliderField
+              agentId="rate-limit-per-day"
+              label={t("policycontrols.rateLimit.perDay", {
+                defaultValue: "Per Day",
+              })}
+              value={rateLimitConfig.maxTxPerDay}
+              min={1}
+              max={500}
+              onChange={(v) =>
+                updatePolicy("rate-limit", {
+                  config: asRecord({ ...rateLimitConfig, maxTxPerDay: v }),
+                })
+              }
+            />
+          </div>
+        </PolicyRow>
+
+        {/* Address Controls */}
+        <PolicyRow
+          agentId="approved-addresses"
+          title={t("policycontrols.address.title", {
+            defaultValue: "Address Controls",
+          })}
+          desc={
+            addressPolicy?.enabled
+              ? addressConfig.mode === "whitelist"
+                ? t("policycontrols.address.descAllowed", {
+                    count: normalizedAddresses.length,
+                    defaultValue: "{{count}} allowed",
+                  })
+                : t("policycontrols.address.descBlocked", {
+                    count: normalizedAddresses.length,
+                    defaultValue: "{{count}} blocked",
+                  })
+              : t("policycontrols.off", { defaultValue: "Off" })
+          }
+          enabled={addressPolicy?.enabled ?? false}
+          onToggle={(v) =>
+            togglePolicy(
+              "approved-addresses",
+              v,
+              asRecord(DEFAULT_APPROVED_ADDRESSES),
+            )
+          }
+        >
+          <AddressSection
+            config={addressConfig}
+            addresses={normalizedAddresses}
+            onUpdate={(cfg) =>
+              updatePolicy("approved-addresses", { config: asRecord(cfg) })
+            }
+          />
+        </PolicyRow>
+
+        {/* Time Restrictions */}
+        <PolicyRow
+          agentId="time-window"
+          title={t("policycontrols.time.title", {
+            defaultValue: "Time Restrictions",
+          })}
+          desc={
+            timeWindowPolicy?.enabled
+              ? t("policycontrols.time.desc", {
+                  count: timeWindowConfig.allowedDays?.length ?? 0,
+                  defaultValue: "{{count}} days",
+                })
+              : t("policycontrols.off", { defaultValue: "Off" })
+          }
+          enabled={timeWindowPolicy?.enabled ?? false}
+          onToggle={(v) =>
+            togglePolicy("time-window", v, asRecord(DEFAULT_TIME_WINDOW))
+          }
+        >
+          <TimeSection
+            config={timeWindowConfig}
+            onUpdate={(cfg) =>
+              updatePolicy("time-window", { config: asRecord(cfg) })
+            }
+          />
+        </PolicyRow>
+      </SettingsGroup>
 
       {/* Save */}
       {dirty && (
-        <div className="flex items-center justify-end gap-3 pt-4 border-t-0">
+        <div className="flex items-center justify-end gap-3">
           <span className="text-xs text-accent">
             {t("policycontrols.unsavedChanges", {
               defaultValue: "Unsaved changes",
@@ -524,7 +523,7 @@ export function PolicyControlsView() {
         </div>
       )}
       {saveSuccess && !dirty && (
-        <div className="pt-3 text-right border-t-0">
+        <div className="text-right">
           <span className="text-xs text-ok">
             {t("policycontrols.saved", { defaultValue: "Saved" })}
           </span>
@@ -550,7 +549,7 @@ export function PolicyControlsView() {
         }}
         onCancel={() => setConfirmOpen(false)}
       />
-    </div>
+    </SettingsStack>
   );
 }
 
@@ -580,12 +579,10 @@ function PolicyRow({
     onActivate: () => onToggle(!enabled),
   });
   return (
-    <div className="py-3.5">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-sm font-medium text-txt">{title}</div>
-          <div className="text-xs text-muted mt-0.5">{desc}</div>
-        </div>
+    <SettingsRow
+      label={title}
+      description={desc}
+      control={
         <Switch
           ref={ref}
           {...agentProps}
@@ -593,9 +590,10 @@ function PolicyRow({
           onCheckedChange={onToggle}
           aria-label={title}
         />
-      </div>
-      {enabled && children && <div className="mt-3">{children}</div>}
-    </div>
+      }
+    >
+      {enabled && children ? children : null}
+    </SettingsRow>
   );
 }
 
@@ -655,7 +653,7 @@ function UsdFieldLabeled({
 }) {
   return (
     <div className="space-y-1">
-      <Label className="text-xs-tight text-muted">{label}</Label>
+      <Label className="text-xs text-muted">{label}</Label>
       <UsdField
         agentId={agentId}
         agentLabel={label}
@@ -732,11 +730,11 @@ function AddressRow({
     onActivate: onRemove,
   });
   return (
-    <div className="flex items-center justify-between group text-xs-tight font-mono text-muted py-1">
+    <div className="flex items-center justify-between group text-xs font-mono text-muted py-1">
       <div className="flex items-center gap-1.5 truncate">
         <span className="truncate">{address}</span>
         {chain && (
-          <span className="text-3xs text-muted bg-muted/10 px-1.5 py-0.5 rounded-sm shrink-0">
+          <span className="text-xs text-muted bg-muted/10 px-1.5 py-0.5 rounded-sm shrink-0">
             {chain}
           </span>
         )}
@@ -744,7 +742,7 @@ function AddressRow({
       <button
         ref={removeControl.ref}
         type="button"
-        className="text-danger opacity-0 group-hover:opacity-100 text-2xs ml-2"
+        className="text-danger opacity-0 group-hover:opacity-100 text-xs ml-2"
         onClick={onRemove}
         {...removeControl.agentProps}
       >
@@ -851,7 +849,7 @@ function AddressSection({
           {...allowlistAgentProps}
           variant={config.mode === "whitelist" ? "default" : "ghost"}
           size="sm"
-          className="text-xs-tight h-7"
+          className="text-xs h-7"
           onClick={() => onUpdate({ ...config, mode: "whitelist" })}
         >
           {t("policycontrols.address.allowlist", {
@@ -863,7 +861,7 @@ function AddressSection({
           {...blocklistAgentProps}
           variant={config.mode === "blacklist" ? "default" : "ghost"}
           size="sm"
-          className="text-xs-tight h-7"
+          className="text-xs h-7"
           onClick={() => onUpdate({ ...config, mode: "blacklist" })}
         >
           {t("policycontrols.address.blocklist", {
@@ -912,9 +910,7 @@ function AddressSection({
           {t("policycontrols.address.add", { defaultValue: "Add" })}
         </Button>
       </div>
-      {addrError && (
-        <div className="text-xs-tight text-danger">{addrError}</div>
-      )}
+      {addrError && <div className="text-xs text-danger">{addrError}</div>}
     </div>
   );
 }
@@ -929,15 +925,65 @@ function TimeSection({
   const { t } = useTranslation();
   const hours = config.allowedHours?.[0] ?? { start: 9, end: 17 };
   const days = config.allowedDays ?? [1, 2, 3, 4, 5];
+  const timezone =
+    config.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  const { ref: fromRef, agentProps: fromAgentProps } =
+    useAgentElement<HTMLSelectElement>({
+      id: "policy-time-from",
+      role: "select",
+      label: t("policycontrols.time.from", { defaultValue: "From" }),
+      group: "policy-time",
+      options: HOUR_FROM_OPTIONS.map((h) => String(h.value)),
+      getValue: () => String(hours.start),
+      onFill: (v) =>
+        onUpdate({
+          ...config,
+          allowedHours: [{ start: Number(v), end: hours.end }],
+        }),
+    });
+  const { ref: toRef, agentProps: toAgentProps } =
+    useAgentElement<HTMLSelectElement>({
+      id: "policy-time-to",
+      role: "select",
+      label: t("policycontrols.time.to", { defaultValue: "To" }),
+      group: "policy-time",
+      options: HOUR_TO_OPTIONS.map((h) => String(h.value)),
+      getValue: () => String(hours.end),
+      onFill: (v) =>
+        onUpdate({
+          ...config,
+          allowedHours: [{ start: hours.start, end: Number(v) }],
+        }),
+    });
+  const { ref: tzRef, agentProps: tzAgentProps } =
+    useAgentElement<HTMLSelectElement>({
+      id: "policy-time-timezone",
+      role: "select",
+      label: t("policycontrols.time.timezone", { defaultValue: "Timezone" }),
+      group: "policy-time",
+      options: TIMEZONES.map((tz) => String(tz)),
+      getValue: () => timezone,
+      onFill: (v) => onUpdate({ ...config, timezone: v }),
+    });
+
+  const toggleDay = (i: number) => {
+    const next = days.includes(i)
+      ? days.filter((d) => d !== i)
+      : [...days, i].sort();
+    onUpdate({ ...config, allowedDays: next });
+  };
 
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3">
         <div className="space-y-1">
-          <Label className="text-xs-tight text-muted">
+          <Label className="text-xs text-muted">
             {t("policycontrols.time.from", { defaultValue: "From" })}
           </Label>
           <select
+            ref={fromRef}
+            {...fromAgentProps}
             value={hours.start}
             onChange={(e) =>
               onUpdate({
@@ -947,7 +993,7 @@ function TimeSection({
                 ],
               })
             }
-            className="h-8 rounded-sm border border-input bg-bg px-2 text-xs text-txt"
+            className="h-8 rounded-sm border border-border bg-bg px-2 text-xs text-txt"
           >
             {HOUR_FROM_OPTIONS.map((h) => (
               <option key={h.key} value={h.value}>
@@ -958,10 +1004,12 @@ function TimeSection({
         </div>
         <span className="text-muted text-xs mt-5">→</span>
         <div className="space-y-1">
-          <Label className="text-xs-tight text-muted">
+          <Label className="text-xs text-muted">
             {t("policycontrols.time.to", { defaultValue: "To" })}
           </Label>
           <select
+            ref={toRef}
+            {...toAgentProps}
             value={hours.end}
             onChange={(e) =>
               onUpdate({
@@ -971,7 +1019,7 @@ function TimeSection({
                 ],
               })
             }
-            className="h-8 rounded-sm border border-input bg-bg px-2 text-xs text-txt"
+            className="h-8 rounded-sm border border-border bg-bg px-2 text-xs text-txt"
           >
             {HOUR_TO_OPTIONS.map((h) => (
               <option key={h.key} value={h.value}>
@@ -984,36 +1032,26 @@ function TimeSection({
 
       <div className="flex gap-1">
         {DAY_NAMES.map((name, i) => (
-          <button
+          <DayToggle
             key={name}
-            type="button"
-            className={`h-7 w-9 rounded-sm text-2xs font-medium transition-colors ${
-              days.includes(i)
-                ? "bg-accent/20 text-accent border border-accent/30"
-                : "bg-bg text-muted border border-border/30 hover:border-border/50"
-            }`}
-            onClick={() => {
-              const next = days.includes(i)
-                ? days.filter((d) => d !== i)
-                : [...days, i].sort();
-              onUpdate({ ...config, allowedDays: next });
-            }}
-          >
-            {name}
-          </button>
+            name={name}
+            index={i}
+            active={days.includes(i)}
+            onToggle={toggleDay}
+          />
         ))}
       </div>
 
       <div className="space-y-1">
-        <Label className="text-xs-tight text-muted">
+        <Label className="text-xs text-muted">
           {t("policycontrols.time.timezone", { defaultValue: "Timezone" })}
         </Label>
         <select
-          value={
-            config.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
-          }
+          ref={tzRef}
+          {...tzAgentProps}
+          value={timezone}
           onChange={(e) => onUpdate({ ...config, timezone: e.target.value })}
-          className="h-8 rounded-sm border border-input bg-bg px-2 text-xs text-txt w-full"
+          className="h-8 rounded-sm border border-border bg-bg px-2 text-xs text-txt w-full"
         >
           {TIMEZONES.map((tz) => (
             <option key={tz} value={tz}>
@@ -1023,5 +1061,42 @@ function TimeSection({
         </select>
       </div>
     </div>
+  );
+}
+
+function DayToggle({
+  name,
+  index,
+  active,
+  onToggle,
+}: {
+  name: string;
+  index: number;
+  active: boolean;
+  onToggle: (index: number) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `policy-day-${index}`,
+    role: "toggle",
+    label: `Allow ${name}`,
+    group: "policy-time",
+    status: active ? "on" : "off",
+    getValue: () => active,
+    onActivate: () => onToggle(index),
+  });
+  return (
+    <button
+      ref={ref}
+      {...agentProps}
+      type="button"
+      className={`h-7 w-9 rounded-sm text-xs font-medium transition-colors ${
+        active
+          ? "bg-accent/20 text-accent border border-accent/30"
+          : "bg-bg text-muted border border-border/30 hover:border-border/50"
+      }`}
+      onClick={() => onToggle(index)}
+    >
+      {name}
+    </button>
   );
 }

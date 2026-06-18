@@ -1,6 +1,6 @@
 import * as http from "node:http";
 import { Socket } from "node:net";
-import { TAB_PATHS } from "@elizaos/ui/navigation";
+import { SETTINGS_SECTION_META, TAB_PATHS } from "@elizaos/ui/navigation";
 import {
   afterEach,
   beforeAll,
@@ -150,6 +150,18 @@ describe("buildRouteCatalog", () => {
     const catalog = buildRouteCatalog(new Date("2026-05-10T00:00:00.000Z"));
     expect(catalog.schemaVersion).toBe(1);
     expect(catalog.generatedAt).toBe("2026-05-10T00:00:00.000Z");
+  });
+
+  it("mirrors SETTINGS_SECTION_META from @elizaos/ui exactly (id + label, in order)", () => {
+    const catalog = buildRouteCatalog();
+    expect(
+      catalog.settingsSections.map((s) => ({ id: s.id, label: s.label })),
+    ).toEqual(
+      SETTINGS_SECTION_META.map((s) => ({
+        id: s.id,
+        label: s.defaultLabel,
+      })),
+    );
   });
 
   it("returns settings sections and modal triggers", () => {

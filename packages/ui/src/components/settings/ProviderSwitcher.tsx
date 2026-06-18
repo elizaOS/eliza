@@ -17,6 +17,7 @@ import {
   SubscriptionPanel,
 } from "./ProviderPanels";
 import { AdvancedSettingsDisclosure } from "./settings-control-primitives";
+import { SettingsGroup, SettingsStack } from "./settings-layout";
 import { useCloudModelConfig } from "./useCloudModelConfig";
 import { useProviderBootstrap } from "./useProviderBootstrap";
 import {
@@ -64,11 +65,7 @@ function getSubscriptionProviderDescription(
 export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const app = useApp();
   const t = app.t;
-  // Resolve the device+mode default voice/ASR pair eagerly here so the
-  // surrounding settings shell has it warm in the runtime-mode cache by
-  // the time the user reaches the Voice section. We do not write the
-  // defaults here — VoiceConfigView reads them when the user hasn't
-  // explicitly picked a TTS/ASR provider.
+  // Warm the runtime-mode default voice/ASR cache for the Voice section.
   useDefaultProviderPresets();
   const elizaCloudConnected =
     props.elizaCloudConnected ?? Boolean(app.elizaCloudConnected);
@@ -173,9 +170,17 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   );
 
   return (
-    <div className="space-y-3">
-      <div className="grid gap-3 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
-        <aside className="flex min-w-0 flex-col gap-1.5">
+    <SettingsStack>
+      <SettingsGroup
+        title={t("providerswitcher.providerGroupTitle", {
+          defaultValue: "Provider",
+        })}
+        description={t("providerswitcher.providerGroupDesc", {
+          defaultValue: "Where this agent's intelligence comes from.",
+        })}
+        bare
+      >
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {providerEntries.map((entry) => (
             <ProviderCard
               key={entry.id}
@@ -189,78 +194,95 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
               onSelect={selection.handleProviderPanelSelect}
             />
           ))}
-        </aside>
-
-        <section className="min-w-0 rounded-sm border border-border/40 bg-card/35">
-          {visibleProviderPanelId === "__local__" ? (
-            <LocalProviderPanel
-              cloudCallsDisabled={selection.cloudCallsDisabled}
-              routingModeSaving={selection.routingModeSaving}
-              onSelectLocalOnly={() => void selection.handleSelectLocalOnly()}
-            />
-          ) : null}
-
-          {visibleProviderPanelId === "__cloud__" ? (
-            <CloudPanel
-              cloudCallsDisabled={selection.cloudCallsDisabled}
-              isCloudSelected={selection.isCloudSelected}
-              routingModeSaving={selection.routingModeSaving}
-              onSelectCloud={() => void selection.handleSelectCloud()}
-              elizaCloudConnected={elizaCloudConnected}
-              largeModelOptions={cloudModel.largeModelOptions}
-              cloudModelSchema={cloudModel.cloudModelSchema}
-              modelValues={cloudModel.modelValues}
-              currentLargeModel={cloudModel.currentLargeModel}
-              modelSaving={cloudModel.modelSaving}
-              modelSaveSuccess={cloudModel.modelSaveSuccess}
-              onModelFieldChange={cloudModel.handleModelFieldChange}
-            />
-          ) : null}
-
-          {activeSubscriptionSelection ? (
-            <SubscriptionPanel
-              selection={activeSubscriptionSelection}
-              description={getSubscriptionProviderDescription(
-                activeSubscriptionSelection.id,
-              )}
-              visibleProviderPanelId={visibleProviderPanelId}
-              resolvedSelectedId={resolvedSelectedId}
-              cloudCallsDisabled={selection.cloudCallsDisabled}
-              subscriptionStatus={bootstrap.subscriptionStatus}
-              anthropicConnected={bootstrap.anthropicConnected}
-              setAnthropicConnected={bootstrap.setAnthropicConnected}
-              anthropicCliDetected={bootstrap.anthropicCliDetected}
-              openaiConnected={bootstrap.openaiConnected}
-              setOpenaiConnected={bootstrap.setOpenaiConnected}
-              onSelectSubscription={selection.handleSelectSubscription}
-              loadSubscriptionStatus={bootstrap.loadSubscriptionStatus}
-            />
-          ) : null}
-
-          {selectedPanelProvider ? (
-            <ApiKeyPanel
-              selectedProvider={selectedPanelProvider}
-              panelLabel={apiKeyPanelLabel}
-              visibleProviderPanelId={visibleProviderPanelId}
-              resolvedSelectedId={resolvedSelectedId}
-              cloudCallsDisabled={selection.cloudCallsDisabled}
-              selectedPanelAccountProvider={selectedPanelAccountProvider}
-              onSwitchProvider={onSwitchProvider}
-              pluginSaving={pluginSaving}
-              pluginSaveSuccess={pluginSaveSuccess}
-              handlePluginConfigSave={handlePluginConfigSave}
-              loadPlugins={loadPlugins}
-            />
-          ) : null}
-        </section>
-      </div>
-
-      <AdvancedSettingsDisclosure title="Model settings" lazy>
-        <div className="flex flex-col gap-3">
-          <ProvidersList />
-          <RoutingMatrix />
         </div>
-      </AdvancedSettingsDisclosure>
-    </div>
+      </SettingsGroup>
+
+      <SettingsGroup
+        title={t("providerswitcher.configGroupTitle", {
+          defaultValue: "Configuration",
+        })}
+        className="min-w-0"
+      >
+        {visibleProviderPanelId === "__local__" ? (
+          <LocalProviderPanel
+            cloudCallsDisabled={selection.cloudCallsDisabled}
+            routingModeSaving={selection.routingModeSaving}
+            onSelectLocalOnly={() => void selection.handleSelectLocalOnly()}
+          />
+        ) : null}
+
+        {visibleProviderPanelId === "__cloud__" ? (
+          <CloudPanel
+            cloudCallsDisabled={selection.cloudCallsDisabled}
+            isCloudSelected={selection.isCloudSelected}
+            routingModeSaving={selection.routingModeSaving}
+            onSelectCloud={() => void selection.handleSelectCloud()}
+            elizaCloudConnected={elizaCloudConnected}
+            largeModelOptions={cloudModel.largeModelOptions}
+            cloudModelSchema={cloudModel.cloudModelSchema}
+            modelValues={cloudModel.modelValues}
+            currentLargeModel={cloudModel.currentLargeModel}
+            modelSaving={cloudModel.modelSaving}
+            modelSaveSuccess={cloudModel.modelSaveSuccess}
+            onModelFieldChange={cloudModel.handleModelFieldChange}
+          />
+        ) : null}
+
+        {activeSubscriptionSelection ? (
+          <SubscriptionPanel
+            selection={activeSubscriptionSelection}
+            description={getSubscriptionProviderDescription(
+              activeSubscriptionSelection.id,
+            )}
+            visibleProviderPanelId={visibleProviderPanelId}
+            resolvedSelectedId={resolvedSelectedId}
+            cloudCallsDisabled={selection.cloudCallsDisabled}
+            subscriptionStatus={bootstrap.subscriptionStatus}
+            anthropicConnected={bootstrap.anthropicConnected}
+            setAnthropicConnected={bootstrap.setAnthropicConnected}
+            anthropicCliDetected={bootstrap.anthropicCliDetected}
+            openaiConnected={bootstrap.openaiConnected}
+            setOpenaiConnected={bootstrap.setOpenaiConnected}
+            onSelectSubscription={selection.handleSelectSubscription}
+            loadSubscriptionStatus={bootstrap.loadSubscriptionStatus}
+          />
+        ) : null}
+
+        {selectedPanelProvider ? (
+          <ApiKeyPanel
+            selectedProvider={selectedPanelProvider}
+            panelLabel={apiKeyPanelLabel}
+            visibleProviderPanelId={visibleProviderPanelId}
+            resolvedSelectedId={resolvedSelectedId}
+            cloudCallsDisabled={selection.cloudCallsDisabled}
+            selectedPanelAccountProvider={selectedPanelAccountProvider}
+            onSwitchProvider={onSwitchProvider}
+            pluginSaving={pluginSaving}
+            pluginSaveSuccess={pluginSaveSuccess}
+            handlePluginConfigSave={handlePluginConfigSave}
+            loadPlugins={loadPlugins}
+          />
+        ) : null}
+      </SettingsGroup>
+
+      <SettingsGroup
+        title={t("providerswitcher.advancedGroupTitle", {
+          defaultValue: "Advanced",
+        })}
+        bare
+      >
+        <AdvancedSettingsDisclosure
+          title={t("providerswitcher.modelSettings", {
+            defaultValue: "Model routing & devices",
+          })}
+          lazy
+        >
+          <div className="flex flex-col gap-3">
+            <ProvidersList />
+            <RoutingMatrix />
+          </div>
+        </AdvancedSettingsDisclosure>
+      </SettingsGroup>
+    </SettingsStack>
   );
 }

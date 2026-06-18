@@ -10,14 +10,23 @@ export type SettingsSelectTriggerVariant =
   | "compact"
   | "filter"
   | "soft"
-  | "toolbar";
+  | "toolbar"
+  | "touch";
 
-export type SettingsInputVariant = "compact" | "filter";
+export type SettingsInputVariant = "compact" | "filter" | "touch";
+
+// 44px-tall, finger-friendly control. This is the default vocabulary for the
+// redesigned settings surface — every editable control inside a SettingsRow
+// uses the "touch" variant so mobile editing has real tap targets.
+const TOUCH_CONTROL_CLASS =
+  "h-11 rounded-md border border-border bg-card px-3.5 text-sm text-txt transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent";
 
 function settingsSelectTriggerClassName(
   variant: SettingsSelectTriggerVariant,
 ): string {
   switch (variant) {
+    case "touch":
+      return `${TOUCH_CONTROL_CLASS} text-left`;
     case "filter":
       return "h-10 rounded-sm border border-border/50 bg-bg/80 px-3 py-2 text-left text-sm text-txt transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent";
     case "soft":
@@ -31,6 +40,8 @@ function settingsSelectTriggerClassName(
 
 function settingsInputClassName(variant: SettingsInputVariant): string {
   switch (variant) {
+    case "touch":
+      return TOUCH_CONTROL_CLASS;
     case "filter":
       return "h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt ";
     default:
@@ -65,27 +76,28 @@ export interface SettingsInputProps extends Omit<InputProps, "variant"> {
   variant?: SettingsInputVariant;
 }
 
-export function SettingsInput({
-  className,
-  variant = "compact",
-  ...props
-}: SettingsInputProps) {
+export const SettingsInput = React.forwardRef<
+  HTMLInputElement,
+  SettingsInputProps
+>(function SettingsInput({ className, variant = "compact", ...props }, ref) {
   return (
     <Input
+      ref={ref}
       className={cn(settingsInputClassName(variant), className)}
       {...props}
     />
   );
-}
+});
 
 export interface SettingsTextareaProps extends TextareaProps {}
 
-export function SettingsTextarea({
-  className,
-  ...props
-}: SettingsTextareaProps) {
+export const SettingsTextarea = React.forwardRef<
+  HTMLTextAreaElement,
+  SettingsTextareaProps
+>(function SettingsTextarea({ className, ...props }, ref) {
   return (
     <Textarea
+      ref={ref}
       className={cn(
         "w-full rounded-sm border border-border/60 bg-bg/55 px-3 py-2 text-xs-tight font-mono transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent",
         className,
@@ -93,7 +105,7 @@ export function SettingsTextarea({
       {...props}
     />
   );
-}
+});
 
 export interface SettingsSegmentedGroupProps
   extends React.HTMLAttributes<HTMLDivElement> {}
@@ -125,14 +137,14 @@ export function SettingsMutedText({
   );
 }
 
-function SettingsField({
+export function SettingsField({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) {
   return <Field className={cn("gap-1.5", className)} {...props} />;
 }
 
-function SettingsFieldLabel({
+export function SettingsFieldLabel({
   className,
   ...props
 }: React.ComponentPropsWithoutRef<typeof FieldLabel>) {
@@ -144,7 +156,7 @@ function SettingsFieldLabel({
   );
 }
 
-function SettingsFieldDescription({
+export function SettingsFieldDescription({
   className,
   ...props
 }: React.ComponentPropsWithoutRef<typeof FieldDescription>) {

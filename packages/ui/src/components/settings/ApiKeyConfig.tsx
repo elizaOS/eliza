@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { client, type PluginParamDef } from "../../api";
 import { ConfigRenderer } from "../../components/config-ui/config-renderer";
 import {
@@ -11,7 +12,7 @@ import { useTimeout } from "../../hooks/useTimeout";
 import { useApp } from "../../state";
 import type { ConfigUiHint } from "../../types";
 import { autoLabel } from "../../utils/labels";
-import { Button } from "../ui/button";
+import { SettingsActionButton } from "./settings-agent-rows";
 import { AdvancedSettingsDisclosure } from "./settings-control-primitives";
 
 interface ProviderPlugin {
@@ -22,13 +23,7 @@ interface ProviderPlugin {
   configUiHints?: Record<string, ConfigUiHint>;
   enabled: boolean;
   category: string;
-  /**
-   * Server-side validation results for the currently-saved config.
-   * Populated by `validatePluginConfig` against the live `process.env`
-   * + saved `config.env.X`. Surfaced inline above the form so users
-   * see "your saved OpenRouter key doesn't match sk-or-…" without
-   * having to first edit the field.
-   */
+  /** Server-side validation against the currently-saved config. */
   validationWarnings?: Array<{ field: string; message: string }>;
   validationErrors?: Array<{ field: string; message: string }>;
 }
@@ -46,12 +41,7 @@ export interface ApiKeyConfigProps {
 
 const CREDENTIAL_KEY_PATTERN = /(KEY|TOKEN|SECRET|PASSWORD)/;
 
-/**
- * Splits the rendered fields into "Credentials" (required + sensitive-named)
- * and "Advanced" (everything else). Mirrors the contract documented in the
- * Settings refactor plan: a 5-param provider like OpenRouter should not put
- * every field at the same visual weight.
- */
+/** Splits fields into Credentials (required + sensitive) and Advanced. */
 function partitionParams(params: PluginParamDef[]): {
   credentials: PluginParamDef[];
   advanced: PluginParamDef[];
@@ -95,10 +85,8 @@ function buildSchemaForParams(
     properties[p.key] = prop;
     if (p.required) required.push(p.key);
 
-    // Inline prefix validation for known API-key fields. Mirrors
-    // KEY_PREFIX_HINTS in packages/agent/src/api/plugin-validation.ts —
-    // runs in the form as the user types so they catch the "I pasted a
-    // model slug into the API key field" mistake before save.
+    // Inline prefix validation, mirroring API_KEY_PREFIX_HINTS in
+    // packages/agent/src/api/plugin-validation.ts.
     const prefixHint = API_KEY_PREFIX_HINTS[p.key];
     const fieldHint: ConfigUiHint = {
       label: autoLabel(p.key, selectedProvider.id),
@@ -106,7 +94,7 @@ function buildSchemaForParams(
       ...(prefixHint
         ? {
             pattern: `^${prefixHint.prefix}`,
-            patternError: `${prefixHint.label} keys start with "${prefixHint.prefix}" — this doesn't look like a valid key. (Did you paste a model name into the wrong field?)`,
+            patternError: `${prefixHint.label} keys start with "${prefixHint.prefix}".`,
           }
         : {}),
       ...serverHints[p.key],
@@ -154,6 +142,33 @@ async function revealSecret(
   } catch {
     return null;
   }
+}
+
+/**
+ * Registers one credential field on the agent surface so chat can read and set
+ * it ("set my OpenRouter key to …"). The {@link ConfigRenderer} owns the visible
+ * input; this binds value/fill to the same `pluginFieldValues` state.
+ */
+function CredentialFieldAgentBinding({
+  agentId,
+  label,
+  getValue,
+  onFill,
+}: {
+  agentId: string;
+  label: string;
+  getValue: () => string;
+  onFill: (value: string) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLSpanElement>({
+    id: agentId,
+    role: "text-input",
+    label,
+    group: "apikey-credentials",
+    getValue,
+    onFill,
+  });
+  return <span ref={ref} hidden aria-hidden {...agentProps} />;
 }
 
 export function ApiKeyConfig({
@@ -268,7 +283,7 @@ export function ApiKeyConfig({
           {selectedProvider.name}
         </h3>
         <span
-          className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-2xs font-medium ${
+          className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium ${
             configured
               ? "border-ok/30 bg-ok/10 text-ok"
               : "border-warn/30 bg-warn/10 text-warn"
@@ -283,11 +298,7 @@ export function ApiKeyConfig({
         </span>
       </div>
 
-      {/*
-        Surface server-side validation issues against the already-saved
-        config so users with a previously-corrupted eliza.json see the
-        issue without having to edit the field first.
-      */}
+      {/* Server-side validation against the already-saved config. */}
       {(selectedProvider.validationErrors?.length ||
         selectedProvider.validationWarnings?.length) && (
         <div className="mb-3 space-y-1.5">
@@ -317,23 +328,39 @@ export function ApiKeyConfig({
       )}
 
       {credentialsForm && partitions.credentials.length > 0 ? (
-        <ConfigRenderer
-          ref={configRef}
-          schema={credentialsForm.schema}
-          hints={credentialsForm.hints}
-          values={credentialsForm.values}
-          setKeys={credentialsForm.setKeys}
-          registry={defaultRegistry}
-          pluginId={selectedProvider.id}
-          onChange={(key, value) =>
-            handlePluginFieldChange(
-              selectedProvider.id,
-              key,
-              String(value ?? ""),
-            )
-          }
-          revealSecret={revealSecret}
-        />
+        <>
+          <ConfigRenderer
+            ref={configRef}
+            schema={credentialsForm.schema}
+            hints={credentialsForm.hints}
+            values={credentialsForm.values}
+            setKeys={credentialsForm.setKeys}
+            registry={defaultRegistry}
+            pluginId={selectedProvider.id}
+            onChange={(key, value) =>
+              handlePluginFieldChange(
+                selectedProvider.id,
+                key,
+                String(value ?? ""),
+              )
+            }
+            revealSecret={revealSecret}
+          />
+          {partitions.credentials.map((param) => (
+            <CredentialFieldAgentBinding
+              key={param.key}
+              agentId={`apikey-${selectedProvider.id}-${param.key}`}
+              label={credentialsForm.hints[param.key]?.label ?? param.key}
+              getValue={() =>
+                pluginFieldValues[selectedProvider.id]?.[param.key] ??
+                String(credentialsForm.values[param.key] ?? "")
+              }
+              onFill={(value) =>
+                handlePluginFieldChange(selectedProvider.id, param.key, value)
+              }
+            />
+          ))}
+        </>
       ) : null}
 
       {advancedForm ? (
@@ -359,7 +386,9 @@ export function ApiKeyConfig({
 
       <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-2">
-          <Button
+          <SettingsActionButton
+            agentId={`apikey-fetch-models-${selectedProvider.id}`}
+            agentLabel={t("apikeyconfig.fetchModels")}
             variant="outline"
             size="sm"
             className="h-9 rounded-sm"
@@ -369,11 +398,11 @@ export function ApiKeyConfig({
             {modelsFetching
               ? t("apikeyconfig.fetching")
               : t("apikeyconfig.fetchModels")}
-          </Button>
+          </SettingsActionButton>
           {modelsFetchResult && (
             <span
               aria-live="polite"
-              className={`truncate text-xs-tight ${
+              className={`truncate text-xs ${
                 modelsFetchResult.tone === "error" ? "text-danger" : "text-ok"
               }`}
             >
@@ -381,10 +410,13 @@ export function ApiKeyConfig({
             </span>
           )}
         </div>
-        <Button
+        <SettingsActionButton
+          agentId={`apikey-save-${selectedProvider.id}`}
+          agentLabel={t("common.save")}
+          agentStatus={isSaving ? "saving" : saveSuccess ? "saved" : undefined}
           variant="default"
           size="sm"
-          className="h-9 w-full rounded-sm font-semibold sm:w-auto"
+          className="h-11 w-full rounded-md font-semibold sm:h-9 sm:w-auto"
           onClick={() => handlePluginSave(selectedProvider.id)}
           disabled={isSaving}
         >
@@ -393,7 +425,7 @@ export function ApiKeyConfig({
             : saveSuccess
               ? t("common.saved")
               : t("common.save")}
-        </Button>
+        </SettingsActionButton>
       </div>
     </div>
   );

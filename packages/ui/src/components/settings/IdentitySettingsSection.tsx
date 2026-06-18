@@ -1,5 +1,6 @@
 import { Volume2, VolumeX } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { client, type VoiceConfig } from "../../api";
 import { dispatchWindowEvent, VOICE_CONFIG_UPDATED_EVENT } from "../../events";
 import { useApp } from "../../state";
@@ -15,8 +16,6 @@ import {
   EDGE_VOICE_GROUPS,
   ELEVENLABS_VOICE_GROUPS,
 } from "../character/character-voice-config";
-import { Button } from "../ui/button";
-import { Input } from "../ui/input";
 import { SaveFooter } from "../ui/save-footer";
 import {
   Select,
@@ -24,15 +23,119 @@ import {
   SelectGroup,
   SelectItem,
   SelectLabel,
-  SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import { Textarea } from "../ui/textarea";
+import { SettingsSelectTrigger } from "../ui/settings-controls";
 import {
-  SettingsField,
-  SettingsFieldLabel,
-} from "./settings-control-primitives";
+  SettingsActionButton,
+  SettingsInputRow,
+  SettingsTextareaRow,
+} from "./settings-agent-rows";
 import { useSettingsSave } from "./settings-control-primitives.hooks";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
+
+interface VoiceSelectRowProps {
+  label: string;
+  placeholder: string;
+  value: string | null;
+  options: readonly string[];
+  groups: Array<{
+    label: string;
+    items: Array<{ id: string; text: string; hint?: string }>;
+  }>;
+  onValueChange: (value: string) => void;
+  previewLabel: string;
+  stopLabel: string;
+  previewing: boolean;
+  previewDisabled: boolean;
+  onPreviewToggle: () => void;
+}
+
+function VoiceSelectRow({
+  label,
+  placeholder,
+  value,
+  options,
+  groups,
+  onValueChange,
+  previewLabel,
+  stopLabel,
+  previewing,
+  previewDisabled,
+  onPreviewToggle,
+}: VoiceSelectRowProps) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "identity-voice",
+    role: "select",
+    label,
+    group: "settings",
+    status: value || undefined,
+    options,
+    getValue: () => value ?? "",
+    onFill: (next: string) => onValueChange(next),
+  });
+
+  return (
+    <SettingsRow
+      label={<span id="settings-identity-voice-label">{label}</span>}
+      stacked
+    >
+      <div className="flex items-center gap-2">
+        <Select value={value ?? undefined} onValueChange={onValueChange}>
+          <SettingsSelectTrigger
+            ref={ref}
+            variant="touch"
+            aria-labelledby="settings-identity-voice-label"
+            className="min-w-0 flex-1"
+            {...agentProps}
+          >
+            <SelectValue placeholder={placeholder} />
+          </SettingsSelectTrigger>
+          <SelectContent className="border-border/60 bg-bg/92">
+            {groups.map((group) => (
+              <SelectGroup key={group.label}>
+                <SelectLabel className="px-2.5 py-1 text-2xs font-semibold text-muted">
+                  {group.label}
+                </SelectLabel>
+                {group.items.map((item) => (
+                  <SelectItem
+                    key={item.id}
+                    value={item.id}
+                    textValue={item.text}
+                  >
+                    <div className="flex w-full items-center justify-between gap-2">
+                      <span className="font-semibold">{item.text}</span>
+                      {item.hint ? (
+                        <span className="text-muted text-xs">{item.hint}</span>
+                      ) : null}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            ))}
+          </SelectContent>
+        </Select>
+        <SettingsActionButton
+          agentId="identity-voice-preview"
+          agentLabel={previewing ? stopLabel : previewLabel}
+          type="button"
+          variant={previewing ? "destructive" : "ghost"}
+          size="icon"
+          className="h-11 w-11 shrink-0 rounded-md"
+          onClick={onPreviewToggle}
+          aria-label={previewing ? stopLabel : previewLabel}
+          disabled={previewDisabled}
+        >
+          {previewing ? (
+            <VolumeX className="h-4 w-4" />
+          ) : (
+            <Volume2 className="h-4 w-4" />
+          )}
+        </SettingsActionButton>
+      </div>
+    </SettingsRow>
+  );
+}
 
 function resolveEditableVoiceSelectionKey(config: VoiceConfig | null): string {
   const elevenLabsVoiceId =
@@ -240,6 +343,11 @@ export function IdentitySettingsSection() {
     }));
   }, [t, useElevenLabs]);
 
+  const voiceOptions = useMemo(
+    () => voiceGroups.flatMap((group) => group.items.map((item) => item.id)),
+    [voiceGroups],
+  );
+
   const savedName =
     typeof characterData?.name === "string" ? characterData.name : "";
   const savedSystem =
@@ -356,126 +464,70 @@ export function IdentitySettingsSection() {
   });
 
   return (
-    <div className="flex flex-col gap-5">
+    <SettingsStack>
       {showCharacterBootstrapping ? (
-        <div className="rounded-sm border border-border/60 bg-card/92 px-4 py-6 text-center text-xs text-muted ">
-          {t("settings.identity.loading", {
-            defaultValue: "Loading identity settings…",
-          })}
-        </div>
+        <SettingsGroup bare>
+          <div className="rounded-lg border border-border bg-card px-4 py-6 text-center text-xs text-muted">
+            {t("settings.identity.loading", {
+              defaultValue: "Loading identity settings…",
+            })}
+          </div>
+        </SettingsGroup>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <SettingsField className="min-w-0">
-          <SettingsFieldLabel htmlFor="settings-identity-name">
-            {t("common.name", { defaultValue: "Name" })}
-          </SettingsFieldLabel>
-          <Input
-            id="settings-identity-name"
-            type="text"
-            value={draftName}
-            placeholder={t("startupshell.AgentName", {
-              defaultValue: "Agent name",
-            })}
-            onChange={(event) =>
-              handleCharacterFieldInput("name", event.target.value)
-            }
-            className="rounded-sm border-border/60 bg-card/80"
-          />
-        </SettingsField>
+      <SettingsGroup
+        title={t("settings.identity.groupTitle", { defaultValue: "Identity" })}
+      >
+        <SettingsInputRow
+          agentId="identity-name"
+          label={t("common.name", { defaultValue: "Name" })}
+          value={draftName}
+          onValueChange={(value) => handleCharacterFieldInput("name", value)}
+          placeholder={t("startupshell.AgentName", {
+            defaultValue: "Agent name",
+          })}
+          inputClassName="w-full"
+        />
 
-        <SettingsField className="min-w-0">
-          <SettingsFieldLabel id="settings-identity-voice-label">
-            {t("common.voice", { defaultValue: "Voice" })}
-          </SettingsFieldLabel>
-          <div className="flex items-center gap-2">
-            <Select
-              value={visibleVoicePresetId ?? undefined}
-              onValueChange={(value) => handleVoiceSelect(value)}
-            >
-              <SelectTrigger
-                aria-labelledby="settings-identity-voice-label"
-                className="min-w-0 flex-1 h-11 rounded-sm border-border/60 bg-card/80 px-3 text-sm shadow-none"
-              >
-                <SelectValue
-                  placeholder={t("charactereditor.SelectAVoice", {
-                    defaultValue: "Select a voice",
-                  })}
-                />
-              </SelectTrigger>
-              <SelectContent className="border-border/60 bg-bg/92 ">
-                {voiceGroups.map((group) => (
-                  <SelectGroup key={group.label}>
-                    <SelectLabel className="px-2.5 py-1 text-2xs font-semibold text-muted">
-                      {group.label}
-                    </SelectLabel>
-                    {group.items.map((item) => (
-                      <SelectItem
-                        key={item.id}
-                        value={item.id}
-                        textValue={item.text}
-                      >
-                        <div className="flex w-full items-center justify-between gap-2">
-                          <span className="font-semibold">{item.text}</span>
-                          {item.hint ? (
-                            <span className="text-muted text-xs">
-                              {item.hint}
-                            </span>
-                          ) : null}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              type="button"
-              variant={voiceTesting ? "destructive" : "ghost"}
-              size="icon"
-              className="h-10 w-10 shrink-0 rounded-full"
-              onClick={voiceTesting ? stopVoicePreview : handlePreviewVoice}
-              aria-label={
-                voiceTesting
-                  ? t("settings.identity.stopVoicePreview", {
-                      defaultValue: "Stop voice preview",
-                    })
-                  : t("settings.identity.previewVoice", {
-                      defaultValue: "Preview voice",
-                    })
-              }
-              disabled={!activeVoicePreset?.previewUrl || voiceLoading}
-            >
-              {voiceTesting ? (
-                <VolumeX className="h-4 w-4" />
-              ) : (
-                <Volume2 className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-        </SettingsField>
-      </div>
+        <VoiceSelectRow
+          label={t("common.voice", { defaultValue: "Voice" })}
+          placeholder={t("charactereditor.SelectAVoice", {
+            defaultValue: "Select a voice",
+          })}
+          value={visibleVoicePresetId}
+          options={voiceOptions}
+          groups={voiceGroups}
+          onValueChange={handleVoiceSelect}
+          previewLabel={t("settings.identity.previewVoice", {
+            defaultValue: "Preview voice",
+          })}
+          stopLabel={t("settings.identity.stopVoicePreview", {
+            defaultValue: "Stop voice preview",
+          })}
+          previewing={voiceTesting}
+          previewDisabled={!activeVoicePreset?.previewUrl || voiceLoading}
+          onPreviewToggle={voiceTesting ? stopVoicePreview : handlePreviewVoice}
+        />
+      </SettingsGroup>
 
-      <SettingsField>
-        <SettingsFieldLabel htmlFor="settings-identity-system-prompt">
-          {t("settings.identity.systemPromptLabel", {
+      <SettingsGroup>
+        <SettingsTextareaRow
+          agentId="identity-system-prompt"
+          label={t("settings.identity.systemPromptLabel", {
             defaultValue: "System prompt",
           })}
-        </SettingsFieldLabel>
-        <Textarea
-          id="settings-identity-system-prompt"
+          description={t("settings.identity.systemPromptHint", {
+            defaultValue: "The agent's core instructions.",
+          })}
           value={draftSystem}
+          onValueChange={(value) => handleCharacterFieldInput("system", value)}
           rows={10}
-          maxLength={100000}
           placeholder={t("charactereditor.SystemPromptPlaceholder", {
             defaultValue: "Write in first person...",
           })}
-          onChange={(event) =>
-            handleCharacterFieldInput("system", event.target.value)
-          }
-          className="min-h-[14rem] rounded-sm border-border/60 bg-card/80 font-mono text-xs leading-relaxed"
+          textareaClassName="min-h-[14rem] leading-relaxed"
         />
-      </SettingsField>
+      </SettingsGroup>
 
       <SaveFooter
         dirty={dirty}
@@ -484,6 +536,6 @@ export function IdentitySettingsSection() {
         saveSuccess={saveSuccess}
         onSave={() => void handleSave()}
       />
-    </div>
+    </SettingsStack>
   );
 }

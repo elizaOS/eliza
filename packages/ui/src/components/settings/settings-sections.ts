@@ -32,35 +32,34 @@ import { RemotePluginHostSection } from "./RemotePluginHostSection";
 import { RuntimeSettingsSection } from "./RuntimeSettingsSection";
 import { SecretsManagerSection } from "./SecretsManagerSection";
 import { SecuritySettingsSection } from "./SecuritySettingsSection";
+import {
+  SETTINGS_GROUP_LABEL,
+  SETTINGS_GROUP_ORDER,
+  SETTINGS_SECTION_META,
+  type SettingsSectionGroup,
+} from "./settings-section-meta";
+import {
+  listSettingsSections,
+  registerSettingsSection,
+  type SettingsSectionDef,
+  type SettingsSectionHue,
+  type SettingsSectionTone,
+} from "./settings-section-registry";
 import { VoiceSectionMount } from "./VoiceSectionMount";
 import { WalletRpcSection } from "./WalletRpcSection";
 
-export type SettingsSectionTone =
-  | "ok"
-  | "warn"
-  | "muted"
-  | "accent"
-  | "neutral";
-
-/** Curated, token-safe medallion tints for the settings hub tiles. No blue. */
-export type SettingsSectionHue = "accent" | "amber" | "rose" | "slate";
-
-/** Top-level grouping for the visual hub. */
-export type SettingsSectionGroup = "agent" | "system" | "security";
-
-export interface SettingsSectionDef {
-  id: string;
-  label: string;
-  defaultLabel: string;
-  icon: LucideIcon;
-  tone: SettingsSectionTone;
-  hue: SettingsSectionHue;
-  group: SettingsSectionGroup;
-  titleKey: string;
-  defaultTitle: string;
-  bodyClassName?: string;
-  Component: ComponentType;
-}
+export {
+  getSettingsSection,
+  listSettingsSections,
+  registerSettingsSection,
+} from "./settings-section-registry";
+export type {
+  SettingsSectionDef,
+  SettingsSectionGroup,
+  SettingsSectionHue,
+  SettingsSectionTone,
+};
+export { SETTINGS_GROUP_LABEL, SETTINGS_GROUP_ORDER };
 
 export const SECTION_TONE_ICON_CLASS: Record<SettingsSectionTone, string> = {
   ok: "text-ok",
@@ -81,213 +80,167 @@ export const SECTION_HUE_MEDALLION_CLASS: Record<SettingsSectionHue, string> = {
   slate: "bg-surface text-txt-strong ring-1 ring-border",
 };
 
-export const SETTINGS_GROUP_LABEL: Record<SettingsSectionGroup, string> = {
-  agent: "Agent",
-  system: "System",
-  security: "Security",
-};
+/** Per-section visuals + component, keyed by the id declared in the meta list. */
+interface SectionVisual {
+  icon: LucideIcon;
+  tone: SettingsSectionTone;
+  hue: SettingsSectionHue;
+  /** i18n key for the nav label. */
+  labelKey: string;
+  /** i18n key for the section header, when it differs from the label. */
+  titleKey?: string;
+  bodyClassName?: string;
+  Component: ComponentType;
+}
 
-export const SETTINGS_GROUP_ORDER: SettingsSectionGroup[] = [
-  "agent",
-  "system",
-  "security",
-];
-
-export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
-  {
-    id: "identity",
-    label: "settings.sections.identity.label",
-    defaultLabel: "Basics",
+const SECTION_VISUALS: Record<string, SectionVisual> = {
+  identity: {
     icon: User,
     tone: "neutral",
     hue: "slate",
-    group: "agent",
-    titleKey: "settings.sections.identity.label",
-    defaultTitle: "Basics",
+    labelKey: "settings.sections.identity.label",
     Component: IdentitySettingsSection,
   },
-  {
-    id: "ai-model",
-    label: "settings.sections.aimodel.label",
-    defaultLabel: "Providers",
+  "ai-model": {
     icon: Brain,
     tone: "accent",
     hue: "accent",
-    group: "agent",
-    titleKey: "common.providers",
-    defaultTitle: "Providers",
+    labelKey: "settings.sections.aimodel.label",
     Component: ProviderSwitcher,
   },
-  {
-    id: "runtime",
-    label: "settings.sections.runtime.label",
-    defaultLabel: "Runtime",
-    icon: Server,
-    tone: "neutral",
-    hue: "slate",
-    group: "system",
-    titleKey: "settings.sections.runtime.label",
-    defaultTitle: "Runtime",
-    Component: RuntimeSettingsSection,
-  },
-  {
-    id: "appearance",
-    label: "settings.sections.appearance.label",
-    defaultLabel: "Appearance",
-    icon: Palette,
-    tone: "neutral",
-    hue: "rose",
-    group: "system",
-    titleKey: "settings.sections.appearance.label",
-    defaultTitle: "Appearance",
-    Component: AppearanceSettingsSection,
-  },
-  {
-    id: "voice",
-    label: "settings.sections.voice.label",
-    defaultLabel: "Voice",
+  voice: {
     icon: Mic,
     tone: "accent",
     hue: "accent",
-    group: "agent",
-    titleKey: "settings.sections.voice.label",
-    defaultTitle: "Voice",
+    labelKey: "settings.sections.voice.label",
     Component: VoiceSectionMount,
   },
-  {
-    id: "capabilities",
-    label: "settings.sections.capabilities.label",
-    defaultLabel: "Capabilities",
+  capabilities: {
     icon: SlidersHorizontal,
     tone: "accent",
     hue: "accent",
-    group: "agent",
+    labelKey: "settings.sections.capabilities.label",
     titleKey: "common.capabilities",
-    defaultTitle: "Capabilities",
     Component: CapabilitiesSection,
   },
-  {
-    id: "apps",
-    label: "settings.sections.apps.label",
-    defaultLabel: "Apps",
+  apps: {
     icon: LayoutGrid,
     tone: "accent",
     hue: "accent",
-    group: "agent",
-    titleKey: "settings.sections.apps.label",
-    defaultTitle: "Apps",
+    labelKey: "settings.sections.apps.label",
     Component: AppsManagementSection,
   },
-  {
-    id: "remote-plugins",
-    label: "settings.sections.remote-plugins.label",
-    defaultLabel: "Remote Plugins",
-    icon: Puzzle,
-    tone: "accent",
-    hue: "rose",
-    group: "system",
-    titleKey: "settings.sections.remote-plugins.label",
-    defaultTitle: "Remote Plugins",
-    Component: RemotePluginHostSection,
-  },
-  {
-    id: "connectors",
-    label: "settings.sections.connectors.label",
-    defaultLabel: "Connectors",
+  connectors: {
     icon: Webhook,
     tone: "accent",
     hue: "accent",
-    group: "agent",
-    titleKey: "settings.sections.connectors.label",
-    defaultTitle: "Connectors",
+    labelKey: "settings.sections.connectors.label",
     Component: ConnectorsSection,
   },
-  {
-    id: "app-permissions",
-    label: "settings.sections.apppermissions.label",
-    defaultLabel: "App Permissions",
-    icon: ShieldCheck,
-    tone: "warn",
-    hue: "amber",
-    group: "security",
-    titleKey: "settings.sections.apppermissions.label",
-    defaultTitle: "App Permissions",
-    Component: AppPermissionsSection,
+  runtime: {
+    icon: Server,
+    tone: "neutral",
+    hue: "slate",
+    labelKey: "settings.sections.runtime.label",
+    Component: RuntimeSettingsSection,
   },
-  {
-    id: "wallet-rpc",
-    label: "settings.sections.walletrpc.label",
-    defaultLabel: "Wallet & RPC",
+  appearance: {
+    icon: Palette,
+    tone: "neutral",
+    hue: "rose",
+    labelKey: "settings.sections.appearance.label",
+    Component: AppearanceSettingsSection,
+  },
+  "remote-plugins": {
+    icon: Puzzle,
+    tone: "accent",
+    hue: "rose",
+    labelKey: "settings.sections.remote-plugins.label",
+    Component: RemotePluginHostSection,
+  },
+  "wallet-rpc": {
     icon: Wallet,
     tone: "neutral",
     hue: "slate",
-    group: "system",
-    titleKey: "settings.sections.walletrpc.label",
-    defaultTitle: "Wallet & RPC",
+    labelKey: "settings.sections.walletrpc.label",
     bodyClassName: "p-4 sm:p-5",
     Component: WalletRpcSection,
   },
-  {
-    id: "permissions",
-    label: "settings.sections.permissions.label",
-    defaultLabel: "Permissions",
-    icon: Shield,
-    tone: "warn",
-    hue: "amber",
-    group: "security",
-    titleKey: "common.permissions",
-    defaultTitle: "Permissions",
-    Component: PermissionsSection,
-  },
-  {
-    id: "secrets",
-    label: "settings.sections.secrets.label",
-    defaultLabel: "Vault",
-    icon: KeyRound,
-    tone: "warn",
-    hue: "amber",
-    group: "security",
-    titleKey: "settings.sections.secrets.label",
-    defaultTitle: "Vault",
-    Component: SecretsManagerSection,
-  },
-  {
-    id: "security",
-    label: "settings.sections.security.label",
-    defaultLabel: "Security",
-    icon: Lock,
-    tone: "warn",
-    hue: "amber",
-    group: "security",
-    titleKey: "settings.sections.security.label",
-    defaultTitle: "Security",
-    Component: SecuritySettingsSection,
-  },
-  {
-    id: "updates",
-    label: "settings.sections.updates.label",
-    defaultLabel: "Updates",
+  updates: {
     icon: RefreshCw,
     tone: "neutral",
     hue: "slate",
-    group: "system",
-    titleKey: "settings.sections.updates.label",
-    defaultTitle: "Updates",
+    labelKey: "settings.sections.updates.label",
     Component: ReleaseCenterView,
   },
-  {
-    id: "advanced",
-    label: "settings.sections.backupReset.label",
-    defaultLabel: "Backup & Reset",
+  advanced: {
     icon: Archive,
     tone: "neutral",
     hue: "slate",
-    group: "system",
-    titleKey: "settings.sections.backupReset.label",
-    defaultTitle: "Backup & Reset",
+    labelKey: "settings.sections.backupReset.label",
     Component: AdvancedSection,
   },
-];
+  "app-permissions": {
+    icon: ShieldCheck,
+    tone: "warn",
+    hue: "amber",
+    labelKey: "settings.sections.apppermissions.label",
+    Component: AppPermissionsSection,
+  },
+  permissions: {
+    icon: Shield,
+    tone: "warn",
+    hue: "amber",
+    labelKey: "settings.sections.permissions.label",
+    titleKey: "common.permissions",
+    Component: PermissionsSection,
+  },
+  secrets: {
+    icon: KeyRound,
+    tone: "warn",
+    hue: "amber",
+    labelKey: "settings.sections.secrets.label",
+    Component: SecretsManagerSection,
+  },
+  security: {
+    icon: Lock,
+    tone: "warn",
+    hue: "amber",
+    labelKey: "settings.sections.security.label",
+    Component: SecuritySettingsSection,
+  },
+};
+
+/** Built-in sections, in display order, derived from the canonical meta list. */
+export const SETTINGS_SECTIONS: SettingsSectionDef[] =
+  SETTINGS_SECTION_META.map((meta, index): SettingsSectionDef => {
+    const visual = SECTION_VISUALS[meta.id];
+    if (!visual) {
+      throw new Error(`Missing settings-section visuals for "${meta.id}"`);
+    }
+    return {
+      id: meta.id,
+      label: visual.labelKey,
+      defaultLabel: meta.defaultLabel,
+      icon: visual.icon,
+      tone: visual.tone,
+      hue: visual.hue,
+      group: meta.group,
+      titleKey: visual.titleKey ?? visual.labelKey,
+      defaultTitle: meta.defaultLabel,
+      bodyClassName: visual.bodyClassName,
+      order: index,
+      Component: visual.Component,
+    };
+  });
+
+for (const section of SETTINGS_SECTIONS) registerSettingsSection(section);
+
+/** Every section the Settings view should render — built-ins plus any added by
+ *  a host app / plugin through {@link registerSettingsSection}. */
+export function getAllSettingsSections(): SettingsSectionDef[] {
+  return listSettingsSections();
+}
 
 export function settingsSectionLabel(
   section: SettingsSectionDef,
@@ -308,7 +261,9 @@ export function readSettingsHashSection(): string | null {
   const hash = window.location.hash.replace(/^#/, "");
   if (!hash) return null;
   if (hash === "cloud" || hash === "providers") return "ai-model";
-  return SETTINGS_SECTIONS.some((section) => section.id === hash) ? hash : null;
+  return getAllSettingsSections().some((section) => section.id === hash)
+    ? hash
+    : null;
 }
 
 export function replaceSettingsHash(sectionId: string): void {

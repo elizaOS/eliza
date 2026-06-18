@@ -33,6 +33,7 @@ import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { SettingsGroup, SettingsStack } from "./settings-layout";
 
 function formatRelativeTime(ms: number | null): string {
   if (ms == null) return "local only";
@@ -56,12 +57,6 @@ function DeviceIcon({ userAgent }: { userAgent: string | null }) {
   return <Laptop className="h-4 w-4 shrink-0 opacity-70" />;
 }
 
-const SECTION_CLASS =
-  "rounded-sm border border-border/50 bg-bg/40 p-4 space-y-4 sm:p-5";
-const SECTION_TITLE_CLASS =
-  "flex items-center gap-2 text-sm font-semibold text-foreground/90";
-const DIVIDER_CLASS = "border-t border-border/40";
-
 function SectionShell({
   icon,
   title,
@@ -72,14 +67,19 @@ function SectionShell({
   children: ReactNode;
 }) {
   return (
-    <div className={SECTION_CLASS}>
-      <h3 className={SECTION_TITLE_CLASS}>
-        {icon}
-        {title}
-      </h3>
-      <div className={DIVIDER_CLASS} />
-      {children}
-    </div>
+    <SettingsGroup
+      bare
+      title={
+        <span className="flex items-center gap-2 normal-case tracking-normal text-sm text-txt-strong">
+          {icon}
+          {title}
+        </span>
+      }
+    >
+      <div className="space-y-4 rounded-lg border border-border bg-card p-4 sm:p-5">
+        {children}
+      </div>
+    </SettingsGroup>
   );
 }
 
@@ -215,14 +215,14 @@ function AccessInfoRow({
 }) {
   return (
     <div className="grid gap-1 border-t border-border/30 py-2.5 first:border-t-0 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-3">
-      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <div className="text-xs font-medium uppercase tracking-wide text-muted">
         {label}
       </div>
       <div className="min-w-0 space-y-0.5">
-        <div className="break-words text-sm font-medium text-foreground/90">
+        <div className="break-words text-sm font-medium text-txt-strong">
           {value}
         </div>
-        <p className="text-xs leading-5 text-muted-foreground">{detail}</p>
+        <p className="text-xs leading-5 text-muted">{detail}</p>
       </div>
     </div>
   );
@@ -239,11 +239,10 @@ function StatusBadge({
     <span
       className={cn(
         "inline-flex w-fit shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium",
-        tone === "ok" &&
-          "border-[var(--ok-muted)] bg-[var(--ok-subtle)] text-ok",
-        tone === "warn" && "border-warning/40 bg-warning/10 text-warning",
+        tone === "ok" && "border-ok/35 bg-ok/12 text-ok",
+        tone === "warn" && "border-warn/40 bg-warn/14 text-warn",
         tone === "danger" && "border-danger/40 bg-danger/10 text-danger",
-        tone === "neutral" && "border-border/60 bg-bg/70 text-muted-foreground",
+        tone === "neutral" && "border-border/60 bg-bg/70 text-muted",
       )}
     >
       {children}
@@ -302,7 +301,7 @@ function AccessModeSection({
       });
       detail = t("security.access.local.detail", {
         defaultValue:
-          "This browser is on the host machine. Localhost and Electrobun access do not require a password. Remote browsers use the remote password below.",
+          "This browser is on the host machine. Remote browsers use the remote password below.",
       });
       status = state.access.passwordConfigured
         ? t("security.access.status.remotePasswordSet", {
@@ -317,7 +316,7 @@ function AccessModeSection({
       });
       currentBrowserDetail = t("security.access.currentBrowser.localDetail", {
         defaultValue:
-          "The current browser is trusted because it is running from localhost or the desktop renderer.",
+          "Trusted: running from localhost or the desktop renderer.",
       });
     } else {
       title = t("security.access.remote.title", {
@@ -444,10 +443,8 @@ function AccessModeSection({
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1">
-          <div className="text-sm font-medium text-foreground/90">{title}</div>
-          <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-            {detail}
-          </p>
+          <div className="text-sm font-medium text-txt-strong">{title}</div>
+          <p className="max-w-2xl text-sm leading-6 text-muted">{detail}</p>
         </div>
         <StatusBadge tone={statusTone}>
           {state.phase === "loading" ? (
@@ -523,7 +520,7 @@ function AccessModeSection({
         {...accessRefreshAgentProps}
         type="button"
         onClick={() => void onRefresh()}
-        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        className="inline-flex items-center gap-1.5 text-xs text-muted transition-colors hover:text-txt-strong"
       >
         <RefreshCw className="h-3 w-3" />
         {t("security.refresh", { defaultValue: "Refresh" })}
@@ -612,7 +609,7 @@ function SessionsSection() {
       })}
     >
       {state.phase === "loading" && (
-        <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 py-3 text-sm text-muted">
           <Loader2 className="h-4 w-4 animate-spin" />
           {t("security.sessions.loading", {
             defaultValue: "Loading sessions...",
@@ -627,7 +624,7 @@ function SessionsSection() {
       {state.phase === "loaded" && (
         <div className="space-y-3">
           {state.sessions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted">
               {t("security.sessions.empty", {
                 defaultValue: "No active sessions.",
               })}
@@ -651,7 +648,7 @@ function SessionsSection() {
               {...sessionsRefreshAgentProps}
               type="button"
               onClick={load}
-              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              className="inline-flex items-center gap-1.5 text-xs text-muted transition-colors hover:text-txt-strong"
             >
               <RefreshCw className="h-3 w-3" />
               {t("security.refresh", { defaultValue: "Refresh" })}
@@ -701,18 +698,18 @@ function SessionRow({
       <DeviceIcon userAgent={session.userAgent} />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium capitalize text-foreground/90">
+          <span className="text-sm font-medium capitalize text-txt-strong">
             {session.kind}
           </span>
           {session.current && (
-            <span className="rounded-full border border-[var(--ok-muted)] bg-[var(--ok-subtle)] px-2 py-0.5 text-3xs font-medium uppercase tracking-[0.08em] text-ok">
+            <span className="rounded-full border border-ok/35 bg-ok/12 px-2 py-0.5 text-xs font-medium uppercase tracking-[0.08em] text-ok">
               {t("security.sessions.thisSession", {
                 defaultValue: "This session",
               })}
             </span>
           )}
         </div>
-        <p className="truncate text-xs text-muted-foreground/80">
+        <p className="truncate text-xs text-muted">
           {session.ip ??
             t("security.sessions.unknownIp", {
               defaultValue: "Unknown IP",
@@ -724,7 +721,7 @@ function SessionRow({
                 defaultValue: "Unknown client",
               })}
         </p>
-        <p className="text-xs text-muted-foreground/60">
+        <p className="text-xs text-muted">
           {t("security.sessions.lastSeenExpires", {
             lastSeen: formatRelativeTime(session.lastSeenAt),
             expires: formatRelativeTime(session.expiresAt),
@@ -878,7 +875,7 @@ function RemotePasswordSection({
         phase: "success",
         message: t("security.password.success", {
           defaultValue:
-            "Remote access is enabled. Remote browsers can sign in with this password when they can reach this instance.",
+            "Remote access enabled. Remote browsers can sign in with this password.",
         }),
       });
       setCurrentPassword("");
@@ -907,7 +904,7 @@ function RemotePasswordSection({
           defaultValue: "Remote password",
         })}
       >
-        <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 py-3 text-sm text-muted">
           <Loader2 className="h-4 w-4 animate-spin" />
           {t("security.password.loading", {
             defaultValue: "Loading password settings...",
@@ -923,7 +920,7 @@ function RemotePasswordSection({
       accessState.reason === "remote_password_not_configured"
         ? t("security.password.notEnabled", {
             defaultValue:
-              "Remote access is not enabled yet. Open this instance on the host machine via localhost and set a remote password here.",
+              "Remote access is not enabled. Open this instance on the host machine and set a remote password.",
           })
         : t("security.password.signInToManage", {
             defaultValue: "Sign in to manage the remote password.",
@@ -935,7 +932,7 @@ function RemotePasswordSection({
           defaultValue: "Remote password",
         })}
       >
-        <p className="text-sm text-muted-foreground">{message}</p>
+        <p className="text-sm text-muted">{message}</p>
       </SectionShell>
     );
   }
@@ -943,7 +940,7 @@ function RemotePasswordSection({
   const description = localAccess
     ? t("security.password.description.local", {
         defaultValue:
-          "Set the password used by browsers that connect to this instance from another machine. Localhost and Electrobun do not use it.",
+          "Set the password used by browsers connecting from another machine.",
       })
     : t("security.password.description.remote", {
         defaultValue: "Change the password for this remote browser session.",
@@ -964,13 +961,13 @@ function RemotePasswordSection({
         defaultValue: "Remote password",
       })}
     >
-      <p className="text-sm leading-6 text-muted-foreground">{description}</p>
+      <p className="text-sm leading-6 text-muted">{description}</p>
       <form onSubmit={handleSubmit} className="flex flex-col gap-3" noValidate>
         {setupMode && (
           <div className="flex flex-col gap-1.5">
             <Label
               htmlFor={displayNameId}
-              className="text-xs uppercase tracking-wide text-muted-foreground"
+              className="text-xs uppercase tracking-wide text-muted"
             >
               {t("security.password.field.displayName", {
                 defaultValue: "Display name",
@@ -988,6 +985,7 @@ function RemotePasswordSection({
                 if (state.phase === "error") setState({ phase: "idle" });
               }}
               disabled={isSubmitting}
+              className="h-11"
             />
           </div>
         )}
@@ -996,7 +994,7 @@ function RemotePasswordSection({
           <div className="flex flex-col gap-1.5">
             <Label
               htmlFor={currentPasswordId}
-              className="text-xs uppercase tracking-wide text-muted-foreground"
+              className="text-xs uppercase tracking-wide text-muted"
             >
               {t("security.password.field.current", {
                 defaultValue: "Current password",
@@ -1014,6 +1012,7 @@ function RemotePasswordSection({
                 if (state.phase === "error") setState({ phase: "idle" });
               }}
               disabled={isSubmitting}
+              className="h-11"
             />
           </div>
         )}
@@ -1021,7 +1020,7 @@ function RemotePasswordSection({
         <div className="flex flex-col gap-1.5">
           <Label
             htmlFor={newPasswordId}
-            className="text-xs uppercase tracking-wide text-muted-foreground"
+            className="text-xs uppercase tracking-wide text-muted"
           >
             {t("security.password.field.new", {
               defaultValue: "New password",
@@ -1042,13 +1041,14 @@ function RemotePasswordSection({
               if (state.phase === "error") setState({ phase: "idle" });
             }}
             disabled={isSubmitting}
+            className="h-11"
           />
         </div>
 
         <div className="flex flex-col gap-1.5">
           <Label
             htmlFor={confirmPasswordId}
-            className="text-xs uppercase tracking-wide text-muted-foreground"
+            className="text-xs uppercase tracking-wide text-muted"
           >
             {t("security.password.field.confirm", {
               defaultValue: "Confirm new password",
@@ -1068,6 +1068,7 @@ function RemotePasswordSection({
             disabled={isSubmitting}
             aria-invalid={confirmMismatch}
             className={cn(
+              "h-11",
               confirmMismatch && "border-danger focus-visible:border-danger",
             )}
           />
@@ -1123,13 +1124,13 @@ export function SecuritySettingsSection() {
   }, [refreshAccessState]);
 
   return (
-    <div className="space-y-4">
+    <SettingsStack>
       <AccessModeSection state={accessState} onRefresh={refreshAccessState} />
       <RemotePasswordSection
         accessState={accessState}
         onAccessChanged={refreshAccessState}
       />
       <SessionsSection />
-    </div>
+    </SettingsStack>
   );
 }
