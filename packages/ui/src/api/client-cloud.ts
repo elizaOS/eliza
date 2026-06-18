@@ -2439,6 +2439,24 @@ function resolveDirectCloudAgentBridgeUrl(
   return `${cloudApiBase.replace(/\/+$/, "")}/api/v1/eliza/agents/${encodeURIComponent(agentId)}/bridge`;
 }
 
+/**
+ * True when `url` is a direct cloud shared-runtime agent base — either the REST
+ * adapter base `<cloudApiBase>/api/v1/eliza/agents/<agentId>` (where #8527's
+ * /api/conversations,/messages,/health are served) or the legacy JSON-RPC
+ * bridge base `<...>/agents/<agentId>/bridge`. A Tier-0 shared agent runs
+ * in-Worker with no agent server, so neither base exposes the app-shell
+ * endpoints (`/api/first-run*`, `/api/views`) — those legitimately 404. Startup
+ * uses this to degrade gracefully: a 404 from a shared-agent base means
+ * "first-run is already complete" (we provisioned the agent), not a broken
+ * backend — so it proceeds to chat instead of dead-ending on BACKEND_NOT_FOUND.
+ */
+export function isDirectCloudSharedAgentBase(
+  url: string | null | undefined,
+): boolean {
+  if (!url) return false;
+  return /\/api\/v1\/eliza\/agents\/[^/]+(?:\/bridge)?\/?$/.test(url.trim());
+}
+
 ElizaClient.prototype.provisionCloudSandbox = async (options) => {
   const { cloudApiBase, authToken, name, bio, onProgress } = options;
   const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
