@@ -460,6 +460,26 @@ registries, the cross-domain sub-backends [subscriptions/gmail-curation/goal-rev
 PA's legacy Rolodex ENTITY orchestration, identity-observations/context-graph) —
 the README's intended hub end-state. Those are orchestration, not domain primitives.
 
+### Session 2026-06-18 (round 13) — gmail-curation slice 1: email-classifier → @elizaos/shared
+Promoted the generic email classifier (LLM + rules + model-config + the pure
+wrapUntrustedEmailContent) PA→`@elizaos/shared/email-classification` — it was
+consumed by BOTH inbox-curation and finance bill-extraction, so the shared runtime
+layer is its correct home (resolves the cross-domain coupling that blocked moving
+gmail-curation to plugin-inbox). +13 net-new tests (none existed); shared 776→789;
+PA build:types exit 0; PA file is a re-export shim.
+
+GMAIL-CURATION cascade finding (why the rest is dedicated, not clean slices):
+`service-normalize-gmail.ts` (1363, pure) depends on PA `contracts` + `service-
+constants` + `service-normalize.ts` — and `service-normalize` (the GENERIC
+normalizer) is used widely across PA. `email-curation`/`bulk-review`/`service-mixin-
+gmail` additionally need the Gmail connector (requireGoogleGmailGrant/getGmailSearch
+→ plugin-google) + approval-queue (PA). So the remaining gmail-curation move
+requires: (a) share `service-normalize`+`service-constants` (or inject), (b) a
+plugin-google Gmail-client contract for plugin-inbox, (c) an approval-queue contract.
+That's a dedicated connector-contract-seam effort; email-classifier was the one
+cleanly-separable piece. Same shape for subscriptions (Gmail+browser+computeruse)
+and goal-review (occurrences/reminders/calendar/activity cross-domain aggregation).
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
