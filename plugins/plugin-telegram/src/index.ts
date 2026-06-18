@@ -12,6 +12,7 @@ import {
   type TelegramOwnerPairingService,
   TelegramOwnerPairingServiceImpl,
 } from "./owner-pairing-service";
+import { registerTelegramDmSensitiveRequestAdapter } from "./sensitive-request-adapter";
 import { TelegramService } from "./service";
 import { telegramSetupRoutes } from "./setup-routes";
 import { TelegramTestSuite } from "./tests";
@@ -49,6 +50,10 @@ const telegramPlugin: Plugin = {
         "Failed to register Telegram provider with ConnectorAccountManager",
       );
     }
+
+    // Deliver secret / OAuth requests as a DM link-out (the value never transits
+    // the chat transport). Mirrors the Discord DM adapter.
+    registerTelegramDmSensitiveRequestAdapter(runtime);
   },
   async dispose(runtime: IAgentRuntime) {
     await TelegramService.stop(runtime);
