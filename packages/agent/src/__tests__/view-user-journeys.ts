@@ -103,8 +103,8 @@ export const PLUGIN_VIEW_LLM_MOCK_CASES: PluginViewMockCase[] = [
   { id: "trajectory-logger", viewType: "tui", path: "/trajectory-logger/tui" },
   { id: "training", viewType: "gui", path: "/apps/fine-tuning" },
   { id: "training", viewType: "tui", path: "/training/tui" },
-  { id: "facewear", viewType: "gui", path: "/apps/hearwear" },
-  { id: "facewear", viewType: "tui", path: "/apps/hearwear/tui" },
+  { id: "facewear", viewType: "gui", path: "/apps/facewear" },
+  { id: "facewear", viewType: "tui", path: "/apps/facewear/tui" },
   { id: "smartglasses", viewType: "gui", path: "/apps/smartglasses" },
   { id: "smartglasses", viewType: "tui", path: "/apps/smartglasses/tui" },
   { id: "companion", viewType: "xr", path: "/companion" },
@@ -135,7 +135,7 @@ export const PLUGIN_VIEW_LLM_MOCK_CASES: PluginViewMockCase[] = [
   { id: "orchestrator", viewType: "xr", path: "/orchestrator" },
   { id: "trajectory-logger", viewType: "xr", path: "/trajectory-logger" },
   { id: "training", viewType: "xr", path: "/training" },
-  { id: "facewear", viewType: "xr", path: "/apps/hearwear/xr" },
+  { id: "facewear", viewType: "xr", path: "/apps/facewear/xr" },
   { id: "smartglasses", viewType: "xr", path: "/apps/smartglasses/xr" },
 ];
 

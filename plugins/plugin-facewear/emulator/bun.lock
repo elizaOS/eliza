@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@elizaos/plugin-hearwear-emulator",
+      "name": "@elizaos/plugin-facewear-emulator",
       "dependencies": {
         "iwer": "^2.2.1",
         "ws": "^8.20.1",

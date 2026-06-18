@@ -44,7 +44,7 @@ describe("FacewearTuiView", () => {
     const state = viewState(container);
     expect(state.viewId).toBe("facewear");
     expect(state.viewType).toBe("tui");
-    expect(state.label).toBe("Hearwear TUI");
+    expect(state.label).toBe("Facewear TUI");
     // No plugin-owned commands -> generic command set (TerminalPluginView default
     // is 3 capabilities when commands=[]).
     expect(state.endpointCount).toBe(3);

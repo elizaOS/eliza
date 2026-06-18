@@ -187,13 +187,13 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   },
   {
     name: "facewear app window",
-    path: "/apps/hearwear",
+    path: "/apps/facewear",
     readyChecks: [{ text: "Facewear" }, { text: "No devices connected" }],
     timeoutMs: 90_000,
   },
   {
     name: "facewear tui app shell page",
-    path: "/apps/hearwear/tui",
+    path: "/apps/facewear/tui",
     readyChecks: [
       { text: "elizaos://facewear --type=tui" },
       { text: "connect-device" },
@@ -260,7 +260,7 @@ const managerVisibleViewTileCases = [
   { viewId: "contacts", path: "/contacts" },
   { viewId: "defense-of-the-agents", path: "/defense-of-the-agents" },
   { viewId: "documents", path: "/documents" },
-  { viewId: "facewear", path: "/apps/hearwear" },
+  { viewId: "facewear", path: "/apps/facewear" },
   { viewId: "feed", path: "/feed" },
   { viewId: "finances", path: "/finances" },
   { viewId: "focus", path: "/focus" },
