@@ -217,6 +217,39 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
+  it("collapsing blurs the composer so the mobile keyboard drops", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    fireEvent.focus(input); // onFocus → expand → sheetOpen true (flushed by act)
+    input.focus(); // also move real activeElement (jsdom fireEvent.focus doesn't)
+    expect(document.activeElement).toBe(input);
+    fireEvent.keyDown(input, { key: "Escape" }); // sheetOpen → collapse → blur
+    expect(document.activeElement).not.toBe(input);
+  });
+
+  it("tapping outside the panel blurs the composer (drops the keyboard)", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    input.focus();
+    expect(document.activeElement).toBe(input);
+    // A pointerdown anywhere outside the chat panel dismisses the keyboard.
+    fireEvent.pointerDown(document.body);
+    expect(document.activeElement).not.toBe(input);
+  });
+
+  it("composes multi-line with an auto-growing textarea (Enter still sends)", () => {
+    const controller = makeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    expect(input.tagName).toBe("TEXTAREA");
+    // Shift+Enter must NOT submit (it inserts a newline); plain Enter submits.
+    fireEvent.change(input, { target: { value: "line one" } });
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    expect(controller.send).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(vi.mocked(controller.send).mock.calls[0]?.[0]).toBe("line one");
+  });
+
   it("closes the sheet on a pull-down drag of the grabber", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");

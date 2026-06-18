@@ -24846,6 +24846,7 @@
     const endRef = React5.useRef(null);
     const inputRef = React5.useRef(null);
     const fileInputRef = React5.useRef(null);
+    const panelRef = React5.useRef(null);
     const threadRef = React5.useRef(null);
     const focusThreadRef = React5.useRef(false);
     const pushToTalkTimerRef = React5.useRef(null);
@@ -25014,21 +25015,31 @@
       },
       [settleDrag]
     );
-    const suppressOpenOnFocusRef = React5.useRef(false);
     const collapse = React5.useCallback(() => {
       closeSheet();
-      if (inputRef.current && document.activeElement !== inputRef.current) {
-        suppressOpenOnFocusRef.current = true;
-        inputRef.current.focus();
-      }
+      inputRef.current?.blur();
     }, [closeSheet]);
     const expand = React5.useCallback(() => {
-      if (suppressOpenOnFocusRef.current) {
-        suppressOpenOnFocusRef.current = false;
-        return;
-      }
       if (hasThread) setSheetOpen(true);
     }, [hasThread]);
+    React5.useEffect(() => {
+      if (typeof document === "undefined") return void 0;
+      const onPointerDown = (event) => {
+        const input = inputRef.current;
+        if (!input || document.activeElement !== input) return;
+        const target = event.target;
+        if (target && panelRef.current?.contains(target)) return;
+        input.blur();
+      };
+      document.addEventListener("pointerdown", onPointerDown, true);
+      return () => document.removeEventListener("pointerdown", onPointerDown, true);
+    }, []);
+    React5.useLayoutEffect(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+    }, [draft]);
     const onDragOffset = React5.useCallback(
       (offset) => {
         setDragging(true);
@@ -25163,6 +25174,7 @@
           /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
             "fieldset",
             {
+              ref: panelRef,
               "aria-label": "Chat composer",
               "data-testid": "chat-sheet",
               "data-variant": sheetOpen ? "open" : "closed",
@@ -25170,10 +25182,20 @@
               "data-revealed": revealed > 0.5 ? "true" : "false",
               className: cn(
                 "pointer-events-auto relative m-0 flex w-full min-w-0 max-w-3xl flex-col overflow-hidden border-0 p-0",
-                "rounded-[28px] border border-white/12 bg-black/55 backdrop-blur-xl",
-                "shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_18px_50px_-16px_rgba(0,0,0,0.7)]"
+                // Liquid glass: a translucent, blurred, slightly over-saturated pane
+                // (more glass where backdrop-filter is supported) with a bright top
+                // specular edge + a faint full-perimeter refractive inner stroke.
+                "rounded-[28px] border border-white/[0.14] bg-black/55 backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
+                "shadow-[inset_0_1px_0_rgba(255,255,255,0.20),inset_0_0_0_0.5px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(0,0,0,0.72)]"
               ),
               children: [
+                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                  "div",
+                  {
+                    "aria-hidden": "true",
+                    className: "pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-white/[0.07] to-transparent"
+                  }
+                ),
                 /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
                   motion.div,
                   {
@@ -25297,7 +25319,9 @@
                   "div",
                   {
                     className: cn(
-                      "relative z-10 flex min-w-0 items-center gap-1.5 px-3 py-2.5 sm:gap-2 sm:px-3.5",
+                      // items-end keeps the +/mic controls pinned to the bottom as the
+                      // textarea grows upward with multi-line input.
+                      "relative z-10 flex min-w-0 items-end gap-1.5 px-3 py-2 sm:gap-2 sm:px-3.5",
                       sheetOpen ? "border-t border-white/10" : ""
                     ),
                     children: [
@@ -25312,13 +25336,14 @@
                         }
                       ),
                       /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-                        "input",
+                        "textarea",
                         {
                           ref: inputRef,
+                          rows: 1,
                           value: draft,
                           onChange: (e) => {
                             setDraft(e.target.value);
-                            if (e.target.value.length > 0) expand();
+                            if (e.target.value.trim().length > 0) expand();
                           },
                           onFocus: expand,
                           onKeyDown: (e) => {
@@ -25336,7 +25361,7 @@
                           "aria-describedby": booting ? "cc-booting-hint" : void 0,
                           "aria-disabled": booting,
                           readOnly: booting,
-                          className: "h-8 min-w-0 flex-1 border-none bg-transparent px-1 text-sm text-white/[0.92] outline-none placeholder:text-white/45"
+                          className: "max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-end border-none bg-transparent px-1 py-1 text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
                         }
                       ),
                       /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { id: "cc-booting-hint", className: "sr-only", children: "connecting \u2014 you can\u2019t send yet" }),

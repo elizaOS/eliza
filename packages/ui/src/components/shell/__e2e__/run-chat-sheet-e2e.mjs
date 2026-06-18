@@ -498,6 +498,55 @@ try {
     await p.close();
   }
 
+  // multi-line: the composer auto-grows with newlines
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-composer-textarea"]');
+    await p.waitForTimeout(500);
+    const ta = p.getByTestId("chat-composer-textarea");
+    const h1 = await ta.evaluate((el) => el.getBoundingClientRect().height);
+    await ta.fill("line one\nline two\nline three\nline four");
+    await p.waitForTimeout(250);
+    const h2 = await ta.evaluate((el) => el.getBoundingClientRect().height);
+    assert(
+      h2 > h1 + 24,
+      `MULTILINE: composer grows with newlines (${Math.round(h1)} → ${Math.round(h2)}px)`,
+    );
+    await snap(p, "state-multiline-input");
+    await p.close();
+  }
+
+  // keyboard: focusing opens; tapping the scrim blurs the input + collapses
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-composer-textarea"]');
+    await p.waitForTimeout(500);
+    const focused = () =>
+      p.evaluate(
+        () =>
+          document.activeElement?.getAttribute("data-testid") ===
+          "chat-composer-textarea",
+      );
+    await p.getByTestId("chat-composer-textarea").focus();
+    await p.waitForTimeout(150);
+    assert(await focused(), "FOCUS: composer holds focus");
+    assert((await variant(p)) === "open", "FOCUS: focusing opens the chat");
+    await p
+      .getByTestId("chat-sheet-backdrop")
+      .click({ position: { x: 16, y: 16 }, force: true });
+    await p.waitForTimeout(350);
+    assert(
+      (await focused()) === false,
+      "CLICK-OUT: blurs the composer (mobile keyboard drops)",
+    );
+    assert((await variant(p)) === "closed", "CLICK-OUT: collapses the chat");
+    await p.close();
+  }
+
   // reduced-motion still opens via flick
   {
     const p = await ctrl();

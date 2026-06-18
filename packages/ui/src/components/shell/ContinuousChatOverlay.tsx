@@ -363,8 +363,9 @@ export function ContinuousChatOverlay({
   );
   const [imageError, setImageError] = React.useState<string | null>(null);
   const endRef = React.useRef<HTMLDivElement>(null);
-  const inputRef = React.useRef<HTMLInputElement>(null);
+  const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const panelRef = React.useRef<HTMLFieldSetElement>(null);
   const threadRef = React.useRef<HTMLDivElement>(null);
   const focusThreadRef = React.useRef(false);
   const pushToTalkTimerRef = React.useRef<number | null>(null);
@@ -597,31 +598,49 @@ export function ContinuousChatOverlay({
     [settleDrag],
   );
 
-  // Close, then return keyboard focus to the always-visible composer WITHOUT
-  // bouncing back open: focusing the input normally re-opens (see `expand`), so
-  // a one-shot flag makes the refocus's onFocus a no-op. Skip the refocus when
-  // the input already holds focus (Escape pressed in the composer) — refocusing
-  // it would not fire onFocus and would strand the flag.
-  const suppressOpenOnFocusRef = React.useRef(false);
+  // Collapsing always drops input focus, so the mobile keyboard goes away the
+  // moment the chat is dismissed (pull-down, Escape, or click-out) — the chat is
+  // no longer "focused". Blurring (rather than the old refocus dance) also means
+  // there's no focus→expand bounce to guard against, so the model stays simple.
   const collapse = React.useCallback(() => {
     closeSheet();
-    if (inputRef.current && document.activeElement !== inputRef.current) {
-      suppressOpenOnFocusRef.current = true;
-      inputRef.current.focus();
-    }
+    inputRef.current?.blur();
   }, [closeSheet]);
 
   // Focusing or typing in the composer pulls the chat up (open) when there's a
-  // thread to show. The one-shot flag (set by `collapse`) lets a programmatic
-  // refocus skip this, so closing never bounces back open. No-op with no thread
-  // — the first send opens it.
+  // thread to show. No-op with no thread — the first send opens it.
   const expand = React.useCallback(() => {
-    if (suppressOpenOnFocusRef.current) {
-      suppressOpenOnFocusRef.current = false;
-      return;
-    }
     if (hasThread) setSheetOpen(true);
   }, [hasThread]);
+
+  // Tapping ANYWHERE outside the chat panel drops the keyboard: if the composer
+  // holds focus and the pointer lands outside the panel, blur it. This is the
+  // iOS-standard "tap the background to dismiss the keyboard" behaviour and works
+  // whether the chat is open (over the scrim) or collapsed (over the live view).
+  React.useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const onPointerDown = (event: PointerEvent) => {
+      const input = inputRef.current;
+      if (!input || document.activeElement !== input) return;
+      const target = event.target as Node | null;
+      if (target && panelRef.current?.contains(target)) return;
+      input.blur();
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () =>
+      document.removeEventListener("pointerdown", onPointerDown, true);
+  }, []);
+
+  // Auto-grow the composer with multi-line input: snap to the content height
+  // (capped by `max-h` in CSS, which then scrolls). Runs on every draft change
+  // so it also springs back to one line after a send clears the draft.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: draft is the trigger; the body reads the textarea ref
+  React.useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draft]);
 
   // --- Pull gesture --------------------------------------------------------
   // The chat-history sheet is the draggable element. A live drag updates `drag`
@@ -810,6 +829,7 @@ export function ContinuousChatOverlay({
           0 → half → full within this element — the chat and the input are never
           two separate pieces. */}
       <fieldset
+        ref={panelRef}
         aria-label="Chat composer"
         data-testid="chat-sheet"
         data-variant={sheetOpen ? "open" : "closed"}
@@ -817,10 +837,19 @@ export function ContinuousChatOverlay({
         data-revealed={revealed > 0.5 ? "true" : "false"}
         className={cn(
           "pointer-events-auto relative m-0 flex w-full min-w-0 max-w-3xl flex-col overflow-hidden border-0 p-0",
-          "rounded-[28px] border border-white/12 bg-black/55 backdrop-blur-xl",
-          "shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_18px_50px_-16px_rgba(0,0,0,0.7)]",
+          // Liquid glass: a translucent, blurred, slightly over-saturated pane
+          // (more glass where backdrop-filter is supported) with a bright top
+          // specular edge + a faint full-perimeter refractive inner stroke.
+          "rounded-[28px] border border-white/[0.14] bg-black/55 backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
+          "shadow-[inset_0_1px_0_rgba(255,255,255,0.20),inset_0_0_0_0.5px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(0,0,0,0.72)]",
         )}
       >
+        {/* Specular sheen — a soft light from the top edge, the liquid-glass
+            highlight. Subtle + non-interactive. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-white/[0.07] to-transparent"
+        />
         {/* Soft live-state glow at the base — warm while listening, cool while
             replying. Clipped to the panel (the glass already grounds it). */}
         <motion.div
@@ -950,7 +979,9 @@ export function ContinuousChatOverlay({
             divider sits above it whenever the history is open. */}
         <div
           className={cn(
-            "relative z-10 flex min-w-0 items-center gap-1.5 px-3 py-2.5 sm:gap-2 sm:px-3.5",
+            // items-end keeps the +/mic controls pinned to the bottom as the
+            // textarea grows upward with multi-line input.
+            "relative z-10 flex min-w-0 items-end gap-1.5 px-3 py-2 sm:gap-2 sm:px-3.5",
             sheetOpen ? "border-t border-white/10" : "",
           )}
         >
@@ -961,17 +992,17 @@ export function ContinuousChatOverlay({
             onClick={() => fileInputRef.current?.click()}
             testId="chat-composer-attach"
           />
-          <input
+          <textarea
             ref={inputRef}
+            rows={1}
             value={draft}
             onChange={(e) => {
               setDraft(e.target.value);
-              // Typing pulls the chat up even if the sheet was just closed while
-              // the input kept focus (Escape doesn't re-fire onFocus).
-              if (e.target.value.length > 0) expand();
+              if (e.target.value.trim().length > 0) expand();
             }}
             onFocus={expand}
             onKeyDown={(e) => {
+              // Enter sends; Shift+Enter inserts a newline (multi-line compose).
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 submit();
@@ -986,7 +1017,7 @@ export function ContinuousChatOverlay({
             aria-describedby={booting ? "cc-booting-hint" : undefined}
             aria-disabled={booting}
             readOnly={booting}
-            className="h-8 min-w-0 flex-1 border-none bg-transparent px-1 text-sm text-white/[0.92] outline-none placeholder:text-white/45"
+            className="max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-end border-none bg-transparent px-1 py-1 text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
           />
           <span id="cc-booting-hint" className="sr-only">
             connecting — you can’t send yet
