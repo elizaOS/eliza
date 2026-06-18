@@ -20,11 +20,18 @@
  */
 
 import { resolveAppBranding } from "@elizaos/shared";
-import { AlertTriangle, Ban, LoaderCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Ban,
+  LoaderCircle,
+  RotateCw,
+} from "lucide-react";
 import {
   type ComponentType,
   memo,
   type ReactNode,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -635,16 +642,30 @@ async function handleStandardCapability(
   }
 }
 
+/**
+ * Navigate back to the view launcher (`/views`). Hoisted so the error/crash
+ * recovery surfaces can offer a "Back to views" escape hatch without depending
+ * on the view itself having wired the `exitToApps` prop.
+ */
+function navigateToViews() {
+  if (typeof window !== "undefined") {
+    window.history.pushState(null, "", "/views");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }
+}
+
 function ViewStatusFrame({
   tone,
   icon,
   title,
   children,
+  actions,
 }: {
   tone: "loading" | "error" | "restricted";
   icon: ReactNode;
   title: ReactNode;
   children?: ReactNode;
+  actions?: ReactNode;
 }) {
   const toneClass =
     tone === "error"
@@ -656,17 +677,22 @@ function ViewStatusFrame({
   return (
     <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center p-6">
       <div
-        className={`flex w-full max-w-sm items-center gap-3 rounded-lg border p-4 shadow-sm ${toneClass}`}
+        className={`flex w-full max-w-sm flex-col gap-3 rounded-lg border p-4 shadow-sm ${toneClass}`}
       >
-        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-background/70">
-          {icon}
+        <div className="flex items-center gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-background/70">
+            {icon}
+          </div>
+          <div className="min-w-0 text-left">
+            <div className="text-sm font-semibold">{title}</div>
+            {children ? (
+              <div className="mt-1 text-xs opacity-75">{children}</div>
+            ) : null}
+          </div>
         </div>
-        <div className="min-w-0 text-left">
-          <div className="text-sm font-semibold">{title}</div>
-          {children ? (
-            <div className="mt-1 text-xs opacity-75">{children}</div>
-          ) : null}
-        </div>
+        {actions ? (
+          <div className="flex flex-wrap gap-2 pl-[3.25rem]">{actions}</div>
+        ) : null}
       </div>
     </div>
   );
@@ -685,7 +711,51 @@ function ViewLoadingSkeleton() {
   );
 }
 
-function ViewErrorState({ viewId }: { viewId: string }) {
+function ViewRecoveryActions({
+  onRetry,
+  onBack,
+}: {
+  onRetry: () => void;
+  onBack: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-7 gap-1 rounded-sm text-xs"
+        onClick={onRetry}
+      >
+        <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
+        {t("dynamicviewloader.retry", { defaultValue: "Retry" })}
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-7 gap-1 rounded-sm text-xs"
+        onClick={onBack}
+      >
+        <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+        {t("dynamicviewloader.back", { defaultValue: "Back to views" })}
+      </Button>
+    </>
+  );
+}
+
+function ViewErrorState({
+  viewId,
+  error,
+  onRetry,
+  onBack,
+}: {
+  viewId: string;
+  error?: Error | null;
+  onRetry?: () => void;
+  onBack?: () => void;
+}) {
   const { t } = useTranslation();
   return (
     <ViewStatusFrame
@@ -694,6 +764,11 @@ function ViewErrorState({ viewId }: { viewId: string }) {
       title={t("dynamicviewloader.error.title", {
         defaultValue: "Failed to load view",
       })}
+      actions={
+        onRetry && onBack ? (
+          <ViewRecoveryActions onRetry={onRetry} onBack={onBack} />
+        ) : undefined
+      }
     >
       <span>
         {t("dynamicviewloader.viewId", {
@@ -701,6 +776,11 @@ function ViewErrorState({ viewId }: { viewId: string }) {
           defaultValue: "View ID: {{viewId}}",
         })}
       </span>
+      {error?.message ? (
+        <span className="mt-1 block break-words font-mono text-[10px] opacity-60">
+          {error.message}
+        </span>
+      ) : null}
     </ViewStatusFrame>
   );
 }
@@ -898,13 +978,31 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
     return () => clearInterval(id);
   }, [bundleUrl, componentExport, dynamicLoadingAllowed]);
 
+  // Recover from a load failure or render crash: evict the cached module so the
+  // next import re-fetches a fresh copy, clear the latched error, and bump
+  // reloadKey to re-run the load effect. Bumping reloadKey also changes the
+  // ErrorBoundary key below, remounting it with cleared state — so a view that
+  // crashed at render is genuinely retried, not stuck behind a latched boundary.
+  const recoverView = useCallback(() => {
+    bundleModuleCache.delete(`${bundleUrl}::${componentExport}`);
+    setLoadError(null);
+    setReloadKey((k) => k + 1);
+  }, [bundleUrl, componentExport]);
+
   // iOS App Store and Google Play builds cannot load remote JS at runtime.
   if (!dynamicLoadingAllowed) {
     return <ViewRestrictedState viewId={viewId} />;
   }
 
   if (loadError) {
-    return <ViewErrorState viewId={viewId} />;
+    return (
+      <ViewErrorState
+        viewId={viewId}
+        error={loadError}
+        onRetry={recoverView}
+        onBack={navigateToViews}
+      />
+    );
   }
 
   if (!bundle) {
@@ -914,12 +1012,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   const View = bundle.component;
   const viewProps = {
     ...forwardedViewProps,
-    exitToApps: () => {
-      if (typeof window !== "undefined") {
-        window.history.pushState(null, "", "/views");
-        window.dispatchEvent(new PopStateEvent("popstate"));
-      }
-    },
+    exitToApps: navigateToViews,
     t: (
       key: string,
       options?: { defaultValue?: string } | Record<string, unknown>,
@@ -935,7 +1028,23 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   return (
     <div ref={containerRef} className="contents">
       <AgentSurfaceProvider viewId={viewId} viewType={viewType}>
-        <ErrorBoundary fallback={() => <ViewErrorState viewId={viewId} />}>
+        {/* Keyed by bundleUrl+reloadKey so a successful reload (refresh
+            capability / dev HMR / Retry) remounts the boundary with cleared
+            state instead of staying latched on a stale render crash. */}
+        <ErrorBoundary
+          key={`${bundleUrl}:${reloadKey}`}
+          fallback={(error, resetErrorBoundary) => (
+            <ViewErrorState
+              viewId={viewId}
+              error={error}
+              onRetry={() => {
+                resetErrorBoundary();
+                recoverView();
+              }}
+              onBack={navigateToViews}
+            />
+          )}
+        >
           <View {...viewProps} />
         </ErrorBoundary>
         <AgentElementOverlay />
