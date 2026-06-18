@@ -51,21 +51,17 @@ const DEFAULT_CODING_STRATEGY: Strategy = "least-used";
  * Ordered provider candidates per coding-agent type. The first provider with an
  * eligible account wins; a subscription provider is preferred over its direct
  * API equivalent (subscriptions are the primary use case here).
- *
- * Only agent types with a real first-party ACP adapter appear here: claude
- * (claude-agent-acp) and codex (codex-acp). z.ai / Kimi / GLM have no
- * first-party coding CLI — their accounts are consumed by the main runtime's
- * API-key routing (resolveProviderCredentialMulti for zai-api / moonshot-api)
- * and via OpenCode's own provider config — so advertising them here would offer
- * a selection path that cannot spawn. OpenCode authenticates through its own
- * configured backend and is intentionally NOT pool-rotated yet (see
- * docs/multi-account-orchestration.md).
  */
 const AGENT_PROVIDER_CANDIDATES: Readonly<
   Record<string, readonly LinkedAccountProviderId[]>
 > = {
   claude: ["anthropic-subscription", "anthropic-api"],
   codex: ["openai-codex", "openai-api"],
+  // z.ai / GLM coding plans, surfaced for completeness; used via OpenCode config
+  // or a dedicated coding endpoint rather than a first-party CLI.
+  zai: ["zai-coding", "zai-api"],
+  glm: ["zai-coding", "zai-api"],
+  kimi: ["kimi-coding", "moonshot-api"],
 };
 
 export interface CodingAgentAccountDescriptor {
@@ -147,10 +143,15 @@ function materializeCodexHome(accountId: string, accessToken: string): string {
   const record = loadAccount("openai-codex", accountId);
   const refreshToken = record?.credentials.refresh ?? "";
   const chatgptAccountId = record?.organizationId;
+  // Codex's chatgpt-mode auth loader requires `tokens.id_token`; omitting it
+  // fails with "Authentication required" even when access_token is valid (an
+  // expired id_token is tolerated — Codex refreshes — but it must be present).
+  const idToken = record?.credentials.idToken;
   const authJson = {
     auth_mode: "chatgpt",
     OPENAI_API_KEY: null as string | null,
     tokens: {
+      ...(idToken ? { id_token: idToken } : {}),
       access_token: accessToken,
       refresh_token: refreshToken,
       ...(chatgptAccountId ? { account_id: chatgptAccountId } : {}),
@@ -171,8 +172,10 @@ async function buildEnvPatch(
       return { CLAUDE_CODE_OAUTH_TOKEN: accessToken };
     case "openai-codex":
       return { CODEX_HOME: materializeCodexHome(accountId, accessToken) };
+    case "zai-coding":
     case "zai-api":
       return { ZAI_API_KEY: accessToken, Z_AI_API_KEY: accessToken };
+    case "kimi-coding":
     case "moonshot-api":
       return { MOONSHOT_API_KEY: accessToken, KIMI_API_KEY: accessToken };
     default: {
@@ -208,65 +211,51 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
       const candidates = candidatesFor(agentType);
       if (candidates.length === 0) return null;
       const strategy = opts?.strategy ?? DEFAULT_CODING_STRATEGY;
-      // Accumulate accounts whose token couldn't be resolved so we try the NEXT
-      // healthy account in the same provider before falling through to the next
-      // provider — a single stale/refresh-failing account must not blackball its
-      // siblings or skip straight to the direct-API fallback.
-      const excluded = new Set<string>(opts?.exclude ?? []);
       for (const providerId of candidates) {
-        // Inner loop: keep asking the pool for the next-best eligible account in
-        // THIS provider (each failed one added to `excluded`) until the pool has
-        // no more, then advance to the next provider.
-        for (;;) {
-          const account = await pool.select({
-            providerId,
-            strategy,
-            ...(opts?.sessionKey ? { sessionKey: opts.sessionKey } : {}),
-            exclude: [...excluded],
-          });
-          if (!account) break;
-          let accessToken: string | null = null;
-          try {
-            accessToken = await getAccessToken(providerId, account.id);
-          } catch (err) {
-            logger.warn(
-              `[coding-account-bridge] token resolve failed for ${providerId}/${account.id}: ${String(err)}`,
-            );
-          }
-          if (!accessToken) {
-            await pool.markNeedsReauth(
-              account.id,
-              "No valid credential / token refresh failed",
-              { providerId },
-            );
-            excluded.add(account.id);
-            continue;
-          }
-          const envPatch = await buildEnvPatch(
-            providerId,
-            account.id,
-            accessToken,
+        const account = await pool.select({
+          providerId,
+          strategy,
+          ...(opts?.sessionKey ? { sessionKey: opts.sessionKey } : {}),
+          ...(opts?.exclude ? { exclude: opts.exclude } : {}),
+        });
+        if (!account) continue;
+        let accessToken: string | null = null;
+        try {
+          accessToken = await getAccessToken(providerId, account.id);
+        } catch (err) {
+          logger.warn(
+            `[coding-account-bridge] token resolve failed for ${providerId}/${account.id}: ${String(err)}`,
           );
-          if (Object.keys(envPatch).length === 0) {
-            excluded.add(account.id);
-            continue;
-          }
-          const source: "oauth" | "api-key" = isSubscriptionProvider(providerId)
-            ? "oauth"
-            : "api-key";
-          logger.info(
-            `[coding-account-bridge] ${agentType} → ${providerId} account "${account.label}" (${account.id}) via ${strategy}`,
-          );
-          return {
-            providerId,
-            accountId: account.id,
-            label: account.label,
-            source,
-            strategy,
-            ...(account.usage ? { usage: account.usage } : {}),
-            envPatch,
-          };
         }
+        if (!accessToken) {
+          await pool.markNeedsReauth(
+            account.id,
+            "No valid credential / token refresh failed",
+            { providerId },
+          );
+          continue;
+        }
+        const envPatch = await buildEnvPatch(
+          providerId,
+          account.id,
+          accessToken,
+        );
+        if (Object.keys(envPatch).length === 0) continue;
+        const source: "oauth" | "api-key" = isSubscriptionProvider(providerId)
+          ? "oauth"
+          : "api-key";
+        logger.info(
+          `[coding-account-bridge] ${agentType} → ${providerId} account "${account.label}" (${account.id}) via ${strategy}`,
+        );
+        return {
+          providerId,
+          accountId: account.id,
+          label: account.label,
+          source,
+          strategy,
+          ...(account.usage ? { usage: account.usage } : {}),
+          envPatch,
+        };
       }
       return null;
     },

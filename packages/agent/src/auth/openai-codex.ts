@@ -68,6 +68,7 @@ export function startCodexLogin(): Promise<CodexFlow> {
         access: creds.access,
         refresh: creds.refresh,
         expires: creds.expires,
+        ...(creds.idToken ? { idToken: creds.idToken } : {}),
       }));
       void credentials.catch((err) => {
         // If the flow fails before `onAuth` runs (e.g. the local callback
@@ -100,5 +101,6 @@ export async function refreshCodexToken(
     access: refreshed.access,
     refresh: refreshed.refresh,
     expires: refreshed.expires,
+    ...(refreshed.idToken ? { idToken: refreshed.idToken } : {}),
   };
 }
