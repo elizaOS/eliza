@@ -41,7 +41,7 @@ describe("processPendingJobs — lane scoping", () => {
     }
   });
 
-  test("default (no jobTypes) claims + recovers all 18 types — unchanged behavior", async () => {
+  test("default (no jobTypes) claims + recovers every JOB_TYPES entry — unchanged behavior", async () => {
     const claimSpy = spyOn(jobsRepository, "claimPendingJobs").mockResolvedValue([]);
     const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
     try {
@@ -49,7 +49,9 @@ describe("processPendingJobs — lane scoping", () => {
 
       const claimedTypes = claimSpy.mock.calls.map((c) => c[0].type);
       expect(new Set(claimedTypes)).toEqual(new Set(Object.values(JOB_TYPES)));
-      expect(claimedTypes.length).toBe(18);
+      // Count is derived from JOB_TYPES, not hardcoded: CONTAINER_STOP (#8342)
+      // grows this from 18 to 19, and a literal would break the moment it lands.
+      expect(claimedTypes.length).toBe(Object.values(JOB_TYPES).length);
     } finally {
       claimSpy.mockRestore();
       recoverSpy.mockRestore();
