@@ -43,6 +43,7 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsHealthConnectorProvider,
   LifeOpsInboxChannel,
+  LifeOpsOccurrenceView,
   ManageLifeOpsGmailMessagesRequest,
   ProcessLifeOpsRemindersRequest,
   RelockLifeOpsWebsiteAccessRequest,
@@ -236,6 +237,23 @@ function routeOperation(ctx: LifeOpsRouteContext): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+// Map a scheduled-task occurrence state onto the todo-board status the
+// TodosView renders. The overview returns only active occurrences
+// (visible/pending/snoozed), so the board never sees terminal states; the
+// mapping is exhaustive over LifeOpsOccurrenceState for type safety.
+function occurrenceStateToTodoStatus(
+  state: LifeOpsOccurrenceView["state"],
+): "pending" | "in_progress" | "completed" {
+  switch (state) {
+    case "snoozed":
+      return "in_progress";
+    case "completed":
+      return "completed";
+    default:
+      return "pending";
+  }
 }
 
 function decodeMatchedPathComponent(
@@ -2171,6 +2189,24 @@ export async function handleLifeOpsRoutes(
   if (method === "GET" && pathname === "/api/lifeops/overview") {
     return runRoute(ctx, async (service) => {
       json(res, await service.getOverview());
+    });
+  }
+
+  // Todos projection over the shared scheduled-task spine. Reuses getOverview()
+  // (the canonical read that projects life_task_definitions/occurrences) and
+  // flattens the owner's active occurrences into a flat todo DTO the TodosView
+  // renders. No new query path — getOverview owns the computation; this route
+  // only maps occurrence-view fields to { id, title, status, dueDate }.
+  if (method === "GET" && pathname === "/api/lifeops/todos") {
+    return runRoute(ctx, async (service) => {
+      const overview = await service.getOverview();
+      const todos = overview.owner.occurrences.map((occurrence) => ({
+        id: occurrence.id,
+        title: occurrence.title,
+        status: occurrenceStateToTodoStatus(occurrence.state),
+        dueDate: occurrence.dueAt,
+      }));
+      json(res, { todos });
     });
   }
 

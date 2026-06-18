@@ -1286,6 +1286,39 @@ function populatedGoals() {
   };
 }
 
+// Valid populated payload for the /api/lifeops/todos endpoint the decomposed
+// TodosView fetches, so `todos:gui` renders its `todos-populated` branch (the
+// Today / Upcoming / Someday lanes) instead of the add-a-todo empty state.
+// Shape mirrors the PA route response { todos: TodoWire[] } — a flat list of
+// { id, title, status, dueDate } projected from the owner's life_task_*
+// occurrences. One due-now (Today), one future (Upcoming), one no-due (Someday).
+function populatedTodos() {
+  const day = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  return {
+    todos: [
+      {
+        id: "todo-smoke-1",
+        title: "Submit the quarterly report",
+        status: "pending",
+        dueDate: new Date(now + 60 * 60 * 1000).toISOString(),
+      },
+      {
+        id: "todo-smoke-2",
+        title: "Plan the offsite",
+        status: "in_progress",
+        dueDate: new Date(now + 5 * day).toISOString(),
+      },
+      {
+        id: "todo-smoke-3",
+        title: "Read the new design doc",
+        status: "pending",
+        dueDate: null,
+      },
+    ],
+  };
+}
+
 // Valid populated DTOs for the /api/documents* endpoints the decomposed
 // DocumentsView fetches, so `documents:gui` renders its `documents-populated`
 // branch (a document row + stats line) instead of the empty/upload-prompt
@@ -2799,6 +2832,20 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(populatedGoals()),
+    });
+  });
+
+  // TodosView fetches GET /api/lifeops/todos; the **-suffixed pattern tolerates
+  // any future query string while leaving non-GET methods on the real API.
+  await page.route("**/api/lifeops/todos**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedTodos()),
     });
   });
 
