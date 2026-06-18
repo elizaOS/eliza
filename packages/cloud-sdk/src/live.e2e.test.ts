@@ -472,7 +472,7 @@ hetznerAgentDescribe(
           const teardownDeadline = Date.now() + PROVISION_DEADLINE_MS;
           while (Date.now() < teardownDeadline) {
             const detail = await client.getAgent(agentId).catch(() => null);
-            if (!detail || detail.data?.status !== "provisioning") break;
+            if (detail?.data?.status !== "provisioning") break;
             await sleep(POLL_INTERVAL_MS);
           }
           await client.deleteAgent(agentId).catch(() => undefined);

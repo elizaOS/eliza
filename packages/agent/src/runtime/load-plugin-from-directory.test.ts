@@ -82,9 +82,9 @@ describe("loadPluginFromDirectory", () => {
     )) as { pong?: boolean } | undefined;
     expect(result?.pong).toBe(true);
 
-    expect(
-      getLoadedDirectoryPlugins().map((e) => e.pluginName),
-    ).toContain("dir-loader-test-plugin");
+    expect(getLoadedDirectoryPlugins().map((e) => e.pluginName)).toContain(
+      "dir-loader-test-plugin",
+    );
 
     const unloaded = await unloadPluginFromDirectory({
       runtime,
@@ -173,7 +173,9 @@ describe("loadPluginFromDirectory", () => {
     const runtime = new AgentRuntime({ logLevel: "fatal" });
     await expect(
       loadPluginFromDirectory({ runtime, directory: dir, entry: outside }),
-    ).rejects.toThrow(/explicit entry must be a relative built JavaScript path/);
+    ).rejects.toThrow(
+      /explicit entry must be a relative built JavaScript path/,
+    );
   });
 
   it("rejects package entries that resolve through a symlink outside the plugin directory", async () => {

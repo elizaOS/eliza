@@ -11,8 +11,8 @@
 import { registerSpatialTerminalView } from "@elizaos/ui/spatial/tui";
 import { createElement } from "react";
 import {
-  PhoneSpatialView,
   type PhoneSnapshot,
+  PhoneSpatialView,
 } from "./components/PhoneSpatialView.tsx";
 
 const EMPTY: PhoneSnapshot = { callReady: false, dialed: "", calls: [] };

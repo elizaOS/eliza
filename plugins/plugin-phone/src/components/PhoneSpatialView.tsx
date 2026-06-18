@@ -42,20 +42,7 @@ export interface PhoneSnapshot {
   error?: string | null;
 }
 
-const DIAL_KEYS = [
-  "1",
-  "2",
-  "3",
-  "4",
-  "5",
-  "6",
-  "7",
-  "8",
-  "9",
-  "*",
-  "0",
-  "#",
-];
+const DIAL_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
 
 function directionTone(direction: PhoneCallRow["direction"]): SpatialTone {
   switch (direction) {
@@ -86,7 +73,10 @@ function directionMark(direction: PhoneCallRow["direction"]): string {
 }
 
 /** Map a native call-log entry to the presentational row shape. */
-export function toPhoneCallRow(entry: CallLogEntry, when: string): PhoneCallRow {
+export function toPhoneCallRow(
+  entry: CallLogEntry,
+  when: string,
+): PhoneCallRow {
   const type = String(entry.type ?? "").toLowerCase();
   const direction: PhoneCallRow["direction"] =
     type === "incoming" ||
@@ -110,7 +100,10 @@ export interface PhoneSpatialViewProps {
   onAction?: (action: string) => void;
 }
 
-export function PhoneSpatialView({ snapshot, onAction }: PhoneSpatialViewProps) {
+export function PhoneSpatialView({
+  snapshot,
+  onAction,
+}: PhoneSpatialViewProps) {
   const dispatch = (action: string) => () => onAction?.(action);
   return (
     <Card title="Phone" gap={1} padding={1}>

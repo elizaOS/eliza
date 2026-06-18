@@ -7,7 +7,7 @@ import {
 } from "@elizaos/ui/spatial/tui";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { PhoneSpatialView, type PhoneSnapshot } from "./PhoneSpatialView.tsx";
+import { type PhoneSnapshot, PhoneSpatialView } from "./PhoneSpatialView.tsx";
 
 const snapshot: PhoneSnapshot = {
   callReady: true,
