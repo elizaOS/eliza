@@ -14,7 +14,10 @@ function phaseToStatusKey(phase: string): string {
       return "startupshell.Starting";
     case "resolving-target":
     case "polling-backend":
-      return "startupshell.ConnectingBackend";
+      // Generic boot message — the user shouldn't see a backend-specific status
+      // (the agent can be local, remote, or cloud). Reuses the already-localized
+      // generic "Booting up…" key rather than "Connecting to backend…".
+      return "startupshell.Starting";
     case "starting-runtime":
       return "startupshell.InitializingAgent";
     case "hydrating":

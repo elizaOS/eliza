@@ -4286,7 +4286,7 @@
   "startupshell.RemoteAgentLabel": "Existing server",
   "startupshell.ScanningNetwork": "Scanning your network...",
   "startupshell.SignInElizaCloud": "Sign in with Eliza Cloud",
-  "startupshell.Starting": "Starting…",
+  "startupshell.Starting": "Booting up…",
   "startupshell.WaitingForAuth": "Waiting for auth...",
   "startupshell.YourCloudAgents": "Your cloud agents",
   "statusbar.GoLive": "Go Live",
