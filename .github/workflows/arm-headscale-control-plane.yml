@@ -57,6 +57,11 @@ jobs:
       HEADSCALE_PUBLIC_URL_VAR: ${{ vars.HEADSCALE_PUBLIC_URL }}
       HEADSCALE_API_URL: ${{ github.event.inputs.headscale_api_url }}
       HEADSCALE_LISTEN_ADDR: ${{ github.event.inputs.listen_addr }}
+      # Let's Encrypt account / expiry-notice email for the headscale vhost cert
+      # the arm script provisions. Optional GitHub Environment var; the script
+      # falls back to ops@elizalabs.ai when unset (so existing envs need no new
+      # var to keep working).
+      CERTBOT_EMAIL: ${{ vars.CERTBOT_EMAIL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -100,6 +105,8 @@ jobs:
             echo "- Environment: \`${{ github.event.inputs.environment }}\`"
             echo "- Public URL: \`$HEADSCALE_PUBLIC_URL\`"
             echo "- Daemon API URL: \`$HEADSCALE_API_URL\`"
+            echo ""
+            echo "Also converged on the CP (idempotent): nginx vhost + Let's Encrypt cert for the public headscale URL, and the cp-<env>-router tailscale self-enrollment (tag:eliza-proxy)."
             echo ""
             echo "Next: set matching Cloudflare Worker secrets, then run the provision E2E."
           } >> "$GITHUB_STEP_SUMMARY"
