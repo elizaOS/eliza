@@ -236,6 +236,20 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     ],
     timeoutMs: 90_000,
   },
+  {
+    // Pinned home tile → Settings.
+    name: "settings view",
+    path: "/settings",
+    selector: '[data-testid="settings-shell"]',
+    timeoutMs: 90_000,
+  },
+  {
+    // Pinned home tile → Workflows (live inside the Automations feed).
+    name: "automations / workflows view",
+    path: "/automations",
+    selector: '[data-testid="automations-shell"]',
+    timeoutMs: 90_000,
+  },
 ];
 
 const managerVisibleViewTileCases = [
