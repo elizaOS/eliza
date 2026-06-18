@@ -1031,17 +1031,6 @@ const EMPTY_LIFEOPS_OVERVIEW_SUMMARY = {
   activeGoalCount: 0,
 };
 
-const EMPTY_LIFEOPS_CHANNEL_COUNTS = {
-  gmail: { total: 0, unread: 0 },
-  discord: { total: 0, unread: 0 },
-  telegram: { total: 0, unread: 0 },
-  signal: { total: 0, unread: 0 },
-  imessage: { total: 0, unread: 0 },
-  whatsapp: { total: 0, unread: 0 },
-  sms: { total: 0, unread: 0 },
-  x_dm: { total: 0, unread: 0 },
-};
-
 // Valid populated DTOs for the three /api/lifeops/sleep/* endpoints so the
 // decomposed HealthView lands on its `health-populated` branch (latest night,
 // regularity, baseline) instead of the empty/connect-a-source branch. Shapes
@@ -1162,6 +1151,74 @@ function populatedMoneyRecurring() {
         category: "entertainment",
       },
     ],
+  };
+}
+
+// Valid populated LifeOpsInbox for the /api/lifeops/inbox endpoint the decomposed
+// InboxView fetches, so `inbox:gui` renders its `inbox-populated` branch (channel
+// groups + triage rows) instead of the connect-a-channel / inbox-zero empty
+// state. Shape mirrors LifeOpsInbox / LifeOpsInboxMessage from @elizaos/shared:
+// a flat `messages` list, per-channel `channelCounts`, and `fetchedAt`. When the
+// request carries a `channels` filter, the messages are narrowed to match so the
+// view's server-side channel-filter interaction renders consistently.
+function populatedInbox(url: URL) {
+  const requested = (url.searchParams.get("channels") ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  const allMessages = [
+    {
+      id: "gmail:smoke-1",
+      channel: "gmail",
+      sender: {
+        id: "sender-acme",
+        displayName: "Acme Billing",
+        email: "billing@acme.test",
+        avatarUrl: null,
+      },
+      subject: "Invoice #42 overdue",
+      snippet: "Please remit payment for last month's services.",
+      receivedAt: "2026-06-16T10:00:00.000Z",
+      unread: true,
+      deepLink: null,
+      sourceRef: { channel: "gmail", externalId: "gmail:smoke-1" },
+      threadId: "thread-gmail-1",
+    },
+    {
+      id: "discord:smoke-7",
+      channel: "discord",
+      sender: {
+        id: "sender-guild",
+        displayName: "guildmate",
+        email: null,
+        avatarUrl: null,
+      },
+      subject: null,
+      snippet: "gm everyone — standup in 10",
+      receivedAt: "2026-06-16T09:30:00.000Z",
+      unread: false,
+      deepLink: null,
+      sourceRef: { channel: "discord", externalId: "discord:smoke-7" },
+      threadId: "thread-discord-7",
+    },
+  ];
+  const messages =
+    requested.length > 0
+      ? allMessages.filter((message) => requested.includes(message.channel))
+      : allMessages;
+  return {
+    messages,
+    channelCounts: {
+      gmail: { total: 1, unread: 1 },
+      discord: { total: 1, unread: 0 },
+      telegram: { total: 0, unread: 0 },
+      signal: { total: 0, unread: 0 },
+      imessage: { total: 0, unread: 0 },
+      whatsapp: { total: 0, unread: 0 },
+      sms: { total: 0, unread: 0 },
+      x_dm: { total: 0, unread: 0 },
+    },
+    fetchedAt: SMOKE_GENERATED_AT,
   };
 }
 
@@ -2510,19 +2567,15 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
   });
 
   await page.route("**/api/lifeops/inbox**", async (route) => {
-    if (route.request().method() !== "GET") {
+    const request = route.request();
+    if (request.method() !== "GET") {
       await route.fallback();
       return;
     }
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({
-        messages: [],
-        channelCounts: EMPTY_LIFEOPS_CHANNEL_COUNTS,
-        threadGroups: [],
-        fetchedAt: SMOKE_GENERATED_AT,
-      }),
+      body: JSON.stringify(populatedInbox(new URL(request.url()))),
     });
   });
 
@@ -2690,7 +2743,9 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(populatedDocumentsSearch(new URL(route.request().url()))),
+      body: JSON.stringify(
+        populatedDocumentsSearch(new URL(route.request().url())),
+      ),
     });
   });
   // List route last so the more specific /stats and /search routes win.

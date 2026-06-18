@@ -12,20 +12,34 @@ export const INBOX_CONTEXTS = ["inbox", "messaging", "communication"] as const;
 export type InboxContext = (typeof INBOX_CONTEXTS)[number];
 
 /**
- * Channels the unified inbox aggregates.
- * NOTE: Android SMS is intentionally excluded — it lives in plugin-messages.
+ * Channels the unified inbox aggregates. These mirror the wire channel ids the
+ * LifeOps inbox route emits (`LIFEOPS_INBOX_CHANNELS` in @elizaos/shared) so the
+ * view can group the real payload without a translation table. Defined locally —
+ * this plugin must not import from @elizaos/plugin-personal-assistant.
  */
 export const INBOX_CHANNELS = [
-  "email",
+  "gmail",
+  "x_dm",
   "discord",
   "telegram",
-  "whatsapp",
-  "slack",
-  "x",
-  "farcaster",
+  "signal",
   "imessage",
+  "whatsapp",
+  "sms",
 ] as const;
 export type InboxChannel = (typeof INBOX_CHANNELS)[number];
+
+/** Human-readable label per channel, in display order. */
+export const INBOX_CHANNEL_LABELS: Record<InboxChannel, string> = {
+  gmail: "Email",
+  x_dm: "X",
+  discord: "Discord",
+  telegram: "Telegram",
+  signal: "Signal",
+  imessage: "iMessage",
+  whatsapp: "WhatsApp",
+  sms: "SMS",
+};
 
 export const TRIAGE_DECISIONS = [
   "reply_now",
@@ -65,21 +79,26 @@ export interface TriageDecision {
 }
 
 /**
- * Summary of an inbox thread surfaced into providers + the InboxView.
+ * One triage item rendered by the InboxView. This is the view's local display
+ * DTO, mapped at the fetch boundary from a `LifeOpsInboxMessage` on the wire
+ * (`GET /api/lifeops/inbox`). It is intentionally a flat, display-only shape —
+ * the view reads these fields and formats them, it never computes.
  */
-export interface ThreadSummary {
-  threadId: string;
+export interface InboxItem {
+  /** Channel-prefixed, globally unique message id. */
+  id: string;
   channel: InboxChannel;
-  participants: string[];
-  subject?: string;
-  lastMessagePreview: string;
-  lastMessageAt: string;
+  /** Display name of the sender. */
+  sender: string;
+  /** Gmail-style subject; null for chat channels. */
+  subject: string | null;
+  /** One-line preview of the latest message. */
+  preview: string;
+  /** ISO-8601 timestamp the message was received. */
+  receivedAt: string;
   unread: boolean;
-  unresolved: boolean;
-  triage?: TriageDecision;
-  snoozedUntil?: string;
-  archivedAt?: string;
-  followUpAt?: string;
+  /** Stable per-conversation key, when the wire supplies one. */
+  threadId: string | null;
 }
 
 export const INBOX_FAILURE_TEXT_PREFIX = "[INBOX]";
