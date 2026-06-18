@@ -1,24 +1,17 @@
 import { Crown } from "lucide-react";
 import type { RelationshipsGraphSnapshot } from "../../../api/client-types-relationships";
 import { SidebarContent } from "../../composites/sidebar/sidebar-content";
-import { SidebarHeader } from "../../composites/sidebar/sidebar-header";
 import { SidebarPanel } from "../../composites/sidebar/sidebar-panel";
 import { SidebarScrollRegion } from "../../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../../shared/AppPageSidebar";
 
 export function RelationshipsSidebar({
-  search,
   graph,
   selectedPersonId,
-  onSearchChange,
-  onSearchClear,
   onSelectPersonId,
 }: {
-  search: string;
   graph: RelationshipsGraphSnapshot | null;
   selectedPersonId: string | null;
-  onSearchChange: (value: string) => void;
-  onSearchClear: () => void;
   onSelectPersonId: (personId: string) => void;
 }) {
   return (
@@ -27,15 +20,6 @@ export function RelationshipsSidebar({
       collapsible
       contentIdentity="relationships"
     >
-      <SidebarHeader
-        search={{
-          value: search,
-          onChange: (event) => onSearchChange(event.target.value),
-          placeholder: "Search",
-          "aria-label": "Search people",
-          onClear: onSearchClear,
-        }}
-      />
       <SidebarPanel>
         <SidebarScrollRegion className="mt-2">
           <div className="space-y-1">

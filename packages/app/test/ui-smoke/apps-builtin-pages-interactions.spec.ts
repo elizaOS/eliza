@@ -126,11 +126,13 @@ test("trajectories view loads and search re-queries", async ({ page }) => {
   });
   await expect.poll(trajReqs).toBeGreaterThan(0);
 
+  // Search runs through the floating chat composer now (the view overrides its
+  // placeholder); typing re-queries the trajectories list.
   const before = trajReqs();
-  const search = page
-    .getByTestId("trajectories-sidebar")
-    .getByRole("textbox")
-    .first();
+  const search = page.getByTestId("chat-composer-textarea");
+  await expect(search).toHaveAttribute("placeholder", /search/i, {
+    timeout: 15_000,
+  });
   await search.fill("smoke-query");
   await expect.poll(trajReqs).toBeGreaterThan(before);
 });

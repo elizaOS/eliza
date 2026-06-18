@@ -20,15 +20,14 @@ import {
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
+import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { PagePanel } from "../composites/page-panel";
 import { MetaPill } from "../composites/page-panel/page-panel-header";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarHeader } from "../composites/sidebar/sidebar-header";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
 import { SegmentedControl } from "../ui/segmented-control";
 import { TableSkeleton } from "../ui/skeleton-layouts";
 import {
@@ -319,6 +318,16 @@ export function DatabaseView({
     [tables, sidebarSearch],
   );
 
+  // The floating chat composer is this view's table filter. While Database is
+  // the active view it takes over the composer (placeholder + live draft) and
+  // feeds each keystroke into `sidebarSearch` — there's no in-page filter input.
+  const filterPlaceholder = t("databaseview.FilterTables");
+  const chatBinding = useMemo(
+    () => ({ placeholder: filterPlaceholder, onQuery: setSidebarSearch }),
+    [filterPlaceholder],
+  );
+  useRegisterViewChatBinding(chatBinding);
+
   const handleRefresh = useCallback(async () => {
     const status = await loadStatus();
     if (status?.connected) {
@@ -333,16 +342,6 @@ export function DatabaseView({
     group: "database-actions",
     description: "Reload the database status and table list",
     onActivate: handleRefresh,
-  });
-
-  const filterSearch = useAgentElement<HTMLInputElement>({
-    id: "filter-tables",
-    role: "text-input",
-    label: t("databaseview.FilterTables"),
-    group: "database-actions",
-    description: "Filter the table list by name",
-    getValue: () => sidebarSearch,
-    onFill: (value) => setSidebarSearch(value),
   });
 
   const editorModes: Array<{ value: DbView; label: string }> = [
@@ -443,15 +442,6 @@ export function DatabaseView({
           </SidebarContent.RailItem>
         ))}
       >
-        <SidebarHeader
-          search={{
-            value: sidebarSearch,
-            onChange: (e) => setSidebarSearch(e.target.value),
-            placeholder: t("databaseview.FilterTables"),
-            "aria-label": t("databaseview.FilterTables"),
-            onClear: () => setSidebarSearch(""),
-          }}
-        />
         <SidebarPanel>
           <div className="space-y-3 pt-1">
             {leftNav}
@@ -800,17 +790,6 @@ export function DatabaseView({
                   </>
                 )}
 
-                <div className="relative">
-                  <Input
-                    ref={filterSearch.ref}
-                    {...filterSearch.agentProps}
-                    type="text"
-                    placeholder={t("databaseview.FilterTables")}
-                    value={sidebarSearch}
-                    onChange={(e) => setSidebarSearch(e.target.value)}
-                    className="w-full pr-8 text-xs h-10 rounded-sm border-border/34 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-sm focus-visible:border-accent/28 focus-visible:ring-1 focus-visible:ring-accent/24 "
-                  />
-                </div>
                 <div className="text-2xs text-muted uppercase font-bold tracking-widest px-2 bg-bg/50 py-1.5 rounded-sm border border-border/30 inline-flex items-center ">
                   {t("databaseview.Tables")} ({filteredTables.length})
                 </div>

@@ -4,9 +4,9 @@ import { useAgentElement } from "../../agent-surface";
 import type { SkillInfo } from "../../api";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
+import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { PagePanel } from "../composites/page-panel";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarHeader } from "../composites/sidebar/sidebar-header";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { SkillSidebarItem } from "../composites/skills/skill-sidebar-item";
@@ -168,6 +168,18 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingSkill, setEditingSkill] = useState<SkillInfo | null>(null);
 
+  // The floating chat composer is this view's search box. While Skills is the
+  // active view it takes over the composer (placeholder + live draft) and feeds
+  // each keystroke into the `filterText` filter — there's no in-page search input.
+  const searchPlaceholder = t("skillsview.SearchSkills", {
+    defaultValue: "Search skills…",
+  });
+  const chatBinding = useMemo(
+    () => ({ placeholder: searchPlaceholder, onQuery: setFilterText }),
+    [searchPlaceholder],
+  );
+  useRegisterViewChatBinding(chatBinding);
+
   useEffect(() => {
     void loadSkills();
   }, [loadSkills]);
@@ -230,16 +242,6 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
     selectedSkill?.scanStatus === "warning" ||
     selectedSkill?.scanStatus === "critical" ||
     selectedSkill?.scanStatus === "blocked";
-
-  const filterSearch = useAgentElement<HTMLInputElement>({
-    id: "filter-search",
-    role: "text-input",
-    label: t("skillsview.filterSkills", { defaultValue: "Filter skills" }),
-    group: "skills-toolbar",
-    description: "Filter the skills list by name or description",
-    getValue: () => filterText,
-    onFill: (value) => setFilterText(value),
-  });
 
   const newSkillButton = useAgentElement<HTMLButtonElement>({
     id: "new-skill",
@@ -361,16 +363,6 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
         );
       })}
     >
-      <SidebarHeader
-        search={{
-          value: filterText,
-          onChange: (event) => setFilterText(event.target.value),
-          placeholder: t("skillsview.filterSkills"),
-          "aria-label": t("skillsview.filterSkills"),
-          onClear: () => setFilterText(""),
-          ...filterSearch.agentProps,
-        }}
-      />
       <SidebarScrollRegion>
         <SidebarPanel>
           <SidebarContent.Toolbar className="mb-3">

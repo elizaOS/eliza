@@ -24,6 +24,7 @@ import type {
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state/useApp";
+import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import {
   formatTrajectoryDuration,
   formatTrajectoryTimestamp,
@@ -31,7 +32,6 @@ import {
 } from "../../utils/trajectory-format";
 import { PagePanel } from "../composites/page-panel";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarHeader } from "../composites/sidebar/sidebar-header";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { TrajectorySidebarItem } from "../composites/trajectories/trajectory-sidebar-item";
@@ -115,6 +115,22 @@ export function TrajectoriesView({
   const [page, setPage] = useState(0);
   const pageSize = 50;
   const previousSearchQueryRef = useRef(searchQuery);
+
+  // The one floating chat composer is this view's search box: typing in it
+  // drives `searchQuery` (which re-queries via `loadTrajectories`) and resets
+  // pagination. The binding clears when the view unmounts.
+  const searchPlaceholder = t("trajectoriesview.Search", {
+    defaultValue: "Search...",
+  });
+  const onQuery = useCallback((value: string) => {
+    setSearchQuery(value);
+    setPage(0);
+  }, []);
+  const chatBinding = useMemo(
+    () => ({ placeholder: searchPlaceholder, onQuery }),
+    [searchPlaceholder, onQuery],
+  );
+  useRegisterViewChatBinding(chatBinding);
 
   // Seed from the shared cache so a revisit paints the last-known page
   // instantly and revalidates silently, instead of flashing a spinner. The
@@ -373,23 +389,6 @@ export function TrajectoriesView({
       aria-label={t("trajectoriesview.Entries", {
         defaultValue: "Entries",
       })}
-      header={
-        <SidebarHeader
-          search={{
-            value: searchQuery,
-            onChange: (event) => {
-              setSearchQuery(event.target.value);
-              setPage(0);
-            },
-            onClear: () => {
-              setSearchQuery("");
-              setPage(0);
-            },
-            placeholder: t("trajectoriesview.Search"),
-            "aria-label": t("trajectoriesview.Search"),
-          }}
-        />
-      }
     >
       <SidebarScrollRegion>
         <SidebarPanel>

@@ -3,7 +3,6 @@ import type { ReactNode, RefCallback, RefObject } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { PluginInfo } from "../../api";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarHeader } from "../composites/sidebar/sidebar-header";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { getBrandIcon } from "../conversations/brand-icons";
@@ -217,8 +216,6 @@ interface ConnectorDesktopSidebarProps {
   visiblePlugins: PluginInfo[];
   onConnectorSelect: (pluginId: string) => void;
   onConnectorSectionToggle: (pluginId: string) => void;
-  onSearchChange: (value: string) => void;
-  onSearchClear: () => void;
   onSubgroupFilterChange: (value: string) => void;
   onTogglePlugin: (pluginId: string, enabled: boolean) => Promise<void>;
 }
@@ -244,8 +241,6 @@ export function ConnectorSidebar({
   visiblePlugins,
   onConnectorSelect,
   onConnectorSectionToggle,
-  onSearchChange,
-  onSearchClear,
   onSubgroupFilterChange,
   onTogglePlugin,
 }: ConnectorDesktopSidebarProps) {
@@ -265,8 +260,6 @@ export function ConnectorSidebar({
 
   if (!desktopConnectorLayout) return null;
 
-  const sidebarSearchLabel =
-    mode === "social" ? "Search connectors" : "Search plugins";
   const filterSelectLabel =
     subgroupTags.find((tag) => tag.id === subgroupFilter)?.label ?? "All";
   const hasActivePluginFilters =
@@ -278,17 +271,6 @@ export function ConnectorSidebar({
       testId="connectors-settings-sidebar"
       collapsible
       contentIdentity={mode === "social" ? "connectors" : "plugins"}
-      header={
-        <SidebarHeader
-          search={{
-            value: pluginSearch,
-            onChange: (event) => onSearchChange(event.target.value),
-            onClear: onSearchClear,
-            placeholder: sidebarSearchLabel,
-            "aria-label": sidebarSearchLabel,
-          }}
-        />
-      }
       collapsedRailItems={visiblePlugins.map((plugin) => {
         const isSelected = connectorSelectedId === plugin.id;
         const RailBrandIcon = getBrandIcon(plugin.id);
