@@ -46,6 +46,15 @@ export const REAL_LLM_MODEL = "cerebras/gpt-oss-120b";
 export const REAL_LLM_BILLING_SOURCE = "cerebras";
 
 /**
+ * The model's max output tokens (gpt-oss-120b on Cerebras: 40960, per the
+ * `CEREBRAS_DEFAULT_TEXT_SMALL_MODEL` catalog entry in
+ * cloud-shared/lib/models/catalog.ts). gpt-oss-120b is a reasoning model, so a
+ * small cap is spent entirely on reasoning and returns empty content — give it
+ * the model's full output budget.
+ */
+export const REAL_LLM_MAX_TOKENS = 40960;
+
+/**
  * Whether the cloud's default inference provider (Cerebras) is configured.
  * The real-LLM marquee lane runs against it; when CEREBRAS_API_KEY is absent it
  * skips loudly rather than larp a fake completion — and never falls back to a
