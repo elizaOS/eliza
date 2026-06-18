@@ -28,6 +28,20 @@ import { useActivityEvents } from "../../hooks/useActivityEvents";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { cn } from "../../lib/utils";
 
+// A gentle staggered fade-up as the home settles in — iOS-style, calm, and
+// fully stilled under prefers-reduced-motion. Each block carries a small
+// animation-delay (set inline) so the clock leads and the tiles follow.
+const HOME_ENTER_CSS = `
+@keyframes home-enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+.home-enter { animation: home-enter 460ms cubic-bezier(0.22,1,0.36,1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .home-enter { animation: none; }
+}
+`;
+
 // Where a home tile sends you. Builtin tabs go through setTab; plugin / remote
 // views go through the eliza:navigate:view event. The mount injects the handler.
 export type HomeTileTarget =
@@ -314,33 +328,41 @@ export function HomeScreen({
         "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]",
       )}
     >
+      <style>{HOME_ENTER_CSS}</style>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-        <ClockBlock />
+        <div className="home-enter">
+          <ClockBlock />
+        </div>
 
         {recentActivity.length > 0 ? (
-          <HomeCard
-            title="Recent activity"
-            icon={Activity}
-            testId="home-widget-activity"
-          >
-            <ActivityRows events={recentActivity} />
-          </HomeCard>
+          <div className="home-enter" style={{ animationDelay: "70ms" }}>
+            <HomeCard
+              title="Recent activity"
+              icon={Activity}
+              testId="home-widget-activity"
+            >
+              <ActivityRows events={recentActivity} />
+            </HomeCard>
+          </div>
         ) : null}
 
         {recentChats.length > 0 ? (
-          <HomeCard
-            title="Recent messages"
-            icon={MessageSquare}
-            testId="home-widget-messages"
-          >
-            <MessagesRows chats={recentChats} />
-          </HomeCard>
+          <div className="home-enter" style={{ animationDelay: "110ms" }}>
+            <HomeCard
+              title="Recent messages"
+              icon={MessageSquare}
+              testId="home-widget-messages"
+            >
+              <MessagesRows chats={recentChats} />
+            </HomeCard>
+          </div>
         ) : null}
 
         <nav
           aria-label="Pinned views"
           data-testid="home-tiles"
-          className="mt-2"
+          className="home-enter mt-2"
+          style={{ animationDelay: "150ms" }}
         >
           <div className="grid grid-cols-4 gap-3">
             {tiles.map((tile) => {
@@ -354,8 +376,11 @@ export function HomeScreen({
                   className={cn(
                     // Liquid glass, matching the chat panel: translucent dark
                     // pane, strong blur + saturation, a bright top specular edge.
-                    "flex flex-col items-center gap-1.5 rounded-2xl border border-white/[0.14] bg-black/25 px-1 py-3.5 backdrop-blur-2xl backdrop-saturate-150 transition-colors",
+                    "flex flex-col items-center gap-1.5 rounded-2xl border border-white/[0.14] bg-black/25 px-1 py-3.5 backdrop-blur-2xl backdrop-saturate-150",
                     "shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]",
+                    // Tactile press: a quick scale-down on tap (stilled for
+                    // reduce-motion users), plus the glass brightening on hover.
+                    "transition-[transform,background-color] duration-150 active:scale-[0.96] motion-reduce:active:scale-100",
                     "hover:bg-white/[0.14] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
                   )}
                 >
