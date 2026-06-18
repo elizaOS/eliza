@@ -26320,6 +26320,7 @@
     const [freeH, setFreeH] = React6.useState(null);
     const [maximized, setMaximized] = React6.useState(false);
     const preFocusCollapsedRef = React6.useRef(true);
+    const [composerFocused, setComposerFocused] = React6.useState(false);
     const threadHeight = useMotionValue(0);
     const draggingRef = React6.useRef(false);
     const [pushToTalkActive, setPushToTalkActive] = React6.useState(false);
@@ -26728,8 +26729,8 @@
           detentHaptic();
           return;
         }
-        const composerFocused = typeof document !== "undefined" && document.activeElement === inputRef.current;
-        if (composerFocused) {
+        const composerFocused2 = typeof document !== "undefined" && document.activeElement === inputRef.current;
+        if (composerFocused2) {
           inputRef.current?.blur();
           if (preFocusCollapsedRef.current) collapse();
           return;
@@ -26785,7 +26786,7 @@
         style: {
           zIndex: Z_SHELL_OVERLAY,
           bottom: keyboardInset,
-          paddingBottom: keyboardInset > 0 ? "0.75rem" : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.25rem)"
+          paddingBottom: composerFocused ? "0.75rem" : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.25rem)"
         },
         "data-testid": "continuous-chat-overlay",
         "data-open": sheetOpen ? "true" : void 0,
@@ -27142,7 +27143,11 @@
                                   setDraft(e.target.value);
                                   if (e.target.value.trim().length > 0) expand();
                                 },
-                                onFocus: expand,
+                                onFocus: () => {
+                                  setComposerFocused(true);
+                                  expand();
+                                },
+                                onBlur: () => setComposerFocused(false),
                                 onKeyDown: (e) => {
                                   if (slashOpen) {
                                     if (e.key === "ArrowDown") {

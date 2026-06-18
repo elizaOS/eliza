@@ -673,6 +673,10 @@ export function ContinuousChatOverlay({
   // dismissing the keyboard (tap the handle) returns to the prior resting state
   // (collapsed) instead of leaving the sheet hanging open.
   const preFocusCollapsedRef = React.useRef(true);
+  // Composer focus ⟺ the soft keyboard is up on mobile. This is the reliable
+  // keyboard signal: Capacitor's resize:"body" shrinks innerHeight too, so a
+  // visualViewport-derived keyboardInset reads 0 and can't gate the layout.
+  const [composerFocused, setComposerFocused] = React.useState(false);
   // The live thread (history) height in px, as a MOTION VALUE — driven directly
   // by the pointer during a drag and spring-animated to a detent on release.
   // Keeping it off React state means a drag updates the DOM height every frame
@@ -1357,18 +1361,18 @@ export function ContinuousChatOverlay({
         fullBleed ? "px-0" : "px-3 sm:px-4",
       )}
       // Lift the whole overlay above the on-screen keyboard (`bottom`); padding
-      // below the composer is conditional: when the KEYBOARD is up, only a small
-      // gap (matching the side margin) sits between the composer and the keyboard
-      // — the home-gesture clearance isn't needed because the keyboard covers it.
-      // At rest, clear the home-gesture zone (max safe-area / android inset) plus
-      // a hair, keeping the chat low without touching that zone.
+      // below the composer is conditional: when the composer is FOCUSED (keyboard
+      // up), only a small gap (0.75rem, matching the side margin) sits between the
+      // composer and the keyboard — the home-gesture clearance isn't needed
+      // because the keyboard covers it. At rest, clear the home-gesture zone (max
+      // safe-area / android inset) plus a hair, keeping the chat low without
+      // touching that zone.
       style={{
         zIndex: Z_SHELL_OVERLAY,
         bottom: keyboardInset,
-        paddingBottom:
-          keyboardInset > 0
-            ? "0.75rem"
-            : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.25rem)",
+        paddingBottom: composerFocused
+          ? "0.75rem"
+          : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.25rem)",
       }}
       data-testid="continuous-chat-overlay"
       data-open={sheetOpen ? "true" : undefined}
@@ -1769,7 +1773,11 @@ export function ContinuousChatOverlay({
                     setDraft(e.target.value);
                     if (e.target.value.trim().length > 0) expand();
                   }}
-                  onFocus={expand}
+                  onFocus={() => {
+                    setComposerFocused(true);
+                    expand();
+                  }}
+                  onBlur={() => setComposerFocused(false)}
                   onKeyDown={(e) => {
                     // The slash menu intercepts navigation/commit keys when open.
                     if (slashOpen) {
