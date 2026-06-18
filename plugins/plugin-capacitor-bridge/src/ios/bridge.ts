@@ -483,6 +483,8 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
 	const runtime = await bootElizaRuntime();
 	installIosNativeLlamaHandlers(runtime);
 
+	maybeAutoRunModelGrind();
+
 	return {
 		runtime,
 		dispatchRoute,
@@ -491,6 +493,60 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
 			await unloadNativeLlamaModel().catch(() => undefined);
 		},
 	};
+}
+
+/**
+ * Env-gated on-device grind: when ELIZA_IOS_RUN_MODEL_GRIND=1, run the
+ * grind-all-models telemetry self-test once the native host IPC is wired, then
+ * log + persist the report. Non-blocking — never delays boot.
+ */
+function maybeAutoRunModelGrind(): void {
+	if (process.env.ELIZA_IOS_RUN_MODEL_GRIND !== "1") return;
+	void (async () => {
+		const deadline = Date.now() + 120_000;
+		while (hostProtocolWrite == null && Date.now() < deadline) {
+			await new Promise((r) => setTimeout(r, 500));
+		}
+		if (hostProtocolWrite == null) {
+			console.error("[model-grind] native host never wired; skipping");
+			return;
+		}
+		try {
+			const report = await runModelGrind({
+				callIosHost,
+				ensureTextModelLoaded: (slot) => ensureNativeModelLoaded(slot),
+				synthesizeTts: async (text) => ({
+					bytes: await synthesizeNativeIosLocalTts({ text }),
+					sampleRate: 24_000,
+				}),
+				transcribeAsr: (pcm, sampleRate) =>
+					transcribeNativeIosLocalAsr({ pcm, sampleRate }),
+				hardwareInfo: () => nativeHardwareInfo(),
+				bundleDir: nativeVoiceBundleDir(),
+			});
+			const json = JSON.stringify(report);
+			console.log(`[model-grind] REPORT ${json}`);
+			const supportDir = process.env.ELIZA_IOS_APP_SUPPORT_DIR?.trim();
+			if (supportDir) {
+				try {
+					writeFileSync(
+						path.join(supportDir, "model-grind-report.json"),
+						`${JSON.stringify(report, null, 2)}\n`,
+					);
+				} catch (error) {
+					console.error(
+						"[model-grind] report write failed:",
+						error instanceof Error ? error.message : error,
+					);
+				}
+			}
+		} catch (error) {
+			console.error(
+				"[model-grind] grind failed:",
+				error instanceof Error ? error.message : error,
+			);
+		}
+	})();
 }
 
 function startIosBridgeHost(): IosBridgeHost {
