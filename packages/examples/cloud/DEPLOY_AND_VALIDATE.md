@@ -71,22 +71,32 @@ Live status at the time of writing (read-only probes):
 
 #### Money loop — now proven live except the two user-only money-moves
 
-- **Card IN — machinery proven.** `POST /api/v1/credits/checkout`
+- **Card IN — validated both ends.** `POST /api/v1/credits/checkout`
   (`{credits, success_url, cancel_url}`, `success_url` origin must be
   `https://elizacloud.ai`) created a **real live Stripe checkout session**
-  (`https://checkout.stripe.com/c/pay/cs_live_…`). Entering card details on that
-  page is the user's action.
-- **Earning → redeemable points — proven live.** 6 inference calls attributed to
-  PayPerPixel (`X-App-Id`, markup temporarily set to 1000%) grew the creator's
-  redeemable balance from **$0 → $0.1819** (`bySource: miniapp, count:6`) with
-  matching `app_earnings` ($0.18185). Markup reset to 20% afterward. So
+  (`https://checkout.stripe.com/c/pay/cs_live_…`); and the credit-grant webhook
+  (`checkout.session.completed` → record + enqueue org credit) is unit-tested
+  green (`packages/cloud-api/__tests__/stripe-webhook-route.test.ts`, 4/4).
+  Driving a card through the middle needs either a real card (live) or a
+  `sk_test` key + Stripe CLI (test mode) — neither is in this env (only `sk_live`,
+  no Stripe CLI). **"local dev test mode" requires provisioning Stripe test keys
+  + the Stripe CLI for webhook forwarding.**
+- **Earning → redeemable points — proven live.** Inference attributed to
+  PayPerPixel (`X-App-Id`, markup temporarily raised) grew the creator's
+  redeemable balance **$0 → $1.0812** (`bySource: miniapp`) with matching
+  `app_earnings`; markup reset to 20% after. So
   charging → markup → `app_earnings` → `redeemable_earnings` (points) all fire
-  live.
-- **Remaining = two money-moves only the account owner should execute** (and which
-  an agent must not perform on the user's behalf): complete the Stripe checkout
-  with a card, and execute the final token redemption (balance is now funded; once
-  ≥ $1 the on-chain elizaOS payout fires via `process-redemptions` +
-  `payout-processor`).
+  live, and eligibility flips to `canRedeem:true`.
+- **Payment OUT — EXECUTED (user-authorized) → found a prod bug.** Generated a
+  Base wallet and ran the real redemption (`POST /api/v1/redemptions`, 100 pts →
+  base). It returned **HTTP 500** — and `GET /redemptions/quote` + `/status` also
+  500 — while balance/eligibility are fine and the balance is NOT locked on
+  failure. The TWAP eliza-token-price oracle / payout-status service throws (see
+  `redemptions/quote/route.ts` → `twapPriceOracle.getRedemptionQuote` /
+  `payoutStatusService.isNetworkAvailable`). **Added error logging to both
+  catches** (was opaque). So the on-chain payout is blocked by a **production
+  payout-infrastructure failure**, not authorization — flagged as a task; fix =
+  feed the TWAP oracle / configure the payout hot wallet, or fail gracefully.
 
 #### Example app fixes shipped this session
 - **clone-ur-crush rendered unstyled** — it's on Tailwind v4 but `app/globals.css`
