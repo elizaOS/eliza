@@ -830,7 +830,7 @@ test.describe("assistant home app flow", () => {
     });
   });
 
-  test("push-to-talk records while the mic is held and submits on release", async ({
+  test("push-to-talk dictates the held transcript into the composer on release (no auto-send)", async ({
     page,
   }) => {
     await seedAssistantFlowStorage(page);
@@ -866,21 +866,21 @@ test.describe("assistant home app flow", () => {
     });
     expect(accepted, "home voice shim must receive the held turn").toBe(true);
 
-    // Releasing the held mic ends capture. The final transcript is submitted
-    // by the voice pipeline itself.
+    // Releasing the held mic ends capture. Push-to-talk now DICTATES: the final
+    // transcript lands in the composer draft (it is NOT auto-submitted), so the
+    // user edits and sends it themselves — no turn is streamed, no spoken reply.
     await releaseHandle.dispatchEvent("pointerup", {
       button: 0,
       pointerId: 1,
       pointerType: "mouse",
     });
+    const composer = page.locator('[data-testid="chat-composer-textarea"]');
     await expect
-      .poll(() => assistantApi.streamRequests, { timeout: 10_000 })
-      .toEqual(["push to talk works"]);
-    await expect(
-      page
-        .getByText("Opening the right view now and keeping voice ready.")
-        .first(),
-    ).toBeVisible();
-    expect(assistantApi.streamRequests).toEqual(["push to talk works"]);
+      .poll(async () => (await composer.inputValue()).trim(), {
+        timeout: 10_000,
+      })
+      .toContain("push to talk works");
+    // Dictation must not submit a turn.
+    expect(assistantApi.streamRequests).toEqual([]);
   });
 });
