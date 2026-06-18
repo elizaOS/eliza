@@ -7,15 +7,25 @@
  * execution engine for Tier 0 ("shared") agents — the default for plain
  * chat / webhook / cron agents that don't need a dedicated container.
  *
+ * Model routing: the turn goes through the SAME canonical `getLanguageModel`
+ * router as every other inference path in cloud — bare Cerebras ids
+ * (`gpt-oss-120b`, `zai-glm-4.7`) go straight to Cerebras, every other id goes
+ * through BitRouter. There is deliberately NO bespoke provider client here, so a
+ * shared agent supports exactly the models the platform does and can never
+ * diverge from the proven `/api/v1/chat/completions` path.
+ *
  * Caller responsibilities (kept out of here so this stays pure + testable):
  *  - load the agent's character + prior history (from DB/cache)
  *  - persist the returned history (memory) after the turn
  *  - route only shared-eligible agents here (see `agent-tier.ts`)
  */
 
-import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
-import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
+import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
+import {
+  getLanguageModel,
+  hasLanguageModelProviderConfigured,
+} from "../../providers/language-model";
 import { logger } from "../../utils/logger";
 
 export type SharedTurnRole = "user" | "assistant";
@@ -54,9 +64,12 @@ export interface RunSharedAgentTurnResult {
   usage?: SharedAgentTurnUsage;
 }
 
-const CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1";
-const CEREBRAS_MODEL = "gpt-oss-120b";
-const OPENAI_FALLBACK_MODEL = "gpt-4o-mini";
+/**
+ * The shared default when an agent configures no model: the bare Cerebras small
+ * id, which `getLanguageModel` sends straight to Cerebras (fast + cheap, no
+ * gateway hop). Big-model agents simply set `zai-glm-4.7` (also bare Cerebras).
+ */
+const DEFAULT_SHARED_MODEL = CEREBRAS_DEFAULT_TEXT_SMALL_MODEL;
 
 export interface SharedAgentTurnUsage {
   promptTokens?: number;
@@ -70,40 +83,19 @@ export interface SharedAgentTurnUsage {
   cacheWriteInputTokens?: number;
 }
 
-interface ResolvedModel {
-  client: ReturnType<typeof createOpenAI>;
-  model: string;
-}
-
-export function resolveSharedAgentTurnModel(preferred?: string): string | null {
-  const env = getCloudAwareEnv();
-  if (env.CEREBRAS_API_KEY) return preferred ?? CEREBRAS_MODEL;
-  if (env.OPENAI_API_KEY) return preferred ?? OPENAI_FALLBACK_MODEL;
-  return null;
-}
-
 /**
- * Resolve the hosted model for shared execution. Prefers Cerebras (the same
- * ultra-fast path onboarding uses); falls back to an OpenAI-compatible default.
+ * Resolve the model id used BOTH to run the shared turn (via `getLanguageModel`)
+ * and to bill it (eliza-sandbox `billingModel`). The agent's own model is
+ * honored when a provider is configured for it; otherwise we fall back to the
+ * always-available shared default. Returns null only when no provider can serve
+ * even the default, so the caller degrades cleanly without billing.
  */
-function resolveSharedModel(preferred?: string): ResolvedModel | null {
-  const env = getCloudAwareEnv();
-  const model = resolveSharedAgentTurnModel(preferred);
-  if (!model) return null;
-
-  if (env.CEREBRAS_API_KEY) {
-    return {
-      client: createOpenAI({ apiKey: env.CEREBRAS_API_KEY, baseURL: CEREBRAS_BASE_URL }),
-      model,
-    };
+export function resolveSharedAgentTurnModel(preferred?: string): string | null {
+  const configured = preferred?.trim();
+  if (configured && hasLanguageModelProviderConfigured(configured)) {
+    return configured;
   }
-  if (env.OPENAI_API_KEY) {
-    return {
-      client: createOpenAI({ apiKey: env.OPENAI_API_KEY }),
-      model,
-    };
-  }
-  return null;
+  return hasLanguageModelProviderConfigured(DEFAULT_SHARED_MODEL) ? DEFAULT_SHARED_MODEL : null;
 }
 
 function buildSystemPrompt(character: SharedAgentCharacter): string {
@@ -138,9 +130,9 @@ export async function runSharedAgentTurn(
   input: RunSharedAgentTurnInput,
 ): Promise<RunSharedAgentTurnResult> {
   const message = input.message.trim();
-  const resolved = resolveSharedModel(input.character.model);
+  const modelId = resolveSharedAgentTurnModel(input.character.model);
 
-  if (!resolved) {
+  if (!modelId) {
     const reply = `${input.character.name} is temporarily unavailable (no shared model configured).`;
     return {
       reply,
@@ -152,7 +144,7 @@ export async function runSharedAgentTurn(
 
   try {
     const { text, usage } = await generateText({
-      model: resolved.client.chat(resolved.model),
+      model: getLanguageModel(modelId),
       system: buildSystemPrompt(input.character),
       messages: [
         ...input.history.map((m) => ({ role: m.role, content: m.content })),
@@ -163,21 +155,22 @@ export async function runSharedAgentTurn(
     return {
       reply,
       history: appendTurn(input.history, message, reply),
-      model: resolved.model,
+      model: modelId,
       degraded: false,
       usage,
     };
   } catch (error) {
-    logger.warn("[shared-runtime] turn failed; degrading", {
+    logger.error("[shared-runtime] turn failed; degrading", {
       agent: input.character.name,
-      model: resolved.model,
+      model: modelId,
+      errorName: error instanceof Error ? error.name : "unknown",
       error: error instanceof Error ? error.message : String(error),
     });
     const reply = `${input.character.name} hit a temporary error. Please try again.`;
     return {
       reply,
       history: appendTurn(input.history, message, reply),
-      model: resolved.model,
+      model: modelId,
       degraded: true,
     };
   }
