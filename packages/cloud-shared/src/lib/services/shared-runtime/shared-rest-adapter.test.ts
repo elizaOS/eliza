@@ -4,7 +4,9 @@
  *   - the conversation is canonical (id === agentId === roomId), so the list is
  *     always one item and create is idempotent;
  *   - history maps SharedTurnMessage{role,content} → REST {id,role,text};
- *   - send forwards to the bridge `message.send` and returns its reply text.
+ *   - send forwards to the bridge `message.send` and returns its reply text;
+ *   - the startup shell (status/first-run/views/config/auth-me/character) returns
+ *     the exact shapes the mobile app probes on boot.
  *
  * Self-contained dependency mock: bun's `mock.module` is process-global and
  * leaks across files, so spying on the real `elizaSandboxService` singleton was
@@ -20,14 +22,17 @@ import * as realElizaSandbox from "../eliza-sandbox";
 
 const bridge = mock();
 const getSharedConversationHistory = mock();
+const getSharedRuntimeCharacter = mock();
 
 mock.module("../eliza-sandbox", () => ({
   ...realElizaSandbox,
-  elizaSandboxService: { bridge, getSharedConversationHistory },
+  elizaSandboxService: { bridge, getSharedConversationHistory, getSharedRuntimeCharacter },
 }));
 
 // Imported after the mock so the adapter binds to our stubbed service.
 const {
+  sharedRestAuthMe,
+  sharedRestCharacter,
   sharedRestConfig,
   sharedRestConversationCreate,
   sharedRestConversationsList,
@@ -91,8 +96,8 @@ describe("shared-rest-adapter — startup shell surface", () => {
     expect(sharedRestFirstRun()).toEqual({ complete: true, ok: true });
   });
 
-  test("config is an empty object the client tolerates", () => {
-    expect(sharedRestConfig()).toEqual({});
+  test("config advertises no websocket (shared agents stream via SSE/REST)", () => {
+    expect(sharedRestConfig()).toEqual({ websocket: false });
   });
 
   test("views returns the builtin chat view by default", () => {
@@ -112,6 +117,52 @@ describe("shared-rest-adapter — startup shell surface", () => {
     expect(sharedRestViews("gui").views).toHaveLength(1);
     expect(sharedRestViews("tui").views).toHaveLength(0);
     expect(sharedRestViews("xr").views).toHaveLength(0);
+  });
+
+  test("auth/me reports the authed machine identity (the app's hard gate)", () => {
+    expect(sharedRestAuthMe(AGENT, "Nova")).toEqual({
+      identity: { id: AGENT, displayName: "Nova", kind: "machine" },
+      session: { id: "bearer", kind: "machine", expiresAt: null },
+      access: { mode: "bearer", passwordConfigured: false, ownerConfigured: false },
+    });
+  });
+
+  test("auth/me falls back to a display name when the agent has none", () => {
+    expect(sharedRestAuthMe(AGENT, "").identity.displayName).toBe("Eliza");
+  });
+});
+
+describe("shared-rest-adapter — character", () => {
+  beforeEach(() => {
+    getSharedRuntimeCharacter.mockReset();
+  });
+
+  test("returns the shared runtime character the turn answers as", async () => {
+    getSharedRuntimeCharacter.mockResolvedValue({
+      name: "Nova",
+      system: "You are Nova.",
+      bio: ["curious"],
+      model: "gpt-oss-120b",
+    });
+    const out = await sharedRestCharacter(AGENT, ORG, "Nova");
+    expect(out).toEqual({
+      character: {
+        name: "Nova",
+        system: "You are Nova.",
+        bio: ["curious"],
+        model: "gpt-oss-120b",
+      },
+      agentName: "Nova",
+    });
+    expect(getSharedRuntimeCharacter).toHaveBeenCalledWith(AGENT, ORG);
+  });
+
+  test("falls back to an empty character object when the sandbox can't resolve", async () => {
+    getSharedRuntimeCharacter.mockResolvedValue(null);
+    expect(await sharedRestCharacter(AGENT, ORG, "")).toEqual({
+      character: {},
+      agentName: "Eliza",
+    });
   });
 });
 

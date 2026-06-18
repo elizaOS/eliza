@@ -1618,6 +1618,21 @@ export class ElizaSandboxService {
     return this.loadSharedRuntimeHistory(agentId, channelId);
   }
 
+  /**
+   * Resolve the effective character (name/system/bio/model) for a shared-runtime
+   * agent — the SAME `SharedAgentCharacter` the bridge `message.send` turn uses,
+   * so the REST `GET .../api/character` adapter returns exactly what the agent
+   * answers as. Returns `null` when no running shared sandbox matches the org.
+   */
+  async getSharedRuntimeCharacter(
+    agentId: string,
+    orgId: string,
+  ): Promise<SharedAgentCharacter | null> {
+    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
+    if (!rec || rec.execution_tier !== "shared") return null;
+    return this.buildSharedRuntimeCharacter(rec);
+  }
+
   // Bridge
 
   async bridge(agentId: string, orgId: string, rpc: BridgeRequest): Promise<BridgeResponse> {
