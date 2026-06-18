@@ -20,6 +20,7 @@ import { CalendlyAdapter } from "@elizaos/plugin-calendly";
 import { financesPlugin } from "@elizaos/plugin-finances";
 import { GoogleGmailAdapter } from "@elizaos/plugin-google";
 import { inboxPlugin } from "@elizaos/plugin-inbox";
+import { remoteDesktopPlugin } from "@elizaos/plugin-remote-desktop";
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
 import { blockAction } from "./actions/block.js";
 import { briefAction } from "./actions/brief.js";
@@ -42,7 +43,6 @@ import {
   personalAssistantAction,
 } from "./actions/owner-surfaces.js";
 import { prioritizeAction } from "./actions/prioritize.js";
-import { remoteDesktopAction } from "./actions/remote-desktop.js";
 import { resolveRequestAction } from "./actions/resolve-request.js";
 import { scheduledTaskAction } from "./actions/scheduled-task.js";
 import { voiceCallAction } from "./actions/voice-call.js";
@@ -593,6 +593,25 @@ export async function ensureLifeOpsInboxPluginRegistered(
   await runtime.registerPlugin(inboxPlugin);
 }
 
+/**
+ * Register `@elizaos/plugin-remote-desktop` if it is not already in the
+ * runtime. The remote-desktop domain (the REMOTE_DESKTOP action, the
+ * backend-detection engine, and the in-process RemoteSessionService control
+ * plane) moved out of PA into the remote-desktop plugin, which now registers
+ * the action. PA no longer registers REMOTE_DESKTOP itself, so the
+ * remote-desktop plugin MUST be loaded whenever PA is. No DB, static import.
+ */
+export async function ensureLifeOpsRemoteDesktopPluginRegistered(
+  runtime: IAgentRuntime,
+): Promise<void> {
+  if (
+    runtime.plugins.some((plugin) => plugin.name === remoteDesktopPlugin.name)
+  ) {
+    return;
+  }
+  await runtime.registerPlugin(remoteDesktopPlugin);
+}
+
 // Goals: the goal CRUD back-end (`GoalsService`) moved to
 // `@elizaos/plugin-goals`, but — unlike finances/inbox — the goal TABLES
 // (life_goal_definitions / life_goal_links) deliberately stay registered by PA
@@ -705,7 +724,6 @@ const rawPersonalAssistantPlugin: Plugin = {
     ...promoteSubactionsToActions(conflictDetectAction),
     ...promoteSubactionsToActions(inboxAction),
     ...promoteSubactionsToActions(voiceCallAction),
-    remoteDesktopAction,
     workThreadAction,
     ...promoteSubactionsToActions(scheduledTaskAction),
     ...promoteSubactionsToActions(connectorAction),
@@ -799,6 +817,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     await ensureLifeOpsCalendarPluginRegistered(runtime);
     await ensureLifeOpsFinancesPluginRegistered(runtime);
     await ensureLifeOpsInboxPluginRegistered(runtime);
+    await ensureLifeOpsRemoteDesktopPluginRegistered(runtime);
 
     // Inject the LifeOps-backed calendar gate once the runtime has finished
     // initializing both plugins, so calendar events keep firing reminders and

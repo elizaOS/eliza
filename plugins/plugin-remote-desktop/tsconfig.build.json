@@ -4,6 +4,7 @@
   "include": ["src/**/*"],
   "compilerOptions": {
     "rootDir": "./src",
+    "noEmit": false,
     "types": ["node", "bun-types"]
   }
 }

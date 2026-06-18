@@ -20,46 +20,22 @@ import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
+import type {
+  DataPlaneUnavailableReason,
+  RemoteSession,
+  RemoteSessionStatus,
+  StartSessionParams,
+  StartSessionResult,
+} from "../types.js";
 import { PairingCodeStore } from "./pairing-code.js";
 
-export type RemoteSessionStatus = "pending" | "active" | "denied" | "revoked";
-
-export type DataPlaneUnavailableReason =
-  | "data-plane-not-configured"
-  | "local-mode-no-ingress";
-
-export interface RemoteSession {
-  id: string;
-  requesterIdentity: string;
-  status: RemoteSessionStatus;
-  /**
-   * Ingress URL for the data plane (e.g. `vnc://host.ts.net:5900` or a cloud
-   * tunnel endpoint). Null when no data plane is wired up — see `reason`.
-   */
-  ingressUrl: string | null;
-  /**
-   * Present only when `ingressUrl` is null. Explicit structured absence.
-   */
-  reason: DataPlaneUnavailableReason | null;
-  localMode: boolean;
-  createdAt: string;
-  updatedAt: string;
-  endedAt: string | null;
-}
-
-export interface StartSessionParams {
-  requesterIdentity: string;
-  pairingCode?: string;
-  confirmed: boolean;
-}
-
-export interface StartSessionResult {
-  sessionId: string;
-  status: RemoteSessionStatus;
-  ingressUrl: string | null;
-  reason: DataPlaneUnavailableReason | null;
-  localMode: boolean;
-}
+export type {
+  DataPlaneUnavailableReason,
+  RemoteSession,
+  RemoteSessionStatus,
+  StartSessionParams,
+  StartSessionResult,
+} from "../types.js";
 
 export interface DataPlaneResolution {
   ingressUrl: string | null;

@@ -80,6 +80,7 @@
     "@elizaos/plugin-health": "workspace:*",
     "@elizaos/plugin-inbox": "workspace:*",
     "@elizaos/plugin-phone": "workspace:*",
+    "@elizaos/plugin-remote-desktop": "workspace:*",
     "@elizaos/plugin-x": "workspace:*",
     "@elizaos/plugin-whatsapp": "workspace:*",
     "@elizaos/shared": "workspace:*",

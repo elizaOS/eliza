@@ -11,39 +11,19 @@ import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { randomInt, randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 import { logger } from "@elizaos/core";
+import type {
+  RemoteDesktopBackend,
+  RemoteDesktopConfig,
+  RemoteDesktopSession,
+} from "../types.js";
+
+export type {
+  RemoteDesktopBackend,
+  RemoteDesktopConfig,
+  RemoteDesktopSession,
+} from "../types.js";
 
 const execFileAsync = promisify(execFile);
-
-// ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
-
-export type RemoteDesktopBackend =
-  | "tailscale-vnc"
-  | "tailscale-ssh"
-  | "ngrok-vnc"
-  | "none";
-
-export interface RemoteDesktopSession {
-  id: string;
-  backend: RemoteDesktopBackend;
-  status: "starting" | "active" | "ended" | "failed";
-  accessUrl?: string;
-  accessCode?: string;
-  startedAt: string;
-  endedAt?: string;
-  expiresAt?: string;
-  error?: string;
-  mockMode?: boolean;
-}
-
-export interface RemoteDesktopConfig {
-  preferredBackend?: RemoteDesktopBackend;
-  tailscaleNodeName?: string;
-  ngrokAuthToken?: string;
-  vncPort?: number;
-  sessionDurationMinutes?: number;
-}
 
 export class RemoteDesktopError extends Error {
   readonly backend: RemoteDesktopBackend;
@@ -60,8 +40,8 @@ export class RemoteDesktopError extends Error {
 
 interface SessionRuntimeState {
   session: RemoteDesktopSession;
-  expiryTimer?: NodeJS.Timeout;
-  ngrokProcess?: ChildProcess;
+  expiryTimer?: NodeJS.Timeout | undefined;
+  ngrokProcess?: ChildProcess | undefined;
 }
 
 const sessions = new Map<string, SessionRuntimeState>();
@@ -92,9 +72,9 @@ function resolveConfig(
   config?: RemoteDesktopConfig,
   env: NodeJS.ProcessEnv = process.env,
 ): Required<Pick<RemoteDesktopConfig, "vncPort" | "sessionDurationMinutes">> & {
-  preferredBackend?: RemoteDesktopBackend;
-  tailscaleNodeName?: string;
-  ngrokAuthToken?: string;
+  preferredBackend?: RemoteDesktopBackend | undefined;
+  tailscaleNodeName?: string | undefined;
+  ngrokAuthToken?: string | undefined;
 } {
   return {
     preferredBackend: config?.preferredBackend,
@@ -116,7 +96,7 @@ function resolveConfig(
 
 interface TailscaleState {
   authenticated: boolean;
-  hostname?: string;
+  hostname?: string | undefined;
 }
 
 async function probeTailscale(): Promise<TailscaleState> {
@@ -255,7 +235,7 @@ async function startTailscaleVncSession(args: {
   id: string;
   pairingCode: string;
   vncPort: number;
-  tailscaleNodeOverride?: string;
+  tailscaleNodeOverride?: string | undefined;
 }): Promise<{ accessUrl: string }> {
   const ts = await probeTailscale();
   if (!ts.authenticated) {
@@ -295,7 +275,7 @@ async function startTailscaleVncSession(args: {
 }
 
 async function startTailscaleSshSession(args: {
-  tailscaleNodeOverride?: string;
+  tailscaleNodeOverride?: string | undefined;
 }): Promise<{ accessUrl: string }> {
   const ts = await probeTailscale();
   if (!ts.authenticated) {
