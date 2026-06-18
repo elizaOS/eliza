@@ -63,6 +63,9 @@ import {
   type CreateTaskInput,
   type OrchestratorAccountAssignment,
   type OrchestratorAccountOverview,
+  type OrchestratorRoomParticipant,
+  type OrchestratorRoomRoster,
+  type OrchestratorRoomRosterOverview,
   type OrchestratorTaskDocument,
   type OrchestratorTaskRecord,
   type OrchestratorTaskSession,
@@ -1837,6 +1840,75 @@ export class OrchestratorTaskService extends Service {
     const availability = getCodingAccountBridge()?.describe() ?? {};
 
     return { strategy, availability, assignments };
+  }
+
+  /**
+   * Per-room participant roster: groups live sessions by their task room and
+   * lists the orchestrator + owning user + each sub-agent (with its pooled
+   * account). The accounts overview is a flat global map; this is the
+   * room-scoped view the task-room sidebar renders. Only rooms with at least
+   * one sub-agent session are included (an empty room has no roster to show).
+   */
+  async getRoomRoster(): Promise<OrchestratorRoomRosterOverview> {
+    const records = await this.store.listTasks({ includeArchived: false });
+    const docs = (
+      await Promise.all(records.map((record) => this.store.getTask(record.id)))
+    ).filter((doc): doc is OrchestratorTaskDocument => doc !== null);
+
+    const orchestratorLabel = this.runtime.character?.name ?? "Orchestrator";
+    const rooms: OrchestratorRoomRoster[] = [];
+
+    for (const doc of docs) {
+      if (doc.sessions.length === 0) continue;
+
+      const subAgents: OrchestratorRoomParticipant[] = doc.sessions.map(
+        (session) => ({
+          kind: "sub_agent" as const,
+          id: session.sessionId,
+          label: session.label,
+          framework: session.framework,
+          status: session.status,
+          active: !TERMINAL_TASK_SESSION_STATUSES.has(session.status),
+          activeTool: session.activeTool,
+          accountProviderId: session.accountProviderId,
+          accountId: session.accountId,
+          accountLabel: session.accountLabel ?? session.accountId,
+          totalTokens:
+            session.inputTokens +
+            session.outputTokens +
+            session.reasoningTokens +
+            session.cacheTokens,
+          usageState: session.usageState,
+        }),
+      );
+      const activeAgentCount = subAgents.filter((p) => p.active).length;
+
+      const participants: OrchestratorRoomParticipant[] = [
+        { kind: "orchestrator", id: "orchestrator", label: orchestratorLabel },
+      ];
+      if (doc.task.ownerUserId) {
+        participants.push({
+          kind: "user",
+          id: doc.task.ownerUserId,
+          label: doc.task.ownerUserId,
+        });
+      }
+      participants.push(...subAgents);
+
+      rooms.push({
+        taskId: doc.task.id,
+        taskTitle: doc.task.title,
+        status: doc.task.status,
+        roomId: doc.task.roomId,
+        taskRoomId: doc.task.taskRoomId,
+        activeAgentCount,
+        multiParty: activeAgentCount > 1,
+        participants,
+      });
+    }
+
+    rooms.sort((a, b) => b.activeAgentCount - a.activeAgentCount);
+    return { rooms };
   }
 
   async pauseAll(): Promise<number> {

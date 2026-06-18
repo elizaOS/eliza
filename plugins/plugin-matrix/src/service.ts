@@ -4,10 +4,20 @@
  * This service provides Matrix messaging capabilities using matrix-js-sdk.
  */
 
+import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
+import { existsSync } from "node:fs";
+import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { deserialize as v8Deserialize, serialize as v8Serialize } from "node:v8";
 import {
+  ChannelType,
   type Content,
+  createUniqueUuid,
   type EventPayload,
+  type HandlerCallback,
   type IAgentRuntime,
+  lifeOpsPassiveConnectorsEnabled,
   logger,
   type Memory,
   type MessageConnectorChatContext,
@@ -18,6 +28,16 @@ import {
 } from "@elizaos/core";
 import * as sdk from "matrix-js-sdk";
 import type { RoomMessageEventContent } from "matrix-js-sdk/lib/@types/events";
+import {
+  CryptoEvent,
+  canAcceptVerificationRequest,
+  type ShowSasCallbacks,
+  VerificationPhase,
+  type VerificationRequest,
+  VerificationRequestEvent,
+  type Verifier,
+  VerifierEvent,
+} from "matrix-js-sdk/lib/crypto-api";
 import {
   DEFAULT_MATRIX_ACCOUNT_ID,
   listMatrixAccountIds,
@@ -158,13 +178,310 @@ type MatrixAccountState = {
   client: sdk.MatrixClient;
   connected: boolean;
   syncing: boolean;
+  cryptoSnapshotTimer?: ReturnType<typeof setInterval>;
 };
+
+/**
+ * Serialized form of an IndexedDB database: object-store schemas plus their
+ * records. v8.serialize handles the structured-clone values (typed arrays,
+ * Maps, etc.) the rust-crypto store writes, so this shape round-trips losslessly.
+ */
+export type CryptoStoreSnapshot = {
+  version: number;
+  stores: Record<
+    string,
+    {
+      schema: {
+        keyPath: IDBObjectStore["keyPath"];
+        autoIncrement: boolean;
+        indexes: {
+          name: string;
+          keyPath: IDBIndex["keyPath"];
+          unique: boolean;
+          multiEntry: boolean;
+        }[];
+      };
+      records: { key: IDBValidKey; value: unknown }[];
+    }
+  >;
+};
+
+// The matrix-js-sdk rust-crypto backend persists its entire state — device
+// identity, cross-signing, and inbound megolm sessions — in an IndexedDB
+// database named `${prefix}::matrix-sdk-crypto` when initRustCrypto({
+// useIndexedDB: true }) is used. With multiple encrypted accounts in one
+// process the prefix MUST differ per account or they collide on one store; the
+// default account keeps the SDK's default prefix so its existing persisted
+// device is unaffected.
+const DEFAULT_CRYPTO_DB_PREFIX = "matrix-js-sdk";
+
+function cryptoDbPrefix(accountId: string): string {
+  if (!accountId || accountId === DEFAULT_MATRIX_ACCOUNT_ID) {
+    return DEFAULT_CRYPTO_DB_PREFIX;
+  }
+  const safeId = accountId.replace(/[^a-zA-Z0-9._-]/g, "_") || "account";
+  return `${DEFAULT_CRYPTO_DB_PREFIX}-${safeId}`;
+}
+
+function cryptoDbName(accountId: string): string {
+  return `${cryptoDbPrefix(accountId)}::matrix-sdk-crypto`;
+}
+
+const CRYPTO_SNAPSHOT_INTERVAL_MS = 60 * 1000;
+// Grace period before the bot starts SAS itself, letting the initiator's start
+// win the race so the two sides don't compute the SAS over different events.
+const VERIFICATION_START_FALLBACK_MS = 4000;
+const ROOM_KEY_SCRYPT_SALT = "matrix.roomKeys.v1";
+const ROOM_KEY_BYTES = 32;
+const ROOM_KEY_NONCE_BYTES = 12;
+
+/**
+ * Resolve the per-user state root the runtime already uses for on-disk state.
+ * Matches the MILADY_STATE_DIR / ELIZA_STATE_DIR convention so the encrypted
+ * room-key files land next to the rest of the agent's persistent state.
+ */
+function resolveStateDir(): string {
+  return (
+    process.env.MILADY_STATE_DIR ||
+    process.env.ELIZA_STATE_DIR ||
+    join(homedir(), ".local/state/milady")
+  );
+}
+
+/**
+ * Derive the encrypted crypto-store file path for an account. The account id is
+ * sanitized so an arbitrary configured id can never escape the keys directory.
+ * The file holds the full serialized rust-crypto IndexedDB snapshot (device
+ * identity, cross-signing, and inbound megolm sessions), not just room keys.
+ */
+function cryptoStoreFilePath(accountId: string): string {
+  const safeId = accountId.replace(/[^a-zA-Z0-9._-]/g, "_") || "default";
+  return join(resolveStateDir(), "matrix-keys", `${safeId}.enc`);
+}
+
+/**
+ * AES-256-GCM envelope matching the vault wire format
+ * (`v1:<nonce_b64>:<tag_b64>:<ct_b64>`). The key is derived per-account from the
+ * access token via scrypt, so the at-rest file never contains usable crypto
+ * state without the live token. Operates on Buffers: the crypto-store snapshot
+ * is a v8-serialized binary blob, so there is no intermediate string form.
+ */
+function encryptCryptoStore(accessToken: string, plaintext: Buffer): string {
+  const key = scryptSync(accessToken, ROOM_KEY_SCRYPT_SALT, ROOM_KEY_BYTES);
+  const nonce = randomBytes(ROOM_KEY_NONCE_BYTES);
+  const cipher = createCipheriv("aes-256-gcm", key, nonce);
+  const ct = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `v1:${nonce.toString("base64")}:${tag.toString("base64")}:${ct.toString("base64")}`;
+}
+
+function decryptCryptoStore(accessToken: string, ciphertext: string): Buffer {
+  const parts = ciphertext.split(":");
+  if (parts.length !== 4 || parts[0] !== "v1") {
+    throw new Error("malformed crypto-store ciphertext");
+  }
+  const key = scryptSync(accessToken, ROOM_KEY_SCRYPT_SALT, ROOM_KEY_BYTES);
+  const nonce = Buffer.from(parts[1], "base64");
+  const tag = Buffer.from(parts[2], "base64");
+  const ct = Buffer.from(parts[3], "base64");
+  const decipher = createDecipheriv("aes-256-gcm", key, nonce);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ct), decipher.final()]);
+}
+
+/**
+ * Open an IndexedDB database. With a version + upgrade callback this triggers a
+ * schema upgrade; without, it opens at the current version. Resolves the
+ * IDBDatabase or rejects with the request error.
+ */
+function openIndexedDb(
+  name: string,
+  version?: number,
+  upgrade?: (db: IDBDatabase) => void
+): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = version ? indexedDB.open(name, version) : indexedDB.open(name);
+    if (upgrade) {
+      request.onupgradeneeded = (event) => upgrade((event.target as IDBOpenDBRequest).result);
+    }
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function transactionDone(tx: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+/**
+ * Read every object store of an IndexedDB database into a serializable snapshot:
+ * each store's schema (keyPath, autoIncrement, indexes) plus all of its records.
+ * Pure over the global `indexedDB`, so it is unit-testable with fake-indexeddb.
+ */
+export async function snapshotDb(name: string): Promise<CryptoStoreSnapshot> {
+  const db = await openIndexedDb(name);
+  const snapshot: CryptoStoreSnapshot = { version: db.version, stores: {} };
+  for (const storeName of [...db.objectStoreNames]) {
+    const store = db.transaction(storeName, "readonly").objectStore(storeName);
+    const records: { key: IDBValidKey; value: unknown }[] = [];
+    await new Promise<void>((resolve, reject) => {
+      const cursorRequest = store.openCursor();
+      cursorRequest.onsuccess = () => {
+        const cursor = cursorRequest.result;
+        if (cursor) {
+          records.push({ key: cursor.primaryKey, value: cursor.value });
+          cursor.continue();
+        } else {
+          resolve();
+        }
+      };
+      cursorRequest.onerror = () => reject(cursorRequest.error);
+    });
+    snapshot.stores[storeName] = {
+      schema: {
+        keyPath: store.keyPath,
+        autoIncrement: store.autoIncrement,
+        indexes: [...store.indexNames].map((indexName) => {
+          const index = store.index(indexName);
+          return {
+            name: indexName,
+            keyPath: index.keyPath,
+            unique: index.unique,
+            multiEntry: index.multiEntry,
+          };
+        }),
+      },
+      records,
+    };
+  }
+  db.close();
+  return snapshot;
+}
+
+/**
+ * Recreate an IndexedDB database from a snapshot: delete any existing db, build
+ * the stores + indexes in an upgrade transaction, then replay the records.
+ * Keyless stores re-supply the out-of-line key; keyPath stores derive it.
+ * Pure over the global `indexedDB`, so it is unit-testable with fake-indexeddb.
+ */
+export async function restoreDb(name: string, snapshot: CryptoStoreSnapshot): Promise<void> {
+  await new Promise<void>((resolve) => {
+    const request = indexedDB.deleteDatabase(name);
+    request.onsuccess = () => resolve();
+    request.onerror = () => resolve();
+    request.onblocked = () => resolve();
+  });
+  const db = await openIndexedDb(name, snapshot.version, (upgradeDb) => {
+    for (const [storeName, { schema }] of Object.entries(snapshot.stores)) {
+      const store = upgradeDb.createObjectStore(storeName, {
+        keyPath: schema.keyPath ?? undefined,
+        autoIncrement: schema.autoIncrement,
+      });
+      for (const index of schema.indexes) {
+        store.createIndex(index.name, index.keyPath, {
+          unique: index.unique,
+          multiEntry: index.multiEntry,
+        });
+      }
+    }
+  });
+  for (const [storeName, { schema, records }] of Object.entries(snapshot.stores)) {
+    const tx = db.transaction(storeName, "readwrite");
+    const store = tx.objectStore(storeName);
+    for (const { key, value } of records) {
+      if (schema.keyPath) {
+        store.put(value);
+      } else {
+        store.put(value, key);
+      }
+    }
+    await transactionDone(tx);
+  }
+  db.close();
+}
 
 function normalizeConnectorLimit(limit: number | undefined, fallback = 50): number {
   if (!Number.isFinite(limit) || !limit || limit <= 0) {
     return fallback;
   }
   return Math.min(Math.floor(limit), 200);
+}
+
+/**
+ * Map a raw Matrix timeline event to a MatrixMessage. Returns null for events
+ * we don't surface as chat: non-text msgtypes, non-string bodies, and events
+ * without a room id (this also naturally skips state events and still-encrypted
+ * events whose type stays "m.room.encrypted").
+ */
+function buildMatrixMessage(event: sdk.MatrixEvent, room: sdk.Room): MatrixMessage | null {
+  const content = event.getContent();
+  const msgType = content.msgtype;
+  if (msgType !== "m.text") return null;
+  if (typeof content.body !== "string") return null;
+
+  const roomId = event.getRoomId();
+  if (!roomId) return null;
+
+  const sender = event.getSender();
+  const senderMember = room.getMember(sender || "");
+
+  const senderInfo: MatrixUserInfo = {
+    userId: sender || "",
+    displayName: senderMember?.name,
+    avatarUrl: senderMember?.getMxcAvatarUrl() || undefined,
+  };
+
+  const relatesTo = content["m.relates_to"];
+  const isEdit = relatesTo?.rel_type === "m.replace";
+  const threadId = relatesTo?.rel_type === "m.thread" ? relatesTo.event_id : undefined;
+  const replyTo = relatesTo?.["m.in_reply_to"]?.event_id;
+
+  return {
+    eventId: event.getId() || "",
+    roomId,
+    sender: sender || "",
+    senderInfo,
+    content: content.body,
+    msgType,
+    formattedBody: typeof content.formatted_body === "string" ? content.formatted_body : undefined,
+    timestamp: event.getTs(),
+    threadId,
+    replyTo,
+    isEdit,
+    replacesEventId: isEdit ? relatesTo?.event_id : undefined,
+  };
+}
+
+/**
+ * Build a core Memory from a MatrixMessage, deriving deterministic ids the same
+ * way the inbound dispatch path does so reads and the live message loop agree.
+ */
+function matrixMessageToMemory(
+  runtime: IAgentRuntime,
+  message: Pick<
+    MatrixMessage,
+    "roomId" | "eventId" | "timestamp" | "sender" | "content" | "replyTo"
+  >,
+  channelType: ChannelType
+): Memory {
+  const roomId = message.roomId;
+  return {
+    id: createUniqueUuid(runtime, message.eventId || `${roomId}:${message.timestamp}`),
+    entityId: createUniqueUuid(runtime, message.sender || roomId),
+    agentId: runtime.agentId,
+    roomId: createUniqueUuid(runtime, message.roomId),
+    content: {
+      text: message.content,
+      source: MATRIX_SERVICE_NAME,
+      channelType,
+      ...(message.replyTo ? { inReplyTo: createUniqueUuid(runtime, message.replyTo) } : {}),
+    },
+    createdAt: message.timestamp,
+  };
 }
 
 async function readStoredMessageMemories(
@@ -181,21 +498,65 @@ async function readStoredMessageMemories(
   });
 }
 
-async function readStoredMessagesForTargets(
+/**
+ * Resolve the raw Matrix room id (e.g. "!abc:server") for a connector target.
+ * The canonical `read_channel "<room>"` path sets the room only in
+ * `target.channelId`; older resolved targets may instead carry the core room
+ * UUID in `target.roomId`, from which the raw id is recoverable via getRoom().
+ */
+async function resolveMatrixRoomId(
   runtime: IAgentRuntime,
-  targets: MessageConnectorTarget[],
+  target: TargetInfo | undefined
+): Promise<string> {
+  return String(
+    target?.channelId ??
+      (target?.roomId ? (await runtime.getRoom(target.roomId))?.channelId : "") ??
+      ""
+  ).trim();
+}
+
+/**
+ * Read recent messages across the account's joined rooms, newest-first. Uses
+ * the live SDK timeline (and encrypted placeholders) per room — the same source
+ * as the single-room branch — so the multi-room/recent case stays consistent.
+ */
+async function readJoinedRoomMessages(
+  service: MatrixService,
+  accountId: string,
   limit: number
 ): Promise<Memory[]> {
-  const roomIds = Array.from(
-    new Set(targets.map((target) => target.target.roomId).filter((id): id is UUID => Boolean(id)))
-  );
+  const rooms = (await service.getJoinedRooms(accountId)).slice(0, 10);
   const chunks = await Promise.all(
-    roomIds.map((roomId) => readStoredMessageMemories(runtime, roomId, limit))
+    rooms.map((room) => service.getRoomMessages(room.roomId, limit, accountId))
   );
   return chunks
     .flat()
     .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
     .slice(0, limit);
+}
+
+/**
+ * Read up to `limit` messages for a connector target: resolve the target to a
+ * Matrix room and read its live timeline (falling back to stored memories when
+ * the live read is empty), or read across all joined rooms when the target names
+ * no specific room. Shared by the fetchMessages and searchMessages hooks.
+ */
+async function readMessagesForTarget(
+  service: MatrixService,
+  runtime: IAgentRuntime,
+  accountId: string,
+  target: TargetInfo | undefined,
+  limit: number
+): Promise<Memory[]> {
+  const matrixRoomId = await resolveMatrixRoomId(runtime, target);
+  if (!matrixRoomId) {
+    return readJoinedRoomMessages(service, accountId, limit);
+  }
+  const live = await service.getRoomMessages(matrixRoomId, limit, accountId);
+  if (live.length > 0) {
+    return live;
+  }
+  return readStoredMessageMemories(runtime, createUniqueUuid(runtime, matrixRoomId), limit);
 }
 
 function filterMemoriesByQuery(memories: Memory[], query: string, limit: number): Memory[] {
@@ -314,26 +675,19 @@ export class MatrixService extends Service implements IMatrixService {
         fetchMessages: async (context, params) => {
           const limit = normalizeConnectorLimit(params?.limit);
           const target = params?.target ?? context.target;
-          if (target?.roomId) {
-            return readStoredMessageMemories(context.runtime, target.roomId, limit);
-          }
-          const targets = (await service.getJoinedRooms(accountId))
-            .slice(0, 10)
-            .map((room) => matrixRoomToConnectorTarget(room, 0.5, accountId));
-          return readStoredMessagesForTargets(context.runtime, targets, limit);
+          return readMessagesForTarget(service, context.runtime, accountId, target, limit);
         },
         searchMessages: async (context, params) => {
           const limit = normalizeConnectorLimit(params?.limit);
           const target = params?.target ?? context.target;
-          const messages = target?.roomId
-            ? await readStoredMessageMemories(context.runtime, target.roomId, Math.max(limit, 100))
-            : await readStoredMessagesForTargets(
-                context.runtime,
-                (await service.getJoinedRooms(accountId))
-                  .slice(0, 10)
-                  .map((room) => matrixRoomToConnectorTarget(room, 0.5, accountId)),
-                Math.max(limit, 100)
-              );
+          // Scan wider than the requested limit so the query filter has candidates.
+          const messages = await readMessagesForTarget(
+            service,
+            context.runtime,
+            accountId,
+            target,
+            Math.max(limit, 100)
+          );
           return filterMemoriesByQuery(messages, params.query, limit);
         },
         reactHandler: async (handlerRuntime, params) => {
@@ -454,12 +808,15 @@ export class MatrixService extends Service implements IMatrixService {
           userId: settings.userId,
           accessToken: settings.accessToken,
           deviceId: settings.deviceId,
+          verificationMethods: ["m.sas.v1"],
         }),
         connected: false,
         syncing: false,
       };
 
       this.states.set(state.accountId, state);
+      await this.initCrypto(state);
+      this.startCryptoSnapshot(state);
       this.setupEventHandlers(state);
       await this.connect(state);
       MatrixService.registerSendHandlers(runtime, this, state.accountId);
@@ -498,6 +855,223 @@ export class MatrixService extends Service implements IMatrixService {
   }
 
   /**
+   * Initialize end-to-end encryption for an account when MATRIX_ENCRYPTION is
+   * enabled. Most homeservers (including Continuwuity) encrypt rooms by
+   * default, so without crypto the client can neither decrypt inbound nor
+   * encrypt outbound messages — it would silently drop everything.
+   *
+   * The rust-crypto store persists in IndexedDB. This runtime (Bun/Node) has no
+   * native IndexedDB, so `fake-indexeddb/auto` installs a global one and the
+   * whole crypto state — device identity, cross-signing, and inbound megolm
+   * sessions — is snapshotted to an encrypted file via saveCryptoStore and
+   * restored before init via restoreCryptoStore. A stable device keeps the
+   * curve25519/ed25519 identity across restarts, so senders treat it as the
+   * same trusted device and keep sharing room keys (including forwarded history
+   * keys at join), which is what makes history decryptable.
+   *
+   * Non-fatal by construction: if anything in the persistence path fails we fall
+   * back to an in-memory store so the Matrix connection still comes up. Never
+   * throws.
+   */
+  private async initCrypto(state: MatrixAccountState): Promise<void> {
+    if (!state.settings.encryption) {
+      return;
+    }
+    if (typeof state.client.initRustCrypto !== "function") {
+      logger.warn(
+        "Matrix encryption requested but initRustCrypto is unavailable in this matrix-js-sdk build; messages in encrypted rooms will be unreadable."
+      );
+      return;
+    }
+    let cryptoUp = false;
+    try {
+      await import("fake-indexeddb/auto");
+      await this.restoreCryptoStore(state);
+      await state.client.initRustCrypto({
+        useIndexedDB: true,
+        cryptoDatabasePrefix: cryptoDbPrefix(state.accountId),
+      });
+      logger.info(
+        `Matrix E2EE initialized (persistent rust-crypto via IndexedDB) for ${state.settings.userId}`
+      );
+      cryptoUp = true;
+    } catch (err) {
+      logger.warn(
+        `Matrix persistent crypto init failed (${err instanceof Error ? err.message : String(err)}); falling back to in-memory crypto (device will re-key on restart).`
+      );
+    }
+    if (!cryptoUp) {
+      try {
+        await state.client.initRustCrypto({ useIndexedDB: false });
+        logger.info(`Matrix E2EE initialized (in-memory rust-crypto) for ${state.settings.userId}`);
+        cryptoUp = true;
+      } catch (err) {
+        logger.warn(
+          `Matrix encryption failed to initialize (${err instanceof Error ? err.message : String(err)}); encrypted rooms will be unreadable, but the Matrix connection will continue.`
+        );
+      }
+    }
+    // Cross-signing makes strict senders share keys; it must run regardless of
+    // which crypto backend came up, so do it once here after either path.
+    if (cryptoUp) {
+      await this.ensureCrossSigning(state);
+    }
+  }
+
+  /**
+   * Self-cross-sign this device so cohort senders running "exclude insecure
+   * devices" (MSC4153) share megolm room keys to it — the thing that makes
+   * encrypted cohort messages decryptable. The device otherwise carries an empty
+   * cross-signing identity and is structurally skipped by those senders.
+   *
+   * Works with only an access token: MSC3967 (implemented by the homeserver) lets
+   * the FIRST device-signing-key upload through with no UIA, so we send auth=null
+   * and soft-fail (log, never throw) if the server still demands a password we
+   * don't have. Idempotent + non-fatal: the signing keys persist in the
+   * snapshotted rust store, so isCrossSigningReady() short-circuits this on every
+   * later boot, and any failure leaves the Matrix connection untouched.
+   */
+  private async ensureCrossSigning(state: MatrixAccountState): Promise<void> {
+    const crypto =
+      typeof state.client.getCrypto === "function" ? state.client.getCrypto() : undefined;
+    if (!crypto) {
+      return;
+    }
+    try {
+      // Never be the side that withholds: encrypt to unverified cohort devices
+      // and trust owner-cross-signed devices (both SDK defaults, set explicitly
+      // so a future default change can't silently gate us).
+      crypto.globalBlacklistUnverifiedDevices = false;
+      crypto.setTrustCrossSignedDevices(true);
+
+      if (await crypto.isCrossSigningReady()) {
+        return;
+      }
+
+      await crypto.bootstrapCrossSigning({
+        authUploadDeviceSigningKeys: async (makeRequest) => {
+          // First try the no-auth upload (MSC3967). Homeservers that don't
+          // implement it answer 401 with a UIA challenge; satisfy m.login.password
+          // with the challenge session when MATRIX_PASSWORD is configured,
+          // otherwise soft-fail so the connection is unaffected.
+          try {
+            return await makeRequest(null);
+          } catch (err) {
+            const data = (err as { data?: { session?: string; flows?: unknown } })?.data;
+            if (!data?.flows) {
+              throw err;
+            }
+            if (!state.settings.password || !data.session) {
+              logger.warn(
+                `Matrix cross-signing upload for ${state.settings.userId} needs password UIA but ${state.settings.password ? "the server returned no challenge session" : "no MATRIX_PASSWORD is set"}; device ${state.settings.deviceId ?? "?"} stays uncross-signed, so exclude-insecure-devices senders will withhold keys.`
+              );
+              throw err;
+            }
+            return await makeRequest({
+              type: "m.login.password",
+              identifier: { type: "m.id.user", user: state.settings.userId },
+              password: state.settings.password,
+              session: data.session,
+            });
+          }
+        },
+      });
+      logger.info(
+        `Matrix cross-signing bootstrapped for ${state.settings.userId}; senders should now share megolm keys to this device.`
+      );
+      await crypto.checkKeyBackupAndEnable().catch(() => {});
+    } catch (err) {
+      logger.warn(
+        `Matrix cross-signing bootstrap skipped (${err instanceof Error ? err.message : String(err)}); cohort senders in exclude-insecure-devices mode may withhold keys until this device is verified once from an operator's Matrix client.`
+      );
+    }
+  }
+
+  /**
+   * Restore the persisted rust-crypto IndexedDB store from the encrypted at-rest
+   * file into the live (fake-indexeddb) global, replacing whatever is there.
+   * Must run BEFORE initRustCrypto so the store is populated when the crypto
+   * stack opens it.
+   *
+   * Strictly additive and non-fatal: any failure (missing file, corrupt data,
+   * token rotation making decrypt impossible) only warns and returns, leaving an
+   * empty store so the device starts fresh.
+   */
+  private async restoreCryptoStore(state: MatrixAccountState): Promise<void> {
+    try {
+      const filePath = cryptoStoreFilePath(state.accountId);
+      if (!existsSync(filePath)) {
+        return;
+      }
+      const ciphertext = await readFile(filePath, "utf8");
+      let snapshot: CryptoStoreSnapshot;
+      try {
+        snapshot = v8Deserialize(decryptCryptoStore(state.settings.accessToken, ciphertext));
+      } catch {
+        // Corrupt file or rotated token — start fresh rather than blocking init.
+        logger.warn(
+          `Matrix crypto-store restore skipped for ${state.accountId}: stored state could not be decrypted (token may have rotated).`
+        );
+        return;
+      }
+      await restoreDb(cryptoDbName(state.accountId), snapshot);
+      logger.info(`Matrix restored persisted crypto store for ${state.accountId}`);
+    } catch (err) {
+      logger.warn(
+        `Matrix crypto-store restore failed for ${state.accountId}: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
+  /**
+   * Snapshot the live rust-crypto IndexedDB store and persist it, encrypted at
+   * rest, so the device identity and room keys survive a process restart. The
+   * snapshot contains PRIVATE device keys, so it is written 0600 and encrypted
+   * under a token-derived key. Atomic (tmp + rename) so a crash mid-write can
+   * never truncate the live file. Strictly additive and non-fatal: failures only
+   * warn and never affect the Matrix connection.
+   */
+  private async saveCryptoStore(state: MatrixAccountState): Promise<void> {
+    // No global IndexedDB means initCrypto fell back to the in-memory store
+    // (nothing to snapshot). Skip silently rather than warn every tick.
+    if (typeof indexedDB === "undefined") {
+      return;
+    }
+    try {
+      const snapshot = await snapshotDb(cryptoDbName(state.accountId));
+      const ciphertext = encryptCryptoStore(state.settings.accessToken, v8Serialize(snapshot));
+      const filePath = cryptoStoreFilePath(state.accountId);
+      const tmpPath = `${filePath}.${randomBytes(6).toString("hex")}.tmp`;
+      await mkdir(join(resolveStateDir(), "matrix-keys"), { recursive: true, mode: 0o700 });
+      await writeFile(tmpPath, ciphertext, { mode: 0o600 });
+      // mode on writeFile only applies on create; chmod enforces 0o600 even when
+      // an existing temp name somehow had looser permissions.
+      await chmod(tmpPath, 0o600);
+      await rename(tmpPath, filePath);
+    } catch (err) {
+      logger.warn(
+        `Matrix crypto-store save failed for ${state.accountId}: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
+  /**
+   * Start the periodic crypto-store snapshot for an account. The interval is
+   * unref'd so it never keeps the process alive on its own, and its handle is
+   * stored on the account state so stop() can clear it.
+   */
+  private startCryptoSnapshot(state: MatrixAccountState): void {
+    if (!state.settings.encryption) {
+      return;
+    }
+    const timer = setInterval(() => {
+      void this.saveCryptoStore(state);
+    }, CRYPTO_SNAPSHOT_INTERVAL_MS);
+    timer.unref?.();
+    state.cryptoSnapshotTimer = timer;
+  }
+
+  /**
    * Set up event handlers for the Matrix client.
    */
   private setupEventHandlers(state: MatrixAccountState): void {
@@ -516,9 +1090,25 @@ export class MatrixService extends Service implements IMatrixService {
     // Room timeline events (messages)
     state.client.on(sdk.RoomEvent.Timeline, (event, room, toStartOfTimeline) => {
       if (toStartOfTimeline) return;
-      if (event.getType() !== "m.room.message") return;
       if (event.getSender() === state.settings.userId) return;
 
+      // In E2EE rooms the event surfaces as m.room.encrypted until the crypto
+      // stack decrypts it. If decryption is still pending, wait for the
+      // Decrypted event before dispatching; otherwise dispatch immediately.
+      if (event.isEncrypted() && event.getType() === "m.room.encrypted") {
+        event.once(sdk.MatrixEventEvent.Decrypted, () => {
+          if (event.getType() === "m.room.message") {
+            this.handleRoomMessage(state, event, room);
+          } else if (event.isDecryptionFailure()) {
+            logger.warn(
+              `Matrix could not decrypt event ${event.getId()} in ${event.getRoomId()} — the sender has not shared the megolm key with this device yet.`
+            );
+          }
+        });
+        return;
+      }
+
+      if (event.getType() !== "m.room.message") return;
       this.handleRoomMessage(state, event, room);
     });
 
@@ -536,6 +1126,102 @@ export class MatrixService extends Service implements IMatrixService {
         }
       }
     });
+
+    this.setupVerificationAutoAccept(state);
+  }
+
+  /**
+   * Let allow-listed users verify this device via SAS (emoji) verification from
+   * their own Matrix client. On homeservers where the bot can't self-cross-sign
+   * (no MSC3967 + no password), this is how senders come to trust the device and
+   * start sharing megolm keys to it — and the verifying user's client also
+   * gossips the room keys it already holds, backfilling history.
+   *
+   * Fail-closed: with no MATRIX_VERIFY_ALLOWLIST nothing is accepted, so this is
+   * inert unless explicitly configured. The verified trust persists in the
+   * snapshotted crypto store, so it is a one-time action per user.
+   */
+  private setupVerificationAutoAccept(state: MatrixAccountState): void {
+    const crypto = state.client.getCrypto();
+    if (!crypto || state.settings.verifyAllowlist.length === 0) {
+      return;
+    }
+    state.client.on(CryptoEvent.VerificationRequestReceived, (request) => {
+      void this.handleVerificationRequest(state, request);
+    });
+  }
+
+  private async handleVerificationRequest(
+    state: MatrixAccountState,
+    request: VerificationRequest
+  ): Promise<void> {
+    const other = request.otherUserId;
+    if (!state.settings.verifyAllowlist.includes(other)) {
+      logger.warn(`Matrix rejecting verification request from non-allowlisted ${other}`);
+      await request.cancel().catch(() => {});
+      return;
+    }
+    logger.info(`Matrix auto-accepting SAS verification from ${other}`);
+    try {
+      if (canAcceptVerificationRequest(request)) {
+        await request.accept();
+      }
+      const verifier = request.verifier ?? (await this.awaitVerifier(request));
+      if (!verifier) {
+        await request.cancel().catch(() => {});
+        return;
+      }
+      verifier.on(VerifierEvent.ShowSas, (callbacks: ShowSasCallbacks) => {
+        logger.info(`Matrix auto-confirming SAS with ${other}`);
+        void callbacks.confirm().catch(() => {});
+      });
+      await verifier.verify();
+      logger.info(
+        `Matrix device verification with ${other} complete; megolm keys should now flow.`
+      );
+    } catch (err) {
+      logger.warn(
+        `Matrix verification with ${other} failed or was cancelled (${err instanceof Error ? err.message : String(err)}).`
+      );
+    }
+  }
+
+  /**
+   * Wait for the verifier to materialize. The bot is a pure responder: the
+   * initiator (e.g. Element) sends the m.key.verification.start, which creates
+   * the verifier on our side. We only start SAS ourselves as a fallback, after a
+   * short grace period, for the rare initiator that waits for the responder to
+   * start — starting eagerly would race the initiator's start ("glare") and the
+   * two sides would compute the SAS over different start events, failing the
+   * match. Resolves undefined if the request is cancelled or completes first.
+   */
+  private awaitVerifier(request: VerificationRequest): Promise<Verifier | undefined> {
+    return new Promise((resolve) => {
+      let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
+      const settle = (value: Verifier | undefined) => {
+        if (fallbackTimer) clearTimeout(fallbackTimer);
+        request.off(VerificationRequestEvent.Change, onChange);
+        resolve(value);
+      };
+      const onChange = () => {
+        if (request.verifier) {
+          settle(request.verifier);
+        } else if (
+          request.phase === VerificationPhase.Cancelled ||
+          request.phase === VerificationPhase.Done
+        ) {
+          settle(undefined);
+        } else if (request.phase === VerificationPhase.Ready && !fallbackTimer) {
+          fallbackTimer = setTimeout(() => {
+            if (!request.verifier) {
+              request.startVerification("m.sas.v1").then(settle, () => settle(undefined));
+            }
+          }, VERIFICATION_START_FALLBACK_MS);
+        }
+      };
+      request.on(VerificationRequestEvent.Change, onChange);
+      onChange();
+    });
   }
 
   /**
@@ -546,55 +1232,24 @@ export class MatrixService extends Service implements IMatrixService {
     event: sdk.MatrixEvent,
     room: sdk.Room | undefined
   ): void {
-    const content = event.getContent();
-    const msgType = content.msgtype;
+    if (!room) return;
 
-    // Only handle text messages for now
-    if (msgType !== "m.text") return;
-    if (typeof content.body !== "string") return;
+    const message = buildMatrixMessage(event, room);
+    if (!message) return;
 
-    const roomId = event.getRoomId();
-    if (!roomId || !room) return;
+    const roomId = message.roomId;
 
-    // Check mention requirement
-    if (state.settings.requireMention) {
+    // Check mention requirement. Skipped in 1:1 DMs: a direct message is
+    // inherently addressed to the bot, so requiring an @mention there would
+    // make it ignore the user. Group rooms still honor the gate.
+    const isDirectRoom = room.getJoinedMemberCount() <= 2;
+    if (state.settings.requireMention && !isDirectRoom) {
       const localpart = getMatrixLocalpart(state.settings.userId);
       const mentionPattern = new RegExp(`@?${escapeRegExp(localpart)}`, "i");
-      if (!mentionPattern.test(content.body)) {
+      if (!mentionPattern.test(message.content)) {
         return;
       }
     }
-
-    const sender = event.getSender();
-    const senderMember = room.getMember(sender || "");
-
-    const senderInfo: MatrixUserInfo = {
-      userId: sender || "",
-      displayName: senderMember?.name,
-      avatarUrl: senderMember?.getMxcAvatarUrl() || undefined,
-    };
-
-    // Check for reply/thread
-    const relatesTo = content["m.relates_to"];
-    const isEdit = relatesTo?.rel_type === "m.replace";
-    const threadId = relatesTo?.rel_type === "m.thread" ? relatesTo.event_id : undefined;
-    const replyTo = relatesTo?.["m.in_reply_to"]?.event_id;
-
-    const message: MatrixMessage = {
-      eventId: event.getId() || "",
-      roomId,
-      sender: sender || "",
-      senderInfo,
-      content: content.body,
-      msgType,
-      formattedBody:
-        typeof content.formatted_body === "string" ? content.formatted_body : undefined,
-      timestamp: event.getTs(),
-      threadId,
-      replyTo,
-      isEdit,
-      replacesEventId: isEdit ? relatesTo?.event_id : undefined,
-    };
 
     const matrixRoom: MatrixRoom = {
       roomId,
@@ -606,20 +1261,136 @@ export class MatrixService extends Service implements IMatrixService {
         state.client
           .getAccountData(sdk.EventType.Direct)
           ?.getContent()
-          ?.[sender || ""]?.includes(roomId) || false,
+          ?.[message.sender || ""]?.includes(roomId) || false,
       memberCount: room.getJoinedMemberCount(),
     };
 
     logger.debug(
-      `Matrix message from ${senderInfo.displayName || sender} in ${room.name || roomId}: ${message.content.slice(0, 50)}...`
+      `Matrix message from ${message.senderInfo.displayName || message.sender} in ${room.name || roomId}: ${message.content.slice(0, 50)}...`
     );
 
+    // Plugin-local event (kept for backward compatibility — other code may
+    // listen for the MatrixMessage/MatrixRoom payload).
     this.runtime.emitEvent(MatrixEventTypes.MESSAGE_RECEIVED, {
       message,
       room: matrixRoom,
       runtime: this.runtime,
       accountId: state.accountId,
     } as EventPayload);
+
+    // Drive the core message loop so the agent actually reads and replies.
+    void this.dispatchToAgent(state, message, matrixRoom).catch((err) =>
+      logger.error(
+        `Matrix dispatchToAgent failed: ${err instanceof Error ? err.message : String(err)}`
+      )
+    );
+  }
+
+  /**
+   * Feed an inbound Matrix message into the core message loop and wire a
+   * callback that posts the agent's reply back to the same room. Mirrors the
+   * connector pattern used by plugin-discord: emit EventType.MESSAGE_RECEIVED
+   * with a core Memory and a HandlerCallback. The bootstrap message handler
+   * runs the agent, decides whether to respond, and invokes the callback.
+   */
+  private async dispatchToAgent(
+    state: MatrixAccountState,
+    message: MatrixMessage,
+    room: MatrixRoom
+  ): Promise<void> {
+    const roomId = room.roomId;
+    const entityId = createUniqueUuid(this.runtime, message.sender || roomId);
+    const coreRoomId = createUniqueUuid(this.runtime, roomId);
+    const worldId = createUniqueUuid(this.runtime, roomId);
+    // Member count is the reliable DM signal (m.direct account data is often
+    // unset for a bot) and matches the mention-gate check in handleRoomMessage.
+    const channelType = room.memberCount <= 2 ? ChannelType.DM : ChannelType.GROUP;
+    const displayName = message.senderInfo.displayName || message.sender || "Matrix user";
+
+    await this.runtime.ensureConnection({
+      entityId,
+      roomId: coreRoomId,
+      roomName: room.name || roomId,
+      userName: displayName,
+      name: displayName,
+      source: MATRIX_SERVICE_NAME,
+      channelId: roomId,
+      type: channelType,
+      worldId,
+      worldName: room.name,
+      // Preserve the raw Matrix user id for role / allowlist checks.
+      userId: (message.sender || roomId) as UUID,
+      metadata: { accountId: state.accountId },
+    });
+
+    const coreMessage = matrixMessageToMemory(this.runtime, message, channelType);
+
+    // Auto-reply is gated (default off, matching plugin-discord/telegram) so the
+    // agent never speaks unprompted; passive LifeOps mode also suppresses it.
+    // When gated off, the inbound message is still persisted to memory.
+    const autoReplyRaw = this.runtime.getSetting("MATRIX_AUTO_REPLY");
+    const autoReply =
+      !lifeOpsPassiveConnectorsEnabled(this.runtime) &&
+      (autoReplyRaw === true || autoReplyRaw === "true");
+
+    if (!autoReply) {
+      try {
+        await this.runtime.createMemory(coreMessage, "messages");
+      } catch (err) {
+        logger.warn(
+          `Matrix inbound memory persist failed: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+      return;
+    }
+
+    if (!this.runtime.messageService) {
+      logger.error("Matrix: runtime.messageService is unavailable; cannot process inbound message");
+      return;
+    }
+
+    const callback: HandlerCallback = async (responseContent: Content) => {
+      const text = typeof responseContent.text === "string" ? responseContent.text.trim() : "";
+      if (!text) {
+        return [];
+      }
+      const result = await this.sendMessage(text, {
+        accountId: state.accountId,
+        roomId,
+        threadId: message.threadId,
+        replyTo: message.eventId,
+      });
+      if (!result.success) {
+        logger.warn(`Matrix reply send failed in ${roomId}: ${result.error}`);
+        return [];
+      }
+      const outbound: Memory = {
+        id: createUniqueUuid(this.runtime, result.eventId ?? `${roomId}:reply:${Date.now()}`),
+        entityId: this.runtime.agentId,
+        agentId: this.runtime.agentId,
+        roomId: coreRoomId,
+        content: {
+          text,
+          source: MATRIX_SERVICE_NAME,
+          channelType,
+          inReplyTo: coreMessage.id,
+        },
+        createdAt: Date.now(),
+      };
+      try {
+        await this.runtime.createMemory(outbound, "messages");
+      } catch (err) {
+        logger.warn(
+          `Matrix outbound memory persist failed: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+      return [outbound];
+    };
+
+    // Canonical dispatch: the core message loop runs through
+    // messageService.handleMessage (mirrors plugin-discord/telegram), not a
+    // bare EventType.MESSAGE_RECEIVED emit, which has no default handler.
+    await this.runtime.messageService.handleMessage(this.runtime, coreMessage, callback);
   }
 
   /**
@@ -655,6 +1426,17 @@ export class MatrixService extends Service implements IMatrixService {
    */
   async stop(): Promise<void> {
     for (const state of this.states.values()) {
+      if (state.cryptoSnapshotTimer) {
+        clearInterval(state.cryptoSnapshotTimer);
+        state.cryptoSnapshotTimer = undefined;
+      }
+      // Best-effort final flush so crypto state accumulated since the last tick
+      // survives the restart. Non-fatal: saveCryptoStore swallows its own
+      // failures. Guarded on encryption so a non-encrypted account doesn't
+      // touch the (possibly absent) IndexedDB global.
+      if (state.settings.encryption) {
+        await this.saveCryptoStore(state);
+      }
       state.client.stopClient();
       state.connected = false;
       state.syncing = false;
@@ -712,6 +1494,63 @@ export class MatrixService extends Service implements IMatrixService {
         isDirect: false,
         memberCount: room.getJoinedMemberCount(),
       }));
+  }
+
+  /**
+   * Read recent messages straight from the SDK's live room timeline (kept in
+   * sync by the RoomEvent.Timeline listener), newest-first. Unlike the agent's
+   * own memory DB, this surfaces room activity the agent never persisted —
+   * e.g. a busy room where the bot was never mentioned.
+   */
+  async getRoomMessages(
+    matrixRoomId: string,
+    limit: number,
+    accountId?: string
+  ): Promise<Memory[]> {
+    const state = this.getState(accountId);
+    const room = state.client.getRoom(matrixRoomId);
+    if (!room) {
+      return [];
+    }
+
+    const channelType = room.getJoinedMemberCount() <= 2 ? ChannelType.DM : ChannelType.GROUP;
+    const events = room.getLiveTimeline().getEvents();
+    const out: Memory[] = [];
+    for (let i = events.length - 1; i >= 0 && out.length < limit; i -= 1) {
+      const event = events[i];
+      const message = buildMatrixMessage(event, room);
+      if (message) {
+        const memory = matrixMessageToMemory(this.runtime, message, channelType);
+        memory.content.name = message.senderInfo.displayName || message.sender;
+        out.push(memory);
+        continue;
+      }
+      // Faithfully surface an encrypted message the agent can't read, so the
+      // agent reports real encrypted activity (who/when) rather than treating the
+      // room as empty. Two shapes must both be caught: a still-undecrypted event
+      // keeps wire type "m.room.encrypted", but once decryption has FAILED the SDK
+      // flips getType() to "m.room.message" with a "m.bad.encrypted" body and only
+      // isDecryptionFailure() stays true — the original bug was checking type
+      // alone, so failed-decrypt events fell through and the room looked empty.
+      if (event.getType() === "m.room.encrypted" || event.isDecryptionFailure()) {
+        const sender = event.getSender() || "unknown";
+        const placeholder = matrixMessageToMemory(
+          this.runtime,
+          {
+            eventId: event.getId() || "",
+            roomId: matrixRoomId,
+            sender,
+            content:
+              "🔒 [end-to-end encrypted message this device can't read — its device isn't cross-signed, so senders withhold the decryption keys. This needs a one-time device verification (or the account password) to unblock; it is NOT a sync or pagination issue.]",
+            timestamp: event.getTs(),
+          },
+          channelType
+        );
+        placeholder.content.name = room.getMember(sender)?.name || sender;
+        out.push(placeholder);
+      }
+    }
+    return out;
   }
 
   async sendMessage(text: string, options?: MatrixMessageSendOptions): Promise<MatrixSendResult> {

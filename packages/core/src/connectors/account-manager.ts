@@ -1520,10 +1520,13 @@ export class ConnectorAccountManager extends Service {
 				policy,
 			};
 		}
+		// Use the manager-level account lookups (this.getAccount / this.listAccounts)
+		// rather than storage directly: those merge provider-registered accounts
+		// (e.g. connectors that expose accounts via registerProvider instead of
+		// persisting them), so a policy on an explicit accountId can actually find
+		// it. Reading storage directly here silently missed provider accounts.
 		const accounts = explicitAccountId
-			? [await this.storage.getAccount(providerId, explicitAccountId)].filter(
-					Boolean,
-				)
+			? [await this.getAccount(providerId, explicitAccountId)].filter(Boolean)
 			: await this.listAccounts(providerId);
 
 		let lastFailure: string | undefined;

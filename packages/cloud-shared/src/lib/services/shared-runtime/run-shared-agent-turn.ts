@@ -28,10 +28,8 @@ import {
 } from "../../providers/language-model";
 import { logger } from "../../utils/logger";
 
-export type SharedTurnRole = "user" | "assistant";
-
 export interface SharedTurnMessage {
-  role: SharedTurnRole;
+  role: "user" | "assistant";
   content: string;
 }
 
@@ -71,16 +69,13 @@ export interface RunSharedAgentTurnResult {
  */
 const DEFAULT_SHARED_MODEL = CEREBRAS_DEFAULT_TEXT_SMALL_MODEL;
 
+/** Token counts the shared-runtime billing path consumes (input/output/total). */
 export interface SharedAgentTurnUsage {
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
   inputTokens?: number;
   outputTokens?: number;
-  cachedInputTokens?: number;
-  cacheReadInputTokens?: number;
-  cacheCreationInputTokens?: number;
-  cacheWriteInputTokens?: number;
 }
 
 /**

@@ -217,7 +217,7 @@ function softwareGateFailures() {
   }
   const typecheckScript = String(scripts.typecheck ?? "");
   if (
-    !typecheckScript.includes("turbo run build") ||
+    !typecheckScript.includes("run-turbo.mjs run build") ||
     !typecheckScript.includes("--filter=@elizaos/plugin-facewear") ||
     !typecheckScript.includes("hardware-local-bluetooth.ts")
   ) {
@@ -321,15 +321,19 @@ function softwareGateFailures() {
       [
         "missingViewEvidence",
         "buildViewDisplayPackets",
-        "viewStreamingStatus",
         "displaySeqRef",
         "scanDiagnosis",
         "physicalBlocker",
         "onAudio",
         "callWifiBridge",
-        "does not support Wi-Fi command",
         "Guide",
       ],
+    ),
+  );
+  failures.push(
+    ...sourceTokenFailures(
+      "plugins/plugin-facewear/src/ui/SmartglassesView.helpers.ts",
+      ["viewStreamingStatus", "does not support Wi-Fi command"],
     ),
   );
   failures.push(
@@ -368,8 +372,8 @@ function softwareGateFailures() {
   failures.push(
     ...sourceTokenFailures("plugins/plugin-facewear/src/routes/views.ts", [
       'path: "/xr/views"',
-      "plugin.views",
-      "views.push",
+      "listViews(",
+      'viewType: "xr"',
     ]),
   );
   failures.push(

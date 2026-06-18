@@ -19,9 +19,24 @@ import {
 	getExplicitRoutingContexts,
 	routingContextsOverlap,
 } from "../../../utils/context-routing.ts";
+import { getMessageConnectorsWithHook } from "../../advanced-capabilities/actions/connectorActionUtils.ts";
 
 export const PLATFORM_CHAT_CONTEXT_PROVIDER_NAME = "PLATFORM_CHAT_CONTEXT";
 export const PLATFORM_USER_CONTEXT_PROVIDER_NAME = "PLATFORM_USER_CONTEXT";
+
+/** Pretty-print a provider payload as JSON; returns "" if it can't serialize. */
+function renderJson(payload: Record<string, ProviderValue>): string {
+	try {
+		return JSON.stringify(payload, null, 2);
+	} catch {
+		return "";
+	}
+}
+
+/** An empty (no prompt text) ProviderResult carrying only diagnostic values. */
+function emptyResult(data: Record<string, ProviderValue>): ProviderResult {
+	return { text: "", values: data, data };
+}
 
 const PLATFORM_CONTEXTS: AgentContext[] = ["social", "phone", "connectors"];
 const MAX_CONNECTOR_CONTEXTS = 8;
@@ -42,10 +57,6 @@ const PLATFORM_OUTPUT_GUIDANCE: Record<string, string[]> = {
 	whatsapp: [
 		"Format replies for WhatsApp: avoid markdown tables and markdown headings; prefer concise plain text.",
 	],
-};
-
-type RuntimeWithMessageConnectors = IAgentRuntime & {
-	getMessageConnectors?: () => MessageConnector[];
 };
 
 type RoomLike = {
@@ -102,19 +113,6 @@ function toProviderValue(value: unknown, depth = 0): ProviderValue {
 		return out;
 	}
 	return String(value);
-}
-
-function getRuntimeMessageConnectors(
-	runtime: IAgentRuntime,
-): MessageConnector[] {
-	const runtimeWithConnectors = runtime as RuntimeWithMessageConnectors;
-	if (typeof runtimeWithConnectors.getMessageConnectors !== "function") {
-		return [];
-	}
-
-	return runtimeWithConnectors
-		.getMessageConnectors()
-		.filter((connector) => connector && typeof connector.source === "string");
 }
 
 function getMemorySource(
@@ -281,22 +279,6 @@ function normalizeUserContext(
 	});
 }
 
-function renderJson(payload: Record<string, ProviderValue>): string {
-	try {
-		return JSON.stringify(payload, null, 2);
-	} catch {
-		return "";
-	}
-}
-
-function emptyResult(data: Record<string, ProviderValue> = {}): ProviderResult {
-	return {
-		text: "",
-		values: data,
-		data,
-	};
-}
-
 export const platformChatContextProvider: Provider = {
 	name: PLATFORM_CHAT_CONTEXT_PROVIDER_NAME,
 	description:
@@ -316,9 +298,7 @@ export const platformChatContextProvider: Provider = {
 		message: Memory,
 		state: State,
 	): Promise<ProviderResult> => {
-		const connectors = getRuntimeMessageConnectors(runtime).filter(
-			(connector) => typeof connector.getChatContext === "function",
-		);
+		const connectors = getMessageConnectorsWithHook(runtime, "getChatContext");
 		if (connectors.length === 0) {
 			return emptyResult({ connectorCount: 0, chatContextCount: 0 });
 		}
@@ -424,9 +404,7 @@ export const platformUserContextProvider: Provider = {
 			return emptyResult({ connectorCount: 0, userContextCount: 0 });
 		}
 
-		const connectors = getRuntimeMessageConnectors(runtime).filter(
-			(connector) => typeof connector.getUserContext === "function",
-		);
+		const connectors = getMessageConnectorsWithHook(runtime, "getUserContext");
 		if (connectors.length === 0) {
 			return emptyResult({ connectorCount: 0, userContextCount: 0 });
 		}
