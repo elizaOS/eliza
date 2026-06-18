@@ -277,4 +277,60 @@ describe("multi-account coding-agent spawn", () => {
     expect(select).not.toHaveBeenCalled();
     await service.stop();
   });
+
+  it("rotates consecutive spawns across distinct accounts (least-used)", async () => {
+    // A rotating bridge that hands out a different account per call — the shape
+    // the real pool produces under least-used burst-spread. Proves two fresh
+    // spawns land on DISTINCT accounts at the actual spawn layer (not just the
+    // bridge unit), with each account stamped on its own session.
+    const accounts = ["acc-a", "acc-b"];
+    let call = 0;
+    (globalThis as Record<symbol, unknown>)[BRIDGE_SYMBOL] = {
+      describe: () => ({}),
+      select: vi.fn(async () => {
+        const accountId = accounts[call % accounts.length] ?? "acc-a";
+        call += 1;
+        return {
+          providerId: "anthropic-subscription",
+          accountId,
+          label: accountId,
+          source: "oauth" as const,
+          strategy: "least-used",
+          envPatch: { CLAUDE_CODE_OAUTH_TOKEN: `sk-ant-oat-${accountId}` },
+        };
+      }),
+      markRateLimited: vi.fn(async () => undefined),
+      markNeedsReauth: vi.fn(async () => undefined),
+      recordUsage: vi.fn(async () => undefined),
+    };
+    const service = new AcpService(runtime());
+    await service.start();
+    const first = await service.spawnSession({
+      name: "claude-1",
+      agentType: "claude",
+      workdir: "/tmp/acp-test",
+    });
+    const second = await service.spawnSession({
+      name: "claude-2",
+      agentType: "claude",
+      workdir: "/tmp/acp-test",
+    });
+    const acc = (r: typeof first) =>
+      (
+        (r.metadata as Record<string, unknown>)?.account as
+          | Record<string, unknown>
+          | undefined
+      )?.accountId;
+    expect(acc(first)).toBe("acc-a");
+    expect(acc(second)).toBe("acc-b");
+    expect(acc(first)).not.toBe(acc(second));
+    // The injected token follows the selected account, per session.
+    expect(
+      nativeClientMock.instances[0]?.opts.env?.CLAUDE_CODE_OAUTH_TOKEN,
+    ).toBe("sk-ant-oat-acc-a");
+    expect(
+      nativeClientMock.instances[1]?.opts.env?.CLAUDE_CODE_OAUTH_TOKEN,
+    ).toBe("sk-ant-oat-acc-b");
+    await service.stop();
+  });
 });
