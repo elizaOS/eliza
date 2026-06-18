@@ -867,6 +867,12 @@ async function launch() {
     NODE_ENV: "development",
     ELIZA_API_PORT: apiPort,
     ELIZA_HEADLESS: "1",
+    // Defer the post-ready boot tail (app-route plugins, training hooks,
+    // sensitive-request adapters, trigger bridge, connector catalog, voice
+    // warmup) so /api/health flips ready:true and the UI reaches first paint
+    // before they finish. Brief feature-route 404 window after "ready" is the
+    // trade-off; acceptable for dev/desktop. Explicit env always wins.
+    ELIZA_DEFER_APP_ROUTES: process.env.ELIZA_DEFER_APP_ROUTES?.trim() || "1",
     ELIZA_PORT: String(uiDevPort),
     ELIZA_UI_PORT: String(uiDevPort),
     ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,

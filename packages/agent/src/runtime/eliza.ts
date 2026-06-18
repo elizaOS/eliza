@@ -700,6 +700,26 @@ export async function ensureDeferredCoreStaticPluginsRegistered(): Promise<void>
 }
 
 /**
+ * Static-plugin registration for the CLOUD-HOSTED topology only (the agent runs
+ * inside the cloud container and the device connects directly to its API base).
+ * No local AgentRuntime boots, so the heavy on-device inference stack
+ * (`@elizaos/plugin-local-inference`: catalog, model/embedding/voice warmup,
+ * the bun:ffi desktop dylib path) is never used and must not be loaded — it
+ * only adds first-paint latency.
+ *
+ * Register only the registry entry a code path may touch while the cloud proxy
+ * is active: `@elizaos/plugin-sql`, so `STATIC_ELIZA_PLUGINS` is populated for
+ * any consumer that reaches for it.
+ *
+ * The two local topologies (local agent → cloud inference, and all-local) keep
+ * calling `ensureCoreStaticPluginsRegistered()` and load local-inference
+ * exactly as before.
+ */
+export async function ensureCloudCoreStaticPluginsRegistered(): Promise<void> {
+  await ensureStaticPluginsRegisteredByName(["@elizaos/plugin-sql"]);
+}
+
+/**
  * Resolve and register the baseline `@elizaos/plugin-*` modules into the
  * shared `STATIC_ELIZA_PLUGINS` map. Called from every runtime entry point
  * (`startEliza`, `startInCloudMode`, `bootElizaRuntime`) before any caller
@@ -5572,8 +5592,11 @@ export async function startInCloudMode(
 ): Promise<AgentRuntime | undefined> {
   // Cloud mode does not run a local AgentRuntime, but the registry must still
   // be populated for any code path that touches `STATIC_ELIZA_PLUGINS` while
-  // the cloud proxy is active.
-  await ensureCoreStaticPluginsRegistered();
+  // the cloud proxy is active. A cloud-hosted agent never uses the on-device
+  // inference stack, so register only the SQL registry entry and skip
+  // `@elizaos/plugin-local-inference` (model/embedding/voice warmup, bun:ffi
+  // dylib) — it would only add first-paint latency for a remote agent.
+  await ensureCloudCoreStaticPluginsRegistered();
   const { CloudManager } = await import(
     /* @vite-ignore */ "@elizaos/plugin-elizacloud"
   );
