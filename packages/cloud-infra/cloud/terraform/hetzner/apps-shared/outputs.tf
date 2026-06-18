@@ -11,7 +11,7 @@ output "apps_subnet_id" {
 }
 
 output "apps_subnet_cidr" {
-  description = "CIDR of the shared apps subnet. apps-data-plane uses this to compute app_node private IPs via cidrhost(subnet, 20 + i)."
+  description = "CIDR of the shared apps subnet. apps-data-plane computes app_node private IPs per env via cidrhost(subnet, base + i) where base = 20 (staging) / 30 (production); tenant DB is host 10."
   value       = var.subnet_cidr
 }
 

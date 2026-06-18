@@ -51,6 +51,14 @@ locals {
   apps_network_id  = data.terraform_remote_state.apps_shared.outputs.apps_network_id
   apps_subnet_cidr = data.terraform_remote_state.apps_shared.outputs.apps_subnet_cidr
   tenant_db_host   = data.terraform_remote_state.apps_shared.outputs.tenant_db_private_ip
+
+  # Per-env private-IP windows in the SHARED apps subnet so staging and prod app
+  # nodes never collide on the same host address. Tenant DB stays at host 10.
+  #   staging:    21, 22, …  (base 20 + node index)
+  #   production: 31, 32, …  (base 30 + node index)
+  # The two windows are only 10 apart, so app_node_count is capped at 9 in
+  # variables.tf — a scaled env can never walk into the next env's base.
+  app_node_ip_base = var.environment == "production" ? 30 : 20
 }
 
 # ── Firewalls ─────────────────────────────────────────────────────────────────
@@ -121,7 +129,7 @@ resource "hcloud_server_network" "app_node" {
 
   server_id  = each.value.id
   network_id = local.apps_network_id
-  ip         = cidrhost(local.apps_subnet_cidr, 20 + tonumber(each.key))
+  ip         = cidrhost(local.apps_subnet_cidr, local.app_node_ip_base + tonumber(each.key))
 }
 
 # ── Ingress DNS: wildcard for per-app URLs -> app node (single-node draft) ─────
