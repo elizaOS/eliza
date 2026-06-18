@@ -86,6 +86,15 @@ const sheetHeight = (p) =>
   );
 const viewportH = (p) =>
   p.evaluate(() => window.visualViewport?.height ?? window.innerHeight);
+// Distance from the viewport top to the panel's top edge — at FULL the sheet
+// rises to ~SHEET_TOP_MARGIN (72px) from the top.
+const panelTop = (p) =>
+  p.evaluate(
+    () =>
+      document.querySelector('[data-testid="chat-sheet"]')?.getBoundingClientRect()
+        .top ?? 0,
+  );
+const SHEET_TOP_MARGIN = 72;
 const grabberBox = (p) => p.getByTestId("chat-sheet-grabber").boundingBox();
 
 let shot = 0;
@@ -204,7 +213,9 @@ async function release(p, pointer, up = 0) {
 async function runDragSuite(p, pointer, tag) {
   const vh = await viewportH(p);
   const halfH = Math.round(vh * 0.46);
-  const fullH = Math.round(vh * 0.72);
+  // FULL now fills to the panel's max height (sheet rises to the top), captured
+  // live once we reach it — no fixed fraction.
+  let fullH = 0;
   const TOL = 36;
   await p.waitForTimeout(150);
 
@@ -221,11 +232,17 @@ async function runDragSuite(p, pointer, tag) {
   assert(near(await sheetHeight(p), halfH, TOL), `[${pointer}] HALF height ≈ ${halfH}px (got ${Math.round(await sheetHeight(p))})`);
   await snap(p, `${tag}-half`);
 
-  // slow pull up again → FULL
+  // slow pull up again → FULL — the sheet rises to the top of the screen
   await gesture(p, 220, { pointer, slow: true });
   await p.waitForTimeout(SETTLE);
   assert((await detent(p)) === "full", `[${pointer}] slow pull-up steps HALF→FULL`);
-  assert(near(await sheetHeight(p), fullH, TOL), `[${pointer}] FULL height ≈ ${fullH}px (got ${Math.round(await sheetHeight(p))})`);
+  fullH = Math.round(await sheetHeight(p));
+  assert(fullH > halfH + 40, `[${pointer}] FULL is taller than HALF (full ${fullH} > half ${halfH})`);
+  const top = Math.round(await panelTop(p));
+  assert(
+    near(top, SHEET_TOP_MARGIN, TOL + 12),
+    `[${pointer}] FULL rises to the top (panel top ${top}px ≈ ${SHEET_TOP_MARGIN}px)`,
+  );
   await snap(p, `${tag}-full`);
 
   // drag BEYOND full (held) → rubber-band, not 1:1

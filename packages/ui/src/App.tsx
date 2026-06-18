@@ -1102,8 +1102,16 @@ function ShellFoundationMount() {
  */
 function ContinuousChatOverlayMount(): ReactNode {
   const controller = useShellControllerContext();
+  const { characterData, agentStatus } = useApp();
   if (!controller) return null;
-  return <ContinuousChatOverlay controller={controller} />;
+  // The live agent's name drives the composer placeholder ("Ask {name}").
+  // Character name wins (what the user configured), then the running agent's
+  // reported name; "Eliza" is the default the overlay falls back to.
+  const agentName =
+    characterData?.name?.trim() || agentStatus?.agentName?.trim() || undefined;
+  return (
+    <ContinuousChatOverlay controller={controller} agentName={agentName} />
+  );
 }
 
 /**

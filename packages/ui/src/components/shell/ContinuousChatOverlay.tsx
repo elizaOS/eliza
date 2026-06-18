@@ -65,9 +65,15 @@ const OVERLAY_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 // the latest line — the pull-up target) and OPEN (most of the viewport above
 // the input). The live drag tracks the finger 1:1; release snaps with an
 // Apple-style spring. The whole sheet is unmounted when there's no thread yet.
-const SHEET_OPEN_VH = 0.72; // fraction of viewport height at the FULL detent
+// FULL fills nearly the whole viewport (clamped by panelMaxH) so the sheet rises
+// to just under the status bar — you pull it back DOWN to dismiss. HALF is a
+// comfortable mid-stop.
+const SHEET_OPEN_VH = 0.95; // fraction of viewport height at the FULL detent
 const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
-const SHEET_TOP_MARGIN = 56; // px kept clear above the panel (notch / breathing room)
+// px kept clear above the panel. Sized to clear an edge-to-edge status bar
+// (~58px) plus a buffer so the grabber sits BELOW the notification-shade pull
+// zone — the full sheet reaches the top without fighting the system gesture.
+const SHEET_TOP_MARGIN = 72;
 // Cap how many turns are actually rendered. Older messages stay in state (the
 // agent's context is untouched) — this only bounds DOM nodes so a long thread
 // can't jank scrolling on a phone, without pulling in a virtualizer.
@@ -231,7 +237,7 @@ function SheetGrabber({
         // zone reaches UP into the empty space above the panel (3× taller/wider
         // than the bar) so it's easy to grab without covering the edge buttons.
         // z-20 keeps it above the input row (z-10) so it always wins the drag.
-        "pointer-events-auto absolute left-1/2 top-1.5 z-20 -translate-x-1/2 flex cursor-grab touch-none select-none items-center justify-center px-16 py-2.5 active:cursor-grabbing",
+        "pointer-events-auto absolute left-1/2 top-0.5 z-20 -translate-x-1/2 flex cursor-grab touch-none select-none items-center justify-center px-16 py-2 active:cursor-grabbing",
         "before:absolute before:-inset-x-4 before:-top-10 before:-bottom-3 before:content-['']",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full",
       )}
@@ -281,10 +287,12 @@ function PillHandle({
       )}
     >
       <span
+        aria-hidden="true"
         className={cn(
-          "h-2 w-20 rounded-full border border-white/15 backdrop-blur-2xl transition-colors",
-          "shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_10px_30px_-12px_rgba(0,0,0,0.7)]",
-          glow ? "bg-[rgba(255,180,120,0.7)]" : "bg-black/55",
+          // Identical to the SheetGrabber bar — the handle keeps the same white
+          // shape + color whether the chat is open or fully collapsed to the pill.
+          "h-2 w-14 rounded-full transition-colors duration-300",
+          glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45",
         )}
       />
     </button>
@@ -516,8 +524,11 @@ const ThreadLine = React.memo(function ThreadLine({
 
 export function ContinuousChatOverlay({
   controller,
+  agentName = "Eliza",
 }: {
   controller: ShellController;
+  /** Name shown in the composer placeholder ("Ask {agentName}"). Defaults to Eliza. */
+  agentName?: string;
 }): React.JSX.Element {
   const {
     messages,
@@ -845,8 +856,10 @@ export function ContinuousChatOverlay({
   const panelMaxH = Math.max(200, viewportH - bottomPad - SHEET_TOP_MARGIN);
 
   // History-height detents: COLLAPSED (0) → HALF → FULL — the thread's ideal
-  // flex-basis; `panelMaxH` + flex-shrink clamp the real height to fit.
-  const openH = Math.round(viewportH * SHEET_OPEN_VH);
+  // flex-basis; `panelMaxH` + flex-shrink clamp the real height to fit. FULL is
+  // capped at panelMaxH so the detent target matches the visible height (no
+  // dead slack at the top of a pull-down) while still rising to the top.
+  const openH = Math.min(Math.round(viewportH * SHEET_OPEN_VH), panelMaxH);
   const halfH = Math.round(viewportH * SHEET_HALF_VH);
   const baseH = !sheetOpen ? 0 : expanded ? openH : halfH;
   // Map a raw drag height: rubber-band past FULL, hard-clamp the bottom to 0.
@@ -1168,8 +1181,9 @@ export function ContinuousChatOverlay({
               : cn(
                   "w-full overflow-hidden",
                   // Collapsed = a pill (fully round, matching the round buttons);
-                  // opened = a softer 28px panel so tall history doesn't look odd.
-                  sheetOpen ? "rounded-[28px]" : "rounded-full",
+                  // opened = a calmer 24px panel — a tall sheet at the full
+                  // viewport looked over-rounded at 28px.
+                  sheetOpen ? "rounded-3xl" : "rounded-full",
                   // Liquid glass: a translucent, blurred, slightly over-saturated
                   // pane with a bright top specular edge + a faint refractive stroke.
                   "border border-white/[0.14] bg-black/55 backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
@@ -1213,7 +1227,14 @@ export function ContinuousChatOverlay({
               {hasThread ? (
                 <motion.div
                   data-testid="chat-thread"
-                  className="relative z-10 min-h-0 w-full shrink grow-0 overflow-hidden"
+                  className={cn(
+                    "relative z-10 min-h-0 w-full shrink grow-0 overflow-hidden",
+                    // When open, fade the top edge into the glass so the topmost
+                    // message dissolves under the drag handle instead of butting
+                    // against it.
+                    sheetOpen &&
+                      "[mask-image:linear-gradient(to_bottom,transparent_0,#000_34px)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0,#000_34px)]",
+                  )}
                   // Flex-basis IS the motion value (px string) — set 1:1 during a drag,
                   // spring-animated to a detent on release; no `animate`/`transition`,
                   // so no re-render. `shrink min-h-0` lets the panel's `maxHeight` cap
@@ -1319,7 +1340,10 @@ export function ContinuousChatOverlay({
                   // textarea grows upward with multi-line input. shrink-0 keeps the
                   // input fully visible when the panel hits its maxHeight cap (only the
                   // thread above gives way).
-                  "relative z-10 flex min-w-0 shrink-0 items-end gap-1.5 px-3 py-2 sm:gap-2 sm:px-3.5",
+                  // Equal inset on all sides (px == py): a round button nested in
+                  // the pill's round end-cap reads as concentric, with the same
+                  // gap on the sides as top/bottom.
+                  "relative z-10 flex min-w-0 shrink-0 items-end gap-1.5 px-2 py-2 sm:gap-2",
                   sheetOpen ? "border-t border-white/10" : "",
                 )}
               >
@@ -1349,13 +1373,13 @@ export function ContinuousChatOverlay({
                       collapse();
                     }
                   }}
-                  placeholder={booting ? "connecting…" : "say anything…"}
+                  placeholder={booting ? "connecting…" : `Ask ${agentName}`}
                   aria-label="message"
                   data-testid="chat-composer-textarea"
                   aria-describedby={booting ? "cc-booting-hint" : undefined}
                   aria-disabled={booting}
                   readOnly={booting}
-                  className="max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-end border-none bg-transparent px-1 py-1 text-center text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
+                  className="max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-end border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
                 />
                 <span id="cc-booting-hint" className="sr-only">
                   connecting — you can’t send yet

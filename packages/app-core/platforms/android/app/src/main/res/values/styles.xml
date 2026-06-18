@@ -7,14 +7,19 @@
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="colorAccent">@color/colorAccent</item>
-        <item name="android:statusBarColor">@color/eliza_orange</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
     </style>
 
+    <!-- Transparent system bars so the edge-to-edge WebView (the live ambient
+         orange home) draws all the way under the status bar — no flat orange
+         band above the clock. MainActivity sets light (white) status-bar icons
+         and edge-to-edge layout to match. -->
     <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
-        <item name="android:statusBarColor">@color/eliza_orange</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 
 

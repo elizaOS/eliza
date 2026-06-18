@@ -36,7 +36,11 @@ export function ChatAmbientBackground(): React.JSX.Element {
     <div
       aria-hidden="true"
       data-testid="chat-ambient-background"
-      className="pointer-events-none absolute inset-0 overflow-hidden"
+      // FIXED (not absolute) so the orange fills the TRUE viewport — under the
+      // edge-to-edge status bar too — instead of being inset by the shell's
+      // safe-area padding (which left a black status-bar band above the field).
+      // Only mounts on /chat, so it never bleeds into other views.
+      className="pointer-events-none fixed inset-0 overflow-hidden"
       // Flat warm-orange base — no gradient, no vignette. The only movement is
       // the slow edge pulse layered on top.
       style={{ zIndex: 0, backgroundColor: "#ef5a1f" }}

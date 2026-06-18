@@ -166,6 +166,11 @@ public class MainActivity extends BridgeActivity {
                 controller.setSystemBarsBehavior(
                     WindowInsetsControllerCompat
                         .BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                // The status bar stays visible over the live orange ambient
+                // home, so its icons must be light (white). Paired with the
+                // transparent android:statusBarColor in styles.xml, the orange
+                // draws full-bleed under the clock/battery — no flat band.
+                controller.setAppearanceLightStatusBars(false);
             }
         } catch (Exception e) {
             Log.w(TAG, "Failed to apply immersive navigation bar", e);

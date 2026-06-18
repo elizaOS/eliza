@@ -146,8 +146,9 @@ function HomeCard({
     <section
       data-testid={testId}
       className={cn(
-        "relative rounded-3xl border border-white/12 bg-black/35 p-4 backdrop-blur-2xl",
-        "shadow-[inset_0_1px_0_rgba(255,255,255,0.10),0_18px_50px_-26px_rgba(0,0,0,0.7)]",
+        // Liquid glass — same language as the chat panel + tiles.
+        "relative rounded-3xl border border-white/[0.14] bg-black/30 p-4 backdrop-blur-2xl backdrop-saturate-150",
+        "shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_18px_50px_-26px_rgba(0,0,0,0.7)]",
       )}
     >
       <header className="mb-2.5 flex items-center gap-2">
@@ -336,7 +337,11 @@ export function HomeScreen({
           </HomeCard>
         ) : null}
 
-        <nav aria-label="Pinned views" data-testid="home-tiles">
+        <nav
+          aria-label="Pinned views"
+          data-testid="home-tiles"
+          className="mt-2"
+        >
           <div className="grid grid-cols-4 gap-3">
             {tiles.map((tile) => {
               const Icon = tile.icon;
@@ -347,16 +352,18 @@ export function HomeScreen({
                   data-testid={`home-tile-${tile.id}`}
                   onClick={() => onOpenTile(tile.target)}
                   className={cn(
-                    "flex flex-col items-center gap-1.5 rounded-2xl border border-white/12 bg-black/30 px-1 py-3 backdrop-blur-xl transition-colors",
-                    "hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+                    // Liquid glass, matching the chat panel: translucent dark
+                    // pane, strong blur + saturation, a bright top specular edge.
+                    "flex flex-col items-center gap-1.5 rounded-2xl border border-white/[0.14] bg-black/25 px-1 py-3.5 backdrop-blur-2xl backdrop-saturate-150 transition-colors",
+                    "shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]",
+                    "hover:bg-white/[0.14] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
                   )}
                 >
-                  <span className="grid h-11 w-11 place-items-center rounded-2xl bg-white/12">
-                    <Icon
-                      className="h-[22px] w-[22px] text-white/90"
-                      aria-hidden
-                    />
-                  </span>
+                  {/* No chip behind the icon — it sits directly on the glass tile. */}
+                  <Icon
+                    className="h-[22px] w-[22px] text-white/90"
+                    aria-hidden
+                  />
                   <span className="max-w-full truncate text-[11px] font-medium text-white/80">
                     {tile.label}
                   </span>
