@@ -171,6 +171,10 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --ignore-scripts --no-frozen-lockfile
           install-native-deps: "false"
+          # Biome only needs JS dependencies; skipping Python/protoc keeps this
+          # 5-minute format gate away from apt mirrors and Rust build tooling.
+          setup-python: "false"
+          install-protoc: "false"
           run-postinstall: "false"
 
       - name: Run biome format check
