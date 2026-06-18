@@ -1156,23 +1156,32 @@ function mirrorCapacitorWebPayloadIntoAndroidDir() {
   );
   const targetAssets = path.join(androidDir, "app", "src", "main", "assets");
   const syncedPublic = path.join(syncedAssets, "public");
-  if (!fs.existsSync(syncedPublic)) return;
+  // Mirror the synced web payload only when cap sync wrote to a SEPARATE appDir
+  // tree (the legacy two-tree split). When capacitor.config.ts unifies the trees
+  // via android.path=../app-core/platforms/android (#8387), cap sync writes
+  // straight into androidDir, so there's no syncedPublic to copy (or it's the
+  // same tree). In that case the mirror is a no-op — but we MUST still run the
+  // reconcile below on the android manifest, so the early-returns only skip the
+  // copy, never the reconcile.
+  const hasSyncedPublic = fs.existsSync(syncedPublic);
   const sameTree =
+    hasSyncedPublic &&
     fs.existsSync(targetAssets) &&
     fs.realpathSync(syncedAssets) === fs.realpathSync(targetAssets);
-  if (sameTree) return;
-  const targetPublic = path.join(targetAssets, "public");
-  fs.mkdirSync(targetAssets, { recursive: true });
-  fs.rmSync(targetPublic, { recursive: true, force: true });
-  fs.cpSync(syncedPublic, targetPublic, { recursive: true });
-  for (const cfg of ["capacitor.config.json", "capacitor.plugins.json"]) {
-    const src = path.join(syncedAssets, cfg);
-    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(targetAssets, cfg));
+  if (hasSyncedPublic && !sameTree) {
+    const targetPublic = path.join(targetAssets, "public");
+    fs.mkdirSync(targetAssets, { recursive: true });
+    fs.rmSync(targetPublic, { recursive: true, force: true });
+    fs.cpSync(syncedPublic, targetPublic, { recursive: true });
+    for (const cfg of ["capacitor.config.json", "capacitor.plugins.json"]) {
+      const src = path.join(syncedAssets, cfg);
+      if (fs.existsSync(src)) fs.copyFileSync(src, path.join(targetAssets, cfg));
+    }
+    console.log(
+      `[mobile-build] Mirrored Capacitor web payload into ${path.relative(repoRoot, targetAssets)}`,
+    );
   }
-  console.log(
-    `[mobile-build] Mirrored Capacitor web payload into ${path.relative(repoRoot, targetAssets)}`,
-  );
-  // `cap sync` (run against appDir) generates capacitor.plugins.json from the
+  // `cap sync` generates capacitor.plugins.json from the
   // FULL appDir dependency set, but androidDir ships a committed
   // capacitor.settings.gradle that compiles only a curated subset of plugin
   // modules (plus app-core additions like elizaos-capacitor-bun-runtime that
@@ -6176,6 +6185,29 @@ function auditAndroidSideloadArtifact({ javaHome } = {}) {
   return artifact;
 }
 
+function auditAndroidSystemArtifact({ javaHome } = {}) {
+  // The AOSP/system target gets the web-payload mirror like the other three
+  // sync targets, but the privileged release APK still needs the same positive
+  // artifact audit or it could ship web-less (ERR_CONNECTION_REFUSED) silently —
+  // the exact regression class #8387 closes. `-PelizaAospBuild=true` preserves
+  // assets/agent, so requireAgent stays true here like the sideload path.
+  const artifact = findAndroidSystemApk();
+  if (!artifact) {
+    throw new Error(
+      "[mobile-build] android-system release APK was not found under app/build/outputs/apk/release/.",
+    );
+  }
+  const entries = listAndroidArtifactEntries(artifact, javaHome);
+  assertAndroidArtifactShipsWebPayload(artifact, entries, {
+    requireAgent: true,
+    label: "android-system",
+  });
+  console.log(
+    `[mobile-build] android-system artifact audit passed: ${artifact}`,
+  );
+  return artifact;
+}
+
 function findAndroidCloudAab() {
   const releaseBundleDir = path.join(
     androidDir,
@@ -6810,6 +6842,7 @@ async function buildAndroidSystem() {
     cwd: androidDir,
     env,
   });
+  auditAndroidSystemArtifact({ javaHome: jdk });
   stageAndroidSystemApk();
 }
 
