@@ -9,6 +9,7 @@ import {
 } from "../i18n";
 import { detectClientLanguage } from "../i18n/region";
 import type { Tab } from "../navigation";
+import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
 import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../voice/local-asr-capture";
 import type {
   CompanionHalfFramerateMode,
@@ -924,7 +925,7 @@ function normalizeApiBase(value: unknown): string | undefined {
   if (!trimmed) return trimmed;
   let end = trimmed.length;
   while (end > 0 && trimmed.charCodeAt(end - 1) === 47) end--;
-  return trimmed.slice(0, end);
+  return normalizeDirectCloudSharedAgentApiBase(trimmed.slice(0, end));
 }
 
 function isElizaCloudControlPlaneApiBase(value: unknown): boolean {

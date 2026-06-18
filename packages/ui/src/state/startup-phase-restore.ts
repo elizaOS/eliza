@@ -27,6 +27,7 @@ import {
 import type { UiLanguage } from "../i18n";
 import { isAndroid, isForceFreshFirstRunEnabled, isIOS } from "../platform";
 import type { ExistingElizaInstallInfo } from "../types";
+import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
 import { getElizaApiBase } from "../utils/eliza-globals";
 import { detectExistingFirstRunConnection } from "./first-run-bootstrap";
 import {
@@ -70,9 +71,14 @@ async function backfillCloudApiBase(
     const res = await client.getCloudCompatAgent(agentId);
     if (!res.success) return active;
     const data = res.data;
-    const apiBase = data.web_ui_url ?? data.webUiUrl ?? data.bridge_url ?? null;
+    const rawApiBase = data.web_ui_url ?? data.webUiUrl ?? data.bridge_url;
+    if (!rawApiBase) return active;
+    const apiBase = normalizeDirectCloudSharedAgentApiBase(rawApiBase);
     if (!apiBase) return active;
-    const updated: PersistedActiveServer = { ...active, apiBase };
+    const updated: PersistedActiveServer = {
+      ...active,
+      apiBase,
+    };
     savePersistedActiveServer(updated);
     return updated;
   } catch {

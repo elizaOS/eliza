@@ -43,6 +43,25 @@ describe("resolveCloudAgentApiBase", () => {
     ).toBe("http://195.201.57.227:19411");
   });
 
+  it("uses the shared-agent REST adapter when the bridge URL is the direct Cloud JSON-RPC bridge", () => {
+    expect(
+      resolveCloudAgentApiBase({
+        bridgeUrl:
+          "https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent/bridge",
+      }),
+    ).toBe("https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent");
+  });
+
+  it("normalizes a server-provided shared-agent webUiUrl without changing its REST base", () => {
+    expect(
+      resolveCloudAgentApiBase({
+        bridgeUrl:
+          "https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent/bridge",
+        webUiUrl: "https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent/",
+      }),
+    ).toBe("https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent");
+  });
+
   it("does NOT fabricate a per-agent subdomain (the gateway isn't deployed)", () => {
     const out = resolveCloudAgentApiBase({
       bridgeUrl: "http://195.201.57.227:19411",
