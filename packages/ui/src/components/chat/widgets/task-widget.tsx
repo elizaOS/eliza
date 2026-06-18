@@ -34,6 +34,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../../api/client";
 import type { CodingAgentTaskThreadDetail } from "../../../api/client-types-cloud";
+import { useIntervalWhenDocumentVisible } from "../../../hooks";
 
 /**
  * Poll cadence, deliberately matched to the workbench's `POLL_INTERVAL_MS`.
@@ -162,15 +163,18 @@ export function TaskWidget({ threadId, fallbackTitle }: TaskWidgetProps) {
     };
   }, [fetchDetail]);
 
-  useEffect(() => {
-    if (removed || pollingStopped) return;
-    const status = detail?.status;
-    if (status && TERMINAL_STATUSES.has(status)) return;
-    const handle = setInterval(() => {
-      void fetchDetail();
-    }, POLL_INTERVAL_MS);
-    return () => clearInterval(handle);
-  }, [detail?.status, fetchDetail, removed, pollingStopped]);
+  // Poll only while visible and while the task is still live — pause in a
+  // backgrounded app, and stop once it's removed / terminal.
+  const taskStatus = detail?.status;
+  const pollTaskActive =
+    !removed &&
+    !pollingStopped &&
+    !(taskStatus != null && TERMINAL_STATUSES.has(taskStatus));
+  useIntervalWhenDocumentVisible(
+    () => void fetchDetail(),
+    POLL_INTERVAL_MS,
+    pollTaskActive,
+  );
 
   const handleOpen = useCallback(() => {
     if (typeof window === "undefined") return;

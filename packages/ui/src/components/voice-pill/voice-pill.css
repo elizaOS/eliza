@@ -18,6 +18,20 @@
     "Poppins", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
 }
 
+/* Visually-hidden live region: announces the listening/stopped state to screen
+ * readers (TalkBack/VoiceOver) so the eyes-free voice pill is usable. */
+.elizaos-voice-pill__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* Generous invisible hit zone around the tiny pill (the prototype's `.pill-hit`).
  * Click target is the whole rectangle so users don't have to land on the sliver. */
 .elizaos-voice-pill__hit {

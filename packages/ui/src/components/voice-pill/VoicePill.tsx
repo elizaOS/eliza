@@ -267,6 +267,16 @@ export function VoicePill(props: VoicePillProps) {
 
   return (
     <div className={wrapperClassName}>
+      {/* Eyes-free state announcement for screen readers (the pulsing pill is a
+          visual-only cue otherwise). Always mounted so the live region exists
+          before the text changes. */}
+      <span
+        className="elizaos-voice-pill__sr-only"
+        role="status"
+        aria-live="polite"
+      >
+        {recording ? "Listening" : "Stopped listening"}
+      </span>
       {/* biome-ignore lint/a11y/useSemanticElements: this wrapper contains nested chat input controls, so it cannot be a native button. */}
       <div
         className="elizaos-voice-pill__hit"

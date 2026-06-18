@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type ComputerUseApprovalSnapshot, client } from "../../api/client";
 import { useApp } from "../../state";
 import { Button } from "../ui/button";
@@ -15,6 +15,8 @@ const EMPTY_SNAPSHOT: ComputerUseApprovalSnapshot = {
   pendingApprovals: [],
 };
 const POLL_MS = 1500;
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 function approvalStreamUrl(): string {
   const baseUrl = client.getBaseUrl();
@@ -36,6 +38,8 @@ export function ComputerUseApprovalOverlay() {
   const [busyApprovalId, setBusyApprovalId] = useState<string | null>(null);
   const [denyTargetId, setDenyTargetId] = useState<string | null>(null);
   const [denyReason, setDenyReason] = useState("");
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -127,6 +131,53 @@ export function ComputerUseApprovalOverlay() {
     [visibleApprovals],
   );
 
+  // This is a real modal that gates live computer-use actions, so trap focus
+  // inside it while it's shown (mirrors AssistantOverlay) — but DO NOT bind
+  // Escape: approving/denying is mandatory, there's no dismiss. Restores focus
+  // to the prior element when the last approval clears.
+  const hasApprovals = approvalCards.length > 0;
+  useEffect(() => {
+    if (!hasApprovals || typeof document === "undefined") return undefined;
+    previousFocusRef.current =
+      (document.activeElement as HTMLElement | null) ?? null;
+    const dialog = dialogRef.current;
+    if (dialog) {
+      const firstFocusable =
+        dialog.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+      (firstFocusable ?? dialog).focus();
+    }
+    function onKey(event: KeyboardEvent): void {
+      if (event.key !== "Tab" || !dialog) return;
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+      );
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (event.shiftKey) {
+        if (active === first || active === dialog) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else if (active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      const previous = previousFocusRef.current;
+      if (previous && typeof previous.focus === "function") previous.focus();
+      previousFocusRef.current = null;
+    };
+  }, [hasApprovals]);
+
   const handleRespond = useCallback(
     async (approvalId: string, approved: boolean, reason?: string) => {
       if (busyApprovalId) {
@@ -177,9 +228,11 @@ export function ComputerUseApprovalOverlay() {
 
   return (
     <div
+      ref={dialogRef}
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="computer-use-approval-title"
+      tabIndex={-1}
       className={OVERLAY_SHELL_CLASS}
     >
       <Card className={OVERLAY_CARD_CLASS}>
