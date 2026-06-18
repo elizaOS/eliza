@@ -34,6 +34,13 @@ import {
 
 // --- ANSI styling -----------------------------------------------------------
 
+/** Agent id of the keyboard-focused control, highlighted on render. */
+let focusedAgentId: string | null = null;
+/** Set the focused control before a render pass (terminal keyboard focus). */
+export function setFocusedAgentId(id: string | null): void {
+  focusedAgentId = id;
+}
+
 const ESC = "\x1b[";
 const RESET = `${ESC}0m`;
 
@@ -234,10 +241,13 @@ function renderText(node: SpatialTextNode, width: number): string[] {
 
 function renderButton(node: SpatialButtonNode, width: number): string[] {
   const variant = node.variant ?? "solid";
+  const focused = node.agent?.id != null && node.agent.id === focusedAgentId;
   const codes = toneCodes(node.tone ?? "primary");
   codes.push(1); // bold
-  if (variant === "solid") codes.push(7); // inverse fill
+  if (variant === "solid" || focused) codes.push(7); // inverse fill
+  if (focused) codes.push(4); // underline the focused control
   if (node.disabled) codes.push(2);
+  // Focus is shown with inverse + underline only — no width change.
   const label = `[ ${node.label} ]`;
   return [
     alignH(

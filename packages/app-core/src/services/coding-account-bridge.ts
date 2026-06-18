@@ -51,17 +51,21 @@ const DEFAULT_CODING_STRATEGY: Strategy = "least-used";
  * Ordered provider candidates per coding-agent type. The first provider with an
  * eligible account wins; a subscription provider is preferred over its direct
  * API equivalent (subscriptions are the primary use case here).
+ *
+ * claude (claude-agent-acp) and codex (codex-acp) are first-party CLIs.
+ * opencode authenticates through its configured backend; the only backend it
+ * resolves from a pooled key is Cerebras (`CEREBRAS_API_KEY`, see
+ * buildOpencodeSpawnConfig), so opencode pool-rotates across `cerebras-api`
+ * accounts and no-ops otherwise. z.ai / Kimi / GLM have no first-party coding
+ * CLI — their accounts serve the main runtime's API-key routing — so they are
+ * deliberately absent (advertising them would offer an unspawnable path).
  */
 const AGENT_PROVIDER_CANDIDATES: Readonly<
   Record<string, readonly LinkedAccountProviderId[]>
 > = {
   claude: ["anthropic-subscription", "anthropic-api"],
   codex: ["openai-codex", "openai-api"],
-  // z.ai / GLM coding plans, surfaced for completeness; used via OpenCode config
-  // or a dedicated coding endpoint rather than a first-party CLI.
-  zai: ["zai-coding", "zai-api"],
-  glm: ["zai-coding", "zai-api"],
-  kimi: ["kimi-coding", "moonshot-api"],
+  opencode: ["cerebras-api"],
 };
 
 export interface CodingAgentAccountDescriptor {
@@ -172,13 +176,10 @@ async function buildEnvPatch(
       return { CLAUDE_CODE_OAUTH_TOKEN: accessToken };
     case "openai-codex":
       return { CODEX_HOME: materializeCodexHome(accountId, accessToken) };
-    case "zai-coding":
-    case "zai-api":
-      return { ZAI_API_KEY: accessToken, Z_AI_API_KEY: accessToken };
-    case "kimi-coding":
-    case "moonshot-api":
-      return { MOONSHOT_API_KEY: accessToken, KIMI_API_KEY: accessToken };
     default: {
+      // Direct API providers (e.g. cerebras-api → CEREBRAS_API_KEY for opencode)
+      // inject under their canonical env key; run-main.ts normalizes aliases
+      // (Z_AI_API_KEY → ZAI_API_KEY, KIMI_API_KEY → MOONSHOT_API_KEY).
       const envKey =
         DIRECT_ACCOUNT_PROVIDER_ENV[providerId as DirectAccountProvider];
       return envKey ? { [envKey]: accessToken } : {};

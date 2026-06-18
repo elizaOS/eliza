@@ -20,7 +20,7 @@ import {
   type SpatialStateStore,
 } from "../evaluate.ts";
 import type { SpatialNode } from "../ir.ts";
-import { render as renderEngine } from "./engine.ts";
+import { render as renderEngine, setFocusedAgentId } from "./engine.ts";
 
 /** Lay out an already-evaluated IR node to terminal lines. */
 export function renderSpatialToLines(
@@ -44,6 +44,8 @@ export interface SpatialTuiComponentOptions {
   onChange?: () => void;
   /** Reuse an external store (else one is created and owned by the component). */
   store?: SpatialStateStore;
+  /** Fired with the agent id when a focused control is activated (Enter). */
+  onActivate?: (agentId: string) => void;
 }
 
 /**
@@ -65,24 +67,67 @@ export function createSpatialTuiComponent(
 ): Component {
   const store = options.store ?? createSpatialStateStore();
   let cache: { width: number; lines: string[] } | null = null;
+  // Keyboard focus: ids of activatable buttons (in document order) + handlers.
+  let focusable: string[] = [];
+  let handlers = new Map<string, () => void>();
+  let focusedId: string | null = null;
+
+  const invalidate = () => {
+    cache = null;
+  };
+  const requestRender = () => {
+    invalidate();
+    options.onChange?.();
+  };
+
+  function evaluate(): SpatialNode {
+    handlers = new Map();
+    const tree = evaluateToSpatialTree(view(), {
+      store,
+      requestRender,
+      handlers,
+    });
+    focusable = [...handlers.keys()];
+    // Keep focus on the same control across re-renders; default to the first.
+    if (focusedId === null || !focusable.includes(focusedId)) {
+      focusedId = focusable[0] ?? null;
+    }
+    return tree;
+  }
+
+  function move(delta: number): void {
+    if (focusable.length === 0) return;
+    const i = focusedId ? focusable.indexOf(focusedId) : -1;
+    const next = (i + delta + focusable.length) % focusable.length;
+    focusedId = focusable[next];
+    requestRender();
+  }
 
   return {
     render(width: number): string[] {
       if (cache && cache.width === width) return cache.lines;
-      const tree = evaluateToSpatialTree(view(), {
-        store,
-        requestRender: () => {
-          cache = null;
-          options.onChange?.();
-        },
-      });
+      const tree = evaluate();
+      setFocusedAgentId(focusedId);
       const lines = renderEngine(tree, width);
+      setFocusedAgentId(null);
       cache = { width, lines };
       return lines;
     },
-    invalidate(): void {
-      cache = null;
+    handleInput(data: string): void {
+      if (focusable.length === 0 && handlers.size === 0) evaluate();
+      // Tab / arrows move focus; Enter / Space activate the focused control.
+      if (data === "\t" || data === "\x1b[B" || data === "\x0e") move(1);
+      else if (data === "\x1b[Z" || data === "\x1b[A" || data === "\x10")
+        move(-1);
+      else if (data === "\r" || data === "\n" || data === " ") {
+        if (focusedId) {
+          handlers.get(focusedId)?.();
+          options.onActivate?.(focusedId);
+          requestRender();
+        }
+      }
     },
+    invalidate,
   };
 }
 
