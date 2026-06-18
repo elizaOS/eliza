@@ -207,6 +207,7 @@ module h2p_corrector
                             upd_hist[hist_bit] ? actual_sign : -actual_sign));
                 end
                 /* verilator lint_off UNSIGNED */
+                /* verilator lint_off UNUSEDLOOP */
                 for (int unsigned hist_bit = 0; hist_bit < H2P_TARGET_HIST_LEN; hist_bit++) begin
                     weights_q[upd_idx][H2P_HIST_LEN+1+hist_bit] <= sat_add_weight(
                         h2p_clean_weight(
@@ -242,6 +243,7 @@ module h2p_corrector
                             upd_path_hist[hist_bit % ITTAGE_PATH_HISTORY_BITS] ?
                                 actual_sign : -actual_sign));
                 end
+                /* verilator lint_on UNUSEDLOOP */
                 /* verilator lint_on UNSIGNED */
             end
         end
