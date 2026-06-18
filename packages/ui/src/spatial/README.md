@@ -155,3 +155,21 @@ modalities (the `viewType` declarations still distinguish surface behaviour like
   an unknown host element to its children so text still flows.
 - Percentage lengths and vertical `justify`/`grow` in the TUI engine apply only
   when a fixed height is supplied; content-height columns lay out top-to-bottom.
+- **Avoid East-Asian-ambiguous glyphs in terminal-bound text.** A glyph like `✓`
+  (U+2713) measures as width 2 in the Unicode width table but renders 1 cell wide
+  in many fonts/terminals, so a line that's correct by measurement misaligns
+  visually. Prefer unambiguous width-1 markers (`●`/`○`, `■`/`□`, `+`, `x`). Box
+  drawing, `•`, `›`, `…`, `▾` are all width-1 and safe. A fixed cell `width` also
+  doesn't translate (0.25rem in DOM vs. one column in the terminal) — use
+  `width="100%"` / `grow` for "fill", not a fixed cell count.
+
+## Verifying — the screen gallery
+
+`gallery.tsx` is a corpus of representative screen archetypes (profile, list,
+settings, dashboard, chat, empty, error, connect, wallet, table, confirm,
+progress), each authored once. `__tests__/gallery.test.tsx` asserts every screen
+renders to IR + TUI (width contract at 48/32/24) + GUI/XR DOM. The live visual
+harness (`stories/spatial.html`, served by `bun run --cwd packages/ui stories:dev`
+at `/spatial.html`) renders all three modalities side-by-side per screen;
+`?screen=<id>` isolates one. Regenerate the terminal column with
+`bun packages/ui/src/spatial/gallery-tui-gen.mjs`.
