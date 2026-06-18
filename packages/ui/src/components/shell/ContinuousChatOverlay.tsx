@@ -1,4 +1,11 @@
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import {
+  AnimatePresence,
+  animate,
+  motion,
+  useMotionValue,
+  useReducedMotion,
+  useTransform,
+} from "motion/react";
 import * as React from "react";
 
 import type { ImageAttachment } from "../../api/client-types-chat";
@@ -352,11 +359,13 @@ export function ContinuousChatOverlay({
   // selects FULL vs HALF while open. Grabber pulls step through the detents
   // (each cross fires a light haptic); programmatic opens (send/focus) go FULL.
   const [expanded, setExpanded] = React.useState(false);
-  // Live drag offset in px (positive = pulling up) while the grabber/peek is
-  // dragged; 0 at rest. Drives the sheet height 1:1 so it tracks the finger,
-  // then resets when the release spring takes over.
-  const [drag, setDrag] = React.useState(0);
-  const [dragging, setDragging] = React.useState(false);
+  // The live thread (history) height in px, as a MOTION VALUE — driven directly
+  // by the pointer during a drag and spring-animated to a detent on release.
+  // Keeping it off React state means a drag updates the DOM height every frame
+  // with NO component re-render, so the gesture stays buttery. `draggingRef`
+  // gates the settle effect so it doesn't fight an in-flight finger drag.
+  const threadHeight = useMotionValue(0);
+  const draggingRef = React.useRef(false);
   const [pushToTalkActive, setPushToTalkActive] = React.useState(false);
   const [pendingImages, setPendingImages] = React.useState<ImageAttachment[]>(
     [],
@@ -573,16 +582,75 @@ export function ContinuousChatOverlay({
 
   const hasThread = visibleMessages.length > 0;
 
+  // Viewport height drives the OPEN detent. Track the VISUAL viewport so the
+  // open chat sizes to the space left above the mobile keyboard (visualViewport
+  // shrinks when the keyboard shows / on rotation; innerHeight does not on iOS).
+  const readViewportH = React.useCallback(
+    () =>
+      typeof window === "undefined"
+        ? 800
+        : (window.visualViewport?.height ?? window.innerHeight),
+    [],
+  );
+  const [viewportH, setViewportH] = React.useState(readViewportH);
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onResize = () => setViewportH(readViewportH());
+    const vv = window.visualViewport;
+    window.addEventListener("resize", onResize);
+    vv?.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      vv?.removeEventListener("resize", onResize);
+    };
+  }, [readViewportH]);
+
+  // History-height detents: COLLAPSED (0) → HALF → FULL.
+  const openH = Math.round(viewportH * SHEET_OPEN_VH);
+  const halfH = Math.round(viewportH * SHEET_HALF_VH);
+  const baseH = !sheetOpen ? 0 : expanded ? openH : halfH;
+  // Map a raw drag height: rubber-band past FULL, hard-clamp the bottom to 0.
+  const clampHeight = React.useCallback(
+    (raw: number) =>
+      raw > openH ? openH + rubberBand(raw - openH) : Math.max(0, raw),
+    [openH],
+  );
+  // Backdrop dimming + the suggestion-strip fade both follow the live height —
+  // derived motion values so they update during a drag with no re-render.
+  const revealed = useTransform(threadHeight, (h) =>
+    Math.min(1, Math.max(0, h / Math.max(1, openH))),
+  );
+  const suggestionsOpacity = useTransform(threadHeight, (h) =>
+    Math.max(0, 1 - h / Math.max(1, openH * 0.5)),
+  );
+
+  // Sub-threshold release: spring back to the current detent (no state change).
   const settleDrag = React.useCallback(() => {
-    setDrag(0);
-    setDragging(false);
-  }, []);
+    draggingRef.current = false;
+    if (reduce) threadHeight.set(baseH);
+    else animate(threadHeight, baseH, SHEET_SPRING);
+  }, [threadHeight, baseH, reduce]);
 
   const closeSheet = React.useCallback(() => {
+    draggingRef.current = false;
     setSheetOpen(false);
     setExpanded(false);
-    settleDrag();
-  }, [settleDrag]);
+  }, []);
+
+  // The single detent→detent animator: whenever the settled detent (or viewport)
+  // changes and we're not mid finger-drag, spring the history height to it. The
+  // gesture / open paths just flip sheetOpen/expanded and this reacts — no
+  // per-frame React state, so the live drag stays buttery.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: baseH already encodes sheetOpen/expanded/viewportH; threadHeight is a stable ref
+  React.useEffect(() => {
+    if (draggingRef.current) return;
+    if (reduce) {
+      threadHeight.set(baseH);
+      return;
+    }
+    const controls = animate(threadHeight, baseH, SHEET_SPRING);
+    return () => controls.stop();
+  }, [baseH, reduce]);
 
   // Snap to one of the three iOS-style detents and settle the live drag. A
   // detent change fires a light haptic so the snap feels physical on device.
@@ -590,12 +658,13 @@ export function ContinuousChatOverlay({
   // comfortable reading height; "full" the near-fullscreen reading mode.
   const goToDetent = React.useCallback(
     (detent: "collapsed" | "half" | "full") => {
+      // Flip the settled detent; the [baseH] effect springs the height to it.
+      draggingRef.current = false;
       setSheetOpen(detent !== "collapsed");
       setExpanded(detent === "full");
-      settleDrag();
       detentHaptic();
     },
-    [settleDrag],
+    [],
   );
 
   // Collapsing always drops input focus, so the mobile keyboard goes away the
@@ -643,26 +712,23 @@ export function ContinuousChatOverlay({
   }, [draft]);
 
   // --- Pull gesture --------------------------------------------------------
-  // The chat-history sheet is the draggable element. A live drag updates `drag`
-  // (px, + = up) so the sheet height tracks the finger, resisting past either
-  // detent (rubber-band in the render); release fires onPullUp/onPullDown
-  // (distance OR velocity threshold, via usePullGesture) to snap. ONE binding
-  // serves both the grabber and the closed peek — the handlers are state-aware,
-  // so a wrong-direction pull is a harmless no-op. Closing here is the ONLY
-  // dismiss path besides Escape: no click-out, scroll, or blur closes the sheet.
+  // The grabber is the draggable handle. A live drag sets the threadHeight motion
+  // value DIRECTLY (no React state → no re-render per frame, so it tracks the
+  // finger 1:1); release fires onPullUp/onPullDown (distance OR velocity, via
+  // usePullGesture) to snap to a detent.
   const onDragOffset = React.useCallback(
     (offset: number) => {
-      setDragging(true);
-      // Three detents, three live-drag ranges. Peek (closed): only an upward
-      // (positive) drag is meaningful. Full (expanded): only a downward
-      // (negative) one. Half (the middle): both directions are live so the
-      // finger can climb to full or fall to peek. Pin the dead direction so the
-      // sheet feels held at the ends.
-      if (!sheetOpen) setDrag(Math.max(0, offset));
-      else if (expanded) setDrag(Math.min(0, offset));
-      else setDrag(offset);
+      draggingRef.current = true;
+      // Pin the dead direction at each end so the panel feels held: collapsed →
+      // only upward (positive); full → only downward (negative); half → both.
+      const off = !sheetOpen
+        ? Math.max(0, offset)
+        : expanded
+          ? Math.min(0, offset)
+          : offset;
+      threadHeight.set(clampHeight(baseH + off));
     },
-    [sheetOpen, expanded],
+    [sheetOpen, expanded, baseH, clampHeight, threadHeight],
   );
 
   const pullBinding: PullGestureBinding = usePullGesture({
@@ -689,50 +755,8 @@ export function ContinuousChatOverlay({
     },
   });
 
-  // NOTE: the sheet deliberately has NO close-on-outside-pointerdown and NO
-  // close-on-scroll listener. Clicking/scrolling anywhere outside the chat does
-  // nothing — the sheet closes ONLY on a pull-down drag (the grabber) or Escape.
-
-  // Viewport height drives the OPEN detent. Track the VISUAL viewport so the
-  // open sheet sizes to the space actually left above the mobile on-screen
-  // keyboard — visualViewport shrinks when the keyboard shows (and on rotation),
-  // whereas window.innerHeight does not on iOS. Falls back to innerHeight on
-  // desktop / older webviews and to a fixed value under SSR / tests.
-  const readViewportH = React.useCallback(
-    () =>
-      typeof window === "undefined"
-        ? 800
-        : (window.visualViewport?.height ?? window.innerHeight),
-    [],
-  );
-  const [viewportH, setViewportH] = React.useState(readViewportH);
-  React.useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    const onResize = () => setViewportH(readViewportH());
-    const vv = window.visualViewport;
-    window.addEventListener("resize", onResize);
-    vv?.addEventListener("resize", onResize);
-    return () => {
-      window.removeEventListener("resize", onResize);
-      vv?.removeEventListener("resize", onResize);
-    };
-  }, [readViewportH]);
-
-  // The thread (history) is the part that grows: the input bar is always there
-  // and the conversation animates UP out of it inside the same panel. Three
-  // detents — COLLAPSED (thread height 0, fully gone — no peek/whisper), a
-  // comfortable HALF, and a near-full FULL. The live drag offset is added and
-  // rubber-banded past FULL; the bottom is hard-clamped to 0 (you can't drag the
-  // history below nothing).
-  const openH = Math.round(viewportH * SHEET_OPEN_VH);
-  const halfH = Math.round(viewportH * SHEET_HALF_VH);
-  const baseH = !sheetOpen ? 0 : expanded ? openH : halfH;
-  const rawH = baseH + drag;
-  const threadH =
-    rawH > openH ? openH + rubberBand(rawH - openH) : Math.max(0, rawH);
-  // Reveal fraction 0→1 across the collapse→full gap; fades the dimming + the
-  // backdrop in as the history grows.
-  const revealed = Math.min(1, Math.max(0, threadH / Math.max(1, openH)));
+  // NOTE: the chat has NO close-on-outside-pointerdown beyond the keyboard blur;
+  // it COLLAPSES on a pull-down, Escape, or a click on the dimming scrim.
 
   return (
     <div
@@ -754,14 +778,12 @@ export function ContinuousChatOverlay({
         data-active={sheetOpen ? "true" : "false"}
         onClick={sheetOpen ? collapse : undefined}
         className="fixed inset-0 bg-[linear-gradient(160deg,rgba(255,255,255,0.06)_0%,rgba(8,10,18,0.55)_46%,rgba(0,0,0,0.66)_100%)]"
-        style={{ pointerEvents: revealed > 0.04 ? "auto" : "none" }}
-        initial={false}
-        animate={{ opacity: revealed }}
-        transition={
-          dragging || reduce
-            ? { duration: 0 }
-            : { duration: 0.2, ease: OVERLAY_EASE }
-        }
+        // Opacity follows the live history height (motion value) — no re-render
+        // during a drag. Capture clicks only once open.
+        style={{
+          opacity: revealed,
+          pointerEvents: sheetOpen ? "auto" : "none",
+        }}
       />
 
       {/* Cinematic bottom vignette — grounds the floating bar over bright views. */}
@@ -792,12 +814,12 @@ export function ContinuousChatOverlay({
           strip ABOVE the chat sheet (sheet-below-bubbles layout); the strip fades
           out as the sheet is dragged up so the unmount on open never pops. */}
       {suggestionsVisible ? (
-        <fieldset
+        <motion.fieldset
           aria-label="Suggested prompts"
           className={cn(
             "pointer-events-auto relative m-0 mb-2 flex w-full max-w-3xl flex-wrap items-center justify-center gap-2 border-0 p-0",
           )}
-          style={{ order: -1, opacity: Math.max(0, 1 - revealed) }}
+          style={{ order: -1, opacity: suggestionsOpacity }}
           data-testid="chat-suggestions"
         >
           {suggestions.map((s, i) => (
@@ -818,7 +840,7 @@ export function ContinuousChatOverlay({
               {s}
             </button>
           ))}
-        </fieldset>
+        </motion.fieldset>
       ) : null}
 
       {/* THE chat — one connected object. Its base is the always-present input;
@@ -834,7 +856,7 @@ export function ContinuousChatOverlay({
         data-testid="chat-sheet"
         data-variant={sheetOpen ? "open" : "closed"}
         data-detent={!sheetOpen ? "collapsed" : expanded ? "full" : "half"}
-        data-revealed={revealed > 0.5 ? "true" : "false"}
+        data-revealed={sheetOpen ? "true" : "false"}
         className={cn(
           "pointer-events-auto relative m-0 flex w-full min-w-0 max-w-3xl flex-col overflow-hidden border-0 p-0",
           // Liquid glass: a translucent, blurred, slightly over-saturated pane
@@ -886,9 +908,9 @@ export function ContinuousChatOverlay({
           <motion.div
             data-testid="chat-thread"
             className="relative z-10 w-full overflow-hidden"
-            initial={false}
-            animate={{ height: threadH }}
-            transition={dragging || reduce ? { duration: 0 } : SHEET_SPRING}
+            // Height is the motion value — set 1:1 during a drag, spring-animated
+            // to a detent on release. No `animate`/`transition`: no re-render.
+            style={{ height: threadHeight }}
           >
             <div
               id="continuous-thread"
@@ -896,7 +918,7 @@ export function ContinuousChatOverlay({
               role="log"
               aria-label="conversation history"
               aria-live="polite"
-              aria-hidden={revealed < 0.5 ? true : undefined}
+              aria-hidden={!sheetOpen ? true : undefined}
               tabIndex={sheetOpen ? 0 : -1}
               onKeyDown={(e) => {
                 if (e.key === "Escape") {
