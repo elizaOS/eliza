@@ -1,6 +1,7 @@
 import * as http from "node:http";
 import { Socket } from "node:net";
-import { SETTINGS_SECTION_META, TAB_PATHS } from "@elizaos/ui/navigation";
+import { SETTINGS_SECTION_META } from "@elizaos/ui/components/settings/settings-section-meta";
+import { TAB_PATHS } from "@elizaos/ui/navigation";
 import {
   afterEach,
   beforeAll,
