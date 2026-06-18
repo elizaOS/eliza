@@ -22,6 +22,9 @@
         "../../plugins/plugin-wallet-ui/src/index.ts"
       ],
       "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
+      "@elizaos/plugin-health/screen-time/mobile-signal-setup": [
+        "../../plugins/plugin-health/src/screen-time/mobile-signal-setup.ts"
+      ],
       "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
       "@elizaos/capacitor-*": ["../native-plugins/*/dist/index.d.ts"],
       "@elizaos/native-activity-tracker": [

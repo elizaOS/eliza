@@ -7,6 +7,12 @@ import { join, resolve } from "node:path";
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import { NativeAcpClient } from "./acp-native-transport.js";
 import {
+  accountMetaFromSessionMetadata,
+  type CodingAccountMeta,
+  resolveCodingAccountStrategy,
+  selectCodingAccount,
+} from "./coding-account-selection.js";
+import {
   buildOpencodeAcpEnv,
   resolveVendoredOpencodeAcpCommand,
 } from "./opencode-config.js";
@@ -544,7 +550,47 @@ export class AcpService extends Service {
     const baselineSha = await captureBaselineSha(workdir);
     const baselineDirty = await captureBaselineDirty(workdir);
 
+    // Multi-account selection: pick the least-used (default) linked subscription
+    // for this agent type and inject its credentials into the spawn env so the
+    // sub-agent authenticates AS that account. Returns null (and we keep the
+    // single-account behavior) when no accounts are linked.
+    const accountStrategy = resolveCodingAccountStrategy(
+      this.setting("ELIZA_CODING_ACCOUNT_STRATEGY"),
+    );
+    const resolvedAccount = await selectCodingAccount(agentType, {
+      sessionKey: id,
+      ...(accountStrategy ? { strategy: accountStrategy } : {}),
+    });
+    const customCredentials = resolvedAccount
+      ? {
+          ...(opts.customCredentials ?? {}),
+          ...resolvedAccount.selection.envPatch,
+        }
+      : opts.customCredentials;
+    if (resolvedAccount) {
+      this.log("info", "coding account selected for spawn", {
+        sessionId: id,
+        agentType,
+        providerId: resolvedAccount.meta.providerId,
+        accountId: resolvedAccount.meta.accountId,
+        label: resolvedAccount.meta.label,
+        strategy: resolvedAccount.meta.strategy,
+      });
+    }
+
     const now = new Date();
+    const mergedMetadata: Record<string, unknown> = {
+      ...(opts.metadata ?? {}),
+      ...(baselineSha ? { codingBaselineSha: baselineSha } : {}),
+      ...(baselineSha && baselineDirty.length > 0
+        ? { codingBaselineDirty: baselineDirty }
+        : {}),
+      ...(resolvedAccount ? { account: resolvedAccount.meta } : {}),
+    };
+    const hasMergedMetadata =
+      Boolean(baselineSha) ||
+      Boolean(resolvedAccount) ||
+      Boolean(opts.metadata);
     const session: SessionInfo = {
       id,
       name,
@@ -554,15 +600,7 @@ export class AcpService extends Service {
       approvalPreset,
       createdAt: now,
       lastActivityAt: now,
-      metadata: baselineSha
-        ? {
-            ...(opts.metadata ?? {}),
-            codingBaselineSha: baselineSha,
-            ...(baselineDirty.length > 0
-              ? { codingBaselineDirty: baselineDirty }
-              : {}),
-          }
-        : opts.metadata,
+      metadata: hasMergedMetadata ? mergedMetadata : opts.metadata,
     };
     // Atomic check-and-reserve: enforces the session limit and inserts under a
     // single mutex so concurrent spawns can't overshoot maxSessions (the old
@@ -570,7 +608,10 @@ export class AcpService extends Service {
     await this.reserveSessionSlot(session);
 
     if (this.transportMode === "native") {
-      const result = await this.spawnNativeSession(id, session, opts);
+      const result = await this.spawnNativeSession(id, session, {
+        ...opts,
+        customCredentials,
+      });
       if (opts.initialTask?.trim()) {
         const keepAliveAfterComplete =
           (opts.metadata as Record<string, unknown> | undefined)
@@ -611,12 +652,7 @@ export class AcpService extends Service {
       agentType,
       workdir,
       args,
-      env: this.buildEnv(
-        opts.env,
-        opts.customCredentials,
-        opts.model,
-        agentType,
-      ),
+      env: this.buildEnv(opts.env, customCredentials, opts.model, agentType),
     });
 
     if (result.code !== 0) {
@@ -716,13 +752,22 @@ export class AcpService extends Service {
       ]),
     );
 
+    // The cli transport spawns a fresh subprocess per prompt, so re-inject the
+    // session's selected-account credentials (the native transport keeps the
+    // spawn-time client, which already has them).
+    const promptCredentials = await this.accountCredentialsForSession(session);
     const result = await this.runAcpx({
       sessionId,
       sessionName: session.name ?? session.id,
       agentType: session.agentType,
       workdir: session.workdir,
       args,
-      env: this.buildEnv(opts.env, undefined, opts.model, session.agentType),
+      env: this.buildEnv(
+        opts.env,
+        promptCredentials,
+        opts.model,
+        session.agentType,
+      ),
       promptPreview: preview(text),
       promptLength: text.length,
       timeoutMs: opts.timeoutMs,
@@ -1957,6 +2002,33 @@ export class AcpService extends Service {
     }, KILL_GRACE_MS);
   }
 
+  /**
+   * Re-resolve the credential env for a session's previously selected account.
+   * Used by the cli transport (which spawns a fresh subprocess per prompt);
+   * session affinity keeps the same account, and the token is refreshed on each
+   * resolve. Returns undefined when the session has no linked account.
+   */
+  private async accountCredentialsForSession(
+    session: SessionInfo,
+  ): Promise<Record<string, string> | undefined> {
+    const meta: CodingAccountMeta | null = accountMetaFromSessionMetadata(
+      session.metadata,
+    );
+    if (!meta) return undefined;
+    const resolved = await selectCodingAccount(session.agentType, {
+      sessionKey: session.id,
+    });
+    if (!resolved) return undefined;
+    if (resolved.meta.accountId !== meta.accountId) {
+      this.log("warn", "coding account drifted on follow-up prompt", {
+        sessionId: session.id,
+        previous: meta.accountId,
+        now: resolved.meta.accountId,
+      });
+    }
+    return resolved.selection.envPatch;
+  }
+
   private buildEnv(
     extra?: Record<string, string | undefined>,
     customCredentials?: Record<string, string | undefined>,
@@ -1990,7 +2062,19 @@ export class AcpService extends Service {
       if (agentType === "claude") env.ANTHROPIC_MODEL = model;
       if (agentType === "opencode") env.OPENCODE_MODEL = model;
     }
-    if (
+    if (agentType === "claude" && env.CLAUDE_CODE_OAUTH_TOKEN) {
+      // A specific subscription account was selected for this sub-agent. Claude
+      // Code prefers ANTHROPIC_API_KEY over CLAUDE_CODE_OAUTH_TOKEN, so drop any
+      // API key (forwarded from the parent or a stray OAuth token) to guarantee
+      // the chosen account's OAuth token is the one that authenticates.
+      if (env.ANTHROPIC_API_KEY) {
+        delete env.ANTHROPIC_API_KEY;
+        this.log(
+          "debug",
+          "Dropped ANTHROPIC_API_KEY for claude sub-agent in favor of selected CLAUDE_CODE_OAUTH_TOKEN account",
+        );
+      }
+    } else if (
       agentType === "claude" &&
       isClaudeOAuthSubscriptionToken(env.ANTHROPIC_API_KEY)
     ) {

@@ -1,0 +1,19 @@
+{
+  "name": "@elizaos/example-x402-image-gen",
+  "version": "0.1.0",
+  "description": "PayPerPixel — x402 reference: standalone Bun server that charges USDC over x402 per generated image and credits the app creator's earnings.",
+  "scripts": {
+    "start": "bun run server.ts",
+    "dev": "bun --hot run server.ts",
+    "typecheck": "tsgo --noEmit",
+    "test": "bun run test.ts",
+    "build": "bun build server.ts --outdir=dist --target=bun --format=esm"
+  },
+  "dependencies": {
+    "@elizaos/cloud-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "bun-types": "1.3.14"
+  }
+}

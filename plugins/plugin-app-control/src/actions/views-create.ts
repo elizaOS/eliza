@@ -357,7 +357,26 @@ async function dispatchCodingAgent({
 			task: prompt,
 			label,
 			approvalPreset: "permissive",
-			metadata: { originRoomId },
+			// Verify the scaffolded/edited plugin once the coding agent finishes.
+			// Without this validator the orchestrator never runs verification and
+			// VerificationRoomBridgeService (which filters on
+			// validator.service === "app-verification") never posts a verdict back
+			// to the room — the user would see "Started …" and then silence.
+			validator: {
+				service: "app-verification",
+				method: "verifyPlugin",
+				// pluginName is what VerificationRoomBridgeService reads to resolve the
+				// target name for the verdict it posts back (decodeEvent reads
+				// params.pluginName for verifyPlugin); omitting it drops the verdict.
+				params: { workdir, pluginName, profile: "full" },
+			},
+			onVerificationFail: "retry",
+			metadata: {
+				// Carried into session metadata via start-coding-task.ts so the
+				// verification-room-bridge can post the verdict back to the
+				// originating chat room.
+				originRoomId,
+			},
 		},
 	};
 

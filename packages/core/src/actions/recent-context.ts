@@ -17,7 +17,8 @@ const STATE_SPEAKER_PREFIX_RE =
  * depends on `core`; importing it would create a package cycle.
  */
 function getRecentMessagesData(state: State | undefined): Memory[] {
-	const messages = state?.data?.providers?.RECENT_MESSAGES?.data?.recentMessages;
+	const messages =
+		state?.data?.providers?.RECENT_MESSAGES?.data?.recentMessages;
 	return Array.isArray(messages) ? (messages as Memory[]) : [];
 }
 

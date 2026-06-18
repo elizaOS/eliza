@@ -47,7 +47,7 @@ describe("createSensitiveRequestDispatchRegistry", () => {
 		expect(registry.get("dm")).toBe(adapter);
 	});
 
-	test("register with same target replaces previous adapter", () => {
+	test("keeps multiple adapters per target; get returns the most recent", () => {
 		const registry = createSensitiveRequestDispatchRegistry();
 		const first = makeAdapter("dm");
 		const second = makeAdapter("dm");
@@ -55,9 +55,33 @@ describe("createSensitiveRequestDispatchRegistry", () => {
 		registry.register(first);
 		registry.register(second);
 
+		// Both are kept (e.g. Discord + Telegram both register a "dm" adapter);
+		// get() returns the most recently registered for back-compat.
 		expect(registry.get("dm")).toBe(second);
-		expect(registry.get("dm")).not.toBe(first);
-		expect(registry.list()).toHaveLength(1);
+		expect(registry.list()).toHaveLength(2);
+
+		// Idempotent: re-registering the same adapter object does not duplicate.
+		registry.register(second);
+		expect(registry.list()).toHaveLength(2);
+	});
+
+	test("resolve picks the adapter whose supportsChannel accepts the channel", () => {
+		const registry = createSensitiveRequestDispatchRegistry();
+		const unsupported = makeAdapter("dm", { supportsChannel: () => false });
+		const supported = makeAdapter("dm", { supportsChannel: () => true });
+		registry.register(unsupported);
+		registry.register(supported);
+
+		// First-supporting wins; the unsupported one is skipped.
+		expect(registry.resolve?.("dm", "chat-1", {})).toBe(supported);
+
+		// When none claim support, fall back to the most recent.
+		const neither = createSensitiveRequestDispatchRegistry();
+		const a = makeAdapter("dm", { supportsChannel: () => false });
+		const b = makeAdapter("dm", { supportsChannel: () => false });
+		neither.register(a);
+		neither.register(b);
+		expect(neither.resolve?.("dm", "chat-1", {})).toBe(b);
 	});
 
 	test("unregister removes the adapter and get returns undefined", () => {

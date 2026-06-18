@@ -204,6 +204,13 @@ async function dispatchOrchestratorRoutes(
     return true;
   }
 
+  // GET /api/orchestrator/accounts — connected coding accounts, selection
+  // strategy, and the live sub-agent → account assignment map.
+  if (method === "GET" && pathname === `${PREFIX}/accounts`) {
+    sendJson(res, await service.getAccountOverview());
+    return true;
+  }
+
   // POST /api/orchestrator/pause-all
   if (method === "POST" && pathname === `${PREFIX}/pause-all`) {
     sendJson(res, { paused: await service.pauseAll() });

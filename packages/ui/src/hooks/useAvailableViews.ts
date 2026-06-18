@@ -13,6 +13,7 @@
 import { useEffect } from "react";
 import { fetchWithCsrf } from "../api/csrf-client";
 import { getFrontendPlatform } from "../platform/platform-guards";
+import { startPolling } from "./resource-cache";
 import { useCachedResource } from "./useCachedResource";
 
 export interface ViewRegistryEntry {
@@ -147,13 +148,13 @@ export function useAvailableViews(): UseAvailableViewsResult {
   );
 
   // Runtime plugin install/uninstall changes the registry; keep a background
-  // poll so the list stays live. Shared in-flight de-dup means overlapping
-  // ticks from multiple mounts collapse to one network request.
+  // poll so the list stays live. The poll is ref-counted in the cache layer
+  // keyed by VIEWS_CACHE_KEY, so the router and desktop-tab consumer (which
+  // both mount this hook) share a single timer instead of each running one.
   const { refetch } = resource;
   useEffect(() => {
-    const id = setInterval(refetch, POLL_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [refetch]);
+    return startPolling(VIEWS_CACHE_KEY, fetchViews, POLL_INTERVAL_MS);
+  }, []);
 
   return {
     views: resource.status === "success" ? resource.data : [],

@@ -77,6 +77,7 @@ export * from "./settings";
 export * from "./streaming-context";
 export * from "./trajectory-context";
 export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";
+export * from "./messaging/interactions";
 export * from "./types";
 export {
 	ConnectorAccountHealth,

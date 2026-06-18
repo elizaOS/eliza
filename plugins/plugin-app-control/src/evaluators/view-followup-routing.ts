@@ -35,6 +35,13 @@ const REFERENCE_TOKENS = new Set([
 	"THIS",
 	"THOSE",
 ]);
+// Tokens that signal the follow-up carries NEW content for the active view
+// (e.g. "make another one *saying* X", "set the *title* to Y"). These gate
+// create/update follow-ups so an ordinary conversational reply that merely
+// reuses a mutation verb does not get hijacked into VIEWS. Deliberately
+// excludes the bare preposition "with": it co-occurs with too many non-view
+// replies ("set it up with them", "go with that") and produced false routes
+// that suppressed the real answer with the canned "On it.".
 const CONTENT_MARKER_TOKENS = new Set([
 	"BODY",
 	"CONTENT",
@@ -46,7 +53,6 @@ const CONTENT_MARKER_TOKENS = new Set([
 	"SAYS",
 	"TEXT",
 	"TITLE",
-	"WITH",
 ]);
 
 function textOf(value: unknown): string {
@@ -54,12 +60,7 @@ function textOf(value: unknown): string {
 }
 
 function tokenize(text: string): string[] {
-	return (
-		text
-			.toUpperCase()
-			.match(/[A-Z0-9]+/g)
-			?.map((token) => (token === "CALENDER" ? "CALENDAR" : token)) ?? []
-	);
+	return text.toUpperCase().match(/[A-Z0-9]+/g) ?? [];
 }
 
 function hasAny(
@@ -99,22 +100,6 @@ function viewSupportsFamily(
 	);
 }
 
-function viewMentioned(tokens: readonly string[], view: ViewSummary): boolean {
-	const viewTokens = tokenize(
-		[
-			view.id,
-			view.label,
-			view.description,
-			...(view.tags ?? []),
-			...(view.capabilities ?? []).map((capability) => capability.id),
-		].join(" "),
-	);
-	const uniqueViewTokens = new Set(
-		viewTokens.filter((token) => token.length > 2 && !CREATE_TOKENS.has(token)),
-	);
-	return tokens.some((token) => uniqueViewTokens.has(token));
-}
-
 function hasRegisteredViewsAction(context: ResponseHandlerEvaluatorContext) {
 	return (context.runtime.actions ?? []).some(
 		(action) => action.name?.toUpperCase() === VIEWS_ACTION_NAME,
@@ -140,24 +125,26 @@ function shouldConsiderViewFollowup(
 
 async function resolveActiveViewForFamily(
 	family: CapabilityFamily,
-	tokens: readonly string[],
 ): Promise<ViewSummary | null> {
-	const client = createViewsClient();
-	const current = await client.getCurrentView();
-	if (!current) return null;
+	// The intent gate (family verb + reference token, plus a content marker for
+	// create/update) is enforced in shouldConsiderViewFollowup. Here we only need
+	// to confirm a view is actually focused and can perform the requested family.
+	// A loopback failure means we can't confirm the active view — degrade to "no
+	// route" so the agent's normal reply stands rather than crashing the evaluator.
+	try {
+		const client = createViewsClient();
+		const current = await client.getCurrentView();
+		if (!current) return null;
 
-	const views = await client.listViews();
-	const activeView = views.find((view) => view.id === current.viewId);
-	if (!activeView || !viewSupportsFamily(activeView, family)) {
+		const views = await client.listViews();
+		const activeView = views.find((view) => view.id === current.viewId);
+		if (!activeView || !viewSupportsFamily(activeView, family)) {
+			return null;
+		}
+		return activeView;
+	} catch {
 		return null;
 	}
-	if (family === "delete" || viewMentioned(tokens, activeView)) {
-		return activeView;
-	}
-	if (hasAny(tokens, CONTENT_MARKER_TOKENS)) {
-		return activeView;
-	}
-	return null;
 }
 
 export const viewFollowupRoutingEvaluator: ResponseHandlerEvaluator = {
@@ -167,12 +154,10 @@ export const viewFollowupRoutingEvaluator: ResponseHandlerEvaluator = {
 	priority: 20,
 	shouldRun: (context) => shouldConsiderViewFollowup(context) !== null,
 	evaluate: async (context) => {
-		const text = textOf(context.message.content?.text);
-		const tokens = tokenize(text);
 		const family = shouldConsiderViewFollowup(context);
 		if (!family) return undefined;
 
-		const activeView = await resolveActiveViewForFamily(family, tokens);
+		const activeView = await resolveActiveViewForFamily(family);
 		if (!activeView) return undefined;
 
 		return {

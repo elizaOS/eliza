@@ -59,8 +59,12 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-api:
     name: Deploy API Worker
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
     if: github.event_name != 'pull_request'
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_CACHE: remote:rw
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
@@ -73,7 +77,7 @@ jobs:
           bun-version: "canary"
 
       - name: Install dependencies
-        run: bun install --no-save && git diff --exit-code -- bun.lock
+        run: bun install --no-save --ignore-scripts && git diff --exit-code -- bun.lock
 
       - name: Build linked elizaOS workspaces
         run: bun run build:core
@@ -186,7 +190,11 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-frontend:
     name: Deploy Frontend (Pages)
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_CACHE: remote:rw
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
@@ -199,7 +207,7 @@ jobs:
           bun-version: "canary"
 
       - name: Install dependencies
-        run: bun install --no-save && git diff --exit-code -- bun.lock
+        run: bun install --no-save --ignore-scripts && git diff --exit-code -- bun.lock
 
       - name: Build linked elizaOS core workspace
         run: bun run build:core

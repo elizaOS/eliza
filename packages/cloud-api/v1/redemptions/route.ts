@@ -191,6 +191,14 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
         : "Redemption created and will be processed shortly.",
     });
   } catch (error) {
+    // failureResponse maps unknown throws to a generic 500 and does NOT log; a
+    // thrown TWAP-oracle / payout-status / token-availability failure would
+    // otherwise leave no trace. Log it so payout failures are diagnosable.
+    logger.error("[Redemption API] Redemption request threw", {
+      error: error instanceof Error ? error.message : String(error),
+      name: error instanceof Error ? error.name : undefined,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return failureResponse(c, error);
   }
 });

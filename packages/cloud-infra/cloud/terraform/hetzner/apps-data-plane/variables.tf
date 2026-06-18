@@ -49,8 +49,12 @@ variable "app_node_count" {
   type        = number
   default     = 1
   validation {
-    condition     = var.app_node_count >= 1 && var.app_node_count <= 20
-    error_message = "app_node_count must be between 1 and 20"
+    # Per-env private-IP windows in the shared subnet are 10 apart (staging base
+    # 20, production base 30 — see hcloud_server_network.app_node). Capping at 9
+    # keeps staging's top host (20+9=29) strictly below production's base (31) so
+    # the two windows can never overlap as either env scales.
+    condition     = var.app_node_count >= 1 && var.app_node_count <= 9
+    error_message = "app_node_count must be between 1 and 9 (per-env private-IP windows are 10 apart in the shared subnet)"
   }
 }
 

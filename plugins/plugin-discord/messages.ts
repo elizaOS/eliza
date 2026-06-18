@@ -36,6 +36,7 @@ import { AttachmentManager } from "./attachments";
 // Use stringToUuid() to convert them, not asUUID() which would throw an error.
 import type { ICompatRuntime } from "./compat";
 import { createDraftStreamController } from "./draft-stream";
+import { renderDiscordInteractions } from "./interactions";
 import { getDiscordSettings } from "./environment";
 import { buildDiscordWorldMetadata } from "./identity";
 import { formatInboundEnvelope } from "./inbound-envelope";
@@ -917,7 +918,10 @@ export class MessageManager {
 						content.text = stripReasoningTags(content.text);
 					}
 
-					const textContent = normalizeDiscordMessageText(content.text);
+					// Project embedded interaction blocks (choices, task cards, …) onto
+					// native Discord components, and strip their markers from the prose.
+					const rendered = renderDiscordInteractions(content);
+					const textContent = normalizeDiscordMessageText(rendered.text);
 					const hasText = textContent.trim().length > 0;
 					const attachmentCount = Array.isArray(content.attachments)
 						? content.attachments.filter((media) => Boolean(media?.url)).length
@@ -1044,7 +1048,7 @@ export class MessageManager {
 								textContent,
 								outboundReplyToMessageId ?? "",
 								files,
-								undefined,
+								rendered.components.length > 0 ? rendered.components : undefined,
 								this.runtime,
 								replyToMode,
 							),

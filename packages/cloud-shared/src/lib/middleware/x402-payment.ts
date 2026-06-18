@@ -5,6 +5,13 @@
  * Follows the same pattern as withRateLimit() — wraps a handler function
  * and intercepts requests to enforce payment requirements.
  *
+ * NOTE: this is the low-level primitive — it verifies/settles to a static
+ * `payTo` and does NOT attribute the payment to a registered app's creator.
+ * For "an app charges x402 → the creator earns" use the durable payment-request
+ * flow (`x402PaymentRequestsService.create({ appId })` → settle), which credits
+ * `app_earnings` and the creator's redeemable balance on settlement. See
+ * `services/x402-payment-requests.ts`.
+ *
  * Usage:
  *   // In a route.ts file:
  *   export const POST = withX402Payment(myHandler, {
