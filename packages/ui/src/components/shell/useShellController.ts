@@ -214,7 +214,13 @@ export function useShellController(): ShellController {
 
   const startCapture = React.useCallback(
     (intent?: CaptureIntent) => {
-      if (!ready) return;
+      // Voice capture is independent of agent-respond readiness. A converse
+      // transcript goes through the same warm-tolerant send() (the server holds
+      // the turn until first-turn capability is online), and dictation only
+      // fills the composer draft. Gating on `ready` here wrongly disabled voice
+      // whenever the agent could not respond yet (e.g. no model loaded) even
+      // though typing-and-sending worked. Only guard against a capture already
+      // in flight.
       if (captureRef.current) return;
       // Read the user's VAD thresholds synchronously (local mirror of the
       // `messages.voice` setting) so end-of-turn silence detection honors the
@@ -269,7 +275,7 @@ export function useShellController(): ShellController {
           setRecording(false);
         });
     },
-    [ready, send],
+    [send],
   );
 
   const toggleRecording = React.useCallback(() => {

@@ -26495,7 +26495,7 @@
     }, []);
     const beginPushToTalkPress = React7.useCallback(
       (event) => {
-        if (hasDraft || recording || booting || event.button !== 0) return;
+        if (hasDraft || recording || event.button !== 0) return;
         event.currentTarget.setPointerCapture(event.pointerId);
         clearPushToTalkTimer();
         pushToTalkTimerRef.current = window.setTimeout(() => {
@@ -26505,7 +26505,7 @@
           startRecording("dictate");
         }, 200);
       },
-      [booting, clearPushToTalkTimer, hasDraft, recording, startRecording]
+      [clearPushToTalkTimer, hasDraft, recording, startRecording]
     );
     const endPushToTalkPress = React7.useCallback(
       (event) => {
@@ -26972,7 +26972,11 @@
                         // pane with a bright top specular edge + a faint refractive stroke.
                         // Full-bleed drops the refractive stroke so it's truly edge-to-edge.
                         fullBleed ? "border-0" : "border border-white/[0.14]",
-                        "bg-black/55 backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
+                        // backdrop-blur-lg (16px), not -2xl (40px): the sheet height
+                        // resizes this surface every drag frame, and a 40px backdrop
+                        // re-blur per frame is the dominant paint cost — lg keeps the
+                        // glass look at a fraction of the GPU cost.
+                        "bg-black/55 backdrop-blur-lg backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
                         fullBleed ? "shadow-none" : "shadow-[inset_0_1px_0_rgba(255,255,255,0.20),inset_0_0_0_0.5px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(0,0,0,0.72)]"
                       )
                     ),
@@ -26995,12 +26999,19 @@
                         motion.div,
                         {
                           "aria-hidden": "true",
-                          className: "pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-2xl",
+                          className: "pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-xl bg-[rgba(255,180,120,0.30)]",
                           initial: false,
-                          animate: {
-                            opacity: listening || responding ? 1 : 0,
-                            backgroundColor: listening ? "rgba(255,180,120,0.30)" : "rgba(255,140,80,0.18)"
-                          },
+                          animate: { opacity: listening ? 1 : 0 },
+                          transition: { duration: reduce ? 0 : 1.1, ease: "easeInOut" }
+                        }
+                      ),
+                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                        motion.div,
+                        {
+                          "aria-hidden": "true",
+                          className: "pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-xl bg-[rgba(255,140,80,0.18)]",
+                          initial: false,
+                          animate: { opacity: responding ? 1 : 0 },
                           transition: { duration: reduce ? 0 : 1.1, ease: "easeInOut" }
                         }
                       ),
@@ -27273,55 +27284,41 @@
                                 testId: "chat-voice-mute"
                               }
                             ) : null,
-                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                              motion.div,
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "shrink-0", children: (hasDraft || hasImages) && !recording ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              SoftButton,
                               {
-                                className: "shrink-0",
-                                initial: reduce ? { opacity: 0 } : { opacity: 0, scale: 0.6 },
-                                animate: { opacity: 1, scale: 1 },
-                                transition: {
-                                  duration: reduce ? 0 : 0.3,
-                                  ease: OVERLAY_EASE
-                                },
-                                children: (hasDraft || hasImages) && !recording ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                                  SoftButton,
-                                  {
-                                    glyph: SEND_GLYPH,
-                                    label: canSend ? "send" : "send (waiting for reply)",
-                                    disabled: !canSend,
-                                    onPointerDown: (e) => e.preventDefault(),
-                                    onClick: submit,
-                                    testId: "chat-composer-action"
-                                  }
-                                ) : !recording && responding ? (
-                                  // While a reply is streaming and nothing is typed, the mic becomes a
-                                  // stop control so the user can interrupt a runaway generation.
-                                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                                    SoftButton,
-                                    {
-                                      glyph: STOP_GLYPH,
-                                      label: "stop generating",
-                                      onClick: () => stop(),
-                                      testId: "chat-composer-stop"
-                                    }
-                                  )
-                                ) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                                  SoftButton,
-                                  {
-                                    glyph: MIC_GLYPH,
-                                    label: pushToTalkActive ? "release to send" : handsFree ? "end conversation" : recording ? "stop listening" : "talk",
-                                    active: recording || handsFree,
-                                    disabled: booting,
-                                    onClick: handleMicClick,
-                                    onPointerDown: beginPushToTalkPress,
-                                    onPointerUp: endPushToTalkPress,
-                                    onPointerCancel: endPushToTalkPress,
-                                    testId: "chat-composer-mic"
-                                  }
-                                )
-                              },
-                              (hasDraft || hasImages) && !recording ? "send" : !recording && responding ? "stop" : "mic"
-                            )
+                                glyph: SEND_GLYPH,
+                                label: canSend ? "send" : "send (waiting for reply)",
+                                disabled: !canSend,
+                                onPointerDown: (e) => e.preventDefault(),
+                                onClick: submit,
+                                testId: "chat-composer-action"
+                              }
+                            ) : !recording && responding ? (
+                              // While a reply is streaming and nothing is typed, the mic becomes a
+                              // stop control so the user can interrupt a runaway generation.
+                              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                SoftButton,
+                                {
+                                  glyph: STOP_GLYPH,
+                                  label: "stop generating",
+                                  onClick: () => stop(),
+                                  testId: "chat-composer-stop"
+                                }
+                              )
+                            ) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              SoftButton,
+                              {
+                                glyph: MIC_GLYPH,
+                                label: pushToTalkActive ? "release to send" : handsFree ? "end conversation" : recording ? "stop listening" : "talk",
+                                active: recording || handsFree,
+                                onClick: handleMicClick,
+                                onPointerDown: beginPushToTalkPress,
+                                onPointerUp: endPushToTalkPress,
+                                onPointerCancel: endPushToTalkPress,
+                                testId: "chat-composer-mic"
+                              }
+                            ) })
                           ]
                         }
                       )

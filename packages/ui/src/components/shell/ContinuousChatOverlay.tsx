@@ -895,7 +895,10 @@ export function ContinuousChatOverlay({
 
   const beginPushToTalkPress = React.useCallback(
     (event: React.PointerEvent<HTMLButtonElement>) => {
-      if (hasDraft || recording || booting || event.button !== 0) return;
+      // No `booting` guard: voice capture is independent of agent-respond
+      // readiness (the transcript fills the draft for dictation; converse sends
+      // through the warm-tolerant path), so push-to-talk works while warming.
+      if (hasDraft || recording || event.button !== 0) return;
       event.currentTarget.setPointerCapture(event.pointerId);
       clearPushToTalkTimer();
       pushToTalkTimerRef.current = window.setTimeout(() => {
@@ -907,7 +910,7 @@ export function ContinuousChatOverlay({
         startRecording("dictate");
       }, 200);
     },
-    [booting, clearPushToTalkTimer, hasDraft, recording, startRecording],
+    [clearPushToTalkTimer, hasDraft, recording, startRecording],
   );
 
   const endPushToTalkPress = React.useCallback(
@@ -1573,7 +1576,11 @@ export function ContinuousChatOverlay({
                   // pane with a bright top specular edge + a faint refractive stroke.
                   // Full-bleed drops the refractive stroke so it's truly edge-to-edge.
                   fullBleed ? "border-0" : "border border-white/[0.14]",
-                  "bg-black/55 backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
+                  // backdrop-blur-lg (16px), not -2xl (40px): the sheet height
+                  // resizes this surface every drag frame, and a 40px backdrop
+                  // re-blur per frame is the dominant paint cost — lg keeps the
+                  // glass look at a fraction of the GPU cost.
+                  "bg-black/55 backdrop-blur-lg backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
                   fullBleed
                     ? "shadow-none"
                     : "shadow-[inset_0_1px_0_rgba(255,255,255,0.20),inset_0_0_0_0.5px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(0,0,0,0.72)]",
@@ -1596,17 +1603,21 @@ export function ContinuousChatOverlay({
               />
               {/* Soft live-state glow at the base — bright warm while listening, a
             dimmer warm while replying. Orange is the only accent (no blue).
-            Clipped to the panel (the glass already grounds it). */}
+            Two FIXED-color blurred layers crossfaded by opacity ONLY (the old
+            single layer tweened backgroundColor, a per-frame paint on a blurred
+            element); opacity is compositor-cheap. */}
               <motion.div
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-2xl"
+                className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-xl bg-[rgba(255,180,120,0.30)]"
                 initial={false}
-                animate={{
-                  opacity: listening || responding ? 1 : 0,
-                  backgroundColor: listening
-                    ? "rgba(255,180,120,0.30)"
-                    : "rgba(255,140,80,0.18)",
-                }}
+                animate={{ opacity: listening ? 1 : 0 }}
+                transition={{ duration: reduce ? 0 : 1.1, ease: "easeInOut" }}
+              />
+              <motion.div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-xl bg-[rgba(255,140,80,0.18)]"
+                initial={false}
+                animate={{ opacity: responding ? 1 : 0 }}
                 transition={{ duration: reduce ? 0 : 1.1, ease: "easeInOut" }}
               />
 
@@ -1904,27 +1915,11 @@ export function ContinuousChatOverlay({
                 ) : null}
                 {/* One trailing control, ChatGPT-style: mic when there's nothing to
               send (or while recording, to stop), swapping to send once the user
-              starts typing or attaches an image. */}
-                {/* The trailing control morphs between mic and send. The `key` flip
-              remounts on each swap, so React removes the old control instantly
-              (no exit lag) and the new one pops in — a quick scale/fade that
-              reads as a morph without an AnimatePresence exit delay. */}
-                <motion.div
-                  key={
-                    (hasDraft || hasImages) && !recording
-                      ? "send"
-                      : !recording && responding
-                        ? "stop"
-                        : "mic"
-                  }
-                  className="shrink-0"
-                  initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.6 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{
-                    duration: reduce ? 0 : 0.3,
-                    ease: OVERLAY_EASE,
-                  }}
-                >
+              starts typing or attaches an image. It morphs IN PLACE (one
+              persistent <div>, no `key`): React reconciles the SoftButton's
+              glyph/label/handlers without a remount, so there's no scale/fade
+              pop on every keystroke that crosses the draft boundary. */}
+                <div className="shrink-0">
                   {(hasDraft || hasImages) && !recording ? (
                     <SoftButton
                       glyph={SEND_GLYPH}
@@ -1964,7 +1959,6 @@ export function ContinuousChatOverlay({
                               : "talk"
                       }
                       active={recording || handsFree}
-                      disabled={booting}
                       onClick={handleMicClick}
                       onPointerDown={beginPushToTalkPress}
                       onPointerUp={endPushToTalkPress}
@@ -1972,7 +1966,7 @@ export function ContinuousChatOverlay({
                       testId="chat-composer-mic"
                     />
                   )}
-                </motion.div>
+                </div>
               </div>
             </>
           )}

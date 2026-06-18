@@ -434,7 +434,9 @@ try {
     await p.close();
   }
 
-  // booting: waking-up placeholder; typing is allowed (mic still gated)
+  // booting: waking-up placeholder; typing AND voice are allowed (voice capture
+  // is decoupled from agent-respond readiness — a transcript goes through the
+  // same warm-tolerant send path, so the mic stays enabled while warming).
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -450,8 +452,8 @@ try {
       "BOOTING: attach (+) stays enabled (you can compose while it wakes)",
     );
     assert(
-      (await p.getByTestId("chat-composer-mic").getAttribute("aria-disabled")) === "true",
-      "BOOTING: mic is disabled",
+      (await p.getByTestId("chat-composer-mic").getAttribute("aria-disabled")) !== "true",
+      "BOOTING: mic stays ENABLED while warming (voice decoupled from agent-ready)",
     );
     await snap(p, "state-booting");
     await p.close();
