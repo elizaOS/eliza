@@ -1053,6 +1053,25 @@ export function buildLibllamaForAbi({
   }
   const riscv64BuildFlags = riscv64CmakeFlagsForPlan({ abi, plan: riscv64Plan });
 
+  // x86_64: the mobile x86_64 ABI only ever runs on cuttlefish / the Android
+  // x86_64 emulator (both KVM-backed by an AVX2-class host, and our emulator
+  // recipe boots with `-cpu host`). GGML_NATIVE=OFF leaves the build at the
+  // baseline x86_64 ISA, which has two problems: (1) ggml's own AVX2 kernels
+  // stay off, and (2) — fatal — the vendored QJL kernels gate their AVX2
+  // implementations on `__AVX2__` while `qjl_dispatch.c` references
+  // `qjl_quantize_rows_avx2` (and the score/projection AVX2 entry points)
+  // unconditionally, so a baseline build links with an UNDEFINED symbol and
+  // `dlopen(libllama.so)` fails at runtime with
+  // `Error relocating libggml-cpu.so.0: qjl_quantize_rows_avx2: symbol not
+  // found`. Turning on the standard ggml AVX2/FMA/F16C/AVX feature flags
+  // defines `__AVX2__` for the ggml-cpu translation units (QJL included) so
+  // those entry points are actually compiled. Runtime CPU dispatch still picks
+  // scalar vs AVX2 per-call, but the symbols now exist.
+  const x86_64BuildFlags =
+    abi === "x86_64"
+      ? ["-DGGML_AVX=ON", "-DGGML_AVX2=ON", "-DGGML_FMA=ON", "-DGGML_F16C=ON"]
+      : [];
+
   // Per-ABI driver scripts that wrap `zig cc --target=<triple>` so cmake's
   // single-binary compiler probe works. See ensureZigDrivers() for why
   // passing `--target=` via CMAKE_C_FLAGS doesn't work on its own. When
@@ -1099,6 +1118,7 @@ export function buildLibllamaForAbi({
       // native cpu, which is wrong for a cross-build.
       "-DGGML_NATIVE=OFF",
       ...riscv64BuildFlags,
+      ...x86_64BuildFlags,
       // Don't bake in an absolute RUNPATH to the build tree. The default
       // CMAKE_BUILD_RPATH points at the per-ABI build dir, which is a
       // path-leak in shipped APKs and adds dead lookup entries at runtime.
@@ -2178,14 +2198,30 @@ export async function main(argv = process.argv.slice(2)) {
       log: console.log,
       spawn: run,
     });
-    buildSpeculativeShimForAbi({
-      cacheDir: args.cacheDir,
-      abi,
-      abiAssetDir,
-      llamaSourceDir: srcDir,
-      log: console.log,
-      spawn: run,
-    });
+    // The speculative (MTP) shim is OPTIONAL: the loader in
+    // aosp-llama-adapter.ts only dlopens it when present
+    // (`speculative shim not bundled; MTP disabled for this APK`). Don't let
+    // its compile failure abort a build whose required libllama/ggml/shim
+    // outputs are already produced — e.g. the x86_64 spec-shim source
+    // currently references `COMMON_SPECULATIVE_TYPE_MTP`, which the pinned
+    // llama.cpp fork doesn't export, so it fails to compile while the chat
+    // path (which doesn't use MTP) is fully functional. Warn and continue.
+    try {
+      buildSpeculativeShimForAbi({
+        cacheDir: args.cacheDir,
+        abi,
+        abiAssetDir,
+        llamaSourceDir: srcDir,
+        log: console.log,
+        spawn: run,
+      });
+    } catch (err) {
+      console.warn(
+        `[compile-libllama] WARN: speculative (MTP) shim build failed for ${abi}; ` +
+          `continuing without it — MTP stays disabled and the adapter treats the ` +
+          `shim as optional. Cause: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   // Cross-compile the SIGSYS-handler shim + loader-wrap for x86_64. ARM64
