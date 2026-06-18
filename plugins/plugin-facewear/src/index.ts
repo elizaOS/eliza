@@ -101,6 +101,7 @@ export const facewearPlugin: Plugin = {
       path: "/apps/hearwear/tui",
       label: "Hearwear TUI",
       description: "Terminal UI for hearwear device management.",
+      heroImagePath: "assets/hero-facewear.svg",
       bundlePath: "dist/views/bundle.js",
       componentExport: "FacewearTuiView",
       tags: ["hearwear", "xr", "smartglasses", "tui"],
@@ -111,6 +112,7 @@ export const facewearPlugin: Plugin = {
       path: "/apps/hearwear/xr",
       label: "Hearwear XR",
       description: "XR view for hearwear device status and control.",
+      heroImagePath: "assets/hero-facewear.svg",
       bundlePath: "dist/views/bundle.js",
       componentExport: "FacewearView",
       tags: ["hearwear", "xr", "smartglasses", "wearable"],
@@ -168,6 +170,7 @@ export const facewearPlugin: Plugin = {
       description:
         "Terminal UI for smartglasses setup, status, and diagnostics.",
       icon: "Glasses",
+      heroImagePath: "assets/hero-smartglasses.svg",
       bundlePath: "dist/views/bundle.js",
       componentExport: "SmartglassesTuiView",
       tags: [
@@ -188,6 +191,7 @@ export const facewearPlugin: Plugin = {
       description:
         "XR smartglasses setup and diagnostics panel from the same component as the GUI view.",
       icon: "Glasses",
+      heroImagePath: "assets/hero-smartglasses.svg",
       bundlePath: "dist/views/bundle.js",
       componentExport: "SmartglassesView",
       tags: [

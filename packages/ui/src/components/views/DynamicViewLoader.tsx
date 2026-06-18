@@ -852,6 +852,11 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   // Ref to the container div so standard capabilities (get-text, focus-element, get-state)
   // can query the DOM.
   const containerRef = useRef<HTMLDivElement>(null);
+  // viewId is only a log label inside the load effect; held in a ref so it does
+  // not become an effect dependency (a viewId change with the same bundleUrl
+  // must not re-run the import or flash the loading skeleton).
+  const viewIdRef = useRef(viewId);
+  viewIdRef.current = viewId;
 
   // reloadKey is intentionally a dependency: bumping it via the
   // standard `refresh` capability or the dev-mode ETag poller must
@@ -882,7 +887,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
         if (cancelled) return;
         const error = err instanceof Error ? err : new Error(String(err));
         console.error(
-          `DynamicViewLoader failed to load view "${viewId}" from ${bundleUrl}`,
+          `DynamicViewLoader failed to load view "${viewIdRef.current}" from ${bundleUrl}`,
           error,
         );
         setLoadError(error);
@@ -899,7 +904,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
           });
       }
     };
-  }, [bundleUrl, componentExport, dynamicLoadingAllowed, reloadKey, viewId]);
+  }, [bundleUrl, componentExport, dynamicLoadingAllowed, reloadKey]);
 
   // Register this view's interact handler whenever the bundle is loaded.
   // The handler is unregistered on unmount or when the bundle changes.
