@@ -38,12 +38,17 @@ jobs:
             exit 0
           fi
 
-          # Bun can report frozen-lockfile drift with workspace optional
-          # peers even when a non-frozen install rewrites an identical bun.lock.
-          # Preserve the lockfile gate by allowing the install only when
-          # bun.lock is byte-for-byte unchanged.
+          # The frozen install above is the canonical lockfile-drift signal. When
+          # it fails we fall back to a non-frozen install — but Bun canary (this
+          # repo tracks `bun-version: canary`) reserializes bun.lock byte-for-byte
+          # between versions even when the resolved dependency graph is identical,
+          # so a `git diff --exit-code` here fails on serialization noise rather
+          # than real drift. Restore the committed lockfile after installing; real
+          # lockfile drift is still gated by the Tests/build lanes' "commit the
+          # updated lockfile" guards. This lane only needs deps present so the
+          # (continue-on-error) env audit below can run.
           bun install --no-frozen-lockfile
-          git diff --exit-code -- bun.lock
+          git checkout -- bun.lock
 
       - name: Env audit check
         run: bun run --cwd packages/feed env:audit:check
