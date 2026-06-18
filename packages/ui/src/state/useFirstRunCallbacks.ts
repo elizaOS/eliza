@@ -625,6 +625,13 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
           firstRunRuntimeTarget === "local" || !firstRunRuntimeTarget;
         const isRemoteMode = firstRunRuntimeTarget === "remote";
 
+        // The deployment target persisted to eliza.json. For a cloud-hosted
+        // agent (topology 3) the renderer only learns the agent's reachable URL
+        // after provisioning, so the cloud branch below augments this with the
+        // resolved cloud agent base. That base is what the desktop main process
+        // reads next boot to skip the embedded agent (resolveCloudHostedAgentApiBase).
+        let submitDeploymentTarget = runtimeConfig.deploymentTarget;
+
         if (isSandboxMode) {
           const cloudApiBase =
             client.getBaseUrl().trim() ||
@@ -680,6 +687,16 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
               label: firstRunName || "Eliza Cloud",
             }),
           );
+          // Persist the resolved cloud agent URL into the deployment target so
+          // the desktop main process can auto-skip the embedded agent next boot
+          // (topology 3). The iOS on-device shared runtime (IPC base) is NOT a
+          // remote agent — it boots locally — so its non-http base is excluded.
+          if (!iosCloudLocalAgent && cloudAgentApiBase.startsWith("http")) {
+            submitDeploymentTarget = {
+              ...submitDeploymentTarget,
+              remoteApiBase: cloudAgentApiBase,
+            };
+          }
         } else if (isLocalMode) {
           const desktopRuntimeMode = await getDesktopRuntimeMode().catch(
             () => null,
@@ -743,7 +760,7 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
           presetId:
             (style?.id ?? firstRunStyle) ||
             getDefaultStylePreset(uiLanguage).id,
-          deploymentTarget: runtimeConfig.deploymentTarget,
+          deploymentTarget: submitDeploymentTarget,
           ...(runtimeConfig.linkedAccounts
             ? { linkedAccounts: runtimeConfig.linkedAccounts }
             : {}),

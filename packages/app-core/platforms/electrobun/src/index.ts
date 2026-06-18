@@ -14,7 +14,6 @@ import Electrobun, {
   webgpu,
 } from "electrobun/bun";
 import {
-  resolveDesktopRuntimeMode,
   resolveDesktopRuntimeModeWithDeployment,
   resolveInitialApiBase,
   resolveRendererFacingApiBase,
@@ -91,7 +90,7 @@ import {
   createOnboardingOverlayWindow,
   getOnboardingOverlayWindow,
 } from "./onboarding-overlay-window";
-import { getPersistedDeploymentRuntime } from "./persisted-deployment";
+import { getPersistedDeployment } from "./persisted-deployment";
 import { createPillWindow, getPillWindow } from "./pill-window";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
 import {
@@ -195,7 +194,7 @@ function resolveDesktopRuntime(): ReturnType<
 > {
   return resolveDesktopRuntimeModeWithDeployment(
     process.env as Record<string, string | undefined>,
-    getPersistedDeploymentRuntime(),
+    getPersistedDeployment(),
   );
 }
 

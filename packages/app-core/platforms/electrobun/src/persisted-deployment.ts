@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir, resolveUserPath } from "@elizaos/core";
 import { normalizeDeploymentTargetConfig } from "@elizaos/shared";
-import type { PersistedDeploymentRuntime } from "./api-base";
+import type { PersistedDeployment } from "./api-base";
 import { logger } from "./logger";
 
 const CONFIG_FILENAME = "eliza.json";
@@ -25,18 +25,20 @@ function resolveElizaConfigPath(
 }
 
 /**
- * Read the persisted `deploymentTarget.runtime` from `eliza.json`. Best-effort
- * and fail-safe: any missing file, parse error, or absent deployment target
- * resolves to `null`, which the caller treats as "no cloud-hosted target" and
- * keeps the existing local-agent boot path. The persisted config is written by
- * `saveElizaConfig` as strict JSON, so a strict `JSON.parse` is sufficient.
+ * Read the persisted `deploymentTarget` from `eliza.json` as a
+ * {@link PersistedDeployment} (`runtime` + the cloud-hosted/external agent's
+ * `remoteApiBase`). Best-effort and fail-safe: any missing file, parse error,
+ * or absent deployment target resolves to `null`, which the caller treats as
+ * "no cloud-hosted target" and keeps the existing local-agent boot path. The
+ * persisted config is written by `saveElizaConfig` as strict JSON, so a strict
+ * `JSON.parse` is sufficient.
  */
-export function readPersistedDeploymentRuntime(
+export function readPersistedDeployment(
   env: Record<string, string | undefined> = process.env as Record<
     string,
     string | undefined
   >,
-): PersistedDeploymentRuntime {
+): PersistedDeployment | null {
   const configPath = resolveElizaConfigPath(env);
   let raw: string;
   try {
@@ -64,20 +66,26 @@ export function readPersistedDeploymentRuntime(
   const deploymentTarget = normalizeDeploymentTargetConfig(
     (parsed as { deploymentTarget?: unknown } | null)?.deploymentTarget,
   );
-  return deploymentTarget?.runtime ?? null;
+  if (!deploymentTarget) {
+    return null;
+  }
+  return {
+    runtime: deploymentTarget.runtime,
+    remoteApiBase: deploymentTarget.remoteApiBase ?? null,
+  };
 }
 
-let cachedDeploymentRuntime: PersistedDeploymentRuntime | undefined;
+let cachedDeployment: PersistedDeployment | null | undefined;
 
 /**
- * Cached read of the persisted deployment runtime for the lifetime of the
- * desktop process. The deployment target only changes via a first-run flow
- * that restarts the shell, so a single read at boot is the source of truth for
- * every runtime-mode decision in `main()`.
+ * Cached read of the persisted deployment for the lifetime of the desktop
+ * process. The deployment target only changes via a first-run flow that
+ * restarts the shell, so a single read at boot is the source of truth for every
+ * runtime-mode decision in `main()`.
  */
-export function getPersistedDeploymentRuntime(): PersistedDeploymentRuntime {
-  if (cachedDeploymentRuntime === undefined) {
-    cachedDeploymentRuntime = readPersistedDeploymentRuntime();
+export function getPersistedDeployment(): PersistedDeployment | null {
+  if (cachedDeployment === undefined) {
+    cachedDeployment = readPersistedDeployment();
   }
-  return cachedDeploymentRuntime;
+  return cachedDeployment;
 }
