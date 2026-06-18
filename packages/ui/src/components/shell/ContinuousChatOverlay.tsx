@@ -616,7 +616,6 @@ export function ContinuousChatOverlay({
     send,
     canSend,
     recording,
-    toggleRecording,
     startRecording,
     stopRecording,
     handsFree,
