@@ -270,8 +270,12 @@ export class AccountPool {
     );
   }
 
-  /** least-used comparator that rotates equal-usage accounts by recency-of-use
-   * (persisted + in-flight selection), so bursts spread instead of stacking. */
+  /** least-used comparator: spread load first by reported usage, then by
+   * recency-of-use (persisted + in-flight selection). Recency is ranked ABOVE
+   * `priority` here because least-used is a load-spreading strategy and the
+   * default `priority` is just creation order — honoring it would pin every
+   * equal-usage pick to the oldest account (the burst herd). `priority` only
+   * breaks a recency tie. */
   private byLeastUsedEffective(
     a: LinkedAccountConfig,
     b: LinkedAccountConfig,
@@ -279,8 +283,10 @@ export class AccountPool {
     const aPct = a.usage?.sessionPct ?? 0;
     const bPct = b.usage?.sessionPct ?? 0;
     if (aPct !== bPct) return aPct - bPct;
-    if (a.priority !== b.priority) return a.priority - b.priority;
-    return this.effectiveLastUsed(a) - this.effectiveLastUsed(b);
+    const aUsed = this.effectiveLastUsed(a);
+    const bUsed = this.effectiveLastUsed(b);
+    if (aUsed !== bUsed) return aUsed - bUsed;
+    return a.priority - b.priority;
   }
 
   // CRUD — used by accounts-routes.ts as the single source of truth for
