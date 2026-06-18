@@ -5,14 +5,14 @@ no container-in-container. Best for **one bot on one VPS** (or a local Linux
 box) against a personal Claude Max subscription, where you want PTY subagents
 and OAuth to use the same `~/.claude` credentials the `claude` CLI created.
 
-Full guide: **[`/deployment-bare-metal`](../../packages/docs/deployment-bare-metal.mdx)**.
+Full guide: **[`/deployment-bare-metal`](../../../packages/docs/deployment-bare-metal.mdx)**.
 For Docker / multi-tenant / API-key-first deployments, use the
-[Deployment Guide](../../packages/docs/deployment.mdx) instead.
+[Deployment Guide](../../../packages/docs/deployment.mdx) instead.
 
 ## Layout
 
 ```
-deploy/systemd/
+packages/deploy/systemd/
   install.sh                  idempotent installer (user services)
   smoke-test.sh               static unit/script contract check (no install)
   eliza.env.example           env template -> ~/.config/eliza/env on first install
@@ -37,7 +37,7 @@ deploy/systemd/
 ```bash
 git clone https://github.com/elizaOS/eliza.git
 cd eliza
-./deploy/systemd/install.sh            # or: ./deploy/systemd/install.sh /opt/eliza
+./packages/deploy/systemd/install.sh   # or: ./packages/deploy/systemd/install.sh /opt/eliza
 ```
 
 The installer substitutes the resolved workdir, your `bun` path, and the log
@@ -58,7 +58,7 @@ loginctl disable-linger "$USER"   # optional
 ## Smoke Test
 
 ```bash
-./deploy/systemd/smoke-test.sh
+./packages/deploy/systemd/smoke-test.sh
 ```
 
 The smoke test renders every unit template into a temporary directory, verifies

@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-WORKDIR="${ELIZA_SYSTEMD_SMOKE_WORKDIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+WORKDIR="${ELIZA_SYSTEMD_SMOKE_WORKDIR:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
 BUN_BIN="${ELIZA_SYSTEMD_SMOKE_BUN:-$(command -v bun || true)}"
 LOG_PATH="${ELIZA_SYSTEMD_SMOKE_LOG:-$TMP_DIR/eliza.log}"
 

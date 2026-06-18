@@ -154,8 +154,6 @@ you touched or can reach via shared layout/theme/components.
   (never orange→black). Full rules: `packages/cloud-frontend/AGENTS.md`,
   `packages/cloud-frontend/docs/HOVER_SYSTEM.md`.
 
-The product design language (colors, type, layout, do/don't) is `DESIGN.md`.
-
 ## LifeOps + health: one scheduler, structural behavior
 
 `@elizaos/plugin-personal-assistant` and `@elizaos/plugin-health` share one
