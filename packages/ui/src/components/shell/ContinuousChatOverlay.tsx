@@ -283,11 +283,12 @@ function SheetGrabber({
         // z-20 keeps it above the input row (z-10) so it always wins the drag.
         "pointer-events-auto absolute left-1/2 top-0.5 z-20 -translate-x-1/2 flex cursor-grab touch-none select-none items-center justify-center px-16 py-2 active:cursor-grabbing",
         "before:absolute before:-inset-x-4 before:-top-10 before:content-['']",
-        // Hit zone reaches UP into the empty space above the panel always; when
-        // COLLAPSED it also reaches DOWN over the composer's center so a pull-down
-        // there collapses to the pill (a tap still focuses the input via onTap).
-        // When open it stays shallow so the thread/textarea below own their taps.
-        open ? "before:-bottom-3" : "before:-bottom-14",
+        // The hit zone reaches UP into the empty space above the panel (easy to
+        // grab) but stays SHALLOW downward so it never covers the textarea — a
+        // tap on the composer must land natively on the textarea to raise the
+        // keyboard (a programmatic focus from the handle wouldn't). Pull gestures
+        // start from the bar / the upward zone; pull DOWN there → pill.
+        "before:-bottom-2",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full",
       )}
     >
