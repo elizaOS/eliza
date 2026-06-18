@@ -71,13 +71,23 @@ import { logger } from "@elizaos/core";
 import { ensureAuthPairingCodeForRemoteAccess } from "../api/auth-pairing-routes";
 import { startApiServer } from "../api/server";
 import { formatApiDevSettingsBannerText } from "./api-dev-settings-banner.js";
-import {
-  attemptPgliteAutoReset,
-  getPgliteRecoveryRetrySkipPlugins,
-  shutdownRuntime,
-  startDeferredLocalEmbeddingWarmup,
-  startEliza,
-} from "./eliza";
+
+/**
+ * The `./eliza` module is the entire agent-runtime / startEliza graph
+ * (`@elizaos/agent`, registry, app-route plugins, voice warmup, …). None of it
+ * is needed to bind the API server or serve the health/listen path — it is only
+ * used inside the runtime-bootstrap path, which runs *after* the API server is
+ * listening. Importing it lazily keeps it out of the eager static import graph
+ * that tsx must transpile + evaluate before the module body runs, shrinking the
+ * pre-body/import delay before "API server ready".
+ */
+let elizaRuntimeModulePromise: Promise<typeof import("./eliza")> | null = null;
+function loadElizaRuntimeModule(): Promise<typeof import("./eliza")> {
+  if (!elizaRuntimeModulePromise) {
+    elizaRuntimeModulePromise = import("./eliza");
+  }
+  return elizaRuntimeModulePromise;
+}
 
 console.log(
   `${getLogPrefix()} Static imports complete (${elapsedSinceStartupTimingStart()}ms since ${STARTUP_TIMING_SOURCE}; module body ${elapsedSinceModuleBodyStart()}ms)`,
@@ -206,6 +216,7 @@ async function bootstrapRuntime(reason: string): Promise<void> {
 
     if (isShuttingDown) {
       try {
+        const { shutdownRuntime } = await loadElizaRuntimeModule();
         await shutdownRuntime(rt, "dev-server shutdown race");
       } catch {
         // Best effort during shutdown race.
@@ -232,10 +243,12 @@ async function bootstrapRuntime(reason: string): Promise<void> {
     logger.info(
       `${getLogPrefix()} Runtime ready — agent: ${agentName} (total: ${Date.now() - bootstrapStart}ms)`,
     );
-    startDeferredLocalEmbeddingWarmup();
+    (await loadElizaRuntimeModule()).startDeferredLocalEmbeddingWarmup();
   } catch (err) {
     if (!runtimeBootPgliteAutoResetAttempted) {
       try {
+        const { attemptPgliteAutoReset, getPgliteRecoveryRetrySkipPlugins } =
+          await loadElizaRuntimeModule();
         const backupDir = await attemptPgliteAutoReset(err);
         if (backupDir) {
           runtimeBootPgliteAutoResetAttempted = true;
@@ -310,6 +323,7 @@ async function bootstrapRuntime(reason: string): Promise<void> {
  * If a runtime is already running, stop it first.
  */
 async function createRuntime(): Promise<AgentRuntime> {
+  const { shutdownRuntime, startEliza } = await loadElizaRuntimeModule();
   if (currentRuntime) {
     try {
       await shutdownRuntime(currentRuntime, "dev-server createRuntime");
@@ -407,6 +421,9 @@ async function shutdown(): Promise<void> {
   logger.info(`${getLogPrefix()} Dev server shutting down…`);
   if (currentRuntime) {
     try {
+      // currentRuntime is only ever set inside createRuntime(), which has
+      // already loaded the eliza module — so this resolves the cached promise.
+      const { shutdownRuntime } = await loadElizaRuntimeModule();
       await shutdownRuntime(currentRuntime, "dev-server shutdown");
     } catch (err) {
       logger.warn(
