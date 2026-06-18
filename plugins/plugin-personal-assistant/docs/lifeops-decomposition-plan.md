@@ -480,6 +480,28 @@ That's a dedicated connector-contract-seam effort; email-classifier was the one
 cleanly-separable piece. Same shape for subscriptions (Gmail+browser+computeruse)
 and goal-review (occurrences/reminders/calendar/activity cross-domain aggregation).
 
+### Session 2026-06-18 (round 14) — gmail-curation untangling steps 1-4
+Shrank PA's connector-coupled core (4 green-verified steps): decoupled
+service-constants from @elizaos/plugin-browser (browser-constants.ts); moved
+service-constants + service-normalize (+ LifeOpsServiceError + tz helpers) →
+@elizaos/shared/{lifeops-constants,lifeops-normalize}; moved service-normalize-gmail
+(1363 LOC) → plugin-inbox/inbox/gmail-normalize. PA files are re-export shims; all
+importers (incl. service-normalize's 30) unchanged. shared 789 + plugin-inbox 40 +
+PA 614 green; no PA/plugin import violations.
+
+OWNER DECISION — email-curation.ts (1648) + bulk-review.ts (1812) = ~3460 LOC with
+ZERO consumers (only the lifeops/index.ts barrel re-exports them; no internal/
+external caller anywhere in the repo). Either (a) dead slop → delete (shrinks PA,
+serves "production grade"), or (b) intended-but-unwired curation logic → wire it
+into the inbox curation flow + move to plugin-inbox. I did NOT delete (not mine +
+possibly intended) — surfacing for the owner. Recommend (a) delete unless it's
+known-intended.
+
+gmail-curation STEP 5 remaining (dedicated): service-mixin-email-unsubscribe (482,
+this-bound mixin) + google-plugin-delegates (546, imports @elizaos/plugin-google) →
+needs a plugin-google Gmail-client seam + mixin-extraction + approval-queue contract,
+then move to plugin-inbox.
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
