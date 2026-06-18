@@ -328,6 +328,28 @@ KEY PATTERN LEARNINGS:
   movable plugin must be LOADED (PA init ensure + OPTIONAL_CORE_PLUGINS) so its
   schema gets created.
 
+### Session 2026-06-18 (round 5) — finances FULLY decomposed (back-end)
+`d9d226f914` extracted the payments back-end PA→plugin-finances: a standalone
+`FinancesService` (was the `withPayments` mixin) + `FinancesRepository` (over
+app_finances) + the finance helpers/types + the `OWNER_FINANCES` payments handler.
+PA delegates — `LifeOpsService` drops `withPayments`; `LifeOpsRepository`'s 19
+finance methods are one-line delegations to `FinancesRepository`; the
+`/api/lifeops/money/*` routes use `runFinancesRoute → FinancesService` (URLs +
+shapes unchanged). **Finances is now fully decomposed** (schema + data + repo +
+service + action + routes + view + tests). Gates: no PA import; plugin-finances
+17/17; PA build:types exit 0 (strict tsc DOWN 33, zero new); PA suite 611 pass.
+
+DELIBERATE BOUNDARY (documented in plugin-finances/CLAUDE.md): the
+`withSubscriptions` mixin STAYS in PA — it orchestrates Gmail triage + browser
+bridge + computer-use + PA's `app_lifeops.life_workflow_browser_sessions`, so it
+can't be a PA-import-free service. It reaches finance tables via
+`LifeOpsRepository → FinancesRepository`. This is the model for inbox/goals: move
+the movable, leave spine/cross-domain-orchestration in PA behind delegation.
+
+Remaining back-end: goals (service-mixin-goals 1.5k + lifeGoal* tables — tractable,
+next) and inbox (~9k, gmail/triage/curation — largest, entangled w/ connectors +
+approval-queue). Same proven pattern + the partial-extraction discipline.
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
