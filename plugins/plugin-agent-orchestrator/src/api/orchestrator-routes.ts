@@ -211,6 +211,14 @@ async function dispatchOrchestratorRoutes(
     return true;
   }
 
+  // GET /api/orchestrator/rooms — per-room participant roster (orchestrator +
+  // user + each sub-agent grouped by task room), the room-scoped counterpart
+  // to the flat /accounts assignment map.
+  if (method === "GET" && pathname === `${PREFIX}/rooms`) {
+    sendJson(res, await service.getRoomRoster());
+    return true;
+  }
+
   // POST /api/orchestrator/pause-all
   if (method === "POST" && pathname === `${PREFIX}/pause-all`) {
     sendJson(res, { paused: await service.pauseAll() });

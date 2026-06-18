@@ -373,6 +373,14 @@ export interface PhraseChunkerConfig {
 	 * boundaries. Default 700 ms. Set to 0 to disable.
 	 */
 	maxAccumulationMs?: number;
+	/**
+	 * Shorter budget applied ONLY to the first phrase of each reply, so first
+	 * audio (TTFA) plays sooner on punctuation-sparse openings while later
+	 * phrases keep `maxAccumulationMs` (no fragmentation). When omitted,
+	 * derives from `maxAccumulationMs` (half, capped at 350 ms) and honors the
+	 * `ELIZA_PHRASE_FLUSH_FIRST_MS` env override. Clamped to `maxAccumulationMs`.
+	 */
+	firstPhraseMaxAccumulationMs?: number;
 }
 
 export interface VerifierStreamEvent {

@@ -80,6 +80,7 @@ const CODING_AGENT_ROUTE_PATHS: Array<{ type: string; path: string }> = [
   // Orchestrator durable-task surface
   { type: "GET", path: "/api/orchestrator/status" },
   { type: "GET", path: "/api/orchestrator/accounts" },
+  { type: "GET", path: "/api/orchestrator/rooms" },
   { type: "POST", path: "/api/orchestrator/pause-all" },
   { type: "POST", path: "/api/orchestrator/resume-all" },
   { type: "GET", path: "/api/orchestrator/tasks" },
