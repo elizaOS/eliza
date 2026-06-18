@@ -27,7 +27,11 @@ import {
 import type { UiLanguage } from "../i18n";
 import { isAndroid, isForceFreshFirstRunEnabled, isIOS } from "../platform";
 import type { ExistingElizaInstallInfo } from "../types";
-import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
+import {
+  buildCloudSharedAgentApiBase,
+  isElizaCloudControlPlaneAgentlessBase,
+  normalizeDirectCloudSharedAgentApiBase,
+} from "../utils/cloud-agent-base";
 import { getElizaApiBase } from "../utils/eliza-globals";
 import { detectExistingFirstRunConnection } from "./first-run-bootstrap";
 import {
@@ -47,42 +51,68 @@ const DIRECT_CLOUD_API_BASE = "https://api.elizacloud.ai";
 const DESKTOP_RESTORE_RPC_TIMEOUT_MS = 5_000;
 
 /**
- * If the restored cloud active-server has no apiBase (a broken state from
- * earlier builds where finishAsCloud silently completed firstRun before
- * the cloud surface attached a web_ui_url), look the agent up against the
- * direct cloud API and persist the resolved URL. Returns the up-to-date
- * active server (with apiBase populated when resolution succeeds) or the
- * input unchanged when backfill isn't possible.
+ * Repair a restored cloud active-server whose apiBase is missing OR is the
+ * unusable agent-id-less collection URL (`.../api/v1/eliza/agents`, a broken
+ * state from earlier builds that completed firstRun without a per-agent base).
+ * Re-derive the per-agent REST adapter base from the persisted `cloud:<agentId>`
+ * id — preferring the server-reported url, falling back to deriving it directly
+ * from the id. Returns the up-to-date active server, or the input unchanged when
+ * no real agent id can be recovered (the startup gate then routes to agent
+ * selection instead of dead-ending on "Backend Unreachable").
  */
 async function backfillCloudApiBase(
   active: PersistedActiveServer,
 ): Promise<PersistedActiveServer> {
-  if (active.kind !== "cloud" || active.apiBase) return active;
-  const agentId = active.id?.startsWith("cloud:")
-    ? active.id.slice("cloud:".length)
-    : null;
+  if (active.kind !== "cloud") return active;
+  // A concrete per-agent base is fine — only act on a missing or id-less base.
+  if (
+    active.apiBase &&
+    !isElizaCloudControlPlaneAgentlessBase(active.apiBase)
+  ) {
+    return active;
+  }
+  const rawId = active.id?.startsWith("cloud:")
+    ? active.id.slice("cloud:".length).trim()
+    : "";
+  // A real agent id has no path separators. Older builds mistakenly stored the
+  // collection URL itself as the id (`cloud:https://.../agents`) — that can't be
+  // recovered here; leave it for the startup gate's agent-selection fallback.
+  const agentId = rawId && !rawId.includes("/") ? rawId : null;
   if (!agentId) return active;
 
   const priorBaseUrl = client.getBaseUrl();
   const priorToken = client.hasToken();
+  const derivedApiBase = buildCloudSharedAgentApiBase(
+    DIRECT_CLOUD_API_BASE,
+    agentId,
+  );
   client.setBaseUrl(DIRECT_CLOUD_API_BASE);
   try {
     if (active.accessToken) client.setToken(active.accessToken);
-    const res = await client.getCloudCompatAgent(agentId);
-    if (!res.success) return active;
-    const data = res.data;
-    const rawApiBase = data.web_ui_url ?? data.webUiUrl ?? data.bridge_url;
-    if (!rawApiBase) return active;
-    const apiBase = normalizeDirectCloudSharedAgentApiBase(rawApiBase);
-    if (!apiBase) return active;
-    const updated: PersistedActiveServer = {
-      ...active,
-      apiBase,
-    };
+    const res = await client.getCloudCompatAgent(agentId).catch(() => null);
+    const data = res?.success ? res.data : null;
+    const rawApiBase = data
+      ? (data.web_ui_url ?? data.webUiUrl ?? data.bridge_url)
+      : null;
+    const serverApiBase = rawApiBase
+      ? normalizeDirectCloudSharedAgentApiBase(rawApiBase)
+      : "";
+    // Prefer a concrete server-reported base; otherwise derive from the id.
+    const apiBase =
+      serverApiBase && !isElizaCloudControlPlaneAgentlessBase(serverApiBase)
+        ? serverApiBase
+        : derivedApiBase;
+    const updated: PersistedActiveServer = { ...active, apiBase };
     savePersistedActiveServer(updated);
     return updated;
   } catch {
-    return active;
+    // Even if the lookup fails, never restore the broken base — derive from id.
+    const updated: PersistedActiveServer = {
+      ...active,
+      apiBase: derivedApiBase,
+    };
+    savePersistedActiveServer(updated);
+    return updated;
   } finally {
     // Restore prior client state — applyRestoredConnection sets the final
     // baseUrl below based on the (possibly backfilled) active server.
