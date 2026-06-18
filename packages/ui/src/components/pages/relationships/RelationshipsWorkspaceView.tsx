@@ -61,7 +61,7 @@ export function RelationshipsWorkspaceView({
   const deferredSearch = useDeferredValue(search);
 
   const searchPlaceholder = t("relationships.searchPlaceholder", {
-    defaultValue: "Search",
+    defaultValue: "Search people, aliases, handles…",
   });
   const chatBinding = useMemo(
     () => ({ placeholder: searchPlaceholder, onQuery: setSearch }),
@@ -185,27 +185,6 @@ export function RelationshipsWorkspaceView({
     void loadGraph(buildRelationshipsGraphQuery(deferredSearch, platform));
   };
 
-  useAgentElement<HTMLInputElement>({
-    id: "relationships-search",
-    role: "text-input",
-    label: t("relationships.searchLabel", {
-      defaultValue: "Search people, aliases, handles",
-    }),
-    group: "relationships-toolbar",
-    description:
-      "Search people, aliases, and handles in the relationships graph",
-    getValue: () => search,
-    onFill: (value) => setSearch(value),
-  });
-  useAgentElement<HTMLButtonElement>({
-    id: "relationships-clear-search",
-    role: "button",
-    label: t("relationships.clearSearch", {
-      defaultValue: "Clear relationship search",
-    }),
-    group: "relationships-toolbar",
-    onActivate: () => setSearch(""),
-  });
   const platformAgent = useAgentElement<HTMLSelectElement>({
     id: "relationships-platform",
     role: "select",
@@ -471,11 +450,8 @@ export function RelationshipsWorkspaceView({
     <PageLayout
       sidebar={
         <RelationshipsSidebar
-          search={search}
           graph={graph}
           selectedPersonId={selectedPersonId}
-          onSearchChange={setSearch}
-          onSearchClear={() => setSearch("")}
           onSelectPersonId={setSelectedPersonId}
         />
       }

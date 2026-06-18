@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -15,11 +16,11 @@ import {
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
+import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { formatDateTime } from "../../utils/format";
 import { PagePanel } from "../composites/page-panel";
 import { MetaPill } from "../composites/page-panel/page-panel-header";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarHeader } from "../composites/sidebar/sidebar-header";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
@@ -499,25 +500,24 @@ export function RuntimeView({
       )
     : SECTION_TAB_KEYS;
 
+  // The floating chat composer becomes this view's section filter: while Runtime
+  // is open it takes over the composer placeholder and feeds the live draft into
+  // sidebarSearch via onQuery. setSidebarSearch is a stable useState setter.
+  const filterPlaceholder = t("runtimeview.filterSections", {
+    defaultValue: "Filter sections",
+  });
+  const chatBinding = useMemo(
+    () => ({ placeholder: filterPlaceholder, onQuery: setSidebarSearch }),
+    [filterPlaceholder],
+  );
+  useRegisterViewChatBinding(chatBinding);
+
   const runtimeSidebar = (
     <AppPageSidebar
       testId="runtime-sidebar"
       collapsible
       contentIdentity="runtime"
     >
-      <SidebarHeader
-        search={{
-          value: sidebarSearch,
-          onChange: (e) => setSidebarSearch(e.target.value),
-          placeholder: t("runtimeview.filterSections", {
-            defaultValue: "Filter sections",
-          }),
-          "aria-label": t("runtimeview.filterSections", {
-            defaultValue: "Filter sections",
-          }),
-          onClear: () => setSidebarSearch(""),
-        }}
-      />
       <SidebarPanel>
         <PagePanel.SummaryCard compact className="mt-2 space-y-2">
           <label

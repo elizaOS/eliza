@@ -1066,9 +1066,9 @@ test("trajectory viewer route refreshes, filters, and changes selected detail", 
   ).toBeVisible();
 
   sidebar = await openVisiblePageSidebar(page, "trajectories-sidebar");
-  await sidebar
-    .getByPlaceholder(uiLabelPattern("Search", "trajectoriesview.Search"))
-    .fill("beta");
+  // The trajectories search moved to the floating chat composer; the sidebar
+  // stays open to show the (re-queried) list.
+  await page.getByTestId("chat-composer-textarea").fill("beta");
   await expect.poll(() => recorder.listRequests().at(-1)?.search).toBe("beta");
   await expect(sidebar.getByText("scenario-beta")).toBeVisible();
   await expect(sidebar.getByText("scenario-alpha")).toHaveCount(0);
