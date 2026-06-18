@@ -26,7 +26,8 @@ export function stripInteractionMarkers(text: string): string {
  * never mutates `content.text`.
  */
 export function normalizeContentInteractions(content: Content): Content {
-	if (typeof content.text !== "string" || content.text.length === 0) return content;
+	if (typeof content.text !== "string" || content.text.length === 0)
+		return content;
 	if (Array.isArray(content.interactions) && content.interactions.length > 0) {
 		return content;
 	}

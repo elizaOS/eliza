@@ -33,7 +33,10 @@ function serializeChoice(block: ChoiceInteraction): string {
 
 function serializeFollowups(block: FollowupsInteraction): string {
 	const lines = block.options
-		.map((o) => `${o.kind === "reply" ? o.payload : `${o.kind}:${o.payload}`}=${o.label}`)
+		.map(
+			(o) =>
+				`${o.kind === "reply" ? o.payload : `${o.kind}:${o.payload}`}=${o.label}`,
+		)
 		.join("\n");
 	return `[FOLLOWUPS id=${block.id}]\n${lines}\n[/FOLLOWUPS]`;
 }
@@ -63,7 +66,10 @@ export function serializeInteractionBlock(block: InteractionBlock): string {
 }
 
 /** Append a block's marker to `text` (with a separating blank line when needed). */
-export function appendInteractionBlock(text: string, block: InteractionBlock): string {
+export function appendInteractionBlock(
+	text: string,
+	block: InteractionBlock,
+): string {
 	const marker = serializeInteractionBlock(block);
 	if (!marker) return text;
 	if (!text.trim()) return marker;

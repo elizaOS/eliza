@@ -34,7 +34,8 @@ export const MAX_TASK_TITLE_LEN = 200;
 
 // Group 2 captures the header attributes (`id=…`, `allow_custom`) in any order.
 const CHOICE_RE = /\[CHOICE:([\w-]+)([^\]]*)\]\n([\s\S]*?)\n\[\/CHOICE\]/g;
-const FOLLOWUPS_RE = /\[FOLLOWUPS(?:\s+id=(\S+))?\]\n([\s\S]*?)\n\[\/FOLLOWUPS\]/g;
+const FOLLOWUPS_RE =
+	/\[FOLLOWUPS(?:\s+id=(\S+))?\]\n([\s\S]*?)\n\[\/FOLLOWUPS\]/g;
 const FORM_RE = /\[FORM\]\n([\s\S]*?)\n\[\/FORM\]/g;
 const TASK_RE = /\[TASK:([a-f0-9-]{8,64})\]([\s\S]*?)\[\/TASK\]/g;
 
@@ -59,7 +60,10 @@ export interface InteractionRegion {
 }
 
 function randomId(prefix: string): string {
-	if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+	if (
+		typeof crypto !== "undefined" &&
+		typeof crypto.randomUUID === "function"
+	) {
 		return crypto.randomUUID();
 	}
 	return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
@@ -111,7 +115,8 @@ function parseFormField(raw: unknown): InteractionField | null {
 	if (!raw || typeof raw !== "object") return null;
 	const r = raw as Record<string, unknown>;
 	const name = typeof r.name === "string" ? r.name.trim() : "";
-	const type = typeof r.type === "string" ? (r.type as InteractionFieldType) : "text";
+	const type =
+		typeof r.type === "string" ? (r.type as InteractionFieldType) : "text";
 	if (!name || !/^[\w.-]+$/.test(name)) return null;
 	if (!FIELD_TYPES.has(type)) return null;
 	const field: InteractionField = { name, type };
@@ -189,7 +194,12 @@ export function findInteractionRegions(text: string): InteractionRegion[] {
 			if (options.length === 0) return null;
 			const attrs = m[2] ?? "";
 			const id = attrs.match(/\bid=(\S+)/)?.[1] ?? randomId("choice");
-			const block: ChoiceInteraction = { kind: "choice", id, scope: m[1], options };
+			const block: ChoiceInteraction = {
+				kind: "choice",
+				id,
+				scope: m[1],
+				options,
+			};
 			if (/\ballow_custom\b/.test(attrs)) block.allowCustom = true;
 			return block;
 		},
@@ -205,7 +215,12 @@ export function findInteractionRegions(text: string): InteractionRegion[] {
 		},
 		regions,
 	);
-	pushMatches(text, FORM_RE, (m): FormInteraction | null => parseFormBody(m[1]), regions);
+	pushMatches(
+		text,
+		FORM_RE,
+		(m): FormInteraction | null => parseFormBody(m[1]),
+		regions,
+	);
 	pushMatches(
 		text,
 		TASK_RE,
@@ -258,7 +273,10 @@ export function parseInteractionBlocks(text: string): ParsedInteractions {
 		cursor = r.end;
 	}
 	if (cursor < text.length) parts.push(text.slice(cursor));
-	const cleanedText = parts.join("").replace(/\n{3,}/g, "\n\n").trim();
+	const cleanedText = parts
+		.join("")
+		.replace(/\n{3,}/g, "\n\n")
+		.trim();
 	return { blocks, cleanedText };
 }
 
