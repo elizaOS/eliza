@@ -1,4 +1,9 @@
-import type { Terminal } from "@elizaos/tui";
+import {
+  type Component,
+  registerTerminalView,
+  type Terminal,
+  truncateToWidth,
+} from "@elizaos/tui";
 import { describe, expect, it, vi } from "vitest";
 import { runAutonomousCli } from "../cli/index.ts";
 import { startAgentTerminalTui } from "../tui/agent-terminal-tui.ts";
@@ -59,7 +64,29 @@ function response(body: unknown): Response {
 }
 
 async function flushTicks(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  // Drain a few macrotasks so chained awaited fetches (e.g. create-conversation
+  // then post-message) all settle before assertions run.
+  for (let i = 0; i < 5; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
+/**
+ * Poll until a request matching `predicate` has been issued. Deterministic
+ * replacement for guessing tick counts when an action triggers chained awaited
+ * fetches (create-conversation → post-message).
+ */
+async function waitForCall(
+  calls: Array<{ url: string }>,
+  predicate: (call: { url: string }) => boolean,
+  timeoutMs = 3000,
+): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (calls.some(predicate)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  return calls.some(predicate);
 }
 
 describe("agent terminal tui", () => {
@@ -127,17 +154,18 @@ describe("agent terminal tui", () => {
     expect(searchRender).not.toContain("1. Messages TUI");
 
     terminal.send("\r");
-    await flushTicks();
     expect(
-      calls.some((call) =>
+      await waitForCall(calls, (call) =>
         call.url.endsWith("/api/views/wallet/navigate?viewType=tui"),
       ),
     ).toBe(true);
 
     terminal.send("c");
     terminal.send("hello over ssh");
-    terminal.send("\n");
-    await flushTicks();
+    terminal.send("\r");
+    await waitForCall(calls, (call) =>
+      call.url.endsWith("/api/conversations/conv-terminal/messages"),
+    );
 
     const chatCall = calls.find((call) =>
       call.url.endsWith("/api/conversations/conv-terminal/messages"),
@@ -150,6 +178,62 @@ describe("agent terminal tui", () => {
     });
 
     handle?.stop();
+  });
+
+  it("renders a registered terminal view inline instead of only navigating", async () => {
+    let rendered = 0;
+    const liveView: Component = {
+      render: (width) => [
+        truncateToWidth("LIVE PHONE VIEW", width),
+        truncateToWidth(`render #${++rendered}`, width),
+      ],
+      handleInput: () => {},
+      invalidate: () => {},
+    };
+    const unregister = registerTerminalView("phone", liveView);
+
+    const terminal = new TestTerminal();
+    const fetchImpl = vi.fn(async (input: URL | RequestInfo) => {
+      const url = String(input);
+      if (url.endsWith("/api/views?viewType=tui")) {
+        return response({
+          views: [
+            {
+              id: "phone",
+              label: "Phone TUI",
+              path: "/phone/tui",
+              viewType: "tui",
+            },
+          ],
+        });
+      }
+      return new Response("not found", { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const handle = startAgentTerminalTui({
+      apiBaseUrl: "http://127.0.0.1:2138",
+      terminal,
+      fetchImpl,
+    });
+    await handle?.ready;
+    await flushTicks();
+
+    // The registered view is flagged in the list…
+    expect(terminal.text()).toContain("Phone TUI ▣");
+
+    // …and quick-opening it renders the view's real content inline.
+    terminal.send("1");
+    await flushTicks();
+    expect(terminal.text()).toContain("LIVE PHONE VIEW");
+    expect(terminal.text()).toContain("esc/q returns to views");
+
+    // Esc returns to the list (no GUI-navigate fetch was issued for it).
+    terminal.send("");
+    await flushTicks();
+    expect(terminal.text()).toContain("registered tui views");
+
+    handle?.stop();
+    unregister();
   });
 
   it("has a CLI smoke mode that starts the TUI and emits a boot marker", async () => {

@@ -5,14 +5,27 @@ import {
 } from "@elizaos/shared";
 import {
   ansi,
+  CombinedAutocompleteProvider,
   type Component,
-  Input,
+  darkTheme,
+  Editor,
+  type EditorTheme,
+  getTerminalView,
+  hasTerminalView,
   ProcessTerminal,
   type SelectItem,
   SelectList,
   type Terminal,
   TUI,
+  truncateToWidth,
 } from "@elizaos/tui";
+import {
+  type CommandsCatalogResponse,
+  matchSlashInput,
+  resolveSlashDispatch,
+  type SerializedCommand,
+  toSlashCommands,
+} from "./slash-commands";
 import { isTerminalTuiEnabled } from "./tui-enabled";
 
 interface ViewEntry {
@@ -35,6 +48,11 @@ const selectTheme = {
   description: ansi.dim,
   scrollInfo: ansi.dim,
   noMatch: ansi.dim,
+};
+
+const editorTheme: EditorTheme = {
+  borderColor: darkTheme.colors.border,
+  selectList: selectTheme,
 };
 
 function resolveDefaultApiBaseUrl(): string {
@@ -69,10 +87,13 @@ class AgentTerminalView implements Component {
   private views: ViewEntry[] = [];
   private selectedView: ViewEntry | null = null;
   private status = "starting terminal tui";
-  private mode: "views" | "search" | "chat" = "views";
+  private mode: "views" | "search" | "chat" | "detail" = "views";
+  /** The registered terminal view rendered inline in `detail` mode. */
+  private detailView: Component | null = null;
   private searchQuery = "";
   private readonly viewList = new SelectList([], 12, selectTheme);
-  private readonly chatInput = new Input();
+  private readonly chatInput: Editor;
+  private commands: SerializedCommand[] = [];
   private conversationId: string | null = null;
   private lastChatLine = "No terminal chat sent yet.";
 
@@ -82,6 +103,7 @@ class AgentTerminalView implements Component {
     private readonly fetchImpl: typeof fetch,
     private readonly onExit?: () => void,
   ) {
+    this.chatInput = new Editor(tui, editorTheme, { paddingX: 0 });
     this.viewList.onSelect = (item) => {
       const view = this.views.find((candidate) => candidate.id === item.value);
       if (view) void this.openView(view);
@@ -94,15 +116,29 @@ class AgentTerminalView implements Component {
     this.chatInput.onSubmit = (value) => {
       void this.sendChat(value);
     };
-    this.chatInput.onEscape = () => {
-      this.mode = "views";
-      this.tui.setFocus(this);
-      this.tui.requestRender();
-    };
   }
 
   async start(): Promise<void> {
-    await this.refreshViews();
+    await Promise.all([this.refreshViews(), this.refreshCommands()]);
+  }
+
+  async refreshCommands(): Promise<void> {
+    try {
+      const data = await readJson<CommandsCatalogResponse>(
+        this.fetchImpl,
+        this.apiBaseUrl,
+        "/api/commands?surface=tui",
+      );
+      this.commands = data.commands ?? [];
+      this.chatInput.setAutocompleteProvider(
+        new CombinedAutocompleteProvider(toSlashCommands(this.commands)),
+      );
+    } catch {
+      // A missing catalog (older backend, command plugin disabled) leaves the
+      // composer working as a plain message input — slash text is still sent
+      // to the agent verbatim by sendChat.
+      this.commands = [];
+    }
   }
 
   async refreshViews(): Promise<void> {
@@ -115,11 +151,18 @@ class AgentTerminalView implements Component {
         "/api/views?viewType=tui",
       );
       this.views = (data.views ?? []).filter((view) => view.viewType === "tui");
-      const items: SelectItem[] = this.views.map((view, index) => ({
-        value: view.id,
-        label: `${index + 1}. ${view.label}`,
-        description: view.path ?? `/${view.id}/tui`,
-      }));
+      const items: SelectItem[] = this.views.map((view, index) => {
+        // A registered terminal view renders its real content inline here;
+        // others can only navigate the GUI shell.
+        const renderable = hasTerminalView(view.id);
+        return {
+          value: view.id,
+          label: `${index + 1}. ${view.label}${renderable ? " ▣" : ""}`,
+          description: renderable
+            ? "renders inline · enter to open"
+            : (view.path ?? `/${view.id}/tui`),
+        };
+      });
       this.viewList.setItems(items);
       this.selectedView = this.views[0] ?? null;
       this.status =
@@ -135,6 +178,18 @@ class AgentTerminalView implements Component {
   }
 
   render(width: number): string[] {
+    if (this.mode === "detail" && this.detailView) {
+      const header = [
+        ansi.bold(
+          `elizaOS terminal tui · ${this.selectedView?.label ?? "view"}`,
+        ),
+        ansi.dim("esc/q returns to views · this is the live view render"),
+        "",
+      ];
+      const body = this.detailView.render(width);
+      return [...header, ...body].map((line) => truncateToWidth(line, width));
+    }
+
     const selected = this.selectedView
       ? `${this.selectedView.label} (${this.selectedView.path ?? this.selectedView.id})`
       : "none";
@@ -150,9 +205,15 @@ class AgentTerminalView implements Component {
     ];
 
     if (this.mode === "chat") {
-      lines.push(ansi.cyan("chat composer"), this.lastChatLine, "");
+      const hint =
+        this.commands.length > 0
+          ? ansi.dim("type / for commands · enter sends · esc returns to views")
+          : ansi.dim("enter sends · esc returns to views");
+      lines.push(ansi.cyan("chat composer"), this.lastChatLine, hint, "");
       lines.push(...this.chatInput.render(width));
-      return lines;
+      // Guard every line to the terminal width — the TUI render loop throws on
+      // any overflow (e.g. the shortcuts line on an 80-col terminal).
+      return lines.map((line) => truncateToWidth(line, width));
     }
 
     if (this.mode === "search") {
@@ -166,10 +227,28 @@ class AgentTerminalView implements Component {
 
     lines.push(ansi.cyan("registered tui views"));
     lines.push(...this.viewList.render(width));
-    return lines;
+    return lines.map((line) => truncateToWidth(line, width));
   }
 
   handleInput(data: string): void {
+    if (this.mode === "detail") {
+      // Esc / q / Ctrl+C return to the view list; everything else drives the
+      // inline view so it stays interactive.
+      if (data === "" || data === "q" || data === "") {
+        this.mode = "views";
+        this.detailView = null;
+        this.status = `${this.views.length} tui views ready`;
+        this.tui.requestRender();
+        return;
+      }
+      this.detailView?.handleInput?.(data);
+      this.tui.requestRender();
+      return;
+    }
+    if (this.mode === "chat") {
+      this.handleChatInput(data);
+      return;
+    }
     if (this.mode === "search") {
       this.handleSearchInput(data);
       return;
@@ -183,11 +262,12 @@ class AgentTerminalView implements Component {
       return;
     }
     if (data === "c") {
-      this.mode = "chat";
-      this.tui.setFocus(this.chatInput);
-      this.tui.requestRender();
+      this.enterChatMode();
       return;
     }
+    // Bare `/` enters view-search mode (a top-level keybinding). The Editor's
+    // own `/`-at-line-start slash menu lives inside the composer and only
+    // fires once chat mode owns the input, so the two never collide.
     if (data === "/") {
       this.mode = "search";
       this.status = "filtering tui views";
@@ -203,12 +283,55 @@ class AgentTerminalView implements Component {
     this.viewList.handleInput(data);
   }
 
+  private enterChatMode(): void {
+    this.mode = "chat";
+    // Keep focus on the view so Escape/Ctrl+C can return to views; the Editor
+    // renders its cursor off its own `focused` flag, which we drive manually.
+    this.chatInput.focused = true;
+    this.tui.requestRender();
+  }
+
+  private exitChatMode(): void {
+    this.mode = "views";
+    this.chatInput.focused = false;
+    this.tui.requestRender();
+  }
+
+  private handleChatInput(data: string): void {
+    // Escape with an open dropdown closes the dropdown (handled by the Editor)
+    // rather than exiting chat mode, so one Escape doesn't do two things.
+    if (data === "\u001b" && this.chatInput.isShowingAutocomplete()) {
+      this.chatInput.handleInput(data);
+      this.tui.requestRender();
+      return;
+    }
+    // Escape (no dropdown) and Ctrl+C return to the view list instead of
+    // tearing down the whole TUI.
+    if (data === "\u001b" || data === "\u0003") {
+      this.exitChatMode();
+      return;
+    }
+    this.chatInput.handleInput(data);
+    this.tui.requestRender();
+  }
+
   invalidate(): void {
     this.viewList.invalidate();
   }
 
   private async openView(view: ViewEntry): Promise<void> {
     this.selectedView = view;
+    // A plugin-registered terminal view renders its real content inline — the
+    // first time a `viewType: "tui"` view actually renders in the terminal,
+    // rather than only navigating the GUI shell.
+    const registered = getTerminalView(view.id);
+    if (registered) {
+      this.detailView = registered;
+      this.mode = "detail";
+      this.status = `viewing ${view.label}`;
+      this.tui.requestRender();
+      return;
+    }
     this.status = `opening ${view.label}`;
     this.tui.requestRender();
     try {
@@ -283,9 +406,45 @@ class AgentTerminalView implements Component {
 
   private async sendChat(value: string): Promise<void> {
     const text = value.trim();
+    // The Editor self-clears on submit; this guards the rare empty submit.
     if (!text) return;
+
+    const match = matchSlashInput(this.commands, text);
+    if (match) {
+      const dispatch = resolveSlashDispatch(match, text);
+      switch (dispatch.kind) {
+        case "clear":
+          this.lastChatLine = "No terminal chat sent yet.";
+          this.conversationId = null;
+          this.tui.requestRender();
+          return;
+        case "new":
+          this.conversationId = null;
+          this.lastChatLine = "started a new conversation";
+          this.tui.requestRender();
+          return;
+        case "navigate-view": {
+          const view = this.views.find((v) => v.id === dispatch.viewId);
+          if (view) {
+            this.lastChatLine = `you: ${text}`;
+            await this.openView(view);
+          } else {
+            this.lastChatLine = `unknown view: ${dispatch.viewId}`;
+            this.tui.requestRender();
+          }
+          return;
+        }
+        case "send":
+          await this.sendMessage(dispatch.text);
+          return;
+      }
+    }
+
+    await this.sendMessage(text);
+  }
+
+  private async sendMessage(text: string): Promise<void> {
     this.lastChatLine = `you: ${text}`;
-    this.chatInput.setValue("");
     this.tui.requestRender();
     try {
       const conversationId = await this.ensureConversation();
