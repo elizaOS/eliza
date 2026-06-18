@@ -35,13 +35,35 @@ Live status at the time of writing (read-only probes):
 - **Browser e2e (chromium) passed for all three miniapps**, 0 console/page
   errors: PayPerPixel full flow (home → x402 payment card → settled image),
   eDad landing+config, clone-ur-crush landing+cloning funnel.
-- **⚠️ Weakness found — production image generation returns HTTP 500.**
-  `POST /api/v1/generate-image` 500s ("internal_error") for supported models
-  (`google/gemini-2.5-flash-image`, `fal-ai/flux/schnell`). The model-validation
-  and provider-key guards pass (they'd 503), so it's a runtime failure in the
-  content-safety check or the upstream provider call — needs the Worker logs to
-  root-cause (operator). The generic `internal_error` with no detail is itself an
-  observability gap. **This blocks live end-to-end image delivery until fixed.**
+- **✅ CHARGING proven live end-to-end.** 3 chat completions (`zai-glm-4.7`,
+  ~1,417 tokens) deducted **$0.004648** from the org credit balance
+  ($4.967245 → $4.962597). The charge → meter → deduct loop works.
+- **✅ PAYMENT-OUT machinery validated (read path).** `GET /api/v1/redemptions/balance`
+  returns the full structure + eligibility/limits and correctly gates
+  (`canRedeem:false, "Minimum redemption is $1.00. You have $0.00 available."`);
+  `/api/v1/apps/<id>/earnings` returns the summary. The actual token payout can't
+  fire only because redeemable balance is $0 (earnings require funded-wallet x402
+  settlement) — a resource constraint, not a code gap. "Points" = this redeemable
+  balance (1 point = 1¢).
+
+#### ⚠️ Weaknesses found live (each has a follow-up task)
+
+- **Image generation returns HTTP 500 — ROOT CAUSE: exhausted provider balance.**
+  Reproduced the fal provider call directly with the prod `FAL_KEY`: it returns
+  `403 "User is locked. Reason: Exhausted balance. Top up at fal.ai/dashboard/billing"`.
+  The adapter threw a raw Error → `failureResponse` mapped it to a blanket 500.
+  **Fixed in `packages/cloud-api/v1/generate-image/route.ts`**: provider failures
+  now log the real detail and return a retryable **503** (no provider detail
+  leaked). **Operational fix to unblock live image charging: top up the
+  fal / bitrouter / atlascloud provider balances.**
+- **Pricing-catalog gaps — major models 500 "Pricing unavailable".** `openai/gpt-5.5`
+  (the documented default), `anthropic/claude-haiku-4.5`, `x-ai/grok-4.20`, and
+  `openai/gpt-5-mini` all 500 when used; `openai/gpt-oss-120b:free` 500s
+  "no route found"; `gpt-oss-120b` 429s (rate-limited); only some (`zai-glm-4.7`)
+  work. The models registry is out of sync with the pricing catalog
+  (`ai-pricing/lookup.ts:146`). Needs real prices reconciled (flagged as a task).
+- **Monetization PUT silently ignores wrong-cased keys** (snake_case → 200 no-op;
+  use camelCase — see §1).
 
 ## 0. Steward: confirm login + signup work (goal: "make sure we can log in and create an account")
 
