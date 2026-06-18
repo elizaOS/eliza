@@ -78,6 +78,12 @@ export interface ShellController {
   /** Jump to Settings (where ProviderSwitcher lives) — used by the chat's
    *  `no_provider` failure gate to let the user wire a provider in one tap. */
   openSettings: () => void;
+  /** Return to the home dashboard (the /chat route). Drives the chat header's
+   *  Home button, which is hidden while already on the home screen. */
+  navigateHome?: () => void;
+  /** The active app tab. Lets the chat header hide the Home button on the home
+   *  screen ("chat") and the Settings button on the settings screen. */
+  currentTab?: string;
   /** Stop an in-flight reply stream (the composer's stop control). */
   stop: () => void;
 }
@@ -108,6 +114,9 @@ export function useShellController(): ShellController {
 
   // Jump to Settings from the chat's no_provider gate. Stable identity.
   const openSettings = React.useCallback(() => setTab("settings"), [setTab]);
+  // Return to the home dashboard (the /chat route) from the chat header's Home
+  // button. Stable identity.
+  const navigateHome = React.useCallback(() => setTab("chat"), [setTab]);
 
   // DEV-only debug affordance: drop the current conversation and start a fresh,
   // greeted one (handleNewConversation resets draft state + creates a new
@@ -420,6 +429,8 @@ export function useShellController(): ShellController {
     unlockAudio: voiceOutput.unlockAudio,
     clearConversation,
     openSettings,
+    navigateHome,
+    currentTab: app.tab,
     stop: handleChatStop,
   };
 }

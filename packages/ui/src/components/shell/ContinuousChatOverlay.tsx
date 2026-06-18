@@ -1,4 +1,5 @@
 import {
+  Home,
   Maximize2,
   Minimize2,
   RotateCcw,
@@ -628,6 +629,8 @@ export function ContinuousChatOverlay({
     needsAudioUnlock,
     unlockAudio,
     openSettings,
+    navigateHome,
+    currentTab,
     clearConversation,
     stop,
   } = controller;
@@ -1607,11 +1610,13 @@ export function ContinuousChatOverlay({
                 transition={{ duration: reduce ? 0 : 1.1, ease: "easeInOut" }}
               />
 
-              {/* Full-state header — only at the FULL detent. Maximize (toggles
-              edge-to-edge full-screen) and Clear (resets to a fresh greeted
-              thread) sit together on the left; Settings opens preferences from
-              the right. */}
-              {sheetOpen && expanded && !pilled ? (
+              {/* Sheet header — shown at the HALF detent and up (not just FULL).
+              Left: Maximize (toggle edge-to-edge full-screen) + Clear (reset to
+              a fresh greeted thread, RotateCcw — it resets, it doesn't delete).
+              Right: Home (back to the home dashboard) + Settings. Home is hidden
+              while already on the home screen ("chat"); Settings is hidden while
+              already on the settings screen. */}
+              {sheetOpen && !pilled ? (
                 <div
                   className={cn(
                     "relative z-10 flex shrink-0 items-center justify-between gap-1.5 px-3",
@@ -1638,12 +1643,24 @@ export function ContinuousChatOverlay({
                       testId="chat-full-clear"
                     />
                   </div>
-                  <HeaderButton
-                    icon={SettingsIcon}
-                    label="settings"
-                    onClick={() => openSettings()}
-                    testId="chat-full-settings"
-                  />
+                  <div className="flex items-center gap-1.5">
+                    {currentTab !== "chat" ? (
+                      <HeaderButton
+                        icon={Home}
+                        label="home"
+                        onClick={() => navigateHome?.()}
+                        testId="chat-full-home"
+                      />
+                    ) : null}
+                    {currentTab !== "settings" ? (
+                      <HeaderButton
+                        icon={SettingsIcon}
+                        label="settings"
+                        onClick={() => openSettings()}
+                        testId="chat-full-settings"
+                      />
+                    ) : null}
+                  </div>
                 </div>
               ) : null}
 

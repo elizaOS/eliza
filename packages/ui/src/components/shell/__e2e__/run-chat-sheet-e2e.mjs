@@ -231,6 +231,13 @@ async function runDragSuite(p, pointer, tag) {
   assert((await detent(p)) === "half", `[${pointer}] flick-up snaps COLLAPSED→HALF`);
   assert(near(await sheetHeight(p), halfH, TOL), `[${pointer}] HALF height ≈ ${halfH}px (got ${Math.round(await sheetHeight(p))})`);
   await snap(p, `${tag}-half`);
+  // The sheet header (maximize/clear/home/settings) shows at HALF and up now,
+  // not only at FULL.
+  assert(
+    (await p.getByTestId("chat-full-maximize").count()) === 1 &&
+      (await p.getByTestId("chat-full-settings").count()) === 1,
+    `[${pointer}] HALF detent shows the sheet header`,
+  );
 
   // FLICK up again → FULL — the sheet rises to the top of the screen
   await gesture(p, 140, { pointer, slow: false, steps: 2 });
@@ -245,12 +252,14 @@ async function runDragSuite(p, pointer, tag) {
   );
   await snap(p, `${tag}-full`);
 
-  // FULL-state header: maximize / clear / settings are present only at FULL.
+  // Header: Maximize + Clear on the left, Home + Settings on the right. With no
+  // active tab set, both Home and Settings show.
   assert(
     (await p.getByTestId("chat-full-maximize").count()) === 1 &&
       (await p.getByTestId("chat-full-clear").count()) === 1 &&
+      (await p.getByTestId("chat-full-home").count()) === 1 &&
       (await p.getByTestId("chat-full-settings").count()) === 1,
-    `[${pointer}] FULL header shows maximize + clear + settings`,
+    `[${pointer}] header shows maximize + clear + home + settings`,
   );
   // Maximize → full-bleed (edge-to-edge): data-maximized flips + panel reaches x=0.
   await p.getByTestId("chat-full-maximize").click();
@@ -271,13 +280,18 @@ async function runDragSuite(p, pointer, tag) {
     (await p.locator('[data-testid="chat-sheet"][data-maximized="true"]').count()) === 0,
     `[${pointer}] restore → no longer maximized`,
   );
-  // Clear + Settings route to the controller.
+  // Clear + Home + Settings route to the controller.
   await p.getByTestId("chat-full-clear").click();
+  await p.getByTestId("chat-full-home").click();
   await p.getByTestId("chat-full-settings").click();
   await p.waitForTimeout(120);
   assert(
     sink.logs.some((l) => l.includes("clearConversation")),
     `[${pointer}] clear button calls clearConversation`,
+  );
+  assert(
+    sink.logs.some((l) => l.includes("navigateHome")),
+    `[${pointer}] home button calls navigateHome`,
   );
   assert(
     sink.logs.some((l) => l.includes("openSettings")),
@@ -848,6 +862,31 @@ try {
     await p.waitForTimeout(200);
     assert((await variant(p)) === "open", "REDUCED-MOTION: pull-up still opens");
     await snap(p, "state-reduced-motion-open");
+    await p.close();
+  }
+
+  // HEADER CONTEXT: Home hides while on the home screen ("chat"); Settings hides
+  // while on the settings screen. The other button stays.
+  for (const [tab, hidden, shown] of [
+    ["chat", "chat-full-home", "chat-full-settings"],
+    ["settings", "chat-full-settings", "chat-full-home"],
+  ]) {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(`${url}?tab=${tab}`);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(600);
+    await gesture(p, 90, { pointer: "mouse", slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+    assert((await detent(p)) === "half", `HIDE[${tab}]: opened to half`);
+    assert(
+      (await p.getByTestId(hidden).count()) === 0,
+      `HIDE[${tab}]: ${hidden} hidden on the ${tab} screen`,
+    );
+    assert(
+      (await p.getByTestId(shown).count()) === 1,
+      `HIDE[${tab}]: ${shown} still shown on the ${tab} screen`,
+    );
     await p.close();
   }
 } finally {
