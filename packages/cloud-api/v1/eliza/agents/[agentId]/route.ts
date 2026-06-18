@@ -2,7 +2,9 @@
  * /api/v1/eliza/agents/:agentId
  *
  * GET    — agent detail (with admin slice when caller is org admin).
- * PATCH  — { action: "shutdown" | "suspend" } lifecycle action.
+ * PATCH  — { action: "shutdown" | "suspend" } lifecycle action, OR
+ *          { agentName?, agentConfig? } to edit the agent in place (rename /
+ *          system-prompt edit). A body without `action` is treated as an edit.
  * DELETE — delete sandbox + cleanup linked character.
  */
 
@@ -34,6 +36,15 @@ const app = new Hono<AppEnv>();
 const patchAgentSchema = z.object({
   action: z.enum(["shutdown", "suspend"]),
 });
+
+const editAgentSchema = z
+  .object({
+    agentName: z.string().trim().min(1).max(100).optional(),
+    agentConfig: z.record(z.string(), z.unknown()).optional(),
+  })
+  .refine((d) => d.agentName !== undefined || d.agentConfig !== undefined, {
+    message: "Provide agentName and/or agentConfig",
+  });
 
 type Agent = NonNullable<
   Awaited<ReturnType<typeof elizaSandboxService.getAgent>>
@@ -208,6 +219,49 @@ app.patch("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const agentId = c.req.param("agentId") ?? "";
     const body = await c.req.json().catch(() => null);
+
+    // A body without `action` is an in-place profile edit (rename / config
+    // edit), not a lifecycle operation. Works for both shared and dedicated
+    // agents; dedicated config edits take effect on the next provision/restart.
+    if (body && typeof body === "object" && !("action" in body)) {
+      const edit = editAgentSchema.safeParse(body);
+      if (!edit.success) {
+        return c.json(
+          {
+            success: false,
+            error: "Invalid request data",
+            details: edit.error.issues,
+          },
+          400,
+        );
+      }
+
+      const updated = await elizaSandboxService.updateAgentProfile(
+        agentId,
+        user.organization_id,
+        { agentName: edit.data.agentName, agentConfig: edit.data.agentConfig },
+      );
+      if (!updated) {
+        return c.json({ success: false, error: "Agent not found" }, 404);
+      }
+
+      logger.info("[agent-api] Agent profile updated", {
+        agentId,
+        orgId: user.organization_id,
+        renamed: edit.data.agentName !== undefined,
+        configEdited: edit.data.agentConfig !== undefined,
+      });
+
+      return c.json({
+        success: true,
+        data: {
+          id: updated.id,
+          agentName: updated.agent_name,
+          executionTier: updated.execution_tier,
+          updatedAt: toIsoString(updated.updated_at),
+        },
+      });
+    }
 
     const parsed = patchAgentSchema.safeParse(body);
     if (!parsed.success) {
