@@ -42,6 +42,7 @@ describe("job lanes — completeness invariant", () => {
       [
         JOB_TYPES.CONTAINER_PROVISION,
         JOB_TYPES.CONTAINER_DELETE,
+        JOB_TYPES.CONTAINER_STOP,
         JOB_TYPES.CONTAINER_RESTART,
         JOB_TYPES.CONTAINER_UPGRADE,
         JOB_TYPES.CONTAINER_LOGS,
