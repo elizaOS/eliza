@@ -34,6 +34,10 @@ import {
   resolveDefaultTelegramAccountId,
   resolveTelegramAccount,
 } from "./accounts";
+import {
+  applyTelegramSetMyCommands,
+  registerTelegramCommandHandlers,
+} from "./command-registration";
 import { TELEGRAM_SERVICE_NAME } from "./constants";
 import { MessageManager } from "./messageManager";
 import {
@@ -393,6 +397,27 @@ export class TelegramService extends Service {
     return [normalizeTelegramAccountId(this.defaultAccountId)];
   }
 
+  /**
+   * Returns every live Telegraf bot instance, one per configured account.
+   * Public accessor so other services (e.g. owner-pairing) can register
+   * commands or send messages without reflecting into private fields.
+   */
+  public getBots(): Telegraf<Context>[] {
+    if (this.accountStates instanceof Map && this.accountStates.size > 0) {
+      return Array.from(this.accountStates.values(), (state) => state.bot);
+    }
+    return this.bot ? [this.bot] : [];
+  }
+
+  /**
+   * Returns the default account's Telegraf bot instance, or null when the
+   * service started without a usable bot token. Public accessor that replaces
+   * private-field reflection for single-bot callers.
+   */
+  public getBot(): Telegraf<Context> | null {
+    return this.getDefaultAccountState()?.bot ?? this.bot ?? null;
+  }
+
   private resolveAccountIdFromContext(
     context?: MessageConnectorQueryContext | null,
     target?: TargetInfo | null,
@@ -671,6 +696,32 @@ export class TelegramService extends Service {
         slashStartPayload,
       );
     });
+
+    // Register universal slash-command handlers BEFORE launch. Telegraf accepts
+    // command registration any time before launch(), and a matched command
+    // handler that never calls next() terminates the middleware chain — so the
+    // catch-all message handler in setupMessageHandlers does not also process
+    // command messages (no double-processing).
+    const commandMessageManager =
+      activeState?.messageManager ?? this.messageManager ?? undefined;
+    if (commandMessageManager) {
+      const registered = registerTelegramCommandHandlers(
+        bot,
+        this.runtime,
+        commandMessageManager,
+        accountId,
+      );
+      logger.debug(
+        {
+          src: "plugin:telegram",
+          agentId: this.runtime.agentId,
+          accountId,
+          commandCount: registered.length,
+        },
+        "Registered universal slash-command handlers",
+      );
+    }
+
     await bot.launch({
       dropPendingUpdates: true,
       allowedUpdates: ["message", "message_reaction"],
@@ -682,6 +733,11 @@ export class TelegramService extends Service {
         accountId,
       });
     }
+
+    // Publish the slash-command menu to Telegram so commands appear in the `/`
+    // menu. setMyCommands failure is logged + swallowed (network) and must not
+    // crash boot.
+    await applyTelegramSetMyCommands(bot, this.runtime, accountId);
 
     // Get bot info for identification purposes
     const botInfo = await bot.telegram.getMe();
@@ -878,6 +934,24 @@ export class TelegramService extends Service {
             error: error instanceof Error ? error.message : String(error),
           },
           "Error handling reaction",
+        );
+      }
+    });
+
+    // Inline-keyboard button taps (choice / followup answers from the shared
+    // interaction protocol). Foreign callbacks are acknowledged and ignored.
+    bot?.on("callback_query", async (ctx) => {
+      try {
+        await messageManager?.handleCallbackQuery(ctx);
+      } catch (error) {
+        logger.error(
+          {
+            src: "plugin:telegram",
+            agentId: this.runtime.agentId,
+            accountId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Error handling callback query",
         );
       }
     });
