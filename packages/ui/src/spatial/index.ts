@@ -23,7 +23,11 @@ export {
   useSpatialContext,
 } from "./context.ts";
 // DOM (GUI/XR) host + render context.
-export { SpatialSurface, type SpatialSurfaceProps } from "./dom.tsx";
+export {
+  detectDomModality,
+  SpatialSurface,
+  type SpatialSurfaceProps,
+} from "./dom.tsx";
 // React → IR evaluation + cross-modal state hooks.
 export {
   createSpatialStateStore,

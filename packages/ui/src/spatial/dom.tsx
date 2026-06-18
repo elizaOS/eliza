@@ -12,8 +12,26 @@ import type { ReactNode } from "react";
 import { type SpatialAction, SpatialContextProvider } from "./context.ts";
 import type { SpatialModality } from "./ir.ts";
 
+/**
+ * Detect the active DOM modality (`gui` vs `xr`).
+ *
+ * The XR view-host (`plugin-facewear` / `plugin-xr`) sets `window.__elizaXRContext`
+ * when a view runs inside a headset — the same signal `getActiveViewModality()`
+ * uses. Mirrored here (without importing `platform/` so the spatial barrel stays
+ * Capacitor-free) so `<SpatialSurface>` picks the surface automatically.
+ */
+export function detectDomModality(): SpatialModality {
+  if (
+    typeof window !== "undefined" &&
+    (window as unknown as Record<string, unknown>).__elizaXRContext
+  ) {
+    return "xr";
+  }
+  return "gui";
+}
+
 export interface SpatialSurfaceProps {
-  /** Presentation modality. Defaults to `gui`. Pass `xr` inside a headset host. */
+  /** Presentation modality. Omit to auto-detect (`xr` inside a headset host, else `gui`). */
   modality?: SpatialModality;
   /** Receives primitive actions (button presses, field changes). */
   onAction?: (action: SpatialAction) => void;
@@ -23,21 +41,25 @@ export interface SpatialSurfaceProps {
 /**
  * Host for a spatial view on a DOM surface (GUI or XR).
  *
+ * Omit `modality` and it auto-detects the headset — so a plugin mounts the same
+ * view with `<SpatialSurface>` on both surfaces with zero modality knowledge.
+ *
  * ```tsx
- * <SpatialSurface modality="xr">
+ * <SpatialSurface>
  *   <ProfileView profile={p} />
  * </SpatialSurface>
  * ```
  */
 export function SpatialSurface({
-  modality = "gui",
+  modality,
   onAction,
   children,
 }: SpatialSurfaceProps) {
+  const resolved = modality ?? detectDomModality();
   return (
-    <SpatialContextProvider value={{ modality, dispatch: onAction }}>
+    <SpatialContextProvider value={{ modality: resolved, dispatch: onAction }}>
       <div
-        data-spatial-surface={modality}
+        data-spatial-surface={resolved}
         style={{
           display: "flex",
           flexDirection: "column",
