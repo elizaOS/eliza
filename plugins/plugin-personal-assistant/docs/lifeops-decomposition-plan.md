@@ -637,6 +637,26 @@ EXECUTING" for the in-sandbox-runnable platforms (linux + mobile viewport). Nati
 segfaults on stock x86_64 emulator — needs real hardware/Cuttlefish) remain device-bound;
 their lanes are wired (Android sweep consumes the shared cases, now incl. relationships).
 
+### Session 2026-06-18 (round 21) — LIVE real-LLM testing executed (local model, no external creds) + a real bug
+The "live real testing" gap was assumed credential-bound, but a LOCAL LLM is present
+(Ollama, OpenAI-compatible, gpt-4o-mini on :11434) — so live testing at the INFERENCE
+layer needs no external OAuth. Added `plugins/plugin-inbox/test/inbox.live-llm.test.ts`:
+a gated live test (skips by default like the health live tests; runs on
+`INBOX_LLM_LIVE_TEST=1`) that registers a REAL Ollama-backed TEXT_SMALL model on a real
+PGLite runtime and drives the PRODUCTION inbox triage classifier end-to-end — real
+prompt → real model → real JSON parse → strict enum validation — no mock.
+Running it live found + fixed a real production-grade bug: the classifier prompt's
+`"a|b|c"` placeholder shape made small/local models echo the literal pipe string
+(`"urgent|ignore"`), which strict validation correctly rejected — so inbox triage
+SILENTLY FAILED on local models. Milady is local-first (users run small local models),
+so this matters: fixed the prompt (triage-classifier.ts) to instruct picking exactly one
+value and never emitting `"|"`. With the fix, gpt-4o-mini classifies an outage as
+urgent/high and a newsletter as non-urgent through the unchanged pipeline. Commit
+28ebc08366; inbox 61 passed/2 skipped (live gated), live run 2/2 green. The same
+live-LLM seam extends to goals' semantic-evaluator and calendar (both use useModel).
+NOTE: external-connector live tests (Gmail/Strava/Plaid) still need real OAuth tokens —
+the local-LLM lane covers the model-driven decomposed logic, not the connector fetches.
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
