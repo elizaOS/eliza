@@ -18,7 +18,15 @@
  */
 
 import type { BridgeRequest } from "../eliza-sandbox";
-import { elizaSandboxService } from "../eliza-sandbox";
+// Namespace import (resolved at call-time, not captured at module-eval) so the
+// adapter always reads the *current* eliza-sandbox export. Under bun's
+// process-global `mock.module`, a sibling test file can import this module
+// first and bind a captured `{ elizaSandboxService }` to a different (or real)
+// service before shared-rest-adapter.test.ts installs its own mock — which on
+// Windows surfaced as "elizaSandboxService.bridge is an instance of Promise".
+// Reading `elizaSandbox.elizaSandboxService` lazily makes the binding immune to
+// that import-order/module-cache race.
+import * as elizaSandbox from "../eliza-sandbox";
 import type { SharedAgentCharacter } from "./run-shared-agent-turn";
 
 /** Minimal subset of the agent-server REST `Conversation` the chat client reads. */
@@ -250,7 +258,10 @@ export async function sharedRestCharacter(
   orgId: string,
   agentName: string,
 ): Promise<{ character: SharedAgentCharacter | Record<string, never>; agentName: string }> {
-  const character = await elizaSandboxService.getSharedRuntimeCharacter(agentId, orgId);
+  const character = await elizaSandbox.elizaSandboxService.getSharedRuntimeCharacter(
+    agentId,
+    orgId,
+  );
   return { character: character ?? {}, agentName: agentName || "Eliza" };
 }
 
@@ -281,7 +292,10 @@ export async function sharedRestMessagesGet(
   agentId: string,
   conversationId: string,
 ): Promise<{ messages: SharedRestMessage[] }> {
-  const history = await elizaSandboxService.getSharedConversationHistory(agentId, conversationId);
+  const history = await elizaSandbox.elizaSandboxService.getSharedConversationHistory(
+    agentId,
+    conversationId,
+  );
   const messages = history.map((turn, index) => ({
     id: `${conversationId}:${index}`,
     role: turn.role,
@@ -308,7 +322,7 @@ export async function sharedRestMessageSend(
     method: "message.send",
     params: { text, roomId: conversationId },
   };
-  const response = await elizaSandboxService.bridge(agentId, orgId, rpc);
+  const response = await elizaSandbox.elizaSandboxService.bridge(agentId, orgId, rpc);
   if (response.error) {
     throw new Error(response.error.message || "shared message.send failed");
   }
