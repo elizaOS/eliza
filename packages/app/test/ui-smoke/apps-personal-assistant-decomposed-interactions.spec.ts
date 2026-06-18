@@ -107,3 +107,22 @@ test("todos decomposed view: renders the todo lanes", async ({ page }) => {
     page.getByRole("heading", { name: /^Todos$/ }).first(),
   ).toBeVisible({ timeout: 60_000 });
 });
+
+test("relationships decomposed view: renders the graph and toggles a kind filter", async ({
+  page,
+}) => {
+  // /relationships mounts the RelationshipsView knowledge-graph viewer. The
+  // helper mocks GET /api/lifeops/entities + /api/lifeops/relationships with a
+  // populated graph, so the view lands on its populated branch with entity
+  // cards. Toggling the "Organizations" kind filter narrows the visible cards.
+  await openAppPath(page, "/relationships");
+  await expect(
+    page.getByRole("heading", { name: /^Relationships$/ }).first(),
+  ).toBeVisible({ timeout: 60_000 });
+
+  const orgs = page.getByRole("button", { name: "Organizations" });
+  await expect(orgs).toBeVisible({ timeout: 15_000 });
+  const before = await orgs.getAttribute("aria-pressed");
+  await orgs.click();
+  await expect.poll(() => orgs.getAttribute("aria-pressed")).not.toBe(before);
+});

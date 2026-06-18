@@ -116,6 +116,9 @@ export function setActiveViewElements(
  *   todos    — plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts
  *              (literal name: "OWNER_TODOS"; TodosView projects the shared
  *              scheduled-task spine via GET /api/lifeops/todos)
+ *   relationships — plugins/plugin-relationships/src/actions/entity.ts
+ *              (literal name: "ENTITY"; RelationshipsView reads the entity /
+ *              relationship graph via GET /api/lifeops/{entities,relationships})
  */
 export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
   companion: ["PLAY_EMOTE"],
@@ -160,6 +163,7 @@ export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
   inbox: ["INBOX"],
   goals: ["OWNER_GOALS"],
   todos: ["OWNER_TODOS"],
+  relationships: ["ENTITY"],
 };
 
 /**

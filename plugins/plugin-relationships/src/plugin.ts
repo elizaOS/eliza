@@ -28,6 +28,22 @@ export const relationshipsPlugin: Plugin = {
   providers: [entityGraphProvider],
   services: [],
   schema: dbSchema,
+  views: [
+    {
+      id: "relationships",
+      label: "Relationships",
+      description:
+        "Entity and relationship knowledge-graph viewer: people, organizations, identities, and the typed edges between them.",
+      icon: "Users",
+      path: "/relationships",
+      viewType: "gui",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "RelationshipsView",
+      tags: ["relationships", "entities", "people", "contacts", "graph"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
 };
 
 export default relationshipsPlugin;

@@ -1286,6 +1286,103 @@ function populatedGoals() {
   };
 }
 
+// Valid populated payloads for the /api/lifeops/entities + /api/lifeops/relationships
+// endpoints the RelationshipsView fetches, so `relationships:gui` renders its
+// `relationships-populated` branch (entity cards + their outbound edges) instead
+// of the no-people empty state. Shapes mirror the PA route responses
+// { entities: Entity[] } / { relationships: Relationship[] } from
+// plugin-personal-assistant/src/lifeops/{entities,relationships}/types.ts.
+function populatedEntities() {
+  return {
+    entities: [
+      {
+        entityId: "self",
+        type: "person",
+        preferredName: "Owner",
+        fullName: "Owner",
+        identities: [],
+        attributes: {},
+        state: {},
+        tags: [],
+        visibility: "owner_agent_admin",
+        createdAt: SMOKE_GENERATED_AT,
+        updatedAt: SMOKE_GENERATED_AT,
+      },
+      {
+        entityId: "ent-pat",
+        type: "person",
+        preferredName: "Pat Doe",
+        fullName: "Pat Doe",
+        identities: [
+          {
+            platform: "discord",
+            handle: "pat#1",
+            displayName: "Pat",
+            verified: true,
+            confidence: 0.95,
+            addedAt: SMOKE_GENERATED_AT,
+            addedVia: "user_chat",
+            evidence: [],
+          },
+        ],
+        attributes: {},
+        state: { lastObservedAt: "2026-06-10T00:00:00.000Z" },
+        tags: [],
+        visibility: "owner_agent_admin",
+        createdAt: SMOKE_GENERATED_AT,
+        updatedAt: SMOKE_GENERATED_AT,
+      },
+      {
+        entityId: "ent-acme",
+        type: "organization",
+        preferredName: "Acme Corp",
+        fullName: "Acme Corporation",
+        identities: [],
+        attributes: {},
+        state: {},
+        tags: [],
+        visibility: "owner_agent_admin",
+        createdAt: SMOKE_GENERATED_AT,
+        updatedAt: SMOKE_GENERATED_AT,
+      },
+    ],
+  };
+}
+function populatedRelationships() {
+  return {
+    relationships: [
+      {
+        relationshipId: "rel-pat",
+        fromEntityId: "self",
+        toEntityId: "ent-pat",
+        type: "colleague_of",
+        metadata: { cadenceDays: 14 },
+        state: { lastInteractionAt: "2026-06-10T00:00:00.000Z" },
+        evidence: [],
+        confidence: 0.9,
+        source: "user_chat",
+        status: "active",
+        createdAt: SMOKE_GENERATED_AT,
+        updatedAt: SMOKE_GENERATED_AT,
+      },
+      {
+        relationshipId: "rel-acme",
+        fromEntityId: "ent-pat",
+        toEntityId: "ent-acme",
+        type: "works_at",
+        metadata: { role: "engineer" },
+        state: {},
+        evidence: [],
+        confidence: 0.8,
+        source: "extraction",
+        status: "active",
+        createdAt: SMOKE_GENERATED_AT,
+        updatedAt: SMOKE_GENERATED_AT,
+      },
+    ],
+  };
+}
+
 // Valid populated payload for the /api/lifeops/todos endpoint the decomposed
 // TodosView fetches, so `todos:gui` renders its `todos-populated` branch (the
 // Today / Upcoming / Someday lanes) instead of the add-a-todo empty state.
@@ -2832,6 +2929,33 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(populatedGoals()),
+    });
+  });
+
+  // RelationshipsView fetches GET /api/lifeops/entities + GET /api/lifeops/relationships
+  // (both bare, no query). The bare patterns keep the POST upsert + the
+  // /entities/merge, /entities/resolve, /relationships/observe sub-resource
+  // routes falling through to the real API.
+  await page.route("**/api/lifeops/entities", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedEntities()),
+    });
+  });
+  await page.route("**/api/lifeops/relationships", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedRelationships()),
     });
   });
 

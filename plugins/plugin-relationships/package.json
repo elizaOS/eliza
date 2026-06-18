@@ -49,24 +49,39 @@
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*",
     "drizzle-orm": "^0.45.1"
   },
   "peerDependencies": {
-    "@elizaos/plugin-sql": "workspace:*"
+    "@elizaos/plugin-sql": "workspace:*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
     "@types/node": "^25.0.3",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tsup": "^8.5.1",
     "typescript": "^6.0.3",
+    "vite": "^8.0.0",
     "vitest": "^4.0.0"
   },
   "scripts": {
-    "build": "bun run build.ts",
-    "dev": "bun --hot build.ts",
+    "build": "bun run build:js && bun run build:views && bun run build:types",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:views": "bunx --bun vite build --config vite.config.views.ts",
+    "build:types": "tsc --noCheck -p tsconfig.build.json",
     "clean": "rm -rf dist .turbo",
-    "test": "vitest run",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
-    "lint": "echo \"Lint skipped\"",
+    "test": "bunx vitest run --config ./vitest.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check src/",
     "lint:check": "bun run lint",
     "check": "bun run typecheck && bun run test"
   },

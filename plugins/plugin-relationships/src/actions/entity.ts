@@ -36,9 +36,9 @@ import type {
 
 import {
   ENTITY_OPS,
+  type EntityOp,
   RELATIONSHIPS_CONTEXTS,
   RELATIONSHIPS_LOG_PREFIX,
-  type EntityOp,
 } from "../types.js";
 
 /**
@@ -79,7 +79,9 @@ export interface EntityActionParameters {
   entity?: Record<string, unknown>;
 }
 
-function getParams(options: HandlerOptions | undefined): EntityActionParameters {
+function getParams(
+  options: HandlerOptions | undefined,
+): EntityActionParameters {
   const params = options?.parameters as EntityActionParameters | undefined;
   return params ?? {};
 }
