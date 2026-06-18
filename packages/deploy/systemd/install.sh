@@ -4,7 +4,7 @@
 # health probe). Idempotent: safe to re-run after a git pull to pick up changes.
 #
 # Usage:
-#   ./deploy/systemd/install.sh [WORKDIR]
+#   ./packages/deploy/systemd/install.sh [WORKDIR]
 #
 # WORKDIR defaults to the repo root that contains this script. Pass an absolute
 # path if the checkout you want the service to run lives elsewhere (e.g.
@@ -15,7 +15,7 @@ set -euo pipefail
 
 # --- resolve paths ------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 WORKDIR="${1:-$REPO_ROOT}"
 WORKDIR="$(cd "$WORKDIR" && pwd)"  # normalize to absolute
 

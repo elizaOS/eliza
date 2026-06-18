@@ -1,1 +1,0 @@
-The local speech to text model hears this sample clearly.
