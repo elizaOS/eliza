@@ -253,6 +253,21 @@ const APP = readAppIdentity();
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
+const MOBILE_BUILD_NODE_HEAP_OPTION = "--max-old-space-size=6144";
+
+function withMobileBuildNodeOptions(env = process.env) {
+  const current = String(env.NODE_OPTIONS ?? "").trim();
+  if (/\b--max-old-space-size(?:=|\s+)/.test(current)) {
+    return env;
+  }
+  return {
+    ...env,
+    NODE_OPTIONS: [current, MOBILE_BUILD_NODE_HEAP_OPTION]
+      .filter(Boolean)
+      .join(" "),
+  };
+}
+
 function run(command, args, { cwd, env = process.env } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd, env, stdio: "inherit" });
@@ -865,7 +880,7 @@ async function buildWeb(platform) {
     runtimeExecutionMode,
     releaseAuthority,
   } = resolveMobileBuildPolicy(platform);
-  const env = {
+  const env = withMobileBuildNodeOptions({
     ...process.env,
     ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
     ELIZA_BUILD_VARIANT: process.env.ELIZA_BUILD_VARIANT || buildVariant,
@@ -912,7 +927,7 @@ async function buildWeb(platform) {
             process.env.ELIZA_FORCE_LOCAL_UPSTREAMS ?? "1",
         }
       : {}),
-  };
+  });
   const bun = resolveBunExecutable();
   const packageStylesPatch = path.join(
     repoRoot,
@@ -1175,7 +1190,8 @@ function mirrorCapacitorWebPayloadIntoAndroidDir() {
     fs.cpSync(syncedPublic, targetPublic, { recursive: true });
     for (const cfg of ["capacitor.config.json", "capacitor.plugins.json"]) {
       const src = path.join(syncedAssets, cfg);
-      if (fs.existsSync(src)) fs.copyFileSync(src, path.join(targetAssets, cfg));
+      if (fs.existsSync(src))
+        fs.copyFileSync(src, path.join(targetAssets, cfg));
     }
     console.log(
       `[mobile-build] Mirrored Capacitor web payload into ${path.relative(repoRoot, targetAssets)}`,
@@ -1276,7 +1292,11 @@ function reconcilePluginManifestWithGradle(targetAssets) {
       .filter((plugin) => !isCompiledAndUsable(plugin))
       .map((plugin) => plugin?.pkg)
       .join(", ");
-    fs.writeFileSync(manifestPath, `${JSON.stringify(kept, null, "\t")}\n`, "utf8");
+    fs.writeFileSync(
+      manifestPath,
+      `${JSON.stringify(kept, null, "\t")}\n`,
+      "utf8",
+    );
     console.log(
       `[mobile-build] Reconciled capacitor.plugins.json with capacitor.settings.gradle (dropped ${plugins.length - kept.length} plugin(s): ${dropped}).`,
     );
