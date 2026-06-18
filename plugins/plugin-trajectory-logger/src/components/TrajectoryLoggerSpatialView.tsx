@@ -215,9 +215,7 @@ function PhaseStrip({
         tone={recording ? "primary" : "muted"}
         align="center"
       >
-        {!track.hasTrajectory
-          ? "no turn yet"
-          : progressBar(lastDone, total)}
+        {!track.hasTrajectory ? "no turn yet" : progressBar(lastDone, total)}
       </Text>
       <List gap={0}>
         {track.phases.map((p) => (
