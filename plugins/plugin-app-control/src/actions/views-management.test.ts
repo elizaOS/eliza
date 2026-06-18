@@ -433,7 +433,11 @@ describe("view management actions", () => {
 			vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 				ok: true,
 				status: 200,
-				json: async () => ({ message: "Plugin stopped" }),
+				json: async () => ({
+					ok: true,
+					pluginName: "@local/plugin-ledger",
+					message: "@local/plugin-ledger uninstalled.",
+				}),
 			} as Response);
 
 			const second = await runViewsDelete({
@@ -453,13 +457,53 @@ describe("view management actions", () => {
 			expect(runtime.deleteTask).toHaveBeenCalledWith("task-1");
 			expect(tasks).toEqual([]);
 			expect(globalThis.fetch).toHaveBeenCalledWith(
-				"http://127.0.0.1:3456/api/apps/stop",
+				"http://127.0.0.1:3456/api/plugins/uninstall",
 				expect.objectContaining({
 					method: "POST",
 					body: JSON.stringify({ name: "@local/plugin-ledger" }),
 				}),
 			);
-			expect(second.text).toContain("Plugin stopped");
+			expect(second.text).toContain("uninstalled");
+		} finally {
+			repo.cleanup();
+		}
+	});
+
+	it("reports failure (not 'Deleted') when the plugin uninstall fails", async () => {
+		const repo = createRepoFixture();
+		try {
+			const { runtime } = createRuntime();
+			const callback = vi.fn();
+
+			await runViewsDelete({
+				runtime: runtime as never,
+				message: message("delete the remote ledger view") as never,
+				options: { view: "remote-ledger" },
+				views: [view()],
+				callback,
+				repoRoot: repo.repoRoot,
+			});
+
+			// The uninstall route ran but reported failure (e.g. a bundled/core
+			// plugin). Delete must surface that, not claim the plugin was removed.
+			vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+				ok: false,
+				status: 422,
+				json: async () => ({ ok: false, error: "plugin is bundled" }),
+			} as Response);
+
+			const second = await runViewsDelete({
+				runtime: runtime as never,
+				message: message("yes") as never,
+				views: [view()],
+				callback,
+				repoRoot: repo.repoRoot,
+			});
+
+			expect(second.success).toBe(false);
+			expect(second.text).not.toContain("Deleted");
+			expect(second.text).toContain("partially failed");
+			expect(second.text).toContain("plugin is bundled");
 		} finally {
 			repo.cleanup();
 		}
@@ -1503,7 +1547,11 @@ describe("view management actions", () => {
 			vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 				ok: true,
 				status: 200,
-				json: async () => ({ message: "Plugin stopped" }),
+				json: async () => ({
+					ok: true,
+					pluginName: "@local/plugin-ledger",
+					message: "@local/plugin-ledger uninstalled.",
+				}),
 			} as Response);
 
 			const deleteResult = await action.handler(
@@ -1525,7 +1573,7 @@ describe("view management actions", () => {
 				pluginName: "@local/plugin-ledger",
 			});
 			expect(globalThis.fetch).toHaveBeenCalledWith(
-				"http://127.0.0.1:3456/api/apps/stop",
+				"http://127.0.0.1:3456/api/plugins/uninstall",
 				expect.objectContaining({
 					method: "POST",
 					body: JSON.stringify({ name: "@local/plugin-ledger" }),

@@ -257,47 +257,54 @@ async function unloadPlugin(
 	const port = resolveServerOnlyPort(process.env);
 	const base = `http://127.0.0.1:${port}`;
 
-	// Attempt plugin uninstall via the apps/stop endpoint — this is the canonical
-	// way to signal plugin-level teardown. The view registry deregisters on plugin
-	// unload via its lifecycle hook.
+	// Real plugin teardown: POST /api/plugins/uninstall runs
+	// pluginManager.uninstallPlugin + applyPluginRuntimeMutation, which unloads
+	// the plugin (and its views deregister via the lifecycle hook) or schedules a
+	// restart. This is the canonical uninstall — the previous /api/apps/stop only
+	// stopped a viewer run and never uninstalled anything, so "delete" reported
+	// success while the plugin stayed loaded.
 	try {
-		const resp = await fetch(`${base}/api/apps/stop`, {
+		const resp = await fetch(`${base}/api/plugins/uninstall`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ name: pluginName }),
-			signal: AbortSignal.timeout(15_000),
+			signal: AbortSignal.timeout(30_000),
 		});
 
-		if (resp.ok) {
-			const body = (await resp.json().catch(() => ({}))) as Record<
-				string,
-				unknown
-			>;
+		const body = (await resp.json().catch(() => ({}))) as Record<
+			string,
+			unknown
+		>;
+
+		if (resp.ok && body.ok === true) {
 			const msg =
 				typeof body.message === "string"
 					? body.message
-					: `Plugin ${pluginName} unloaded.`;
+					: `Plugin ${pluginName} uninstalled.`;
 			return { ok: true, message: msg };
 		}
 
-		// 404 means the plugin isn't tracked as an installed app — may just be a
-		// runtime-loaded plugin. Treat as a soft success.
-		if (resp.status === 404) {
+		// 400 = the name isn't an uninstallable registry package (e.g. a bundled
+		// or core plugin). 422 = uninstall ran but failed. Either way the plugin
+		// is still loaded — report that honestly instead of claiming deletion.
+		if (resp.status === 400) {
 			return {
-				ok: true,
-				message: `Plugin ${pluginName} was not tracked as an installed app; no uninstall performed.`,
+				ok: false,
+				message: `${pluginName} can't be uninstalled — it looks like a bundled or core plugin, not a separately installed one.`,
 			};
 		}
-
-		const errBody = await resp.text().catch(() => "");
+		const detail =
+			typeof body.error === "string"
+				? body.error
+				: await resp.text().catch(() => "");
 		return {
 			ok: false,
-			message: `Unload failed (HTTP ${resp.status}): ${errBody}`,
+			message: `Uninstall failed (HTTP ${resp.status})${detail ? `: ${detail}` : ""}.`,
 		};
 	} catch (err) {
 		return {
 			ok: false,
-			message: `Unload request failed: ${err instanceof Error ? err.message : String(err)}`,
+			message: `Uninstall request failed: ${err instanceof Error ? err.message : String(err)}`,
 		};
 	}
 }
