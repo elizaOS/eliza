@@ -194,6 +194,15 @@ export function createAgentOrchestratorPlugin(): Plugin {
         defaultEnabled: true,
       },
       {
+        id: "agent-orchestrator.accounts",
+        pluginId: "agent-orchestrator",
+        slot: "chat-sidebar",
+        label: "Coding accounts",
+        icon: "Zap",
+        order: 250,
+        defaultEnabled: true,
+      },
+      {
         id: "agent-orchestrator.activity",
         pluginId: "agent-orchestrator",
         slot: "chat-sidebar",

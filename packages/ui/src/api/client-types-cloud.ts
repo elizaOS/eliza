@@ -1240,6 +1240,42 @@ export interface CodingAgentOrchestratorStatus {
   byStatus: Record<CodingAgentTaskThread["status"], number>;
 }
 
+/** One coding sub-agent's binding to a pooled account, with its spend. */
+export interface OrchestratorAccountAssignment {
+  taskId: string;
+  taskTitle: string;
+  sessionId: string;
+  label: string;
+  framework: string;
+  status: string;
+  active: boolean;
+  accountProviderId: string;
+  accountId: string;
+  accountLabel: string;
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  cacheTokens: number;
+  costUsd: number;
+  usageState: string;
+}
+
+export interface OrchestratorAccountProviderAvailability {
+  providerId: string;
+  total: number;
+  enabled: number;
+  healthy: number;
+}
+
+/** Payload for `GET /api/orchestrator/accounts`: which pooled accounts can serve
+ * each coding-agent type, the active selection strategy, and the live
+ * sub-agent → account assignment map. */
+export interface OrchestratorAccountOverview {
+  strategy: string;
+  availability: Record<string, OrchestratorAccountProviderAvailability[]>;
+  assignments: OrchestratorAccountAssignment[];
+}
+
 /** Structured payload for creating a task via `POST /api/orchestrator/tasks`. */
 export interface CodingAgentCreateTaskInput {
   title: string;

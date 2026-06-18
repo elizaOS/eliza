@@ -83,6 +83,7 @@ import type {
   ListTrainingCollectionsResponse,
   LogsFilter,
   LogsResponse,
+  OrchestratorAccountOverview,
   PluginInfo,
   PluginMutationResult,
   ProviderModelRecord,
@@ -971,6 +972,7 @@ declare module "./client-base" {
     archiveCodingAgentTaskThread(threadId: string): Promise<boolean>;
     reopenCodingAgentTaskThread(threadId: string): Promise<boolean>;
     getOrchestratorStatus(): Promise<CodingAgentOrchestratorStatus | null>;
+    getOrchestratorAccounts(): Promise<OrchestratorAccountOverview>;
     createOrchestratorTask(
       input: CodingAgentCreateTaskInput,
     ): Promise<CodingAgentTaskThreadDetail>;
@@ -3592,6 +3594,12 @@ ElizaClient.prototype.getOrchestratorStatus = async function (
   this: ElizaClient,
 ) {
   return this.fetch<CodingAgentOrchestratorStatus>("/api/orchestrator/status");
+};
+
+ElizaClient.prototype.getOrchestratorAccounts = async function (
+  this: ElizaClient,
+) {
+  return this.fetch<OrchestratorAccountOverview>("/api/orchestrator/accounts");
 };
 
 ElizaClient.prototype.createOrchestratorTask = function (
