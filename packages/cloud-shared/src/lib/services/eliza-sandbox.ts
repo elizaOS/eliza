@@ -1536,45 +1536,46 @@ export class ElizaSandboxService {
       history,
       message: text,
     });
-    if (!turn.degraded) {
-      await this.saveSharedRuntimeHistory(rec.id, channelId, turn.history);
-    }
     if (turn.degraded) {
+      // A failed/degraded turn isn't persisted or billed — just refund the hold.
       await settleReservation(0);
-    } else if (billingContext) {
-      try {
-        const billing = await billUsage(
-          billingContext,
-          this.sharedRuntimeBillingUsage(turn, estimatedInputTokens),
-        );
-        const settlement = await settleReservation(billing.totalCost);
-        const usageRecord = await recordUsageAnalytics(billingContext, billing, {
-          type: "chat",
-          content: turn.reply,
-          prompt: text,
-        });
-        if (usageRecord) {
-          await aiBillingRecordsService
-            .record({
-              context: billingContext,
-              billing,
-              usageRecord,
-              idempotencyKey,
-              reconciliation: settlement,
-            })
-            .catch((error) => {
-              logger.error("[shared-runtime] AI billing audit record failed", {
-                error: error instanceof Error ? error.message : String(error),
-                agentId: rec.id,
+    } else {
+      await this.saveSharedRuntimeHistory(rec.id, channelId, turn.history);
+      if (billingContext) {
+        try {
+          const billing = await billUsage(
+            billingContext,
+            this.sharedRuntimeBillingUsage(turn, estimatedInputTokens),
+          );
+          const settlement = await settleReservation(billing.totalCost);
+          const usageRecord = await recordUsageAnalytics(billingContext, billing, {
+            type: "chat",
+            content: turn.reply,
+            prompt: text,
+          });
+          if (usageRecord) {
+            await aiBillingRecordsService
+              .record({
+                context: billingContext,
+                billing,
+                usageRecord,
+                idempotencyKey,
+                reconciliation: settlement,
+              })
+              .catch((error) => {
+                logger.error("[shared-runtime] AI billing audit record failed", {
+                  error: error instanceof Error ? error.message : String(error),
+                  agentId: rec.id,
+                });
               });
-            });
+          }
+        } catch (error) {
+          await settleReservation(0);
+          logger.error("[shared-runtime] billing failed", {
+            error: error instanceof Error ? error.message : String(error),
+            agentId: rec.id,
+          });
         }
-      } catch (error) {
-        await settleReservation(0);
-        logger.error("[shared-runtime] billing failed", {
-          error: error instanceof Error ? error.message : String(error),
-          agentId: rec.id,
-        });
       }
     }
 

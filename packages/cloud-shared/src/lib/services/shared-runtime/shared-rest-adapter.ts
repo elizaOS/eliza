@@ -43,12 +43,6 @@ export interface SharedRestMessage {
   text: string;
 }
 
-/** The reply shape the chat client expects from POST .../messages. */
-export interface SharedRestSendResult {
-  text: string;
-  agentName: string;
-}
-
 /** The canonical (single) conversation id for a shared agent === its agent id. */
 function canonicalConversationId(agentId: string): string {
   return agentId;
@@ -69,27 +63,20 @@ export function sharedRestHealth(): { status: "ok" } {
   return { status: "ok" };
 }
 
-/** The agent-status shape the chat client reads; `state` + `canRespond` gate UI. */
-export interface SharedRestStatus {
-  state: "running";
-  agentName: string;
-  /**
-   * The composer's send-gate is `canRespond ?? (running && model)`. A shared
-   * agent has no LOCAL model (inference is hosted in-Worker), so `running &&
-   * model` is false and the box would stay disabled. We're only here for a
-   * provisioned + running shared agent, so it CAN respond — declare it
-   * explicitly so the client doesn't fall back to the model check.
-   */
-  canRespond: true;
-}
-
 /**
  * GET .../api/status — the startup-coordinator's FIRST hard gate: it calls
  * `getStatus()` before anything else and bails unless `state === "running"`.
- * A shared agent runs in-Worker, so if this resolves it is by definition up and
- * able to respond (its inference is hosted, not a local model).
+ * A shared agent runs in-Worker, so if this resolves it is by definition up.
+ *
+ * `canRespond` is load-bearing too: the composer's send-gate is
+ * `canRespond ?? (running && model)`, and a shared agent has no LOCAL model
+ * (inference is hosted in-Worker), so without it the box would stay disabled.
  */
-export function sharedRestStatus(agentName: string): SharedRestStatus {
+export function sharedRestStatus(agentName: string): {
+  state: "running";
+  agentName: string;
+  canRespond: true;
+} {
   return { state: "running", agentName: agentName || "Eliza", canRespond: true };
 }
 
@@ -114,7 +101,7 @@ export function sharedRestStatus(agentName: string): SharedRestStatus {
 //   config           → packages/agent/src/api/config-routes.ts (open-ended object)
 
 /** Minimal subset of the agent-server `ViewRegistryEntry` the chat client reads. */
-export interface SharedRestViewRegistration {
+interface SharedRestViewRegistration {
   id: string;
   label: string;
   viewType: "gui" | "tui" | "xr";
@@ -217,27 +204,28 @@ export function sharedRestConfig(): { websocket: false; streaming: false } {
   return { websocket: false, streaming: false };
 }
 
-/** The authed-identity shape `authMe()` (ui/src/api/auth-client.ts) parses. */
-export interface SharedRestAuthMe {
+/**
+ * GET .../api/auth/me — the app's HARD startup gate (App.tsx auth gate →
+ * useAuthStatus → authMe(), ui/src/api/auth-client.ts). A shared agent has no
+ * agent server and no owner-password flow; it is reached purely through the
+ * caller's authenticated API key, which the route already validated
+ * (resolveSharedAgent → requireUserOrApiKeyWithOrg). So the caller is, by
+ * construction, an authed machine identity — return it in the agent-server's
+ * `bearer-agent` shape (auth-routes.ts authorized branch: identity.kind
+ * "machine", session machine with no expiry, access mode "bearer"). Without an
+ * `ok:true` body here, the client maps the 404 to status 503 →
+ * "server_unavailable" → StartupFailureView and never reaches chat. The identity
+ * is the agent itself (id = agentId, displayName = agentName) — the only stable
+ * identity this adapter owns.
+ */
+export function sharedRestAuthMe(
+  agentId: string,
+  agentName: string,
+): {
   identity: { id: string; displayName: string; kind: "machine" };
   session: { id: string; kind: "machine"; expiresAt: null };
   access: { mode: "bearer"; passwordConfigured: false; ownerConfigured: false };
-}
-
-/**
- * GET .../api/auth/me — the app's HARD startup gate (App.tsx auth gate →
- * useAuthStatus → authMe()). A shared agent has no agent server and no
- * owner-password flow; it is reached purely through the caller's authenticated
- * API key, which the route already validated (resolveSharedAgent →
- * requireUserOrApiKeyWithOrg). So the caller is, by construction, an authed
- * machine identity — return it in the agent-server's `bearer-agent` shape
- * (auth-routes.ts authorized branch: identity.kind "machine", session machine
- * with no expiry, access mode "bearer"). Without an `ok:true` body here, the
- * client maps the 404 to status 503 → "server_unavailable" → StartupFailureView
- * and never reaches chat. The identity is the agent itself (id = agentId,
- * displayName = agentName) — the only stable identity this adapter owns.
- */
-export function sharedRestAuthMe(agentId: string, agentName: string): SharedRestAuthMe {
+} {
   return {
     identity: {
       id: agentId,
@@ -247,12 +235,6 @@ export function sharedRestAuthMe(agentId: string, agentName: string): SharedRest
     session: { id: "bearer", kind: "machine", expiresAt: null },
     access: { mode: "bearer", passwordConfigured: false, ownerConfigured: false },
   };
-}
-
-/** GET .../api/character body — mirrors the agent server (character-routes.ts). */
-export interface SharedRestCharacter {
-  character: SharedAgentCharacter | Record<string, never>;
-  agentName: string;
 }
 
 /**
@@ -267,7 +249,7 @@ export async function sharedRestCharacter(
   agentId: string,
   orgId: string,
   agentName: string,
-): Promise<SharedRestCharacter> {
+): Promise<{ character: SharedAgentCharacter | Record<string, never>; agentName: string }> {
   const character = await elizaSandboxService.getSharedRuntimeCharacter(agentId, orgId);
   return { character: character ?? {}, agentName: agentName || "Eliza" };
 }
@@ -319,7 +301,7 @@ export async function sharedRestMessageSend(
   conversationId: string,
   text: string,
   agentName: string,
-): Promise<SharedRestSendResult> {
+): Promise<{ text: string; agentName: string }> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
     id: crypto.randomUUID(),
