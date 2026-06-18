@@ -122,7 +122,7 @@ const SPEAKER_MUTED_GLYPH =
   "M7 15H12L18 10V26L12 21H7Z M21 12.4L22.4 11L31 19.6L29.6 21Z";
 function Glyph({ d }: { d: string }): React.JSX.Element {
   return (
-    <svg viewBox="0 0 36 36" className="h-4 w-4" aria-hidden="true">
+    <svg viewBox="0 0 36 36" className="h-5 w-5" aria-hidden="true">
       <path fill="currentColor" fillRule="evenodd" d={d} />
     </svg>
   );
@@ -164,9 +164,9 @@ function SoftButton({
       onPointerUp={disabled ? undefined : onPointerUp}
       onPointerCancel={disabled ? undefined : onPointerCancel}
       className={cn(
-        // 44×44 hit target (WCAG 2.5.5) so the attach / mic / send / stop chips
-        // are comfortably thumb-tappable; the glyph stays small inside.
-        "grid h-11 w-11 shrink-0 place-items-center rounded-full border transition-colors",
+        // 48×48 hit target (>= WCAG 2.5.5) so the attach / mic / send / stop
+        // chips are comfortably thumb-tappable, with a slightly larger glyph.
+        "grid h-12 w-12 shrink-0 place-items-center rounded-full border transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
         active
           ? "border-white/40 bg-white/85 text-black"
@@ -225,9 +225,15 @@ function SheetGrabber({
       {...binding}
       className={cn(
         "appearance-none border-0 bg-transparent p-0 text-left",
-        // Top padding only — the bar hugs the very bottom of the handle so, when
-        // collapsed, it sits right above the input with no gap below it.
-        "pointer-events-auto mx-auto flex w-full max-w-3xl shrink-0 cursor-grab touch-none select-none items-center justify-center pt-2.5 active:cursor-grabbing",
+        // The bar sits LOW, floating inside the input row's top padding: a small
+        // pt nudges it down and the negative bottom margin pulls the input up
+        // under it, so the handle adds ~no height (collapsed = the input row, no
+        // extra top margin above the buttons vs below). z-20 keeps the handle
+        // above the input row (z-10) in the overlap so it still catches the drag.
+        "pointer-events-auto relative z-20 mx-auto flex w-full max-w-3xl shrink-0 cursor-grab touch-none select-none items-center justify-center pt-1 -mb-2 active:cursor-grabbing",
+        // Generous invisible drag target, larger than the thin bar (without
+        // reaching down onto the textarea/buttons). Adds no layout height.
+        "before:absolute before:inset-x-0 before:-top-2 before:bottom-0 before:content-['']",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full",
       )}
     >

@@ -25349,7 +25349,7 @@
   var SPEAKER_GLYPH = "M7 15H12L18 10V26L12 21H7Z M21 14Q25 18 21 22L23 22Q27 18 23 14Z M25 11Q31 18 25 25L27 25Q33 18 27 11Z";
   var SPEAKER_MUTED_GLYPH = "M7 15H12L18 10V26L12 21H7Z M21 12.4L22.4 11L31 19.6L29.6 21Z";
   function Glyph({ d }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("svg", { viewBox: "0 0 36 36", className: "h-4 w-4", "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("path", { fill: "currentColor", fillRule: "evenodd", d }) });
+    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("svg", { viewBox: "0 0 36 36", className: "h-5 w-5", "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("path", { fill: "currentColor", fillRule: "evenodd", d }) });
   }
   function SoftButton({
     glyph,
@@ -25375,9 +25375,9 @@
         onPointerUp: disabled ? void 0 : onPointerUp,
         onPointerCancel: disabled ? void 0 : onPointerCancel,
         className: cn(
-          // 44×44 hit target (WCAG 2.5.5) so the attach / mic / send / stop chips
-          // are comfortably thumb-tappable; the glyph stays small inside.
-          "grid h-11 w-11 shrink-0 place-items-center rounded-full border transition-colors",
+          // 48×48 hit target (>= WCAG 2.5.5) so the attach / mic / send / stop
+          // chips are comfortably thumb-tappable, with a slightly larger glyph.
+          "grid h-12 w-12 shrink-0 place-items-center rounded-full border transition-colors",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
           active ? "border-white/40 bg-white/85 text-black" : "border-white/15 bg-white/10 text-white/75 hover:bg-white/20 hover:text-white",
           disabled && "opacity-40"
@@ -25417,9 +25417,15 @@
         ...binding,
         className: cn(
           "appearance-none border-0 bg-transparent p-0 text-left",
-          // Top padding only — the bar hugs the very bottom of the handle so, when
-          // collapsed, it sits right above the input with no gap below it.
-          "pointer-events-auto mx-auto flex w-full max-w-3xl shrink-0 cursor-grab touch-none select-none items-center justify-center pt-2.5 active:cursor-grabbing",
+          // The bar sits LOW, floating inside the input row's top padding: a small
+          // pt nudges it down and the negative bottom margin pulls the input up
+          // under it, so the handle adds ~no height (collapsed = the input row, no
+          // extra top margin above the buttons vs below). z-20 keeps the handle
+          // above the input row (z-10) in the overlap so it still catches the drag.
+          "pointer-events-auto relative z-20 mx-auto flex w-full max-w-3xl shrink-0 cursor-grab touch-none select-none items-center justify-center pt-1 -mb-2 active:cursor-grabbing",
+          // Generous invisible drag target, larger than the thin bar (without
+          // reaching down onto the textarea/buttons). Adds no layout height.
+          "before:absolute before:inset-x-0 before:-top-2 before:bottom-0 before:content-['']",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full"
         ),
         children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
@@ -25637,6 +25643,8 @@
       speaking,
       agentVoiceMuted,
       toggleAgentVoiceMute,
+      needsAudioUnlock,
+      unlockAudio,
       openSettings,
       stop
     } = controller;
@@ -25992,6 +26000,32 @@
               ]
             }
           ) : null,
+          needsAudioUnlock ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+            "div",
+            {
+              role: "status",
+              "aria-live": "polite",
+              className: "pointer-events-none relative mb-2 flex w-full justify-center",
+              children: /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+                "button",
+                {
+                  type: "button",
+                  onClick: unlockAudio,
+                  "data-testid": "overlay-voice-audio-unlock",
+                  className: cn(
+                    "pointer-events-auto inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
+                    "border-warn/40 bg-warn/15 text-warn hover:bg-warn/25",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/70",
+                    FLOAT_SHADOW
+                  ),
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Glyph, { d: SPEAKER_MUTED_GLYPH }),
+                    /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { children: "Tap to enable sound" })
+                  ]
+                }
+              )
+            }
+          ) : null,
           suggestionsVisible ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
             motion.fieldset,
             {
@@ -26055,7 +26089,7 @@
                     initial: false,
                     animate: {
                       opacity: listening || responding ? 1 : 0,
-                      backgroundColor: listening ? "rgba(255,180,120,0.30)" : "rgba(190,210,255,0.20)"
+                      backgroundColor: listening ? "rgba(255,180,120,0.30)" : "rgba(255,140,80,0.18)"
                     },
                     transition: { duration: reduce ? 0 : 1.1, ease: "easeInOut" }
                   }
