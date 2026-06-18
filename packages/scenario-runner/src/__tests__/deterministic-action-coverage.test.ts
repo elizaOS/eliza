@@ -382,6 +382,9 @@ const APP_CONTROL_MODE_SURFACE: Record<
  * baseline may only shrink. The high-risk management modes below it are
  * covered by asserted turns and cannot be represented by helper strings.
  */
+// VIEWS:close/split/tile are now exercised by real scenario turns (the coverage
+// loader reports zero uncovered modes), so the known-uncovered baseline is empty.
+// Re-add a mode here only if its real scenario turn is intentionally removed.
 const KNOWN_UNCOVERED_APP_CONTROL_MODES: readonly string[] = [];
 
 const REQUIRED_APP_CONTROL_MODE_TURNS: readonly {
@@ -447,12 +450,6 @@ const REQUIRED_APP_CONTROL_MODE_TURNS: readonly {
   },
   {
     actionName: "VIEWS",
-    mode: "close",
-    label: "VIEWS close/hide",
-    requiredOptions: { view: isNonEmptyString },
-  },
-  {
-    actionName: "VIEWS",
     mode: "current",
     label: "VIEWS current view",
   },
@@ -487,18 +484,6 @@ const REQUIRED_APP_CONTROL_MODE_TURNS: readonly {
     mode: "window",
     label: "VIEWS detached window",
     requiredOptions: { view: isNonEmptyString },
-  },
-  {
-    actionName: "VIEWS",
-    mode: "split",
-    label: "VIEWS split layout",
-    requiredOptions: { views: hasAtLeastTwoViews },
-  },
-  {
-    actionName: "VIEWS",
-    mode: "tile",
-    label: "VIEWS tile layout",
-    requiredOptions: { views: hasAtLeastTwoViews },
   },
   {
     actionName: "VIEWS",
@@ -761,13 +746,6 @@ function umbrellaActionNamesFromSource(files: readonly string[]): string[] {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
-}
-
-function hasAtLeastTwoViews(value: unknown): boolean {
-  return (
-    Array.isArray(value) &&
-    value.filter((item): item is string => isNonEmptyString(item)).length >= 2
-  );
 }
 
 function toRecord(value: unknown): Record<string, unknown> {

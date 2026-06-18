@@ -265,3 +265,98 @@ test("cloud-connected connector settings keep local setup controls available", a
     page.getByRole("button", { name: "Authorize Discord desktop" }),
   ).toBeVisible();
 });
+
+// Real connector enable/disable round-trip against the live backend. The keyless
+// stub's `GET /api/plugins` is a static fixture that never reflects a toggle, so
+// the disable→reload→read-back below only converges against the real app-core
+// runtime + plugin registry (ELIZA_UI_SMOKE_LIVE_STACK=1). It does NOT stub
+// `PUT /api/plugins/:id` — that is the route under test. The target connector is
+// discovered from the live registry (an enabled connector with a "Disable …"
+// switch), so no hardcoded id is assumed, and the toggle is restored at the end.
+const LIVE_STACK = process.env.ELIZA_UI_SMOKE_LIVE_STACK === "1";
+
+test.describe("connector toggle deep round-trip", () => {
+  test.skip(
+    !LIVE_STACK,
+    "needs the real plugin registry (ELIZA_UI_SMOKE_LIVE_STACK=1); the keyless " +
+      "stub's GET /api/plugins is a static fixture that never reflects a toggle.",
+  );
+
+  test("disabling a live connector fires PUT /api/plugins/:id and flips the switch", async ({
+    page,
+  }) => {
+    type PluginToggleRequest = { id: string; enabled: unknown };
+    const toggleRequests: PluginToggleRequest[] = [];
+    const pluginTogglePathRe = /\/api\/plugins\/([^/?#]+)(?:\?|$)/;
+    page.on("request", (req) => {
+      if (req.method() !== "PUT") return;
+      const match = pluginTogglePathRe.exec(req.url());
+      if (!match) return;
+      const id = decodeURIComponent(match[1] ?? "");
+      let body: unknown = null;
+      try {
+        body = req.postDataJSON();
+      } catch {
+        body = null;
+      }
+      const enabled =
+        body && typeof body === "object"
+          ? (body as { enabled?: unknown }).enabled
+          : undefined;
+      toggleRequests.push({ id, enabled });
+    });
+
+    // No fixtures — hit the real registry.
+    await openConnectors(page);
+
+    // Pick the first connector row that is currently enabled (its switch reads
+    // "Disable <name>"). aria-label exposes the toggle target unambiguously.
+    const disableSwitches = page.getByRole("switch", { name: /^Disable / });
+    await expect(disableSwitches.first()).toBeVisible({ timeout: 30_000 });
+    const targetSwitch = disableSwitches.first();
+    const disableLabel = (await targetSwitch.getAttribute("aria-label")) ?? "";
+    const connectorName = disableLabel.replace(/^Disable\s+/, "").trim();
+    expect(connectorName.length).toBeGreaterThan(0);
+
+    const targetRow = page
+      .locator("[data-connector]")
+      .filter({ has: page.getByRole("switch", { name: disableLabel }) })
+      .first();
+    const connectorId = (await targetRow.getAttribute("data-connector")) ?? "";
+    expect(connectorId.length).toBeGreaterThan(0);
+
+    await targetSwitch.click();
+
+    // Real PUT /api/plugins/<id> with {enabled:false}.
+    await expect
+      .poll(() => toggleRequests.filter((r) => r.id === connectorId).length)
+      .toBeGreaterThan(0);
+    const disableReq = toggleRequests.find(
+      (r) => r.id === connectorId && r.enabled === false,
+    );
+    expect(
+      disableReq,
+      `expected PUT /api/plugins/${connectorId} with {enabled:false}`,
+    ).toBeTruthy();
+
+    // After loadPlugins() re-fetches the real registry, the switch reads
+    // "Enable <name>" — the disabled state read back from the backend.
+    await expect(
+      page.getByRole("switch", { name: `Enable ${connectorName}` }),
+    ).toBeVisible({ timeout: 30_000 });
+
+    // Restore the connector so the run leaves no residue in the live registry.
+    await page.getByRole("switch", { name: `Enable ${connectorName}` }).click();
+    await expect
+      .poll(
+        () =>
+          toggleRequests.filter(
+            (r) => r.id === connectorId && r.enabled === true,
+          ).length,
+      )
+      .toBeGreaterThan(0);
+    await expect(
+      page.getByRole("switch", { name: `Disable ${connectorName}` }),
+    ).toBeVisible({ timeout: 30_000 });
+  });
+});

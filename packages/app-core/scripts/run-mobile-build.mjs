@@ -78,9 +78,15 @@ import {
 // ── Paths ───────────────────────────────────────────────────────────────
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolveRepoRootFromImportMeta(import.meta.url, {
-  fallbackToCwd: true,
-});
+// When this elizaOS checkout is nested inside a consumer monorepo (e.g.
+// milady wraps it as `eliza/`), the repo-root walk resolves to the OUTER
+// repo and the build targets the consumer's app. Allow an explicit override
+// so the elizaOS app itself can be built standalone from the nested checkout.
+const repoRoot = process.env.ELIZA_MOBILE_REPO_ROOT?.trim()
+  ? path.resolve(process.env.ELIZA_MOBILE_REPO_ROOT.trim())
+  : resolveRepoRootFromImportMeta(import.meta.url, {
+      fallbackToCwd: true,
+    });
 const appCoreRoot = path.resolve(__dirname, "..");
 const packagesRoot = path.resolve(appCoreRoot, "..");
 const elizaRepoRoot = path.resolve(packagesRoot, "..");
@@ -1085,6 +1091,47 @@ async function ensurePlatform(platform) {
   if (!isCapacitorPlatformReady(platform)) {
     syncPlatformTemplateFiles(platform);
   }
+}
+
+/**
+ * `cap sync android` copies the web bundle + capacitor runtime config into the
+ * host app's Capacitor project (`<appDir>/android`). The gradle build and agent
+ * staging, however, run against the canonical platform tree
+ * (`androidDir` = `app-core/platforms/android`). When those are distinct
+ * directories — e.g. this elizaOS checkout nested inside a consumer monorepo —
+ * the freshly-synced renderer never reaches the dir gradle packages, so the APK
+ * ships no web assets and the WebView 404s on index.html
+ * (net::ERR_CONNECTION_REFUSED). Mirror the synced payload into androidDir.
+ * No-op when both trees resolve to the same directory (standalone layout) or
+ * when the synced public payload is missing.
+ */
+function mirrorCapacitorWebPayloadIntoAndroidDir() {
+  const syncedAssets = path.join(
+    appDir,
+    "android",
+    "app",
+    "src",
+    "main",
+    "assets",
+  );
+  const targetAssets = path.join(androidDir, "app", "src", "main", "assets");
+  const syncedPublic = path.join(syncedAssets, "public");
+  if (!fs.existsSync(syncedPublic)) return;
+  const sameTree =
+    fs.existsSync(targetAssets) &&
+    fs.realpathSync(syncedAssets) === fs.realpathSync(targetAssets);
+  if (sameTree) return;
+  const targetPublic = path.join(targetAssets, "public");
+  fs.mkdirSync(targetAssets, { recursive: true });
+  fs.rmSync(targetPublic, { recursive: true, force: true });
+  fs.cpSync(syncedPublic, targetPublic, { recursive: true });
+  for (const cfg of ["capacitor.config.json", "capacitor.plugins.json"]) {
+    const src = path.join(syncedAssets, cfg);
+    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(targetAssets, cfg));
+  }
+  console.log(
+    `[mobile-build] Mirrored Capacitor web payload into ${path.relative(repoRoot, targetAssets)}`,
+  );
 }
 
 // ── Phase 4: Android native overlay ─────────────────────────────────────
@@ -5904,6 +5951,7 @@ async function buildAndroid() {
   await buildMobileAgentBundle();
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
+  mirrorCapacitorWebPayloadIntoAndroidDir();
 
   patchAndroidGradle();
   await generateAndroidBrandAssets();
@@ -5960,6 +6008,29 @@ async function buildAndroid() {
     cwd: androidDir,
     env,
   });
+  auditAndroidSideloadArtifact({ javaHome: jdk });
+}
+
+/**
+ * Audit the sideload (`android`) debug APK. The sideload target ships both the
+ * web renderer and the on-device agent payload, so assert both are packaged —
+ * a web-less sideload APK is the exact regression of elizaOS/eliza#8387
+ * (ERR_CONNECTION_REFUSED on device).
+ */
+function auditAndroidSideloadArtifact({ javaHome } = {}) {
+  const artifact = findAndroidCloudDebugApk();
+  if (!artifact) {
+    throw new Error(
+      "[mobile-build] android sideload debug APK was not found under app/build/outputs/.",
+    );
+  }
+  const entries = listAndroidArtifactEntries(artifact, javaHome);
+  assertAndroidArtifactShipsWebPayload(artifact, entries, {
+    requireAgent: true,
+    label: "android",
+  });
+  console.log(`[mobile-build] android sideload artifact audit passed: ${artifact}`);
+  return artifact;
 }
 
 function findAndroidCloudAab() {
@@ -6009,13 +6080,12 @@ function resolveAndroidBuildTool(sdkRoot, toolName) {
   return null;
 }
 
-function auditAndroidCloudArtifact({ debug = false, javaHome } = {}) {
-  const artifact = debug ? findAndroidCloudDebugApk() : findAndroidCloudAab();
-  if (!artifact) {
-    throw new Error(
-      `[mobile-build] android-cloud ${debug ? "debug APK" : "release AAB"} was not found under app/build/outputs/.`,
-    );
-  }
+/**
+ * List the packaged entries of an APK/AAB via `jar tf`. Throws on inspect
+ * failure so a broken artifact can never pass an audit by yielding an empty
+ * listing.
+ */
+function listAndroidArtifactEntries(artifact, javaHome) {
   const jar = path.join(
     javaHome,
     "bin",
@@ -6029,19 +6099,76 @@ function auditAndroidCloudArtifact({ debug = false, javaHome } = {}) {
       }`,
     );
   }
-  const offenders = result.stdout
-    .split(/\r?\n/)
-    .filter((entry) =>
-      /(^|\/)assets\/agent\/|libeliza_|libllama|libsigsys-handler\.so|llama-cpp-kernels\.json/i.test(
-        entry,
-      ),
+  return result.stdout.split(/\r?\n/);
+}
+
+/**
+ * Positive assertion that an installable APK actually ships the web renderer
+ * (and, for local builds, the on-device agent). Without this, a sync that
+ * lands the web payload in the wrong tree produces a web-less APK that boots
+ * to net::ERR_CONNECTION_REFUSED — the failure this guard exists to prevent
+ * (elizaOS/eliza#8387). `assets/public/index.html` is the WebView entrypoint,
+ * `assets/capacitor.config.json` is the Capacitor runtime config, and
+ * `assets/agent/` is the staged local-agent payload (only present on
+ * local/sideload builds; cloud thin clients deliberately strip it).
+ */
+function assertAndroidArtifactShipsWebPayload(
+  artifact,
+  entries,
+  { requireAgent = false, label = "android" } = {},
+) {
+  // APKs package assets at `assets/...`; AABs nest them under a module dir
+  // (`base/assets/...`). Match on the canonical suffix so one assertion covers
+  // both `:app:assembleDebug` (APK) and `:app:bundleRelease` (AAB) outputs.
+  const hasAssetFile = (suffix) =>
+    entries.some(
+      (entry) =>
+        entry === `assets/${suffix}` || entry.endsWith(`/assets/${suffix}`),
     );
+  const hasAssetDir = (prefix) =>
+    entries.some(
+      (entry) =>
+        entry.startsWith(`assets/${prefix}`) ||
+        entry.includes(`/assets/${prefix}`),
+    );
+  const required = ["public/index.html", "capacitor.config.json"];
+  const missing = required.filter((suffix) => !hasAssetFile(suffix));
+  if (requireAgent && !hasAssetDir("agent/")) missing.push("assets/agent/");
+  if (missing.length > 0) {
+    throw new Error(
+      `[mobile-build] ${label} artifact is missing required packaged payload — ` +
+        `it would ship a web-less app that fails with ERR_CONNECTION_REFUSED:\n` +
+        missing.map((entry) => `  - ${entry}`).join("\n") +
+        `\n  artifact: ${artifact}`,
+    );
+  }
+}
+
+function auditAndroidCloudArtifact({ debug = false, javaHome } = {}) {
+  const artifact = debug ? findAndroidCloudDebugApk() : findAndroidCloudAab();
+  if (!artifact) {
+    throw new Error(
+      `[mobile-build] android-cloud ${debug ? "debug APK" : "release AAB"} was not found under app/build/outputs/.`,
+    );
+  }
+  const entries = listAndroidArtifactEntries(artifact, javaHome);
+  const offenders = entries.filter((entry) =>
+    /(^|\/)assets\/agent\/|libeliza_|libllama|libsigsys-handler\.so|llama-cpp-kernels\.json/i.test(
+      entry,
+    ),
+  );
   if (offenders.length > 0) {
     throw new Error(
       `[mobile-build] android-cloud artifact contains local runtime payloads:\n` +
         offenders.map((entry) => `  - ${entry}`).join("\n"),
     );
   }
+  // Cloud is a thin client (no on-device agent), but it must still ship the
+  // renderer — a web-less cloud APK is just as broken as a web-less sideload.
+  assertAndroidArtifactShipsWebPayload(artifact, entries, {
+    requireAgent: false,
+    label: "android-cloud",
+  });
   console.log(
     `[mobile-build] android-cloud artifact audit passed: ${artifact}`,
   );
@@ -6057,6 +6184,11 @@ function auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome } = {}) {
   }
 
   assertNoAndroidSmsGatewayPackagedOffenders(artifact, javaHome);
+  assertAndroidArtifactShipsWebPayload(
+    artifact,
+    listAndroidArtifactEntries(artifact, javaHome),
+    { requireAgent: false, label: "android-sms-gateway" },
+  );
 
   const aapt = resolveAndroidBuildTool(androidSdkRoot, "aapt");
   if (!aapt) {
@@ -6199,6 +6331,7 @@ async function buildAndroidCloud({ debug = false } = {}) {
   await buildWeb(debug ? "android-cloud-debug" : "android-cloud");
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
+  mirrorCapacitorWebPayloadIntoAndroidDir();
 
   patchAndroidGradle();
   await generateAndroidBrandAssets();
@@ -6290,6 +6423,7 @@ async function buildAndroidSmsGateway() {
   await buildWeb("android-cloud-debug");
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
+  mirrorCapacitorWebPayloadIntoAndroidDir();
 
   patchAndroidGradle();
   await generateAndroidBrandAssets();
@@ -6486,6 +6620,7 @@ async function buildAndroidSystem() {
   await buildMobileAgentBundle();
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
+  mirrorCapacitorWebPayloadIntoAndroidDir();
 
   patchAndroidGradle();
   await generateAndroidBrandAssets();

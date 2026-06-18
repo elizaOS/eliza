@@ -103,6 +103,7 @@ type Conversation = {
 
 type AutomationsMockApi = {
   getCreatedTask: () => Record<string, unknown> | null;
+  getCreatedTrigger: () => Record<string, unknown> | null;
   getCreatedWorkflow: () => Record<string, unknown> | null;
   getGeneratedWorkflow: () => Record<string, unknown> | null;
   getDeletedConversationIds: () => string[];
@@ -295,6 +296,7 @@ async function installAutomationsApi(
   const workflows = new Map<string, Workflow>();
   const conversations = new Map<string, Conversation>();
   let createdTask: Record<string, unknown> | null = null;
+  let createdTrigger: Record<string, unknown> | null = null;
   let createdWorkflow: Record<string, unknown> | null = null;
   let generatedWorkflow: Record<string, unknown> | null = null;
   const deletedConversationIds: string[] = [];
@@ -647,6 +649,7 @@ async function installAutomationsApi(
 
   return {
     getCreatedTask: () => createdTask,
+    getCreatedTrigger: () => createdTrigger,
     getCreatedWorkflow: () => createdWorkflow,
     getGeneratedWorkflow: () => generatedWorkflow,
     getDeletedConversationIds: () => [...deletedConversationIds],
@@ -769,4 +772,48 @@ test("workflow editor generates a workflow from a prompt", async ({ page }) => {
   await expect(page.getByTestId("workflow-editor-json")).toHaveValue(
     /Generated workflow/,
   );
+});
+
+// Event-triggered automation coverage.
+//
+// Wiring note: the automations surface creates simple automations through the
+// TaskEditor, which POSTs to `/api/workbench/tasks` and encodes the trigger in
+// the WorkbenchTask `tags` (`event:<kind>`). The `/api/triggers` POST mock
+// (whose captured body is now exposed via `api.getCreatedTrigger()`) is the
+// trigger-CRUD seam used by other surfaces; the automations page itself does
+// not call it, so `getCreatedTrigger()` stays null here. This test asserts the
+// real automations contract: an event trigger renders in the list, and a newly
+// created automation is persisted with the expected POST body.
+test("automations renders an event trigger and creates a new event automation", async ({
+  page,
+}) => {
+  const api = await installAutomationsApi(page, [eventTaskItem()]);
+
+  await openAppPath(page, "/automations");
+
+  // The seeded event task renders with its event-kind schedule label.
+  await expect(
+    page.getByRole("button", { name: "Message triage" }),
+  ).toBeVisible();
+  await expect(page.getByText("On message.received")).toBeVisible();
+
+  // Create a fresh event-triage automation through the real editor flow.
+  await page.getByRole("button", { name: "New" }).click();
+  await page.getByRole("button", { name: /Task \(simple prompt\)/ }).click();
+  await page.getByTestId("task-editor-name").fill("Triage new chat events");
+  await page
+    .getByTestId("task-editor-prompt")
+    .fill("When a chat message arrives, summarize and route it.");
+  await page.getByTestId("task-editor-save").click();
+
+  await expect
+    .poll(() => api.getCreatedTask())
+    .toMatchObject({
+      name: "Triage new chat events",
+      description: "When a chat message arrives, summarize and route it.",
+    });
+  // The automations editor never reaches the trigger-CRUD endpoint.
+  expect(api.getCreatedTrigger()).toBeNull();
+
+  await expect(page.getByText("Triage new chat events")).toBeVisible();
 });

@@ -41,6 +41,11 @@ const KEYLESS_WORKFLOW = path.join(
  * cloud sandbox, or running endpoint), not merely be unwired.
  */
 const LIVE_ONLY: Readonly<Record<string, string>> = {
+  "cloud-live.spec.ts":
+    "real cloud login + provisioning + chat against real Eliza Cloud; needs " +
+    "ELIZA_UI_SMOKE_CLOUD_LIVE=1 + ELIZA_UI_SMOKE_LIVE_STACK=1 + " +
+    "ELIZAOS_CLOUD_API_KEY and spends real cloud credits, so it never runs in a " +
+    "keyless PR lane — wired only into the nightly app-live-e2e.yml workflow.",
   "multi-client-desync.spec.ts":
     "needs a live shared messaging backend so two independent browser contexts " +
     "(separate localStorage/page.route mocks) converge on one server-side " +
@@ -52,6 +57,21 @@ const LIVE_ONLY: Readonly<Record<string, string>> = {
     "BroadcastChannel) which does not exist in the renderer yet; the spec is " +
     "skipped against the desired theme-toggle broadcast behavior and only " +
     "activates once that feature ships.",
+  "vault-routing.spec.ts":
+    "deep routing-config write→reload→read-back needs the real on-disk vault " +
+    "(ELIZA_UI_SMOKE_LIVE_STACK=1); the keyless stub's GET /api/secrets/routing " +
+    "is a static {rules:[]} and its PUT does not persist, so a saved rule never " +
+    "reloads. Guarded by test.skip(!LIVE_STACK).",
+  "wallet-keys.spec.ts":
+    "deep wallet-key add→reveal→delete round-trip needs the real on-disk vault " +
+    "(ELIZA_UI_SMOKE_LIVE_STACK=1); the keyless stub returns a fixed wallet " +
+    "inventory and does not persist PUT/DELETE on /api/secrets/inventory/:key. " +
+    "Guarded by test.skip(!LIVE_STACK).",
+  "provider-config.spec.ts":
+    "real provider switch needs the app-core runtime to service POST " +
+    "/api/provider/switch and re-derive the active provider " +
+    "(ELIZA_UI_SMOKE_LIVE_STACK=1); the keyless stub neither restarts the agent " +
+    "nor reflects the switched provider. Guarded by test.skip(!LIVE_STACK).",
 };
 
 /**

@@ -48,6 +48,12 @@
  */
 
 import { expect, type Page, type Route, test } from "@playwright/test";
+// The REAL picker, imported from @elizaos/ui source (matches the cross-package
+// source-import pattern in live-agent-chat.spec.ts). Importing the source module
+// rather than the `@elizaos/ui/voice` subpath keeps this decoupled from the
+// dist build state in the Playwright (Node) runner, which has no tsconfig-path
+// resolution. `@elizaos/ui/voice` re-exports this same symbol.
+import { pickDefaultVoiceProvider } from "../../../ui/src/voice/voice-provider-defaults";
 import {
   assertReadyChecks,
   expectNoPageDiagnostics,
@@ -394,56 +400,28 @@ test.afterEach(async ({ page }, testInfo) => {
 test("voice provider matrix returns documented combos for each device + runtime mode", async ({
   page,
 }) => {
-  // The picker lives in @elizaos/ui and is part of the bundle the app loads;
-  // we evaluate it directly on the page so we cover the bundled artifact,
-  // not just the source.
+  // Boot the /chat surface so the spec still proves the bundle loads the voice
+  // module path, then assert the REAL picker (the same pure
+  // `pickDefaultVoiceProvider` the renderer imports from @elizaos/ui/voice).
+  // No inline reimplementation: if the matrix regresses in
+  // packages/ui/src/voice/voice-provider-defaults.ts this test fails with it.
   await openAppPath(page, "/chat");
 
-  const result = await page.evaluate(async () => {
-    // The bundled module map exposes the picker via the runtime — we eval
-    // the same logic inline so this test stays decoupled from internal
-    // module IDs. This mirrors the implementation in
-    // packages/ui/src/voice/voice-provider-defaults.ts.
-    type Mode = "local" | "local-only" | "cloud" | "remote";
-    type Platform = "desktop" | "mobile" | "web";
-    function pick(
-      platform: Platform,
-      runtimeMode: Mode,
-    ): { tts: string; asr: string } {
-      if (runtimeMode === "cloud" || runtimeMode === "remote") {
-        return { tts: "elevenlabs", asr: "eliza-cloud" };
-      }
-      if (platform === "desktop") {
-        return { tts: "local-inference", asr: "local-inference" };
-      }
-      return { tts: "elevenlabs", asr: "eliza-cloud" };
-    }
-    return {
-      desktopLocal: pick("desktop", "local"),
-      mobileLocal: pick("mobile", "local"),
-      webLocal: pick("web", "local"),
-      desktopCloud: pick("desktop", "cloud"),
-      mobileRemote: pick("mobile", "remote"),
-    };
-  });
-
-  expect(result.desktopLocal).toEqual({
-    tts: "local-inference",
-    asr: "local-inference",
-  });
-  expect(result.mobileLocal).toEqual({
-    tts: "elevenlabs",
-    asr: "eliza-cloud",
-  });
-  expect(result.webLocal).toEqual({ tts: "elevenlabs", asr: "eliza-cloud" });
-  expect(result.desktopCloud).toEqual({
-    tts: "elevenlabs",
-    asr: "eliza-cloud",
-  });
-  expect(result.mobileRemote).toEqual({
-    tts: "elevenlabs",
-    asr: "eliza-cloud",
-  });
+  expect(
+    pickDefaultVoiceProvider({ platform: "desktop", runtimeMode: "local" }),
+  ).toEqual({ tts: "local-inference", asr: "local-inference" });
+  expect(
+    pickDefaultVoiceProvider({ platform: "mobile", runtimeMode: "local" }),
+  ).toEqual({ tts: "elevenlabs", asr: "eliza-cloud" });
+  expect(
+    pickDefaultVoiceProvider({ platform: "web", runtimeMode: "local" }),
+  ).toEqual({ tts: "elevenlabs", asr: "eliza-cloud" });
+  expect(
+    pickDefaultVoiceProvider({ platform: "desktop", runtimeMode: "cloud" }),
+  ).toEqual({ tts: "elevenlabs", asr: "eliza-cloud" });
+  expect(
+    pickDefaultVoiceProvider({ platform: "mobile", runtimeMode: "remote" }),
+  ).toEqual({ tts: "elevenlabs", asr: "eliza-cloud" });
 });
 
 test("chat SSE stream emits token + done events for assistant message", async ({

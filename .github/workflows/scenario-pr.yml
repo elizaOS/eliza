@@ -108,6 +108,21 @@ jobs:
       - name: App route + ui-smoke spec coverage gates
         run: bun run --cwd packages/app test -- test/route-coverage.test.ts test/ui-smoke-coverage.test.ts
 
+      # Real local agent provisioning — boots an actual AgentRuntime on PGLite +
+      # the real app-core API and asserts it provisions and serves. No model, no
+      # secret, no stub, so it gates every PR with genuinely-real (not fixtured)
+      # local provisioning coverage.
+      - name: Real local agent provisioning (no model, no secret)
+        run: bun run --cwd packages/app-core test:local-provisioning
+
+      # Real local chat through the full pipeline — real runtime + real
+      # conversation routes + real message handling + real history, with a
+      # deterministic in-process model (no provider key, no llama). Unlike the
+      # ui-smoke api-stub (which fakes the whole endpoint), this exercises the
+      # real chat machinery, so it gates every PR with genuinely-real local chat.
+      - name: Real local chat pipeline (no model key, no llama)
+        run: bun run --cwd packages/app-core test:local-chat
+
   app-browser-core:
     name: Zero-Key app browser core
     needs: changes
@@ -161,7 +176,7 @@ jobs:
         run: bun run --cwd packages/app test:e2e test/ui-smoke/all-pages-clicksafe.spec.ts --project=chromium
 
       - name: Actual app feature interaction browser coverage
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/apps-utility-interactions.spec.ts test/ui-smoke/apps-model-training-interactions.spec.ts test/ui-smoke/apps-comms-device-interactions.spec.ts --project=chromium
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/apps-utility-interactions.spec.ts test/ui-smoke/apps-model-training-interactions.spec.ts test/ui-smoke/apps-comms-device-interactions.spec.ts test/ui-smoke/apps-diagnostics-interactions.spec.ts test/ui-smoke/apps-builtin-pages-interactions.spec.ts test/ui-smoke/settings-sections-interactions.spec.ts test/ui-smoke/apps-personal-assistant-decomposed-interactions.spec.ts test/ui-smoke/chat-viewmanager-companion-interactions.spec.ts test/ui-smoke/vault-modal-interactions.spec.ts test/ui-smoke/desktop-workspace-interactions.spec.ts test/ui-smoke/onboarding-completion-interactions.spec.ts test/ui-smoke/chat-overlay-controls-interactions.spec.ts test/ui-smoke/chat-attachment.spec.ts test/ui-smoke/conversation-management.spec.ts test/ui-smoke/chat-cloud-routed.spec.ts --project=chromium
 
       - name: Actual app cloud keyless browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/cloud-provisioning-startup.spec.ts test/ui-smoke/cloud-wallet-import.spec.ts test/ui-smoke/live-agent-chat.spec.ts test/ui-smoke/remote-capability-view.spec.ts --project=chromium
