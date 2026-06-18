@@ -72,7 +72,9 @@ function extractExports(src) {
     names.add(m[1]);
   }
   // export class PascalCase
-  for (const m of src.matchAll(/\bexport\s+(?:default\s+)?class\s+([A-Z]\w+)/g)) {
+  for (const m of src.matchAll(
+    /\bexport\s+(?:default\s+)?class\s+([A-Z]\w+)/g,
+  )) {
     names.add(m[1]);
   }
   // export default IdentifierAlreadyDeclared (where Identifier is defined in this file)
@@ -94,9 +96,13 @@ function extractExports(src) {
 function looksLikeComponent(src, names) {
   if (names.length === 0) return false;
   // crude but cheap
-  return /\b(jsx|tsx|<\/?[A-Z]\w|React\.FC|React\.Component|React\.forwardRef|forwardRef\s*[<(]|React\.memo|memo\s*\()/i.test(
-    src,
-  ) || /return\s*\(\s*</.test(src) || /=>\s*</.test(src);
+  return (
+    /\b(jsx|tsx|<\/?[A-Z]\w|React\.FC|React\.Component|React\.forwardRef|forwardRef\s*[<(]|React\.memo|memo\s*\()/i.test(
+      src,
+    ) ||
+    /return\s*\(\s*</.test(src) ||
+    /=>\s*</.test(src)
+  );
 }
 
 /** Normalize component name for partial-match comparison. */
@@ -221,7 +227,12 @@ for (const c of allComponents) {
     if (c.name.endsWith(sufCap) && c.name.length > sufCap.length) {
       const base = c.name.slice(0, -sufCap.length);
       if (allNames.has(base)) {
-        suffixSiblings.push({ base, variant: c.name, file: c.file, suffix: suf });
+        suffixSiblings.push({
+          base,
+          variant: c.name,
+          file: c.file,
+          suffix: suf,
+        });
       }
     }
   }
@@ -240,7 +251,9 @@ fs.writeFileSync(outJson, JSON.stringify(report, null, 2));
 
 const lines = [];
 lines.push(`# Duplicate component candidates in @elizaos/ui\n`);
-lines.push(`Scanned **${files.length}** files, **${allComponents.length}** component-like exports.\n`);
+lines.push(
+  `Scanned **${files.length}** files, **${allComponents.length}** component-like exports.\n`,
+);
 lines.push(`Report JSON: \`scripts/duplicate-components-report.json\`\n`);
 
 lines.push(`\n## 1. Exact-name duplicates (${exactDupes.length})\n`);
@@ -268,7 +281,9 @@ lines.push(
   `Components named like \`Foo\` AND \`FooLite/FooCompact/FooMobile/...\` — likely targets for a single component + variant prop.\n`,
 );
 for (const s of suffixSiblings) {
-  lines.push(`- **${s.base}** ↔ **${s.variant}** (suffix: \`${s.suffix}\`) — ${s.file}`);
+  lines.push(
+    `- **${s.base}** ↔ **${s.variant}** (suffix: \`${s.suffix}\`) — ${s.file}`,
+  );
 }
 
 const outMd = path.join(here, "duplicate-components-report.md");

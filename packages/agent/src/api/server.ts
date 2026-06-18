@@ -309,6 +309,7 @@ import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.ts";
 import { persistConfigEnv } from "./config-env.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
 import { pushWithBatchEvict } from "./memory-bounds.ts";
+import { createRuntimeReadyGate } from "./runtime-ready-gate.ts";
 import {
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
@@ -3339,6 +3340,15 @@ export async function startApiServer(opts?: {
   ) => void;
 }> {
   const apiStartTime = Date.now();
+  // Gated boot profiler (off unless ELIZA_BOOT_PROFILE=1) to time the API-bind
+  // critical path. Stderr, since the structured logger level may suppress it.
+  const apiLap = (label: string): void => {
+    if (process.env.ELIZA_BOOT_PROFILE === "1") {
+      process.stderr.write(
+        `[boot-profile] api:${label} +${Date.now() - apiStartTime}ms\n`,
+      );
+    }
+  };
   logger.debug(`[eliza-api] startApiServer called`);
 
   // Honor ELIZA_API_PORT first (set by the desktop launcher → 31337) so
@@ -3490,6 +3500,7 @@ export async function startApiServer(opts?: {
     trainingService: null,
     shareIngestQueue: [],
     broadcastStatus: null,
+    awaitRuntimeReady: null,
     broadcastWs: null,
     broadcastWsToClientId: null,
     broadcastWsToConversation: null,
@@ -3503,6 +3514,14 @@ export async function startApiServer(opts?: {
     connectorHealthMonitor: null,
     whatsappPairingSessions: new Map(),
   };
+  // Lets chat handlers HOLD a turn through the warming window (early API bind →
+  // runtime ready) instead of 503-dropping it — woken in updateRuntime when
+  // first-turn capability comes online (see runtime-ready-gate.ts).
+  const runtimeReadyGate = createRuntimeReadyGate<AgentRuntime>(
+    () => state.runtime,
+  );
+  state.awaitRuntimeReady = (timeoutMs: number) =>
+    runtimeReadyGate.await(timeoutMs);
   const ensureAppManager = async (): Promise<AppManagerLike> => {
     if (state.appManager) {
       return state.appManager as AppManagerLike;
@@ -3705,6 +3724,7 @@ export async function startApiServer(opts?: {
   logger.debug(
     `[eliza-api] Creating http server (${Date.now() - apiStartTime}ms)`,
   );
+  apiLap("pre-createServer (route imports + middleware setup done)");
   const server = http.createServer(async (req, res) => {
     try {
       await handleRequest(req, res, state, {
@@ -4882,6 +4902,9 @@ export async function startApiServer(opts?: {
     state.chatConnectionReady = null;
     state.chatConnectionPromise = null;
     bindRuntimeStreams(rt);
+    // Wake any chat turns held through the warming window — first-turn
+    // capability is now online, so they stream their response instead of 503.
+    runtimeReadyGate.markReady(rt);
     // AppManager doesn't need a runtime reference
     state.agentState = "running";
     state.agentName =
@@ -4982,7 +5005,9 @@ export async function startApiServer(opts?: {
       reject(err);
     });
 
+    apiLap("before server.listen");
     server.listen(port, host, () => {
+      apiLap("LISTENING (API bound)");
       logger.debug(
         `[eliza-api] server.listen callback fired (${Date.now() - apiStartTime}ms)`,
       );

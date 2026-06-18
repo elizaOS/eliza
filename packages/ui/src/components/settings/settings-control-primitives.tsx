@@ -1,38 +1,15 @@
 import type * as React from "react";
 import { useState } from "react";
 import { cn } from "../../lib/utils";
-import { Field, FieldDescription, FieldLabel } from "../ui/field";
 
-export function SettingsField({
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement>) {
-  return <Field className={cn("gap-1.5", className)} {...props} />;
-}
-
-export function SettingsFieldLabel({
-  className,
-  ...props
-}: React.ComponentPropsWithoutRef<typeof FieldLabel>) {
-  return (
-    <FieldLabel
-      className={cn("text-xs font-semibold text-txt", className)}
-      {...props}
-    />
-  );
-}
-
-export function SettingsFieldDescription({
-  className,
-  ...props
-}: React.ComponentPropsWithoutRef<typeof FieldDescription>) {
-  return (
-    <FieldDescription
-      className={cn("text-xs-tight text-muted", className)}
-      {...props}
-    />
-  );
-}
+// Field primitives have a single home in the ui layer (settings-controls.tsx).
+// Re-exported here so existing `./settings-control-primitives` importers keep
+// working without a second implementation drifting out of sync.
+export {
+  SettingsField,
+  SettingsFieldDescription,
+  SettingsFieldLabel,
+} from "../ui/settings-controls";
 
 export function AdvancedSettingsDisclosure({
   title = "Advanced",

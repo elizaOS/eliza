@@ -4,9 +4,11 @@ import {
   CalendarCheck,
   CheckCircle2,
   Contact,
+  GraduationCap,
   Hand,
   Inbox,
   LayoutGrid,
+  LifeBuoy,
   Loader2,
   type LucideIcon,
   MessageCircle,
@@ -24,9 +26,27 @@ import {
 import * as React from "react";
 
 import { client } from "../../api";
-import { useActivityEvents } from "../../hooks/useActivityEvents";
+import {
+  type ActivityEvent,
+  useActivityEvents,
+} from "../../hooks/useActivityEvents";
+import { useAvailableViews } from "../../hooks/useAvailableViews";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { cn } from "../../lib/utils";
+
+// A gentle staggered fade-up as the home settles in — iOS-style, calm, and
+// fully stilled under prefers-reduced-motion. Each block carries a small
+// animation-delay (set inline) so the clock leads and the tiles follow.
+const HOME_ENTER_CSS = `
+@keyframes home-enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+.home-enter { animation: home-enter 460ms cubic-bezier(0.22,1,0.36,1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .home-enter { animation: none; }
+}
+`;
 
 // Where a home tile sends you. Builtin tabs go through setTab; plugin / remote
 // views go through the eliza:navigate:view event. The mount injects the handler.
@@ -39,11 +59,31 @@ interface HomeTile {
   label: string;
   icon: LucideIcon;
   target: HomeTileTarget;
-  /** AOSP/native-OS only (phone, contacts) — hidden on stock installs. */
+  /** AOSP/native-OS only (phone, contacts, messages) — hidden on stock installs. */
   nativeOs?: boolean;
+  /**
+   * Only render when this view path is actually registered (from /api/views).
+   * Keeps the tile from dead-ending into the apps catalog on builds where the
+   * backing plugin/view isn't loaded.
+   */
+  requiresViewPath?: string;
 }
 
 const HOME_TILES: HomeTile[] = [
+  {
+    // Pinned first: the interactive tour that teaches the whole UI. Opens a
+    // launcher view that kicks off the global tutorial overlay.
+    id: "tutorial",
+    label: "Tutorial",
+    icon: GraduationCap,
+    target: { kind: "tab", tab: "tutorial" },
+  },
+  {
+    id: "help",
+    label: "Help",
+    icon: LifeBuoy,
+    target: { kind: "tab", tab: "help" },
+  },
   {
     id: "settings",
     label: "Settings",
@@ -55,12 +95,14 @@ const HOME_TILES: HomeTile[] = [
     label: "Orchestrator",
     icon: Network,
     target: { kind: "view", path: "/orchestrator" },
+    requiresViewPath: "/orchestrator",
   },
   {
     id: "workflows",
     label: "Workflows",
     icon: Workflow,
     target: { kind: "view", path: "/automations" },
+    requiresViewPath: "/automations",
   },
   {
     id: "views",
@@ -73,12 +115,16 @@ const HOME_TILES: HomeTile[] = [
     label: "Inbox",
     icon: Inbox,
     target: { kind: "view", path: "/inbox" },
+    requiresViewPath: "/inbox",
   },
   {
+    // The only "messages" surface is the AOSP SMS view (MessagesPageView), which
+    // falls back to the apps catalog off-Android — so gate it like phone/contacts.
     id: "messages",
     label: "Messages",
     icon: MessageSquare,
     target: { kind: "tab", tab: "messages" },
+    nativeOs: true,
   },
   {
     id: "phone",
@@ -146,8 +192,9 @@ function HomeCard({
     <section
       data-testid={testId}
       className={cn(
-        "relative rounded-3xl border border-white/12 bg-black/35 p-4 backdrop-blur-2xl",
-        "shadow-[inset_0_1px_0_rgba(255,255,255,0.10),0_18px_50px_-26px_rgba(0,0,0,0.7)]",
+        // Liquid glass — same language as the chat panel + tiles.
+        "relative rounded-3xl border border-white/[0.14] bg-black/30 p-4 backdrop-blur-2xl backdrop-saturate-150",
+        "shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_18px_50px_-26px_rgba(0,0,0,0.7)]",
       )}
     >
       <header className="mb-2.5 flex items-center gap-2">
@@ -187,12 +234,7 @@ function ClockBlock(): React.JSX.Element {
 function ActivityRows({
   events,
 }: {
-  events: readonly {
-    id: string;
-    eventType: string;
-    summary: string;
-    timestamp: number;
-  }[];
+  events: readonly ActivityEvent[];
 }): React.JSX.Element {
   return (
     <ul data-testid="home-activity" className="flex flex-col gap-2.5">
@@ -248,6 +290,7 @@ function MessagesRows({
           {chats.map((c) => (
             <li key={c.id} className="flex items-center gap-2.5">
               {c.avatarUrl ? (
+                // biome-ignore lint/performance/noImgElement: avatar thumbnail, no Next.js
                 <img
                   src={c.avatarUrl}
                   alt=""
@@ -294,7 +337,19 @@ export function HomeScreen({
   onOpenTile,
   showNativeOsTiles = false,
 }: HomeScreenProps): React.JSX.Element {
-  const tiles = HOME_TILES.filter((t) => !t.nativeOs || showNativeOsTiles);
+  // Gate tiles on what actually resolves: native-OS tiles need an AOSP build,
+  // and view tiles need their path registered (from /api/views) so a tap never
+  // dead-ends into the apps catalog.
+  const { views } = useAvailableViews();
+  const registeredPaths = React.useMemo(
+    () => new Set(views.map((v) => v.path).filter((p): p is string => !!p)),
+    [views],
+  );
+  const tiles = HOME_TILES.filter(
+    (t) =>
+      (!t.nativeOs || showNativeOsTiles) &&
+      (!t.requiresViewPath || registeredPaths.has(t.requiresViewPath)),
+  );
   // Recent activity + messages render ONLY when there's something to show — the
   // home stays clean (clock + tiles) otherwise.
   const { events } = useActivityEvents();
@@ -312,30 +367,42 @@ export function HomeScreen({
         "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]",
       )}
     >
+      <style>{HOME_ENTER_CSS}</style>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-        <ClockBlock />
+        <div className="home-enter">
+          <ClockBlock />
+        </div>
 
         {recentActivity.length > 0 ? (
-          <HomeCard
-            title="Recent activity"
-            icon={Activity}
-            testId="home-widget-activity"
-          >
-            <ActivityRows events={recentActivity} />
-          </HomeCard>
+          <div className="home-enter" style={{ animationDelay: "70ms" }}>
+            <HomeCard
+              title="Recent activity"
+              icon={Activity}
+              testId="home-widget-activity"
+            >
+              <ActivityRows events={recentActivity} />
+            </HomeCard>
+          </div>
         ) : null}
 
         {recentChats.length > 0 ? (
-          <HomeCard
-            title="Recent messages"
-            icon={MessageSquare}
-            testId="home-widget-messages"
-          >
-            <MessagesRows chats={recentChats} />
-          </HomeCard>
+          <div className="home-enter" style={{ animationDelay: "110ms" }}>
+            <HomeCard
+              title="Recent messages"
+              icon={MessageSquare}
+              testId="home-widget-messages"
+            >
+              <MessagesRows chats={recentChats} />
+            </HomeCard>
+          </div>
         ) : null}
 
-        <nav aria-label="Pinned views" data-testid="home-tiles">
+        <nav
+          aria-label="Pinned views"
+          data-testid="home-tiles"
+          className="home-enter mt-2"
+          style={{ animationDelay: "150ms" }}
+        >
           <div className="grid grid-cols-4 gap-3">
             {tiles.map((tile) => {
               const Icon = tile.icon;
@@ -346,16 +413,21 @@ export function HomeScreen({
                   data-testid={`home-tile-${tile.id}`}
                   onClick={() => onOpenTile(tile.target)}
                   className={cn(
-                    "flex flex-col items-center gap-1.5 rounded-2xl border border-white/12 bg-black/30 px-1 py-3 backdrop-blur-xl transition-colors",
-                    "hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+                    // Liquid glass, matching the chat panel: translucent dark
+                    // pane, strong blur + saturation, a bright top specular edge.
+                    "flex flex-col items-center gap-1.5 rounded-2xl border border-white/[0.14] bg-black/25 px-1 py-3.5 backdrop-blur-2xl backdrop-saturate-150",
+                    "shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]",
+                    // Tactile press: a quick scale-down on tap (stilled for
+                    // reduce-motion users), plus the glass brightening on hover.
+                    "transition-[transform,background-color] duration-150 active:scale-[0.96] motion-reduce:active:scale-100",
+                    "hover:bg-white/[0.14] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
                   )}
                 >
-                  <span className="grid h-11 w-11 place-items-center rounded-2xl bg-white/12">
-                    <Icon
-                      className="h-[22px] w-[22px] text-white/90"
-                      aria-hidden
-                    />
-                  </span>
+                  {/* No chip behind the icon — it sits directly on the glass tile. */}
+                  <Icon
+                    className="h-[22px] w-[22px] text-white/90"
+                    aria-hidden
+                  />
                   <span className="max-w-full truncate text-[11px] font-medium text-white/80">
                     {tile.label}
                   </span>

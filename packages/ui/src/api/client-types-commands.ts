@@ -1,8 +1,8 @@
 /**
  * Transport types for the universal slash-command catalog served by
- * `GET /api/commands` (mirrors `SerializedCommand` in @elizaos/plugin-commands).
- * Kept in the api layer so both the client method and the chat menu share one
- * contract without the api depending on UI code.
+ * `GET /api/commands` (mirrors the connector-neutral catalog in
+ * @elizaos/plugin-commands). Kept in the api layer so both the client method
+ * and the chat menu share one contract without the api depending on UI code.
  */
 
 export type CommandSurface = "gui" | "tui" | "discord" | "telegram";

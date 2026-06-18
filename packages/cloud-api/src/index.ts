@@ -81,7 +81,14 @@ export function redirectFrontendHost(
     normalizeHostname(env.ELIZA_CLOUD_AGENT_BASE_DOMAIN) ??
     DEFAULT_AGENT_BASE_DOMAIN;
   const hostname = normalizeHostname(url.hostname);
-  if (hostname !== `www.${baseDomain}`) return null;
+  // `www.` and `app.` both 308 to the apex (the canonical login + dashboard
+  // origin). `app.<base>` is an intuitive host humans type/bookmark for "the
+  // app", but the API Worker's `*.<base>/*` route claims it — so
+  // `app.<base>/login` hits the Worker and 404s (no SPA) and the user cannot
+  // sign in. Redirect the whole host to the apex, preserving path + query.
+  if (hostname !== `www.${baseDomain}` && hostname !== `app.${baseDomain}`) {
+    return null;
+  }
 
   const targetUrl = new URL(url);
   targetUrl.hostname = baseDomain;

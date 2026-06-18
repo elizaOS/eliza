@@ -744,4 +744,26 @@ describe("Group A: auth + sessions", () => {
       expect(res.status).toBe(401);
     });
   });
+
+  // /api/auth/logout — POST, ends all sessions + expires the auth cookies.
+  describe("POST /api/auth/logout", () => {
+    test("happy path: authenticated logout succeeds and expires auth cookies", async () => {
+      if (!serverReachable || !hasTestApiKey) return;
+      const res = await api.post(
+        "/api/auth/logout",
+        {},
+        { headers: bearerHeaders() },
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { success?: boolean };
+      expect(body.success).toBe(true);
+      // The handler expires the steward auth cookies on the way out.
+      const setCookies =
+        res.headers.getSetCookie?.() ??
+        (res.headers.get("set-cookie")
+          ? [res.headers.get("set-cookie") as string]
+          : []);
+      expect(setCookies.join("; ").toLowerCase()).toContain("steward-token");
+    });
+  });
 });

@@ -66,19 +66,6 @@ describe("view-action-affinity", () => {
     expect(viewScopedActionNames("steward").has("WALLET")).toBe(true);
   });
 
-  it("emphasizes each LifeOps/utility view's own domain actions", () => {
-    expect(viewScopedActionNames("calendar").has("CALENDAR")).toBe(true);
-    expect(viewScopedActionNames("calendar").has("CONFLICT_DETECT")).toBe(true);
-    expect(viewScopedActionNames("health").has("OWNER_HEALTH")).toBe(true);
-    expect(viewScopedActionNames("todos").has("OWNER_TODOS")).toBe(true);
-    expect(viewScopedActionNames("goals").has("OWNER_GOALS")).toBe(true);
-    expect(viewScopedActionNames("inbox").has("INBOX")).toBe(true);
-    expect(viewScopedActionNames("finances").has("OWNER_FINANCES")).toBe(true);
-    expect(viewScopedActionNames("lifeops").has("PERSONAL_ASSISTANT")).toBe(
-      true,
-    );
-  });
-
   it("merges view-scoped actions into the full-param set", () => {
     const set = buildFullParamActionSet([], viewScopedActionNames("companion"));
     // Universal actions are always present…

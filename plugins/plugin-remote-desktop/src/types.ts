@@ -1,13 +1,9 @@
 /**
  * Public types for @elizaos/plugin-remote-desktop.
  *
- * These mirror the types currently defined in
- * `plugins/plugin-personal-assistant/src/lifeops/remote-desktop.ts` and
- * `plugins/plugin-personal-assistant/src/remote/remote-session-service.ts`.
- *
- * TODO(remote-desktop migration): in the follow-up migration pass we will
- * move the canonical type definitions here and have plugin-lifeops import
- * from `@elizaos/plugin-remote-desktop` rather than the other way around.
+ * Canonical home for the remote-desktop type contract. The engine
+ * (`src/lifeops/remote-desktop.ts`) and the control-plane service
+ * (`src/remote/remote-session-service.ts`) import and re-export these.
  */
 
 export type RemoteDesktopBackend =
@@ -63,7 +59,7 @@ export interface RemoteSession {
 
 export interface StartSessionParams {
   requesterIdentity: string;
-  pairingCode?: string;
+  pairingCode?: string | undefined;
   confirmed: boolean;
 }
 

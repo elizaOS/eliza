@@ -1,6 +1,7 @@
 import { WebPlugin } from "@capacitor/core";
 
 import type {
+  ContactsPermissionStatus,
   ContactSummary,
   ContactsPlugin,
   CreateContactOptions,
@@ -55,5 +56,15 @@ export class ContactsWeb extends WebPlugin implements ContactsPlugin {
   ): Promise<{ imported: ImportedContactSummary[] }> {
     validateImportVCardOptions(options);
     throw new Error("Contact imports are only available on Android.");
+  }
+
+  // Web has no contacts permission model; report granted so the shared view
+  // flow proceeds (listContacts then returns an empty list on web).
+  async checkPermissions(): Promise<ContactsPermissionStatus> {
+    return { contacts: "granted" };
+  }
+
+  async requestPermissions(): Promise<ContactsPermissionStatus> {
+    return { contacts: "granted" };
   }
 }

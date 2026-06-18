@@ -1,5 +1,28 @@
+import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
+
+// Load cloud-shared/.env into process.env (without overriding an explicit shell
+// value) so provider keys placed there — e.g. CEREBRAS_API_KEY for the real-LLM
+// marquee lane — are visible to BOTH this runner's test gates and the booted
+// worker (the cloud-api dev wrapper already syncs the same file into .dev.vars).
+// Mirrors how sync-api-dev-vars sources keys, so "put it in .env and go" works.
+const configDir = path.dirname(fileURLToPath(import.meta.url));
+for (const envFile of [
+  path.resolve(configDir, "../../cloud-shared/.env"),
+  path.resolve(configDir, "../../cloud-shared/.env.local"),
+]) {
+  if (!fs.existsSync(envFile)) continue;
+  for (const line of fs.readFileSync(envFile, "utf8").split("\n")) {
+    const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/);
+    if (!match) continue;
+    const [, key, rawValue] = match;
+    if (process.env[key] !== undefined) continue;
+    const value = rawValue.replace(/^["']|["']$/g, "");
+    if (value) process.env[key] = value;
+  }
+}
 
 // The harness seeds users (and encrypts their API keys) directly in the
 // Playwright runner process — not in a spawned subprocess — so the env block

@@ -2,6 +2,7 @@ import type { SmsMessageSummary } from "@elizaos/capacitor-messages";
 import { Messages } from "@elizaos/capacitor-messages";
 import { System, type SystemStatus } from "@elizaos/capacitor-system";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { consumePendingMessageRecipient } from "@elizaos/ui/app-navigate-view";
 import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Input } from "@elizaos/ui/components/ui/input";
@@ -278,12 +279,22 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
     setLoading(true);
     setError(null);
     try {
-      const [messageResult, statusResult] = await Promise.all([
-        Messages.listMessages({ limit: 200 }),
-        System.getStatus().catch(() => null),
-      ]);
-      setMessages(messageResult.messages);
+      // System status (default-SMS role) loads regardless so the role banner
+      // always shows. Reading/sending SMS via the bridge needs READ/SEND_SMS —
+      // request it on first open (feature-gated; idempotent). Tolerates older
+      // bridges without the request path by falling through to listMessages.
+      const statusResult = await System.getStatus().catch(() => null);
       setSystemStatus(statusResult);
+      const perm = await Messages.requestPermissions().catch(() => null);
+      if (perm && perm.sms !== "granted") {
+        setMessages([]);
+        setError(
+          "SMS access is needed to read and send messages. Grant it in your device settings, then retry.",
+        );
+        return;
+      }
+      const messageResult = await Messages.listMessages({ limit: 200 });
+      setMessages(messageResult.messages);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setMessages([]);
@@ -295,6 +306,22 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Seed the composer from a cross-view handoff (e.g. a Contacts "Message"
+  // control that navigated here with a number). Single-shot: the recipient is
+  // consumed so a later plain navigation to Messages does not re-seed a stale
+  // "To" field.
+  useEffect(() => {
+    const pending = consumePendingMessageRecipient();
+    if (pending) {
+      setSelectedThreadId(null);
+      setComposeAddress(pending);
+      setComposeBody("");
+      setShowComposer(true);
+      setNotice(null);
+      setError(null);
+    }
+  }, []);
 
   const threads = useMemo(() => buildThreads(messages), [messages]);
   const selectedThread = useMemo(

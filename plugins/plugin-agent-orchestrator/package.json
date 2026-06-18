@@ -99,7 +99,6 @@
     "test": "bunx vitest run --config vitest.config.ts",
     "test:unit": "bunx vitest run --config vitest.config.ts __tests__/unit",
     "test:e2e:manual": "node tests/e2e/acp-codex-smoke.mjs",
-    "test:e2e:multi-account": "bun --conditions=eliza-source scripts/compose-multi-account-e2e.ts",
     "test:watch": "bunx vitest --config vitest.config.ts",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"

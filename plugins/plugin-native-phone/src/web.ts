@@ -3,6 +3,7 @@ import { WebPlugin } from "@capacitor/core";
 import type {
   CallLogEntry,
   ListRecentCallsOptions,
+  PhonePermissionStatus,
   PhonePlugin,
   PhoneStatus,
   PlaceCallOptions,
@@ -98,5 +99,15 @@ export class PhoneWeb extends WebPlugin implements PhonePlugin {
   ): Promise<{ updatedAt: number }> {
     validateTranscriptOptions(options);
     throw new Error("Call transcripts are only available on Android.");
+  }
+
+  // Web has no phone permission model; report granted so the shared view flow
+  // proceeds (call placement / call-log throw or return empty on web anyway).
+  async checkPermissions(): Promise<PhonePermissionStatus> {
+    return { phone: "granted" };
+  }
+
+  async requestPermissions(): Promise<PhonePermissionStatus> {
+    return { phone: "granted" };
   }
 }

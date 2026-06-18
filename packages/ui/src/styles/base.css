@@ -524,3 +524,18 @@ body.platform-android * {
     transform: translateY(0);
   }
 }
+
+/* A freshly-arrived chat turn fades + lifts in. Subtler than shell-overlay-in
+   (a single bubble, not the whole panel). Applied via
+   `motion-safe:animate-[chat-turn-in_...]` on the message <article>, scoped to
+   the just-arrived row so reloaded history never animates. */
+@keyframes chat-turn-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

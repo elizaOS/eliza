@@ -17,12 +17,14 @@ const bridge = vi.hoisted(() => ({
   sendSms: vi.fn(),
   getStatus: vi.fn(),
   requestRole: vi.fn(),
+  requestPermissions: vi.fn(async () => ({ sms: "granted" })),
 }));
 
 vi.mock("@elizaos/capacitor-messages", () => ({
   Messages: {
     listMessages: bridge.listMessages,
     sendSms: bridge.sendSms,
+    requestPermissions: bridge.requestPermissions,
   },
 }));
 

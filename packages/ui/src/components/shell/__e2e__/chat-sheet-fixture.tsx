@@ -182,6 +182,7 @@ function Harness(): React.JSX.Element {
     stopRecording,
     toggleAgentVoiceMute,
     openSettings: () => console.log("[fixture] openSettings"),
+    clearConversation: () => console.log("[fixture] clearConversation"),
     stop: () => {
       console.log("[fixture] stop");
       setPhase("summoned");

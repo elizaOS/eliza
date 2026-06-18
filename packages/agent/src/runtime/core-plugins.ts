@@ -43,6 +43,23 @@ export const MOBILE_CORE_PLUGINS: readonly string[] = [
 ];
 
 /**
+ * View-providing plugins that must register their `/api/views` entries on EVERY
+ * platform — including stock mobile — so their home tiles resolve to a real
+ * destination instead of dead-ending in the apps catalog. These are bundled
+ * statically and either ship no backend or degrade gracefully without one (the
+ * heavy backends they pair with, e.g. agent-orchestrator, stay gated
+ * separately). Seeded into the load set for all platforms and spread into the
+ * mobile allow-list so the mobile filter keeps them.
+ */
+export const MOBILE_VIEW_PLUGINS: readonly string[] = [
+  "@elizaos/plugin-task-coordinator",
+  // Inbox: registered on mobile so its home tile resolves + the /inbox view
+  // appears in /api/views. The plugin's de-stub + client wiring are owned by a
+  // separate effort; this keeps it in the mobile load/allow set.
+  "@elizaos/plugin-inbox",
+];
+
+/**
  * ElizaOS-only overlay app plugins. Used when the runtime is the custom
  * Android OS build (`ELIZA_PLATFORM=android` plus `ELIZA_LOCAL_LLAMA=1`),
  * appended to `MOBILE_CORE_PLUGINS` in `collectPluginNames`. Each one is a
@@ -162,6 +179,7 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   // Enable via character settings: ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST
   "@elizaos/plugin-google", // Google Workspace connector (requires googleapis + explicit OAuth config); only loaded when LifeOps/Google is enabled
   "@elizaos/plugin-personal-assistant", // LifeOps: personal ops - tasks, goals, calendar, inbox, website blocking (requires @capacitor/core + plugin-google); enable explicitly
+  "@elizaos/plugin-finances", // Owner finances dashboard (app_finances schema); auto-registered by plugin-personal-assistant, also enablable standalone
   "@elizaos/plugin-pdf", // PDF processing (published bundle broken in alpha.15)
   "@elizaos/plugin-cua", // CUA computer-use agent (cloud sandbox automation)
   "@elizaos/plugin-obsidian", // Obsidian vault CLI integration

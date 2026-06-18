@@ -3,8 +3,8 @@
  * always-mounted chat composer can resolve `/settings <section>` without
  * pulling in the heavy section component graph from `settings-sections.ts`.
  *
- * Keep the canonical ids in sync with `SETTINGS_SECTIONS` in
- * `settings-sections.ts` (validated by a test).
+ * Keep the canonical ids in sync with `SETTINGS_SECTION_META` in
+ * `settings-section-meta.ts` (validated by a test).
  */
 
 /**

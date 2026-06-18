@@ -35,6 +35,7 @@ import {
 import { TERMINAL_STATUSES } from "../chat/coding-agent-session-state";
 import { androidNativeAgentLifecycleForUrl } from "./android-native-agent-transport";
 import { ElizaClient } from "./client-base";
+import { isDirectCloudSharedAgentBase } from "./client-cloud";
 import type {
   AgentAutomationMode,
   AgentAutomationModeResponse,
@@ -1148,6 +1149,23 @@ declare module "./client-base" {
 // ---------------------------------------------------------------------------
 
 ElizaClient.prototype.getStatus = async function (this: ElizaClient) {
+  // A shared-runtime cloud agent is provisioned and running cloud-side with no
+  // agent server, so /api/status 404s and the readiness poll would wedge on
+  // "Initializing agent…". Report it running (the provision response confirms
+  // status:"running") so startup proceeds to chat — its REST adapter already
+  // serves /api/conversations + /api/conversations/:id/messages.
+  if (isDirectCloudSharedAgentBase(this.getBaseUrl())) {
+    return {
+      state: "running",
+      agentName: "Eliza",
+      model: undefined,
+      // Cloud-shared agent is provisioned + serving cloud-side — first-turn
+      // capability is online, so the composer should be live immediately.
+      canRespond: true,
+      uptime: undefined,
+      startedAt: undefined,
+    };
+  }
   try {
     const viaRpc = await getDesktopStatusRpc<AgentStatus>("getAgentStatus");
     if (viaRpc) return viaRpc;
@@ -1282,6 +1300,15 @@ ElizaClient.prototype.runTerminalCommand = async function (
 };
 
 ElizaClient.prototype.getFirstRunStatus = async function (this: ElizaClient) {
+  // A shared-runtime cloud agent is provisioned on our behalf, so first-run is
+  // complete by definition AND its REST adapter has no /api/first-run* surface.
+  // Short-circuit here: otherwise the native-bridge RPC path (a local on-device
+  // agent that auto-starts on stock phones) answers with ITS first-run state
+  // ({complete:false}), and the HTTP path 404s — either way the app wrongly
+  // re-enters onboarding instead of going to the cloud chat.
+  if (isDirectCloudSharedAgentBase(this.getBaseUrl())) {
+    return { complete: true, cloudProvisioned: true };
+  }
   // Prefer typed Electrobun RPC. The bun-side composer throws
   // AgentNotReadyError if the agent has no port yet; we catch and
   // fall through to HTTP so the renderer's polling loop sees the

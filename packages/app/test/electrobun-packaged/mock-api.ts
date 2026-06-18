@@ -206,6 +206,7 @@ function applyCors(res: http.ServerResponse): void {
       "X-Eliza-Export-Token",
       "X-ElizaOS-Terminal-Token",
       "X-Eliza-Terminal-Token",
+      "X-Eliza-Platform",
     ].join(", "),
   );
 }

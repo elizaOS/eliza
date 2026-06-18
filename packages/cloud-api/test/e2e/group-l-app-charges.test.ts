@@ -158,3 +158,87 @@ describe("App charge requests", () => {
     expect(res.status).toBe(400);
   });
 });
+
+// -------- POST /api/v1/apps/check-name -------------------------------------
+
+describe("POST /api/v1/apps/check-name", () => {
+  test("auth gate: 401 without credentials", async () => {
+    if (!serverReachable) return;
+    const res = await api.post("/api/v1/apps/check-name", { name: "anything" });
+    expect(res.status).toBe(401);
+  });
+
+  test("happy path: a fresh name is available; a taken name is not", async () => {
+    if (!shouldRunAuthed()) return;
+    const fresh = `check-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const freshRes = await api.post(
+      "/api/v1/apps/check-name",
+      { name: fresh },
+      { headers: bearerHeaders() },
+    );
+    expect(freshRes.status).toBe(200);
+    expect(((await freshRes.json()) as { available?: boolean }).available).toBe(
+      true,
+    );
+
+    // After creating an app, querying its exact name reports unavailable.
+    const appId = await createTestApp();
+    const detail = await api.get(`/api/v1/apps/${appId}`, {
+      headers: bearerHeaders(),
+    });
+    const takenName = ((await detail.json()) as { app?: { name?: string } }).app
+      ?.name;
+    if (takenName) {
+      const takenRes = await api.post(
+        "/api/v1/apps/check-name",
+        { name: takenName },
+        { headers: bearerHeaders() },
+      );
+      expect(takenRes.status).toBe(200);
+      expect(
+        ((await takenRes.json()) as { available?: boolean }).available,
+      ).toBe(false);
+    }
+  });
+});
+
+// -------- PUT /api/v1/apps/:id (update) ------------------------------------
+
+describe("PUT /api/v1/apps/:id", () => {
+  test("auth gate: 401 without credentials", async () => {
+    if (!serverReachable) return;
+    const res = await api.put(
+      "/api/v1/apps/00000000-0000-4000-8000-000000000000",
+      { description: "x" },
+    );
+    expect(res.status).toBe(401);
+  });
+
+  test("happy path: updates a freshly created app", async () => {
+    if (!shouldRunAuthed()) return;
+    const appId = await createTestApp();
+    const res = await api.put(
+      `/api/v1/apps/${appId}`,
+      { description: "updated by group-l PUT test" },
+      { headers: bearerHeaders() },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      success?: boolean;
+      app?: { id?: string; description?: string };
+    };
+    expect(body.success).toBe(true);
+    expect(body.app?.id).toBe(appId);
+    expect(body.app?.description).toBe("updated by group-l PUT test");
+  });
+
+  test("validation: 404 for an unknown id", async () => {
+    if (!shouldRunAuthed()) return;
+    const res = await api.put(
+      "/api/v1/apps/00000000-0000-4000-8000-000000000000",
+      { description: "x" },
+      { headers: bearerHeaders() },
+    );
+    expect([400, 404]).toContain(res.status);
+  });
+});

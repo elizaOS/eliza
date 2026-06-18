@@ -14,13 +14,19 @@ const NOT_REQUIRED_STATUS = {
   errors: [],
 };
 
+// Readiness is now driven by the agent's first-turn capability
+// (agentStatus.canRespond), NOT the startup-coordinator phase — the shell mounts
+// early and the composer queues sends until capability fades in.
+const READY_STATUS = { state: "running", canRespond: true };
+const WARMING_STATUS = { state: "starting", canRespond: false };
+
 const appMock = vi.hoisted(() => ({
   value: {
     startupCoordinator: { phase: "ready" },
     conversationMessages: [],
     chatSending: false,
     sendChatText: vi.fn(),
-    agentStatus: { state: "running" },
+    agentStatus: { state: "running", canRespond: true },
   },
 }));
 
@@ -42,12 +48,12 @@ afterEach(() => {
   appMock.value.conversationMessages = [];
   appMock.value.chatSending = false;
   appMock.value.sendChatText.mockClear();
-  appMock.value.agentStatus = { state: "running" };
+  appMock.value.agentStatus = { ...READY_STATUS };
 });
 
 describe("useShellController", () => {
   it("opens the shared chat state even while startup is still booting", () => {
-    appMock.value.startupCoordinator.phase = "starting-runtime";
+    appMock.value.agentStatus = { ...WARMING_STATUS };
 
     const { result } = renderHook(() => useShellController());
 
@@ -62,18 +68,14 @@ describe("useShellController", () => {
     expect(result.current.canSend).toBe(true);
   });
 
-  it("queues a send while booting and flushes it once ready", () => {
-    appMock.value.startupCoordinator.phase = "starting-runtime";
+  it("sends through immediately even while warming — the server holds the turn", () => {
+    appMock.value.agentStatus = { ...WARMING_STATUS };
 
-    const { result, rerender } = renderHook(() => useShellController());
+    const { result } = renderHook(() => useShellController());
 
+    // No client-side queue: sendChatText fires now (optimistic bubble + typing
+    // indicator), and the server holds the turn until capability comes online.
     act(() => result.current.send("hello while booting"));
-    // Queued, not sent yet.
-    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
-
-    // Agent becomes ready — the queued message flushes.
-    appMock.value.startupCoordinator.phase = "ready";
-    rerender();
 
     expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
     expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe(
@@ -82,7 +84,7 @@ describe("useShellController", () => {
   });
 
   it("sends immediately when already ready", () => {
-    appMock.value.startupCoordinator.phase = "ready";
+    appMock.value.agentStatus = { ...READY_STATUS };
 
     const { result } = renderHook(() => useShellController());
 

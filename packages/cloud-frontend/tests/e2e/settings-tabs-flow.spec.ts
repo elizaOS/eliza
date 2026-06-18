@@ -400,7 +400,9 @@ test("settings tabs: general form edits inputs, dropdown, switches, and saves", 
     .getByPlaceholder(/when learning new concepts/i)
     .fill("Prefer direct answers with concrete next steps.");
 
-  await page.locator("#main").getByRole("combobox").last().click();
+  // First combobox is the "What best describes your work?" select (where
+  // "Software Developer" lives); the last is the default-interface select.
+  await page.locator("#main").getByRole("combobox").first().click();
   await page.getByRole("option", { name: "Software Developer" }).click();
 
   const switches = page.getByRole("switch");

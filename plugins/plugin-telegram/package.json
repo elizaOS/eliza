@@ -54,7 +54,6 @@
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",

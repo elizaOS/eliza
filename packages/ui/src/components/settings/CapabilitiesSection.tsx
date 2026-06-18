@@ -1,16 +1,25 @@
-import { AlertTriangle, Cloud, Loader2, PlugZap } from "lucide-react";
 import {
-  type FormEvent,
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
+  AlertTriangle,
+  Cloud,
+  Globe,
+  GraduationCap,
+  Loader2,
+  MonitorCog,
+  PlugZap,
+  Wallet,
+} from "lucide-react";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
 import { useApp } from "../../state";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
-import { Switch } from "../ui/switch";
+import {
+  SettingsActionButton,
+  SettingsInputRow,
+  SettingsSelectRow,
+  SettingsSwitchRow,
+} from "./settings-agent-rows";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 interface AutoTrainingConfig {
   autoTrain: boolean;
@@ -279,326 +288,378 @@ export function CapabilitiesSection() {
   );
 
   return (
-    <div className="space-y-4">
-      <CapabilityRow
-        label={t("nav.wallet", {
-          defaultValue: "Wallet",
+    <SettingsStack>
+      <SettingsGroup
+        title={t("settings.sections.capabilities.groupTitle", {
+          defaultValue: "Capabilities",
         })}
       >
-        <Switch
+        <SettingsSwitchRow
+          agentId="capability-wallet"
+          icon={Wallet}
+          label={t("nav.wallet", { defaultValue: "Wallet" })}
+          agentLabel="Wallet"
+          group="capabilities"
           checked={walletEnabled}
-          onCheckedChange={(checked: boolean | "indeterminate") =>
-            setState("walletEnabled", !!checked)
-          }
-          aria-label={t("settings.sections.wallet.enableLabel", {
-            defaultValue: "Enable Wallet",
-          })}
+          onCheckedChange={(checked) => setState("walletEnabled", checked)}
         />
-      </CapabilityRow>
-      <CapabilityRow
-        label={t("nav.browser", {
-          defaultValue: "Browser",
-        })}
-      >
-        <Switch
+        <SettingsSwitchRow
+          agentId="capability-browser"
+          icon={Globe}
+          label={t("nav.browser", { defaultValue: "Browser" })}
+          agentLabel="Browser"
+          group="capabilities"
           checked={browserEnabled}
-          onCheckedChange={(checked: boolean | "indeterminate") =>
-            setState("browserEnabled", !!checked)
-          }
-          aria-label={t("settings.sections.capabilities.browserLabel", {
-            defaultValue: "Enable Browser",
-          })}
+          onCheckedChange={(checked) => setState("browserEnabled", checked)}
         />
-      </CapabilityRow>
-      <CapabilityRow
-        label={t("settings.sections.capabilities.computerUseName", {
-          defaultValue: "Computer Use",
-        })}
-        hint={
-          computerUseEnabled
-            ? t("settings.sections.capabilities.computerUseHint", {
-                defaultValue:
-                  "Accessibility and Screen Recording permissions are required for computer use.",
-              })
-            : null
-        }
-      >
-        <Switch
+        <SettingsSwitchRow
+          agentId="capability-computer-use"
+          icon={MonitorCog}
+          label={t("settings.sections.capabilities.computerUseName", {
+            defaultValue: "Computer Use",
+          })}
+          agentLabel="Computer Use"
+          group="capabilities"
+          description={
+            computerUseEnabled
+              ? t("settings.sections.capabilities.computerUseHint", {
+                  defaultValue:
+                    "Accessibility and Screen Recording permissions are required for computer use.",
+                })
+              : undefined
+          }
           checked={computerUseEnabled}
-          onCheckedChange={(checked: boolean | "indeterminate") =>
-            setState("computerUseEnabled", !!checked)
+          onCheckedChange={(checked) => setState("computerUseEnabled", checked)}
+        />
+        <SettingsSwitchRow
+          agentId="capability-auto-training"
+          icon={GraduationCap}
+          label={
+            <span className="inline-flex items-center gap-2">
+              {t("settings.sections.capabilities.autoTrainingName", {
+                defaultValue: "Auto-training",
+              })}
+              <CapabilityStatusIcon status={autoTrainingStatus} />
+            </span>
           }
-          aria-label={t("settings.sections.capabilities.computerUseLabel", {
-            defaultValue: "Enable Computer Use",
-          })}
-        />
-      </CapabilityRow>
-      <CapabilityRow
-        label={t("settings.sections.capabilities.autoTrainingName", {
-          defaultValue: "Auto-training",
-        })}
-        status={autoTrainingStatus}
-      >
-        <Switch
-          checked={autoTrainingConfig?.autoTrain ?? false}
+          agentLabel="Auto-training"
+          group="capabilities"
           disabled={autoTrainingDisabled}
-          onCheckedChange={handleAutoTrainingChange}
-          aria-label={t("settings.sections.capabilities.autoTrainingLabel", {
-            defaultValue: "Enable Auto-training",
-          })}
+          checked={autoTrainingConfig?.autoTrain ?? false}
+          onCheckedChange={(checked) => handleAutoTrainingChange(checked)}
         />
-      </CapabilityRow>
-      <form
-        className="space-y-3 border-border border-t pt-4"
-        onSubmit={handleCapabilityConnect}
-      >
-        <div className="flex items-start gap-3">
-          <PlugZap className="mt-0.5 h-4 w-4 text-accent" aria-hidden />
-          <div className="min-w-0 flex-1">
-            <div className="font-medium text-sm">
-              {t("settings.sections.capabilities.capabilityRouterName", {
-                defaultValue: "Capability Router",
-              })}
-            </div>
-            <div className="mt-1 text-2xs text-muted">
-              {t("settings.sections.capabilities.capabilityRouterHint", {
-                defaultValue:
-                  "Connect a remote endpoint that contributes plugin actions, providers, routes, apps, and views.",
-              })}
-            </div>
-          </div>
-        </div>
-        <fieldset
-          className="inline-flex rounded-sm border border-border p-0.5"
-          aria-label={t("capabilities.connectionModeAria", {
-            defaultValue: "Capability router connection mode",
+      </SettingsGroup>
+
+      <form onSubmit={handleCapabilityConnect}>
+        <SettingsGroup
+          title={t("settings.sections.capabilities.capabilityRouterName", {
+            defaultValue: "Capability Router",
           })}
+          description={t(
+            "settings.sections.capabilities.capabilityRouterHint",
+            {
+              defaultValue:
+                "Connect a remote endpoint that adds plugins, routes, apps, and views.",
+            },
+          )}
+          footer={
+            capabilityConnectError ? (
+              <span className="text-warn" role="alert">
+                {capabilityConnectError}
+              </span>
+            ) : capabilityConnectResult?.success ? (
+              <span className="text-ok" role="status">
+                {t("settings.sections.capabilities.capabilityRouterConnected", {
+                  defaultValue: "Connected remote capability endpoint.",
+                })}{" "}
+                {capabilityConnectResult.sync?.registered?.length
+                  ? capabilityConnectResult.sync.registered.join(", ")
+                  : capabilityConnectResult.endpoint?.baseUrl}
+              </span>
+            ) : undefined
+          }
         >
-          <button
-            type="button"
-            className={`inline-flex items-center gap-1 rounded-sm px-2 py-1 text-2xs ${
-              capabilityConnectMode === "endpoint"
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-strong"
-            }`}
-            aria-pressed={capabilityConnectMode === "endpoint"}
-            onClick={() => setCapabilityConnectMode("endpoint")}
+          <SettingsRow
+            label={t("capabilities.connectionModeLabel", {
+              defaultValue: "Connection",
+            })}
+            description={t("capabilities.connectionModeAria", {
+              defaultValue: "Capability router connection mode",
+            })}
+            stacked
           >
-            <PlugZap className="h-3.5 w-3.5" aria-hidden />
-            {t("capabilities.mode.endpoint", { defaultValue: "Endpoint" })}
-          </button>
-          <button
-            type="button"
-            className={`inline-flex items-center gap-1 rounded-sm px-2 py-1 text-2xs ${
-              capabilityConnectMode === "cloud"
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-strong"
-            }`}
-            aria-pressed={capabilityConnectMode === "cloud"}
-            onClick={() => setCapabilityConnectMode("cloud")}
-          >
-            <Cloud className="h-3.5 w-3.5" aria-hidden />
-            {t("capabilities.mode.cloud", { defaultValue: "Cloud" })}
-          </button>
-        </fieldset>
-        {capabilityConnectMode === "cloud" ? (
-          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <Input
-              value={capabilityCloudApiBase}
-              onChange={(event) =>
-                setCapabilityCloudApiBase(event.target.value)
-              }
-              placeholder="https://api.elizacloud.ai"
-              aria-label={t("capabilities.cloud.apiBaseAria", {
-                defaultValue: "Capability cloud API base URL",
+            <div
+              className="flex gap-2"
+              role="tablist"
+              aria-label={t("capabilities.connectionModeAria", {
+                defaultValue: "Capability router connection mode",
               })}
-              autoComplete="url"
-              inputMode="url"
-            />
-            <Input
-              value={capabilityCloudAuthToken}
-              onChange={(event) =>
-                setCapabilityCloudAuthToken(event.target.value)
-              }
-              placeholder={t("capabilities.cloud.tokenPlaceholder", {
-                defaultValue: "Cloud API token",
-              })}
-              aria-label={t("capabilities.cloud.authTokenAria", {
-                defaultValue: "Capability cloud auth token",
-              })}
-              type="password"
-              autoComplete="off"
-            />
-            <Input
-              value={capabilityCloudName}
-              onChange={(event) => setCapabilityCloudName(event.target.value)}
-              placeholder={t("capabilities.cloud.namePlaceholder", {
-                defaultValue: "Remote Tools Sandbox",
-              })}
-              aria-label={t("capabilities.cloud.nameAria", {
-                defaultValue: "Capability cloud sandbox name",
-              })}
-              autoComplete="off"
-            />
-            <Input
-              value={capabilityCloudBio}
-              onChange={(event) => setCapabilityCloudBio(event.target.value)}
-              placeholder={t("capabilities.cloud.bioPlaceholder", {
-                defaultValue: "Sandbox bio",
-              })}
-              aria-label={t("capabilities.cloud.bioAria", {
-                defaultValue: "Capability cloud sandbox bio",
-              })}
-              autoComplete="off"
-            />
-          </div>
-        ) : null}
-        {capabilityConnectMode === "endpoint" ? (
-          <label className="block min-w-0">
-            <span className="mb-1 block text-2xs text-muted">
-              {t("capabilities.endpoint.providerLabel", {
+            >
+              <CapabilityModeButton
+                agentId="cap-mode-endpoint"
+                icon={PlugZap}
+                label={t("capabilities.mode.endpoint", {
+                  defaultValue: "Endpoint",
+                })}
+                selected={capabilityConnectMode === "endpoint"}
+                onSelect={() => setCapabilityConnectMode("endpoint")}
+              />
+              <CapabilityModeButton
+                agentId="cap-mode-cloud"
+                icon={Cloud}
+                label={t("capabilities.mode.cloud", { defaultValue: "Cloud" })}
+                selected={capabilityConnectMode === "cloud"}
+                onSelect={() => setCapabilityConnectMode("cloud")}
+              />
+            </div>
+          </SettingsRow>
+
+          {capabilityConnectMode === "cloud" ? (
+            <>
+              <SettingsInputRow
+                agentId="cap-cloud-api-base"
+                group="capability-router"
+                label={t("capabilities.cloud.apiBaseLabel", {
+                  defaultValue: "Cloud API base URL",
+                })}
+                agentLabel={t("capabilities.cloud.apiBaseAria", {
+                  defaultValue: "Capability cloud API base URL",
+                })}
+                value={capabilityCloudApiBase}
+                onValueChange={setCapabilityCloudApiBase}
+                placeholder="https://api.elizacloud.ai"
+                autoComplete="url"
+                inputMode="url"
+              />
+              <SettingsInputRow
+                agentId="cap-cloud-token"
+                group="capability-router"
+                label={t("capabilities.cloud.tokenLabel", {
+                  defaultValue: "Cloud auth token",
+                })}
+                agentLabel={t("capabilities.cloud.authTokenAria", {
+                  defaultValue: "Capability cloud auth token",
+                })}
+                value={capabilityCloudAuthToken}
+                onValueChange={setCapabilityCloudAuthToken}
+                placeholder={t("capabilities.cloud.tokenPlaceholder", {
+                  defaultValue: "Cloud API token",
+                })}
+                type="password"
+                autoComplete="off"
+              />
+              <SettingsInputRow
+                agentId="cap-cloud-name"
+                group="capability-router"
+                label={t("capabilities.cloud.nameLabel", {
+                  defaultValue: "Sandbox name",
+                })}
+                agentLabel={t("capabilities.cloud.nameAria", {
+                  defaultValue: "Capability cloud sandbox name",
+                })}
+                value={capabilityCloudName}
+                onValueChange={setCapabilityCloudName}
+                placeholder={t("capabilities.cloud.namePlaceholder", {
+                  defaultValue: "Remote Tools Sandbox",
+                })}
+                autoComplete="off"
+              />
+              <SettingsInputRow
+                agentId="cap-cloud-bio"
+                group="capability-router"
+                label={t("capabilities.cloud.bioLabel", {
+                  defaultValue: "Sandbox bio",
+                })}
+                agentLabel={t("capabilities.cloud.bioAria", {
+                  defaultValue: "Capability cloud sandbox bio",
+                })}
+                value={capabilityCloudBio}
+                onValueChange={setCapabilityCloudBio}
+                placeholder={t("capabilities.cloud.bioPlaceholder", {
+                  defaultValue: "Sandbox bio",
+                })}
+                autoComplete="off"
+              />
+            </>
+          ) : null}
+
+          {capabilityConnectMode === "endpoint" ? (
+            <SettingsSelectRow
+              agentId="cap-endpoint-provider"
+              group="capability-router"
+              label={t("capabilities.endpoint.providerLabel", {
                 defaultValue: "Capability endpoint provider",
               })}
-            </span>
-            <select
               value={capabilityEndpointProvider}
-              onChange={(event) =>
+              onValueChange={(value) =>
                 setCapabilityEndpointProvider(
-                  event.target.value as typeof capabilityEndpointProvider,
+                  value as typeof capabilityEndpointProvider,
                 )
               }
-              aria-label={t("capabilities.endpoint.providerLabel", {
-                defaultValue: "Capability endpoint provider",
-              })}
-              className="h-9 w-full rounded-sm border border-input bg-background px-3 py-1 text-sm outline-none ring-offset-background transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              <option value="direct">
-                {t("capabilities.provider.direct", {
-                  defaultValue: "Direct endpoint",
-                })}
-              </option>
-              <option value="e2b">
-                {t("capabilities.provider.e2b", {
-                  defaultValue: "E2B sandbox",
-                })}
-              </option>
-              <option value="home-machine">
-                {t("capabilities.provider.homeMachine", {
-                  defaultValue: "Home machine",
-                })}
-              </option>
-              <option value="mobile-companion">
-                {t("capabilities.provider.mobileCompanion", {
-                  defaultValue: "Mobile companion",
-                })}
-              </option>
-              <option value="desktop-companion">
-                {t("capabilities.provider.desktopCompanion", {
-                  defaultValue: "Desktop companion",
-                })}
-              </option>
-            </select>
-          </label>
-        ) : null}
-        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_10rem]">
-          <Input
-            value={capabilityEndpointUrl}
-            onChange={(event) => setCapabilityEndpointUrl(event.target.value)}
-            placeholder="https://capability.example"
-            aria-label={t("capabilities.endpoint.urlAria", {
+              options={[
+                {
+                  value: "direct",
+                  label: t("capabilities.provider.direct", {
+                    defaultValue: "Direct endpoint",
+                  }),
+                },
+                {
+                  value: "e2b",
+                  label: t("capabilities.provider.e2b", {
+                    defaultValue: "E2B sandbox",
+                  }),
+                },
+                {
+                  value: "home-machine",
+                  label: t("capabilities.provider.homeMachine", {
+                    defaultValue: "Home machine",
+                  }),
+                },
+                {
+                  value: "mobile-companion",
+                  label: t("capabilities.provider.mobileCompanion", {
+                    defaultValue: "Mobile companion",
+                  }),
+                },
+                {
+                  value: "desktop-companion",
+                  label: t("capabilities.provider.desktopCompanion", {
+                    defaultValue: "Desktop companion",
+                  }),
+                },
+              ]}
+            />
+          ) : null}
+
+          <SettingsInputRow
+            agentId="cap-endpoint-url"
+            group="capability-router"
+            label={t("capabilities.endpoint.urlLabel", {
+              defaultValue: "Endpoint URL",
+            })}
+            agentLabel={t("capabilities.endpoint.urlAria", {
               defaultValue: "Capability router endpoint URL",
             })}
+            value={capabilityEndpointUrl}
+            onValueChange={setCapabilityEndpointUrl}
+            placeholder="https://capability.example"
             autoComplete="url"
             inputMode="url"
             disabled={capabilityConnectMode === "cloud"}
           />
-          <Input
-            value={capabilityEndpointId}
-            onChange={(event) => setCapabilityEndpointId(event.target.value)}
-            placeholder="device"
-            aria-label={t("capabilities.endpoint.idAria", {
+          <SettingsInputRow
+            agentId="cap-endpoint-id"
+            group="capability-router"
+            label={t("capabilities.endpoint.idLabel", {
+              defaultValue: "Endpoint ID",
+            })}
+            agentLabel={t("capabilities.endpoint.idAria", {
               defaultValue: "Capability router endpoint ID",
             })}
+            value={capabilityEndpointId}
+            onValueChange={setCapabilityEndpointId}
+            placeholder="device"
             autoComplete="off"
           />
-        </div>
-        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-          <Input
-            value={capabilityEndpointToken}
-            onChange={(event) => setCapabilityEndpointToken(event.target.value)}
-            placeholder={t("capabilities.endpoint.tokenPlaceholder", {
+          <SettingsInputRow
+            agentId="cap-endpoint-token"
+            group="capability-router"
+            label={t("capabilities.endpoint.tokenLabel", {
               defaultValue: "Bearer token",
             })}
-            aria-label={t("capabilities.endpoint.tokenAria", {
+            agentLabel={t("capabilities.endpoint.tokenAria", {
               defaultValue: "Capability router endpoint token",
+            })}
+            value={capabilityEndpointToken}
+            onValueChange={setCapabilityEndpointToken}
+            placeholder={t("capabilities.endpoint.tokenPlaceholder", {
+              defaultValue: "Bearer token",
             })}
             type="password"
             autoComplete="off"
           />
-          <Input
-            value={capabilityAllowedModules}
-            onChange={(event) =>
-              setCapabilityAllowedModules(event.target.value)
-            }
-            placeholder="module-id, other-module"
-            aria-label={t("capabilities.endpoint.modulesAria", {
+          <SettingsInputRow
+            agentId="cap-endpoint-modules"
+            group="capability-router"
+            label={t("capabilities.endpoint.modulesLabel", {
+              defaultValue: "Allowed module IDs",
+            })}
+            agentLabel={t("capabilities.endpoint.modulesAria", {
               defaultValue: "Allowed remote module IDs",
             })}
+            value={capabilityAllowedModules}
+            onValueChange={setCapabilityAllowedModules}
+            placeholder="module-id, other-module"
             autoComplete="off"
           />
-          <Button type="submit" disabled={capabilityConnectLoading}>
-            {capabilityConnectLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-            ) : (
-              <PlugZap className="h-4 w-4" aria-hidden />
-            )}
-            {t("settings.sections.capabilities.capabilityRouterConnect", {
+          <SettingsRow
+            label={t("settings.sections.capabilities.capabilityRouterConnect", {
               defaultValue: "Connect",
             })}
-          </Button>
-        </div>
-        {capabilityConnectError ? (
-          <div className="text-2xs text-danger" role="alert">
-            {capabilityConnectError}
-          </div>
-        ) : null}
-        {capabilityConnectResult?.success ? (
-          <div className="text-2xs text-muted-strong" role="status">
-            {t("settings.sections.capabilities.capabilityRouterConnected", {
-              defaultValue: "Connected remote capability endpoint.",
-            })}{" "}
-            {capabilityConnectResult.sync?.registered?.length
-              ? capabilityConnectResult.sync.registered.join(", ")
-              : capabilityConnectResult.endpoint?.baseUrl}
-          </div>
-        ) : null}
+            stacked
+          >
+            <SettingsActionButton
+              agentId="cap-connect-submit"
+              agentGroup="capability-router"
+              agentLabel={t(
+                "settings.sections.capabilities.capabilityRouterConnect",
+                { defaultValue: "Connect" },
+              )}
+              agentStatus={capabilityConnectLoading ? "loading" : undefined}
+              type="submit"
+              disabled={capabilityConnectLoading}
+              className="h-11 w-full gap-2 rounded-md text-sm"
+            >
+              {capabilityConnectLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              ) : (
+                <PlugZap className="h-4 w-4" aria-hidden />
+              )}
+              {t("settings.sections.capabilities.capabilityRouterConnect", {
+                defaultValue: "Connect",
+              })}
+            </SettingsActionButton>
+          </SettingsRow>
+        </SettingsGroup>
       </form>
-    </div>
+    </SettingsStack>
   );
 }
 
-function CapabilityRow({
-  children,
-  hint,
+function CapabilityModeButton({
+  agentId,
+  icon: Icon,
   label,
-  status,
+  selected,
+  onSelect,
 }: {
-  children: ReactNode;
-  hint?: string | null;
+  agentId: string;
+  icon: typeof PlugZap;
   label: string;
-  status?: "loading" | "unavailable" | null;
+  selected: boolean;
+  onSelect: () => void;
 }) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "tab",
+    label,
+    group: "capability-router",
+    status: selected ? "active" : "inactive",
+    onActivate: onSelect,
+  });
   return (
-    <div className="flex items-center justify-between gap-4">
-      <div className="min-w-0">
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="truncate font-medium text-sm">{label}</div>
-          <CapabilityStatusIcon status={status} />
-        </div>
-        {hint ? <div className="mt-1 text-2xs text-muted">{hint}</div> : null}
-      </div>
-      {children}
-    </div>
+    <Button
+      ref={ref}
+      type="button"
+      variant={selected ? "default" : "outline"}
+      className="h-11 flex-1 gap-1.5 rounded-md px-3 text-sm"
+      aria-pressed={selected}
+      onClick={onSelect}
+      {...agentProps}
+    >
+      <Icon className="h-4 w-4" aria-hidden />
+      {label}
+    </Button>
   );
 }
 

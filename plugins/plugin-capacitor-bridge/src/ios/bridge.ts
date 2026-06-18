@@ -2221,38 +2221,25 @@ function hasNativeLocalTtsExecutor(): boolean {
 	return hostProtocolWrite != null;
 }
 
-function hasNativeVoiceBundle(bundleDir: string): boolean {
-	// A voice bundle is usable if it ships ANY recognized TTS engine. The CoreML
-	// Kokoro model is the preferred (ANE) engine but optional — its absence must
-	// not hide the fused OmniVoice/Kokoro-GGUF assets, which the native bridge can
-	// still resolve (TTS engine selection happens later, in synthesizeSpeech).
-	const ttsDir = path.join(bundleDir, "tts");
-	// 1. CoreML Kokoro (preferred).
+function hasNativeKokoroBundle(bundleDir: string): boolean {
+	const model = path.join(
+		bundleDir,
+		"tts",
+		"kokoro-coreml",
+		"kokoro_5s.mlmodelc",
+	);
+	const voice = path.join(
+		bundleDir,
+		"tts",
+		"kokoro-coreml",
+		"voices",
+		"af_heart.json",
+	);
 	try {
-		const coreml = path.join(ttsDir, "kokoro-coreml", "kokoro_5s.mlmodelc");
-		const voice = path.join(ttsDir, "kokoro-coreml", "voices", "af_heart.json");
-		if (statSync(coreml).isDirectory() && statSync(voice).isFile()) return true;
-	} catch {
-		/* fall through to fused-asset detection */
-	}
-	// 2. Fused OmniVoice / GGUF Kokoro.
-	try {
-		for (const entry of readdirSync(ttsDir)) {
-			if (/^omnivoice-base-.*\.gguf$/i.test(entry)) return true; // OmniVoice (tier default)
-			if (entry === "kokoro") {
-				try {
-					for (const k of readdirSync(path.join(ttsDir, "kokoro"))) {
-						if (/\.gguf$/i.test(k) || k === "model_q4.onnx") return true;
-					}
-				} catch {
-					/* no kokoro subdir */
-				}
-			}
-		}
+		return statSync(model).isDirectory() && statSync(voice).isFile();
 	} catch {
 		return false;
 	}
-	return false;
 }
 
 function nativeVoiceBundleDir(): string | null {
@@ -2278,7 +2265,7 @@ function nativeVoiceBundleDir(): string | null {
 				continue;
 			}
 			if (stats.isDirectory()) {
-				if (entry.endsWith(".bundle") && hasNativeVoiceBundle(fullPath)) {
+				if (entry.endsWith(".bundle") && hasNativeKokoroBundle(fullPath)) {
 					bundleDir = fullPath;
 					return;
 				}
@@ -2331,7 +2318,7 @@ function nativeVoiceReadiness(): NativeVoiceReadiness {
 				const markerIndex = normalized.indexOf(".bundle/");
 				if (markerIndex >= 0) {
 					const bundlePath = fullPath.slice(0, markerIndex + ".bundle".length);
-					if (hasNativeVoiceBundle(bundlePath)) {
+					if (hasNativeKokoroBundle(bundlePath)) {
 						installedFiles += 1;
 						const match = normalized.match(/models\/([^/]+\.bundle)\//);
 						modelId = match?.[1]?.replace(/\.bundle$/, "") ?? null;
@@ -2592,12 +2579,10 @@ async function handleNativeIosLocalAsrRoute(
 	}
 
 	const body = parseRequestBody(payload);
-	// Internal fast path: mono fp32 PCM in [-1, 1] as a JSON number array under
-	// `pcm`. Raw audio and JSON `audioBase64` intentionally fall through to the
-	// canonical local-inference ASR route so the public HTTP contract is intact.
+	// Wire contract: mono fp32 PCM in [-1, 1] as a JSON number array under `pcm`.
 	const pcm = parsePcmFloatArray(body.pcm ?? body.audio);
 	if (!pcm) {
-		return null;
+		return jsonResponse(400, { error: "Missing pcm" });
 	}
 
 	const voiceReadiness = nativeVoiceReadiness();

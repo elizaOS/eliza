@@ -31,6 +31,7 @@ export const VIEW_CASES: ViewCase[] = (
     ["goals", "gui", "/goals"],
     ["health", "gui", "/health"],
     ["inbox", "gui", "/inbox"],
+    ["relationships", "gui", "/relationships"],
     ["todos", "gui", "/todos"],
     ["messages", "gui", "/messages"],
     ["messages", "tui", "/messages/tui"],

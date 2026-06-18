@@ -1,20 +1,26 @@
 /**
  * GET /api/commands — the universal slash-command catalog.
  *
- * Serves the runtime's enabled commands in wire-safe form so every client
- * surface (the web chat composer, the TUI, and the Discord/Telegram
- * connectors) discovers and renders one source of truth. Optionally scoped to
- * a surface with `?surface=gui|tui|discord|telegram`.
+ * Serves the connector-neutral command catalog in wire-safe form so client
+ * surfaces (the web chat composer, the TUI) discover and render one source of
+ * truth. Optionally scoped to a surface with `?surface=gui|tui|discord|telegram`
+ * (the surface is echoed in the response; the develop catalog is uniform across
+ * connectors, so the parameter does not filter).
  *
- * Response: `{ commands: SerializedCommand[], surface, agentId, generatedAt }`.
+ * The data source is `getConnectorCommands` from `@elizaos/plugin-commands`,
+ * which re-projects the agent's enabled text-command registry plus the app's
+ * navigation surface into a `ConnectorCommand` shape. Each `ConnectorCommand`
+ * is mapped here onto the `SlashCommandCatalogItem` shape the clients consume.
+ *
+ * Response: `{ commands: SlashCommandCatalogItem[], surface, agentId, generatedAt }`.
  */
 
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import {
-  type CommandSurface,
-  serializeCommands,
-  useRuntime,
+  type ConnectorCommand,
+  type ConnectorCommandOption,
+  getConnectorCommands,
 } from "@elizaos/plugin-commands";
 
 const VALID_SURFACES: ReadonlySet<string> = new Set([
@@ -23,6 +29,42 @@ const VALID_SURFACES: ReadonlySet<string> = new Set([
   "discord",
   "telegram",
 ]);
+
+type CommandSurface = "gui" | "tui" | "discord" | "telegram";
+
+type SlashCommandArgSource =
+  | "models"
+  | "views"
+  | "settings-sections"
+  | "skills"
+  | "providers";
+
+interface SlashCommandArg {
+  name: string;
+  description: string;
+  required?: boolean;
+  choices?: string[];
+  dynamicChoices?: SlashCommandArgSource;
+}
+
+type SlashCommandTarget =
+  | { kind: "agent" }
+  | { kind: "navigate"; tab?: string; viewId?: string; path?: string }
+  | { kind: "client" };
+
+interface SlashCommandCatalogItem {
+  key: string;
+  nativeName: string;
+  description: string;
+  textAliases: string[];
+  scope: "text" | "native" | "both";
+  acceptsArgs: boolean;
+  args: SlashCommandArg[];
+  requiresAuth: boolean;
+  requiresElevated: boolean;
+  target: SlashCommandTarget;
+  source: "builtin";
+}
 
 export interface CommandsRouteContext {
   req: http.IncomingMessage;
@@ -33,6 +75,50 @@ export interface CommandsRouteContext {
   json: (res: http.ServerResponse, data: unknown, status?: number) => void;
   error: (res: http.ServerResponse, message: string, status?: number) => void;
   runtime: AgentRuntime | null | undefined;
+}
+
+/** Map a catalog option onto a client arg, tagging known dynamic sources. */
+function mapOption(option: ConnectorCommandOption): SlashCommandArg {
+  const dynamicChoices: SlashCommandArgSource | undefined =
+    option.name === "section" ? "settings-sections" : undefined;
+  return {
+    name: option.name,
+    description: option.description,
+    required: option.required,
+    choices: option.choices,
+    ...(dynamicChoices ? { dynamicChoices } : {}),
+  };
+}
+
+/** Map the connector-neutral target onto the client target shape. */
+function mapTarget(target: ConnectorCommand["target"]): SlashCommandTarget {
+  if (target.kind === "navigate") {
+    // The settings hub is special: the client opens the settings tab and
+    // focuses the section sub-argument. Other navigations are deep-link paths.
+    if (target.path === "/settings") {
+      return { kind: "navigate", tab: "settings", path: target.path };
+    }
+    return { kind: "navigate", path: target.path };
+  }
+  if (target.kind === "client") return { kind: "client" };
+  return { kind: "agent" };
+}
+
+/** Project a `ConnectorCommand` onto the wire-safe `SlashCommandCatalogItem`. */
+function toCatalogItem(command: ConnectorCommand): SlashCommandCatalogItem {
+  return {
+    key: command.name,
+    nativeName: command.name,
+    description: command.description,
+    textAliases: [`/${command.name}`],
+    scope: "both",
+    acceptsArgs: command.options.length > 0,
+    args: command.options.map(mapOption),
+    requiresAuth: false,
+    requiresElevated: false,
+    target: mapTarget(command.target),
+    source: "builtin",
+  };
 }
 
 export async function handleCommandsRoutes(
@@ -46,19 +132,15 @@ export async function handleCommandsRoutes(
   }
 
   const surfaceParam = url.searchParams.get("surface");
-  const surface =
+  const surface: CommandSurface | null =
     surfaceParam && VALID_SURFACES.has(surfaceParam)
       ? (surfaceParam as CommandSurface)
-      : undefined;
+      : null;
 
-  // Scope the module-level command store to this agent (no-op when the agent
-  // has no isolated store yet — the shared default catalog is then served).
-  if (runtime) useRuntime(runtime.agentId);
-
-  const commands = serializeCommands(surface);
+  const commands = getConnectorCommands(surface ?? "gui").map(toCatalogItem);
   json(res, {
     commands,
-    surface: surface ?? null,
+    surface,
     agentId: runtime?.agentId ?? null,
     generatedAt: new Date().toISOString(),
   });

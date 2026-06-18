@@ -116,7 +116,7 @@ test("capabilities settings: the Wallet switch fires the real config write", asy
   await openSettingsSection(page, /Capabilities/);
   await expect(page.locator("#capabilities")).toBeVisible({ timeout: 30_000 });
 
-  const walletSwitch = page.getByRole("switch", { name: /Enable Wallet/i });
+  const walletSwitch = page.locator('[data-agent-id="capability-wallet"]');
   await expect(walletSwitch).toBeVisible({ timeout: 15_000 });
   const before = await walletSwitch.getAttribute("aria-checked");
   await walletSwitch.click();

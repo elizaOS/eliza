@@ -86,3 +86,35 @@ export async function dispatchViewInteract(
     });
   }
 }
+
+/**
+ * Invoke a mounted view's interact handler and RETURN its result — the same path
+ * `dispatchViewInteract` runs, minus the WS round-trip. This is what lets the
+ * agent (and devtools / e2e) read and drive any view's agent surface directly:
+ * `__ELIZA_VIEW_INTERACT__("settings","gui","list-elements",{})`,
+ * `…("agent-fill",{ id, value })`, `…("agent-click",{ id })`.
+ */
+export async function invokeViewInteract(
+  viewId: string,
+  viewType: ViewType | undefined,
+  capability: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  const handler = handlers.get(handlerKey(viewId, viewType ?? "gui"));
+  if (!handler) {
+    throw new Error(
+      `No interact handler mounted for ${viewType ?? "gui"}:${viewId}`,
+    );
+  }
+  return handler(capability, params);
+}
+
+declare global {
+  interface Window {
+    __ELIZA_VIEW_INTERACT__?: typeof invokeViewInteract;
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.__ELIZA_VIEW_INTERACT__ = invokeViewInteract;
+}

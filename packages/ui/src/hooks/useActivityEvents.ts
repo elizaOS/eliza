@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
+import { parseProactiveMessageEvent } from "../state/parsers";
 
 const RING_BUFFER_CAP = 200;
 
@@ -53,8 +54,10 @@ function summarizeAssistantActivityEvent(data: Record<string, unknown>): {
       return { eventType: "workflow", summary: text };
     case "proactive-gm":
     case "proactive-gn":
+    case "proactive-goal-check-in":
       return { eventType: "check-in", summary: text };
     case "proactive-nudge":
+    case "proactive-social-overuse":
       return { eventType: "nudge", summary: text };
     default:
       return null;
@@ -105,18 +108,21 @@ export function useActivityEvents() {
     const unbindPty = client.onWsEvent(
       "pty-session-event",
       (data: Record<string, unknown>) => {
-        const eventType = (data.eventType ?? data.type) as string;
-        const sessionId = data.sessionId as string | undefined;
-        const d = data.data as Record<string, unknown> | undefined;
+        // Validate the WS boundary instead of casting: strings stay strings,
+        // anything else becomes undefined so a malformed event can't poison the rail.
+        const str = (v: unknown): string | undefined =>
+          typeof v === "string" ? v : undefined;
+        const eventType = str(data.eventType) ?? str(data.type) ?? "";
+        const sessionId = str(data.sessionId);
+        const d = isRecord(data.data) ? data.data : undefined;
 
         let summary = eventType;
         if (eventType === "task_registered") {
-          summary = `Task started: ${(d?.label as string) ?? sessionId ?? "unknown"}`;
+          summary = `Task started: ${str(d?.label) ?? sessionId ?? "unknown"}`;
         } else if (eventType === "task_complete" || eventType === "stopped") {
           summary = `Task ${eventType === "task_complete" ? "completed" : "stopped"}`;
         } else if (eventType === "tool_running") {
-          const tool =
-            (d?.description as string) ?? (d?.toolName as string) ?? "tool";
+          const tool = str(d?.description) ?? str(d?.toolName) ?? "tool";
           summary = `Running ${tool}`.slice(0, 80);
         } else if (eventType === "blocked") {
           summary = "Waiting for input";
@@ -140,14 +146,18 @@ export function useActivityEvents() {
     const unbindProactive = client.onWsEvent(
       "proactive-message",
       (data: Record<string, unknown>) => {
-        const message =
-          typeof data.message === "string"
-            ? data.message.slice(0, 120)
-            : "Proactive message";
+        // The server broadcasts `message` as an object {id, role, text, ...};
+        // parse it with the canonical typed parser and surface the real text
+        // (the old hand-rolled `typeof data.message === "string"` was always
+        // false, so the rail only ever showed the generic placeholder).
+        const parsed = parseProactiveMessageEvent(data);
+        if (!parsed) return;
+        const summary =
+          parsed.message.text.trim().slice(0, 120) || "Proactive message";
         pushEvent({
           timestamp: Date.now(),
           eventType: "proactive-message",
-          summary: message,
+          summary,
         });
       },
     );

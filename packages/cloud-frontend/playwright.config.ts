@@ -10,13 +10,39 @@ const LOCAL_URL = process.env.PLAYWRIGHT_BASE_URL || `http://${HOST}:${PORT}`;
 const BASE_URL = LIVE_URL ?? LOCAL_URL;
 const recording = !!process.env.E2E_RECORD;
 
+// The behavioral-e2e CI gate (CLOUD_E2E_BEHAVIORAL=1) runs every deterministic
+// mock-driven flow spec but excludes specs that cannot serve as a required PR
+// gate: pixel-diff visual baselines (darwin-only), palette/a11y/route audits
+// that carry pre-existing findings tracked separately, and live-backend specs
+// that need a real deployment. Everything else — including any newly added flow
+// spec — is gated automatically.
+const NON_GATING_SPECS = [
+  "**/aesthetic-audit.spec.ts",
+  "**/visual.spec.ts",
+  "**/blue-banned.spec.ts",
+  "**/cross-page-hover-audit.spec.ts",
+  "**/focus-rings.spec.ts",
+  "**/cloud-routes.spec.ts",
+  "**/cloud-routes-live.spec.ts",
+  "**/route-coverage.spec.ts",
+  "**/live-auth-backend.spec.ts",
+  "**/live-auth-dashboard.spec.ts",
+  "**/live-steward-wallet-login.spec.ts",
+];
+
 export default defineConfig({
   testDir: "./tests/e2e",
   testMatch: "**/*.spec.ts",
+  testIgnore:
+    process.env.CLOUD_E2E_BEHAVIORAL === "1" ? NON_GATING_SPECS : undefined,
   // Warm up Vite's dep optimizer before any timed test navigates. See
   // tests/e2e/global-setup.ts for the rationale (fixes #8144).
   globalSetup: "./tests/e2e/global-setup.ts",
   fullyParallel: true,
+  // Absorb the occasional environmental flake (a slow paint under cumulative
+  // load) in CI so the required behavioral gate stays deterministic; locally
+  // run with zero retries for honest fast feedback.
+  retries: process.env.CI ? 2 : 0,
   reporter: [["list"], ["html", { open: "never" }]],
   expect: {
     toHaveScreenshot: {

@@ -16,11 +16,22 @@ export interface PullGestureOptions {
   onPullDown?: () => void;
   /** Live drag offset while pressed, in px. Positive = dragging up. */
   onDrag?: (offset: number) => void;
+  /** A near-stationary press/release — a tap, not a pull. */
+  onTap?: () => void;
+  /**
+   * A deliberate (slow) drag released without passing the flick/distance
+   * threshold. When provided, the gesture rests exactly where released
+   * (the consumer keeps the live offset) instead of snapping back.
+   */
+  onSettleFree?: (direction: "up" | "down") => void;
   /** Minimum travel (px) to count as a pull. Default 56. */
   distanceThreshold?: number;
   /** Minimum speed (px/ms) to count as a flick. Default 0.5. */
   velocityThreshold?: number;
 }
+
+/** Movement (px) under which a release is treated as a tap, not a drag. */
+const TAP_SLOP = 8;
 
 export interface PullGestureBinding {
   onPointerDown: (event: React.PointerEvent) => void;
@@ -50,6 +61,8 @@ export function usePullGesture(
     onPullUp,
     onPullDown,
     onDrag,
+    onTap,
+    onSettleFree,
     distanceThreshold = 56,
     velocityThreshold = 0.5,
   } = options;
@@ -82,20 +95,41 @@ export function usePullGesture(
       const deltaUp = s.y - event.clientY; // up is positive
       const elapsed = Math.max(1, performance.now() - s.t);
       const velocityUp = deltaUp / elapsed;
-      const direction = resolvePull(
-        deltaUp,
-        velocityUp,
-        distanceThreshold,
-        velocityThreshold,
-      );
-      if (direction === null) {
+      const moved = Math.abs(deltaUp);
+      const isFlick = Math.abs(velocityUp) >= velocityThreshold;
+      // A near-stationary release is a tap (e.g. tapping the collapsed bar to
+      // focus the composer), not a drag.
+      if (moved < TAP_SLOP && !isFlick) {
         onDrag?.(0); // snap back
+        onTap?.();
         return;
       }
-      if (direction === "up") onPullUp?.();
-      else onPullDown?.();
+      // A quick FLICK snaps to the next detent in the flick direction; any
+      // deliberate (non-flick) drag RESTS wherever it was released — drag the
+      // sheet to any size and it stays (a detent is only taken by a flick/tap).
+      if (isFlick) {
+        if (deltaUp > 0) onPullUp?.();
+        else onPullDown?.();
+        return;
+      }
+      if (onSettleFree) {
+        onSettleFree(deltaUp > 0 ? "up" : "down");
+      } else if (moved >= distanceThreshold) {
+        if (deltaUp > 0) onPullUp?.();
+        else onPullDown?.();
+      } else {
+        onDrag?.(0); // sub-threshold, no free-settle consumer → snap back
+      }
     },
-    [onDrag, onPullUp, onPullDown, distanceThreshold, velocityThreshold],
+    [
+      onDrag,
+      onPullUp,
+      onPullDown,
+      onTap,
+      onSettleFree,
+      distanceThreshold,
+      velocityThreshold,
+    ],
   );
 
   return {

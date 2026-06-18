@@ -18,23 +18,13 @@ function clearBridge() {
 afterEach(clearBridge);
 
 describe("isMultiAccountAgentType", () => {
-  it("is true for first-party coding CLIs with a real ACP adapter", () => {
-    for (const t of ["claude", "codex", "CLAUDE", "Codex"]) {
+  it("is true for per-account coding agents", () => {
+    for (const t of ["claude", "codex", "zai", "glm", "kimi", "CLAUDE"]) {
       expect(isMultiAccountAgentType(t)).toBe(true);
     }
   });
-  it("is false for runtime/local agents and providers without a coding CLI", () => {
-    // opencode/elizaos/pi-agent authenticate via their own backend; z.ai/kimi/
-    // glm have no first-party coding CLI to spawn.
-    for (const t of [
-      "opencode",
-      "elizaos",
-      "pi-agent",
-      "zai",
-      "glm",
-      "kimi",
-      "",
-    ]) {
+  it("is false for runtime/local agents", () => {
+    for (const t of ["opencode", "elizaos", "pi-agent", ""]) {
       expect(isMultiAccountAgentType(t)).toBe(false);
     }
   });

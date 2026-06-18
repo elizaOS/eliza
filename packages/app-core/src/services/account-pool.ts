@@ -135,13 +135,6 @@ export class AccountPool {
   private readonly deps: AccountPoolDeps;
   private readonly affinity = new Map<string, AffinityEntry>();
   private readonly roundRobinCursor = new Map<PoolProviderId, number>();
-  // Burst-spread for least-used: `usage.sessionPct` is only refreshed every few
-  // minutes, so a burst of fresh spawns inside one poll window would otherwise
-  // all stack on the single lowest-sessionPct account. Stamping each pick lets
-  // the tiebreak rotate across equally-/un-probed accounts until real usage
-  // diverges. Monotonic + epoch-aligned so it composes with `lastUsedAt`.
-  private readonly recentlySelectedAt = new Map<string, number>();
-  private selectionClock = 0;
 
   constructor(deps: AccountPoolDeps) {
     this.deps = deps;
@@ -170,7 +163,6 @@ export class AccountPool {
     const strategy: Strategy = input.strategy ?? "priority";
     const picked = this.applyStrategy(strategy, eligible, input.providerId);
     if (!picked) return null;
-    this.stampSelection(picked.id);
 
     if (input.sessionKey) {
       this.affinity.set(input.sessionKey, {
@@ -232,10 +224,7 @@ export class AccountPool {
         return sorted[index] ?? null;
       }
       case "least-used": {
-        return (
-          [...eligible].sort((a, b) => this.byLeastUsedEffective(a, b))[0] ??
-          null
-        );
+        return [...eligible].sort(byLeastUsedThenPriority)[0] ?? null;
       }
       case "quota-aware": {
         const underQuota = eligible.filter(
@@ -247,46 +236,6 @@ export class AccountPool {
       default:
         return [...eligible].sort(byPriorityThenAge)[0] ?? null;
     }
-  }
-
-  /** Record that `accountId` was just selected, with a strictly-increasing,
-   * epoch-aligned stamp so a same-millisecond burst still rotates. */
-  private stampSelection(accountId: string): void {
-    this.selectionClock = Math.max(Date.now(), this.selectionClock + 1);
-    this.recentlySelectedAt.set(accountId, this.selectionClock);
-    while (this.recentlySelectedAt.size > MAX_AFFINITY_ENTRIES) {
-      const oldest = this.recentlySelectedAt.keys().next().value;
-      if (oldest === undefined) break;
-      this.recentlySelectedAt.delete(oldest);
-    }
-  }
-
-  /** Most recent of the persisted `lastUsedAt` and the in-memory selection
-   * stamp — so a just-picked account sorts as "more recently used". */
-  private effectiveLastUsed(account: LinkedAccountConfig): number {
-    return Math.max(
-      account.lastUsedAt ?? 0,
-      this.recentlySelectedAt.get(account.id) ?? 0,
-    );
-  }
-
-  /** least-used comparator: spread load first by reported usage, then by
-   * recency-of-use (persisted + in-flight selection). Recency is ranked ABOVE
-   * `priority` here because least-used is a load-spreading strategy and the
-   * default `priority` is just creation order — honoring it would pin every
-   * equal-usage pick to the oldest account (the burst herd). `priority` only
-   * breaks a recency tie. */
-  private byLeastUsedEffective(
-    a: LinkedAccountConfig,
-    b: LinkedAccountConfig,
-  ): number {
-    const aPct = a.usage?.sessionPct ?? 0;
-    const bPct = b.usage?.sessionPct ?? 0;
-    if (aPct !== bPct) return aPct - bPct;
-    const aUsed = this.effectiveLastUsed(a);
-    const bUsed = this.effectiveLastUsed(b);
-    if (aUsed !== bUsed) return aUsed - bUsed;
-    return a.priority - b.priority;
   }
 
   // CRUD — used by accounts-routes.ts as the single source of truth for
@@ -923,12 +872,6 @@ export async function sweepAccountPoolKeepAlive(): Promise<AccountPoolKeepAliveR
       }
 
       if (!isSubscriptionProvider(providerId)) {
-        // Direct-API providers have no usage probe, but a successful token
-        // resolve proves the credential works — clear any stale needs-reauth /
-        // invalid flag so a transient earlier failure doesn't strand the account
-        // out of rotation (filterEligible only re-admits OK + reset rate-limits,
-        // and refreshUsage — the only other path to `ok` — skips direct APIs).
-        await pool.markHealthy(record.id, { providerId });
         continue;
       }
 

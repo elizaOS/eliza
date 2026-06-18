@@ -42,10 +42,12 @@ import {
 } from "./registry";
 import type { CommandContext, CommandDefinition, CommandResult } from "./types";
 
-export * from "./connector-commands";
-export * from "./navigation-commands";
+// Connector-neutral command catalog (getConnectorCommands / ConnectorCommand)
+// + settings-section resolution (resolveSettingsSection).
+export * from "./connector-catalog";
 export * from "./parser";
 export * from "./registry";
+export * from "./settings-sections";
 // Re-export everything
 export * from "./types";
 

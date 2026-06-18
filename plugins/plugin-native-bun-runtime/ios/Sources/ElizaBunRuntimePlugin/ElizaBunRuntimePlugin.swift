@@ -608,14 +608,6 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
         if isSmoke {
             env["ELIZA_IOS_FULL_BUN_SMOKE"] = "1"
         }
-        // Pass through opt-in diagnostic toggles set on the launch environment
-        // (e.g. via `devicectl process launch --environment-variables`) so a
-        // headless prewarm boot can run the on-device model-grind self-test.
-        for key in ["ELIZA_IOS_RUN_MODEL_GRIND"] {
-            if let value = ProcessInfo.processInfo.environment[key], !value.isEmpty {
-                env[key] = value
-            }
-        }
         return IosRuntimePolicy.sanitizeEnvironment(env)
     }
 

@@ -1,4 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// This node-env guard imports the real InboxView (to assert its function name
+// matches the registration). InboxView now pulls in the `@elizaos/ui` renderer
+// barrel; stub it (and the agent-surface subpath) so the node import resolves
+// without evaluating the browser-only renderer dist.
+vi.mock("@elizaos/ui", () => ({
+  client: { getBaseUrl: () => "http://test.local", sendChatMessage: vi.fn() },
+}));
+vi.mock("@elizaos/ui/agent-surface", () => ({
+  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
+}));
+
 import { InboxView } from "../src/components/inbox/InboxView.tsx";
 import { inboxPlugin } from "../src/plugin.ts";
 

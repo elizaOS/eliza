@@ -149,10 +149,10 @@ Do exactly this:
 2. Create plugins/${spec.plugin}/src/register-terminal-view.tsx - mirror plugin-phone's: a module-level snapshot + setter + registerSpatialTerminalView("${spec.viewId}", () => createElement(<Name>SpatialView, { snapshot })).
 3. Wire a DOM-guarded lazy registration call into the plugin's existing side-effect load path (register.ts or index.ts) like plugin-phone's register.ts (only when typeof window === "undefined").
 4. Create plugins/${spec.plugin}/src/components/<Name>SpatialView.test.tsx - a tri-modal test mirroring PhoneSpatialView.test.tsx: assert TUI renderViewToLines honors the width contract (every line visibleWidth === width) at widths 54 and 32 and contains key content; assert GUI+XR SpatialSurface DOM contains the content + data-spatial-surface; assert the terminal registry round-trip renders lines.
-5. SELF-VERIFY WITH BUN, NOT VITEST. The node-based vitest workers SIGABRT under concurrent load on this machine (macOS AMFI), so DO NOT run \`vitest\`. Instead write a tiny temp script /tmp/verify-${spec.plugin}.mjs that imports React, your view, and { renderViewToLines } from "@elizaos/ui/spatial/tui", renders your view with a representative sample snapshot at widths 54 and 32, and asserts (throwing on failure) that every returned line has visibleWidth (import { visibleWidth } from "@elizaos/tui") exactly equal to the width and that the joined text contains your key content. Run it with: \`bun /tmp/verify-${spec.plugin}.mjs\`. Iterate on your view until it prints the rendered lines with no thrown error. (bun renders TSX directly and does not touch the flaky node path.) Set testPassed=true only when this bun check passes.
+5. Run ONLY your new test: bun run --cwd plugins/${spec.plugin} vitest run src/components/<Name>SpatialView.test.tsx (use the exact path you created). Iterate on the view until it passes. If you ever see a "dyld"/"SIGABRT"/"libsimdjson"/"mig callout" crash, that is a transient macOS code-signing hiccup, not your code — just re-run the same command once or twice and it will run. Set testPassed=true only when the vitest run reports all tests passed.
 6. Run: bunx biome check --write plugins/${spec.plugin}/src/components/<Name>SpatialView.tsx plugins/${spec.plugin}/src/register-terminal-view.tsx plugins/${spec.plugin}/src/components/<Name>SpatialView.test.tsx
 
-Report created files, whether the bun self-verify passed, and a one-line summary. If you cannot make it pass, set testPassed=false and include the failure output. The full vitest suite is run centrally afterwards.`,
+Report created files, whether the vitest run passed, and a one-line summary. If you cannot make it pass, set testPassed=false and include the failure output. The full suite is also re-run centrally afterwards.`,
       {
         label: `convert:${spec.plugin}`,
         phase: "Convert",
@@ -164,7 +164,9 @@ Report created files, whether the bun self-verify passed, and a one-line summary
 
 const results = specs.filter(Boolean);
 const passed = results.filter((result) => result.testPassed);
-log(`Converted ${passed.length}/${results.length} plugins with passing tri-modal tests`);
+log(
+  `Converted ${passed.length}/${results.length} plugins with passing tri-modal tests`,
+);
 
 return {
   created: results.flatMap((result) => result.created ?? []),

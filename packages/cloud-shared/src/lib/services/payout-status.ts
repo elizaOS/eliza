@@ -83,15 +83,18 @@ class PayoutStatusService {
         : null;
 
     for (const network of ["ethereum", "base", "bnb"] as const) {
-      const status = await this.resolveNetworkStatus(network, evmConfigured, () =>
-        skipLiveBalanceChecks
-          ? this.buildSkippedBalanceStatus(
-              network,
-              evmConfigured,
-              evmWalletAddress,
-              assumeOperational,
-            )
-          : this.checkEvmNetwork(network, evmWalletAddress),
+      const status = await this.resolveNetworkStatus(
+        network,
+        evmConfigured,
+        () =>
+          skipLiveBalanceChecks
+            ? this.buildSkippedBalanceStatus(
+                network,
+                evmConfigured,
+                evmWalletAddress,
+                assumeOperational,
+              )
+            : this.checkEvmNetwork(network, evmWalletAddress),
       );
       networks.push(status);
 
@@ -109,15 +112,18 @@ class PayoutStatusService {
         ? this.getSolanaWalletAddress(solanaPrivateKey)
         : null;
 
-    const solanaStatus = await this.resolveNetworkStatus("solana", solanaConfigured, () =>
-      skipLiveBalanceChecks
-        ? this.buildSkippedBalanceStatus(
-            "solana",
-            solanaConfigured,
-            solanaWalletAddress,
-            assumeOperational,
-          )
-        : this.checkSolanaNetwork(solanaWalletAddress),
+    const solanaStatus = await this.resolveNetworkStatus(
+      "solana",
+      solanaConfigured,
+      () =>
+        skipLiveBalanceChecks
+          ? this.buildSkippedBalanceStatus(
+              "solana",
+              solanaConfigured,
+              solanaWalletAddress,
+              assumeOperational,
+            )
+          : this.checkSolanaNetwork(solanaWalletAddress),
     );
     networks.push(solanaStatus);
 
@@ -282,9 +288,12 @@ class PayoutStatusService {
     } catch (error) {
       // A malformed EVM payout key must not throw out of getStatus() and 500
       // the whole redemption flow; treat EVM as unconfigured instead.
-      logger.warn("[PayoutStatus] Invalid EVM payout private key; treating EVM as unconfigured", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.warn(
+        "[PayoutStatus] Invalid EVM payout private key; treating EVM as unconfigured",
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
       return null;
     }
   }
@@ -337,7 +346,8 @@ class PayoutStatusService {
         transport: http(rpcUrl),
       });
     } catch (setupError) {
-      const message = setupError instanceof Error ? setupError.message : String(setupError);
+      const message =
+        setupError instanceof Error ? setupError.message : String(setupError);
       logger.warn(`[PayoutStatus] ${network} RPC setup failed`, {
         error: message,
       });

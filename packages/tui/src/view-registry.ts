@@ -39,7 +39,10 @@ function getStore(): TerminalViewRegistryStore {
  * Register a terminal view under a stable id. Returns an unregister function.
  * Re-registering the same id replaces the prior component.
  */
-export function registerTerminalView(id: string, component: Component): () => void {
+export function registerTerminalView(
+  id: string,
+  component: Component,
+): () => void {
   const store = getStore();
   store.views.set(id, component);
   return () => {

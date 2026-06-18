@@ -45,13 +45,7 @@ export interface DiscordInteractionOptions {
 function toComponent(button: NeutralButton): DiscordComponentOptions | null {
 	if (button.url) {
 		// Link buttons carry no custom_id; discord.js requires the URL + Link style.
-		return {
-			type: 2,
-			custom_id: "",
-			label: button.label,
-			style: LINK_STYLE,
-			url: button.url,
-		};
+		return { type: 2, custom_id: "", label: button.label, style: LINK_STYLE, url: button.url };
 	}
 	if (button.callbackData) {
 		return {
@@ -75,11 +69,7 @@ export function renderDiscordInteractions(
 ): DiscordInteractionRender {
 	const { blocks, cleanedText } = parseInteractionBlocks(content.text ?? "");
 	if (blocks.length === 0) {
-		return {
-			text: content.text ?? "",
-			components: [],
-			needsFreeTextReply: false,
-		};
+		return { text: content.text ?? "", components: [], needsFreeTextReply: false };
 	}
 
 	const rows: DiscordActionRow[] = [];
@@ -105,8 +95,6 @@ export function renderDiscordInteractions(
 		if (!producedButton && layout.text) extraLines.push(layout.text);
 	}
 
-	const text = [cleanedText, ...extraLines]
-		.filter((s) => s.trim().length > 0)
-		.join("\n\n");
+	const text = [cleanedText, ...extraLines].filter((s) => s.trim().length > 0).join("\n\n");
 	return { text, components: rows.slice(0, MAX_ROWS), needsFreeTextReply };
 }

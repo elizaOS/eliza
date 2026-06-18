@@ -1,7 +1,10 @@
 import { Capacitor } from "@capacitor/core";
 import * as React from "react";
 import { client } from "../api";
-import { resolveCloudAgentApiBase } from "../api/client-cloud";
+import {
+  isDirectCloudSharedAgentBase,
+  resolveCloudAgentApiBase,
+} from "../api/client-cloud";
 import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
 import { getBootConfig } from "../config/boot-config";
 import {
@@ -17,7 +20,6 @@ import {
   useApp,
 } from "../state";
 import { isCloudStatusAuthenticated, preOpenWindow } from "../utils";
-import { isDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
 import {
   createVoiceCapture,
   type VoiceCaptureHandle,
@@ -232,14 +234,6 @@ async function waitForAgentApi(): Promise<void> {
   throw new Error(
     "The agent API did not become ready before the first-run deadline.",
   );
-}
-
-function errorHttpStatus(error: unknown): number | null {
-  if (error instanceof Error && "status" in error) {
-    const status = (error as { status?: unknown }).status;
-    return typeof status === "number" ? status : null;
-  }
-  return null;
 }
 
 function normalizeRemoteTarget(value: string): string {
@@ -623,8 +617,18 @@ export function useFirstRunController(): FirstRunController {
         name,
         bio,
         onProgress: () => {},
+        // Cloud returns a shared-runtime agent (no dedicated container) for the
+        // default tier on every non-iOS platform. Without this flag the client
+        // throws "shared runtime has no sandbox bridge" and first-run bricks for
+        // new Android/desktop users. Mirrors the useFirstRunCallbacks path.
         allowSharedRuntime: true,
       });
+      // Target the REST adapter base (webUiUrl = .../agents/<id>), NOT the raw
+      // JSON-RPC bridge (.../agents/<id>/bridge). A shared-runtime agent serves
+      // its /api/* chat surface (conversations/messages/health) at the adapter
+      // base; pointing the client at /bridge makes every /api/* call 404 and
+      // first-run bounces. resolveCloudAgentApiBase prefers webUiUrl over
+      // bridgeUrl — same resolution useFirstRunCallbacks uses.
       const cloudAgentApiBase = resolveCloudAgentApiBase({
         bridgeUrl: provisionedAgent.bridgeUrl,
         webUiUrl: provisionedAgent.webUiUrl,
@@ -633,7 +637,6 @@ export function useFirstRunController(): FirstRunController {
       client.setToken(authToken);
       const activeServer = createPersistedActiveServer({
         kind: "cloud",
-        id: `cloud:${provisionedAgent.agentId}`,
         apiBase: cloudAgentApiBase,
         accessToken: authToken,
       });
@@ -648,15 +651,15 @@ export function useFirstRunController(): FirstRunController {
       });
       persistMobileRuntimeModeForServerTarget("elizacloud");
       setBusyText("Saving first-run profile");
+      // A shared-runtime cloud agent has no agent server, so POST /api/first-run
+      // (submitFirstRun) 404s — there is no per-agent first-run config store to
+      // write to, and the agent is already provisioned + named cloud-side. Don't
+      // let that 404 throw and strand onboarding before completeFirstRun() runs;
+      // tolerate it for a shared-agent base and finish the transition to chat.
       try {
         await client.submitFirstRun(plan.payload);
       } catch (err) {
-        if (
-          errorHttpStatus(err) !== 404 ||
-          !isDirectCloudSharedAgentApiBase(cloudAgentApiBase)
-        ) {
-          throw err;
-        }
+        if (!isDirectCloudSharedAgentBase(client.getBaseUrl())) throw err;
       }
       clearPersistedFirstRunState();
       setBusyText(null);

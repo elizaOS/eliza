@@ -729,7 +729,7 @@ export class TelegramService extends Service {
 
     await bot.launch({
       dropPendingUpdates: true,
-      allowedUpdates: ["message", "message_reaction", "callback_query"],
+      allowedUpdates: ["message", "message_reaction"],
     });
     if (botToken) {
       ACTIVE_TELEGRAM_POLLERS.set(botToken, {

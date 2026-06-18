@@ -2,9 +2,10 @@
 
 // Full populated/interactive coverage for the default GUI surface (PhoneAppView)
 // and its xr twin (same component, registered with viewType "xr"). The TUI view
-// is covered separately in PhoneTuiView.test.ts; here we drive every dialer,
-// recent, and contacts control through the rendered DOM and assert the native
-// bridge is invoked with the exact normalized arguments.
+// is covered separately in PhoneTuiView.test.ts; here we drive every dialer and
+// recent control through the rendered DOM and assert the native bridge is
+// invoked with the exact normalized arguments. The address book lives in the
+// separate Contacts view; the Phone app only links to it via the navigation bus.
 
 import {
   cleanup,
@@ -17,11 +18,10 @@ import {
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// The contacts/recent panes lazy-load through a dynamic import + an async bridge
-// call before their rows or error banners render. Under the full parallel
-// `test:plugins` run the default 1000ms findBy/waitFor budget is occasionally
-// exceeded (observed: the contacts-error banner at ~1.2s), flaking the lane.
-// Give the async utils headroom; queries still resolve as soon as the element
+// The recent pane lazy-loads through an async bridge call before its rows or
+// error banner render. Under the full parallel `test:plugins` run the default
+// 1000ms findBy/waitFor budget is occasionally exceeded, flaking the lane. Give
+// the async utils headroom; queries still resolve as soon as the element
 // appears, so this never slows the happy path.
 configure({ asyncUtilTimeout: 5000 });
 
@@ -31,23 +31,13 @@ const phoneBridge = vi.hoisted(() => ({
   placeCall: vi.fn(),
   openDialer: vi.fn(),
   saveCallTranscript: vi.fn(),
-}));
-
-// Controllable mock for the soft-dep contacts module. PhoneAppView builds the
-// dynamic specifier at runtime; Vitest still matches the literal string here.
-// The mock always exports a `Contacts` object; availability and errors are
-// driven through `contactsBridge` rather than by toggling the module itself —
-// loadContactsModule() returns null when `Contacts.listContacts` is not a
-// function, which is exactly how a device without the contacts bridge behaves.
-const contactsBridge = vi.hoisted(() => ({
-  listContacts: undefined as unknown as ReturnType<typeof vi.fn>,
+  checkPermissions: vi.fn(async () => ({ phone: "granted" })),
+  requestPermissions: vi.fn(async () => ({ phone: "granted" })),
 }));
 
 vi.mock("@elizaos/capacitor-phone", () => ({
   Phone: phoneBridge,
 }));
-
-vi.mock("@elizaos/capacitor-contacts", () => ({ Contacts: contactsBridge }));
 
 import { PhoneAppView, PhonePluginView } from "./PhoneAppView";
 
@@ -103,30 +93,9 @@ const recentCalls = [
   }),
 ];
 
-const sampleContacts = [
-  {
-    id: "c-1",
-    lookupKey: "c-1-key",
-    displayName: "Katherine Johnson",
-    phoneNumbers: ["+15551111111", "+15552222222"],
-    emailAddresses: [],
-    starred: false,
-  },
-  {
-    id: "c-2",
-    lookupKey: "c-2-key",
-    displayName: "Margaret Hamilton",
-    phoneNumbers: ["+15553333333"],
-    emailAddresses: [],
-    starred: true,
-  },
-];
-
 function overlayContext(exitToApps = vi.fn()) {
   return { exitToApps, uiTheme: "light" as const, t };
 }
-
-let listContacts: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   phoneBridge.getStatus.mockResolvedValue({
@@ -138,8 +107,6 @@ beforeEach(() => {
   phoneBridge.listRecentCalls.mockResolvedValue({ calls: recentCalls });
   phoneBridge.placeCall.mockResolvedValue(undefined);
   phoneBridge.openDialer.mockResolvedValue(undefined);
-  listContacts = vi.fn().mockResolvedValue({ contacts: sampleContacts });
-  contactsBridge.listContacts = listContacts;
 });
 
 afterEach(() => {
@@ -312,116 +279,29 @@ describe("PhoneAppView — recent tab", () => {
   });
 });
 
-describe("PhoneAppView — contacts tab", () => {
-  it("enables the tab, renders populated contacts, and calls the primary number", async () => {
-    render(React.createElement(PhonePluginView));
-
-    const contactsTab = await waitFor(() => {
-      const tab = screen.getByRole("tab", {
-        name: "Contacts",
-      }) as HTMLButtonElement;
-      expect(tab.disabled).toBe(false);
-      return tab;
-    });
-
-    fireEvent.click(contactsTab);
-    await screen.findByText("Katherine Johnson");
-    expect(contactsBridge.listContacts).toHaveBeenCalledWith({ limit: 500 });
-    expect(screen.getByText("Margaret Hamilton")).toBeTruthy();
-    // Primary number (first in the array) is displayed.
-    expect(screen.getByText("+15551111111")).toBeTruthy();
-
-    fireEvent.click(
-      screen.getByText("Katherine Johnson").closest("button") as HTMLElement,
-    );
-    await waitFor(() =>
-      expect(phoneBridge.placeCall).toHaveBeenCalledWith({
-        number: "+15551111111",
-      }),
-    );
-  });
-
-  it("disables a contact button that has no phone numbers", async () => {
-    contactsBridge.listContacts.mockResolvedValue({
-      contacts: [
-        sampleContacts[0],
-        {
-          id: "c-3",
-          lookupKey: "c-3-key",
-          displayName: "Numberless Person",
-          phoneNumbers: [],
-          emailAddresses: [],
-          starred: false,
-        },
-      ],
-    });
-    render(React.createElement(PhonePluginView));
-    const contactsTab = await waitFor(() => {
-      const tab = screen.getByRole("tab", {
-        name: "Contacts",
-      }) as HTMLButtonElement;
-      expect(tab.disabled).toBe(false);
-      return tab;
-    });
-    fireEvent.click(contactsTab);
-    // The component filters out contacts with zero phone numbers before render,
-    // so the numberless contact never appears as a callable row.
-    await screen.findByText("Katherine Johnson");
-    expect(screen.queryByText("Numberless Person")).toBeNull();
-  });
-
-  it("keeps the Contacts tab disabled when the soft-dep module is absent", async () => {
-    // loadContactsModule() returns null when Contacts.listContacts is not a
-    // function — the soft-dep-missing path. The tab must stay disabled (the
-    // unavailable pane is unreachable while the trigger is gated off).
-    const probe = vi.fn();
-    contactsBridge.listContacts = probe;
-    // Simulate "module not loadable" by making the probe guard fail.
-    contactsBridge.listContacts = undefined as unknown as ReturnType<
-      typeof vi.fn
-    >;
+describe("PhoneAppView — contacts link", () => {
+  it("exposes only Dialer + Recent tabs (no embedded Contacts tab)", () => {
     render(React.createElement(PhoneAppView, overlayContext()));
-
-    // Let the mount-time probe settle, then confirm the tab is still disabled
-    // and the contacts list was never queried.
-    await screen.findByText("Enter a number"); // initial dialer pane rendered
-    await waitFor(() => {
-      expect(
-        (screen.getByRole("tab", { name: "Contacts" }) as HTMLButtonElement)
-          .disabled,
-      ).toBe(true);
-    });
-    expect(probe).not.toHaveBeenCalled();
+    expect(screen.getByRole("tab", { name: "Dialer" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Recent" })).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: "Contacts" })).toBeNull();
   });
 
-  it("renders the contacts error banner when listContacts rejects", async () => {
-    contactsBridge.listContacts.mockRejectedValue(
-      new Error("READ_CONTACTS denied"),
-    );
-    render(React.createElement(PhonePluginView));
-    const contactsTab = await waitFor(() => {
-      const tab = screen.getByRole("tab", {
-        name: "Contacts",
-      }) as HTMLButtonElement;
-      expect(tab.disabled).toBe(false);
-      return tab;
+  it("navigates to the Contacts view via the eliza:navigate:view bus", () => {
+    render(React.createElement(PhoneAppView, overlayContext()));
+    const events: CustomEvent[] = [];
+    const listener = (e: Event) => events.push(e as CustomEvent);
+    window.addEventListener("eliza:navigate:view", listener);
+    try {
+      fireEvent.click(screen.getByTestId("phone-open-contacts"));
+    } finally {
+      window.removeEventListener("eliza:navigate:view", listener);
+    }
+    expect(events).toHaveLength(1);
+    expect(events[0]?.detail).toMatchObject({
+      viewId: "contacts",
+      viewPath: "/contacts",
     });
-    fireEvent.click(contactsTab);
-    await screen.findByText("READ_CONTACTS denied");
-  });
-
-  it("shows the empty contacts state when no contacts have numbers", async () => {
-    contactsBridge.listContacts.mockResolvedValue({ contacts: [] });
-    render(React.createElement(PhonePluginView));
-    const contactsTab = await waitFor(() => {
-      const tab = screen.getByRole("tab", {
-        name: "Contacts",
-      }) as HTMLButtonElement;
-      expect(tab.disabled).toBe(false);
-      return tab;
-    });
-    fireEvent.click(contactsTab);
-    await screen.findByText("No contacts with phone numbers.");
   });
 });
 

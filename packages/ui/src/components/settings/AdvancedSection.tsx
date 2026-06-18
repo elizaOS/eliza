@@ -1,4 +1,4 @@
-import { AlertTriangle, Download, Upload } from "lucide-react";
+import { AlertTriangle, Download, Trash2, Upload } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { setDeveloperMode, useApp, useIsDeveloperMode } from "../../state";
@@ -8,6 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Spinner } from "../ui/spinner";
+import { SettingsActionButton, SettingsSwitchRow } from "./settings-agent-rows";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 export function AdvancedSection() {
   const { t } = useApp();
@@ -86,15 +88,6 @@ export function AdvancedSection() {
       group: "advanced",
       onActivate: openImportModal,
     });
-  const { ref: developerModeRef, agentProps: developerModeAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "advanced-developer-mode",
-      role: "toggle",
-      label: "Developer Mode",
-      group: "advanced",
-      status: developerMode ? "active" : "inactive",
-      onActivate: () => setDeveloperMode(!developerMode),
-    });
   const { ref: resetOpenRef, agentProps: resetOpenAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "advanced-reset-open",
@@ -170,88 +163,74 @@ export function AdvancedSection() {
 
   return (
     <>
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Button
-            ref={exportOpenRef}
-            variant="outline"
-            type="button"
-            onClick={openExportModal}
-            className="min-h-[5.5rem] h-auto rounded-sm border border-border/50 bg-card/60 p-5 text-left  transition-[transform,border-color,background-color,box-shadow] group hover:-translate-y-0.5 hover:border-accent "
-            aria-haspopup="dialog"
-            {...exportOpenAgentProps}
-          >
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-sm border border-border/50 bg-bg-accent p-3 transition-all group-hover:border-accent group-hover:bg-accent">
-              <Download className="h-5 w-5 shrink-0 text-txt transition-colors group-hover:text-accent-fg" />
-            </div>
-            <div>
-              <div className="font-medium text-sm">
-                {t("settings.exportAgent")}
+      <SettingsStack>
+        <SettingsGroup bare>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Button
+              ref={exportOpenRef}
+              variant="outline"
+              type="button"
+              onClick={openExportModal}
+              className="min-h-[5.5rem] h-auto rounded-lg border border-border bg-card p-5 text-left transition-[transform,border-color,background-color,box-shadow] group hover:-translate-y-0.5 hover:border-accent"
+              aria-haspopup="dialog"
+              {...exportOpenAgentProps}
+            >
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md border border-border bg-surface p-3 transition-all group-hover:border-accent group-hover:bg-accent">
+                <Download className="h-5 w-5 shrink-0 text-txt-strong transition-colors group-hover:text-accent-fg" />
               </div>
-            </div>
-          </Button>
-
-          <Button
-            ref={importOpenRef}
-            variant="outline"
-            type="button"
-            onClick={openImportModal}
-            className="min-h-[5.5rem] h-auto rounded-sm border border-border/50 bg-card/60 p-5 text-left  transition-[transform,border-color,background-color,box-shadow] group hover:-translate-y-0.5 hover:border-accent "
-            aria-haspopup="dialog"
-            {...importOpenAgentProps}
-          >
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-sm border border-border/50 bg-bg-accent p-3 transition-all group-hover:border-accent group-hover:bg-accent">
-              <Upload className="h-5 w-5 shrink-0 text-txt transition-colors group-hover:text-accent-fg" />
-            </div>
-            <div>
-              <div className="font-medium text-sm">
-                {t("settings.importAgent")}
-              </div>
-            </div>
-          </Button>
-        </div>
-        <div className="border border-border/50 rounded-sm overflow-hidden bg-bg/40 ">
-          <div className="p-4 space-y-4">
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <div className="font-medium text-sm">Developer Mode</div>
-                <div className="text-xs text-muted">
-                  Show developer tools (logs, trajectory viewer, prompt
-                  artifacts) and developer-only apps in the nav.
-                </div>
-              </div>
-              <Label className="flex items-center gap-2 font-normal text-muted whitespace-nowrap">
-                <Checkbox
-                  ref={developerModeRef}
-                  checked={developerMode}
-                  onCheckedChange={(checked: boolean | "indeterminate") =>
-                    setDeveloperMode(!!checked)
-                  }
-                  aria-current={developerMode ? "true" : undefined}
-                  {...developerModeAgentProps}
-                />
-                <span>{developerMode ? "Enabled" : "Disabled"}</span>
-              </Label>
-            </div>
-          </div>
-        </div>
-        <div className="border border-danger/30 rounded-sm overflow-hidden bg-bg/40 ">
-          <div className="bg-danger/10 px-5 py-3 border-b border-danger/20 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-danger" />
-            <span className="font-bold text-sm text-danger tracking-wide uppercase">
-              {t("settings.dangerZone")}
-            </span>
-          </div>
-          <div className="p-4 space-y-4">
-            <div className="flex items-center justify-between">
               <div>
                 <div className="font-medium text-sm">
-                  {t("settings.resetAgent")}
-                </div>
-                <div className="text-xs text-muted">
-                  {t("settings.resetAgentHint")}
+                  {t("settings.exportAgent")}
                 </div>
               </div>
+            </Button>
+
+            <Button
+              ref={importOpenRef}
+              variant="outline"
+              type="button"
+              onClick={openImportModal}
+              className="min-h-[5.5rem] h-auto rounded-lg border border-border bg-card p-5 text-left transition-[transform,border-color,background-color,box-shadow] group hover:-translate-y-0.5 hover:border-accent"
+              aria-haspopup="dialog"
+              {...importOpenAgentProps}
+            >
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md border border-border bg-surface p-3 transition-all group-hover:border-accent group-hover:bg-accent">
+                <Upload className="h-5 w-5 shrink-0 text-txt-strong transition-colors group-hover:text-accent-fg" />
+              </div>
+              <div>
+                <div className="font-medium text-sm">
+                  {t("settings.importAgent")}
+                </div>
+              </div>
+            </Button>
+          </div>
+        </SettingsGroup>
+
+        <SettingsGroup>
+          <SettingsSwitchRow
+            agentId="advanced-developer-mode"
+            group="advanced"
+            label="Developer Mode"
+            description="Show developer tools (logs, trajectory viewer, prompt artifacts) and developer-only apps in the nav."
+            checked={developerMode}
+            onCheckedChange={(checked) => setDeveloperMode(checked)}
+          />
+        </SettingsGroup>
+
+        <SettingsGroup
+          title={
+            <span className="flex items-center gap-1.5 text-danger">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              {t("settings.dangerZone")}
+            </span>
+          }
+        >
+          <SettingsRow
+            icon={Trash2}
+            tone="danger"
+            label={t("settings.resetAgent")}
+            description={t("settings.resetAgentHint")}
+            control={
               <Button
                 ref={resetOpenRef}
                 variant="destructive"
@@ -263,10 +242,10 @@ export function AdvancedSection() {
               >
                 {t("settings.resetEverything")}
               </Button>
-            </div>
-          </div>
-        </div>
-      </div>
+            }
+          />
+        </SettingsGroup>
+      </SettingsStack>
 
       <Dialog
         open={exportModalOpen}
@@ -293,7 +272,7 @@ export function AdvancedSection() {
                 value={exportPassword}
                 onChange={(e) => setState("exportPassword", e.target.value)}
                 placeholder={t("settingsview.EnterExportPasswor")}
-                className="rounded-sm bg-bg"
+                className="h-11 rounded-sm bg-bg"
                 {...exportPasswordAgentProps}
               />
               <Label className="flex items-center gap-2 font-normal text-muted">
@@ -331,14 +310,17 @@ export function AdvancedSection() {
             )}
 
             <div className="flex items-center justify-end gap-2 pt-1">
-              <Button
+              <SettingsActionButton
+                agentId="backup-export-cancel"
+                agentGroup="advanced-export"
+                agentLabel={t("common.cancel")}
                 variant="outline"
                 size="sm"
                 className="min-h-[2.625rem] px-4 rounded-sm"
                 onClick={closeExportModal}
               >
                 {t("common.cancel")}
-              </Button>
+              </SettingsActionButton>
               <Button
                 ref={exportSubmitRef}
                 variant="default"
@@ -413,7 +395,7 @@ export function AdvancedSection() {
                 value={importPassword}
                 onChange={(e) => setState("importPassword", e.target.value)}
                 placeholder={t("settingsview.EnterImportPasswor")}
-                className="rounded-sm bg-bg"
+                className="h-11 rounded-sm bg-bg"
                 {...importPasswordAgentProps}
               />
             </div>
@@ -438,14 +420,17 @@ export function AdvancedSection() {
             )}
 
             <div className="flex items-center justify-end gap-2 pt-1">
-              <Button
+              <SettingsActionButton
+                agentId="backup-import-cancel"
+                agentGroup="advanced-import"
+                agentLabel={t("common.cancel")}
                 variant="outline"
                 size="sm"
                 className="min-h-[2.625rem] px-4 rounded-sm"
                 onClick={closeImportModal}
               >
                 {t("common.cancel")}
-              </Button>
+              </SettingsActionButton>
               <Button
                 ref={importSubmitRef}
                 variant="default"
@@ -483,14 +468,17 @@ export function AdvancedSection() {
               {t("settings.resetConfirmBody")}
             </p>
             <div className="flex items-center justify-end gap-2 pt-1">
-              <Button
+              <SettingsActionButton
+                agentId="backup-reset-cancel"
+                agentGroup="advanced-reset"
+                agentLabel={t("common.cancel")}
                 variant="outline"
                 size="sm"
                 className="min-h-[2.625rem] px-4 rounded-sm"
                 onClick={() => setResetConfirmOpen(false)}
               >
                 {t("common.cancel")}
-              </Button>
+              </SettingsActionButton>
               <Button
                 ref={resetConfirmRef}
                 variant="destructive"

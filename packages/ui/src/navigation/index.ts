@@ -43,6 +43,7 @@ export const COMPANION_ENABLED = viteEnvFlagEnabled(
 
 /** Built-in tab identifiers. */
 export type BuiltinTab =
+  | "onboarding"
   | "chat"
   | "phone"
   | "messages"
@@ -73,6 +74,8 @@ export type BuiltinTab =
   | "database"
   | "desktop"
   | "settings"
+  | "tutorial"
+  | "help"
   | "logs";
 
 /**
@@ -237,7 +240,16 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
   },
 ];
 
+// Canonical settings-section metadata (pure data) re-exported here so
+// non-renderer consumers (e.g. app-core's dev-route-catalog parity test) can
+// assert the QA catalog never drifts from the UI's section list.
+export {
+  SETTINGS_SECTION_META,
+  type SettingsSectionMeta,
+} from "../components/settings/settings-section-meta";
+
 export const TAB_PATHS: Record<BuiltinTab, string> = {
+  onboarding: "/onboarding",
   chat: "/chat",
   phone: "/phone",
   messages: "/messages",
@@ -268,6 +280,8 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   database: "/apps/database",
   desktop: "/desktop",
   settings: "/settings",
+  tutorial: "/tutorial",
+  help: "/help",
   logs: "/apps/logs",
 };
 
@@ -466,6 +480,8 @@ export function getAppSlugFromPath(
 
 export function titleForTab(tab: Tab): string {
   switch (tab) {
+    case "onboarding":
+      return "Onboarding";
     case "chat":
       return "Chat";
     case "phone":

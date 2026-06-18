@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { INITIAL_STARTUP_STATE, startupReducer } from "./startup-coordinator";
+import {
+  INITIAL_STARTUP_STATE,
+  isShellPaintable,
+  startupReducer,
+} from "./startup-coordinator";
+import { deriveAgentReady } from "./types";
 
 describe("startup coordinator", () => {
   it("starts by restoring session state", () => {
@@ -99,5 +104,73 @@ describe("startup coordinator", () => {
         { type: "RESET" },
       ),
     ).toEqual({ phase: "restoring-session" });
+  });
+});
+
+describe("isShellPaintable", () => {
+  it("paints the live shell once the agent boot is underway", () => {
+    expect(isShellPaintable("starting-runtime")).toBe(true);
+    expect(isShellPaintable("hydrating")).toBe(true);
+    expect(isShellPaintable("ready")).toBe(true);
+  });
+
+  it("keeps the full-screen StartupScreen for pre-shell + interactive phases", () => {
+    expect(isShellPaintable("restoring-session")).toBe(false);
+    expect(isShellPaintable("resolving-target")).toBe(false);
+    expect(isShellPaintable("polling-backend")).toBe(false);
+    expect(isShellPaintable("first-run-required")).toBe(false);
+    expect(isShellPaintable("pairing-required")).toBe(false);
+    expect(isShellPaintable("error")).toBe(false);
+  });
+});
+
+describe("deriveAgentReady", () => {
+  it("is false with no status", () => {
+    expect(deriveAgentReady(null)).toBe(false);
+  });
+
+  it("prefers the server-authoritative canRespond", () => {
+    expect(
+      deriveAgentReady({
+        state: "running",
+        agentName: "Eliza",
+        model: undefined,
+        canRespond: true,
+        uptime: undefined,
+        startedAt: undefined,
+      }),
+    ).toBe(true);
+    // running but no provider wired → canRespond:false keeps the composer gated
+    expect(
+      deriveAgentReady({
+        state: "running",
+        agentName: "Eliza",
+        model: "x",
+        canRespond: false,
+        uptime: undefined,
+        startedAt: undefined,
+      }),
+    ).toBe(false);
+  });
+
+  it("falls back to running+model when canRespond is absent (older agents)", () => {
+    expect(
+      deriveAgentReady({
+        state: "running",
+        agentName: "Eliza",
+        model: "gpt",
+        uptime: undefined,
+        startedAt: undefined,
+      }),
+    ).toBe(true);
+    expect(
+      deriveAgentReady({
+        state: "starting",
+        agentName: "Eliza",
+        model: undefined,
+        uptime: undefined,
+        startedAt: undefined,
+      }),
+    ).toBe(false);
   });
 });

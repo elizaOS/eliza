@@ -82,26 +82,11 @@ into a bundle's `tts/kokoro-coreml/` (see `KokoroCoreMlEngine.modelDirectory`).
   - NOT the AdaIN padding mask: identical with `F.interpolate(nearest)` and the
     `arange`-based exact mask.
   - NOT alignment/duration: those convert exactly.
-  → **LOCALIZED (staged-output diagnostic, `diag_stages.py`):** `F0_pred` matches
-  CoreML-vs-torch at **corr 1.0** (F0Ntrain + masked LSTM + masked AdaIN all
-  convert perfectly), but the hn-NSF **`har_source` is constant/dead in CoreML**
-  (corr = nan / zero variance). So the divergence is isolated to
-  **`istftnet.SineGen` (the harmonic source)** — **NOT** the iSTFT and **NOT**
-  F0Ntrain. Audio still scores 0.68 spectral because the spectral envelope from
-  `asr`→decoder survives; only the voiced harmonic excitation is lost
-  (→ halved amplitude, degraded voiced speech).
-  **Narrowed further (2nd diagnostic):** replacing the StyleTTS2
-  downsample→cumsum→upsample with a direct full-resolution `cumsum`+`sin` (NO
-  `F.interpolate`) left `har_source` corr = 0.001 — **still dead**. So the
-  culprit is **NOT `F.interpolate`**; it is `torch.cumsum`/`torch.sin` over the
-  long audio-rate axis (L≈96k) under coremltools — the phase accumulation
-  produces a constant. Next: output the pre-`sin` phase to confirm cumsum vs sin,
-  then replace with a coremltools-correct cumulative sum (e.g. a lower-triangular
-  matmul on the downsampled phase, or a segmented/blocked cumsum) and re-run
-  `diag_stages.py` until `har_source` corr ≈ 1.0.
-
-NOTE: with iOS TTS routed through OmniVoice (the tier default), this CoreML path
-is an **ANE-speed optimization, not a blocker** for working iOS voice.
+  → The divergence is in the vocoder's `F.interpolate(linear)` hn-NSF phase
+  resample (`istftnet.SineGen._f02sine`) and/or the `CustomSTFT` overlap-add,
+  where coremltools' resize/conv-transpose semantics differ from PyTorch.
+  Next step: stage F0Ntrain/decoder intermediate outputs to localize, then
+  replace the offending `F.interpolate`/iSTFT ops with conv/matmul equivalents.
 
 **Until parity lands, do NOT stage this `.mlmodelc` into a shipping bundle** —
 the iOS Swift `synthesizeSpeech` tries CoreML first, so a degraded model would

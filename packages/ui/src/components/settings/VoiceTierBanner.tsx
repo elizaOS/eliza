@@ -1,14 +1,7 @@
 /**
- * VoiceTierBanner — device-tier card (R10 §7) used in first-run step 2 and
- * at the top of the Settings → Voice section.
- *
- * Renders the four-tier hardware classification (MAX / GOOD / OKAY / POOR)
- * with R10 §3.2 copy. R9 owns the actual `tier` value (computed from
- * HardwareProbe); R10 just shows it.
- *
- * Defensive default: when the caller can't compute a tier yet, we render
- * the "GOOD" copy. The first-run step composes this with a "Continue" /
- * "Use cloud" CTA group depending on the tier.
+ * VoiceTierBanner — device-tier card shown in first-run and at the top of
+ * Settings → Voice. Renders the hardware classification (MAX / GOOD / OKAY /
+ * POOR); the caller computes and supplies the `tier`.
  */
 
 import { AlertTriangle, BadgeCheck, Gauge, Sparkles } from "lucide-react";
@@ -40,28 +33,27 @@ const TIER_COPY: Record<
   MAX: {
     title: "Your device can run everything at once.",
     description:
-      "Voice recognition, the language model, and natural speech can all stay loaded together. Conversations will feel instant.",
+      "Recognition, the language model, and speech all stay loaded together.",
     tone: "accent",
     icon: Sparkles,
   },
   GOOD: {
     title: "Your device can run the full voice stack.",
-    description:
-      "Models will load on demand. Expect roughly half a second between when you stop talking and when the agent starts responding.",
+    description: "Models load on demand — about half a second to respond.",
     tone: "ok",
     icon: BadgeCheck,
   },
   OKAY: {
     title: "Your device can run voice, but it will be slow.",
     description:
-      "Models will swap in and out of memory between turns. Expect 2-5 seconds of silence before the agent responds. Plugging in helps.",
+      "Models swap in and out between turns — expect 2-5 seconds before the agent responds.",
     tone: "warn",
     icon: Gauge,
   },
   POOR: {
     title: "Your device is below the recommended specs for local voice.",
     description:
-      "We'll route voice through Eliza Cloud instead so you don't wait minutes per turn. You can still capture your voice profile for speaker recognition.",
+      "Voice routes through Eliza Cloud instead. You can still capture a voice profile for speaker recognition.",
     tone: "danger",
     icon: AlertTriangle,
   },
@@ -116,7 +108,7 @@ export function VoiceTierBanner({
         <div className="flex flex-wrap items-center gap-2">
           <span
             className={cn(
-              "rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+              "rounded-full px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide",
               TONE_BADGE_CLASS[copy.tone],
             )}
             data-testid="voice-tier-badge"
@@ -138,7 +130,7 @@ export function VoiceTierBanner({
         </p>
         {summary ? (
           <p
-            className="mt-1 text-[11px] text-muted"
+            className="mt-1 text-xs text-muted"
             data-testid="voice-tier-summary"
           >
             {summary}

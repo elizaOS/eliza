@@ -92,15 +92,14 @@ export interface ResolvedCodingAccount {
   meta: CodingAccountMeta;
 }
 
-/**
- * Agent types that authenticate per pooled account. Only the first-party coding
- * CLIs with a real ACP adapter qualify: claude and codex. OpenCode/elizaos/
- * pi-agent authenticate through their own configured backend, and z.ai/Kimi/GLM
- * have no first-party coding CLI (their accounts serve the main runtime's
- * API-key routing). Keep this in sync with the app-core bridge's
- * AGENT_PROVIDER_CANDIDATES.
- */
-const MULTI_ACCOUNT_AGENT_TYPES = new Set(["claude", "codex"]);
+/** Agent types that authenticate per-account (the others are runtime/local). */
+const MULTI_ACCOUNT_AGENT_TYPES = new Set([
+  "claude",
+  "codex",
+  "zai",
+  "glm",
+  "kimi",
+]);
 
 export function isMultiAccountAgentType(agentType: string): boolean {
   return MULTI_ACCOUNT_AGENT_TYPES.has(agentType.toLowerCase());

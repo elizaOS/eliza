@@ -1,234 +1,258 @@
 /**
- * Universal slash-command registration for the Telegram connector.
+ * Universal slash-command catalog → Telegram native commands.
  *
- * Bridges the connector-neutral command catalog from `@elizaos/plugin-commands`
- * onto Telegraf's native command surface:
+ * Maps the connector-neutral command catalog from `@elizaos/plugin-commands`
+ * (`getConnectorCommands("telegram")`) onto Telegraf `bot.command(...)` handlers
+ * and the Telegram `/` menu (`setMyCommands`), so the same agent-capability and
+ * navigation commands the dashboard and Discord expose appear natively in
+ * Telegram.
  *
- *   - {@link buildTelegramSetMyCommands} produces the `setMyCommands` payload so
- *     the catalog appears in Telegram's `/`-menu.
- *   - {@link registerTelegramCommandHandlers} registers one `bot.command(name)`
- *     handler per catalog entry, BEFORE `bot.launch()`. Each handler interprets
- *     the command's `target`:
- *       - `agent`   → routes the full command text through the agent and forces
- *                     a reply even when `TELEGRAM_AUTO_REPLY` is off.
- *       - `navigate`→ replies with a short "open this in the Eliza app" hint,
- *                     plus a deep link when an app URL is configured.
- *       - `client`  → these are GUI/TUI-only and never surface for Telegram, so
- *                     this branch is defensive only.
+ * Per-target dispatch:
+ *   - `agent`    → the reconstructed command text (the user's `/command args`
+ *                  message) is routed through the agent's message pipeline via
+ *                  `MessageManager.handleMessage(ctx, { forceReply: true })`,
+ *                  the same path inbound messages take. `forceReply` bypasses
+ *                  the `TELEGRAM_AUTO_REPLY` gate because an explicit slash
+ *                  command is an explicit request for a response.
+ *   - `navigate` → replies describing the in-app destination, resolving the
+ *                  `/settings <section>` argument when present.
+ *   - `client`   → GUI/TUI-only behaviors have no Telegram surface; handled
+ *                  defensively with a short reply rather than crashing.
  *
- * Double-processing note:
- * Telegraf composes middleware sequentially. `bot.command(name, handler)` runs
- * the handler only when the command matches, and passes `next` INTO the handler
- * (see telegraf's `Composer.command`). Because our handlers never call `next()`,
- * a matched command terminates the middleware chain and the catch-all
- * `bot.on("message")` handler does NOT also fire for it. No ctx flag or manual
- * short-circuit is required — not calling `next()` is the idiomatic stop. The
- * existing `/eliza_pair` handler relies on the same property and is left intact
- * (we skip re-registering it).
+ * A matched `bot.command` handler never calls `next()`, so the catch-all
+ * message handler registered in `service.ts` does not also process command
+ * messages (no double-processing).
  */
 
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import {
   type ConnectorCommand,
   getConnectorCommands,
-  getTelegramBotCommands,
+  resolveSettingsSection,
 } from "@elizaos/plugin-commands";
 import type { Context, Telegraf } from "telegraf";
 import type { MessageManager } from "./messageManager";
 
-/** Command names already owned by other services; never re-register them. */
-const RESERVED_COMMAND_NAMES = new Set<string>(["eliza_pair", "start"]);
-
-/** Optional runtime settings that, when present, provide an app base URL. */
-const APP_URL_SETTING_KEYS = [
-  "ELIZA_APP_URL",
-  "MILADY_APP_URL",
-  "APP_BASE_URL",
-] as const;
-
 /**
- * The `setMyCommands` payload for the Telegram command menu. A thin re-export of
- * the catalog helper so callers depend on this module rather than reaching into
- * `@elizaos/plugin-commands` directly.
+ * Telegram command-name rules (Bot API `setMyCommands`): lowercase, 1-32 chars,
+ * only `a-z`, `0-9`, and `_`. Names that cannot be sanitized into this shape are
+ * dropped from the native surface.
  */
-export function buildTelegramSetMyCommands(): Array<{
-  command: string;
+const TELEGRAM_COMMAND_NAME_RE = /^[a-z0-9_]{1,32}$/;
+/** Telegram caps command descriptions at 256 characters. */
+const TELEGRAM_COMMAND_DESCRIPTION_MAX = 256;
+/** Telegram caps the published command menu at 100 commands. */
+const TELEGRAM_MAX_COMMANDS = 100;
+
+/** A catalog command projected onto Telegram's native command surface. */
+export interface TelegramCommandDescriptor {
+  /** Sanitized Telegram command name (without the leading slash). */
+  name: string;
+  /** Description, clamped to Telegram's 256-character limit. */
   description: string;
-}> {
-  return getTelegramBotCommands();
+  /** The originating catalog command. */
+  command: ConnectorCommand;
 }
 
 /**
- * Reads a configured app base URL from the runtime, if any. Returns null when no
- * app URL is configured — we never fabricate one (remote Telegram users have no
- * guaranteed app surface to navigate to).
+ * Sanitize a catalog command name into a Telegram-legal command name, or return
+ * `null` when no legal name can be derived (so it is dropped rather than
+ * rejected by Telegram at registration time).
  */
-function resolveAppBaseUrl(runtime: IAgentRuntime): string | null {
-  for (const key of APP_URL_SETTING_KEYS) {
-    const value = runtime.getSetting(key);
-    if (typeof value === "string" && value.trim()) {
-      return value.trim().replace(/\/+$/, "");
-    }
+function sanitizeCommandName(name: string): string | null {
+  const sanitized = name
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, "_")
+    .replace(/_{2,}/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 32);
+  return TELEGRAM_COMMAND_NAME_RE.test(sanitized) ? sanitized : null;
+}
+
+/** Clamp a description to Telegram's limit; a description is always required. */
+function clampDescription(description: string): string {
+  const trimmed = description.trim();
+  return trimmed.slice(0, TELEGRAM_COMMAND_DESCRIPTION_MAX);
+}
+
+/**
+ * Project the catalog onto Telegram command descriptors, deduped by sanitized
+ * name (first occurrence wins) and capped at Telegram's 100-command limit. Pure
+ * — no side effects.
+ */
+export function buildTelegramCommandDescriptors(): TelegramCommandDescriptor[] {
+  const out: TelegramCommandDescriptor[] = [];
+  const seen = new Set<string>();
+  for (const command of getConnectorCommands("telegram")) {
+    if (out.length >= TELEGRAM_MAX_COMMANDS) break;
+    const name = sanitizeCommandName(command.name);
+    if (!name || seen.has(name)) continue;
+    const description = clampDescription(command.description);
+    if (!description) continue;
+    seen.add(name);
+    out.push({ name, description, command });
   }
-  return null;
+  return out;
 }
 
-/**
- * Builds the plain-text reply for a `navigate` command. Telegram has no in-chat
- * app navigation, so we name the destination and append a deep link only when an
- * app base URL is configured. Pure function — unit-testable without a bot.
- */
-export function buildNavigateReply(
+/** Human-readable destination for a navigation target. */
+function describeNavigation(
   command: ConnectorCommand,
-  appBaseUrl: string | null,
+  sectionLabel?: string,
 ): string {
-  if (command.target.kind !== "navigate") {
-    throw new Error(
-      `buildNavigateReply called for non-navigate command "${command.name}"`,
-    );
-  }
-  const { section, path } = command.target;
-  const where = section ? `${command.name} → ${section}` : command.name;
-  if (appBaseUrl && path) {
-    const link = `${appBaseUrl}${path}`;
-    return `Open ${where} in the Eliza app: ${link}`;
-  }
-  return `Open ${where} in the Eliza app.`;
+  const target = command.target;
+  if (target.kind !== "navigate") return `Open ${command.name}.`;
+  const place = sectionLabel
+    ? `${command.name} → ${sectionLabel}`
+    : command.name;
+  const deepLink = target.path ? ` (${target.path})` : "";
+  return `Open ${place} in the Eliza app${deepLink}.`;
 }
 
 /**
- * The reply for a `client` command, which runs a pure-client behavior with no
- * agent round-trip. Client commands are GUI/TUI-only and are filtered out of the
- * Telegram surface, so this is defensive only.
+ * Extract the first positional argument from a Telegram command message. For
+ * `/settings appearance` this returns `appearance`. Returns `undefined` when the
+ * command was sent without arguments.
  */
-export function buildClientReply(command: ConnectorCommand): string {
-  return `/${command.name} isn't available on Telegram — use the Eliza app or terminal.`;
+function firstCommandArg(text: string): string | undefined {
+  const parts = text.trim().split(/\s+/);
+  // parts[0] is the `/command` (possibly `/command@botname`); the rest are args.
+  const arg = parts[1];
+  return arg && arg.length > 0 ? arg : undefined;
 }
 
 /**
- * Registers a `bot.command(...)` handler for every catalog command on the given
- * surface. Must be called BEFORE `bot.launch()`. Returns the list of command
- * names that were registered (excludes reserved/duplicate names).
- *
- * @param bot - The Telegraf instance for this account.
- * @param runtime - The agent runtime.
- * @param messageManager - The account's MessageManager, used to route `agent`
- *   commands through the runtime with a forced reply.
- * @param accountId - The Telegram account id (for log context).
+ * Build the Telegraf handler for a catalog command, branching on its target.
+ * The handler never calls `next()`, terminating the middleware chain so the
+ * catch-all message handler does not re-process the command.
+ */
+function buildCommandHandler(
+  descriptor: TelegramCommandDescriptor,
+  runtime: IAgentRuntime,
+  messageManager: MessageManager,
+  accountId: string,
+): (ctx: Context) => Promise<void> {
+  const { command } = descriptor;
+  const target = command.target;
+
+  if (target.kind === "navigate") {
+    return async (ctx: Context) => {
+      const text = ctx.message && "text" in ctx.message ? ctx.message.text : "";
+      let sectionLabel: string | undefined;
+      if (command.name === "settings") {
+        const raw = firstCommandArg(text);
+        if (raw) sectionLabel = resolveSettingsSection(raw) ?? raw;
+      }
+      await ctx.reply(describeNavigation(command, sectionLabel));
+    };
+  }
+
+  if (target.kind === "client") {
+    // GUI/TUI-only behaviors have no Telegram surface; the catalog should not
+    // emit them for remote connectors, so this branch is defensive only.
+    return async (ctx: Context) => {
+      await ctx.reply(
+        `/${descriptor.name} is only available in the Eliza app.`,
+      );
+    };
+  }
+
+  // target.kind === "agent": route the command message through the agent
+  // pipeline, forcing a reply since the user explicitly invoked the command.
+  return async (ctx: Context) => {
+    await messageManager.handleMessage(ctx, { forceReply: true });
+    logger.debug(
+      {
+        src: "plugin:telegram",
+        agentId: runtime.agentId,
+        accountId,
+        command: descriptor.name,
+      },
+      "Routed slash command to agent",
+    );
+  };
+}
+
+/**
+ * Register Telegraf `bot.command(...)` handlers for every catalog command.
+ * Returns the registered descriptors (the caller reads `.length`). Each handler
+ * routes per the command's target and never calls `next()`.
  */
 export function registerTelegramCommandHandlers(
   bot: Telegraf<Context>,
   runtime: IAgentRuntime,
   messageManager: MessageManager,
   accountId: string,
-): string[] {
-  const registered: string[] = [];
-  const seen = new Set<string>();
-
-  for (const command of getConnectorCommands("telegram")) {
-    if (RESERVED_COMMAND_NAMES.has(command.name) || seen.has(command.name)) {
-      continue;
-    }
-    seen.add(command.name);
-    registered.push(command.name);
-
-    bot.command(command.name, async (ctx) => {
-      await executeTelegramCommand(
-        command,
-        ctx,
-        runtime,
-        messageManager,
-        accountId,
-      );
+): TelegramCommandDescriptor[] {
+  const descriptors = buildTelegramCommandDescriptors();
+  for (const descriptor of descriptors) {
+    const handler = buildCommandHandler(
+      descriptor,
+      runtime,
+      messageManager,
+      accountId,
+    );
+    bot.command(descriptor.name, async (ctx) => {
+      try {
+        await handler(ctx);
+      } catch (error) {
+        logger.error(
+          {
+            src: "plugin:telegram",
+            agentId: runtime.agentId,
+            accountId,
+            command: descriptor.name,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Error handling slash command",
+        );
+        await ctx
+          .reply(`Could not run /${descriptor.name}.`)
+          .catch(() => undefined);
+      }
     });
   }
-
-  return registered;
+  return descriptors;
 }
 
 /**
- * Executes a single catalog command against a Telegraf context. Extracted from
- * the handler closure so it can be unit-tested directly with a mocked ctx,
- * runtime, and message manager.
- */
-export async function executeTelegramCommand(
-  command: ConnectorCommand,
-  ctx: Context,
-  runtime: IAgentRuntime,
-  messageManager: MessageManager,
-  accountId: string,
-): Promise<void> {
-  switch (command.target.kind) {
-    case "agent": {
-      // Explicit command = explicit intent: force a reply even when
-      // TELEGRAM_AUTO_REPLY is off. handleMessage rebuilds the memory from the
-      // command text (e.g. "/model gpt-5") and routes it to the message service.
-      await messageManager.handleMessage(ctx, { forceReply: true });
-      return;
-    }
-    case "navigate": {
-      const reply = buildNavigateReply(command, resolveAppBaseUrl(runtime));
-      await ctx.reply(reply);
-      return;
-    }
-    case "client": {
-      await ctx.reply(buildClientReply(command));
-      return;
-    }
-    default: {
-      // Exhaustiveness guard: a new CommandTarget kind would surface here.
-      logger.warn(
-        {
-          src: "plugin:telegram:commands",
-          agentId: runtime.agentId,
-          accountId,
-          command: command.name,
-          targetKind: (command.target as { kind: string }).kind,
-        },
-        "Unhandled command target kind; ignoring",
-      );
-      return;
-    }
-  }
-}
-
-/**
- * Pushes the catalog command menu to Telegram via `setMyCommands`. Network
- * failures are logged and swallowed — a transient Telegram outage must not crash
- * bot startup. Returns true on success, false when the call failed or there were
- * no commands to publish.
+ * Publish the catalog to Telegram's `/` command menu via `setMyCommands`.
+ *
+ * Failure is logged and swallowed: `setMyCommands` is a best-effort network
+ * call made during boot, and a transient API/network error must not crash the
+ * service. `service.ts` relies on this being non-throwing.
  */
 export async function applyTelegramSetMyCommands(
   bot: Telegraf<Context>,
   runtime: IAgentRuntime,
   accountId: string,
-): Promise<boolean> {
-  const commands = buildTelegramSetMyCommands();
-  if (commands.length === 0) {
-    return false;
-  }
+): Promise<void> {
+  const descriptors = buildTelegramCommandDescriptors();
+  if (descriptors.length === 0) return;
+  const commands = descriptors.map((descriptor) => ({
+    command: descriptor.name,
+    description: descriptor.description,
+  }));
   try {
     await bot.telegram.setMyCommands(commands);
     logger.debug(
       {
-        src: "plugin:telegram:commands",
+        src: "plugin:telegram",
         agentId: runtime.agentId,
         accountId,
         commandCount: commands.length,
       },
       "Published slash-command menu to Telegram",
     );
-    return true;
   } catch (error) {
     logger.warn(
       {
-        src: "plugin:telegram:commands",
+        src: "plugin:telegram",
         agentId: runtime.agentId,
         accountId,
         error: error instanceof Error ? error.message : String(error),
       },
-      "Failed to publish slash-command menu to Telegram (setMyCommands)",
+      "setMyCommands failed; slash-command menu not published",
     );
-    return false;
   }
 }

@@ -10,6 +10,7 @@ import {
   theme,
 } from "@elizaos/shared";
 import type { Command } from "commander";
+import { bootLap } from "../../boot-profile";
 import { runCommandWithRuntime } from "../cli-utils";
 
 const defaultRuntime = { error: console.error, exit: process.exit };
@@ -38,6 +39,7 @@ function shouldDisableAutoConnectionKey(): boolean {
 }
 
 async function startAction() {
+  bootLap("start:startAction entry");
   // Auto-generate a connection key only when binding to a network address
   // and no token is already configured. Localhost access stays open.
   const existingToken = resolveApiToken(process.env);

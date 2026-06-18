@@ -1,23 +1,69 @@
 /**
  * OWNER_GOALS — owner-set long-horizon life goals.
  *
- * STUB. Full implementation lives in
- *   plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts (OWNER_GOAL_ACTIONS,
- *   ownerGoalsAction). When the LifeOps decomposition lands the handler body
- *   moves here and `plugin-lifeops` re-exports this action.
+ * Self-contained goal CRUD surface backed by {@link GoalsService} (the goals
+ * back-end this plugin owns). Used in the PA-free deployment topology; when
+ * `@elizaos/plugin-personal-assistant` is loaded it registers its own richer
+ * `OWNER_GOALS` natural-language flow, which delegates to the same
+ * {@link GoalsService} CRUD methods.
+ *
+ * Dispatch: create | update | delete | review. The handler resolves the
+ * subaction + params (planner-trust path first, LLM extraction fallback) via
+ * `resolveActionArgs`, then calls the goals back-end.
  */
 
-import type {
-  Action,
-  ActionResult,
-  HandlerCallback,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-  State,
+import {
+  type Action,
+  type ActionResult,
+  type HandlerCallback,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type Memory,
+  resolveActionArgs,
+  type State,
+  type SubactionsMap,
 } from "@elizaos/core";
-
+import type { LifeOpsGoalRecord } from "@elizaos/shared";
+import { GoalsServiceError } from "../goal-normalize.ts";
+import { createOwnerGoalsService } from "../goals-runtime.ts";
 import { GOAL_ACTIONS, GOALS_CONTEXTS, GOALS_LOG_PREFIX } from "../types.ts";
+
+type GoalSubaction = (typeof GOAL_ACTIONS)[number];
+
+interface GoalActionParams {
+  id?: string;
+  title?: string;
+  description?: string;
+}
+
+const SUBACTIONS: SubactionsMap<GoalSubaction> = {
+  create: {
+    description: "Create a new owner long-horizon life goal.",
+    descriptionCompressed: "create owner long-horizon goal",
+    required: ["title"],
+    optional: ["description"],
+  },
+  update: {
+    description: "Update an existing owner goal by id.",
+    descriptionCompressed: "update owner goal by id",
+    required: ["id"],
+    optional: ["title", "description"],
+  },
+  delete: {
+    description: "Delete an owner goal by id.",
+    descriptionCompressed: "delete owner goal by id",
+    required: ["id"],
+  },
+  review: {
+    description: "Review the current state of an owner goal by id.",
+    descriptionCompressed: "review owner goal state by id",
+    required: ["id"],
+  },
+};
+
+function describeGoal(record: LifeOpsGoalRecord): string {
+  return record.goal.title;
+}
 
 export const ownerGoalsAction: Action = {
   name: "OWNER_GOALS",
@@ -61,29 +107,86 @@ export const ownerGoalsAction: Action = {
       required: false,
       schema: { type: "string" as const },
     },
-    {
-      name: "horizon",
-      description: "Time horizon: quarter | year | life | etc.",
-      required: false,
-      schema: { type: "string" as const },
-    },
   ],
   validate: async (_runtime: IAgentRuntime): Promise<boolean> => true,
   handler: async (
-    _runtime: IAgentRuntime,
-    _message: Memory,
-    _state?: State,
-    _options?: HandlerOptions,
-    _callback?: HandlerCallback,
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    options?: HandlerOptions,
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    // TODO(migrate): copy the OWNER_GOALS dispatch from
-    // plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts (search for
-    // OWNER_GOAL_ACTIONS / ownerGoalsAction). The handler should resolve the
-    // owner scope, call into the goals repository, and emit a callback line.
-    return {
-      success: false,
-      text: `${GOALS_LOG_PREFIX} OWNER_GOALS not yet implemented (scaffold stub)`,
-      data: { action: "noop", reason: "scaffold_stub" },
-    };
+    const resolved = await resolveActionArgs<GoalSubaction, GoalActionParams>({
+      runtime,
+      message,
+      state,
+      options,
+      actionName: "OWNER_GOALS",
+      subactions: SUBACTIONS,
+    });
+    if (!resolved.ok) {
+      await callback?.({ text: resolved.clarification });
+      return {
+        success: false,
+        text: resolved.clarification,
+        data: { action: "clarify", missing: resolved.missing },
+      };
+    }
+
+    const service = createOwnerGoalsService(runtime);
+    const { subaction, params } = resolved;
+
+    try {
+      switch (subaction) {
+        case "create": {
+          const record = await service.createGoal({
+            title: params.title ?? "",
+            description: params.description,
+          });
+          const text = `Added goal "${describeGoal(record)}".`;
+          await callback?.({ text });
+          return { success: true, text, data: { action: "create", record } };
+        }
+        case "update": {
+          const record = await service.updateGoal(params.id ?? "", {
+            ...(params.title !== undefined ? { title: params.title } : {}),
+            ...(params.description !== undefined
+              ? { description: params.description }
+              : {}),
+          });
+          const text = `Updated goal "${describeGoal(record)}".`;
+          await callback?.({ text });
+          return { success: true, text, data: { action: "update", record } };
+        }
+        case "delete": {
+          const record = await service.getGoal(params.id ?? "");
+          await service.deleteGoal(params.id ?? "");
+          const text = `${describeGoal(record)} is off your goals list.`;
+          await callback?.({ text });
+          return {
+            success: true,
+            text,
+            data: { action: "delete", id: params.id },
+          };
+        }
+        case "review": {
+          const record = await service.getGoal(params.id ?? "");
+          const text = `Goal "${describeGoal(record)}" is ${record.goal.reviewState.replace(/_/g, " ")} (status: ${record.goal.status}).`;
+          await callback?.({ text });
+          return { success: true, text, data: { action: "review", record } };
+        }
+      }
+    } catch (error) {
+      if (error instanceof GoalsServiceError) {
+        const text = `${GOALS_LOG_PREFIX} ${error.message}`;
+        await callback?.({ text });
+        return {
+          success: false,
+          text,
+          data: { action: subaction, error: error.message },
+        };
+      }
+      throw error;
+    }
   },
 };

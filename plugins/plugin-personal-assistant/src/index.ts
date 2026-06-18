@@ -38,7 +38,7 @@ export {
 } from "./lifeops/approval-queue.js";
 export * from "./lifeops/index.js";
 export * from "./lifeops/messaging/index.js";
-export { detectRemoteDesktopBackend } from "./lifeops/remote-desktop.js";
+export { detectRemoteDesktopBackend } from "@elizaos/plugin-remote-desktop";
 export { LifeOpsRepository } from "./lifeops/repository.js";
 export { LifeOpsService, LifeOpsServiceError } from "./lifeops/service.js";
 export * from "./platform/index.js";

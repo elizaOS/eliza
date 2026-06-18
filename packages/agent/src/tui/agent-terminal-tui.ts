@@ -180,7 +180,9 @@ class AgentTerminalView implements Component {
   render(width: number): string[] {
     if (this.mode === "detail" && this.detailView) {
       const header = [
-        ansi.bold(`elizaOS terminal tui · ${this.selectedView?.label ?? "view"}`),
+        ansi.bold(
+          `elizaOS terminal tui · ${this.selectedView?.label ?? "view"}`,
+        ),
         ansi.dim("esc/q returns to views · this is the live view render"),
         "",
       ];

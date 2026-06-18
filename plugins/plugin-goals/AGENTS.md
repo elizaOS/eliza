@@ -18,8 +18,13 @@ The plugin is opt-in — add it to the agent's plugin list. It depends on
 ## Plugin surface
 
 ### Actions
-- **`OWNER_GOALS`** (`src/actions/goals.ts`) — create / update / delete /
-  review long-horizon life goals.
+- **`OWNER_GOALS`** (`src/actions/goals.ts`) — **real**: create / update /
+  delete / review long-horizon life goals. Resolves the subaction + params via
+  `resolveActionArgs` (`@elizaos/core`) and dispatches to the goals back-end
+  (`GoalsService`). Owner-scoped (ADMIN). When `@elizaos/plugin-personal-assistant`
+  is loaded it registers its own richer natural-language `OWNER_GOALS` flow
+  first (first-registration wins), which delegates to the same `GoalsService`
+  CRUD; this self-contained action is the PA-free topology surface.
 - **`OWNER_ROUTINES`** (`src/actions/routines.ts`) — recurring routines
   (daily / weekly / custom cadence). Default packs come from
   `plugin-lifeops/src/default-packs/daily-rhythm.ts` and `habit-starters.ts`
@@ -33,6 +38,31 @@ The plugin is opt-in — add it to the agent's plugin list. It depends on
 All four are currently **scaffold stubs**; handlers return
 `success: false` with a `scaffold_stub` reason and include a `TODO(migrate)`
 pointer back to the LifeOps source.
+
+### Back-end (the goal domain home)
+- **`GoalsService`** (`src/goals-service.ts`) — goal CRUD (`createGoal` /
+  `updateGoal` / `getGoal` / `listGoals` / `deleteGoal`) + near-duplicate dedup
+  + similarity scoring (`scoreGoalSimilarity`). Standalone successor to the goal
+  CRUD half of PA's `withGoals` mixin; holds its own runtime +
+  `GoalsRepository`. Throws `GoalsServiceError` (HTTP status) on invalid input.
+  Takes two PA-owned concerns as injected hooks: `recordAudit` (the shared
+  `app_lifeops` audit store) and `normalizeOwnership` (PA domain / identity
+  rules). Cross-domain goal review / overview / experience-loop logic is NOT
+  here — it aggregates PA's definition / occurrence / reminder / calendar graph
+  and stays in PA's `withGoals` mixin, which delegates its goal CRUD here.
+- **`GoalsRepository`** (`src/db/goals-repository.ts`) — raw SQL over the goal
+  tables. The tables (`life_goal_definitions` / `life_goal_links`) stay
+  registered by PA in the `app_lifeops` schema (the "inbox pattern" — shared
+  schema, no migration) because PA's reminder/scheduling subsystem also reads +
+  writes goal links; this repository reaches them through the runtime DB handle
+  via the self-contained `src/db/sql.ts` helpers.
+- **`goal-grounding.ts`** / **`goal-semantic-evaluator.ts`** — goal grounding
+  metadata + the LLM-backed `evaluateGoalProgressWithLlm`. PA re-exports these
+  from here for back-compat (`plugin-personal-assistant/src/lifeops/goal-grounding.ts`
+  is now a thin shim).
+- **`createOwnerGoalsService`** (`src/goals-runtime.ts`) — builds a
+  `GoalsService` for the standalone action/routes with default owner-scope
+  hooks (PA-free topology).
 
 ### Services
 - **`GoalsCheckinService`** (`src/services/checkin.ts`) — daily check-in
@@ -56,8 +86,13 @@ src/
   index.ts                       Public barrel
   plugin.ts                      Plugin object (actions, service, schema, views)
   types.ts                       Action enums, contexts, scope, log prefix
+  goals-service.ts               GoalsService (goal CRUD + dedup + scoring)
+  goals-runtime.ts               createOwnerGoalsService + owner-scope hooks
+  goal-normalize.ts              GoalsServiceError + input normalizers (self-contained)
+  goal-grounding.ts              Goal grounding / semantic-review metadata helpers
+  goal-semantic-evaluator.ts     evaluateGoalProgressWithLlm (LLM goal review)
   actions/
-    goals.ts                     OWNER_GOALS (stub)
+    goals.ts                     OWNER_GOALS (real — CRUD via GoalsService)
     routines.ts                  OWNER_ROUTINES (stub)
     reminders.ts                 OWNER_REMINDERS (stub)
     alarms.ts                    OWNER_ALARMS (stub)
@@ -66,6 +101,8 @@ src/
   db/
     index.ts                     Re-exports schema
     schema.ts                    Drizzle pgSchema('app_goals')
+    sql.ts                       Self-contained raw-SQL helpers (runtime DB)
+    goals-repository.ts          GoalsRepository (raw SQL over app_lifeops.life_goal_*)
   components/
     goals/
       GoalsView.tsx              React view (sections + self-care)
@@ -101,13 +138,35 @@ bun run --cwd plugins/plugin-goals clean         # rm -rf dist
 `plugin-lifeops` keeps its own copies for now; the actions there will
 re-export from this package once the bodies move.
 
+## Boundary with plugin-personal-assistant
+
+- `@elizaos/plugin-goals` MUST NOT import `@elizaos/plugin-personal-assistant`
+  (verify: `rg 'from "@elizaos/plugin-personal-assistant"' plugins/plugin-goals/src`
+  stays empty). Shared contract types come from `@elizaos/shared`.
+- PA owns the goal **tables** (`life_goal_definitions` / `life_goal_links` in
+  `app_lifeops`) because its reminder/scheduling subsystem also reads + writes
+  goal links. PA delegates its goal CRUD to this plugin's `GoalsService` (so the
+  `/api/lifeops/goals*` routes + the `GoalsView` wire shape stay byte-identical),
+  and re-exports the goal grounding/evaluator modules from here. PA does NOT
+  auto-register this plugin (its `app_goals` schema + stub actions are the
+  decomposed PA-free topology); it imports the `GoalsService` class directly.
+- Cross-domain goal **review / overview / experience-loop** stays in PA's
+  `withGoals` mixin (it aggregates the definition / occurrence / reminder /
+  calendar graph PA owns).
+
 ## Conventions / gotchas
 
 - **Schema namespace is `app_goals`.** Do not collide with other
   decomposed plugins; keep all goals/routine/reminder/alarm/checkin tables in
-  this namespace.
-- **Actions are scaffold stubs.** They register and validate but return a
-  `scaffold_stub` reason. Real bodies come during the migration pass.
+  this namespace. NOTE: the goal CRUD back-end deliberately reads/writes PA's
+  `app_lifeops.life_goal_*` tables (shared with reminders), NOT `app_goals`.
+- **`src/db/sql.ts` is a self-contained copy** of PA's raw-SQL helpers (so the
+  back-end carries no PA dependency). Keep it in sync only if a correctness fix
+  applies to both; do not add goals-specific logic.
+- **OWNER_GOALS is real; the other three actions are scaffold stubs.**
+  `OWNER_ROUTINES` / `OWNER_REMINDERS` / `OWNER_ALARMS` still register and
+  validate but return a `scaffold_stub` reason. Real bodies come during the
+  later migration passes.
 - **View bundles separately.** `build:views` (Vite) produces
   `dist/views/bundle.js`. The `bundlePath` on the view registration points
   there. The tsup `build:js` and the vite `build:views` are independent.

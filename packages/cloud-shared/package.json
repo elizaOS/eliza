@@ -28,7 +28,8 @@
     "db:migrate": "bun run ../../packages/scripts/cloud/admin/migrate-with-diagnostics.ts",
     "db:migrate:drizzle": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "pglite:server": "bun run ../../packages/scripts/cloud/admin/dev/pglite-server.ts"
+    "pglite:server": "bun run ../../packages/scripts/cloud/admin/dev/pglite-server.ts",
+    "generate:email-templates": "node scripts/generate-email-templates.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.72",

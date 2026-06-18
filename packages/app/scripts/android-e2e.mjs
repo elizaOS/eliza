@@ -63,10 +63,22 @@ const VOICE_MODELS = (() => {
     path.join(home, ".local/state/milady/local-inference/models/omnivoice");
   const dev = "/data/data/ai.elizaos.app/files/.eliza/local-inference/models";
   return [
-    { host: path.join(asrDir, "eliza-1-asr.gguf"), dev: `${dev}/asr/eliza-1-asr.gguf` },
-    { host: path.join(asrDir, "eliza-1-asr-mmproj.gguf"), dev: `${dev}/asr/eliza-1-asr-mmproj.gguf` },
-    { host: path.join(ttsDir, "omnivoice-base-q4_k_m.gguf"), dev: `${dev}/tts/omnivoice-base-q4_k_m.gguf` },
-    { host: path.join(ttsDir, "omnivoice-tokenizer-q4_k_m.gguf"), dev: `${dev}/tts/omnivoice-tokenizer-q4_k_m.gguf` },
+    {
+      host: path.join(asrDir, "eliza-1-asr.gguf"),
+      dev: `${dev}/asr/eliza-1-asr.gguf`,
+    },
+    {
+      host: path.join(asrDir, "eliza-1-asr-mmproj.gguf"),
+      dev: `${dev}/asr/eliza-1-asr-mmproj.gguf`,
+    },
+    {
+      host: path.join(ttsDir, "omnivoice-base-q4_k_m.gguf"),
+      dev: `${dev}/tts/omnivoice-base-q4_k_m.gguf`,
+    },
+    {
+      host: path.join(ttsDir, "omnivoice-tokenizer-q4_k_m.gguf"),
+      dev: `${dev}/tts/omnivoice-tokenizer-q4_k_m.gguf`,
+    },
   ];
 })();
 
@@ -79,9 +91,13 @@ const VOICE_MODELS = (() => {
 function stageVoiceModels(adb, serial) {
   const toStage = VOICE_MODELS.filter((m) => {
     if (!fs.existsSync(m.host)) return false;
-    const probe = spawnSync(adb, ["-s", serial, "shell", "stat", "-c", "%s", m.dev], {
-      encoding: "utf8",
-    });
+    const probe = spawnSync(
+      adb,
+      ["-s", serial, "shell", "stat", "-c", "%s", m.dev],
+      {
+        encoding: "utf8",
+      },
+    );
     return (probe.stdout ?? "").trim() !== String(fs.statSync(m.host).size);
   });
   const missingHost = VOICE_MODELS.filter((m) => !fs.existsSync(m.host));
@@ -97,20 +113,48 @@ function stageVoiceModels(adb, serial) {
     log("voice models already staged on device.");
     return;
   }
-  const devModels = "/data/data/ai.elizaos.app/files/.eliza/local-inference/models";
-  spawnSync(adb, ["-s", serial, "shell", "mkdir", "-p", `${devModels}/asr`, `${devModels}/tts`], {
-    stdio: "ignore",
-  });
+  const devModels =
+    "/data/data/ai.elizaos.app/files/.eliza/local-inference/models";
+  spawnSync(
+    adb,
+    [
+      "-s",
+      serial,
+      "shell",
+      "mkdir",
+      "-p",
+      `${devModels}/asr`,
+      `${devModels}/tts`,
+    ],
+    {
+      stdio: "ignore",
+    },
+  );
   for (const m of toStage) {
     log(`staging voice model ${path.basename(m.host)}…`);
-    const res = spawnSync(adb, ["-s", serial, "push", m.host, m.dev], { stdio: "inherit" });
+    const res = spawnSync(adb, ["-s", serial, "push", m.host, m.dev], {
+      stdio: "inherit",
+    });
     if (res.status !== 0) {
       throw new Error(`adb push ${m.host} exited with code ${res.status}`);
     }
   }
-  spawnSync(adb, ["-s", serial, "shell", "chmod", "-R", "755", `${devModels}/asr`, `${devModels}/tts`], {
-    stdio: "ignore",
-  });
+  spawnSync(
+    adb,
+    [
+      "-s",
+      serial,
+      "shell",
+      "chmod",
+      "-R",
+      "755",
+      `${devModels}/asr`,
+      `${devModels}/tts`,
+    ],
+    {
+      stdio: "ignore",
+    },
+  );
   log(`voice models staged for on-device ASR/TTS (${toStage.length} pushed).`);
 }
 

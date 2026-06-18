@@ -52,15 +52,15 @@ time-budget flush (700 ms default).**
    only by speculative-on-pause (`turn-controller.ts:276-284`) which runs off the
    *partial* transcript and is discarded if it changes.
 2. **Phrase-chunker time-budget flush = up to 700 ms first-audio delay** on token
-   streams without early punctuation (`phrase-chunker.ts:28-46`,
-   `ELIZA_PHRASE_FLUSH_MS`; timeout-flush at `:131-135`). The 8-token cap helps but
-   punctuation-sparse replies still wait.
+   streams without early punctuation (`phrase-chunker.ts:39-46`,
+   `ELIZA_PHRASE_FLUSH_MS`). The 8-token cap helps but punctuation-sparse replies
+   still wait.
 3. **MTP reject → TTS rollback re-synthesis** (`pipeline.ts:398-410`,
    `scheduler.reject`). Speculatively-synthesized chunks are dropped when the
    verifier rejects the draft tail; the corrected tokens re-synthesize.
-4. **Per-chunk `await` serializes token→TTS fanout** (`engine.ts:2277-2289`):
-   each accepted token `await`s the previous scheduler push (a serial promise
-   chain) before the next chunk is processed.
+4. **Per-chunk `await` serializes token→TTS fanout** (`engine.ts:2340-2351`,
+   `2275-2281`): each accepted token `await`s the previous scheduler push (a
+   serial promise chain) before the next chunk is processed.
 
 ### Memory / eviction
 5. **One model per role, unload-then-load on every modality swap** (`memory-arbiter.ts:505-526`,
@@ -68,43 +68,35 @@ time-budget flush (700 ms default).**
    unload+load (seconds), even when both fit RAM. Different roles can co-reside,
    but the conservative swap policy + `waitForRefcountZero` microtask poll
    (`memory-arbiter.ts:583-597`) stalls swaps.
-6. **Vision is a separate arbiter role but has no standalone model** (`service.ts:505-554`,
-   role registration `:146`): vision-describe reuses the text bundle's projector and
-   is co-resident with text. The separate `vision` role exists only for memory
-   tracking/priority — it cannot load standalone (evicting text unloads the projector,
-   leaving vision with nothing to run). Correctness note (verified): this is a role
-   abstraction, **not** an independent-load bug; the win is to keep vision pinned to
-   the text bundle's lifecycle rather than tracking it as if separately loadable.
+6. **Vision projector lost on text unload** (`service.ts:505-554`): vision-describe
+   delegates to the text model's projector, but the arbiter models it as a
+   separate `vision` role — if text is evicted first, vision must load a standalone
+   model.
 7. **RAM budget re-derived per load** (`ram-budget.ts:158-179`): manifest read +
    KV synthesis on every load decision, uncached.
 
 ### iOS-specific
-8. **ASR PCM shipped as a JSON number array over stdio** (`bridge.ts` — type
-   `:191-194`, ASR handler `:2582-2585`): 1 s @ 16 kHz = 16k floats ≈ **~100 KB+
-   JSON vs 64 KB binary**, plus parse cost. Should be base64 / binary.
-9. **No token streaming across the JS↔native IPC** (`bridge.ts:1790-1819`):
-   `llama_generate` returns the whole completion in one `host_result`, then passes
-   it to onStreamChunk as a single chunk. TTS gets early-token fanout only on the
-   desktop in-process path; iOS waits for the full text before the message handler acts.
+8. **ASR PCM shipped as a JSON number array over stdio** (`bridge.ts:2480-2487`):
+   1 s @ 16 kHz = 16k floats ≈ **~100 KB+ JSON vs 64 KB binary**, plus parse cost.
+   Should be base64 / binary.
+9. **No token streaming across the JS↔native IPC** (`bridge.ts:1733-1762`):
+   `llama_generate` returns the whole completion in one `host_result`. TTS gets
+   early-token fanout only on the desktop in-process path; iOS waits for the full
+   text before the message handler acts.
 10. **No KV-cache quantization default on iOS** (`LlamaBridgeImpl.swift:682-687`):
     f16 KV doubles per-model RAM vs q8_0, pushing the MTP/co-residency threshold up.
-11. **No runtime memory arbiter on iOS** (`LlamaBridgeImpl.swift:1507-1565`,
-    `hardwareInfo`/`availableMemoryGB`): a single ~3 GB free-RAM capability probe
-    gates MTP; no per-request rebalance, no jetsam-warning handler. (The TS
-    `MemoryArbiter` does not run in the iOS native bridge.)
+11. **MemoryArbiter not active on iOS** (`LlamaBridgeImpl.swift:1466-1490`): a single
+    3 GB free-RAM check gates MTP; no jetsam-warning handler, no per-request rebalance.
 12. **TTS round-trips through a temp WAV file** (`LlamaBridgeImpl.swift:1310-1315`).
 
 ### Streaming / engine
 13. **No KV reuse across stateless turns** (`engine.ts:721-723`): the default
     session resets chat history each turn → full prompt re-prefill. Conversation-
     pinned `cacheKey` slots avoid this; voice partials do not.
-14. **MTP is a runtime/engine concern, not catalog-gated** (`catalog.ts:493-506`):
-    the catalog declares MTP support **uniformly** across tiers — 0.8B uses
-    **same-file MTP** (`:494-495`), not a separate DFlash drafter (the `TIER_DRAFTERS`
-    entries at `:595-609` are hidden, runtime-role-gated; `:458-460` confirms no
-    separate drafter component for these tiers). Correctness note (verified): the
-    "only the fused backend speculates" behavior lives in the engine/backend, **not**
-    in `catalog.ts`; do not attribute the gating to the catalog.
+14. **MTP active only on the FFI/fused backend, not node-llama-cpp** (`catalog.ts:493-506`):
+    Mac in-process (node-llama-cpp) gets no speculative decoding; only the fused
+    `libelizainference`/llama-server path does. 0.8B *does* get MTP on the fused path
+    (DFlash drafter, `catalog.ts:595-609`) despite older docs saying otherwise.
 
 ---
 

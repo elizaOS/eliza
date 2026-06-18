@@ -5,7 +5,6 @@ import {
   requiresHeadscaleRoute,
   resolveContainerPort,
   resolveDockerSandboxImage,
-  shouldCleanupHeadscaleVpn,
 } from "../docker-sandbox-provider";
 
 const savedEnv = { ...process.env };
@@ -119,27 +118,6 @@ describe("headscaleVpnEnabled", () => {
     };
     expect(requiresHeadscaleRoute(env)).toBe(false);
     expect(headscaleVpnEnabled(env)).toBe(false);
-  });
-});
-
-describe("shouldCleanupHeadscaleVpn", () => {
-  test("cleans up only when VPN is enabled and a registered node name is present", () => {
-    expect(shouldCleanupHeadscaleVpn({ HEADSCALE_API_KEY: "secret" }, "agent-org-example")).toBe(
-      true,
-    );
-    expect(shouldCleanupHeadscaleVpn({ HEADSCALE_API_KEY: "secret" }, undefined)).toBe(false);
-  });
-
-  test("does not clean up fallback-mode containers even when an API key is configured", () => {
-    expect(
-      shouldCleanupHeadscaleVpn(
-        {
-          HEADSCALE_API_KEY: "secret",
-          AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: "1",
-        },
-        "agent-org-example",
-      ),
-    ).toBe(false);
   });
 });
 

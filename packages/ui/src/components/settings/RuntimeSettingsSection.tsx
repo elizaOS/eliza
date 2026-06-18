@@ -1,9 +1,6 @@
-/**
- * Runtime Settings Section.
- */
-
 import { Cloud, Laptop, type LucideIcon, RadioTower } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import {
   inspectExistingElizaInstall,
   migrateDesktopStateDir,
@@ -24,7 +21,48 @@ import {
   inferAgentRuntimeTarget,
 } from "../../state/agent-runtime-target";
 import { loadPersistedActiveServer } from "../../state/persistence";
-import { Button } from "../ui/button";
+import { SettingsActionButton } from "./settings-agent-rows";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
+
+function RuntimeModeRow({
+  target,
+  icon,
+  label,
+  description,
+  active,
+  disabled,
+  onSelect,
+}: {
+  target: FirstRunReloadTarget;
+  icon: LucideIcon;
+  label: string;
+  description?: string;
+  active: boolean;
+  disabled: boolean;
+  onSelect: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `runtime-mode-${target}`,
+    role: "card",
+    label,
+    description,
+    group: "runtime-mode",
+    status: active ? "active" : "inactive",
+    onActivate: disabled ? undefined : onSelect,
+  });
+  return (
+    <SettingsRow
+      icon={icon}
+      label={label}
+      description={description}
+      active={active}
+      disabled={disabled}
+      onClick={onSelect}
+      buttonRef={ref}
+      buttonProps={agentProps}
+    />
+  );
+}
 
 type RuntimeAction = {
   target: FirstRunReloadTarget;
@@ -44,10 +82,8 @@ export function RuntimeSettingsSection() {
   const [migrationMessage, setMigrationMessage] = useState<string | null>(null);
   const [migrationBusy, setMigrationBusy] = useState(false);
 
-  // Prefer the authoritative server snapshot (`GET /api/runtime/mode`).
-  // Fall back to the local heuristic when the snapshot is loading or the
-  // endpoint is unreachable — older builds and offline shells still need
-  // a sensible label.
+  // Prefer the authoritative server snapshot (`GET /api/runtime/mode`); fall
+  // back to the local heuristic when it is loading or unreachable.
   const currentRuntime = useMemo(() => {
     const fallback = inferAgentRuntimeTarget({
       activeServer: loadPersistedActiveServer(),
@@ -67,11 +103,8 @@ export function RuntimeSettingsSection() {
       })
     : undefined;
 
-  // The Play-Store-compliant Android build (`build:android:cloud`) ships
-  // without the on-device agent runtime, so the Local option must be
-  // hidden — selecting it would point the renderer at a loopback agent
-  // that physically isn't there. The default sideload Android build, the
-  // AOSP system build, iOS, and desktop all keep local first-run setup.
+  // The Play-Store Android build (`build:android:cloud`) ships without an
+  // on-device agent runtime, so the Local option must be hidden there.
   const cloudOnly = isAndroidCloudBuild();
 
   const actions = useMemo<RuntimeAction[]>(() => {
@@ -181,83 +214,97 @@ export function RuntimeSettingsSection() {
   }, [t]);
 
   return (
-    <div className="flex flex-col gap-4 p-4 sm:p-5">
-      <div className="text-sm font-medium text-foreground">
-        {t("settings.runtime.currentMode", {
+    <SettingsStack>
+      <SettingsGroup
+        title={t("settings.runtime.modeGroupTitle", {
+          defaultValue: "Runtime",
+        })}
+        description={t("settings.runtime.currentMode", {
           defaultValue: "Current mode: {{mode}}",
           mode: currentRuntime.label,
         })}
-      </div>
-      <div
-        className={
-          actions.length === 2
-            ? "grid gap-2 sm:grid-cols-2"
-            : "grid gap-2 sm:grid-cols-3"
-        }
       >
         {actions.map((action) => {
-          const Icon = action.icon;
           const active = currentRuntime.kind === action.target;
           const disabled = action.disabled === true;
           return (
-            <Button
+            <RuntimeModeRow
               key={action.target}
-              onClick={() => handleSwitch(action.target)}
-              variant={active ? "default" : "outline"}
-              size="sm"
+              target={action.target}
+              icon={action.icon}
+              label={action.label}
+              description={
+                disabled ? action.disabledReason : action.description
+              }
+              active={active}
               disabled={disabled}
-              title={action.disabledReason}
-              className="h-auto justify-start gap-2 px-3 py-2 text-left"
-            >
-              <Icon className="size-4 shrink-0" aria-hidden="true" />
-              <span className="truncate text-sm font-medium">
-                {action.label}
-              </span>
-            </Button>
+              onSelect={() => handleSwitch(action.target)}
+            />
           );
         })}
-      </div>
+      </SettingsGroup>
+
       {storeBuild ? (
-        <div className="space-y-2 text-xs text-foreground/60">
-          <p>
-            {t("settings.runtime.localDisabledStoreNote", {
-              defaultValue:
-                "This is the store-distributed build, which runs in a sandbox. ",
-            })}
-            <a
-              href={STORE_LOCAL_DISABLED_DOCS_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="underline"
-            >
-              {t("settings.runtime.localDisabledStoreLink", {
-                defaultValue: "Why?",
+        <SettingsGroup
+          title={t("settings.runtime.sandboxGroupTitle", {
+            defaultValue: "Sandbox build",
+          })}
+          footer={
+            <>
+              {t("settings.runtime.localDisabledStoreNote", {
+                defaultValue: "This store build runs in a sandbox. ",
               })}
-            </a>
-          </p>
+              <a
+                href={STORE_LOCAL_DISABLED_DOCS_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="text-accent underline"
+              >
+                {t("settings.runtime.localDisabledStoreLink", {
+                  defaultValue: "Why?",
+                })}
+              </a>
+            </>
+          }
+        >
           {isElectrobunRuntime() ? (
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <Button
+            <SettingsRow
+              label={t("settings.runtime.importDirectState", {
+                defaultValue: "Import direct-build data",
+              })}
+              description={migrationMessage ?? undefined}
+              stacked
+            >
+              <SettingsActionButton
+                agentId="runtime-import-direct-state"
+                agentLabel={t("settings.runtime.importDirectState", {
+                  defaultValue: "Import direct-build data",
+                })}
+                agentStatus={migrationBusy ? "busy" : undefined}
                 type="button"
                 variant="outline"
-                size="sm"
                 onClick={() => void handleImportDirectState()}
                 disabled={migrationBusy}
-                className="w-fit"
+                className="h-11 w-fit rounded-md px-4 text-sm"
               >
                 {migrationBusy
                   ? t("settings.runtime.importingDirectState", {
-                      defaultValue: "Importing...",
+                      defaultValue: "Importing…",
                     })
                   : t("settings.runtime.importDirectState", {
                       defaultValue: "Import direct-build data",
                     })}
-              </Button>
-              {migrationMessage ? <span>{migrationMessage}</span> : null}
-            </div>
-          ) : null}
-        </div>
+              </SettingsActionButton>
+            </SettingsRow>
+          ) : (
+            <SettingsRow
+              label={t("settings.runtime.sandboxNote", {
+                defaultValue: "Local agent is unavailable in this build.",
+              })}
+            />
+          )}
+        </SettingsGroup>
       ) : null}
-    </div>
+    </SettingsStack>
   );
 }

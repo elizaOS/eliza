@@ -9,6 +9,7 @@ import {
   EXTERNAL_CACHE_TTL_MS,
   type PreparedPricingEntry,
 } from "../types";
+import { fetchOpenRouterCatalogEntries } from "./openrouter";
 
 const CEREBRAS_PRICING_SOURCE_URL = "https://www.cerebras.ai/pricing";
 // OpenRouter doesn't return a priced row from BitRouter for `openai/gpt-oss-120b`,
@@ -363,9 +364,14 @@ export async function fetchBitRouterCatalogEntries(): Promise<PreparedPricingEnt
       data?: BitRouterCatalogModel[];
     }>(url);
     const models = Array.isArray(payload.data) ? payload.data : [];
+    // OpenRouter fallback (low-priority -1) fills any language model BitRouter's
+    // catalog does not price — a live BitRouter row or a forced row always wins.
+    // Non-fatal: returns [] if OpenRouter is unreachable.
+    const openRouterEntries = await fetchOpenRouterCatalogEntries();
     const entries = [
       ...models.flatMap((model) => buildBitRouterPreparedEntries(model)),
       ...buildForcedBitRouterPricingEntries(),
+      ...openRouterEntries,
     ];
     if (entries.length === 0) {
       logger.warn("[AI Pricing] BitRouter catalog returned no priced models", {

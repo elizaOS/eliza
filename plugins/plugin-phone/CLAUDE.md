@@ -14,7 +14,7 @@ Adds two distinct surfaces to elizaOS. The Android surface provides a full-scree
 **Actions** — none registered. Outbound call placement is internal to `PhoneAppView` (calls `Phone.placeCall`); it routes through the canonical `VOICE_CALL` surface when a provider is wired externally.
 
 **Views** (registered in `plugin.ts` under `plugin.views`)
-- `phone` (default) — `PhonePluginView`: full-screen dialer/recent-calls/contacts overlay, mounted at `/phone`.
+- `phone` (default) — `PhonePluginView`: full-screen dialer + recent-calls overlay, mounted at `/phone`. The address book is the separate Contacts view; a header "Contacts" button links to it via the `eliza:navigate:view` bus.
 - `phone` (xr) — same component, `viewType: "xr"`.
 - `phone` (tui) — `PhoneTuiView`: terminal-mode dialer + transcript UI, mounted at `/phone/tui`.
 
@@ -94,7 +94,8 @@ The `phoneCallLog` provider reads no env vars; it calls `Phone.listRecentCalls` 
 ## Conventions / gotchas
 
 - **Android-only registration.** `src/register.ts` calls `registerPhoneApp()` only when `isElizaOS()` returns true (i.e. the Android host). The companion page registers unconditionally because it serves iOS as well.
-- **Contacts are a soft dep.** `loadContactsModule()` dynamically imports `@elizaos/capacitor-contacts` at runtime and silently returns `null` if unavailable; the contacts tab is hidden in that case. Do not add a static import.
+- **Contacts live in their own view.** The Phone overlay has no contacts pane — it links to the separate `@elizaos/plugin-contacts` view via `eliza:navigate:view` (`{ viewId: "contacts", viewPath: "/contacts" }`). Do not re-embed a contacts list or add a `@elizaos/capacitor-contacts` dependency here.
+- **Cross-view number handoff.** The Phone view consumes a pending number via `consumePendingPhoneNumber()` from `@elizaos/ui/app-navigate-view` on mount, pre-seeding the dialer. Contacts (and any caller) seed it with `navigateToPhoneWithNumber(number)` from the same module — the navigation bus carries no payload to a mounted view, so the number is stashed module-side and consumed once.
 - **No actions.** `Phone.placeCall` is called directly from UI components, not from an elizaOS action. The `VOICE_CALL` action surface is the planned external call route; do not add inline action wrappers.
 - **`ElizaIntentWeb` does not simulate success.** The web fallback for the iOS native bridge explicitly returns `paired: false` and throws on `scheduleAlarm` — intentional, to prevent dev builds from appearing to work without a simulator.
 - **Two build outputs.** The `build` script runs `tsup` (main ESM bundle) and then a separate Vite build for `dist/views/bundle.js` (the plugin view bundle loaded by the elizaOS view registry). The types pass uses `tsc --noCheck`.

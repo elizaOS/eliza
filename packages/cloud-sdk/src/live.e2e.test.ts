@@ -28,13 +28,6 @@ const sessionToken = trimmed(process.env.ELIZA_CLOUD_SESSION_TOKEN);
 const generationEnabled = process.env.ELIZA_CLOUD_SDK_LIVE_GENERATION === "1";
 const containerEnabled = process.env.ELIZA_CLOUD_SDK_LIVE_CONTAINERS === "1";
 const agentEnabled = process.env.ELIZA_CLOUD_SDK_LIVE_AGENT === "1";
-// Opt-in for the dedicated (Hetzner-backed) provisioning path. Distinct from
-// the shared-tier `agentDescribe` lifecycle: this actually boots a container on
-// a Hetzner core, so it depends on a healthy production provisioning fleet and
-// is slower + costs a few cents of compute. Kept behind its own flag so the
-// generic agent suite stays fast and infra-independent.
-const hetznerAgentEnabled =
-  process.env.ELIZA_CLOUD_SDK_LIVE_AGENT_HETZNER === "1";
 const relayEnabled = process.env.ELIZA_CLOUD_SDK_LIVE_RELAY === "1";
 const destructiveEnabled = process.env.ELIZA_CLOUD_SDK_LIVE_DESTRUCTIVE === "1";
 const profileWriteEnabled =
@@ -64,14 +57,6 @@ const agentDescribe =
   liveEnabled && apiKey && agentEnabled && destructiveEnabled
     ? describe
     : describe.skip;
-const hetznerAgentDescribe =
-  liveEnabled &&
-  apiKey &&
-  agentEnabled &&
-  destructiveEnabled &&
-  hetznerAgentEnabled
-    ? describe
-    : describe.skip;
 const relayDescribe =
   liveEnabled && apiKey && relayEnabled ? describe : describe.skip;
 const profileWriteDescribe =
@@ -81,9 +66,16 @@ const profileWriteDescribe =
 // Live public endpoints regularly cross Vitest's 5s default on hosted CI.
 // This is a timeout budget for real network work, not an artificial delay.
 const LIVE_PUBLIC_ENDPOINT_TIMEOUT_MS = 15_000;
+const openApiIt =
+  apiKey || process.env.ELIZA_CLOUD_SDK_LIVE_OPENAPI === "1" ? it : it.skip;
 
 function publicClient() {
   return new ElizaCloudClient({ baseUrl, apiBaseUrl });
+}
+
+function apiV1BaseUrl(): string {
+  const normalized = apiBaseUrl.replace(/\/+$/, "");
+  return normalized.endsWith("/api/v1") ? normalized : `${normalized}/api/v1`;
 }
 
 function clientWithApiKey() {
@@ -101,7 +93,7 @@ function clientWithSession() {
 liveDescribe(
   "ElizaCloudClient real API e2e: public, auth bootstrap, and raw access",
   () => {
-    it.skipIf(!apiKey && process.env.ELIZA_CLOUD_SDK_LIVE_OPENAPI !== "1")(
+    openApiIt(
       "fetches the live OpenAPI document through getOpenApiSpec, request, and requestRaw",
       async () => {
         const client = apiKey ? clientWithApiKey() : publicClient();
@@ -151,10 +143,10 @@ liveDescribe(
       const models = await client.listModels();
       expect(Array.isArray(models.data)).toBe(true);
 
-      const compatibility = new CloudApiClient(apiBaseUrl);
+      const compatibility = new CloudApiClient(apiV1BaseUrl());
       await expect(
         compatibility.get("/models", { skipAuth: true }),
-      ).resolves.toBeTruthy();
+      ).resolves.toMatchObject({ data: expect.any(Array) });
       expect(compatibility.buildWsUrl("/agent/gateway-relay")).toContain(
         "/agent/gateway-relay",
       );
@@ -355,34 +347,29 @@ containerDescribe("ElizaCloudClient real API e2e: container lifecycle", () => {
   });
 });
 
-// Shared-tier lifecycle: a bare `agentConfig: {}` agent lands on the
-// container-free `shared` runtime, so provision/suspend/resume return
-// `shared_runtime` no-ops (still 200). Two endpoints are intentionally NOT
-// asserted here because they are invalid for a shared agent:
-//   • updateAgent — the PATCH route only accepts `{ action: shutdown|suspend }`;
-//     there is no agent rename/config endpoint, so any field body 400s.
-//   • getAgentPairingToken — 503 `AGENT_WEB_UI_NOT_READY`; pairing needs the
-//     managed HTTPS web-UI route a dedicated container exposes.
-// The container-backed path is covered by the Hetzner provisioning suite below.
-agentDescribe("ElizaCloudClient real API e2e: shared agent lifecycle", () => {
-  it("creates, snapshots, controls (no-op), inspects backups, and deletes a shared agent", async () => {
+agentDescribe("ElizaCloudClient real API e2e: Eliza agent lifecycle", () => {
+  it("creates, updates, snapshots, controls, inspects backups, and deletes an agent", async () => {
     const client = clientWithApiKey();
     const created = await client.createAgent({
       agentName: `sdk-e2e-${Date.now()}`,
       agentConfig: {},
     });
+    expect(created.data).toBeDefined();
     const agent = created.data;
-    expect(agent).toBeDefined();
     if (!agent) throw new Error("createAgent returned no agent data");
     const agentId = agent.id;
     expect(agentId).toBeTruthy();
-    expect(agent.executionTier ?? created.executionTier).toBe("shared");
 
     try {
       await expect(client.getAgent(agentId)).resolves.toHaveProperty(
         "success",
         true,
       );
+      await expect(
+        client.updateAgent(agentId, {
+          agentName: agent.agentName ?? undefined,
+        }),
+      ).resolves.toBeTruthy();
       await expect(client.listAgentBackups(agentId)).resolves.toBeTruthy();
       await expect(
         client.createAgentSnapshot(agentId, "manual", { source: "sdk-e2e" }),
@@ -390,6 +377,8 @@ agentDescribe("ElizaCloudClient real API e2e: shared agent lifecycle", () => {
       await expect(client.provisionAgent(agentId)).resolves.toBeTruthy();
       await expect(client.suspendAgent(agentId)).resolves.toBeTruthy();
       await expect(client.resumeAgent(agentId)).resolves.toBeTruthy();
+
+      await expect(client.getAgentPairingToken(agentId)).resolves.toBeTruthy();
 
       if (process.env.ELIZA_CLOUD_SDK_BACKUP_ID) {
         await expect(
@@ -404,84 +393,6 @@ agentDescribe("ElizaCloudClient real API e2e: shared agent lifecycle", () => {
     }
   });
 });
-
-hetznerAgentDescribe(
-  "ElizaCloudClient real API e2e: dedicated agent provisioning on Hetzner",
-  () => {
-    // 5 min: a real Hetzner container has to boot, register, and report a
-    // bridge URL. Observed ~30s in production, but cold node-scaling can be
-    // slower; the deadline only fails if provisioning genuinely stalls.
-    const PROVISION_DEADLINE_MS = 5 * 60_000;
-    const POLL_INTERVAL_MS = 5_000;
-    const sleep = (ms: number) =>
-      new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-    it(
-      "provisions an alwaysOn agent to a running Hetzner container and tears it down",
-      async () => {
-        const client = clientWithApiKey();
-
-        // `alwaysOn: true` escalates the tier to `dedicated-always`, which
-        // provisions a dedicated container on a Hetzner core (vs the
-        // container-free `shared` tier a bare config lands on).
-        const created = await client.createAgent({
-          agentName: `sdk-hetzner-e2e-${Date.now()}`,
-          alwaysOn: true,
-          autoProvision: true,
-        });
-        expect(created.success).toBe(true);
-
-        const agentId =
-          created.data?.id ?? created.data?.agentId ?? created.agentId;
-        expect(agentId).toBeTruthy();
-        if (!agentId) throw new Error("createAgent returned no agent id");
-
-        try {
-          const tier = created.data?.executionTier ?? created.executionTier;
-          // The whole point of this test: it must NOT be the shared tier.
-          expect(tier).not.toBe("shared");
-
-          const deadline = Date.now() + PROVISION_DEADLINE_MS;
-          let status: string | undefined;
-          let bridgeUrl: string | null | undefined;
-          while (Date.now() < deadline) {
-            const detail = await client.getAgent(agentId);
-            status = detail.data?.status;
-            bridgeUrl = detail.data?.bridgeUrl;
-            if (status === "running") break;
-            if (
-              status === "error" ||
-              status === "failed" ||
-              status === "stopped"
-            ) {
-              throw new Error(
-                `Provisioning ended in terminal status "${status}": ${detail.data?.errorMessage ?? "no message"}`,
-              );
-            }
-            await sleep(POLL_INTERVAL_MS);
-          }
-
-          expect(status).toBe("running");
-          // A running dedicated agent must expose a reachable bridge URL —
-          // that is the proof the Hetzner container actually came up.
-          expect(bridgeUrl).toMatch(/^https?:\/\//);
-        } finally {
-          // DELETE returns 409 while the agent is still `provisioning`; wait
-          // it out (up to the same deadline) before tearing down so we never
-          // leave a billable container behind.
-          const teardownDeadline = Date.now() + PROVISION_DEADLINE_MS;
-          while (Date.now() < teardownDeadline) {
-            const detail = await client.getAgent(agentId).catch(() => null);
-            if (detail?.data?.status !== "provisioning") break;
-            await sleep(POLL_INTERVAL_MS);
-          }
-          await client.deleteAgent(agentId).catch(() => undefined);
-        }
-      },
-      PROVISION_DEADLINE_MS * 2 + 30_000,
-    );
-  },
-);
 
 sessionDescribe(
   "ElizaCloudClient real API e2e: session-only API key management",

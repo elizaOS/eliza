@@ -288,6 +288,88 @@ calendar/finances) w/ all states + floating-chat; the core action-resolution
 unblock; platform P0 wiring; recorded+live contract tests for 5 connectors. All
 pushed to origin/develop.
 
+### Session 2026-06-17 (round 3) — view sweep complete + pushed
+Built the remaining safely-buildable decomposed views (each fetches an EXISTING
+PA route, all states + agent-surface + VIEW_ACTION_MAP + ui-smoke mock, no schema
+risk, no PA import): `0888ee938b` finances, DocumentsView, `65cc9e32aa` inbox,
+`df02505487` goals. **7 production-grade decomposed views total** now:
+blocker(focus)/health/calendar/finances/documents/inbox/goals.
+VIEW_ACTION_MAP: calendar/health/focus/finances/inbox/goals wired (documents
+SKIPPED — OWNER_DOCUMENTS is const-derived, would fail the drift guard).
+
+**TodosView is BLOCKED** — there is no `/api/lifeops/todos` list route (reminders
+routes are acknowledge/inspection/process only), so todos can't fetch real data
+until its data layer extracts. relationships/remote-desktop have no UI by design.
+
+So the VIEW dimension is essentially done for everything that has a data source;
+what remains is the back-end extraction (schema carve-out + repo/services/action
+moves), which unblocks todos' view and makes the others' data plugin-owned.
+
+### Session 2026-06-17/18 (round 4) — finances schema carve-out + view sweep complete
+- `1cdfe95249` **finances app_finances schema carve-out** (the first carve-out;
+  proven pattern): moved the 5 finance table defs PA→plugin-finances on
+  `pgSchema("app_finances")`, removed from PA's lifeOpsSchema registration,
+  repointed all 20 raw finance SQL refs in repository.ts via a `FINANCE_SCHEMA`
+  const (completeness gate `rg app_lifeops.life_(payment|subscription)` = empty),
+  wired plugin-finances to load with PA + OPTIONAL_CORE_PLUGINS, and added a
+  NON-DESTRUCTIVE idempotent `FinancesMigrationService` (per table: copy
+  app_lifeops.*→app_finances.* only if source exists via to_regclass AND target
+  empty; never drops source; 17 tests).
+- `683f63011f` **TodosView real** via a new thin `GET /api/lifeops/todos` route
+  (reuses `getOverview`; the task tables are SHARED SPINE, stay in the hub — todos
+  is a projection, NOT a carve-out). **All 8 decomposable views now production-grade.**
+
+KEY PATTERN LEARNINGS:
+- Movable-schema domain (finances): tables are domain-specific → carve out to the
+  plugin's pgSchema + non-destructive data migration + repoint raw SQL refs.
+- Spine-backed domain (todos): tables (`life_task_*`) are shared scheduled-task
+  infra → DO NOT move; expose a thin read route and project.
+- Every carve-out: completeness grep gate + plugin-must-not-import-PA + the
+  movable plugin must be LOADED (PA init ensure + OPTIONAL_CORE_PLUGINS) so its
+  schema gets created.
+
+### Session 2026-06-18 (round 5) — finances FULLY decomposed (back-end)
+`d9d226f914` extracted the payments back-end PA→plugin-finances: a standalone
+`FinancesService` (was the `withPayments` mixin) + `FinancesRepository` (over
+app_finances) + the finance helpers/types + the `OWNER_FINANCES` payments handler.
+PA delegates — `LifeOpsService` drops `withPayments`; `LifeOpsRepository`'s 19
+finance methods are one-line delegations to `FinancesRepository`; the
+`/api/lifeops/money/*` routes use `runFinancesRoute → FinancesService` (URLs +
+shapes unchanged). **Finances is now fully decomposed** (schema + data + repo +
+service + action + routes + view + tests). Gates: no PA import; plugin-finances
+17/17; PA build:types exit 0 (strict tsc DOWN 33, zero new); PA suite 611 pass.
+
+DELIBERATE BOUNDARY (documented in plugin-finances/CLAUDE.md): the
+`withSubscriptions` mixin STAYS in PA — it orchestrates Gmail triage + browser
+bridge + computer-use + PA's `app_lifeops.life_workflow_browser_sessions`, so it
+can't be a PA-import-free service. It reaches finance tables via
+`LifeOpsRepository → FinancesRepository`. This is the model for inbox/goals: move
+the movable, leave spine/cross-domain-orchestration in PA behind delegation.
+
+Remaining back-end: goals (service-mixin-goals 1.5k + lifeGoal* tables — tractable,
+next) and inbox (~9k, gmail/triage/curation — largest, entangled w/ connectors +
+approval-queue). Same proven pattern + the partial-extraction discipline.
+
+### Session 2026-06-18 (rounds 6-7) — inbox + goals back-ends migrated
+- `d33e9ed042` **inbox triage back-end** → plugin-inbox: INBOX action +
+  InboxService + InboxRepository + inboxTriage provider + domain modules; 40 tests.
+  Repo schema decision (a): keep `app_lifeops.life_inbox_triage_entries` (PA
+  getInbox spine co-owns it). DELEGATED (stays in PA): service-mixin-inbox.getInbox
+  (backs the route/view), gmail/email-curation/bulk-review/cross-channel-search.
+- `b9698f8675` **goal CRUD back-end** → plugin-goals: GoalsService + GoalsRepository
+  + real OWNER_GOALS action; 23 tests. Schema (a) shared (reminders read life_goal_*).
+  DELEGATED: reminder-plan coupling + cross-domain goal review/overview + audit/
+  ownership (injected hooks).
+
+DECOMPOSITION STATUS: backends migrated for **finances (full), inbox (triage core),
+goals (CRUD core)** + blocker engine + ALL 8 views. Each: focused plugin owns the
+movable domain; PA delegates; connector/spine/cross-domain coupling stays in PA
+behind a documented seam (the recurring, correct boundary).
+Remaining: remote-desktop (small, low-coupling — next), relationships (entity graph
+— OWNER DECISION), and the legitimately-hub reminders/scheduling spine. Plus the
+delegated sub-backends (subscriptions, gmail-curation, goal-review, getInbox) which
+need connector-contract seams first. 5-OS e2e remains environment-bounded.
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to

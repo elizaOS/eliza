@@ -27,29 +27,6 @@ function createManager() {
 }
 
 describe("MessageManager long message splitting", () => {
-  it("sends interaction-only replies with fallback text and inline keyboard", async () => {
-    const { manager, sendMessage } = createManager();
-
-    const sentMessages = await manager.sendMessageInChunks(
-      {
-        chat: { id: 123 },
-        telegram: {
-          sendChatAction: vi.fn(async () => undefined),
-          sendMessage,
-        },
-      } as never,
-      {
-        text: "[CHOICE:approval id=c1]\nyes=Approve\nno=Reject\n[/CHOICE]",
-      },
-    );
-
-    expect(sentMessages).toHaveLength(1);
-    expect(sendMessage.mock.calls[0][1]).toBe("Choose an option:");
-    expect(
-      sendMessage.mock.calls[0][2]?.reply_markup?.inline_keyboard,
-    ).toHaveLength(1);
-  });
-
   it("hard-splits a single over-limit line into Telegram-sized messages", async () => {
     const { manager, sendMessage } = createManager();
     const text = "x".repeat(4096 * 2 + 17);

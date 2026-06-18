@@ -31,3 +31,18 @@ export function useAgentElement<T extends HTMLElement>(): {
 export function registerOverlayApp(): void {}
 
 export function registerAppShellPage(): void {}
+
+// Cross-view phone-number handoff (mirrors @elizaos/ui/app-navigate-view). The
+// phone view consumes a pending number on mount; the tests drive the dialer
+// directly, so the stub simply returns null (no pending handoff).
+export function consumePendingPhoneNumber(): string | null {
+  return null;
+}
+
+export function consumePendingMessageRecipient(): string | null {
+  return null;
+}
+
+export function navigateToPhoneWithNumber(): void {}
+
+export function navigateToMessagesWithNumber(): void {}

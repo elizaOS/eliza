@@ -103,3 +103,72 @@ export interface RelationshipFilter {
   kind?: string | string[];
   limit?: number;
 }
+
+// ---------------------------------------------------------------------------
+// Display DTOs for the RelationshipsView.
+//
+// These are the flattened, display-only shapes the view renders after mapping
+// the wire payloads served by the PA REST routes (GET /api/lifeops/entities and
+// GET /api/lifeops/relationships). They live here — NOT imported from
+// @elizaos/plugin-personal-assistant — so the view's contract stays
+// self-contained and aligned by shape.
+// ---------------------------------------------------------------------------
+
+/**
+ * The entity-kind filter set the view offers. Mirrors
+ * {@link BUILT_IN_ENTITY_KINDS} with an `all` sentinel for "no filter".
+ */
+export const ENTITY_KIND_FILTERS = [
+  "person",
+  "organization",
+  "place",
+  "project",
+  "concept",
+] as const;
+export type EntityKindFilter = (typeof ENTITY_KIND_FILTERS)[number];
+
+/** Human labels for the built-in entity kinds shown in the view. */
+export const ENTITY_KIND_LABELS: Record<string, string> = {
+  person: "People",
+  organization: "Organizations",
+  place: "Places",
+  project: "Projects",
+  concept: "Concepts",
+};
+
+/**
+ * A single identity claim shown under an entity (platform + handle). Flattened
+ * from the wire `EntityIdentity`.
+ */
+export interface EntityIdentityItem {
+  platform: string;
+  handle: string;
+  verified: boolean;
+}
+
+/**
+ * A typed edge shown under its source entity. Flattened from the wire
+ * `Relationship`: the edge's type label, the resolved target display name, and
+ * the optional cadence / last-contact metadata the view surfaces.
+ */
+export interface RelationshipEdgeItem {
+  id: string;
+  type: string;
+  /** Display name of the target entity, or the raw id when unresolved. */
+  toName: string;
+  /** Cadence in days from `metadata.cadenceDays`, when present. */
+  cadenceDays: number | null;
+  /** ISO timestamp of the last interaction/observation on this edge. */
+  lastContact: string | null;
+}
+
+/**
+ * An entity node as the view renders it: identity + kind + its outbound edges.
+ */
+export interface EntityNodeItem {
+  id: string;
+  kind: string;
+  name: string;
+  identities: EntityIdentityItem[];
+  edges: RelationshipEdgeItem[];
+}

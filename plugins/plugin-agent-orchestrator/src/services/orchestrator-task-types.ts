@@ -150,9 +150,6 @@ export interface OrchestratorAccountAssignment {
   outputTokens: number;
   reasoningTokens: number;
   cacheTokens: number;
-  /** input+output+reasoning+cache — the same basis the pool attributes to the
-   * account for least-used selection, so the dashboard number matches. */
-  totalTokens: number;
   costUsd: number;
   usageState: UsageState;
 }

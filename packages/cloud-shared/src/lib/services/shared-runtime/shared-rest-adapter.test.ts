@@ -5,12 +5,29 @@
  *     always one item and create is idempotent;
  *   - history maps SharedTurnMessage{role,content} → REST {id,role,text};
  *   - send forwards to the bridge `message.send` and returns its reply text.
+ *
+ * Self-contained dependency mock: bun's `mock.module` is process-global and
+ * leaks across files, so spying on the real `elizaSandboxService` singleton was
+ * fragile — another file (provisioning, agent-gateway-router) that mocked
+ * `../eliza-sandbox` to a partial stub left `bridge`/`getSharedConversationHistory`
+ * non-functions here, depending on file order. Mock the dependency with clean
+ * stubs and import the adapter AFTER the mock so it binds to ours every time.
  */
 
-import { describe, expect, mock, spyOn, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
-import { elizaSandboxService } from "../eliza-sandbox";
-import {
+import * as realElizaSandbox from "../eliza-sandbox";
+
+const bridge = mock();
+const getSharedConversationHistory = mock();
+
+mock.module("../eliza-sandbox", () => ({
+  ...realElizaSandbox,
+  elizaSandboxService: { bridge, getSharedConversationHistory },
+}));
+
+// Imported after the mock so the adapter binds to our stubbed service.
+const {
   sharedRestConfig,
   sharedRestConversationCreate,
   sharedRestConversationsList,
@@ -21,7 +38,13 @@ import {
   sharedRestMessagesGet,
   sharedRestStatus,
   sharedRestViews,
-} from "./shared-rest-adapter";
+} = await import("./shared-rest-adapter");
+
+// Restore the real module so this file's process-global mock doesn't strand
+// later test files that use the full elizaSandboxService surface.
+afterAll(() => {
+  mock.module("../eliza-sandbox", () => realElizaSandbox);
+});
 
 const AGENT = "de42b5ff-72d3-4a1a-8a16-19aee293bfea";
 const ORG = "org-1";
@@ -93,56 +116,47 @@ describe("shared-rest-adapter — startup shell surface", () => {
 });
 
 describe("shared-rest-adapter — messages", () => {
+  beforeEach(() => {
+    bridge.mockReset();
+    getSharedConversationHistory.mockReset();
+  });
+
   test("GET maps bridge turn history → REST messages", async () => {
-    const spy = spyOn(elizaSandboxService, "getSharedConversationHistory").mockResolvedValue([
+    getSharedConversationHistory.mockResolvedValue([
       { role: "user", content: "hi" },
       { role: "assistant", content: "Hello!" },
     ]);
-    try {
-      const { messages } = await sharedRestMessagesGet(AGENT, AGENT);
-      expect(messages).toEqual([
-        { id: `${AGENT}:0`, role: "user", text: "hi" },
-        { id: `${AGENT}:1`, role: "assistant", text: "Hello!" },
-      ]);
-      expect(spy).toHaveBeenCalledWith(AGENT, AGENT);
-    } finally {
-      spy.mockRestore();
-    }
+    const { messages } = await sharedRestMessagesGet(AGENT, AGENT);
+    expect(messages).toEqual([
+      { id: `${AGENT}:0`, role: "user", text: "hi" },
+      { id: `${AGENT}:1`, role: "assistant", text: "Hello!" },
+    ]);
+    expect(getSharedConversationHistory).toHaveBeenCalledWith(AGENT, AGENT);
   });
 
   test("POST forwards to bridge message.send with roomId and returns the reply", async () => {
-    const bridge = spyOn(elizaSandboxService, "bridge").mockResolvedValue({
+    bridge.mockResolvedValue({
       jsonrpc: "2.0",
       id: "x",
       result: { text: "four" },
     });
-    try {
-      const out = await sharedRestMessageSend(AGENT, ORG, AGENT, "2+2?", "Eliza");
-      expect(out).toEqual({ text: "four", agentName: "Eliza" });
-      const call = bridge.mock.calls[0];
-      expect(call[0]).toBe(AGENT);
-      expect(call[1]).toBe(ORG);
-      expect(call[2].method).toBe("message.send");
-      expect(call[2].params).toMatchObject({ text: "2+2?", roomId: AGENT });
-    } finally {
-      bridge.mockRestore();
-    }
+    const out = await sharedRestMessageSend(AGENT, ORG, AGENT, "2+2?", "Eliza");
+    expect(out).toEqual({ text: "four", agentName: "Eliza" });
+    const call = bridge.mock.calls[0];
+    expect(call[0]).toBe(AGENT);
+    expect(call[1]).toBe(ORG);
+    expect(call[2].method).toBe("message.send");
+    expect(call[2].params).toMatchObject({ text: "2+2?", roomId: AGENT });
   });
 
   test("POST throws when the bridge returns an error (surfaced to the client)", async () => {
-    const bridge = spyOn(elizaSandboxService, "bridge").mockResolvedValue({
+    bridge.mockResolvedValue({
       jsonrpc: "2.0",
       id: "x",
       error: { code: -32000, message: "Sandbox is not running" },
     });
-    try {
-      await expect(sharedRestMessageSend(AGENT, ORG, AGENT, "hi", "Eliza")).rejects.toThrow(
-        "Sandbox is not running",
-      );
-    } finally {
-      bridge.mockRestore();
-    }
+    await expect(sharedRestMessageSend(AGENT, ORG, AGENT, "hi", "Eliza")).rejects.toThrow(
+      "Sandbox is not running",
+    );
   });
 });
-
-void mock;

@@ -41,6 +41,16 @@ vi.mock("../../api", () => ({
     }),
   },
 }));
+// The registered-view set drives which view-kind tiles render. Mutable so a
+// test can simulate a build where a view isn't registered.
+let mockViews: { id: string; path: string }[] = [
+  { id: "orchestrator", path: "/orchestrator" },
+  { id: "automations", path: "/automations" },
+  { id: "inbox", path: "/inbox" },
+];
+vi.mock("../../hooks/useAvailableViews", () => ({
+  useAvailableViews: () => ({ views: mockViews, loading: false }),
+}));
 // Don't run real intervals (clock tick / inbox poll) in tests.
 vi.mock("../../hooks/useDocumentVisibility", () => ({
   useIntervalWhenDocumentVisible: vi.fn(),
@@ -52,6 +62,11 @@ import { HomeScreen } from "./HomeScreen";
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  mockViews = [
+    { id: "orchestrator", path: "/orchestrator" },
+    { id: "automations", path: "/automations" },
+    { id: "inbox", path: "/inbox" },
+  ];
 });
 
 describe("HomeScreen", () => {
@@ -63,26 +78,40 @@ describe("HomeScreen", () => {
     expect(screen.getByText("Finished the build")).toBeTruthy();
     // Messages card appears once the (async) inbox fetch resolves with a chat.
     expect(await screen.findByTestId("home-widget-messages")).toBeTruthy();
-    // The 6 non-native tiles always show.
+    // Always-on tab tiles + the view tiles whose paths are registered.
     for (const id of [
       "settings",
       "orchestrator",
       "workflows",
       "views",
       "inbox",
-      "messages",
     ]) {
       expect(screen.getByTestId(`home-tile-${id}`)).toBeTruthy();
     }
   });
 
-  it("hides phone + contacts tiles unless native-OS tiles are enabled", () => {
+  it("hides phone, contacts + messages tiles unless native-OS tiles are enabled", () => {
     const { rerender } = render(<HomeScreen onOpenTile={vi.fn()} />);
     expect(screen.queryByTestId("home-tile-phone")).toBeNull();
     expect(screen.queryByTestId("home-tile-contacts")).toBeNull();
+    expect(screen.queryByTestId("home-tile-messages")).toBeNull();
     rerender(<HomeScreen onOpenTile={vi.fn()} showNativeOsTiles />);
     expect(screen.getByTestId("home-tile-phone")).toBeTruthy();
     expect(screen.getByTestId("home-tile-contacts")).toBeTruthy();
+    expect(screen.getByTestId("home-tile-messages")).toBeTruthy();
+  });
+
+  it("hides a view tile whose destination isn't registered (no dead-end nav)", () => {
+    // A build where /orchestrator + /inbox aren't registered (e.g. the mobile
+    // build) — those tiles must not render; /automations stays.
+    mockViews = [{ id: "automations", path: "/automations" }];
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    expect(screen.queryByTestId("home-tile-orchestrator")).toBeNull();
+    expect(screen.queryByTestId("home-tile-inbox")).toBeNull();
+    expect(screen.getByTestId("home-tile-workflows")).toBeTruthy();
+    // Tab tiles always resolve.
+    expect(screen.getByTestId("home-tile-settings")).toBeTruthy();
+    expect(screen.getByTestId("home-tile-views")).toBeTruthy();
   });
 
   it("opens a builtin-tab tile and a view tile with the right target", () => {

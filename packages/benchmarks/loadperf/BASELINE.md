@@ -58,6 +58,29 @@ all artifacts of measuring a 3-generation layered watch dist; disregard.
 - Dev (tsx) path, for reference: best ~3.1 s, ~12 s under contention.
 - The original "70 ms PASS" was a false positive from the permissive readiness
   check. Budgets: cold `readyMs` ≤ 25 000, peak RSS ≤ 1600 MB.
+
+### Boot profile (quiesced, `ELIZA_BOOT_PROFILE=1`)
+
+Boot `bun run dist/entry.js start` with `ELIZA_BOOT_PROFILE=1` to print `[boot-profile]`
+laps (the gated profiler in `app-core/src/boot-profile.ts` + `agent/src/api/server.ts`).
+Spawn → `ready:true` on a quiet host (~3.7 s) decomposes as:
+
+| Segment | ~cost | Notes |
+| --- | --- | --- |
+| Bun load of `entry.js` + `@elizaos/shared` | 310 ms | built JS; NOT a transpile |
+| CLI program build + dispatch | 150 ms | commander |
+| `startApiServer` (bind) | 500–760 ms | route-module imports + middleware ~470 ms, then `listen` |
+| Runtime boot (`upstreamStartEliza` + `repairRuntimeAfterBoot`) | **1960 ms** | dominant; blocking-plugin imports ~1.1 s (sql/local-inference) + sql-compat/local-inference/autonomy wiring |
+
+- **The runtime boot dominates** (~2 s) and is mostly load-bearing work
+  (blocking plugins, SQL compat, autonomy). The earlier "module load is the ~4 s
+  cost" hypothesis was wrong — Bun loads the built graph in ~310 ms.
+- With the **server-only early API bind**, `/api/health` is reachable at
+  ~1.3 s (`agentState:"starting"`) — the webview connects + hydrates in parallel
+  with the remaining ~2.4 s of runtime boot instead of waiting for it.
+- Remaining levers (defer blocking-plugin imports, lazy non-first-paint route
+  modules) are runtime-essential / architecture-sensitive — profile each before
+  touching; the boot already passes budget ~6×.
 - **Harness is now honest (loadperf F1 + F8).** The boot KPI:
   - requires an explicit `health.ready === true` from `/api/health` — a bare
     HTTP 200 (stale server / early-liveness handler) no longer counts as ready,

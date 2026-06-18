@@ -37,6 +37,7 @@ import { SaveCommandModal } from "./components/chat/SaveCommandModal";
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
+import { TutorialOverlay } from "./components/pages/tutorial/TutorialOverlay";
 import { SecretsManagerModalRoot } from "./components/settings/SecretsManagerSection";
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
@@ -64,6 +65,7 @@ import {
   type FocusConnectorEventDetail,
 } from "./events";
 import { CompactOnboarding } from "./first-run/CompactOnboarding";
+import { FirstRunScreen } from "./first-run/FirstRunScreen";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
@@ -77,6 +79,7 @@ import {
 } from "./navigation";
 import { isIOS, isNative } from "./platform/init";
 import { type ActionNotice, useApp } from "./state";
+import { isShellPaintable } from "./state/startup-coordinator";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
 
 const MOBILE_NAV_PADDING_CLASS =
@@ -164,6 +167,14 @@ const PhonePageView = lazyNamedView(
 const SettingsView = lazyNamedView(
   () => import("./components/pages/SettingsView"),
   "SettingsView",
+);
+const TutorialView = lazyNamedView(
+  () => import("./components/pages/tutorial/TutorialView"),
+  "TutorialView",
+);
+const HelpView = lazyNamedView(
+  () => import("./components/pages/help/HelpView"),
+  "HelpView",
 );
 const StreamView = lazyNamedView(
   () => import("./components/pages/StreamView"),
@@ -723,6 +734,17 @@ function renderStaticViewRouterTab({
   LifeOpsPageView: ComponentType | null | undefined;
 }): ReactNode {
   const directViews: Record<string, ReactNode> = {
+    onboarding: <FirstRunScreen />,
+    tutorial: (
+      <TabContentView>
+        <TutorialView />
+      </TabContentView>
+    ),
+    help: (
+      <TabContentView>
+        <HelpView />
+      </TabContentView>
+    ),
     chat: <ViewUnavailableFallback />,
     browser: <BrowserWorkspaceView />,
     companion: <ViewUnavailableFallback />,
@@ -1105,9 +1127,21 @@ function ShellFoundationMount() {
  */
 function ContinuousChatOverlayMount(): ReactNode {
   const controller = useShellControllerContext();
+  const { characterData, agentStatus } = useApp();
   const slash = useSlashCommandController();
   if (!controller) return null;
-  return <ContinuousChatOverlay controller={controller} slash={slash} />;
+  // The live agent's name drives the composer placeholder ("Ask {name}").
+  // Character name wins (what the user configured), then the running agent's
+  // reported name; "Eliza" is the default the overlay falls back to.
+  const agentName =
+    characterData?.name?.trim() || agentStatus?.agentName?.trim() || undefined;
+  return (
+    <ContinuousChatOverlay
+      controller={controller}
+      agentName={agentName}
+      slash={slash}
+    />
+  );
 }
 
 /**
@@ -1165,9 +1199,16 @@ export function App() {
   // During first-run setup / pairing / startup phases the StartupScreen handles
   // its own gate (bootstrap step), so we skip the check.
   const isCoordinatorReady = startupCoordinator.phase === "ready";
+  // The live shell may MOUNT once the backend is reached and the agent boot is
+  // underway (starting-runtime / hydrating / ready) — first-turn capability then
+  // fades in behind it (see useShellController's agentReady). Only the truly
+  // pre-shell phases (session restore, backend polling, first-run, pairing,
+  // error) keep the full-screen StartupScreen. Runtime-dependent effects and
+  // overlay apps below stay gated on `isCoordinatorReady` and defer safely.
+  const isShellPaintableNow = isShellPaintable(startupCoordinator.phase);
 
   const { state: authState, refetch: refetchAuth } = useAuthStatus({
-    skip: !isCoordinatorReady || isPopout,
+    skip: !isShellPaintableNow || isPopout,
   });
   // Don't initialize the 3D scene while the system is still booting — this
   // prevents VrmEngine's Three.js setup from blocking the JS thread and
@@ -1355,9 +1396,6 @@ export function App() {
     window.addEventListener("eliza:navigate:view", handleNavigateView);
     return () =>
       window.removeEventListener("eliza:navigate:view", handleNavigateView);
-    // invokeDesktopBridgeRequest (module import), setActiveDesktopTabId and
-    // setViewLayout (state setters) are stable, so they are deliberately not
-    // in this dependency array — biome's exhaustive-deps treats them as extra.
   }, [
     setTab,
     availableViewsForDesktopTabs,
@@ -1564,7 +1602,7 @@ export function App() {
     );
   }
 
-  if (!isCoordinatorReady) {
+  if (!isShellPaintableNow) {
     return (
       <BugReportProvider value={bugReport}>
         <StartupScreen />
@@ -1573,12 +1611,11 @@ export function App() {
     );
   }
 
-  // Auth gate — when the coordinator is ready, check /api/auth/me.
-  // "loading" phase: wait (fall through to the coordinator's own "ready" render).
-  // "unauthenticated": render LoginView.
-  // "authenticated": proceed to the main shell.
+  // Auth gate — once the shell is paintable (agent may still be warming up),
+  // check /api/auth/me. "loading": wait (fall through to the main shell render).
+  // "unauthenticated": render LoginView. "authenticated": proceed.
   // "server_unavailable": show a retryable startup failure.
-  if (isCoordinatorReady && !isPopout) {
+  if (isShellPaintableNow && !isPopout) {
     if (authState.phase === "server_unavailable") {
       return (
         <BugReportProvider value={bugReport}>
@@ -1622,8 +1659,10 @@ export function App() {
     );
   }
 
-  // Coordinator is at "ready" — the app shell renders. No deprecated first-run
-  // overlays — the coordinator handled all of that before reaching ready.
+  // The app shell renders once paintable (the agent may still be warming up —
+  // the chat composer queues sends until first-turn capability fades in; views
+  // show their own loading states until the runtime is live). No deprecated
+  // first-run overlays — the coordinator handled all of that before this point.
 
   return (
     <BugReportProvider value={bugReport}>
@@ -1669,6 +1708,11 @@ export function App() {
           behind stays live.
         */}
         <ContinuousChatOverlayMount />
+        {/* Interactive tutorial: a persistent spotlight overlay that survives
+            navigation (it sends the user to Settings, back home, …). Renders
+            only when the tutorial is active (launched from the home Tutorial
+            tile or the Help view). */}
+        <TutorialOverlay />
         <ShellOverlays actionNotice={actionNotice} />
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}

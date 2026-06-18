@@ -341,6 +341,9 @@ async function expectMainShellReadyForRoute(
   await expect(page.getByTestId("startup-shell-loading")).toHaveCount(0, {
     timeout: STARTUP_SETTLED_TIMEOUT_MS,
   });
+  await expect(page.getByTestId("first-run-shell")).toHaveCount(0, {
+    timeout: STARTUP_SETTLED_TIMEOUT_MS,
+  });
   if (!options.allowOnboardingToast) {
     await expect(page.getByTestId("onboarding-toast")).toHaveCount(0, {
       timeout: STARTUP_SETTLED_TIMEOUT_MS,
@@ -1028,17 +1031,6 @@ const EMPTY_LIFEOPS_OVERVIEW_SUMMARY = {
   activeGoalCount: 0,
 };
 
-const EMPTY_LIFEOPS_CHANNEL_COUNTS = {
-  gmail: { total: 0, unread: 0 },
-  discord: { total: 0, unread: 0 },
-  telegram: { total: 0, unread: 0 },
-  signal: { total: 0, unread: 0 },
-  imessage: { total: 0, unread: 0 },
-  whatsapp: { total: 0, unread: 0 },
-  sms: { total: 0, unread: 0 },
-  x_dm: { total: 0, unread: 0 },
-};
-
 // Valid populated DTOs for the three /api/lifeops/sleep/* endpoints so the
 // decomposed HealthView lands on its `health-populated` branch (latest night,
 // regularity, baseline) instead of the empty/connect-a-source branch. Shapes
@@ -1157,6 +1149,268 @@ function populatedMoneyRecurring() {
         averageAmountUsd: 15.99,
         nextExpectedAt: "2026-07-01T00:00:00.000Z",
         category: "entertainment",
+      },
+    ],
+  };
+}
+
+// Valid populated LifeOpsInbox for the /api/lifeops/inbox endpoint the decomposed
+// InboxView fetches, so `inbox:gui` renders its `inbox-populated` branch (channel
+// groups + triage rows) instead of the connect-a-channel / inbox-zero empty
+// state. Shape mirrors LifeOpsInbox / LifeOpsInboxMessage from @elizaos/shared:
+// a flat `messages` list, per-channel `channelCounts`, and `fetchedAt`. When the
+// request carries a `channels` filter, the messages are narrowed to match so the
+// view's server-side channel-filter interaction renders consistently.
+function populatedInbox(url: URL) {
+  const requested = (url.searchParams.get("channels") ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  const allMessages = [
+    {
+      id: "gmail:smoke-1",
+      channel: "gmail",
+      sender: {
+        id: "sender-acme",
+        displayName: "Acme Billing",
+        email: "billing@acme.test",
+        avatarUrl: null,
+      },
+      subject: "Invoice #42 overdue",
+      snippet: "Please remit payment for last month's services.",
+      receivedAt: "2026-06-16T10:00:00.000Z",
+      unread: true,
+      deepLink: null,
+      sourceRef: { channel: "gmail", externalId: "gmail:smoke-1" },
+      threadId: "thread-gmail-1",
+    },
+    {
+      id: "discord:smoke-7",
+      channel: "discord",
+      sender: {
+        id: "sender-guild",
+        displayName: "guildmate",
+        email: null,
+        avatarUrl: null,
+      },
+      subject: null,
+      snippet: "gm everyone — standup in 10",
+      receivedAt: "2026-06-16T09:30:00.000Z",
+      unread: false,
+      deepLink: null,
+      sourceRef: { channel: "discord", externalId: "discord:smoke-7" },
+      threadId: "thread-discord-7",
+    },
+  ];
+  const messages =
+    requested.length > 0
+      ? allMessages.filter((message) => requested.includes(message.channel))
+      : allMessages;
+  return {
+    messages,
+    channelCounts: {
+      gmail: { total: 1, unread: 1 },
+      discord: { total: 1, unread: 0 },
+      telegram: { total: 0, unread: 0 },
+      signal: { total: 0, unread: 0 },
+      imessage: { total: 0, unread: 0 },
+      whatsapp: { total: 0, unread: 0 },
+      sms: { total: 0, unread: 0 },
+      x_dm: { total: 0, unread: 0 },
+    },
+    fetchedAt: SMOKE_GENERATED_AT,
+  };
+}
+
+// Valid populated goals payload for the /api/lifeops/goals endpoint the
+// decomposed GoalsView fetches, so `goals:gui` renders its `goals-populated`
+// branch (status groups + goal rows) instead of the set-a-goal empty state.
+// Shape mirrors the PA route response { goals: LifeOpsGoalRecord[] } where each
+// record is { goal: LifeOpsGoalDefinition; links: LifeOpsGoalLink[] } from
+// @elizaos/shared.
+function populatedGoals() {
+  return {
+    goals: [
+      {
+        goal: {
+          id: "goal-smoke-1",
+          agentId: "ui-smoke-agent",
+          domain: "personal",
+          subjectType: "owner",
+          subjectId: "owner-smoke",
+          visibilityScope: "private",
+          contextPolicy: "owner_only",
+          title: "Run a half marathon",
+          description: "Build up to 21km by autumn.",
+          cadence: { kind: "weekly" },
+          successCriteria: { targetText: "21km continuous run" },
+          status: "active",
+          reviewState: "on_track",
+          metadata: {},
+          createdAt: SMOKE_GENERATED_AT,
+          updatedAt: SMOKE_GENERATED_AT,
+        },
+        links: [
+          {
+            id: "link-smoke-1",
+            agentId: "ui-smoke-agent",
+            goalId: "goal-smoke-1",
+            linkedType: "occurrence",
+            linkedId: "occ-smoke-1",
+            createdAt: SMOKE_GENERATED_AT,
+          },
+        ],
+      },
+      {
+        goal: {
+          id: "goal-smoke-2",
+          agentId: "ui-smoke-agent",
+          domain: "personal",
+          subjectType: "owner",
+          subjectId: "owner-smoke",
+          visibilityScope: "private",
+          contextPolicy: "owner_only",
+          title: "Learn conversational Spanish",
+          description: "",
+          cadence: { kind: "daily" },
+          successCriteria: {},
+          status: "paused",
+          reviewState: "needs_attention",
+          metadata: {},
+          createdAt: SMOKE_GENERATED_AT,
+          updatedAt: SMOKE_GENERATED_AT,
+        },
+        links: [],
+      },
+    ],
+  };
+}
+
+// Valid populated payloads for the /api/lifeops/entities + /api/lifeops/relationships
+// endpoints the RelationshipsView fetches, so `relationships:gui` renders its
+// `relationships-populated` branch (entity cards + their outbound edges) instead
+// of the no-people empty state. Shapes mirror the PA route responses
+// { entities: Entity[] } / { relationships: Relationship[] } from
+// plugin-personal-assistant/src/lifeops/{entities,relationships}/types.ts.
+function populatedEntities() {
+  return {
+    entities: [
+      {
+        entityId: "self",
+        type: "person",
+        preferredName: "Owner",
+        fullName: "Owner",
+        identities: [],
+        attributes: {},
+        state: {},
+        tags: [],
+        visibility: "owner_agent_admin",
+        createdAt: SMOKE_GENERATED_AT,
+        updatedAt: SMOKE_GENERATED_AT,
+      },
+      {
+        entityId: "ent-pat",
+        type: "person",
+        preferredName: "Pat Doe",
+        fullName: "Pat Doe",
+        identities: [
+          {
+            platform: "discord",
+            handle: "pat#1",
+            displayName: "Pat",
+            verified: true,
+            confidence: 0.95,
+            addedAt: SMOKE_GENERATED_AT,
+            addedVia: "user_chat",
+            evidence: [],
+          },
+        ],
+        attributes: {},
+        state: { lastObservedAt: "2026-06-10T00:00:00.000Z" },
+        tags: [],
+        visibility: "owner_agent_admin",
+        createdAt: SMOKE_GENERATED_AT,
+        updatedAt: SMOKE_GENERATED_AT,
+      },
+      {
+        entityId: "ent-acme",
+        type: "organization",
+        preferredName: "Acme Corp",
+        fullName: "Acme Corporation",
+        identities: [],
+        attributes: {},
+        state: {},
+        tags: [],
+        visibility: "owner_agent_admin",
+        createdAt: SMOKE_GENERATED_AT,
+        updatedAt: SMOKE_GENERATED_AT,
+      },
+    ],
+  };
+}
+function populatedRelationships() {
+  return {
+    relationships: [
+      {
+        relationshipId: "rel-pat",
+        fromEntityId: "self",
+        toEntityId: "ent-pat",
+        type: "colleague_of",
+        metadata: { cadenceDays: 14 },
+        state: { lastInteractionAt: "2026-06-10T00:00:00.000Z" },
+        evidence: [],
+        confidence: 0.9,
+        source: "user_chat",
+        status: "active",
+        createdAt: SMOKE_GENERATED_AT,
+        updatedAt: SMOKE_GENERATED_AT,
+      },
+      {
+        relationshipId: "rel-acme",
+        fromEntityId: "ent-pat",
+        toEntityId: "ent-acme",
+        type: "works_at",
+        metadata: { role: "engineer" },
+        state: {},
+        evidence: [],
+        confidence: 0.8,
+        source: "extraction",
+        status: "active",
+        createdAt: SMOKE_GENERATED_AT,
+        updatedAt: SMOKE_GENERATED_AT,
+      },
+    ],
+  };
+}
+
+// Valid populated payload for the /api/lifeops/todos endpoint the decomposed
+// TodosView fetches, so `todos:gui` renders its `todos-populated` branch (the
+// Today / Upcoming / Someday lanes) instead of the add-a-todo empty state.
+// Shape mirrors the PA route response { todos: TodoWire[] } — a flat list of
+// { id, title, status, dueDate } projected from the owner's life_task_*
+// occurrences. One due-now (Today), one future (Upcoming), one no-due (Someday).
+function populatedTodos() {
+  const day = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  return {
+    todos: [
+      {
+        id: "todo-smoke-1",
+        title: "Submit the quarterly report",
+        status: "pending",
+        dueDate: new Date(now + 60 * 60 * 1000).toISOString(),
+      },
+      {
+        id: "todo-smoke-2",
+        title: "Plan the offsite",
+        status: "in_progress",
+        dueDate: new Date(now + 5 * day).toISOString(),
+      },
+      {
+        id: "todo-smoke-3",
+        title: "Read the new design doc",
+        status: "pending",
+        dueDate: null,
       },
     ],
   };
@@ -2507,19 +2761,15 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
   });
 
   await page.route("**/api/lifeops/inbox**", async (route) => {
-    if (route.request().method() !== "GET") {
+    const request = route.request();
+    if (request.method() !== "GET") {
       await route.fallback();
       return;
     }
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({
-        messages: [],
-        channelCounts: EMPTY_LIFEOPS_CHANNEL_COUNTS,
-        threadGroups: [],
-        fetchedAt: SMOKE_GENERATED_AT,
-      }),
+      body: JSON.stringify(populatedInbox(new URL(request.url()))),
     });
   });
 
@@ -2668,6 +2918,61 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  // GoalsView fetches GET /api/lifeops/goals (no query); the bare pattern keeps
+  // the POST create + /goals/:id sub-resource routes falling through to the API.
+  await page.route("**/api/lifeops/goals", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedGoals()),
+    });
+  });
+
+  // RelationshipsView fetches GET /api/lifeops/entities + GET /api/lifeops/relationships
+  // (both bare, no query). The bare patterns keep the POST upsert + the
+  // /entities/merge, /entities/resolve, /relationships/observe sub-resource
+  // routes falling through to the real API.
+  await page.route("**/api/lifeops/entities", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedEntities()),
+    });
+  });
+  await page.route("**/api/lifeops/relationships", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedRelationships()),
+    });
+  });
+
+  // TodosView fetches GET /api/lifeops/todos; the **-suffixed pattern tolerates
+  // any future query string while leaving non-GET methods on the real API.
+  await page.route("**/api/lifeops/todos**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedTodos()),
+    });
+  });
+
   await page.route("**/api/documents/stats**", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2687,7 +2992,9 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(populatedDocumentsSearch(new URL(route.request().url()))),
+      body: JSON.stringify(
+        populatedDocumentsSearch(new URL(route.request().url())),
+      ),
     });
   });
   // List route last so the more specific /stats and /search routes win.

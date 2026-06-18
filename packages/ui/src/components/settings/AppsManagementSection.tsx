@@ -1,12 +1,6 @@
 /**
  * Apps management settings panel — installed app inventory plus the
- * "Create new app" and "Load from directory" entry points that the
- * unified APP action exposes over HTTP.
- *
- * Endpoints owned by Agent C:
- *   POST /api/apps/create               — { intent, editTarget? }
- *   POST /api/apps/relaunch             — { name, verify? }
- *   POST /api/apps/load-from-directory  — { directory }
+ * "Create new app" and "Load from directory" entry points.
  */
 
 import { Loader2, Play, RotateCw, Square } from "lucide-react";
@@ -21,7 +15,8 @@ import type {
 import { useApp } from "../../state";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
-import { Input } from "../ui/input";
+import { SettingsInput, SettingsTextarea } from "../ui/settings-controls";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 function AppRowActionButton({
   agentId,
@@ -92,8 +87,8 @@ type AsyncStatus =
   | { state: "error"; message: string };
 
 const HEAD_CELL_CLASS =
-  "px-2 py-1.5 text-2xs font-semibold uppercase tracking-wider text-muted";
-const BODY_CELL_CLASS = "px-2 py-2 align-middle";
+  "px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted";
+const BODY_CELL_CLASS = "px-3 py-2.5 align-middle text-sm";
 
 export function AppsManagementSection() {
   const { setActionNotice, t } = useApp();
@@ -482,380 +477,403 @@ export function AppsManagementSection() {
     });
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          ref={createToggleRef}
-          type="button"
-          size="sm"
-          variant="default"
-          className="h-8 px-3 text-xs"
-          onClick={() => {
-            setShowCreate((v) => !v);
-            setShowLoad(false);
-          }}
-          {...createToggleAgentProps}
-        >
-          {t("settings.sections.apps.createNew", {
-            defaultValue: "Create new app",
+    <SettingsStack>
+      <SettingsGroup
+        title={t("settings.sections.apps.groupTitle", { defaultValue: "Apps" })}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              ref={createToggleRef}
+              type="button"
+              variant="default"
+              className="h-9 rounded-md px-3 text-xs"
+              onClick={() => {
+                setShowCreate((v) => !v);
+                setShowLoad(false);
+              }}
+              {...createToggleAgentProps}
+            >
+              {t("settings.sections.apps.createNew", {
+                defaultValue: "Create new app",
+              })}
+            </Button>
+            <Button
+              ref={loadToggleRef}
+              type="button"
+              variant="outline"
+              className="h-9 rounded-md px-3 text-xs"
+              onClick={() => {
+                setShowLoad((v) => !v);
+                setShowCreate(false);
+              }}
+              {...loadToggleAgentProps}
+            >
+              {t("settings.sections.apps.loadFromDirectory", {
+                defaultValue: "Load from directory",
+              })}
+            </Button>
+          </div>
+        }
+      >
+        <SettingsRow
+          label={t("settings.sections.apps.verifyOnRelaunch", {
+            defaultValue: "Verify on relaunch",
           })}
-        </Button>
-        <Button
-          ref={loadToggleRef}
-          type="button"
-          size="sm"
-          variant="outline"
-          className="h-8 px-3 text-xs"
-          onClick={() => {
-            setShowLoad((v) => !v);
-            setShowCreate(false);
-          }}
-          {...loadToggleAgentProps}
-        >
-          {t("settings.sections.apps.loadFromDirectory", {
-            defaultValue: "Load from directory",
-          })}
-        </Button>
-        <div className="flex-1" />
-        <div className="inline-flex items-center gap-1.5 text-2xs text-muted">
-          <Checkbox
-            ref={verifyRef}
-            checked={verifyOnRelaunch}
-            onCheckedChange={(checked: boolean | "indeterminate") =>
-              setVerifyOnRelaunch(!!checked)
-            }
-            aria-current={verifyOnRelaunch ? "true" : undefined}
-            aria-label={t("settings.sections.apps.verifyOnRelaunchLabel", {
-              defaultValue: "Verify on relaunch",
-            })}
-            {...verifyAgentProps}
-          />
-          <span>
-            {t("settings.sections.apps.verifyOnRelaunch", {
-              defaultValue: "Verify on relaunch",
-            })}
-          </span>
-        </div>
-      </div>
+          control={
+            <Checkbox
+              ref={verifyRef}
+              checked={verifyOnRelaunch}
+              onCheckedChange={(checked: boolean | "indeterminate") =>
+                setVerifyOnRelaunch(!!checked)
+              }
+              aria-current={verifyOnRelaunch ? "true" : undefined}
+              aria-label={t("settings.sections.apps.verifyOnRelaunchLabel", {
+                defaultValue: "Verify on relaunch",
+              })}
+              {...verifyAgentProps}
+            />
+          }
+        />
+      </SettingsGroup>
 
       {showCreate ? (
-        <form
-          className="space-y-2 rounded-sm border border-border bg-card p-3"
-          onSubmit={handleCreateSubmit}
-        >
-          <div className="space-y-1">
-            <label
-              className="text-xs font-medium text-txt"
+        <form onSubmit={handleCreateSubmit}>
+          <SettingsGroup
+            title={t("settings.sections.apps.createNew", {
+              defaultValue: "Create new app",
+            })}
+            footer={
+              createStatus.state === "error" ? (
+                <span className="text-warn">{createStatus.message}</span>
+              ) : undefined
+            }
+          >
+            <SettingsRow
               htmlFor="apps-create-intent"
-            >
-              {t("settings.sections.apps.intentLabel", {
+              stacked
+              label={t("settings.sections.apps.intentLabel", {
                 defaultValue: "What should the app do?",
               })}
-            </label>
-            <textarea
-              ref={createIntentRef}
-              id="apps-create-intent"
-              rows={3}
-              value={createIntent}
-              disabled={isCreating}
-              onChange={(e) => setCreateIntent(e.target.value)}
-              className="block w-full resize-y rounded-sm border border-border bg-bg px-2 py-1.5 text-xs text-txt focus:border-accent focus:outline-none disabled:opacity-50"
-              placeholder={t("settings.sections.apps.intentPlaceholder", {
-                defaultValue:
-                  "Describe the experience you want — e.g. a vibe coder for prototyping web apps with Tailwind.",
-              })}
-              {...createIntentAgentProps}
-            />
-          </div>
-          <div className="space-y-1">
-            <label
-              className="text-xs font-medium text-txt"
-              htmlFor="apps-create-edit-target"
             >
-              {t("settings.sections.apps.basedOnLabel", {
+              <SettingsTextarea
+                ref={createIntentRef}
+                id="apps-create-intent"
+                rows={3}
+                value={createIntent}
+                disabled={isCreating}
+                onChange={(e) => setCreateIntent(e.target.value)}
+                className="block w-full resize-y font-sans text-sm text-txt"
+                placeholder={t("settings.sections.apps.intentPlaceholder", {
+                  defaultValue: "Describe what the app should do.",
+                })}
+                {...createIntentAgentProps}
+              />
+            </SettingsRow>
+            <SettingsRow
+              htmlFor="apps-create-edit-target"
+              stacked
+              label={t("settings.sections.apps.basedOnLabel", {
                 defaultValue: "Based on existing app (optional)",
               })}
-            </label>
-            <select
-              ref={createTargetRef}
-              id="apps-create-edit-target"
-              value={createEditTarget}
-              disabled={isCreating}
-              onChange={(e) => setCreateEditTarget(e.target.value)}
-              className="block w-full rounded-sm border border-border bg-bg px-2 py-1.5 text-xs text-txt focus:border-accent focus:outline-none disabled:opacity-50"
-              {...createTargetAgentProps}
             >
-              <option value="">
-                {t("settings.sections.apps.basedOnNone", {
-                  defaultValue: "Start from scratch",
-                })}
-              </option>
-              {installed.map((app) => (
-                <option key={app.name} value={app.name}>
-                  {app.displayName} ({app.name})
+              <select
+                ref={createTargetRef}
+                id="apps-create-edit-target"
+                value={createEditTarget}
+                disabled={isCreating}
+                onChange={(e) => setCreateEditTarget(e.target.value)}
+                className="block h-11 w-full rounded-md border border-border bg-card px-3 text-sm text-txt transition-colors focus:border-accent focus:outline-none disabled:opacity-50"
+                {...createTargetAgentProps}
+              >
+                <option value="">
+                  {t("settings.sections.apps.basedOnNone", {
+                    defaultValue: "Start from scratch",
+                  })}
                 </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center gap-2 pt-1">
-            <Button
-              ref={createSubmitRef}
-              type="submit"
-              size="sm"
-              variant="default"
-              className="h-7 px-3 text-xs"
-              disabled={isCreating || createIntent.trim().length === 0}
-              {...createSubmitAgentProps}
-            >
-              {isCreating ? (
-                <span className="inline-flex items-center gap-1">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                  <span>
-                    {createStatus.state === "loading"
-                      ? (createStatus.message ?? "Working…")
-                      : "Working…"}
-                  </span>
-                </span>
-              ) : (
-                t("common.create", { defaultValue: "Create" })
-              )}
-            </Button>
-            <Button
-              ref={createCancelRef}
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="h-7 px-3 text-xs text-muted"
-              onClick={() => {
-                setShowCreate(false);
-                setCreateIntent("");
-                setCreateEditTarget("");
-                setCreateStatus({ state: "idle" });
-              }}
-              disabled={isCreating}
-              {...createCancelAgentProps}
-            >
-              {t("common.cancel", { defaultValue: "Cancel" })}
-            </Button>
-            {createStatus.state === "error" ? (
-              <span className="text-2xs text-danger">
-                {createStatus.message}
-              </span>
-            ) : null}
-          </div>
+                {installed.map((app) => (
+                  <option key={app.name} value={app.name}>
+                    {app.displayName} ({app.name})
+                  </option>
+                ))}
+              </select>
+            </SettingsRow>
+            <SettingsRow label="" stacked>
+              <div className="flex items-center gap-2">
+                <Button
+                  ref={createSubmitRef}
+                  type="submit"
+                  variant="default"
+                  className="h-11 rounded-md px-4 text-sm"
+                  disabled={isCreating || createIntent.trim().length === 0}
+                  {...createSubmitAgentProps}
+                >
+                  {isCreating ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Loader2
+                        className="h-3.5 w-3.5 animate-spin"
+                        aria-hidden
+                      />
+                      <span>
+                        {createStatus.state === "loading"
+                          ? (createStatus.message ?? "Working…")
+                          : "Working…"}
+                      </span>
+                    </span>
+                  ) : (
+                    t("common.create", { defaultValue: "Create" })
+                  )}
+                </Button>
+                <Button
+                  ref={createCancelRef}
+                  type="button"
+                  variant="ghost"
+                  className="h-11 rounded-md px-4 text-sm text-muted"
+                  onClick={() => {
+                    setShowCreate(false);
+                    setCreateIntent("");
+                    setCreateEditTarget("");
+                    setCreateStatus({ state: "idle" });
+                  }}
+                  disabled={isCreating}
+                  {...createCancelAgentProps}
+                >
+                  {t("common.cancel", { defaultValue: "Cancel" })}
+                </Button>
+              </div>
+            </SettingsRow>
+          </SettingsGroup>
         </form>
       ) : null}
 
       {showLoad ? (
-        <form
-          className="space-y-2 rounded-sm border border-border bg-card p-3"
-          onSubmit={handleLoadSubmit}
-        >
-          <div className="space-y-1">
-            <label
-              className="text-xs font-medium text-txt"
+        <form onSubmit={handleLoadSubmit}>
+          <SettingsGroup
+            title={t("settings.sections.apps.loadFromDirectory", {
+              defaultValue: "Load from directory",
+            })}
+            footer={
+              loadStatus.state === "error" ? (
+                <span className="text-warn">{loadStatus.message}</span>
+              ) : undefined
+            }
+          >
+            <SettingsRow
               htmlFor="apps-load-directory"
-            >
-              {t("settings.sections.apps.directoryLabel", {
+              stacked
+              label={t("settings.sections.apps.directoryLabel", {
                 defaultValue: "Directory path",
               })}
-            </label>
-            <Input
-              ref={loadDirectoryRef}
-              id="apps-load-directory"
-              type="text"
-              value={loadDirectory}
-              disabled={isLoading}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                setLoadDirectory(e.target.value)
-              }
-              placeholder="/Users/me/code/my-app"
-              className="h-8 text-xs"
-              {...loadDirectoryAgentProps}
-            />
-          </div>
-          <div className="flex items-center gap-2 pt-1">
-            <Button
-              ref={loadSubmitRef}
-              type="submit"
-              size="sm"
-              variant="default"
-              className="h-7 px-3 text-xs"
-              disabled={isLoading || loadDirectory.trim().length === 0}
-              {...loadSubmitAgentProps}
             >
-              {isLoading ? (
-                <span className="inline-flex items-center gap-1">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                  <span>
-                    {t("common.loading", { defaultValue: "Loading…" })}
-                  </span>
-                </span>
-              ) : (
-                t("settings.sections.apps.loadButton", {
-                  defaultValue: "Load",
-                })
-              )}
-            </Button>
-            <Button
-              ref={loadCancelRef}
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="h-7 px-3 text-xs text-muted"
-              onClick={() => {
-                setShowLoad(false);
-                setLoadDirectory("");
-                setLoadStatus({ state: "idle" });
-              }}
-              disabled={isLoading}
-              {...loadCancelAgentProps}
-            >
-              {t("common.cancel", { defaultValue: "Cancel" })}
-            </Button>
-            {loadStatus.state === "error" ? (
-              <span className="text-2xs text-danger">{loadStatus.message}</span>
-            ) : null}
-          </div>
+              <SettingsInput
+                ref={loadDirectoryRef}
+                id="apps-load-directory"
+                variant="touch"
+                type="text"
+                value={loadDirectory}
+                disabled={isLoading}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setLoadDirectory(e.target.value)
+                }
+                placeholder="/Users/me/code/my-app"
+                className="w-full"
+                {...loadDirectoryAgentProps}
+              />
+            </SettingsRow>
+            <SettingsRow label="" stacked>
+              <div className="flex items-center gap-2">
+                <Button
+                  ref={loadSubmitRef}
+                  type="submit"
+                  variant="default"
+                  className="h-11 rounded-md px-4 text-sm"
+                  disabled={isLoading || loadDirectory.trim().length === 0}
+                  {...loadSubmitAgentProps}
+                >
+                  {isLoading ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Loader2
+                        className="h-3.5 w-3.5 animate-spin"
+                        aria-hidden
+                      />
+                      <span>
+                        {t("common.loading", { defaultValue: "Loading…" })}
+                      </span>
+                    </span>
+                  ) : (
+                    t("settings.sections.apps.loadButton", {
+                      defaultValue: "Load",
+                    })
+                  )}
+                </Button>
+                <Button
+                  ref={loadCancelRef}
+                  type="button"
+                  variant="ghost"
+                  className="h-11 rounded-md px-4 text-sm text-muted"
+                  onClick={() => {
+                    setShowLoad(false);
+                    setLoadDirectory("");
+                    setLoadStatus({ state: "idle" });
+                  }}
+                  disabled={isLoading}
+                  {...loadCancelAgentProps}
+                >
+                  {t("common.cancel", { defaultValue: "Cancel" })}
+                </Button>
+              </div>
+            </SettingsRow>
+          </SettingsGroup>
         </form>
       ) : null}
 
       {listStatus.state === "loading" ? (
-        <div className="flex items-center gap-2 px-1 py-3 text-xs text-muted">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-          <span>
-            {t("settings.sections.apps.loadingApps", {
-              defaultValue: "Loading apps…",
-            })}
-          </span>
-        </div>
-      ) : listStatus.state === "error" ? (
-        <div className="rounded-sm border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">
-          {listStatus.message}
-        </div>
-      ) : installed.length === 0 ? (
-        <div className="rounded-sm border border-border bg-card px-3 py-4 text-center text-xs text-muted">
-          {t("settings.sections.apps.empty", {
-            defaultValue:
-              "No apps installed yet. Click 'Create new app' to scaffold one.",
-          })}
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-sm border border-border">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-bg-hover">
-              <tr>
-                <th className={HEAD_CELL_CLASS}>
-                  {t("settings.sections.apps.col.name", {
-                    defaultValue: "App",
-                  })}
-                </th>
-                <th className={HEAD_CELL_CLASS}>
-                  {t("settings.sections.apps.col.id", {
-                    defaultValue: "ID",
-                  })}
-                </th>
-                <th className={HEAD_CELL_CLASS}>
-                  {t("settings.sections.apps.col.version", {
-                    defaultValue: "Version",
-                  })}
-                </th>
-                <th className={HEAD_CELL_CLASS}>
-                  {t("settings.sections.apps.col.runs", {
-                    defaultValue: "Runs",
-                  })}
-                </th>
-                <th className={`${HEAD_CELL_CLASS} text-right`}>
-                  {t("settings.sections.apps.col.actions", {
-                    defaultValue: "Actions",
-                  })}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {installed.map((app) => {
-                const appRuns = runsByName.get(app.name) ?? [];
-                const running = appRuns.length > 0;
-                const busy = busyApp === app.name;
-                return (
-                  <tr
-                    key={app.name}
-                    className="border-t border-border/60 hover:bg-bg-hover/40"
-                    data-testid={`apps-mgmt-row-${app.name}`}
-                  >
-                    <td className={`${BODY_CELL_CLASS} font-medium text-txt`}>
-                      {app.displayName}
-                    </td>
-                    <td
-                      className={`${BODY_CELL_CLASS} font-mono text-2xs text-muted`}
-                    >
-                      {app.name}
-                    </td>
-                    <td className={`${BODY_CELL_CLASS} text-2xs text-muted`}>
-                      {app.version || "—"}
-                    </td>
-                    <td className={BODY_CELL_CLASS}>
-                      {running ? (
-                        <span className="inline-flex items-center rounded-full bg-ok/10 px-1.5 py-0.5 text-2xs font-medium text-ok">
-                          {appRuns.length}{" "}
-                          {appRuns.length === 1 ? "run" : "runs"}
-                        </span>
-                      ) : (
-                        <span className="text-2xs text-muted">—</span>
-                      )}
-                    </td>
-                    <td className={`${BODY_CELL_CLASS} text-right`}>
-                      <div className="inline-flex items-center gap-1">
-                        <AppRowActionButton
-                          agentId={`apps-launch-${app.name}`}
-                          label={`Launch ${app.displayName}`}
-                          group="apps-list"
-                          disabled={busy}
-                          onClick={() => void handleLaunch(app)}
-                        >
-                          <Play className="h-3.5 w-3.5" aria-hidden />
-                        </AppRowActionButton>
-                        <AppRowActionButton
-                          agentId={`apps-relaunch-${app.name}`}
-                          label={`Relaunch ${app.displayName}`}
-                          group="apps-list"
-                          disabled={busy}
-                          onClick={() => void handleRelaunch(app)}
-                        >
-                          <RotateCw className="h-3.5 w-3.5" aria-hidden />
-                        </AppRowActionButton>
-                        <AppRowActionButton
-                          agentId={`apps-edit-${app.name}`}
-                          label={`Edit ${app.displayName}`}
-                          group="apps-list"
-                          disabled={busy}
-                          onClick={() => void handleEdit(app)}
-                        >
-                          {t("settings.sections.apps.edit", {
-                            defaultValue: "Edit",
-                          })}
-                        </AppRowActionButton>
-                        {running ? (
-                          <AppRowActionButton
-                            agentId={`apps-stop-${app.name}`}
-                            label={`Stop ${app.displayName}`}
-                            group="apps-list"
-                            className="h-7 px-2 text-xs text-danger hover:text-danger"
-                            disabled={busy}
-                            onClick={() => void handleStop(app)}
-                          >
-                            <Square className="h-3.5 w-3.5" aria-hidden />
-                          </AppRowActionButton>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                );
+        <SettingsGroup bare>
+          <div className="flex items-center gap-2 px-1 py-3 text-sm text-muted">
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            <span>
+              {t("settings.sections.apps.loadingApps", {
+                defaultValue: "Loading apps…",
               })}
-            </tbody>
-          </table>
-        </div>
+            </span>
+          </div>
+        </SettingsGroup>
+      ) : listStatus.state === "error" ? (
+        <SettingsGroup bare>
+          <div className="rounded-lg border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">
+            {listStatus.message}
+          </div>
+        </SettingsGroup>
+      ) : installed.length === 0 ? (
+        <SettingsGroup bare>
+          <div className="rounded-lg border border-border bg-card px-3 py-4 text-center text-sm text-muted">
+            {t("settings.sections.apps.empty", {
+              defaultValue: "No apps installed yet.",
+            })}
+          </div>
+        </SettingsGroup>
+      ) : (
+        <SettingsGroup
+          bare
+          title={t("settings.sections.apps.installedTitle", {
+            defaultValue: "Installed apps",
+          })}
+        >
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full min-w-[34rem] text-left text-sm">
+              <thead className="bg-bg-hover">
+                <tr>
+                  <th className={HEAD_CELL_CLASS}>
+                    {t("settings.sections.apps.col.name", {
+                      defaultValue: "App",
+                    })}
+                  </th>
+                  <th className={HEAD_CELL_CLASS}>
+                    {t("settings.sections.apps.col.id", {
+                      defaultValue: "ID",
+                    })}
+                  </th>
+                  <th className={HEAD_CELL_CLASS}>
+                    {t("settings.sections.apps.col.version", {
+                      defaultValue: "Version",
+                    })}
+                  </th>
+                  <th className={HEAD_CELL_CLASS}>
+                    {t("settings.sections.apps.col.runs", {
+                      defaultValue: "Runs",
+                    })}
+                  </th>
+                  <th className={`${HEAD_CELL_CLASS} text-right`}>
+                    {t("settings.sections.apps.col.actions", {
+                      defaultValue: "Actions",
+                    })}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {installed.map((app) => {
+                  const appRuns = runsByName.get(app.name) ?? [];
+                  const running = appRuns.length > 0;
+                  const busy = busyApp === app.name;
+                  return (
+                    <tr
+                      key={app.name}
+                      className="border-t border-border/60 hover:bg-bg-hover/40"
+                      data-testid={`apps-mgmt-row-${app.name}`}
+                    >
+                      <td className={`${BODY_CELL_CLASS} font-medium text-txt`}>
+                        {app.displayName}
+                      </td>
+                      <td
+                        className={`${BODY_CELL_CLASS} font-mono text-xs text-muted`}
+                      >
+                        {app.name}
+                      </td>
+                      <td className={`${BODY_CELL_CLASS} text-xs text-muted`}>
+                        {app.version || "—"}
+                      </td>
+                      <td className={BODY_CELL_CLASS}>
+                        {running ? (
+                          <span className="inline-flex items-center rounded-full bg-ok/10 px-2 py-0.5 text-xs font-medium text-ok">
+                            {appRuns.length}{" "}
+                            {appRuns.length === 1 ? "run" : "runs"}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted">—</span>
+                        )}
+                      </td>
+                      <td className={`${BODY_CELL_CLASS} text-right`}>
+                        <div className="inline-flex items-center gap-1">
+                          <AppRowActionButton
+                            agentId={`apps-launch-${app.name}`}
+                            label={`Launch ${app.displayName}`}
+                            group="apps-list"
+                            disabled={busy}
+                            onClick={() => void handleLaunch(app)}
+                          >
+                            <Play className="h-3.5 w-3.5" aria-hidden />
+                          </AppRowActionButton>
+                          <AppRowActionButton
+                            agentId={`apps-relaunch-${app.name}`}
+                            label={`Relaunch ${app.displayName}`}
+                            group="apps-list"
+                            disabled={busy}
+                            onClick={() => void handleRelaunch(app)}
+                          >
+                            <RotateCw className="h-3.5 w-3.5" aria-hidden />
+                          </AppRowActionButton>
+                          <AppRowActionButton
+                            agentId={`apps-edit-${app.name}`}
+                            label={`Edit ${app.displayName}`}
+                            group="apps-list"
+                            disabled={busy}
+                            onClick={() => void handleEdit(app)}
+                          >
+                            {t("settings.sections.apps.edit", {
+                              defaultValue: "Edit",
+                            })}
+                          </AppRowActionButton>
+                          {running ? (
+                            <AppRowActionButton
+                              agentId={`apps-stop-${app.name}`}
+                              label={`Stop ${app.displayName}`}
+                              group="apps-list"
+                              className="h-7 px-2 text-xs text-danger hover:text-danger"
+                              disabled={busy}
+                              onClick={() => void handleStop(app)}
+                            >
+                              <Square className="h-3.5 w-3.5" aria-hidden />
+                            </AppRowActionButton>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </SettingsGroup>
       )}
-    </div>
+    </SettingsStack>
   );
 }

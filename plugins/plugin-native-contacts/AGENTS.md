@@ -82,7 +82,7 @@ Add the interface/type to `src/definitions.ts` and re-export via `src/index.ts` 
 
 - **Capacitor, not elizaOS Plugin.** Import `Contacts` from this package and call its methods; do not try to load it via `elizaOS`'s plugin loader.
 - **Android only for writes.** `createContact` and `importVCard` are hard-fails on web. Design any elizaOS action that calls them to check the platform first.
-- **Permission checks are in Kotlin.** The bridge rejects calls if the Android runtime permission has not been granted. The host app is responsible for requesting permissions before invoking bridge methods.
+- **Permissions are feature-gated, not app-required.** The plugin declares the `contacts` alias (`READ_CONTACTS`/`WRITE_CONTACTS`) in `@CapacitorPlugin(permissions=…)`, so the Capacitor base `Plugin` auto-provides `checkPermissions()` / `requestPermissions()` (`{ contacts: PermissionState }`; web returns `granted`). The Contacts view calls `requestPermissions()` on first open (idempotent — already-granted never re-prompts) and shows a grant-in-settings message if denied. Nothing requests contacts at app launch. The bridge methods still reject if not granted (defensive); do NOT add a launch-time or app-wide contacts gate.
 - **limit guard.** `listContacts` enforces `1 ≤ limit ≤ 500`; requests outside that range are rejected.
 - **vCard parser is internal.** `parseVCards` in `ContactsPlugin.kt` handles RFC 6350 line folding and the `FN`/`N`/`TEL`/`EMAIL` properties. It intentionally ignores other vCard fields. Photo data is not imported.
 - **Build output.** The published package ships `dist/esm/` (ESM, consumed by bundlers) and `dist/plugin.cjs.js` (CJS). The `bun`/`development` export condition points directly to `src/index.ts` for zero-build dev.

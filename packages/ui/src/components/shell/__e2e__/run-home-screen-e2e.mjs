@@ -39,6 +39,9 @@ const stubResolver = {
     b.onResolve({ filter: /useDocumentVisibility$/ }, () => ({
       path: join(here, "home-screen-fixture.docvis-stub.ts"),
     }));
+    b.onResolve({ filter: /useAvailableViews$/ }, () => ({
+      path: join(here, "home-screen-fixture.views-stub.ts"),
+    }));
   },
 };
 
@@ -115,10 +118,16 @@ try {
     );
   }
   await snap(mobile, "mobile-home");
-  // Edit mode
-  await mobile.getByTestId("home-edit-toggle").click();
-  await mobile.waitForTimeout(250);
-  await snap(mobile, "mobile-home-editing");
+  // The home is a clean, action-driven dashboard: no Edit chrome, no "Pinned"
+  // label (edit-dashboard is an agent action, not a button).
+  assert(
+    (await mobile.getByTestId("home-edit-toggle").count()) === 0,
+    "no Edit toggle (clean dashboard)",
+  );
+  assert(
+    (await mobile.getByText("Pinned", { exact: true }).count()) === 0,
+    'no "Pinned" label',
+  );
   await mobile.close();
 
   // Desktop width

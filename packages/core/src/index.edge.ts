@@ -38,7 +38,6 @@ export * from "./generated/spec-helpers";
 export * from "./logger";
 export * from "./markdown";
 export * from "./memory";
-export * from "./messaging/interactions";
 export * from "./plugin";
 export * from "./prompts";
 export * from "./providers/setup-progress";
@@ -78,6 +77,7 @@ export * from "./settings";
 export * from "./streaming-context";
 export * from "./trajectory-context";
 export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";
+export * from "./messaging/interactions";
 export * from "./types";
 export {
 	ConnectorAccountHealth,

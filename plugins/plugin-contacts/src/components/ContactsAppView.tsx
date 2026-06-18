@@ -20,11 +20,16 @@ import {
 import type { OverlayAppContext } from "@elizaos/ui";
 import { Button, Input } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import {
+  navigateToMessagesWithNumber,
+  navigateToPhoneWithNumber,
+} from "@elizaos/ui/app-navigate-view";
 import { isNative } from "@elizaos/ui/platform";
 import {
   ArrowLeft,
   ChevronLeft,
   Mail,
+  MessageSquareText,
   Phone,
   Plus,
   RefreshCw,
@@ -104,6 +109,18 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
     setLoading(true);
     setError(null);
     try {
+      // Feature-gated permission: prompt for contacts access the first time the
+      // Contacts view opens (idempotent — already-granted returns granted with
+      // no prompt). Nothing requests this at app launch. Tolerates older bridges
+      // without the request path by falling through to listContacts.
+      const status = await Contacts.requestPermissions().catch(() => null);
+      if (status && status.contacts !== "granted") {
+        setContacts([]);
+        setError(
+          "Contacts access is needed to show your address book. Grant it in your device settings, then retry.",
+        );
+        return;
+      }
       const result = await Contacts.listContacts({});
       setContacts(result.contacts);
     } catch (err) {
@@ -610,13 +627,7 @@ function ContactDetail({ contact, t }: { contact: ContactSummary; t: TFn }) {
         label={t("contacts.phones", { defaultValue: "Phone" })}
         items={contact.phoneNumbers}
         renderItem={(value) => (
-          <a
-            href={`tel:${value}`}
-            className="flex items-center gap-2 text-sm text-txt hover:underline"
-          >
-            <Phone className="h-4 w-4 text-muted" />
-            <span className="break-all">{value}</span>
-          </a>
+          <ContactPhoneRow value={value} contactId={contact.id} t={t} />
         )}
         emptyLabel={t("contacts.noPhones", {
           defaultValue: "No phone numbers",
@@ -646,6 +657,66 @@ function ContactDetail({ contact, t }: { contact: ContactSummary; t: TFn }) {
             "Editing existing contacts is unavailable on this device.",
         })}
       </p>
+    </div>
+  );
+}
+
+// A phone-number row in the contact detail. Instead of an OS `tel:` handoff,
+// it links to the in-app Phone and Messages views via the navigation bus,
+// pre-seeding each with this number.
+function ContactPhoneRow({
+  value,
+  contactId,
+  t,
+}: {
+  value: string;
+  contactId: string;
+  t: TFn;
+}) {
+  const callLabel = t("contacts.call", { defaultValue: "Call" });
+  const textLabel = t("contacts.text", { defaultValue: "Text" });
+  const callEl = useAgentElement<HTMLButtonElement>({
+    id: `call-${contactId}-${value}`,
+    role: "button",
+    label: `${callLabel} ${value}`,
+    group: "contacts-detail-phone",
+    description: "Open the Phone dialer pre-filled with this number",
+  });
+  const textEl = useAgentElement<HTMLButtonElement>({
+    id: `text-${contactId}-${value}`,
+    role: "button",
+    label: `${textLabel} ${value}`,
+    group: "contacts-detail-phone",
+    description: "Open Messages to text this number",
+  });
+  return (
+    <div className="flex items-center gap-2">
+      <Phone className="h-4 w-4 shrink-0 text-muted" />
+      <span className="min-w-0 flex-1 break-all text-sm text-txt">{value}</span>
+      <Button
+        ref={callEl.ref}
+        {...callEl.agentProps}
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 shrink-0 rounded-lg text-muted hover:text-txt"
+        onClick={() => navigateToPhoneWithNumber(value)}
+        aria-label={`${callLabel} ${value}`}
+        data-testid="contacts-detail-call"
+      >
+        <Phone className="h-4 w-4" />
+      </Button>
+      <Button
+        ref={textEl.ref}
+        {...textEl.agentProps}
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 shrink-0 rounded-lg text-muted hover:text-txt"
+        onClick={() => navigateToMessagesWithNumber(value)}
+        aria-label={`${textLabel} ${value}`}
+        data-testid="contacts-detail-text"
+      >
+        <MessageSquareText className="h-4 w-4" />
+      </Button>
     </div>
   );
 }

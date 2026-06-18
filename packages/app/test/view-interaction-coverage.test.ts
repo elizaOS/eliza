@@ -91,6 +91,14 @@ const GUI_INTERACTION_OWNERS: Readonly<
       signals: ["inbox decomposed view", "/inbox"],
     },
   ],
+  relationships: [
+    {
+      spec: DECOMPOSED_PA_SPEC,
+      proves:
+        "Renders the relationships knowledge graph and toggles an entity-kind filter.",
+      signals: ["relationships decomposed view", "/relationships"],
+    },
+  ],
   todos: [
     {
       spec: DECOMPOSED_PA_SPEC,
@@ -439,7 +447,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(62);
+    expect(visualCases.length).toBe(63);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",

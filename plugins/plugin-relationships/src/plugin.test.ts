@@ -31,13 +31,17 @@ describe("@elizaos/plugin-relationships scaffold", () => {
       undefined,
     );
 
-    expect(result.success).toBe(true);
-    expect(result.text).toContain("ENTITY action stub");
-    expect(result.data).toEqual({ todo: true, op: "set_relationship" });
+    expect(result?.success).toBe(true);
+    expect(result?.text).toContain("ENTITY action stub");
+    expect(result?.data).toEqual({ todo: true, op: "set_relationship" });
   });
 
   it("provides an empty graph projection while the store is scaffolded", async () => {
-    const result = await entityGraphProvider.get({} as never, {} as never);
+    const result = await entityGraphProvider.get(
+      {} as never,
+      {} as never,
+      {} as never,
+    );
 
     expect(result).toEqual({
       text: "",

@@ -9,7 +9,10 @@
 import "@elizaos/shared";
 import process from "node:process";
 import { formatErrorWithStack, getLogPrefix } from "@elizaos/shared";
+import { bootLap } from "./boot-profile";
 import { applyCliProfileEnv, parseCliProfileArgs } from "./cli/profile";
+
+bootLap("entry:body (Bun load of entry.js + @elizaos/shared)");
 
 process.title = process.env.APP_CLI_NAME?.trim() || "eliza";
 
@@ -83,8 +86,12 @@ if (parsed.profile) {
 
 // ── Delegate to the Commander-based CLI ──────────────────────────────────────
 
+bootLap("entry:before import(run-main)");
 import("./cli/run-main")
-  .then(({ runCli }) => runCli(process.argv))
+  .then(({ runCli }) => {
+    bootLap("entry:run-main loaded (CLI graph evaluated)");
+    return runCli(process.argv);
+  })
   .catch((error) => {
     console.error(
       `${getLogPrefix()} Failed to start CLI:`,

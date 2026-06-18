@@ -38,6 +38,7 @@ export type {
 export * from "./api";
 export * from "./api/android-native-agent-transport";
 export * from "./api/ios-local-agent-transport";
+export * from "./app-navigate-view";
 export * from "./app-shell-components";
 export * from "./app-shell-registry";
 export { registerAppShellPage } from "./app-shell-registry";
@@ -210,6 +211,25 @@ export {
   VECTOR_GRAPH_2D_PALETTE,
 } from "./components/pages/vector-browser-utils";
 export * from "./components/primitives/index";
+export {
+  SettingsActionButton,
+  SettingsInputRow,
+  SettingsSelectRow,
+  SettingsSwitchRow,
+  SettingsTextareaRow,
+} from "./components/settings/settings-agent-rows";
+export {
+  SettingsGroup,
+  SettingsRow,
+  SettingsStack,
+} from "./components/settings/settings-layout";
+export {
+  getAllSettingsSections,
+  getSettingsSection,
+  listSettingsSections,
+  registerSettingsSection,
+  type SettingsSectionDef,
+} from "./components/settings/settings-sections";
 export { AppPageSidebar } from "./components/shared/AppPageSidebar";
 export {
   AssistantOverlay,

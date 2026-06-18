@@ -142,15 +142,11 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
   it("acks gracefully for an unknown requestId without throwing", async () => {
     // No pending slot exists for this id — resolve() is a no-op, but the route
     // still matches and acks. This must not throw or hang.
-    const { ctx, json, error } = makeCtx(
-      "POST",
-      "/api/views/interact-result",
-      {
-        requestId: "00000000-0000-0000-0000-000000000000",
-        success: true,
-        result: { text: "orphan" },
-      },
-    );
+    const { ctx, json, error } = makeCtx("POST", "/api/views/interact-result", {
+      requestId: "00000000-0000-0000-0000-000000000000",
+      success: true,
+      result: { text: "orphan" },
+    });
 
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
     expect(json).toHaveBeenCalledWith(ctx.res, { ok: true });
@@ -158,11 +154,10 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
   });
 
   it("rejects an interact-result body that omits requestId", async () => {
-    const { ctx, json, error } = makeCtx(
-      "POST",
-      "/api/views/interact-result",
-      { success: true, result: {} },
-    );
+    const { ctx, json, error } = makeCtx("POST", "/api/views/interact-result", {
+      success: true,
+      result: {},
+    });
 
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
     expect(error).toHaveBeenCalledWith(

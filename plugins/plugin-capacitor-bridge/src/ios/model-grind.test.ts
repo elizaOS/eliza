@@ -1,17 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
 	decodeWavToPcm,
-	type ModelGrindDeps,
 	resamplePcm,
 	runModelGrind,
 	wordErrorRate,
+	type ModelGrindDeps,
 } from "./model-grind.ts";
 
-function makeWav(
-	samples: number[],
-	sampleRate: number,
-	float = false,
-): Uint8Array {
+function makeWav(samples: number[], sampleRate: number, float = false): Uint8Array {
 	const bytesPerSample = float ? 4 : 2;
 	const dataLen = samples.length * bytesPerSample;
 	const buf = new ArrayBuffer(44 + dataLen);
@@ -83,13 +79,10 @@ describe("resamplePcm", () => {
 });
 
 function baseDeps(over: Partial<ModelGrindDeps> = {}): ModelGrindDeps {
-	const wav = makeWav(
-		Array.from({ length: 24000 }, () => 0.05),
-		24000,
-	);
+	const wav = makeWav(Array.from({ length: 24000 }, () => 0.05), 24000);
 	return {
 		callIosHost: async () => ({ text: "hello there", outputTokens: 12 }),
-		ensureTextModelLoaded: async () => ({ contextId: 7 }),
+		ensureTextModelLoaded: async () => ({}),
 		synthesizeTts: async () => ({ bytes: wav, sampleRate: 24000 }),
 		transcribeAsr: async () =>
 			"Eliza local voice end to end check one two three",
@@ -138,9 +131,7 @@ describe("runModelGrind", () => {
 
 	it("marks asr failed on high WER", async () => {
 		const report = await runModelGrind(
-			baseDeps({
-				transcribeAsr: async () => "completely different words here",
-			}),
+			baseDeps({ transcribeAsr: async () => "completely different words here" }),
 		);
 		expect(report.models.find((m) => m.model === "asr")?.ok).toBe(false);
 	});

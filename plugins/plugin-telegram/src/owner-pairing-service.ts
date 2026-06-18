@@ -21,33 +21,8 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import type { Context, Telegraf } from "telegraf";
+import type { Context } from "telegraf";
 import { TELEGRAM_SERVICE_NAME } from "./constants";
-
-/**
- * Resolves the live default Telegraf bot from the running TelegramService.
- * Prefers the public `getBot()` accessor; the service is registered before this
- * one, so the accessor is always present in current builds.
- */
-function resolveTelegramBot(runtime: IAgentRuntime): Telegraf<Context> | null {
-  const telegramSvc = runtime.getService(TELEGRAM_SERVICE_NAME) as unknown;
-  if (!telegramSvc || typeof telegramSvc !== "object") {
-    return null;
-  }
-  const getBot = (telegramSvc as { getBot?: unknown }).getBot;
-  if (typeof getBot !== "function") {
-    return null;
-  }
-  const bot = getBot.call(telegramSvc) as unknown;
-  if (
-    bot &&
-    typeof (bot as Record<string, unknown>).command === "function" &&
-    typeof (bot as Record<string, unknown>).telegram === "object"
-  ) {
-    return bot as Telegraf<Context>;
-  }
-  return null;
-}
 
 /** Service type string used by the backend to look up this service. */
 export const TELEGRAM_OWNER_PAIRING_SERVICE_TYPE = "OWNER_PAIRING_TELEGRAM";
@@ -370,8 +345,24 @@ export class TelegramOwnerPairingServiceImpl
    * If the TelegramService is unavailable, the command is not registered.
    */
   private registerPairCommand(runtime: IAgentRuntime): void {
-    const telegrafBot = resolveTelegramBot(runtime);
-    if (!telegrafBot) {
+    const telegramSvc = runtime.getService(TELEGRAM_SERVICE_NAME) as unknown;
+    if (!telegramSvc || typeof telegramSvc !== "object") {
+      logger.warn(
+        { src: "plugin:telegram:owner-pairing", agentId: runtime.agentId },
+        "TelegramService unavailable during owner-pairing start; /eliza_pair command not registered",
+      );
+      return;
+    }
+
+    const bot =
+      "bot" in (telegramSvc as Record<string, unknown>)
+        ? (telegramSvc as { bot: unknown }).bot
+        : null;
+
+    if (
+      !bot ||
+      typeof (bot as Record<string, unknown>).command !== "function"
+    ) {
       logger.warn(
         { src: "plugin:telegram:owner-pairing", agentId: runtime.agentId },
         "Telegraf bot instance not available — /eliza_pair will not be registered",
@@ -379,6 +370,7 @@ export class TelegramOwnerPairingServiceImpl
       return;
     }
 
+    const telegrafBot = bot as import("telegraf").Telegraf<Context>;
     telegrafBot.command("eliza_pair", async (ctx) => {
       await handleElizaPairCommand(ctx, runtime);
     });
@@ -395,13 +387,23 @@ export class TelegramOwnerPairingServiceImpl
   }): Promise<void> {
     const { externalId, link } = params;
 
-    const telegrafBot = resolveTelegramBot(this.runtime);
-    if (!telegrafBot) {
+    const telegramSvc = this.runtime.getService(
+      TELEGRAM_SERVICE_NAME,
+    ) as unknown;
+    const bot =
+      telegramSvc &&
+      typeof telegramSvc === "object" &&
+      "bot" in (telegramSvc as Record<string, unknown>)
+        ? (telegramSvc as { bot: unknown }).bot
+        : null;
+
+    if (!bot || typeof (bot as Record<string, unknown>).telegram !== "object") {
       throw new Error(
         "Telegram bot is not available — cannot send DM login link",
       );
     }
 
+    const telegrafBot = bot as import("telegraf").Telegraf<Context>;
     const chatId = Number(externalId);
     if (!Number.isFinite(chatId) || chatId <= 0) {
       throw new Error(

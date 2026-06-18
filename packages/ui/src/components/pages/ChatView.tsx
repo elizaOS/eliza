@@ -309,14 +309,6 @@ export function ChatView({
   // ── Derived composer state ──────────────────────────────────────
   const isAgentStarting =
     agentStatus?.state === "starting" || agentStatus?.state === "restarting";
-  const hasCompletedLifecycleActivity =
-    !chatSending &&
-    Array.isArray(conversationMessages) &&
-    conversationMessages.some(
-      (message) =>
-        message.role === "user" ||
-        (message.role === "assistant" && message.text.trim().length > 0),
-    );
   // The agent is up but has no inference model wired — no point letting the
   // user hit send. Surfaced as a composer lock + a pointer to Settings.
   const agentModel =
@@ -326,9 +318,11 @@ export function ChatView({
     agentStatus?.state === "running" &&
     agentModel.length === 0 &&
     !isMobileLocalRuntime;
-  const isComposerLocked =
-    (isAgentStarting && !hasCompletedLifecycleActivity) ||
-    isMissingInferenceProvider;
+  // First-turn capability fades in: the composer stays usable while the agent
+  // warms up (a turn submitted during warmup is held server-side until the
+  // runtime is ready, then streams its reply) — only a genuinely missing
+  // inference provider hard-locks the composer.
+  const isComposerLocked = isMissingInferenceProvider;
   const composerPlaceholderOverride = isMissingInferenceProvider
     ? t("chat.setupProviderToChat", {
         defaultValue: "Set up an LLM provider in Settings to start chatting",

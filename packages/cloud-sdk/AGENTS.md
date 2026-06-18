@@ -125,8 +125,7 @@ The SDK reads no env vars at runtime — callers must supply credentials via `El
 | `ELIZA_CLOUD_SDK_LIVE_RELAY` | `"1"` to enable gateway relay checks |
 | `ELIZA_CLOUD_SDK_LIVE_DESTRUCTIVE` | `"1"` + resource flag to allow create/mutate |
 | `ELIZA_CLOUD_SDK_LIVE_CONTAINERS` | `"1"` + `ELIZA_CLOUD_SDK_CONTAINER_IMAGE_URI` |
-| `ELIZA_CLOUD_SDK_LIVE_AGENT` | `"1"` to enable Eliza agent lifecycle checks (shared tier) |
-| `ELIZA_CLOUD_SDK_LIVE_AGENT_HETZNER` | `"1"` + agent + destructive flags: provisions a real `dedicated-always` agent on a Hetzner core, polls it to `running`, asserts the bridge URL, then deletes it. Needs a healthy production provisioning fleet. |
+| `ELIZA_CLOUD_SDK_LIVE_AGENT` | `"1"` to enable Eliza agent lifecycle checks |
 | `ELIZA_CLOUD_SDK_LIVE_PROFILE_WRITE` | `"1"` + `ELIZA_CLOUD_SDK_PROFILE_FIELD` + `ELIZA_CLOUD_SDK_PROFILE_VALUE` to enable profile write checks |
 | `ELIZA_CLOUD_SDK_LIVE_OPENAPI` | `"1"` to force the OpenAPI spec check |
 | `ELIZA_CLOUD_PAIR_TOKEN` / `ELIZA_CLOUD_PAIR_ORIGIN` | Pairing token live test |

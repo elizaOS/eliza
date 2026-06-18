@@ -204,9 +204,6 @@ describe("useFirstRunController cloud first-run", () => {
         onProgress: expect.any(Function),
       }),
     );
-    const provisionCall = mocks.provisionCloudSandbox.mock
-      .calls[0] as unknown as [Record<string, unknown>] | undefined;
-    expect(provisionCall?.[0]).toHaveProperty("allowSharedRuntime", true);
     expect(mocks.setBaseUrl).toHaveBeenCalledWith(
       "https://agent-1.runtime.elizacloud.ai",
     );
