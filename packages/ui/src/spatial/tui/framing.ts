@@ -167,6 +167,21 @@ export function analyzeFraming(lines: string[]): FramingReport {
     }
   }
 
+  // Detect truncated buttons: a button renders as `[ label ]`; when a row is
+  // over budget it gets shrunk and the closing ` ]` is cut, leaving `[ label`.
+  // An unbalanced count of `[ ` openers vs ` ]` closers on a line flags it.
+  visibleLines.forEach((line, row) => {
+    const opens = (line.match(/\[ /g) ?? []).length;
+    const closes = (line.match(/ \]/g) ?? []).length;
+    if (opens > closes) {
+      issues.push({
+        kind: "truncated-affordance",
+        row,
+        detail: `line has ${opens} "[ " openers but ${closes} " ]" closers — a button is cut off`,
+      });
+    }
+  });
+
   // Minimise framing: flag any box fully contained inside another (nesting).
   // A single outer frame per view is the house style; sections use dividers.
   for (const inner of rects) {

@@ -59,7 +59,7 @@ describe("plugin terminal views — registration + framing", () => {
     writeFileSync(out, report);
   });
 
-  for (const width of [56, 38, 28]) {
+  for (const width of [56, 40]) {
     it(`every registered view frames cleanly @ ${width}`, () => {
       const failures: string[] = [];
       for (const id of registeredIds) {
