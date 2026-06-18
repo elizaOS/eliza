@@ -134,9 +134,7 @@ class SoftwareBspEvidenceTest(unittest.TestCase):
         for target in ("buildroot", "linux", "opensbi", "aosp"):
             with self.subTest(target=target):
                 self.assertIn(f"{target} BSP check failed", result.stdout)
-                self.assertIn(
-                    f"{target} BSP BLOCKED: missing evidence", result.stdout
-                )
+                self.assertIn(f"{target} BSP BLOCKED: missing evidence", result.stdout)
         # u-boot is not a required-evidence target; it must not be reported as a
         # missing-evidence blocker.
         self.assertNotIn("u-boot BSP BLOCKED: missing evidence", result.stdout)
