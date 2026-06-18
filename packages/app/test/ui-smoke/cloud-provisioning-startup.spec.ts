@@ -97,12 +97,19 @@ function userMessage(page: Page, text: string): Locator {
     .first();
 }
 
-function assistantMessage(page: Page): Locator {
-  return page
-    .locator('[data-testid="chat-message"][data-role="assistant"]')
-    .last()
-    .or(conversationLog(page).locator('[data-role="assistant"]').last())
-    .first();
+function assistantMessage(page: Page, hasText?: string | RegExp): Locator {
+  const direct = page.locator(
+    '[data-testid="chat-message"][data-role="assistant"]',
+  );
+  const logged = conversationLog(page).locator('[data-role="assistant"]');
+  if (hasText !== undefined) {
+    return direct
+      .filter({ hasText })
+      .last()
+      .or(logged.filter({ hasText }).last())
+      .first();
+  }
+  return direct.last().or(logged.last()).first();
 }
 
 async function clickIfVisible(
@@ -338,8 +345,11 @@ async function expectDeterministicChatTurn(
   prompt: string,
 ): Promise<void> {
   await expect(userMessage(page, prompt)).toBeVisible();
-  const assistant = assistantMessage(page);
-  await expect(assistant).toBeVisible();
+  // Target the deterministic fixture reply specifically — a greeting bubble and
+  // cross-viewport stub-conversation state can otherwise make an unfiltered
+  // .last() resolve to a non-JSON assistant bubble (seen only on wide-web).
+  const assistant = assistantMessage(page, /ui-smoke-assistant-v1/);
+  await expect(assistant).toBeVisible({ timeout: 60_000 });
   const assistantText = (await assistant.textContent())?.trim() ?? "";
   const parsed = parseAssistantFixtureText(assistantText);
   expect(parsed).toMatchObject({
