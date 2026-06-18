@@ -402,6 +402,25 @@ android/ios harnesses are authored but unrunnable here (no iOS sim; Android emul
 segfaults the embedded bun agent on stock x86_64 — needs real HW/Cuttlefish). Live
 `*.real.test.ts` need real provider credentials. These are CI-on-real-devices tasks.
 
+### Session 2026-06-18 (round 10) — view-state screenshot review (the "review by you")
+Built a light headless-chromium screenshot harness
+(`packages/app/test/view-screenshots/`, committed `49fe2f6001`; output gitignored)
+that renders each of the 9 decomposed views in every state (vite + the same
+@elizaos/ui stubs the jsdom tests use; no 20-min agent stack — runs in-sandbox).
+Captured 76 PNGs (9 views × loading/error/empty/populated[+focus's unavailable/
+permission/active] × desktop+mobile) and I VISUALLY REVIEWED a representative set
+across all 9 views + error/permission/empty states + mobile.
+**Outcome: production-grade.** Dark theme, orange-accent-ONLY (active toggles,
+primary CTAs, unread/at-risk dots), NO blue anywhere, clean hierarchy, right-
+aligned values, responsive mobile (chips wrap, previews truncate), error states
+have orange Retry CTAs, permission/disconnected states are honest. Calendar event
+chips render neutral-gray (the no-blue design pass holds).
+Minor non-blocking nits (tracked, not fixes): (1) relationships kind-labels
+(PEOPLE/ORGANIZATIONS) are slightly orange-heavy — acceptable accent-tag usage,
+not a blue violation; (2) calendar event-chip text can clip vertically — a harness
+Tailwind-shim artifact (full theme present in the real app), not a view bug.
+Run: `node packages/app/test/view-screenshots/run.mjs`.
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
