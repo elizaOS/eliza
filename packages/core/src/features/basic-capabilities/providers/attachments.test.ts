@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { IAgentRuntime, Memory, UUID } from "../../../types/index.ts";
+import {
+	type IAgentRuntime,
+	type Memory,
+	ModelType,
+	type UUID,
+} from "../../../types/index.ts";
 import { attachmentsProvider } from "./attachments.ts";
 
 const roomId = "00000000-0000-0000-0000-000000000001" as UUID;
@@ -26,10 +31,18 @@ function attachmentMemory(createdAt = 1): Memory {
 	} as Memory;
 }
 
-function makeRuntime(recentMessages: Memory[]): IAgentRuntime {
+function makeRuntime(
+	recentMessages: Memory[],
+	options: { hasImageDescriptionModel?: boolean } = {},
+): IAgentRuntime {
 	return {
 		getConversationLength: () => 20,
 		getMemories: async () => recentMessages,
+		getModel: (modelType: string) =>
+			options.hasImageDescriptionModel &&
+			modelType === ModelType.IMAGE_DESCRIPTION
+				? async () => ({ title: "", description: "" })
+				: undefined,
 	} as unknown as IAgentRuntime;
 }
 
@@ -91,5 +104,105 @@ describe("attachmentsProvider", () => {
 
 		expect(result.text).toBe("");
 		expect(result.data?.visibleAttachments).toHaveLength(1);
+	});
+
+	it("does not advertise an ATTACHMENT read for a failure-prose description without stored text", async () => {
+		// 2026-06-10 incident: mp4 transcription failed (no ffprobe) so the
+		// attachment carried only placeholder prose in description with empty
+		// text; the advertised read was unsatisfiable and the turn died in a
+		// forced-tool IGNORE loop.
+		const result = await attachmentsProvider.get(
+			makeRuntime([]),
+			makeMessage({
+				text: "How can I max profit from this",
+				attachments: [
+					{
+						id: "generated-video",
+						url: "https://cdn.discordapp.test/attachments/1/2/Generated_Video.mp4",
+						title: "Generated_Video.mp4",
+						source: "Video",
+						contentType: "video",
+						description: "An audio/video attachment (transcription failed)",
+						text: "",
+					},
+				],
+			}),
+		);
+
+		expect(result.text).toContain("Stored Content: none");
+		expect(result.text).not.toContain("available via ATTACHMENT action=read");
+	});
+
+	it("advertises an ATTACHMENT read when readable text is stored", async () => {
+		const result = await attachmentsProvider.get(
+			makeRuntime([]),
+			makeMessage({
+				text: "How can I max profit from this",
+				attachments: [
+					{
+						id: "generated-video",
+						url: "https://cdn.discordapp.test/attachments/1/2/Generated_Video.mp4",
+						title: "Generated_Video.mp4",
+						source: "Video",
+						contentType: "video",
+						description: "A clip about the coffee shop",
+						text: "welcome to the coffee shop, home of the $50 latte",
+					},
+				],
+			}),
+		);
+
+		expect(result.text).toContain(
+			"Stored Content: available via ATTACHMENT action=read",
+		);
+	});
+
+	it("advertises a read for a failed-ingest image when a vision model is registered", async () => {
+		// The read action re-describes IMAGEs at read time, so a working-vision
+		// deploy can satisfy the read even though ingest stored only the
+		// failure placeholder.
+		const result = await attachmentsProvider.get(
+			makeRuntime([], { hasImageDescriptionModel: true }),
+			makeMessage({
+				text: "what is in this image?",
+				attachments: [
+					{
+						id: "failed-ingest-image",
+						url: "https://cdn.discordapp.test/attachments/1/3/photo.png",
+						title: "photo.png",
+						source: "Image",
+						contentType: "image",
+						description: "An image attachment (recognition failed)",
+						text: "",
+					},
+				],
+			}),
+		);
+
+		expect(result.text).toContain(
+			"Stored Content: available via ATTACHMENT action=read",
+		);
+	});
+
+	it("does not advertise a read for a failed-ingest image without a vision model", async () => {
+		const result = await attachmentsProvider.get(
+			makeRuntime([], { hasImageDescriptionModel: false }),
+			makeMessage({
+				text: "what is in this image?",
+				attachments: [
+					{
+						id: "failed-ingest-image",
+						url: "https://cdn.discordapp.test/attachments/1/3/photo.png",
+						title: "photo.png",
+						source: "Image",
+						contentType: "image",
+						description: "An image attachment (recognition failed)",
+						text: "",
+					},
+				],
+			}),
+		);
+
+		expect(result.text).toContain("Stored Content: none");
 	});
 });

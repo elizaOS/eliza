@@ -1,10 +1,12 @@
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
-import type {
-	IAgentRuntime,
-	Media,
-	Memory,
-	Provider,
-	ProviderResult,
+import {
+	ContentType,
+	type IAgentRuntime,
+	type Media,
+	type Memory,
+	ModelType,
+	type Provider,
+	type ProviderResult,
 } from "../../../types/index.ts";
 import { addHeader } from "../../../utils.ts";
 
@@ -154,7 +156,15 @@ export const attachmentsProvider: Provider = {
     Type: ${attachment.source}
     Content Type: ${attachment.contentType ?? "unknown"}
     Stored Content: ${
-			attachment.text || attachment.description
+			// Keyed on text (the canonical readable-content field) only: failed
+			// processing leaves text empty but stores failure prose in description,
+			// which must not advertise an unsatisfiable ATTACHMENT read. Images are
+			// the exception: the read action re-describes them at read time
+			// (working-memory/attachmentContext), so the read is satisfiable
+			// whenever an IMAGE_DESCRIPTION model is registered.
+			attachment.text ||
+			(attachment.contentType === ContentType.IMAGE &&
+				typeof runtime.getModel(ModelType.IMAGE_DESCRIPTION) === "function")
 				? "available via ATTACHMENT action=read"
 				: "none"
 		}

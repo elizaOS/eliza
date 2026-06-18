@@ -526,7 +526,10 @@ export const formatMessages = ({
 							if (media.contentType) {
 								lines.push(`Type: ${media.contentType}`);
 							}
-							if (media.text || media.description) {
+							// Keyed on text only: failed processing leaves text empty but
+							// stores failure prose in description, which must not advertise
+							// an unsatisfiable ATTACHMENT read.
+							if (media.text) {
 								lines.push(
 									"Stored content available via ATTACHMENT action=read",
 								);
