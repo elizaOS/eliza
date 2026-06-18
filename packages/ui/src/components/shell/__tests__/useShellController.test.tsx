@@ -1,9 +1,20 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from "vitest";
 
-import { createVoiceCapture } from "../../../voice/voice-capture-factory";
+import {
+  createVoiceCapture,
+  type VoiceCaptureFactoryOptions,
+} from "../../../voice/voice-capture-factory";
 import { useShellController } from "../useShellController";
 
 const NOT_REQUIRED_STATUS = {
@@ -112,22 +123,15 @@ describe("useShellController", () => {
 
 // ── Voice: push-to-talk routing, hands-free loop, and #5 typing-pause ────────
 
-interface CaptureOpts {
-  onTranscript?: (segment: {
-    text: string;
-    final: boolean;
-    backend: string;
-  }) => void;
-  onStateChange?: (state: string) => void;
-}
+type CaptureOpts = VoiceCaptureFactoryOptions;
 
 const createVoiceCaptureMock = vi.mocked(createVoiceCapture);
 
 /** Records the callbacks of the most recent capture + its handle's stop()/start(). */
 let lastCaptureOpts: CaptureOpts | null = null;
 let captureHandles: Array<{
-  start: ReturnType<typeof vi.fn>;
-  stop: ReturnType<typeof vi.fn>;
+  start: Mock<() => Promise<void>>;
+  stop: Mock<() => Promise<void>>;
 }> = [];
 
 function installFakeCapture(): void {
@@ -152,7 +156,7 @@ function installFakeCapture(): void {
 
 /** Fire a final transcript through the most recent capture. */
 function fireFinalTranscript(text: string): void {
-  lastCaptureOpts?.onTranscript?.({ text, final: true, backend: "test" });
+  lastCaptureOpts?.onTranscript?.({ text, final: true, backend: "browser" });
 }
 
 describe("useShellController — voice capture routing", () => {
