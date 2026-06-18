@@ -7,22 +7,22 @@ import {
 import { SmartglassesView } from "./ui/SmartglassesView.tsx";
 
 registerAppShellPage({
-  id: "hearwear",
+  id: "facewear",
   pluginId: "@elizaos/plugin-facewear",
-  label: "Hearwear",
+  label: "Facewear",
   icon: "Glasses",
-  path: "/apps/hearwear",
+  path: "/apps/facewear",
   order: 80,
   group: "hardware",
   Component: FacewearView,
 });
 
 registerAppShellPage({
-  id: "hearwear.tui",
+  id: "facewear.tui",
   pluginId: "@elizaos/plugin-facewear",
-  label: "Hearwear TUI",
+  label: "Facewear TUI",
   icon: "Terminal",
-  path: "/apps/hearwear/tui",
+  path: "/apps/facewear/tui",
   order: 80.1,
   group: "hardware",
   Component: FacewearTuiView,

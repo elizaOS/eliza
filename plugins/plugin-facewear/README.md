@@ -1,8 +1,8 @@
 # @elizaos/plugin-facewear
 
-Unified hearwear integration for XR headsets and smartglasses.
+Unified facewear integration for XR headsets and smartglasses.
 
-- View Manager pages at `/apps/hearwear` and `/apps/smartglasses`.
+- View Manager pages at `/apps/facewear` and `/apps/smartglasses`.
 - Even Realities G1/G2 whole-headset pairing, display, microphone, side-tap, diagnostics, and bridge Wi-Fi setup.
 - XR session/view hosting for Meta Quest, XReal, Apple Vision Pro, simulator, and other WebXR clients.
 

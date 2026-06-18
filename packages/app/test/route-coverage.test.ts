@@ -323,7 +323,7 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     manifestPath: "plugins/plugin-facewear/src/index.ts",
     id: "facewear",
     viewType: "xr",
-    path: "/apps/hearwear/xr",
+    path: "/apps/facewear/xr",
   },
   {
     manifestPath: "plugins/plugin-facewear/src/index.ts",

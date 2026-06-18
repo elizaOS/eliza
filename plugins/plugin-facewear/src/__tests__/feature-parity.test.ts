@@ -95,13 +95,13 @@ describe("XR feature parity audit", () => {
     unregisterPluginViews(XR_ROUTE_TEST_PLUGIN);
   });
 
-  // 1. View registration parity — hearwear has gui, tui, and xr views ──────────
-  it("axis 1 — plugin-facewear declares gui, tui, and xr views for the 'hearwear' id", () => {
+  // 1. View registration parity — facewear has gui, tui, and xr views ──────────
+  it("axis 1 — plugin-facewear declares gui, tui, and xr views for the 'facewear' id", () => {
     const source = readFile("plugins/plugin-facewear/src/index.ts");
     expect(source, "gui view").toContain('viewType: "gui"');
     expect(source, "tui view").toContain('viewType: "tui"');
     expect(source, "xr view").toContain('viewType: "xr"');
-    expect(source, "hearwear view id").toContain('id: "hearwear"');
+    expect(source, "facewear view id").toContain('id: "facewear"');
   });
 
   it("axis 1 — plugin-facewear declares focused Smartglasses GUI and XR views", () => {

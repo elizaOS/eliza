@@ -40,7 +40,7 @@ enum class GlassSide { LEFT, RIGHT }
  *   RX notify:    6e400003-b5a3-f393-e0a9-e50e24dcca9e
  *
  * This native bridge intentionally mirrors the TypeScript protocol in
- * plugin-hearwear: display text uses 0x4E framed packets, mic control writes
+ * plugin-facewear: display text uses 0x4E framed packets, mic control writes
  * 0x0E to the right lens, brightness writes 0x01 to both lenses, and pairing is
  * not considered ready until both left and right lenses are connected.
  */
