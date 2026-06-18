@@ -649,7 +649,10 @@ export class OrchestratorTaskService extends Service {
           /401|403|invalid api key|unauthor/i.test(message)
         ) {
           await this.markSessionAccountUnhealthy(sessionId, "auth", message);
-        } else if (/429|rate.?limit|quota|overloaded/i.test(message)) {
+        } else if (/429|rate.?limit|quota/i.test(message)) {
+          // A 529 "overloaded" is a server-wide transient condition, not an
+          // account quota — deliberately excluded so a healthy account isn't
+          // sidelined from rotation for ~5min over a server blip.
           await this.markSessionAccountUnhealthy(
             sessionId,
             "rate-limit",
@@ -694,11 +697,6 @@ export class OrchestratorTaskService extends Service {
     await this.store.updateTask(taskId, { status: next });
   }
 
-  /**
-   * Flag the pooled account a sub-agent used as rate-limited or needing
-   * re-auth, so the pool's next least-used selection skips it. Best-effort and
-   * no-op when the session has no linked account or no pool bridge is present.
-   */
   private async markSessionAccountUnhealthy(
     sessionId: string,
     reason: "auth" | "rate-limit",
@@ -777,10 +775,6 @@ export class OrchestratorTaskService extends Service {
       costUsd: session.costUsd + (usage.costUsd ?? 0),
       usageState: usage.state,
     });
-
-    // Attribute the turn's tokens to the pooled account that served it, so the
-    // pool's least-used selection and the per-account usage counters reflect
-    // real coding-agent spend (not just main-runtime inference).
     if (session.accountProviderId && session.accountId) {
       const turnTokens =
         usage.inputTokens +
@@ -1797,11 +1791,6 @@ export class OrchestratorTaskService extends Service {
     };
   }
 
-  /**
-   * Accounts surface for the orchestrator dashboard: which pooled accounts can
-   * serve each coding-agent type, the active selection strategy, and the live
-   * map of running sub-agents → accounts (with each one's spend).
-   */
   async getAccountOverview(): Promise<OrchestratorAccountOverview> {
     const records = await this.store.listTasks({ includeArchived: false });
     const docs = (
@@ -1827,6 +1816,11 @@ export class OrchestratorTaskService extends Service {
           outputTokens: session.outputTokens,
           reasoningTokens: session.reasoningTokens,
           cacheTokens: session.cacheTokens,
+          totalTokens:
+            session.inputTokens +
+            session.outputTokens +
+            session.reasoningTokens +
+            session.cacheTokens,
           costUsd: session.costUsd,
           usageState: session.usageState,
         });

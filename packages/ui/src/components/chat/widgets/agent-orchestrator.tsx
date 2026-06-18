@@ -800,6 +800,31 @@ function OrchestratorAccountsWidget(_props: ChatSidebarWidgetProps) {
             {overview?.strategy ?? "least-used"}
           </span>
         </div>
+        {Object.keys(overview?.availability ?? {}).length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {Object.entries(overview?.availability ?? {}).map(
+              ([agentType, providers]) => {
+                const healthy = providers.reduce((n, p) => n + p.healthy, 0);
+                const enabled = providers.reduce((n, p) => n + p.enabled, 0);
+                if (enabled === 0) return null;
+                return (
+                  <span
+                    key={agentType}
+                    className="rounded-full bg-muted/10 px-1.5 py-0.5 text-3xs text-muted"
+                    title={t("agentorchestrator.availabilityHint", {
+                      defaultValue:
+                        "{{healthy}} healthy of {{enabled}} enabled",
+                      healthy,
+                      enabled,
+                    })}
+                  >
+                    {agentType} · {healthy}/{enabled}
+                  </span>
+                );
+              },
+            )}
+          </div>
+        ) : null}
         {flatAccounts.map((account) => {
           const inUse = assignmentCountByAccount.get(account.id) ?? 0;
           return (
@@ -853,7 +878,7 @@ function OrchestratorAccountsWidget(_props: ChatSidebarWidgetProps) {
                 <span className="shrink-0 text-muted/50">→</span>
                 <span className="truncate">{a.accountLabel}</span>
                 <span className="ml-auto shrink-0 tabular-nums text-muted/60">
-                  {Math.round((a.inputTokens + a.outputTokens) / 1000)}k
+                  {Math.round(a.totalTokens / 1000)}k
                 </span>
               </div>
             ))}
