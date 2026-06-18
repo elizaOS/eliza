@@ -13735,11 +13735,8 @@
           onRemote ? (
             // ADVANCED — connect to a self-run setup. Reachable only via the
             // demoted "Advanced setup" link, with gentle, plain-language copy.
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex w-full flex-col gap-4", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col gap-1.5 text-center", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { className: "text-[20px] font-semibold tracking-[-0.01em]", children: "Connect to your own setup" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-[13px] text-white/65", children: "Enter the address where your assistant is running." })
-              ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex w-full flex-col gap-5", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { className: "text-center text-[20px] font-semibold tracking-[-0.01em]", children: "Connect your own agent" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col gap-1.5 text-left", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                   "label",
@@ -13763,8 +13760,7 @@
                     placeholder: "https://agent.example.com",
                     className: "w-full rounded-xl border border-white/25 bg-white/10 px-4 py-3 text-[15px] text-white outline-none transition-colors placeholder:text-white/40 focus:border-white/70 focus:bg-white/[0.14]"
                   }
-                ),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-[11px] text-white/45", children: "It usually looks like https://example.com" })
+                )
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col gap-1.5 text-left", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -13772,7 +13768,7 @@
                   {
                     htmlFor: "onboarding-remote-password",
                     className: "text-[12px] font-medium text-white/70",
-                    children: "Password (only if you set one)"
+                    children: "Password"
                   }
                 ),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -13785,7 +13781,7 @@
                     onKeyDown: (e) => {
                       if (e.key === "Enter") void finishAndMaybeClose();
                     },
-                    placeholder: "Leave blank if you didn't set one",
+                    placeholder: "Optional",
                     className: "w-full rounded-xl border border-white/25 bg-white/10 px-4 py-3 text-[15px] text-white outline-none transition-colors placeholder:text-white/40 focus:border-white/70 focus:bg-white/[0.14]"
                   }
                 )
@@ -13822,10 +13818,9 @@
             ] })
           ) : cloudLoginUrl ? (
             // CLOUD SIGN-IN handoff — finish in the browser, then come back.
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex w-full flex-col items-center gap-4", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex w-full flex-col items-center gap-5", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "grid h-12 w-12 place-items-center rounded-2xl bg-white/[0.12]", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MailCheck, { className: "h-6 w-6" }) }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { className: "text-[18px] font-semibold", children: "Almost there" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "max-w-[18rem] text-[13px] leading-snug text-white/75", children: "We opened a sign-in page in your browser. Come back here when you're done." }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
                 "button",
                 {
@@ -13834,7 +13829,7 @@
                   onClick: () => void openExternalUrl(cloudLoginUrl),
                   className: "inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-6 text-[15px] font-semibold text-[#FF5800] transition-opacity hover:opacity-90",
                   children: [
-                    "Open the sign-in page",
+                    "Open sign-in page",
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ArrowRight, { className: "h-4 w-4" })
                   ]
                 }
@@ -13846,10 +13841,7 @@
             // a clear private alternative, and the technical path demoted to a
             // quiet link so a first-timer never sees jargon.
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col gap-1.5", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { className: "text-[22px] font-semibold leading-tight tracking-[-0.01em]", children: "Let's get you started" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-[13px] leading-snug text-white/65", children: "Pick how you'd like to begin. You can change this later." })
-              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { className: "text-[22px] font-semibold leading-tight tracking-[-0.01em]", children: "How should Eliza run?" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-1 flex w-full flex-col gap-3", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
                   "button",
@@ -13861,12 +13853,9 @@
                     className: "group flex w-full items-center gap-3.5 rounded-2xl bg-white px-5 py-4 text-left shadow-[0_8px_24px_-8px_rgba(0,0,0,0.35)] transition-[transform,box-shadow,opacity] duration-200 ease-out hover:shadow-[0_12px_30px_-8px_rgba(0,0,0,0.45)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100",
                     children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#FF5800]/10", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Sparkles, { className: "h-5 w-5 text-[#FF5800]" }) }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "min-w-0 flex-1", children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "flex items-center gap-2", children: [
-                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-[17px] font-semibold leading-tight text-[#FF5800]", children: "Start now" }),
-                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "rounded-full bg-[#FF5800]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#FF5800]", children: "Easiest" })
-                        ] }),
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "mt-0.5 block text-[13px] leading-snug text-[#FF5800]/75", children: "The easy way \u2014 we set everything up for you." })
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "flex min-w-0 flex-1 items-center gap-2", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-[17px] font-semibold leading-tight text-[#FF5800]", children: "Eliza Cloud" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "rounded-full bg-[#FF5800]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#FF5800]", children: "Recommended" })
                       ] }),
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ArrowRight, { className: "h-5 w-5 shrink-0 text-[#FF5800]/60 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none" })
                     ]
@@ -13879,18 +13868,18 @@
                     "data-testid": "onboarding-option-local",
                     disabled: busy || cloudOnly,
                     onClick: chooseLocal,
-                    className: "group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-white/[0.08] px-5 py-3.5 text-left backdrop-blur-sm transition-colors duration-200 hover:bg-white/[0.14] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100",
+                    className: "group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-white/[0.08] px-5 py-4 text-left backdrop-blur-sm transition-colors duration-200 hover:bg-white/[0.14] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100",
                     children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/[0.12]", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ShieldCheck, { className: "h-5 w-5 text-white/90" }) }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "min-w-0 flex-1", children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "block text-[15px] font-semibold leading-tight", children: "Keep it on this phone" }),
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "mt-0.5 block text-xs leading-snug text-white/65", children: "Works offline and stays completely private." })
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "flex min-w-0 flex-1 items-center gap-2", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-[15px] font-semibold leading-tight", children: "This device" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white/60", children: "Private" })
                       ] }),
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ArrowRight, { className: "h-4 w-4 shrink-0 text-white/40 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" })
                     ]
                   }
                 ),
-                !localRuntimeAvailable ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "-mt-1 px-1 text-[11px] leading-snug text-white/45", children: "A small one-time download finishes setup." }) : null,
+                !localRuntimeAvailable ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "-mt-1 px-1 text-[11px] leading-snug text-white/45", children: "One-time download" }) : null,
                 !cloudOnly ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
                   "button",
                   {
@@ -13901,7 +13890,7 @@
                     className: "mx-auto mt-1 inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-medium text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white/85 disabled:opacity-40",
                     children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Settings2, { className: "h-3.5 w-3.5" }),
-                      "Advanced setup"
+                      "Advanced"
                     ]
                   }
                 ) : null
@@ -13926,7 +13915,7 @@
                         role: "status",
                         "aria-live": "polite",
                         className: "min-h-5 max-w-[18rem] text-[13px] leading-snug text-white/80",
-                        children: voice.error ? voice.error : voice.speaking ? "Eliza is speaking\u2026" : voice.listening ? voice.transcript || "Listening\u2026" : "Getting voice ready\u2026"
+                        children: voice.error ? voice.error : voice.speaking ? "Speaking\u2026" : voice.listening ? voice.transcript || "Listening\u2026" : "Starting\u2026"
                       }
                     ),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
@@ -13938,7 +13927,7 @@
                         className: "inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-medium text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white/85",
                         children: [
                           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MicOff, { className: "h-3.5 w-3.5" }),
-                          "Turn off voice"
+                          "Turn off"
                         ]
                       }
                     )
@@ -13954,7 +13943,7 @@
                   className: "mx-auto inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50",
                   children: [
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Mic, { className: "h-4 w-4" }),
-                    "Talk to set up"
+                    "Set up by voice"
                   ]
                 }
               )

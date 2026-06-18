@@ -167,15 +167,10 @@ export function CompactOnboarding(): React.ReactElement {
             {onRemote ? (
               // ADVANCED — connect to a self-run setup. Reachable only via the
               // demoted "Advanced setup" link, with gentle, plain-language copy.
-              <div className="flex w-full flex-col gap-4">
-                <div className="flex flex-col gap-1.5 text-center">
-                  <h1 className="text-[20px] font-semibold tracking-[-0.01em]">
-                    Connect to your own setup
-                  </h1>
-                  <p className="text-[13px] text-white/65">
-                    Enter the address where your assistant is running.
-                  </p>
-                </div>
+              <div className="flex w-full flex-col gap-5">
+                <h1 className="text-center text-[20px] font-semibold tracking-[-0.01em]">
+                  Connect your own agent
+                </h1>
                 <div className="flex flex-col gap-1.5 text-left">
                   <label
                     htmlFor="onboarding-remote-address"
@@ -198,16 +193,13 @@ export function CompactOnboarding(): React.ReactElement {
                     placeholder="https://agent.example.com"
                     className="w-full rounded-xl border border-white/25 bg-white/10 px-4 py-3 text-[15px] text-white outline-none transition-colors placeholder:text-white/40 focus:border-white/70 focus:bg-white/[0.14]"
                   />
-                  <p className="text-[11px] text-white/45">
-                    It usually looks like https://example.com
-                  </p>
                 </div>
                 <div className="flex flex-col gap-1.5 text-left">
                   <label
                     htmlFor="onboarding-remote-password"
                     className="text-[12px] font-medium text-white/70"
                   >
-                    Password (only if you set one)
+                    Password
                   </label>
                   <input
                     id="onboarding-remote-password"
@@ -219,7 +211,7 @@ export function CompactOnboarding(): React.ReactElement {
                     onKeyDown={(e) => {
                       if (e.key === "Enter") void finishAndMaybeClose();
                     }}
-                    placeholder="Leave blank if you didn't set one"
+                    placeholder="Optional"
                     className="w-full rounded-xl border border-white/25 bg-white/10 px-4 py-3 text-[15px] text-white outline-none transition-colors placeholder:text-white/40 focus:border-white/70 focus:bg-white/[0.14]"
                   />
                 </div>
@@ -251,22 +243,18 @@ export function CompactOnboarding(): React.ReactElement {
               </div>
             ) : cloudLoginUrl ? (
               // CLOUD SIGN-IN handoff — finish in the browser, then come back.
-              <div className="flex w-full flex-col items-center gap-4">
+              <div className="flex w-full flex-col items-center gap-5">
                 <span className="grid h-12 w-12 place-items-center rounded-2xl bg-white/[0.12]">
                   <MailCheck className="h-6 w-6" />
                 </span>
                 <h1 className="text-[18px] font-semibold">Almost there</h1>
-                <p className="max-w-[18rem] text-[13px] leading-snug text-white/75">
-                  We opened a sign-in page in your browser. Come back here when
-                  you're done.
-                </p>
                 <button
                   type="button"
                   data-testid="onboarding-cloud-open-signin"
                   onClick={() => void openExternalUrl(cloudLoginUrl)}
                   className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-6 text-[15px] font-semibold text-[#FF5800] transition-opacity hover:opacity-90"
                 >
-                  Open the sign-in page
+                  Open sign-in page
                   <ArrowRight className="h-4 w-4" />
                 </button>
                 <p className="text-[11px] text-white/50">
@@ -278,14 +266,9 @@ export function CompactOnboarding(): React.ReactElement {
               // a clear private alternative, and the technical path demoted to a
               // quiet link so a first-timer never sees jargon.
               <>
-                <div className="flex flex-col gap-1.5">
-                  <h1 className="text-[22px] font-semibold leading-tight tracking-[-0.01em]">
-                    Let's get you started
-                  </h1>
-                  <p className="text-[13px] leading-snug text-white/65">
-                    Pick how you'd like to begin. You can change this later.
-                  </p>
-                </div>
+                <h1 className="text-[22px] font-semibold leading-tight tracking-[-0.01em]">
+                  How should Eliza run?
+                </h1>
                 <div className="mt-1 flex w-full flex-col gap-3">
                   {/* PRIMARY — the simplest "just start" path (cloud). */}
                   <button
@@ -298,17 +281,12 @@ export function CompactOnboarding(): React.ReactElement {
                     <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#FF5800]/10">
                       <Sparkles className="h-5 w-5 text-[#FF5800]" />
                     </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2">
-                        <span className="text-[17px] font-semibold leading-tight text-[#FF5800]">
-                          Start now
-                        </span>
-                        <span className="rounded-full bg-[#FF5800]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#FF5800]">
-                          Easiest
-                        </span>
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                      <span className="text-[17px] font-semibold leading-tight text-[#FF5800]">
+                        Eliza Cloud
                       </span>
-                      <span className="mt-0.5 block text-[13px] leading-snug text-[#FF5800]/75">
-                        The easy way — we set everything up for you.
+                      <span className="rounded-full bg-[#FF5800]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#FF5800]">
+                        Recommended
                       </span>
                     </span>
                     <ArrowRight className="h-5 w-5 shrink-0 text-[#FF5800]/60 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none" />
@@ -321,17 +299,17 @@ export function CompactOnboarding(): React.ReactElement {
                     data-testid="onboarding-option-local"
                     disabled={busy || cloudOnly}
                     onClick={chooseLocal}
-                    className="group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-white/[0.08] px-5 py-3.5 text-left backdrop-blur-sm transition-colors duration-200 hover:bg-white/[0.14] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100"
+                    className="group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-white/[0.08] px-5 py-4 text-left backdrop-blur-sm transition-colors duration-200 hover:bg-white/[0.14] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100"
                   >
                     <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/[0.12]">
                       <ShieldCheck className="h-5 w-5 text-white/90" />
                     </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-[15px] font-semibold leading-tight">
-                        Keep it on this phone
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                      <span className="text-[15px] font-semibold leading-tight">
+                        This device
                       </span>
-                      <span className="mt-0.5 block text-xs leading-snug text-white/65">
-                        Works offline and stays completely private.
+                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white/60">
+                        Private
                       </span>
                     </span>
                     <ArrowRight className="h-4 w-4 shrink-0 text-white/40 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" />
@@ -339,7 +317,7 @@ export function CompactOnboarding(): React.ReactElement {
 
                   {!localRuntimeAvailable ? (
                     <p className="-mt-1 px-1 text-[11px] leading-snug text-white/45">
-                      A small one-time download finishes setup.
+                      One-time download
                     </p>
                   ) : null}
 
@@ -355,7 +333,7 @@ export function CompactOnboarding(): React.ReactElement {
                       className="mx-auto mt-1 inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-medium text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white/85 disabled:opacity-40"
                     >
                       <Settings2 className="h-3.5 w-3.5" />
-                      Advanced setup
+                      Advanced
                     </button>
                   ) : null}
                 </div>
@@ -389,10 +367,10 @@ export function CompactOnboarding(): React.ReactElement {
                       {voice.error
                         ? voice.error
                         : voice.speaking
-                          ? "Eliza is speaking…"
+                          ? "Speaking…"
                           : voice.listening
                             ? voice.transcript || "Listening…"
-                            : "Getting voice ready…"}
+                            : "Starting…"}
                     </p>
                     <button
                       type="button"
@@ -401,7 +379,7 @@ export function CompactOnboarding(): React.ReactElement {
                       className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-medium text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white/85"
                     >
                       <MicOff className="h-3.5 w-3.5" />
-                      Turn off voice
+                      Turn off
                     </button>
                   </div>
                 ) : (
@@ -413,7 +391,7 @@ export function CompactOnboarding(): React.ReactElement {
                     className="mx-auto inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50"
                   >
                     <Mic className="h-4 w-4" />
-                    Talk to set up
+                    Set up by voice
                   </button>
                 )}
               </>
