@@ -53,6 +53,10 @@ export const MOBILE_CORE_PLUGINS: readonly string[] = [
  */
 export const MOBILE_VIEW_PLUGINS: readonly string[] = [
   "@elizaos/plugin-task-coordinator",
+  // Inbox: registered on mobile so its home tile resolves + the /inbox view
+  // appears in /api/views. The plugin's de-stub + client wiring are owned by a
+  // separate effort; this keeps it in the mobile load/allow set.
+  "@elizaos/plugin-inbox",
 ];
 
 /**
