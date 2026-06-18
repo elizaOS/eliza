@@ -64,6 +64,44 @@ Live status at the time of writing (read-only probes):
   (`ai-pricing/lookup.ts:146`). Needs real prices reconciled (flagged as a task).
 - **Monetization PUT silently ignores wrong-cased keys** (snake_case → 200 no-op;
   use camelCase — see §1).
+- **Stripe `success_url` allowlist is strict** — only `https://elizacloud.ai` is
+  accepted by `getDefaultPlatformRedirectOrigins()`; `www.` and `app.` subdomains
+  are rejected ("Invalid success_url"). A UX footgun if the frontend ever passes a
+  www/app origin.
+
+#### Money loop — now proven live except the two user-only money-moves
+
+- **Card IN — validated both ends.** `POST /api/v1/credits/checkout`
+  (`{credits, success_url, cancel_url}`, `success_url` origin must be
+  `https://elizacloud.ai`) created a **real live Stripe checkout session**
+  (`https://checkout.stripe.com/c/pay/cs_live_…`); and the credit-grant webhook
+  (`checkout.session.completed` → record + enqueue org credit) is unit-tested
+  green (`packages/cloud-api/__tests__/stripe-webhook-route.test.ts`, 4/4).
+  Driving a card through the middle needs either a real card (live) or a
+  `sk_test` key + Stripe CLI (test mode) — neither is in this env (only `sk_live`,
+  no Stripe CLI). **"local dev test mode" requires provisioning Stripe test keys
+  + the Stripe CLI for webhook forwarding.**
+- **Earning → redeemable points — proven live.** Inference attributed to
+  PayPerPixel (`X-App-Id`, markup temporarily raised) grew the creator's
+  redeemable balance **$0 → $1.0812** (`bySource: miniapp`) with matching
+  `app_earnings`; markup reset to 20% after. So
+  charging → markup → `app_earnings` → `redeemable_earnings` (points) all fire
+  live, and eligibility flips to `canRedeem:true`.
+- **Payment OUT — EXECUTED (user-authorized) → found a prod bug.** Generated a
+  Base wallet and ran the real redemption (`POST /api/v1/redemptions`, 100 pts →
+  base). It returned **HTTP 500** — and `GET /redemptions/quote` + `/status` also
+  500 — while balance/eligibility are fine and the balance is NOT locked on
+  failure. The TWAP eliza-token-price oracle / payout-status service throws (see
+  `redemptions/quote/route.ts` → `twapPriceOracle.getRedemptionQuote` /
+  `payoutStatusService.isNetworkAvailable`). **Added error logging to both
+  catches** (was opaque). So the on-chain payout is blocked by a **production
+  payout-infrastructure failure**, not authorization — flagged as a task; fix =
+  feed the TWAP oracle / configure the payout hot wallet, or fail gracefully.
+
+#### Example app fixes shipped this session
+- **clone-ur-crush rendered unstyled** — it's on Tailwind v4 but `app/globals.css`
+  used the dead v3 `@tailwind base/components/utilities` directives (zero utilities
+  generated). Fixed to v4 `@import "tailwindcss"` + `@config`. Verified live.
 
 ## 0. Steward: confirm login + signup work (goal: "make sure we can log in and create an account")
 

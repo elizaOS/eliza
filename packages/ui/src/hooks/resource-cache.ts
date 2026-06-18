@@ -42,6 +42,18 @@ const inflight = new Map<string, Promise<unknown>>();
 const requestSeq = new Map<string, number>();
 const subscribers = new Map<string, Set<() => void>>();
 
+/**
+ * Ref-counted background pollers, keyed by cache key. Multiple hook mounts that
+ * poll the same key share one `setInterval`: the first registrant starts the
+ * timer, later ones just bump the ref-count, and the last to leave clears it.
+ * This stops N mounts of the same resource from each running their own timer.
+ */
+interface Poller {
+  intervalId: ReturnType<typeof setInterval>;
+  refCount: number;
+}
+const pollers = new Map<string, Poller>();
+
 /** localStorage key prefix for persisted entries. */
 const PERSIST_PREFIX = "eliza:rc:";
 
@@ -194,10 +206,51 @@ export function revalidate<T>(
   return promise;
 }
 
+/**
+ * Start (or join) a shared background poll for a key. The fetcher fires every
+ * `intervalMs` via {@link revalidate} (force=true), and overlapping ticks from
+ * other consumers de-dup onto the same in-flight request. Exactly one timer
+ * runs per key no matter how many mounts call this; the returned function
+ * decrements the ref-count and clears the timer once the last consumer leaves.
+ */
+export function startPolling(
+  key: string,
+  fetcher: () => Promise<unknown>,
+  intervalMs: number,
+): () => void {
+  const existing = pollers.get(key);
+  if (existing) {
+    existing.refCount += 1;
+  } else {
+    const intervalId = setInterval(() => {
+      void revalidate(key, fetcher, false, true).catch(() => {
+        // Poll failures surface through the consuming hook's own revalidate
+        // call; the background timer just keeps ticking.
+      });
+    }, intervalMs);
+    pollers.set(key, { intervalId, refCount: 1 });
+  }
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const poller = pollers.get(key);
+    if (!poller) return;
+    poller.refCount -= 1;
+    if (poller.refCount <= 0) {
+      clearInterval(poller.intervalId);
+      pollers.delete(key);
+    }
+  };
+}
+
 /** Test helper: wipe the entire cache. Not used in production code paths. */
 export function __resetResourceCache(): void {
   store.clear();
   inflight.clear();
   requestSeq.clear();
   subscribers.clear();
+  for (const poller of pollers.values()) clearInterval(poller.intervalId);
+  pollers.clear();
 }

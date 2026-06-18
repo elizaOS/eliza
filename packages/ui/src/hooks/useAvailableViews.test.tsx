@@ -292,4 +292,43 @@ describe("useAvailableViews", () => {
     });
     expect(fetchWithCsrf).toHaveBeenCalledTimes(9);
   });
+
+  it("runs only one background poll when the hook is mounted twice", async () => {
+    vi.useFakeTimers();
+    // Two simultaneous mounts (App.tsx mounts the hook in ViewRouter and again
+    // in the shell). They share one cache key, so they must share one poll timer
+    // — a single 30s tick should issue exactly one GUI+TUI+XR fetch round, not
+    // two. Each round is 3 requests (gui, tui, xr).
+    fetchWithCsrf.mockResolvedValue(response(200, { views: [] }));
+
+    const first = renderHook(() => useAvailableViews());
+    const second = renderHook(() => useAvailableViews());
+    await flushHookEffects();
+
+    // Initial mount fetch is shared (one in-flight round across both mounts).
+    expect(fetchWithCsrf).toHaveBeenCalledTimes(3);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    await flushHookEffects();
+
+    // One poll tick → one extra round of 3, not two rounds (6).
+    expect(fetchWithCsrf).toHaveBeenCalledTimes(6);
+
+    // With one mount unmounted, the surviving mount keeps the single timer alive.
+    first.unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    await flushHookEffects();
+    expect(fetchWithCsrf).toHaveBeenCalledTimes(9);
+
+    // Last unmount tears the timer down — no further polling.
+    second.unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(fetchWithCsrf).toHaveBeenCalledTimes(9);
+  });
 });
