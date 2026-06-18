@@ -145,6 +145,7 @@ export interface DiscordSlashCommand {
 		description: string;
 		required?: boolean;
 		channel_types?: number[];
+		choices?: Array<{ name: string; value: string }>;
 	}>;
 	guildOnly?: boolean;
 	bypassChannelWhitelist?: boolean;
@@ -230,6 +231,8 @@ export interface DiscordComponentOptions {
 	custom_id: string;
 	label?: string;
 	style?: number;
+	/** Link-style (style 5) button target; mutually exclusive with custom_id. */
+	url?: string;
 	placeholder?: string;
 	min_values?: number;
 	max_values?: number;
