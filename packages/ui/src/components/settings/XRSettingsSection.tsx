@@ -5,6 +5,7 @@ import { useTranslation } from "../../state/TranslationContext.hooks";
 import { openExternalUrl } from "../../utils";
 import { XRPairingPanel } from "../connectors/XRPairingPanel";
 import { Button } from "../ui/button";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 function XRSimulatorEmbed() {
   const { t } = useTranslation();
@@ -45,7 +46,7 @@ function XRSimulatorEmbed() {
         ref={previewRef}
         variant="outline"
         size="sm"
-        className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
+        className="h-11 rounded-md px-4 text-sm font-semibold"
         onClick={() => setShowEmbed(true)}
         {...previewAgentProps}
       >
@@ -65,7 +66,7 @@ function XRSimulatorEmbed() {
         <button
           ref={closePreviewRef}
           type="button"
-          className="text-xs text-muted hover:text-txt"
+          className="flex h-8 w-8 items-center justify-center rounded-md text-sm text-muted hover:bg-surface hover:text-txt"
           onClick={() => setShowEmbed(false)}
           {...closePreviewAgentProps}
         >
@@ -91,9 +92,7 @@ function WebXRLauncher() {
   const { t } = useTranslation();
   const launch = useCallback(() => {
     const base = client.baseUrl || window.location.origin;
-    // The app-xr PWA lives at the agent origin with /api/xr prefix stripped
-    // For local dev: it's a separate Vite server on port 5173
-    // In production: it's served from the agent
+    // Local dev serves the XR PWA from a separate Vite server on port 5173.
     const xrAppUrl = base.replace(/:(\d+)$/, (_, port) => {
       const p = parseInt(port, 10);
       return `:${p === 31337 ? 5173 : p}`;
@@ -114,19 +113,20 @@ function WebXRLauncher() {
     });
 
   return (
-    <div className="rounded-sm border border-border/40 bg-card/40 p-4">
-      <p className="mb-3 text-xs text-muted leading-relaxed">
-        {t("xrsettings.webxrDesc", {
-          defaultValue:
-            "Open the XR app in Chrome to use WebXR on desktop. Chrome supports WebXR with the Immersive Web Emulator extension for simulator testing. On a real headset, use the pairing code or QR code above.",
-        })}
-      </p>
+    <SettingsRow
+      label={t("xrsettings.desktopWebxr", { defaultValue: "Desktop WebXR" })}
+      description={t("xrsettings.webxrDesc", {
+        defaultValue:
+          "Open the XR app in Chrome for desktop WebXR. On a headset, use the pairing/QR code above.",
+      })}
+      stacked
+    >
       <div className="flex flex-wrap gap-2">
         <Button
           ref={launchRef}
           variant="default"
           size="sm"
-          className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
+          className="h-11 rounded-md px-4 text-sm font-semibold"
           onClick={launch}
           {...launchAgentProps}
         >
@@ -134,88 +134,83 @@ function WebXRLauncher() {
         </Button>
         <XRSimulatorEmbed />
       </div>
-    </div>
+    </SettingsRow>
   );
 }
 
 export function XRSettingsSection() {
   const { t } = useTranslation();
   return (
-    <div className="space-y-6">
-      <div className="space-y-1">
-        <p className="text-sm text-muted">
-          {t("xrsettings.intro", {
-            defaultValue:
-              "Connect a Quest 3 or XReal headset, or run WebXR in Chrome on desktop. The agent can open, close, resize, and switch views on any connected device via voice or text commands.",
-          })}
-        </p>
-      </div>
+    <SettingsStack>
+      <p className="px-1 text-sm text-muted">
+        {t("xrsettings.intro", {
+          defaultValue:
+            "Connect a Quest 3 or XReal headset, or run WebXR in Chrome on desktop.",
+        })}
+      </p>
 
       <XRPairingPanel />
 
-      <div className="border-t border-border/40 pt-5">
-        <h3 className="mb-3 text-sm font-semibold text-txt">
-          {t("xrsettings.desktopWebxr", { defaultValue: "Desktop WebXR" })}
-        </h3>
+      <SettingsGroup
+        title={t("xrsettings.desktopWebxr", { defaultValue: "Desktop WebXR" })}
+      >
         <WebXRLauncher />
-      </div>
+      </SettingsGroup>
 
-      <div className="border-t border-border/40 pt-5">
-        <h3 className="mb-3 text-sm font-semibold text-txt">
-          {t("xrsettings.platforms", { defaultValue: "Platforms" })}
-        </h3>
-        <div className="space-y-2">
-          {[
-            {
-              name: "Quest 3",
-              status: t("xrsettings.statusApkAvailable", {
-                defaultValue: "APK available",
-              }),
-              detail: t("xrsettings.questDetail", {
-                defaultValue: "Bubblewrap TWA — android/quest/",
-              }),
-            },
-            {
-              name: "XReal Air / Air 2",
-              status: t("xrsettings.statusApkAvailable", {
-                defaultValue: "APK available",
-              }),
-              detail: t("xrsettings.xrealDetail", {
-                defaultValue: "Native Android + WebView — android/xreal/",
-              }),
-            },
-            {
-              name: "Browser (WebXR)",
-              status: t("xrsettings.statusFullSupport", {
-                defaultValue: "Full support",
-              }),
-              detail: t("xrsettings.browserDetail", {
-                defaultValue: "Chrome + Immersive Web Emulator for simulator",
-              }),
-            },
-            {
-              name: "iOS Safari",
-              status: t("xrsettings.statusPartialWebxr", {
-                defaultValue: "Partial WebXR",
-              }),
-              detail: t("xrsettings.iosDetail", {
-                defaultValue:
-                  "DOM overlay on Safari 15.4+ — mic + camera supported",
-              }),
-            },
-          ].map((p) => (
-            <div key={p.name} className="flex items-center gap-3 text-xs">
-              <span className="w-28 shrink-0 font-medium text-txt">
-                {p.name}
-              </span>
-              <span className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-success">
+      <SettingsGroup
+        title={t("xrsettings.platforms", { defaultValue: "Platforms" })}
+      >
+        {[
+          {
+            name: "Quest 3",
+            status: t("xrsettings.statusApkAvailable", {
+              defaultValue: "APK available",
+            }),
+            detail: t("xrsettings.questDetail", {
+              defaultValue: "Bubblewrap TWA",
+            }),
+          },
+          {
+            name: "XReal Air / Air 2",
+            status: t("xrsettings.statusApkAvailable", {
+              defaultValue: "APK available",
+            }),
+            detail: t("xrsettings.xrealDetail", {
+              defaultValue: "Native Android + WebView",
+            }),
+          },
+          {
+            name: "Browser (WebXR)",
+            status: t("xrsettings.statusFullSupport", {
+              defaultValue: "Full support",
+            }),
+            detail: t("xrsettings.browserDetail", {
+              defaultValue: "Chrome + Immersive Web Emulator for simulator",
+            }),
+          },
+          {
+            name: "iOS Safari",
+            status: t("xrsettings.statusPartialWebxr", {
+              defaultValue: "Partial WebXR",
+            }),
+            detail: t("xrsettings.iosDetail", {
+              defaultValue:
+                "DOM overlay on Safari 15.4+ — mic + camera supported",
+            }),
+          },
+        ].map((p) => (
+          <SettingsRow
+            key={p.name}
+            label={p.name}
+            description={p.detail}
+            trailing={
+              <span className="shrink-0 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-xs text-success">
                 {p.status}
               </span>
-              <span className="text-muted">{p.detail}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
+            }
+          />
+        ))}
+      </SettingsGroup>
+    </SettingsStack>
   );
 }

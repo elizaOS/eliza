@@ -1,131 +1,240 @@
 // @vitest-environment jsdom
 
 /**
- * GoalsView is currently a SCAFFOLD (see the banner in GoalsView.tsx): it renders
- * static frames so the view bundles and registers correctly, with no live data
- * wiring (goalsTable / routinesTable / remindersTable / alarmsTable /
- * GoalsCheckinService) and no interactive controls. Its de-facto contract is:
- *   - the "Goals" <h1> header + description,
- *   - three sections (Life Goals / Routines / Today) with verbatim subtitles +
- *     placeholder copy,
- *   - a "Self-care" panel with two cards (Morning check-in / Gratitude / journal)
- *     and their verbatim copy.
+ * GoalsView is a data-fetching view over the single read-only goals endpoint
+ * served by the personal-assistant routes:
+ *   GET {base}/api/lifeops/goals  ->  { goals: LifeOpsGoalRecord[] }
  *
- * These tests assert that contract verbatim, then assert — as a tripwire — that
- * the view exposes ZERO interactive controls (buttons / inputs / links). When
- * the four tables + check-in service are wired and the first real control or
- * data row lands, the relevant assertion fails loudly, forcing the follow-up
- * that replaces these scaffold assertions with populated-data + interaction
- * coverage.
+ * These tests cover the four-state machine (loading / error / empty / populated)
+ * plus the retry, refresh, status-filter, and set-a-goal affordances. The
+ * fetcher seam is injected so the suite stays offline; `@elizaos/ui` and
+ * `@elizaos/ui/agent-surface` are mocked so the instrumented controls render
+ * outside a provider.
  *
- * External-API contract test: N/A. The view performs no fetch / no /api call /
- * no parser hook (dataSource: none), so there is no real API shape to validate.
- *
- * TUI / XR contract test: N/A. The plugin declares a single `gui` view and no
- * `interact()` capability, so there is no terminal surface to exercise.
+ * External-API contract test: the wire shape is mirrored verbatim from the PA
+ * `/api/lifeops/goals` response (LifeOpsGoalRecord = { goal, links } from
+ * @elizaos/shared); the fixtures below match that shape field-for-field.
  */
 
-import { cleanup, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GoalsView } from "../src/components/goals/GoalsView.tsx";
+// `@elizaos/ui` is the giant renderer barrel; GoalsView only touches
+// `client.getBaseUrl()` (default fetcher seam, overridden in every test) and
+// `client.sendChatMessage()` (set-a-goal affordance). `@elizaos/ui/agent-surface`
+// is mocked to an inert hook so the instrumented controls render outside a
+// provider.
+const { sendChatMessage } = vi.hoisted(() => ({ sendChatMessage: vi.fn() }));
+vi.mock("@elizaos/ui", () => ({
+  client: {
+    getBaseUrl: () => "http://test.local",
+    sendChatMessage,
+  },
+}));
+vi.mock("@elizaos/ui/agent-surface", () => ({
+  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
+}));
+
+import {
+  type GoalsFetchers,
+  GoalsView,
+} from "../src/components/goals/GoalsView.tsx";
+
+// ---------------------------------------------------------------------------
+// Wire fixtures — mirror { goals: LifeOpsGoalRecord[] } exactly.
+// ---------------------------------------------------------------------------
+
+function goalRecord(
+  overrides: {
+    id?: string;
+    title?: string;
+    description?: string;
+    status?: string;
+    reviewState?: string;
+    cadenceKind?: string | null;
+    target?: string | null;
+    linkCount?: number;
+  } = {},
+) {
+  const id = overrides.id ?? "goal-1";
+  const linkCount = overrides.linkCount ?? 0;
+  return {
+    goal: {
+      id,
+      agentId: "agent-1",
+      domain: "personal",
+      subjectType: "owner",
+      subjectId: "owner-1",
+      visibilityScope: "private",
+      contextPolicy: "owner_only",
+      title: overrides.title ?? "Run a half marathon",
+      description: overrides.description ?? "Build up to 21km by autumn.",
+      cadence:
+        overrides.cadenceKind === undefined
+          ? { kind: "weekly" }
+          : overrides.cadenceKind === null
+            ? null
+            : { kind: overrides.cadenceKind },
+      successCriteria:
+        overrides.target === undefined
+          ? { targetText: "21km continuous run" }
+          : overrides.target === null
+            ? {}
+            : { targetText: overrides.target },
+      status: overrides.status ?? "active",
+      reviewState: overrides.reviewState ?? "on_track",
+      metadata: {},
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-06-10T00:00:00.000Z",
+    },
+    links: Array.from({ length: linkCount }, (_, i) => ({
+      id: `link-${id}-${i}`,
+      agentId: "agent-1",
+      goalId: id,
+      linkedType: "occurrence",
+      linkedId: `occ-${i}`,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    })),
+  };
+}
+
+function makeFetchers(overrides: Partial<GoalsFetchers> = {}): GoalsFetchers {
+  return {
+    fetchGoals: async () => ({ goals: [goalRecord()] }),
+    ...overrides,
+  };
+}
 
 afterEach(() => {
   cleanup();
+  sendChatMessage.mockClear();
 });
 
-describe("GoalsView (scaffold contract)", () => {
-  it("renders the page header and description", () => {
-    render(<GoalsView />);
+describe("GoalsView", () => {
+  it("shows the loading state while the first fetch is in flight", () => {
+    const never = new Promise<never>(() => {});
+    render(<GoalsView fetchers={makeFetchers({ fetchGoals: () => never })} />);
+    expect(screen.getByTestId("goals-loading")).toBeTruthy();
+  });
 
+  it("renders the populated goals list grouped by status with real fields", async () => {
+    render(
+      <GoalsView
+        fetchers={makeFetchers({
+          fetchGoals: async () => ({
+            goals: [
+              goalRecord({
+                id: "g-active",
+                title: "Run a half marathon",
+                status: "active",
+                reviewState: "on_track",
+                cadenceKind: "weekly",
+                target: "21km continuous run",
+                linkCount: 2,
+              }),
+              goalRecord({
+                id: "g-paused",
+                title: "Learn Spanish",
+                status: "paused",
+                reviewState: "idle",
+              }),
+            ],
+          }),
+        })}
+      />,
+    );
+    expect(await screen.findByTestId("goals-populated")).toBeTruthy();
+    const activeGroup = screen.getByTestId("goals-group-active");
+    expect(within(activeGroup).getByText("Run a half marathon")).toBeTruthy();
+    // Cadence + target + linked-count meta line.
     expect(
-      screen.getByRole("heading", { level: 1, name: "Goals" }),
+      within(activeGroup).getByText(/weekly · 21km continuous run · 2 linked/),
     ).toBeTruthy();
-    expect(
-      screen.getByText(
-        "Owner-set long-horizon goals, recurring routines, reminders, alarms, and today's check-in.",
-      ),
-    ).toBeTruthy();
+    expect(screen.getByTestId("goals-group-paused")).toBeTruthy();
+    expect(screen.getByText("Learn Spanish")).toBeTruthy();
   });
 
-  it("renders the three primary sections with their verbatim subtitles + placeholder copy", () => {
-    render(<GoalsView />);
-
-    const sections: Array<{ title: string; subtitle: string; body: string }> = [
-      {
-        title: "Life Goals",
-        subtitle: "Long-horizon direction (quarter / year / life)",
-        body: "No goals yet. Tell the agent what you want to head toward this year.",
-      },
-      {
-        title: "Routines",
-        subtitle: "Daily and weekly cadences",
-        body: "Routine list will appear here once routines are seeded.",
-      },
-      {
-        title: "Today",
-        subtitle: "Reminders + alarms + the day's intentions",
-        body: "Today's reminders and alarms will appear here.",
-      },
-    ];
-
-    for (const { title, subtitle, body } of sections) {
-      // the section heading is an <h2>; its enclosing <section> is the contract unit
-      const heading = screen.getByRole("heading", { level: 2, name: title });
-      expect(heading).toBeTruthy();
-      const section = heading.closest("section");
-      expect(section).toBeTruthy();
-      const region = within(section as HTMLElement);
-      expect(region.getByText(subtitle)).toBeTruthy();
-      expect(region.getByText(body)).toBeTruthy();
-    }
+  it("shows the empty state when zero goals exist (no fabricated goals)", async () => {
+    render(
+      <GoalsView
+        fetchers={makeFetchers({ fetchGoals: async () => ({ goals: [] }) })}
+      />,
+    );
+    expect(await screen.findByTestId("goals-empty")).toBeTruthy();
+    expect(screen.getByText(/No goals yet/i)).toBeTruthy();
+    expect(screen.queryByTestId("goals-populated")).toBeNull();
   });
 
-  it("renders the Self-care panel with both cards and their verbatim copy", () => {
-    render(<GoalsView />);
-
-    const selfCareHeading = screen.getByRole("heading", {
-      level: 2,
-      name: "Self-care",
-    });
-    expect(selfCareHeading).toBeTruthy();
-    const selfCare = selfCareHeading.closest("section");
-    expect(selfCare).toBeTruthy();
-    const region = within(selfCare as HTMLElement);
-
-    expect(
-      region.getByText(
-        "Mood, journal, gratitude — capture how you actually are",
-      ),
-    ).toBeTruthy();
-
-    // Card 1: Morning check-in
-    expect(region.getByText("Morning check-in")).toBeTruthy();
-    expect(region.getByText("Not yet recorded today.")).toBeTruthy();
-
-    // Card 2: Gratitude / journal
-    expect(region.getByText("Gratitude / journal")).toBeTruthy();
-    expect(region.getByText("Tap the agent to capture a note.")).toBeTruthy();
+  it("routes the set-a-goal affordance through the assistant chat", async () => {
+    render(
+      <GoalsView
+        fetchers={makeFetchers({ fetchGoals: async () => ({ goals: [] }) })}
+      />,
+    );
+    await screen.findByTestId("goals-empty");
+    fireEvent.click(screen.getByRole("button", { name: /set a goal/i }));
+    expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });
 
-  it("renders exactly four <section> frames (3 primary + self-care)", () => {
-    const { container } = render(<GoalsView />);
-    expect(container.querySelectorAll("section")).toHaveLength(4);
+  it("shows the error state with a Retry that refetches into the populated state", async () => {
+    let attempt = 0;
+    const fetchGoals = async () => {
+      attempt += 1;
+      if (attempt === 1) throw new Error("boom");
+      return { goals: [goalRecord()] };
+    };
+    render(<GoalsView fetchers={makeFetchers({ fetchGoals })} />);
+    expect(await screen.findByTestId("goals-error")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    expect(await screen.findByTestId("goals-populated")).toBeTruthy();
   });
 
-  it("exposes ZERO interactive controls (tripwire for the data-wiring migration)", () => {
-    const { container } = render(<GoalsView />);
+  it("refetches when the header refresh control is activated", async () => {
+    let calls = 0;
+    const fetchGoals = async () => {
+      calls += 1;
+      return { goals: [goalRecord()] };
+    };
+    render(<GoalsView fetchers={makeFetchers({ fetchGoals })} />);
+    await screen.findByTestId("goals-populated");
+    expect(calls).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
+    await waitFor(() => expect(calls).toBe(2));
+  });
 
-    // No ARIA-addressable interactive roles.
-    expect(screen.queryAllByRole("button")).toHaveLength(0);
-    expect(screen.queryAllByRole("textbox")).toHaveLength(0);
-    expect(screen.queryAllByRole("link")).toHaveLength(0);
-    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
-    expect(screen.queryAllByRole("combobox")).toHaveLength(0);
+  it("narrows the visible groups when a status filter chip is toggled", async () => {
+    render(
+      <GoalsView
+        fetchers={makeFetchers({
+          fetchGoals: async () => ({
+            goals: [
+              goalRecord({ id: "g-active", status: "active" }),
+              goalRecord({
+                id: "g-paused",
+                title: "Learn Spanish",
+                status: "paused",
+              }),
+            ],
+          }),
+        })}
+      />,
+    );
+    await screen.findByTestId("goals-populated");
+    expect(screen.getByTestId("goals-group-active")).toBeTruthy();
+    expect(screen.getByTestId("goals-group-paused")).toBeTruthy();
 
-    // No raw interactive DOM elements either.
-    expect(
-      container.querySelectorAll("button, input, a, select, textarea"),
-    ).toHaveLength(0);
+    // Toggle the "Paused" filter: only the paused group should remain.
+    fireEvent.click(screen.getByRole("button", { name: "Paused" }));
+    await waitFor(() =>
+      expect(screen.queryByTestId("goals-group-active")).toBeNull(),
+    );
+    expect(screen.getByTestId("goals-group-paused")).toBeTruthy();
   });
 });

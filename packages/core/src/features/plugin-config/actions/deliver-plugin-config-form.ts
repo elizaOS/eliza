@@ -184,15 +184,6 @@ export const deliverPluginConfigFormAction: Action = {
 			};
 		}
 
-		const adapter = registry.get(target);
-		if (!adapter) {
-			return {
-				success: false,
-				text: `No delivery adapter registered for target ${target}.`,
-				data: dataFor({ pluginName, target }),
-			};
-		}
-
 		const channelId =
 			typeof params.targetChannelId === "string" &&
 			params.targetChannelId.length > 0
@@ -200,6 +191,16 @@ export const deliverPluginConfigFormAction: Action = {
 				: typeof message.roomId === "string"
 					? message.roomId
 					: undefined;
+
+		const adapter =
+			registry.resolve?.(target, channelId, runtime) ?? registry.get(target);
+		if (!adapter) {
+			return {
+				success: false,
+				text: `No delivery adapter registered for target ${target}.`,
+				data: dataFor({ pluginName, target }),
+			};
+		}
 
 		const reason =
 			typeof params.reason === "string" && params.reason.trim().length > 0

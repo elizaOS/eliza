@@ -9,6 +9,7 @@ import {
 } from "../i18n";
 import { detectClientLanguage } from "../i18n/region";
 import type { Tab } from "../navigation";
+import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
 import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../voice/local-asr-capture";
 import type {
   CompanionHalfFramerateMode,
@@ -924,16 +925,26 @@ function normalizeApiBase(value: unknown): string | undefined {
   if (!trimmed) return trimmed;
   let end = trimmed.length;
   while (end > 0 && trimmed.charCodeAt(end - 1) === 47) end--;
-  return trimmed.slice(0, end);
+  return normalizeDirectCloudSharedAgentApiBase(trimmed.slice(0, end));
 }
 
 function isElizaCloudControlPlaneApiBase(value: unknown): boolean {
   const apiBase = normalizeApiBase(value);
   if (!apiBase) return false;
   try {
-    return ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has(
-      new URL(apiBase).hostname.toLowerCase(),
-    );
+    const url = new URL(apiBase);
+    if (!ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has(url.hostname.toLowerCase())) {
+      return false;
+    }
+    // Only the BARE control-plane origin (no path) is the "managed cloud"
+    // endpoint whose apiBase is derived at runtime and intentionally NOT
+    // persisted. A specific per-agent base on the same host — e.g. a
+    // shared-runtime REST adapter at /api/v1/eliza/agents/<id> — is a concrete
+    // endpoint that MUST be persisted; dropping it makes the restored active
+    // server lose the agent the client must talk to (every /api/* call then
+    // 404s and first-run bounces). Treat any non-trivial path as concrete.
+    const pathname = url.pathname.replace(/\/+$/, "");
+    return pathname === "";
   } catch (err) {
     logger.debug(
       `[persistence] failed to parse apiBase URL while checking Eliza Cloud control plane: apiBase=${apiBase}; error=${describePersistenceError(err)}`,

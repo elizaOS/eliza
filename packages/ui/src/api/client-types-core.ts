@@ -135,6 +135,14 @@ export interface AgentStatus {
   state: AgentState;
   agentName: string;
   model: string | undefined;
+  /**
+   * First-turn capability online: the agent has a live runtime + a registered
+   * TEXT handler and can actually answer (distinct from a bare "running" with no
+   * provider wired). Server-authoritative (`/api/health` + `/api/status`); drives
+   * the async-generate + fade-in of the chat composer. Optional for back-compat
+   * with older agents/transports that don't report it.
+   */
+  canRespond?: boolean;
   uptime: number | undefined;
   startedAt: number | undefined;
   port?: number;

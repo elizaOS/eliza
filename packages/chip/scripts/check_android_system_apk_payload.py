@@ -26,7 +26,7 @@ from provenance_sanitize import sanitize_host_local_paths
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT.parent
-ELIZA_ROOT = ROOT.parents[1]
+ELIZA_ROOT = ROOT.parents[1] if len(ROOT.parents) > 1 else ROOT
 OUTER_WORKSPACE = ROOT.parents[2] if len(ROOT.parents) > 2 else ELIZA_ROOT
 
 

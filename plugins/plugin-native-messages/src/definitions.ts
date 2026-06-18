@@ -28,4 +28,14 @@ export interface MessagesPlugin {
   listMessages(
     options?: ListMessagesOptions,
   ): Promise<{ messages: SmsMessageSummary[] }>;
+  /** Current SMS (READ_SMS/SEND_SMS) permission state. Web: granted. */
+  checkPermissions(): Promise<MessagesPermissionStatus>;
+  /** Prompt for SMS access (no-op grant on web). Feature-gated to the Messages
+   *  view; never requested at launch. */
+  requestPermissions(): Promise<MessagesPermissionStatus>;
+}
+
+/** Runtime permission state for the SMS (READ_SMS/SEND_SMS) alias. */
+export interface MessagesPermissionStatus {
+  sms: import("@capacitor/core").PermissionState;
 }

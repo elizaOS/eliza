@@ -16,8 +16,11 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { startSelfControlBlock, stopSelfControlBlock } from "../engine.js";
-import { syncWebsiteBlockerExpiryTask } from "../service.js";
+import {
+  startSelfControlBlock,
+  stopSelfControlBlock,
+  syncWebsiteBlockerExpiryTask,
+} from "@elizaos/plugin-blocker";
 
 export interface ActivateBlockRequest {
   runtime: IAgentRuntime;

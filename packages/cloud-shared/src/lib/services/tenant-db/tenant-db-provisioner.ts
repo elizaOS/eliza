@@ -49,6 +49,13 @@ export interface TenantDbSqlExecutor {
   execAdmin(statements: readonly string[]): Promise<void>;
   /** Run DDL connected to a specific tenant database. */
   execInDatabase(dbName: string, statements: readonly string[]): Promise<void>;
+  /**
+   * Whether a database currently exists on the cluster (queried via the admin
+   * connection against `pg_database`). The deprovision path checks this BEFORE
+   * the `DROP DATABASE IF EXISTS` so the caller can release the cluster slot
+   * exactly once — a re-run finds the DB already gone and must not double-free.
+   */
+  databaseExists(dbName: string): Promise<boolean>;
 }
 
 export interface SqlTenantDbProvisionerDeps {
@@ -163,8 +170,14 @@ export class SqlTenantDbProvisioner {
     };
   }
 
-  async deprovision(appId: string): Promise<void> {
+  async deprovision(appId: string): Promise<{ existed: boolean }> {
     const ident = deriveTenantIdent(appId);
+    // Snapshot existence BEFORE the DROP so the caller releases the cluster slot
+    // exactly once. `DROP DATABASE IF EXISTS` succeeds whether or not the DB was
+    // there, giving no signal of its own — so a re-run would otherwise decrement
+    // the slot a second time and free phantom capacity. (#8342)
+    const existed = await this.executor.databaseExists(ident.dbName);
     await this.executor.execAdmin(buildDeprovisionDdl(ident));
+    return { existed };
   }
 }

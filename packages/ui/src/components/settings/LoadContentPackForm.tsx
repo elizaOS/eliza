@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useApp, useContentPack } from "../../state";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
+import { SettingsInput } from "../ui/settings-controls";
+import { SettingsGroup } from "./settings-layout";
 
 export function LoadContentPackForm() {
   const { t } = useApp();
@@ -39,7 +40,7 @@ export function LoadContentPackForm() {
 
   const { ref: urlInputRef, agentProps: urlInputAgentProps } =
     useAgentElement<HTMLInputElement>({
-      id: "content-pack-url-input",
+      id: "pack-url-input",
       role: "text-input",
       label: t("settings.appearance.packUrl", {
         defaultValue: "Content pack URL",
@@ -50,7 +51,7 @@ export function LoadContentPackForm() {
     });
   const { ref: loadUrlRef, agentProps: loadUrlAgentProps } =
     useAgentElement<HTMLButtonElement>({
-      id: "content-pack-load-url",
+      id: "pack-load-url",
       role: "button",
       label: t("settings.appearance.load", { defaultValue: "Load" }),
       group: "content-pack",
@@ -59,7 +60,7 @@ export function LoadContentPackForm() {
     });
   const { ref: loadFolderRef, agentProps: loadFolderAgentProps } =
     useAgentElement<HTMLButtonElement>({
-      id: "content-pack-load-folder",
+      id: "pack-load-folder",
       role: "button",
       label: t("settings.appearance.loadFromFolder", {
         defaultValue: "From folder",
@@ -69,7 +70,7 @@ export function LoadContentPackForm() {
     });
   const { ref: deactivateRef, agentProps: deactivateAgentProps } =
     useAgentElement<HTMLButtonElement>({
-      id: "content-pack-deactivate",
+      id: "pack-deactivate",
       role: "button",
       label: t("settings.appearance.deactivate", {
         defaultValue: "Deactivate current pack",
@@ -79,21 +80,21 @@ export function LoadContentPackForm() {
     });
 
   return (
-    <section className="space-y-2">
-      <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
-        {t("startupshell.LoadPack", {
-          defaultValue: "Load content pack",
-        })}
-      </h3>
+    <SettingsGroup
+      bare
+      className="gap-2"
+      title={t("startupshell.LoadPack", { defaultValue: "Load content pack" })}
+    >
       <div className="flex items-center gap-2">
-        <Input
+        <SettingsInput
           ref={urlInputRef}
+          variant="filter"
           placeholder={t("settings.appearance.packUrlPlaceholder", {
             defaultValue: "https://example.com/packs/my-pack/",
           })}
           value={urlInput}
           onChange={(e) => setUrlInput(e.target.value)}
-          className="h-9 flex-1 rounded-sm bg-bg text-sm"
+          className="h-9 flex-1"
           onKeyDown={(e) => {
             if (e.key === "Enter") handleLoadFromUrl();
           }}
@@ -138,15 +139,13 @@ export function LoadContentPackForm() {
           </>
         )}
       </div>
-      {packLoadError && (
-        <p className="text-xs-tight text-destructive">{packLoadError}</p>
-      )}
+      {packLoadError && <p className="text-xs text-danger">{packLoadError}</p>}
       {activePack && (
         <Button
           ref={deactivateRef}
           variant="link"
           size="sm"
-          className="h-auto p-0 text-xs-tight text-muted hover:text-txt"
+          className="h-auto p-0 text-xs text-muted hover:text-txt"
           onClick={deactivate}
           {...deactivateAgentProps}
         >
@@ -155,6 +154,6 @@ export function LoadContentPackForm() {
           })}
         </Button>
       )}
-    </section>
+    </SettingsGroup>
   );
 }

@@ -83,14 +83,16 @@ class PayoutStatusService {
         : null;
 
     for (const network of ["ethereum", "base", "bnb"] as const) {
-      const status = skipLiveBalanceChecks
-        ? this.buildSkippedBalanceStatus(
-            network,
-            evmConfigured,
-            evmWalletAddress,
-            assumeOperational,
-          )
-        : await this.checkEvmNetwork(network, evmWalletAddress);
+      const status = await this.resolveNetworkStatus(network, evmConfigured, () =>
+        skipLiveBalanceChecks
+          ? this.buildSkippedBalanceStatus(
+              network,
+              evmConfigured,
+              evmWalletAddress,
+              assumeOperational,
+            )
+          : this.checkEvmNetwork(network, evmWalletAddress),
+      );
       networks.push(status);
 
       if (status.status !== "operational") {
@@ -107,14 +109,16 @@ class PayoutStatusService {
         ? this.getSolanaWalletAddress(solanaPrivateKey)
         : null;
 
-    const solanaStatus = skipLiveBalanceChecks
-      ? this.buildSkippedBalanceStatus(
-          "solana",
-          solanaConfigured,
-          solanaWalletAddress,
-          assumeOperational,
-        )
-      : await this.checkSolanaNetwork(solanaWalletAddress);
+    const solanaStatus = await this.resolveNetworkStatus("solana", solanaConfigured, () =>
+      skipLiveBalanceChecks
+        ? this.buildSkippedBalanceStatus(
+            "solana",
+            solanaConfigured,
+            solanaWalletAddress,
+            assumeOperational,
+          )
+        : this.checkSolanaNetwork(solanaWalletAddress),
+    );
     networks.push(solanaStatus);
 
     if (solanaStatus.status !== "operational") {
@@ -239,21 +243,67 @@ class PayoutStatusService {
     };
   }
 
+  /**
+   * Run a per-network status producer and never let it throw out of
+   * getStatus(). Any failure degrades that single network to "not_configured"
+   * so one bad RPC / key / network can't 500 the entire redemption flow.
+   */
+  private async resolveNetworkStatus(
+    network: SupportedNetwork,
+    configured: boolean,
+    produce: () => NetworkStatus | Promise<NetworkStatus>,
+  ): Promise<NetworkStatus> {
+    try {
+      return await produce();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn(`[PayoutStatus] ${network} status check failed`, {
+        error: message,
+      });
+      return {
+        network,
+        configured,
+        walletAddress: null,
+        balance: 0,
+        hasBalance: false,
+        status: "not_configured",
+        message: `Status check failed: ${message}`,
+      };
+    }
+  }
+
   private getEvmWalletAddress(privateKey: string): string | null {
-    const key = privateKey.startsWith("0x")
-      ? (privateKey as `0x${string}`)
-      : (`0x${privateKey}` as `0x${string}`);
-    const account = privateKeyToAccount(key);
-    return account.address;
+    try {
+      const key = privateKey.startsWith("0x")
+        ? (privateKey as `0x${string}`)
+        : (`0x${privateKey}` as `0x${string}`);
+      const account = privateKeyToAccount(key);
+      return account.address;
+    } catch (error) {
+      // A malformed EVM payout key must not throw out of getStatus() and 500
+      // the whole redemption flow; treat EVM as unconfigured instead.
+      logger.warn("[PayoutStatus] Invalid EVM payout private key; treating EVM as unconfigured", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
   }
 
   private getSolanaWalletAddress(privateKey: string): string | null {
-    // Solana private key is base58 encoded
-    const { Keypair } = require("@solana/web3.js");
-    const bs58 = require("bs58");
-    const decoded = bs58.decode(privateKey);
-    const keypair = Keypair.fromSecretKey(decoded);
-    return keypair.publicKey.toBase58();
+    try {
+      // Solana private key is base58 encoded
+      const { Keypair } = require("@solana/web3.js");
+      const bs58 = require("bs58");
+      const decoded = bs58.decode(privateKey);
+      const keypair = Keypair.fromSecretKey(decoded);
+      return keypair.publicKey.toBase58();
+    } catch (error) {
+      logger.warn(
+        "[PayoutStatus] Invalid Solana payout private key; treating Solana as unconfigured",
+        { error: error instanceof Error ? error.message : String(error) },
+      );
+      return null;
+    }
   }
 
   private async checkEvmNetwork(
@@ -272,15 +322,35 @@ class PayoutStatusService {
       };
     }
 
-    const chain = EVM_CHAINS[network];
     const tokenAddress = ELIZA_TOKEN_ADDRESSES[network] as Address;
     const decimals = ELIZA_DECIMALS[network];
 
-    const { url: rpcUrl } = resolveEvmRpc(network as EvmPayoutNetwork);
-    const publicClient = createPublicClient({
-      chain,
-      transport: http(rpcUrl),
-    });
+    // RPC resolution / client construction can throw when a network's RPC is
+    // not configured; degrade that single network instead of throwing out of
+    // getStatus() and 500-ing the whole redemption flow.
+    let publicClient: ReturnType<typeof createPublicClient>;
+    try {
+      const chain = EVM_CHAINS[network];
+      const { url: rpcUrl } = resolveEvmRpc(network as EvmPayoutNetwork);
+      publicClient = createPublicClient({
+        chain,
+        transport: http(rpcUrl),
+      });
+    } catch (setupError) {
+      const message = setupError instanceof Error ? setupError.message : String(setupError);
+      logger.warn(`[PayoutStatus] ${network} RPC setup failed`, {
+        error: message,
+      });
+      return {
+        network,
+        configured: true,
+        walletAddress: this.maskAddress(walletAddress),
+        balance: 0,
+        hasBalance: false,
+        status: "not_configured",
+        message: `RPC unavailable: ${message}`,
+      };
+    }
 
     const ERC20_ABI = parseAbi(["function balanceOf(address account) view returns (uint256)"]);
 

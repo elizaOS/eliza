@@ -10,7 +10,7 @@ from typing import Any
 import yaml
 
 CHIP_ROOT = Path(__file__).resolve().parents[1]
-REPO_ROOT = CHIP_ROOT.parents[1]
+REPO_ROOT = CHIP_ROOT.parents[1] if len(CHIP_ROOT.parents) > 1 else CHIP_ROOT
 BOARD_ROOT = CHIP_ROOT / "board/kicad/e1-phone"
 REPORT_DATE = "2026-05-22"
 

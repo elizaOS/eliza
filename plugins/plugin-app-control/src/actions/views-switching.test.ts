@@ -501,6 +501,47 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(ok).toBe(false);
 			expect(owner).toHaveBeenCalled();
 		});
+
+		// Regression: the runtime calls validate(runtime, message, state, options)
+		// with options.parameters carrying the planner's chosen action. A
+		// destructive mode supplied via options whose text lacks a "view"/"plugin"
+		// noun must STILL hit the owner gate — previously validate inferred the
+		// mode from text only and let these through ungated.
+		it.each([
+			["delete", { action: "delete", view: "wallet" }, "remove wallet"],
+			["create", { action: "create" }, "make me a habit tracker"],
+			["edit", { action: "edit", view: "wallet" }, "change the wallet color"],
+		])("owner-gates %s supplied via planner options (text has no view noun)", async (_label, options, text) => {
+			const owner = vi.fn(async () => false);
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: owner,
+			});
+			const ok = await action.validate(
+				{ agentId: "agent-1" } as never,
+				message(text) as never,
+				undefined as never,
+				options as never,
+			);
+			expect(ok).toBe(false);
+			expect(owner).toHaveBeenCalled();
+		});
+
+		it("still allows read modes supplied via planner options for any user", async () => {
+			const owner = vi.fn(async () => false);
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: owner,
+			});
+			const ok = await action.validate(
+				{ agentId: "agent-1" } as never,
+				message("wallet") as never,
+				undefined as never,
+				{ action: "show", view: "wallet" } as never,
+			);
+			expect(ok).toBe(true);
+			expect(owner).not.toHaveBeenCalled();
+		});
 	});
 
 	describe("BUG PROBE: developerMode-gated views reachable by ACTIVE command", () => {

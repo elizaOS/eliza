@@ -1,0 +1,95 @@
+{
+  "_source": "Withings API (wbsapi.withings.net) documented response shapes — https://developer.withings.com/api-reference/. All requests are POST form bodies and every response is wrapped in {status, body}. `activity` is POST /v2/measure action=getactivity; `sleep` is POST /v2/sleep action=getsummary; `measures` is POST /measure action=getmeas. Field names + units match the real wire shape: activities[].date YYYY-MM-DD, .active minutes, .totalcalories kcal, .distance meters, .hr_average/.hr_resting bpm; sleep series[].startdate/.enddate UNIX seconds, .data.total_sleep_time/.wakeupduration/.durationtosleep/.lightduration/.deepduration/.remduration seconds; measuregrps[].date UNIX seconds, measures[] {type,value,unit} where the real value = value * 10^unit (type 1=weight, 9=diastolic, 10=systolic, 11=heart rate, 54=spo2, 71=temperature, 73=hrv).",
+  "_why": "Replayed through syncHealthConnectorData({token:{provider:'withings'}}) so the normalized HealthConnectorSyncPayload (samples + sleepEpisodes) is validated against the real Withings response shape. withings-connector.real.test.ts re-fetches the live API with a token to detect drift from this recording.",
+  "_captured": "2026-06-17",
+  "activity": {
+    "status": 0,
+    "body": {
+      "activities": [
+        {
+          "date": "2026-05-01",
+          "timezone": "Europe/London",
+          "deviceid": "dev-1",
+          "steps": 11842,
+          "distance": 8520,
+          "elevation": 24,
+          "soft": 210,
+          "moderate": 28,
+          "intense": 41,
+          "active": 69,
+          "calories": 612.0,
+          "totalcalories": 2415.0,
+          "hr_average": 78,
+          "hr_min": 48,
+          "hr_max": 162,
+          "hr_resting": 54
+        }
+      ],
+      "more": false,
+      "offset": 0
+    }
+  },
+  "sleep": {
+    "status": 0,
+    "body": {
+      "series": [
+        {
+          "id": 920211001,
+          "timezone": "Europe/London",
+          "model": 32,
+          "startdate": 1777592880,
+          "enddate": 1777622040,
+          "date": "2026-05-01",
+          "data": {
+            "wakeupduration": 1800,
+            "lightsleepduration": 15120,
+            "deepsleepduration": 6480,
+            "remsleepduration": 5760,
+            "lightduration": 15120,
+            "deepduration": 6480,
+            "remduration": 5760,
+            "durationtosleep": 540,
+            "durationtowakeup": 300,
+            "total_sleep_time": 27360,
+            "total_timeinbed": 29160,
+            "sleep_efficiency": 0.94,
+            "hr_average": 53,
+            "hr_min": 47,
+            "hr_max": 96,
+            "rr_average": 14,
+            "rr_min": 11,
+            "rr_max": 19
+          }
+        }
+      ],
+      "more": false,
+      "offset": 0
+    }
+  },
+  "measures": {
+    "status": 0,
+    "body": {
+      "updatetime": 1777622400,
+      "timezone": "Europe/London",
+      "measuregrps": [
+        {
+          "grpid": 770110201,
+          "attrib": 0,
+          "date": 1777613700,
+          "created": 1777613700,
+          "category": 1,
+          "deviceid": "dev-2",
+          "measures": [
+            { "value": 61200, "type": 1, "unit": -3 },
+            { "value": 540, "type": 11, "unit": -1 },
+            { "value": 982, "type": 54, "unit": -1 },
+            { "value": 3651, "type": 71, "unit": -2 },
+            { "value": 680, "type": 73, "unit": -1 },
+            { "value": 78, "type": 10, "unit": 0 },
+            { "value": 52, "type": 9, "unit": 0 }
+          ]
+        }
+      ]
+    }
+  }
+}

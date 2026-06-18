@@ -1,4 +1,10 @@
 import crypto from "node:crypto";
+import {
+  type EntityStore,
+  knowledgeGraphSchema,
+  type RelationshipStore,
+  resolveKnowledgeGraphService,
+} from "@elizaos/agent";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
@@ -13,6 +19,14 @@ import type {
   LifeOpsScheduleMergedState,
   LifeOpsScheduleObservation,
 } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
+import {
+  FinancesRepository,
+  type LifeOpsPaymentSource,
+  type LifeOpsPaymentTransaction,
+  type LifeOpsSubscriptionAudit,
+  type LifeOpsSubscriptionCancellation,
+  type LifeOpsSubscriptionCandidate,
+} from "@elizaos/plugin-finances";
 import type {
   LifeOpsXDm,
   LifeOpsXFeedItem,
@@ -74,18 +88,6 @@ import {
   type LifeOpsWorkflowDefinition,
   type LifeOpsWorkflowRun,
 } from "../contracts/index.js";
-import type {
-  EmailUnsubscribeMethod,
-  EmailUnsubscribeRecord,
-  EmailUnsubscribeStatus,
-} from "./email-unsubscribe-types.js";
-import type {
-  LifeOpsPaymentDirection,
-  LifeOpsPaymentSource,
-  LifeOpsPaymentSourceKind,
-  LifeOpsPaymentSourceStatus,
-  LifeOpsPaymentTransaction,
-} from "./payment-types.js";
 import {
   createConnectorAccountPrivacyPolicy,
   deriveConnectorAccountId,
@@ -120,11 +122,6 @@ import {
   toNumber,
   toText,
 } from "./sql.js";
-import type {
-  LifeOpsSubscriptionAudit,
-  LifeOpsSubscriptionCancellation,
-  LifeOpsSubscriptionCandidate,
-} from "./subscriptions-types.js";
 import { buildTelemetryEventFromSignal } from "./telemetry-mapping.js";
 
 type BrowserCompanionCredential = {
@@ -220,6 +217,13 @@ export interface LifeOpsCachedInboxMessage extends LifeOpsInboxMessage {
 type LifeOpsInboxCacheWriteMessage = LifeOpsInboxMessage & {
   priorityFlags?: readonly string[];
 };
+
+// Finance tables were carved out of plugin-personal-assistant into
+// @elizaos/plugin-finances and now live under the `app_finances` PostgreSQL
+// schema. The raw SQL against those tables moved with them into
+// `FinancesRepository`; the finance methods below delegate to a shared
+// FinancesRepository instance so the subscriptions mixin keeps reaching them
+// through `this.repository`.
 
 const LIFEOPS_INBOX_CHANNEL_SET = new Set<LifeOpsInboxChannel>(
   LIFEOPS_INBOX_CHANNELS,
@@ -591,165 +595,6 @@ function parseAuditEvent(row: Record<string, unknown>): LifeOpsAuditEvent {
     decision: parseJsonRecord(row.decision_json),
     actor: toText(row.actor) as LifeOpsAuditEvent["actor"],
     createdAt: toText(row.created_at),
-  };
-}
-
-function parseSubscriptionAudit(
-  row: Record<string, unknown>,
-): LifeOpsSubscriptionAudit {
-  return {
-    id: toText(row.id),
-    agentId: toText(row.agent_id),
-    source: toText(row.source, "gmail") as LifeOpsSubscriptionAudit["source"],
-    queryWindowDays: toNumber(row.query_window_days, 180),
-    status: toText(
-      row.status,
-      "completed",
-    ) as LifeOpsSubscriptionAudit["status"],
-    totalCandidates: toNumber(row.total_candidates, 0),
-    activeCandidates: toNumber(row.active_candidates, 0),
-    canceledCandidates: toNumber(row.canceled_candidates, 0),
-    uncertainCandidates: toNumber(row.uncertain_candidates, 0),
-    summary: toText(row.summary),
-    metadata: parseJsonRecord(row.metadata_json),
-    createdAt: toText(row.created_at),
-    updatedAt: toText(row.updated_at),
-  };
-}
-
-function parseSubscriptionCandidate(
-  row: Record<string, unknown>,
-): LifeOpsSubscriptionCandidate {
-  return {
-    id: toText(row.id),
-    agentId: toText(row.agent_id),
-    auditId: toText(row.audit_id),
-    serviceSlug: toText(row.service_slug),
-    serviceName: toText(row.service_name),
-    provider: toText(row.provider),
-    cadence: toText(
-      row.cadence,
-      "unknown",
-    ) as LifeOpsSubscriptionCandidate["cadence"],
-    state: toText(
-      row.state,
-      "uncertain",
-    ) as LifeOpsSubscriptionCandidate["state"],
-    confidence: toNumber(row.confidence, 0),
-    annualCostEstimateUsd:
-      row.annual_cost_estimate_usd === null ||
-      row.annual_cost_estimate_usd === undefined
-        ? null
-        : toNumber(row.annual_cost_estimate_usd, 0),
-    managementUrl: row.management_url ? toText(row.management_url) : null,
-    latestEvidenceAt: row.latest_evidence_at
-      ? toText(row.latest_evidence_at)
-      : null,
-    evidenceJson: parseJsonArray<Record<string, unknown>>(row.evidence_json),
-    metadata: parseJsonRecord(row.metadata_json),
-    createdAt: toText(row.created_at),
-    updatedAt: toText(row.updated_at),
-  };
-}
-
-function parseSubscriptionCancellation(
-  row: Record<string, unknown>,
-): LifeOpsSubscriptionCancellation {
-  return {
-    id: toText(row.id),
-    agentId: toText(row.agent_id),
-    auditId: row.audit_id ? toText(row.audit_id) : null,
-    candidateId: row.candidate_id ? toText(row.candidate_id) : null,
-    serviceSlug: toText(row.service_slug),
-    serviceName: toText(row.service_name),
-    executor: toText(
-      row.executor,
-      "agent_browser",
-    ) as LifeOpsSubscriptionCancellation["executor"],
-    status: toText(
-      row.status,
-      "draft",
-    ) as LifeOpsSubscriptionCancellation["status"],
-    confirmed: toBoolean(row.confirmed),
-    currentStep: row.current_step ? toText(row.current_step) : null,
-    browserSessionId: row.browser_session_id
-      ? toText(row.browser_session_id)
-      : null,
-    evidenceSummary: row.evidence_summary ? toText(row.evidence_summary) : null,
-    artifactCount: toNumber(row.artifact_count, 0),
-    managementUrl: row.management_url ? toText(row.management_url) : null,
-    error: row.error ? toText(row.error) : null,
-    metadata: parseJsonRecord(row.metadata_json),
-    createdAt: toText(row.created_at),
-    updatedAt: toText(row.updated_at),
-    finishedAt: row.finished_at ? toText(row.finished_at) : null,
-  };
-}
-
-function parsePaymentSource(
-  row: Record<string, unknown>,
-): LifeOpsPaymentSource {
-  return {
-    id: toText(row.id),
-    agentId: toText(row.agent_id),
-    kind: toText(row.kind, "manual") as LifeOpsPaymentSourceKind,
-    label: toText(row.label),
-    institution: row.institution ? toText(row.institution) : null,
-    accountMask: row.account_mask ? toText(row.account_mask) : null,
-    status: toText(row.status, "active") as LifeOpsPaymentSourceStatus,
-    lastSyncedAt: row.last_synced_at ? toText(row.last_synced_at) : null,
-    transactionCount: toNumber(row.transaction_count, 0),
-    metadata: parseJsonRecord(row.metadata_json),
-    createdAt: toText(row.created_at),
-    updatedAt: toText(row.updated_at),
-  };
-}
-
-function parsePaymentTransaction(
-  row: Record<string, unknown>,
-): LifeOpsPaymentTransaction {
-  return {
-    id: toText(row.id),
-    agentId: toText(row.agent_id),
-    sourceId: toText(row.source_id),
-    externalId: row.external_id ? toText(row.external_id) : null,
-    postedAt: toText(row.posted_at),
-    amountUsd: toNumber(row.amount_usd, 0),
-    direction: toText(row.direction, "debit") as LifeOpsPaymentDirection,
-    merchantRaw: toText(row.merchant_raw),
-    merchantNormalized: toText(row.merchant_normalized),
-    description: row.description ? toText(row.description) : null,
-    category: row.category ? toText(row.category) : null,
-    currency: toText(row.currency, "USD"),
-    metadata: parseJsonRecord(row.metadata_json),
-    createdAt: toText(row.created_at),
-  };
-}
-
-function parseEmailUnsubscribe(
-  row: Record<string, unknown>,
-): EmailUnsubscribeRecord {
-  return {
-    id: toText(row.id),
-    agentId: toText(row.agent_id),
-    senderEmail: toText(row.sender_email),
-    senderDisplay: toText(row.sender_display),
-    senderDomain: row.sender_domain ? toText(row.sender_domain) : null,
-    listId: row.list_id ? toText(row.list_id) : null,
-    method: toText(row.method, "manual_only") as EmailUnsubscribeMethod,
-    status: toText(row.status, "failed") as EmailUnsubscribeStatus,
-    httpStatusCode:
-      row.http_status_code === null || row.http_status_code === undefined
-        ? null
-        : toNumber(row.http_status_code, 0),
-    httpFinalUrl: row.http_final_url ? toText(row.http_final_url) : null,
-    filterCreated: toBoolean(row.filter_created),
-    filterId: row.filter_id ? toText(row.filter_id) : null,
-    threadsTrashed: toNumber(row.threads_trashed, 0),
-    errorMessage: row.error_message ? toText(row.error_message) : null,
-    metadata: parseJsonRecord(row.metadata_json),
-    createdAt: toText(row.created_at),
-    updatedAt: toText(row.updated_at),
   };
 }
 
@@ -2493,25 +2338,40 @@ export class LifeOpsRepository {
    */
   private static telemetryMirrorFailures = new Map<string, number>();
 
-  constructor(private readonly runtime: IAgentRuntime) {}
-
   /**
-   * EntityStore / RelationshipStore accessors for the typed graph. New code
-   * paths should consume the graph via these factories rather than the
-   * legacy `upsertRelationship` / `listRelationships` helpers.
+   * Finance back-end repository. The finance tables (payment sources /
+   * transactions, subscription audits / candidates / cancellations) moved to
+   * @elizaos/plugin-finances; the finance methods below delegate here so the
+   * subscriptions mixin keeps reaching them through `this.repository`.
    */
-  async entityStore(
-    agentId: string,
-  ): Promise<import("./entities/store.js").EntityStore> {
-    const mod = await import("./entities/store.js");
-    return new mod.EntityStore(this.runtime, agentId);
+  private readonly financesRepo: FinancesRepository;
+
+  constructor(private readonly runtime: IAgentRuntime) {
+    this.financesRepo = new FinancesRepository(runtime);
   }
 
-  async relationshipStore(
-    agentId: string,
-  ): Promise<import("./relationships/store.js").RelationshipStore> {
-    const mod = await import("./relationships/store.js");
-    return new mod.RelationshipStore(this.runtime, agentId);
+  /**
+   * EntityStore / RelationshipStore accessors for the typed graph. The
+   * knowledge graph is a runtime primitive owned by `@elizaos/agent`; these
+   * factories resolve the per-agent stores from the registered
+   * `KnowledgeGraphService` rather than constructing them directly.
+   */
+  private knowledgeGraph(): ReturnType<typeof resolveKnowledgeGraphService> {
+    const service = resolveKnowledgeGraphService(this.runtime);
+    if (!service) {
+      throw new Error(
+        "[LifeOpsRepository] KnowledgeGraphService is not registered on the runtime",
+      );
+    }
+    return service;
+  }
+
+  async entityStore(agentId: string): Promise<EntityStore> {
+    return this.knowledgeGraph().getEntityStore(agentId);
+  }
+
+  async relationshipStore(agentId: string): Promise<RelationshipStore> {
+    return this.knowledgeGraph().getRelationshipStore(agentId);
   }
 
   static async bootstrapSchema(runtime: IAgentRuntime): Promise<void> {
@@ -2531,6 +2391,14 @@ export class LifeOpsRepository {
         {
           name: "@elizaos/plugin-personal-assistant",
           schema: lifeOpsSchema,
+        },
+        // The knowledge-graph tables are runtime-owned (registered by the
+        // agent "eliza" plugin in production). Migrate them under the same
+        // plugin name here so test harnesses that only call
+        // bootstrapSchema still get the app_lifeops graph tables.
+        {
+          name: "eliza",
+          schema: knowledgeGraphSchema,
         },
       ],
       {
@@ -3399,450 +3267,134 @@ export class LifeOpsRepository {
     return rows.map(parseAuditEvent);
   }
 
+  // ---------------------------------------------------------------------
+  // Finance (subscription) delegations → @elizaos/plugin-finances.
+  // The raw SQL lives in FinancesRepository; these wrappers keep the
+  // subscriptions mixin reaching the finance tables through `this.repository`.
+  // ---------------------------------------------------------------------
+
   async createSubscriptionAudit(
     audit: LifeOpsSubscriptionAudit,
   ): Promise<void> {
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.life_subscription_audits (
-        id, agent_id, source, query_window_days, status, total_candidates,
-        active_candidates, canceled_candidates, uncertain_candidates, summary,
-        metadata_json, created_at, updated_at
-      ) VALUES (
-        ${sqlQuote(audit.id)},
-        ${sqlQuote(audit.agentId)},
-        ${sqlQuote(audit.source)},
-        ${sqlInteger(audit.queryWindowDays)},
-        ${sqlQuote(audit.status)},
-        ${sqlInteger(audit.totalCandidates)},
-        ${sqlInteger(audit.activeCandidates)},
-        ${sqlInteger(audit.canceledCandidates)},
-        ${sqlInteger(audit.uncertainCandidates)},
-        ${sqlQuote(audit.summary)},
-        ${sqlJson(audit.metadata)},
-        ${sqlQuote(audit.createdAt)},
-        ${sqlQuote(audit.updatedAt)}
-      )`,
-    );
+    return this.financesRepo.createSubscriptionAudit(audit);
   }
 
   async updateSubscriptionAudit(
     audit: LifeOpsSubscriptionAudit,
   ): Promise<void> {
-    await executeRawSql(
-      this.runtime,
-      `UPDATE app_lifeops.life_subscription_audits
-          SET source = ${sqlQuote(audit.source)},
-              query_window_days = ${sqlInteger(audit.queryWindowDays)},
-              status = ${sqlQuote(audit.status)},
-              total_candidates = ${sqlInteger(audit.totalCandidates)},
-              active_candidates = ${sqlInteger(audit.activeCandidates)},
-              canceled_candidates = ${sqlInteger(audit.canceledCandidates)},
-              uncertain_candidates = ${sqlInteger(audit.uncertainCandidates)},
-              summary = ${sqlQuote(audit.summary)},
-              metadata_json = ${sqlJson(audit.metadata)},
-              updated_at = ${sqlQuote(audit.updatedAt)}
-        WHERE id = ${sqlQuote(audit.id)}
-          AND agent_id = ${sqlQuote(audit.agentId)}`,
-    );
+    return this.financesRepo.updateSubscriptionAudit(audit);
   }
 
   async getSubscriptionAudit(
     agentId: string,
     auditId: string,
   ): Promise<LifeOpsSubscriptionAudit | null> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_subscription_audits
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(auditId)}
-        LIMIT 1`,
-    );
-    const row = rows[0];
-    return row ? parseSubscriptionAudit(row) : null;
+    return this.financesRepo.getSubscriptionAudit(agentId, auditId);
   }
 
   async getLatestSubscriptionAudit(
     agentId: string,
   ): Promise<LifeOpsSubscriptionAudit | null> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_subscription_audits
-        WHERE agent_id = ${sqlQuote(agentId)}
-        ORDER BY updated_at DESC, created_at DESC
-        LIMIT 1`,
-    );
-    const row = rows[0];
-    return row ? parseSubscriptionAudit(row) : null;
+    return this.financesRepo.getLatestSubscriptionAudit(agentId);
   }
 
   async createSubscriptionCandidate(
     candidate: LifeOpsSubscriptionCandidate,
   ): Promise<void> {
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.life_subscription_candidates (
-        id, agent_id, audit_id, service_slug, service_name, provider, cadence,
-        state, confidence, annual_cost_estimate_usd, management_url,
-        latest_evidence_at, evidence_json, metadata_json, created_at, updated_at
-      ) VALUES (
-        ${sqlQuote(candidate.id)},
-        ${sqlQuote(candidate.agentId)},
-        ${sqlQuote(candidate.auditId)},
-        ${sqlQuote(candidate.serviceSlug)},
-        ${sqlQuote(candidate.serviceName)},
-        ${sqlQuote(candidate.provider)},
-        ${sqlQuote(candidate.cadence)},
-        ${sqlQuote(candidate.state)},
-        ${sqlNumber(candidate.confidence)},
-        ${sqlNumber(candidate.annualCostEstimateUsd)},
-        ${sqlText(candidate.managementUrl)},
-        ${sqlText(candidate.latestEvidenceAt)},
-        ${sqlJson(candidate.evidenceJson)},
-        ${sqlJson(candidate.metadata)},
-        ${sqlQuote(candidate.createdAt)},
-        ${sqlQuote(candidate.updatedAt)}
-      )
-      ON CONFLICT(agent_id, audit_id, service_slug) DO UPDATE SET
-        service_name = excluded.service_name,
-        provider = excluded.provider,
-        cadence = excluded.cadence,
-        state = excluded.state,
-        confidence = excluded.confidence,
-        annual_cost_estimate_usd = excluded.annual_cost_estimate_usd,
-        management_url = excluded.management_url,
-        latest_evidence_at = excluded.latest_evidence_at,
-        evidence_json = excluded.evidence_json,
-        metadata_json = excluded.metadata_json,
-        updated_at = excluded.updated_at`,
-    );
+    return this.financesRepo.createSubscriptionCandidate(candidate);
   }
 
   async listSubscriptionCandidatesForAudit(
     agentId: string,
     auditId: string,
   ): Promise<LifeOpsSubscriptionCandidate[]> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_subscription_candidates
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND audit_id = ${sqlQuote(auditId)}
-        ORDER BY confidence DESC, service_name ASC`,
+    return this.financesRepo.listSubscriptionCandidatesForAudit(
+      agentId,
+      auditId,
     );
-    return rows.map(parseSubscriptionCandidate);
   }
 
   async getSubscriptionCandidate(
     agentId: string,
     candidateId: string,
   ): Promise<LifeOpsSubscriptionCandidate | null> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_subscription_candidates
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(candidateId)}
-        LIMIT 1`,
-    );
-    const row = rows[0];
-    return row ? parseSubscriptionCandidate(row) : null;
+    return this.financesRepo.getSubscriptionCandidate(agentId, candidateId);
   }
 
   async createSubscriptionCancellation(
     cancellation: LifeOpsSubscriptionCancellation,
   ): Promise<void> {
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.life_subscription_cancellations (
-        id, agent_id, audit_id, candidate_id, service_slug, service_name,
-        executor, status, confirmed, current_step, browser_session_id,
-        evidence_summary, artifact_count, management_url, error, metadata_json,
-        created_at, updated_at, finished_at
-      ) VALUES (
-        ${sqlQuote(cancellation.id)},
-        ${sqlQuote(cancellation.agentId)},
-        ${sqlText(cancellation.auditId)},
-        ${sqlText(cancellation.candidateId)},
-        ${sqlQuote(cancellation.serviceSlug)},
-        ${sqlQuote(cancellation.serviceName)},
-        ${sqlQuote(cancellation.executor)},
-        ${sqlQuote(cancellation.status)},
-        ${sqlBoolean(cancellation.confirmed)},
-        ${sqlText(cancellation.currentStep)},
-        ${sqlText(cancellation.browserSessionId)},
-        ${sqlText(cancellation.evidenceSummary)},
-        ${sqlInteger(cancellation.artifactCount)},
-        ${sqlText(cancellation.managementUrl)},
-        ${sqlText(cancellation.error)},
-        ${sqlJson(cancellation.metadata)},
-        ${sqlQuote(cancellation.createdAt)},
-        ${sqlQuote(cancellation.updatedAt)},
-        ${sqlText(cancellation.finishedAt)}
-      )`,
-    );
+    return this.financesRepo.createSubscriptionCancellation(cancellation);
   }
 
   async updateSubscriptionCancellation(
     cancellation: LifeOpsSubscriptionCancellation,
   ): Promise<void> {
-    await executeRawSql(
-      this.runtime,
-      `UPDATE app_lifeops.life_subscription_cancellations
-          SET audit_id = ${sqlText(cancellation.auditId)},
-              candidate_id = ${sqlText(cancellation.candidateId)},
-              service_slug = ${sqlQuote(cancellation.serviceSlug)},
-              service_name = ${sqlQuote(cancellation.serviceName)},
-              executor = ${sqlQuote(cancellation.executor)},
-              status = ${sqlQuote(cancellation.status)},
-              confirmed = ${sqlBoolean(cancellation.confirmed)},
-              current_step = ${sqlText(cancellation.currentStep)},
-              browser_session_id = ${sqlText(cancellation.browserSessionId)},
-              evidence_summary = ${sqlText(cancellation.evidenceSummary)},
-              artifact_count = ${sqlInteger(cancellation.artifactCount)},
-              management_url = ${sqlText(cancellation.managementUrl)},
-              error = ${sqlText(cancellation.error)},
-              metadata_json = ${sqlJson(cancellation.metadata)},
-              updated_at = ${sqlQuote(cancellation.updatedAt)},
-              finished_at = ${sqlText(cancellation.finishedAt)}
-        WHERE id = ${sqlQuote(cancellation.id)}
-          AND agent_id = ${sqlQuote(cancellation.agentId)}`,
-    );
+    return this.financesRepo.updateSubscriptionCancellation(cancellation);
   }
 
   async getSubscriptionCancellation(
     agentId: string,
     cancellationId: string,
   ): Promise<LifeOpsSubscriptionCancellation | null> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_subscription_cancellations
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(cancellationId)}
-        LIMIT 1`,
+    return this.financesRepo.getSubscriptionCancellation(
+      agentId,
+      cancellationId,
     );
-    const row = rows[0];
-    return row ? parseSubscriptionCancellation(row) : null;
   }
 
   async getLatestSubscriptionCancellation(
     agentId: string,
     serviceSlug?: string,
   ): Promise<LifeOpsSubscriptionCancellation | null> {
-    const serviceClause = serviceSlug
-      ? `AND service_slug = ${sqlQuote(serviceSlug)}`
-      : "";
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_subscription_cancellations
-        WHERE agent_id = ${sqlQuote(agentId)}
-          ${serviceClause}
-        ORDER BY updated_at DESC, created_at DESC
-        LIMIT 1`,
-    );
-    const row = rows[0];
-    return row ? parseSubscriptionCancellation(row) : null;
-  }
-
-  async createEmailUnsubscribe(record: EmailUnsubscribeRecord): Promise<void> {
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.life_email_unsubscribes (
-        id, agent_id, sender_email, sender_display, sender_domain, list_id,
-        method, status, http_status_code, http_final_url, filter_created,
-        filter_id, threads_trashed, error_message, metadata_json,
-        created_at, updated_at
-      ) VALUES (
-        ${sqlQuote(record.id)},
-        ${sqlQuote(record.agentId)},
-        ${sqlQuote(record.senderEmail)},
-        ${sqlQuote(record.senderDisplay)},
-        ${sqlText(record.senderDomain)},
-        ${sqlText(record.listId)},
-        ${sqlQuote(record.method)},
-        ${sqlQuote(record.status)},
-        ${record.httpStatusCode === null ? "NULL" : sqlInteger(record.httpStatusCode)},
-        ${sqlText(record.httpFinalUrl)},
-        ${sqlBoolean(record.filterCreated)},
-        ${sqlText(record.filterId)},
-        ${sqlInteger(record.threadsTrashed)},
-        ${sqlText(record.errorMessage)},
-        ${sqlJson(record.metadata)},
-        ${sqlQuote(record.createdAt)},
-        ${sqlQuote(record.updatedAt)}
-      )`,
+    return this.financesRepo.getLatestSubscriptionCancellation(
+      agentId,
+      serviceSlug,
     );
   }
 
-  async listEmailUnsubscribes(
-    agentId: string,
-    args: { limit?: number } = {},
-  ): Promise<EmailUnsubscribeRecord[]> {
-    const limit = Math.max(1, Math.min(500, Math.trunc(args.limit ?? 100)));
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_email_unsubscribes
-        WHERE agent_id = ${sqlQuote(agentId)}
-        ORDER BY created_at DESC
-        LIMIT ${limit}`,
-    );
-    return rows.map(parseEmailUnsubscribe);
-  }
+  // Email-unsubscribe persistence (the `app_lifeops.life_email_unsubscribes`
+  // table this schema still registers) moved to `@elizaos/plugin-inbox`'s
+  // `InboxUnsubscribeRepository`. PA's email-unsubscribe mixin now delegates to
+  // the inbox service, so LifeOpsRepository no longer carries those reads/writes.
 
-  async getEmailUnsubscribe(
-    agentId: string,
-    id: string,
-  ): Promise<EmailUnsubscribeRecord | null> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_email_unsubscribes
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(id)}
-        LIMIT 1`,
-    );
-    const row = rows[0];
-    return row ? parseEmailUnsubscribe(row) : null;
-  }
-
-  async findEmailUnsubscribeBySender(
-    agentId: string,
-    senderEmail: string,
-  ): Promise<EmailUnsubscribeRecord | null> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_email_unsubscribes
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND sender_email = ${sqlQuote(senderEmail.trim().toLowerCase())}
-        ORDER BY created_at DESC
-        LIMIT 1`,
-    );
-    const row = rows[0];
-    return row ? parseEmailUnsubscribe(row) : null;
-  }
+  // ---------------------------------------------------------------------
+  // Finance (payment) delegations → @elizaos/plugin-finances.
+  // ---------------------------------------------------------------------
 
   async upsertPaymentSource(source: LifeOpsPaymentSource): Promise<void> {
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.life_payment_sources (
-        id, agent_id, kind, label, institution, account_mask, status,
-        last_synced_at, transaction_count, metadata_json, created_at, updated_at
-      ) VALUES (
-        ${sqlQuote(source.id)},
-        ${sqlQuote(source.agentId)},
-        ${sqlQuote(source.kind)},
-        ${sqlQuote(source.label)},
-        ${sqlText(source.institution)},
-        ${sqlText(source.accountMask)},
-        ${sqlQuote(source.status)},
-        ${sqlText(source.lastSyncedAt)},
-        ${sqlInteger(source.transactionCount)},
-        ${sqlJson(source.metadata)},
-        ${sqlQuote(source.createdAt)},
-        ${sqlQuote(source.updatedAt)}
-      )
-      ON CONFLICT(id) DO UPDATE SET
-        kind = excluded.kind,
-        label = excluded.label,
-        institution = excluded.institution,
-        account_mask = excluded.account_mask,
-        status = excluded.status,
-        last_synced_at = excluded.last_synced_at,
-        transaction_count = excluded.transaction_count,
-        metadata_json = excluded.metadata_json,
-        updated_at = excluded.updated_at`,
-    );
+    return this.financesRepo.upsertPaymentSource(source);
   }
 
   async listPaymentSources(agentId: string): Promise<LifeOpsPaymentSource[]> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_payment_sources
-        WHERE agent_id = ${sqlQuote(agentId)}
-        ORDER BY created_at DESC`,
-    );
-    return rows.map(parsePaymentSource);
+    return this.financesRepo.listPaymentSources(agentId);
   }
 
   async getPaymentSource(
     agentId: string,
     sourceId: string,
   ): Promise<LifeOpsPaymentSource | null> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_payment_sources
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(sourceId)}
-        LIMIT 1`,
-    );
-    const row = rows[0];
-    return row ? parsePaymentSource(row) : null;
+    return this.financesRepo.getPaymentSource(agentId, sourceId);
   }
 
   async deletePaymentSource(agentId: string, sourceId: string): Promise<void> {
-    await executeRawSql(
-      this.runtime,
-      `DELETE FROM app_lifeops.life_payment_transactions
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND source_id = ${sqlQuote(sourceId)}`,
-    );
-    await executeRawSql(
-      this.runtime,
-      `DELETE FROM app_lifeops.life_payment_sources
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(sourceId)}`,
-    );
+    return this.financesRepo.deletePaymentSource(agentId, sourceId);
   }
 
   async deletePaymentTransactionById(
     agentId: string,
     transactionId: string,
   ): Promise<void> {
-    await executeRawSql(
-      this.runtime,
-      `DELETE FROM app_lifeops.life_payment_transactions
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(transactionId)}`,
+    return this.financesRepo.deletePaymentTransactionById(
+      agentId,
+      transactionId,
     );
   }
 
   async insertPaymentTransaction(
     transaction: LifeOpsPaymentTransaction,
   ): Promise<boolean> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.life_payment_transactions (
-        id, agent_id, source_id, external_id, posted_at, amount_usd, direction,
-        merchant_raw, merchant_normalized, description, category, currency,
-        metadata_json, created_at
-      ) VALUES (
-        ${sqlQuote(transaction.id)},
-        ${sqlQuote(transaction.agentId)},
-        ${sqlQuote(transaction.sourceId)},
-        ${sqlText(transaction.externalId)},
-        ${sqlQuote(transaction.postedAt)},
-        ${sqlNumber(transaction.amountUsd)},
-        ${sqlQuote(transaction.direction)},
-        ${sqlQuote(transaction.merchantRaw)},
-        ${sqlQuote(transaction.merchantNormalized)},
-        ${sqlText(transaction.description)},
-        ${sqlText(transaction.category)},
-        ${sqlQuote(transaction.currency)},
-        ${sqlJson(transaction.metadata)},
-        ${sqlQuote(transaction.createdAt)}
-      )
-      ON CONFLICT DO NOTHING
-      RETURNING id`,
-    );
-    return rows.length > 0;
+    return this.financesRepo.insertPaymentTransaction(transaction);
   }
 
   async listPaymentTransactions(
@@ -3856,51 +3408,17 @@ export class LifeOpsRepository {
       onlyDebits?: boolean | null;
     } = {},
   ): Promise<LifeOpsPaymentTransaction[]> {
-    const limit = Math.max(1, Math.min(5000, Math.trunc(args.limit ?? 500)));
-    const sourceClause = args.sourceId
-      ? `AND source_id = ${sqlQuote(args.sourceId)}`
-      : "";
-    const sinceClause = args.sinceAt
-      ? `AND posted_at >= ${sqlQuote(args.sinceAt)}`
-      : "";
-    const untilClause = args.untilAt
-      ? `AND posted_at <= ${sqlQuote(args.untilAt)}`
-      : "";
-    const merchantClause = args.merchantContains
-      ? `AND merchant_normalized LIKE ${sqlQuote(`%${args.merchantContains.trim().toLowerCase()}%`)}`
-      : "";
-    const directionClause = args.onlyDebits
-      ? `AND direction = ${sqlQuote("debit")}`
-      : "";
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_payment_transactions
-        WHERE agent_id = ${sqlQuote(agentId)}
-          ${sourceClause}
-          ${sinceClause}
-          ${untilClause}
-          ${merchantClause}
-          ${directionClause}
-        ORDER BY posted_at DESC
-        LIMIT ${limit}`,
-    );
-    return rows.map(parsePaymentTransaction);
+    return this.financesRepo.listPaymentTransactions(agentId, args);
   }
 
   async countPaymentTransactionsForSource(
     agentId: string,
     sourceId: string,
   ): Promise<number> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT COUNT(*) AS count
-         FROM app_lifeops.life_payment_transactions
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND source_id = ${sqlQuote(sourceId)}`,
+    return this.financesRepo.countPaymentTransactionsForSource(
+      agentId,
+      sourceId,
     );
-    const row = rows[0] as Record<string, unknown> | undefined;
-    return row ? toNumber(row.count ?? row.COUNT, 0) : 0;
   }
 
   async createActivitySignal(signal: LifeOpsActivitySignal): Promise<void> {
@@ -8738,44 +8256,9 @@ export function createLifeOpsAuditEvent(
   };
 }
 
-export function createLifeOpsSubscriptionAudit(
-  params: Omit<LifeOpsSubscriptionAudit, "id" | "createdAt" | "updatedAt">,
-): LifeOpsSubscriptionAudit {
-  const timestamp = isoNow();
-  return {
-    ...params,
-    id: crypto.randomUUID(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
-
-export function createLifeOpsSubscriptionCandidate(
-  params: Omit<LifeOpsSubscriptionCandidate, "id" | "createdAt" | "updatedAt">,
-): LifeOpsSubscriptionCandidate {
-  const timestamp = isoNow();
-  return {
-    ...params,
-    id: crypto.randomUUID(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
-
-export function createLifeOpsSubscriptionCancellation(
-  params: Omit<
-    LifeOpsSubscriptionCancellation,
-    "id" | "createdAt" | "updatedAt"
-  >,
-): LifeOpsSubscriptionCancellation {
-  const timestamp = isoNow();
-  return {
-    ...params,
-    id: crypto.randomUUID(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
+// createLifeOpsSubscriptionAudit / Candidate / Cancellation moved to
+// @elizaos/plugin-finances along with the finance tables. The subscriptions
+// mixin imports them from there directly.
 
 export function createLifeOpsActivitySignal(
   params: Omit<LifeOpsActivitySignal, "id" | "createdAt">,

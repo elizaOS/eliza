@@ -38,6 +38,7 @@ export * from "./generated/spec-helpers";
 export * from "./logger";
 export * from "./markdown";
 export * from "./memory";
+export * from "./messaging/interactions";
 export * from "./plugin";
 export * from "./prompts";
 export * from "./providers/setup-progress";

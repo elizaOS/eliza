@@ -31,7 +31,18 @@ def sanitize_host_local_paths(text: str) -> str:
     if home not in {ROOT.as_posix(), REPO.as_posix()}:
         replacements.append((home, "<home>"))
     for source, replacement in replacements:
-        sanitized = sanitized.replace(source, replacement)
+        if not source or source == "/":
+            continue
+        # Anchor to absolute-path boundaries: only replace `source` when it is a
+        # real path token (not preceded by a path-component char, and followed by
+        # a path separator or terminator). Without this a short root like "/work"
+        # (the CI Docker bind mount) would corrupt unrelated substrings such as
+        # "external/cva6/cva6/work-ver".
+        sanitized = re.sub(
+            r"(?<![\w.\-/])" + re.escape(source) + r"(?=/|$|[\s\"'<>:,;)\]}])",
+            replacement,
+            sanitized,
+        )
 
     def redact(match: re.Match[str]) -> str:
         value = match.group(0)

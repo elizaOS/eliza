@@ -24,6 +24,18 @@ import { type IAgentRuntime, Service } from "@elizaos/core";
 import { AcpService } from "./acp-service.js";
 import { assignAgentName } from "./agent-name-assignment.js";
 import {
+  accountMetaFromSessionMetadata,
+  getCodingAccountBridge,
+  resolveCodingAccountStrategy,
+} from "./coding-account-selection.js";
+import {
+  buildAutoVerifyCorrection,
+  LLM_GOAL_VERIFIER_NAME,
+  MAX_AUTO_VERIFY_ATTEMPTS,
+  shouldAutoVerifyGoal,
+  verifyGoalCompletion,
+} from "./goal-llm-verifier.js";
+import {
   buildGoalFollowUp,
   buildGoalPrompt,
   coerceGoalCapabilityProfile,
@@ -49,6 +61,8 @@ import {
 import { OrchestratorTaskStore } from "./orchestrator-task-store.js";
 import {
   type CreateTaskInput,
+  type OrchestratorAccountAssignment,
+  type OrchestratorAccountOverview,
   type OrchestratorTaskDocument,
   type OrchestratorTaskRecord,
   type OrchestratorTaskSession,
@@ -387,6 +401,10 @@ export class OrchestratorTaskService extends Service {
   protected override readonly runtime: RuntimeLike;
   private readonly store: OrchestratorTaskStore;
   private readonly sessionTaskIndex = new Map<string, string>();
+  // Tasks with an auto-goal-verify pass in flight. ACP can emit `task_complete`
+  // from two sites for one turn; without this guard both runs read the same
+  // attempt counter across the model `await` and double-send a correction.
+  private readonly autoVerifyInFlight = new Set<string>();
   private unsubscribe: (() => void) | undefined;
   private started = false;
 
@@ -597,6 +615,11 @@ export class OrchestratorTaskService extends Service {
       case "login_required":
         await this.store.updateSession(sessionId, { status: "blocked" });
         await this.advanceTaskStatus(taskId, "waiting_on_user");
+        await this.markSessionAccountUnhealthy(
+          sessionId,
+          "auth",
+          "login_required",
+        );
         break;
       case "task_complete": {
         const summary = str(record.response);
@@ -607,14 +630,37 @@ export class OrchestratorTaskService extends Service {
           stoppedAt: Date.now(),
         });
         await this.advanceTaskStatus(taskId, "validating");
+        // Issue #8124: the orchestrator should always behave like `/goal` —
+        // confirm the sub-agent met every acceptance criterion before marking
+        // the task done. Fire-and-forget so the event-bridge write path stays
+        // fast; the verifier gates itself on the flag + criteria presence.
+        void this.autoVerifyCompletion(taskId, sessionId, summary ?? "");
         break;
       }
-      case "error":
+      case "error": {
         await this.store.updateSession(sessionId, {
           status: "errored",
           stoppedAt: Date.now(),
         });
+        const failureKind = str(record.failureKind);
+        const message = str(record.message) ?? "";
+        if (
+          failureKind === "auth" ||
+          /401|403|invalid api key|unauthor/i.test(message)
+        ) {
+          await this.markSessionAccountUnhealthy(sessionId, "auth", message);
+        } else if (/429|rate.?limit|quota/i.test(message)) {
+          // A 529 "overloaded" is a server-wide transient condition, not an
+          // account quota — deliberately excluded so a healthy account isn't
+          // sidelined from rotation for ~5min over a server blip.
+          await this.markSessionAccountUnhealthy(
+            sessionId,
+            "rate-limit",
+            message,
+          );
+        }
         break;
+      }
       case "stopped":
         await this.store.updateSession(sessionId, {
           status: "stopped",
@@ -649,6 +695,36 @@ export class OrchestratorTaskService extends Service {
     // `active` is the weakest signal: only promote into it from `open`.
     if (next === "active" && current !== "open") return;
     await this.store.updateTask(taskId, { status: next });
+  }
+
+  private async markSessionAccountUnhealthy(
+    sessionId: string,
+    reason: "auth" | "rate-limit",
+    detail?: string,
+  ): Promise<void> {
+    const found = await this.store.findSession(sessionId);
+    const session = found?.session;
+    if (!session?.accountProviderId || !session.accountId) return;
+    const bridge = getCodingAccountBridge();
+    if (!bridge) return;
+    try {
+      if (reason === "rate-limit") {
+        await bridge.markRateLimited(
+          session.accountProviderId,
+          session.accountId,
+          Date.now() + 5 * 60_000,
+          detail,
+        );
+      } else {
+        await bridge.markNeedsReauth(
+          session.accountProviderId,
+          session.accountId,
+          detail,
+        );
+      }
+    } catch {
+      // best-effort — account health is advisory for selection
+    }
   }
 
   private async recordUsage(
@@ -699,6 +775,20 @@ export class OrchestratorTaskService extends Service {
       costUsd: session.costUsd + (usage.costUsd ?? 0),
       usageState: usage.state,
     });
+    if (session.accountProviderId && session.accountId) {
+      const turnTokens =
+        usage.inputTokens +
+        usage.outputTokens +
+        usage.reasoningTokens +
+        usage.cacheTokens;
+      void getCodingAccountBridge()
+        ?.recordUsage(session.accountProviderId, session.accountId, {
+          tokens: turnTokens,
+          ok: true,
+          ...(model ? { model } : {}),
+        })
+        .catch(() => undefined);
+    }
   }
 
   private async recordMessage(
@@ -907,6 +997,160 @@ export class OrchestratorTaskService extends Service {
       });
     }
     return this.getTask(taskId);
+  }
+
+  /**
+   * Automatically judge a freshly-`validating` task against its acceptance
+   * criteria (issue #8124): the orchestrator should always behave like `/goal`,
+   * confirming the sub-agent met every criterion before reporting done.
+   *
+   * Behavior:
+   * - **Gated.** No-op when {@link shouldAutoVerifyGoal} is off, when the task
+   *   has no acceptance criteria (so a criteria-free task incurs zero model
+   *   spend and behaves exactly as before), or when the task is no longer
+   *   `validating` (e.g. a human already validated it).
+   * - **Small model only.** Delegates to {@link verifyGoalCompletion}, which
+   *   uses `ModelType.TEXT_SMALL`.
+   * - **Pass →** forwards a passing verdict to {@link validateTask} (task → done).
+   * - **Fail, under cap →** sends a corrective follow-up to the active sub-agent
+   *   citing the unmet criteria (task returns to `active` via `sendToTaskAgent`),
+   *   and increments the per-task attempt counter.
+   * - **Fail, cap reached →** stops looping and parks the task on
+   *   `waiting_on_user` for a human, instead of re-prompting forever.
+   *
+   * Fire-and-forget from the event bridge: failures here must never break the
+   * session-event write path, so everything is wrapped and logged.
+   */
+  private async autoVerifyCompletion(
+    taskId: string,
+    sessionId: string,
+    completionEvidence: string,
+  ): Promise<void> {
+    if (!shouldAutoVerifyGoal()) return;
+    // Re-entrancy guard: drop a second overlapping run for the same task (the
+    // check-then-act across the model `await` would otherwise double-count).
+    if (this.autoVerifyInFlight.has(taskId)) return;
+    this.autoVerifyInFlight.add(taskId);
+    try {
+      const doc = await this.store.getTask(taskId);
+      if (!doc) return;
+      // Only act on the state the task_complete event just produced. A human or
+      // the manual auto-validate route may have already moved it on.
+      if (doc.task.status !== "validating") return;
+      const acceptanceCriteria = doc.task.acceptanceCriteria;
+      // Criteria-free tasks keep the prior behavior: stay `validating` for a
+      // human/manual caller, no surprise model spend.
+      if (acceptanceCriteria.length === 0) return;
+
+      const verdict = await verifyGoalCompletion(this.runtime, {
+        goal: doc.task.goal,
+        acceptanceCriteria,
+        completionEvidence,
+      });
+
+      if (verdict.passed) {
+        await this.validateTask(taskId, {
+          passed: true,
+          summary: verdict.summary,
+          evidence: verdict.rawResponse || completionEvidence,
+          verifier: LLM_GOAL_VERIFIER_NAME,
+        });
+        // Notify live subscribers (SSE/UI) — this is a fire-and-forget hook with
+        // no HTTP response to refresh the client, so emitChange is the only
+        // signal that the task left `validating`. Every other branch emits too.
+        this.emitChange(taskId);
+        return;
+      }
+
+      const attempts = num(doc.task.metadata?.autoVerifyAttempts);
+      if (attempts >= MAX_AUTO_VERIFY_ATTEMPTS) {
+        // Stop the loop: park for a human rather than re-prompting forever.
+        await this.store.addEvent({
+          id: randomUUID(),
+          taskId,
+          sessionId,
+          eventType: "auto_verify_exhausted",
+          summary: `Automatic verification failed ${attempts} time(s); escalating to a human.`,
+          data: {
+            verifier: LLM_GOAL_VERIFIER_NAME,
+            missing: verdict.missing,
+            attempts,
+          },
+          timestamp: Date.now(),
+          createdAt: nowIso(),
+        });
+        await this.advanceTaskStatus(taskId, "waiting_on_user");
+        this.emitChange(taskId);
+        return;
+      }
+
+      // Under cap: re-send a corrective follow-up to the worker. The reporting
+      // session is now `completed` (terminal) but was spawned with
+      // `keepAliveAfterComplete`, so the ACP process is still attached and can
+      // take a follow-up. Persist the bumped attempt counter first so a
+      // redelivered task_complete can't double-count, then reactivate and steer.
+      await this.store.updateTask(taskId, {
+        metadata: { ...doc.task.metadata, autoVerifyAttempts: attempts + 1 },
+      });
+      await this.store.addEvent({
+        id: randomUUID(),
+        taskId,
+        sessionId,
+        eventType: "auto_verify_failed",
+        summary: verdict.summary,
+        data: {
+          verifier: LLM_GOAL_VERIFIER_NAME,
+          missing: verdict.missing,
+          attempt: attempts + 1,
+        },
+        timestamp: Date.now(),
+        createdAt: nowIso(),
+      });
+      try {
+        // Reactivate the kept-alive session so the corrective turn lands on a
+        // non-terminal record, then re-dispatch through the goal envelope.
+        await this.store.updateSession(sessionId, {
+          status: "ready",
+          taskDelivered: false,
+          stoppedAt: undefined,
+        });
+        await this.sendToTaskAgent(
+          taskId,
+          sessionId,
+          buildAutoVerifyCorrection(verdict.missing),
+          "validation_failed",
+        );
+        await this.store.updateTask(taskId, { status: "active" });
+      } catch (sendErr) {
+        // The kept-alive session could not take the follow-up — escalate rather
+        // than silently leaving the task stuck in `validating`.
+        await this.store.addEvent({
+          id: randomUUID(),
+          taskId,
+          sessionId,
+          eventType: "auto_verify_resend_failed",
+          summary:
+            "Automatic verification failed and the corrective follow-up could not be delivered; escalating to a human.",
+          data: {
+            verifier: LLM_GOAL_VERIFIER_NAME,
+            missing: verdict.missing,
+            error: sendErr instanceof Error ? sendErr.message : String(sendErr),
+          },
+          timestamp: Date.now(),
+          createdAt: nowIso(),
+        });
+        await this.advanceTaskStatus(taskId, "waiting_on_user");
+      }
+      this.emitChange(taskId);
+    } catch (err) {
+      this.log("warn", "auto goal verification failed", {
+        taskId,
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      this.autoVerifyInFlight.delete(taskId);
+    }
   }
 
   async addMessage(taskId: string, input: AddMessageInput): Promise<boolean> {
@@ -1390,6 +1634,9 @@ export class OrchestratorTaskService extends Service {
       },
     });
 
+    const account = accountMetaFromSessionMetadata(
+      result.metadata as Record<string, unknown> | undefined,
+    );
     const ts = nowIso();
     const session: OrchestratorTaskSession = {
       id: randomUUID(),
@@ -1398,6 +1645,13 @@ export class OrchestratorTaskService extends Service {
       framework: result.agentType,
       providerSource: opts.providerSource ?? policy.providerSource,
       model: opts.model ?? policy.model,
+      ...(account
+        ? {
+            accountProviderId: account.providerId,
+            accountId: account.accountId,
+            accountLabel: account.label,
+          }
+        : {}),
       label: agentName,
       originalTask: opts.task ?? doc.task.goal,
       goalPrompt,
@@ -1535,6 +1789,54 @@ export class OrchestratorTaskService extends Service {
       usage: usageRows.length > 0 ? summarizeUsageRows(usageRows) : EMPTY_USAGE,
       byStatus,
     };
+  }
+
+  async getAccountOverview(): Promise<OrchestratorAccountOverview> {
+    const records = await this.store.listTasks({ includeArchived: false });
+    const docs = (
+      await Promise.all(records.map((record) => this.store.getTask(record.id)))
+    ).filter((doc): doc is OrchestratorTaskDocument => doc !== null);
+
+    const assignments: OrchestratorAccountAssignment[] = [];
+    for (const doc of docs) {
+      for (const session of doc.sessions) {
+        if (!session.accountId || !session.accountProviderId) continue;
+        assignments.push({
+          taskId: doc.task.id,
+          taskTitle: doc.task.title,
+          sessionId: session.sessionId,
+          label: session.label,
+          framework: session.framework,
+          status: session.status,
+          active: !TERMINAL_TASK_SESSION_STATUSES.has(session.status),
+          accountProviderId: session.accountProviderId,
+          accountId: session.accountId,
+          accountLabel: session.accountLabel ?? session.accountId,
+          inputTokens: session.inputTokens,
+          outputTokens: session.outputTokens,
+          reasoningTokens: session.reasoningTokens,
+          cacheTokens: session.cacheTokens,
+          totalTokens:
+            session.inputTokens +
+            session.outputTokens +
+            session.reasoningTokens +
+            session.cacheTokens,
+          costUsd: session.costUsd,
+          usageState: session.usageState,
+        });
+      }
+    }
+
+    const rawStrategy = this.runtime.getSetting?.(
+      "ELIZA_CODING_ACCOUNT_STRATEGY",
+    );
+    const strategy =
+      resolveCodingAccountStrategy(
+        typeof rawStrategy === "string" ? rawStrategy : undefined,
+      ) ?? "least-used";
+    const availability = getCodingAccountBridge()?.describe() ?? {};
+
+    return { strategy, availability, assignments };
   }
 
   async pauseAll(): Promise<number> {

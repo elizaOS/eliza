@@ -7,7 +7,7 @@ Phone integration for elizaOS — Android dialer overlay and iOS Phone Companion
 This plugin ships two independent surfaces:
 
 **Android Phone overlay**
-A full-screen dialer app (Dialer, Recent Calls, Contacts tabs) that runs as an overlay inside the elizaOS Android shell. It reads call history from the native `READ_CALL_LOG` permission via `@elizaos/capacitor-phone` and exposes it to the agent runtime. Tapping a recent-call or contact row places a call through `Phone.placeCall`. The Contacts tab is shown only when `@elizaos/capacitor-contacts` is available on the device.
+A full-screen dialer app (Dialer, Recent Calls tabs) that runs as an overlay inside the elizaOS Android shell. It reads call history from the native `READ_CALL_LOG` permission via `@elizaos/capacitor-phone` and exposes it to the agent runtime. Tapping a recent-call row places a call through `Phone.placeCall`. The address book lives in the separate Contacts view (`@elizaos/plugin-contacts`); the header "Contacts" button links to it through the `eliza:navigate:view` bus rather than embedding a duplicate contacts pane. When another surface (e.g. a Contacts "Call" control) navigates here with a number, the dialer is pre-seeded with it.
 
 **Phone Companion (iOS)**
 A three-screen Capacitor surface (Chat, Pairing, Remote Session) that runs inside the main elizaOS iOS bundle. It pairs with a desktop Eliza agent via a QR code scan, mirrors the agent's chat stream, and can relay touch gestures to a remote VNC/noVNC session running on the paired Mac. APNs push notifications can trigger a Remote Session view automatically when enabled.
@@ -64,4 +64,3 @@ The build produces three outputs: `dist/index.js` (main ESM bundle), `dist/views
 - `@capacitor/haptics` — Haptic feedback on companion navigation transitions.
 - `@capacitor/preferences` — Navigation stack persistence for the companion.
 - `@capacitor/barcode-scanner` — QR pairing scan in the companion Pairing view.
-- `@elizaos/capacitor-contacts` — Optional contacts bridge (soft-imported at runtime; tab is hidden if unavailable).

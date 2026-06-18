@@ -44,7 +44,7 @@ const ALL_VIEW_IDS = [
   "trajectory-logger",
   "model-tester",
   "smartglasses",
-  "hearwear",
+  "facewear",
 ] as const;
 
 // ── HTTP server setup ─────────────────────────────────────────────────────────

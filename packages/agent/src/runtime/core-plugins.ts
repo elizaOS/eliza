@@ -43,6 +43,23 @@ export const MOBILE_CORE_PLUGINS: readonly string[] = [
 ];
 
 /**
+ * View-providing plugins that must register their `/api/views` entries on EVERY
+ * platform — including stock mobile — so their home tiles resolve to a real
+ * destination instead of dead-ending in the apps catalog. These are bundled
+ * statically and either ship no backend or degrade gracefully without one (the
+ * heavy backends they pair with, e.g. agent-orchestrator, stay gated
+ * separately). Seeded into the load set for all platforms and spread into the
+ * mobile allow-list so the mobile filter keeps them.
+ */
+export const MOBILE_VIEW_PLUGINS: readonly string[] = [
+  "@elizaos/plugin-task-coordinator",
+  // Inbox: registered on mobile so its home tile resolves + the /inbox view
+  // appears in /api/views. The plugin's de-stub + client wiring are owned by a
+  // separate effort; this keeps it in the mobile load/allow set.
+  "@elizaos/plugin-inbox",
+];
+
+/**
  * ElizaOS-only overlay app plugins. Used when the runtime is the custom
  * Android OS build (`ELIZA_PLATFORM=android` plus `ELIZA_LOCAL_LLAMA=1`),
  * appended to `MOBILE_CORE_PLUGINS` in `collectPluginNames`. Each one is a
@@ -116,6 +133,38 @@ export const BLOCKING_CORE_PLUGINS: readonly string[] = [
 /**
  * Core plugins loaded after runtime readiness. Dependency ordering is handled
  * by preregisterCorePluginsInDependencyWaves() in eliza.ts.
+ *
+ * These are imported in the BACKGROUND after `ready:true` (runDeferredBoot in
+ * eliza.ts). They are NOT candidates for further first-use lazy loading: every
+ * one registers a provider (so the planner prompt knows the capability exists),
+ * an action the model must be able to select, or a service/event listener with
+ * a boot-time obligation. Deferring any of them behind a stub that imports on
+ * first invocation would silently strip the capability from the planner's
+ * awareness — the model cannot ask for an action or read a provider that has
+ * not registered yet. Concretely, in this set:
+ *   - companion       — PLAY_EMOTE action + VRM views
+ *   - app-control     — app launch/close/list actions
+ *   - shell           — shell service + shell-history provider
+ *   - coding-tools    — FILE/SHELL/WORKTREE actions + available-tools provider
+ *   - agent-skills    — USE_SKILL action + enabled-skills provider
+ *   - commands        — slash-command provider + command registry
+ *   - browser         — browser actions + bridge routes
+ * The genuinely on-demand connector/feature plugins that have NO boot
+ * obligation (e.g. plugin-video — service-only, reached via getService(VIDEO);
+ * and the orchestrator's task-coordinator companion — views-only metadata) are
+ * not in this core set: they enter via plugin-collector only when configured,
+ * and their boot cost is resolver/staging overhead, not module-body evaluation
+ * that a lazy import could avoid (their server modules import only `type`-level
+ * symbols). The heaviest deferred imports measured (agent-orchestrator,
+ * shell, coding-tools, commands) all register providers/actions or eager-start
+ * event-subscribing services and therefore must stay at boot. See
+ * benchmarks/loadperf/research/03-agent-boot-plugins.md.
+ *
+ * Cloud-hosted topology (deploymentTarget.runtime === "cloud") never reaches
+ * this set: startEliza() returns startInCloudMode() before the deferred-boot
+ * machinery is even defined, so a cloud-proxied agent loads ZERO deferred
+ * plugins by construction (no local AgentRuntime boots) — the device-local
+ * plugins above are skipped wholesale in that topology with no extra gating.
  */
 export const DEFERRED_CORE_PLUGINS: readonly string[] = CORE_PLUGINS.filter(
   (pluginName) => !BLOCKING_CORE_PLUGINS.includes(pluginName),
@@ -130,6 +179,7 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   // Enable via character settings: ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST
   "@elizaos/plugin-google", // Google Workspace connector (requires googleapis + explicit OAuth config); only loaded when LifeOps/Google is enabled
   "@elizaos/plugin-personal-assistant", // LifeOps: personal ops - tasks, goals, calendar, inbox, website blocking (requires @capacitor/core + plugin-google); enable explicitly
+  "@elizaos/plugin-finances", // Owner finances dashboard (app_finances schema); auto-registered by plugin-personal-assistant, also enablable standalone
   "@elizaos/plugin-pdf", // PDF processing (published bundle broken in alpha.15)
   "@elizaos/plugin-cua", // CUA computer-use agent (cloud sandbox automation)
   "@elizaos/plugin-obsidian", // Obsidian vault CLI integration

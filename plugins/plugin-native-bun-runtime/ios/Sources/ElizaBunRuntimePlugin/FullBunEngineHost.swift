@@ -37,8 +37,8 @@ private let fullBunHostCallCallback: @convention(c) (
 ///   JSON string, `payload` is extracted as a bounded value field. The
 ///   `ELIZA_MAX_PROTOCOL_LINE_BYTES` (16 MiB) cap prevents unbounded reads.
 /// - Host-call allowlist: only `llama_hardware_info`, `llama_load_model`,
-///   `llama_generate`, `llama_free`, `llama_cancel`, and
-///   `eliza_tts_synthesize` are dispatched by
+///   `llama_generate`, `llama_free`, `llama_cancel`, `eliza_tts_synthesize`,
+///   and `eliza_asr_transcribe` are dispatched by
 ///   `handleHostCall`. All other method names return `{"ok":false,"error":"..."}`.
 /// - `http_fetch` (JSContext compat path): loopback/local-agent URLs are
 ///   rejected at `HTTPBridge.isLocalLoopback` before a URLRequest is created.
@@ -398,6 +398,8 @@ final class FullBunEngineHost {
                 return handleCancel(payload)
             case "eliza_tts_synthesize":
                 return handleTtsSynthesize(payload)
+            case "eliza_asr_transcribe":
+                return handleAsrTranscribe(payload)
             default:
                 return encodeHostEnvelope(
                     ok: false,
@@ -552,6 +554,35 @@ final class FullBunEngineHost {
         return encodeHostEnvelope(ok: true, result: payload)
     }
 
+    /// Wire format: `pcm` is mono fp32 audio in [-1, 1] carried as a JSON number
+    /// array (no base64). `bridge.ts` encodes the same way. `sampleRate` is the
+    /// source rate in Hz; the inference slice resamples internally as needed.
+    private func handleAsrTranscribe(_ payload: [String: Any]) -> String {
+        guard let bundleDir = stringValue(payload, "bundleDir")
+            ?? stringValue(payload, "bundle_dir"),
+            !bundleDir.isEmpty else {
+            return encodeHostEnvelope(ok: false, error: "eliza_asr_transcribe requires bundleDir")
+        }
+        guard let pcm = floatArrayValue(payload, "pcm"), !pcm.isEmpty else {
+            return encodeHostEnvelope(ok: false, error: "eliza_asr_transcribe requires pcm")
+        }
+        let sampleRate = intValue(payload, "sampleRate")
+            ?? intValue(payload, "sample_rate")
+            ?? 16_000
+        let result = LlamaBridgeImpl.shared.transcribeSpeech(
+            bundleDir: bundleDir,
+            pcm: pcm,
+            sampleRate: sampleRate
+        )
+        if let error = result.error {
+            return encodeHostEnvelope(ok: false, error: error)
+        }
+        return encodeHostEnvelope(ok: true, result: [
+            "text": result.text,
+            "durationMs": NSNumber(value: result.durationMs),
+        ])
+    }
+
     private func decodeHostPayload(_ json: String) throws -> [String: Any] {
         guard let data = json.data(using: .utf8) else { return [:] }
         let value = try JSONSerialization.jsonObject(with: data)
@@ -630,6 +661,16 @@ final class FullBunEngineHost {
         if let values = payload[key] as? [String] { return values }
         if let values = payload[key] as? [Any] {
             return values.compactMap { $0 as? String }
+        }
+        return nil
+    }
+
+    private func floatArrayValue(_ payload: [String: Any], _ key: String) -> [Float]? {
+        if let values = payload[key] as? [NSNumber] {
+            return values.map { $0.floatValue }
+        }
+        if let values = payload[key] as? [Any] {
+            return values.compactMap { ($0 as? NSNumber)?.floatValue }
         }
         return nil
     }

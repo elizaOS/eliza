@@ -85,11 +85,11 @@ local_findings:
       and will be fixed by hold-buffer insertion at SS sign-off.
 
       '
-    invocation: "docker run --rm -v \"$PWD\":/work -w /work -e PDK_ROOT=/work/external/pdks\
-      \ \\\n    ghcr.io/efabless/openlane2:2.4.0.dev1 \\\n    python3 /work/scripts/run_multi_corner_sta.py\
+    invocation: "docker run --rm -v \"$PWD\":. -w . -e PDK_ROOT=./external/pdks\
+      \ \\\n    ghcr.io/efabless/openlane2:2.4.0.dev1 \\\n    python3 ./scripts/run_multi_corner_sta.py\
       \ \\\n        --run-dir pd/openlane/runs/RUN_2026-05-19_05-08-54 \\\n      \
       \  --out-dir build/pd/multi_corner_sta/RUN_2026-05-19_05-08-54 \\\n        --pdk-root\
-      \ /work/external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af\n"
+      \ ./external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af\n"
     status: captured_locally
 release_blockers:
 - "SS_max setup WNS -12.26 ns; design needs longer-path retiming for SS sign-off.\

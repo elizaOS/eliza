@@ -31,6 +31,13 @@ import type {
 export interface ChatMessageProps {
   agentName?: string;
   children?: React.ReactNode;
+  /**
+   * Play a one-shot fade+lift entrance when this row mounts. Set only for a
+   * freshly-arrived turn (see ChatTranscript) so reloaded history never animates.
+   * Deliberately NOT part of arePropsEqual: the row keeps its mount-time value,
+   * so streamed-token re-renders neither restart nor cancel the animation.
+   */
+  enterOnMount?: boolean;
   isGrouped?: boolean;
   labels?: ChatMessageLabels;
   message: ChatMessageData;
@@ -223,6 +230,7 @@ export const ChatMessage = memo(function ChatMessage({
   isGrouped = false,
   agentName = "Agent",
   children,
+  enterOnMount = false,
   labels = {},
   onCopy,
   onSpeak,
@@ -444,7 +452,11 @@ export const ChatMessage = memo(function ChatMessage({
       id={getChatMessageAnchorId(message.id)}
       className={`flex items-start gap-2 sm:gap-3 ${
         isRightAligned ? "justify-end" : "justify-start"
-      } ${isGrouped ? "mt-0.5" : "mt-1.5"}`}
+      } ${isGrouped ? "mt-0.5" : "mt-1.5"} ${
+        enterOnMount
+          ? "motion-safe:animate-[chat-turn-in_320ms_cubic-bezier(0.22,1,0.36,1)]"
+          : ""
+      }`}
       data-testid="chat-message"
       data-role={message.role}
       onMouseEnter={supportsHover ? () => setShowActions(true) : undefined}

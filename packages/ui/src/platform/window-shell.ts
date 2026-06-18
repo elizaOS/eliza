@@ -14,8 +14,7 @@ export type WindowShellRoute =
   | { mode: "settings"; tab?: string }
   | { mode: "surface"; tab: DetachedSurfaceTab }
   | { mode: "chat-overlay" }
-  | { mode: "onboarding-overlay" }
-  | { mode: "pill" };
+  | { mode: "onboarding-overlay" };
 
 export interface DetachedShellTarget {
   settingsSection?: string;
@@ -38,10 +37,6 @@ export function parseWindowShellRoute(search: string): WindowShellRoute {
   if (shell === "settings") {
     const tab = params.get("tab")?.trim() || undefined;
     return tab ? { mode: "settings", tab } : { mode: "settings" };
-  }
-
-  if (shell === "pill") {
-    return { mode: "pill" };
   }
 
   if (shell === "surface") {
@@ -71,14 +66,10 @@ export function isDetachedWindowShell(
   route: WindowShellRoute,
 ): route is Exclude<
   WindowShellRoute,
-  | { mode: "main" }
-  | { mode: "pill" }
-  | { mode: "chat-overlay" }
-  | { mode: "onboarding-overlay" }
+  { mode: "main" } | { mode: "chat-overlay" } | { mode: "onboarding-overlay" }
 > {
   return (
     route.mode !== "main" &&
-    route.mode !== "pill" &&
     route.mode !== "chat-overlay" &&
     route.mode !== "onboarding-overlay"
   );
@@ -102,12 +93,6 @@ export function isStandaloneWindowShell(
   return route.mode !== "main";
 }
 
-export function isPillWindowShell(
-  route: WindowShellRoute,
-): route is Extract<WindowShellRoute, { mode: "pill" }> {
-  return route.mode === "pill";
-}
-
 export function shouldInstallMainWindowFirstRunPatches(
   route: WindowShellRoute,
 ): boolean {
@@ -121,11 +106,7 @@ export function resolveDetachedShellTarget(
     throw new Error("Main windows do not have a detached shell target");
   }
 
-  if (
-    route.mode === "pill" ||
-    route.mode === "chat-overlay" ||
-    route.mode === "onboarding-overlay"
-  ) {
+  if (route.mode === "chat-overlay" || route.mode === "onboarding-overlay") {
     throw new Error(
       `${route.mode} windows do not have a detached shell target`,
     );
@@ -165,7 +146,6 @@ export function syncDetachedShellLocation(
 ): boolean {
   if (
     route.mode === "main" ||
-    route.mode === "pill" ||
     route.mode === "chat-overlay" ||
     route.mode === "onboarding-overlay"
   ) {

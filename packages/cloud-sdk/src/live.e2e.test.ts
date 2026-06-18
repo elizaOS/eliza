@@ -66,9 +66,16 @@ const profileWriteDescribe =
 // Live public endpoints regularly cross Vitest's 5s default on hosted CI.
 // This is a timeout budget for real network work, not an artificial delay.
 const LIVE_PUBLIC_ENDPOINT_TIMEOUT_MS = 15_000;
+const openApiIt =
+  apiKey || process.env.ELIZA_CLOUD_SDK_LIVE_OPENAPI === "1" ? it : it.skip;
 
 function publicClient() {
   return new ElizaCloudClient({ baseUrl, apiBaseUrl });
+}
+
+function apiV1BaseUrl(): string {
+  const normalized = apiBaseUrl.replace(/\/+$/, "");
+  return normalized.endsWith("/api/v1") ? normalized : `${normalized}/api/v1`;
 }
 
 function clientWithApiKey() {
@@ -86,7 +93,7 @@ function clientWithSession() {
 liveDescribe(
   "ElizaCloudClient real API e2e: public, auth bootstrap, and raw access",
   () => {
-    it.skipIf(!apiKey && process.env.ELIZA_CLOUD_SDK_LIVE_OPENAPI !== "1")(
+    openApiIt(
       "fetches the live OpenAPI document through getOpenApiSpec, request, and requestRaw",
       async () => {
         const client = apiKey ? clientWithApiKey() : publicClient();
@@ -136,10 +143,10 @@ liveDescribe(
       const models = await client.listModels();
       expect(Array.isArray(models.data)).toBe(true);
 
-      const compatibility = new CloudApiClient(apiBaseUrl);
+      const compatibility = new CloudApiClient(apiV1BaseUrl());
       await expect(
         compatibility.get("/models", { skipAuth: true }),
-      ).resolves.toBeTruthy();
+      ).resolves.toMatchObject({ data: expect.any(Array) });
       expect(compatibility.buildWsUrl("/agent/gateway-relay")).toContain(
         "/agent/gateway-relay",
       );

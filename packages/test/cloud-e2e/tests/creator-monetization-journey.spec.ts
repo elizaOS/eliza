@@ -2,29 +2,29 @@
  * Creator-monetization journey — the marquee REAL end-to-end test.
  *
  * Proves the full "make money from inference" loop against the booted stack
- * with a REAL local LLM completion (Ollama via the OpenAI-compatible endpoint)
- * and REAL billing — no mocked provider, no fabricated earnings:
+ * with a REAL completion through the cloud's DEFAULT provider (Cerebras) and
+ * REAL billing — no mocked provider, no fabricated earnings, no local Ollama:
  *
  *   creator seeds + creates a monetized app (100% inference markup)
  *     → an INDEPENDENT end-user (separate org) calls the app's inference via
- *       POST /api/v1/messages with `x-app-id` and a real model
+ *       POST /api/v1/messages with `x-app-id` and the default cerebras model
  *     → the end-user's org credit balance is debited (base + markup)
  *     → the creator's earnings ledgers record the markup
  *     → the creator reads earnings via GET /api/v1/apps/:id/earnings
  *     → the creator's redeemable balance reflects the earning
  *
- * Real-LLM env (propagated to the stack's cloud-api worker via process.env):
- *   OPENAI_API_KEY=<anything>  OPENAI_BASE_URL=http://127.0.0.1:11434/v1
- * and a colon-free Ollama alias `elizatest` (ollama cp llama3.2:3b elizatest).
- * If Ollama is unreachable the LLM-dependent test skips loudly (never larps).
+ * Real-LLM env: export `CEREBRAS_API_KEY` before running — the cloud-api dev
+ * wrapper syncs it into the booted worker's .dev.vars, and this spec's gate
+ * reads it too. If it is absent the LLM-dependent test skips loudly (never
+ * larps a completion and never falls back to a local provider).
  */
-process.env.OPENAI_API_KEY ??= "ollama-local";
-process.env.OPENAI_BASE_URL ??= "http://127.0.0.1:11434/v1";
 
 import { seedTestUser } from "../src/fixtures/seed";
 import {
   authedClient,
-  ollamaReachable,
+  cerebrasConfigured,
+  REAL_LLM_BILLING_SOURCE,
+  REAL_LLM_MAX_TOKENS,
   REAL_LLM_MODEL,
 } from "../src/helpers/monetization";
 import { seedModelPricing } from "../src/helpers/seed-pricing";
@@ -52,13 +52,17 @@ test.describe("creator-monetization journey (real LLM)", () => {
   }) => {
     const api = stack.urls.api;
 
-    const haveLlm = await ollamaReachable();
     test.skip(
-      !haveLlm,
-      "Real local LLM (Ollama at OPENAI_BASE_URL) is not reachable — this is a real-LLM lane",
+      !cerebrasConfigured(),
+      "CEREBRAS_API_KEY is not set — the cloud's default inference provider is " +
+        "required for this real-LLM lane (no local-provider fallback)",
     );
 
-    await seedModelPricing({ model: REAL_LLM_MODEL });
+    await seedModelPricing({
+      model: REAL_LLM_MODEL,
+      billingSource: REAL_LLM_BILLING_SOURCE,
+      provider: REAL_LLM_BILLING_SOURCE,
+    });
 
     // ---- Creator (org A) ----
     const creator = authedClient(api, seededUser.apiKey);
@@ -117,8 +121,11 @@ test.describe("creator-monetization journey (real LLM)", () => {
       "POST",
       "/api/v1/messages",
       {
+        // gpt-oss-120b is a reasoning model — give it the model's full output
+        // budget so reasoning doesn't starve the visible completion (a small
+        // cap is spent entirely on reasoning and returns empty content).
         model: REAL_LLM_MODEL,
-        max_tokens: 32,
+        max_tokens: REAL_LLM_MAX_TOKENS,
         messages: [
           { role: "user", content: "Reply with exactly the word: PONG" },
         ],

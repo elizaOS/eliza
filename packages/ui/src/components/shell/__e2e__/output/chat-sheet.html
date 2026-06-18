@@ -781,7 +781,7 @@
   var require_react_dom_production = __commonJS({
     "node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom.production.js"(exports) {
       "use strict";
-      var React7 = require_react();
+      var React8 = require_react();
       function formatProdErrorMessage(code) {
         var url = "https://react.dev/errors/" + code;
         if (1 < arguments.length) {
@@ -821,7 +821,7 @@
           implementation
         };
       }
-      var ReactSharedInternals = React7.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var ReactSharedInternals = React8.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       function getCrossOriginStringAs(as, input) {
         if ("font" === as) return "";
         if ("string" === typeof input)
@@ -957,7 +957,7 @@
     "node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom-client.production.js"(exports) {
       "use strict";
       var Scheduler = require_scheduler();
-      var React7 = require_react();
+      var React8 = require_react();
       var ReactDOM = require_react_dom();
       function formatProdErrorMessage(code) {
         var url = "https://react.dev/errors/" + code;
@@ -1148,7 +1148,7 @@
         return null;
       }
       var isArrayImpl = Array.isArray;
-      var ReactSharedInternals = React7.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var ReactSharedInternals = React8.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       var ReactDOMSharedInternals = ReactDOM.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       var sharedNotPendingObject = {
         pending: false,
@@ -12594,7 +12594,7 @@
           0 === i && attemptExplicitHydrationTarget(target);
         }
       };
-      var isomorphicReactPackageVersion$jscomp$inline_1840 = React7.version;
+      var isomorphicReactPackageVersion$jscomp$inline_1840 = React8.version;
       if ("19.2.5" !== isomorphicReactPackageVersion$jscomp$inline_1840)
         throw Error(
           formatProdErrorMessage(
@@ -12762,21 +12762,166 @@
   });
 
   // packages/ui/src/components/shell/__e2e__/chat-sheet-fixture.tsx
-  var React6 = __toESM(require_react(), 1);
+  var React7 = __toESM(require_react(), 1);
   var import_client = __toESM(require_client(), 1);
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/createLucideIcon.mjs
+  var import_react3 = __toESM(require_react(), 1);
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/shared/src/utils/mergeClasses.mjs
+  var mergeClasses = (...classes) => classes.filter((className, index, array) => {
+    return Boolean(className) && className.trim() !== "" && array.indexOf(className) === index;
+  }).join(" ").trim();
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/shared/src/utils/toKebabCase.mjs
+  var toKebabCase = (string) => string.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/shared/src/utils/toCamelCase.mjs
+  var toCamelCase = (string) => string.replace(
+    /^([A-Z])|[\s-_]+(\w)/g,
+    (match, p1, p2) => p2 ? p2.toUpperCase() : p1.toLowerCase()
+  );
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/shared/src/utils/toPascalCase.mjs
+  var toPascalCase = (string) => {
+    const camelCase = toCamelCase(string);
+    return camelCase.charAt(0).toUpperCase() + camelCase.slice(1);
+  };
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/Icon.mjs
+  var import_react2 = __toESM(require_react(), 1);
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/defaultAttributes.mjs
+  var defaultAttributes = {
+    xmlns: "http://www.w3.org/2000/svg",
+    width: 24,
+    height: 24,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round"
+  };
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/shared/src/utils/hasA11yProp.mjs
+  var hasA11yProp = (props) => {
+    for (const prop in props) {
+      if (prop.startsWith("aria-") || prop === "role" || prop === "title") {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/context.mjs
+  var import_react = __toESM(require_react(), 1);
+  var LucideContext = (0, import_react.createContext)({});
+  var useLucideContext = () => (0, import_react.useContext)(LucideContext);
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/Icon.mjs
+  var Icon = (0, import_react2.forwardRef)(
+    ({ color: color2, size, strokeWidth, absoluteStrokeWidth, className = "", children, iconNode, ...rest }, ref) => {
+      const {
+        size: contextSize = 24,
+        strokeWidth: contextStrokeWidth = 2,
+        absoluteStrokeWidth: contextAbsoluteStrokeWidth = false,
+        color: contextColor = "currentColor",
+        className: contextClass = ""
+      } = useLucideContext() ?? {};
+      const calculatedStrokeWidth = absoluteStrokeWidth ?? contextAbsoluteStrokeWidth ? Number(strokeWidth ?? contextStrokeWidth) * 24 / Number(size ?? contextSize) : strokeWidth ?? contextStrokeWidth;
+      return (0, import_react2.createElement)(
+        "svg",
+        {
+          ref,
+          ...defaultAttributes,
+          width: size ?? contextSize ?? defaultAttributes.width,
+          height: size ?? contextSize ?? defaultAttributes.height,
+          stroke: color2 ?? contextColor,
+          strokeWidth: calculatedStrokeWidth,
+          className: mergeClasses("lucide", contextClass, className),
+          ...!children && !hasA11yProp(rest) && { "aria-hidden": "true" },
+          ...rest
+        },
+        [
+          ...iconNode.map(([tag, attrs]) => (0, import_react2.createElement)(tag, attrs)),
+          ...Array.isArray(children) ? children : [children]
+        ]
+      );
+    }
+  );
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/createLucideIcon.mjs
+  var createLucideIcon = (iconName, iconNode) => {
+    const Component3 = (0, import_react3.forwardRef)(
+      ({ className, ...props }, ref) => (0, import_react3.createElement)(Icon, {
+        ref,
+        iconNode,
+        className: mergeClasses(
+          `lucide-${toKebabCase(toPascalCase(iconName))}`,
+          `lucide-${iconName}`,
+          className
+        ),
+        ...props
+      })
+    );
+    Component3.displayName = toPascalCase(iconName);
+    return Component3;
+  };
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/maximize-2.mjs
+  var __iconNode = [
+    ["path", { d: "M15 3h6v6", key: "1q9fwt" }],
+    ["path", { d: "m21 3-7 7", key: "1l2asr" }],
+    ["path", { d: "m3 21 7-7", key: "tjx5ai" }],
+    ["path", { d: "M9 21H3v-6", key: "wtvkvv" }]
+  ];
+  var Maximize2 = createLucideIcon("maximize-2", __iconNode);
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/minimize-2.mjs
+  var __iconNode2 = [
+    ["path", { d: "m14 10 7-7", key: "oa77jy" }],
+    ["path", { d: "M20 10h-6V4", key: "mjg0md" }],
+    ["path", { d: "m3 21 7-7", key: "tjx5ai" }],
+    ["path", { d: "M4 14h6v6", key: "rmj7iw" }]
+  ];
+  var Minimize2 = createLucideIcon("minimize-2", __iconNode2);
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/settings.mjs
+  var __iconNode3 = [
+    [
+      "path",
+      {
+        d: "M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915",
+        key: "1i5ecw"
+      }
+    ],
+    ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
+  ];
+  var Settings = createLucideIcon("settings", __iconNode3);
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/trash-2.mjs
+  var __iconNode4 = [
+    ["path", { d: "M10 11v6", key: "nco0om" }],
+    ["path", { d: "M14 11v6", key: "outv1u" }],
+    ["path", { d: "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6", key: "miytrc" }],
+    ["path", { d: "M3 6h18", key: "d0wm0j" }],
+    ["path", { d: "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2", key: "e791ji" }]
+  ];
+  var Trash2 = createLucideIcon("trash-2", __iconNode4);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/components/AnimatePresence/index.mjs
   var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
-  var import_react10 = __toESM(require_react(), 1);
+  var import_react13 = __toESM(require_react(), 1);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/context/LayoutGroupContext.mjs
-  var import_react = __toESM(require_react(), 1);
-  var LayoutGroupContext = (0, import_react.createContext)({});
+  var import_react4 = __toESM(require_react(), 1);
+  var LayoutGroupContext = (0, import_react4.createContext)({});
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/utils/use-constant.mjs
-  var import_react2 = __toESM(require_react(), 1);
+  var import_react5 = __toESM(require_react(), 1);
   function useConstant(init) {
-    const ref = (0, import_react2.useRef)(null);
+    const ref = (0, import_react5.useRef)(null);
     if (ref.current === null) {
       ref.current = init();
     }
@@ -12784,22 +12929,22 @@
   }
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/utils/use-isomorphic-effect.mjs
-  var import_react3 = __toESM(require_react(), 1);
+  var import_react6 = __toESM(require_react(), 1);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/utils/is-browser.mjs
   var isBrowser = typeof window !== "undefined";
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/utils/use-isomorphic-effect.mjs
-  var useIsomorphicLayoutEffect = isBrowser ? import_react3.useLayoutEffect : import_react3.useEffect;
+  var useIsomorphicLayoutEffect = isBrowser ? import_react6.useLayoutEffect : import_react6.useEffect;
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/components/AnimatePresence/PresenceChild.mjs
   var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
   var React3 = __toESM(require_react(), 1);
-  var import_react7 = __toESM(require_react(), 1);
+  var import_react10 = __toESM(require_react(), 1);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/context/PresenceContext.mjs
-  var import_react4 = __toESM(require_react(), 1);
-  var PresenceContext = /* @__PURE__ */ (0, import_react4.createContext)(null);
+  var import_react7 = __toESM(require_react(), 1);
+  var PresenceContext = /* @__PURE__ */ (0, import_react7.createContext)(null);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/components/AnimatePresence/PopChild.mjs
   var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
@@ -19519,11 +19664,11 @@
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/components/AnimatePresence/PopChild.mjs
   var React2 = __toESM(require_react(), 1);
-  var import_react6 = __toESM(require_react(), 1);
+  var import_react9 = __toESM(require_react(), 1);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/context/MotionConfigContext.mjs
-  var import_react5 = __toESM(require_react(), 1);
-  var MotionConfigContext = (0, import_react5.createContext)({
+  var import_react8 = __toESM(require_react(), 1);
+  var MotionConfigContext = (0, import_react8.createContext)({
     transformPagePoint: (p) => p,
     isStatic: false,
     reducedMotion: "never"
@@ -19596,9 +19741,9 @@
     }
   };
   function PopChild({ children, isPresent, anchorX, anchorY, root: root2, pop }) {
-    const id3 = (0, import_react6.useId)();
-    const ref = (0, import_react6.useRef)(null);
-    const size = (0, import_react6.useRef)({
+    const id3 = (0, import_react9.useId)();
+    const ref = (0, import_react9.useRef)(null);
+    const size = (0, import_react9.useRef)({
       width: 0,
       height: 0,
       top: 0,
@@ -19607,10 +19752,10 @@
       bottom: 0,
       direction: "ltr"
     });
-    const { nonce } = (0, import_react6.useContext)(MotionConfigContext);
+    const { nonce } = (0, import_react9.useContext)(MotionConfigContext);
     const childRef = children.props?.ref ?? children?.ref;
     const composedRef = useComposedRefs(ref, childRef);
-    (0, import_react6.useInsertionEffect)(() => {
+    (0, import_react9.useInsertionEffect)(() => {
       const { width, height, top, left, right, bottom, direction } = size.current;
       if (isPresent || pop === false || !ref.current || !width || !height)
         return;
@@ -19647,9 +19792,9 @@
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/components/AnimatePresence/PresenceChild.mjs
   var PresenceChild = ({ children, initial, isPresent, onExitComplete, custom, presenceAffectsLayout, mode, anchorX, anchorY, root: root2 }) => {
     const presenceChildren = useConstant(newChildrenMap);
-    const id3 = (0, import_react7.useId)();
+    const id3 = (0, import_react10.useId)();
     let isReusedContext = true;
-    let context = (0, import_react7.useMemo)(() => {
+    let context = (0, import_react10.useMemo)(() => {
       isReusedContext = false;
       return {
         id: id3,
@@ -19673,7 +19818,7 @@
     if (presenceAffectsLayout && isReusedContext) {
       context = { ...context };
     }
-    (0, import_react7.useMemo)(() => {
+    (0, import_react10.useMemo)(() => {
       presenceChildren.forEach((_, key) => presenceChildren.set(key, false));
     }, [isPresent]);
     React3.useEffect(() => {
@@ -19687,29 +19832,29 @@
   }
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/components/AnimatePresence/use-presence.mjs
-  var import_react8 = __toESM(require_react(), 1);
+  var import_react11 = __toESM(require_react(), 1);
   function usePresence(subscribe = true) {
-    const context = (0, import_react8.useContext)(PresenceContext);
+    const context = (0, import_react11.useContext)(PresenceContext);
     if (context === null)
       return [true, null];
     const { isPresent, onExitComplete, register } = context;
-    const id3 = (0, import_react8.useId)();
-    (0, import_react8.useEffect)(() => {
+    const id3 = (0, import_react11.useId)();
+    (0, import_react11.useEffect)(() => {
       if (subscribe) {
         return register(id3);
       }
     }, [subscribe]);
-    const safeToRemove = (0, import_react8.useCallback)(() => subscribe && onExitComplete && onExitComplete(id3), [id3, onExitComplete, subscribe]);
+    const safeToRemove = (0, import_react11.useCallback)(() => subscribe && onExitComplete && onExitComplete(id3), [id3, onExitComplete, subscribe]);
     return !isPresent && onExitComplete ? [false, safeToRemove] : [true];
   }
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/components/AnimatePresence/utils.mjs
-  var import_react9 = __toESM(require_react(), 1);
+  var import_react12 = __toESM(require_react(), 1);
   var getChildKey = (child) => child.key || "";
   function onlyElements(children) {
     const filtered = [];
-    import_react9.Children.forEach(children, (child) => {
-      if ((0, import_react9.isValidElement)(child))
+    import_react12.Children.forEach(children, (child) => {
+      if ((0, import_react12.isValidElement)(child))
         filtered.push(child);
     });
     return filtered;
@@ -19718,14 +19863,14 @@
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/components/AnimatePresence/index.mjs
   var AnimatePresence = ({ children, custom, initial = true, onExitComplete, presenceAffectsLayout = true, mode = "sync", propagate = false, anchorX = "left", anchorY = "top", root: root2 }) => {
     const [isParentPresent, safeToRemove] = usePresence(propagate);
-    const presentChildren = (0, import_react10.useMemo)(() => onlyElements(children), [children]);
+    const presentChildren = (0, import_react13.useMemo)(() => onlyElements(children), [children]);
     const presentKeys = propagate && !isParentPresent ? [] : presentChildren.map(getChildKey);
-    const isInitialRender = (0, import_react10.useRef)(true);
-    const pendingPresentChildren = (0, import_react10.useRef)(presentChildren);
+    const isInitialRender = (0, import_react13.useRef)(true);
+    const pendingPresentChildren = (0, import_react13.useRef)(presentChildren);
     const exitComplete = useConstant(() => /* @__PURE__ */ new Map());
-    const exitingComponents = (0, import_react10.useRef)(/* @__PURE__ */ new Set());
-    const [diffedChildren, setDiffedChildren] = (0, import_react10.useState)(presentChildren);
-    const [renderedChildren, setRenderedChildren] = (0, import_react10.useState)(presentChildren);
+    const exitingComponents = (0, import_react13.useRef)(/* @__PURE__ */ new Set());
+    const [diffedChildren, setDiffedChildren] = (0, import_react13.useState)(presentChildren);
+    const [renderedChildren, setRenderedChildren] = (0, import_react13.useState)(presentChildren);
     useIsomorphicLayoutEffect(() => {
       isInitialRender.current = false;
       pendingPresentChildren.current = presentChildren;
@@ -19762,7 +19907,7 @@
     if (false) {
       console.warn(`You're attempting to animate multiple children within AnimatePresence, but its mode is set to "wait". This will lead to odd visual behaviour.`);
     }
-    const { forceRender } = (0, import_react10.useContext)(LayoutGroupContext);
+    const { forceRender } = (0, import_react13.useContext)(LayoutGroupContext);
     return (0, import_jsx_runtime3.jsx)(import_jsx_runtime3.Fragment, { children: renderedChildren.map((child) => {
       const key = getChildKey(child);
       const isPresent = propagate && !isParentPresent ? false : presentChildren === renderedChildren || presentKeys.includes(key);
@@ -19793,8 +19938,8 @@
   };
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/context/LazyContext.mjs
-  var import_react11 = __toESM(require_react(), 1);
-  var LazyContext = (0, import_react11.createContext)({ strict: false });
+  var import_react14 = __toESM(require_react(), 1);
+  var LazyContext = (0, import_react14.createContext)({ strict: false });
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/motion/features/definitions.mjs
   var featureProps = {
@@ -19914,14 +20059,14 @@
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/motion/index.mjs
   var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
-  var import_react21 = __toESM(require_react(), 1);
+  var import_react24 = __toESM(require_react(), 1);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/context/MotionContext/index.mjs
-  var import_react12 = __toESM(require_react(), 1);
-  var MotionContext = /* @__PURE__ */ (0, import_react12.createContext)({});
+  var import_react15 = __toESM(require_react(), 1);
+  var MotionContext = /* @__PURE__ */ (0, import_react15.createContext)({});
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/context/MotionContext/create.mjs
-  var import_react13 = __toESM(require_react(), 1);
+  var import_react16 = __toESM(require_react(), 1);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/context/MotionContext/utils.mjs
   function getCurrentTreeVariants(props, context) {
@@ -19937,18 +20082,18 @@
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/context/MotionContext/create.mjs
   function useCreateMotionContext(props) {
-    const { initial, animate: animate2 } = getCurrentTreeVariants(props, (0, import_react13.useContext)(MotionContext));
-    return (0, import_react13.useMemo)(() => ({ initial, animate: animate2 }), [variantLabelsAsDependency(initial), variantLabelsAsDependency(animate2)]);
+    const { initial, animate: animate2 } = getCurrentTreeVariants(props, (0, import_react16.useContext)(MotionContext));
+    return (0, import_react16.useMemo)(() => ({ initial, animate: animate2 }), [variantLabelsAsDependency(initial), variantLabelsAsDependency(animate2)]);
   }
   function variantLabelsAsDependency(prop) {
     return Array.isArray(prop) ? prop.join(" ") : prop;
   }
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/render/dom/use-render.mjs
-  var import_react16 = __toESM(require_react(), 1);
+  var import_react19 = __toESM(require_react(), 1);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/render/html/use-props.mjs
-  var import_react14 = __toESM(require_react(), 1);
+  var import_react17 = __toESM(require_react(), 1);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/render/html/utils/create-render-state.mjs
   var createHtmlRenderState = () => ({
@@ -19967,7 +20112,7 @@
     }
   }
   function useInitialMotionValues({ transformTemplate }, visualState) {
-    return (0, import_react14.useMemo)(() => {
+    return (0, import_react17.useMemo)(() => {
       const state = createHtmlRenderState();
       buildHTMLStyles(state, visualState, transformTemplate);
       return Object.assign({}, state.vars, state.style);
@@ -19996,7 +20141,7 @@
   }
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/render/svg/use-props.mjs
-  var import_react15 = __toESM(require_react(), 1);
+  var import_react18 = __toESM(require_react(), 1);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/render/svg/utils/create-render-state.mjs
   var createSvgRenderState = () => ({
@@ -20006,7 +20151,7 @@
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/render/svg/use-props.mjs
   function useSVGProps(props, visualState, _isStatic, Component3) {
-    const visualProps = (0, import_react15.useMemo)(() => {
+    const visualProps = (0, import_react18.useMemo)(() => {
       const state = createSvgRenderState();
       buildSVGAttrs(state, visualState, isSVGTag(Component3), props.transformTemplate, props.style);
       return {
@@ -20083,17 +20228,17 @@
     const useVisualProps = isSVG ?? isSVGComponent(Component3) ? useSVGProps : useHTMLProps;
     const visualProps = useVisualProps(props, latestValues, isStatic, Component3);
     const filteredProps = filterProps(props, typeof Component3 === "string", forwardMotionProps);
-    const elementProps = Component3 !== import_react16.Fragment ? { ...filteredProps, ...visualProps, ref } : {};
+    const elementProps = Component3 !== import_react19.Fragment ? { ...filteredProps, ...visualProps, ref } : {};
     const { children } = props;
-    const renderedChildren = (0, import_react16.useMemo)(() => isMotionValue(children) ? children.get() : children, [children]);
-    return (0, import_react16.createElement)(Component3, {
+    const renderedChildren = (0, import_react19.useMemo)(() => isMotionValue(children) ? children.get() : children, [children]);
+    return (0, import_react19.createElement)(Component3, {
       ...elementProps,
       children: renderedChildren
     });
   }
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/motion/utils/use-visual-state.mjs
-  var import_react17 = __toESM(require_react(), 1);
+  var import_react20 = __toESM(require_react(), 1);
   function makeState({ scrapeMotionValuesFromProps: scrapeMotionValuesFromProps3, createRenderState }, props, context, presenceContext) {
     const state = {
       latestValues: makeLatestValues(props, context, presenceContext, scrapeMotionValuesFromProps3),
@@ -20144,8 +20289,8 @@
     return values;
   }
   var makeUseVisualState = (config) => (props, isStatic) => {
-    const context = (0, import_react17.useContext)(MotionContext);
-    const presenceContext = (0, import_react17.useContext)(PresenceContext);
+    const context = (0, import_react20.useContext)(MotionContext);
+    const presenceContext = (0, import_react20.useContext)(PresenceContext);
     const make = () => makeState(config, props, context, presenceContext);
     return isStatic ? make() : useConstant(make);
   };
@@ -20166,14 +20311,14 @@
   var motionComponentSymbol = /* @__PURE__ */ Symbol.for("motionComponentSymbol");
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/motion/utils/use-motion-ref.mjs
-  var import_react18 = __toESM(require_react(), 1);
+  var import_react21 = __toESM(require_react(), 1);
   function useMotionRef(visualState, visualElement, externalRef) {
-    const externalRefContainer = (0, import_react18.useRef)(externalRef);
-    (0, import_react18.useInsertionEffect)(() => {
+    const externalRefContainer = (0, import_react21.useRef)(externalRef);
+    (0, import_react21.useInsertionEffect)(() => {
       externalRefContainer.current = externalRef;
     });
-    const refCleanup = (0, import_react18.useRef)(null);
-    return (0, import_react18.useCallback)((instance) => {
+    const refCleanup = (0, import_react21.useRef)(null);
+    return (0, import_react21.useCallback)((instance) => {
       if (instance) {
         visualState.onMount?.(instance);
       }
@@ -20200,11 +20345,11 @@
   }
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/motion/utils/use-visual-element.mjs
-  var import_react20 = __toESM(require_react(), 1);
+  var import_react23 = __toESM(require_react(), 1);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/context/SwitchLayoutGroupContext.mjs
-  var import_react19 = __toESM(require_react(), 1);
-  var SwitchLayoutGroupContext = (0, import_react19.createContext)({});
+  var import_react22 = __toESM(require_react(), 1);
+  var SwitchLayoutGroupContext = (0, import_react22.createContext)({});
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/utils/is-ref-object.mjs
   function isRefObject(ref) {
@@ -20213,14 +20358,14 @@
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/motion/utils/use-visual-element.mjs
   function useVisualElement(Component3, visualState, props, createVisualElement, ProjectionNodeConstructor, isSVG) {
-    const { visualElement: parent } = (0, import_react20.useContext)(MotionContext);
-    const lazyContext = (0, import_react20.useContext)(LazyContext);
-    const presenceContext = (0, import_react20.useContext)(PresenceContext);
-    const motionConfig = (0, import_react20.useContext)(MotionConfigContext);
+    const { visualElement: parent } = (0, import_react23.useContext)(MotionContext);
+    const lazyContext = (0, import_react23.useContext)(LazyContext);
+    const presenceContext = (0, import_react23.useContext)(PresenceContext);
+    const motionConfig = (0, import_react23.useContext)(MotionConfigContext);
     const reducedMotionConfig = motionConfig.reducedMotion;
     const skipAnimations = motionConfig.skipAnimations;
-    const visualElementRef = (0, import_react20.useRef)(null);
-    const hasMountedOnce = (0, import_react20.useRef)(false);
+    const visualElementRef = (0, import_react23.useRef)(null);
+    const hasMountedOnce = (0, import_react23.useRef)(false);
     createVisualElement = createVisualElement || lazyContext.renderer;
     if (!visualElementRef.current && createVisualElement) {
       visualElementRef.current = createVisualElement(Component3, {
@@ -20238,18 +20383,18 @@
       }
     }
     const visualElement = visualElementRef.current;
-    const initialLayoutGroupConfig = (0, import_react20.useContext)(SwitchLayoutGroupContext);
+    const initialLayoutGroupConfig = (0, import_react23.useContext)(SwitchLayoutGroupContext);
     if (visualElement && !visualElement.projection && ProjectionNodeConstructor && (visualElement.type === "html" || visualElement.type === "svg")) {
       createProjectionNode2(visualElementRef.current, props, ProjectionNodeConstructor, initialLayoutGroupConfig);
     }
-    const isMounted = (0, import_react20.useRef)(false);
-    (0, import_react20.useInsertionEffect)(() => {
+    const isMounted = (0, import_react23.useRef)(false);
+    (0, import_react23.useInsertionEffect)(() => {
       if (visualElement && isMounted.current) {
         visualElement.update(props, presenceContext);
       }
     });
     const optimisedAppearId = props[optimizedAppearDataAttribute];
-    const wantsHandoff = (0, import_react20.useRef)(Boolean(optimisedAppearId) && typeof window !== "undefined" && !window.MotionHandoffIsComplete?.(optimisedAppearId) && window.MotionHasOptimisedAnimation?.(optimisedAppearId));
+    const wantsHandoff = (0, import_react23.useRef)(Boolean(optimisedAppearId) && typeof window !== "undefined" && !window.MotionHandoffIsComplete?.(optimisedAppearId) && window.MotionHasOptimisedAnimation?.(optimisedAppearId));
     useIsomorphicLayoutEffect(() => {
       hasMountedOnce.current = true;
       if (!visualElement)
@@ -20262,7 +20407,7 @@
         visualElement.animationState.animateChanges();
       }
     });
-    (0, import_react20.useEffect)(() => {
+    (0, import_react23.useEffect)(() => {
       if (!visualElement)
         return;
       if (!wantsHandoff.current && visualElement.animationState) {
@@ -20315,7 +20460,7 @@
     function MotionDOMComponent(props, externalRef) {
       let MeasureLayout2;
       const configAndProps = {
-        ...(0, import_react21.useContext)(MotionConfigContext),
+        ...(0, import_react24.useContext)(MotionConfigContext),
         ...props,
         layoutId: useLayoutId(props)
       };
@@ -20331,16 +20476,16 @@
       return (0, import_jsx_runtime4.jsxs)(MotionContext.Provider, { value: context, children: [MeasureLayout2 && context.visualElement ? (0, import_jsx_runtime4.jsx)(MeasureLayout2, { visualElement: context.visualElement, ...configAndProps }) : null, useRender(Component3, props, useMotionRef(visualState, context.visualElement, externalRef), visualState, isStatic, forwardMotionProps, isSVG)] });
     }
     MotionDOMComponent.displayName = `motion.${typeof Component3 === "string" ? Component3 : `create(${Component3.displayName ?? Component3.name ?? ""})`}`;
-    const ForwardRefMotionComponent = (0, import_react21.forwardRef)(MotionDOMComponent);
+    const ForwardRefMotionComponent = (0, import_react24.forwardRef)(MotionDOMComponent);
     ForwardRefMotionComponent[motionComponentSymbol] = Component3;
     return ForwardRefMotionComponent;
   }
   function useLayoutId({ layoutId }) {
-    const layoutGroupId = (0, import_react21.useContext)(LayoutGroupContext).id;
+    const layoutGroupId = (0, import_react24.useContext)(LayoutGroupContext).id;
     return layoutGroupId && layoutId !== void 0 ? layoutGroupId + "-" + layoutId : layoutId;
   }
   function useStrictMode(configAndProps, preloadedFeatures) {
-    const isStrict = (0, import_react21.useContext)(LazyContext).strict;
+    const isStrict = (0, import_react24.useContext)(LazyContext).strict;
     if (false) {
       const strictMessage = "You have rendered a `motion` component within a `LazyMotion` component. This will break tree shaking. Import and render a `m` component instead.";
       configAndProps.ignoreStrict ? warning(false, strictMessage, "lazy-strict-mode") : invariant(false, strictMessage, "lazy-strict-mode");
@@ -20391,11 +20536,11 @@
   }
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/render/dom/create-visual-element.mjs
-  var import_react22 = __toESM(require_react(), 1);
+  var import_react25 = __toESM(require_react(), 1);
   var createDomVisualElement = (Component3, options) => {
     const isSVG = options.isSVG ?? isSVGComponent(Component3);
     return isSVG ? new SVGVisualElement(options) : new HTMLVisualElement(options, {
-      allowProjection: Component3 !== import_react22.Fragment
+      allowProjection: Component3 !== import_react25.Fragment
     });
   };
 
@@ -21304,9 +21449,9 @@
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/motion/features/layout/MeasureLayout.mjs
   var import_jsx_runtime5 = __toESM(require_jsx_runtime(), 1);
-  var import_react23 = __toESM(require_react(), 1);
+  var import_react26 = __toESM(require_react(), 1);
   var hasTakenAnySnapshot = false;
-  var MeasureLayoutWithContext = class extends import_react23.Component {
+  var MeasureLayoutWithContext = class extends import_react26.Component {
     /**
      * This only mounts projection nodes for components that
      * need measuring, we might want to do it for all components
@@ -21402,8 +21547,8 @@
   };
   function MeasureLayout(props) {
     const [isPresent, safeToRemove] = usePresence();
-    const layoutGroup = (0, import_react23.useContext)(LayoutGroupContext);
-    return (0, import_jsx_runtime5.jsx)(MeasureLayoutWithContext, { ...props, layoutGroup, switchLayoutGroup: (0, import_react23.useContext)(SwitchLayoutGroupContext), isPresent, safeToRemove });
+    const layoutGroup = (0, import_react26.useContext)(LayoutGroupContext);
+    return (0, import_jsx_runtime5.jsx)(MeasureLayoutWithContext, { ...props, layoutGroup, switchLayoutGroup: (0, import_react26.useContext)(SwitchLayoutGroupContext), isPresent, safeToRemove });
   }
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/motion/features/drag.mjs
@@ -21637,13 +21782,13 @@
   var motion = /* @__PURE__ */ createMotionProxy(featureBundle, createDomVisualElement);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/value/use-motion-value.mjs
-  var import_react24 = __toESM(require_react(), 1);
+  var import_react27 = __toESM(require_react(), 1);
   function useMotionValue(initial) {
     const value = useConstant(() => motionValue(initial));
-    const { isStatic } = (0, import_react24.useContext)(MotionConfigContext);
+    const { isStatic } = (0, import_react27.useContext)(MotionConfigContext);
     if (isStatic) {
-      const [, setLatest] = (0, import_react24.useState)(initial);
-      (0, import_react24.useEffect)(() => value.on("change", setLatest), []);
+      const [, setLatest] = (0, import_react27.useState)(initial);
+      (0, import_react27.useEffect)(() => value.on("change", setLatest), []);
     }
     return value;
   }
@@ -21718,10 +21863,10 @@
   }
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/utils/reduced-motion/use-reduced-motion.mjs
-  var import_react25 = __toESM(require_react(), 1);
+  var import_react28 = __toESM(require_react(), 1);
   function useReducedMotion() {
     !hasReducedMotionListener.current && initPrefersReducedMotion();
-    const [shouldReduceMotion] = (0, import_react25.useState)(prefersReducedMotion.current);
+    const [shouldReduceMotion] = (0, import_react28.useState)(prefersReducedMotion.current);
     if (false) {
       warnOnce(shouldReduceMotion !== true, "You have Reduced Motion enabled on your device. Animations may not appear as expected.", "reduced-motion-disabled");
     }
@@ -22130,7 +22275,192 @@
   var animate = createScopedAnimate();
 
   // packages/ui/src/components/shell/ContinuousChatOverlay.tsx
-  var React5 = __toESM(require_react(), 1);
+  var React6 = __toESM(require_react(), 1);
+
+  // packages/ui/src/chat/slash-menu.ts
+  var NONE = {
+    isSlash: false,
+    raw: "",
+    commandToken: "",
+    hasSpace: false,
+    argTokens: [],
+    argQuery: ""
+  };
+  function parseSlashDraft(draft) {
+    if (!draft) return NONE;
+    if (draft.includes("\n")) return NONE;
+    const raw = draft.replace(/^\s+/, "");
+    if (!raw.startsWith("/")) return NONE;
+    const body = raw.slice(1);
+    const firstSpace = body.indexOf(" ");
+    if (firstSpace === -1) {
+      return {
+        isSlash: true,
+        raw,
+        commandToken: body.toLowerCase(),
+        hasSpace: false,
+        argTokens: [],
+        argQuery: body.toLowerCase()
+      };
+    }
+    const commandToken = body.slice(0, firstSpace).toLowerCase();
+    const argsPart = body.slice(firstSpace + 1);
+    const argTokens = argsPart.length ? argsPart.split(/\s+/) : [];
+    const endsWithSpace = /\s$/.test(argsPart);
+    const argQuery = endsWithSpace ? "" : argTokens[argTokens.length - 1] ?? "";
+    return {
+      isSlash: true,
+      raw,
+      commandToken,
+      hasSpace: true,
+      argTokens,
+      argQuery
+    };
+  }
+  function aliasMatches(command, token) {
+    const normalized = `/${token}`.toLowerCase();
+    return command.textAliases.some((a) => a.toLowerCase() === normalized);
+  }
+  function matchCommand(commands, commandToken) {
+    return commands.find((c) => aliasMatches(c, commandToken));
+  }
+  function scoreCommand(command, query) {
+    if (!query) return 0;
+    const q = query.toLowerCase();
+    let best = -1;
+    const consider = (haystack, weight) => {
+      const h = haystack.toLowerCase();
+      if (h === q) {
+        best = best === -1 ? weight : Math.min(best, weight);
+      } else if (h.startsWith(q)) {
+        const s = weight + 1;
+        best = best === -1 ? s : Math.min(best, s);
+      } else if (h.includes(q)) {
+        const s = weight + 2;
+        best = best === -1 ? s : Math.min(best, s);
+      }
+    };
+    for (const alias of command.textAliases)
+      consider(alias.replace(/^\//, ""), 0);
+    consider(command.nativeName, 3);
+    consider(command.key, 3);
+    consider(command.description, 6);
+    return best;
+  }
+  function filterCommands(commands, query) {
+    if (!query) return [...commands];
+    const scored = commands.map((command, index) => ({
+      command,
+      index,
+      score: scoreCommand(command, query)
+    })).filter((entry) => entry.score >= 0);
+    scored.sort(
+      (a, b) => a.score === b.score ? a.index - b.index : a.score - b.score
+    );
+    return scored.map((entry) => entry.command);
+  }
+  function activeArgIndex(command, draft) {
+    if (!command.acceptsArgs || command.args.length === 0) return -1;
+    if (!draft.hasSpace) return -1;
+    const typed = draft.argTokens.length;
+    const endsWithSpace = draft.argQuery === "" && typed > 0;
+    const idx = endsWithSpace ? typed : Math.max(0, typed - 1);
+    return Math.min(idx, command.args.length - 1);
+  }
+  function filterArgChoices(choices, query) {
+    if (!query) return [...choices];
+    const q = query.toLowerCase();
+    const starts = choices.filter((c) => c.toLowerCase().startsWith(q));
+    const includes = choices.filter(
+      (c) => !c.toLowerCase().startsWith(q) && c.toLowerCase().includes(q)
+    );
+    return [...starts, ...includes];
+  }
+  function completeCommand(command) {
+    const alias = command.textAliases[0] ?? `/${command.nativeName}`;
+    return command.acceptsArgs && command.args.length > 0 ? `${alias} ` : alias;
+  }
+  function completeArg(draft, choice) {
+    const tokens = [...draft.argTokens];
+    const endsWithSpace = draft.argQuery === "" && tokens.length > 0;
+    if (endsWithSpace) {
+      tokens.push(choice);
+    } else if (tokens.length === 0) {
+      tokens.push(choice);
+    } else {
+      tokens[tokens.length - 1] = choice;
+    }
+    return `/${draft.commandToken} ${tokens.join(" ")}`;
+  }
+  function resolveSlashExecution(command, rawText, resolveSection = (t) => t) {
+    const target = command.target;
+    if (target.kind === "client") {
+      return { kind: "client", clientAction: target.clientAction };
+    }
+    if (target.kind === "navigate") {
+      const draft = parseSlashDraft(rawText);
+      const firstArg = draft.argTokens[0];
+      if (target.tab === "settings") {
+        const section = firstArg ? resolveSection(firstArg) : target.section;
+        return section ? { kind: "navigate-settings", section } : { kind: "navigate-settings" };
+      }
+      if (target.viewId) {
+        return {
+          kind: "navigate-view",
+          viewId: target.viewId,
+          viewPath: target.path
+        };
+      }
+      if (firstArg && commandHasArgSource(command, "views")) {
+        return { kind: "navigate-view", viewId: firstArg };
+      }
+      if (target.tab) {
+        return { kind: "navigate-tab", tab: target.tab };
+      }
+      if (target.path) {
+        return { kind: "navigate-view", viewPath: target.path };
+      }
+    }
+    return { kind: "send", text: rawText.trim() };
+  }
+  function commandHasArgSource(command, source) {
+    return command.args.some((a) => a.dynamicChoices === source);
+  }
+  function runSlashExecution(exec, deps) {
+    switch (exec.kind) {
+      case "navigate-tab":
+        deps.navigateTab(exec.tab);
+        return;
+      case "navigate-settings":
+        deps.navigateSettings(exec.section);
+        return;
+      case "navigate-view":
+        deps.navigateView({ viewId: exec.viewId, viewPath: exec.viewPath });
+        return;
+      case "client":
+        switch (exec.clientAction) {
+          case "clear-chat":
+            deps.clearChat();
+            return;
+          case "new-conversation":
+            deps.newConversation();
+            return;
+          case "toggle-fullscreen":
+            deps.toggleFullscreen();
+            return;
+          case "open-command-palette":
+            deps.openCommandPalette();
+            return;
+          case "show-commands":
+            deps.showCommands();
+            return;
+        }
+        return;
+      case "send":
+        deps.send(exec.text);
+        return;
+    }
+  }
 
   // packages/ui/src/lib/floating-layers.ts
   var Z_SHELL_OVERLAY = 9e3;
@@ -25164,6 +25494,63 @@
     return twMerge(clsx(inputs));
   }
 
+  // packages/ui/src/bridge/electrobun-rpc.ts
+  function getDesktopBridgeWindow() {
+    const g = globalThis;
+    if (typeof g.window !== "undefined") {
+      return g.window;
+    }
+    if (typeof window !== "undefined") {
+      return window;
+    }
+    return null;
+  }
+  function getElectrobunRendererRpc() {
+    return getDesktopBridgeWindow()?.__ELIZA_ELECTROBUN_RPC__;
+  }
+  async function invokeDesktopBridgeRequest(options) {
+    const rpc = getElectrobunRendererRpc();
+    const request = rpc?.request?.[options.rpcMethod];
+    if (request && rpc?.request) {
+      return await request.call(rpc.request, options.params);
+    }
+    return null;
+  }
+
+  // packages/ui/src/utils/clipboard.ts
+  function copyWithLegacyDomApi(text) {
+    if (typeof document === "undefined") return false;
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "true");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    textarea.style.pointerEvents = "none";
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      return document.execCommand("copy");
+    } catch {
+      return false;
+    } finally {
+      textarea.remove();
+    }
+  }
+  async function copyTextToClipboard(text) {
+    const bridged = await invokeDesktopBridgeRequest({
+      rpcMethod: "desktopWriteToClipboard",
+      ipcChannel: "desktop:writeToClipboard",
+      params: { text }
+    });
+    if (bridged !== null) return;
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    if (copyWithLegacyDomApi(text)) return;
+    throw new Error("Clipboard API unavailable.");
+  }
+
   // packages/ui/src/utils/image-attachment.ts
   var MAX_CHAT_IMAGES = 4;
   function filesToImageAttachments(files) {
@@ -25188,30 +25575,254 @@
     );
   }
 
-  // packages/ui/src/components/shell/use-pull-gesture.ts
+  // packages/ui/src/components/shell/SlashCommandMenu.tsx
   var React4 = __toESM(require_react(), 1);
-  function resolvePull(deltaUp, velocityUp, distanceThreshold, velocityThreshold) {
-    const passed = Math.abs(deltaUp) >= distanceThreshold || Math.abs(velocityUp) >= velocityThreshold;
-    if (!passed) return null;
-    return deltaUp > 0 ? "up" : "down";
+  var import_jsx_runtime6 = __toESM(require_jsx_runtime(), 1);
+  var FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
+  function useSlashMenu(draft, controller) {
+    const parsed = React4.useMemo(() => parseSlashDraft(draft), [draft]);
+    const matched = React4.useMemo(
+      () => parsed.isSlash && parsed.hasSpace ? matchCommand(controller.commands, parsed.commandToken) : void 0,
+      [parsed, controller.commands]
+    );
+    const argInfo = React4.useMemo(() => {
+      if (!matched) return null;
+      const argIndex = activeArgIndex(matched, parsed);
+      if (argIndex < 0) return null;
+      const arg = matched.args[argIndex];
+      if (!arg) return null;
+      const dynamic = arg.dynamicChoices ? controller.resolveChoices(arg.dynamicChoices) : [];
+      const all = Array.from(/* @__PURE__ */ new Set([...arg.choices ?? [], ...dynamic]));
+      if (all.length === 0) return null;
+      return { arg, choices: filterArgChoices(all, parsed.argQuery) };
+    }, [matched, parsed, controller]);
+    const mode = !parsed.isSlash ? "none" : parsed.hasSpace ? argInfo ? "arg" : "none" : "command";
+    const commandResults = React4.useMemo(
+      () => mode === "command" ? filterCommands(controller.commands, parsed.commandToken) : [],
+      [mode, controller.commands, parsed.commandToken]
+    );
+    const items = React4.useMemo(() => {
+      if (mode === "command") {
+        return commandResults.map((c) => ({
+          id: c.key,
+          primary: c.textAliases[0] ?? `/${c.nativeName}`,
+          secondary: c.description,
+          isCommand: true,
+          hasArgs: c.acceptsArgs && c.args.length > 0
+        }));
+      }
+      if (mode === "arg" && argInfo) {
+        return argInfo.choices.map((choice) => ({
+          id: `arg:${choice}`,
+          primary: choice,
+          secondary: "",
+          isCommand: false,
+          hasArgs: false
+        }));
+      }
+      return [];
+    }, [mode, commandResults, argInfo]);
+    const [activeIndex, setActiveIndexState] = React4.useState(0);
+    const itemsSignature = items.map((i) => i.id).join("|");
+    React4.useEffect(() => {
+      setActiveIndexState(0);
+    }, [itemsSignature]);
+    const open = mode !== "none" && items.length > 0;
+    const setActiveIndex = React4.useCallback(
+      (index) => {
+        if (items.length === 0) return;
+        const clamped = (index % items.length + items.length) % items.length;
+        setActiveIndexState(clamped);
+      },
+      [items.length]
+    );
+    const move = React4.useCallback(
+      (delta) => {
+        if (items.length === 0) return;
+        setActiveIndexState((prev) => {
+          const next = prev + delta;
+          return (next % items.length + items.length) % items.length;
+        });
+      },
+      [items.length]
+    );
+    const complete = React4.useCallback(
+      (index = activeIndex) => {
+        if (mode === "command") {
+          const command = commandResults[index];
+          return command ? completeCommand(command) : null;
+        }
+        if (mode === "arg" && argInfo) {
+          const choice = argInfo.choices[index];
+          return choice ? completeArg(parsed, choice) : null;
+        }
+        return null;
+      },
+      [activeIndex, mode, commandResults, argInfo, parsed]
+    );
+    const resolve = React4.useCallback(
+      (index = activeIndex) => {
+        if (mode === "command") {
+          const command = commandResults[index];
+          if (!command) return null;
+          const alias = command.textAliases[0] ?? `/${command.nativeName}`;
+          return resolveSlashExecution(command, alias, controller.resolveSection);
+        }
+        if (mode === "arg" && matched && argInfo) {
+          const choice = argInfo.choices[index];
+          if (!choice) return null;
+          return resolveSlashExecution(
+            matched,
+            completeArg(parsed, choice),
+            controller.resolveSection
+          );
+        }
+        return null;
+      },
+      [activeIndex, mode, commandResults, matched, argInfo, parsed, controller]
+    );
+    const headerLabel = mode === "arg" && matched ? `${matched.textAliases[0]} \xB7 ${argInfo?.arg.name ?? "argument"}` : "Commands";
+    return {
+      open,
+      mode,
+      items,
+      activeIndex: Math.min(activeIndex, Math.max(0, items.length - 1)),
+      headerLabel,
+      setActiveIndex,
+      move,
+      complete,
+      resolve
+    };
   }
+  function SlashCommandMenu({
+    state,
+    onPick,
+    loading
+  }) {
+    const listboxId = "slash-command-listbox";
+    if (!state.open) {
+      if (loading) {
+        return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+          "div",
+          {
+            className: cn(
+              "absolute bottom-full left-0 right-0 z-10 mb-2 rounded-2xl border border-white/12 bg-black/70 px-4 py-3 text-xs text-white/55 backdrop-blur-xl",
+              FLOAT_SHADOW
+            ),
+            role: "status",
+            "data-testid": "slash-menu-loading",
+            children: "loading commands\u2026"
+          }
+        );
+      }
+      return null;
+    }
+    return (
+      // The combobox input (in the composer) owns aria-activedescendant + focus;
+      // this listbox is a non-focusable popup the input points to via aria-controls.
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+        "div",
+        {
+          id: listboxId,
+          role: "listbox",
+          "aria-label": "Slash commands",
+          "data-testid": "slash-command-menu",
+          className: cn(
+            "absolute bottom-full left-0 right-0 z-10 mb-2 max-h-[min(46vh,22rem)] overflow-y-auto",
+            "rounded-2xl border border-white/14 bg-black/70 py-1.5 backdrop-blur-xl",
+            "shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_18px_50px_-16px_rgba(0,0,0,0.7)]",
+            "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          ),
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+              "div",
+              {
+                className: cn(
+                  "px-3.5 pb-1 pt-0.5 text-[10px] font-medium uppercase tracking-wider text-white/40",
+                  FLOAT_SHADOW
+                ),
+                children: state.headerLabel
+              }
+            ),
+            state.items.map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+              "button",
+              {
+                type: "button",
+                id: `slash-option-${item.id}`,
+                role: "option",
+                "aria-selected": index === state.activeIndex,
+                "data-testid": `slash-option-${index}`,
+                "data-active": index === state.activeIndex ? "true" : void 0,
+                onMouseEnter: () => state.setActiveIndex(index),
+                onPointerDown: (e) => {
+                  e.preventDefault();
+                  onPick(index);
+                },
+                className: cn(
+                  "flex w-full items-center gap-3 px-3.5 py-2 text-left transition-colors",
+                  index === state.activeIndex ? "bg-white/15" : "hover:bg-white/8"
+                ),
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                    "span",
+                    {
+                      className: cn(
+                        "min-w-0 shrink-0 font-mono text-[13px] text-white/95",
+                        FLOAT_SHADOW
+                      ),
+                      children: item.primary
+                    }
+                  ),
+                  item.secondary ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                    "span",
+                    {
+                      className: cn(
+                        "min-w-0 flex-1 truncate text-[12px] text-white/55",
+                        FLOAT_SHADOW
+                      ),
+                      children: item.secondary
+                    }
+                  ) : /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "flex-1" }),
+                  item.isCommand && item.hasArgs ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                    "span",
+                    {
+                      "aria-hidden": "true",
+                      className: "shrink-0 text-[11px] text-white/35",
+                      children: "\u21E5"
+                    }
+                  ) : null
+                ]
+              },
+              item.id
+            ))
+          ]
+        }
+      )
+    );
+  }
+
+  // packages/ui/src/components/shell/use-pull-gesture.ts
+  var React5 = __toESM(require_react(), 1);
+  var TAP_SLOP = 8;
   function usePullGesture(options) {
     const {
       onPullUp,
       onPullDown,
       onDrag,
+      onTap,
+      onSettleFree,
       distanceThreshold = 56,
       velocityThreshold = 0.5
     } = options;
-    const start = React4.useRef(null);
-    const onPointerDown = React4.useCallback((event) => {
+    const start = React5.useRef(null);
+    const onPointerDown = React5.useCallback((event) => {
       start.current = { y: event.clientY, t: performance.now() };
       try {
         event.currentTarget.setPointerCapture(event.pointerId);
       } catch {
       }
     }, []);
-    const onPointerMove = React4.useCallback(
+    const onPointerMove = React5.useCallback(
       (event) => {
         const s = start.current;
         if (!s || !onDrag) return;
@@ -25219,7 +25830,7 @@
       },
       [onDrag]
     );
-    const finish = React4.useCallback(
+    const finish = React5.useCallback(
       (event) => {
         const s = start.current;
         start.current = null;
@@ -25227,20 +25838,36 @@
         const deltaUp = s.y - event.clientY;
         const elapsed = Math.max(1, performance.now() - s.t);
         const velocityUp = deltaUp / elapsed;
-        const direction = resolvePull(
-          deltaUp,
-          velocityUp,
-          distanceThreshold,
-          velocityThreshold
-        );
-        if (direction === null) {
+        const moved = Math.abs(deltaUp);
+        const isFlick = Math.abs(velocityUp) >= velocityThreshold;
+        if (moved < TAP_SLOP && !isFlick) {
           onDrag?.(0);
+          onTap?.();
           return;
         }
-        if (direction === "up") onPullUp?.();
-        else onPullDown?.();
+        if (isFlick) {
+          if (deltaUp > 0) onPullUp?.();
+          else onPullDown?.();
+          return;
+        }
+        if (onSettleFree) {
+          onSettleFree(deltaUp > 0 ? "up" : "down");
+        } else if (moved >= distanceThreshold) {
+          if (deltaUp > 0) onPullUp?.();
+          else onPullDown?.();
+        } else {
+          onDrag?.(0);
+        }
       },
-      [onDrag, onPullUp, onPullDown, distanceThreshold, velocityThreshold]
+      [
+        onDrag,
+        onPullUp,
+        onPullDown,
+        onTap,
+        onSettleFree,
+        distanceThreshold,
+        velocityThreshold
+      ]
     );
     return {
       onPointerDown,
@@ -25260,12 +25887,30 @@
   }
 
   // packages/ui/src/components/shell/ContinuousChatOverlay.tsx
-  var import_jsx_runtime6 = __toESM(require_jsx_runtime(), 1);
-  var FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
+  var import_jsx_runtime7 = __toESM(require_jsx_runtime(), 1);
+  var EMPTY_SLASH_CONTROLLER = {
+    commands: [],
+    loading: false,
+    resolveChoices: () => [],
+    resolveSection: () => void 0,
+    navigateTab: () => {
+    },
+    navigateSettings: () => {
+    },
+    navigateView: () => {
+    },
+    clearChat: () => {
+    },
+    openCommandPalette: () => {
+    }
+  };
+  var FLOAT_SHADOW2 = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
   var OVERLAY_EASE = [0.22, 1, 0.36, 1];
-  var SHEET_OPEN_VH = 0.72;
   var SHEET_HALF_VH = 0.46;
-  var SHEET_TOP_MARGIN = 56;
+  var SHEET_TOP_MARGIN = 72;
+  var SHEET_DETENT_MAGNET = 64;
+  var MAX_RENDERED_MESSAGES = 80;
+  var SHOW_PROMPT_SUGGESTIONS = false;
   function detentHaptic() {
     try {
       const cap = globalThis.Capacitor;
@@ -25287,10 +25932,11 @@
   var SEND_GLYPH = "M18 10L25 18H21V27H15V18H11Z";
   var MIC_GLYPH = "M6 14H9V22H6Z M11.5 10H14.5V26H11.5Z M16.5 7H19.5V29H16.5Z M22 10H25V26H22Z M27 14H30V22H27Z";
   var PLUS_GLYPH = "M16 8H20V16H28V20H20V28H16V20H8V16H16Z";
+  var STOP_GLYPH = "M12 12H24V24H12Z";
   var SPEAKER_GLYPH = "M7 15H12L18 10V26L12 21H7Z M21 14Q25 18 21 22L23 22Q27 18 23 14Z M25 11Q31 18 25 25L27 25Q33 18 27 11Z";
   var SPEAKER_MUTED_GLYPH = "M7 15H12L18 10V26L12 21H7Z M21 12.4L22.4 11L31 19.6L29.6 21Z";
   function Glyph({ d }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("svg", { viewBox: "0 0 36 36", className: "h-4 w-4", "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("path", { fill: "currentColor", fillRule: "evenodd", d }) });
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("svg", { viewBox: "0 0 36 36", className: "h-[26px] w-[26px]", "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("path", { fill: "currentColor", fillRule: "evenodd", d }) });
   }
   function SoftButton({
     glyph,
@@ -25303,7 +25949,7 @@
     active,
     testId
   }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
       "button",
       {
         type: "button",
@@ -25316,12 +25962,38 @@
         onPointerUp: disabled ? void 0 : onPointerUp,
         onPointerCancel: disabled ? void 0 : onPointerCancel,
         className: cn(
-          "grid h-8 w-8 shrink-0 place-items-center rounded-full border transition-colors",
+          // 44×44 hit target (WCAG 2.5.5) — comfortably thumb-tappable without
+          // crowding the bar (split the difference back down from 48).
+          "grid h-11 w-11 shrink-0 place-items-center rounded-full border transition-colors",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
           active ? "border-white/40 bg-white/85 text-black" : "border-white/15 bg-white/10 text-white/75 hover:bg-white/20 hover:text-white",
           disabled && "opacity-40"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Glyph, { d: glyph })
+        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Glyph, { d: glyph })
+      }
+    );
+  }
+  function HeaderButton({
+    icon: Icon2,
+    label,
+    onClick,
+    active,
+    testId
+  }) {
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+      "button",
+      {
+        type: "button",
+        "data-testid": testId,
+        "aria-label": label,
+        "aria-pressed": active,
+        onClick,
+        className: cn(
+          "grid h-9 w-9 shrink-0 place-items-center rounded-full border transition-colors",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
+          active ? "border-white/40 bg-white/85 text-black" : "border-white/15 bg-white/10 text-white/75 hover:bg-white/20 hover:text-white"
+        ),
+        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Icon2, { className: "h-[18px] w-[18px]", "aria-hidden": true })
       }
     );
   }
@@ -25332,7 +26004,7 @@
     binding,
     glow
   }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
       "button",
       {
         type: "button",
@@ -25355,19 +26027,70 @@
         },
         ...binding,
         className: cn(
-          "appearance-none border-0 bg-transparent p-0 text-left",
-          // Top padding only — the bar hugs the very bottom of the handle so, when
-          // collapsed, it sits right above the input with no gap below it.
-          "pointer-events-auto mx-auto flex w-full max-w-3xl shrink-0 cursor-grab touch-none select-none items-center justify-center pt-2.5 active:cursor-grabbing",
+          "appearance-none border-0 bg-transparent text-left",
+          // ABSOLUTELY positioned over the panel top (zero layout height — it
+          // floats slightly on top of the input row, so collapsed height == the
+          // input bar). The bar sits a touch lower; the BIG invisible `before` hit
+          // zone reaches UP into the empty space above the panel (3× taller/wider
+          // than the bar) so it's easy to grab without covering the edge buttons.
+          // z-20 keeps it above the input row (z-10) so it always wins the drag.
+          "pointer-events-auto absolute left-1/2 top-0.5 z-20 -translate-x-1/2 flex cursor-grab touch-none select-none items-center justify-center px-16 py-1 active:cursor-grabbing",
+          // The hit zone reaches UP into the empty space above the panel (easy to
+          // grab) and stops at the handle's own bottom — it never reaches the
+          // vertically-centered textarea, so a tap on the composer lands natively
+          // on the textarea and raises the keyboard (a programmatic focus from the
+          // handle wouldn't). Pull gestures start from the bar / the upward zone.
+          "before:absolute before:-inset-x-4 before:-top-10 before:bottom-0 before:content-['']",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
           "span",
           {
             "aria-hidden": "true",
             className: cn(
-              "h-1.5 w-10 rounded-full transition-colors duration-300",
-              glow ? "bg-[rgba(255,180,120,0.75)]" : "bg-white/35"
+              // 30% wider bar (w-11 → w-14), a touch taller, brighter.
+              "h-2 w-14 rounded-full transition-colors duration-300",
+              glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45"
+            )
+          }
+        )
+      }
+    );
+  }
+  function PillHandle({
+    binding,
+    onOpen,
+    glow
+  }) {
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+      "button",
+      {
+        type: "button",
+        "data-testid": "chat-pill",
+        "aria-label": "open chat",
+        onClick: onOpen,
+        onKeyDown: (e) => {
+          if (e.key === "Enter" || e.key === " " || e.key === "ArrowUp") {
+            e.preventDefault();
+            onOpen();
+          }
+        },
+        ...binding,
+        className: cn(
+          // The bar hugs the BOTTOM (small pb) where the collapsed input sat — not
+          // floating mid-air; the tall pt keeps a generous upward grab/flick zone.
+          "pointer-events-auto flex cursor-grab touch-none select-none items-end justify-center px-12 pb-1.5 pt-7 active:cursor-grabbing",
+          "focus-visible:rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+        ),
+        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+          "span",
+          {
+            "aria-hidden": "true",
+            className: cn(
+              // Identical to the SheetGrabber bar — the handle keeps the same white
+              // shape + color whether the chat is open or fully collapsed to the pill.
+              "h-2 w-14 rounded-full transition-colors duration-300",
+              glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45"
             )
           }
         )
@@ -25375,7 +26098,7 @@
     );
   }
   function TypingDots({ reduce }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
       motion.div,
       {
         className: "mb-2.5 flex w-full justify-start",
@@ -25386,14 +26109,14 @@
         animate: { opacity: 1 },
         exit: { opacity: 0 },
         transition: { duration: reduce ? 0 : 0.45, ease: OVERLAY_EASE },
-        children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
           "div",
           {
             className: cn(
               "rounded-2xl rounded-bl-md border border-white/10 bg-black/45 px-3.5 py-2 text-white/90",
-              FLOAT_SHADOW
+              FLOAT_SHADOW2
             ),
-            children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "flex gap-1.5", children: [0, 1, 2].map((i) => /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+            children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "flex gap-1.5", children: [0, 1, 2].map((i) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
               "span",
               {
                 className: "h-1.5 w-1.5 animate-pulse rounded-full bg-white/70 motion-reduce:animate-none",
@@ -25406,13 +26129,104 @@
       }
     );
   }
-  var ThreadLine = React5.memo(function ThreadLine2({
+  var COPY_HOLD_MS = 420;
+  var COPY_MOVE_CANCEL_PX = 10;
+  var ThreadLine = React6.memo(function ThreadLine2({
     message,
     floating,
-    reduce
+    reduce,
+    onCopy,
+    onOpenSettings
   }) {
     const isUser = message.role === "user";
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+    const isAssistant = message.role === "assistant";
+    const [copied, setCopied] = React6.useState(false);
+    const holdTimer = React6.useRef(null);
+    const holdStart = React6.useRef(null);
+    const copiedTimer = React6.useRef(null);
+    const clearHold = React6.useCallback(() => {
+      if (holdTimer.current !== null) {
+        window.clearTimeout(holdTimer.current);
+        holdTimer.current = null;
+      }
+      holdStart.current = null;
+    }, []);
+    React6.useEffect(
+      () => () => {
+        if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
+        if (copiedTimer.current !== null)
+          window.clearTimeout(copiedTimer.current);
+      },
+      []
+    );
+    const canCopy = isAssistant && !!onCopy && message.content.trim().length > 0;
+    const copyHandlers = canCopy ? {
+      onPointerDown: (e) => {
+        holdStart.current = { x: e.clientX, y: e.clientY };
+        holdTimer.current = window.setTimeout(() => {
+          onCopy?.(message.content);
+          detentHaptic();
+          setCopied(true);
+          if (copiedTimer.current !== null)
+            window.clearTimeout(copiedTimer.current);
+          copiedTimer.current = window.setTimeout(
+            () => setCopied(false),
+            1100
+          );
+          holdTimer.current = null;
+        }, COPY_HOLD_MS);
+      },
+      onPointerMove: (e) => {
+        const s = holdStart.current;
+        if (!s) return;
+        if (Math.abs(e.clientX - s.x) > COPY_MOVE_CANCEL_PX || Math.abs(e.clientY - s.y) > COPY_MOVE_CANCEL_PX)
+          clearHold();
+      },
+      onPointerUp: clearHold,
+      onPointerCancel: clearHold
+    } : null;
+    if (isAssistant && message.failureKind === "no_provider") {
+      return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+        motion.div,
+        {
+          "data-testid": "thread-line",
+          "data-role": message.role,
+          "data-failure": "no_provider",
+          initial: reduce ? { opacity: 0 } : { opacity: 0, y: 14 },
+          animate: reduce ? { opacity: 1 } : { opacity: 1, y: 0 },
+          exit: reduce ? { opacity: 0 } : { opacity: 0, y: -8 },
+          transition: { duration: reduce ? 0.15 : 0.52, ease: OVERLAY_EASE },
+          className: cn(
+            "flex w-full justify-start",
+            floating ? "mb-1.5" : "mb-2.5"
+          ),
+          children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+            "div",
+            {
+              className: cn(
+                "max-w-[85%] rounded-2xl rounded-bl-md border border-amber-300/30 bg-black/60 px-3.5 py-3 text-white",
+                FLOAT_SHADOW2
+              ),
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "mb-1 text-[14px] font-medium", children: "Connect a provider to chat" }),
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "mb-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-white/80 [overflow-wrap:anywhere]", children: message.content }),
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                  "button",
+                  {
+                    type: "button",
+                    "data-testid": "chat-no-provider-settings",
+                    onClick: () => onOpenSettings?.(),
+                    className: "rounded-full border border-white/20 bg-white/15 px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+                    children: "Open Settings"
+                  }
+                )
+              ]
+            }
+          )
+        }
+      );
+    }
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
       motion.div,
       {
         "data-testid": "thread-line",
@@ -25426,30 +26240,53 @@
           floating ? "mb-1.5" : "mb-2.5",
           isUser ? "justify-end" : "justify-start"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
           "div",
           {
+            ...copyHandlers ?? {},
             className: cn(
-              "max-w-[80%] rounded-2xl px-3.5 py-2 text-[14px] leading-relaxed",
+              // whitespace-pre-wrap keeps newlines; overflow-wrap breaks long URLs /
+              // hashes / paths so they can't blow out the bubble width on a phone.
+              "relative max-w-[80%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-[14px] leading-relaxed [overflow-wrap:anywhere]",
               // The chrome-free transcript renders floating: each bubble carries its
               // own dark glass so it stays legible directly over whatever view is
               // behind. The light tone is for any embedding that supplies its own
               // surrounding scrim.
               isUser ? "rounded-br-md" : "rounded-bl-md",
+              // Assistant bubbles own the press-and-hold copy gesture, so suppress
+              // the native long-press selection/callout that would fight it.
+              canCopy && "select-none [-webkit-touch-callout:none]",
               floating ? cn(
                 "border",
                 isUser ? "border-white/15 bg-black/55 text-white" : "border-white/10 bg-black/45 text-white/90",
-                FLOAT_SHADOW
+                FLOAT_SHADOW2
               ) : isUser ? "bg-white/20 text-white" : "bg-white/10 text-white/90"
             ),
-            children: message.content
+            children: [
+              message.content,
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AnimatePresence, { children: copied ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                motion.span,
+                {
+                  "data-testid": "thread-line-copied",
+                  initial: { opacity: 0, y: 4 },
+                  animate: { opacity: 1, y: 0 },
+                  exit: { opacity: 0 },
+                  transition: { duration: 0.18 },
+                  className: "pointer-events-none absolute -top-2 right-2 rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium text-black shadow",
+                  children: "Copied"
+                },
+                "copied"
+              ) : null })
+            ]
           }
         )
       }
     );
   });
   function ContinuousChatOverlay({
-    controller
+    controller,
+    agentName = "Eliza",
+    slash: slashProp
   }) {
     const {
       messages,
@@ -25463,46 +26300,61 @@
       transcript,
       speaking,
       agentVoiceMuted,
-      toggleAgentVoiceMute
+      toggleAgentVoiceMute,
+      needsAudioUnlock,
+      unlockAudio,
+      openSettings,
+      clearConversation,
+      stop
     } = controller;
+    const handleCopyMessage = React6.useCallback((text) => {
+      void copyTextToClipboard(text);
+    }, []);
+    const slash = slashProp ?? EMPTY_SLASH_CONTROLLER;
     const reduce = useReducedMotion() ?? false;
-    const [draft, setDraft] = React5.useState("");
-    const [sheetOpen, setSheetOpen] = React5.useState(false);
-    const [expanded, setExpanded] = React5.useState(false);
+    const [draft, setDraft] = React6.useState("");
+    const [slashDismissed, setSlashDismissed] = React6.useState(false);
+    const [sheetOpen, setSheetOpen] = React6.useState(false);
+    const [expanded, setExpanded] = React6.useState(false);
+    const [pilled, setPilled] = React6.useState(false);
+    const [freeH, setFreeH] = React6.useState(null);
+    const [maximized, setMaximized] = React6.useState(false);
+    const preFocusCollapsedRef = React6.useRef(true);
+    const [composerFocused, setComposerFocused] = React6.useState(false);
     const threadHeight = useMotionValue(0);
-    const draggingRef = React5.useRef(false);
-    const [pushToTalkActive, setPushToTalkActive] = React5.useState(false);
-    const [pendingImages, setPendingImages] = React5.useState(
+    const draggingRef = React6.useRef(false);
+    const [pushToTalkActive, setPushToTalkActive] = React6.useState(false);
+    const [pendingImages, setPendingImages] = React6.useState(
       []
     );
-    const [imageError, setImageError] = React5.useState(null);
-    const endRef = React5.useRef(null);
-    const inputRef = React5.useRef(null);
-    const fileInputRef = React5.useRef(null);
-    const overlayRef = React5.useRef(null);
-    const panelRef = React5.useRef(null);
-    const threadRef = React5.useRef(null);
-    const focusThreadRef = React5.useRef(false);
-    const pushToTalkTimerRef = React5.useRef(null);
-    const pushToTalkActiveRef = React5.useRef(false);
-    const suppressMicClickRef = React5.useRef(false);
-    const visibleMessages = React5.useMemo(
-      () => messages.filter((m2) => m2.content.trim()),
+    const [imageError, setImageError] = React6.useState(null);
+    const endRef = React6.useRef(null);
+    const inputRef = React6.useRef(null);
+    const fileInputRef = React6.useRef(null);
+    const overlayRef = React6.useRef(null);
+    const panelRef = React6.useRef(null);
+    const threadRef = React6.useRef(null);
+    const focusThreadRef = React6.useRef(false);
+    const pushToTalkTimerRef = React6.useRef(null);
+    const pushToTalkActiveRef = React6.useRef(false);
+    const suppressMicClickRef = React6.useRef(false);
+    const visibleMessages = React6.useMemo(
+      () => messages.filter((m2) => m2.content.trim()).slice(-MAX_RENDERED_MESSAGES),
       [messages]
     );
     const lastId = visibleMessages.at(-1)?.id ?? null;
     const lastContent = visibleMessages.at(-1)?.content ?? "";
-    const scrollPinnedIdRef = React5.useRef(lastId);
+    const scrollPinnedIdRef = React6.useRef(lastId);
     const booting = phase === "booting";
     const listening = phase === "listening";
     const responding = phase === "responding";
     const hasDraft = draft.trim().length > 0;
     const hasImages = pendingImages.length > 0;
-    const suggestionsVisible = !sheetOpen && !recording && !booting && canSend && !hasDraft && !hasImages;
+    const suggestionsVisible = SHOW_PROMPT_SUGGESTIONS && !pilled && !sheetOpen && !recording && !booting && canSend && !hasDraft && !hasImages;
     const suggestions = usePromptSuggestions(messages, {
       enabled: suggestionsVisible
     });
-    React5.useEffect(
+    React6.useEffect(
       () => () => {
         if (pushToTalkTimerRef.current !== null) {
           window.clearTimeout(pushToTalkTimerRef.current);
@@ -25510,8 +26362,8 @@
       },
       []
     );
-    const wasOpenRef = React5.useRef(false);
-    React5.useLayoutEffect(() => {
+    const wasOpenRef = React6.useRef(false);
+    React6.useLayoutEffect(() => {
       const el = threadRef.current;
       if (!el) return;
       const isNewLine = lastId !== scrollPinnedIdRef.current;
@@ -25534,7 +26386,7 @@
         focusThreadRef.current = false;
       }
     }, [lastId, lastContent, sheetOpen]);
-    React5.useEffect(() => {
+    React6.useEffect(() => {
       const el = threadRef.current;
       if (!el || sheetOpen || typeof ResizeObserver === "undefined") return;
       const pin = () => {
@@ -25545,28 +26397,20 @@
       ro.observe(el);
       return () => ro.disconnect();
     }, [sheetOpen]);
-    const submit = React5.useCallback(() => {
-      const text = draft.trim();
-      const images = pendingImages;
-      if (!text && images.length === 0 || !canSend) return;
-      setDraft("");
-      setPendingImages([]);
-      setImageError(null);
-      if (images.length) {
-        send(text, { images });
-      } else {
-        send(text);
-      }
-      setSheetOpen(true);
-      setExpanded(true);
-      detentHaptic();
-      inputRef.current?.focus();
-    }, [draft, pendingImages, canSend, send]);
-    const pickSuggestion = React5.useCallback(
-      (text) => {
-        if (!canSend) return;
+    const submitText = React6.useCallback(
+      (text, images = []) => {
+        const trimmed = text.trim();
+        if (!trimmed && images.length === 0 || !canSend) return;
         setDraft("");
-        send(text);
+        setSlashDismissed(false);
+        setPendingImages([]);
+        setImageError(null);
+        if (images.length) {
+          send(trimmed, { images });
+        } else {
+          send(trimmed);
+        }
+        setFreeH(null);
         setSheetOpen(true);
         setExpanded(true);
         detentHaptic();
@@ -25574,7 +26418,23 @@
       },
       [canSend, send]
     );
-    const addImageFiles = React5.useCallback((files) => {
+    const submit = React6.useCallback(() => {
+      submitText(draft, pendingImages);
+    }, [submitText, draft, pendingImages]);
+    const pickSuggestion = React6.useCallback(
+      (text) => {
+        if (!canSend) return;
+        setDraft("");
+        send(text);
+        setFreeH(null);
+        setSheetOpen(true);
+        setExpanded(true);
+        detentHaptic();
+        inputRef.current?.focus();
+      },
+      [canSend, send]
+    );
+    const addImageFiles = React6.useCallback((files) => {
       void filesToImageAttachments(files).then((attachments) => {
         if (!attachments.length) return;
         setImageError(null);
@@ -25587,15 +26447,15 @@
         );
       });
     }, []);
-    const removeImage = React5.useCallback((index) => {
+    const removeImage = React6.useCallback((index) => {
       setPendingImages((prev) => prev.filter((_, i) => i !== index));
     }, []);
-    const clearPushToTalkTimer = React5.useCallback(() => {
+    const clearPushToTalkTimer = React6.useCallback(() => {
       if (pushToTalkTimerRef.current === null) return;
       window.clearTimeout(pushToTalkTimerRef.current);
       pushToTalkTimerRef.current = null;
     }, []);
-    const beginPushToTalkPress = React5.useCallback(
+    const beginPushToTalkPress = React6.useCallback(
       (event) => {
         if (hasDraft || recording || booting || event.button !== 0) return;
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -25609,7 +26469,7 @@
       },
       [booting, clearPushToTalkTimer, hasDraft, recording, startRecording]
     );
-    const endPushToTalkPress = React5.useCallback(
+    const endPushToTalkPress = React6.useCallback(
       (event) => {
         clearPushToTalkTimer();
         if (!pushToTalkActiveRef.current) return;
@@ -25623,7 +26483,7 @@
       },
       [clearPushToTalkTimer, stopRecording]
     );
-    const handleMicClick = React5.useCallback(() => {
+    const handleMicClick = React6.useCallback(() => {
       if (suppressMicClickRef.current) {
         suppressMicClickRef.current = false;
         return;
@@ -25631,22 +26491,24 @@
       toggleRecording();
     }, [toggleRecording]);
     const hasThread = visibleMessages.length > 0;
-    const readViewport = React5.useCallback(() => {
+    const readViewport = React6.useCallback(() => {
       if (typeof window === "undefined") return { height: 800, keyboardInset: 0 };
       const vv = window.visualViewport;
       const height = vv?.height ?? window.innerHeight;
       const keyboardInset2 = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
       return { height, keyboardInset: keyboardInset2 };
     }, []);
-    const [viewport, setViewport] = React5.useState(readViewport);
-    const [bottomPad, setBottomPad] = React5.useState(0);
-    React5.useEffect(() => {
+    const [viewport, setViewport] = React6.useState(readViewport);
+    const [bottomPad, setBottomPad] = React6.useState(0);
+    React6.useEffect(() => {
       if (typeof window === "undefined") return void 0;
       const sync = () => {
         setViewport(readViewport());
         const el = overlayRef.current;
         if (el) {
-          setBottomPad(Number.parseFloat(getComputedStyle(el).paddingBottom) || 0);
+          setBottomPad(
+            Number.parseFloat(getComputedStyle(el).paddingBottom) || 0
+          );
         }
       };
       sync();
@@ -25662,11 +26524,14 @@
     }, [readViewport]);
     const viewportH = viewport.height;
     const keyboardInset = viewport.keyboardInset;
-    const panelMaxH = Math.max(200, viewportH - bottomPad - SHEET_TOP_MARGIN);
-    const openH = Math.round(viewportH * SHEET_OPEN_VH);
+    const fullBleed = maximized && expanded && sheetOpen && !pilled;
+    const topMargin = fullBleed ? 0 : SHEET_TOP_MARGIN;
+    const panelMaxH = Math.max(200, viewportH - bottomPad - topMargin);
+    const openH = panelMaxH;
     const halfH = Math.round(viewportH * SHEET_HALF_VH);
-    const baseH = !sheetOpen ? 0 : expanded ? openH : halfH;
-    const clampHeight = React5.useCallback(
+    const detentH = !sheetOpen ? 0 : expanded ? openH : halfH;
+    const baseH = freeH != null ? Math.min(freeH, panelMaxH) : detentH;
+    const clampHeight = React6.useCallback(
       (raw) => raw > openH ? openH + rubberBand(raw - openH) : Math.max(0, raw),
       [openH]
     );
@@ -25679,17 +26544,22 @@
       (h) => Math.max(0, 1 - h / Math.max(1, openH * 0.5))
     );
     const threadFlexBasis = useTransform(threadHeight, (h) => `${h}px`);
-    const settleDrag = React5.useCallback(() => {
+    const panelRadius = useTransform(threadHeight, [0, 12], [9999, 24], {
+      clamp: true
+    });
+    const settleDrag = React6.useCallback(() => {
       draggingRef.current = false;
       if (reduce) threadHeight.set(baseH);
       else animate(threadHeight, baseH, SHEET_SPRING);
     }, [threadHeight, baseH, reduce]);
-    const closeSheet = React5.useCallback(() => {
+    const closeSheet = React6.useCallback(() => {
       draggingRef.current = false;
+      setFreeH(null);
+      setMaximized(false);
       setSheetOpen(false);
       setExpanded(false);
     }, []);
-    React5.useEffect(() => {
+    React6.useEffect(() => {
       if (draggingRef.current) return;
       if (reduce) {
         threadHeight.set(baseH);
@@ -25698,47 +26568,116 @@
       const controls = animate(threadHeight, baseH, SHEET_SPRING);
       return () => controls.stop();
     }, [baseH, reduce]);
-    const goToDetent = React5.useCallback(
+    const goToDetent = React6.useCallback(
       (detent) => {
         draggingRef.current = false;
+        setFreeH(null);
+        if (detent !== "full") setMaximized(false);
         setSheetOpen(detent !== "collapsed");
         setExpanded(detent === "full");
+        if (detent === "collapsed") inputRef.current?.blur();
         detentHaptic();
       },
       []
     );
-    const collapse = React5.useCallback(() => {
+    const collapse = React6.useCallback(() => {
+      if (typeof document !== "undefined" && threadRef.current && document.activeElement instanceof HTMLElement && threadRef.current.contains(document.activeElement)) {
+        document.activeElement.blur();
+      }
       closeSheet();
       inputRef.current?.blur();
     }, [closeSheet]);
-    const expand = React5.useCallback(() => {
-      if (hasThread) setSheetOpen(true);
-    }, [hasThread]);
-    React5.useEffect(() => {
+    const expand = React6.useCallback(() => {
+      if (!hasThread) return;
+      preFocusCollapsedRef.current = !sheetOpen;
+      setFreeH(null);
+      setSheetOpen(true);
+    }, [hasThread, sheetOpen]);
+    const slashMenu = useSlashMenu(draft, slash);
+    const isSlashDraft = parseSlashDraft(draft).isSlash;
+    const slashOpen = slashMenu.open && !slashDismissed;
+    const comboboxAria = slashProp ? {
+      role: "combobox",
+      "aria-autocomplete": "list",
+      "aria-expanded": slashOpen,
+      "aria-controls": slashOpen ? "slash-command-listbox" : void 0,
+      "aria-activedescendant": slashOpen && slashMenu.items[slashMenu.activeIndex] ? `slash-option-${slashMenu.items[slashMenu.activeIndex].id}` : void 0
+    } : {};
+    React6.useEffect(() => {
+      setSlashDismissed(false);
+    }, [draft]);
+    const runExecution = React6.useCallback(
+      (exec) => {
+        if (exec.kind === "send") {
+          submitText(exec.text);
+          return;
+        }
+        runSlashExecution(exec, {
+          navigateTab: slash.navigateTab,
+          navigateSettings: slash.navigateSettings,
+          navigateView: slash.navigateView,
+          clearChat: slash.clearChat,
+          newConversation: () => controller.clearConversation(),
+          // The overlay owns full-screen via the `maximized` detent flag, not a
+          // controller method, so toggle it directly here.
+          toggleFullscreen: () => setMaximized((v) => !v),
+          openCommandPalette: slash.openCommandPalette,
+          showCommands: slash.openCommandPalette,
+          send: (text) => submitText(text)
+        });
+        setDraft("");
+        setSlashDismissed(true);
+        inputRef.current?.focus();
+      },
+      [slash, controller, submitText]
+    );
+    const pickSlashItem = React6.useCallback(
+      (index) => {
+        const exec = slashMenu.resolve(index);
+        if (exec) runExecution(exec);
+      },
+      [slashMenu, runExecution]
+    );
+    React6.useEffect(() => {
       if (typeof document === "undefined") return void 0;
       const onPointerDown = (event) => {
         const input = inputRef.current;
         if (!input || document.activeElement !== input) return;
         const target = event.target;
         if (target && panelRef.current?.contains(target)) return;
+        if (target instanceof Element && target.closest('[data-testid="chat-sheet-grabber"]')) {
+          return;
+        }
         input.blur();
       };
       document.addEventListener("pointerdown", onPointerDown, true);
       return () => document.removeEventListener("pointerdown", onPointerDown, true);
     }, []);
-    React5.useLayoutEffect(() => {
+    React6.useEffect(() => {
+      if (typeof document === "undefined" || !sheetOpen) return void 0;
+      const onKey = (e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          collapse();
+        }
+      };
+      document.addEventListener("keydown", onKey);
+      return () => document.removeEventListener("keydown", onKey);
+    }, [sheetOpen, collapse]);
+    React6.useLayoutEffect(() => {
       const el = inputRef.current;
       if (!el) return;
       el.style.height = "auto";
       el.style.height = `${el.scrollHeight}px`;
     }, [draft]);
-    const onDragOffset = React5.useCallback(
+    const onDragOffset = React6.useCallback(
       (offset) => {
+        if (pilled) return;
         draggingRef.current = true;
         const off = !sheetOpen ? Math.max(0, offset) : expanded ? Math.min(0, offset) : offset;
         threadHeight.set(clampHeight(baseH + off));
       },
-      [sheetOpen, expanded, baseH, clampHeight, threadHeight]
+      [pilled, sheetOpen, expanded, baseH, clampHeight, threadHeight]
     );
     const pullBinding = usePullGesture({
       onDrag: onDragOffset,
@@ -25746,6 +26685,12 @@
       // jumping straight to the ends — the iOS sheet feel. The inline closures are
       // rebuilt every render, so they always read the current detent.
       onPullUp: () => {
+        if (pilled) {
+          setPilled(false);
+          settleDrag();
+          detentHaptic();
+          return;
+        }
         if (!sheetOpen) {
           if (!hasThread) return settleDrag();
           goToDetent("half");
@@ -25758,24 +26703,95 @@
         }
       },
       onPullDown: () => {
-        if (expanded) goToDetent("half");
-        else if (sheetOpen) goToDetent("collapsed");
-        else settleDrag();
+        if (pilled) return settleDrag();
+        const effectiveH = freeH != null ? Math.min(freeH, panelMaxH) : detentH;
+        if (sheetOpen && effectiveH > halfH + 1) {
+          inputRef.current?.blur();
+          goToDetent("half");
+        } else if (sheetOpen) {
+          goToDetent("collapsed");
+        } else {
+          setPilled(true);
+          setMaximized(false);
+          draggingRef.current = false;
+          inputRef.current?.blur();
+          detentHaptic();
+        }
+      },
+      // A tap (no drag) on the handle. When collapsed the handle's hit zone covers
+      // the composer's center, so a tap there focuses the input to type. While the
+      // keyboard is up (composer focused), a tap on the handle DISMISSES it and
+      // returns to the pre-focus resting state (collapsed if that's where we came
+      // from). A tap on the pill brings the input back.
+      onTap: () => {
+        if (pilled) {
+          setPilled(false);
+          detentHaptic();
+          return;
+        }
+        const composerFocused2 = typeof document !== "undefined" && document.activeElement === inputRef.current;
+        if (composerFocused2) {
+          inputRef.current?.blur();
+          if (preFocusCollapsedRef.current) collapse();
+          return;
+        }
+        if (!sheetOpen) inputRef.current?.focus();
+      },
+      // A deliberate (slow) drag: REST exactly where released instead of snapping
+      // to a detent — drag the sheet to any size and it stays.
+      onSettleFree: (direction) => {
+        draggingRef.current = false;
+        if (pilled) {
+          if (direction === "up") {
+            setPilled(false);
+            if (hasThread) {
+              focusThreadRef.current = true;
+              goToDetent("half");
+            } else settleDrag();
+          }
+          return;
+        }
+        if (!sheetOpen && direction === "down") {
+          setPilled(true);
+          inputRef.current?.blur();
+          detentHaptic();
+          return;
+        }
+        const h = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
+        if (h <= SHEET_DETENT_MAGNET) {
+          closeSheet();
+          return;
+        }
+        focusThreadRef.current = true;
+        if (h >= openH - SHEET_DETENT_MAGNET) {
+          goToDetent("full");
+        } else if (Math.abs(h - halfH) <= SHEET_DETENT_MAGNET) {
+          goToDetent("half");
+        } else {
+          setFreeH(h);
+          setSheetOpen(true);
+          setExpanded(false);
+        }
       }
     });
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
       "div",
       {
         ref: overlayRef,
         className: cn(
-          "pointer-events-none fixed inset-x-0 bottom-0 flex w-full min-w-0 flex-col items-center px-3 sm:px-4",
-          "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+1.5rem)]"
+          "pointer-events-none fixed inset-x-0 bottom-0 flex w-full min-w-0 flex-col items-center",
+          // Full-bleed (maximized) removes the side inset so the chat is edge-to-edge.
+          fullBleed ? "px-0" : "px-3 sm:px-4"
         ),
-        style: { zIndex: Z_SHELL_OVERLAY, bottom: keyboardInset },
+        style: {
+          zIndex: Z_SHELL_OVERLAY,
+          bottom: keyboardInset,
+          paddingBottom: composerFocused ? "0.75rem" : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.25rem)"
+        },
         "data-testid": "continuous-chat-overlay",
         "data-open": sheetOpen ? "true" : void 0,
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
             motion.div,
             {
               "aria-hidden": "true",
@@ -25789,14 +26805,7 @@
               }
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-            "div",
-            {
-              "aria-hidden": "true",
-              className: "pointer-events-none absolute inset-x-0 bottom-0 h-72 bg-gradient-to-t from-black/45 via-black/15 to-transparent"
-            }
-          ),
-          recording && transcript ? /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+          recording && transcript ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
             "div",
             {
               role: "status",
@@ -25804,15 +26813,41 @@
               "aria-atomic": "true",
               className: cn(
                 "pointer-events-none relative mb-2 w-full max-w-3xl text-center text-sm italic text-white/85",
-                FLOAT_SHADOW
+                FLOAT_SHADOW2
               ),
               children: [
                 transcript,
-                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { "aria-hidden": "true", children: "\u2026" })
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { "aria-hidden": "true", children: "\u2026" })
               ]
             }
           ) : null,
-          suggestionsVisible ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+          needsAudioUnlock ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+            "div",
+            {
+              role: "status",
+              "aria-live": "polite",
+              className: "pointer-events-none relative mb-2 flex w-full justify-center",
+              children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                "button",
+                {
+                  type: "button",
+                  onClick: unlockAudio,
+                  "data-testid": "overlay-voice-audio-unlock",
+                  className: cn(
+                    "pointer-events-auto inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
+                    "border-warn/40 bg-warn/15 text-warn hover:bg-warn/25",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/70",
+                    FLOAT_SHADOW2
+                  ),
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Glyph, { d: SPEAKER_MUTED_GLYPH }),
+                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { children: "Tap to enable sound" })
+                  ]
+                }
+              )
+            }
+          ) : null,
+          suggestionsVisible ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
             motion.fieldset,
             {
               "aria-label": "Suggested prompts",
@@ -25821,7 +26856,7 @@
               ),
               style: { order: -1, opacity: suggestionsOpacity },
               "data-testid": "chat-suggestions",
-              children: suggestions.map((s, i) => /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+              children: suggestions.map((s, i) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                 "button",
                 {
                   type: "button",
@@ -25841,50 +26876,20 @@
               ))
             }
           ) : null,
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
-            "fieldset",
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+            "div",
             {
-              ref: panelRef,
-              "aria-label": "Chat composer",
-              "data-testid": "chat-sheet",
-              "data-variant": sheetOpen ? "open" : "closed",
-              "data-detent": !sheetOpen ? "collapsed" : expanded ? "full" : "half",
-              "data-revealed": sheetOpen ? "true" : "false",
-              style: { maxHeight: panelMaxH },
               className: cn(
-                "pointer-events-auto relative m-0 flex w-full min-w-0 max-w-3xl flex-col overflow-hidden border-0 p-0",
-                // Liquid glass: a translucent, blurred, slightly over-saturated pane
-                // (more glass where backdrop-filter is supported) with a bright top
-                // specular edge + a faint full-perimeter refractive inner stroke.
-                "rounded-[28px] border border-white/[0.14] bg-black/55 backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
-                "shadow-[inset_0_1px_0_rgba(255,255,255,0.20),inset_0_0_0_0.5px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(0,0,0,0.72)]"
+                "pointer-events-none relative flex w-full flex-col items-center",
+                fullBleed ? "max-w-none" : "max-w-3xl"
               ),
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-                  "div",
-                  {
-                    "aria-hidden": "true",
-                    className: "pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-white/[0.07] to-transparent"
-                  }
-                ),
-                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-                  motion.div,
-                  {
-                    "aria-hidden": "true",
-                    className: "pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-2xl",
-                    initial: false,
-                    animate: {
-                      opacity: listening || responding ? 1 : 0,
-                      backgroundColor: listening ? "rgba(255,180,120,0.30)" : "rgba(190,210,255,0.20)"
-                    },
-                    transition: { duration: reduce ? 0 : 1.1, ease: "easeInOut" }
-                  }
-                ),
-                hasThread ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                !pilled && !fullBleed ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                   SheetGrabber,
                   {
                     open: sheetOpen,
                     onOpen: () => {
+                      if (!hasThread) return;
                       goToDetent("half");
                       focusThreadRef.current = true;
                     },
@@ -25893,193 +26898,373 @@
                     glow: listening || responding
                   }
                 ) : null,
-                hasThread ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-                  motion.div,
+                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                  motion.fieldset,
                   {
-                    "data-testid": "chat-thread",
-                    className: "relative z-10 min-h-0 w-full shrink grow-0 overflow-hidden",
-                    style: { flexBasis: threadFlexBasis },
-                    children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-                      "div",
-                      {
-                        id: "continuous-thread",
-                        ref: threadRef,
-                        role: "log",
-                        "aria-label": "conversation history",
-                        "aria-live": "polite",
-                        "aria-hidden": !sheetOpen ? true : void 0,
-                        tabIndex: sheetOpen ? 0 : -1,
-                        onKeyDown: (e) => {
-                          if (e.key === "Escape") {
-                            e.preventDefault();
-                            collapse();
-                          }
-                        },
-                        className: "relative flex h-full w-full touch-pan-y flex-col overflow-y-auto px-5 [scrollbar-width:none] focus-visible:outline-none [&::-webkit-scrollbar]:hidden",
-                        children: /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "mt-auto flex flex-col pb-3 pt-1", children: [
-                          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(AnimatePresence, { initial: false, children: visibleMessages.map((m2) => /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-                            ThreadLine,
-                            {
-                              message: m2,
-                              floating: true,
-                              reduce
-                            },
-                            m2.id
-                          )) }),
-                          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(AnimatePresence, { children: responding ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(TypingDots, { reduce }) : null }),
-                          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { ref: endRef })
-                        ] })
-                      }
-                    )
-                  }
-                ) : null,
-                hasImages || imageError ? /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2", children: [
-                  hasImages ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "flex flex-wrap gap-2", children: pendingImages.map((img, i) => /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
-                    "div",
-                    {
-                      className: "group relative h-14 w-14 shrink-0",
-                      children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-                          "img",
-                          {
-                            src: `data:${img.mimeType};base64,${img.data}`,
-                            alt: img.name,
-                            className: "h-14 w-14 rounded-lg border border-white/20 object-cover"
-                          }
-                        ),
-                        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-                          "button",
-                          {
-                            type: "button",
-                            "aria-label": `remove ${img.name}`,
-                            onClick: () => removeImage(i),
-                            className: "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-white/20 bg-black/70 text-xs text-white/90 backdrop-blur transition-colors hover:bg-black/90",
-                            children: "\xD7"
-                          }
-                        )
-                      ]
+                    ref: panelRef,
+                    "aria-label": "Chat composer",
+                    "data-testid": "chat-sheet",
+                    "data-variant": sheetOpen ? "open" : "closed",
+                    "data-detent": pilled ? "pill" : !sheetOpen ? "collapsed" : freeH != null ? Math.min(freeH, panelMaxH) >= openH - 1 ? "full" : "half" : expanded ? "full" : "half",
+                    "data-maximized": fullBleed ? "true" : void 0,
+                    "data-revealed": sheetOpen ? "true" : "false",
+                    style: pilled ? void 0 : {
+                      maxHeight: panelMaxH,
+                      // Full-bleed (maximized) → square edge-to-edge; otherwise the
+                      // live motion radius (pill → 24px).
+                      borderRadius: fullBleed ? 0 : panelRadius
                     },
-                    `${img.name}-${img.mimeType}-${img.data.length}`
-                  )) }) : null,
-                  imageError ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-                    "p",
-                    {
-                      role: "alert",
-                      className: cn("text-xs text-red-200/90", FLOAT_SHADOW),
-                      children: imageError
-                    }
-                  ) : null
-                ] }) : null,
-                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-                  "input",
-                  {
-                    ref: fileInputRef,
-                    type: "file",
-                    accept: "image/*",
-                    multiple: true,
-                    className: "hidden",
-                    onChange: (e) => {
-                      if (e.target.files) addImageFiles(e.target.files);
-                      e.target.value = "";
-                    }
-                  }
-                ),
-                /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
-                  "div",
-                  {
                     className: cn(
-                      // items-end keeps the +/mic controls pinned to the bottom as the
-                      // textarea grows upward with multi-line input. shrink-0 keeps the
-                      // input fully visible when the panel hits its maxHeight cap (only the
-                      // thread above gives way).
-                      "relative z-10 flex min-w-0 shrink-0 items-end gap-1.5 px-3 py-2 sm:gap-2 sm:px-3.5",
-                      sheetOpen ? "border-t border-white/10" : ""
+                      "pointer-events-auto relative m-0 flex min-w-0 flex-col border-0 p-0",
+                      pilled ? (
+                        // PILL: a bare, transparent container — the capsule carries its own
+                        // glass, and the panel shrinks to fit it.
+                        "w-auto"
+                      ) : cn(
+                        "w-full overflow-hidden",
+                        // Liquid glass: a translucent, blurred, slightly over-saturated
+                        // pane with a bright top specular edge + a faint refractive stroke.
+                        // Full-bleed drops the refractive stroke so it's truly edge-to-edge.
+                        fullBleed ? "border-0" : "border border-white/[0.14]",
+                        "bg-black/55 backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
+                        fullBleed ? "shadow-none" : "shadow-[inset_0_1px_0_rgba(255,255,255,0.20),inset_0_0_0_0.5px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(0,0,0,0.72)]"
+                      )
                     ),
-                    children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-                        SoftButton,
+                    children: pilled ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                      PillHandle,
+                      {
+                        binding: pullBinding,
+                        onOpen: () => setPilled(false),
+                        glow: listening || responding
+                      }
+                    ) : /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                        "div",
                         {
-                          glyph: PLUS_GLYPH,
-                          label: "attach image",
-                          disabled: booting || pendingImages.length >= MAX_CHAT_IMAGES,
-                          onClick: () => fileInputRef.current?.click(),
-                          testId: "chat-composer-attach"
+                          "aria-hidden": "true",
+                          className: "pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-white/[0.07] to-transparent"
                         }
                       ),
-                      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-                        "textarea",
-                        {
-                          ref: inputRef,
-                          rows: 1,
-                          value: draft,
-                          onChange: (e) => {
-                            setDraft(e.target.value);
-                            if (e.target.value.trim().length > 0) expand();
-                          },
-                          onFocus: expand,
-                          onKeyDown: (e) => {
-                            if (e.key === "Enter" && !e.shiftKey) {
-                              e.preventDefault();
-                              submit();
-                            } else if (e.key === "Escape" && sheetOpen) {
-                              e.preventDefault();
-                              collapse();
-                            }
-                          },
-                          placeholder: booting ? "connecting\u2026" : "say anything\u2026",
-                          "aria-label": "message",
-                          "data-testid": "chat-composer-textarea",
-                          "aria-describedby": booting ? "cc-booting-hint" : void 0,
-                          "aria-disabled": booting,
-                          readOnly: booting,
-                          className: "max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-end border-none bg-transparent px-1 py-1 text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
-                        }
-                      ),
-                      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { id: "cc-booting-hint", className: "sr-only", children: "connecting \u2014 you can\u2019t send yet" }),
-                      speaking || agentVoiceMuted ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-                        SoftButton,
-                        {
-                          glyph: agentVoiceMuted ? SPEAKER_MUTED_GLYPH : SPEAKER_GLYPH,
-                          label: agentVoiceMuted ? "unmute assistant voice" : "mute assistant voice",
-                          active: agentVoiceMuted,
-                          onClick: toggleAgentVoiceMute,
-                          testId: "chat-voice-mute"
-                        }
-                      ) : null,
-                      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                         motion.div,
                         {
-                          className: "shrink-0",
-                          initial: reduce ? { opacity: 0 } : { opacity: 0, scale: 0.6 },
-                          animate: { opacity: 1, scale: 1 },
-                          transition: { duration: reduce ? 0 : 0.3, ease: OVERLAY_EASE },
-                          children: (hasDraft || hasImages) && !recording ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-                            SoftButton,
+                          "aria-hidden": "true",
+                          className: "pointer-events-none absolute inset-x-0 bottom-0 z-0 h-28 blur-2xl",
+                          initial: false,
+                          animate: {
+                            opacity: listening || responding ? 1 : 0,
+                            backgroundColor: listening ? "rgba(255,180,120,0.30)" : "rgba(255,140,80,0.18)"
+                          },
+                          transition: { duration: reduce ? 0 : 1.1, ease: "easeInOut" }
+                        }
+                      ),
+                      sheetOpen && expanded && !pilled ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                        "div",
+                        {
+                          className: cn(
+                            "relative z-10 flex shrink-0 items-center justify-end gap-1.5 px-3",
+                            // Maximized goes edge-to-edge under the status bar, so the
+                            // buttons must clear the safe-area inset (the clock/battery)
+                            // or they sit under it and become untappable.
+                            fullBleed ? "pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]" : "pt-2.5"
+                          ),
+                          children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              HeaderButton,
+                              {
+                                icon: maximized ? Minimize2 : Maximize2,
+                                label: maximized ? "exit full screen" : "full screen",
+                                active: maximized,
+                                onClick: () => setMaximized((v) => !v),
+                                testId: "chat-full-maximize"
+                              }
+                            ),
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              HeaderButton,
+                              {
+                                icon: Trash2,
+                                label: "clear conversation",
+                                onClick: () => clearConversation(),
+                                testId: "chat-full-clear"
+                              }
+                            ),
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              HeaderButton,
+                              {
+                                icon: Settings,
+                                label: "settings",
+                                onClick: () => openSettings(),
+                                testId: "chat-full-settings"
+                              }
+                            )
+                          ]
+                        }
+                      ) : null,
+                      hasThread ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                        motion.div,
+                        {
+                          "data-testid": "chat-thread",
+                          className: cn(
+                            "relative z-10 min-h-0 w-full shrink grow-0 overflow-hidden",
+                            // When open, fade the top edge into the glass so the topmost
+                            // message dissolves under the drag handle instead of butting
+                            // against it.
+                            sheetOpen && "[mask-image:linear-gradient(to_bottom,transparent_0,#000_34px)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0,#000_34px)]"
+                          ),
+                          style: { flexBasis: threadFlexBasis },
+                          children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                            "div",
                             {
-                              glyph: SEND_GLYPH,
-                              label: canSend ? "send" : "send (waiting for reply)",
-                              disabled: !canSend,
-                              onClick: submit,
-                              testId: "chat-composer-action"
-                            }
-                          ) : /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-                            SoftButton,
-                            {
-                              glyph: MIC_GLYPH,
-                              label: pushToTalkActive ? "release to send" : recording ? "stop listening" : "talk",
-                              active: recording,
-                              disabled: booting,
-                              onClick: handleMicClick,
-                              onPointerDown: beginPushToTalkPress,
-                              onPointerUp: endPushToTalkPress,
-                              onPointerCancel: endPushToTalkPress,
-                              testId: "chat-composer-mic"
+                              id: "continuous-thread",
+                              ref: threadRef,
+                              role: "log",
+                              "aria-label": "conversation history",
+                              "aria-live": "polite",
+                              "aria-hidden": !sheetOpen ? true : void 0,
+                              tabIndex: sheetOpen ? 0 : -1,
+                              onKeyDown: (e) => {
+                                if (e.key === "Escape") {
+                                  e.preventDefault();
+                                  collapse();
+                                }
+                              },
+                              className: "relative flex h-full w-full touch-pan-y flex-col overflow-y-auto px-5 [scrollbar-width:none] focus-visible:outline-none [&::-webkit-scrollbar]:hidden",
+                              children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "mt-auto flex flex-col pb-3 pt-1", children: [
+                                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AnimatePresence, { initial: false, children: visibleMessages.map((m2) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                  ThreadLine,
+                                  {
+                                    message: m2,
+                                    floating: true,
+                                    reduce,
+                                    onCopy: handleCopyMessage,
+                                    onOpenSettings: openSettings
+                                  },
+                                  m2.id
+                                )) }),
+                                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AnimatePresence, { children: responding ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(TypingDots, { reduce }) : null }),
+                                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { ref: endRef })
+                              ] })
                             }
                           )
-                        },
-                        (hasDraft || hasImages) && !recording ? "send" : "mic"
+                        }
+                      ) : null,
+                      hasImages || imageError ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2", children: [
+                        hasImages ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "flex flex-wrap gap-2", children: pendingImages.map((img, i) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                          "div",
+                          {
+                            className: "group relative h-14 w-14 shrink-0",
+                            children: [
+                              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                "img",
+                                {
+                                  src: `data:${img.mimeType};base64,${img.data}`,
+                                  alt: img.name,
+                                  className: "h-14 w-14 rounded-lg border border-white/20 object-cover"
+                                }
+                              ),
+                              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                "button",
+                                {
+                                  type: "button",
+                                  "aria-label": `remove ${img.name}`,
+                                  onClick: () => removeImage(i),
+                                  className: "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-white/20 bg-black/70 text-xs text-white/90 backdrop-blur transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-black/90",
+                                  children: "\xD7"
+                                }
+                              )
+                            ]
+                          },
+                          `${img.name}-${img.mimeType}-${img.data.length}`
+                        )) }) : null,
+                        imageError ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                          "p",
+                          {
+                            role: "alert",
+                            className: cn("text-xs text-red-200/90", FLOAT_SHADOW2),
+                            children: imageError
+                          }
+                        ) : null
+                      ] }) : null,
+                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                        "input",
+                        {
+                          ref: fileInputRef,
+                          type: "file",
+                          accept: "image/*",
+                          multiple: true,
+                          className: "hidden",
+                          onChange: (e) => {
+                            if (e.target.files) addImageFiles(e.target.files);
+                            e.target.value = "";
+                          }
+                        }
+                      ),
+                      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                        "div",
+                        {
+                          className: cn(
+                            // items-center vertically centers a single-line composer with
+                            // the round +/mic buttons (the common case); a multi-line draft
+                            // grows the textarea and the buttons stay centered. shrink-0
+                            // keeps the input fully visible when the panel hits its
+                            // maxHeight cap (only the thread above gives way).
+                            // Equal inset on all sides (px == py): a round button nested in
+                            // the pill's round end-cap reads as concentric, with the same
+                            // gap on the sides as top/bottom.
+                            "relative z-10 flex min-w-0 shrink-0 items-center gap-1.5 px-2 py-2 sm:gap-2",
+                            sheetOpen ? "border-t border-white/10" : ""
+                          ),
+                          children: [
+                            slashProp && !slashDismissed ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              SlashCommandMenu,
+                              {
+                                state: slashMenu,
+                                loading: isSlashDraft && slash.loading,
+                                onPick: pickSlashItem
+                              }
+                            ) : null,
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              SoftButton,
+                              {
+                                glyph: PLUS_GLYPH,
+                                label: "attach image",
+                                disabled: pendingImages.length >= MAX_CHAT_IMAGES,
+                                onClick: () => fileInputRef.current?.click(),
+                                testId: "chat-composer-attach"
+                              }
+                            ),
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              "textarea",
+                              {
+                                ref: inputRef,
+                                rows: 1,
+                                value: draft,
+                                onChange: (e) => {
+                                  setDraft(e.target.value);
+                                  if (e.target.value.trim().length > 0) expand();
+                                },
+                                onFocus: () => {
+                                  setComposerFocused(true);
+                                  expand();
+                                },
+                                onBlur: () => setComposerFocused(false),
+                                onKeyDown: (e) => {
+                                  if (slashOpen) {
+                                    if (e.key === "ArrowDown") {
+                                      e.preventDefault();
+                                      slashMenu.move(1);
+                                      return;
+                                    }
+                                    if (e.key === "ArrowUp") {
+                                      e.preventDefault();
+                                      slashMenu.move(-1);
+                                      return;
+                                    }
+                                    if (e.key === "Tab") {
+                                      const completed = slashMenu.complete();
+                                      if (completed != null) {
+                                        e.preventDefault();
+                                        setDraft(completed);
+                                        return;
+                                      }
+                                    }
+                                    if (e.key === "Enter" && !e.shiftKey) {
+                                      const exec = slashMenu.resolve();
+                                      if (exec) {
+                                        e.preventDefault();
+                                        runExecution(exec);
+                                        return;
+                                      }
+                                    }
+                                    if (e.key === "Escape") {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setSlashDismissed(true);
+                                      return;
+                                    }
+                                  }
+                                  if (e.key === "Enter" && !e.shiftKey) {
+                                    e.preventDefault();
+                                    submit();
+                                  } else if (e.key === "Escape" && sheetOpen) {
+                                    e.preventDefault();
+                                    collapse();
+                                  }
+                                },
+                                placeholder: booting ? `Ask ${agentName} \u2014 waking up\u2026` : `Ask ${agentName}`,
+                                "aria-label": "message",
+                                "data-testid": "chat-composer-textarea",
+                                "aria-describedby": booting ? "cc-booting-hint" : void 0,
+                                ...comboboxAria,
+                                className: "max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
+                              }
+                            ),
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("span", { id: "cc-booting-hint", className: "sr-only", children: [
+                              agentName,
+                              " is waking up \u2014 you can type now; your message sends and the reply arrives in a moment."
+                            ] }),
+                            speaking || agentVoiceMuted ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              SoftButton,
+                              {
+                                glyph: agentVoiceMuted ? SPEAKER_MUTED_GLYPH : SPEAKER_GLYPH,
+                                label: agentVoiceMuted ? "unmute assistant voice" : "mute assistant voice",
+                                active: agentVoiceMuted,
+                                onClick: toggleAgentVoiceMute,
+                                testId: "chat-voice-mute"
+                              }
+                            ) : null,
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                              motion.div,
+                              {
+                                className: "shrink-0",
+                                initial: reduce ? { opacity: 0 } : { opacity: 0, scale: 0.6 },
+                                animate: { opacity: 1, scale: 1 },
+                                transition: {
+                                  duration: reduce ? 0 : 0.3,
+                                  ease: OVERLAY_EASE
+                                },
+                                children: (hasDraft || hasImages) && !recording ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                  SoftButton,
+                                  {
+                                    glyph: SEND_GLYPH,
+                                    label: canSend ? "send" : "send (waiting for reply)",
+                                    disabled: !canSend,
+                                    onClick: submit,
+                                    testId: "chat-composer-action"
+                                  }
+                                ) : !recording && responding ? (
+                                  // While a reply is streaming and nothing is typed, the mic becomes a
+                                  // stop control so the user can interrupt a runaway generation.
+                                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                    SoftButton,
+                                    {
+                                      glyph: STOP_GLYPH,
+                                      label: "stop generating",
+                                      onClick: () => stop(),
+                                      testId: "chat-composer-stop"
+                                    }
+                                  )
+                                ) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                  SoftButton,
+                                  {
+                                    glyph: MIC_GLYPH,
+                                    label: pushToTalkActive ? "release to send" : recording ? "stop listening" : "talk",
+                                    active: recording,
+                                    disabled: booting,
+                                    onClick: handleMicClick,
+                                    onPointerDown: beginPushToTalkPress,
+                                    onPointerUp: endPushToTalkPress,
+                                    onPointerCancel: endPushToTalkPress,
+                                    testId: "chat-composer-mic"
+                                  }
+                                )
+                              },
+                              (hasDraft || hasImages) && !recording ? "send" : !recording && responding ? "stop" : "mic"
+                            )
+                          ]
+                        }
                       )
-                    ]
+                    ] })
                   }
                 )
               ]
@@ -26091,7 +27276,7 @@
   }
 
   // packages/ui/src/components/shell/__e2e__/chat-sheet-fixture.tsx
-  var import_jsx_runtime7 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime8 = __toESM(require_jsx_runtime(), 1);
   var nextId = 100;
   var uid = () => `m${nextId++}`;
   var SEED = [
@@ -26146,20 +27331,31 @@
   var initialSpeaking = params.has("speaking");
   var initialMuted = params.has("muted");
   var initialCanSend = !params.has("nosend");
+  var failureKind = params.get("failure");
+  var SEED_WITH_FAILURE = failureKind === "no_provider" ? [
+    ...SEED,
+    {
+      id: "m-fail",
+      role: "assistant",
+      content: "No model provider is configured, so I can't reply yet. Connect one to start chatting.",
+      createdAt: 13,
+      failureKind: "no_provider"
+    }
+  ] : SEED;
   function Harness() {
-    const [messages, setMessages] = React6.useState(
-      startEmpty ? [] : SEED
+    const [messages, setMessages] = React7.useState(
+      startEmpty ? [] : SEED_WITH_FAILURE
     );
-    const [phase, setPhase] = React6.useState(initialPhase);
-    const [recording, setRecording] = React6.useState(initialRecording);
-    const [transcript, setTranscript] = React6.useState(initialTranscript);
-    const [agentVoiceMuted, setAgentVoiceMuted] = React6.useState(initialMuted);
-    React6.useEffect(() => {
+    const [phase, setPhase] = React7.useState(initialPhase);
+    const [recording, setRecording] = React7.useState(initialRecording);
+    const [transcript, setTranscript] = React7.useState(initialTranscript);
+    const [agentVoiceMuted, setAgentVoiceMuted] = React7.useState(initialMuted);
+    React7.useEffect(() => {
       console.log(
         `[fixture] phase=${phase} messages=${messages.length} recording=${recording}`
       );
     }, [phase, messages.length, recording]);
-    const send = React6.useCallback((text) => {
+    const send = React7.useCallback((text) => {
       const trimmed = text.trim();
       if (!trimmed) return;
       console.log(`[fixture] send: ${JSON.stringify(trimmed)}`);
@@ -26181,19 +27377,19 @@
         setPhase("summoned");
       }, 500);
     }, []);
-    const startRecording = React6.useCallback(() => {
+    const startRecording = React7.useCallback(() => {
       console.log("[fixture] startRecording");
       setRecording(true);
       setTranscript("tell me the plan for\u2026");
       setPhase("listening");
     }, []);
-    const stopRecording = React6.useCallback(() => {
+    const stopRecording = React7.useCallback(() => {
       console.log("[fixture] stopRecording");
       setRecording(false);
       setTranscript("");
       setPhase("summoned");
     }, []);
-    const toggleRecording = React6.useCallback(() => {
+    const toggleRecording = React7.useCallback(() => {
       setRecording((r2) => {
         const next = !r2;
         console.log(`[fixture] toggleRecording -> ${next}`);
@@ -26202,7 +27398,7 @@
         return next;
       });
     }, []);
-    const toggleAgentVoiceMute = React6.useCallback(() => {
+    const toggleAgentVoiceMute = React7.useCallback(() => {
       setAgentVoiceMuted((m2) => {
         console.log(`[fixture] toggleAgentVoiceMute -> ${!m2}`);
         return !m2;
@@ -26220,9 +27416,15 @@
       toggleRecording,
       startRecording,
       stopRecording,
-      toggleAgentVoiceMute
+      toggleAgentVoiceMute,
+      openSettings: () => console.log("[fixture] openSettings"),
+      clearConversation: () => console.log("[fixture] clearConversation"),
+      stop: () => {
+        console.log("[fixture] stop");
+        setPhase("summoned");
+      }
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
       "div",
       {
         "data-testid": "fake-view",
@@ -26237,15 +27439,15 @@
           overflow: "hidden"
         },
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+          /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
             "div",
             {
               "data-testid": "view-content",
               style: { padding: "48px 28px", maxWidth: 720 },
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("h1", { style: { fontSize: 30, fontWeight: 600, margin: 0 }, children: "Workspace" }),
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { style: { opacity: 0.7, marginTop: 12, lineHeight: 1.6 }, children: "This is the live view behind the floating chat. Clicking here must NOT close the chat \u2014 the sheet only closes on a pull-down or Escape." }),
-                /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { style: { display: "flex", gap: 10, marginTop: 20 }, children: ["Files", "Tasks", "Notes", "Settings"].map((t) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("h1", { style: { fontSize: 30, fontWeight: 600, margin: 0 }, children: "Workspace" }),
+                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("p", { style: { opacity: 0.7, marginTop: 12, lineHeight: 1.6 }, children: "This is the live view behind the floating chat. Clicking here must NOT close the chat \u2014 the sheet only closes on a pull-down or Escape." }),
+                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { style: { display: "flex", gap: 10, marginTop: 20 }, children: ["Files", "Tasks", "Notes", "Settings"].map((t) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                   "span",
                   {
                     style: {
@@ -26262,13 +27464,13 @@
               ]
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(ContinuousChatOverlay, { controller })
+          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(ContinuousChatOverlay, { controller })
         ]
       }
     );
   }
   var root = document.getElementById("root");
-  if (root) (0, import_client.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Harness, {}));
+  if (root) (0, import_client.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime8.jsx)(Harness, {}));
 })();
 /*! Bundled license information:
 
@@ -26325,6 +27527,27 @@ react/cjs/react-jsx-runtime.production.js:
    *
    * This source code is licensed under the MIT license found in the
    * LICENSE file in the root directory of this source tree.
+   *)
+
+lucide-react/dist/esm/shared/src/utils/mergeClasses.mjs:
+lucide-react/dist/esm/shared/src/utils/toKebabCase.mjs:
+lucide-react/dist/esm/shared/src/utils/toCamelCase.mjs:
+lucide-react/dist/esm/shared/src/utils/toPascalCase.mjs:
+lucide-react/dist/esm/defaultAttributes.mjs:
+lucide-react/dist/esm/shared/src/utils/hasA11yProp.mjs:
+lucide-react/dist/esm/context.mjs:
+lucide-react/dist/esm/Icon.mjs:
+lucide-react/dist/esm/createLucideIcon.mjs:
+lucide-react/dist/esm/icons/maximize-2.mjs:
+lucide-react/dist/esm/icons/minimize-2.mjs:
+lucide-react/dist/esm/icons/settings.mjs:
+lucide-react/dist/esm/icons/trash-2.mjs:
+lucide-react/dist/esm/lucide-react.mjs:
+  (**
+   * @license lucide-react v1.18.0 - ISC
+   *
+   * This source code is licensed under the ISC license.
+   * See the LICENSE file in the root directory of this source tree.
    *)
 */
 </script></body></html>

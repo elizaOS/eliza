@@ -4,6 +4,10 @@ import type {
   LifeOpsWorkflowRun,
 } from "../contracts/index.js";
 
+// LifeOpsServiceError is now a runtime-level primitive in `@elizaos/shared`;
+// re-exported here so historical `./service-types.js` callers keep working.
+export { LifeOpsServiceError } from "@elizaos/shared";
+
 export type LifeOpsWorkflowSchedulerState = {
   managedBy: "task_worker";
   nextDueAt: string | null;
@@ -93,14 +97,3 @@ export type RuntimeOwnerContactResolution = {
 export type LifeOpsServiceOptions = {
   ownerEntityId?: string | null;
 };
-
-export class LifeOpsServiceError extends Error {
-  constructor(
-    public readonly status: number,
-    message: string,
-    public readonly code?: string,
-  ) {
-    super(message);
-    this.name = "LifeOpsServiceError";
-  }
-}

@@ -2,26 +2,21 @@
 
 Owner-only remote desktop session control for Eliza agents. Lets the owner connect to the agent's host machine from another device (typically a phone) over Tailscale VNC/SSH or an ngrok TCP tunnel, gated by an explicit confirmation step and (in cloud mode) a 6-digit pairing code.
 
-## Status: scaffolded, migration pending
+## Status: live
 
-This plugin was extracted from `@elizaos/plugin-personal-assistant` as part of the LifeOps decomposition. The plugin surface (action metadata, types, package layout) is in place and the package compiles standalone, but the action handler is a **stub** that returns `NOT_IMPLEMENTED_MIGRATION_PENDING`. The real implementation still lives in `@elizaos/plugin-personal-assistant` and will be ported here in the next migration pass.
+Extracted from `@elizaos/plugin-personal-assistant` as part of the LifeOps decomposition. This plugin owns the full remote-desktop implementation — the `REMOTE_DESKTOP` action, the backend-detection engine, and the in-process `RemoteSessionService` control plane. PA re-exports `remoteDesktopAction` + `detectRemoteDesktopBackend` through a thin shim for back-compat and loads this plugin at init via `ensureLifeOpsRemoteDesktopPluginRegistered`. Exactly one plugin registers the `REMOTE_DESKTOP` action — this one.
 
-## Migration mapping
+## Migration mapping (complete)
 
-| New location (this plugin) | Source in `@elizaos/plugin-personal-assistant` |
+| Location (this plugin) | Former source in `@elizaos/plugin-personal-assistant` |
 |---|---|
-| `src/actions/remote-desktop.ts` | `plugins/plugin-personal-assistant/src/actions/remote-desktop.ts` |
-| `src/lifeops/remote-desktop.ts` (todo) | `plugins/plugin-personal-assistant/src/lifeops/remote-desktop.ts` |
-| `src/remote/remote-session-service.ts` (todo) | `plugins/plugin-personal-assistant/src/remote/remote-session-service.ts` |
-| `src/remote/pairing-code.ts` (todo) | `plugins/plugin-personal-assistant/src/remote/pairing-code.ts` |
-| `src/types.ts` (already extracted) | inline in `lifeops/remote-desktop.ts` + `remote/remote-session-service.ts` |
+| `src/actions/remote-desktop.ts` | `src/actions/remote-desktop.ts` |
+| `src/lifeops/remote-desktop.ts` | `src/lifeops/remote-desktop.ts` |
+| `src/remote/remote-session-service.ts` | `src/remote/remote-session-service.ts` |
+| `src/remote/pairing-code.ts` | `src/remote/pairing-code.ts` |
+| `src/types.ts` | inline in the engine + service (now canonical here) |
 
-The follow-up migration pass will:
-
-1. Move the helpers above into this plugin verbatim.
-2. Either vendor or share the `resolveActionArgs` helper from `plugins/plugin-personal-assistant/src/actions/lib/resolve-action-args.ts`.
-3. Replace the stub handler with the full `handleStart/handleStatus/handleEnd/handleList/handleRevoke` implementation.
-4. Have `@elizaos/plugin-personal-assistant` re-export `remoteDesktopAction` from this plugin during the deprecation window, then remove the action from lifeops in a later release.
+The handler dispatches subactions via `resolveActionArgs` from `@elizaos/core`. PA's old `src/actions/remote-desktop.ts` is now a thin re-export shim.
 
 ## Plugin surface
 
@@ -36,11 +31,11 @@ The follow-up migration pass will:
 
   Role gate: `OWNER`. Contexts: `browser`, `automation`, `settings`, `admin`, `terminal`. The action sets `suppressPostActionContinuation: true` to keep the planner from chaining additional turns after a remote session is opened.
 
-No providers. No services. No schema. (The session store is currently in-memory + a JSON file under `resolveStateDir()`. After migration this can stay file-backed or move to a drizzle table — that decision is deferred to the migration pass.)
+No providers. No services. No schema. The session store is in-memory plus a JSON file under `resolveStateDir()/lifeops/remote-sessions.json`.
 
 ## Config / env vars
 
-Inherited from the underlying remote-desktop helpers (still in `@elizaos/plugin-personal-assistant` until the migration). Listed here so the contract is documented in one place:
+Read by this plugin's engine (`src/lifeops/remote-desktop.ts`) and control-plane service (`src/remote/remote-session-service.ts`):
 
 | Variable | Required | Description |
 |---|---|---|
@@ -66,11 +61,14 @@ bun run --cwd plugins/plugin-remote-desktop clean       # rm -rf dist .turbo
 src/
   index.ts                       Public exports; default-exports remoteDesktopPlugin
   plugin.ts                      Plugin object (actions: [remoteDesktopAction])
-  types.ts                       Shared types (RemoteDesktopSession, RemoteSession, ...)
+  types.ts                       Canonical types (RemoteDesktopSession, RemoteSession, ...)
   actions/
-    remote-desktop.ts            REMOTE_DESKTOP umbrella action (handler stubbed pending migration)
-  lifeops/                       (reserved for migrated remote-desktop.ts)
-  remote/                        (reserved for migrated remote-session-service.ts + pairing-code.ts)
+    remote-desktop.ts            REMOTE_DESKTOP umbrella action (real handler; resolveActionArgs dispatch)
+  lifeops/
+    remote-desktop.ts            Backend detection (Tailscale/ngrok/VNC) + in-process session store
+  remote/
+    remote-session-service.ts    Control-plane service + pairing-code gate + data-plane handoff
+    pairing-code.ts              6-digit rolling one-time pairing codes
 ```
 
 ## Conventions / gotchas

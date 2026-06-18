@@ -2,6 +2,7 @@ import { WebPlugin } from "@capacitor/core";
 
 import type {
   ListMessagesOptions,
+  MessagesPermissionStatus,
   MessagesPlugin,
   SendSmsOptions,
   SendSmsResult,
@@ -43,5 +44,15 @@ export class MessagesWeb extends WebPlugin implements MessagesPlugin {
   ): Promise<{ messages: SmsMessageSummary[] }> {
     normalizeListLimit(options?.limit);
     return { messages: [] };
+  }
+
+  // Web has no SMS permission model; report granted so the shared view flow
+  // proceeds (sendSms throws / listMessages returns empty on web anyway).
+  async checkPermissions(): Promise<MessagesPermissionStatus> {
+    return { sms: "granted" };
+  }
+
+  async requestPermissions(): Promise<MessagesPermissionStatus> {
+    return { sms: "granted" };
   }
 }

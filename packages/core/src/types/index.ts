@@ -18,6 +18,7 @@ export * from "./environment";
 export * from "./evaluator";
 export * from "./events";
 export * from "./hook";
+export * from "./interactions";
 export * from "./memory";
 export * from "./memory-storage";
 export * from "./messaging";

@@ -235,6 +235,30 @@ export function applyPackagedStartupEmbeddingWarmupPolicy(
   childEnv.ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP = "1";
 }
 
+/**
+ * Default the desktop-spawned agent to deferring the post-ready boot tail so
+ * `/api/health` flips `ready:true` (and the renderer reaches first paint /
+ * usable chat) before app-route plugins, training hooks, sensitive-request
+ * adapters, the trigger bridge, the connector catalog, and voice warmup finish.
+ *
+ * The trade-off is a brief window after "ready" where feature routes registered
+ * by app-route plugins (e.g. lifeops/steward/training) can 404 until the
+ * background tail completes — acceptable on desktop where first paint latency is
+ * far more visible than a sub-second feature-route gap.
+ *
+ * Only sets the default when `ELIZA_DEFER_APP_ROUTES` is unset, so an explicit
+ * `0`/`1` from the user or a test harness always wins. The production CLI
+ * `serve` path (not spawned here) is untouched and keeps the awaited-inline tail.
+ */
+export function applyDesktopDeferAppRoutesPolicy(
+  childEnv: Record<string, string>,
+): void {
+  if (childEnv.ELIZA_DEFER_APP_ROUTES?.trim()) {
+    return;
+  }
+  childEnv.ELIZA_DEFER_APP_ROUTES = "1";
+}
+
 export function prependDesktopChildPathDirectory(
   childEnv: Record<string, string | undefined>,
   directory: string,
@@ -1630,6 +1654,7 @@ export class AgentManager {
 
       applyWindowsNativeInferenceDefaults(childEnv);
       applyPackagedStartupEmbeddingWarmupPolicy(childEnv, packagedRuntime);
+      applyDesktopDeferAppRoutesPolicy(childEnv);
 
       if (nodePaths.length > 0) {
         childEnv.NODE_PATH = nodePaths.join(path.delimiter);

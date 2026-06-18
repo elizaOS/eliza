@@ -1,6 +1,16 @@
-# headscale (Eliza Cloud customer-tunnel coordination server)
+# headscale (Eliza Cloud coordination server — ACL source of truth)
 
-Self-hosted [headscale](https://github.com/juanfont/headscale) deployment used as Tailscale's coordination server for customer tunnels sold by `@elizaos/plugin-elizacloud`. The same headscale instance also coordinates internal agent containers; the two cohabit through ACL-tag isolation.
+Self-hosted [headscale](https://github.com/juanfont/headscale) coordination
+server for the Eliza Cloud tailnet. It coordinates internal agent containers
+(`tag:agent`) and, historically, customer tunnels sold by
+`@elizaos/plugin-elizacloud`; the tags cohabit through ACL-tag isolation.
+
+Headscale runs on the **Hetzner control-plane VM** (see [`DEPLOY.md`](./DEPLOY.md)).
+The previous Railway-hosted runtime was removed on 2026-06-17, along with its
+`Dockerfile`, `entrypoint.sh`, `railway.toml`, `config.yaml`, and the
+`cloud-headscale.yml` deploy workflow. This directory is now the committed source
+of truth for the **ACL policy** (`acl.hujson`), which the Hetzner arm workflow
+deploys to `/etc/headscale/acl.hujson`.
 
 ## Tag namespaces (load-bearing safety boundary)
 
@@ -21,23 +31,16 @@ successful provisioning, mints a short-lived non-reusable key tagged
 proxy rejects signed hostnames after their embedded expiry, so public tunnel
 URLs do not become permanent reusable aliases.
 
-## Deploy on Railway
+## Deploy
 
-1. Create a new Railway service in the `cloud` project from this directory. The Dockerfile downloads the pinned `headscale` v0.28.0 Linux release binary; verify the latest stable release before bumping it.
-2. Mount a Railway volume at `/var/lib/headscale` for the SQLite DB (or attach Railway PG and switch the config to `database.type: postgres`).
-3. Deploy the Dockerfile. It copies `config.yaml` and `acl.hujson` into `/etc/headscale`.
-4. Expose port `8080` as a public TCP/HTTP port. Bind a custom domain like `headscale.elizacloud.ai` in Railway's Networking tab.
-5. Set the Worker config so the API can talk to it. Public URLs and user names live in `apps/api/wrangler.toml`; `HEADSCALE_API_KEY` remains a Wrangler secret.
-6. Inside the running container, create the two users that the API expects:
-   ```sh
-   headscale users create agent
-   headscale users create tunnel
-   ```
-7. Mint the API key:
-   ```sh
-   headscale apikeys create --expiration=8760h
-   ```
-   Store the returned key as `HEADSCALE_API_KEY` and rotate annually.
+Headscale is armed on the Hetzner control-plane VM by
+`arm-headscale-control-plane.yml` / `packages/scripts/cloud/admin/arm-headscale-control-plane.mjs`,
+which writes this directory's `acl.hujson` to the host, converges
+`/etc/headscale/config.yaml`, ensures the `agent` and `tunnel` users, and
+upserts the Worker-facing env. Full checklist + required GitHub Environment
+values are in [`DEPLOY.md`](./DEPLOY.md). The `HEADSCALE_API_KEY` is generated on
+the host and stored as a GitHub/Worker secret — never pasted into issues or
+workflow inputs.
 
 ## Local dev
 

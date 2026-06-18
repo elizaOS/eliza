@@ -9,21 +9,17 @@ import { useBootConfig } from "../../config/boot-config-react.hooks";
 import { isDesktopPlatform, isNative, isWebPlatform } from "../../platform";
 import { useApp } from "../../state";
 import { StreamingPermissionsSettingsView } from "../permissions/StreamingPermissions";
-import { Button } from "../ui/button";
 import { CapabilityToggle, PermissionRow } from "./permission-controls";
 import { useDesktopPermissionsState } from "./permission-controls.hooks";
 import { CAPABILITIES, SYSTEM_PERMISSIONS } from "./permission-types";
+import { SettingsActionButton } from "./settings-agent-rows";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 type WebsiteBlockerSettingsCardComponent = NonNullable<
   ReturnType<typeof useBootConfig>["websiteBlockerSettingsCard"]
 >;
 
-/* ── Platform copy keys ─────────────────────────────────────────── */
-//
-// Each platform has its own description / note string. Encoding them as a
-// map removes the chains of nested ternaries that used to repeat across
-// the file.
-
+// Per-platform description / grant-note strings, keyed by platform.
 type DesktopPlatform = "darwin" | "win32" | "linux";
 
 interface PlatformCopy {
@@ -36,7 +32,7 @@ const PLATFORM_COPY: Record<DesktopPlatform, PlatformCopy> = {
     systemDescription: {
       key: "permissionssection.MacSystemPermissionsDescription",
       defaultValue:
-        "Review the native permissions the app needs for desktop control, voice input, and visual analysis. macOS changes may require opening System Settings.",
+        "Native permissions for desktop control, voice, and vision.",
     },
     grantNote: {
       key: "permissionssection.MacGrantAccessNote",
@@ -53,7 +49,7 @@ const PLATFORM_COPY: Record<DesktopPlatform, PlatformCopy> = {
     grantNote: {
       key: "permissionssection.WindowsGrantPermissionsNote",
       defaultValue:
-        "Windows may not list the app as a named app here. Use Privacy settings to enable microphone and camera access, then test them in the app.",
+        "Windows may not list this app by name here. Use Privacy settings to enable microphone and camera access, then test them in the app.",
     },
   },
   linux: {
@@ -85,7 +81,7 @@ function MobilePermissionsView() {
     websiteBlockerSettingsCard: WebsiteBlockerSettingsCard,
   } = useBootConfig();
   return (
-    <div className="space-y-6">
+    <SettingsStack>
       <StreamingPermissionsSettingsView
         mode="mobile"
         testId="mobile-permissions"
@@ -94,7 +90,7 @@ function MobilePermissionsView() {
         })}
         description={t("permissionssection.MobileStreamingDesc", {
           defaultValue:
-            "Your device streams camera, microphone, and screen to your Eliza Cloud agent for processing.",
+            "Streams camera, mic, and screen to your Eliza Cloud agent.",
         })}
       />
       <MobileSignalsPermissionsPanel />
@@ -102,7 +98,7 @@ function MobilePermissionsView() {
       {WebsiteBlockerSettingsCard ? (
         <WebsiteBlockerSettingsCard mode="mobile" />
       ) : null}
-    </div>
+    </SettingsStack>
   );
 }
 
@@ -220,82 +216,88 @@ function MobileSignalsPermissionsPanel() {
   }
 
   return (
-    <section className="space-y-2">
-      <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-0.5">
-          <h3 className="text-sm font-semibold text-txt">
-            {t("permissionssection.LifeOpsSignals", {
-              defaultValue: "LifeOps Signals",
-            })}
-          </h3>
-          <p className="max-w-2xl text-xs-tight leading-5 text-muted">
-            {t("permissionssection.MobileSignalsDesc", {
-              defaultValue:
-                "Review Health, sleep, Screen Time, notification, and device signal access used by LifeOps.",
-            })}
-          </p>
-        </div>
-        <Button
+    <SettingsGroup
+      title={t("permissionssection.LifeOpsSignals", {
+        defaultValue: "LifeOps Signals",
+      })}
+      description={t("permissionssection.MobileSignalsDesc", {
+        defaultValue:
+          "Review Health, sleep, Screen Time, notification, and device signal access used by LifeOps.",
+      })}
+      action={
+        <SettingsActionButton
+          agentId="perm-mobile-signals-refresh"
+          agentLabel="Refresh mobile signals"
+          agentGroup="permissions"
           variant="outline"
           size="sm"
           className="h-9 rounded-sm px-3 text-xs font-semibold"
           onClick={refresh}
         >
           {t("common.refresh", { defaultValue: "Refresh" })}
-        </Button>
-      </header>
-      <div className="divide-y divide-border/40 rounded-sm border border-border/40">
-        {status.setupActions.map((action) => {
-          const badge = mobileSetupActionBadge(action);
-          const canAct =
-            action.status !== "ready" &&
-            (action.canRequest || action.canOpenSettings);
-          return (
-            <div
-              key={action.id}
-              className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold text-sm text-txt">
-                    {action.label}
-                  </span>
-                  <span
-                    className={`rounded-full border px-2 py-0.5 text-2xs font-medium ${badge.className}`}
-                  >
-                    {badge.label}
-                  </span>
-                </div>
-                {action.reason ? (
-                  <div className="mt-1 text-xs-tight leading-5 text-muted">
-                    {action.reason}
-                  </div>
-                ) : null}
-              </div>
-              {canAct ? (
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
-                  disabled={busyAction === action.id}
-                  onClick={() => void handleAction(action)}
-                >
-                  {busyAction === action.id
-                    ? t("common.loading", { defaultValue: "Loading..." })
-                    : action.canRequest
-                      ? t("permissionssection.Grant", {
-                          defaultValue: "Grant",
-                        })
-                      : t("permissionssection.OpenSettings", {
-                          defaultValue: "Open Settings",
-                        })}
-                </Button>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-    </section>
+        </SettingsActionButton>
+      }
+    >
+      {status.setupActions.map((action) => (
+        <MobileSetupActionRow
+          key={action.id}
+          action={action}
+          busy={busyAction === action.id}
+          onAct={() => void handleAction(action)}
+        />
+      ))}
+    </SettingsGroup>
+  );
+}
+
+function MobileSetupActionRow({
+  action,
+  busy,
+  onAct,
+}: {
+  action: MobileSignalsSetupAction;
+  busy: boolean;
+  onAct: () => void;
+}) {
+  const { t } = useApp();
+  const badge = mobileSetupActionBadge(action);
+  const canAct =
+    action.status !== "ready" && (action.canRequest || action.canOpenSettings);
+  const actionLabel = action.canRequest
+    ? t("permissionssection.Grant", { defaultValue: "Grant" })
+    : t("permissionssection.OpenSettings", { defaultValue: "Open Settings" });
+  return (
+    <SettingsRow
+      label={
+        <span className="flex flex-wrap items-center gap-2">
+          {action.label}
+          <span
+            className={`rounded-full border px-2 py-0.5 text-xs font-medium ${badge.className}`}
+          >
+            {badge.label}
+          </span>
+        </span>
+      }
+      description={action.reason ?? undefined}
+      control={
+        canAct ? (
+          <SettingsActionButton
+            agentId={`perm-mobile-action-${action.id}`}
+            agentLabel={`${actionLabel} ${action.label}`}
+            agentGroup="permissions"
+            variant="default"
+            size="sm"
+            className="min-h-11 rounded-sm px-3 text-xs font-semibold"
+            disabled={busy}
+            onClick={onAct}
+          >
+            {busy
+              ? t("common.loading", { defaultValue: "Loading..." })
+              : actionLabel}
+          </SettingsActionButton>
+        ) : undefined
+      }
+    />
   );
 }
 
@@ -304,7 +306,7 @@ function WebPermissionsView() {
   const { websiteBlockerSettingsCard: WebsiteBlockerSettingsCard } =
     useBootConfig();
   return (
-    <div className="space-y-6">
+    <SettingsStack>
       <StreamingPermissionsSettingsView
         mode="web"
         testId="web-permissions-info"
@@ -325,7 +327,7 @@ function WebPermissionsView() {
           <WebsiteBlockerSettingsCard mode="web" />
         )
       ) : null}
-    </div>
+    </SettingsStack>
   );
 }
 
@@ -432,66 +434,57 @@ function DesktopPermissionsView() {
   const copy = platformCopy(platform);
 
   return (
-    <div className="space-y-6">
-      {/* System Permissions */}
-      <section className="space-y-2">
-        <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-0.5">
-            <h3 className="text-sm font-semibold text-txt">
-              {t("permissionssection.SystemPermissions", {
-                defaultValue: "System Permissions",
-              })}
-            </h3>
-            <p className="max-w-2xl text-xs-tight leading-5 text-muted">
-              {t(copy.systemDescription.key, {
-                defaultValue: copy.systemDescription.defaultValue,
-              })}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              data-testid="permissions-refresh-button"
-              className="h-9 rounded-sm px-3 text-xs font-semibold"
-              onClick={handleRefresh}
-              disabled={refreshing}
-            >
-              {refreshing
-                ? t("common.refreshing", {
-                    defaultValue: "Refreshing...",
-                  })
-                : t("common.refresh", { defaultValue: "Refresh" })}
-            </Button>
-          </div>
-        </header>
-
-        <div className="divide-y divide-border/40 rounded-sm border border-border/40">
-          {applicablePermissions.map((def) => {
-            const state = permissions[def.id];
-            return (
-              <PermissionRow
-                key={def.id}
-                def={def}
-                status={state?.status ?? "not-determined"}
-                reason={state?.reason}
-                platform={platform}
-                canRequest={state?.canRequest ?? false}
-                onRequest={() => handleRequest(def.id)}
-                onOpenSettings={() => handleOpenSettings(def.id)}
-                isShell={def.id === "shell"}
-                shellEnabled={shellEnabled}
-                onToggleShell={
-                  def.id === "shell" ? handleToggleShell : undefined
-                }
-              />
-            );
-          })}
-        </div>
-        <p className="text-xs-tight leading-5 text-muted">
-          {t(copy.grantNote.key, { defaultValue: copy.grantNote.defaultValue })}
-        </p>
-      </section>
+    <SettingsStack>
+      <SettingsGroup
+        title={t("permissionssection.SystemPermissions", {
+          defaultValue: "System Permissions",
+        })}
+        description={t(copy.systemDescription.key, {
+          defaultValue: copy.systemDescription.defaultValue,
+        })}
+        action={
+          <SettingsActionButton
+            agentId="perm-system-refresh"
+            agentLabel="Refresh system permissions"
+            agentGroup="permissions"
+            agentStatus={refreshing ? "loading" : undefined}
+            variant="outline"
+            size="sm"
+            data-testid="permissions-refresh-button"
+            className="h-9 rounded-sm px-3 text-xs font-semibold"
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            {refreshing
+              ? t("common.refreshing", {
+                  defaultValue: "Refreshing...",
+                })
+              : t("common.refresh", { defaultValue: "Refresh" })}
+          </SettingsActionButton>
+        }
+        footer={t(copy.grantNote.key, {
+          defaultValue: copy.grantNote.defaultValue,
+        })}
+      >
+        {applicablePermissions.map((def) => {
+          const state = permissions[def.id];
+          return (
+            <PermissionRow
+              key={def.id}
+              def={def}
+              status={state?.status ?? "not-determined"}
+              reason={state?.reason}
+              platform={platform}
+              canRequest={state?.canRequest ?? false}
+              onRequest={() => handleRequest(def.id)}
+              onOpenSettings={() => handleOpenSettings(def.id)}
+              isShell={def.id === "shell"}
+              shellEnabled={shellEnabled}
+              onToggleShell={def.id === "shell" ? handleToggleShell : undefined}
+            />
+          );
+        })}
+      </SettingsGroup>
 
       {WebsiteBlockerSettingsCard ? (
         <WebsiteBlockerSettingsCard
@@ -505,40 +498,32 @@ function DesktopPermissionsView() {
         />
       ) : null}
 
-      {/* Capability Toggles */}
-      <section className="space-y-2 border-t border-border/40 pt-5">
-        <header className="space-y-0.5">
-          <h3 className="text-sm font-semibold text-txt">
-            {t("common.capabilities")}
-          </h3>
-          <p className="max-w-2xl text-xs-tight leading-5 text-muted">
-            {t("permissionssection.CapabilitiesDescription", {
-              defaultValue:
-                "Turn higher-level capabilities on only after the required runtime permissions are available.",
-            })}
-          </p>
-        </header>
-        <div className="space-y-2">
-          {CAPABILITIES.map((cap) => {
-            const plugin = plugins.find((p) => p.id === cap.id) ?? null;
-            const permissionsGranted = arePermissionsGranted(
-              cap.requiredPermissions,
-            );
-            return (
-              <CapabilityToggle
-                key={cap.id}
-                cap={cap}
-                plugin={plugin}
-                permissionsGranted={permissionsGranted}
-                onToggle={(enabled) => {
-                  if (plugin) void handlePluginToggle(cap.id, enabled);
-                }}
-              />
-            );
-          })}
-        </div>
-      </section>
-    </div>
+      <SettingsGroup
+        title={t("common.capabilities")}
+        description={t("permissionssection.CapabilitiesDescription", {
+          defaultValue:
+            "Turn higher-level capabilities on only after the required runtime permissions are available.",
+        })}
+      >
+        {CAPABILITIES.map((cap) => {
+          const plugin = plugins.find((p) => p.id === cap.id) ?? null;
+          const permissionsGranted = arePermissionsGranted(
+            cap.requiredPermissions,
+          );
+          return (
+            <CapabilityToggle
+              key={cap.id}
+              cap={cap}
+              plugin={plugin}
+              permissionsGranted={permissionsGranted}
+              onToggle={(enabled) => {
+                if (plugin) void handlePluginToggle(cap.id, enabled);
+              }}
+            />
+          );
+        })}
+      </SettingsGroup>
+    </SettingsStack>
   );
 }
 

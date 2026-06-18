@@ -7,9 +7,14 @@
 import {
 	ChannelType,
 	createUniqueUuid,
+	decodeCallback,
 	type Entity,
 	type EventPayload,
 	EventType,
+	type HandlerCallback,
+	isInteractionCallback,
+	type Memory,
+	MemoryType,
 	type Room,
 	stringToUuid,
 	type UUID,
@@ -25,15 +30,18 @@ import {
 	PermissionsBitField,
 	type TextChannel,
 } from "discord.js";
+import { registerCatalogSlashCommands } from "./catalog-commands";
 import type { ICompatRuntime } from "./compat";
 import {
 	buildDiscordEntityMetadata,
 	buildDiscordWorldMetadata,
 } from "./identity";
+import { renderDiscordInteractions } from "./interactions";
 import { generateInviteUrl } from "./permissions";
 import { syncDiscordClientProfile } from "./profileSync";
 import type { DiscordService } from "./service";
 import { registerSlashCommands as registerBuiltinSlashCommands } from "./slash-commands";
+import { getMessageService, sendMessageInChunks } from "./utils";
 import {
 	DiscordEventTypes,
 	type DiscordRegisterCommandsPayload,
@@ -257,6 +265,68 @@ export async function handleInteractionCreate(
 			}
 
 			if (interaction.isButton()) {
+				// Interaction-protocol answer: a button whose custom_id was produced
+				// by the shared codec (a choice / followup tap). Decode it and replay
+				// as an ordinary user turn — mirroring the dashboard's send-the-value
+				// behavior — so choice scopes and orchestrator turns route identically
+				// across surfaces. Ack first to clear the button's loading state.
+				if (isInteractionCallback(interaction.customId)) {
+					const decoded = decodeCallback(interaction.customId);
+					try {
+						await interaction.deferUpdate();
+					} catch {
+						// best-effort: a stale interaction may already be acknowledged
+					}
+					if (decoded) {
+						const memory: Memory = {
+							id: createUniqueUuid(service.runtime, `cbq-${interaction.id}`),
+							entityId,
+							agentId: service.runtime.agentId,
+							roomId,
+							content: {
+								text: decoded.value,
+								source: "discord",
+								channelType: type,
+							},
+							metadata: {
+								type: MemoryType.MESSAGE,
+								source: "discord",
+								accountId,
+							},
+							createdAt: Date.now(),
+						};
+						const callback: HandlerCallback = async (content) => {
+							const channel = interaction.channel as TextChannel | null;
+							if (
+								!content.text ||
+								!channel ||
+								typeof channel.send !== "function"
+							) {
+								return [];
+							}
+							const render = renderDiscordInteractions(content);
+							await sendMessageInChunks(
+								channel,
+								render.text,
+								"",
+								[],
+								render.components.length > 0 ? render.components : undefined,
+								service.runtime,
+							);
+							return [];
+						};
+						const messageService = getMessageService(service.runtime);
+						if (messageService) {
+							await messageService.handleMessage(
+								service.runtime,
+								memory,
+								callback,
+							);
+						}
+					}
+					return;
+				}
+
 				service.runtime.logger.debug(
 					{
 						src: "plugin:discord",
@@ -666,6 +736,11 @@ export async function onReady(
 			await service.registerSlashCommands(params.commands);
 		},
 	);
+	// Seed the universal command catalog into the in-process registry before the
+	// built-in registration reads it, so catalog + built-in commands ship in a
+	// single DISCORD_REGISTER_COMMANDS emission. Built-in names always win the
+	// dedupe inside registerCatalogSlashCommands, preserving existing behavior.
+	registerCatalogSlashCommands(service.runtime);
 	await registerBuiltinSlashCommands(service.runtime);
 
 	const auditLogSettingForInvite = service.runtime.getSetting(

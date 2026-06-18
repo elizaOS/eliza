@@ -1,6 +1,6 @@
 # @elizaos/plugin-facewear
 
-Unified hearwear plugin for elizaOS — adds XR headset streaming and BLE smartglasses control to any Eliza agent.
+Unified facewear plugin for elizaOS — adds XR headset streaming and BLE smartglasses control to any Eliza agent.
 
 ## Purpose / role
 
@@ -51,7 +51,7 @@ Registered as `@elizaos/plugin-facewear` (opt-in, category `hardware`). Connects
 
 ### Views
 Two registered view surfaces (`gui`/`tui`/`xr` variants):
-- `facewear` — `/apps/hearwear` — main hearwear manager (`FacewearView`)
+- `facewear` — `/apps/facewear` — main facewear manager (`FacewearView`)
 - `smartglasses` — `/apps/smartglasses` — Even Realities pairing + diagnostics (`SmartglassesView`)
 
 ## Layout

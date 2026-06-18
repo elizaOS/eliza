@@ -26,9 +26,9 @@ For the canonical software proof from the repository root, run:
 npm run verify:smartglasses-software
 ```
 
-That command runs the Hearwear plugin lint/typecheck/test/app-registration
+That command runs the Facewear plugin lint/typecheck/test/app-registration
 gates, then this example's full software verification, repairs any Bun lockfile
-churn back to `@elizaos/plugin-facewear`, and then reruns the Facewear consolidation audit,
+churn back to `@elizaos/plugin-facewear`, and then reruns the
 Even Realities research audit self-test, Even Realities research audit, and
 smartglasses completion self-test.
 

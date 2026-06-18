@@ -31,6 +31,7 @@ export const VIEW_CASES: ViewCase[] = (
     ["goals", "gui", "/goals"],
     ["health", "gui", "/health"],
     ["inbox", "gui", "/inbox"],
+    ["relationships", "gui", "/relationships"],
     ["todos", "gui", "/todos"],
     ["messages", "gui", "/messages"],
     ["messages", "tui", "/messages/tui"],
@@ -74,8 +75,8 @@ export const VIEW_CASES: ViewCase[] = (
     ["trajectory-logger", "tui", "/trajectory-logger/tui"],
     ["training", "gui", "/apps/fine-tuning"],
     ["training", "tui", "/training/tui"],
-    ["facewear", "gui", "/apps/hearwear"],
-    ["facewear", "tui", "/apps/hearwear/tui"],
+    ["facewear", "gui", "/apps/facewear"],
+    ["facewear", "tui", "/apps/facewear/tui"],
     ["smartglasses", "gui", "/apps/smartglasses"],
     ["smartglasses", "tui", "/apps/smartglasses/tui"],
   ] satisfies ViewCaseTuple[]

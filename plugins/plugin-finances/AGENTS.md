@@ -1,62 +1,95 @@
 # @elizaos/plugin-finances
 
-Owner-facing finance dashboard for elizaOS: balance summary, transactions, and
-recurring charges. Currently a scaffold landing the package in the workspace
-so subsequent passes can migrate OWNER_FINANCES out of `@elizaos/plugin-personal-assistant`.
+Owner-facing finance back-end + dashboard for elizaOS: payment sources, bank /
+PayPal / Plaid / CSV transactions, spending summaries, recurring-charge
+detection, and email bills. Owns the finance data layer (`FinancesService` +
+`FinancesRepository` over the `app_finances` schema) that
+`@elizaos/plugin-personal-assistant` (PA) delegates to.
 
 ## Purpose / role
 
-Surfaces the owner's finance state — accounts balance, recent transactions,
-and recurring charges / subscriptions — as a dedicated overlay app and an
-action callable from chat. Hooks into other finance providers (CSV import,
-bank connectors, payment processors, etc.) in a later phase. The plugin is
-opt-in; add `@elizaos/plugin-finances` to the agent's plugin list. It hard-
-depends on `@elizaos/plugin-sql` (declared as a peer dep and in
-`dependencies: ["@elizaos/plugin-sql"]`).
+Surfaces the owner's finance state — payment sources, recent transactions,
+recurring charges, spending, and email bills — as a dedicated overlay app, and
+provides the payments back-end the agent's OWNER_FINANCES action drives. The
+plugin is opt-in; add `@elizaos/plugin-finances` to the agent's plugin list (PA
+auto-registers it via `ensureLifeOpsFinancesPluginRegistered`). It hard-depends
+on `@elizaos/plugin-sql` (peer dep + `dependencies: ["@elizaos/plugin-sql"]`),
+and on `@elizaos/plugin-elizacloud` for the managed Plaid / PayPal clients.
 
 ## Plugin surface
 
-**Action**
-- `OWNER_FINANCES` (`src/actions/finances.ts`) — **scaffold stub.** Returns a
-  clear "not yet wired" `ActionResult`. The real handler is migrating from
-  `plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts` (`ownerFinancesAction`
-  around line 433) plus the money / payments handlers in
-  `plugins/plugin-personal-assistant/src/actions/money.ts` and
-  `plugins/plugin-personal-assistant/src/actions/payments.ts`. Role gate: ADMIN.
-  Contexts: `money`, `owner`.
+**Back-end (the finance domain home)**
+- `FinancesService` (`src/finances-service.ts`) — payment sources, CSV import,
+  transactions, spending summaries, recurring-charge detection, email bills,
+  and the Plaid / PayPal managed bridges. Standalone successor to PA's
+  `withPayments` mixin; holds its own runtime + `FinancesRepository`. Throws
+  `FinancesServiceError` (HTTP status) on invalid input.
+- `FinancesRepository` (`src/db/finances-repository.ts`) — raw SQL over
+  `app_finances` (payment sources / transactions + subscription audits /
+  candidates / cancellations). Uses the self-contained `src/db/sql.ts` helpers
+  (runtime DB handle). PA's `LifeOpsRepository` delegates its finance methods
+  here so the PA subscriptions mixin reaches the finance tables unchanged.
+- `runPaymentsHandler`, `MONEY_PARAMETERS`, `OWNER_FINANCE_SIMILES`,
+  `MONEY_TAGS`, `MONEY_CONTEXTS` (`src/actions/finances.ts`) — the payments
+  OWNER_FINANCES dispatch + parameter schema. PA imports these; the registered
+  `OWNER_FINANCES` umbrella action stays in PA because it also routes
+  `subscription_*` to PA's Gmail/browser-orchestrating subscription back-end.
 
 **Views**
 - `finances` — `FinancesView` component, path `/finances`, bundle
-  `dist/views/bundle.js`. Three placeholder sections: balance summary,
-  transactions, recurring charges. Backed by `FinancesViewProps` in
-  `src/types.ts`.
+  `dist/views/bundle.js`. Fetches the four `/api/lifeops/money/*` GET routes
+  (dashboard / sources / transactions / recurring), served by PA's route layer
+  via `runFinancesRoute` → `FinancesService`. URLs + response shapes are stable.
 
-**Schema**
-- `financesSchema` (`pgSchema("app_finances")`) with two tables:
-  - `transactionsTable` — agent / entity / occurredAt / amountMinor /
-    currency / description / category / merchant / status / source / metadata.
-  - `recurringChargesTable` — agent / entity / label / amountMinor /
-    currency / cadence / nextChargeAt / merchant / active / metadata.
-  Exported from `src/db/index.ts` as the drizzle schema object the runtime
-  registers migrations from.
+**Schema** (`financesSchema` = `pgSchema("app_finances")`, registered via the
+plugin `schema` field; the SQL plugin owns the migration runner)
+- `lifePaymentSources`, `lifePaymentTransactions`, `lifeSubscriptionAudits`,
+  `lifeSubscriptionCandidates`, `lifeSubscriptionCancellations`. Table NAMES are
+  preserved verbatim from the original LifeOps tables (`life_payment_*`,
+  `life_subscription_*`) so the non-destructive copy migration
+  (`FinancesMigrationService`) can move existing `app_lifeops` rows across.
+  Amounts are stored in USD (`amount_usd` real), not minor units.
 
 ## Layout
 
 ```
 src/
   index.ts                        Plugin default export + named re-exports
-  plugin.ts                       Plugin object (action + views + schema wiring)
-  types.ts                        DTOs and status / cadence enums
+  plugin.ts                       Plugin object (views + schema + migration)
+  types.ts                        View DTOs (FinancesViewProps etc.)
+  finances-service.ts             FinancesService (payments back-end)
+  finance-normalize.ts            FinancesServiceError + input normalizers
+  payment-types.ts                Payment / dashboard / spending types
+  payment-recurrence.ts           Recurring-charge detection + merchant normalize
+  payment-csv-import.ts           CSV parser → ParsedCsvTransaction
+  token-encryption.ts             AES-256-GCM token-at-rest helpers
+  subscriptions-types.ts          Subscription audit / candidate / cancellation types
+  subscriptions-playbooks.ts      Cancellation playbooks (Netflix, Spotify, …)
   actions/
-    finances.ts                   ownerFinancesAction (scaffold stub)
+    finances.ts                   runPaymentsHandler + OWNER_FINANCES param schema
   db/
-    schema.ts                     pgSchema("app_finances") + transactions / recurring tables
+    schema.ts                     pgSchema("app_finances") + 5 finance tables
+    sql.ts                        Self-contained raw-SQL helpers (runtime DB)
+    finances-repository.ts        FinancesRepository (raw SQL over app_finances)
     index.ts                      re-exports schema.ts
+  services/
+    migration.ts                  FinancesMigrationService (app_lifeops → app_finances copy)
   components/
     finances/
-      FinancesView.tsx            Placeholder dashboard view (3 sections)
+      FinancesView.tsx            Dashboard view (fetches /api/lifeops/money/*)
       finances-view-bundle.ts     Vite view-bundle entry (named FinancesView export)
 ```
+
+## Boundary with plugin-personal-assistant
+
+- `@elizaos/plugin-finances` MUST NOT import `@elizaos/plugin-personal-assistant`.
+- PA delegates the payments back-end here (routes via `runFinancesRoute` →
+  `FinancesService`; `actions/payments.ts` re-exports `runPaymentsHandler`).
+- **Subscription audit / cancellation stays in PA** (`withSubscriptions` mixin):
+  it orchestrates the agent's Gmail triage + browser-bridge + computer-use
+  surfaces and reads PA's `app_lifeops` browser-session table, so it cannot be a
+  PA-import-free finances service. It reaches the finance tables through PA's
+  `LifeOpsRepository`, which delegates to `FinancesRepository`.
 
 ## Commands
 
@@ -73,45 +106,43 @@ bun run --cwd plugins/plugin-finances clean        # rm -rf dist
 
 ## Config / env vars
 
-No env vars or settings keys yet. When OWNER_FINANCES is migrated from
-plugin-lifeops, any required env vars (CSV source paths, finance connector
-tokens, etc.) will be documented here.
-
-## Migration map from `@elizaos/plugin-personal-assistant`
-
-| Symbol / file | Source in plugin-lifeops | Destination |
+| Variable | Required | Description |
 |---|---|---|
-| `ownerFinancesAction` | `src/actions/owner-surfaces.ts` (~line 433) | `src/actions/finances.ts` |
-| `OWNER_FINANCE_ACTIONS`, `OWNER_FINANCE_SIMILES` | `src/actions/owner-surfaces.ts` | `src/actions/finances.ts` (TODO) |
-| `MONEY_PARAMETERS`, `runMoneyHandler` | `src/actions/money.ts` | `src/actions/finances.ts` (TODO) |
-| Recurring-charge helpers | `src/actions/payments.ts`, `src/actions/lib/payments-recurring.ts` (if present) | `src/actions/finances.ts` / future `src/lib/` (TODO) |
-| Finance dashboard view | currently rendered through `LifeOpsPageView` | `src/components/finances/FinancesView.tsx` |
-| Finance DB tables | lifeops `src/lifeops/schema.ts` finance sections | `src/db/schema.ts` |
+| `ELIZA_TOKEN_ENCRYPTION_KEY` | No | 32-byte (base64/hex) key encrypting Plaid / PayPal tokens at rest. Falls back to a lazily-generated `<oauth-dir>/lifeops/payments/.encryption-key` (mode 0600). |
+| `ELIZAOS_CLOUD_API_KEY` | No | Eliza Cloud API key for the managed Plaid / PayPal bridges. |
+| `ELIZAOS_CLOUD_BASE_URL` | No | Eliza Cloud base URL override for the managed bridges. |
 
-When the OWNER_FINANCES code is moved over here, delete the corresponding
-exports from `plugin-lifeops/src/actions/owner-surfaces.ts` and update the
-`promoteSubactionsToActions` wiring in `plugin-lifeops/src/plugin.ts`.
+## What lives here vs. in PA
+
+| Concern | Home |
+|---|---|
+| Payment back-end (`FinancesService`) + repository (`FinancesRepository`) | plugin-finances |
+| Finance schema (`app_finances`) + migration | plugin-finances |
+| Payment / subscription types, recurring detection, CSV parse, token crypto, playbooks | plugin-finances |
+| `runPaymentsHandler` + OWNER_FINANCES param schema / similes | plugin-finances (`src/actions/finances.ts`) |
+| Registered `OWNER_FINANCES` umbrella action + `runMoneyHandler` dispatch | PA (`owner-surfaces.ts` / `money.ts`) — routes `subscription_*` to PA |
+| `/api/lifeops/money/*` routes | PA (`lifeops-routes.ts`, `runFinancesRoute` → `FinancesService`) |
+| Subscription audit / cancellation (`withSubscriptions` mixin) | PA (Gmail + browser-bridge orchestration) |
 
 ## How to extend
 
-**Add a sub-op to OWNER_FINANCES:**
-1. Add the op name to the action's `enum` for the `action` parameter in
-   `src/actions/finances.ts`.
-2. Add the case in the (migrated) handler dispatch.
-3. Surface any new DTO field in `src/types.ts` so `FinancesView` can render
-   it.
+**Add a payments sub-op:**
+1. Add the subaction to `PaymentsSubaction` + `MONEY_PARAMETERS` and the
+   `switch` in `runPaymentsActionInner` (`src/actions/finances.ts`).
+2. Add the method to `FinancesService` (`src/finances-service.ts`); add any new
+   raw-SQL access to `FinancesRepository` (`src/db/finances-repository.ts`).
+3. If it needs a route, add it under `/api/lifeops/money/*` in PA's
+   `lifeops-routes.ts` using `runFinancesRoute`.
 
 **Add a finance provider integration (bank / CSV / payments):**
-1. Add a `src/providers/<name>.ts` exporting a `Provider` from
-   `@elizaos/core`.
-2. Register it in the `providers` array of `financesPlugin` in
-   `src/plugin.ts`.
+1. Add a method to `FinancesService` (and `FinancesRepository` for persistence).
+2. For OAuth/managed bridges, follow the Plaid / PayPal pattern via
+   `@elizaos/plugin-elizacloud/cloud/managed-payment-clients`.
 
 **Add a new view variant (XR / TUI):**
 1. Build the component under `src/components/finances/`.
 2. Re-export it from `finances-view-bundle.ts`.
-3. Add a view descriptor to the `views` array in `src/plugin.ts` with a
-   unique `viewType`.
+3. Add a view descriptor to the `views` array in `src/plugin.ts`.
 
 ## Conventions / gotchas
 
@@ -121,12 +152,14 @@ exports from `plugin-lifeops/src/actions/owner-surfaces.ts` and update the
 - **Two build steps.** The JS/types build (tsup + tsc) and the Vite views
   build are separate. The views bundle (`dist/views/bundle.js`) is what the
   `bundlePath` in the view registration points to.
-- **Scoping is `(agentId, entityId)`.** Transactions and recurring charges
-  are per-owner per-agent.
-- **Action handler is currently a stub.** Migration from
-  `@elizaos/plugin-personal-assistant` is intentionally deferred. Do not add real
-  business logic here until the migration pass starts.
-- **Currency amounts are stored as minor units (cents) in `amountMinor`.**
-  Never mix major/minor units; convert at the render boundary.
+- **Scoping is per-agent** (`agent_id`); the route/service derive the owner
+  entity from the request context.
+- **Currency amounts are stored in USD** (`amount_usd` real), not minor units.
+- **No import of `@elizaos/plugin-personal-assistant`.** Cross-domain capability
+  the finance back-end can't own (Gmail triage, browser bridge) stays in PA;
+  subscription orchestration lives there for that reason.
+- **`src/db/sql.ts` is a self-contained copy** of PA's raw-SQL helpers (so the
+  back-end carries no PA dependency). Keep it in sync only if a correctness fix
+  applies to both; do not add PA-specific logic.
 - See the root `AGENTS.md` for repo-wide architecture rules, logger
   requirements, ESM/module standards, and git workflow.

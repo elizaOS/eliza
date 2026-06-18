@@ -40,6 +40,45 @@ import { type IAgentRuntime, ModelType } from "@elizaos/core";
  *  evaluators in the orchestrator audit log. */
 export const LLM_GOAL_VERIFIER_NAME = "llm-goal-verifier";
 
+/**
+ * Whether the orchestrator automatically runs {@link verifyGoalCompletion} when
+ * a sub-agent reports a task complete (status → `validating`). Default ON; set
+ * `ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY=0` to disable, falling back to the
+ * manual `POST /tasks/:id/auto-validate` opt-in path. Mirrors the
+ * `ELIZA_ORCHESTRATOR_SMITHERS` flag convention.
+ *
+ * Auto-firing is additionally gated on the task actually having acceptance
+ * criteria (see {@link OrchestratorTaskService}), so a flag-on task with no
+ * criteria still incurs no model spend.
+ */
+export function shouldAutoVerifyGoal(): boolean {
+  return process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY !== "0";
+}
+
+/**
+ * Maximum number of automatic corrective re-sends to a failing sub-agent before
+ * the orchestrator stops looping and hands the task to a human
+ * (`waiting_on_user`). Prevents a perpetually-failing worker from burning model
+ * spend in an unbounded verify→correct→verify cycle.
+ */
+export const MAX_AUTO_VERIFY_ATTEMPTS = 3;
+
+/**
+ * Compose the corrective message body sent back to a sub-agent when automatic
+ * verification did not confirm every acceptance criterion. The
+ * goal/acceptance-criteria envelope is re-applied by `buildGoalFollowUp`
+ * (reason `validation_failed`); this is just the human-readable gap report.
+ */
+export function buildAutoVerifyCorrection(missing: readonly string[]): string {
+  const lines = [
+    "Automatic verification did not confirm the task is complete. The following acceptance criteria are not yet demonstrated as met:",
+    ...missing.map((criterion) => `- ${criterion}`),
+    "",
+    "Address each unmet criterion, then re-verify by running the relevant tests/build/typecheck before reporting complete again.",
+  ];
+  return lines.join("\n");
+}
+
 export interface GoalVerificationInput {
   /** The durable task goal — the "what" the worker owns. */
   goal: string;

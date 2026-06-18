@@ -1262,6 +1262,12 @@ if (uiOnly) {
       ELIZA_PORT: String(UI_PORT),
       ELIZA_HEADLESS: "1",
       ELIZA_DEV_AUTH_BYPASS: "1",
+      // Defer the post-ready boot tail (app-route plugins, training hooks,
+      // sensitive-request adapters, trigger bridge, connector catalog, voice
+      // warmup) so /api/health flips ready:true and the dashboard reaches first
+      // paint before they finish. Brief feature-route 404 window after "ready"
+      // is the trade-off; acceptable for dev. Explicit env always wins.
+      ELIZA_DEFER_APP_ROUTES: process.env.ELIZA_DEFER_APP_ROUTES?.trim() || "1",
       LOG_LEVEL: devLogLevel,
       // Dev boots happen on developer machines that may be busy (concurrent
       // builds, test suites, other agents). plugin-sql pulls in native pglite

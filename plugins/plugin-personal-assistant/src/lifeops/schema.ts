@@ -308,72 +308,10 @@ export const lifeAuditEvents = appLifeopsPgSchema.table(
   ],
 );
 
-export const lifeSubscriptionAudits = appLifeopsPgSchema.table(
-  "life_subscription_audits",
-  {
-    id: text("id").primaryKey(),
-    agentId: text("agent_id").notNull(),
-    source: text("source").notNull().default("gmail"),
-    queryWindowDays: integer("query_window_days").notNull().default(180),
-    status: text("status").notNull().default("completed"),
-    totalCandidates: integer("total_candidates").notNull().default(0),
-    activeCandidates: integer("active_candidates").notNull().default(0),
-    canceledCandidates: integer("canceled_candidates").notNull().default(0),
-    uncertainCandidates: integer("uncertain_candidates").notNull().default(0),
-    summary: text("summary").notNull().default(""),
-    metadataJson: text("metadata_json").notNull().default("{}"),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
-  },
-);
-
-export const lifeSubscriptionCandidates = appLifeopsPgSchema.table(
-  "life_subscription_candidates",
-  {
-    id: text("id").primaryKey(),
-    agentId: text("agent_id").notNull(),
-    auditId: text("audit_id").notNull(),
-    serviceSlug: text("service_slug").notNull(),
-    serviceName: text("service_name").notNull(),
-    provider: text("provider").notNull().default("unknown"),
-    cadence: text("cadence").notNull().default("unknown"),
-    state: text("state").notNull().default("uncertain"),
-    confidence: real("confidence").notNull().default(0),
-    annualCostEstimateUsd: real("annual_cost_estimate_usd"),
-    managementUrl: text("management_url"),
-    latestEvidenceAt: text("latest_evidence_at"),
-    evidenceJson: text("evidence_json").notNull().default("[]"),
-    metadataJson: text("metadata_json").notNull().default("{}"),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
-  },
-  (t) => [unique().on(t.agentId, t.auditId, t.serviceSlug)],
-);
-
-export const lifeSubscriptionCancellations = appLifeopsPgSchema.table(
-  "life_subscription_cancellations",
-  {
-    id: text("id").primaryKey(),
-    agentId: text("agent_id").notNull(),
-    auditId: text("audit_id"),
-    candidateId: text("candidate_id"),
-    serviceSlug: text("service_slug").notNull(),
-    serviceName: text("service_name").notNull(),
-    executor: text("executor").notNull().default("agent_browser"),
-    status: text("status").notNull().default("draft"),
-    confirmed: boolean("confirmed").notNull().default(false),
-    currentStep: text("current_step"),
-    browserSessionId: text("browser_session_id"),
-    evidenceSummary: text("evidence_summary"),
-    artifactCount: integer("artifact_count").notNull().default(0),
-    managementUrl: text("management_url"),
-    error: text("error"),
-    metadataJson: text("metadata_json").notNull().default("{}"),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
-    finishedAt: text("finished_at"),
-  },
-);
+// Finance tables (life_payment_*, life_subscription_*) moved to
+// @elizaos/plugin-finances under pgSchema("app_finances"). PA no longer creates
+// them in app_lifeops; the finances plugin owns + migrates them. PA's raw
+// finance SQL (repository.ts) targets app_finances directly.
 
 export const lifeEmailUnsubscribes = appLifeopsPgSchema.table(
   "life_email_unsubscribes",
@@ -396,53 +334,6 @@ export const lifeEmailUnsubscribes = appLifeopsPgSchema.table(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-);
-
-export const lifePaymentSources = appLifeopsPgSchema.table(
-  "life_payment_sources",
-  {
-    id: text("id").primaryKey(),
-    agentId: text("agent_id").notNull(),
-    kind: text("kind").notNull().default("manual"),
-    label: text("label").notNull().default(""),
-    institution: text("institution"),
-    accountMask: text("account_mask"),
-    status: text("status").notNull().default("active"),
-    lastSyncedAt: text("last_synced_at"),
-    transactionCount: integer("transaction_count").notNull().default(0),
-    metadataJson: text("metadata_json").notNull().default("{}"),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
-  },
-);
-
-export const lifePaymentTransactions = appLifeopsPgSchema.table(
-  "life_payment_transactions",
-  {
-    id: text("id").primaryKey(),
-    agentId: text("agent_id").notNull(),
-    sourceId: text("source_id").notNull(),
-    externalId: text("external_id"),
-    postedAt: text("posted_at").notNull(),
-    amountUsd: real("amount_usd").notNull().default(0),
-    direction: text("direction").notNull().default("debit"),
-    merchantRaw: text("merchant_raw").notNull().default(""),
-    merchantNormalized: text("merchant_normalized").notNull().default(""),
-    description: text("description"),
-    category: text("category"),
-    currency: text("currency").notNull().default("USD"),
-    metadataJson: text("metadata_json").notNull().default("{}"),
-    createdAt: text("created_at").notNull(),
-  },
-  (t) => [
-    unique().on(
-      t.agentId,
-      t.sourceId,
-      t.postedAt,
-      t.amountUsd,
-      t.merchantNormalized,
-    ),
-  ],
 );
 
 export const lifeActivitySignals = appLifeopsPgSchema.table(
@@ -1114,145 +1005,14 @@ export const lifeFollowUps = appLifeopsPgSchema.table("life_follow_ups", {
   updatedAt: text("updated_at").notNull(),
 });
 
-// Knowledge graph: entities + relationships.
-//
-// `life_entities` stores nodes (person, organization, place, project,
-// concept, ...). Per-connector identity claims are stored in
-// `life_entity_identities`; open-keyed extracted attributes in
-// `life_entity_attributes`. The `(agent_id, entity_id)` pair is unique;
-// `entityId === "self"` is the special user node.
-//
-// `life_relationships_v2` stores typed edges. `(agent_id, from_entity_id,
-// to_entity_id, type)` is unique for active edges (a retired edge of the
-// same triple may co-exist with a new active one). `cadence_days` is
-// surfaced as a column-level shortcut for the cadence-overdue filter
-// even though it also appears inside `metadata_json`.
-export const lifeEntities = appLifeopsPgSchema.table(
-  "life_entities",
-  {
-    entityId: text("entity_id").notNull(),
-    agentId: text("agent_id").notNull(),
-    type: text("type").notNull(),
-    preferredName: text("preferred_name").notNull(),
-    fullName: text("full_name"),
-    tagsJson: text("tags_json").notNull().default("[]"),
-    visibility: text("visibility").notNull().default("owner_agent_admin"),
-    stateLastObservedAt: text("state_last_observed_at"),
-    stateLastInboundAt: text("state_last_inbound_at"),
-    stateLastOutboundAt: text("state_last_outbound_at"),
-    stateLastInteractionPlatform: text("state_last_interaction_platform"),
-    legacyRelationshipId: text("legacy_relationship_id"),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
-  },
-  (t) => [
-    unique().on(t.agentId, t.entityId),
-    index("life_entities_agent_type_idx").on(t.agentId, t.type),
-    index("life_entities_agent_name_idx").on(t.agentId, t.preferredName),
-  ],
-);
-
-export const lifeEntityIdentities = appLifeopsPgSchema.table(
-  "life_entity_identities",
-  {
-    id: text("id").primaryKey(),
-    agentId: text("agent_id").notNull(),
-    entityId: text("entity_id").notNull(),
-    platform: text("platform").notNull(),
-    handle: text("handle").notNull(),
-    displayName: text("display_name"),
-    verified: boolean("verified").notNull().default(false),
-    confidence: real("confidence").notNull().default(0),
-    addedAt: text("added_at").notNull(),
-    addedVia: text("added_via").notNull(),
-    evidenceJson: text("evidence_json").notNull().default("[]"),
-  },
-  (t) => [
-    unique().on(t.agentId, t.entityId, t.platform, t.handle),
-    index("life_entity_identities_lookup_idx").on(
-      t.agentId,
-      t.platform,
-      t.handle,
-    ),
-  ],
-);
-
-export const lifeEntityAttributes = appLifeopsPgSchema.table(
-  "life_entity_attributes",
-  {
-    id: text("id").primaryKey(),
-    agentId: text("agent_id").notNull(),
-    entityId: text("entity_id").notNull(),
-    key: text("key").notNull(),
-    valueJson: text("value_json").notNull().default("null"),
-    confidence: real("confidence").notNull().default(0),
-    evidenceJson: text("evidence_json").notNull().default("[]"),
-    updatedAt: text("updated_at").notNull(),
-  },
-  (t) => [
-    unique().on(t.agentId, t.entityId, t.key),
-    index("life_entity_attributes_lookup_idx").on(t.agentId, t.entityId),
-  ],
-);
-
-export const lifeRelationshipsV2 = appLifeopsPgSchema.table(
-  "life_relationships_v2",
-  {
-    relationshipId: text("relationship_id").primaryKey(),
-    agentId: text("agent_id").notNull(),
-    fromEntityId: text("from_entity_id").notNull(),
-    toEntityId: text("to_entity_id").notNull(),
-    type: text("type").notNull(),
-    metadataJson: text("metadata_json").notNull().default("{}"),
-    cadenceDays: integer("cadence_days"),
-    stateLastObservedAt: text("state_last_observed_at"),
-    stateLastInteractionAt: text("state_last_interaction_at"),
-    stateInteractionCount: integer("state_interaction_count")
-      .notNull()
-      .default(0),
-    stateSentimentTrend: text("state_sentiment_trend"),
-    evidenceJson: text("evidence_json").notNull().default("[]"),
-    confidence: real("confidence").notNull().default(0),
-    source: text("source").notNull(),
-    status: text("status").notNull().default("active"),
-    retiredAt: text("retired_at"),
-    retiredReason: text("retired_reason"),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
-  },
-  (t) => [
-    index("life_relationships_v2_edge_idx").on(
-      t.agentId,
-      t.fromEntityId,
-      t.toEntityId,
-      t.type,
-    ),
-    index("life_relationships_v2_to_idx").on(t.agentId, t.toEntityId),
-    index("life_relationships_v2_cadence_idx").on(
-      t.agentId,
-      t.cadenceDays,
-      t.stateLastInteractionAt,
-    ),
-  ],
-);
-
-export const lifeRelationshipAuditEvents = appLifeopsPgSchema.table(
-  "life_relationship_audit_events",
-  {
-    id: text("id").primaryKey(),
-    agentId: text("agent_id").notNull(),
-    relationshipId: text("relationship_id").notNull(),
-    kind: text("kind").notNull(),
-    detailsJson: text("details_json").notNull().default("{}"),
-    createdAt: text("created_at").notNull(),
-  },
-  (t) => [
-    index("life_relationship_audit_events_lookup_idx").on(
-      t.agentId,
-      t.relationshipId,
-    ),
-  ],
-);
+// Knowledge graph tables (life_entities, life_entity_identities,
+// life_entity_attributes, life_relationships_v2,
+// life_relationship_audit_events) are now runtime-owned: their drizzle
+// definitions + schema registration live in `@elizaos/agent`
+// (`services/knowledge-graph/schema.ts`). They remain in the same
+// `app_lifeops` Postgres schema — ownership moved, the physical tables did
+// not. The DB-backed EntityStore / RelationshipStore are surfaced via the
+// runtime `KnowledgeGraphService`.
 
 export const lifeXDms = appLifeopsPgSchema.table(
   "life_x_dms",
@@ -1807,12 +1567,7 @@ export const lifeOpsSchema = {
   lifeReminderPlans,
   lifeReminderAttempts,
   lifeAuditEvents,
-  lifeSubscriptionAudits,
-  lifeSubscriptionCandidates,
-  lifeSubscriptionCancellations,
   lifeEmailUnsubscribes,
-  lifePaymentSources,
-  lifePaymentTransactions,
   lifeActivitySignals,
   lifeHealthMetricSamples,
   lifeHealthWorkouts,
@@ -1835,11 +1590,10 @@ export const lifeOpsSchema = {
   lifeRelationships,
   lifeRelationshipInteractions,
   lifeFollowUps,
-  lifeEntities,
-  lifeEntityIdentities,
-  lifeEntityAttributes,
-  lifeRelationshipsV2,
-  lifeRelationshipAuditEvents,
+  // life_entities / life_entity_* / life_relationships_v2 /
+  // life_relationship_audit_events are now owned by the runtime
+  // (`@elizaos/agent` KnowledgeGraphService schema) — registered there,
+  // not here, to avoid double-registration of the same app_lifeops tables.
   lifeInboxTriageEntries,
   lifeInboxTriageExamples,
   lifeXDms,

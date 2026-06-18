@@ -16,7 +16,6 @@
  * else delegates to the finance backend.
  */
 import type {
-  ActionParameter,
   ActionParameters,
   ActionResult,
   HandlerOptions,
@@ -29,205 +28,16 @@ import { runSubscriptionsHandler } from "./subscriptions.js";
 
 const SUBSCRIPTION_PREFIX = "subscription_";
 
-/**
- * Public similes for the OWNER_FINANCES umbrella.
- */
-export const OWNER_FINANCE_SIMILES: readonly string[] = [
-  "MONEY",
-  "PAYMENTS",
-  "SUBSCRIPTIONS",
-  "SPENDING",
-  "ROCKET_MONEY",
-  "BANK_TRANSACTIONS",
-  "RECURRING_CHARGES",
-  "BUDGET",
-  "EXPENSES",
-  "CANCEL_SUBSCRIPTION",
-  "AUDIT_SUBSCRIPTIONS",
-  "CANCEL_NETFLIX",
-  "CANCEL_HULU",
-  "MANAGE_SUBSCRIPTIONS",
-];
-
-/**
- * Parameter schema for the OWNER_FINANCES backend — the registered umbrella
- * surfaces this as its public param list (after renaming `subaction` →
- * `action`).
- */
-export const MONEY_PARAMETERS: readonly ActionParameter[] = [
-  {
-    name: "subaction",
-    description:
-      "dashboard | list_sources | add_source | remove_source | import_csv | list_transactions | spending_summary | recurring_charges " +
-      "| subscription_audit | subscription_cancel | subscription_status. Defaults to dashboard for ambiguous intents.",
-    required: false,
-    schema: { type: "string" as const },
-  },
-  // Payments-side params.
-  {
-    name: "sourceId",
-    description: "Payment source UUID for scoped reads and CSV import.",
-    required: false,
-    schema: { type: "string" as const },
-  },
-  {
-    name: "kind",
-    description: "add_source kind: csv | plaid | manual | paypal.",
-    required: false,
-    schema: { type: "string" as const },
-  },
-  {
-    name: "label",
-    description: "Human label when adding a source.",
-    required: false,
-    schema: { type: "string" as const },
-  },
-  {
-    name: "institution",
-    description: "Institution display name.",
-    required: false,
-    schema: { type: "string" as const },
-  },
-  {
-    name: "accountMask",
-    description: "Last-four or mask string.",
-    required: false,
-    schema: { type: "string" as const },
-  },
-  {
-    name: "csvText",
-    description: "Raw CSV payload for import_csv.",
-    required: false,
-    schema: { type: "string" as const },
-  },
-  {
-    name: "dateColumn",
-    description: "CSV column hint for posting date.",
-    required: false,
-    schema: { type: "string" as const },
-  },
-  {
-    name: "amountColumn",
-    description: "CSV column hint for amount.",
-    required: false,
-    schema: { type: "string" as const },
-  },
-  {
-    name: "merchantColumn",
-    description: "CSV column hint for merchant.",
-    required: false,
-    schema: { type: "string" as const },
-  },
-  {
-    name: "descriptionColumn",
-    description: "CSV column hint for description.",
-    required: false,
-    schema: { type: "string" as const },
-  },
-  {
-    name: "categoryColumn",
-    description: "CSV column hint for category.",
-    required: false,
-    schema: { type: "string" as const },
-  },
-  {
-    name: "windowDays",
-    description: "Rolling window for dashboard or spending summaries.",
-    required: false,
-    schema: { type: "number" as const },
-  },
-  {
-    name: "sinceDays",
-    description: "History window for recurring charge detection.",
-    required: false,
-    schema: { type: "number" as const },
-  },
-  {
-    name: "limit",
-    description: "Transaction row cap for listings.",
-    required: false,
-    schema: { type: "number" as const },
-  },
-  {
-    name: "merchantContains",
-    description: "Filter transactions by merchant substring.",
-    required: false,
-    schema: { type: "string" as const },
-  },
-  {
-    name: "onlyDebits",
-    description: "Exclude credits when listing transactions.",
-    required: false,
-    schema: { type: "boolean" as const },
-  },
-  // Subscription-side params.
-  {
-    name: "serviceName",
-    description: "Display name of the subscription service.",
-    required: false,
-    schema: { type: "string" as const },
-  },
-  {
-    name: "serviceSlug",
-    description: "Normalized slug for routing.",
-    required: false,
-    schema: { type: "string" as const },
-  },
-  {
-    name: "candidateId",
-    description: "Internal audit candidate identifier.",
-    required: false,
-    schema: { type: "string" as const },
-  },
-  {
-    name: "cancellationId",
-    description: "Ongoing cancellation id for status lookups.",
-    required: false,
-    schema: { type: "string" as const },
-  },
-  {
-    name: "executor",
-    description:
-      "Browser executor: user_browser | agent_browser | desktop_native.",
-    required: false,
-    schema: { type: "string" as const },
-  },
-  {
-    name: "queryWindowDays",
-    description: "Days of history for audit queries.",
-    required: false,
-    schema: { type: "number" as const },
-  },
-  {
-    name: "confirmed",
-    description: "User confirmed cancellation prerequisites.",
-    required: false,
-    schema: { type: "boolean" as const },
-  },
-];
-
-export const MONEY_TAGS: readonly string[] = [
-  "domain:finance",
-  "capability:read",
-  "capability:write",
-  "capability:update",
-  "capability:delete",
-  "capability:execute",
-  "surface:remote-api",
-  "surface:internal",
-  "risk:financial",
-  "cost:expensive",
-];
-
-export const MONEY_CONTEXTS: readonly string[] = [
-  "payments",
-  "finance",
-  "wallet",
-  "crypto",
-  "subscriptions",
-  "browser",
-  "automation",
-];
+// The OWNER_FINANCES public similes / parameter schema / tags / contexts moved
+// to @elizaos/plugin-finances with the payments back-end. Re-exported here so
+// owner-surfaces.ts (the registered umbrella) keeps importing them from this
+// module.
+export {
+  MONEY_CONTEXTS,
+  MONEY_PARAMETERS,
+  MONEY_TAGS,
+  OWNER_FINANCE_SIMILES,
+} from "@elizaos/plugin-finances";
 
 function readPlannerParams(
   options: HandlerOptions | undefined,

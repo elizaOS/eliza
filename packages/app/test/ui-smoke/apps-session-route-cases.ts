@@ -187,13 +187,13 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   },
   {
     name: "facewear app window",
-    path: "/apps/hearwear",
+    path: "/apps/facewear",
     readyChecks: [{ text: "Facewear" }, { text: "No devices connected" }],
     timeoutMs: 90_000,
   },
   {
     name: "facewear tui app shell page",
-    path: "/apps/hearwear/tui",
+    path: "/apps/facewear/tui",
     readyChecks: [
       { text: "elizaos://facewear --type=tui" },
       { text: "connect-device" },
@@ -236,6 +236,20 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     ],
     timeoutMs: 90_000,
   },
+  {
+    // Pinned home tile → Settings.
+    name: "settings view",
+    path: "/settings",
+    selector: '[data-testid="settings-shell"]',
+    timeoutMs: 90_000,
+  },
+  {
+    // Pinned home tile → Workflows (live inside the Automations feed).
+    name: "automations / workflows view",
+    path: "/automations",
+    selector: '[data-testid="automations-shell"]',
+    timeoutMs: 90_000,
+  },
 ];
 
 const managerVisibleViewTileCases = [
@@ -246,7 +260,7 @@ const managerVisibleViewTileCases = [
   { viewId: "contacts", path: "/contacts" },
   { viewId: "defense-of-the-agents", path: "/defense-of-the-agents" },
   { viewId: "documents", path: "/documents" },
-  { viewId: "facewear", path: "/apps/hearwear" },
+  { viewId: "facewear", path: "/apps/facewear" },
   { viewId: "feed", path: "/feed" },
   { viewId: "finances", path: "/finances" },
   { viewId: "focus", path: "/focus" },
@@ -261,6 +275,7 @@ const managerVisibleViewTileCases = [
   { viewId: "orchestrator", path: "/orchestrator" },
   { viewId: "phone", path: "/phone" },
   { viewId: "polymarket", path: "/polymarket" },
+  { viewId: "relationships", path: "/relationships" },
   { viewId: "scape", path: "/scape" },
   { viewId: "screenshare", path: "/screenshare" },
   { viewId: "shopify", path: "/shopify" },

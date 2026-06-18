@@ -253,7 +253,7 @@
     //   1. eliza:ui-theme-mode  ("dark" | "light" | "system")
     //   2. legacy eliza:ui-theme / elizaos:ui-theme
     //   3. system prefers-color-scheme
-    (function () {
+    (() => {
       try {
         var mode = localStorage.getItem('eliza:ui-theme-mode');
         if (!mode) {

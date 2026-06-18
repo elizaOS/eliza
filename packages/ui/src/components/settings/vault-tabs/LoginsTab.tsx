@@ -2,8 +2,6 @@
  * Logins tab — saved-logins list (in-house + 1Password + Bitwarden) with
  * the in-house "Add login" form. Per-source rows; external rows are
  * read-only links back to the password manager.
- *
- * Extracted from the original `SecretsManagerSection.tsx` `SavedLoginsPanel`.
  */
 
 import { Bot, ExternalLink, Loader2, Plus, Trash2 } from "lucide-react";
@@ -27,7 +25,7 @@ const SOURCE_LABEL: Record<SavedLoginSource, string> = {
 
 const SOURCE_PILL_CLASS: Record<SavedLoginSource, string> = {
   "in-house": "border-accent/40 bg-accent/10 text-accent",
-  "1password": "border-info/40 bg-info/10 text-info",
+  "1password": "border-status-info/40 bg-status-info/10 text-status-info",
   bitwarden: "border-warn/40 bg-warn/10 text-warn",
 };
 
@@ -65,10 +63,9 @@ export function LoginsTab() {
   const [addPassword, setAddPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [filter, setFilter] = useState("");
-  // Per-domain "agent may autofill without prompting" map. Backed by
-  // `creds.<domain>.:autoallow` in the vault — the same flag the
-  // user-driven autofill consent path uses, and the only authorization
-  // the BROWSER action (autofill-login subaction) will accept.
+  // Per-domain "agent may autofill without prompting" map, backed by
+  // `creds.<domain>.:autoallow` in the vault — the only authorization the
+  // browser autofill-login subaction accepts.
   const [autoallowMap, setAutoallowMap] = useState<Record<string, boolean>>({});
 
   const { ref: addLoginRef, agentProps: addLoginAgentProps } =
@@ -134,12 +131,8 @@ export function LoginsTab() {
   const loadAutoallowFor = useCallback(
     async (domains: ReadonlyArray<string>) => {
       const next: Record<string, boolean> = {};
-      // Single-flight: one fetch per unique domain. Domains are usually
-      // <50 in a saved-logins list, well under any rate concern.
-      // Per-domain failures default to false (never autoallow on a
-      // missing read) and are not surfaced to the error banner — the
-      // toggle row falls back to "off" silently rather than blocking
-      // the rest of the UI.
+      // One fetch per unique domain. A failed read defaults to false (never
+      // autoallow on a missing read) rather than blocking the rest of the UI.
       const unique = Array.from(new Set(domains.filter(Boolean)));
       const responses = await Promise.all(
         unique.map(async (d): Promise<readonly [string, boolean]> => {
@@ -175,9 +168,8 @@ export function LoginsTab() {
       const domains = json.logins
         .map((l) => l.domain)
         .filter((d): d is string => typeof d === "string" && d.length > 0);
-      // Best-effort: a transient 404 / 500 on the autoallow fetch
-      // shouldn't blank out the logins list. Any failure here means
-      // the toggles default to "off" until the next refresh.
+      // A failed autoallow fetch must not blank the logins list; toggles
+      // default to "off" until the next refresh.
       try {
         await loadAutoallowFor(domains);
       } catch {
@@ -196,8 +188,7 @@ export function LoginsTab() {
 
   const onToggleAutoallow = useCallback(
     async (domain: string, next: boolean) => {
-      // Optimistic update — UI feels instant, falls back to the real
-      // value on error.
+      // Optimistic update; reverted on error.
       setAutoallowMap((prev) => ({ ...prev, [domain]: next }));
       const res = await fetch(
         `/api/secrets/logins/${encodeURIComponent(domain)}/autoallow`,
@@ -466,7 +457,7 @@ export function LoginsTab() {
         >
           {t("logins.empty", {
             defaultValue:
-              "No saved logins yet. Add one here, or sign in to 1Password / Bitwarden on the Overview tab to surface their entries.",
+              "No saved logins. Add one, or sign in to 1Password / Bitwarden on Overview.",
           })}
         </div>
       ) : filtered.length === 0 ? (

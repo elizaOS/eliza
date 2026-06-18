@@ -8,8 +8,9 @@ import {
 } from "./db/schema.js";
 import { relationshipsPlugin } from "./plugin.js";
 import { entityGraphProvider } from "./providers/entity-graph.js";
+import { RELATIONSHIPS_ACTION_NAME } from "./types.js";
 
-describe("@elizaos/plugin-relationships scaffold", () => {
+describe("@elizaos/plugin-relationships contract", () => {
   it("registers the relationships plugin contract", () => {
     expect(relationshipsPlugin.name).toBe("relationships");
     expect(relationshipsPlugin.dependencies).toContain("@elizaos/plugin-sql");
@@ -22,26 +23,18 @@ describe("@elizaos/plugin-relationships scaffold", () => {
     });
   });
 
-  it("keeps the ENTITY stub safe until the full port lands", async () => {
-    const result = await entityAction.handler(
-      {} as never,
-      {} as never,
-      undefined,
-      { parameters: { action: "set_relationship" } },
-      undefined,
-    );
-
-    expect(result.success).toBe(true);
-    expect(result.text).toContain("ENTITY action stub");
-    expect(result.data).toEqual({ todo: true, op: "set_relationship" });
+  it("registers the graph-CRUD action as KNOWLEDGE_GRAPH, not ENTITY", () => {
+    // PA owns the ENTITY action; this plugin must not collide with it.
+    expect(entityAction.name).toBe(RELATIONSHIPS_ACTION_NAME);
+    expect(entityAction.name).toBe("KNOWLEDGE_GRAPH");
+    expect(entityAction.name).not.toBe("ENTITY");
+    for (const action of relationshipsPlugin.actions ?? []) {
+      expect(action.name).not.toBe("ENTITY");
+    }
   });
 
-  it("provides an empty graph projection while the store is scaffolded", async () => {
-    const result = await entityGraphProvider.get({} as never, {} as never);
-
-    expect(result).toEqual({
-      text: "",
-      data: { entities: [], relationships: [] },
-    });
+  it("provides the ENTITY_GRAPH provider at planner-context position", () => {
+    expect(entityGraphProvider.name).toBe("ENTITY_GRAPH");
+    expect(entityGraphProvider.position).toBe(-4);
   });
 });

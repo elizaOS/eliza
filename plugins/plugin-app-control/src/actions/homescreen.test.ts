@@ -148,6 +148,41 @@ describe("HOMESCREEN handler — edit/create", () => {
 		expect(result?.success).toBe(false);
 		expect(emitted).toHaveLength(0);
 	});
+
+	it("rejects a brace-balanced but unparseable scene document", async () => {
+		// Truncated/invalid JSON that still brace-matches must not be emitted.
+		const { action, runtime, callback, emitted } = setup('{"name": }');
+		const result = await action.handler?.(
+			runtime,
+			message("make the background black") as never,
+			undefined,
+			undefined,
+			callback,
+		);
+		expect(result?.success).toBe(false);
+		expect(emitted).toHaveLength(0);
+	});
+
+	it("reports failure when the broadcast cannot be applied", async () => {
+		const emit = vi.fn(async () => {
+			throw new Error("broadcast returned 503");
+		});
+		const source = { getCurrentSceneJson: vi.fn(async () => VALID_SCENE) };
+		const action = createHomescreenAction({ emit, source });
+		const runtime = {
+			agentId: "agent-1",
+			useModel: vi.fn(async () => VALID_SCENE),
+		} as never;
+		const result = await action.handler?.(
+			runtime,
+			message("make the background black") as never,
+			undefined,
+			undefined,
+			vi.fn(async () => {}),
+		);
+		expect(result?.success).toBe(false);
+		expect(result?.text).toContain("couldn't apply");
+	});
 });
 
 describe("HOMESCREEN handler — history ops", () => {
@@ -175,6 +210,23 @@ describe("HOMESCREEN handler — history ops", () => {
 			callback,
 		);
 		expect(emitted).toEqual([{ op: "reset" }]);
+	});
+
+	it("reports failure when a history op cannot be broadcast", async () => {
+		const emit = vi.fn(async () => {
+			throw new Error("broadcast returned 503");
+		});
+		const action = createHomescreenAction({ emit });
+		const runtime = { agentId: "agent-1", useModel: vi.fn() } as never;
+		const result = await action.handler?.(
+			runtime,
+			message("undo that") as never,
+			undefined,
+			undefined,
+			vi.fn(async () => {}),
+		);
+		expect(result?.success).toBe(false);
+		expect(result?.text).toContain("couldn't apply");
 	});
 });
 

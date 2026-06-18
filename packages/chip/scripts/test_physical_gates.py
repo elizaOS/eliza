@@ -155,10 +155,17 @@ class PhysicalGateTests(unittest.TestCase):
         self.assertFalse(report["summary"]["release_ready"])
         self.assertFalse(report["summary"]["release_credit"])
         self.assertIn(report["summary"]["complete_run_found"], {False, True})
-        self.assertIn(
-            "pd_signoff_artifact_handoff_blocked",
-            {finding["code"] for finding in report["findings"]},
-        )
+        # The dominant blocker depends on PD-run state. With no completed
+        # OpenLane run (the CI / default pre-PD state, since OpenLane is not in
+        # the CI toolchain), the missing run itself is the dominant blocker.
+        # The signoff-artifact-handoff blocker only applies once a run exists
+        # and is covered by
+        # test_openlane_pd_blocker_summary_reports_signoff_artifact_handoff_gap.
+        codes = {finding["code"] for finding in report["findings"]}
+        if report["summary"]["complete_run_found"]:
+            self.assertIn("pd_signoff_artifact_handoff_blocked", codes)
+        else:
+            self.assertIn("openlane_no_complete_pd_run", codes)
 
     def test_openlane_pd_blocker_summary_reports_signoff_artifact_handoff_gap(
         self,
@@ -620,7 +627,10 @@ class PhysicalGateTests(unittest.TestCase):
             report_path.parent.mkdir(parents=True)
             report_path.write_text("", encoding="utf-8")
 
-            package_relative = run_dir.relative_to(ROOT.parents[1])
+            # Use the module's own repo-root resolver (guards against the CI
+            # Docker /work mount where the chip dir has no grandparent and
+            # ROOT.parents[1] would IndexError).
+            package_relative = run_dir.relative_to(openlane_pd_blocker_summary.REPO_ROOT)
             report = openlane_pd_blocker_summary.build_report(
                 run_dir=package_relative,
                 process_table="",

@@ -309,6 +309,7 @@ import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.ts";
 import { persistConfigEnv } from "./config-env.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
 import { pushWithBatchEvict } from "./memory-bounds.ts";
+import { createRuntimeReadyGate } from "./runtime-ready-gate.ts";
 import {
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
@@ -331,6 +332,7 @@ import {
   handleBugReportRoutes,
   handleCharacterRoutes,
   handleCloudAndCoreRouteGroup,
+  handleCommandsRoutes,
   handleConfigRoutes,
   handleConnectorRoutes,
   handleConversationRouteGroup,
@@ -2308,6 +2310,96 @@ async function handleRequest(
     return;
   }
 
+  // Live-load a plugin from an on-disk directory into the running runtime. This
+  // is what makes a freshly scaffolded/edited local plugin (VIEWS/APP create)
+  // actually appear without an agent restart — its views register via
+  // runtime.registerPlugin. Must run BEFORE the generic /api/plugins/* handler.
+  if (method === "POST" && pathname === "/api/plugins/load-from-directory") {
+    const { isLocalCodeExecutionAllowed, buildStoreVariantBlockedMessage } =
+      await import("@elizaos/core");
+    if (!isLocalCodeExecutionAllowed()) {
+      error(res, buildStoreVariantBlockedMessage("Local plugin loading"), 403);
+      return;
+    }
+    if (!state.runtime) {
+      error(res, "Agent runtime is not available", 503);
+      return;
+    }
+    const body = await readJsonBody<{ directory?: unknown; entry?: unknown }>(
+      req,
+      res,
+    );
+    if (body === null) return;
+    const directory =
+      typeof body.directory === "string" ? body.directory.trim() : "";
+    if (!directory || !path.isAbsolute(directory)) {
+      error(res, "'directory' must be an absolute path", 400);
+      return;
+    }
+    const entry = typeof body.entry === "string" ? body.entry : undefined;
+    try {
+      const { loadPluginFromDirectory } = await import(
+        "../runtime/load-plugin-from-directory.ts"
+      );
+      const result = await loadPluginFromDirectory({
+        runtime: state.runtime as Parameters<
+          typeof loadPluginFromDirectory
+        >[0]["runtime"],
+        directory,
+        ...(entry ? { entry } : {}),
+      });
+      json(res, { ok: true, ...result });
+    } catch (err) {
+      json(
+        res,
+        {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        422,
+      );
+    }
+    return;
+  }
+
+  // Unload a plugin previously live-loaded from a directory (the symmetric
+  // counterpart to load-from-directory). Directly-registered plugins are not
+  // known to the plugin-manager, so /api/plugins/uninstall can't remove them —
+  // this delegates to runtime.unloadPlugin, which also deregisters its views.
+  if (method === "POST" && pathname === "/api/plugins/unload-from-directory") {
+    if (!state.runtime) {
+      error(res, "Agent runtime is not available", 503);
+      return;
+    }
+    const body = await readJsonBody<{ pluginName?: unknown }>(req, res);
+    if (body === null) return;
+    const pluginName =
+      typeof body.pluginName === "string" ? body.pluginName.trim() : "";
+    if (!pluginName) {
+      error(res, "'pluginName' is required", 400);
+      return;
+    }
+    try {
+      const { unloadPluginFromDirectory } = await import(
+        "../runtime/load-plugin-from-directory.ts"
+      );
+      const result = await unloadPluginFromDirectory({
+        runtime: state.runtime as Parameters<
+          typeof unloadPluginFromDirectory
+        >[0]["runtime"],
+        pluginName,
+      });
+      json(res, { ok: result.unloaded, ...result });
+    } catch (err) {
+      json(
+        res,
+        { ok: false, error: err instanceof Error ? err.message : String(err) },
+        422,
+      );
+    }
+    return;
+  }
+
   if (
     pathname === "/api/plugins" ||
     pathname.startsWith("/api/plugins/") ||
@@ -2995,6 +3087,22 @@ async function handleRequest(
     }
   }
 
+  // ── Slash-command catalog (/api/commands) ─────────────────────────────────
+  if (
+    await handleCommandsRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      json,
+      error,
+      runtime: state.runtime,
+    })
+  ) {
+    return;
+  }
+
   // ── Prompt suggestions (/api/suggestions) ─────────────────────────────────
   if (
     await handleSuggestionsRoutes({
@@ -3232,6 +3340,15 @@ export async function startApiServer(opts?: {
   ) => void;
 }> {
   const apiStartTime = Date.now();
+  // Gated boot profiler (off unless ELIZA_BOOT_PROFILE=1) to time the API-bind
+  // critical path. Stderr, since the structured logger level may suppress it.
+  const apiLap = (label: string): void => {
+    if (process.env.ELIZA_BOOT_PROFILE === "1") {
+      process.stderr.write(
+        `[boot-profile] api:${label} +${Date.now() - apiStartTime}ms\n`,
+      );
+    }
+  };
   logger.debug(`[eliza-api] startApiServer called`);
 
   // Honor ELIZA_API_PORT first (set by the desktop launcher → 31337) so
@@ -3383,6 +3500,7 @@ export async function startApiServer(opts?: {
     trainingService: null,
     shareIngestQueue: [],
     broadcastStatus: null,
+    awaitRuntimeReady: null,
     broadcastWs: null,
     broadcastWsToClientId: null,
     broadcastWsToConversation: null,
@@ -3396,6 +3514,14 @@ export async function startApiServer(opts?: {
     connectorHealthMonitor: null,
     whatsappPairingSessions: new Map(),
   };
+  // Lets chat handlers HOLD a turn through the warming window (early API bind →
+  // runtime ready) instead of 503-dropping it — woken in updateRuntime when
+  // first-turn capability comes online (see runtime-ready-gate.ts).
+  const runtimeReadyGate = createRuntimeReadyGate<AgentRuntime>(
+    () => state.runtime,
+  );
+  state.awaitRuntimeReady = (timeoutMs: number) =>
+    runtimeReadyGate.await(timeoutMs);
   const ensureAppManager = async (): Promise<AppManagerLike> => {
     if (state.appManager) {
       return state.appManager as AppManagerLike;
@@ -3598,6 +3724,7 @@ export async function startApiServer(opts?: {
   logger.debug(
     `[eliza-api] Creating http server (${Date.now() - apiStartTime}ms)`,
   );
+  apiLap("pre-createServer (route imports + middleware setup done)");
   const server = http.createServer(async (req, res) => {
     try {
       await handleRequest(req, res, state, {
@@ -4775,6 +4902,9 @@ export async function startApiServer(opts?: {
     state.chatConnectionReady = null;
     state.chatConnectionPromise = null;
     bindRuntimeStreams(rt);
+    // Wake any chat turns held through the warming window — first-turn
+    // capability is now online, so they stream their response instead of 503.
+    runtimeReadyGate.markReady(rt);
     // AppManager doesn't need a runtime reference
     state.agentState = "running";
     state.agentName =
@@ -4875,7 +5005,9 @@ export async function startApiServer(opts?: {
       reject(err);
     });
 
+    apiLap("before server.listen");
     server.listen(port, host, () => {
+      apiLap("LISTENING (API bound)");
       logger.debug(
         `[eliza-api] server.listen callback fired (${Date.now() - apiStartTime}ms)`,
       );

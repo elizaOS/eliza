@@ -26,7 +26,7 @@ blocker:
     (plugins/slang.so missing).
 
     '
-  symptom: '/work/rtl/top/e1_soc_top.sv:28: ERROR: syntax error, unexpected TOK_ID,
+  symptom: './rtl/top/e1_soc_top.sv:28: ERROR: syntax error, unexpected TOK_ID,
 
     expecting ''('' or '';'' or ''#''
 
@@ -194,10 +194,10 @@ proof_commands:
 
     '
   prove_rtl_fix_compiles: "# After applying the two RTL edits, the read_verilog frontend\
-    \ is clean:\ndocker run --rm -v \"$PWD\":/work -w /work ghcr.io/efabless/openlane2:2.4.0.dev1\
+    \ is clean:\ndocker run --rm -v \"$PWD\":. -w . ghcr.io/efabless/openlane2:2.4.0.dev1\
     \ \\\n  yosys -p \"read_verilog -sv -DE1_PD_SMALL_DRAM -DE1_HAVE_HARD_SRAM \\\n\
-    \    /work/rtl/top/e1_soc_pkg.sv /work/rtl/memory/e1_behavioral_dram.sv \\\n \
-    \   /work/rtl/top/e1_soc_top.sv\"\n# expect: three \"Successfully finished Verilog\
+    \    ./rtl/top/e1_soc_pkg.sv ./rtl/memory/e1_behavioral_dram.sv \\\n \
+    \   ./rtl/top/e1_soc_top.sv\"\n# expect: three \"Successfully finished Verilog\
     \ frontend.\" with no ERROR\n"
   reproduce_blocker: "source tools/env.sh\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\
     \ \\\n  PDK_ROOT=\"$PWD/external/pdks\" scripts/run_openlane.sh --release\n# fails\
@@ -349,8 +349,8 @@ second_rtl_frontend_blocker:
       \ After the lead lands the\n# fix in-tree, the bind-mount is unnecessary \u2014\
       \ read_verilog of the real\n# VERILOG_FILES list parses clean.\nFILES=$(python3\
       \ -c \"import json; d=json.load(open('pd/openlane/config.sky130.json')); \\\n\
-      \  print(' '.join('/work/'+f.replace('dir::../../','') for f in d['VERILOG_FILES']))\"\
-      )\ndocker run --rm -v \"$PWD\":/work -w /work ghcr.io/efabless/openlane2:2.4.0.dev1\
+      \  print(' '.join('./'+f.replace('dir::../../','') for f in d['VERILOG_FILES']))\"\
+      )\ndocker run --rm -v \"$PWD\":. -w . ghcr.io/efabless/openlane2:2.4.0.dev1\
       \ \\\n  yosys -p \"read_verilog -sv -DE1_PD_SMALL_DRAM -DE1_HAVE_HARD_SRAM $FILES\"\
       \ \\\n  2>&1 | grep -c \"Successfully finished Verilog frontend.\"\n# expect:\
       \ 20  (and zero ERROR lines)\n"
@@ -403,13 +403,13 @@ second_rtl_frontend_blocker:
   status: fix_identified_and_proven_rtl_read_only_for_ws2
   symptom: 'Step 05-yosys-jsonheader, file 10 of the read list:
 
-    /work/rtl/bootrom/e1_bootrom.sv:24: ERROR: syntax error, unexpected TOK_ID,
+    ./rtl/bootrom/e1_bootrom.sv:24: ERROR: syntax error, unexpected TOK_ID,
 
     expecting '','' or ''='' or '')''
 
     After fixing line 24, a second error surfaces at:
 
-    /work/rtl/bootrom/e1_bootrom.sv:40: ERROR: syntax error, unexpected TOK_ID
+    ./rtl/bootrom/e1_bootrom.sv:40: ERROR: syntax error, unexpected TOK_ID
 
     '
   tool: LibreLane 2.4.0.dev1 / openlane2 Yosys read_verilog (Verilog-2005 frontend,

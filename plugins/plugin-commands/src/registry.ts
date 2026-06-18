@@ -10,7 +10,7 @@
 import type { CommandDefinition } from "./types";
 
 // Default command definitions (frozen reference — never mutate these directly)
-const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
+export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 	// Status commands
 	{
 		key: "help",

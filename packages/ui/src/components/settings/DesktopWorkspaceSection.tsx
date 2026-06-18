@@ -23,16 +23,10 @@ import {
   openDesktopSurfaceWindow,
 } from "../../utils/desktop-workspace";
 import { Button } from "../ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../ui/card";
-import { Textarea } from "../ui/textarea";
+import { SettingsTextarea } from "../ui/settings-controls";
 import { DesktopWorkspaceDisplay } from "./DesktopWorkspaceDisplay";
 import { useDesktopDiagnosticsText } from "./DesktopWorkspaceDisplay.hooks";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 import { useDesktopWindowControls } from "./useDesktopWindowControls";
 
 function WorkspaceActionButton({
@@ -348,743 +342,746 @@ export function DesktopWorkspaceSection({
   if (!desktopRuntime) {
     return (
       <ContentLayout contentHeader={contentHeader}>
-        <Card className="text-sm text-muted">
-          <CardContent className="pt-6">
+        <SettingsGroup bare>
+          <div className="rounded-lg border border-border bg-card px-4 py-3 text-sm text-muted">
             {t("desktopworkspacesection.DesktopToolsOnlyAvailable")}
-          </CardContent>
-        </Card>
+          </div>
+        </SettingsGroup>
       </ContentLayout>
     );
   }
 
   return (
-    <ContentLayout contentHeader={contentHeader} contentClassName="space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-        <WorkspaceActionButton
-          agentId="desktop-refresh-diagnostics"
-          label={t("desktopworkspacesection.RefreshDiagnostics")}
-          group="desktop-toolbar"
-          disabled={loading}
-          onClick={() => {
-            void refreshSnapshot();
-            void refreshDevDiagnostics();
-          }}
-        >
-          <RefreshCw
-            className={`mr-1 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
-          />
-          {t("desktopworkspacesection.RefreshDiagnostics")}
-        </WorkspaceActionButton>
-        <WorkspaceActionButton
-          agentId="desktop-open-settings-window"
-          label={t("desktopworkspacesection.OpenDesktopSettingsWindow")}
-          group="desktop-toolbar"
-          variant="default"
-          disabled={busyAction === "desktop-open-settings-window"}
-          onClick={() =>
-            void runAction(
-              "desktop-open-settings-window",
-              async () => openDesktopSettingsWindow("desktop"),
-              t("desktopworkspacesection.OpenedDetachedDesktopSettingsWindow"),
-              false,
-            )
-          }
-        >
-          <Monitor className="mr-1 h-3.5 w-3.5" />
-          {t("desktopworkspacesection.OpenDesktopSettingsWindow")}
-        </WorkspaceActionButton>
-      </div>
-
-      {(actionError || actionMessage) && (
-        <div
-          className={`rounded-sm border px-3 py-2 text-sm ${
-            actionError
-              ? "border-danger/40 bg-danger/10 text-danger"
-              : "border-ok/40 bg-ok/10 text-ok"
-          }`}
-          role={actionError ? "alert" : "status"}
-        >
-          {actionError ?? actionMessage}
+    <ContentLayout contentHeader={contentHeader}>
+      <SettingsStack>
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <WorkspaceActionButton
+            agentId="desktop-refresh-diagnostics"
+            label={t("desktopworkspacesection.RefreshDiagnostics")}
+            group="desktop-toolbar"
+            disabled={loading}
+            onClick={() => {
+              void refreshSnapshot();
+              void refreshDevDiagnostics();
+            }}
+          >
+            <RefreshCw
+              className={`mr-1 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+            />
+            {t("desktopworkspacesection.RefreshDiagnostics")}
+          </WorkspaceActionButton>
+          <WorkspaceActionButton
+            agentId="desktop-open-settings-window"
+            label={t("desktopworkspacesection.OpenDesktopSettingsWindow")}
+            group="desktop-toolbar"
+            variant="default"
+            disabled={busyAction === "desktop-open-settings-window"}
+            onClick={() =>
+              void runAction(
+                "desktop-open-settings-window",
+                async () => openDesktopSettingsWindow("desktop"),
+                t(
+                  "desktopworkspacesection.OpenedDetachedDesktopSettingsWindow",
+                ),
+                false,
+              )
+            }
+          >
+            <Monitor className="mr-1 h-3.5 w-3.5" />
+            {t("desktopworkspacesection.OpenDesktopSettingsWindow")}
+          </WorkspaceActionButton>
         </div>
-      )}
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <DesktopWorkspaceDisplay diagnosticsText={diagnosticsText} t={t} />
+        {(actionError || actionMessage) && (
+          <div
+            className={`rounded-sm border px-3 py-2 text-sm ${
+              actionError
+                ? "border-danger/40 bg-danger/10 text-danger"
+                : "border-ok/40 bg-ok/10 text-ok"
+            }`}
+            role={actionError ? "alert" : "status"}
+          >
+            {actionError ?? actionMessage}
+          </div>
+        )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">
-              {t("desktopworkspacesection.devStack.title", {
+        <div className="grid gap-4 xl:grid-cols-2">
+          <DesktopWorkspaceDisplay diagnosticsText={diagnosticsText} t={t} />
+
+          <SettingsGroup
+            title={t("desktopworkspacesection.devStack.title", {
+              defaultValue: "Desktop Dev Stack",
+            })}
+            description={t("desktopworkspacesection.devStack.description", {
+              defaultValue:
+                "Live `/api/dev/stack` snapshot for the current desktop session.",
+            })}
+          >
+            <SettingsRow
+              label={t("desktopworkspacesection.devStack.title", {
                 defaultValue: "Desktop Dev Stack",
               })}
-            </CardTitle>
-            <CardDescription>
-              {t("desktopworkspacesection.devStack.description", {
-                defaultValue:
-                  "Live `/api/dev/stack` snapshot for the current desktop session.",
-              })}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex flex-wrap gap-2">
-              <WorkspaceActionButton
-                agentId="desktop-refresh-logs"
-                label={t("desktopworkspacesection.devStack.refreshLogs", {
-                  defaultValue: "Refresh Desktop Logs",
-                })}
-                group="desktop-dev-stack"
-                onClick={() => void refreshDevDiagnostics()}
-              >
-                {t("desktopworkspacesection.devStack.refreshLogs", {
-                  defaultValue: "Refresh Desktop Logs",
-                })}
-              </WorkspaceActionButton>
-              <WorkspaceActionButton
-                agentId="desktop-copy-dev-stack"
-                label={t("desktopworkspacesection.devStack.copyStack", {
-                  defaultValue: "Copy Dev Stack",
-                })}
-                group="desktop-dev-stack"
-                onClick={() => void copyTextToClipboard(devStackText)}
-              >
-                {t("desktopworkspacesection.devStack.copyStack", {
-                  defaultValue: "Copy Dev Stack",
-                })}
-              </WorkspaceActionButton>
-              <WorkspaceActionButton
-                agentId="desktop-copy-diagnostics-bundle"
-                label={t("desktopworkspacesection.devStack.copyBundle", {
-                  defaultValue: "Copy Full Diagnostics Bundle",
-                })}
-                group="desktop-dev-stack"
-                onClick={() => void copyDesktopDiagnosticsBundle()}
-              >
-                {t("desktopworkspacesection.devStack.copyBundle", {
-                  defaultValue: "Copy Full Diagnostics Bundle",
-                })}
-              </WorkspaceActionButton>
-            </div>
-            <pre className="max-h-72 overflow-auto break-all rounded-sm border border-border bg-bg px-3 py-3 text-xs-tight leading-5 text-txt">
-              {devStackText}
-            </pre>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">
-              {t("desktopworkspacesection.DetachedSurfaces")}
-            </CardTitle>
-            <CardDescription>
-              {t("desktopworkspacesection.DetachedSurfacesDescription")}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {DESKTOP_WORKSPACE_SURFACES.map((surface) => (
+              stacked
+            >
+              <div className="flex flex-wrap gap-2">
                 <WorkspaceActionButton
-                  key={surface.id}
-                  agentId={`desktop-surface-${surface.id}`}
-                  label={getSurfaceLabel(surface.id)}
-                  group="desktop-surfaces"
-                  disabled={busyAction === `desktop-surface-${surface.id}`}
+                  agentId="desktop-refresh-logs"
+                  label={t("desktopworkspacesection.devStack.refreshLogs", {
+                    defaultValue: "Refresh Desktop Logs",
+                  })}
+                  group="desktop-dev-stack"
+                  onClick={() => void refreshDevDiagnostics()}
+                >
+                  {t("desktopworkspacesection.devStack.refreshLogs", {
+                    defaultValue: "Refresh Desktop Logs",
+                  })}
+                </WorkspaceActionButton>
+                <WorkspaceActionButton
+                  agentId="desktop-copy-dev-stack"
+                  label={t("desktopworkspacesection.devStack.copyStack", {
+                    defaultValue: "Copy Dev Stack",
+                  })}
+                  group="desktop-dev-stack"
+                  onClick={() => void copyTextToClipboard(devStackText)}
+                >
+                  {t("desktopworkspacesection.devStack.copyStack", {
+                    defaultValue: "Copy Dev Stack",
+                  })}
+                </WorkspaceActionButton>
+                <WorkspaceActionButton
+                  agentId="desktop-copy-diagnostics-bundle"
+                  label={t("desktopworkspacesection.devStack.copyBundle", {
+                    defaultValue: "Copy Full Diagnostics Bundle",
+                  })}
+                  group="desktop-dev-stack"
+                  onClick={() => void copyDesktopDiagnosticsBundle()}
+                >
+                  {t("desktopworkspacesection.devStack.copyBundle", {
+                    defaultValue: "Copy Full Diagnostics Bundle",
+                  })}
+                </WorkspaceActionButton>
+              </div>
+              <pre className="mt-3 max-h-72 overflow-auto break-all rounded-sm border border-border bg-bg px-3 py-3 text-xs-tight leading-5 text-txt">
+                {devStackText}
+              </pre>
+            </SettingsRow>
+          </SettingsGroup>
+
+          <SettingsGroup
+            title={t("desktopworkspacesection.DetachedSurfaces")}
+            description={t(
+              "desktopworkspacesection.DetachedSurfacesDescription",
+            )}
+          >
+            <SettingsRow
+              label={t("desktopworkspacesection.DetachedSurfaces")}
+              stacked
+            >
+              <div className="grid gap-2 sm:grid-cols-2">
+                {DESKTOP_WORKSPACE_SURFACES.map((surface) => (
+                  <WorkspaceActionButton
+                    key={surface.id}
+                    agentId={`desktop-surface-${surface.id}`}
+                    label={getSurfaceLabel(surface.id)}
+                    group="desktop-surfaces"
+                    disabled={busyAction === `desktop-surface-${surface.id}`}
+                    onClick={() =>
+                      void runAction(
+                        `desktop-surface-${surface.id}`,
+                        async () => openDesktopSurfaceWindow(surface.id),
+                        t("desktopworkspacesection.SurfaceOpened", {
+                          surface: getSurfaceLabel(surface.id),
+                        }),
+                        false,
+                      )
+                    }
+                  >
+                    {getSurfaceLabel(surface.id)}
+                  </WorkspaceActionButton>
+                ))}
+              </div>
+            </SettingsRow>
+          </SettingsGroup>
+        </div>
+
+        <SettingsGroup
+          title={t("desktopworkspacesection.console.title", {
+            defaultValue: "Desktop Console Log",
+          })}
+          description={t("desktopworkspacesection.console.description", {
+            defaultValue:
+              "Live tail of the desktop console log: renderer, network, RPC, and main-process logs.",
+          })}
+        >
+          <SettingsRow
+            label={t("desktopworkspacesection.console.title", {
+              defaultValue: "Desktop Console Log",
+            })}
+            stacked
+          >
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <WorkspaceActionButton
+                  agentId="desktop-console-refresh-tail"
+                  label={t("desktopworkspacesection.console.refreshTail", {
+                    defaultValue: "Refresh Console Tail",
+                  })}
+                  group="desktop-console"
+                  onClick={() => void refreshDevDiagnostics()}
+                >
+                  {t("desktopworkspacesection.console.refreshTail", {
+                    defaultValue: "Refresh Console Tail",
+                  })}
+                </WorkspaceActionButton>
+                <WorkspaceActionButton
+                  agentId="desktop-console-copy-tail"
+                  label={t("desktopworkspacesection.console.copyTail", {
+                    defaultValue: "Copy Visible Console Tail",
+                  })}
+                  group="desktop-console"
+                  onClick={() =>
+                    void copyTextToClipboard(
+                      filteredDevConsoleText || devConsoleText,
+                    )
+                  }
+                >
+                  {t("desktopworkspacesection.console.copyTail", {
+                    defaultValue: "Copy Visible Console Tail",
+                  })}
+                </WorkspaceActionButton>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs text-muted">
+                <span>
+                  {t("desktopworkspacesection.console.total", {
+                    count: devConsoleSummary.total,
+                    defaultValue: "Total: {{count}}",
+                  })}
+                </span>
+                <span>
+                  {t("desktopworkspacesection.console.errors", {
+                    count: devConsoleSummary.errors,
+                    defaultValue: "Errors: {{count}}",
+                  })}
+                </span>
+                <span>
+                  {t("desktopworkspacesection.console.warnings", {
+                    count: devConsoleSummary.warnings,
+                    defaultValue: "Warnings: {{count}}",
+                  })}
+                </span>
+                <span>
+                  {t("desktopworkspacesection.console.rpc", {
+                    count: devConsoleSummary.rpc,
+                    defaultValue: "RPC: {{count}}",
+                  })}
+                </span>
+                <span>
+                  {t("desktopworkspacesection.console.fetch", {
+                    count: devConsoleSummary.fetch,
+                    defaultValue: "Fetch: {{count}}",
+                  })}
+                </span>
+                <span>
+                  {t("desktopworkspacesection.console.talkmode", {
+                    count: devConsoleSummary.talkmode,
+                    defaultValue: "TalkMode: {{count}}",
+                  })}
+                </span>
+              </div>
+              <SettingsTextarea
+                ref={consoleFilterRef}
+                value={devConsoleFilter}
+                onChange={(event) => setDevConsoleFilter(event.target.value)}
+                placeholder={t(
+                  "desktopworkspacesection.console.filterPlaceholder",
+                  {
+                    defaultValue:
+                      "Filter console lines (e.g. rpc, fetch, talkmode, 404)",
+                  },
+                )}
+                className="min-h-[4rem]"
+                {...consoleFilterAgentProps}
+              />
+              <SettingsTextarea
+                value={
+                  filteredDevConsoleText ||
+                  t("desktopworkspacesection.console.noMatch", {
+                    defaultValue: "No console lines match the current filter.",
+                  })
+                }
+                readOnly
+                className="min-h-[22rem] leading-5"
+              />
+            </div>
+          </SettingsRow>
+        </SettingsGroup>
+
+        <div className="grid gap-4 xl:grid-cols-2">
+          <SettingsGroup
+            title={t("desktopworkspacesection.WindowControls")}
+            description={t("desktopworkspacesection.WindowControlsDescription")}
+          >
+            <SettingsRow
+              label={t("desktopworkspacesection.WindowControls")}
+              stacked
+            >
+              <div className="grid gap-2 sm:grid-cols-2">
+                <WorkspaceActionButton
+                  agentId="desktop-show-window"
+                  label={t("gameview.ShowWindow")}
+                  group="desktop-window-controls"
+                  disabled={busyAction === "desktop-show-window"}
+                  onClick={() =>
+                    void runAction("desktop-show-window", windowControls.show)
+                  }
+                >
+                  {t("gameview.ShowWindow")}
+                </WorkspaceActionButton>
+                <WorkspaceActionButton
+                  agentId="desktop-hide-window"
+                  label={t("gameview.HideWindow")}
+                  group="desktop-window-controls"
+                  disabled={busyAction === "desktop-hide-window"}
+                  onClick={() =>
+                    void runAction("desktop-hide-window", windowControls.hide)
+                  }
+                >
+                  {t("gameview.HideWindow")}
+                </WorkspaceActionButton>
+                <WorkspaceActionButton
+                  agentId="desktop-focus-window"
+                  label={t("gameview.FocusWindow")}
+                  group="desktop-window-controls"
+                  disabled={busyAction === "desktop-focus-window"}
+                  onClick={() =>
+                    void runAction("desktop-focus-window", windowControls.focus)
+                  }
+                >
+                  {t("gameview.FocusWindow")}
+                </WorkspaceActionButton>
+                <WorkspaceActionButton
+                  agentId="desktop-minimize-window"
+                  label={
+                    snapshot?.window.minimized
+                      ? t("desktopworkspacesection.RestoreWindow")
+                      : t("desktopworkspacesection.MinimizeWindow")
+                  }
+                  group="desktop-window-controls"
+                  disabled={busyAction === "desktop-minimize-window"}
                   onClick={() =>
                     void runAction(
-                      `desktop-surface-${surface.id}`,
-                      async () => openDesktopSurfaceWindow(surface.id),
-                      t("desktopworkspacesection.SurfaceOpened", {
-                        surface: getSurfaceLabel(surface.id),
-                      }),
+                      "desktop-minimize-window",
+                      windowControls.toggleMinimize,
+                    )
+                  }
+                >
+                  {snapshot?.window.minimized
+                    ? t("desktopworkspacesection.RestoreWindow")
+                    : t("desktopworkspacesection.MinimizeWindow")}
+                </WorkspaceActionButton>
+                <WorkspaceActionButton
+                  agentId="desktop-maximize-toggle"
+                  label={
+                    snapshot?.window.maximized
+                      ? t("desktopworkspacesection.UnmaximizeWindow")
+                      : t("desktopworkspacesection.MaximizeWindow")
+                  }
+                  group="desktop-window-controls"
+                  className="sm:col-span-2 min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+                  disabled={busyAction === "desktop-maximize-toggle"}
+                  onClick={() =>
+                    void runAction(
+                      "desktop-maximize-toggle",
+                      windowControls.toggleMaximize,
+                    )
+                  }
+                >
+                  {snapshot?.window.maximized
+                    ? t("desktopworkspacesection.UnmaximizeWindow")
+                    : t("desktopworkspacesection.MaximizeWindow")}
+                </WorkspaceActionButton>
+              </div>
+            </SettingsRow>
+          </SettingsGroup>
+
+          <SettingsGroup
+            title={t("desktopworkspacesection.Lifecycle")}
+            description={t("desktopworkspacesection.LifecycleDescription")}
+          >
+            <SettingsRow label={t("desktopworkspacesection.Lifecycle")} stacked>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <WorkspaceActionButton
+                  agentId="desktop-notify"
+                  label={t("desktopworkspacesection.SendTestNotification")}
+                  group="desktop-lifecycle"
+                  disabled={busyAction === "desktop-notify"}
+                  onClick={() =>
+                    void runAction(
+                      "desktop-notify",
+                      windowControls.notify,
+                      t("desktopworkspacesection.NotificationSent"),
                       false,
                     )
                   }
                 >
-                  {getSurfaceLabel(surface.id)}
+                  {t("desktopworkspacesection.SendTestNotification")}
                 </WorkspaceActionButton>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">
-            {t("desktopworkspacesection.console.title", {
-              defaultValue: "Desktop Console Log",
-            })}
-          </CardTitle>
-          <CardDescription>
-            {t("desktopworkspacesection.console.description", {
-              defaultValue:
-                "Live tail of the state-dir desktop console log, including renderer console, network failures, RPC failures, and Electrobun/main logs.",
-            })}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            <WorkspaceActionButton
-              agentId="desktop-console-refresh-tail"
-              label={t("desktopworkspacesection.console.refreshTail", {
-                defaultValue: "Refresh Console Tail",
-              })}
-              group="desktop-console"
-              onClick={() => void refreshDevDiagnostics()}
-            >
-              {t("desktopworkspacesection.console.refreshTail", {
-                defaultValue: "Refresh Console Tail",
-              })}
-            </WorkspaceActionButton>
-            <WorkspaceActionButton
-              agentId="desktop-console-copy-tail"
-              label={t("desktopworkspacesection.console.copyTail", {
-                defaultValue: "Copy Visible Console Tail",
-              })}
-              group="desktop-console"
-              onClick={() =>
-                void copyTextToClipboard(
-                  filteredDevConsoleText || devConsoleText,
-                )
-              }
-            >
-              {t("desktopworkspacesection.console.copyTail", {
-                defaultValue: "Copy Visible Console Tail",
-              })}
-            </WorkspaceActionButton>
-          </div>
-          <div className="flex flex-wrap gap-2 text-xs text-muted">
-            <span>
-              {t("desktopworkspacesection.console.total", {
-                count: devConsoleSummary.total,
-                defaultValue: "Total: {{count}}",
-              })}
-            </span>
-            <span>
-              {t("desktopworkspacesection.console.errors", {
-                count: devConsoleSummary.errors,
-                defaultValue: "Errors: {{count}}",
-              })}
-            </span>
-            <span>
-              {t("desktopworkspacesection.console.warnings", {
-                count: devConsoleSummary.warnings,
-                defaultValue: "Warnings: {{count}}",
-              })}
-            </span>
-            <span>
-              {t("desktopworkspacesection.console.rpc", {
-                count: devConsoleSummary.rpc,
-                defaultValue: "RPC: {{count}}",
-              })}
-            </span>
-            <span>
-              {t("desktopworkspacesection.console.fetch", {
-                count: devConsoleSummary.fetch,
-                defaultValue: "Fetch: {{count}}",
-              })}
-            </span>
-            <span>
-              {t("desktopworkspacesection.console.talkmode", {
-                count: devConsoleSummary.talkmode,
-                defaultValue: "TalkMode: {{count}}",
-              })}
-            </span>
-          </div>
-          <Textarea
-            ref={consoleFilterRef}
-            value={devConsoleFilter}
-            onChange={(event) => setDevConsoleFilter(event.target.value)}
-            placeholder={t(
-              "desktopworkspacesection.console.filterPlaceholder",
-              {
-                defaultValue:
-                  "Filter console lines (e.g. rpc, fetch, talkmode, 404)",
-              },
-            )}
-            className="min-h-[4rem] text-xs"
-            {...consoleFilterAgentProps}
-          />
-          <Textarea
-            value={
-              filteredDevConsoleText ||
-              t("desktopworkspacesection.console.noMatch", {
-                defaultValue: "No console lines match the current filter.",
-              })
-            }
-            readOnly
-            className="min-h-[22rem] font-mono text-xs-tight leading-5"
-          />
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-4 xl:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">
-              {t("desktopworkspacesection.WindowControls")}
-            </CardTitle>
-            <CardDescription>
-              {t("desktopworkspacesection.WindowControlsDescription")}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <WorkspaceActionButton
-                agentId="desktop-show-window"
-                label={t("gameview.ShowWindow")}
-                group="desktop-window-controls"
-                disabled={busyAction === "desktop-show-window"}
-                onClick={() =>
-                  void runAction("desktop-show-window", windowControls.show)
-                }
-              >
-                {t("gameview.ShowWindow")}
-              </WorkspaceActionButton>
-              <WorkspaceActionButton
-                agentId="desktop-hide-window"
-                label={t("gameview.HideWindow")}
-                group="desktop-window-controls"
-                disabled={busyAction === "desktop-hide-window"}
-                onClick={() =>
-                  void runAction("desktop-hide-window", windowControls.hide)
-                }
-              >
-                {t("gameview.HideWindow")}
-              </WorkspaceActionButton>
-              <WorkspaceActionButton
-                agentId="desktop-focus-window"
-                label={t("gameview.FocusWindow")}
-                group="desktop-window-controls"
-                disabled={busyAction === "desktop-focus-window"}
-                onClick={() =>
-                  void runAction("desktop-focus-window", windowControls.focus)
-                }
-              >
-                {t("gameview.FocusWindow")}
-              </WorkspaceActionButton>
-              <WorkspaceActionButton
-                agentId="desktop-minimize-window"
-                label={
-                  snapshot?.window.minimized
-                    ? t("desktopworkspacesection.RestoreWindow")
-                    : t("desktopworkspacesection.MinimizeWindow")
-                }
-                group="desktop-window-controls"
-                disabled={busyAction === "desktop-minimize-window"}
-                onClick={() =>
-                  void runAction(
-                    "desktop-minimize-window",
-                    windowControls.toggleMinimize,
-                  )
-                }
-              >
-                {snapshot?.window.minimized
-                  ? t("desktopworkspacesection.RestoreWindow")
-                  : t("desktopworkspacesection.MinimizeWindow")}
-              </WorkspaceActionButton>
-              <WorkspaceActionButton
-                agentId="desktop-maximize-toggle"
-                label={
-                  snapshot?.window.maximized
-                    ? t("desktopworkspacesection.UnmaximizeWindow")
-                    : t("desktopworkspacesection.MaximizeWindow")
-                }
-                group="desktop-window-controls"
-                className="sm:col-span-2 min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
-                disabled={busyAction === "desktop-maximize-toggle"}
-                onClick={() =>
-                  void runAction(
-                    "desktop-maximize-toggle",
-                    windowControls.toggleMaximize,
-                  )
-                }
-              >
-                {snapshot?.window.maximized
-                  ? t("desktopworkspacesection.UnmaximizeWindow")
-                  : t("desktopworkspacesection.MaximizeWindow")}
-              </WorkspaceActionButton>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">
-              {t("desktopworkspacesection.Lifecycle")}
-            </CardTitle>
-            <CardDescription>
-              {t("desktopworkspacesection.LifecycleDescription")}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <WorkspaceActionButton
-                agentId="desktop-notify"
-                label={t("desktopworkspacesection.SendTestNotification")}
-                group="desktop-lifecycle"
-                disabled={busyAction === "desktop-notify"}
-                onClick={() =>
-                  void runAction(
-                    "desktop-notify",
-                    windowControls.notify,
-                    t("desktopworkspacesection.NotificationSent"),
-                    false,
-                  )
-                }
-              >
-                {t("desktopworkspacesection.SendTestNotification")}
-              </WorkspaceActionButton>
-              <WorkspaceActionButton
-                agentId="desktop-restart-agent"
-                label={t("finetuningview.RestartAgentTitle")}
-                group="desktop-lifecycle"
-                disabled={busyAction === "desktop-restart-agent"}
-                onClick={() =>
-                  void runAction(
-                    "desktop-restart-agent",
-                    async () => restartBackend(),
-                    t("desktopworkspacesection.AgentRestartRequested"),
-                  )
-                }
-              >
-                {t("finetuningview.RestartAgentTitle")}
-              </WorkspaceActionButton>
-              <WorkspaceActionButton
-                agentId="desktop-relaunch-app"
-                label={t("desktopworkspacesection.Relaunch")}
-                group="desktop-lifecycle"
-                disabled={busyAction === "desktop-relaunch-app"}
-                onClick={() =>
-                  void runAction(
-                    "desktop-relaunch-app",
-                    async () => relaunchDesktop(),
-                    t("desktopworkspacesection.DesktopRelaunchRequested"),
-                    false,
-                  )
-                }
-              >
-                {t("desktopworkspacesection.Relaunch")}
-              </WorkspaceActionButton>
-              <WorkspaceActionButton
-                agentId="desktop-toggle-auto-launch"
-                label={
-                  snapshot?.autoLaunch?.enabled
+                <WorkspaceActionButton
+                  agentId="desktop-restart-agent"
+                  label={t("finetuningview.RestartAgentTitle")}
+                  group="desktop-lifecycle"
+                  disabled={busyAction === "desktop-restart-agent"}
+                  onClick={() =>
+                    void runAction(
+                      "desktop-restart-agent",
+                      async () => restartBackend(),
+                      t("desktopworkspacesection.AgentRestartRequested"),
+                    )
+                  }
+                >
+                  {t("finetuningview.RestartAgentTitle")}
+                </WorkspaceActionButton>
+                <WorkspaceActionButton
+                  agentId="desktop-relaunch-app"
+                  label={t("desktopworkspacesection.Relaunch")}
+                  group="desktop-lifecycle"
+                  disabled={busyAction === "desktop-relaunch-app"}
+                  onClick={() =>
+                    void runAction(
+                      "desktop-relaunch-app",
+                      async () => relaunchDesktop(),
+                      t("desktopworkspacesection.DesktopRelaunchRequested"),
+                      false,
+                    )
+                  }
+                >
+                  {t("desktopworkspacesection.Relaunch")}
+                </WorkspaceActionButton>
+                <WorkspaceActionButton
+                  agentId="desktop-toggle-auto-launch"
+                  label={
+                    snapshot?.autoLaunch?.enabled
+                      ? t("desktopworkspacesection.DisableAutoLaunch")
+                      : t("desktopworkspacesection.EnableAutoLaunch")
+                  }
+                  group="desktop-lifecycle"
+                  disabled={busyAction === "desktop-toggle-auto-launch"}
+                  onClick={() =>
+                    void runAction("desktop-toggle-auto-launch", async () => {
+                      await invokeDesktopBridgeRequest<void>({
+                        rpcMethod: "desktopSetAutoLaunch",
+                        ipcChannel: "desktop:setAutoLaunch",
+                        params: {
+                          enabled: !(snapshot?.autoLaunch?.enabled ?? false),
+                          openAsHidden:
+                            snapshot?.autoLaunch?.openAsHidden ?? false,
+                        },
+                      });
+                    })
+                  }
+                >
+                  {snapshot?.autoLaunch?.enabled
                     ? t("desktopworkspacesection.DisableAutoLaunch")
-                    : t("desktopworkspacesection.EnableAutoLaunch")
-                }
-                group="desktop-lifecycle"
-                disabled={busyAction === "desktop-toggle-auto-launch"}
-                onClick={() =>
-                  void runAction("desktop-toggle-auto-launch", async () => {
-                    await invokeDesktopBridgeRequest<void>({
-                      rpcMethod: "desktopSetAutoLaunch",
-                      ipcChannel: "desktop:setAutoLaunch",
-                      params: {
-                        enabled: !(snapshot?.autoLaunch?.enabled ?? false),
-                        openAsHidden:
-                          snapshot?.autoLaunch?.openAsHidden ?? false,
-                      },
-                    });
-                  })
-                }
-              >
-                {snapshot?.autoLaunch?.enabled
-                  ? t("desktopworkspacesection.DisableAutoLaunch")
-                  : t("desktopworkspacesection.EnableAutoLaunch")}
-              </WorkspaceActionButton>
-              <WorkspaceActionButton
-                agentId="desktop-toggle-hidden-launch"
-                label={
-                  snapshot?.autoLaunch?.openAsHidden
+                    : t("desktopworkspacesection.EnableAutoLaunch")}
+                </WorkspaceActionButton>
+                <WorkspaceActionButton
+                  agentId="desktop-toggle-hidden-launch"
+                  label={
+                    snapshot?.autoLaunch?.openAsHidden
+                      ? t("desktopworkspacesection.LaunchVisibleOnLogin")
+                      : t("desktopworkspacesection.LaunchHiddenOnLogin")
+                  }
+                  group="desktop-lifecycle"
+                  className="sm:col-span-2 min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+                  disabled={busyAction === "desktop-toggle-hidden-launch"}
+                  onClick={() =>
+                    void runAction("desktop-toggle-hidden-launch", async () => {
+                      await invokeDesktopBridgeRequest<void>({
+                        rpcMethod: "desktopSetAutoLaunch",
+                        ipcChannel: "desktop:setAutoLaunch",
+                        params: {
+                          enabled: snapshot?.autoLaunch?.enabled ?? false,
+                          openAsHidden: !(
+                            snapshot?.autoLaunch?.openAsHidden ?? false
+                          ),
+                        },
+                      });
+                    })
+                  }
+                >
+                  {snapshot?.autoLaunch?.openAsHidden
                     ? t("desktopworkspacesection.LaunchVisibleOnLogin")
-                    : t("desktopworkspacesection.LaunchHiddenOnLogin")
-                }
-                group="desktop-lifecycle"
-                className="sm:col-span-2 min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
-                disabled={busyAction === "desktop-toggle-hidden-launch"}
-                onClick={() =>
-                  void runAction("desktop-toggle-hidden-launch", async () => {
-                    await invokeDesktopBridgeRequest<void>({
-                      rpcMethod: "desktopSetAutoLaunch",
-                      ipcChannel: "desktop:setAutoLaunch",
-                      params: {
-                        enabled: snapshot?.autoLaunch?.enabled ?? false,
-                        openAsHidden: !(
-                          snapshot?.autoLaunch?.openAsHidden ?? false
-                        ),
-                      },
-                    });
-                  })
-                }
-              >
-                {snapshot?.autoLaunch?.openAsHidden
-                  ? t("desktopworkspacesection.LaunchVisibleOnLogin")
-                  : t("desktopworkspacesection.LaunchHiddenOnLogin")}
-              </WorkspaceActionButton>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">
-              {t("desktopworkspacesection.NativeFileDialogs")}
-            </CardTitle>
-            <CardDescription>
-              {t("desktopworkspacesection.NativeFileDialogsDescription")}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid gap-2 sm:grid-cols-2">
-              <WorkspaceActionButton
-                agentId="desktop-open-file-dialog"
-                label={t("desktopworkspacesection.OpenFilesDialog")}
-                group="desktop-file-dialogs"
-                disabled={busyAction === "desktop-open-file-dialog"}
-                onClick={() =>
-                  void runAction(
-                    "desktop-open-file-dialog",
-                    async () => {
-                      const result = await invokeDesktopBridgeRequest<{
-                        canceled: boolean;
-                        filePaths: string[];
-                      }>({
-                        rpcMethod: "desktopShowOpenDialog",
-                        ipcChannel: "desktop:showOpenDialog",
-                        params: {
-                          title: t("desktopworkspacesection.SelectFiles"),
-                          defaultPath: snapshot?.paths.downloads,
-                          canChooseFiles: true,
-                          allowsMultipleSelection: true,
-                        },
-                      });
-                      setOpenPaths(result?.filePaths ?? []);
-                    },
-                    t("desktopworkspacesection.FileDialogCompleted"),
-                    false,
-                  )
-                }
-              >
-                {t("desktopworkspacesection.OpenFilesDialog")}
-              </WorkspaceActionButton>
-              <WorkspaceActionButton
-                agentId="desktop-open-folder-dialog"
-                label={t("desktopworkspacesection.OpenFolderDialog")}
-                group="desktop-file-dialogs"
-                disabled={busyAction === "desktop-open-folder-dialog"}
-                onClick={() =>
-                  void runAction(
-                    "desktop-open-folder-dialog",
-                    async () => {
-                      const result = await invokeDesktopBridgeRequest<{
-                        canceled: boolean;
-                        filePaths: string[];
-                      }>({
-                        rpcMethod: "desktopShowOpenDialog",
-                        ipcChannel: "desktop:showOpenDialog",
-                        params: {
-                          title: t("desktopworkspacesection.SelectFolder"),
-                          defaultPath: snapshot?.paths.home,
-                          canChooseDirectory: true,
-                        },
-                      });
-                      setOpenPaths(result?.filePaths ?? []);
-                    },
-                    t("desktopworkspacesection.FolderDialogCompleted"),
-                    false,
-                  )
-                }
-              >
-                {t("desktopworkspacesection.OpenFolderDialog")}
-              </WorkspaceActionButton>
-              <WorkspaceActionButton
-                agentId="desktop-save-dialog"
-                label={t("desktopworkspacesection.SaveFileDialog")}
-                group="desktop-file-dialogs"
-                className="sm:col-span-2 min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
-                disabled={busyAction === "desktop-save-dialog"}
-                onClick={() =>
-                  void runAction(
-                    "desktop-save-dialog",
-                    async () => {
-                      const result = await invokeDesktopBridgeRequest<{
-                        canceled: boolean;
-                        filePaths: string[];
-                      }>({
-                        rpcMethod: "desktopShowSaveDialog",
-                        ipcChannel: "desktop:showSaveDialog",
-                        params: {
-                          title: t("desktopworkspacesection.SaveFile"),
-                          defaultPath: snapshot?.paths.documents,
-                          allowedFileTypes: "txt,md,json",
-                        },
-                      });
-                      setSavePaths(result?.filePaths ?? []);
-                    },
-                    t("desktopworkspacesection.SaveDialogCompleted"),
-                    false,
-                  )
-                }
-              >
-                {t("desktopworkspacesection.SaveFileDialog")}
-              </WorkspaceActionButton>
-            </div>
-            <div className="space-y-2 rounded-sm border border-border bg-bg px-3 py-3 text-xs text-muted">
-              <div>
-                <div className="mb-1 font-semibold text-txt">
-                  {t("desktopworkspacesection.OpenDialogResult")}
-                </div>
-                {renderPathList(openPaths, t)}
+                    : t("desktopworkspacesection.LaunchHiddenOnLogin")}
+                </WorkspaceActionButton>
               </div>
-              <div>
-                <div className="mb-1 font-semibold text-txt">
-                  {t("desktopworkspacesection.SaveDialogResult")}
-                </div>
-                {renderPathList(savePaths, t)}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </SettingsRow>
+          </SettingsGroup>
+        </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">
-              {t("desktopworkspacesection.ClipboardAndPaths")}
-            </CardTitle>
-            <CardDescription>
-              {t("desktopworkspacesection.ClipboardAndPathsDescription")}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Textarea
-              ref={clipboardDraftRef}
-              value={clipboardDraft}
-              onChange={(event) => setClipboardDraft(event.target.value)}
-              className="min-h-24 w-full rounded-sm border border-border bg-bg px-3 py-2 text-sm text-txt outline-none"
-              placeholder={t("desktopworkspacesection.ClipboardDraft")}
-              {...clipboardDraftAgentProps}
-            />
-            <div className="grid gap-2 sm:grid-cols-2">
-              <WorkspaceActionButton
-                agentId="desktop-clipboard-read"
-                label={t("desktopworkspacesection.ReadClipboard")}
-                group="desktop-clipboard"
-                disabled={busyAction === "desktop-clipboard-read"}
-                onClick={() =>
-                  void runAction("desktop-clipboard-read", async () => {
-                    const result = await invokeDesktopBridgeRequest<{
-                      text?: string;
-                    }>({
-                      rpcMethod: "desktopReadFromClipboard",
-                      ipcChannel: "desktop:readFromClipboard",
-                    });
-                    setClipboardDraft(result?.text ?? "");
-                  })
-                }
-              >
-                {t("desktopworkspacesection.ReadClipboard")}
-              </WorkspaceActionButton>
-              <WorkspaceActionButton
-                agentId="desktop-clipboard-copy"
-                label={t("desktopworkspacesection.CopyDraft")}
-                group="desktop-clipboard"
-                disabled={busyAction === "desktop-clipboard-copy"}
-                onClick={() =>
-                  void runAction("desktop-clipboard-copy", async () => {
-                    await copyTextToClipboard(clipboardDraft);
-                  })
-                }
-              >
-                {t("desktopworkspacesection.CopyDraft")}
-              </WorkspaceActionButton>
-              <WorkspaceActionButton
-                agentId="desktop-clipboard-clear"
-                label={t("desktopworkspacesection.ClearClipboard")}
-                group="desktop-clipboard"
-                disabled={busyAction === "desktop-clipboard-clear"}
-                onClick={() =>
-                  void runAction("desktop-clipboard-clear", async () => {
-                    await invokeDesktopBridgeRequest<void>({
-                      rpcMethod: "desktopClearClipboard",
-                      ipcChannel: "desktop:clearClipboard",
-                    });
-                    setClipboardDraft("");
-                  })
-                }
-              >
-                {t("desktopworkspacesection.ClearClipboard")}
-              </WorkspaceActionButton>
-              {savePaths[0] && (
-                <>
+        <div className="grid gap-4 xl:grid-cols-2">
+          <SettingsGroup
+            title={t("desktopworkspacesection.NativeFileDialogs")}
+            description={t(
+              "desktopworkspacesection.NativeFileDialogsDescription",
+            )}
+          >
+            <SettingsRow
+              label={t("desktopworkspacesection.NativeFileDialogs")}
+              stacked
+            >
+              <div className="space-y-3">
+                <div className="grid gap-2 sm:grid-cols-2">
                   <WorkspaceActionButton
-                    agentId="desktop-open-path"
-                    label={t("desktopworkspacesection.OpenSavedPath")}
-                    group="desktop-clipboard"
-                    disabled={busyAction === "desktop-open-path"}
+                    agentId="desktop-open-file-dialog"
+                    label={t("desktopworkspacesection.OpenFilesDialog")}
+                    group="desktop-file-dialogs"
+                    disabled={busyAction === "desktop-open-file-dialog"}
                     onClick={() =>
                       void runAction(
-                        "desktop-open-path",
+                        "desktop-open-file-dialog",
                         async () => {
-                          await invokeDesktopBridgeRequest<void>({
-                            rpcMethod: "desktopOpenPath",
-                            ipcChannel: "desktop:openPath",
-                            params: { path: savePaths[0] },
+                          const result = await invokeDesktopBridgeRequest<{
+                            canceled: boolean;
+                            filePaths: string[];
+                          }>({
+                            rpcMethod: "desktopShowOpenDialog",
+                            ipcChannel: "desktop:showOpenDialog",
+                            params: {
+                              title: t("desktopworkspacesection.SelectFiles"),
+                              defaultPath: snapshot?.paths.downloads,
+                              canChooseFiles: true,
+                              allowsMultipleSelection: true,
+                            },
                           });
+                          setOpenPaths(result?.filePaths ?? []);
                         },
-                        t("desktopworkspacesection.OpenedSavedPath"),
+                        t("desktopworkspacesection.FileDialogCompleted"),
                         false,
                       )
                     }
                   >
-                    {t("desktopworkspacesection.OpenSavedPath")}
+                    {t("desktopworkspacesection.OpenFilesDialog")}
                   </WorkspaceActionButton>
                   <WorkspaceActionButton
-                    agentId="desktop-reveal-path"
-                    label={t("desktopworkspacesection.RevealSavedPath")}
-                    group="desktop-clipboard"
-                    disabled={busyAction === "desktop-reveal-path"}
+                    agentId="desktop-open-folder-dialog"
+                    label={t("desktopworkspacesection.OpenFolderDialog")}
+                    group="desktop-file-dialogs"
+                    disabled={busyAction === "desktop-open-folder-dialog"}
                     onClick={() =>
                       void runAction(
-                        "desktop-reveal-path",
+                        "desktop-open-folder-dialog",
                         async () => {
-                          await invokeDesktopBridgeRequest<void>({
-                            rpcMethod: "desktopShowItemInFolder",
-                            ipcChannel: "desktop:showItemInFolder",
-                            params: { path: savePaths[0] },
+                          const result = await invokeDesktopBridgeRequest<{
+                            canceled: boolean;
+                            filePaths: string[];
+                          }>({
+                            rpcMethod: "desktopShowOpenDialog",
+                            ipcChannel: "desktop:showOpenDialog",
+                            params: {
+                              title: t("desktopworkspacesection.SelectFolder"),
+                              defaultPath: snapshot?.paths.home,
+                              canChooseDirectory: true,
+                            },
                           });
+                          setOpenPaths(result?.filePaths ?? []);
                         },
-                        t("desktopworkspacesection.RevealedSavedPath"),
+                        t("desktopworkspacesection.FolderDialogCompleted"),
                         false,
                       )
                     }
                   >
-                    {t("desktopworkspacesection.RevealSavedPath")}
+                    {t("desktopworkspacesection.OpenFolderDialog")}
                   </WorkspaceActionButton>
-                </>
-              )}
-            </div>
-            <div className="rounded-sm border border-border bg-bg px-3 py-3 text-xs text-muted">
-              {snapshot?.clipboard ? (
-                <>
-                  <div className="font-semibold text-txt">
-                    {t("desktopworkspacesection.Formats")}{" "}
-                    {snapshot.clipboard.formats.join(", ") ||
-                      t("desktopworkspacesection.PlainText")}
+                  <WorkspaceActionButton
+                    agentId="desktop-save-dialog"
+                    label={t("desktopworkspacesection.SaveFileDialog")}
+                    group="desktop-file-dialogs"
+                    className="sm:col-span-2 min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
+                    disabled={busyAction === "desktop-save-dialog"}
+                    onClick={() =>
+                      void runAction(
+                        "desktop-save-dialog",
+                        async () => {
+                          const result = await invokeDesktopBridgeRequest<{
+                            canceled: boolean;
+                            filePaths: string[];
+                          }>({
+                            rpcMethod: "desktopShowSaveDialog",
+                            ipcChannel: "desktop:showSaveDialog",
+                            params: {
+                              title: t("desktopworkspacesection.SaveFile"),
+                              defaultPath: snapshot?.paths.documents,
+                              allowedFileTypes: "txt,md,json",
+                            },
+                          });
+                          setSavePaths(result?.filePaths ?? []);
+                        },
+                        t("desktopworkspacesection.SaveDialogCompleted"),
+                        false,
+                      )
+                    }
+                  >
+                    {t("desktopworkspacesection.SaveFileDialog")}
+                  </WorkspaceActionButton>
+                </div>
+                <div className="space-y-2 rounded-sm border border-border bg-bg px-3 py-3 text-xs text-muted">
+                  <div>
+                    <div className="mb-1 font-semibold text-txt">
+                      {t("desktopworkspacesection.OpenDialogResult")}
+                    </div>
+                    {renderPathList(openPaths, t)}
                   </div>
-                  <div className="mt-1 break-all">
-                    {snapshot.clipboard.text ||
-                      t("desktopworkspacesection.ClipboardTextUnavailable")}
+                  <div>
+                    <div className="mb-1 font-semibold text-txt">
+                      {t("desktopworkspacesection.SaveDialogResult")}
+                    </div>
+                    {renderPathList(savePaths, t)}
                   </div>
-                </>
-              ) : (
-                t("desktopworkspacesection.ClipboardDetailsUnavailable")
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+                </div>
+              </div>
+            </SettingsRow>
+          </SettingsGroup>
+
+          <SettingsGroup
+            title={t("desktopworkspacesection.ClipboardAndPaths")}
+            description={t(
+              "desktopworkspacesection.ClipboardAndPathsDescription",
+            )}
+          >
+            <SettingsRow
+              label={t("desktopworkspacesection.ClipboardAndPaths")}
+              stacked
+            >
+              <div className="space-y-3">
+                <SettingsTextarea
+                  ref={clipboardDraftRef}
+                  value={clipboardDraft}
+                  onChange={(event) => setClipboardDraft(event.target.value)}
+                  className="min-h-24 text-sm"
+                  placeholder={t("desktopworkspacesection.ClipboardDraft")}
+                  {...clipboardDraftAgentProps}
+                />
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <WorkspaceActionButton
+                    agentId="desktop-clipboard-read"
+                    label={t("desktopworkspacesection.ReadClipboard")}
+                    group="desktop-clipboard"
+                    disabled={busyAction === "desktop-clipboard-read"}
+                    onClick={() =>
+                      void runAction("desktop-clipboard-read", async () => {
+                        const result = await invokeDesktopBridgeRequest<{
+                          text?: string;
+                        }>({
+                          rpcMethod: "desktopReadFromClipboard",
+                          ipcChannel: "desktop:readFromClipboard",
+                        });
+                        setClipboardDraft(result?.text ?? "");
+                      })
+                    }
+                  >
+                    {t("desktopworkspacesection.ReadClipboard")}
+                  </WorkspaceActionButton>
+                  <WorkspaceActionButton
+                    agentId="desktop-clipboard-copy"
+                    label={t("desktopworkspacesection.CopyDraft")}
+                    group="desktop-clipboard"
+                    disabled={busyAction === "desktop-clipboard-copy"}
+                    onClick={() =>
+                      void runAction("desktop-clipboard-copy", async () => {
+                        await copyTextToClipboard(clipboardDraft);
+                      })
+                    }
+                  >
+                    {t("desktopworkspacesection.CopyDraft")}
+                  </WorkspaceActionButton>
+                  <WorkspaceActionButton
+                    agentId="desktop-clipboard-clear"
+                    label={t("desktopworkspacesection.ClearClipboard")}
+                    group="desktop-clipboard"
+                    disabled={busyAction === "desktop-clipboard-clear"}
+                    onClick={() =>
+                      void runAction("desktop-clipboard-clear", async () => {
+                        await invokeDesktopBridgeRequest<void>({
+                          rpcMethod: "desktopClearClipboard",
+                          ipcChannel: "desktop:clearClipboard",
+                        });
+                        setClipboardDraft("");
+                      })
+                    }
+                  >
+                    {t("desktopworkspacesection.ClearClipboard")}
+                  </WorkspaceActionButton>
+                  {savePaths[0] && (
+                    <>
+                      <WorkspaceActionButton
+                        agentId="desktop-open-path"
+                        label={t("desktopworkspacesection.OpenSavedPath")}
+                        group="desktop-clipboard"
+                        disabled={busyAction === "desktop-open-path"}
+                        onClick={() =>
+                          void runAction(
+                            "desktop-open-path",
+                            async () => {
+                              await invokeDesktopBridgeRequest<void>({
+                                rpcMethod: "desktopOpenPath",
+                                ipcChannel: "desktop:openPath",
+                                params: { path: savePaths[0] },
+                              });
+                            },
+                            t("desktopworkspacesection.OpenedSavedPath"),
+                            false,
+                          )
+                        }
+                      >
+                        {t("desktopworkspacesection.OpenSavedPath")}
+                      </WorkspaceActionButton>
+                      <WorkspaceActionButton
+                        agentId="desktop-reveal-path"
+                        label={t("desktopworkspacesection.RevealSavedPath")}
+                        group="desktop-clipboard"
+                        disabled={busyAction === "desktop-reveal-path"}
+                        onClick={() =>
+                          void runAction(
+                            "desktop-reveal-path",
+                            async () => {
+                              await invokeDesktopBridgeRequest<void>({
+                                rpcMethod: "desktopShowItemInFolder",
+                                ipcChannel: "desktop:showItemInFolder",
+                                params: { path: savePaths[0] },
+                              });
+                            },
+                            t("desktopworkspacesection.RevealedSavedPath"),
+                            false,
+                          )
+                        }
+                      >
+                        {t("desktopworkspacesection.RevealSavedPath")}
+                      </WorkspaceActionButton>
+                    </>
+                  )}
+                </div>
+                <div className="rounded-sm border border-border bg-bg px-3 py-3 text-xs text-muted">
+                  {snapshot?.clipboard ? (
+                    <>
+                      <div className="font-semibold text-txt">
+                        {t("desktopworkspacesection.Formats")}{" "}
+                        {snapshot.clipboard.formats.join(", ") ||
+                          t("desktopworkspacesection.PlainText")}
+                      </div>
+                      <div className="mt-1 break-all">
+                        {snapshot.clipboard.text ||
+                          t("desktopworkspacesection.ClipboardTextUnavailable")}
+                      </div>
+                    </>
+                  ) : (
+                    t("desktopworkspacesection.ClipboardDetailsUnavailable")
+                  )}
+                </div>
+              </div>
+            </SettingsRow>
+          </SettingsGroup>
+        </div>
+      </SettingsStack>
     </ContentLayout>
   );
 }

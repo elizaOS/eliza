@@ -552,10 +552,16 @@ export async function sendMessageInChunks(
 
 												try {
 													if (comp.type === 2) {
-														return new ButtonBuilder()
-															.setCustomId(comp.custom_id)
+														const button = new ButtonBuilder()
 															.setLabel(comp.label || "")
 															.setStyle(comp.style || 1);
+														// Link-style buttons carry a URL and no custom_id.
+														if (comp.url) {
+															button.setURL(comp.url);
+														} else {
+															button.setCustomId(comp.custom_id);
+														}
+														return button;
 													}
 
 													if (comp.type === 3) {

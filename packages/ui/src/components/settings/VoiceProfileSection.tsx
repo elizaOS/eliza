@@ -1,11 +1,7 @@
 /**
- * VoiceProfileSection — voice-profile manager settings panel (R10 §5).
- *
- * Lists known voice profiles (OWNER pinned at top) with rename / set
- * relationship / merge / split / delete affordances. Server data comes
- * from `VoiceProfilesClient` (R10 §5.3 adapter) — when I2 hasn't landed
- * the endpoints yet the adapter returns `[]` and we render the empty
- * state instead of crashing.
+ * VoiceProfileSection — voice-profile manager. Lists known profiles (owner
+ * pinned at top) with rename / set-relationship / delete affordances. Data
+ * comes from `VoiceProfilesClient`; an empty list renders the empty state.
  */
 
 import { Crown, Download, Mic, Pencil, Trash2, Users } from "lucide-react";
@@ -20,10 +16,7 @@ import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 
 export interface VoiceProfileSectionProps {
-  /**
-   * Adapter (R10 §5.3). Must be supplied by the parent that holds the
-   * `ElizaClient`. In tests the caller can pass a test adapter.
-   */
+  /** Adapter supplied by the parent that holds the `ElizaClient`. */
   profilesClient: VoiceProfilesClient;
   /** Pre-loaded profiles (skips initial fetch — useful for tests). */
   initialProfiles?: VoiceProfile[];
@@ -198,7 +191,7 @@ function VoiceProfileRow({
             }}
             // biome-ignore lint/a11y/noAutofocus: this is an inline rename input the user just clicked into; focus must follow.
             autoFocus
-            className="w-full rounded-sm border border-border/40 bg-bg/50 px-2 py-0.5 text-sm"
+            className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm transition-colors focus:border-accent focus:outline-none"
             data-testid={`voice-profile-rename-input-${profile.id}`}
             aria-label={t("voiceprofile.renameAria", {
               defaultValue: "Rename voice profile",
@@ -220,7 +213,7 @@ function VoiceProfileRow({
             {profile.displayName}
           </button>
         )}
-        <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
           <span data-testid={`voice-profile-samples-${profile.id}`}>
             {profile.embeddingCount === 1
               ? t("voiceprofile.sampleOne", {
@@ -240,7 +233,7 @@ function VoiceProfileRow({
               {profile.relationshipLabel}
             </span>
           ) : null}
-          <span className="opacity-60">{profile.cohort}</span>
+          <span>{profile.cohort}</span>
         </div>
       </div>
 
@@ -256,7 +249,7 @@ function VoiceProfileRow({
                 relationshipLabel: e.target.value || null,
               })
             }
-            className="rounded-sm border border-border/40 bg-bg/50 px-1 py-0.5 text-xs"
+            className="h-11 rounded-md border border-border bg-card px-2 text-xs transition-colors focus:border-accent focus:outline-none"
             data-testid={`voice-profile-relationship-select-${profile.id}`}
             aria-label={t("voiceprofile.setRelationship", {
               defaultValue: "Set relationship",
@@ -391,8 +384,7 @@ export function VoiceProfileSection({
             if (target?.isOwner) {
               setError(
                 t("voiceprofile.error.ownerDelete", {
-                  defaultValue:
-                    "Owner profile cannot be deleted from this panel.",
+                  defaultValue: "The owner profile can't be deleted.",
                 }),
               );
               return;
@@ -475,7 +467,7 @@ export function VoiceProfileSection({
     <div
       data-testid="voice-profile-section"
       className={cn(
-        framed && "rounded-sm border border-border/40 bg-card/40",
+        framed && "overflow-hidden rounded-lg border border-border bg-card",
         className,
       )}
     >
@@ -486,7 +478,7 @@ export function VoiceProfileSection({
             {t("voiceprofile.title", { defaultValue: "Voice profiles" })}
           </h3>
           <span
-            className="rounded-full bg-bg/60 px-1.5 py-0.5 text-[10px] text-muted"
+            className="rounded-full bg-bg/60 px-1.5 py-0.5 text-xs text-muted"
             data-testid="voice-profile-count"
           >
             {ownerCount > 0
@@ -562,7 +554,7 @@ export function VoiceProfileSection({
           <Mic className="mx-auto mb-2 h-5 w-5 text-muted" aria-hidden />
           {t("voiceprofile.empty", {
             defaultValue:
-              "No voice profiles yet. They'll appear here automatically when the agent hears a distinct voice (or you can add one in first-run).",
+              "No voice profiles yet — they appear automatically when the agent hears a new voice.",
           })}
         </div>
       ) : (

@@ -55,7 +55,7 @@ export const ALL_XR_VIEW_IDS = [
   "smartglasses",
   // The face-tracking view registers as "facewear" (see src/index.ts and
   // the Playwright spec plugins/plugin-facewear/app-xr/e2e/all-views-crud.spec.ts).
-  // "hearwear" is the plugin id, NOT the view id.
+  // "facewear" is the plugin id, NOT the view id.
   "facewear",
 ] as const;
 

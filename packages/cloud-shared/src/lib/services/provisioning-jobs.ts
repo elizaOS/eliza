@@ -32,6 +32,7 @@ import { dispatchAppDbDeprovisionJob } from "./app-db-deprovision-job-service";
 import { dispatchAppDeployJob, readAppDeployJobData } from "./app-deploy-job-service";
 import { appsService } from "./apps";
 import { dispatchContainerJob, getContainerExecutorDeps } from "./container-job-service";
+import { dispatchContainerStopJob } from "./container-stop-job-service";
 import { elizaProvisionAdvisoryLockSql } from "./eliza-provision-lock";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
@@ -1518,6 +1519,23 @@ export class ProvisioningJobService {
       case JOB_TYPES.CONTAINER_LOGS:
         await dispatchContainerJob(job, getContainerExecutorDeps());
         break;
+      // Billing-suspend stop (#8342): the container-billing cron (Worker, no SSH)
+      // enqueues this when an org runs out of credit; the daemon runs the real
+      // `docker stop` + remove via HetznerContainersClient (volume preserved,
+      // node slot freed). Routed direct to its own dispatcher — NOT through
+      // dispatchContainerJob (which targets the apps-lane AppContainerProvider
+      // by container name); these are 2AM `containers` rows stopped by id+org.
+      // Self-marked completed so recoverStaleJobs() can't re-sweep it: the stop
+      // is idempotent on a live container, but re-running after the row is gone
+      // is pointless churn, and a completed row is the clean terminal state.
+      case JOB_TYPES.CONTAINER_STOP: {
+        const outcome = await dispatchContainerStopJob(job);
+        await jobsRepository.updateStatus(job.id, "completed", {
+          result: { stopped: outcome.stopped, reason: outcome.reason ?? null },
+          completed_at: new Date(),
+        });
+        break;
+      }
       // Apps lane (Product 2): the node deploy. The Worker enqueues this; the
       // daemon runs the real isolated provision via the injected AppDeployRunner.
       case JOB_TYPES.APP_DEPLOY:

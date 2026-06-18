@@ -50,6 +50,7 @@
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
+    "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
@@ -62,7 +63,7 @@
     "dev": "bun --hot build.ts",
     "clean": "rm -rf dist .turbo",
     "test": "vitest run",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json --rootDir ../..",
     "lint": "echo \"Lint skipped\"",
     "lint:check": "bun run lint",
     "check": "bun run typecheck && bun run test"

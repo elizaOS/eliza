@@ -98,7 +98,40 @@ function normalizeBaseUrl(value: string | undefined, fallback: string): string {
 }
 
 function apiOriginFromApiBaseUrl(value: string): string {
-  return value.replace(/\/api\/v1\/?$/, "");
+  return new URL(value).origin;
+}
+
+function normalizeCloudApiBaseUrl(
+  value: string | undefined,
+  fallback: string,
+): string {
+  const baseUrl = normalizeBaseUrl(value, fallback);
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    throw new Error(`Invalid Eliza Cloud API base URL: ${baseUrl}`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`Invalid Eliza Cloud API base URL protocol: ${baseUrl}`);
+  }
+  if (url.search || url.hash) {
+    throw new Error(
+      `Eliza Cloud API base URL must not include query or hash: ${baseUrl}`,
+    );
+  }
+
+  const pathname = trimTrailingSlash(url.pathname);
+  if (!pathname || pathname === "/") {
+    url.pathname = "/api/v1";
+  } else if (pathname === "/api/v1") {
+    url.pathname = "/api/v1";
+  } else {
+    throw new Error(
+      `Eliza Cloud API base URL must be an origin or end at /api/v1: ${baseUrl}`,
+    );
+  }
+  return trimTrailingSlash(url.toString());
 }
 
 function browserBaseUrlForCliLogin(baseUrl: string): string {
@@ -167,7 +200,7 @@ export class ElizaCloudClient {
       options.baseUrl,
       DEFAULT_ELIZA_CLOUD_BASE_URL,
     );
-    this.apiBaseUrl = normalizeBaseUrl(
+    this.apiBaseUrl = normalizeCloudApiBaseUrl(
       options.apiBaseUrl,
       options.baseUrl
         ? `${this.baseUrl}/api/v1`

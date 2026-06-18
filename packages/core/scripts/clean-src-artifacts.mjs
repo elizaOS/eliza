@@ -21,39 +21,39 @@ const preserveRoot = path.join(srcRoot, "types", "generated");
 const EXTS = new Set([".js", ".js.map", ".d.ts", ".d.ts.map"]);
 
 function endsWithAny(name) {
-  for (const ext of EXTS) if (name.endsWith(ext)) return true;
-  return false;
+	for (const ext of EXTS) if (name.endsWith(ext)) return true;
+	return false;
 }
 
 function walk(dir) {
-  let entries;
-  try {
-    entries = readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return;
-  }
-  for (const entry of entries) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      // Skip the preserve root entirely (matches the `! -path 'src/types/generated/*'`).
-      if (full === preserveRoot) continue;
-      walk(full);
-      continue;
-    }
-    if (!entry.isFile()) continue;
-    if (!endsWithAny(entry.name)) continue;
-    try {
-      unlinkSync(full);
-    } catch {
-      // Match the bash `2>/dev/null || true` semantics.
-    }
-  }
+	let entries;
+	try {
+		entries = readdirSync(dir, { withFileTypes: true });
+	} catch {
+		return;
+	}
+	for (const entry of entries) {
+		const full = path.join(dir, entry.name);
+		if (entry.isDirectory()) {
+			// Skip the preserve root entirely (matches the `! -path 'src/types/generated/*'`).
+			if (full === preserveRoot) continue;
+			walk(full);
+			continue;
+		}
+		if (!entry.isFile()) continue;
+		if (!endsWithAny(entry.name)) continue;
+		try {
+			unlinkSync(full);
+		} catch {
+			// Match the bash `2>/dev/null || true` semantics.
+		}
+	}
 }
 
 try {
-  statSync(srcRoot);
+	statSync(srcRoot);
 } catch {
-  process.exit(0);
+	process.exit(0);
 }
 
 walk(srcRoot);

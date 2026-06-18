@@ -3,6 +3,13 @@ import { vi } from "vitest";
 vi.mock("@elizaos/core", async () => {
   const { createHash } = await import("node:crypto");
 
+  // The interaction protocol (parse/serialize/layout/callback/normalize) is
+  // pure — types-only imports, no runtime deps — so the mock uses the real
+  // implementation rather than re-stubbing it.
+  const interactions = await import(
+    "../../../packages/core/src/messaging/interactions/index"
+  );
+
   const logger = {
     debug: vi.fn(),
     error: vi.fn(),
@@ -82,6 +89,7 @@ vi.mock("@elizaos/core", async () => {
   }
 
   return {
+    ...interactions,
     ChannelType,
     EventType,
     ModelType,

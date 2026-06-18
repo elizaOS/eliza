@@ -11,6 +11,45 @@ import type { ViewDeclaration } from "@elizaos/core";
 
 export const BUILTIN_VIEWS: ViewDeclaration[] = [
   {
+    id: "tutorial",
+    label: "Tutorial",
+    description:
+      "Interactive guided tour — learn the chat, switching views, and Settings in 90 seconds",
+    icon: "GraduationCap",
+    path: "/tutorial",
+    order: 0,
+    tags: ["tutorial", "onboarding", "learn", "guide", "help"],
+    visibleInManager: true,
+    desktopTabEnabled: true,
+    platforms: ["web", "desktop", "ios", "android"],
+  },
+  {
+    id: "help",
+    label: "Help",
+    description:
+      "Searchable FAQ and knowledge base — what Eliza is and how everything works",
+    icon: "LifeBuoy",
+    path: "/help",
+    order: 2,
+    tags: ["help", "faq", "knowledge", "support", "questions"],
+    visibleInManager: true,
+    desktopTabEnabled: true,
+    platforms: ["web", "desktop", "ios", "android"],
+  },
+  {
+    id: "camera",
+    label: "Camera",
+    description:
+      "Live camera preview with photo capture and front/back switching",
+    icon: "Camera",
+    path: "/camera",
+    order: 3,
+    tags: ["camera", "photo", "capture", "video", "vision"],
+    visibleInManager: true,
+    desktopTabEnabled: true,
+    platforms: ["android"],
+  },
+  {
     id: "chat",
     label: "Chat",
     description:

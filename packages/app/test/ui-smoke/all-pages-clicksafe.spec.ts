@@ -248,6 +248,28 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     readyChecks: [{ selector: '[data-testid="settings-shell"]' }],
     timeoutMs: 60_000,
   },
+  {
+    // /camera is an `androidOnly` overlay app (platformGate "android"); like the
+    // phone/messages/contacts deep links above it does not register on this
+    // desktop / mobile-web sweep, so deep-linking it must render the app shell
+    // gracefully (#root present, no crash) rather than the Android camera UI.
+    name: "camera deep link",
+    path: "/camera",
+    readyChecks: [{ selector: "#root" }],
+    timeoutMs: 60_000,
+  },
+  {
+    name: "tutorial",
+    path: "/tutorial",
+    readyChecks: [{ selector: '[data-testid="tutorial-launcher"]' }],
+    timeoutMs: 60_000,
+  },
+  {
+    name: "help",
+    path: "/help",
+    readyChecks: [{ selector: '[data-testid="help-view"]' }],
+    timeoutMs: 60_000,
+  },
 ];
 
 function coreRouteProbe(name: string): RouteProbe {
@@ -1341,7 +1363,27 @@ async function installSupplementalSafeRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ enabled: false, rules: [], activeBlocks: [] }),
+      body: JSON.stringify({
+        available: true,
+        active: false,
+        hostsFilePath: "/etc/hosts",
+        startedAt: null,
+        endsAt: null,
+        websites: [],
+        blockedWebsites: [],
+        allowedWebsites: [],
+        requestedWebsites: [],
+        matchMode: "exact",
+        managedBy: null,
+        metadata: null,
+        scheduledByAgentId: null,
+        canUnblockEarly: true,
+        requiresElevation: false,
+        engine: "hosts-file",
+        platform: "linux",
+        supportsElevationPrompt: true,
+        elevationPromptMethod: "pkexec",
+      }),
     });
   });
 

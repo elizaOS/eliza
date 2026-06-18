@@ -1,21 +1,7 @@
 /**
- * VoiceSection — top-level Settings → Voice tree (R10 §8).
- *
- * Mounts six sub-panels into a single scrollable section:
- *
- * 1. Device tier banner (R10 §7, banner pulled in from VoiceTierBanner).
- * 2. Continuous chat mode (off / vad-gated / always-on).
- * 3. Wake word — inline controls until WakeWordSection is decoupled from
- *    VoiceConfigView.
- * 4. Local-vs-Cloud strategy (auto / force-local / force-cloud).
- * 5. Models — slot for I5's ModelUpdatesPanel (renders the slot prop or
- *    an empty banner if I5 hasn't landed).
- * 6. Profiles — VoiceProfileSection.
- * 7. Privacy — first-line cache opt-in + auto-learn toggle.
- *
- * The section is intentionally additive — it does not modify the existing
- * `IdentitySettingsSection`'s embedded `VoiceConfigView`. R10 §8.2: legacy
- * `messages.tts.*` keys stay; the new `messages.voice.*` keys live here.
+ * VoiceSection — top-level Settings → Voice tree. Mounts the device-tier
+ * banner, continuous-chat mode, wake word, local-vs-cloud strategy,
+ * end-of-turn tuning, the models slot, voice profiles, and privacy toggles.
  */
 
 import { Cloud, Database, Mic, Shield, Sliders, Timer } from "lucide-react";
@@ -26,6 +12,7 @@ import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import type { VoiceContinuousMode } from "../../voice/voice-chat-types";
 import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 import { VoiceProfileSection } from "./VoiceProfileSection";
 import { DEFAULT_VAD_AUTO_STOP_PREFS } from "./VoiceSection.helpers";
 import { type VoiceDeviceTier, VoiceTierBanner } from "./VoiceTierBanner";
@@ -33,9 +20,8 @@ import { type VoiceDeviceTier, VoiceTierBanner } from "./VoiceTierBanner";
 export type VoiceLocalCloudStrategy = "auto" | "force-local" | "force-cloud";
 
 /**
- * User-facing slice of {@link LocalAsrAutoStopOptions}: how long silence ends a
- * turn (`silenceMs`) and how loud audio must be to count as speech
- * (`speechRmsThreshold`). The remaining auto-stop fields keep their library
+ * User-facing slice of the auto-stop options: how long silence ends a turn
+ * and how loud audio must be to count as speech. Other fields keep library
  * defaults — these two are the only knobs worth surfacing.
  */
 export interface VadAutoStopPrefs {
@@ -52,6 +38,73 @@ const VAD_SILENCE_STEP_MS = 100;
 const VAD_RMS_MIN = 0.001;
 const VAD_RMS_MAX = 0.02;
 const VAD_RMS_STEP = 0.001;
+
+/**
+ * A range slider that registers on the agent surface (role "slider") so chat
+ * can read and set it. Renders the same native `<input type=range>` the rest
+ * of the section uses.
+ */
+function VadSlider({
+  agentId,
+  label,
+  value,
+  valueText,
+  min,
+  max,
+  step,
+  onChange,
+  testId,
+  footer,
+}: {
+  agentId: string;
+  label: string;
+  value: number;
+  valueText: string;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (next: number) => void;
+  testId: string;
+  footer?: React.ReactNode;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id: agentId,
+    role: "slider",
+    label,
+    group: "voice-section",
+    getValue: () => value,
+    onFill: (next) => {
+      const n = Number(next);
+      if (Number.isFinite(n)) onChange(Math.min(max, Math.max(min, n)));
+    },
+  });
+  return (
+    <div className="flex flex-col">
+      <div className="mb-1 flex items-center justify-end">
+        <span
+          className="font-medium text-muted"
+          data-testid={`${testId}-value`}
+        >
+          {valueText}
+        </span>
+      </div>
+      <input
+        ref={ref}
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full accent-accent"
+        data-testid={testId}
+        aria-label={label}
+        {...agentProps}
+      />
+      {footer}
+    </div>
+  );
+}
 
 export interface VoiceSectionPrefs {
   continuous: VoiceContinuousMode;
@@ -86,38 +139,6 @@ export interface VoiceSectionProps {
   /** Toggle wake-word listening (caller wires Swabble). */
   onWakeWordToggle?: (next: boolean) => void;
   className?: string;
-}
-
-function FieldRow({
-  icon: Icon,
-  title,
-  description,
-  children,
-  "data-testid": dataTestId,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-  "data-testid"?: string;
-}): React.ReactElement {
-  return (
-    <div
-      className="flex items-start justify-between gap-3 rounded-sm border border-border/30 bg-card/30 p-3"
-      data-testid={dataTestId}
-    >
-      <div className="flex items-start gap-2">
-        <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted" aria-hidden />
-        <div>
-          <div className="text-sm font-semibold">{title}</div>
-          {description ? (
-            <div className="mt-0.5 text-xs text-muted">{description}</div>
-          ) : null}
-        </div>
-      </div>
-      <div className="shrink-0">{children}</div>
-    </div>
-  );
 }
 
 export function VoiceSection({
@@ -202,291 +223,268 @@ export function VoiceSection({
     });
 
   return (
-    <section
-      data-testid="voice-section"
-      className={cn("flex flex-col gap-4 p-4 sm:p-5", className)}
-    >
-      <VoiceTierBanner tier={tier ?? "GOOD"} summary={tierSummary} />
+    <section data-testid="voice-section" className={cn(className)}>
+      <SettingsStack>
+        <SettingsGroup bare>
+          <VoiceTierBanner tier={tier ?? "GOOD"} summary={tierSummary} />
+        </SettingsGroup>
 
-      <FieldRow
-        icon={Mic}
-        title={t("voicesection.continuousChat", {
-          defaultValue: "Continuous chat",
-        })}
-        description={t("voicesection.continuousChatDesc", {
-          defaultValue:
-            "When on, the mic stays open and the agent decides when you finished speaking.",
-        })}
-        data-testid="voice-section-continuous-row"
-      >
-        <ContinuousChatToggle
-          value={prefs.continuous}
-          onChange={(next) => updatePrefs({ continuous: next })}
-          data-testid="voice-section-continuous-toggle"
-        />
-      </FieldRow>
-
-      <FieldRow
-        icon={Sliders}
-        title={t("voicesection.wakeWord", { defaultValue: "Wake word" })}
-        description={t("voicesection.wakeWordDesc", {
-          defaultValue:
-            "Listen for a phrase like 'Hey Eliza' before opening the mic.",
-        })}
-        data-testid="voice-section-wake-row"
-      >
-        <label className="inline-flex cursor-pointer items-center gap-2 text-xs">
-          <input
-            ref={wakeWordRef}
-            type="checkbox"
-            checked={wakeWordEnabled}
-            onChange={(e) => onWakeWordToggle?.(e.target.checked)}
-            data-testid="voice-section-wake-toggle"
-            className="h-4 w-4 rounded-sm border-border/40"
-            aria-current={wakeWordEnabled ? "true" : undefined}
-            aria-label={t("voicesection.toggleWakeWord", {
-              defaultValue: "Toggle wake word",
-            })}
-            {...wakeWordAgentProps}
-          />
-          <span className="text-muted">
-            {wakeWordEnabled
-              ? t("voicesection.on", { defaultValue: "On" })
-              : t("voicesection.off", { defaultValue: "Off" })}
-          </span>
-        </label>
-      </FieldRow>
-
-      <FieldRow
-        icon={Cloud}
-        title={t("voicesection.localVsCloud", {
-          defaultValue: "Local vs Cloud",
-        })}
-        description={t("voicesection.localVsCloudDesc", {
-          defaultValue: "Where speech recognition and synthesis run.",
-        })}
-      >
-        <select
-          ref={strategyRef}
-          value={prefs.strategy}
-          onChange={(e) =>
-            updatePrefs({
-              strategy: e.target.value as VoiceLocalCloudStrategy,
-            })
-          }
-          className="rounded-sm border border-border/40 bg-bg/50 px-2 py-1 text-xs"
-          data-testid="voice-section-strategy-select"
-          aria-label={t("voicesection.localVsCloudStrategy", {
-            defaultValue: "Local vs Cloud strategy",
+        <SettingsGroup
+          title={t("voicesection.chatGroupTitle", {
+            defaultValue: "Voice chat",
           })}
-          {...strategyAgentProps}
         >
-          <option value="auto">
-            {t("voicesection.strategyAuto", {
-              defaultValue: "Auto (recommended)",
+          <SettingsRow
+            icon={Mic}
+            label={t("voicesection.continuousChat", {
+              defaultValue: "Continuous chat",
             })}
-          </option>
-          <option value="force-local">
-            {t("voicesection.strategyForceLocal", {
-              defaultValue: "Force local",
+            description={t("voicesection.continuousChatDesc", {
+              defaultValue: "Mic stays open; the agent detects when you stop.",
             })}
-          </option>
-          <option value="force-cloud">
-            {t("voicesection.strategyForceCloud", {
-              defaultValue: "Force cloud",
-            })}
-          </option>
-        </select>
-      </FieldRow>
+            stacked
+          >
+            <div data-testid="voice-section-continuous-row">
+              <ContinuousChatToggle
+                value={prefs.continuous}
+                onChange={(next) => updatePrefs({ continuous: next })}
+                data-testid="voice-section-continuous-toggle"
+              />
+            </div>
+          </SettingsRow>
 
-      <div
-        className="rounded-sm border border-border/30 bg-card/30 p-3"
-        data-testid="voice-section-vad"
-      >
-        <div className="mb-2 flex items-center gap-2">
-          <Timer className="h-4 w-4 text-muted" aria-hidden />
-          <h3 className="text-sm font-semibold">
-            {t("voicesection.endOfTurn", { defaultValue: "End of turn" })}
-          </h3>
-        </div>
-        <p className="mb-3 text-xs text-muted">
-          {t("voicesection.endOfTurnDesc", {
-            defaultValue:
-              "Tune how on-device VAD decides you've finished speaking. Applies to VAD-gated and continuous capture with local speech recognition.",
-          })}
-        </p>
-
-        <label className="mb-3 block text-xs">
-          <span className="mb-1 flex items-center justify-between">
-            <span className="text-sm">
-              {t("voicesection.silenceDuration", {
-                defaultValue: "Silence before end of turn",
-              })}
-            </span>
-            <span
-              className="font-medium text-muted"
-              data-testid="voice-section-vad-silence-value"
-            >
-              {(vadAutoStop.silenceMs / 1000).toFixed(1)}s
-            </span>
-          </span>
-          <input
-            type="range"
-            min={VAD_SILENCE_MIN_MS}
-            max={VAD_SILENCE_MAX_MS}
-            step={VAD_SILENCE_STEP_MS}
-            value={vadAutoStop.silenceMs}
-            onChange={(e) =>
-              updateVadAutoStop({ silenceMs: Number(e.target.value) })
+          <SettingsRow
+            icon={Sliders}
+            label={t("voicesection.wakeWord", { defaultValue: "Wake word" })}
+            description={t("voicesection.wakeWordDesc", {
+              defaultValue:
+                "Listen for a phrase like 'Hey Eliza' before opening the mic.",
+            })}
+            control={
+              <label
+                className="inline-flex min-h-[44px] cursor-pointer items-center gap-2 text-sm"
+                data-testid="voice-section-wake-row"
+              >
+                <input
+                  ref={wakeWordRef}
+                  type="checkbox"
+                  checked={wakeWordEnabled}
+                  onChange={(e) => onWakeWordToggle?.(e.target.checked)}
+                  data-testid="voice-section-wake-toggle"
+                  className="h-5 w-5 rounded-sm border-border accent-accent"
+                  aria-current={wakeWordEnabled ? "true" : undefined}
+                  aria-label={t("voicesection.toggleWakeWord", {
+                    defaultValue: "Toggle wake word",
+                  })}
+                  {...wakeWordAgentProps}
+                />
+                <span className="text-muted">
+                  {wakeWordEnabled
+                    ? t("voicesection.on", { defaultValue: "On" })
+                    : t("voicesection.off", { defaultValue: "Off" })}
+                </span>
+              </label>
             }
-            className="w-full accent-accent"
-            data-testid="voice-section-vad-silence"
-            aria-label={t("voicesection.silenceDuration", {
+          />
+
+          <SettingsRow
+            icon={Cloud}
+            label={t("voicesection.localVsCloud", {
+              defaultValue: "Local vs Cloud",
+            })}
+            description={t("voicesection.localVsCloudDesc", {
+              defaultValue: "Where speech recognition and synthesis run.",
+            })}
+            stacked
+          >
+            <select
+              ref={strategyRef}
+              value={prefs.strategy}
+              onChange={(e) =>
+                updatePrefs({
+                  strategy: e.target.value as VoiceLocalCloudStrategy,
+                })
+              }
+              className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm text-txt transition-colors focus:border-accent focus:outline-none"
+              data-testid="voice-section-strategy-select"
+              aria-label={t("voicesection.localVsCloudStrategy", {
+                defaultValue: "Local vs Cloud strategy",
+              })}
+              {...strategyAgentProps}
+            >
+              <option value="auto">
+                {t("voicesection.strategyAuto", {
+                  defaultValue: "Auto (recommended)",
+                })}
+              </option>
+              <option value="force-local">
+                {t("voicesection.strategyForceLocal", {
+                  defaultValue: "Force local",
+                })}
+              </option>
+              <option value="force-cloud">
+                {t("voicesection.strategyForceCloud", {
+                  defaultValue: "Force cloud",
+                })}
+              </option>
+            </select>
+          </SettingsRow>
+        </SettingsGroup>
+
+        <SettingsGroup
+          title={t("voicesection.endOfTurn", { defaultValue: "End of turn" })}
+          description={t("voicesection.endOfTurnDesc", {
+            defaultValue:
+              "Tune how on-device VAD decides you've finished speaking.",
+          })}
+          data-testid="voice-section-vad"
+        >
+          <SettingsRow
+            icon={Timer}
+            label={t("voicesection.silenceDuration", {
               defaultValue: "Silence before end of turn",
             })}
-          />
-        </label>
-
-        <label className="block text-xs">
-          <span className="mb-1 flex items-center justify-between">
-            <span className="text-sm">
-              {t("voicesection.micSensitivity", {
-                defaultValue: "Speech detection threshold",
+            stacked
+          >
+            <VadSlider
+              agentId="voice-section-vad-silence"
+              testId="voice-section-vad-silence"
+              label={t("voicesection.silenceDuration", {
+                defaultValue: "Silence before end of turn",
               })}
-            </span>
-            <span
-              className="font-medium text-muted"
-              data-testid="voice-section-vad-rms-value"
-            >
-              {vadAutoStop.speechRmsThreshold.toFixed(3)}
-            </span>
-          </span>
-          <input
-            type="range"
-            min={VAD_RMS_MIN}
-            max={VAD_RMS_MAX}
-            step={VAD_RMS_STEP}
-            value={vadAutoStop.speechRmsThreshold}
-            onChange={(e) =>
-              updateVadAutoStop({
-                speechRmsThreshold: Number(e.target.value),
-              })
-            }
-            className="w-full accent-accent"
-            data-testid="voice-section-vad-rms"
-            aria-label={t("voicesection.micSensitivity", {
+              value={vadAutoStop.silenceMs}
+              valueText={`${(vadAutoStop.silenceMs / 1000).toFixed(1)}s`}
+              min={VAD_SILENCE_MIN_MS}
+              max={VAD_SILENCE_MAX_MS}
+              step={VAD_SILENCE_STEP_MS}
+              onChange={(silenceMs) => updateVadAutoStop({ silenceMs })}
+            />
+          </SettingsRow>
+          <SettingsRow
+            icon={Timer}
+            label={t("voicesection.micSensitivity", {
               defaultValue: "Speech detection threshold",
             })}
-          />
-          <span className="mt-1 flex justify-between text-[10px] text-muted">
-            <span>
-              {t("voicesection.thresholdLower", {
-                defaultValue: "More sensitive",
-              })}
-            </span>
-            <span>
-              {t("voicesection.thresholdHigher", {
-                defaultValue: "Less sensitive",
-              })}
-            </span>
-          </span>
-        </label>
-      </div>
-
-      <div
-        className="rounded-sm border border-border/30 bg-card/30 p-3"
-        data-testid="voice-section-models"
-      >
-        <div className="mb-2 flex items-center gap-2">
-          <Database className="h-4 w-4 text-muted" aria-hidden />
-          <h3 className="text-sm font-semibold">
-            {t("voicesection.models", { defaultValue: "Models" })}
-          </h3>
-        </div>
-        {modelsPanel ?? (
-          <p
-            className="text-xs text-muted"
-            data-testid="voice-section-models-empty"
+            stacked
           >
-            {t("voicesection.modelsEmpty", {
+            <VadSlider
+              agentId="voice-section-vad-rms"
+              testId="voice-section-vad-rms"
+              label={t("voicesection.micSensitivity", {
+                defaultValue: "Speech detection threshold",
+              })}
+              value={vadAutoStop.speechRmsThreshold}
+              valueText={vadAutoStop.speechRmsThreshold.toFixed(3)}
+              min={VAD_RMS_MIN}
+              max={VAD_RMS_MAX}
+              step={VAD_RMS_STEP}
+              onChange={(speechRmsThreshold) =>
+                updateVadAutoStop({ speechRmsThreshold })
+              }
+              footer={
+                <span className="mt-1 flex justify-between text-xs text-muted">
+                  <span>
+                    {t("voicesection.thresholdLower", {
+                      defaultValue: "More sensitive",
+                    })}
+                  </span>
+                  <span>
+                    {t("voicesection.thresholdHigher", {
+                      defaultValue: "Less sensitive",
+                    })}
+                  </span>
+                </span>
+              }
+            />
+          </SettingsRow>
+        </SettingsGroup>
+
+        <SettingsGroup
+          title={t("voicesection.models", { defaultValue: "Models" })}
+          data-testid="voice-section-models"
+        >
+          {modelsPanel ?? (
+            <SettingsRow
+              icon={Database}
+              label={t("voicesection.models", { defaultValue: "Models" })}
+              description={
+                <span data-testid="voice-section-models-empty">
+                  {t("voicesection.modelsEmpty", {
+                    defaultValue: "Voice models appear here when available.",
+                  })}
+                </span>
+              }
+            />
+          )}
+        </SettingsGroup>
+
+        <SettingsGroup
+          bare
+          title={t("voiceprofile.title", { defaultValue: "Voice profiles" })}
+        >
+          <VoiceProfileSection profilesClient={profilesClient} />
+        </SettingsGroup>
+
+        <SettingsGroup
+          title={t("voicesection.privacy", { defaultValue: "Privacy" })}
+          data-testid="voice-section-privacy"
+        >
+          <SettingsRow
+            icon={Shield}
+            label={t("voicesection.cloudFirstLineCache", {
+              defaultValue: "Cloud first-line cache",
+            })}
+            description={t("voicesection.cloudFirstLineCacheDesc", {
               defaultValue:
-                "Voice models will appear here once they're available. Voice updates appear automatically on Wi-Fi; on cellular we'll ask first.",
+                "Lets Eliza Cloud cache the agent's short opener phrases for faster replies.",
             })}
-          </p>
-        )}
-      </div>
-
-      <VoiceProfileSection profilesClient={profilesClient} />
-
-      <div
-        className="rounded-sm border border-border/30 bg-card/30 p-3"
-        data-testid="voice-section-privacy"
-      >
-        <div className="mb-2 flex items-center gap-2">
-          <Shield className="h-4 w-4 text-muted" aria-hidden />
-          <h3 className="text-sm font-semibold">
-            {t("voicesection.privacy", { defaultValue: "Privacy" })}
-          </h3>
-        </div>
-        <label className="mb-2 flex cursor-pointer items-center justify-between gap-3 text-xs">
-          <span>
-            <span className="block text-sm">
-              {t("voicesection.cloudFirstLineCache", {
-                defaultValue: "Cloud first-line cache",
-              })}
-            </span>
-            <span className="text-muted">
-              {t("voicesection.cloudFirstLineCacheDesc", {
-                defaultValue:
-                  "Lets Eliza Cloud cache the agent's short opener phrases for faster replies. Disabled by default.",
-              })}
-            </span>
-          </span>
-          <input
-            ref={cloudCacheRef}
-            type="checkbox"
-            checked={prefs.cloudFirstLineCache}
-            onChange={(e) =>
-              updatePrefs({ cloudFirstLineCache: e.target.checked })
+            control={
+              <input
+                ref={cloudCacheRef}
+                type="checkbox"
+                checked={prefs.cloudFirstLineCache}
+                onChange={(e) =>
+                  updatePrefs({ cloudFirstLineCache: e.target.checked })
+                }
+                data-testid="voice-section-cloud-cache-toggle"
+                className="h-5 w-5 rounded-sm border-border accent-accent"
+                aria-current={prefs.cloudFirstLineCache ? "true" : undefined}
+                aria-label={t("voicesection.cloudFirstLineCacheAria", {
+                  defaultValue: "Cloud first-line cache opt-in",
+                })}
+                {...cloudCacheAgentProps}
+              />
             }
-            data-testid="voice-section-cloud-cache-toggle"
-            className="h-4 w-4 rounded-sm border-border/40"
-            aria-current={prefs.cloudFirstLineCache ? "true" : undefined}
-            aria-label={t("voicesection.cloudFirstLineCacheAria", {
-              defaultValue: "Cloud first-line cache opt-in",
-            })}
-            {...cloudCacheAgentProps}
           />
-        </label>
-        <label className="flex cursor-pointer items-center justify-between gap-3 text-xs">
-          <span>
-            <span className="block text-sm">
-              {t("voicesection.autoLearnVoices", {
-                defaultValue: "Auto-learn new voices",
-              })}
-            </span>
-            <span className="text-muted">
-              {t("voicesection.autoLearnVoicesDesc", {
-                defaultValue:
-                  "When the agent hears an unfamiliar voice, build a profile for them automatically.",
-              })}
-            </span>
-          </span>
-          <input
-            ref={autoLearnRef}
-            type="checkbox"
-            checked={prefs.autoLearnVoices}
-            onChange={(e) => updatePrefs({ autoLearnVoices: e.target.checked })}
-            data-testid="voice-section-auto-learn-toggle"
-            className="h-4 w-4 rounded-sm border-border/40"
-            aria-current={prefs.autoLearnVoices ? "true" : undefined}
-            aria-label={t("voicesection.autoLearnVoices", {
+          <SettingsRow
+            icon={Shield}
+            label={t("voicesection.autoLearnVoices", {
               defaultValue: "Auto-learn new voices",
             })}
-            {...autoLearnAgentProps}
+            description={t("voicesection.autoLearnVoicesDesc", {
+              defaultValue:
+                "When the agent hears an unfamiliar voice, build a profile for them automatically.",
+            })}
+            control={
+              <input
+                ref={autoLearnRef}
+                type="checkbox"
+                checked={prefs.autoLearnVoices}
+                onChange={(e) =>
+                  updatePrefs({ autoLearnVoices: e.target.checked })
+                }
+                data-testid="voice-section-auto-learn-toggle"
+                className="h-5 w-5 rounded-sm border-border accent-accent"
+                aria-current={prefs.autoLearnVoices ? "true" : undefined}
+                aria-label={t("voicesection.autoLearnVoices", {
+                  defaultValue: "Auto-learn new voices",
+                })}
+                {...autoLearnAgentProps}
+              />
+            }
           />
-        </label>
-      </div>
+        </SettingsGroup>
+      </SettingsStack>
     </section>
   );
 }

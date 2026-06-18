@@ -9,8 +9,14 @@ import {
 import {
   type IAgentRuntime,
   ModelType,
+  parseJsonModelRecord,
   runWithTrajectoryContext,
 } from "@elizaos/core";
+import {
+  getSelfControlStatus,
+  startSelfControlBlock,
+  stopSelfControlBlock,
+} from "@elizaos/plugin-blocker";
 import type {
   SyncLifeOpsScheduleObservationInput,
   SyncLifeOpsScheduleObservationsRequest,
@@ -69,12 +75,6 @@ import {
   LIFEOPS_MANUAL_OVERRIDE_KINDS,
   LIFEOPS_UNCLEAR_REASONS,
 } from "../contracts/index.js";
-import { parseJsonModelRecord } from "../utils/json-model-output.js";
-import {
-  getSelfControlStatus,
-  startSelfControlBlock,
-  stopSelfControlBlock,
-} from "../website-blocker/engine.js";
 import {
   buildNativeAppleReminderMetadata,
   createNativeAppleReminderLikeItem,

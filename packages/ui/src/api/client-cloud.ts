@@ -5,6 +5,7 @@
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { getBootConfig } from "../config/boot-config";
+import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
 import { ElizaClient } from "./client-base";
 import type {
   ApiError,
@@ -429,7 +430,7 @@ async function directCloudJsonResponse<T>(
     );
     const parsed = parseDirectCloudJsonSafe(res.data) as T;
     return {
-      ok: res.status >= 200 && res.status < 300,
+      ok: isAcceptableDirectCloudResponse(res.status, parsed),
       status: res.status,
       data: parsed,
       text: directCloudResponseText(res.data),
@@ -444,7 +445,7 @@ async function directCloudJsonResponse<T>(
   const text = await res.text().catch(() => res.statusText);
   const parsed = parseDirectCloudJsonSafe(text) as T;
   return {
-    ok: res.ok,
+    ok: isAcceptableDirectCloudResponse(res.status, parsed),
     status: res.status,
     data: parsed,
     text,
@@ -542,21 +543,32 @@ async function directCloudRequest<T>(
 }
 
 /**
- * Eliza Cloud's REST envelopes return `{ success: true, ... }` even when
- * the HTTP status is non-2xx — most commonly 202 (job enqueued) and 409
- * (provisioning already in progress, jobId still useful for polling). The
- * legacy strict-2xx check threw on those bodies and stranded callers like
- * `provisionAndConnect` mid-await with no jobId, surfacing as an "infinite
- * Starting provisioning…" UI hang. Accept any response whose body claims
- * `success: true` regardless of status, and any 2xx response otherwise.
+ * Eliza Cloud can report an idempotent provisioning resume as HTTP 409 while
+ * returning a successful envelope with a useful jobId. The legacy strict-2xx
+ * check threw on that body and stranded callers like `provisionAndConnect`
+ * mid-await with no jobId, surfacing as an "infinite Starting provisioning..."
+ * UI hang. Keep that specific resume shape acceptable without treating every
+ * non-2xx `{ success: true }` body as healthy.
  */
 function isAcceptableDirectCloudResponse(
   status: number,
   body: unknown,
 ): boolean {
   if (status >= 200 && status < 300) return true;
+  if (status !== 409) return false;
   if (typeof body !== "object" || body === null) return false;
-  return (body as { success?: unknown }).success === true;
+  const response = body as {
+    alreadyInProgress?: unknown;
+    data?: { jobId?: unknown };
+    jobId?: unknown;
+    success?: unknown;
+  };
+  return (
+    response.success === true &&
+    response.alreadyInProgress === true &&
+    (typeof response.jobId === "string" ||
+      typeof response.data?.jobId === "string")
+  );
 }
 
 function isDirectCloudAuthError(err: unknown): boolean {
@@ -2428,8 +2440,14 @@ export function resolveCloudAgentApiBase(args: {
 }): string {
   const stripTrailingSlash = (u: string): string => u.replace(/\/+$/, "");
   const serverProvided = args.webUiUrl?.trim();
-  if (serverProvided) return stripTrailingSlash(serverProvided);
-  return stripTrailingSlash(args.bridgeUrl ?? "");
+  if (serverProvided) {
+    return normalizeDirectCloudSharedAgentApiBase(
+      stripTrailingSlash(serverProvided),
+    );
+  }
+  return normalizeDirectCloudSharedAgentApiBase(
+    stripTrailingSlash(args.bridgeUrl ?? ""),
+  );
 }
 
 function resolveDirectCloudAgentBridgeUrl(
@@ -2439,8 +2457,27 @@ function resolveDirectCloudAgentBridgeUrl(
   return `${cloudApiBase.replace(/\/+$/, "")}/api/v1/eliza/agents/${encodeURIComponent(agentId)}/bridge`;
 }
 
+/**
+ * True when `url` is a direct cloud shared-runtime agent base — either the REST
+ * adapter base `<cloudApiBase>/api/v1/eliza/agents/<agentId>` (where #8527's
+ * /api/conversations,/messages,/health are served) or the legacy JSON-RPC
+ * bridge base `<...>/agents/<agentId>/bridge`. A Tier-0 shared agent runs
+ * in-Worker with no agent server, so neither base exposes the app-shell
+ * endpoints (`/api/first-run*`, `/api/views`) — those legitimately 404. Startup
+ * uses this to degrade gracefully: a 404 from a shared-agent base means
+ * "first-run is already complete" (we provisioned the agent), not a broken
+ * backend — so it proceeds to chat instead of dead-ending on BACKEND_NOT_FOUND.
+ */
+export function isDirectCloudSharedAgentBase(
+  url: string | null | undefined,
+): boolean {
+  if (!url) return false;
+  return /\/api\/v1\/eliza\/agents\/[^/]+(?:\/bridge)?\/?$/.test(url.trim());
+}
+
 ElizaClient.prototype.provisionCloudSandbox = async (options) => {
   const { cloudApiBase, authToken, name, bio, onProgress } = options;
+  const allowSharedRuntime = options.allowSharedRuntime === true;
   const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -2451,13 +2488,16 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
 
   // Step 1: Create agent
   const createRes = await directCloudJsonResponse<{
-    data?: { id?: string };
+    data?: { id?: string; agentId?: string };
     id?: string;
+    agentId?: string;
   }>(`${resolvedCloudApiBase}/api/v1/eliza/agents`, {
     method: "POST",
     headers,
     body: JSON.stringify({
       agentName: name,
+      alwaysOn: true,
+      autoProvision: false,
       ...(bio?.length
         ? {
             agentConfig: {
@@ -2472,7 +2512,11 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
     throw new Error(`Failed to create cloud agent: ${err}`);
   }
   const createData = createRes.data;
-  const agentId = createData.data?.id ?? createData.id;
+  const agentId =
+    createData.data?.id ??
+    createData.data?.agentId ??
+    createData.id ??
+    createData.agentId;
   if (!agentId) {
     throw new Error("Failed to create cloud agent: missing agent id");
   }
@@ -2510,6 +2554,11 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
   const isSharedRuntime =
     provisionData.source === "shared_runtime" || executionTier === "shared";
   if (isSharedRuntime) {
+    if (!allowSharedRuntime) {
+      throw new Error(
+        "Eliza Cloud returned a shared-runtime agent, but first-run requires a dedicated sandbox. Retry after provisioning capacity is healthy.",
+      );
+    }
     onProgress?.("ready", "Cloud agent ready!");
     // A shared agent has no agent server; the cloud-api REST adapter at
     // `<base>/api/v1/eliza/agents/<id>` serves its /api/* surface. Prefer the
@@ -2517,8 +2566,7 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
     // it (so chat works even before the create/provision response is updated).
     // resolveCloudAgentApiBase() prefers webUiUrl over bridgeUrl, so the REST
     // client targets the adapter while the bridgeUrl stays as a JSON-RPC
-    // fallback. (The allowSharedRuntime gate is retained for callers that opt
-    // out, but all first-run paths pass it true.)
+    // fallback for callers that explicitly allow shared runtime.
     const sharedWebUiUrl =
       immediateWebUiUrl ??
       `${resolvedCloudApiBase.replace(/\/+$/, "")}/api/v1/eliza/agents/${encodeURIComponent(agentId)}`;

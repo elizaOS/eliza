@@ -7,7 +7,13 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { logger, ModelType, runWithTrajectoryContext } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  resolveActionArgs,
+  runWithTrajectoryContext,
+  type SubactionsMap,
+} from "@elizaos/core";
 import { INTERNAL_URL } from "../lifeops/access.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import {
@@ -23,10 +29,6 @@ import {
   dispatchCrossChannelSend,
 } from "./lib/messaging-helpers.js";
 import { formatPromptValue } from "./lib/prompt-format.js";
-import {
-  resolveActionArgs,
-  type SubactionsMap,
-} from "./lib/resolve-action-args.js";
 
 const ACTION_NAME = "RESOLVE_REQUEST";
 

@@ -4,6 +4,7 @@ import type { ImageAttachment } from "../../api/client-types-chat";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
 import { useApp } from "../../state";
 import { loadVadAutoStop } from "../../state/persistence";
+import { deriveAgentReady } from "../../state/types";
 import {
   createVoiceCapture,
   type VoiceCaptureHandle,
@@ -55,8 +56,17 @@ export interface ShellController {
   agentVoiceMuted: boolean;
   /** Mute/unmute assistant voice output. Muting stops any in-flight speech. */
   toggleAgentVoiceMute: () => void;
+  /** True when autoplay policy blocked playback and a tap is needed to hear it. */
+  needsAudioUnlock: boolean;
+  /** Resume audio output in response to a user gesture (enable sound). */
+  unlockAudio: () => void;
   /** DEV-only: clear the conversation and start a fresh, greeted one. */
   clearConversation: () => void;
+  /** Jump to Settings (where ProviderSwitcher lives) — used by the chat's
+   *  `no_provider` failure gate to let the user wire a provider in one tap. */
+  openSettings: () => void;
+  /** Stop an in-flight reply stream (the composer's stop control). */
+  stop: () => void;
 }
 
 /**
@@ -72,7 +82,6 @@ export interface ShellController {
 export function useShellController(): ShellController {
   const app = useApp();
   const {
-    startupCoordinator,
     conversationMessages,
     chatSending,
     sendChatText,
@@ -80,7 +89,12 @@ export function useShellController(): ShellController {
     uiLanguage,
     elizaCloudVoiceProxyAvailable,
     handleNewConversation,
+    setTab,
+    handleChatStop,
   } = app;
+
+  // Jump to Settings from the chat's no_provider gate. Stable identity.
+  const openSettings = React.useCallback(() => setTab("settings"), [setTab]);
 
   // DEV-only debug affordance: drop the current conversation and start a fresh,
   // greeted one (handleNewConversation resets draft state + creates a new
@@ -89,7 +103,13 @@ export function useShellController(): ShellController {
     void handleNewConversation();
   }, [handleNewConversation]);
 
-  const ready = startupCoordinator.phase === "ready";
+  // "Ready" here means the agent's FIRST-TURN CAPABILITY is online (it can
+  // answer) — NOT that the startup coordinator finished hydrating. The shell now
+  // mounts early (isShellPaintable) while the agent warms up; the composer stays
+  // interactive but queues sends until this flips, then flushes — so first-turn
+  // capability fades in behind a live UI. Server-authoritative via
+  // agentStatus.canRespond (falls back to running+model on older agents).
+  const ready = deriveAgentReady(agentStatus);
   const modelStatus = useHomeModelStatus();
   const [isOpen, setIsOpen] = React.useState(false);
   const [recording, setRecording] = React.useState(false);
@@ -114,17 +134,6 @@ export function useShellController(): ShellController {
     }));
   }, [conversationMessages]);
 
-  const pendingSendsRef = React.useRef<
-    Array<{
-      text: string;
-      options?: {
-        channelType?: "DM" | "VOICE_DM";
-        images?: ImageAttachment[];
-        metadata?: Record<string, unknown>;
-      };
-    }>
-  >([]);
-
   const send = React.useCallback(
     (
       text: string,
@@ -140,34 +149,19 @@ export function useShellController(): ShellController {
       if (!trimmed && !options?.images?.length) return;
       // Record voice-ness of this turn so the reply is (or is not) spoken back.
       setLastTurnVoice(options?.channelType === "VOICE_DM");
-      if (!ready) {
-        // Agent still booting — queue and flush on ready instead of dropping.
-        pendingSendsRef.current.push({ text: trimmed, options });
-        return;
-      }
+      // Send immediately even while the agent is still warming up: sendChatText
+      // renders the optimistic user bubble + typing indicator right away, and the
+      // server HOLDS the turn through the warming window (runtime-ready gate),
+      // streaming the reply the instant first-turn capability comes online —
+      // rather than queueing the message invisibly.
       if (options) {
         void sendChatText(trimmed, options);
         return;
       }
       void sendChatText(trimmed);
     },
-    [ready, sendChatText],
+    [sendChatText],
   );
-
-  // Flush messages the user submitted while the agent was still booting.
-  React.useEffect(() => {
-    if (!ready) return;
-    const queued = pendingSendsRef.current;
-    if (queued.length === 0) return;
-    pendingSendsRef.current = [];
-    for (const { text, options } of queued) {
-      if (options) {
-        void sendChatText(text, options);
-      } else {
-        void sendChatText(text);
-      }
-    }
-  }, [ready, sendChatText]);
 
   const stopCapture = React.useCallback(() => {
     const handle = captureRef.current;
@@ -336,6 +330,10 @@ export function useShellController(): ShellController {
     speaking: voiceOutput.speaking,
     agentVoiceMuted: voiceOutput.agentVoiceMuted,
     toggleAgentVoiceMute: voiceOutput.toggleAgentVoiceMute,
+    needsAudioUnlock: voiceOutput.needsAudioUnlock,
+    unlockAudio: voiceOutput.unlockAudio,
     clearConversation,
+    openSettings,
+    stop: handleChatStop,
   };
 }

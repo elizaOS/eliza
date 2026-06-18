@@ -51,12 +51,27 @@ test.describe("cloud-frontend monetization pages", () => {
 
     const visit = async (path: string, expectApiPrefix: string) => {
       apiResponses.length = 0;
+      // Wait deterministically for the page's first successful on-mount API
+      // fetch instead of a blind fixed sleep — the sleep raced a transient
+      // dev-server page close ("waitForTimeout: Target page... closed"). Armed
+      // before navigation so it can't miss the response.
+      const firstApiCall = page
+        .waitForResponse(
+          (r) => {
+            const p = new URL(r.url()).pathname;
+            return p.startsWith("/api/") && r.status() > 0 && r.status() < 400;
+          },
+          { timeout: 30_000 },
+        )
+        .catch(() => null);
       await page.goto(`${fe}${path}`, { timeout: 45_000 });
       await expect(page, `${path} stays authenticated`).not.toHaveURL(
         /\/login(\?|$)/,
       );
-      // Let on-mount data fetches fire.
-      await page.waitForTimeout(4000);
+      await firstApiCall;
+      // Brief settle so sibling fetches firing alongside the first are captured;
+      // tolerate a transient page close (assert on whatever was captured).
+      await page.waitForTimeout(750).catch(() => {});
 
       const okCalls = apiResponses.filter(
         (r) => r.status > 0 && r.status < 400,

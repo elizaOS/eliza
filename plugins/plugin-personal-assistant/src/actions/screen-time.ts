@@ -1,3 +1,4 @@
+import { resolveActionArgs } from "@elizaos/core";
 import {
   createOwnerScreenTimeAction,
   createScreenTimeActionRunner,
@@ -19,7 +20,6 @@ import {
   renderLifeOpsActionReply,
 } from "../lifeops/voice/grounded-reply.js";
 import { isDarwin } from "../platform/host.js";
-import { resolveActionArgs } from "./lib/resolve-action-args.js";
 
 export {
   createOwnerScreenTimeAction,

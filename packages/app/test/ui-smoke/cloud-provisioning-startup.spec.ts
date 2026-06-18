@@ -178,6 +178,10 @@ async function installDirectCloudSandboxRoutes(
         return;
       }
       options.state.createRequests += 1;
+      expect(route.request().postDataJSON()).toMatchObject({
+        alwaysOn: true,
+        autoProvision: false,
+      });
       await fulfillJson(route, 200, {
         success: true,
         data: { id: options.agentId },
@@ -636,7 +640,7 @@ for (const viewport of VIEWPORTS) {
         }),
       )
       .toMatchObject({
-        id: `cloud:${apiBase}`,
+        id: "cloud:agent-1",
         kind: "cloud",
         label: "Eliza Cloud",
         apiBase,
@@ -945,7 +949,7 @@ test("new cloud agent provisions through direct cloud sandbox and reaches chat",
       }),
     )
     .toMatchObject({
-      id: `cloud:${apiBase}`,
+      id: "cloud:agent-new",
       kind: "cloud",
       label: "Eliza Cloud",
       apiBase,

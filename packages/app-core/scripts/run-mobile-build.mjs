@@ -253,6 +253,21 @@ const APP = readAppIdentity();
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
+const MOBILE_BUILD_NODE_HEAP_OPTION = "--max-old-space-size=6144";
+
+function withMobileBuildNodeOptions(env = process.env) {
+  const current = String(env.NODE_OPTIONS ?? "").trim();
+  if (/\b--max-old-space-size(?:=|\s+)/.test(current)) {
+    return env;
+  }
+  return {
+    ...env,
+    NODE_OPTIONS: [current, MOBILE_BUILD_NODE_HEAP_OPTION]
+      .filter(Boolean)
+      .join(" "),
+  };
+}
+
 function run(command, args, { cwd, env = process.env } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd, env, stdio: "inherit" });
@@ -865,7 +880,7 @@ async function buildWeb(platform) {
     runtimeExecutionMode,
     releaseAuthority,
   } = resolveMobileBuildPolicy(platform);
-  const env = {
+  const env = withMobileBuildNodeOptions({
     ...process.env,
     ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
     ELIZA_BUILD_VARIANT: process.env.ELIZA_BUILD_VARIANT || buildVariant,
@@ -912,7 +927,7 @@ async function buildWeb(platform) {
             process.env.ELIZA_FORCE_LOCAL_UPSTREAMS ?? "1",
         }
       : {}),
-  };
+  });
   const bun = resolveBunExecutable();
   const packageStylesPatch = path.join(
     repoRoot,
@@ -1102,7 +1117,8 @@ async function ensurePlatform(platform) {
  * the freshly-synced renderer never reaches the dir gradle packages, so the APK
  * ships no web assets and the WebView 404s on index.html
  * (net::ERR_CONNECTION_REFUSED). Mirror the synced payload into androidDir.
- * No-op when both trees resolve to the same directory (standalone layout).
+ * No-op when both trees resolve to the same directory (standalone layout) or
+ * when the synced public payload is missing.
  */
 // `@elizaos/capacitor-bun-runtime` is an app-core-only native module (it powers
 // the on-device Bun agent runtime) and is NOT a `packages/app` dependency, so
@@ -1155,23 +1171,33 @@ function mirrorCapacitorWebPayloadIntoAndroidDir() {
   );
   const targetAssets = path.join(androidDir, "app", "src", "main", "assets");
   const syncedPublic = path.join(syncedAssets, "public");
-  if (!fs.existsSync(syncedPublic)) return;
+  // Mirror the synced web payload only when cap sync wrote to a SEPARATE appDir
+  // tree (the legacy two-tree split). When capacitor.config.ts unifies the trees
+  // via android.path=../app-core/platforms/android (#8387), cap sync writes
+  // straight into androidDir, so there's no syncedPublic to copy (or it's the
+  // same tree). In that case the mirror is a no-op — but we MUST still run the
+  // reconcile below on the android manifest, so the early-returns only skip the
+  // copy, never the reconcile.
+  const hasSyncedPublic = fs.existsSync(syncedPublic);
   const sameTree =
+    hasSyncedPublic &&
     fs.existsSync(targetAssets) &&
     fs.realpathSync(syncedAssets) === fs.realpathSync(targetAssets);
-  if (sameTree) return;
-  const targetPublic = path.join(targetAssets, "public");
-  fs.mkdirSync(targetAssets, { recursive: true });
-  fs.rmSync(targetPublic, { recursive: true, force: true });
-  fs.cpSync(syncedPublic, targetPublic, { recursive: true });
-  for (const cfg of ["capacitor.config.json", "capacitor.plugins.json"]) {
-    const src = path.join(syncedAssets, cfg);
-    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(targetAssets, cfg));
+  if (hasSyncedPublic && !sameTree) {
+    const targetPublic = path.join(targetAssets, "public");
+    fs.mkdirSync(targetAssets, { recursive: true });
+    fs.rmSync(targetPublic, { recursive: true, force: true });
+    fs.cpSync(syncedPublic, targetPublic, { recursive: true });
+    for (const cfg of ["capacitor.config.json", "capacitor.plugins.json"]) {
+      const src = path.join(syncedAssets, cfg);
+      if (fs.existsSync(src))
+        fs.copyFileSync(src, path.join(targetAssets, cfg));
+    }
+    console.log(
+      `[mobile-build] Mirrored Capacitor web payload into ${path.relative(repoRoot, targetAssets)}`,
+    );
   }
-  console.log(
-    `[mobile-build] Mirrored Capacitor web payload into ${path.relative(repoRoot, targetAssets)}`,
-  );
-  // `cap sync` (run against appDir) generates capacitor.plugins.json from the
+  // `cap sync` generates capacitor.plugins.json from the
   // FULL appDir dependency set, but androidDir ships a committed
   // capacitor.settings.gradle that compiles only a curated subset of plugin
   // modules (plus app-core additions like elizaos-capacitor-bun-runtime that
@@ -1266,7 +1292,11 @@ function reconcilePluginManifestWithGradle(targetAssets) {
       .filter((plugin) => !isCompiledAndUsable(plugin))
       .map((plugin) => plugin?.pkg)
       .join(", ");
-    fs.writeFileSync(manifestPath, `${JSON.stringify(kept, null, "\t")}\n`, "utf8");
+    fs.writeFileSync(
+      manifestPath,
+      `${JSON.stringify(kept, null, "\t")}\n`,
+      "utf8",
+    );
     console.log(
       `[mobile-build] Reconciled capacitor.plugins.json with capacitor.settings.gradle (dropped ${plugins.length - kept.length} plugin(s): ${dropped}).`,
     );
@@ -3403,7 +3433,6 @@ function shouldIncludeIosFullBunEngine(env = process.env) {
 export function isIosAppStoreBuild(env = process.env) {
   return (
     env.ELIZA_RELEASE_AUTHORITY === "apple-app-store" ||
-    env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store" ||
     env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store"
   );
 }
@@ -6054,8 +6083,6 @@ async function buildAndroid() {
   // env vars, fail loudly and point them at the right target.
   const playStoreFlagged =
     process.env.ELIZA_PLAY_STORE_BUILD === "1" ||
-    process.env.ELIZA_PLAY_STORE_BUILD === "1" ||
-    process.env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store" ||
     process.env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store";
   if (playStoreFlagged) {
     console.error(
@@ -6148,6 +6175,54 @@ async function buildAndroid() {
     cwd: androidDir,
     env,
   });
+  auditAndroidSideloadArtifact({ javaHome: jdk });
+}
+
+/**
+ * Audit the sideload (`android`) debug APK. The sideload target ships both the
+ * web renderer and the on-device agent payload, so assert both are packaged —
+ * a web-less sideload APK is the exact regression of elizaOS/eliza#8387
+ * (ERR_CONNECTION_REFUSED on device).
+ */
+function auditAndroidSideloadArtifact({ javaHome } = {}) {
+  const artifact = findAndroidCloudDebugApk();
+  if (!artifact) {
+    throw new Error(
+      "[mobile-build] android sideload debug APK was not found under app/build/outputs/.",
+    );
+  }
+  const entries = listAndroidArtifactEntries(artifact, javaHome);
+  assertAndroidArtifactShipsWebPayload(artifact, entries, {
+    requireAgent: true,
+    label: "android",
+  });
+  console.log(
+    `[mobile-build] android sideload artifact audit passed: ${artifact}`,
+  );
+  return artifact;
+}
+
+function auditAndroidSystemArtifact({ javaHome } = {}) {
+  // The AOSP/system target gets the web-payload mirror like the other three
+  // sync targets, but the privileged release APK still needs the same positive
+  // artifact audit or it could ship web-less (ERR_CONNECTION_REFUSED) silently —
+  // the exact regression class #8387 closes. `-PelizaAospBuild=true` preserves
+  // assets/agent, so requireAgent stays true here like the sideload path.
+  const artifact = findAndroidSystemApk();
+  if (!artifact) {
+    throw new Error(
+      "[mobile-build] android-system release APK was not found under app/build/outputs/apk/release/.",
+    );
+  }
+  const entries = listAndroidArtifactEntries(artifact, javaHome);
+  assertAndroidArtifactShipsWebPayload(artifact, entries, {
+    requireAgent: true,
+    label: "android-system",
+  });
+  console.log(
+    `[mobile-build] android-system artifact audit passed: ${artifact}`,
+  );
+  return artifact;
 }
 
 function findAndroidCloudAab() {
@@ -6197,13 +6272,12 @@ function resolveAndroidBuildTool(sdkRoot, toolName) {
   return null;
 }
 
-function auditAndroidCloudArtifact({ debug = false, javaHome } = {}) {
-  const artifact = debug ? findAndroidCloudDebugApk() : findAndroidCloudAab();
-  if (!artifact) {
-    throw new Error(
-      `[mobile-build] android-cloud ${debug ? "debug APK" : "release AAB"} was not found under app/build/outputs/.`,
-    );
-  }
+/**
+ * List the packaged entries of an APK/AAB via `jar tf`. Throws on inspect
+ * failure so a broken artifact can never pass an audit by yielding an empty
+ * listing.
+ */
+function listAndroidArtifactEntries(artifact, javaHome) {
   const jar = path.join(
     javaHome,
     "bin",
@@ -6217,19 +6291,76 @@ function auditAndroidCloudArtifact({ debug = false, javaHome } = {}) {
       }`,
     );
   }
-  const offenders = result.stdout
-    .split(/\r?\n/)
-    .filter((entry) =>
-      /(^|\/)assets\/agent\/|libeliza_|libllama|libsigsys-handler\.so|llama-cpp-kernels\.json/i.test(
-        entry,
-      ),
+  return result.stdout.split(/\r?\n/);
+}
+
+/**
+ * Positive assertion that an installable APK actually ships the web renderer
+ * (and, for local builds, the on-device agent). Without this, a sync that
+ * lands the web payload in the wrong tree produces a web-less APK that boots
+ * to net::ERR_CONNECTION_REFUSED — the failure this guard exists to prevent
+ * (elizaOS/eliza#8387). `assets/public/index.html` is the WebView entrypoint,
+ * `assets/capacitor.config.json` is the Capacitor runtime config, and
+ * `assets/agent/` is the staged local-agent payload (only present on
+ * local/sideload builds; cloud thin clients deliberately strip it).
+ */
+function assertAndroidArtifactShipsWebPayload(
+  artifact,
+  entries,
+  { requireAgent = false, label = "android" } = {},
+) {
+  // APKs package assets at `assets/...`; AABs nest them under a module dir
+  // (`base/assets/...`). Match on the canonical suffix so one assertion covers
+  // both `:app:assembleDebug` (APK) and `:app:bundleRelease` (AAB) outputs.
+  const hasAssetFile = (suffix) =>
+    entries.some(
+      (entry) =>
+        entry === `assets/${suffix}` || entry.endsWith(`/assets/${suffix}`),
     );
+  const hasAssetDir = (prefix) =>
+    entries.some(
+      (entry) =>
+        entry.startsWith(`assets/${prefix}`) ||
+        entry.includes(`/assets/${prefix}`),
+    );
+  const required = ["public/index.html", "capacitor.config.json"];
+  const missing = required.filter((suffix) => !hasAssetFile(suffix));
+  if (requireAgent && !hasAssetDir("agent/")) missing.push("assets/agent/");
+  if (missing.length > 0) {
+    throw new Error(
+      `[mobile-build] ${label} artifact is missing required packaged payload — ` +
+        `it would ship a web-less app that fails with ERR_CONNECTION_REFUSED:\n` +
+        missing.map((entry) => `  - ${entry}`).join("\n") +
+        `\n  artifact: ${artifact}`,
+    );
+  }
+}
+
+function auditAndroidCloudArtifact({ debug = false, javaHome } = {}) {
+  const artifact = debug ? findAndroidCloudDebugApk() : findAndroidCloudAab();
+  if (!artifact) {
+    throw new Error(
+      `[mobile-build] android-cloud ${debug ? "debug APK" : "release AAB"} was not found under app/build/outputs/.`,
+    );
+  }
+  const entries = listAndroidArtifactEntries(artifact, javaHome);
+  const offenders = entries.filter((entry) =>
+    /(^|\/)assets\/agent\/|libeliza_|libllama|libsigsys-handler\.so|llama-cpp-kernels\.json/i.test(
+      entry,
+    ),
+  );
   if (offenders.length > 0) {
     throw new Error(
       `[mobile-build] android-cloud artifact contains local runtime payloads:\n` +
         offenders.map((entry) => `  - ${entry}`).join("\n"),
     );
   }
+  // Cloud is a thin client (no on-device agent), but it must still ship the
+  // renderer — a web-less cloud APK is just as broken as a web-less sideload.
+  assertAndroidArtifactShipsWebPayload(artifact, entries, {
+    requireAgent: false,
+    label: "android-cloud",
+  });
   console.log(
     `[mobile-build] android-cloud artifact audit passed: ${artifact}`,
   );
@@ -6245,6 +6376,11 @@ function auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome } = {}) {
   }
 
   assertNoAndroidSmsGatewayPackagedOffenders(artifact, javaHome);
+  assertAndroidArtifactShipsWebPayload(
+    artifact,
+    listAndroidArtifactEntries(artifact, javaHome),
+    { requireAgent: false, label: "android-sms-gateway" },
+  );
 
   const aapt = resolveAndroidBuildTool(androidSdkRoot, "aapt");
   if (!aapt) {
@@ -6388,6 +6524,7 @@ async function buildAndroidCloud({ debug = false } = {}) {
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
   ensureBunRuntimeRegistered();
+  mirrorCapacitorWebPayloadIntoAndroidDir();
 
   patchAndroidGradle();
   await generateAndroidBrandAssets();
@@ -6480,6 +6617,7 @@ async function buildAndroidSmsGateway() {
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
   ensureBunRuntimeRegistered();
+  mirrorCapacitorWebPayloadIntoAndroidDir();
 
   patchAndroidGradle();
   await generateAndroidBrandAssets();
@@ -6677,6 +6815,7 @@ async function buildAndroidSystem() {
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
   ensureBunRuntimeRegistered();
+  mirrorCapacitorWebPayloadIntoAndroidDir();
 
   patchAndroidGradle();
   await generateAndroidBrandAssets();
@@ -6720,6 +6859,7 @@ async function buildAndroidSystem() {
     cwd: androidDir,
     env,
   });
+  auditAndroidSystemArtifact({ javaHome: jdk });
   stageAndroidSystemApk();
 }
 

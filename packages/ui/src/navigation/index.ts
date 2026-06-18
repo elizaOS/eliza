@@ -16,6 +16,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { listAppShellPages } from "../app-shell-registry";
+import { userAgentHasElizaOSMarker } from "../platform/aosp-user-agent";
 import { resolveDefaultLandingTab } from "./main-tab";
 
 type RuntimeImportMeta = ImportMeta & {
@@ -43,11 +44,11 @@ export const COMPANION_ENABLED = viteEnvFlagEnabled(
 
 /** Built-in tab identifiers. */
 export type BuiltinTab =
-  | "onboarding"
   | "chat"
   | "phone"
   | "messages"
   | "contacts"
+  | "camera"
   | "lifeops"
   | "tasks"
   | "automations"
@@ -74,6 +75,8 @@ export type BuiltinTab =
   | "database"
   | "desktop"
   | "settings"
+  | "tutorial"
+  | "help"
   | "logs";
 
 /**
@@ -96,12 +99,6 @@ export const APPS_TOOL_TABS = [
   // Legacy hidden alias for old /advanced routes.
   "advanced",
 ] as const satisfies readonly Tab[];
-
-const APPS_TOOL_TAB_SET = new Set<Tab>(APPS_TOOL_TABS);
-
-export function isAppsToolTab(tab: Tab): boolean {
-  return APPS_TOOL_TAB_SET.has(tab);
-}
 
 export interface TabGroup {
   label: string;
@@ -139,6 +136,33 @@ export function isAndroidPhoneSurfaceEnabled(
   const platform = detection.platform ?? Capacitor.getPlatform();
   const isNative = detection.isNative ?? Capacitor.isNativePlatform();
   return isNative && platform === "android";
+}
+
+/**
+ * True only on the **AOSP ElizaOS fork** (the system image whose WebView
+ * user-agent carries the `ElizaOS/<tag>` marker), or under an explicit
+ * `?android=true` dev-preview flag. This is the gate for the native-OS home
+ * tiles (phone, messages, contacts, camera): they are an AOSP-fork surface, so
+ * they stay hidden on web, desktop, iOS, and stock Play-Store Android.
+ *
+ * Distinct from `isAndroidPhoneSurfaceEnabled` (any Android-native build): the
+ * native-OS overlay plugins only register on the fork (`isElizaOS()`), so the
+ * tiles must match that, not merely "is Android".
+ */
+export function isAospShellEnabled(
+  detection: AndroidPhoneSurfaceDetection = {},
+): boolean {
+  const search =
+    detection.search ??
+    (typeof window === "undefined" ? "" : window.location.search);
+  const hash =
+    detection.hash ??
+    (typeof window === "undefined" ? "" : window.location.hash);
+  if (hasAndroidTestFlag(search, hash)) return true;
+  return (
+    typeof navigator !== "undefined" &&
+    userAgentHasElizaOSMarker(navigator.userAgent ?? "")
+  );
 }
 
 interface WindowNavigationLocation {
@@ -244,70 +268,20 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
   },
 ];
 
-/** A plugin-provided nav-page widget that should appear in the navigation. */
-export interface DynamicNavTab {
-  /** Tab ID — used as the route path segment. */
-  tabId: string;
-  /** Human-readable label for the nav button. */
-  label: string;
-  /** Which existing TabGroup to join, or a new group label to create. */
-  navGroup?: string;
-  /** Icon for new groups (lucide component). Falls back to Gamepad2. */
-  icon?: LucideIcon;
-  /** Description for new groups. */
-  description?: string;
-}
-
-/** Compute visible tab groups. Pass feature flags explicitly for React reactivity. */
-export function getTabGroups(
-  streamEnabled = STREAM_ENABLED,
-  walletEnabled = true,
-  browserEnabled = true,
-  dynamicTabs?: DynamicNavTab[],
-  phoneSurfaceEnabled = isAndroidPhoneSurfaceEnabled(),
-  automationsEnabled = true,
-): TabGroup[] {
-  const groups = ALL_TAB_GROUPS.filter(
-    (g) =>
-      (APPS_ENABLED || g.label !== "Views") &&
-      (phoneSurfaceEnabled || g.label !== "Phone") &&
-      (streamEnabled || g.label !== "Stream") &&
-      (walletEnabled || g.label !== "Wallet") &&
-      (browserEnabled || g.label !== "Browser") &&
-      (automationsEnabled || g.label !== "Automations"),
-  );
-
-  // Merge dynamic plugin-provided nav-page tabs into groups.
-  if (dynamicTabs?.length) {
-    for (const dt of dynamicTabs) {
-      const targetGroup = dt.navGroup
-        ? groups.find((g) => g.label === dt.navGroup)
-        : null;
-      if (targetGroup) {
-        if (!targetGroup.tabs.includes(dt.tabId)) {
-          targetGroup.tabs.push(dt.tabId);
-        }
-      } else {
-        // Create a new group for this tab.
-        groups.push({
-          label: dt.label,
-          tabs: [dt.tabId],
-          icon: dt.icon ?? Gamepad2,
-          description: dt.description,
-        });
-      }
-    }
-  }
-
-  return groups;
-}
+// Canonical settings-section metadata (pure data) re-exported here so
+// non-renderer consumers (e.g. app-core's dev-route-catalog parity test) can
+// assert the QA catalog never drifts from the UI's section list.
+export {
+  SETTINGS_SECTION_META,
+  type SettingsSectionMeta,
+} from "../components/settings/settings-section-meta";
 
 export const TAB_PATHS: Record<BuiltinTab, string> = {
-  onboarding: "/onboarding",
   chat: "/chat",
   phone: "/phone",
   messages: "/messages",
   contacts: "/contacts",
+  camera: "/camera",
   lifeops: "/apps/lifeops",
   tasks: "/apps/tasks",
   browser: "/browser",
@@ -334,6 +308,8 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   database: "/apps/database",
   desktop: "/desktop",
   settings: "/settings",
+  tutorial: "/tutorial",
+  help: "/help",
   logs: "/apps/logs",
 };
 
@@ -532,8 +508,6 @@ export function getAppSlugFromPath(
 
 export function titleForTab(tab: Tab): string {
   switch (tab) {
-    case "onboarding":
-      return "Onboarding";
     case "chat":
       return "Chat";
     case "phone":
@@ -542,6 +516,8 @@ export function titleForTab(tab: Tab): string {
       return "Messages";
     case "contacts":
       return "Contacts";
+    case "camera":
+      return "Camera";
     case "lifeops":
       return "LifeOps";
     case "browser":

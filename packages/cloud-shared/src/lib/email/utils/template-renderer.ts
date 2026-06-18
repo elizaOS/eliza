@@ -2,9 +2,6 @@
  * Email template rendering utilities.
  */
 
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 import { getEmailMessages, interpolateMessage } from "../messages";
 import type {
   AutoTopUpDisabledEmailData,
@@ -15,6 +12,7 @@ import type {
   PurchaseConfirmationEmailData,
   WelcomeEmailData,
 } from "../types";
+import { EMAIL_TEMPLATES } from "./email-templates.generated";
 
 /**
  * Loads an email template file from disk.
@@ -23,11 +21,14 @@ import type {
  * @returns Template content as string.
  */
 function loadTemplate(filename: string): string {
-  // Use path relative to this file (utils/ → ../templates/) for reliable resolution
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
-  const templatePath = path.resolve(__dirname, "..", "templates", filename);
-  return fs.readFileSync(templatePath, "utf-8");
+  // Templates are bundled as strings (email-templates.generated.ts) — the
+  // Workers runtime has no filesystem and no import.meta.url, so reading them
+  // from disk threw. Regenerate via scripts/generate-email-templates.mjs.
+  const template = EMAIL_TEMPLATES[filename];
+  if (template === undefined) {
+    throw new Error(`Unknown email template: ${filename}`);
+  }
+  return template;
 }
 
 /**

@@ -24,7 +24,9 @@
     "paths": {
       "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
-      "@elizaos/plugin-personal-assistant": ["../plugin-personal-assistant/src/index.ts"],
+      "@elizaos/plugin-personal-assistant": [
+        "../plugin-personal-assistant/src/index.ts"
+      ],
       "@elizaos/plugin-steward-app": ["../plugin-steward-app/src/index.ts"],
       "@elizaos/plugin-wallet-ui": ["../plugin-wallet-ui/src/index.ts"],
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
@@ -33,9 +35,7 @@
         "../../packages/agent/src/*.d.ts",
         "../../packages/agent/src/*.ts"
       ],
-      "@elizaos/plugin-registry": [
-        "../plugin-registry/src/index.d.ts"
-      ],
+      "@elizaos/plugin-registry": ["../plugin-registry/src/index.d.ts"],
       "@elizaos/plugin-registry/*": [
         "../plugin-registry/src/*.d.ts",
         "../plugin-registry/src/*.ts"
@@ -98,8 +98,12 @@
       ],
       "lucide-react": ["./node_modules/lucide-react"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
-      "three/webgpu": ["../../packages/ui/node_modules/@types/three/build/three.webgpu.d.ts"],
-      "three/tsl": ["../../packages/ui/node_modules/@types/three/build/three.tsl.d.ts"]
+      "three/webgpu": [
+        "../../packages/ui/node_modules/@types/three/build/three.webgpu.d.ts"
+      ],
+      "three/tsl": [
+        "../../packages/ui/node_modules/@types/three/build/three.tsl.d.ts"
+      ]
     }
   },
   "include": [

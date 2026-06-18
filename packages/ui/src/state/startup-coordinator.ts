@@ -54,10 +54,23 @@ export type StartupState =
       phase: "first-run-required";
       /** true = server reachable, fetch options from it. false = first-run, use static options. */
       serverReachable: boolean;
+      /** Resolved runtime target carried through so a cloud-hosted agent can
+       * skip local-agent startup once first-run completes. Absent for fresh
+       * installs with no resolved backend yet (treated as embedded-local). */
+      target?: RuntimeTarget;
     }
   | {
       phase: "starting-runtime";
       attempts: number;
+      /**
+       * Resolved runtime target for this boot. When "cloud-managed" or
+       * "remote-backend" the agent is cloud-hosted (topology 3): the
+       * starting-runtime phase must NOT call client.startAgent() nor run the
+       * local agent-readiness loop — the already-running remote agent is
+       * treated as ready. "embedded-local" (topologies 1 & 2) keeps the full
+       * local boot/poll behavior exactly as before.
+       */
+      target: RuntimeTarget;
     }
   | { phase: "hydrating" }
   | { phase: "ready" }
@@ -151,9 +164,17 @@ export function startupReducer(
       switch (event.type) {
         case "BACKEND_REACHED":
           if (event.firstRunComplete) {
-            return { phase: "starting-runtime", attempts: 0 };
+            return {
+              phase: "starting-runtime",
+              attempts: 0,
+              target: state.target,
+            };
           }
-          return { phase: "first-run-required", serverReachable: true };
+          return {
+            phase: "first-run-required",
+            serverReachable: true,
+            target: state.target,
+          };
         case "BACKEND_AUTH_REQUIRED":
           return { phase: "pairing-required" };
         case "BACKEND_NOT_FOUND":
@@ -191,7 +212,11 @@ export function startupReducer(
         case "FIRST_RUN_OPTIONS_LOADED":
           return state;
         case "FIRST_RUN_COMPLETE":
-          return { phase: "starting-runtime", attempts: 0 };
+          return {
+            phase: "starting-runtime",
+            attempts: 0,
+            target: state.target ?? "embedded-local",
+          };
         case "RETRY":
           return { phase: "restoring-session" };
         default:
@@ -251,7 +276,13 @@ export function startupReducer(
       switch (event.type) {
         case "BACKEND_REACHED":
           if (event.firstRunComplete) {
-            return { phase: "starting-runtime", attempts: 0 };
+            // Error-recovery has no resolved target in state; default to the
+            // full local-agent boot (today's behavior) rather than skipping it.
+            return {
+              phase: "starting-runtime",
+              attempts: 0,
+              target: "embedded-local",
+            };
           }
           return { phase: "first-run-required", serverReachable: true };
         case "AGENT_RUNNING":
@@ -406,6 +437,24 @@ export function isStartupLoading(state: StartupState): boolean {
 /** True when the coordinator has reached a terminal phase (ready or error). */
 export function isStartupTerminal(state: StartupState): boolean {
   return state.phase === "ready" || state.phase === "error";
+}
+
+/**
+ * True once the live app shell may MOUNT — the backend is reached and the active
+ * conversation is hydratable — even though the agent's first-turn capability may
+ * still be warming up (`agentState: "starting"`). This un-gates the shell + chat
+ * composer early so first-turn capability can fade in BEHIND a live UI, instead
+ * of replacing the whole app with a full-screen loader until full `ready`.
+ *
+ * Deliberately FALSE for phases that legitimately own the whole screen — session
+ * restore, backend polling, first-run, pairing — and for terminal `error`; those
+ * still render StartupScreen. Effects that need a live runtime must stay gated on
+ * agent readiness (`canRespond`), NOT on this — this un-gates RENDERING only.
+ */
+export function isShellPaintable(phase: StartupPhaseValue): boolean {
+  return (
+    phase === "starting-runtime" || phase === "hydrating" || phase === "ready"
+  );
 }
 
 /**

@@ -1,9 +1,8 @@
-import { hasOwnerAccess } from "@elizaos/agent";
+import { hasOwnerAccess, resolveKnowledgeGraphService } from "@elizaos/agent";
 import type {
   ResponseHandlerEvaluator,
   ResponseHandlerPatch,
 } from "@elizaos/core";
-import { EntityStore } from "../entities/store.js";
 import { SELF_ENTITY_ID } from "../entities/types.js";
 import {
   createOwnerFactStore,
@@ -13,7 +12,6 @@ import {
   applyExtractedEdges,
   type ExtractedEdge,
 } from "../relationships/extraction.js";
-import { RelationshipStore } from "../relationships/store.js";
 
 type IdentityHint = {
   name: string;
@@ -262,8 +260,14 @@ export const ownerProfileExtractionEvaluator: ResponseHandlerEvaluator = {
       extraction.relationships.length > 0
     ) {
       const agentId = runtime.agentId;
-      const entityStore = new EntityStore(runtime, agentId);
-      const relationshipStore = new RelationshipStore(runtime, agentId);
+      const knowledgeGraph = resolveKnowledgeGraphService(runtime);
+      if (!knowledgeGraph) {
+        throw new Error(
+          "[owner.profile_extraction] KnowledgeGraphService is not registered on the runtime",
+        );
+      }
+      const entityStore = knowledgeGraph.getEntityStore(agentId);
+      const relationshipStore = knowledgeGraph.getRelationshipStore(agentId);
 
       for (const identity of extraction.identities) {
         await entityStore.observeIdentity({

@@ -151,7 +151,12 @@ export function _resetLoadedVfsPluginsForTests(): void {
   loadedPlugins.clear();
 }
 
-function extractPlugin(mod: Record<string, unknown>): Plugin | null {
+/**
+ * Pull a `Plugin` out of an imported module. Accepts a default export, a named
+ * `plugin` export, or the module namespace itself, requiring a non-empty string
+ * `name`. Shared with the disk-directory loader.
+ */
+export function extractPlugin(mod: Record<string, unknown>): Plugin | null {
   const candidates: unknown[] = [mod.default, mod.plugin, mod];
   for (const candidate of candidates) {
     if (

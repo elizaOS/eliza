@@ -11,18 +11,18 @@
  */
 
 import type { Plugin } from "@elizaos/core";
-import { ownerFinancesAction } from "./actions/finances.ts";
-import * as dbSchema from "./db/index.ts";
+import { financesDbSchema } from "./db/schema.ts";
+import { FinancesMigrationService } from "./services/migration.ts";
 
 const FINANCES_APP_NAME = "@elizaos/plugin-finances";
 
 export const financesPlugin: Plugin = {
   name: FINANCES_APP_NAME,
   description:
-    "Owner finance overlay: dashboard, transactions, and recurring charges. Hosts the OWNER_FINANCES action (migrating from plugin-lifeops) and the /finances view. Backed by drizzle pgSchema('app_finances'); requires @elizaos/plugin-sql.",
+    "Owner finance overlay: dashboard, transactions, recurring charges, and the /finances view. Owns the FinancesService / FinancesRepository payments back-end (sources, CSV import, transactions, spending, recurring charges, email bills, Plaid / PayPal bridges). The OWNER_FINANCES umbrella action + the /api/lifeops/money/* routes are registered by @elizaos/plugin-personal-assistant, which delegates the payments back-end here. Backed by drizzle pgSchema('app_finances'); requires @elizaos/plugin-sql.",
   dependencies: ["@elizaos/plugin-sql"],
-  actions: [ownerFinancesAction],
-  schema: dbSchema,
+  services: [FinancesMigrationService],
+  schema: financesDbSchema,
   views: [
     {
       id: "finances",

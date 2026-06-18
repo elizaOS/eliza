@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 // The resting overlay's suggestion strip fetches model suggestions via the
@@ -8,6 +14,14 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 vi.mock("../../api/client", () => ({
   client: { fetch: vi.fn().mockRejectedValue(new Error("no api in test")) },
 }));
+
+// The press-and-hold copy path writes to the clipboard; stub it so the gesture
+// is assertable (and never throws "Clipboard API unavailable" in jsdom).
+vi.mock("../../utils/clipboard", () => ({
+  copyTextToClipboard: vi.fn().mockResolvedValue(undefined),
+}));
+
+import { copyTextToClipboard } from "../../utils/clipboard";
 
 import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
 import type { ShellController } from "./useShellController";
@@ -153,17 +167,13 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
   });
 
-  it("shows the resting suggestion strip without hover or focus", () => {
+  it("does not render the resting suggestion strip (feature-flagged off)", () => {
     render(
       <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
     );
-    const strip = screen.getByTestId("chat-suggestions");
-    const firstSuggestion = screen.getByTestId("chat-suggestion-0");
-    // At rest (ready, nothing typed) the strip is mounted, interactive, and
-    // tabbable — there is no hover/focus gate any more; it is the closed-state
-    // affordance, and it simply unmounts once the sheet opens or a draft starts.
-    expect(strip.className).toContain("pointer-events-auto");
-    expect(firstSuggestion.tabIndex).toBe(0);
+    // SHOW_PROMPT_SUGGESTIONS is off — the resting strip must not mount.
+    expect(screen.queryByTestId("chat-suggestions")).toBeNull();
+    expect(screen.queryByTestId("chat-suggestion-0")).toBeNull();
   });
 
   it("filters whitespace-only messages from the expanded thread", () => {
@@ -334,15 +344,16 @@ describe("ContinuousChatOverlay", () => {
     expect(controller.toggleRecording).toHaveBeenCalled();
   });
 
-  it("shows a connecting placeholder and read-only input while booting", () => {
+  it("shows a waking-up placeholder while booting (typing allowed)", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({ phase: "booting", canSend: false })}
       />,
     );
     const input = screen.getByLabelText("message");
-    expect(input.getAttribute("placeholder")).toContain("connecting");
-    expect(input.hasAttribute("readonly")).toBe(true);
+    expect(input.getAttribute("placeholder")).toContain("waking up");
+    // You can type while the agent boots; the message sends once it's ready.
+    expect(input.hasAttribute("readonly")).toBe(false);
   });
 
   it("renders the live interim transcript while recording", () => {
@@ -386,16 +397,16 @@ describe("ContinuousChatOverlay", () => {
     const panel = screen.getByTestId("chat-sheet");
 
     expect(screen.queryByTestId("chat-composer-clear-debug")).toBeNull();
-    // The width is constrained on the panel; the input row is a single,
-    // non-wrapping flex row with the field taking the remaining space.
-    expect(panel.className).toContain("max-w-3xl");
+    // Width is constrained on the panel's wrapper (which also holds the absolute
+    // drag handle); the input row is a single, non-wrapping flex row.
+    expect(panel.parentElement?.className).toContain("max-w-3xl");
     expect(bar?.className).toContain("flex");
     expect(bar?.className).not.toContain("flex-wrap");
     expect(input.className).toContain("flex-1");
     expect(input.className).not.toContain("basis-full");
   });
 
-  it("shows exactly three resting prompt suggestions", () => {
+  it("renders no prompt-suggestion chips while the strip is flagged off", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({
@@ -403,10 +414,9 @@ describe("ContinuousChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    const strip = screen.getByTestId("chat-suggestions");
     expect(
-      strip.querySelectorAll('[data-testid^="chat-suggestion-"]'),
-    ).toHaveLength(3);
+      document.querySelectorAll('[data-testid^="chat-suggestion-"]'),
+    ).toHaveLength(0);
   });
 
   it("scrolls to the latest line when a new message arrives while open", () => {
@@ -455,5 +465,167 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("open");
     fireEvent.scroll(document.body);
     expect(sheet.getAttribute("data-variant")).toBe("open");
+  });
+
+  it("shows a stop control while a reply streams (and wires it)", () => {
+    const stop = vi.fn();
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          phase: "responding",
+          stop,
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    // No draft + responding → the trailing control is STOP, not mic or send.
+    expect(screen.queryByTestId("chat-composer-mic")).toBeNull();
+    expect(screen.queryByLabelText("send")).toBeNull();
+    const stopBtn = screen.getByTestId("chat-composer-stop");
+    expect(stopBtn).toBeTruthy();
+    fireEvent.click(stopBtn);
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("reverts the trailing control to send the moment a draft exists mid-stream", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({ phase: "responding" })}
+      />,
+    );
+    expect(screen.getByTestId("chat-composer-stop")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("message"), {
+      target: { value: "queued" },
+    });
+    expect(screen.queryByTestId("chat-composer-stop")).toBeNull();
+    expect(screen.getByLabelText(/send/)).toBeTruthy();
+  });
+
+  it("renders the no_provider failure as a recovery gate with a Settings jump", () => {
+    const openSettings = vi.fn();
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          openSettings,
+          messages: [
+            {
+              id: "np",
+              role: "assistant",
+              content: "No model provider is configured.",
+              createdAt: 1,
+              failureKind: "no_provider",
+            },
+          ],
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    expect(screen.getByText("Connect a provider to chat")).toBeTruthy();
+    const cta = screen.getByTestId("chat-no-provider-settings");
+    fireEvent.click(cta);
+    expect(openSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("press-and-hold copies an assistant message and flashes confirmation", () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(copyTextToClipboard).mockClear();
+      render(
+        <ContinuousChatOverlay
+          controller={makeController({
+            messages: [
+              {
+                id: "a",
+                role: "assistant",
+                content: "the answer is 42",
+                createdAt: 1,
+              },
+            ],
+          } as unknown as Partial<ShellController>)}
+        />,
+      );
+      const bubble = screen
+        .getByText("the answer is 42")
+        .closest('[data-testid="thread-line"]')
+        ?.querySelector("div") as HTMLElement;
+      fireEvent.pointerDown(bubble, { clientX: 10, clientY: 10, pointerId: 1 });
+      act(() => {
+        vi.advanceTimersByTime(450); // past the hold threshold
+      });
+      expect(copyTextToClipboard).toHaveBeenCalledWith("the answer is 42");
+      expect(screen.getByTestId("thread-line-copied")).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a quick tap (released before the hold threshold) does NOT copy", () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(copyTextToClipboard).mockClear();
+      render(
+        <ContinuousChatOverlay
+          controller={makeController({
+            messages: [
+              { id: "a", role: "assistant", content: "tap me", createdAt: 1 },
+            ],
+          } as unknown as Partial<ShellController>)}
+        />,
+      );
+      const bubble = screen
+        .getByText("tap me")
+        .closest('[data-testid="thread-line"]')
+        ?.querySelector("div") as HTMLElement;
+      fireEvent.pointerDown(bubble, { clientX: 10, clientY: 10, pointerId: 1 });
+      vi.advanceTimersByTime(200);
+      fireEvent.pointerUp(bubble, { clientX: 10, clientY: 10, pointerId: 1 });
+      vi.advanceTimersByTime(400);
+      expect(copyTextToClipboard).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("pulls DOWN from the input to collapse into a recoverable pill", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(screen.getByTestId("chat-composer-textarea")).toBeTruthy();
+    // A downward drag past the threshold collapses the input away into the pill.
+    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("pill");
+    expect(screen.getByTestId("chat-pill")).toBeTruthy();
+    // The input is fully gone in pill mode.
+    expect(screen.queryByTestId("chat-composer-textarea")).toBeNull();
+  });
+
+  it("recovers from the pill back to the input on tap", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
+    const pill = screen.getByTestId("chat-pill");
+    fireEvent.click(pill);
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(screen.getByTestId("chat-composer-textarea")).toBeTruthy();
+  });
+
+  it("flicks UP from the pill to recover the input", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
+    const pill = screen.getByTestId("chat-pill");
+    // A quick upward flick on the pill brings the input back.
+    fireEvent.pointerDown(pill, { clientY: 400, pointerId: 1 });
+    fireEvent.pointerMove(pill, { clientY: 360, pointerId: 1 });
+    fireEvent.pointerUp(pill, { clientY: 360, pointerId: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(screen.getByTestId("chat-composer-textarea")).toBeTruthy();
   });
 });

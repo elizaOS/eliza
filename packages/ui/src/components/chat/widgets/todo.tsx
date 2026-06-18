@@ -2,6 +2,7 @@ import { ListTodo } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../../api";
 import type { WorkbenchTodo } from "../../../api/client-types-config";
+import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { useApp } from "../../../state";
 import type { TranslateFn } from "../../../types";
 import { Badge } from "../../ui/badge";
@@ -170,23 +171,14 @@ function TodoSidebarWidget(_props: ChatSidebarWidgetProps) {
   );
 
   useEffect(() => {
-    let active = true;
-
-    void (async () => {
-      await loadTodos(todos.length > 0);
-      if (!active) return;
-    })();
-
-    const intervalId = setInterval(() => {
-      if (!active) return;
-      void loadTodos(true);
-    }, TODO_REFRESH_INTERVAL_MS);
-
-    return () => {
-      active = false;
-      clearInterval(intervalId);
-    };
+    void loadTodos(todos.length > 0);
   }, [loadTodos, todos.length]);
+  // Refresh only while the document is visible — pause the silent poll in a
+  // backgrounded app/tab instead of refetching the todo list every interval.
+  useIntervalWhenDocumentVisible(
+    () => void loadTodos(true),
+    TODO_REFRESH_INTERVAL_MS,
+  );
 
   return (
     <WidgetSection

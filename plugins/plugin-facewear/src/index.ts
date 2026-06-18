@@ -32,7 +32,7 @@ import { XRSessionService } from "./services/xr-session-service.ts";
 export const facewearPlugin: Plugin = {
   name: "@elizaos/plugin-facewear",
   description:
-    "Unified hearwear plugin — Meta Quest 3, XReal, Even Realities G1/G2, Apple Vision Pro. WebXR streaming, BLE smartglasses, view panels, device management.",
+    "Unified facewear plugin — Meta Quest 3, XReal, Even Realities G1/G2, Apple Vision Pro. WebXR streaming, BLE smartglasses, view panels, device management.",
 
   services: [FacewearService, XRSessionService, SmartglassesService],
   actions: [
@@ -65,20 +65,21 @@ export const facewearPlugin: Plugin = {
     {
       id: "facewear",
       viewType: "gui",
-      path: "/apps/hearwear",
-      label: "Hearwear",
+      path: "/apps/facewear",
+      label: "Facewear",
       description:
         "Manage all connected XR devices and smartglasses — Meta Quest, XReal, Even Realities, Apple Vision Pro.",
       icon: "Glasses",
+      heroImagePath: "assets/hero-facewear.svg",
       bundlePath: "dist/views/bundle.js",
       componentExport: "FacewearView",
-      tags: ["hearwear", "xr", "smartglasses", "wearable"],
+      tags: ["facewear", "xr", "smartglasses", "wearable"],
       visibleInManager: true,
       desktopTabEnabled: true,
       capabilities: [
         {
           id: "connect-device",
-          description: "Connect to any supported hearwear device.",
+          description: "Connect to any supported facewear device.",
         },
         {
           id: "manage-views",
@@ -97,22 +98,24 @@ export const facewearPlugin: Plugin = {
     {
       id: "facewear",
       viewType: "tui",
-      path: "/apps/hearwear/tui",
-      label: "Hearwear TUI",
-      description: "Terminal UI for hearwear device management.",
+      path: "/apps/facewear/tui",
+      label: "Facewear TUI",
+      description: "Terminal UI for facewear device management.",
+      heroImagePath: "assets/hero-facewear.svg",
       bundlePath: "dist/views/bundle.js",
       componentExport: "FacewearTuiView",
-      tags: ["hearwear", "xr", "smartglasses", "tui"],
+      tags: ["facewear", "xr", "smartglasses", "tui"],
     },
     {
       id: "facewear",
       viewType: "xr",
-      path: "/apps/hearwear/xr",
-      label: "Hearwear XR",
-      description: "XR view for hearwear device status and control.",
+      path: "/apps/facewear/xr",
+      label: "Facewear XR",
+      description: "XR view for facewear device status and control.",
+      heroImagePath: "assets/hero-facewear.svg",
       bundlePath: "dist/views/bundle.js",
       componentExport: "FacewearView",
-      tags: ["hearwear", "xr", "smartglasses", "wearable"],
+      tags: ["facewear", "xr", "smartglasses", "wearable"],
     },
     {
       id: "smartglasses",
@@ -122,10 +125,11 @@ export const facewearPlugin: Plugin = {
       description:
         "Pair, test, configure, and export diagnostics for a complete Even Realities headset.",
       icon: "Glasses",
+      heroImagePath: "assets/hero-smartglasses.svg",
       bundlePath: "dist/views/bundle.js",
       componentExport: "SmartglassesView",
       tags: [
-        "hearwear",
+        "facewear",
         "smartglasses",
         "wearable",
         "bluetooth",
@@ -166,10 +170,11 @@ export const facewearPlugin: Plugin = {
       description:
         "Terminal UI for smartglasses setup, status, and diagnostics.",
       icon: "Glasses",
+      heroImagePath: "assets/hero-smartglasses.svg",
       bundlePath: "dist/views/bundle.js",
       componentExport: "SmartglassesTuiView",
       tags: [
-        "hearwear",
+        "facewear",
         "smartglasses",
         "wearable",
         "bluetooth",
@@ -186,10 +191,11 @@ export const facewearPlugin: Plugin = {
       description:
         "XR smartglasses setup and diagnostics panel from the same component as the GUI view.",
       icon: "Glasses",
+      heroImagePath: "assets/hero-smartglasses.svg",
       bundlePath: "dist/views/bundle.js",
       componentExport: "SmartglassesView",
       tags: [
-        "hearwear",
+        "facewear",
         "smartglasses",
         "wearable",
         "bluetooth",
@@ -203,10 +209,10 @@ export const facewearPlugin: Plugin = {
   app: {
     navTabs: [
       {
-        id: "hearwear",
-        label: "Hearwear",
+        id: "facewear",
+        label: "Facewear",
         icon: "Glasses",
-        path: "/apps/hearwear",
+        path: "/apps/facewear",
         componentExport: "@elizaos/plugin-facewear#FacewearView",
       },
       {

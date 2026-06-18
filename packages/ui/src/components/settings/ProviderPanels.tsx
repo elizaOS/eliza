@@ -15,11 +15,11 @@ import type { ConfigUiHint } from "../../types";
 import { AccountList } from "../accounts/AccountList";
 import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
 import { CloudDashboard } from "../pages/ElizaCloudDashboard";
-import { Button } from "../ui/button";
 import { ApiKeyConfig } from "./ApiKeyConfig";
 import type { CloudModelSchema } from "./cloud-model-schema";
 import { ProviderRoutingPanel } from "./ProviderRoutingPanel";
 import { SubscriptionStatus } from "./SubscriptionStatus";
+import { SettingsActionButton } from "./settings-agent-rows";
 
 type SubscriptionProviderSelection =
   (typeof SUBSCRIPTION_PROVIDER_SELECTIONS)[number];
@@ -47,15 +47,22 @@ function ProviderPanelHeader({
 }) {
   return (
     <header
-      className="flex min-h-12 flex-wrap items-center justify-between gap-2 border-border/40 border-b px-3 py-2 sm:px-4"
+      className="flex min-h-[3.25rem] flex-wrap items-center justify-between gap-2 border-border border-b px-4 py-3"
       title={description}
     >
-      <div className="flex min-w-0 items-center gap-2.5">
-        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-border/50 bg-bg/50 text-muted">
-          <Icon className="h-4 w-4" aria-hidden />
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-surface text-txt-strong ring-1 ring-border/70">
+          <Icon className="h-[18px] w-[18px]" aria-hidden />
         </span>
         <div className="min-w-0">
-          <h3 className="truncate font-semibold text-sm text-txt">{title}</h3>
+          <h3 className="truncate text-sm font-medium leading-5 text-txt-strong">
+            {title}
+          </h3>
+          {description ? (
+            <p className="truncate text-xs leading-relaxed text-muted">
+              {description}
+            </p>
+          ) : null}
         </div>
       </div>
       {children ? <div className="shrink-0">{children}</div> : null}
@@ -82,13 +89,15 @@ export function LocalProviderPanel({
         })}
         description={t("providerpanels.localProviderDesc", {
           defaultValue:
-            "Manage local downloads, active models, routing, and device pairing in one place.",
+            "Local downloads, active models, routing, and device pairing.",
         })}
       >
-        <Button
+        <SettingsActionButton
+          agentId="local-use-local-only"
+          agentStatus={cloudCallsDisabled ? "active" : undefined}
           type="button"
           variant={cloudCallsDisabled ? "default" : "outline"}
-          className="h-8 rounded-sm px-2.5 text-xs"
+          className="h-9 rounded-md px-3 text-xs font-medium"
           disabled={routingModeSaving}
           aria-label={
             cloudCallsDisabled
@@ -103,7 +112,7 @@ export function LocalProviderPanel({
         >
           <ShieldCheck className="h-4 w-4" aria-hidden />
           {t("providerpanels.localOnly", { defaultValue: "Local only" })}
-        </Button>
+        </SettingsActionButton>
       </ProviderPanelHeader>
       <div className="px-3 py-3 sm:px-4">
         <LocalInferencePanel />
@@ -149,14 +158,15 @@ export function CloudPanel({
         icon={Cloud}
         title="Eliza Cloud"
         description={t("providerpanels.cloudDesc", {
-          defaultValue:
-            "Use managed models, cloud routing, and account credits.",
+          defaultValue: "Managed models, cloud routing, and account credits.",
         })}
       >
-        <Button
+        <SettingsActionButton
+          agentId="cloud-use-cloud"
+          agentStatus={cloudActive ? "active" : undefined}
           type="button"
           variant={cloudActive ? "default" : "outline"}
-          className="h-8 rounded-sm px-2.5 text-xs"
+          className="h-9 rounded-md px-3 text-xs font-medium"
           disabled={routingModeSaving}
           aria-label={
             cloudActive
@@ -171,7 +181,7 @@ export function CloudPanel({
         >
           <Cloud className="h-4 w-4" aria-hidden />
           {t("providerpanels.cloud", { defaultValue: "Cloud" })}
-        </Button>
+        </SettingsActionButton>
       </ProviderPanelHeader>
       <CloudDashboard />
       <ProviderRoutingPanel
@@ -234,24 +244,24 @@ export function SubscriptionPanel({
         description={description}
       >
         {showUseButton ? (
-          <Button
+          <SettingsActionButton
+            agentId={`sub-use-${selection.id}`}
             type="button"
             variant="outline"
-            className="h-8 rounded-sm px-2.5 text-xs"
+            className="h-9 rounded-md px-3 text-xs font-medium"
             onClick={() => void onSelectSubscription(selection.id)}
           >
             {t("providerpanels.useSubscription", {
               defaultValue: "Use subscription",
             })}
-          </Button>
+          </SettingsActionButton>
         ) : null}
       </ProviderPanelHeader>
       <div className="px-3 py-3 sm:px-4">
         {cloudCallsDisabled ? (
-          <div className="mb-3 rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs-tight">
+          <div className="mb-3 rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs">
             {t("providerpanels.localOnlySubscriptionPaused", {
-              defaultValue:
-                "Local-only active. Remote subscription routing is paused.",
+              defaultValue: "Local-only active — remote routing is paused.",
             })}
           </div>
         ) : null}
@@ -311,25 +321,26 @@ export function ApiKeyPanel({
         icon={KeyRound}
         title={panelLabel}
         description={t("providerpanels.apiKeyDesc", {
-          defaultValue: "Use your own provider API key and model routing.",
+          defaultValue: "Your provider API key and model routing.",
         })}
       >
         {showUseButton ? (
-          <Button
+          <SettingsActionButton
+            agentId={`apikey-use-${visibleProviderPanelId}`}
             type="button"
             variant="outline"
-            className="h-8 rounded-sm px-2.5 text-xs"
+            className="h-9 rounded-md px-3 text-xs font-medium"
             onClick={() => onSwitchProvider(visibleProviderPanelId)}
           >
             {t("providerpanels.useProvider", { defaultValue: "Use provider" })}
-          </Button>
+          </SettingsActionButton>
         ) : null}
       </ProviderPanelHeader>
       <div className="px-3 py-3 sm:px-4">
         {cloudCallsDisabled ? (
-          <div className="mb-3 rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs-tight">
+          <div className="mb-3 rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs">
             {t("providerpanels.localOnlyApiPaused", {
-              defaultValue: "Local-only active. Remote API routing is paused.",
+              defaultValue: "Local-only active — remote routing is paused.",
             })}
           </div>
         ) : null}

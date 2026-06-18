@@ -8,6 +8,8 @@ import {
   logger,
   type Memory,
   type MessageConnectorChatContext,
+  type MessageConnectorCreateThreadParams,
+  type MessageConnectorPostToThreadParams,
   type MessageConnectorQueryContext,
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
@@ -15,6 +17,7 @@ import {
   type Room,
   Service,
   type TargetInfo,
+  type ThreadHandle,
   type UUID,
   type World,
   type WorldPayload,
@@ -34,6 +37,10 @@ import {
   resolveDefaultTelegramAccountId,
   resolveTelegramAccount,
 } from "./accounts";
+import {
+  applyTelegramSetMyCommands,
+  registerTelegramCommandHandlers,
+} from "./command-registration";
 import { TELEGRAM_SERVICE_NAME } from "./constants";
 import { MessageManager } from "./messageManager";
 import {
@@ -50,6 +57,8 @@ const TELEGRAM_CONNECTOR_CAPABILITIES = [
   "list_rooms",
   "chat_context",
   "user_context",
+  "create_thread",
+  "post_to_thread",
 ];
 const TELEGRAM_CHAT_ID_PATTERN = /^-?\d+$/;
 const TELEGRAM_THREADED_CHANNEL_PATTERN = /^(-?\d+)-(\d+)$/;
@@ -393,6 +402,27 @@ export class TelegramService extends Service {
     return [normalizeTelegramAccountId(this.defaultAccountId)];
   }
 
+  /**
+   * Returns every live Telegraf bot instance, one per configured account.
+   * Public accessor so other services (e.g. owner-pairing) can register
+   * commands or send messages without reflecting into private fields.
+   */
+  public getBots(): Telegraf<Context>[] {
+    if (this.accountStates instanceof Map && this.accountStates.size > 0) {
+      return Array.from(this.accountStates.values(), (state) => state.bot);
+    }
+    return this.bot ? [this.bot] : [];
+  }
+
+  /**
+   * Returns the default account's Telegraf bot instance, or null when the
+   * service started without a usable bot token. Public accessor that replaces
+   * private-field reflection for single-bot callers.
+   */
+  public getBot(): Telegraf<Context> | null {
+    return this.getDefaultAccountState()?.bot ?? this.bot ?? null;
+  }
+
   private resolveAccountIdFromContext(
     context?: MessageConnectorQueryContext | null,
     target?: TargetInfo | null,
@@ -671,9 +701,35 @@ export class TelegramService extends Service {
         slashStartPayload,
       );
     });
+
+    // Register universal slash-command handlers BEFORE launch. Telegraf accepts
+    // command registration any time before launch(), and a matched command
+    // handler that never calls next() terminates the middleware chain — so the
+    // catch-all message handler in setupMessageHandlers does not also process
+    // command messages (no double-processing).
+    const commandMessageManager =
+      activeState?.messageManager ?? this.messageManager ?? undefined;
+    if (commandMessageManager) {
+      const registered = registerTelegramCommandHandlers(
+        bot,
+        this.runtime,
+        commandMessageManager,
+        accountId,
+      );
+      logger.debug(
+        {
+          src: "plugin:telegram",
+          agentId: this.runtime.agentId,
+          accountId,
+          commandCount: registered.length,
+        },
+        "Registered universal slash-command handlers",
+      );
+    }
+
     await bot.launch({
       dropPendingUpdates: true,
-      allowedUpdates: ["message", "message_reaction"],
+      allowedUpdates: ["message", "message_reaction", "callback_query"],
     });
     if (botToken) {
       ACTIVE_TELEGRAM_POLLERS.set(botToken, {
@@ -682,6 +738,11 @@ export class TelegramService extends Service {
         accountId,
       });
     }
+
+    // Publish the slash-command menu to Telegram so commands appear in the `/`
+    // menu. setMyCommands failure is logged + swallowed (network) and must not
+    // crash boot.
+    await applyTelegramSetMyCommands(bot, this.runtime, accountId);
 
     // Get bot info for identification purposes
     const botInfo = await bot.telegram.getMe();
@@ -878,6 +939,24 @@ export class TelegramService extends Service {
             error: error instanceof Error ? error.message : String(error),
           },
           "Error handling reaction",
+        );
+      }
+    });
+
+    // Inline-keyboard button taps (choice / followup answers from the shared
+    // interaction protocol). Foreign callbacks are acknowledged and ignored.
+    bot?.on("callback_query", async (ctx) => {
+      try {
+        await messageManager?.handleCallbackQuery(ctx);
+      } catch (error) {
+        logger.error(
+          {
+            src: "plugin:telegram",
+            agentId: this.runtime.agentId,
+            accountId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Error handling callback query",
         );
       }
     });
@@ -1863,6 +1942,68 @@ export class TelegramService extends Service {
     }
   }
 
+  /**
+   * Create a forum topic for the target chat and return a thread handle. Backs
+   * the runtime's connector-agnostic `createThreadOnTarget` (parity with
+   * Discord) so the orchestrator can give each task its own Telegram thread.
+   * Requires a forum-enabled supergroup; throws otherwise.
+   */
+  public async createConnectorThread(
+    runtime: IAgentRuntime,
+    params: MessageConnectorCreateThreadParams,
+  ): Promise<ThreadHandle> {
+    const target = params.target as AccountScopedTargetInfo;
+    const accountId = target.accountId ?? this.defaultAccountId;
+    const bot = this.getAccountState(accountId)?.bot ?? this.bot;
+    if (!bot) {
+      throw new Error("Telegram bot is not available — cannot create thread");
+    }
+    // The orchestrator progress hook passes a {source, roomId} target; resolve
+    // the chat id from the room when the target carries no channelId.
+    let chatId = target.channelId ?? target.serverId;
+    if (!chatId && target.roomId && typeof runtime.getRoom === "function") {
+      const room = await runtime.getRoom(target.roomId);
+      chatId = room?.channelId ?? undefined;
+    }
+    if (!chatId) {
+      throw new Error("createConnectorThread requires a target chatId");
+    }
+    // A composite "<chatId>-<threadId>" room means we're already inside a topic;
+    // create the new topic on the parent chat (the pattern preserves negative ids).
+    const threadedMatch = chatId.match(TELEGRAM_THREADED_CHANNEL_PATTERN);
+    const parentChatId = threadedMatch ? threadedMatch[1] : chatId;
+    const name = (params.name ?? "thread").slice(0, 128);
+    const topic = await bot.telegram.createForumTopic(parentChatId, name);
+    return {
+      threadId: String(topic.message_thread_id),
+      parentChannelId: String(parentChatId),
+    };
+  }
+
+  /** Post `params.content` into a forum topic created by createConnectorThread. */
+  public async postToConnectorThread(
+    _runtime: IAgentRuntime,
+    params: MessageConnectorPostToThreadParams,
+  ): Promise<Memory | undefined> {
+    const target = params.target as AccountScopedTargetInfo;
+    const accountId = target.accountId ?? this.defaultAccountId;
+    const bot = this.getAccountState(accountId)?.bot ?? this.bot;
+    if (!bot) {
+      throw new Error("Telegram bot is not available — cannot post to thread");
+    }
+    const chatId =
+      params.thread.parentChannelId ?? target.channelId ?? target.serverId;
+    const text = params.content.text ?? "";
+    if (!chatId || !text.trim()) {
+      return undefined;
+    }
+    const threadId = Number(params.thread.threadId);
+    await bot.telegram.sendMessage(chatId, text, {
+      message_thread_id: Number.isFinite(threadId) ? threadId : undefined,
+    });
+    return undefined;
+  }
+
   async resolveConnectorTargets(
     query: string,
     context: MessageConnectorQueryContext,
@@ -2247,6 +2388,10 @@ export class TelegramService extends Service {
             service: TELEGRAM_SERVICE_NAME,
             ...(normalizedAccountId ? { accountId: normalizedAccountId } : {}),
           },
+          createThreadHandler: (runtime, params) =>
+            serviceInstance.createConnectorThread(runtime, params),
+          postToThreadHandler: (runtime, params) =>
+            serviceInstance.postToConnectorThread(runtime, params),
           resolveTargets: (query, context) =>
             serviceInstance.resolveConnectorTargets(
               query,

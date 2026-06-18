@@ -37,6 +37,8 @@ export interface OpenAiCodexOAuthCredentials {
   refresh: string;
   expires: number;
   accountId: string;
+  /** ChatGPT id_token, required in `~/.codex/auth.json` for chatgpt-mode auth. */
+  idToken?: string;
 }
 
 export interface OAuthPrompt {
@@ -105,6 +107,10 @@ type TokenSuccess = {
   access: string;
   refresh: string;
   expires: number;
+  /** ChatGPT id_token — required in `~/.codex/auth.json` for chatgpt-mode
+   * auth, so it must be captured (not just access/refresh) for a pooled
+   * account's CODEX_HOME to authenticate. */
+  idToken?: string;
 };
 type TokenFailure = { type: "failed" };
 
@@ -135,6 +141,7 @@ async function exchangeAuthorizationCode(
     access_token?: string;
     refresh_token?: string;
     expires_in?: number;
+    id_token?: string;
   };
   if (
     !json.access_token ||
@@ -151,6 +158,7 @@ async function exchangeAuthorizationCode(
     access: json.access_token,
     refresh: json.refresh_token,
     expires: Date.now() + json.expires_in * 1000,
+    ...(json.id_token ? { idToken: json.id_token } : {}),
   };
 }
 
@@ -178,6 +186,7 @@ async function refreshAccessToken(
       access_token?: string;
       refresh_token?: string;
       expires_in?: number;
+      id_token?: string;
     };
     if (
       !json.access_token ||
@@ -196,6 +205,7 @@ async function refreshAccessToken(
       access: json.access_token,
       refresh: json.refresh_token,
       expires: Date.now() + json.expires_in * 1000,
+      ...(json.id_token ? { idToken: json.id_token } : {}),
     };
   } catch (error) {
     logger.error(`[openai-codex] Token refresh error: ${String(error)}`);
@@ -403,6 +413,7 @@ export async function loginOpenAICodex(options: {
       refresh: tokenResult.refresh,
       expires: tokenResult.expires,
       accountId,
+      ...(tokenResult.idToken ? { idToken: tokenResult.idToken } : {}),
     };
   } finally {
     server.close();
@@ -425,5 +436,6 @@ export async function refreshOpenAICodexToken(
     refresh: result.refresh,
     expires: result.expires,
     accountId,
+    ...(result.idToken ? { idToken: result.idToken } : {}),
   };
 }

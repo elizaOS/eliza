@@ -24,6 +24,11 @@ import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
 } from "./bridge/electrobun-rpc";
+import {
+  NAVIGATE_SETTINGS_EVENT,
+  type NavigateSettingsDetail,
+  useSlashCommandController,
+} from "./chat/useSlashCommandController";
 import { getOverlayAppLazyComponent } from "./components/apps/AppWindowRenderer.helpers";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
@@ -32,6 +37,7 @@ import { SaveCommandModal } from "./components/chat/SaveCommandModal";
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
+import { TutorialOverlay } from "./components/pages/tutorial/TutorialOverlay";
 import { SecretsManagerModalRoot } from "./components/settings/SecretsManagerSection";
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
@@ -41,6 +47,7 @@ import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanne
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
 import { HomePill } from "./components/shell/HomePill";
+import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
 import { ShellControllerProvider } from "./components/shell/ShellControllerContext";
 import { useShellControllerContext } from "./components/shell/ShellControllerContext.hooks";
@@ -58,7 +65,6 @@ import {
   type FocusConnectorEventDetail,
 } from "./events";
 import { CompactOnboarding } from "./first-run/CompactOnboarding";
-import { FirstRunScreen } from "./first-run/FirstRunScreen";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
@@ -67,11 +73,13 @@ import {
   getAppSlugFromPath,
   getWindowNavigationPath,
   isAndroidPhoneSurfaceEnabled,
+  isAospShellEnabled,
   isRouteRootPath,
   shouldUseHashNavigation,
 } from "./navigation";
 import { isIOS, isNative } from "./platform/init";
 import { type ActionNotice, useApp } from "./state";
+import { isShellPaintable } from "./state/startup-coordinator";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
 
 const MOBILE_NAV_PADDING_CLASS =
@@ -140,6 +148,10 @@ const BrowserWorkspaceView = lazyNamedView(
   () => import("./components/pages/BrowserWorkspaceView"),
   "BrowserWorkspaceView",
 );
+const CameraPageView = lazyNamedView(
+  () => import("./components/pages/CameraPageView"),
+  "CameraPageView",
+);
 const ContactsPageView = lazyNamedView(
   () => import("./components/pages/ElizaOsAppsView"),
   "ContactsPageView",
@@ -159,6 +171,14 @@ const PhonePageView = lazyNamedView(
 const SettingsView = lazyNamedView(
   () => import("./components/pages/SettingsView"),
   "SettingsView",
+);
+const TutorialView = lazyNamedView(
+  () => import("./components/pages/tutorial/TutorialView"),
+  "TutorialView",
+);
+const HelpView = lazyNamedView(
+  () => import("./components/pages/help/HelpView"),
+  "HelpView",
 );
 const StreamView = lazyNamedView(
   () => import("./components/pages/StreamView"),
@@ -718,7 +738,21 @@ function renderStaticViewRouterTab({
   LifeOpsPageView: ComponentType | null | undefined;
 }): ReactNode {
   const directViews: Record<string, ReactNode> = {
-    onboarding: <FirstRunScreen />,
+    tutorial: (
+      <TabContentView>
+        <TutorialView />
+      </TabContentView>
+    ),
+    help: (
+      <TabContentView>
+        <HelpView />
+      </TabContentView>
+    ),
+    camera: (
+      <TabContentView>
+        <CameraPageView />
+      </TabContentView>
+    ),
     chat: <ViewUnavailableFallback />,
     browser: <BrowserWorkspaceView />,
     companion: <ViewUnavailableFallback />,
@@ -989,6 +1023,7 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
     <div key="chat-shell" className={APP_SHELL_CLASS}>
       <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden">
         <ChatAmbientBackground />
+        <HomeScreenMount />
         <CustomActionsPanel
           open={props.customActionsPanelOpen}
           onClose={() => props.setCustomActionsPanelOpen(false)}
@@ -1100,8 +1135,51 @@ function ShellFoundationMount() {
  */
 function ContinuousChatOverlayMount(): ReactNode {
   const controller = useShellControllerContext();
+  const { characterData, agentStatus } = useApp();
+  const slash = useSlashCommandController();
   if (!controller) return null;
-  return <ContinuousChatOverlay controller={controller} />;
+  // The live agent's name drives the composer placeholder ("Ask {name}").
+  // Character name wins (what the user configured), then the running agent's
+  // reported name; "Eliza" is the default the overlay falls back to.
+  const agentName =
+    characterData?.name?.trim() || agentStatus?.agentName?.trim() || undefined;
+  return (
+    <ContinuousChatOverlay
+      controller={controller}
+      agentName={agentName}
+      slash={slash}
+    />
+  );
+}
+
+/**
+ * The iOS-style home dashboard for the /chat route — clock, recent activity,
+ * recent messages, a customizable widget area, and pinned view tiles. Sits
+ * behind the always-present chat overlay. Wires tile taps to the real nav:
+ * builtin tabs via setTab, plugin/remote views via the eliza:navigate:view event.
+ */
+function HomeScreenMount(): ReactNode {
+  const { setTab } = useApp();
+  const onOpenTile = useCallback(
+    (target: HomeTileTarget) => {
+      if (target.kind === "tab") {
+        setTab(target.tab);
+      } else {
+        window.dispatchEvent(
+          new CustomEvent("eliza:navigate:view", {
+            detail: { viewPath: target.path },
+          }),
+        );
+      }
+    },
+    [setTab],
+  );
+  return (
+    <HomeScreen
+      onOpenTile={onOpenTile}
+      showNativeOsTiles={isAospShellEnabled()}
+    />
+  );
 }
 
 export function App() {
@@ -1129,9 +1207,16 @@ export function App() {
   // During first-run setup / pairing / startup phases the StartupScreen handles
   // its own gate (bootstrap step), so we skip the check.
   const isCoordinatorReady = startupCoordinator.phase === "ready";
+  // The live shell may MOUNT once the backend is reached and the agent boot is
+  // underway (starting-runtime / hydrating / ready) — first-turn capability then
+  // fades in behind it (see useShellController's agentReady). Only the truly
+  // pre-shell phases (session restore, backend polling, first-run, pairing,
+  // error) keep the full-screen StartupScreen. Runtime-dependent effects and
+  // overlay apps below stay gated on `isCoordinatorReady` and defer safely.
+  const isShellPaintableNow = isShellPaintable(startupCoordinator.phase);
 
   const { state: authState, refetch: refetchAuth } = useAuthStatus({
-    skip: !isCoordinatorReady || isPopout,
+    skip: !isShellPaintableNow || isPopout,
   });
   // Don't initialize the 3D scene while the system is still booting — this
   // prevents VrmEngine's Three.js setup from blocking the JS thread and
@@ -1279,6 +1364,23 @@ export function App() {
     document.addEventListener(FOCUS_CONNECTOR_EVENT, handleFocusConnector);
     return () =>
       document.removeEventListener(FOCUS_CONNECTOR_EVENT, handleFocusConnector);
+  }, [setTab]);
+
+  // Slash-command settings navigation (e.g. `/settings model`): open the
+  // settings tab focused on the requested section (or the hub when absent).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleNavigateSettings = (event: Event) => {
+      const detail = (event as CustomEvent<NavigateSettingsDetail>).detail;
+      setSettingsInitialSection(detail?.section ?? null);
+      setTab("settings");
+    };
+    window.addEventListener(NAVIGATE_SETTINGS_EVENT, handleNavigateSettings);
+    return () =>
+      window.removeEventListener(
+        NAVIGATE_SETTINGS_EVENT,
+        handleNavigateSettings,
+      );
   }, [setTab]);
 
   // Handle agent-dispatched view navigation events.
@@ -1508,7 +1610,7 @@ export function App() {
     );
   }
 
-  if (!isCoordinatorReady) {
+  if (!isShellPaintableNow) {
     return (
       <BugReportProvider value={bugReport}>
         <StartupScreen />
@@ -1517,12 +1619,11 @@ export function App() {
     );
   }
 
-  // Auth gate — when the coordinator is ready, check /api/auth/me.
-  // "loading" phase: wait (fall through to the coordinator's own "ready" render).
-  // "unauthenticated": render LoginView.
-  // "authenticated": proceed to the main shell.
+  // Auth gate — once the shell is paintable (agent may still be warming up),
+  // check /api/auth/me. "loading": wait (fall through to the main shell render).
+  // "unauthenticated": render LoginView. "authenticated": proceed.
   // "server_unavailable": show a retryable startup failure.
-  if (isCoordinatorReady && !isPopout) {
+  if (isShellPaintableNow && !isPopout) {
     if (authState.phase === "server_unavailable") {
       return (
         <BugReportProvider value={bugReport}>
@@ -1566,8 +1667,10 @@ export function App() {
     );
   }
 
-  // Coordinator is at "ready" — the app shell renders. No deprecated first-run
-  // overlays — the coordinator handled all of that before reaching ready.
+  // The app shell renders once paintable (the agent may still be warming up —
+  // the chat composer queues sends until first-turn capability fades in; views
+  // show their own loading states until the runtime is live). No deprecated
+  // first-run overlays — the coordinator handled all of that before this point.
 
   return (
     <BugReportProvider value={bugReport}>
@@ -1613,6 +1716,11 @@ export function App() {
           behind stays live.
         */}
         <ContinuousChatOverlayMount />
+        {/* Interactive tutorial: a persistent spotlight overlay that survives
+            navigation (it sends the user to Settings, back home, …). Renders
+            only when the tutorial is active (launched from the home Tutorial
+            tile or the Help view). */}
+        <TutorialOverlay />
         <ShellOverlays actionNotice={actionNotice} />
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}

@@ -5,11 +5,6 @@
  * declared permission namespaces are granted. Reads/writes:
  *   GET  /api/apps/permissions
  *   PUT  /api/apps/permissions/:slug   { namespaces: string[] }
- *
- * Per `eliza/packages/docs/architecture/app-permissions-granted-store.md`
- * grants are advisory in this slice — Phase 2 wires the runtime
- * enforcement that reads them. The UI surfaces this as a "not yet
- * enforced" badge so users aren't misled.
  */
 
 import {
@@ -19,9 +14,12 @@ import {
 } from "@elizaos/shared";
 import { Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
 import { useApp } from "../../state";
 import { Switch } from "../ui/switch";
+import { SettingsActionButton } from "./settings-agent-rows";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 const NAMESPACE_LABELS: Record<RecognisedPermissionNamespace, string> = {
   fs: "Filesystem",
@@ -29,8 +27,8 @@ const NAMESPACE_LABELS: Record<RecognisedPermissionNamespace, string> = {
 };
 
 const NAMESPACE_DESCRIPTIONS: Record<RecognisedPermissionNamespace, string> = {
-  fs: "Read and write files within the patterns the app declared in its manifest.",
-  net: "Make outbound network requests to the hosts the app declared in its manifest.",
+  fs: "Read/write files the app's manifest declares.",
+  net: "Reach the hosts the app's manifest declares.",
 };
 
 type AsyncStatus =
@@ -134,8 +132,7 @@ export function AppPermissionsSection() {
             (existing: RecognisedPermissionNamespace) => existing !== ns,
           );
 
-      // Optimistically flip the granted set so the Switch snaps to the
-      // new position immediately. Reverted on error below.
+      // Optimistic flip; reverted on error below.
       setRows((prev) =>
         prev.map((row) =>
           row.view.slug === slug
@@ -160,7 +157,6 @@ export function AppPermissionsSection() {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (!mountedRef.current) return;
-        // Revert the optimistic flip.
         setRows((prev) =>
           prev.map((row) =>
             row.view.slug === slug
@@ -191,114 +187,89 @@ export function AppPermissionsSection() {
     [rows],
   );
 
+  const refreshButton = (
+    <SettingsActionButton
+      agentId="appperm-refresh"
+      agentLabel="Refresh"
+      agentDescription="Reload the app permissions list"
+      agentGroup="app-permissions"
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={() => void refresh()}
+      className="h-9 gap-1.5 rounded-sm px-3 text-xs font-semibold"
+      disabled={listStatus.state === "loading"}
+    >
+      {listStatus.state === "loading" ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+      ) : (
+        <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+      )}
+      Refresh
+    </SettingsActionButton>
+  );
+
   return (
-    <div className="space-y-4">
-      <header className="flex flex-wrap items-center justify-end gap-3">
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          className="inline-flex items-center gap-1.5 rounded-sm border border-border/60 bg-bg-hover px-2.5 py-1 text-xs-tight text-muted-strong hover:bg-bg-hover/80"
-          disabled={listStatus.state === "loading"}
-        >
-          {listStatus.state === "loading" ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-          ) : (
-            <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-          )}
-          Refresh
-        </button>
-      </header>
+    <SettingsStack>
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {refreshButton}
+      </div>
 
       {listStatus.state === "error" && (
-        <div className="rounded-sm border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+        <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
           {listStatus.message}
         </div>
       )}
 
       {listStatus.state !== "loading" && grantableRows.length === 0 && (
-        <div className="rounded-sm border border-border/60 bg-card/92 px-4 py-6 text-center text-xs-tight text-muted">
-          No apps declare permissions yet.
-        </div>
+        <SettingsGroup bare>
+          <div className="rounded-lg border border-border bg-card px-4 py-6 text-center text-xs text-muted">
+            No apps declare permissions yet.
+          </div>
+        </SettingsGroup>
       )}
 
       {grantableRows.map((row) => (
-        <article
+        <SettingsGroup
           key={row.view.slug}
-          className="space-y-3 rounded-sm border border-border/60 bg-card/92 p-4 "
-        >
-          <header className="flex flex-wrap items-baseline justify-between gap-2">
-            <div className="min-w-0">
-              <h3 className="font-semibold text-sm text-txt">
-                {row.view.slug}
-              </h3>
-              <p className="text-2xs uppercase tracking-wider text-muted">
-                {row.view.trust === "first-party"
-                  ? "First-party · auto-granted"
-                  : "External · explicit consent"}
-              </p>
-            </div>
-            {row.view.grantedAt && (
+          title={row.view.slug}
+          description={
+            row.view.trust === "first-party"
+              ? "First-party · auto-granted"
+              : "External · explicit consent"
+          }
+          action={
+            row.view.grantedAt ? (
               <span className="text-2xs text-muted">
                 granted {new Date(row.view.grantedAt).toLocaleDateString()}
               </span>
-            )}
-          </header>
-
-          <div className="space-y-2">
-            {RECOGNISED_PERMISSION_NAMESPACES.map((ns) => {
-              if (!row.view.recognisedNamespaces.includes(ns)) return null;
-              const granted = row.view.grantedNamespaces.includes(ns);
-              const summary = summariseRequested(row.view, ns);
-              const toggleId = `app-perm-${row.view.slug}-${ns}`;
-              return (
-                <div
-                  key={ns}
-                  className={`flex flex-col gap-2 rounded-sm border px-3 py-2 sm:flex-row sm:items-center ${
-                    granted
-                      ? "border-accent/30 bg-accent/10"
-                      : "border-border/60 bg-bg-hover"
-                  }`}
-                >
-                  <div className="flex-1 min-w-0">
-                    <label
-                      htmlFor={toggleId}
-                      className="font-medium text-sm text-txt"
-                    >
-                      {NAMESPACE_LABELS[ns]}
-                    </label>
-                    <p className="mt-0.5 text-2xs leading-4 text-muted">
-                      {NAMESPACE_DESCRIPTIONS[ns]}
-                    </p>
-                    {summary && (
-                      <p className="mt-1 truncate font-mono text-2xs text-muted-strong">
-                        {summary}
-                      </p>
-                    )}
-                  </div>
-                  <Switch
-                    id={toggleId}
-                    checked={granted}
-                    disabled={row.pending}
-                    onCheckedChange={(checked) =>
-                      void onToggle(row.view.slug, ns, checked)
-                    }
-                    aria-label={`Toggle ${NAMESPACE_LABELS[ns]} for ${row.view.slug}`}
-                  />
-                </div>
-              );
-            })}
-          </div>
-
-          {row.error && (
-            <div className="rounded-sm border border-danger/30 bg-danger/10 px-2.5 py-1.5 text-2xs text-danger">
-              {row.error}
-            </div>
-          )}
-        </article>
+            ) : undefined
+          }
+          footer={
+            row.error ? (
+              <span className="text-danger">{row.error}</span>
+            ) : undefined
+          }
+        >
+          {RECOGNISED_PERMISSION_NAMESPACES.map((ns) => {
+            if (!row.view.recognisedNamespaces.includes(ns)) return null;
+            return (
+              <AppPermissionToggle
+                key={ns}
+                slug={row.view.slug}
+                ns={ns}
+                granted={row.view.grantedNamespaces.includes(ns)}
+                summary={summariseRequested(row.view, ns)}
+                disabled={row.pending}
+                onToggle={onToggle}
+              />
+            );
+          })}
+        </SettingsGroup>
       ))}
 
       {noManifestRows.length > 0 && (
-        <details className="rounded-sm border border-border/60 bg-bg-hover/40 px-3 py-2 text-xs-tight text-muted">
+        <details className="rounded-lg border border-border bg-surface px-3 py-2 text-xs text-muted">
           <summary className="cursor-pointer">
             {noManifestRows.length} registered app
             {noManifestRows.length === 1 ? "" : "s"} without a permissions
@@ -313,6 +284,66 @@ export function AppPermissionsSection() {
           </ul>
         </details>
       )}
-    </div>
+    </SettingsStack>
+  );
+}
+
+function AppPermissionToggle({
+  slug,
+  ns,
+  granted,
+  summary,
+  disabled,
+  onToggle,
+}: {
+  slug: string;
+  ns: RecognisedPermissionNamespace;
+  granted: boolean;
+  summary: string | null;
+  disabled: boolean;
+  onToggle: (
+    slug: string,
+    ns: RecognisedPermissionNamespace,
+    next: boolean,
+  ) => void;
+}) {
+  const toggleId = `appperm-${slug}-${ns}`;
+  const label = `Toggle ${NAMESPACE_LABELS[ns]} for ${slug}`;
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: toggleId,
+    role: "toggle",
+    label,
+    group: "app-permissions",
+    description: NAMESPACE_DESCRIPTIONS[ns],
+    status: granted ? "on" : "off",
+    getValue: () => granted,
+    onActivate: disabled ? undefined : () => onToggle(slug, ns, !granted),
+  });
+  return (
+    <SettingsRow
+      htmlFor={toggleId}
+      label={NAMESPACE_LABELS[ns]}
+      description={
+        <>
+          {NAMESPACE_DESCRIPTIONS[ns]}
+          {summary ? (
+            <span className="mt-1 block truncate font-mono text-xs text-txt">
+              {summary}
+            </span>
+          ) : null}
+        </>
+      }
+      control={
+        <Switch
+          ref={ref}
+          id={toggleId}
+          checked={granted}
+          disabled={disabled}
+          onCheckedChange={(checked) => onToggle(slug, ns, checked)}
+          aria-label={label}
+          {...agentProps}
+        />
+      }
+    />
   );
 }

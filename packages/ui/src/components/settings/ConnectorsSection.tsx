@@ -1,19 +1,21 @@
 /**
  * Settings → Connectors section.
  *
- * Renders one inline `<details>` row per active connector plugin. The summary
- * carries the brand icon + name + enable/disable Switch + status dot; the
- * expanded body dispatches to the existing per-connector setup panel by
- * plugin id.
- *
- * The id→panel dispatch is hardcoded — AGENTS.md commandment 5 (zero
+ * The connector id→panel dispatch is hardcoded — AGENTS.md commandment 5 (zero
  * polymorphism for runtime type branching) explicitly allows this for
- * adapter/target registries. There are a small, known set of connectors,
- * each with its own bespoke setup surface.
+ * adapter/target registries.
  */
 
-import { Puzzle } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type LucideIcon, type LucideProps, Puzzle } from "lucide-react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useAgentElement } from "../../agent-surface";
 import type { PluginInfo } from "../../api";
 import {
   clearPendingFocusConnector,
@@ -35,6 +37,7 @@ import {
   resolveIcon,
 } from "../pages/plugin-list-utils";
 import { Switch } from "../ui/switch";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 type ConnectorStatusTone = "ok" | "warn" | "off";
 
@@ -48,7 +51,7 @@ function statusTone(plugin: PluginInfo): ConnectorStatusTone {
 function statusDotClass(tone: ConnectorStatusTone): string {
   switch (tone) {
     case "ok":
-      return "bg-success";
+      return "bg-ok";
     case "warn":
       return "bg-warn";
     case "off":
@@ -56,28 +59,36 @@ function statusDotClass(tone: ConnectorStatusTone): string {
   }
 }
 
-function ConnectorIcon({ plugin }: { plugin: PluginInfo }) {
+/**
+ * A {@link LucideIcon}-compatible medallion icon for a connector so it can be
+ * passed to {@link SettingsRow}'s `icon` slot — brand SVG, plugin image, or a
+ * Puzzle fallback.
+ */
+function connectorIcon(plugin: PluginInfo): LucideIcon {
   const Brand = getBrandIcon(plugin.id);
-  if (Brand) return <Brand className="h-4 w-4" />;
   const icon = resolveIcon(plugin);
-  if (!icon) return <Puzzle className="h-4 w-4" aria-hidden />;
-  if (typeof icon === "string") {
-    const src = iconImageSource(icon);
-    return src ? (
-      <img
-        src={src}
-        alt=""
-        className="h-4 w-4 shrink-0 rounded-sm object-contain"
-      />
-    ) : (
-      <Puzzle className="h-4 w-4" aria-hidden />
-    );
-  }
-  const IconComponent = icon;
-  return <IconComponent className="h-4 w-4" />;
+  const imageSrc = typeof icon === "string" ? iconImageSource(icon) : undefined;
+  const Inner = typeof icon === "string" || !icon ? null : icon;
+  return forwardRef<SVGSVGElement, LucideProps>(
+    function ConnectorMedallionIcon({ className }) {
+      if (Brand) return <Brand className={className} />;
+      if (imageSrc)
+        return (
+          <img
+            src={imageSrc}
+            alt=""
+            className="h-[18px] w-[18px] shrink-0 rounded-sm object-contain"
+          />
+        );
+      const IconComponent = Inner;
+      if (IconComponent) return <IconComponent className={className} />;
+      return <Puzzle className={className} aria-hidden />;
+    },
+  );
 }
 
 function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
+  const { t } = useApp();
   switch (plugin.id) {
     case "telegram":
       return <TelegramAccountConnectorPanel />;
@@ -94,10 +105,55 @@ function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
     default:
       return (
         <div className="text-xs-tight text-muted">
-          {plugin.name} uses its own setup surface.
+          {t("settings.sections.connectors.ownSetupSurface", {
+            defaultValue: "{{name}} uses its own setup surface.",
+            name: plugin.name,
+          })}
         </div>
       );
   }
+}
+
+function ConnectorEnableSwitch({
+  plugin,
+  busy,
+  onToggle,
+}: {
+  plugin: PluginInfo;
+  busy: boolean;
+  onToggle: (enabled: boolean) => void;
+}) {
+  const { t } = useApp();
+  const label = plugin.enabled
+    ? t("settings.sections.connectors.disable", {
+        defaultValue: "Disable {{name}}",
+        name: plugin.name,
+      })
+    : t("settings.sections.connectors.enable", {
+        defaultValue: "Enable {{name}}",
+        name: plugin.name,
+      });
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `connector-${plugin.id}-enable`,
+    role: "toggle",
+    label,
+    group: "connectors",
+    status: plugin.enabled ? "on" : "off",
+    getValue: () => plugin.enabled,
+    onActivate: busy ? undefined : () => onToggle(!plugin.enabled),
+  });
+  return (
+    <Switch
+      ref={ref}
+      checked={plugin.enabled}
+      disabled={busy}
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+      onCheckedChange={(checked) => onToggle(checked)}
+      aria-label={label}
+      {...agentProps}
+    />
+  );
 }
 
 function ConnectorRow({
@@ -110,35 +166,35 @@ function ConnectorRow({
   onToggle: (enabled: boolean) => void;
 }) {
   const tone = statusTone(plugin);
+  const icon = useMemo(() => connectorIcon(plugin), [plugin]);
 
   return (
     <details
-      className="group rounded-sm border border-border/60 bg-card/45 transition-colors open:bg-card/65"
+      className="group overflow-hidden rounded-lg border border-border bg-card transition-colors hover:bg-surface open:bg-card open:hover:bg-card"
       data-connector={plugin.id}
     >
-      <summary className="flex cursor-pointer select-none list-none items-center gap-3 px-3 py-2.5">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-card/60 text-txt">
-          <ConnectorIcon plugin={plugin} />
-        </span>
-        <span className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="truncate text-sm font-semibold leading-5 text-txt">
-            {plugin.name}
-          </span>
-          <span
-            className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDotClass(tone)}`}
-            aria-hidden="true"
-          />
-        </span>
-        <Switch
-          checked={plugin.enabled}
-          disabled={busy}
-          onClick={(event) => event.stopPropagation()}
-          onKeyDown={(event) => event.stopPropagation()}
-          onCheckedChange={(checked) => onToggle(checked)}
-          aria-label={`${plugin.enabled ? "Disable" : "Enable"} ${plugin.name}`}
+      <summary className="cursor-pointer select-none list-none">
+        <SettingsRow
+          icon={icon}
+          label={
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="truncate">{plugin.name}</span>
+              <span
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDotClass(tone)}`}
+                aria-hidden="true"
+              />
+            </span>
+          }
+          control={
+            <ConnectorEnableSwitch
+              plugin={plugin}
+              busy={busy}
+              onToggle={onToggle}
+            />
+          }
         />
       </summary>
-      <div className="border-t border-border/40 px-3 py-3">
+      <div className="border-t border-border/60 px-4 py-3">
         <ConnectorBody plugin={plugin} />
       </div>
     </details>
@@ -221,20 +277,29 @@ export function ConnectorsSection() {
   }
 
   return (
-    <div ref={containerRef} className="space-y-2">
-      {connectorPlugins.map((plugin) => {
-        const isBusy = togglingPlugins.has(plugin.id);
-        return (
-          <ConnectorRow
-            key={plugin.id}
-            plugin={plugin}
-            busy={isBusy}
-            onToggle={(checked) => {
-              void handleToggle(plugin.id, checked);
-            }}
-          />
-        );
-      })}
-    </div>
+    <SettingsStack>
+      <SettingsGroup
+        bare
+        title={t("settings.sections.connectors.groupTitle", {
+          defaultValue: "Connectors",
+        })}
+      >
+        <div ref={containerRef} className="flex flex-col gap-2">
+          {connectorPlugins.map((plugin) => {
+            const isBusy = togglingPlugins.has(plugin.id);
+            return (
+              <ConnectorRow
+                key={plugin.id}
+                plugin={plugin}
+                busy={isBusy}
+                onToggle={(checked) => {
+                  void handleToggle(plugin.id, checked);
+                }}
+              />
+            );
+          })}
+        </div>
+      </SettingsGroup>
+    </SettingsStack>
   );
 }

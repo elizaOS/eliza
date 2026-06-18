@@ -154,8 +154,8 @@ export function getSidebarSections(t: SidebarTranslator): SidebarSection[] {
       ],
     },
     {
-      title: t("cloud.nav.section.monetization", {
-        defaultValue: "Monetization",
+      title: t("cloud.nav.section.apps", {
+        defaultValue: "Apps",
       }),
       items: [
         {

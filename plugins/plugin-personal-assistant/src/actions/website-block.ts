@@ -7,33 +7,29 @@ import type {
 } from "@elizaos/core";
 import {
   ModelType,
+  parseJsonModelRecord,
   requireConfirmation,
+  resolveActionArgs,
   runWithTrajectoryContext,
+  type SubactionsMap,
 } from "@elizaos/core";
-import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import {
+  formatWebsiteList,
   getSelfControlAccess,
+  type getSelfControlPermissionState,
+  getSelfControlStatus,
+  normalizeWebsiteTargets,
+  parseSelfControlBlockRequest,
+  requestSelfControlPermission,
   SELFCONTROL_ACCESS_ERROR,
-} from "../website-blocker/access.js";
+  stopSelfControlBlock,
+} from "@elizaos/plugin-blocker";
 import { activateBlockRule } from "../website-blocker/chat-integration/block-activator.js";
 import {
   BlockRuleReader,
   BlockRuleWriter,
 } from "../website-blocker/chat-integration/block-rule-service.js";
 import { hasActiveHarshNoBypassRule } from "../website-blocker/chat-integration/harsh-mode-check.js";
-import {
-  formatWebsiteList,
-  type getSelfControlPermissionState,
-  getSelfControlStatus,
-  normalizeWebsiteTargets,
-  parseSelfControlBlockRequest,
-  requestSelfControlPermission,
-  stopSelfControlBlock,
-} from "../website-blocker/engine.js";
-import {
-  resolveActionArgs,
-  type SubactionsMap,
-} from "./lib/resolve-action-args.js";
 
 const ACTION_NAME = "BLOCK";
 

@@ -174,60 +174,82 @@ export async function runHydrating(
   void deps.loadPlugins();
   void deps.loadCharacter();
 
-  // Wallet addresses
-  try {
-    deps.setWalletAddresses(await client.getWalletAddresses());
-  } catch (e: unknown) {
-    warn("wallet addresses", e);
-  }
-
-  // Avatar / VRM selection — resolve from server config, then stream
-  // settings, then localStorage.  Cloud containers that skip first-run setup
-  // have their character defaults written server-side, so we must read
-  // the config to pick up the correct avatarIndex.
-  let resolvedIdx = loadAvatarIndex();
-  try {
-    const cfg = await client.getConfig();
-    const cfgAvatarIdx = cfg.ui?.avatarIndex;
-    if (typeof cfgAvatarIdx === "number" && Number.isFinite(cfgAvatarIdx)) {
-      const normalized = normalizeAvatarIndex(cfgAvatarIdx);
-      if (normalized > 0) {
-        resolvedIdx = normalized;
-        deps.setSelectedVrmIndex(resolvedIdx);
-      }
-    }
-  } catch (e: unknown) {
-    warn("config avatar index", e);
-  }
-  try {
-    if (typeof client.getStreamSettings === "function") {
-      const stream = await client.getStreamSettings();
-      const si = stream.settings?.avatarIndex;
-      if (typeof si === "number" && Number.isFinite(si)) {
-        resolvedIdx = normalizeAvatarIndex(si);
-        deps.setSelectedVrmIndex(resolvedIdx);
-      }
-    }
-  } catch (e: unknown) {
-    warn("stream settings avatar", e);
-  }
-  if (resolvedIdx === 0) {
-    if (await client.hasCustomVrm())
-      deps.setCustomVrmUrl(resolveApiUrl(`/api/avatar/vrm?t=${Date.now()}`));
-    else deps.setSelectedVrmIndex(1);
-    if (await client.hasCustomBackground())
-      deps.setCustomBackgroundUrl(
-        resolveApiUrl(`/api/avatar/background?t=${Date.now()}`),
-      );
-  }
-
   // Warm the apps catalog cache so the Apps tab opens with the real
   // sections instead of the placeholder skeleton. Fire-and-forget; the
   // Apps view also loads on its own mount as a fallback.
   void prefetchAppsCatalog();
 
   void deps.pollCloudCredits();
-  await deps.fetchAutonomyReplay();
+
+  // Shell-decoration fetches (wallet addresses, avatar/VRM selection, autonomy
+  // replay) are not needed to reach first paint: the composer only needs the
+  // active conversation, restored above. Run them AFTER HYDRATION_COMPLETE so
+  // they no longer sit on the ready critical path. No data is dropped — the
+  // same setters are called as soon as the fetches resolve; the avatar/VRM
+  // chain stays sequential because each step refines the resolved index, while
+  // the independent wallet fetch runs in parallel. Fire-and-forget: a failure
+  // here must never block or fail the boot.
+  const decorateShellAfterReady = (): void => {
+    void (async () => {
+      try {
+        deps.setWalletAddresses(await client.getWalletAddresses());
+      } catch (e: unknown) {
+        warn("wallet addresses", e);
+      }
+    })();
+
+    void (async () => {
+      // Avatar / VRM selection — resolve from server config, then stream
+      // settings, then localStorage.  Cloud containers that skip first-run
+      // setup have their character defaults written server-side, so we must
+      // read the config to pick up the correct avatarIndex.
+      let resolvedIdx = loadAvatarIndex();
+      try {
+        const cfg = await client.getConfig();
+        const cfgAvatarIdx = cfg.ui?.avatarIndex;
+        if (typeof cfgAvatarIdx === "number" && Number.isFinite(cfgAvatarIdx)) {
+          const normalized = normalizeAvatarIndex(cfgAvatarIdx);
+          if (normalized > 0) {
+            resolvedIdx = normalized;
+            deps.setSelectedVrmIndex(resolvedIdx);
+          }
+        }
+      } catch (e: unknown) {
+        warn("config avatar index", e);
+      }
+      try {
+        if (typeof client.getStreamSettings === "function") {
+          const stream = await client.getStreamSettings();
+          const si = stream.settings?.avatarIndex;
+          if (typeof si === "number" && Number.isFinite(si)) {
+            resolvedIdx = normalizeAvatarIndex(si);
+            deps.setSelectedVrmIndex(resolvedIdx);
+          }
+        }
+      } catch (e: unknown) {
+        warn("stream settings avatar", e);
+      }
+      if (resolvedIdx === 0) {
+        if (await client.hasCustomVrm())
+          deps.setCustomVrmUrl(
+            resolveApiUrl(`/api/avatar/vrm?t=${Date.now()}`),
+          );
+        else deps.setSelectedVrmIndex(1);
+        if (await client.hasCustomBackground())
+          deps.setCustomBackgroundUrl(
+            resolveApiUrl(`/api/avatar/background?t=${Date.now()}`),
+          );
+      }
+    })();
+
+    void (async () => {
+      try {
+        await deps.fetchAutonomyReplay();
+      } catch (e: unknown) {
+        warn("autonomy replay", e);
+      }
+    })();
+  };
 
   // Tab routing
   const navPath = getWindowNavigationPath();
@@ -278,6 +300,10 @@ export async function runHydrating(
   // the pre-agent home shell mounted and prevents /chat and /settings content
   // from ever rendering.
   dispatch({ type: "HYDRATION_COMPLETE" });
+
+  // Decorate the shell after the ready gate so wallet/avatar/autonomy-replay
+  // fetches no longer delay first paint.
+  decorateShellAfterReady();
 }
 
 /**

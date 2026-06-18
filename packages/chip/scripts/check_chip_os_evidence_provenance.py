@@ -19,7 +19,7 @@ from typing import Any
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-REPO = ROOT.parents[1]
+REPO = ROOT.parents[1] if len(ROOT.parents) > 1 else ROOT
 REPORT = ROOT / "build/reports/chip-os-evidence-provenance.json"
 
 SCHEMA = "eliza.chip_os_evidence_provenance.v1"

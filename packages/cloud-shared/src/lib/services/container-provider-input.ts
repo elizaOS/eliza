@@ -15,11 +15,20 @@
 
 import type { CreateContainerInput } from "./containers/hetzner-client/types";
 
-/** Defaults for a small stateless web app. All overridable per-call. */
+/**
+ * Defaults for a small stateless web app. All overridable per-call.
+ *
+ * `cpu` is in ECS/Fargate-style CPU units (1024 = 1 vCPU) — the SAME unit the
+ * `containers.cpu` column, `calculateDailyContainerCost`, and the docker
+ * `--cpus` flag use. `1024` (= 1 full vCPU) is the floor for a usable web app;
+ * the previous `1` was a unit bug (≈0.001 vCPU) that both under-described the
+ * allocation to billing and, once `--cpus` is enforced at create time, would
+ * throttle the container to a fraction of a core.
+ */
 export const APP_CONTAINER_DEFAULTS = {
   port: 3000,
   desiredCount: 1,
-  cpu: 1,
+  cpu: 1024,
   memoryMb: 512,
   healthCheckPath: "/health",
 } as const;
@@ -39,7 +48,7 @@ export interface ContainerProvisionParams {
   port?: number;
   /** Replicas (must be 1 on the shared pool). Default 1. */
   desiredCount?: number;
-  /** CPU units (billing/compat). Default 1. */
+  /** CPU units (1024 = 1 vCPU; billing + docker --cpus). Default 1024. */
   cpu?: number;
   /** Memory MB (`docker run --memory`). Default 512. */
   memoryMb?: number;

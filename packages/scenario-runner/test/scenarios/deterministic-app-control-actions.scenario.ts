@@ -323,6 +323,19 @@ export default scenario({
             return jsonResponse(unloadPluginResponse("@elizaos/plugin-feed"));
           }
 
+          // VIEWS/delete now performs a real uninstall via POST
+          // /api/plugins/uninstall (unloadPlugin checks `resp.ok && body.ok`),
+          // replacing the old /api/apps/stop teardown.
+          if (
+            request.method === "POST" &&
+            request.pathname === "/api/plugins/uninstall"
+          ) {
+            return jsonResponse({
+              ok: true,
+              message: "Plugin @elizaos/plugin-feed unloaded.",
+            });
+          }
+
           return undefined;
         });
 
@@ -1236,9 +1249,9 @@ export default scenario({
           {
             body: { name: "@elizaos/plugin-feed" },
             method: "POST",
-            pathname: "/api/apps/stop",
+            pathname: "/api/plugins/uninstall",
             response: {
-              body: unloadPluginResponse("@elizaos/plugin-feed"),
+              body: { ok: true, message: "Plugin @elizaos/plugin-feed unloaded." },
               status: 200,
             },
             search: "",
@@ -1253,9 +1266,9 @@ export default scenario({
           {
             body: { name: "@elizaos/plugin-feed" },
             method: "POST",
-            pathname: "/api/apps/stop",
+            pathname: "/api/plugins/uninstall",
             response: {
-              body: unloadPluginResponse("@elizaos/plugin-feed"),
+              body: { ok: true, message: "Plugin @elizaos/plugin-feed unloaded." },
               status: 200,
             },
             search: "",

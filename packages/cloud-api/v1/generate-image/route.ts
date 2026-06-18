@@ -1,6 +1,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
+import {
+  ApiError,
+  failureResponse,
+  jsonError,
+} from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
@@ -122,24 +126,42 @@ async function generateOneImage(request: ImageRequest): Promise<{
     throw new Error(`Unsupported image model: ${request.model}`);
   }
   const env = getCloudAwareEnv();
-  return await getImageProvider(definition.billingSource).generate({
-    model: request.model,
-    prompt: buildImagePrompt(request),
-    sourceImage: request.sourceImage,
-    aspectRatio: request.aspectRatio,
-    size:
-      request.width && request.height
-        ? `${request.width}x${request.height}`
-        : undefined,
-    apiKeys: {
-      BITROUTER_API_KEY: env.BITROUTER_API_KEY,
-      BITROUTER_BASE_URL: env.BITROUTER_BASE_URL,
-      ATLASCLOUD_API_KEY: env.ATLASCLOUD_API_KEY,
-      ATLASCLOUD_BASE_URL: env.ATLASCLOUD_BASE_URL,
-      FAL_KEY: env.FAL_KEY,
-      FAL_API_KEY: env.FAL_API_KEY,
-    },
-  });
+  try {
+    return await getImageProvider(definition.billingSource).generate({
+      model: request.model,
+      prompt: buildImagePrompt(request),
+      sourceImage: request.sourceImage,
+      aspectRatio: request.aspectRatio,
+      size:
+        request.width && request.height
+          ? `${request.width}x${request.height}`
+          : undefined,
+      apiKeys: {
+        BITROUTER_API_KEY: env.BITROUTER_API_KEY,
+        BITROUTER_BASE_URL: env.BITROUTER_BASE_URL,
+        ATLASCLOUD_API_KEY: env.ATLASCLOUD_API_KEY,
+        ATLASCLOUD_BASE_URL: env.ATLASCLOUD_BASE_URL,
+        FAL_KEY: env.FAL_KEY,
+        FAL_API_KEY: env.FAL_API_KEY,
+      },
+    });
+  } catch (error) {
+    // Upstream image-provider failures (provider outage, exhausted provider
+    // balance, bad provider key) are NOT our internal error. Log the real
+    // provider detail for operators, then surface a retryable 503 with no
+    // provider detail leaked to the caller — instead of a blanket 500.
+    logger.error("[GenerateImage] Image provider call failed", {
+      model: request.model,
+      billingSource: definition.billingSource,
+      provider: definition.provider,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw new ApiError(
+      503,
+      "internal_error",
+      "Image generation is temporarily unavailable. Please try again shortly.",
+    );
+  }
 }
 
 app.post("/", async (c) => {
@@ -351,6 +373,18 @@ app.post("/", async (c) => {
       cost,
     });
   } catch (error) {
+    // `failureResponse` maps unknown errors to a generic 500 `internal_error`
+    // with no detail and does NOT log — so without this the real cause of a
+    // generation failure is lost in both the response and the Worker logs.
+    // Log it with a stack so `wrangler tail` can root-cause provider/content-
+    // safety/storage failures.
+    logger.error("[GenerateImage] Generation failed", {
+      error: error instanceof Error ? error.message : String(error),
+      name: error instanceof Error ? error.name : undefined,
+      stack: error instanceof Error ? error.stack : undefined,
+      chargeSettled,
+      imagesGenerated: images.length,
+    });
     if (!chargeSettled && images.length > 0) {
       await deleteStoredImages(c.env, images);
     }

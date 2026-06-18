@@ -208,6 +208,67 @@ describe("POST /api/v1/api-keys/:id/regenerate", () => {
   });
 });
 
+// -------- PATCH /api/v1/api-keys/:id (update) ------------------------------
+
+describe("PATCH /api/v1/api-keys/:id", () => {
+  test("auth gate: 401 without credentials", async () => {
+    if (!serverReachable) return;
+    const res = await api.patch(
+      "/api/v1/api-keys/00000000-0000-0000-0000-000000000000",
+      { is_active: false },
+    );
+    expect(res.status).toBe(401);
+  });
+
+  test("happy path: renames and disables a freshly created key", async () => {
+    if (!shouldRunSession()) return;
+    if (!sessionCookie) throw new Error("session cookie missing");
+
+    const createRes = await api.post(
+      "/api/v1/api-keys",
+      {
+        name: `group-b-patch-${Date.now()}`,
+        description: "Group B patch test — revoked in afterAll.",
+        rate_limit: 60,
+      },
+      { headers: { Cookie: sessionCookie } },
+    );
+    expect([200, 201]).toContain(createRes.status);
+    const created = (await createRes.json()) as { apiKey?: { id?: string } };
+    expect(created.apiKey?.id).toBeTruthy();
+    if (created.apiKey?.id) createdApiKeyIds.push(created.apiKey.id);
+
+    const patchRes = await api.patch(
+      `/api/v1/api-keys/${created.apiKey?.id}`,
+      { name: "group-b-patched", is_active: false, rate_limit: 30 },
+      { headers: { Cookie: sessionCookie } },
+    );
+    expect(patchRes.status).toBe(200);
+    const patched = (await patchRes.json()) as {
+      apiKey?: {
+        id?: string;
+        name?: string;
+        is_active?: boolean;
+        rate_limit?: number;
+      };
+    };
+    expect(patched.apiKey?.id).toBe(created.apiKey?.id ?? "");
+    expect(patched.apiKey?.name).toBe("group-b-patched");
+    expect(patched.apiKey?.is_active).toBe(false);
+    expect(patched.apiKey?.rate_limit).toBe(30);
+  });
+
+  test("validation: 404 for an unknown id", async () => {
+    if (!shouldRunAuthed()) return;
+    const res = await api.patch(
+      "/api/v1/api-keys/00000000-0000-0000-0000-000000000000",
+      { is_active: false },
+      { headers: bearerHeaders() },
+    );
+    expect([400, 404]).toContain(res.status);
+  });
+});
+
 // -------- /api/v1/user/avatar (R2 multipart upload) ------------------------
 
 describe("/api/v1/user/avatar", () => {

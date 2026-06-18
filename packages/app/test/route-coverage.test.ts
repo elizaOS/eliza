@@ -77,6 +77,7 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-goals/src/plugin.ts",
   "plugins/plugin-health/src/index.ts",
   "plugins/plugin-inbox/src/plugin.ts",
+  "plugins/plugin-relationships/src/plugin.ts",
   "plugins/plugin-todos/src/index.ts",
   "plugins/plugin-phone/src/plugin.ts",
   "plugins/plugin-polymarket-app/src/plugin.ts",
@@ -124,6 +125,8 @@ const NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: Readonly<Record<string, string>> = {
     "Health is a decomposed personal-assistant domain view; it is discoverable through the View Manager but not yet a boot-loaded renderer module.",
   "plugins/plugin-inbox/src/plugin.ts":
     "Inbox is a decomposed personal-assistant domain view; it is discoverable through the View Manager but not yet a boot-loaded renderer module.",
+  "plugins/plugin-relationships/src/plugin.ts":
+    "Relationships is the entity/relationship knowledge-graph viewer; it is discoverable through the View Manager but not yet a boot-loaded renderer module.",
   "plugins/plugin-screenshare/src/index.ts":
     "Screenshare is registered by runtime capability loading, not the app boot side-effect loader.",
   "plugins/plugin-social-alpha/src/index.ts":
@@ -320,7 +323,7 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     manifestPath: "plugins/plugin-facewear/src/index.ts",
     id: "facewear",
     viewType: "xr",
-    path: "/apps/hearwear/xr",
+    path: "/apps/facewear/xr",
   },
   {
     manifestPath: "plugins/plugin-facewear/src/index.ts",

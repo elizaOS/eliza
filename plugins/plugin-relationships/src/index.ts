@@ -1,13 +1,13 @@
-export { entityAction } from "./actions/entity.js";
 export type { EntityActionParameters } from "./actions/entity.js";
+export { entityAction } from "./actions/entity.js";
 export {
-  entitiesTable,
   type EntityInsert,
   type EntityRow,
-  relationshipsSchema,
-  relationshipsTable,
+  entitiesTable,
   type RelationshipInsert,
   type RelationshipRow,
+  relationshipsSchema,
+  relationshipsTable,
 } from "./db/schema.js";
 export { relationshipsPlugin } from "./plugin.js";
 export { entityGraphProvider } from "./providers/entity-graph.js";

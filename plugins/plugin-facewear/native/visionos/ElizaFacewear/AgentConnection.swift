@@ -11,7 +11,7 @@ enum AgentConnectionState {
 
 /// URLSessionWebSocketTask-based WebSocket client connecting to an elizaOS agent.
 ///
-/// Binary frame protocol (from plugin-hearwear protocol.ts):
+/// Binary frame protocol (from plugin-facewear protocol.ts):
 ///   bytes 0–3  big-endian uint32 — JSON header length
 ///   bytes 4–N  UTF-8 JSON header
 ///   bytes N+1… raw binary payload (audio PCM/Opus, JPEG, etc.)

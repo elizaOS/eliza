@@ -22,7 +22,10 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import {
+  recentConversationTexts as collectRecentConversationTexts,
+  ModelType,
+} from "@elizaos/core";
 import {
   LIFEOPS_MESSAGE_CHANNELS,
   type LifeOpsMessageChannel,
@@ -35,7 +38,6 @@ import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
 } from "../lifeops/voice/grounded-reply.js";
-import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
 
 type Subaction =
   | "create"

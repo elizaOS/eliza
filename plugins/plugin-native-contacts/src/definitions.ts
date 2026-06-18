@@ -1,3 +1,5 @@
+import type { PermissionState } from "@capacitor/core";
+
 export interface ContactSummary {
   id: string;
   lookupKey: string;
@@ -6,6 +8,11 @@ export interface ContactSummary {
   emailAddresses: string[];
   photoUri?: string;
   starred: boolean;
+}
+
+/** Runtime permission state for the contacts (READ/WRITE_CONTACTS) alias. */
+export interface ContactsPermissionStatus {
+  contacts: PermissionState;
 }
 
 export interface ListContactsOptions {
@@ -37,4 +44,9 @@ export interface ContactsPlugin {
   importVCard(options: ImportVCardOptions): Promise<{
     imported: ImportedContactSummary[];
   }>;
+  /** Current contacts (READ/WRITE_CONTACTS) permission state. Web: granted. */
+  checkPermissions(): Promise<ContactsPermissionStatus>;
+  /** Prompt for contacts access (no-op grant on web). Feature-gated; never
+   *  requested at launch. */
+  requestPermissions(): Promise<ContactsPermissionStatus>;
 }

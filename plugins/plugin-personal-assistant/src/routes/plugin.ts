@@ -329,6 +329,7 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/screen-time/history" },
   { type: "GET", path: "/api/lifeops/social/summary" },
   { type: "GET", path: "/api/lifeops/overview" },
+  { type: "GET", path: "/api/lifeops/todos" },
   { type: "GET", path: "/api/lifeops/connectors/health/status" },
   { type: "GET", path: "/api/lifeops/health/summary" },
   { type: "GET", path: "/api/lifeops/money/dashboard" },

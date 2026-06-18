@@ -72,7 +72,7 @@ def resolve_repo_path(path_text: str | None) -> Path | None:
     if path.is_absolute():
         return path
     if path_text.startswith("packages/chip/"):
-        return ROOT.parents[1] / path
+        return (ROOT.parents[1] if len(ROOT.parents) > 1 else ROOT) / path
     return ROOT / path
 
 

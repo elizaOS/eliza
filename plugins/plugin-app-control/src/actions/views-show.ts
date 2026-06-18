@@ -205,13 +205,21 @@ function resolveView(
 	return { kind: "ambiguous", candidates: topTied.map(({ view }) => view) };
 }
 
+interface NavigateResult {
+	ok: boolean;
+	text: string;
+}
+
 async function navigateToView(
 	view: ViewSummary,
 	requestedViewType?: ViewType,
-): Promise<string> {
+): Promise<NavigateResult> {
 	// Emit navigate event via POST /api/views/:id/navigate (shell listens).
-	// If a shell returns 501 for this route, fall back to a descriptive message;
-	// the user can click through to the view manually.
+	// A 501/404 means this shell doesn't implement the navigate route — opening
+	// the view still counts as a soft success (the user can click through). A
+	// real transport failure (other non-2xx, network, timeout) is NOT success:
+	// reporting "Switched to X" when nothing happened misleads the user and the
+	// chain's verifiedUserFacing logic.
 	const port = resolveServerOnlyPort(process.env);
 	const base = `http://127.0.0.1:${port}`;
 
@@ -226,22 +234,29 @@ async function navigateToView(
 			},
 		);
 		if (resp.ok)
-			return `Navigated to ${view.label} (${view.viewType ?? "gui"}).`;
-		// 501 = navigation unsupported by this shell; opening the view still succeeds.
-		if (resp.status === 501) return `Opened ${view.label}.`;
-		// 404 for the route itself means the agent doesn't expose this endpoint.
-		if (resp.status === 404) return `Opened ${view.label}.`;
+			return {
+				ok: true,
+				text: `Navigated to ${view.label} (${view.viewType ?? "gui"}).`,
+			};
+		// 501/404 = navigation route unsupported by this shell; opening succeeds.
+		if (resp.status === 501 || resp.status === 404)
+			return { ok: true, text: `Opened ${view.label}.` };
 
 		const body = await resp.text().catch(() => "");
 		logger.warn(
 			`[plugin-app-control] VIEWS/show navigate returned ${resp.status}: ${body}`,
 		);
-	} catch {
-		// Network error or timeout — swallow, return descriptive message.
+	} catch (err) {
+		logger.warn(
+			`[plugin-app-control] VIEWS/show navigate failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
 	}
 
 	const pathHint = view.path ? ` at ${view.path}` : "";
-	return `Switched to ${view.label}${pathHint} (${view.viewType ?? "gui"}).`;
+	return {
+		ok: false,
+		text: `Couldn't switch to ${view.label}${pathHint} — the shell did not confirm the change.`,
+	};
 }
 
 export interface RunViewsShowInput {
@@ -299,15 +314,15 @@ export async function runViewsShow({
 	}
 
 	const view = resolution.view;
-	const resultText = await navigateToView(view, viewType);
+	const result = await navigateToView(view, viewType);
 
 	logger.info(
 		`[plugin-app-control] VIEWS/show viewId=${view.id} viewType=${view.viewType ?? "gui"}`,
 	);
-	await callback?.({ text: resultText });
+	await callback?.({ text: result.text });
 	return {
-		success: true,
-		text: resultText,
+		success: result.ok,
+		text: result.text,
 		values: {
 			mode: "show",
 			viewId: view.id,

@@ -18,10 +18,25 @@ import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import com.getcapacitor.annotation.Permission
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-@CapacitorPlugin(name = "ElizaMessages")
+// Declares the `sms` alias so the Capacitor base Plugin auto-provides
+// checkPermissions()/requestPermissions() — SMS read/send is requested on first
+// use of the Messages view, not at app launch.
+@CapacitorPlugin(
+    name = "ElizaMessages",
+    permissions = [
+        Permission(
+            alias = "sms",
+            strings = [
+                Manifest.permission.SEND_SMS,
+                Manifest.permission.READ_SMS,
+            ],
+        ),
+    ],
+)
 class MessagesPlugin : Plugin() {
     private val requestCounter = AtomicInteger(1)
 

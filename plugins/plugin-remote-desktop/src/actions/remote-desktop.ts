@@ -1,34 +1,3 @@
-/**
- * REMOTE_DESKTOP action — stub.
- *
- * The real implementation currently lives in
- * `plugins/plugin-personal-assistant/src/actions/remote-desktop.ts` and depends on the
- * lifeops-internal helpers:
- *
- *   - `plugins/plugin-personal-assistant/src/lifeops/remote-desktop.ts`
- *       (detectRemoteDesktopBackend, endRemoteSession, getSessionStatus,
- *        RemoteDesktopSession)
- *   - `plugins/plugin-personal-assistant/src/remote/remote-session-service.ts`
- *       (getRemoteSessionService, RemoteSessionError)
- *   - `plugins/plugin-personal-assistant/src/actions/lib/resolve-action-args.ts`
- *       (resolveActionArgs, SubactionsMap)
- *
- * TODO(remote-desktop migration): in the follow-up migration pass:
- *   1. Move the lifeops helpers above into this plugin (src/lifeops/, src/remote/).
- *   2. Move the resolve-action-args helper into a shared location accessible
- *      from both plugin-lifeops and plugin-remote-desktop, or vendor a copy here.
- *   3. Port the full handler body (handleStart/handleStatus/handleEnd/handleList/
- *      handleRevoke) verbatim into this file.
- *   4. Replace this stub with the real implementation.
- *   5. Have plugin-lifeops re-export this action for backward compatibility
- *      during the deprecation window.
- *
- * For now we expose a typed Action object with the same metadata
- * (similes/description/tags/parameters/examples/roleGate) as the original so
- * the surface is wired in correctly. The handler returns a NOT_IMPLEMENTED
- * result that points the caller back to plugin-lifeops.
- */
-
 import type {
   Action,
   ActionExample,
@@ -36,7 +5,21 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-
+import {
+  requireConfirmation,
+  resolveActionArgs,
+  type SubactionsMap,
+} from "@elizaos/core";
+import {
+  detectRemoteDesktopBackend,
+  endRemoteSession as endStoredRemoteSession,
+  getSessionStatus as getStoredSessionStatus,
+  type RemoteDesktopSession,
+} from "../lifeops/remote-desktop.js";
+import {
+  getRemoteSessionService,
+  RemoteSessionError,
+} from "../remote/remote-session-service.js";
 import type {
   RemoteDesktopActionParams,
   RemoteDesktopSubaction,
@@ -44,8 +27,292 @@ import type {
 
 const ACTION_NAME = "REMOTE_DESKTOP";
 
-// Suppresses the planner's post-action continuation prompt. The original
-// action in plugin-lifeops sets this same flag.
+const SUBACTIONS: SubactionsMap<RemoteDesktopSubaction> = {
+  start: {
+    description:
+      "Open remote-control session via RemoteSessionService. Requires confirmed:true. " +
+      "Local ELIZA_REMOTE_LOCAL_MODE=1 skips pairingCode; cloud requires 6-digit pairingCode.",
+    descriptionCompressed:
+      "open remote session confirmed-true 6-digit-pairing local-mode-skips",
+    required: ["confirmed"],
+    optional: ["pairingCode"],
+  },
+  status: {
+    description: "Lookup remote session by sessionId via stored backend.",
+    descriptionCompressed:
+      "lookup remote session sessionId stored-session-backend",
+    required: ["sessionId"],
+  },
+  end: {
+    description: "Close remote session by sessionId via stored backend.",
+    descriptionCompressed:
+      "close remote session sessionId stored-session-backend",
+    required: ["sessionId"],
+  },
+  list: {
+    description:
+      "List active remote sessions via RemoteSessionService: ids, status, ingress URLs, local-mode hints.",
+    descriptionCompressed:
+      "list active remote sessions ids+status+ingress+local-mode-hint",
+    required: [],
+  },
+  revoke: {
+    description:
+      "Revoke active remote session by sessionId via RemoteSessionService.",
+    descriptionCompressed: "revoke active remote session sessionId",
+    required: ["sessionId"],
+  },
+};
+
+function coerceString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function formatLegacySession(session: RemoteDesktopSession): string {
+  const lines = [
+    `Session ${session.id}`,
+    `  backend: ${session.backend}`,
+    `  status:  ${session.status}`,
+  ];
+  if (session.accessUrl) lines.push(`  url:     ${session.accessUrl}`);
+  if (session.accessCode) lines.push(`  code:    ${session.accessCode}`);
+  if (session.expiresAt) lines.push(`  expires: ${session.expiresAt}`);
+  if (session.error) lines.push(`  error:   ${session.error}`);
+  return lines.join("\n");
+}
+
+async function handleStart(
+  runtime: IAgentRuntime,
+  message: Memory,
+  params: RemoteDesktopActionParams,
+): Promise<ActionResult> {
+  const backend = await detectRemoteDesktopBackend();
+  const startPrompt = `Starting a remote desktop session will expose this machine to the network via ${backend}.`;
+  const decision = await requireConfirmation({
+    runtime,
+    message,
+    actionName: ACTION_NAME,
+    pendingKey: `remote-start:${backend}`,
+    prompt: startPrompt,
+  });
+  if (decision.status !== "confirmed") {
+    return {
+      text:
+        decision.status === "pending"
+          ? `${startPrompt} Reply yes to confirm or no to cancel.`
+          : "Remote desktop start cancelled.",
+      success: decision.status === "pending",
+      values: {
+        success: false,
+        error:
+          decision.status === "pending" ? "CONFIRMATION_REQUIRED" : "CANCELLED",
+        requiresConfirmation: decision.status === "pending",
+        backend,
+      },
+      data: {
+        actionName: ACTION_NAME,
+        subaction: "start",
+        requiresConfirmation: decision.status === "pending",
+        backend,
+        intent: params.intent ?? null,
+      },
+    };
+  }
+
+  const requesterIdentity =
+    coerceString(params.requesterIdentity) ?? String(message.entityId);
+
+  try {
+    const result = await getRemoteSessionService().startSession({
+      requesterIdentity,
+      pairingCode: coerceString(params.pairingCode),
+      confirmed: true,
+    });
+
+    if (result.status === "denied") {
+      return {
+        text: "Pairing code was invalid or expired. Request a fresh code and retry.",
+        success: false,
+        values: {
+          success: false,
+          error: "PAIRING_DENIED",
+          sessionId: result.sessionId,
+        },
+        data: { actionName: ACTION_NAME, subaction: "start", session: result },
+      };
+    }
+
+    if (result.ingressUrl === null) {
+      return {
+        text: `Remote session ${result.sessionId} is authorized but the data plane is not configured (${result.reason ?? "unknown"}). Configure Tailscale (T9b) or the Eliza Cloud tunnel to complete pixel transport.`,
+        success: false,
+        values: {
+          success: false,
+          error: "DATA_PLANE_NOT_CONFIGURED",
+          requiresConfirmation: true,
+          sessionId: result.sessionId,
+          status: result.status,
+          ingressUrl: null,
+          reason: result.reason,
+          localMode: result.localMode,
+        },
+        data: {
+          actionName: ACTION_NAME,
+          subaction: "start",
+          requiresConfirmation: true,
+          session: result,
+        },
+      };
+    }
+
+    return {
+      text: `Remote session ${result.sessionId} active. Connect via ${result.ingressUrl}.`,
+      success: true,
+      values: {
+        success: true,
+        sessionId: result.sessionId,
+        status: result.status,
+        ingressUrl: result.ingressUrl,
+        localMode: result.localMode,
+      },
+      data: { actionName: ACTION_NAME, subaction: "start", session: result },
+    };
+  } catch (error) {
+    if (error instanceof RemoteSessionError) {
+      return {
+        text: error.message,
+        success: false,
+        values: { success: false, error: error.code },
+        data: { actionName: ACTION_NAME, subaction: "start" },
+      };
+    }
+    throw error;
+  }
+}
+
+async function handleStatus(
+  params: RemoteDesktopActionParams,
+): Promise<ActionResult> {
+  const sessionId = coerceString(params.sessionId);
+  if (!sessionId) {
+    return {
+      text: "Missing sessionId.",
+      success: false,
+      values: { success: false, error: "MISSING_SESSION_ID" },
+      data: { actionName: ACTION_NAME, subaction: "status" },
+    };
+  }
+  const session = await getStoredSessionStatus(sessionId);
+  if (!session) {
+    return {
+      text: `No session found with id ${sessionId}.`,
+      success: false,
+      values: { success: false, error: "SESSION_NOT_FOUND" },
+      data: { actionName: ACTION_NAME, subaction: "status", sessionId },
+    };
+  }
+  return {
+    text: formatLegacySession(session),
+    success: true,
+    values: { success: true, status: session.status },
+    data: { actionName: ACTION_NAME, subaction: "status", session },
+  };
+}
+
+async function handleEnd(
+  params: RemoteDesktopActionParams,
+): Promise<ActionResult> {
+  const sessionId = coerceString(params.sessionId);
+  if (!sessionId) {
+    return {
+      text: "Missing sessionId.",
+      success: false,
+      values: { success: false, error: "MISSING_SESSION_ID" },
+      data: { actionName: ACTION_NAME, subaction: "end" },
+    };
+  }
+  const existing = await getStoredSessionStatus(sessionId);
+  if (!existing) {
+    return {
+      text: `No session found with id ${sessionId}.`,
+      success: false,
+      values: { success: false, error: "SESSION_NOT_FOUND" },
+      data: { actionName: ACTION_NAME, subaction: "end", sessionId },
+    };
+  }
+  await endStoredRemoteSession(sessionId);
+  return {
+    text: `Remote session ${sessionId} ended.`,
+    success: true,
+    values: { success: true, sessionId },
+    data: { actionName: ACTION_NAME, subaction: "end", sessionId },
+  };
+}
+
+async function handleList(): Promise<ActionResult> {
+  const sessions = await getRemoteSessionService().listActiveSessions();
+  if (sessions.length === 0) {
+    return {
+      text: "No active remote sessions.",
+      success: true,
+      values: { success: true, count: 0 },
+      data: { actionName: ACTION_NAME, subaction: "list", sessions: [] },
+    };
+  }
+  const lines = sessions.map(
+    (s) =>
+      `• ${s.id} — status=${s.status}${
+        s.ingressUrl
+          ? ` ingress=${s.ingressUrl}`
+          : ` ingress=<none:${s.reason ?? "unknown"}>`
+      }${s.localMode ? " (local)" : ""}`,
+  );
+  return {
+    text: `Active remote sessions (${sessions.length}):\n${lines.join("\n")}`,
+    success: true,
+    values: { success: true, count: sessions.length },
+    data: { actionName: ACTION_NAME, subaction: "list", sessions },
+  };
+}
+
+async function handleRevoke(
+  params: RemoteDesktopActionParams,
+): Promise<ActionResult> {
+  const sessionId = coerceString(params.sessionId);
+  if (!sessionId) {
+    return {
+      text: "Missing sessionId.",
+      success: false,
+      values: { success: false, error: "MISSING_SESSION_ID" },
+      data: { actionName: ACTION_NAME, subaction: "revoke" },
+    };
+  }
+  try {
+    await getRemoteSessionService().revokeSession(sessionId);
+    return {
+      text: `Remote session ${sessionId} revoked.`,
+      success: true,
+      values: { success: true, sessionId },
+      data: { actionName: ACTION_NAME, subaction: "revoke", sessionId },
+    };
+  } catch (error) {
+    if (error instanceof RemoteSessionError) {
+      return {
+        text: error.message,
+        success: false,
+        values: { success: false, error: error.code, sessionId },
+        data: { actionName: ACTION_NAME, subaction: "revoke", sessionId },
+      };
+    }
+    throw error;
+  }
+}
+
+// Suppresses the planner's post-action continuation prompt. Opening a remote
+// session is consumed out-of-band (a VNC viewer / SSH client), so the planner
+// should not chain another turn.
 type RemoteDesktopAction = Action & {
   suppressPostActionContinuation?: boolean;
 };
@@ -179,48 +446,52 @@ export const remoteDesktopAction: RemoteDesktopAction = {
   ] as ActionExample[][],
 
   handler: async (
-    _runtime: IAgentRuntime,
-    _message: Memory,
-    _state,
-    _options,
+    runtime: IAgentRuntime,
+    message: Memory,
+    state,
+    options,
   ): Promise<ActionResult> => {
-    // TODO(remote-desktop migration): replace this stub with the full handler
-    // from `plugins/plugin-personal-assistant/src/actions/remote-desktop.ts`.
-    //
-    // The real handler dispatches on the resolved subaction:
-    //
-    //   const resolved = await resolveActionArgs<RemoteDesktopSubaction, RemoteDesktopActionParams>({
-    //     runtime: _runtime,
-    //     message: _message,
-    //     state: _state,
-    //     options: _options,
-    //     actionName: ACTION_NAME,
-    //     subactions: SUBACTIONS,
-    //   });
-    //   if (!resolved.ok) return { success: false, ... };
-    //   switch (resolved.subaction) {
-    //     case "start":  return handleStart(_runtime, _message, resolved.params);
-    //     case "status": return handleStatus(resolved.params);
-    //     case "end":    return handleEnd(resolved.params);
-    //     case "list":   return handleList();
-    //     case "revoke": return handleRevoke(resolved.params);
-    //   }
-    //
-    // Until the migration lands, this stub returns a structured
-    // not-implemented result so callers see a clear signal.
-    return {
-      text: "REMOTE_DESKTOP is being migrated from @elizaos/plugin-personal-assistant to @elizaos/plugin-remote-desktop. The handler is not yet wired up in this plugin.",
-      success: false,
-      values: {
+    const resolved = await resolveActionArgs<
+      RemoteDesktopSubaction,
+      RemoteDesktopActionParams
+    >({
+      runtime,
+      message,
+      ...(state ? { state } : {}),
+      ...(options ? { options } : {}),
+      actionName: ACTION_NAME,
+      subactions: SUBACTIONS,
+    });
+    if (!resolved.ok) {
+      return {
         success: false,
-        error: "NOT_IMPLEMENTED_MIGRATION_PENDING",
-      },
-      data: {
-        actionName: ACTION_NAME,
-        reason: "migration_in_progress",
-        canonicalLocation: "plugins/plugin-personal-assistant/src/actions/remote-desktop.ts",
-      },
-    };
+        text: resolved.clarification,
+        values: {
+          success: false,
+          error: "MISSING_REMOTE_DESKTOP_ARGUMENTS",
+          missing: resolved.missing,
+        },
+        data: {
+          actionName: ACTION_NAME,
+          reason: "missing_arguments",
+          missing: resolved.missing,
+        },
+      };
+    }
+
+    const { subaction, params } = resolved;
+    switch (subaction) {
+      case "start":
+        return handleStart(runtime, message, params);
+      case "status":
+        return handleStatus(params);
+      case "end":
+        return handleEnd(params);
+      case "list":
+        return handleList();
+      case "revoke":
+        return handleRevoke(params);
+    }
   },
 };
 

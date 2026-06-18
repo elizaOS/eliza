@@ -72,7 +72,9 @@ function shouldHandle(url: URL | null): url is URL {
     url !== null &&
     url.hostname === "127.0.0.1" &&
     (url.pathname.startsWith("/api/views") ||
-      url.pathname.startsWith("/api/apps"))
+      url.pathname.startsWith("/api/apps") ||
+      // VIEWS/delete now uninstalls via POST /api/plugins/uninstall.
+      url.pathname.startsWith("/api/plugins"))
   );
 }
 

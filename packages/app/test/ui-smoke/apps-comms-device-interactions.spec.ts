@@ -1231,7 +1231,7 @@ test.describe("Facewear and smartglasses GUI interactions", () => {
       });
     });
 
-    await openAppPath(page, "/apps/hearwear");
+    await openAppPath(page, "/apps/facewear");
     await expect(page.getByText("Facewear")).toBeVisible({ timeout: 90_000 });
     await expect(page.getByText("1 device connected")).toBeVisible({
       timeout: 90_000,

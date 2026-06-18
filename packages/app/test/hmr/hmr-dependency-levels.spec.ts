@@ -70,6 +70,10 @@ const LEVELS = [
     file: "plugins/plugin-personal-assistant/src/components/LifeOpsPageView.tsx",
   },
   {
+    name: "plugin view relationships",
+    file: "plugins/plugin-relationships/src/components/relationships/RelationshipsView.tsx",
+  },
+  {
     name: "plugin view hyperliquid",
     file: "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.tsx",
   },

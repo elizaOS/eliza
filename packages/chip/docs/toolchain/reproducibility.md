@@ -32,7 +32,8 @@ both this document and that script in lockstep.
 - `python3`
 - `gcc`
 - `riscv64-unknown-elf-gcc` (RISC-V GNU toolchain)
-- `verilator`
+- `verilator` (built from source at `v5.048` in the `Dockerfile`, not apt — the
+  e1 SoC RTL requires 5.048+; the distro apt 5.020 is too old to elaborate it)
 - `yosys`
 - `nextpnr-ecp5`
 - `ecppack`

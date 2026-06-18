@@ -10,6 +10,11 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 
 import androidx.core.content.ContextCompat;
+import androidx.core.splashscreen.SplashScreen;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -60,6 +65,14 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Install the AndroidX splash screen BEFORE super.onCreate so it swaps
+        // the launch theme (AppTheme.NoActionBarLaunch / Theme.SplashScreen) to
+        // the activity's postSplashScreenTheme (AppTheme.NoActionBar). Without
+        // it the splash theme persists and Android renders a native AppCompat
+        // action bar — the orange "Eliza" top bar with splash.png stretched
+        // across it — above the Capacitor WebView.
+        SplashScreen.installSplashScreen(this);
+
         // Per Android docs, must precede the first WebView instantiation.
         // BridgeActivity.super.onCreate constructs the Capacitor WebView,
         // so the toggle is set first to stay race-proof against future
@@ -83,6 +96,13 @@ public class MainActivity extends BridgeActivity {
         // every video / voice-calling app (Snapchat, YouTube, Zoom, Meet).
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
+        // Hide the bottom system navigation bar (the white gesture pill) for a
+        // clean, full-bleed agent home — iOS-style. We hide ONLY the navigation
+        // bars, never the status bar (the system clock/battery stay). Transient-
+        // by-swipe so the user can still reveal it with an edge swipe; re-applied
+        // in onWindowFocusChanged so it stays hidden after dialogs / resume.
+        applyImmersiveNavigationBar();
+
         if (getBridge() != null && getBridge().getWebView() != null) {
             WebSettings settings = getBridge().getWebView().getSettings();
             settings.setMixedContentMode(resolveMixedContentMode());
@@ -93,6 +113,7 @@ public class MainActivity extends BridgeActivity {
             getBridge().getWebView().addJavascriptInterface(
                 new ElizaNativeBridge(this), ElizaNativeBridge.JS_NAME);
             ElizaAndroidSystemBridge.install(getBridge().getWebView(), this);
+            publishGestureInset();
         }
 
         // Auto-start the local Eliza agent runtime as a foreground service.
@@ -119,6 +140,72 @@ public class MainActivity extends BridgeActivity {
         }
 
         ElizaWorkScheduler.enqueuePeriodic(getApplicationContext());
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        // The system restores the nav bar after dialogs / resume; re-hide it
+        // whenever we regain focus so the full-bleed home stays clean.
+        if (hasFocus) {
+            applyImmersiveNavigationBar();
+        }
+    }
+
+    /**
+     * Hide the bottom navigation bar (gesture pill) while keeping the status
+     * bar. Uses the AndroidX controller so it is correct across API levels;
+     * transient-by-swipe so the bar is still reachable.
+     */
+    private void applyImmersiveNavigationBar() {
+        try {
+            WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+            WindowInsetsControllerCompat controller =
+                WindowCompat.getInsetsController(
+                    getWindow(), getWindow().getDecorView());
+            if (controller != null) {
+                controller.hide(WindowInsetsCompat.Type.navigationBars());
+                controller.setSystemBarsBehavior(
+                    WindowInsetsControllerCompat
+                        .BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                // The status bar stays visible over the live orange ambient
+                // home, so its icons must be light (white). Paired with the
+                // transparent android:statusBarColor in styles.xml, the orange
+                // draws full-bleed under the clock/battery — no flat band.
+                controller.setAppearanceLightStatusBars(false);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to apply immersive navigation bar", e);
+        }
+    }
+
+    /**
+     * Publish the bottom gesture-navigation inset (the home-pill zone apps must
+     * not put critical UI under) to the WebView as the CSS var
+     * `--android-gesture-inset-bottom`. We hide the navigation bar, which zeroes
+     * `env(safe-area-inset-bottom)`, so the floating chat composer would
+     * otherwise sit on top of the gesture-home zone. The renderer folds this var
+     * into its bottom clearance via max(); it defaults to 0px off-Android.
+     */
+    private void publishGestureInset() {
+        final WebView webView = getBridge() != null ? getBridge().getWebView() : null;
+        if (webView == null) {
+            return;
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(
+            getWindow().getDecorView(),
+            (v, insets) -> {
+                int px = insets
+                    .getInsets(WindowInsetsCompat.Type.mandatorySystemGestures())
+                    .bottom;
+                float dp = px / getResources().getDisplayMetrics().density;
+                String js =
+                    "document.documentElement.style.setProperty("
+                        + "'--android-gesture-inset-bottom','" + dp + "px')";
+                webView.post(() -> webView.evaluateJavascript(js, null));
+                return insets;
+            });
+        ViewCompat.requestApplyInsets(getWindow().getDecorView());
     }
 
     private static int resolveMixedContentMode() {

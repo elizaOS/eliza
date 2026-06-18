@@ -1,5 +1,4 @@
 import { ErrorBoundary } from "@elizaos/ui/components/ui/error-boundary";
-import { VoicePill } from "@elizaos/ui/components/voice-pill";
 import "@elizaos/ui/styles";
 
 import { App as CapacitorApp } from "@capacitor/app";
@@ -519,9 +518,6 @@ function initializeAppModules(): Promise<void> {
       importAppPhone(),
       importAppSteward(),
       importAppTraining(),
-      ...SIDE_EFFECT_APP_MODULE_LOADERS.map(({ key, load }) =>
-        importSideEffectAppModule(key, load),
-      ),
     ]);
 
     companionModule.registerCompanionApp();
@@ -537,6 +533,17 @@ function initializeAppModules(): Promise<void> {
         resolveCompanionInferenceNotice:
           companionModule.resolveCompanionInferenceNotice,
       }),
+    );
+
+    // The side-effect plugins (games, wallet-ui, trajectory-logger, feature
+    // registrations) export no components used at first paint and the boot
+    // config doesn't depend on them — load them OFF the first-paint critical
+    // path so the initial render isn't blocked on ~20 extra module loads. Their
+    // nav tabs / overlay apps register a tick later; React.lazy covers the gap.
+    void Promise.all(
+      SIDE_EFFECT_APP_MODULE_LOADERS.map(({ key, load }) =>
+        importSideEffectAppModule(key, load),
+      ),
     );
   })();
 
@@ -1245,6 +1252,7 @@ async function initializePlatform(): Promise<void> {
     void initializeNetworkListener();
     void initializeMobileDeviceBridge();
     void initializeMobileAgentTunnel();
+    void registerMobileBlockerBackends();
   }
 
   if (isDesktopPlatform()) {
@@ -1255,6 +1263,41 @@ async function initializePlatform(): Promise<void> {
 
   if (isIOS || isAndroid) {
     void configureMobileBackgroundRunner();
+  }
+}
+
+/**
+ * Register the Capacitor website/app blocker plugins as the native backends of
+ * the `@elizaos/plugin-blocker` engine instance loaded in this WebView realm.
+ *
+ * Without this, the engine falls back to its system hosts-file path, which
+ * cannot work inside the iOS/Android app sandbox, so BLOCK is a no-op. The
+ * adapters wrap the Capacitor plugins (Safari content blocker / VPN DNS on iOS
+ * and Android) and map the engine's call/return shapes onto the plugin API.
+ *
+ * Process boundary: this wires the engine instance that runs in the WebView's
+ * JS realm (the web/PWA build, and any in-WebView engine consumer). On stock
+ * native builds the elizaOS runtime — and the engine instance the agent's BLOCK
+ * action calls — runs in a SEPARATE bun process, which this registration does
+ * not reach; that path still flows WebView→engine over the HTTP route.
+ */
+async function registerMobileBlockerBackends(): Promise<void> {
+  try {
+    const [blocker, websiteNative, appNative] = await Promise.all([
+      import("@elizaos/plugin-blocker"),
+      import("@elizaos/capacitor-websiteblocker"),
+      import("@elizaos/capacitor-appblocker"),
+    ]);
+    blocker.registerNativeWebsiteBlockerBackend(
+      websiteNative.createNativeWebsiteBlockerBackend(
+        websiteNative.WebsiteBlocker,
+      ),
+    );
+    blocker.registerNativeAppBlockerBackend(
+      appNative.createNativeAppBlockerBackend(appNative.AppBlocker),
+    );
+  } catch (error) {
+    logNativePluginUnavailable("Blocker backends", error);
   }
 }
 
@@ -1326,6 +1369,13 @@ function initializeAppLifecycle(): void {
     CapacitorApp.addListener("backButton", ({ canGoBack }) => {
       if (canGoBack) {
         window.history.back();
+      } else {
+        // At the root view the hardware back button was a no-op (the app felt
+        // frozen). Match Android convention: send the app to the background
+        // (minimize) rather than killing it, so the agent + state survive.
+        void CapacitorApp.minimizeApp().catch(() => {
+          // minimizeApp is Android-only; ignore where unavailable.
+        });
       }
     }),
   ).catch((error) => {
@@ -1625,11 +1675,6 @@ function isPhoneCompanionMode(): boolean {
   return getWindowUrlSearchParams().get("mode") === "companion";
 }
 
-function isVoicePillShellMode(): boolean {
-  if (typeof window === "undefined") return false;
-  return getWindowUrlSearchParams().get("shell") === "pill";
-}
-
 function resolveAppWindowSlug(): string | null {
   if (!isAppWindowRoute()) return null;
   const path = getWindowNavigationPath();
@@ -1652,17 +1697,6 @@ function shouldLoadModelTesterShellRoute(): boolean {
 function mountReactApp(): void {
   const rootEl = document.getElementById("root");
   if (!rootEl) throw new Error("Root element #root not found");
-
-  if (isVoicePillShellMode()) {
-    createRoot(rootEl).render(
-      <ErrorBoundary>
-        <StrictMode>
-          <VoicePill ariaLabel={APP_BRANDING_BASE.appName ?? "Eliza"} />
-        </StrictMode>
-      </ErrorBoundary>,
-    );
-    return;
-  }
 
   const phoneCompanion = isPhoneCompanionMode();
   const detachedShell = isDetachedWindowShell(windowShellRoute);
@@ -2267,12 +2301,6 @@ async function main(): Promise<void> {
       "@elizaos/app-model-tester",
       () => import("@elizaos/app-model-tester"),
     );
-  }
-
-  if (isVoicePillShellMode()) {
-    setupPlatformStyles();
-    mountReactApp();
-    return;
   }
 
   await initializeAppModules();

@@ -24,7 +24,7 @@ Snapshot: updated 2026-05-29 from current local gate output; generated-artifact 
 | minimum-linux-npu-target | `BLOCK` | `tool_blocker` | `make minimum-linux-npu-target-strict` |
 | pd-contract | `PASS` | `command_pass` | `none` |
 | product-package | `BLOCK` | `release_blocker` | `close package/FPGA/KiCad/PD/manufacturing release blockers or keep product claim below fabrication` |
-| benchmarks | `BLOCK` | `regen_required` | `python3 benchmarks/import_cpu_ap_benchmark_evidence.py or make benchmarks-dry-run` |
+| benchmarks | `BLOCK` | `scaffold_only` | `python3 benchmarks/run_benchmarks.py run --metadata benchmarks/metadata/strict-blocked-template.json --strict-missing` |
 | release-pipeline | `PASS` | `generated_artifact` | `none` |
 
 ## Workstream Dashboard

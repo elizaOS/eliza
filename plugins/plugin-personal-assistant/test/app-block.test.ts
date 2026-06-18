@@ -34,7 +34,11 @@ const stubState = {
 };
 const stubCalls = { block: [] as BlockCall[], unblock: 0 };
 
-vi.mock("../src/app-blocker/engine.js", () => ({
+// The app-blocker engine moved to @elizaos/plugin-blocker (LifeOps decomposition);
+// keep the real access helpers (the owner isAgentSelf shortcut this test relies on)
+// and override only the four engine side-effect functions.
+vi.mock("@elizaos/plugin-blocker", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/plugin-blocker")>()),
   async getAppBlockerStatus() {
     return {
       available: true,

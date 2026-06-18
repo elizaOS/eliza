@@ -25,6 +25,7 @@ import {
 	writeFileSync,
 } from "../shared/fs-proxy.ts";
 import { installMobileFsShim } from "../shared/fs-shim.ts";
+import { runModelGrind } from "./model-grind.ts";
 
 interface BridgeRequest {
 	id?: unknown;
@@ -185,6 +186,13 @@ interface NativeLocalTtsRequest {
 	modelId?: string;
 	sampleRate?: number;
 	format?: string;
+}
+
+interface NativeLocalAsrRequest {
+	// Mono fp32 PCM in [-1, 1]. Carried to the native host as a JSON number
+	// array (see `transcribeNativeIosLocalAsr` / `handleAsrTranscribe` in Swift).
+	pcm: number[];
+	sampleRate?: number;
 }
 
 interface NativeCatalogModelEntry {
@@ -475,6 +483,8 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
 	const runtime = await bootElizaRuntime();
 	installIosNativeLlamaHandlers(runtime);
 
+	maybeAutoRunModelGrind();
+
 	return {
 		runtime,
 		dispatchRoute,
@@ -483,6 +493,60 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
 			await unloadNativeLlamaModel().catch(() => undefined);
 		},
 	};
+}
+
+/**
+ * Env-gated on-device grind: when ELIZA_IOS_RUN_MODEL_GRIND=1, run the
+ * grind-all-models telemetry self-test once the native host IPC is wired, then
+ * log + persist the report. Non-blocking — never delays boot.
+ */
+function maybeAutoRunModelGrind(): void {
+	if (process.env.ELIZA_IOS_RUN_MODEL_GRIND !== "1") return;
+	void (async () => {
+		const deadline = Date.now() + 120_000;
+		while (hostProtocolWrite == null && Date.now() < deadline) {
+			await new Promise((r) => setTimeout(r, 500));
+		}
+		if (hostProtocolWrite == null) {
+			console.error("[model-grind] native host never wired; skipping");
+			return;
+		}
+		try {
+			const report = await runModelGrind({
+				callIosHost,
+				ensureTextModelLoaded: (slot) => ensureNativeModelLoaded(slot),
+				synthesizeTts: async (text) => ({
+					bytes: await synthesizeNativeIosLocalTts({ text }),
+					sampleRate: 24_000,
+				}),
+				transcribeAsr: (pcm, sampleRate) =>
+					transcribeNativeIosLocalAsr({ pcm, sampleRate }),
+				hardwareInfo: () => nativeHardwareInfo(),
+				bundleDir: nativeVoiceBundleDir(),
+			});
+			const json = JSON.stringify(report);
+			console.log(`[model-grind] REPORT ${json}`);
+			const supportDir = process.env.ELIZA_IOS_APP_SUPPORT_DIR?.trim();
+			if (supportDir) {
+				try {
+					writeFileSync(
+						path.join(supportDir, "model-grind-report.json"),
+						`${JSON.stringify(report, null, 2)}\n`,
+					);
+				} catch (error) {
+					console.error(
+						"[model-grind] report write failed:",
+						error instanceof Error ? error.message : error,
+					);
+				}
+			}
+		} catch (error) {
+			console.error(
+				"[model-grind] grind failed:",
+				error instanceof Error ? error.message : error,
+			);
+		}
+	})();
 }
 
 function startIosBridgeHost(): IosBridgeHost {
@@ -2157,25 +2221,38 @@ function hasNativeLocalTtsExecutor(): boolean {
 	return hostProtocolWrite != null;
 }
 
-function hasNativeKokoroBundle(bundleDir: string): boolean {
-	const model = path.join(
-		bundleDir,
-		"tts",
-		"kokoro-coreml",
-		"kokoro_5s.mlmodelc",
-	);
-	const voice = path.join(
-		bundleDir,
-		"tts",
-		"kokoro-coreml",
-		"voices",
-		"af_heart.json",
-	);
+function hasNativeVoiceBundle(bundleDir: string): boolean {
+	// A voice bundle is usable if it ships ANY recognized TTS engine. The CoreML
+	// Kokoro model is the preferred (ANE) engine but optional — its absence must
+	// not hide the fused OmniVoice/Kokoro-GGUF assets, which the native bridge can
+	// still resolve (TTS engine selection happens later, in synthesizeSpeech).
+	const ttsDir = path.join(bundleDir, "tts");
+	// 1. CoreML Kokoro (preferred).
 	try {
-		return statSync(model).isDirectory() && statSync(voice).isFile();
+		const coreml = path.join(ttsDir, "kokoro-coreml", "kokoro_5s.mlmodelc");
+		const voice = path.join(ttsDir, "kokoro-coreml", "voices", "af_heart.json");
+		if (statSync(coreml).isDirectory() && statSync(voice).isFile()) return true;
+	} catch {
+		/* fall through to fused-asset detection */
+	}
+	// 2. Fused OmniVoice / GGUF Kokoro.
+	try {
+		for (const entry of readdirSync(ttsDir)) {
+			if (/^omnivoice-base-.*\.gguf$/i.test(entry)) return true; // OmniVoice (tier default)
+			if (entry === "kokoro") {
+				try {
+					for (const k of readdirSync(path.join(ttsDir, "kokoro"))) {
+						if (/\.gguf$/i.test(k) || k === "model_q4.onnx") return true;
+					}
+				} catch {
+					/* no kokoro subdir */
+				}
+			}
+		}
 	} catch {
 		return false;
 	}
+	return false;
 }
 
 function nativeVoiceBundleDir(): string | null {
@@ -2201,7 +2278,7 @@ function nativeVoiceBundleDir(): string | null {
 				continue;
 			}
 			if (stats.isDirectory()) {
-				if (entry.endsWith(".bundle") && hasNativeKokoroBundle(fullPath)) {
+				if (entry.endsWith(".bundle") && hasNativeVoiceBundle(fullPath)) {
 					bundleDir = fullPath;
 					return;
 				}
@@ -2254,7 +2331,7 @@ function nativeVoiceReadiness(): NativeVoiceReadiness {
 				const markerIndex = normalized.indexOf(".bundle/");
 				if (markerIndex >= 0) {
 					const bundlePath = fullPath.slice(0, markerIndex + ".bundle".length);
-					if (hasNativeKokoroBundle(bundlePath)) {
+					if (hasNativeVoiceBundle(bundlePath)) {
 						installedFiles += 1;
 						const match = normalized.match(/models\/([^/]+\.bundle)\//);
 						modelId = match?.[1]?.replace(/\.bundle$/, "") ?? null;
@@ -2456,6 +2533,105 @@ async function handleNativeIosLocalTtsRoute(
 				error instanceof Error ? error.message : String(error)
 			}`,
 			code: "ios_local_tts_failed",
+		});
+	}
+}
+
+async function transcribeNativeIosLocalAsr(
+	request: NativeLocalAsrRequest,
+): Promise<string> {
+	const bundleDir = nativeVoiceBundleDir();
+	if (!bundleDir) {
+		throw new Error("No Eliza-1 voice bundle is installed");
+	}
+	const sampleRate = optionalPositiveNumber(request.sampleRate) ?? 16_000;
+	// Send fp32 PCM as a JSON number array; `handleAsrTranscribe` in
+	// FullBunEngineHost.swift parses the same shape via `floatArrayValue`.
+	const result = await callIosHost(
+		"eliza_asr_transcribe",
+		{
+			bundleDir,
+			pcm: request.pcm,
+			sampleRate,
+		},
+		180_000,
+	);
+	const record =
+		result && typeof result === "object" && !Array.isArray(result)
+			? (result as Record<string, unknown>)
+			: {};
+	const text = record.text;
+	if (typeof text !== "string") {
+		throw new Error("Native iOS local ASR returned no transcript");
+	}
+	return text;
+}
+
+function parsePcmFloatArray(value: unknown): number[] | null {
+	if (!Array.isArray(value) || value.length === 0) {
+		return null;
+	}
+	const pcm: number[] = [];
+	for (const sample of value) {
+		if (typeof sample !== "number" || !Number.isFinite(sample)) {
+			return null;
+		}
+		pcm.push(sample);
+	}
+	return pcm;
+}
+
+async function handleNativeIosLocalAsrRoute(
+	method: string,
+	rawPath: string,
+	payload: HttpRequestPayload,
+): Promise<BufferedHttpResponse | null> {
+	const { pathname } = splitPathAndQuery(rawPath);
+	if (method !== "POST" || pathname !== "/api/asr/local-inference") {
+		return null;
+	}
+
+	const body = parseRequestBody(payload);
+	// Internal fast path: mono fp32 PCM in [-1, 1] as a JSON number array under
+	// `pcm`. Raw audio and JSON `audioBase64` intentionally fall through to the
+	// canonical local-inference ASR route so the public HTTP contract is intact.
+	const pcm = parsePcmFloatArray(body.pcm ?? body.audio);
+	if (!pcm) {
+		return null;
+	}
+
+	const voiceReadiness = nativeVoiceReadiness();
+	if (
+		voiceReadiness.status !== "ready" &&
+		voiceReadiness.status !== "engine-ready" &&
+		voiceReadiness.status !== "assets-ready"
+	) {
+		return jsonResponse(503, {
+			error: voiceReadiness.message,
+			code:
+				voiceReadiness.status === "unavailable"
+					? "ios_local_asr_executor_missing"
+					: "ios_local_voice_assets_missing",
+			voiceReadiness,
+		});
+	}
+
+	const request: NativeLocalAsrRequest = {
+		pcm,
+		...(optionalPositiveNumber(body.sampleRate)
+			? { sampleRate: optionalPositiveNumber(body.sampleRate) }
+			: {}),
+	};
+
+	try {
+		const text = await transcribeNativeIosLocalAsr(request);
+		return jsonResponse(200, { text });
+	} catch (error) {
+		return jsonResponse(502, {
+			error: `Local inference ASR error: ${
+				error instanceof Error ? error.message : String(error)
+			}`,
+			code: "ios_local_asr_failed",
 		});
 	}
 }
@@ -2854,8 +3030,27 @@ async function handleDirectCoreRoute(
 		});
 	}
 
+	if (method === "POST" && pathname === "/api/dev/model-grind") {
+		const report = await runModelGrind({
+			callIosHost,
+			ensureTextModelLoaded: (slot) => ensureNativeModelLoaded(slot),
+			synthesizeTts: async (text) => ({
+				bytes: await synthesizeNativeIosLocalTts({ text }),
+				sampleRate: 24_000,
+			}),
+			transcribeAsr: (pcm, sampleRate) =>
+				transcribeNativeIosLocalAsr({ pcm, sampleRate }),
+			hardwareInfo: () => nativeHardwareInfo(),
+			bundleDir: nativeVoiceBundleDir(),
+		});
+		return jsonResponse(report.overall.allPassed ? 200 : 207, report);
+	}
+
 	const localTts = await handleNativeIosLocalTtsRoute(method, rawPath, payload);
 	if (localTts) return localTts;
+
+	const localAsr = await handleNativeIosLocalAsrRoute(method, rawPath, payload);
+	if (localAsr) return localAsr;
 
 	const localInference = await handleBufferedLocalInferenceRoute(
 		method,

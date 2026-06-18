@@ -13,9 +13,25 @@ import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import com.getcapacitor.annotation.Permission
 import org.json.JSONObject
 
-@CapacitorPlugin(name = "ElizaPhone")
+// Declares the `phone` alias so the Capacitor base Plugin auto-provides
+// checkPermissions()/requestPermissions() — call placement + call-log access are
+// requested on first use of the Phone view, not at app launch.
+@CapacitorPlugin(
+    name = "ElizaPhone",
+    permissions = [
+        Permission(
+            alias = "phone",
+            strings = [
+                Manifest.permission.CALL_PHONE,
+                Manifest.permission.READ_CALL_LOG,
+                Manifest.permission.READ_PHONE_STATE,
+            ],
+        ),
+    ],
+)
 class PhonePlugin : Plugin() {
     private val transcriptPreferencesName = "eliza_phone_call_transcripts"
 

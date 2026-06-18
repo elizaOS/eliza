@@ -162,7 +162,9 @@ test.describe("monetization permissioning", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        model: "openai/elizatest",
+        // Rejected at the auth layer before any inference — the model id is
+        // immaterial here; use the cloud default for consistency.
+        model: "cerebras/gpt-oss-120b",
         max_tokens: 8,
         messages: [],
       }),

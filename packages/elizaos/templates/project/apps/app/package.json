@@ -47,7 +47,7 @@
   "devDependencies": {
     "@capacitor/cli": "8.3.1",
     "@playwright/test": "^1.58.2",
-    "@tailwindcss/vite": "^4.1.18",
+    "@tailwindcss/vite": "^4.3.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react-swc": "^4.2.1",

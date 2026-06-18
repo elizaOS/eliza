@@ -17,7 +17,10 @@ import {
 import { BrowserBridgeAdapter } from "@elizaos/plugin-browser";
 import { calendarPlugin } from "@elizaos/plugin-calendar";
 import { CalendlyAdapter } from "@elizaos/plugin-calendly";
+import { financesPlugin } from "@elizaos/plugin-finances";
 import { GoogleGmailAdapter } from "@elizaos/plugin-google";
+import { inboxPlugin } from "@elizaos/plugin-inbox";
+import { remoteDesktopPlugin } from "@elizaos/plugin-remote-desktop";
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
 import { blockAction } from "./actions/block.js";
 import { briefAction } from "./actions/brief.js";
@@ -40,7 +43,6 @@ import {
   personalAssistantAction,
 } from "./actions/owner-surfaces.js";
 import { prioritizeAction } from "./actions/prioritize.js";
-import { remoteDesktopAction } from "./actions/remote-desktop.js";
 import { resolveRequestAction } from "./actions/resolve-request.js";
 import { scheduledTaskAction } from "./actions/scheduled-task.js";
 import { voiceCallAction } from "./actions/voice-call.js";
@@ -125,7 +127,6 @@ import { isDarwin } from "./platform/host.js";
 import { browserBridgeProvider } from "./provider.js";
 // Activity-profile (proactive agent: GM/GN/nudges)
 import { activityProfileProvider } from "./providers/activity-profile.js";
-import { appBlockerProvider } from "./providers/app-blocker.js";
 import { crossChannelContextProvider } from "./providers/cross-channel-context.js";
 // LifeOps core providers
 import { firstRunProvider } from "./providers/first-run.js";
@@ -135,16 +136,9 @@ import { lifeOpsProvider } from "./providers/lifeops.js";
 import { pendingPromptsProvider } from "./providers/pending-prompts.js";
 import { recentTaskStatesProvider } from "./providers/recent-task-states.js";
 import { roomPolicyProvider } from "./providers/room-policy.js";
-import { websiteBlockerProvider } from "./providers/website-blocker.js";
 import { workThreadsProvider } from "./providers/work-threads.js";
 import { BrowserBridgePluginService } from "./service.js";
 import { registerBlockRuleReconcilerWorker } from "./website-blocker/chat-integration/index.js";
-import {
-  getSelfControlStatus,
-  type SelfControlPluginConfig,
-  setSelfControlPluginConfig,
-} from "./website-blocker/engine.js";
-import { WebsiteBlockerService } from "./website-blocker/service.js";
 
 const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google";
 const GOOGLE_CONNECTOR_PLUGIN_NAME = "google";
@@ -564,6 +558,73 @@ export async function ensureLifeOpsCalendarPluginRegistered(
   await runtime.registerPlugin(calendarPlugin);
 }
 
+/**
+ * Register `@elizaos/plugin-finances` if it is not already in the runtime. The
+ * finance tables (life_payment_*, life_subscription_*) moved out of LifeOps
+ * into the finances plugin's `app_finances` schema; PA's finance repository
+ * methods read/write those tables via raw SQL, so the finances plugin (which
+ * owns the schema + the non-destructive data copy) MUST be loaded whenever PA
+ * is. Hard dependency, so a static import is sufficient.
+ */
+export async function ensureLifeOpsFinancesPluginRegistered(
+  runtime: IAgentRuntime,
+): Promise<void> {
+  if (runtime.plugins.some((plugin) => plugin.name === financesPlugin.name)) {
+    return;
+  }
+  await runtime.registerPlugin(financesPlugin);
+}
+
+/**
+ * Register `@elizaos/plugin-inbox` if it is not already in the runtime. The
+ * inbox triage domain (the INBOX action, the inboxTriage provider, and the
+ * InboxService/InboxRepository back-end over the `app_lifeops` triage tables)
+ * moved out of PA into the inbox plugin; PA still owns the cross-channel inbox
+ * read route (`GET /api/lifeops/inbox`) via its `getInbox` service method, but
+ * the action + provider + triage repository are registered there, so the inbox
+ * plugin MUST be loaded whenever PA is. Hard dependency, static import.
+ */
+export async function ensureLifeOpsInboxPluginRegistered(
+  runtime: IAgentRuntime,
+): Promise<void> {
+  if (runtime.plugins.some((plugin) => plugin.name === inboxPlugin.name)) {
+    return;
+  }
+  await runtime.registerPlugin(inboxPlugin);
+}
+
+/**
+ * Register `@elizaos/plugin-remote-desktop` if it is not already in the
+ * runtime. The remote-desktop domain (the REMOTE_DESKTOP action, the
+ * backend-detection engine, and the in-process RemoteSessionService control
+ * plane) moved out of PA into the remote-desktop plugin, which now registers
+ * the action. PA no longer registers REMOTE_DESKTOP itself, so the
+ * remote-desktop plugin MUST be loaded whenever PA is. No DB, static import.
+ */
+export async function ensureLifeOpsRemoteDesktopPluginRegistered(
+  runtime: IAgentRuntime,
+): Promise<void> {
+  if (
+    runtime.plugins.some((plugin) => plugin.name === remoteDesktopPlugin.name)
+  ) {
+    return;
+  }
+  await runtime.registerPlugin(remoteDesktopPlugin);
+}
+
+// Goals: the goal CRUD back-end (`GoalsService`) moved to
+// `@elizaos/plugin-goals`, but — unlike finances/inbox — the goal TABLES
+// (life_goal_definitions / life_goal_links) deliberately stay registered by PA
+// in the `app_lifeops` schema, because PA's reminder/scheduling subsystem also
+// reads and writes goal links (see service-mixin-reminders.ts: getGoal /
+// upsertGoalLink / deleteGoalLinksForLinked). plugin-goals' GoalsRepository
+// reaches those existing tables via the runtime DB handle. So PA does NOT
+// auto-register the plugin-goals plugin (its own `app_goals` schema + view +
+// stub actions are for the decomposed PA-free topology); PA just imports the
+// `GoalsService` class and delegates its goal CRUD to it (see
+// service-mixin-goals.ts). There is intentionally no
+// `ensureLifeOpsGoalsPluginRegistered`.
+
 const LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY =
   "eliza:lifeops:plugin:init-failures";
 
@@ -663,7 +724,6 @@ const rawPersonalAssistantPlugin: Plugin = {
     ...promoteSubactionsToActions(conflictDetectAction),
     ...promoteSubactionsToActions(inboxAction),
     ...promoteSubactionsToActions(voiceCallAction),
-    remoteDesktopAction,
     workThreadAction,
     ...promoteSubactionsToActions(scheduledTaskAction),
     ...promoteSubactionsToActions(connectorAction),
@@ -671,8 +731,6 @@ const rawPersonalAssistantPlugin: Plugin = {
   ],
   providers: [
     browserBridgeProvider,
-    websiteBlockerProvider,
-    appBlockerProvider,
     firstRunProvider,
     roomPolicyProvider,
     lifeOpsProvider,
@@ -686,7 +744,6 @@ const rawPersonalAssistantPlugin: Plugin = {
   ],
   services: [
     BrowserBridgePluginService,
-    WebsiteBlockerService,
     ActivityTrackerService,
     PresenceSignalBridgeService,
     ScheduledTaskRunnerService,
@@ -743,7 +800,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     [EventType.VOICE_TURN_OBSERVED]: [handleVoiceTurnObserved],
   },
   init: async (
-    pluginConfig: Record<string, unknown>,
+    _pluginConfig: Record<string, unknown>,
     runtime: IAgentRuntime,
   ) => {
     // When LIFEOPS_USE_MOCKOON=1, redirect every external connector base URL
@@ -758,6 +815,9 @@ const rawPersonalAssistantPlugin: Plugin = {
 
     await ensureLifeOpsGooglePluginRegistered(runtime);
     await ensureLifeOpsCalendarPluginRegistered(runtime);
+    await ensureLifeOpsFinancesPluginRegistered(runtime);
+    await ensureLifeOpsInboxPluginRegistered(runtime);
+    await ensureLifeOpsRemoteDesktopPluginRegistered(runtime);
 
     // Inject the LifeOps-backed calendar gate once the runtime has finished
     // initializing both plugins, so calendar events keep firing reminders and
@@ -780,19 +840,6 @@ const rawPersonalAssistantPlugin: Plugin = {
           }`,
         );
       });
-
-    setSelfControlPluginConfig(pluginConfig as SelfControlPluginConfig);
-    const status = await getSelfControlStatus();
-
-    if (status.available) {
-      logger.info(
-        `[selfcontrol] Hosts-file blocker ready${status.active && status.endsAt ? ` until ${status.endsAt}` : status.active ? " until manually unblocked" : ""}`,
-      );
-    } else {
-      logger.warn(
-        `[selfcontrol] Plugin loaded, but local website blocking is unavailable: ${status.reason ?? "unknown reason"}`,
-      );
-    }
 
     const connectorRegistry = createConnectorRegistry();
     registerDefaultConnectorPack(connectorRegistry, runtime);
@@ -1032,8 +1079,8 @@ const rawPersonalAssistantPlugin: Plugin = {
 
 export const personalAssistantPlugin: Plugin = rawPersonalAssistantPlugin;
 
-export { workThreadAction } from "./actions/work-thread.js";
 export {
+  appBlockerProvider,
   getAppBlockerPermissionState,
   getAppBlockerStatus,
   getCachedAppBlockerStatus,
@@ -1042,7 +1089,8 @@ export {
   selectAppsForBlocking,
   startAppBlock,
   stopAppBlock,
-} from "./app-blocker/engine.js";
+} from "@elizaos/plugin-blocker";
+export { workThreadAction } from "./actions/work-thread.js";
 export type {
   OverdueDigest,
   OverdueFollowup,
@@ -1226,7 +1274,6 @@ export {
   type WorkThreadStatus,
   type WorkThreadStore,
 } from "./lifeops/work-threads/index.js";
-export { appBlockerProvider } from "./providers/app-blocker.js";
 export type { FirstRunAffordance } from "./providers/first-run.js";
 export { firstRunProvider } from "./providers/first-run.js";
 export { healthProvider } from "./providers/health.js";

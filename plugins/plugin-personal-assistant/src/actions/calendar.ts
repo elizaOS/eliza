@@ -26,6 +26,11 @@ import type {
   State,
 } from "@elizaos/core";
 import {
+  recentConversationTexts,
+  resolveActionArgs,
+  type SubactionsMap,
+} from "@elizaos/core";
+import {
   type CalendarActionDeps,
   CalendarService,
   CalendarServiceError,
@@ -48,11 +53,6 @@ import {
   resolveCreateEventTravelIntent,
 } from "../travel-time/calendar-create.js";
 import { TravelTimeUnavailableError } from "../travel-time/service.js";
-import { recentConversationTexts } from "./lib/recent-context.js";
-import {
-  resolveActionArgs,
-  type SubactionsMap,
-} from "./lib/resolve-action-args.js";
 import {
   runCheckAvailabilityHandler,
   runProposeMeetingTimesHandler,
@@ -119,9 +119,7 @@ const calendarActionDeps: CalendarActionDeps = {
         travelIntent: args.travelIntent,
       });
     },
-    isTravelTimeUnavailable: (
-      error,
-    ): error is TravelTimeUnavailableError =>
+    isTravelTimeUnavailable: (error): error is TravelTimeUnavailableError =>
       error instanceof TravelTimeUnavailableError,
   },
 };

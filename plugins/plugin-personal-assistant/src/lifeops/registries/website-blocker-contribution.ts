@@ -15,7 +15,7 @@ import {
   type SelfControlBlockRequest,
   startSelfControlBlock,
   stopSelfControlBlock,
-} from "../../website-blocker/engine.js";
+} from "@elizaos/plugin-blocker";
 import type {
   BlockerAvailability,
   BlockerContribution,

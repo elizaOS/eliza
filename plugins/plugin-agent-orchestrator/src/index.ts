@@ -51,7 +51,9 @@ import {
   TASK_AUDIT_EVENT,
   type TaskAuditPayload,
 } from "./services/audit.js";
+import { decideInterruption } from "./services/interruption-decider.js";
 import { OrchestratorTaskService } from "./services/orchestrator-task-service.js";
+import { SubAgentInbox } from "./services/sub-agent-inbox.js";
 import { SubAgentRouter } from "./services/sub-agent-router.js";
 import { requireTaskAgentAccess } from "./services/task-policy.js";
 import { detectOrchestratorTerminalSupport } from "./services/terminal-capabilities.js";
@@ -70,6 +72,18 @@ const INTERNAL_FORWARD_SKIP_SOURCES = new Set([
   "sub_agent_progress",
   "sub_agent_complete",
 ]);
+
+/**
+ * A session is "busy" (not safe to prompt now) whenever it is neither a
+ * terminal status nor `ready`. This covers `busy`, `tool_running` (the dominant
+ * mid-turn state on the native transport), `running`, `blocked`, and
+ * `authenticating` — for all of these `acp.sendPrompt` would throw or be
+ * inappropriate, so the message must queue and flush when the session returns
+ * to `ready`. Only `ready` is promptable.
+ */
+function isSessionBusy(status: string): boolean {
+  return status !== "ready" && !TERMINAL_SESSION_STATUSES.has(status);
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return (
@@ -166,9 +180,14 @@ export function createAgentOrchestratorPlugin(): Plugin {
       ) => Promise<void>)
     | undefined;
   let disposeProgressHook: (() => void) | undefined;
+  let disposeInboxFlush: (() => void) | undefined;
   let activeSessionForwardHandler:
     | ((payload: { message: Memory }) => Promise<void>)
     | undefined;
+  // Holds room messages that the interruption decider QUEUEs (relevant, but the
+  // sub-agent is mid-turn) or that survive an INTERRUPT cancel, until the
+  // session next goes idle and they can be flushed without derailing a turn.
+  const subAgentInbox = new SubAgentInbox();
 
   return {
     name: "@elizaos/plugin-agent-orchestrator",
@@ -184,6 +203,15 @@ export function createAgentOrchestratorPlugin(): Plugin {
         label: "App Runs",
         icon: "Activity",
         order: 150,
+        defaultEnabled: true,
+      },
+      {
+        id: "agent-orchestrator.accounts",
+        pluginId: "agent-orchestrator",
+        slot: "chat-sidebar",
+        label: "Coding accounts",
+        icon: "Zap",
+        order: 250,
         defaultEnabled: true,
       },
       {
@@ -304,15 +332,6 @@ export function createAgentOrchestratorPlugin(): Plugin {
             return roomId === message.roomId || threadRoomId === message.roomId;
           });
           if (!active) return;
-          // Skip sessions already running a prompt. acp.sendPrompt tracks
-          // the spawned subprocess via `activeProcesses.set(sessionId, ...)`
-          // — a concurrent call OVERWRITES that record, so the first
-          // subprocess silently runs untracked. Skipping the forward when
-          // the session is `busy` avoids a double-spawn race and keeps the
-          // user's text deliverable on the next planner turn (the planner
-          // pipeline runs alongside this listener and can still route via
-          // TASKS_SEND_TO_AGENT once the in-flight turn settles).
-          if (active.status === "busy") return;
           const text =
             typeof (message.content as { text?: unknown })?.text === "string"
               ? ((message.content as { text: string }).text ?? "").trim()
@@ -331,16 +350,104 @@ export function createAgentOrchestratorPlugin(): Plugin {
             "interact",
           );
           if (!access.allowed) return;
-          await acp.sendPrompt(active.id, text).catch((err: unknown) =>
-            runtime.logger?.warn?.(
-              {
-                src: "@elizaos/plugin-agent-orchestrator",
-                sessionId: active.id,
-                err: err instanceof Error ? err.message : String(err),
-              },
-              "active-session forward failed",
-            ),
+
+          // Interruption decider: a working sub-agent keeps working unless the
+          // user explicitly stops/redirects it. "Working" means any non-terminal,
+          // non-`ready` status — crucially `tool_running` (the dominant mid-turn
+          // state on the native transport), not just the brief `busy` window.
+          // `acp.sendPrompt` throws while a session is mid-turn, so QUEUEd text
+          // lands in the inbox and is flushed when the session next goes idle.
+          const label =
+            typeof active.metadata?.label === "string"
+              ? active.metadata.label
+              : active.name;
+          // "Crowded room": more than one live sub-agent bound to this room.
+          // An unaddressed ambient line should not be force-injected then.
+          const multiParty =
+            sessions.filter((s) => {
+              if (TERMINAL_SESSION_STATUSES.has(s.status)) return false;
+              const meta = s.metadata;
+              const rid =
+                typeof meta?.roomId === "string" ? meta.roomId : undefined;
+              const trid =
+                typeof meta?.threadRoomId === "string"
+                  ? meta.threadRoomId
+                  : undefined;
+              return rid === message.roomId || trid === message.roomId;
+            }).length > 1;
+          const busy = isSessionBusy(active.status);
+          const decision = decideInterruption({
+            text,
+            agentType: active.agentType,
+            sessionBusy: busy,
+            multiParty,
+            ...(label ? { agentLabel: label } : {}),
+          });
+          runtime.logger?.debug?.(
+            {
+              src: "@elizaos/plugin-agent-orchestrator",
+              sessionId: active.id,
+              status: active.status,
+              busy,
+              multiParty,
+              action: decision.action,
+              reason: decision.reason,
+            },
+            "interruption decision",
           );
+
+          // Deliver now (idle path): flush any queued messages, then this one.
+          // Requeue on failure (e.g. a racing busy transition) so the user's
+          // text is never silently dropped — the flush listener retries it.
+          const deliverNow = async (payload: string) => {
+            try {
+              await acp.sendPrompt(active.id, payload);
+            } catch (err) {
+              subAgentInbox.enqueue(active.id, payload);
+              runtime.logger?.warn?.(
+                {
+                  src: "@elizaos/plugin-agent-orchestrator",
+                  sessionId: active.id,
+                  err: err instanceof Error ? err.message : String(err),
+                },
+                "active-session forward failed; requeued for flush",
+              );
+            }
+          };
+
+          switch (decision.action) {
+            case "ignore":
+              return;
+            case "interrupt": {
+              if (!busy) return; // nothing in flight to cancel
+              // Cancel the in-flight turn (status → terminal `cancelled`). We do
+              // not re-deliver to the dead session — the planner pipeline runs
+              // on this same MESSAGE_RECEIVED and routes the user's redirect.
+              subAgentInbox.clear(active.id);
+              await acp.cancelSession?.(active.id)?.catch?.((err: unknown) =>
+                runtime.logger?.warn?.(
+                  {
+                    src: "@elizaos/plugin-agent-orchestrator",
+                    sessionId: active.id,
+                    err: err instanceof Error ? err.message : String(err),
+                  },
+                  "interrupt cancel failed",
+                ),
+              );
+              return;
+            }
+            default: {
+              // deliver / queue. If the agent is mid-turn, queue for the flush
+              // listener; otherwise flush + deliver immediately.
+              if (busy) {
+                subAgentInbox.enqueue(active.id, text);
+                return;
+              }
+              const queued = subAgentInbox.drain(active.id);
+              await deliverNow(queued ? `${queued}\n${text}` : text);
+              return;
+            }
+          }
         } catch (err) {
           runtime.logger?.warn?.(
             {
@@ -386,6 +493,67 @@ export function createAgentOrchestratorPlugin(): Plugin {
           // events (tool_running / task_complete / heartbeat) flow into the
           // hook's listener instead of being dropped on the floor.
           const acp = runtime.getService<AcpService>(AcpService.serviceType);
+
+          // Flush the interruption-decider inbox when a sub-agent finishes its
+          // turn: queued room messages are delivered to the now-idle session
+          // without ever having derailed the work mid-turn. A short settle poll
+          // bridges the gap between the `task_complete` event and the session
+          // status returning to a promptable state.
+          if (acp) {
+            const scheduleFlush = (sessionId: string, tries = 0): void => {
+              if (subAgentInbox.size(sessionId) === 0) return;
+              setTimeout(() => {
+                void (async () => {
+                  const svc = runtime.getService<AcpService>(
+                    AcpService.serviceType,
+                  );
+                  const session = svc
+                    ? await svc.getSession(sessionId).catch(() => null)
+                    : null;
+                  if (
+                    !session ||
+                    TERMINAL_SESSION_STATUSES.has(session.status)
+                  ) {
+                    subAgentInbox.clear(sessionId);
+                    return;
+                  }
+                  // Still mid-turn (busy / tool_running / running / blocked /
+                  // authenticating) — wait for it to return to `ready`.
+                  if (isSessionBusy(session.status)) {
+                    if (tries < 20) scheduleFlush(sessionId, tries + 1);
+                    return;
+                  }
+                  const queued = subAgentInbox.drain(sessionId);
+                  if (!queued) return;
+                  try {
+                    await svc?.sendPrompt(sessionId, queued);
+                  } catch (err) {
+                    // Lost the race back to busy — requeue and retry rather than
+                    // drop the user's message.
+                    subAgentInbox.enqueue(sessionId, queued);
+                    if (tries < 20) scheduleFlush(sessionId, tries + 1);
+                    runtime.logger?.warn?.(
+                      {
+                        src: "@elizaos/plugin-agent-orchestrator",
+                        sessionId,
+                        err: err instanceof Error ? err.message : String(err),
+                      },
+                      "inbox flush failed; requeued",
+                    );
+                  }
+                })();
+              }, 1000).unref?.();
+            };
+            disposeInboxFlush = acp.onSessionEvent((sessionId, event) => {
+              if (
+                event === "task_complete" ||
+                event === "ready" ||
+                event === "reconnected"
+              ) {
+                scheduleFlush(sessionId);
+              }
+            });
+          }
           void acp?.resumeOrphanedBusySessions?.().catch((err: unknown) =>
             runtime.logger?.warn?.(
               {
@@ -426,6 +594,15 @@ export function createAgentOrchestratorPlugin(): Plugin {
         }
         disposeProgressHook = undefined;
       }
+      if (disposeInboxFlush) {
+        try {
+          disposeInboxFlush();
+        } catch {
+          // listener already detached
+        }
+        disposeInboxFlush = undefined;
+      }
+      subAgentInbox.clearAll();
       const acp = runtime.getService<AcpService>(AcpService.serviceType);
       await acp?.stop();
       const taskService = runtime.getService<OrchestratorTaskService>(

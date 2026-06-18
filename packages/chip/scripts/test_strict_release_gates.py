@@ -115,10 +115,12 @@ def main() -> int:
             name="software bsp evidence blocks missing external boot and Android logs",
             command=[sys.executable, "scripts/check_software_bsp.py", "all", "--require-evidence"],
             expected_codes={1},
+            # u-boot is an ALTERNATE_BSP_TARGET (scripts/check_software_bsp.py): the
+            # default `all` run excludes it unless ELIZA_INCLUDE_ALTERNATE_UBOOT=1, so
+            # this gate only asserts the required (aosp + cuttlefish) BSP blockers.
             required_tokens=(
                 "aosp BSP BLOCKED",
                 "cuttlefish_riscv64_smoke.log",
-                "u-boot BSP BLOCKED",
             ),
         ),
         Check(

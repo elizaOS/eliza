@@ -1,19 +1,9 @@
 /**
  * Wallet keys panel for Settings -> Wallet & RPC.
  *
- * Single source of truth: `/api/secrets/inventory?category=wallet`.
- * Reveal / delete go through the same `/api/secrets/inventory/:key`
- * endpoints the Vault tab uses, so toggling a value here shows up
- * immediately in Settings -> Vault and vice versa.
- *
- * Scope: lists wallet-category vault entries (EVM_PRIVATE_KEY,
- * SOLANA_PRIVATE_KEY, per-agent `agent.<id>.wallet.<chain>`) with a
- * reveal-on-demand value display and an "Add wallet key" form.
- *
- * Per-agent address derivation is read from the entry's reveal payload
- * (the per-agent storage shape is JSON with `{address, privateKey}`),
- * so the panel doesn't need to bundle a key-derivation library on the
- * client.
+ * Single source of truth: `/api/secrets/inventory?category=wallet`. Reveal /
+ * delete go through the same `/api/secrets/inventory/:key` endpoints the Vault
+ * tab uses, so changes here show up immediately in Settings -> Vault.
  */
 
 import { Eye, EyeOff, Loader2, Plus, Trash2 } from "lucide-react";
@@ -21,8 +11,9 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { SettingsInput } from "../ui/settings-controls";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 import { isVaultEntryMeta, type VaultEntryMeta } from "./vault-tabs/types";
 
 interface RevealPayload {
@@ -246,32 +237,29 @@ export function WalletKeysSection() {
   );
 
   return (
-    <section data-testid="wallet-keys-section" className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-txt">
-            {t("walletkeys.title", { defaultValue: "Wallet keys" })}
-          </p>
-          <p className="text-2xs text-muted">
-            {t("walletkeys.description", {
-              defaultValue:
-                'Private keys stored in the local vault. Same data the Vault tab shows under "Wallet" — edit either place.',
-            })}
-          </p>
-        </div>
-        <Button
-          ref={addToggleRef}
-          {...addToggleAgentProps}
-          variant="outline"
-          size="sm"
-          className="h-8 shrink-0 gap-1 rounded-sm px-2"
-          onClick={() => setShowAdd((v) => !v)}
-          data-testid="wallet-keys-add-toggle"
-        >
-          <Plus className="h-3.5 w-3.5" aria-hidden />
-          {t("walletkeys.addKey", { defaultValue: "Add wallet key" })}
-        </Button>
-      </div>
+    <SettingsStack data-testid="wallet-keys-section" className="gap-2.5">
+      <SettingsGroup
+        bare
+        title={t("walletkeys.title", { defaultValue: "Wallet keys" })}
+        description={t("walletkeys.description", {
+          defaultValue:
+            'Private keys stored in the local vault. Same data the Vault tab shows under "Wallet" — edit either place.',
+        })}
+        action={
+          <Button
+            ref={addToggleRef}
+            {...addToggleAgentProps}
+            variant="outline"
+            size="sm"
+            className="h-9 shrink-0 gap-1 rounded-sm px-3"
+            onClick={() => setShowAdd((v) => !v)}
+            data-testid="wallet-keys-add-toggle"
+          >
+            <Plus className="h-3.5 w-3.5" aria-hidden />
+            {t("walletkeys.addKey", { defaultValue: "Add wallet key" })}
+          </Button>
+        }
+      />
 
       {error && (
         <div
@@ -289,10 +277,9 @@ export function WalletKeysSection() {
           className="space-y-2 rounded-sm border border-border/50 bg-card/30 p-2"
           data-testid="wallet-keys-add-form"
         >
-          <p className="text-2xs text-muted">
+          <p className="text-xs text-muted">
             {t("walletkeys.addFormLeadIn", {
-              defaultValue:
-                "Stored sensitively in the encrypted vault. Use the env-var name (e.g.",
+              defaultValue: "Use the env-var name (e.g.",
             })}{" "}
             <code>EVM_PRIVATE_KEY</code>, <code>SOLANA_PRIVATE_KEY</code>
             {") "}
@@ -301,31 +288,31 @@ export function WalletKeysSection() {
             })}
           </p>
           <div>
-            <Label className="text-2xs text-muted">
+            <Label className="text-xs text-muted">
               {t("walletkeys.keyName", { defaultValue: "Key name" })}
             </Label>
-            <Input
+            <SettingsInput
               ref={addKeyRef}
               {...addKeyAgentProps}
+              variant="touch"
               value={addKey}
               onChange={(e) => setAddKey(e.target.value)}
               placeholder="EVM_PRIVATE_KEY"
-              className="h-8 text-xs"
               autoComplete="off"
               required
             />
           </div>
           <div>
-            <Label className="text-2xs text-muted">
+            <Label className="text-xs text-muted">
               {t("walletkeys.privateKey", { defaultValue: "Private key" })}
             </Label>
-            <Input
+            <SettingsInput
               ref={addValueRef}
               {...addValueAgentProps}
+              variant="touch"
               type="password"
               value={addValue}
               onChange={(e) => setAddValue(e.target.value)}
-              className="h-8 text-xs"
               autoComplete="new-password"
               required
             />
@@ -337,7 +324,7 @@ export function WalletKeysSection() {
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 rounded-sm px-3 text-xs"
+              className="h-11 rounded-md px-4 text-sm"
               onClick={() => setShowAdd(false)}
               disabled={submitting}
             >
@@ -349,7 +336,7 @@ export function WalletKeysSection() {
               type="submit"
               variant="default"
               size="sm"
-              className="h-7 gap-1 rounded-sm px-3 text-xs"
+              className="h-11 gap-1 rounded-md px-4 text-sm"
               disabled={submitting || !addKey.trim() || !addValue.trim()}
             >
               {submitting ? (
@@ -371,20 +358,19 @@ export function WalletKeysSection() {
           {t("walletkeys.loading", { defaultValue: "Loading…" })}
         </div>
       ) : entries.length === 0 ? (
-        <div
-          data-testid="wallet-keys-empty"
-          className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
-        >
-          {t("walletkeys.empty", {
-            defaultValue:
-              "No wallet keys yet. Add one with the button above, or generate one per agent from the Agents page.",
-          })}
-        </div>
+        <SettingsGroup bare>
+          <div
+            data-testid="wallet-keys-empty"
+            className="rounded-lg border border-dashed border-border bg-surface px-3 py-4 text-center text-xs text-muted"
+          >
+            {t("walletkeys.empty", {
+              defaultValue:
+                "No wallet keys yet. Add one with the button above, or generate one per agent from the Agents page.",
+            })}
+          </div>
+        </SettingsGroup>
       ) : (
-        <ul
-          data-testid="wallet-keys-list"
-          className="space-y-1 rounded-sm border border-border/40 bg-card/30 p-1"
-        >
+        <SettingsGroup data-testid="wallet-keys-list">
           {entries.map((entry) => {
             const revealed = revealMap[entry.key];
             const loading = revealLoading[entry.key];
@@ -413,9 +399,9 @@ export function WalletKeysSection() {
               />
             );
           })}
-        </ul>
+        </SettingsGroup>
       )}
-    </section>
+    </SettingsStack>
   );
 }
 
@@ -456,57 +442,59 @@ function WalletKeyRow({
       onActivate: onDelete,
     });
   return (
-    <li className="flex items-center gap-2 rounded-sm px-2 py-1.5 hover:bg-bg-muted/30">
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-xs font-medium text-txt">{displayLabel}</p>
-        <p className="truncate font-mono text-2xs text-muted">
-          {secondaryLine}
-        </p>
-      </div>
-      <Button
-        ref={revealRef}
-        {...revealAgentProps}
-        variant="ghost"
-        size="sm"
-        className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted hover:text-txt"
-        aria-label={
-          revealed
-            ? t("walletkeys.hide", {
-                key: entryKey,
-                defaultValue: "Hide {{key}}",
-              })
-            : t("walletkeys.reveal", {
-                key: entryKey,
-                defaultValue: "Reveal {{key}}",
-              })
-        }
-        onClick={onToggleReveal}
-        disabled={loading}
-        data-testid={`wallet-keys-reveal-${entryKey}`}
-      >
-        {loading ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-        ) : revealed ? (
-          <EyeOff className="h-3.5 w-3.5" aria-hidden />
-        ) : (
-          <Eye className="h-3.5 w-3.5" aria-hidden />
-        )}
-      </Button>
-      <Button
-        ref={deleteRef}
-        {...deleteAgentProps}
-        variant="ghost"
-        size="sm"
-        className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
-        aria-label={t("walletkeys.delete", {
-          key: entryKey,
-          defaultValue: "Delete {{key}}",
-        })}
-        onClick={onDelete}
-        data-testid={`wallet-keys-delete-${entryKey}`}
-      >
-        <Trash2 className="h-3.5 w-3.5" aria-hidden />
-      </Button>
-    </li>
+    <SettingsRow
+      label={<span className="truncate">{displayLabel}</span>}
+      description={
+        <span className="block truncate font-mono">{secondaryLine}</span>
+      }
+      trailing={
+        <span className="flex shrink-0 items-center gap-1">
+          <Button
+            ref={revealRef}
+            {...revealAgentProps}
+            variant="ghost"
+            size="sm"
+            className="h-11 w-11 shrink-0 rounded-md p-0 text-muted hover:bg-surface hover:text-txt-strong"
+            aria-label={
+              revealed
+                ? t("walletkeys.hide", {
+                    key: entryKey,
+                    defaultValue: "Hide {{key}}",
+                  })
+                : t("walletkeys.reveal", {
+                    key: entryKey,
+                    defaultValue: "Reveal {{key}}",
+                  })
+            }
+            onClick={onToggleReveal}
+            disabled={loading}
+            data-testid={`wallet-keys-reveal-${entryKey}`}
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            ) : revealed ? (
+              <EyeOff className="h-4 w-4" aria-hidden />
+            ) : (
+              <Eye className="h-4 w-4" aria-hidden />
+            )}
+          </Button>
+          <Button
+            ref={deleteRef}
+            {...deleteAgentProps}
+            variant="ghost"
+            size="sm"
+            className="h-11 w-11 shrink-0 rounded-md p-0 text-muted hover:bg-surface hover:text-danger"
+            aria-label={t("walletkeys.delete", {
+              key: entryKey,
+              defaultValue: "Delete {{key}}",
+            })}
+            onClick={onDelete}
+            data-testid={`wallet-keys-delete-${entryKey}`}
+          >
+            <Trash2 className="h-4 w-4" aria-hidden />
+          </Button>
+        </span>
+      }
+    />
   );
 }

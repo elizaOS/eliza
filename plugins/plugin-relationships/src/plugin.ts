@@ -7,27 +7,47 @@ import { entityGraphProvider } from "./providers/entity-graph.js";
 /**
  * `@elizaos/plugin-relationships`
  *
- * Knowledge-graph plugin: person / organization / place / project / concept
- * entities, identity merge engine, typed edges, and the ENTITY umbrella action.
+ * The relationships viewer + "extras" over the runtime knowledge graph. The
+ * graph itself (`EntityStore` / `RelationshipStore`) is owned by the runtime:
+ * `@elizaos/agent`'s `KnowledgeGraphService`. This plugin consumes it via
+ * `resolveKnowledgeGraphService(runtime)` and adds:
+ *   - the `KNOWLEDGE_GRAPH` graph-CRUD action,
+ *   - the `ENTITY_GRAPH` planner-context provider,
+ *   - the `/relationships` viewer.
+ *
+ * It does NOT register an `ENTITY` action — `@elizaos/plugin-personal-assistant`
+ * owns that (rich Rolodex orchestration with an LLM planner). Keeping a
+ * distinct action name avoids a duplicate `ENTITY` registration when both
+ * plugins load together.
  *
  * Hard-depends on `@elizaos/plugin-sql` — the runtime registers migrations
  * from `schema` (this module's drizzle pgSchema('app_relationships')).
- *
- * NOTE: This is the decomposition scaffold. The real EntityStore, merge
- * engine, voice-observer-bridge, and RelationshipStore still live under
- * `plugins/plugin-personal-assistant/src/lifeops/entities/` and
- * `plugins/plugin-personal-assistant/src/lifeops/relationships/`. They will move here in
- * a follow-up pass.
  */
 export const relationshipsPlugin: Plugin = {
   name: "relationships",
   description:
-    "Entity and relationship knowledge graph for Eliza agents. Provides the ENTITY umbrella action (person/org/place/project/concept CRUD with identity claims, typed relationships, and merge), an entity-graph context provider, and a drizzle pgSchema('app_relationships') with `entities` and `relationships` tables. STUB during decomposition — real handlers will port from @elizaos/plugin-personal-assistant.",
+    "Relationships viewer + extras over the runtime knowledge graph. Provides the KNOWLEDGE_GRAPH graph-CRUD action (create/read/list/log_interaction/set_identity/set_relationship/merge over the runtime EntityStore/RelationshipStore), the ENTITY_GRAPH planner-context provider, the /relationships viewer, and a drizzle pgSchema('app_relationships'). The graph stores are owned by @elizaos/agent's KnowledgeGraphService; contact orchestration stays in @elizaos/plugin-personal-assistant.",
   dependencies: ["@elizaos/plugin-sql"],
   actions: [entityAction],
   providers: [entityGraphProvider],
   services: [],
   schema: dbSchema,
+  views: [
+    {
+      id: "relationships",
+      label: "Relationships",
+      description:
+        "Entity and relationship knowledge-graph viewer: people, organizations, identities, and the typed edges between them.",
+      icon: "Users",
+      path: "/relationships",
+      viewType: "gui",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "RelationshipsView",
+      tags: ["relationships", "entities", "people", "contacts", "graph"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
 };
 
 export default relationshipsPlugin;

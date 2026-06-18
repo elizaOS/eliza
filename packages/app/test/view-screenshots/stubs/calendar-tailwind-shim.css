@@ -1,0 +1,165 @@
+/*
+ * Minimal CSS shim for the LifeOps view screenshot harness.
+ *
+ * Eight of the nine views self-style with inline `style={}` objects and render
+ * faithfully with zero stylesheet. CalendarView/CalendarSection are the lone
+ * exception: they use Tailwind utility classes (`grid`, `flex`, `border-*`,
+ * `bg-*`, spacing, text sizes) for layout. The harness is intentionally
+ * self-contained and does NOT load the app's full Tailwind pipeline, so without
+ * a shim the calendar's `display:grid`/`display:flex` utilities are absent and
+ * the week/month grids collapse to stacked blocks (event blocks become
+ * invisible because their %-based absolute positions resolve against a
+ * mis-sized parent).
+ *
+ * This shim defines ONLY the utility classes + theme variables the calendar
+ * components reference (extracted from CalendarSection.tsx), so the desktop week
+ * grid lays out and event chips become visible for review. It does not attempt
+ * to reproduce the real Tailwind theme pixel-for-pixel — it is a faithful
+ * structural approximation for visual review, not a production stylesheet.
+ */
+
+:root {
+  --bg: #0a0a0a;
+  --bg-hover: #1a1a1a;
+  --bg-muted: #141414;
+  --card: #161616;
+  --border: rgba(255, 255, 255, 0.5);
+  --txt: #f5f5f5;
+  --foreground: #f5f5f5;
+  --muted: #a1a1aa;
+  --accent: #ff6a00;
+  --primary: #ff6a00;
+}
+
+/* layout */
+.grid { display: grid; }
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.flex-wrap { flex-wrap: wrap; }
+.flex-1 { flex: 1 1 0%; }
+.inline-block { display: inline-block; }
+.block { display: block; }
+.grid-cols-7 { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.items-center { align-items: center; }
+.items-start { align-items: flex-start; }
+.justify-between { justify-content: space-between; }
+.justify-center { justify-content: center; }
+.justify-end { justify-content: flex-end; }
+.relative { position: relative; }
+.absolute { position: absolute; }
+.inset-x-0 { left: 0; right: 0; }
+.right-2 { right: 0.5rem; }
+.z-10 { z-index: 10; }
+.z-20 { z-index: 20; }
+.shrink-0 { flex-shrink: 0; }
+.min-h-0 { min-height: 0; }
+.min-w-0 { min-width: 0; }
+.h-full { height: 100%; }
+.w-full { width: 100%; }
+.overflow-hidden { overflow: hidden; }
+.overflow-y-auto { overflow-y: auto; }
+.pointer-events-none { pointer-events: none; }
+.max-h-72 { max-height: 18rem; }
+.w-64 { width: 16rem; }
+
+/* gaps */
+.gap-px { gap: 1px; }
+.gap-0\.5 { gap: 0.125rem; }
+.gap-1 { gap: 0.25rem; }
+.gap-2 { gap: 0.5rem; }
+.gap-3 { gap: 0.75rem; }
+.gap-4 { gap: 1rem; }
+.space-y-3 > * + * { margin-top: 0.75rem; }
+.divide-y > * + * { border-top: 1px solid var(--border); }
+
+/* sizing helpers */
+.h-1 { height: 0.25rem; } .w-1 { width: 0.25rem; }
+.h-1\.5 { height: 0.375rem; } .w-1\.5 { width: 0.375rem; }
+.h-2 { height: 0.5rem; } .w-2 { width: 0.5rem; }
+.h-2\.5 { height: 0.625rem; } .w-2\.5 { width: 0.625rem; }
+.h-3\.5 { height: 0.875rem; } .w-3\.5 { width: 0.875rem; }
+.h-4 { height: 1rem; } .w-4 { width: 1rem; }
+.h-5 { height: 1.25rem; } .w-5 { width: 1.25rem; }
+.h-8 { height: 2rem; } .w-8 { width: 2rem; }
+.h-px { height: 1px; }
+
+/* spacing */
+.p-0 { padding: 0; }
+.p-0\.5 { padding: 0.125rem; }
+.px-1 { padding-left: 0.25rem; padding-right: 0.25rem; }
+.px-1\.5 { padding-left: 0.375rem; padding-right: 0.375rem; }
+.px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
+.px-2\.5 { padding-left: 0.625rem; padding-right: 0.625rem; }
+.px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
+.px-4 { padding-left: 1rem; padding-right: 1rem; }
+.py-0\.5 { padding-top: 0.125rem; padding-bottom: 0.125rem; }
+.py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+.py-1\.5 { padding-top: 0.375rem; padding-bottom: 0.375rem; }
+.py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+.py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+.py-12 { padding-top: 3rem; padding-bottom: 3rem; }
+.mt-0\.5 { margin-top: 0.125rem; }
+.mt-1 { margin-top: 0.25rem; }
+.mx-1 { margin-left: 0.25rem; margin-right: 0.25rem; }
+
+/* borders + radius */
+.border { border-width: 1px; border-style: solid; border-color: var(--border); }
+.border-b { border-bottom-width: 1px; border-bottom-style: solid; border-bottom-color: var(--border); }
+.border-t { border-top-width: 1px; border-top-style: solid; border-top-color: var(--border); }
+.rounded-sm { border-radius: 0.25rem; }
+.rounded-md { border-radius: 0.375rem; }
+.rounded-xl { border-radius: 0.75rem; }
+.rounded-2xl { border-radius: 1rem; }
+.rounded-full { border-radius: 9999px; }
+
+/* opacity-scaled border + bg utilities the calendar uses */
+.border-border\/6,
+.border-border\/8,
+.border-border\/10,
+.border-border\/12,
+.border-border\/16,
+.border-border\/24 { border-color: rgba(255, 255, 255, 0.14); }
+.divide-border\/10 > * + * { border-top-color: rgba(255, 255, 255, 0.1); }
+.bg-bg\/20 { background-color: rgba(10, 10, 10, 0.2); }
+.bg-bg-muted\/15 { background-color: rgba(20, 20, 20, 0.6); }
+.bg-bg-muted\/20 { background-color: rgba(20, 20, 20, 0.7); }
+.bg-border\/8 { background-color: rgba(255, 255, 255, 0.08); }
+.bg-card\/22 { background-color: rgba(22, 22, 22, 0.6); }
+.bg-card\/24 { background-color: rgba(22, 22, 22, 0.65); }
+.bg-current { background-color: currentColor; }
+
+/* text */
+.text-\[10px\] { font-size: 10px; }
+.text-\[11px\] { font-size: 11px; }
+.text-xs { font-size: 0.75rem; }
+.text-sm { font-size: 0.875rem; }
+.text-center { text-align: center; }
+.text-left { text-align: left; }
+.text-txt { color: var(--txt); }
+.text-muted { color: var(--muted); }
+.text-muted\/70 { color: rgba(161, 161, 170, 0.7); }
+.font-medium { font-weight: 500; }
+.font-semibold { font-weight: 600; }
+.uppercase { text-transform: uppercase; }
+.tracking-wide { letter-spacing: 0.025em; }
+.tracking-tight { letter-spacing: -0.015em; }
+.leading-tight { line-height: 1.25; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opacity-60 { opacity: 0.6; }
+.opacity-70 { opacity: 0.7; }
+.opacity-90 { opacity: 0.9; }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+body {
+  font-family: system-ui, sans-serif;
+}

@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";
 import { useTimeout } from "../../hooks/useTimeout";
 import {
@@ -18,9 +19,9 @@ import {
   formatSubscriptionRequestError,
   normalizeOpenAICallbackInput,
 } from "../../utils/subscription-auth";
-import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { SettingsActionButton } from "./settings-agent-rows";
 
 export interface SubscriptionStatusProps {
   resolvedSelectedId: string | null;
@@ -48,12 +49,7 @@ export interface SubscriptionStatusProps {
   }>;
   anthropicConnected: boolean;
   setAnthropicConnected: (v: boolean) => void;
-  /**
-   * True when Claude Code CLI credentials exist on this machine but the user
-   * has NOT linked their subscription via the in-app OAuth flow. In this
-   * state the panel shows a read-only notice and hides the Disconnect
-   * button — the app can't clear CLI-owned credentials.
-   */
+  /** Claude Code CLI credentials exist on disk but no in-app OAuth link. */
   anthropicCliDetected: boolean;
   openaiConnected: boolean;
   setOpenaiConnected: (v: boolean) => void;
@@ -82,12 +78,7 @@ function selectRepresentativeSubscriptionStatus(
 interface SubscriptionProviderPanelProps {
   providerId: SubscriptionProviderSelectionId;
   connected: boolean;
-  /**
-   * Whether this panel owns credentials it can actually delete via
-   * `DELETE /api/subscription/{provider}`. When false (e.g. Claude Code CLI
-   * credentials detected on disk), the Disconnect button is hidden since
-   * clicking it would be a no-op and just confuse the user.
-   */
+  /** Whether this panel owns credentials it can delete; hides Disconnect when false. */
   canDisconnect?: boolean;
   /** Optional notice rendered below the header (e.g. for CLI-detected state). */
   externalNotice?: ReactNode;
@@ -124,6 +115,43 @@ interface SubscriptionProviderPanelProps {
   bodyOverride?: ReactNode;
 }
 
+function SubscriptionTab({
+  agentId,
+  label,
+  active,
+  onSelect,
+}: {
+  agentId: string;
+  label: string;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "tab",
+    label,
+    group: "settings",
+    status: active ? "active" : "inactive",
+    onActivate: onSelect,
+  });
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onSelect}
+      aria-label={label}
+      className={`-mb-px border-b-2 px-1 pb-2 text-xs font-medium transition-colors ${
+        active
+          ? "border-accent text-txt"
+          : "border-transparent text-muted hover:text-txt"
+      }`}
+      {...agentProps}
+    >
+      {label}
+    </button>
+  );
+}
+
 function StatusIcon({ connected }: { connected: boolean }) {
   return (
     <span className={connected ? "text-ok" : "text-warn"}>
@@ -137,6 +165,7 @@ function StatusIcon({ connected }: { connected: boolean }) {
 }
 
 function SubscriptionProviderPanel({
+  providerId,
   connected,
   canDisconnect = true,
   externalNotice,
@@ -168,6 +197,16 @@ function SubscriptionProviderPanel({
   bodyOverride,
 }: SubscriptionProviderPanelProps) {
   const { t } = useApp();
+  const slug = `sub-${providerId.replace(/-subscription$/, "")}`;
+  const { ref: oauthCodeRef, agentProps: oauthCodeAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: `${slug}-oauth-code`,
+      role: "text-input",
+      label: oauthInputPlaceholder,
+      group: "settings",
+      getValue: () => oauthCode,
+      onFill: setOauthCode,
+    });
 
   return (
     <div className="space-y-3">
@@ -179,7 +218,9 @@ function SubscriptionProviderPanel({
           </span>
         </div>
         {connected && canDisconnect && (
-          <Button
+          <SettingsActionButton
+            agentId={`${slug}-disconnect`}
+            agentLabel={t("common.disconnect")}
             variant="outline"
             size="icon"
             className="!mt-0 h-8 w-8 rounded-sm"
@@ -193,7 +234,7 @@ function SubscriptionProviderPanel({
             ) : (
               <LogOut className="h-3.5 w-3.5" aria-hidden />
             )}
-          </Button>
+          </SettingsActionButton>
         )}
       </div>
 
@@ -214,14 +255,16 @@ function SubscriptionProviderPanel({
           <p className="text-xs text-muted">{connectedSummary}</p>
         ) : !oauthStarted ? (
           <div className="space-y-1.5">
-            <Button
+            <SettingsActionButton
+              agentId={`${slug}-login`}
+              agentLabel={loginLabel}
               variant="default"
               size="sm"
               className="!mt-0 h-9 rounded-sm font-semibold"
               onClick={onStartOauth}
             >
               {loginLabel}
-            </Button>
+            </SettingsActionButton>
             <p className="text-xs-tight text-muted">{loginHint}</p>
             {oauthError && (
               <p className="text-xs-tight text-danger">{oauthError}</p>
@@ -231,17 +274,22 @@ function SubscriptionProviderPanel({
           <div className="space-y-2">
             {oauthInstructions}
             <Input
+              ref={oauthCodeRef}
               type={oauthInputType}
               className="h-9 rounded-sm bg-card text-xs"
               placeholder={oauthInputPlaceholder}
               value={oauthCode}
               onChange={(e) => setOauthCode(e.target.value)}
+              aria-label={oauthInputPlaceholder}
+              {...oauthCodeAgentProps}
             />
             {oauthError && (
               <p className="text-xs-tight text-danger">{oauthError}</p>
             )}
             <div className="flex items-center gap-2">
-              <Button
+              <SettingsActionButton
+                agentId={`${slug}-exchange`}
+                agentLabel={exchangeButtonLabel}
                 variant="default"
                 size="sm"
                 className="!mt-0 h-9 rounded-sm font-semibold"
@@ -249,15 +297,17 @@ function SubscriptionProviderPanel({
                 onClick={onExchange}
               >
                 {oauthExchangeBusy ? exchangeBusyLabel : exchangeButtonLabel}
-              </Button>
-              <Button
+              </SettingsActionButton>
+              <SettingsActionButton
+                agentId={`${slug}-start-over`}
+                agentLabel={t("settings.subscription.startOver")}
                 variant="outline"
                 size="sm"
                 className="!mt-0 h-9 rounded-sm"
                 onClick={onResetFlow}
               >
                 {t("settings.subscription.startOver")}
-              </Button>
+              </SettingsActionButton>
             </div>
           </div>
         ))}
@@ -290,6 +340,19 @@ export function SubscriptionStatus({
   const [anthropicCode, setAnthropicCode] = useState("");
   const [anthropicError, setAnthropicError] = useState("");
   const [anthropicExchangeBusy, setAnthropicExchangeBusy] = useState(false);
+  const { ref: setupTokenRef, agentProps: setupTokenAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "sub-anthropic-setup-token",
+      role: "text-input",
+      label: t("settings.subscription.setupToken"),
+      group: "settings",
+      getValue: () => setupTokenValue,
+      onFill: (next) => {
+        setSetupTokenValue(next);
+        setSetupTokenSuccess(false);
+        setAnthropicError("");
+      },
+    });
 
   /* ── OpenAI ────────────────────────────────────────────────────── */
   const [openaiOAuthStarted, setOpenaiOAuthStarted] = useState(false);
@@ -521,6 +584,7 @@ export function SubscriptionStatus({
         {t("settings.subscription.setupToken")}
       </Label>
       <Input
+        ref={setupTokenRef}
         id="subscription-setup-token-input"
         type="password"
         placeholder={t("subscriptionstatus.skAntOat01")}
@@ -531,6 +595,8 @@ export function SubscriptionStatus({
           setAnthropicError("");
         }}
         className="h-9 rounded-sm bg-card font-mono text-xs"
+        aria-label={t("settings.subscription.setupToken")}
+        {...setupTokenAgentProps}
       />
       <p className="whitespace-pre-line text-xs-tight text-muted">
         {t("settings.subscription.setupTokenInstructions")}
@@ -539,7 +605,9 @@ export function SubscriptionStatus({
         <p className="text-xs-tight text-danger">{anthropicError}</p>
       )}
       <div className="flex items-center justify-between">
-        <Button
+        <SettingsActionButton
+          agentId="sub-anthropic-save-token"
+          agentLabel={t("subscriptionstatus.SaveToken")}
           variant="default"
           size="sm"
           className="!mt-0 h-9 rounded-sm font-semibold"
@@ -549,7 +617,7 @@ export function SubscriptionStatus({
           {setupTokenSaving
             ? t("common.saving")
             : t("subscriptionstatus.SaveToken")}
-        </Button>
+        </SettingsActionButton>
         <div className="flex items-center gap-2">
           {setupTokenSaving && (
             <span className="text-xs-tight text-muted">
@@ -572,23 +640,15 @@ export function SubscriptionStatus({
           ["token", t("settings.subscription.setupToken")],
           ["oauth", t("settings.subscription.oauthLogin")],
         ] as const
-      ).map(([id, label]) => {
-        const active = subscriptionTab === id;
-        return (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setSubscriptionTab(id)}
-            className={`-mb-px border-b-2 px-1 pb-2 text-xs font-medium transition-colors ${
-              active
-                ? "border-accent text-txt"
-                : "border-transparent text-muted hover:text-txt"
-            }`}
-          >
-            {label}
-          </button>
-        );
-      })}
+      ).map(([id, label]) => (
+        <SubscriptionTab
+          key={id}
+          agentId={`sub-anthropic-tab-${id}`}
+          label={label}
+          active={subscriptionTab === id}
+          onSelect={() => setSubscriptionTab(id)}
+        />
+      ))}
     </div>
   ) : undefined;
 
@@ -760,7 +820,7 @@ export function SubscriptionStatus({
               genericStatus?.loginHint ||
               t("subscriptionstatus.CodingSubscriptionSafeSurface", {
                 defaultValue:
-                  "This provider is limited to its first-party coding surface. Credentials are not copied into general API environment variables.",
+                  "Limited to its coding surface; credentials stay scoped.",
               })}
           </p>
           {genericStatus?.allowedClient ? (
