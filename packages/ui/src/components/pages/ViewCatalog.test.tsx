@@ -19,6 +19,10 @@ import { useAvailableViews } from "../../hooks/useAvailableViews";
 import { useViewCatalog } from "../../hooks/useViewCatalog";
 import { getActiveViewModality } from "../../platform/platform-guards";
 import { useIsDeveloperMode } from "../../state/useDeveloperMode";
+import {
+  type ViewChatBinding,
+  useViewChatBinding,
+} from "../../state/view-chat-binding";
 import { ViewCatalog } from "./ViewCatalog";
 
 vi.mock("../../hooks/useAvailableViews", () => ({
@@ -131,8 +135,28 @@ const views: ViewRegistryEntry[] = [
   }),
 ];
 
+// ViewCatalog moved its search box into the global floating chat composer
+// (#8597): instead of rendering a standalone <input>, it registers a
+// ViewChatBinding (placeholder + onQuery) that the composer drives. This probe
+// captures the active binding so tests can assert the search placeholder and
+// feed queries exactly the way the chat composer does.
+let activeChatBinding: ViewChatBinding | null = null;
+function ChatBindingProbe(): null {
+  activeChatBinding = useViewChatBinding();
+  return null;
+}
+function renderCatalog(): ReturnType<typeof render> {
+  return render(
+    <>
+      <ViewCatalog />
+      <ChatBindingProbe />
+    </>,
+  );
+}
+
 describe("ViewCatalog", () => {
   beforeEach(() => {
+    activeChatBinding = null;
     window.history.replaceState(null, "", "/views");
     window.localStorage.clear();
     useAvailableViewsMock.mockReturnValue({
@@ -163,10 +187,10 @@ describe("ViewCatalog", () => {
   });
 
   it("lists local and remote module views while hiding internal and developer-only views by default", () => {
-    render(<ViewCatalog />);
+    renderCatalog();
 
     expect(screen.getByRole("heading", { name: "Views" })).toBeTruthy();
-    expect(screen.getByPlaceholderText("Search views…")).toBeTruthy();
+    expect(activeChatBinding?.placeholder).toBe("Search views…");
     expect(screen.getByText("Local Notes")).toBeTruthy();
     expect(screen.getByText("Remote Ledger")).toBeTruthy();
     expect(screen.queryByTestId("view-card-views-manager")).toBeNull();
@@ -468,10 +492,10 @@ describe("ViewCatalog", () => {
       }),
     } as Response);
 
-    render(<ViewCatalog />);
+    renderCatalog();
 
-    fireEvent.change(screen.getByPlaceholderText("Search views…"), {
-      target: { value: "ledger" },
+    act(() => {
+      activeChatBinding?.onQuery?.("ledger");
     });
 
     await act(async () => {
