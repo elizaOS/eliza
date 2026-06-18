@@ -175,6 +175,32 @@ before committing.
 - Strengthen ui-smoke: per-state visual cases (active/permission/error) via the
   interaction-spec `page.route` override pattern.
 
+- 2026-06-17: **Slice 2 DONE + committed** (`725c650169`) — recorded+live
+  contract tests for Strava + Oura health connectors (the repo's gold-standard
+  external-API pattern; was the #1 test gap). Fixtures + offline contract tests
+  asserting raw→normalized transforms + gated live drift tests. plugin-health
+  60→62 tests; no production code changed.
+- 2026-06-17: **Slice 3 DONE + committed** (`0a40544a37`) — real `HealthView`
+  over /api/lifeops/sleep/{history,regularity,baseline}, all states +
+  `useAgentElement`; 7 render tests; ui-smoke sleep mocks fixed. plugin-health
+  63 tests. Pairs with slice 2.
+
+### CalendarView (deferred — NOT a clean mount)
+`CalendarSection.tsx` is the rich, already-instrumented component but mounting it
+in the stub `CalendarView.tsx` needs: (a) 4 host-shell props (selectedEventId/
+onSelectEvent/onChatAboutEvent/getPrimedEvent) + `useApp()`/AppProvider context
+inside the view bundle, and (b) a DESIGN PASS — it uses Tailwind
+`bg-blue-500`/`violet`/`emerald` event-category colors that violate the no-blue
+rule. Treat as a full view slice, not a wiring fix.
+
 ### Next domains (replicate template, sequentially — each edits PA)
 remote-desktop (tiny, safest) → finances (first schema carve-out) → documents
 (routes already real) → inbox (largest) → goals/todos (reminders fused w/ spine).
+
+### Session 2026-06-17 net: 6 commits — audit+plan, blocker extraction (1a),
+FocusView (1b), health contract tests (2), HealthView (3). Decomposition +
+views/floating-chat + mock/live tests dimensions all proven end-to-end on real
+domains. Platform (5-platform e2e + mobile-BLOCK P0) is the least-advanced
+dimension — documented above, needs the engine-process-instance check first.
+NOTE: commits are on LOCAL develop (shared tree, many concurrent actors) — not
+pushed; pushing needs coordination given the churning dirty tree.
