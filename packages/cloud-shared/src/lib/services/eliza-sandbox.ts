@@ -3239,7 +3239,16 @@ export class ElizaSandboxService {
     // probe (the first attempt re-warms the path), then apply hysteresis before
     // giving up — seen live: a freshly-running agent was marked disconnected
     // ~1 min after boot by one transient "fetch failed".
-    const heartbeatEndpoint = await this.getAgentApiEndpoint(rec, "/");
+    // Liveness must dial the BRIDGE port over the headscale tailnet. The
+    // container serves its full HTTP API there (and `/api/health` unauthed —
+    // the same endpoint provisioning's health probe passes on); `web_ui_port`
+    // is a host-only docker port mapping that is NOT reachable over the tailnet,
+    // so the web-base-url path `getAgentApiEndpoint` prefers is a dead poll for
+    // the on-prem worker and was flipping every running agent to `disconnected`.
+    const heartbeatEndpoint = await this.getSafeBridgeEndpoint(
+      rec,
+      "/api/health",
+    );
     let res: Response | null = null;
     for (let attempt = 0; attempt < HEARTBEAT_PROBE_ATTEMPTS; attempt++) {
       if (attempt > 0) {
