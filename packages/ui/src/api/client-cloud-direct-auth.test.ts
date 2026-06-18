@@ -933,7 +933,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       agentId: "shared-agent",
       bridgeUrl:
         "https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent/bridge",
-      webUiUrl: null,
+      webUiUrl: "https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent",
       executionTier: "shared",
     });
     expect(capacitorMocks.request).toHaveBeenCalledTimes(2);
