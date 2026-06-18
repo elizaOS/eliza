@@ -7,13 +7,6 @@ export {
 } from "./local-asr-transcribe";
 export * from "./types";
 export {
-  type DefaultVoiceProviderResult,
-  type PickDefaultVoiceProviderInput,
-  pickDefaultVoiceProvider,
-  type PresetPlatform,
-  type PresetRuntimeMode,
-} from "./voice-provider-defaults";
-export {
   createVoiceCapture,
   type VoiceCaptureBackend,
   type VoiceCaptureFactoryOptions,
@@ -21,3 +14,10 @@ export {
   type VoiceCaptureState,
   type VoiceCaptureTranscriptSegment,
 } from "./voice-capture-factory";
+export {
+  type DefaultVoiceProviderResult,
+  type PickDefaultVoiceProviderInput,
+  type PresetPlatform,
+  type PresetRuntimeMode,
+  pickDefaultVoiceProvider,
+} from "./voice-provider-defaults";

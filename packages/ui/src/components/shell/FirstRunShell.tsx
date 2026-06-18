@@ -158,26 +158,28 @@ function LocalInferenceChoice(props: {
   const { t } = props;
   const options: ReadonlyArray<{
     value: FirstRunLocalInference;
+    icon: React.ComponentType<{ className?: string }>;
     label: string;
     detail: string;
   }> = [
     {
       value: "all-local",
+      icon: HardDrive,
       label: t("firstrunshell.allLocalLabel", {
         defaultValue: "All local models",
       }),
       detail: t("firstrunshell.allLocalDetail", {
-        defaultValue: "Download and run everything on this machine.",
+        defaultValue: "Everything runs on-device.",
       }),
     },
     {
       value: "cloud-inference",
+      icon: Cloud,
       label: t("firstrunshell.cloudInferenceLabel", {
         defaultValue: "Connect Eliza Cloud",
       }),
       detail: t("firstrunshell.cloudInferenceDetail", {
-        defaultValue:
-          "Keep the agent local, route inference through the cloud.",
+        defaultValue: "Inference via Eliza Cloud.",
       }),
     },
   ];
@@ -191,11 +193,12 @@ function LocalInferenceChoice(props: {
     >
       {options.map((option) => {
         const active = props.value === option.value;
+        const Icon = option.icon;
         return (
           <label
             key={option.value}
             className={[
-              "flex cursor-pointer flex-col gap-0.5 rounded-sm border px-3 py-2 text-left transition",
+              "flex cursor-pointer items-center gap-3 rounded-sm border px-3 py-2 text-left transition",
               active
                 ? "border-[#0B35F1] bg-[#0B35F1]/10"
                 : "border-[var(--first-run-card-border)] hover:bg-[var(--first-run-card-bg-hover)]",
@@ -209,11 +212,21 @@ function LocalInferenceChoice(props: {
               onChange={() => props.onChange(option.value)}
               className="sr-only"
             />
-            <span className="text-sm font-semibold text-[var(--first-run-text-primary)]">
-              {option.label}
-            </span>
-            <span className="text-xs text-[var(--first-run-text-muted)]">
-              {option.detail}
+            <Icon
+              className={[
+                "h-4 w-4 shrink-0",
+                active
+                  ? "text-[#0B35F1]"
+                  : "text-[var(--first-run-text-muted)]",
+              ].join(" ")}
+            />
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-sm font-semibold text-[var(--first-run-text-primary)]">
+                {option.label}
+              </span>
+              <span className="text-xs text-[var(--first-run-text-muted)]">
+                {option.detail}
+              </span>
             </span>
           </label>
         );
@@ -451,17 +464,13 @@ function FirstRunMicrophonePermission(props: {
                 defaultValue: "Enable microphone",
               })}
       </button>
-      <p className="max-w-[24rem] text-center text-xs text-[var(--first-run-text-muted)]">
-        {denied
-          ? t("firstrunshell.micDeniedHelp", {
-              defaultValue:
-                "Microphone access is blocked. Grant it in settings to talk to your assistant.",
-            })
-          : t("firstrunshell.micHelp", {
-              defaultValue:
-                "Your assistant is voice-first. Enable the microphone to talk to it.",
-            })}
-      </p>
+      {denied ? (
+        <p className="max-w-[24rem] text-center text-xs text-[var(--first-run-text-muted)]">
+          {t("firstrunshell.micDeniedHelp", {
+            defaultValue: "Microphone blocked — enable it in settings.",
+          })}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -609,7 +618,7 @@ function FirstRunControls(props: {
           emphasis="primary"
           testId="first-run-runtime-cloud"
           detail={t("firstrunshell.cloudDetail", {
-            defaultValue: "Runs 24/7 persistent agents that never sleep.",
+            defaultValue: "Always on, runs 24/7.",
           })}
           onClick={() => props.updateDraft("runtime", "cloud")}
         />
@@ -622,8 +631,7 @@ function FirstRunControls(props: {
             badge={t("firstrunshell.advanced", { defaultValue: "Advanced" })}
             testId="first-run-runtime-local"
             detail={t("firstrunshell.localDetail", {
-              defaultValue:
-                "Runs on your machine. Use local inference or connect Eliza Cloud.",
+              defaultValue: "Runs on your machine.",
             })}
             onClick={() => {
               const wasLocal = props.draft.runtime === "local";
@@ -656,8 +664,7 @@ function FirstRunControls(props: {
             emphasis="muted"
             testId="first-run-runtime-remote"
             detail={t("firstrunshell.useAsRemoteDetail", {
-              defaultValue:
-                "Connect to your local machine from another device.",
+              defaultValue: "Connect from another device.",
             })}
             onClick={() => {
               props.updateDraft("runtime", "remote");

@@ -18,11 +18,9 @@
  */
 
 /**
- * Direct sub-module imports keep the test isolated from `health-oauth.ts`
- * (which transitively imports `@elizaos/agent` → `@elizaos/app-core` and
- * pulls in a lot of dist code that's not relevant to the smoke surface).
- * The top-level `../index.js` aggregate is verified by the package build,
- * not by this smoke test.
+ * Direct sub-module imports keep the test focused on the registry surfaces
+ * rather than the full `../index.js` aggregate, which is verified by the
+ * package build, not by this smoke test.
  */
 import { describe, expect, it } from "vitest";
 import type {

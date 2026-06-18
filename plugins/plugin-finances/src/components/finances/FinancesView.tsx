@@ -21,7 +21,7 @@ import type {
   RecurringChargeDTO,
 } from "../../types.ts";
 
-function formatMinor(amountMinor: number, currency: string): string {
+export function formatMinor(amountMinor: number, currency: string): string {
   const value = amountMinor / 100;
   try {
     return new Intl.NumberFormat(undefined, {

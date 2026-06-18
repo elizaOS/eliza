@@ -9,9 +9,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  AGENT_API_PORT,
   adbReverse,
   adbTry,
-  AGENT_API_PORT,
   isInstalled,
   launchApp,
   resolveAdb,
@@ -19,7 +19,9 @@ import {
   resolveSerial,
 } from "../../scripts/lib/android-device.mjs";
 
-const HEALTH_POLL_MS = Number(process.env.ELIZA_ANDROID_HEALTH_TIMEOUT_MS ?? 180_000);
+const HEALTH_POLL_MS = Number(
+  process.env.ELIZA_ANDROID_HEALTH_TIMEOUT_MS ?? 180_000,
+);
 const REQUIRE_AGENT = process.env.ELIZA_ANDROID_REQUIRE_AGENT !== "0";
 const BACKEND = (process.env.ELIZA_ANDROID_BACKEND ?? "local").toLowerCase();
 
@@ -90,10 +92,16 @@ export default async function globalSetup() {
   }
 
   // Bring the app to the foreground so its WebView DevTools socket is live.
+  // NOTE: do NOT `am kill-all` here — it races the just-spawned detached bun
+  // agent (whose process is briefly background-classified before it foregrounds)
+  // and kills it, so the agent never becomes healthy. The voice spec reclaims
+  // background memory itself, right before the round-trip, once the agent is up.
   launchApp(adb, serial);
 
   if (!REQUIRE_AGENT) {
-    console.log("[android-e2e] ELIZA_ANDROID_REQUIRE_AGENT=0 — skipping health gate");
+    console.log(
+      "[android-e2e] ELIZA_ANDROID_REQUIRE_AGENT=0 — skipping health gate",
+    );
     return;
   }
 

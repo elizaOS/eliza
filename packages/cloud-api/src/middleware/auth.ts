@@ -219,12 +219,3 @@ export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
   }
   await next();
 };
-
-// Re-export `requireApiKeyPermission` from its dedicated module so existing
-// route imports (`@/api-app/middleware/auth`) continue to work, while tests
-// and new code can import from the standalone file without pulling in the
-// full auth-gate transitive deps.
-export {
-  enforceApiKeyPermission,
-  requireApiKeyPermission,
-} from "./api-key-permission";

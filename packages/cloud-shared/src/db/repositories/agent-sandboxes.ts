@@ -330,6 +330,63 @@ export class AgentSandboxesRepository {
       });
   }
 
+  /**
+   * Recover ORPHANED PENDING sandboxes: a user-owned row that was committed as
+   * `pending` but never got an `agent_provision` job enqueued (a throw in the
+   * create→enqueue window of the agents/coding-container/eliza-app paths). The
+   * provisioning daemon only claims rows that HAVE a job, so such a row is
+   * structurally unclaimable and would sit in `pending` forever with a null
+   * error_message — a silent failure to the user.
+   *
+   * We MARK ERROR (never auto re-enqueue): the original env-prep may have
+   * failed, so re-provisioning could spin up a half-configured agent. A clear
+   * error makes the failure visible and lets the user retry the whole flow.
+   *
+   * `pool_status IS NULL` skips warm-pool rows, which are legitimately `pending`
+   * with no per-agent job until claimed. Keyed on `created_at` (not
+   * `updated_at`): the managed-env write bumps `updated_at`, so `created_at` is
+   * the honest "how long has this been stuck" signal.
+   */
+  async markOrphanedPendingWithoutJobAsError(cutoff: Date): Promise<
+    Array<{
+      agentId: string;
+      agentName: string | null;
+      organizationId: string;
+      createdAt: Date | null;
+    }>
+  > {
+    await ensureAgentSandboxSchema();
+    return dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "error",
+        error_message:
+          "Provisioning never started: no agent_provision job was enqueued " +
+          "(orphaned pending). Please retry.",
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(agentSandboxes.status, "pending"),
+          sql`${agentSandboxes.pool_status} IS NULL`,
+          lt(agentSandboxes.created_at, cutoff),
+          sql`NOT EXISTS (
+            SELECT 1 FROM ${jobs}
+            WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
+            AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
+            AND    ${jobs.type} = 'agent_provision'
+            AND    ${jobs.status} IN ('pending', 'in_progress')
+          )`,
+        ),
+      )
+      .returning({
+        agentId: agentSandboxes.id,
+        agentName: agentSandboxes.agent_name,
+        organizationId: agentSandboxes.organization_id,
+        createdAt: agentSandboxes.created_at,
+      });
+  }
+
   async update(id: string, data: Partial<NewAgentSandbox>): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
     const [r] = await dbWrite

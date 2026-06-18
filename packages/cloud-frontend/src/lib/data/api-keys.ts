@@ -10,7 +10,6 @@ export interface ApiKeyRecord {
   is_active: boolean;
   last_used_at: string | null;
   created_at: string;
-  permissions: string[];
   usage_count: number;
   rate_limit: number;
   expires_at: string | null;

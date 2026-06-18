@@ -748,6 +748,13 @@ async function runOneCombination({
     // profile it. See elizaOS/eliza#8063.
     if (/Model not installed/i.test(err.message ?? "")) {
       record.skipped = { reason: "model-not-installed", message: err.message };
+    } else if (/No backend loaded/i.test(err.message ?? "")) {
+      // The native local-inference backend (llama.cpp) is not built/loaded on
+      // backend-less github-hosted runners, so the real-agent download/generate
+      // cannot run. This is an environment gap, not a regression — classify it
+      // as a skip (like model-not-installed) so the nightly distinguishes it.
+      // Run on a runner with the native backend to profile for real.
+      record.skipped = { reason: "backend-not-loaded", message: err.message };
     } else {
       record.error = {
         message: err.message,

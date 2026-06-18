@@ -57,7 +57,7 @@
   "dependencies": {
     "@atproto/api": "^0.19.0",
     "@atproto/identity": "^0.4.4",
-    "@atproto/lexicon": "^0.6.0",
+    "@atproto/lexicon": "^0.7.2",
     "@atproto/syntax": "^0.6.1",
     "@atproto/xrpc": "^0.7.0",
     "@elizaos/core": "workspace:*",

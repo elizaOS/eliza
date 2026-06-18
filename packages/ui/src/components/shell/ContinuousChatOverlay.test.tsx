@@ -88,44 +88,81 @@ describe("ContinuousChatOverlay", () => {
     expect(input.value).toBe("");
   });
 
-  it("reveals the bubbles when the composer input is focused", () => {
+  it("opens the sheet when the composer input is focused (type-to-open)", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    const thread = document.getElementById("continuous-thread");
-    expect(thread?.getAttribute("data-revealed")).toBe("false");
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
     fireEvent.focus(screen.getByLabelText("message"));
-    expect(thread?.getAttribute("data-revealed")).toBe("true");
+    expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
-  it("reveals the bubbles on hover, not only on focus", () => {
+  it("opens the sheet on a pull-up drag of the grabber", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    const thread = document.getElementById("continuous-thread");
-    expect(thread?.getAttribute("data-revealed")).toBe("false");
-    // Hovering the chat (here, the bubbles region) peeks it open.
-    fireEvent.pointerEnter(thread as Element);
-    expect(thread?.getAttribute("data-revealed")).toBe("true");
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+    // A deliberate upward drag past the distance threshold opens it.
+    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
+    expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
-  it("reveals the suggestion strip together with the bubbles", () => {
+  it("steps COLLAPSED→HALF→FULL on successive pull-ups and back down again", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    const strip = screen.getByTestId("chat-suggestions");
-    expect(strip.className).toContain("opacity-0");
-    fireEvent.pointerEnter(strip);
-    expect(strip.className).toContain("opacity-100");
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    const pull = (fromY: number, toY: number) => {
+      fireEvent.pointerDown(grabber, { clientY: fromY, pointerId: 1 });
+      fireEvent.pointerMove(grabber, { clientY: toY, pointerId: 1 });
+      fireEvent.pointerUp(grabber, { clientY: toY, pointerId: 1 });
+    };
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    pull(420, 280); // up → HALF (one step, not straight to full)
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    pull(420, 280); // up → FULL
+    expect(sheet.getAttribute("data-detent")).toBe("full");
+    pull(280, 420); // down → HALF
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    pull(280, 420); // down → COLLAPSED
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
   });
 
-  it("reveals suggestions when an empty composer receives keyboard focus", () => {
+  it("opens on a fast flick even below the distance threshold (velocity)", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    // 15px travel (< 56px distance threshold) but synchronous → high velocity.
+    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 405, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 405, pointerId: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+  });
+
+  it("opens straight to FULL when sending (not the stepped HALF)", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const input = screen.getByLabelText("message");
+    fireEvent.change(input, { target: { value: "ping" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(sheet.getAttribute("data-detent")).toBe("full");
+  });
+
+  it("exposes the mic control with a stable test id at rest", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
+  });
+
+  it("shows the resting suggestion strip without hover or focus", () => {
     render(
       <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
     );
     const strip = screen.getByTestId("chat-suggestions");
     const firstSuggestion = screen.getByTestId("chat-suggestion-0");
-
-    expect(strip.className).toContain("opacity-0");
-    expect(firstSuggestion.tabIndex).toBe(-1);
-
-    fireEvent.focus(screen.getByLabelText("message"));
-
-    expect(strip.className).toContain("opacity-100");
+    // At rest (ready, nothing typed) the strip is mounted, interactive, and
+    // tabbable — there is no hover/focus gate any more; it is the closed-state
+    // affordance, and it simply unmounts once the sheet opens or a draft starts.
+    expect(strip.className).toContain("pointer-events-auto");
     expect(firstSuggestion.tabIndex).toBe(0);
   });
 
@@ -170,46 +207,76 @@ describe("ContinuousChatOverlay", () => {
     expect(typing.className).toContain("justify-start");
   });
 
-  it("collapses the bubbles on Escape", () => {
+  it("closes the sheet on Escape", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const input = screen.getByLabelText("message");
-    const thread = document.getElementById("continuous-thread");
+    const sheet = screen.getByTestId("chat-sheet");
     fireEvent.focus(input);
-    expect(thread?.getAttribute("data-revealed")).toBe("true");
+    expect(sheet.getAttribute("data-variant")).toBe("open");
     fireEvent.keyDown(input, { key: "Escape" });
-    expect(thread?.getAttribute("data-revealed")).toBe("false");
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
-  it("toggles a full-screen takeover with a lightweight focus backdrop", () => {
+  it("collapsing blurs the composer so the mobile keyboard drops", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    const root = screen.getByTestId("continuous-chat-overlay");
-    const backdrop = screen.getByTestId("chat-fullscreen-backdrop");
-    expect(root.getAttribute("data-fullscreen")).toBeNull();
-    // Resting: backdrop is inactive + click-through (the live view stays usable).
-    expect(backdrop.getAttribute("data-active")).toBe("false");
-    expect(backdrop.className).toContain("pointer-events-none");
-
-    // Far-left button enters full screen and fades a cheap scrim over the view.
-    fireEvent.click(screen.getByLabelText("expand to full screen"));
-    expect(root.getAttribute("data-fullscreen")).toBe("true");
-    expect(document.querySelector('[data-variant="fullscreen"]')).toBeTruthy();
-    // Backdrop becomes the active glass sheet that captures the view.
-    expect(backdrop.getAttribute("data-active")).toBe("true");
-    expect(backdrop.className).toContain("pointer-events-auto");
-
-    // Pressing it again returns to normal (ambient) mode: the partial bubbles
-    // are back (faded out) and the backdrop deactivates.
-    fireEvent.click(screen.getByLabelText("exit full screen"));
-    expect(root.getAttribute("data-fullscreen")).toBeNull();
-    expect(
-      document
-        .querySelector('[data-variant="resting"]')
-        ?.getAttribute("data-revealed"),
-    ).toBe("false");
-    expect(backdrop.getAttribute("data-active")).toBe("false");
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    fireEvent.focus(input); // onFocus → expand → sheetOpen true (flushed by act)
+    input.focus(); // also move real activeElement (jsdom fireEvent.focus doesn't)
+    expect(document.activeElement).toBe(input);
+    fireEvent.keyDown(input, { key: "Escape" }); // sheetOpen → collapse → blur
+    expect(document.activeElement).not.toBe(input);
   });
 
-  it("shows only the last 2 turns with no scroll while typing, full history in fullscreen", () => {
+  it("tapping outside the panel blurs the composer (drops the keyboard)", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    input.focus();
+    expect(document.activeElement).toBe(input);
+    // A pointerdown anywhere outside the chat panel dismisses the keyboard.
+    fireEvent.pointerDown(document.body);
+    expect(document.activeElement).not.toBe(input);
+  });
+
+  it("composes multi-line with an auto-growing textarea (Enter still sends)", () => {
+    const controller = makeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    expect(input.tagName).toBe("TEXTAREA");
+    // Shift+Enter must NOT submit (it inserts a newline); plain Enter submits.
+    fireEvent.change(input, { target: { value: "line one" } });
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    expect(controller.send).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(vi.mocked(controller.send).mock.calls[0]?.[0]).toBe("line one");
+  });
+
+  it("closes the sheet on a pull-down drag of the grabber", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 360, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 360, pointerId: 1 });
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
+  it("fades the backdrop in with the chat and COLLAPSES on a backdrop click", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const backdrop = screen.getByTestId("chat-sheet-backdrop");
+    // Collapsed: inactive + click-through (the live view behind stays usable).
+    expect(backdrop.getAttribute("data-active")).toBe("false");
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(backdrop.getAttribute("data-active")).toBe("true");
+    // Clicking the dimmed view behind now collapses the chat back to the input.
+    fireEvent.click(backdrop);
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
+  it("renders the full thread as one always-mounted scroll log", () => {
     const controller = makeController({
       messages: [
         { id: "a", role: "assistant", content: "one", createdAt: 1 },
@@ -219,22 +286,12 @@ describe("ContinuousChatOverlay", () => {
     } as unknown as Partial<ShellController>);
     render(<ContinuousChatOverlay controller={controller} />);
 
-    // Typing (partial): only the last 2 turns, no scroll.
-    fireEvent.focus(screen.getByLabelText("message"));
+    // The full transcript is always mounted; the thread is a vertical scroll
+    // region whose height collapses to 0 when closed (the outer wrapper clips).
     const log = document.getElementById("continuous-thread");
-    expect(log?.querySelectorAll('[data-testid="thread-line"]').length).toBe(2);
-    expect(log?.className).toContain("overflow-hidden");
-    expect(log?.textContent).not.toContain("one");
-    expect(log?.textContent).toContain("three");
-
-    // Fullscreen: full history + scroll.
-    fireEvent.click(screen.getByLabelText("expand to full screen"));
-    const fsLog = document.getElementById("continuous-thread");
-    expect(fsLog?.querySelectorAll('[data-testid="thread-line"]').length).toBe(
-      3,
-    );
-    expect(fsLog?.className).toContain("overflow-y-auto");
-    expect(fsLog?.textContent).toContain("one");
+    expect(log?.querySelectorAll('[data-testid="thread-line"]').length).toBe(3);
+    expect(log?.className).toContain("overflow-y-auto");
+    expect(log?.textContent).toContain("one");
   });
 
   it("shows the attach (+) control", () => {
@@ -321,14 +378,18 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.getAllByTestId("chat-composer-textarea")).toHaveLength(1);
   });
 
-  it("keeps composer controls inside one constrained input pill", () => {
+  it("keeps composer controls in one non-wrapping input row inside the constrained panel", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
 
     const input = screen.getByTestId("chat-composer-textarea");
     const bar = input.parentElement;
+    const panel = screen.getByTestId("chat-sheet");
 
     expect(screen.queryByTestId("chat-composer-clear-debug")).toBeNull();
-    expect(bar?.className).toContain("max-w-full");
+    // The width is constrained on the panel; the input row is a single,
+    // non-wrapping flex row with the field taking the remaining space.
+    expect(panel.className).toContain("max-w-3xl");
+    expect(bar?.className).toContain("flex");
     expect(bar?.className).not.toContain("flex-wrap");
     expect(input.className).toContain("flex-1");
     expect(input.className).not.toContain("basis-full");
@@ -348,7 +409,7 @@ describe("ContinuousChatOverlay", () => {
     ).toHaveLength(3);
   });
 
-  it("scrolls to the latest line when a new message arrives in fullscreen", () => {
+  it("scrolls to the latest line when a new message arrives while open", () => {
     const base = [{ id: "a", role: "assistant", content: "hi", createdAt: 1 }];
     const { rerender } = render(
       <ContinuousChatOverlay
@@ -357,8 +418,7 @@ describe("ContinuousChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    // Only the fullscreen transcript scrolls; the resting/typing view does not.
-    fireEvent.click(screen.getByLabelText("expand to full screen"));
+    fireEvent.focus(screen.getByLabelText("message")); // open the sheet
     const scrollIntoView = Element.prototype.scrollIntoView as ReturnType<
       typeof vi.fn
     >;
@@ -376,49 +436,24 @@ describe("ContinuousChatOverlay", () => {
     expect(scrollIntoView).toHaveBeenCalled();
   });
 
-  it("collapses the bubbles on a pointer-down outside the bubbles and composer", () => {
+  it("does NOT close on a pointer-down outside the sheet (no click-out dismiss)", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    const thread = document.getElementById("continuous-thread");
+    const sheet = screen.getByTestId("chat-sheet");
     fireEvent.focus(screen.getByLabelText("message"));
-    expect(thread?.getAttribute("data-revealed")).toBe("true");
-    // A click on the live view behind (here, the bare document body) closes it.
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    // Clicking the live view behind (here, the bare body) must NOT close it —
+    // the only dismiss paths are a pull-down drag and Escape.
     fireEvent.pointerDown(document.body);
-    expect(thread?.getAttribute("data-revealed")).toBe("false");
+    fireEvent.click(document.body);
+    expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
-  it("collapses the bubbles when the underlying app scrolls", () => {
+  it("does NOT close when the underlying app scrolls", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    const thread = document.getElementById("continuous-thread");
-
+    const sheet = screen.getByTestId("chat-sheet");
     fireEvent.focus(screen.getByLabelText("message"));
-    expect(thread?.getAttribute("data-revealed")).toBe("true");
-
+    expect(sheet.getAttribute("data-variant")).toBe("open");
     fireEvent.scroll(document.body);
-    expect(thread?.getAttribute("data-revealed")).toBe("false");
-  });
-
-  it("keeps the bubbles revealed when a message bubble is clicked", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
-    fireEvent.focus(screen.getByLabelText("message"));
-    const bubble = document.querySelector('[data-testid="thread-line"]');
-    expect(bubble).toBeTruthy();
-    fireEvent.pointerDown(bubble as Element);
-    expect(
-      document
-        .getElementById("continuous-thread")
-        ?.getAttribute("data-revealed"),
-    ).toBe("true");
-  });
-
-  it("keeps the bubbles revealed when the composer is clicked", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
-    const input = screen.getByLabelText("message");
-    fireEvent.focus(input);
-    fireEvent.pointerDown(input);
-    expect(
-      document
-        .getElementById("continuous-thread")
-        ?.getAttribute("data-revealed"),
-    ).toBe("true");
+    expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 });

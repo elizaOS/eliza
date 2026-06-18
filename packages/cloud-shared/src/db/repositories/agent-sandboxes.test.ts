@@ -14,7 +14,15 @@ const where = mock((clause: SQL) => {
   capturedWhere = clause;
   return { returning };
 });
-const set = mock(() => ({ where }));
+// Read the captured update payload back from `set.mock.calls` rather than a
+// side-channel `let`: a `let` reassigned only inside this closure gets narrowed
+// to `undefined` by tsgo (it doesn't apply tsc's closure-reassignment widening),
+// turning `?.status` into a property access on `never`. `mock.calls` carries the
+// argument type verbatim, so the read below stays `Record<string, unknown>`.
+const set = mock((values: Record<string, unknown>) => {
+  void values;
+  return { where };
+});
 const update = mock(() => ({ set }));
 const ensureAgentSandboxSchema = mock(async () => {});
 
@@ -38,5 +46,43 @@ describe("AgentSandboxesRepository", () => {
     expect(ensureAgentSandboxSchema).toHaveBeenCalled();
     if (!capturedWhere) throw new Error("trySetProvisioning did not build a where clause");
     expect(new PgDialect().sqlToQuery(capturedWhere).sql).toContain("'sleeping'");
+  });
+
+  test("marks only orphaned user-owned pending rows with no provision job as error", async () => {
+    capturedWhere = undefined;
+    set.mockClear();
+
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+
+    const cutoff = new Date("2026-06-14T00:00:00.000Z");
+    await new AgentSandboxesRepository().markOrphanedPendingWithoutJobAsError(cutoff);
+
+    expect(ensureAgentSandboxSchema).toHaveBeenCalled();
+    if (!capturedWhere)
+      throw new Error("markOrphanedPendingWithoutJobAsError did not build a where clause");
+    const sql = new PgDialect().sqlToQuery(capturedWhere).sql.toLowerCase();
+    // Only `pending` rows are targeted...
+    expect(sql).toContain("'pending'");
+    // ...that are user-owned (warm-pool rows carry a pool_status, so skip them)...
+    expect(sql).toContain("pool_status");
+    expect(sql).toContain("is null");
+    // ...aged past the cutoff (keyed on created_at, not updated_at)...
+    expect(sql).toContain("created_at");
+    // ...and have NO live agent_provision job.
+    expect(sql).toContain("not exists");
+    expect(sql).toContain("agent_provision");
+    // The job predicate is load-bearing: only LIVE jobs ('pending'/'in_progress')
+    // count, so a row whose only agent_provision job is completed/error is still
+    // reclaimed. Assert the live-state filter is present and dead states are not.
+    expect(sql).toContain("'pending', 'in_progress'");
+    expect(sql).not.toContain("'completed'");
+    expect(sql).not.toContain("'error'");
+
+    // It MARKS ERROR (it never re-enqueues) with a clear, retry-able message.
+    const capturedSet = set.mock.calls.at(-1)?.[0];
+    expect(capturedSet?.status).toBe("error");
+    expect(String(capturedSet?.error_message)).toContain("no agent_provision job was enqueued");
+    // updated_at is bumped so the row no longer matches the cron on the next tick.
+    expect(capturedSet?.updated_at instanceof Date).toBe(true);
   });
 });

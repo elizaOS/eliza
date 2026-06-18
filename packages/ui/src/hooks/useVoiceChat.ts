@@ -272,6 +272,14 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   );
   const emitPlaybackStart = useEffectEvent((event: VoicePlaybackStartEvent) => {
     options.onPlaybackStart?.(event);
+    // Headless-test observability: a real TTS playback actually started. The
+    // voice self-test + real-audio e2e poll this to prove audio flowed (the
+    // only honest "reply was spoken" signal in a headless browser).
+    if (typeof window !== "undefined") {
+      (
+        window as unknown as { __voicePlaybackStarted?: boolean }
+      ).__voicePlaybackStarted = true;
+    }
   });
 
   const effectiveVoiceConfig = useMemo(
@@ -1753,6 +1761,48 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               : {}),
           });
 
+          // Native mobile (Android/iOS Capacitor): route the reply through the
+          // native TalkMode engine (Kotlin AudioTrack / on-device local-inference
+          // TTS) per the Android TTS-owner decision, instead of the WebView
+          // AudioContext path. Falls through to the web TTS path on a native error.
+          if (Capacitor.isNativePlatform()) {
+            const trimmed = task.text.trim();
+            if (!trimmed) continue;
+            usingAudioAnalysisRef.current = false;
+            setUsingAudioAnalysis(false);
+            emitPlaybackStart({
+              text: task.text,
+              segment: task.segment,
+              provider: "browser",
+              cached: false,
+              startedAtMs: performance.now(),
+              ...task.telemetry,
+            });
+            try {
+              const result = await getTalkModePlugin().speak({
+                text: trimmed,
+                useLocalInferenceTts: true,
+              });
+              if (workerGeneration !== generationRef.current) break;
+              if (result?.error) throw new Error(result.error);
+              continue;
+            } catch (error) {
+              if (
+                workerGeneration !== generationRef.current ||
+                isAbortError(error)
+              ) {
+                break;
+              }
+              ttsDebug("useVoiceChat:native-talkmode-failed-fallback", {
+                err:
+                  error instanceof Error
+                    ? `${error.name}: ${error.message.slice(0, 200)}`
+                    : String(error).slice(0, 200),
+              });
+              // Fall through to the web TTS path (elevenlabs/local/browser).
+            }
+          }
+
           if (useLocalInference) {
             usingAudioAnalysisRef.current = true;
             setUsingAudioAnalysis(true);
@@ -1768,15 +1818,29 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               }
               usingAudioAnalysisRef.current = false;
               setUsingAudioAnalysis(false);
-              workerError = error;
-              queueRef.current = [];
               ttsDebug("useVoiceChat:local-inference-failed", {
                 err:
                   error instanceof Error
                     ? `${error.name}: ${error.message.slice(0, 200)}`
                     : String(error).slice(0, 200),
               });
-              break;
+              // Local TTS failed — fall back to browser SpeechSynthesis so the
+              // reply stays audible rather than going silent. Only hard-error
+              // if the fallback ALSO fails.
+              try {
+                await speakBrowser(task.text, task, workerGeneration);
+                continue;
+              } catch (fallbackError) {
+                if (
+                  workerGeneration !== generationRef.current ||
+                  isAbortError(fallbackError)
+                ) {
+                  break;
+                }
+                workerError = fallbackError;
+                queueRef.current = [];
+                break;
+              }
             }
           }
 
@@ -1808,9 +1872,24 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               });
               usingAudioAnalysisRef.current = false;
               setUsingAudioAnalysis(false);
-              workerError = error;
-              queueRef.current = [];
-              break;
+              // Cloud TTS failed (commonly: no ElevenLabs / cloud key on a
+              // default deploy). Fall back to the browser's built-in
+              // SpeechSynthesis so the reply is still AUDIBLE instead of going
+              // silent. Only hard-error if that fallback ALSO fails.
+              try {
+                await speakBrowser(task.text, task, workerGeneration);
+                continue;
+              } catch (fallbackError) {
+                if (
+                  workerGeneration !== generationRef.current ||
+                  isAbortError(fallbackError)
+                ) {
+                  break;
+                }
+                workerError = fallbackError;
+                queueRef.current = [];
+                break;
+              }
             }
           } else {
             usingAudioAnalysisRef.current = false;

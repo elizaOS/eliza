@@ -6,5 +6,4 @@ export default createViewBundleConfig({
   entry: "./src/components/health/health-view-bundle.ts",
   outDir: "dist/views",
   componentExport: "HealthView",
-  additionalExternals: ["@elizaos/app-core"],
 });

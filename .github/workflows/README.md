@@ -42,6 +42,24 @@ Publishes TypeScript/JavaScript packages to NPM.
 
 ## Test Workflows
 
+### Linux Runner Policy
+
+Linux CI jobs run on GitHub-hosted Ubuntu (`ubuntu-24.04` / `ubuntu-latest`).
+
+A prior change (#8501) moved trusted-event Linux jobs to a self-hosted
+`self-hosted, Linux, X64, hetzner-robot` pool, but that fleet went offline
+(20 of 22 runners down), leaving every migrated job queued indefinitely and
+gridlocking develop CI. The placement was reverted to GitHub-hosted so CI
+stays unblocked regardless of fleet health.
+
+Re-introduce the self-hosted pool only once it is reliably online: restore the
+conditional `runs-on` (GitHub-hosted for fork PRs, self-hosted otherwise) at
+that point, and keep the runner-agnostic step hardening (no `sudo`-only
+install/cleanup) so jobs run on either runner type.
+
+GPU / KVM / macOS jobs (labels `gpu-cuda-12.6`, `kvm`, `eliza-e2e-macos`) are a
+separate purpose-built fleet and are unaffected by this policy.
+
 ### PR Path Gates
 
 PR workflows use `packages/scripts/ci-path-gate.mjs` to keep expensive lanes

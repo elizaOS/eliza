@@ -22,7 +22,7 @@ export const inboxPlugin: Plugin = {
       path: "/inbox",
       bundlePath: "dist/views/bundle.js",
       componentExport: "InboxView",
-      tags: ["inbox", "triage", "communication", "email", "mail"],
+      tags: ["inbox", "triage", "communication", "email", "mail", "messages"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

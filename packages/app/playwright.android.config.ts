@@ -22,9 +22,11 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  // Real device + real backend: generous timeouts. Model-backed turns are slow
-  // on an x86_64 emulator.
-  timeout: 240_000,
+  // Real device + real backend: generous timeouts. The on-device voice
+  // round-trip cold-loads three large GGUF models in sequence (chat, ASR, TTS),
+  // each tens of seconds on a CPU-only phone, so the full STT->agent->TTS turn
+  // can run several minutes on the first pass.
+  timeout: 420_000,
   expect: { timeout: 45_000 },
   reporter: process.env.CI ? "list" : [["list"], ["html", { open: "never" }]],
   globalSetup: path.join(appDir, "test/android/global-setup.ts"),

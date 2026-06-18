@@ -46,17 +46,31 @@ describe("Group K — /api/affiliate/create-character", () => {
     expect(body.details).toBeUndefined();
   });
 
-  test("standard API key is forbidden without affiliate permission", async () => {
+  test("standard API key can create because active keys have full access", async () => {
     const res = await api.post(
       "/api/affiliate/create-character",
       {
-        character: { name: "Forbidden Affiliate Character" },
+        character: {
+          name: `Standard Key Affiliate Character ${Date.now()}`,
+          bio: "Created by Worker e2e through the standard API key path.",
+        },
         affiliateId: "worker-e2e",
       },
       { headers: bearerHeaders() },
     );
-    expect(res.status).toBe(403);
+    const responseText = await res.text();
+    if (res.status !== 201) {
+      throw new Error(`Expected 201, got ${res.status}: ${responseText}`);
+    }
+    expect(res.status).toBe(201);
     expect(res.status).not.toBe(501);
+    const body = JSON.parse(responseText) as {
+      success?: boolean;
+      characterId?: string;
+    };
+    expect(body.success).toBe(true);
+    expect(body.characterId).toBeTruthy();
+    createdCharacterIds.push(body.characterId!);
   });
 
   test("affiliate API key creates a real character", async () => {

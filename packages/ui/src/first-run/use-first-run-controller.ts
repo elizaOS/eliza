@@ -403,16 +403,21 @@ export function useFirstRunController(): FirstRunController {
   );
 
   const updateDraft = React.useCallback<FirstRunDraftUpdate>(
-    (key, value) =>
-      setDraft((current) => {
-        const next = { ...current, [key]: value };
-        const resolved = cloudOnly
-          ? normalizeCloudOnlyFirstRunState({ step: "runtime", draft: next })
-              .draft
-          : next;
-        draftRef.current = resolved;
-        return resolved;
-      }),
+    (key, value) => {
+      // Update draftRef SYNCHRONOUSLY (not inside the setDraft updater, which
+      // React defers to render). Callers that update a field and immediately
+      // finish the flow in the same tick — the onboarding "Local models" tap
+      // does updateDraft("runtime","local") then finishRuntime(), which reads
+      // draftRef.current — would otherwise act on the stale previous runtime
+      // and provision the wrong target. Mirrors applyVoiceTranscript's pattern.
+      const next = { ...draftRef.current, [key]: value };
+      const resolved = cloudOnly
+        ? normalizeCloudOnlyFirstRunState({ step: "runtime", draft: next })
+            .draft
+        : next;
+      draftRef.current = resolved;
+      setDraft(resolved);
+    },
     [cloudOnly],
   );
 
@@ -608,6 +613,11 @@ export function useFirstRunController(): FirstRunController {
         name,
         bio,
         onProgress: () => {},
+        // Cloud returns a shared-runtime agent (no dedicated container) for the
+        // default tier on every non-iOS platform. Without this flag the client
+        // throws "shared runtime has no sandbox bridge" and first-run bricks for
+        // new Android/desktop users. Mirrors the useFirstRunCallbacks path.
+        allowSharedRuntime: true,
       });
       client.setBaseUrl(provisionedAgent.bridgeUrl);
       client.setToken(authToken);

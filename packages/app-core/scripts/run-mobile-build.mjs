@@ -1104,6 +1104,46 @@ async function ensurePlatform(platform) {
  * (net::ERR_CONNECTION_REFUSED). Mirror the synced payload into androidDir.
  * No-op when both trees resolve to the same directory (standalone layout).
  */
+// `@elizaos/capacitor-bun-runtime` is an app-core-only native module (it powers
+// the on-device Bun agent runtime) and is NOT a `packages/app` dependency, so
+// `cap sync` never emits it. Now that `android.path` makes cap sync regenerate
+// capacitor.settings.gradle / capacitor.build.gradle in place, those files would
+// lose bun-runtime on every sync. Re-register it idempotently after each sync so
+// the on-device agent keeps building (exact module name + projectDir the
+// committed files used).
+function ensureBunRuntimeRegistered() {
+  const MODULE = "elizaos-capacitor-bun-runtime";
+  const PROJECT_DIR = "../../../../plugins/plugin-native-bun-runtime/android";
+  const settingsPath = path.join(androidDir, "capacitor.settings.gradle");
+  const buildGradlePath = path.join(
+    androidDir,
+    "app",
+    "capacitor.build.gradle",
+  );
+
+  if (fs.existsSync(settingsPath)) {
+    let settings = fs.readFileSync(settingsPath, "utf8");
+    if (!settings.includes(`':${MODULE}'`)) {
+      settings = `${settings.trimEnd()}\ninclude ':${MODULE}'\nproject(':${MODULE}').projectDir = new File('${PROJECT_DIR}')\n`;
+      fs.writeFileSync(settingsPath, settings);
+      console.log(
+        `[mobile-build] Re-registered ${MODULE} (cap sync omits this app-core-only module).`,
+      );
+    }
+  }
+
+  if (fs.existsSync(buildGradlePath)) {
+    let build = fs.readFileSync(buildGradlePath, "utf8");
+    if (!build.includes(`project(':${MODULE}')`)) {
+      build = build.replace(
+        /dependencies\s*\{/,
+        `dependencies {\n    implementation project(':${MODULE}')`,
+      );
+      fs.writeFileSync(buildGradlePath, build);
+    }
+  }
+}
+
 function mirrorCapacitorWebPayloadIntoAndroidDir() {
   const syncedAssets = path.join(
     appDir,
@@ -1196,9 +1236,27 @@ function reconcilePluginManifestWithGradle(targetAssets) {
   const stubLlamaCpp =
     process.env.ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB === "1" ||
     process.env.elizaSkipForkLlamaLib === "true";
+  // Third-party Capacitor plugins that `cap sync` includes (they ship an
+  // android/ dir, so they ARE in capacitor.settings.gradle) but whose Kotlin
+  // plugin class never lands in the app dex on AGP 8.x: both rely on AGP's
+  // built-in Kotlin instead of applying `org.jetbrains.kotlin.android`, so the
+  // built-in kotlinc compiles the .kt but does NOT bundle the .class into the
+  // library AAR. PluginManager.loadPluginClasses then throws "Could not find
+  // class …" on the first one and aborts the ENTIRE plugin load, so EVERY
+  // plugin (Browser, Haptics, Keyboard, …) silently fails to register. We can't
+  // edit node_modules durably, and neither is needed for the core Android app —
+  // background work uses WorkManager (ElizaWorkScheduler) and barcode scanning
+  // is a companion-pairing-only feature — so drop them from the manifest. (Our
+  // own native plugins fix this properly by applying the Kotlin plugin in their
+  // android/build.gradle.)
+  const nonBundlingThirdPartyPlugins = new Set([
+    "@capacitor/background-runner",
+    "@capacitor/barcode-scanner",
+  ]);
   const isCompiledAndUsable = (plugin) => {
     if (!compiledProjects.has(gradleProjectFor(plugin?.pkg))) return false;
     if (stubLlamaCpp && plugin?.pkg === "llama-cpp-capacitor") return false;
+    if (nonBundlingThirdPartyPlugins.has(plugin?.pkg)) return false;
     return true;
   };
   const kept = plugins.filter(isCompiledAndUsable);
@@ -6032,6 +6090,7 @@ async function buildAndroid() {
   await buildMobileAgentBundle();
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
+  ensureBunRuntimeRegistered();
   mirrorCapacitorWebPayloadIntoAndroidDir();
 
   patchAndroidGradle();
@@ -6328,6 +6387,7 @@ async function buildAndroidCloud({ debug = false } = {}) {
   await buildWeb(debug ? "android-cloud-debug" : "android-cloud");
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
+  ensureBunRuntimeRegistered();
 
   patchAndroidGradle();
   await generateAndroidBrandAssets();
@@ -6419,6 +6479,7 @@ async function buildAndroidSmsGateway() {
   await buildWeb("android-cloud-debug");
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
+  ensureBunRuntimeRegistered();
 
   patchAndroidGradle();
   await generateAndroidBrandAssets();
@@ -6615,6 +6676,7 @@ async function buildAndroidSystem() {
   await buildMobileAgentBundle();
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
+  ensureBunRuntimeRegistered();
 
   patchAndroidGradle();
   await generateAndroidBrandAssets();

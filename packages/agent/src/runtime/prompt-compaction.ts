@@ -110,6 +110,13 @@ const ISSUE_INTENT_RE =
 // style larping when trade/transfer actions require detailed params.
 const WALLET_INTENT_RE =
   /\b(wallet|onchain|on-chain|transaction|tx\b|transfer|swap|trade|send\b|gas|token|bnb|eth|sol|basechain|erc20|balance)\b|钱包|交易|转账|代币|余额|지갑|거래|전송|잔액|\b(cartera|transacci[oó]n|intercambio|saldo)\b/i;
+// View-navigation intent. Keeps the VIEWS action/view/viewType params at full
+// detail for implicit "see a domain surface" requests ("what's on my calendar",
+// "check my messages", "add a feature to my app") — otherwise compaction strips
+// the very fields the planner must fill to open the right view. Broad by design:
+// a false positive only preserves param detail, it never triggers an action.
+const VIEWS_INTENT_RE =
+  /\b(go to|take me to|switch to|navigate to|pull up|bring up|what'?s on)\b|\b(open|show|see|view|check)\b[\s\S]{0,40}\b(view|views|page|screen|tab|panel|dashboard|inbox|e-?mail|mail|messages?|calendar|schedule|agenda|wallet|balance|portfolio|settings|preferences|focus|health|sleep|goals?|contacts?|notes?|documents?|files?|todos?|automations?|plugins?|companion|feed)\b|\bmy\s+(e-?mail|inbox|messages?|calendar|schedule|agenda|wallet|balance|portfolio|goals?|health|contacts?|todos?|notes?|documents?)\b|\b(add (a |an )?(new )?feature|build (me )?(an? )?app|app builder|coding view)\b/i;
 
 /** Actions that are always included at full detail. */
 export const UNIVERSAL_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
@@ -139,6 +146,7 @@ export const INTENT_ACTION_MAP: Record<string, Set<string>> = {
   emote: new Set(["PLAY_EMOTE"]),
   plugin_ui: new Set(["RUNTIME"]),
   wallet: new Set(),
+  views: new Set(["VIEWS"]),
 };
 
 export function hasIntent(prompt: string, keywords: RegExp): boolean {
@@ -199,6 +207,7 @@ export function detectIntentCategories(prompt: string): string[] {
   if (hasIntent(prompt, EMOTE_INTENT_RE)) categories.push("emote");
   if (hasIntent(prompt, PLUGIN_UI_INTENT_RE)) categories.push("plugin_ui");
   if (hasIntent(prompt, WALLET_INTENT_RE)) categories.push("wallet");
+  if (hasIntent(prompt, VIEWS_INTENT_RE)) categories.push("views");
   return categories;
 }
 

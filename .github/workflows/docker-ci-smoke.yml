@@ -82,7 +82,9 @@ jobs:
       - name: Free disk space for Docker smoke
         run: |
           df -h
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          # github-hosted-only disk cleanup; self-hosted runners (#8501) have no
+          # passwordless sudo and don't need it, so never fail the job on it.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL || true
           docker system prune -af --volumes || true
           df -h
 

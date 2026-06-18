@@ -10,7 +10,6 @@
  *   - `apps/{id}/users` is GET-only (POST must 404)
  *   - the documented org-credit and app-credit checkout bodies are accepted
  */
-import { seedTestUser } from "../src/fixtures/seed";
 import { authedClient } from "../src/helpers/monetization";
 import { expect, test } from "../src/helpers/test-fixtures";
 
@@ -23,16 +22,11 @@ function routeExists(status: number): boolean {
 test.describe("skill ↔ API contract", () => {
   test("every documented management-surface endpoint is reachable as written", async ({
     stack,
+    seededUser,
   }) => {
     const api = stack.urls.api;
-    // Fully-scoped key: some routes (e.g. /api/v1/containers) enforce an
-    // explicit API-key scope (`containers:read`); a `*` key exercises the whole
-    // documented surface the way a properly-scoped owner key would.
-    const owner = await seedTestUser({
-      slug: `skill-${Date.now().toString(36)}`,
-      permissions: ["*"],
-    });
-    const c = authedClient(api, owner.apiKey);
+    // A key is just a key with full access — no per-key scopes to configure.
+    const c = authedClient(api, seededUser.apiKey);
 
     // build-monetized-app: register app
     const created = await c<{ app?: { id?: string }; apiKey?: string }>(

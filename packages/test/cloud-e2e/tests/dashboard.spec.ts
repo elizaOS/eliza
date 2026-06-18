@@ -47,6 +47,18 @@ test.describe("dashboard session", () => {
       expect(result.failed, JSON.stringify(result.errors)).toBe(0);
     };
 
+    // #8493 made the classic dashboard the default surface; the canvas deploy
+    // flow this test exercises now lives behind the UI toggle. Seed the
+    // persisted canvas store so the canvas workspace (and its deploy form)
+    // renders. version:1 matches the store so the classic-default migration
+    // (which only resets defaultUiMode when version < 1) leaves this intact.
+    await authenticatedPage.addInitScript(() => {
+      localStorage.setItem(
+        "eliza-cloud-canvas",
+        JSON.stringify({ state: { defaultUiMode: "canvas" }, version: 1 }),
+      );
+    });
+
     await authenticatedPage.goto(`${stack.urls.frontend}/dashboard/agents`);
     await authenticatedPage
       .getByPlaceholder("e.g. trading-assistant")

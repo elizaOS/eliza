@@ -1066,6 +1066,20 @@ class AospLlamaAdapter implements AospLoader {
    */
   private hasDecoded = false;
 
+  /**
+   * Serializes every decode against the single shared `ctx`. `generate()`
+   * and `embed()` both prefill + sample on the same `llama_context`, and
+   * each yields to bun's event loop between chunks/tokens (`setImmediate`)
+   * so the request listener and watchdog stay responsive. Without a lock,
+   * a second `useModel` call (boot warmup / greeting / autonomy turn vs a
+   * live user turn) interleaves its FFI `llama_decode` calls at those yield
+   * points and clobbers the first call's KV-cache state — the victim then
+   * samples garbage and stops after one token. Routing both methods through
+   * this single-flight chain guarantees only one decode loop touches `ctx`
+   * at a time; concurrent callers queue and run in arrival order.
+   */
+  private decodeChain: Promise<unknown> = Promise.resolve();
+
   constructor(
     ffi: BunFFIModule,
     sym: LlamaSymbols,
@@ -1076,6 +1090,22 @@ class AospLlamaAdapter implements AospLoader {
     this.sym = sym;
     this.shim = shim;
     this.speculativeShim = speculativeShim;
+  }
+
+  /**
+   * Run `task` with exclusive access to the shared `ctx`. Tasks execute in
+   * the order they were enqueued; a task's failure does not poison the
+   * chain for later callers.
+   */
+  private runOnContext<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.decodeChain.then(task, task);
+    // Keep the chain alive regardless of this task's outcome so a rejected
+    // generate doesn't reject every queued follow-up.
+    this.decodeChain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   }
 
   private ensureBackend(): void {
@@ -1388,11 +1418,26 @@ class AospLlamaAdapter implements AospLoader {
     );
   }
 
+  /**
+   * Public load. Runs the entire load (free-old + model-load + ctx-init +
+   * speculative-draft setup) as ONE task on the single-flight `decodeChain`,
+   * so it cannot interleave with a generate()/embed() decode loop and so a
+   * queued decode only ever sees a fully-initialized `ctx` (or a fully-freed
+   * one). `loadModelInner` is the unlocked body; the internal free it issues
+   * goes through the RAW `freeContext()` (not the public, locked `unloadModel`)
+   * to avoid re-entering the chain and self-deadlocking — a queued task cannot
+   * await the chain it is currently the head of.
+   */
   async loadModel(args: AospLlamaLoadOptions): Promise<void> {
+    return this.runOnContext(() => this.loadModelInner(args));
+  }
+
+  private async loadModelInner(args: AospLlamaLoadOptions): Promise<void> {
     this.ensureBackend();
     if (this.loadedPath === args.modelPath && this.ctx !== null) return;
     if (this.ctx !== null || this.model !== null) {
-      await this.unloadModel();
+      // RAW free — already holding the chain via loadModel's runOnContext.
+      this.freeContext();
     }
 
     // GGUF type discovery is self-describing for weight-quantized formats.
@@ -1606,7 +1651,8 @@ class AospLlamaAdapter implements AospLoader {
         kvCacheType,
       });
     } catch (err) {
-      await this.unloadModel();
+      // RAW free — still holding the chain via loadModel's runOnContext.
+      this.freeContext();
       throw err;
     }
     const nBatchEffective = readEnvInt("ELIZA_LLAMA_N_BATCH", 64);
@@ -1627,7 +1673,35 @@ class AospLlamaAdapter implements AospLoader {
     );
   }
 
+  /**
+   * Public unload. Routes the free through the single-flight `decodeChain`
+   * so the native context is never freed while a generate()/embed() decode
+   * loop holds the chain mid-flight (the loop yields to the event loop every
+   * few tokens via setImmediate; an out-of-band free between two yields would
+   * leave the resumed loop calling llama_decode / llama_sampler_sample on a
+   * dangling pointer → SIGSEGV). Out-of-band eviction sites (ASR / cold-TTS /
+   * route activation) call this method, so they queue behind any in-flight
+   * decode instead of racing it.
+   *
+   * `loadModelInner` issues its internal frees through the RAW `freeContext()`
+   * directly because it already holds the chain — re-entering via this locked
+   * method would self-deadlock (a task cannot await the chain it heads).
+   */
   async unloadModel(): Promise<void> {
+    return this.runOnContext(() => {
+      this.freeContext();
+      return Promise.resolve();
+    });
+  }
+
+  /**
+   * Raw context free. Frees the native model/context/draft/speculative
+   * pointers and resets all derived state. Does NOT touch `runOnContext` —
+   * callers are responsible for holding the chain (public `unloadModel`) or
+   * already holding it (`loadModelInner`). Never call this from outside the
+   * chain while a decode could be in flight.
+   */
+  private freeContext(): void {
     if (this.speculativeHandle !== null) {
       this.speculativeShim?.eliza_speculative_free(this.speculativeHandle);
       this.speculativeHandle = null;
@@ -1861,7 +1935,29 @@ class AospLlamaAdapter implements AospLoader {
     return output;
   }
 
-  async generate(args: {
+  generate(args: {
+    prompt: string;
+    stopSequences?: string[];
+    maxTokens?: number;
+    temperature?: number;
+    grammar?: string;
+    onTextChunk?: (chunk: string) => void | Promise<void>;
+    stopOnFirstSentence?: boolean;
+    minFirstSentenceChars?: number;
+    signal?: AbortSignal;
+  }): Promise<string> {
+    // Serialize against the shared ctx — see `decodeChain`. A queued turn
+    // that was cancelled before it reached the head of the queue must abort
+    // immediately rather than wait for the in-flight decode to finish.
+    return this.runOnContext(() => {
+      if (args.signal?.aborted) {
+        throw makeAbortError(args.signal);
+      }
+      return this.generateLocked(args);
+    });
+  }
+
+  private async generateLocked(args: {
     prompt: string;
     stopSequences?: string[];
     maxTokens?: number;
@@ -2432,7 +2528,17 @@ class AospLlamaAdapter implements AospLoader {
    * mobile-first runtime where embeddings are infrequent (memory + RAG
    * indexing) compared to chat turns.
    */
-  async embed(args: { input: string }): Promise<{
+  embed(args: { input: string }): Promise<{
+    embedding: number[];
+    tokens: number;
+  }> {
+    // Serialize against the shared ctx — see `decodeChain`. Embedding
+    // toggles the same context into embeddings mode and decodes on it, so
+    // it must not run concurrently with a chat generate.
+    return this.runOnContext(() => this.embedLocked(args));
+  }
+
+  private async embedLocked(args: { input: string }): Promise<{
     embedding: number[];
     tokens: number;
   }> {

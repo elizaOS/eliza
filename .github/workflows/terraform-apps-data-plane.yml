@@ -209,4 +209,22 @@ jobs:
             done
             echo "::notice::forcing replacement of: ${REPLACE_ARGS[*]}"
           fi
-          terraform apply -auto-approve -input=false "${REPLACE_ARGS[@]}"
+          # Retry only the transient Hetzner primary-IP-pool blip
+          # (422 ip_not_available): server-create auto-assigns a fresh primary
+          # IPv4/IPv6 and the location pool can be momentarily exhausted. apply
+          # is idempotent (already-created resources are in R2 state) and the
+          # terraform-apps-hetzner concurrency group single-flights this run,
+          # so re-running just continues. Any OTHER error fails fast.
+          attempt=1
+          max_attempts=5
+          while true; do
+            out="$(terraform apply -auto-approve -input=false "${REPLACE_ARGS[@]}" 2>&1)" && { echo "$out"; break; }
+            echo "$out"
+            if echo "$out" | grep -q 'ip_not_available' && [ "$attempt" -lt "$max_attempts" ]; then
+              sleep $(( attempt * 30 ))
+              echo "::warning::transient Hetzner ip_not_available; retry $((attempt+1))/$max_attempts"
+              attempt=$((attempt+1))
+              continue
+            fi
+            exit 1
+          done

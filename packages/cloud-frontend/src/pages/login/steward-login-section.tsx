@@ -67,7 +67,7 @@ const PLAYWRIGHT_TEST_AUTH_ENABLED =
   (typeof process !== "undefined" &&
     process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
 
-type AuthStep = "idle" | "loading" | "email-sent" | "success";
+type AuthStep = "idle" | "loading" | "email-sent" | "otp-entry" | "success";
 
 function persistStewardToken(token: string): void {
   writeStoredStewardToken(token);
@@ -222,6 +222,7 @@ export default function StewardLoginSection() {
   const emailInputRef = useRef<HTMLInputElement>(null);
 
   const [email, setEmail] = useState("");
+  const [otpCode, setOtpCode] = useState("");
   const [step, setStep] = useState<AuthStep>("idle");
   const [loading, setLoading] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -433,10 +434,34 @@ export default function StewardLoginSection() {
     navigate(qs ? `${pathname}?${qs}` : pathname, { replace: true });
   }, [pathname, searchParams, navigate, t]);
   async function handleSuccess(token: string, refreshToken?: string | null) {
+    // Write the localStorage token mirror BEFORE navigating. The dashboard's
+    // route guard reads it synchronously; without it the guard sees no auth on
+    // mount, bounces back to /login for a beat, then redirects once the cookie
+    // catches up — the "login page flashes for ~2s after Signed in" bug. The
+    // OAuth/callback paths already persist here; the passkey/email/wallet
+    // paths did not, so do it for all of them.
+    persistStewardToken(token);
     await syncStewardSessionCookie(token, refreshToken);
-    setStep("success");
     toast.success("Signed in!");
     setRedirectTo(resolveLoginReturnTo(searchParams));
+    setStep("success");
+  }
+
+  // Did the user dismiss / time out the WebAuthn picker? In the passkey-LOGIN
+  // path this is NOT a dead-end: it almost always means the user had no
+  // usable passkey on this device (the OS showed only "use another device" /
+  // QR and they bailed). Mirror waifu.fun — fall through to the email-OTP
+  // signup so they can create a fresh passkey here instead of seeing an error.
+  function isUserCancelled(e: unknown): boolean {
+    const msg = getErrorMessage(e, "").toLowerCase();
+    return (
+      msg.includes("cancel") ||
+      msg.includes("notallowed") ||
+      msg.includes("not allowed") ||
+      msg.includes("aborted") ||
+      msg.includes("timed out") ||
+      msg.includes("timeout")
+    );
   }
 
   async function handlePasskey() {
@@ -451,8 +476,58 @@ export default function StewardLoginSection() {
         await auth.signInWithPasskey(email.trim()),
       );
       await handleSuccess(result.token, result.refreshToken);
+    } catch {
+      // ANY "couldn't use a passkey here" outcome — no passkey for this email,
+      // none on this device, or the user cancelled the picker because nothing
+      // was usable — falls through to the OTP signup. The 6-digit code proves
+      // email ownership, then we register a fresh passkey on THIS device.
+      // (This is the fix for: tap Passkey → cancel the OS prompt → used to
+      // dead-end with a WebAuthn error; now it offers the code path, matching
+      // waifu.fun.)
+      await startPasskeySignup();
+    }
+  }
+
+  // First-time passkey signup, step 1: email a 6-digit OTP and switch to the
+  // code-entry step. (Parity with waifu.fun's first-time passkey setup.)
+  async function startPasskeySignup() {
+    setLoading("passkey");
+    setError(null);
+    try {
+      await auth.sendEmailOtp(email.trim());
+      setOtpCode("");
+      setStep("otp-entry");
+      setLoading(null);
     } catch (e: unknown) {
-      setError(getErrorMessage(e, "Passkey failed"));
+      setError(getErrorMessage(e, "Couldn't send your code. Try again."));
+      setLoading(null);
+    }
+  }
+
+  // First-time passkey signup, step 2: verify the OTP → emailGrant → register
+  // a passkey with that grant (no prior session needed).
+  async function handleVerifyOtpAndRegister() {
+    const code = otpCode.trim();
+    if (code.length < 4) {
+      setError("Enter the code from your email");
+      return;
+    }
+    setLoading("passkey");
+    setError(null);
+    try {
+      const { emailGrant } = await auth.verifyEmailOtp(email.trim(), code);
+      const result = requireCompletedAuth(
+        await auth.addPasskey(email.trim(), { emailGrant }),
+      );
+      await handleSuccess(result.token, result.refreshToken);
+    } catch (e: unknown) {
+      if (isUserCancelled(e)) {
+        // They dismissed the OS passkey prompt — stay on the step so they can
+        // retry without re-entering the code.
+        setError("Passkey setup was cancelled. Tap Create passkey to retry.");
+      } else {
+        setError(getErrorMessage(e, "That code didn't work. Try again."));
+      }
       setLoading(null);
     }
   }
@@ -574,6 +649,87 @@ export default function StewardLoginSection() {
     );
   }
 
+  if (step === "otp-entry") {
+    return (
+      <div className="space-y-4 py-4">
+        <div className="space-y-1 text-center">
+          <p className="text-white">
+            {t("cloud.login.otp.title", {
+              defaultValue: "Set up your passkey",
+            })}
+          </p>
+          <p className="text-sm text-white/72">
+            {t("cloud.login.otp.subtitle", {
+              defaultValue: "Enter the 6-digit code we sent to",
+            })}{" "}
+            <strong>{email}</strong>
+          </p>
+        </div>
+
+        {error && (
+          <Alert variant="destructive">
+            <AlertCircle />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <input
+          type="text"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          // biome-ignore lint/a11y/noAutofocus: code-entry step expects focus
+          autoFocus
+          maxLength={8}
+          placeholder="123456"
+          value={otpCode}
+          onChange={(e) =>
+            setOtpCode(e.target.value.replace(/[^0-9]/g, "").slice(0, 8))
+          }
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleVerifyOtpAndRegister();
+          }}
+          disabled={loading !== null}
+          className="w-full border border-white/20 bg-black px-4 py-3 text-center text-lg tracking-[0.5em] text-white placeholder:tracking-normal placeholder:text-white/40 outline-none transition focus:border-white focus:ring-2 focus:ring-[#FF5800]/40 disabled:opacity-50"
+        />
+
+        <button
+          type="button"
+          onClick={handleVerifyOtpAndRegister}
+          disabled={loading !== null || otpCode.trim().length < 4}
+          className="flex w-full items-center justify-center gap-2 bg-[#FF5800] px-4 py-3 font-semibold text-white transition-colors hover:bg-[#e54f00] disabled:opacity-50"
+        >
+          {loading === "passkey" ? <Spinner /> : <PasskeyIcon />}{" "}
+          {t("cloud.login.otp.createPasskey", {
+            defaultValue: "Create passkey",
+          })}
+        </button>
+
+        <div className="flex items-center justify-between text-sm">
+          <button
+            type="button"
+            className="text-white/68 transition-colors hover:text-white"
+            onClick={() => {
+              setStep("idle");
+              setOtpCode("");
+              setError(null);
+              setLoading(null);
+            }}
+          >
+            ← {t("cloud.login.back", { defaultValue: "Back" })}
+          </button>
+          <button
+            type="button"
+            className="text-white/68 transition-colors hover:text-white disabled:opacity-50"
+            disabled={loading !== null}
+            onClick={startPasskeySignup}
+          >
+            {t("cloud.login.otp.resend", { defaultValue: "Resend code" })}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!providersLoaded) {
     return (
       <div
@@ -648,10 +804,9 @@ export default function StewardLoginSection() {
         )}
       </div>
 
-      <p className="text-center text-xs leading-5 text-white/62">
+      <p className="text-center text-xs text-white/55">
         {t("cloud.login.signupHint", {
-          defaultValue:
-            "New here? Enter your email and choose Magic Link to create your account. Passkey works after you add one.",
+          defaultValue: "New here? Passkey sets up your account in seconds.",
         })}
       </p>
 

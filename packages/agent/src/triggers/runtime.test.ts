@@ -21,10 +21,8 @@ import {
   TRIGGER_TASK_NAME,
   TRIGGER_TASK_TAGS,
 } from "./runtime.ts";
-import {
-  buildTriggerConfig,
-  type NormalizedTriggerDraft,
-} from "./scheduling.ts";
+import { buildTriggerConfig } from "./scheduling.ts";
+import type { NormalizedTriggerDraft } from "./types.ts";
 
 const AGENT_ID = stringToUuid("trigger-runtime-test-agent");
 

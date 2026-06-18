@@ -12,7 +12,6 @@ const baseKeys: ApiKeyDisplay[] = [
     status: "active",
     lastUsedAt: "2026-06-04T10:24:00Z",
     createdAt: "2026-01-12T09:00:00Z",
-    permissions: ["read:agents", "write:agents", "read:billing"],
     usageCount: 184230,
     rateLimit: 1200,
     expiresAt: null,
@@ -25,7 +24,6 @@ const baseKeys: ApiKeyDisplay[] = [
     status: "inactive",
     lastUsedAt: "2026-05-20T18:10:00Z",
     createdAt: "2026-02-02T12:30:00Z",
-    permissions: ["read:agents", "write:agents"],
     usageCount: 9821,
     rateLimit: 600,
     expiresAt: "2026-09-01T00:00:00Z",
@@ -38,7 +36,6 @@ const baseKeys: ApiKeyDisplay[] = [
     status: "expired",
     lastUsedAt: "2025-11-04T07:48:00Z",
     createdAt: "2024-10-20T09:00:00Z",
-    permissions: [],
     usageCount: 412005,
     rateLimit: 300,
     expiresAt: "2026-04-01T00:00:00Z",
@@ -82,15 +79,14 @@ export const ExpiredOnly: Story = {
   },
 };
 
-export const NoPermissions: Story = {
+export const NoUsageKey: Story = {
   args: {
     keys: [
       {
         ...baseKeys[0],
-        id: "key-empty-perms",
+        id: "key-no-usage",
         name: "Sandbox key",
-        description: "Newly provisioned key with no permissions yet.",
-        permissions: [],
+        description: "Newly provisioned key, not used yet.",
         usageCount: 0,
         lastUsedAt: null,
       },

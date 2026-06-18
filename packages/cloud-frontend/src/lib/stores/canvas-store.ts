@@ -534,7 +534,16 @@ export const useCanvasStore = create<CanvasState>()(
         const snapshot = snapshots.find((s) => s.id === id);
         if (!snapshot) return;
 
-        const migratedViews = snapshot.views.map((v: any) => ({
+        const migratedViews = (
+          snapshot.views as Array<
+            WorkspaceView &
+              Partial<{
+                type: string;
+                spec: UiSpec | null;
+                genuiSpec: ElizaGenUiSpec | null;
+              }>
+          >
+        ).map((v) => ({
           id: v.id,
           name: v.name,
           nodes:

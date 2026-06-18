@@ -117,7 +117,11 @@ jobs:
       - name: Install bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          # Match the repo-wide pin (packageManager: bun@1.4.0-canary.1). `latest`
+          # (stable) cannot parse the canary-written lockfile (`lockfileVersion: 2`)
+          # and aborts install with "Unknown lockfile version". canary is exercised
+          # on Windows by windows-dev-smoke, so it is known-good here.
+          bun-version: canary
 
       - name: Configure Windows Defender exclusions
         shell: pwsh

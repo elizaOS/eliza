@@ -70,9 +70,16 @@ function runtimeUrlFrom(...vals) {
     const o = rec(v);
     if (!o) continue;
     const url = str(
-      o.bridgeUrl, o.bridge_url, o.webUiUrl, o.web_ui_url,
-      o.runtimeUrl, o.runtime_url, o.containerUrl, o.container_url,
-      o.apiBase, o.api_base,
+      o.bridgeUrl,
+      o.bridge_url,
+      o.webUiUrl,
+      o.web_ui_url,
+      o.runtimeUrl,
+      o.runtime_url,
+      o.containerUrl,
+      o.container_url,
+      o.apiBase,
+      o.api_base,
     );
     if (url) return url.replace(/\/+$/, "");
   }
@@ -80,8 +87,11 @@ function runtimeUrlFrom(...vals) {
 }
 
 function normStatus(v) {
-  const s = String(v ?? "").trim().toLowerCase();
-  if (["complete", "completed", "success", "succeeded"].includes(s)) return "completed";
+  const s = String(v ?? "")
+    .trim()
+    .toLowerCase();
+  if (["complete", "completed", "success", "succeeded"].includes(s))
+    return "completed";
   if (["fail", "failed", "error"].includes(s)) return "failed";
   return s || "unknown";
 }
@@ -99,10 +109,15 @@ async function cloud(path, init = {}) {
   });
   const text = await res.text();
   const body = tryJson(text) ?? text;
-  const ok = (res.status >= 200 && res.status < 300) || rec(body)?.success === true;
+  const ok =
+    (res.status >= 200 && res.status < 300) || rec(body)?.success === true;
   if (!ok) {
-    const detail = str(rec(body)?.error, rec(body)?.message, rec(body)?.reason) ?? text.slice(0, 300);
-    const err = new Error(`Cloud request failed (${res.status}) ${url}: ${detail}`);
+    const detail =
+      str(rec(body)?.error, rec(body)?.message, rec(body)?.reason) ??
+      text.slice(0, 300);
+    const err = new Error(
+      `Cloud request failed (${res.status}) ${url}: ${detail}`,
+    );
     err.status = res.status;
     err.body = body;
     throw err;
@@ -112,7 +127,9 @@ async function cloud(path, init = {}) {
 
 async function resolveAgent() {
   if (agentIdArg?.trim()) {
-    const res = await cloud(`/api/v1/eliza/agents/${encodeURIComponent(agentIdArg.trim())}`);
+    const res = await cloud(
+      `/api/v1/eliza/agents/${encodeURIComponent(agentIdArg.trim())}`,
+    );
     const d = data(res.body);
     if (!d) throw new Error(`Cloud agent not found: ${agentIdArg}`);
     return { ...d, id: str(d.id, d.agentId) ?? agentIdArg.trim() };
@@ -160,7 +177,9 @@ async function waitForRuntimeUrl(agentId, p) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (p.jobId) {
-      const job = data((await cloud(`/api/v1/jobs/${encodeURIComponent(p.jobId)}`)).body);
+      const job = data(
+        (await cloud(`/api/v1/jobs/${encodeURIComponent(p.jobId)}`)).body,
+      );
       const url = runtimeUrlFrom(rec(job?.result), job);
       if (url) return url;
       if (normStatus(str(job?.status, job?.state, job?.phase)) === "failed") {
@@ -169,12 +188,16 @@ async function waitForRuntimeUrl(agentId, p) {
         );
       }
     }
-    const agent = await cloud(`/api/v1/eliza/agents/${encodeURIComponent(agentId)}`).catch(() => null);
+    const agent = await cloud(
+      `/api/v1/eliza/agents/${encodeURIComponent(agentId)}`,
+    ).catch(() => null);
     const url = runtimeUrlFrom(data(agent?.body));
     if (url) return url;
     await delay(pollMs);
   }
-  throw new Error(`Timed out after ${timeoutMs}ms waiting for Cloud runtime URL.`);
+  throw new Error(
+    `Timed out after ${timeoutMs}ms waiting for Cloud runtime URL.`,
+  );
 }
 
 async function probe(runtimeUrl) {
@@ -190,13 +213,21 @@ async function probe(runtimeUrl) {
         },
       });
       const text = await res.text();
-      if (res.ok) return { ok: true, url, status: res.status, body: tryJson(text) ?? text.slice(0, 300) };
+      if (res.ok)
+        return {
+          ok: true,
+          url,
+          status: res.status,
+          body: tryJson(text) ?? text.slice(0, 300),
+        };
       failures.push({ url, status: res.status, body: text.slice(0, 300) });
     } catch (error) {
       failures.push({ url, error: String(error) });
     }
   }
-  throw new Error(`Provisioned runtime did not answer: ${JSON.stringify(failures)}`);
+  throw new Error(
+    `Provisioned runtime did not answer: ${JSON.stringify(failures)}`,
+  );
 }
 
 async function main() {
@@ -208,8 +239,18 @@ async function main() {
   const runtimeUrl = await waitForRuntimeUrl(agentId, p);
   log(`runtime URL: ${runtimeUrl}`);
   const probeResult = await probe(runtimeUrl);
-  const report = { ok: true, agentId, runtimeUrl, provision: p, probe: probeResult };
-  if (reportPath) fs.writeFileSync(reportPath, `${redact(JSON.stringify(report, null, 2))}\n`);
+  const report = {
+    ok: true,
+    agentId,
+    runtimeUrl,
+    provision: p,
+    probe: probeResult,
+  };
+  if (reportPath)
+    fs.writeFileSync(
+      reportPath,
+      `${redact(JSON.stringify(report, null, 2))}\n`,
+    );
   if (has("--print-runtime-url")) console.log(`RUNTIME_URL=${runtimeUrl}`);
   log("CLOUD PROVISIONING OK ✅");
   console.log(redact(JSON.stringify(report, null, 2)));

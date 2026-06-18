@@ -21,7 +21,7 @@ vi.mock("@elizaos/ui", () => ({
     children,
     ...props
   }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-    React.createElement("button", props, children),
+    React.createElement("button", { type: "button", ...props }, children),
   PagePanel: {
     Notice: ({ children }: { children: React.ReactNode }) =>
       React.createElement("div", {}, children),
@@ -44,9 +44,12 @@ const sampleStatus = {
   tradingVenues: ["hyperliquid", "polymarket"],
 };
 
+// Canonical WalletAddresses contract shape: evmAddress / solanaAddress
+// (packages/contracts/src/wallet.ts), NOT {evm, solana}. Feeding the real
+// shape proves the TUI reads .evmAddress/.solanaAddress.
 const sampleAddresses = {
-  evm: "0x1234567890abcdef",
-  solana: "So11111111111111111111111111111111111111112",
+  evmAddress: "0x1234567890abcdef",
+  solanaAddress: "So11111111111111111111111111111111111111112",
 };
 
 const sampleBalances = {
@@ -107,6 +110,12 @@ describe("VincentTuiView", () => {
     const { container } = render(React.createElement(VincentTuiView));
 
     await screen.findByText(/0x1234567890abcdef/);
+    // Wallet rows render the real contract-shaped addresses (.evmAddress /
+    // .solanaAddress), not "n/a". Regression guard for the {evm,solana} bug.
+    expect(screen.getByText("evm 0x1234567890abcdef")).toBeTruthy();
+    expect(
+      screen.getByText("solana So11111111111111111111111111111111111111112"),
+    ).toBeTruthy();
     expect(screen.getByText("BTC pnl 10.00 swaps 2")).toBeTruthy();
     expect(vincentClientMock.vincentStatus).toHaveBeenCalled();
     expect(vincentClientMock.vincentStrategy).toHaveBeenCalled();

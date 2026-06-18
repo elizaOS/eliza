@@ -124,16 +124,20 @@ describe("preSeedAndroidLocalRuntimeIfFresh", () => {
     });
   });
 
-  it("seeds the local agent on a sideloaded local (non-cloud) Android build", () => {
+  it("does NOT auto-seed a stock-phone sideload — the first-run chooser offers local instead", () => {
+    // A stock sideload used to auto-seed local, which skipped the 3-way
+    // chooser, auto-started the slow on-device agent (POST_NOTIFICATIONS
+    // prompt + "connecting to backend" hang). The chooser now offers a
+    // "Local models" card, so the fresh install should render the chooser.
     mocks.capacitorPlatform = "android";
     mocks.isAndroidCloudBuild.mockReturnValue(false);
     setUserAgent(STOCK_WEBVIEW_UA);
 
-    expect(preSeedAndroidLocalRuntimeIfFresh()).toBe(true);
-    expect(mocks.persistMobileRuntimeModeForServerTarget).toHaveBeenCalledWith(
-      "local",
-    );
-    expect(readSeededActiveServer()).not.toBeNull();
+    expect(preSeedAndroidLocalRuntimeIfFresh()).toBe(false);
+    expect(
+      mocks.persistMobileRuntimeModeForServerTarget,
+    ).not.toHaveBeenCalled();
+    expect(readSeededActiveServer()).toBeNull();
   });
 
   it("does not seed the cloud-locked Android build", () => {

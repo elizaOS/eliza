@@ -348,7 +348,8 @@ agentDescribe("ElizaCloudClient real API e2e: Eliza agent lifecycle", () => {
       agentConfig: {},
     });
     expect(created.data).toBeDefined();
-    const agent = created.data!;
+    const agent = created.data;
+    if (!agent) throw new Error("createAgent returned no agent data");
     const agentId = agent.id;
     expect(agentId).toBeTruthy();
 

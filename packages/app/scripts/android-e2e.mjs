@@ -134,7 +134,9 @@ async function main() {
   }
 
   if (has("--cloud")) {
-    log("cloud route: real Hetzner provisioning probe (loud-fails if it can't)…");
+    log(
+      "cloud route: real Hetzner provisioning probe (loud-fails if it can't)…",
+    );
     run("node", ["scripts/cloud-provisioning-e2e.mjs"]);
   }
 

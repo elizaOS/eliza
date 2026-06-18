@@ -7,7 +7,6 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireApiKeyPermission } from "@/api-app/middleware/auth";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -24,8 +23,6 @@ import { createApiKeySchema } from "./schemas";
 const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
-// Create/list both require keys:write — managing keys is a privileged op.
-app.use("*", requireApiKeyPermission("keys:write"));
 
 function isAgentSandboxKeyName(name: string): boolean {
   return name.startsWith("agent-sandbox:");
@@ -39,7 +36,6 @@ function toClientApiKey(
     name: apiKey.name,
     description: apiKey.description,
     key_prefix: apiKey.key_prefix,
-    permissions: apiKey.permissions,
     rate_limit: apiKey.rate_limit,
     is_active: apiKey.is_active,
     usage_count: apiKey.usage_count,
@@ -64,7 +60,7 @@ app.post("/", async (c) => {
   try {
     const user = await requireUserWithOrg(c);
     const body = await c.req.json();
-    const { name, description, permissions, rate_limit, expires_at } =
+    const { name, description, rate_limit, expires_at } =
       createApiKeySchema.parse(body);
 
     if (isAgentSandboxKeyName(name)) {
@@ -82,7 +78,6 @@ app.post("/", async (c) => {
       description,
       organization_id: user.organization_id,
       user_id: user.id,
-      permissions,
       rate_limit,
       expires_at: expires_at ?? null,
       is_active: true,
@@ -99,7 +94,6 @@ app.post("/", async (c) => {
         metadata: {
           key_id: apiKey.id,
           name: apiKey.name,
-          scopes: apiKey.permissions ?? [],
         },
       })
       .catch((err: unknown) => {
@@ -116,7 +110,6 @@ app.post("/", async (c) => {
           description: apiKey.description,
           key_prefix: apiKey.key_prefix,
           created_at: apiKey.created_at,
-          permissions: apiKey.permissions,
           rate_limit: apiKey.rate_limit,
           expires_at: apiKey.expires_at,
         },

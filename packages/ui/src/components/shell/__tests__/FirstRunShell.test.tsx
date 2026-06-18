@@ -98,7 +98,7 @@ describe("FirstRunShell", () => {
     const remote = screen.getByTestId("first-run-runtime-remote");
 
     expect(cloud.textContent).toContain("Recommended");
-    expect(cloud.textContent).toContain("never sleep");
+    expect(cloud.textContent).toContain("runs 24/7");
     expect(local.textContent).toContain("Advanced");
     expect(remote.textContent).toContain("Use as remote");
 

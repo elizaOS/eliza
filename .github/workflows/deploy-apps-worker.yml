@@ -1,0 +1,277 @@
+name: Deploy Apps Worker (Product 2)
+
+# SSHes to the apps-control host, fetches the target branch, installs the
+# systemd unit shipped at packages/scripts/cloud/admin/eliza-apps-worker.service,
+# and restarts the eliza-apps-worker daemon (the Product-2 deploy daemon).
+#
+# This is the slim sibling of deploy-eliza-provisioning-worker.yml: it deploys
+# ONLY the apps-worker — NO agent-router, and NO headscale wiring (the apps
+# worker reaches the per-tenant Postgres over the apps PRIVATE network, never the
+# agent mesh). The apps env (APPS_DEPLOY_ENABLED, APPS_TENANT_ADMIN_DSN,
+# CONTAINERS_DOCKER_NODES, …) is written separately by arm-apps-daemon.yml — this
+# workflow only ships code + the unit, keeping the two concerns split.
+#
+# First-time setup: bootstrap an apps-control VM on the apps PRIVATE network (so
+# it can reach the tenant DB at 10.30.1.10) that runs NO untrusted containers,
+# then set the env's ELIZA_APPS_WORKER_HOST + ELIZA_APPS_WORKER_SSH_KEY secrets.
+
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - '.github/workflows/deploy-apps-worker.yml'
+      - 'packages/scripts/cloud/admin/daemons/apps-provisioning-worker.ts'
+      - 'packages/scripts/cloud/admin/daemons/provisioning-worker.ts'
+      - 'packages/scripts/cloud/admin/eliza-apps-worker.service'
+      - 'packages/cloud-shared/src/lib/services/provisioning-jobs.ts'
+      - 'packages/cloud-shared/src/lib/services/provisioning-job-types.ts'
+      - 'packages/cloud-shared/src/lib/services/apps-deploy-backend.ts'
+      - 'packages/cloud-shared/src/lib/services/tenant-db/**'
+      - 'packages/cloud-shared/src/lib/services/app-deploy-runner.ts'
+      - 'packages/cloud-sdk/**'
+      - 'packages/core/**'
+      - 'plugins/plugin-sql/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment (host + secrets resolved from this)'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+concurrency:
+  group: deploy-apps-worker-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  determine-env:
+    name: Determine environment
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+      branch: ${{ steps.env.outputs.branch }}
+    steps:
+      - id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            env="${{ github.event.inputs.environment }}"
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            env="production"
+          else
+            env="staging"
+          fi
+          branch=$([ "$env" = "production" ] && echo "main" || echo "develop")
+          echo "environment=$env" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch"   >> "$GITHUB_OUTPUT"
+          echo "Resolved: environment=$env branch=$branch"
+
+  deploy:
+    name: Deploy apps worker to apps-control host (${{ needs.determine-env.outputs.environment }})
+    runs-on: ubuntu-latest
+    needs: determine-env
+    environment: ${{ needs.determine-env.outputs.environment }}
+    timeout-minutes: 15
+    env:
+      SYSTEMD_UNIT: eliza-apps-worker.service
+      DEPLOY_HOST: ${{ secrets.ELIZA_APPS_WORKER_HOST }}
+      DEPLOY_SSH_KEY: ${{ secrets.ELIZA_APPS_WORKER_SSH_KEY }}
+      DEPLOY_BRANCH: ${{ needs.determine-env.outputs.branch }}
+    steps:
+      - name: Check deploy configuration
+        id: deploy_config
+        run: |
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Missing ELIZA_APPS_WORKER_HOST or ELIZA_APPS_WORKER_SSH_KEY; skipping apps-worker deploy."
+            {
+              echo "### Apps worker deploy skipped"
+              echo ""
+              echo "Missing \`ELIZA_APPS_WORKER_HOST\` or \`ELIZA_APPS_WORKER_SSH_KEY\` for this environment."
+              echo "Bootstrap an apps-control VM on the apps private network and set those secrets first."
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "::error::Manual deployment requires ELIZA_APPS_WORKER_HOST and ELIZA_APPS_WORKER_SSH_KEY."
+              exit 1
+            fi
+            exit 0
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure host prereqs (Node 24, swap, bunx symlink)
+        if: steps.deploy_config.outputs.configured == 'true'
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            if ! command -v node >/dev/null 2>&1; then
+              echo "[host-prereqs] installing Node 24"
+              curl -fsSL https://deb.nodesource.com/setup_24.x | sudo bash -
+              sudo apt-get install -y nodejs
+            fi
+            if [ ! -f /swapfile ]; then
+              echo "[host-prereqs] adding 8GB swap"
+              sudo fallocate -l 8G /swapfile
+              sudo chmod 600 /swapfile
+              sudo mkswap /swapfile
+              sudo swapon /swapfile
+              grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
+            fi
+            if [ ! -e /home/deploy/.bun/bin/bunx ] && [ -e /home/deploy/.bun/bin/bun ]; then
+              echo "[host-prereqs] creating bunx symlink"
+              ln -sf bun /home/deploy/.bun/bin/bunx
+            fi
+
+      - name: Deploy and restart apps worker
+        if: steps.deploy_config.outputs.configured == 'true'
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          command_timeout: 10m
+          envs: DEPLOY_BRANCH,SYSTEMD_UNIT
+          script: |
+            set -euo pipefail
+            echo "=== Deploying eliza-apps-worker (branch: $DEPLOY_BRANCH) ==="
+
+            cd /opt/eliza
+            export GIT_CONFIG_COUNT=1
+            export GIT_CONFIG_KEY_0=safe.directory
+            export GIT_CONFIG_VALUE_0=/opt/eliza
+
+            rm -f .git/index.lock
+            sudo chown -R deploy:deploy .git
+
+            git reset --hard HEAD 2>/dev/null || true
+            git clean -fdx \
+              -e .env \
+              -e .env.local \
+              -e '.env.*' \
+              -e cloud/.env.local \
+              -e 'cloud/.env.*' \
+              -e node_modules
+
+            find packages -type f \( -name '*.d.ts' -o -name '*.d.ts.map' \) \
+              ! -path '*/node_modules/*' -delete 2>/dev/null || true
+            rm -f bun.lock
+
+            git -c fetch.recurseSubmodules=no fetch --no-recurse-submodules \
+              origin "+$DEPLOY_BRANCH:refs/remotes/origin/$DEPLOY_BRANCH"
+            git -c submodule.recurse=false checkout --no-recurse-submodules \
+              -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
+
+            if ! command -v bun >/dev/null 2>&1; then
+              curl -fsSL https://bun.sh/install | bash -s "canary"
+              export BUN_INSTALL="$HOME/.bun"
+              export PATH="$BUN_INSTALL/bin:$PATH"
+            fi
+
+            cd /opt/eliza
+            for attempt in 1 2 3; do
+              if bun install --no-save --ignore-scripts; then
+                break
+              fi
+              if [ "$attempt" -eq 3 ]; then exit 1; fi
+              echo "bun install attempt $attempt failed; retrying in 10s..."
+              sleep 10
+            done
+
+            # The daemon runs under Node/tsx, which resolves linked workspace
+            # packages through their built `node` exports — refresh dist files.
+            bun run build:core
+            mkdir -p plugins/plugin-sql/node_modules/@elizaos
+            rm -rf plugins/plugin-sql/node_modules/@elizaos/core
+            ln -s ../../../../packages/core plugins/plugin-sql/node_modules/@elizaos/core
+            bun run --cwd plugins/plugin-sql build
+
+            # packages/scripts has no package.json, so bun's workspace graph
+            # doesn't link @elizaos/cloud-shared for the daemon — create it.
+            mkdir -p node_modules/@elizaos
+            ln -sfn ../../packages/cloud-shared node_modules/@elizaos/cloud-shared
+
+            sudo install -m 0644 \
+              packages/scripts/cloud/admin/eliza-apps-worker.service \
+              "/etc/systemd/system/$SYSTEMD_UNIT"
+            sudo systemctl daemon-reload
+            sudo systemctl enable "$SYSTEMD_UNIT"
+            sudo systemctl restart "$SYSTEMD_UNIT"
+            echo "=== Restart issued for apps worker ==="
+
+      - name: Health check
+        if: steps.deploy_config.outputs.configured == 'true'
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          command_timeout: 5m
+          envs: SYSTEMD_UNIT
+          script: |
+            set -euo pipefail
+            # The apps worker has no HTTP endpoint; health = active + stable +
+            # no fatal/restart-loop in the journal since deploy.
+            HEALTH_SINCE_TS="$(date -u '+%Y-%m-%d %H:%M:%S')"
+            STABLE_THRESHOLD_SEC=20
+            FATAL_LOG_PATTERN="\[apps-worker\] (fatal|unhandled rejection)|node:internal/.*Error:|Error \[ERR_|^[A-Za-z]+Error:"
+            for attempt in $(seq 1 18); do
+              if sudo systemctl is-active --quiet "$SYSTEMD_UNIT"; then
+                JOURNAL=$(sudo journalctl -u "$SYSTEMD_UNIT" --since "$HEALTH_SINCE_TS" --no-pager 2>/dev/null || true)
+                if echo "$JOURNAL" | grep -qE "$FATAL_LOG_PATTERN"; then
+                  echo "::error::Apps worker logged a fatal error since deploy."
+                  echo "$JOURNAL" | tail -n 50
+                  exit 1
+                fi
+                UPTIME_SEC=$(systemctl show "$SYSTEMD_UNIT" --property=ActiveEnterTimestampMonotonic --value | awk '{ print int($1 / 1e6) }')
+                NOW_SEC=$(awk '{print int($1)}' /proc/uptime)
+                AGE=$(( NOW_SEC - UPTIME_SEC ))
+                if [ "$AGE" -ge "$STABLE_THRESHOLD_SEC" ]; then
+                  echo "Apps worker active and stable (${AGE}s) on attempt $attempt."
+                  exit 0
+                fi
+                echo "Health check attempt $attempt/18: active but only ${AGE}s old, waiting for stability..."
+              else
+                echo "Health check attempt $attempt/18: not active yet."
+              fi
+              sleep 5
+            done
+
+            echo "::error::$SYSTEMD_UNIT failed to become healthy within 90s."
+            sudo systemctl status "$SYSTEMD_UNIT" --no-pager || true
+            sudo journalctl -u "$SYSTEMD_UNIT" -n 200 --no-pager || true
+            exit 1
+
+      - name: Notify Discord (Success)
+        if: success() && steps.deploy_config.outputs.configured == 'true'
+        uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          ack_no_webhook: true
+          title: "🚀 Eliza Apps Worker Deployed (Product 2)"
+          nodetail: true
+          description: |
+            Branch: ${{ needs.determine-env.outputs.branch }}
+            Commit: ${{ github.sha }}
+          color: 0x00ff00
+
+      - name: Notify Discord (Failure)
+        if: failure() && steps.deploy_config.outputs.configured == 'true'
+        uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          ack_no_webhook: true
+          title: "❌ Eliza Apps Worker Deploy Failed"
+          nodetail: true
+          description: |
+            Branch: ${{ needs.determine-env.outputs.branch }}
+            Commit: ${{ github.sha }}
+          color: 0xff0000

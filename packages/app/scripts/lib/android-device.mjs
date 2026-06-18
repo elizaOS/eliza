@@ -34,7 +34,8 @@ function readAppConfigValue(key, fallback) {
 }
 
 export const APP_ID =
-  process.env.ELIZA_APP_ID?.trim() || readAppConfigValue("appId", "ai.elizaos.app");
+  process.env.ELIZA_APP_ID?.trim() ||
+  readAppConfigValue("appId", "ai.elizaos.app");
 export const MAIN_ACTIVITY = `${APP_ID}/.MainActivity`;
 /** Port the on-device agent serves its Hono API on (loopback). */
 export const AGENT_API_PORT = 31337;
@@ -274,14 +275,20 @@ export async function ensureEmulatorBooted({
   const memoryMb = process.env.ELIZA_EMULATOR_MEMORY_MB ?? "6144";
   const cores = process.env.ELIZA_EMULATOR_CORES ?? "4";
   // The on-device agent's bun + llama-cpp are compiled with -mavx2 -mfma -mf16c,
-  // but the emulator's default CPU model hides those → SIGILL/segfault on model
-  // load. We expose exactly that feature set on the qemu64 base. NOT `-cpu host`:
-  // full passthrough additionally exposes AVX-512/exotic features that make bun
-  // crash on early init under KVM. Must come last — everything after `-qemu`
-  // is forwarded to qemu. Override the whole flag with ELIZA_EMULATOR_QEMU_CPU.
-  const qemuCpu =
-    process.env.ELIZA_EMULATOR_QEMU_CPU ??
-    "qemu64,+avx,+avx2,+f16c,+fma,+bmi1,+bmi2,+sse4.1,+sse4.2,+popcnt,+aes,+xsave,+xsaveopt";
+  // but the emulator's default CPU model hides those → SIGILL in llama on model
+  // load. A hand-rolled `qemu64,+avx2,...` model satisfies llama but gives BUN an
+  // inconsistent CPUID (minimal base + bolted-on leaves): bun's runtime init reads
+  // CPUID and emits an instruction the synthetic model doesn't back, so bun dies
+  // with an "invalid opcode" SIGILL ~1s in — BEFORE model load, 0-byte agent.log,
+  // no tombstone (looks like an OOM but isn't). `-cpu host` (full KVM passthrough)
+  // fixes both: the guest gets the REAL, self-consistent host CPUID and every
+  // instruction executes natively on the host core, so bun boots ("WELCOME TO
+  // ELIZA", plugin-sql + plugin-local-inference load) AND llama still sees AVX2.
+  // Verified on a KVM host: `-cpu host` boots the agent; `qemu64,+avx2` SIGILLs.
+  // Requires KVM (`-accel on` below); a TCG-only host must override this with a
+  // synthetic model via ELIZA_EMULATOR_QEMU_CPU (and accept the bun fragility).
+  // Must come last — everything after `-qemu` is forwarded to qemu.
+  const qemuCpu = process.env.ELIZA_EMULATOR_QEMU_CPU ?? "host";
   const child = spawn(
     emulator,
     [
@@ -366,9 +373,14 @@ export function clearAppData(adbBin, serial) {
 
 export function launchApp(adbBin, serial) {
   adbDevice(adbBin, serial, ["shell", "am", "force-stop", APP_ID]);
-  adbDevice(adbBin, serial, ["shell", "am", "start", "-W", "-n", MAIN_ACTIVITY], {
-    stdio: "inherit",
-  });
+  adbDevice(
+    adbBin,
+    serial,
+    ["shell", "am", "start", "-W", "-n", MAIN_ACTIVITY],
+    {
+      stdio: "inherit",
+    },
+  );
 }
 
 /**
@@ -394,7 +406,11 @@ export function appPid(adbBin, serial) {
  * for a test emulator we `adb root` + `setenforce 0`. No-op (best-effort) on
  * physical devices, which must already be branded/privileged.
  */
-export async function ensureEmulatorPermissive(adbBin, serial, { log = () => {} } = {}) {
+export async function ensureEmulatorPermissive(
+  adbBin,
+  serial,
+  { log = () => {} } = {},
+) {
   if (!serial.startsWith("emulator-")) {
     log(`skipping setenforce on non-emulator device ${serial}`);
     return false;
@@ -435,7 +451,13 @@ export function adbReverse(adbBin, serial, devicePort, hostPort = devicePort) {
   adbTry(adbBin, ["-s", serial, "reverse", "--remove", `tcp:${devicePort}`], {
     stdio: "ignore",
   });
-  adb(adbBin, ["-s", serial, "reverse", `tcp:${devicePort}`, `tcp:${hostPort}`]);
+  adb(adbBin, [
+    "-s",
+    serial,
+    "reverse",
+    `tcp:${devicePort}`,
+    `tcp:${hostPort}`,
+  ]);
 }
 
 export function forwardWebViewCdp(adbBin, serial, localPort, pid) {
@@ -458,7 +480,10 @@ export function forwardWebViewCdp(adbBin, serial, localPort, pid) {
  * message if no target appears (the usual cause is an APK built without
  * ELIZA_WEBVIEW_DEBUG=1).
  */
-export async function discoverWebViewTarget(localPort, { timeoutMs = 30_000 } = {}) {
+export async function discoverWebViewTarget(
+  localPort,
+  { timeoutMs = 30_000 } = {},
+) {
   const deadline = Date.now() + timeoutMs;
   let lastError = null;
   while (Date.now() < deadline) {

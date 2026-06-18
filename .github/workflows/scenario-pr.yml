@@ -128,7 +128,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 55
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -163,6 +163,56 @@ jobs:
       - name: Actual app TTS and STT browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/tts-stt-e2e.spec.ts --project=chromium
 
+      - name: Actual app voice self-test browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/voice-selftest-e2e.spec.ts test/ui-smoke/voice-desktop-selftest.spec.ts --project=chromium
+
+      - name: Actual app real-audio voice button browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/voice-realaudio.spec.ts --project=chromium-voice-mic
+
+      - name: Upload app browser core artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: scenario-pr-app-browser-core
+          path: |
+            packages/app/playwright-report/
+            packages/app/test-results/
+          if-no-files-found: ignore
+          retention-days: 3
+
+  # Keep the full browser quality gate, but split app slices into their own jobs
+  # so developers get useful PR feedback without waiting on one serial browser queue.
+  app-browser-view-lifecycle:
+    name: Zero-Key app browser view lifecycle
+    needs: changes
+    if: needs.changes.outputs.run_scenario_pr == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Ensure generated shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+
       - name: Actual app view manager browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/view-manager-actual-flow.spec.ts --project=chromium
 
@@ -172,20 +222,149 @@ jobs:
       - name: Actual app plugin view lifecycle browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/plugin-views-lifecycle.spec.ts --project=chromium
 
+      - name: Actual app agent-driven view switching browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/view-switching-chat-e2e.spec.ts --project=chromium
+
+      - name: Upload app browser view lifecycle artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: scenario-pr-app-browser-view-lifecycle
+          path: |
+            packages/app/playwright-report/
+            packages/app/test-results/
+          if-no-files-found: ignore
+          retention-days: 3
+
+  app-browser-all-pages:
+    name: Zero-Key app browser all-pages
+    needs: changes
+    if: needs.changes.outputs.run_scenario_pr == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Ensure generated shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+
       - name: Actual app all-pages render + click-safety browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/all-pages-clicksafe.spec.ts --project=chromium
+
+      - name: Upload app browser all-pages artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: scenario-pr-app-browser-all-pages
+          path: |
+            packages/app/playwright-report/
+            packages/app/test-results/
+          if-no-files-found: ignore
+          retention-days: 3
+
+  app-browser-feature-interactions:
+    name: Zero-Key app browser feature interactions
+    needs: changes
+    if: needs.changes.outputs.run_scenario_pr == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Ensure generated shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
 
       - name: Actual app feature interaction browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/apps-utility-interactions.spec.ts test/ui-smoke/apps-model-training-interactions.spec.ts test/ui-smoke/apps-comms-device-interactions.spec.ts test/ui-smoke/apps-diagnostics-interactions.spec.ts test/ui-smoke/apps-builtin-pages-interactions.spec.ts test/ui-smoke/settings-sections-interactions.spec.ts test/ui-smoke/apps-personal-assistant-decomposed-interactions.spec.ts test/ui-smoke/chat-viewmanager-companion-interactions.spec.ts test/ui-smoke/vault-modal-interactions.spec.ts test/ui-smoke/desktop-workspace-interactions.spec.ts test/ui-smoke/onboarding-completion-interactions.spec.ts test/ui-smoke/chat-overlay-controls-interactions.spec.ts test/ui-smoke/chat-attachment.spec.ts test/ui-smoke/conversation-management.spec.ts test/ui-smoke/chat-cloud-routed.spec.ts --project=chromium
 
-      - name: Actual app cloud keyless browser coverage
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/cloud-provisioning-startup.spec.ts test/ui-smoke/cloud-wallet-import.spec.ts test/ui-smoke/live-agent-chat.spec.ts test/ui-smoke/remote-capability-view.spec.ts --project=chromium
-
-      - name: Upload app browser core artifacts
+      - name: Upload app browser feature interaction artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: scenario-pr-app-browser-core
+          name: scenario-pr-app-browser-feature-interactions
+          path: |
+            packages/app/playwright-report/
+            packages/app/test-results/
+          if-no-files-found: ignore
+          retention-days: 3
+
+  app-browser-cloud-keyless:
+    name: Zero-Key app browser cloud keyless
+    needs: changes
+    if: needs.changes.outputs.run_scenario_pr == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Ensure generated shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+
+      - name: Actual app cloud keyless browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/cloud-provisioning-startup.spec.ts test/ui-smoke/cloud-wallet-import.spec.ts test/ui-smoke/live-agent-chat.spec.ts test/ui-smoke/remote-capability-view.spec.ts --project=chromium
+
+      - name: Upload app browser cloud keyless artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: scenario-pr-app-browser-cloud-keyless
           path: |
             packages/app/playwright-report/
             packages/app/test-results/
@@ -340,6 +519,10 @@ jobs:
       - changes
       - scenario-unit-coverage
       - app-browser-core
+      - app-browser-view-lifecycle
+      - app-browser-all-pages
+      - app-browser-feature-interactions
+      - app-browser-cloud-keyless
       - app-browser-ratcheted
       - app-diagnostics
       - scenario-runner-e2e
@@ -354,6 +537,10 @@ jobs:
           for pair in \
             "scenario-unit-coverage:${{ needs.scenario-unit-coverage.result }}" \
             "app-browser-core:${{ needs.app-browser-core.result }}" \
+            "app-browser-view-lifecycle:${{ needs.app-browser-view-lifecycle.result }}" \
+            "app-browser-all-pages:${{ needs.app-browser-all-pages.result }}" \
+            "app-browser-feature-interactions:${{ needs.app-browser-feature-interactions.result }}" \
+            "app-browser-cloud-keyless:${{ needs.app-browser-cloud-keyless.result }}" \
             "app-browser-ratcheted:${{ needs.app-browser-ratcheted.result }}" \
             "app-diagnostics:${{ needs.app-diagnostics.result }}" \
             "scenario-runner-e2e:${{ needs.scenario-runner-e2e.result }}"; do

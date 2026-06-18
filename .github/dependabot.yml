@@ -9,6 +9,13 @@ updates:
     groups:
       dev-dependencies:
         dependency-type: "development"
+    ignore:
+      # isomorphic-git@1.x requires ignore@^5; the `ignore` dep in @elizaos/agent
+      # exists only to satisfy it. v6/v7 break isomorphic-git's GitIgnoreManager
+      # (git.add fails — see closed PR #8483). Cap at major 5 until
+      # isomorphic-git supports ignore@7.
+      - dependency-name: "ignore"
+        versions: [">= 6.0.0"]
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
@@ -35,70 +42,7 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 2
 
-  # Rust examples — demo apps, not deployed. Track upstream but ignore
-  # transitive vulns we cannot fix without a major bump of the parent crate.
-  - package-ecosystem: "cargo"
-    directory: "/packages/examples/discord/rust/discord-agent"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 2
-    ignore:
-      # rustls-webpki 0.102.x is pulled transitively by serenity -> tokio-tungstenite
-      # -> rustls 0.22.x. Fix requires upstream serenity bump.
-      - dependency-name: "rustls-webpki"
-        versions: ["< 0.103"]
-
-  - package-ecosystem: "cargo"
-    directory: "/packages/examples/app/tauri/src-tauri"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 2
-    ignore:
-      # rand 0.7.3 pulled by deep tauri-codegen graph; no fix in 0.7 line.
-      - dependency-name: "rand"
-        versions: ["< 0.8"]
-      # glib 0.18 pulled by tauri's gtk stack; bumping requires tauri rework.
-      - dependency-name: "glib"
-        versions: ["< 0.19"]
-
-  - package-ecosystem: "cargo"
-    directory: "/packages/examples/polymarket/rust/polymarket-demo"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 2
-    ignore:
-      # lru 0.12 pulled by alloy-provider 0.8; bump requires alloy major bump.
-      - dependency-name: "lru"
-        versions: ["< 0.13"]
-
-  # Other Rust examples — track but cap PRs.
-  - package-ecosystem: "cargo"
-    directory: "/packages/examples/aws/rust"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 1
-  - package-ecosystem: "cargo"
-    directory: "/packages/examples/a2a/rust"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 1
-  - package-ecosystem: "cargo"
-    directory: "/packages/examples/bluesky/rust/bluesky-agent"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 1
-  - package-ecosystem: "cargo"
-    directory: "/packages/examples/chat/rust/chat"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 1
-  - package-ecosystem: "cargo"
-    directory: "/packages/examples/form/rust/chat"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 1
-  - package-ecosystem: "cargo"
-    directory: "/packages/examples/gcp/rust"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 1
+  # NOTE: cargo (Rust) example entries were removed — commit b69d70632b made the
+  # examples TypeScript-only and deleted the packages/examples/*/rust/* trees.
+  # The stale cargo entries made Dependabot abort every run with
+  # "Cargo.toml not found". Re-add cargo blocks only if a real Cargo.toml returns.

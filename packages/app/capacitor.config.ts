@@ -155,6 +155,15 @@ const config: CapacitorConfig = {
     webContentsDebuggingEnabled: webViewDebuggingEnabled,
   },
   android: {
+    // Point `cap sync` at the SAME android project gradle actually builds
+    // (packages/app-core/platforms/android, resolved relative to this config).
+    // Without this, cap sync writes a full project to packages/app/android while
+    // gradle builds app-core/platforms/android off a STALE committed
+    // capacitor.settings.gradle — so native plugins (@capacitor/browser, haptics,
+    // …) silently never compile and get pruned from the manifest (#8387). With
+    // the path unified, cap sync regenerates the full plugin set in place every
+    // build and nothing drifts.
+    path: "../app-core/platforms/android",
     backgroundColor: "#FF5800",
     allowMixedContent: false,
     captureInput: true,

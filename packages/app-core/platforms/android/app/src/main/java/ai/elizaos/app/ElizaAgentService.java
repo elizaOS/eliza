@@ -27,6 +27,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.net.HttpURLConnection;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -262,6 +264,61 @@ public class ElizaAgentService extends Service {
         int timeoutMs,
         String token
     ) throws IOException, JSONException {
+        // The on-device agent is single-threaded: while bun is inside a long
+        // synchronous FFI call (a cold ASR/TTS model load, or a llama_decode for
+        // a chat reply) its HTTP listener briefly stops accepting connections, so
+        // a concurrent request — e.g. createConversation right after a voice
+        // transcription — can hit "connection refused". The request bytes were
+        // never sent, so it is safe to back off and re-dial rather than surface a
+        // spurious local_agent_unavailable that fails the whole voice turn. Only
+        // connection-establishment failures are retried; a read timeout (request
+        // already sent) propagates so non-idempotent POSTs are never replayed.
+        // The window must outlast the longest event-loop stall: after a voice
+        // transcription the agent evicts + cold-reloads the chat model (a
+        // synchronous ~10-15 s llama load on phone CPU) before generating the
+        // reply, during which the HTTP listener refuses connections.
+        final int connectRetries = 15;
+        IOException lastConnectError = null;
+        for (int attempt = 0; attempt <= connectRetries; attempt++) {
+            try {
+                return performLocalAgentRequestOnce(
+                    method, path, headers, body, timeoutMs, token);
+            } catch (java.net.ConnectException connectError) {
+                lastConnectError = connectError;
+            } catch (java.net.SocketTimeoutException timeoutError) {
+                // Distinguish connect-timeout (never sent → retry) from
+                // read-timeout (sent → must not replay). HttpURLConnection
+                // surfaces both as SocketTimeoutException; the connect phase
+                // message contains "connect".
+                String msg = timeoutError.getMessage();
+                if (msg != null && msg.toLowerCase(Locale.US).contains("connect")) {
+                    lastConnectError = timeoutError;
+                } else {
+                    throw timeoutError;
+                }
+            }
+            if (attempt < connectRetries) {
+                try {
+                    Thread.sleep(250L * (attempt + 1));
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw lastConnectError;
+                }
+            }
+        }
+        throw lastConnectError != null
+            ? lastConnectError
+            : new IOException("local agent unreachable");
+    }
+
+    private static JSONObject performLocalAgentRequestOnce(
+        String method,
+        String path,
+        JSONObject headers,
+        String body,
+        int timeoutMs,
+        String token
+    ) throws IOException, JSONException {
         byte[] bodyBytes = body == null ? null : body.getBytes(StandardCharsets.UTF_8);
         if (bodyBytes != null && bodyBytes.length > LOCAL_REQUEST_MAX_BODY_BYTES) {
             throw new IOException("Request body is too large");
@@ -293,7 +350,14 @@ public class ElizaAgentService extends Service {
 
             int status = conn.getResponseCode();
             InputStream stream = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
-            String responseBody = readResponseBody(stream, LOCAL_REQUEST_MAX_RESPONSE_BYTES);
+            // Read the raw response bytes so binary payloads (e.g. local TTS WAV
+            // audio, images) survive the bridge intact. `body` is a best-effort
+            // UTF-8 view for text callers; `bodyBase64` carries the lossless raw
+            // bytes that binary callers decode — encoding the bytes as a UTF-8
+            // String first (the old path) replaced every non-UTF-8 byte with
+            // U+FFFD, corrupting WAV/PNG payloads beyond recovery.
+            byte[] responseBytes = readResponseBytes(stream, LOCAL_REQUEST_MAX_RESPONSE_BYTES);
+            String responseBody = new String(responseBytes, StandardCharsets.UTF_8);
             JSONObject responseHeaders = new JSONObject();
             for (Map.Entry<String, List<String>> entry : conn.getHeaderFields().entrySet()) {
                 String key = entry.getKey();
@@ -308,12 +372,9 @@ public class ElizaAgentService extends Service {
                 .put("body", responseBody)
                 .put(
                     "bodyBase64",
-                    android.util.Base64.encodeToString(
-                        responseBody.getBytes(StandardCharsets.UTF_8),
-                        android.util.Base64.NO_WRAP
-                    )
+                    android.util.Base64.encodeToString(responseBytes, android.util.Base64.NO_WRAP)
                 )
-                .put("bodyEncoding", "utf-8");
+                .put("bodyEncoding", "base64");
         } finally {
             if (conn != null) conn.disconnect();
         }
@@ -899,6 +960,28 @@ public class ElizaAgentService extends Service {
     private void startAgentProcess() {
         synchronized (processLock) {
             if (agentProcess != null && agentProcess.isAlive()) {
+                return;
+            }
+
+            // Detached agents outlive the service/app process that launched
+            // them. If a prior instance's agent is still bound to the loopback
+            // port, ADOPT it instead of relaunching: launch.sh pkills any
+            // running bun before forking a fresh one, so a needless relaunch
+            // tears the live HTTP listener down for tens of seconds and the
+            // WebView's /api/auth/me startup probe fails with "Backend
+            // Unreachable". That is the emulator e2e churn — the Activity/FGS
+            // gets recreated mid-run and onStartCommand → startAgentProcess
+            // would relaunch a perfectly healthy agent. Gate on the raw TCP
+            // listener (not /api/health), so a bun that is alive but busy
+            // mid-llama_decode — when an HTTP probe would time out — is still
+            // recognised as running and left alone.
+            if (detachedAgentMode && isLoopbackAgentListening()) {
+                if (!"running".equals(currentStatus)) {
+                    currentStatus = "running";
+                    updateNotification();
+                }
+                Log.i(TAG, "Detached agent already listening on port " + AGENT_PORT
+                    + "; adopting it (no relaunch).");
                 return;
             }
 
@@ -1757,6 +1840,25 @@ public class ElizaAgentService extends Service {
         probe.start();
     }
 
+    /**
+     * Quick liveness probe for an already-running detached agent: can a TCP
+     * connection be opened to the loopback agent port? Unlike {@link
+     * #probeHealth()} this only completes the socket handshake, so it returns
+     * true even while bun is busy inside a synchronous native call
+     * (mid-llama_decode) and the HTTP layer is unresponsive — precisely the
+     * state we must NOT mistake for a dead agent and relaunch over. Used by
+     * {@link #startAgentProcess()} to adopt a surviving detached agent instead
+     * of killing + restarting it when the service/Activity is recreated.
+     */
+    private boolean isLoopbackAgentListening() {
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress("127.0.0.1", AGENT_PORT), 2000);
+            return true;
+        } catch (IOException ignored) {
+            return false;
+        }
+    }
+
     private ProbeResult probeHealth() {
         HttpURLConnection conn = null;
         try {
@@ -1815,7 +1917,11 @@ public class ElizaAgentService extends Service {
     }
 
     private static String readResponseBody(InputStream in, int maxBytes) throws IOException {
-        if (in == null) return "";
+        return new String(readResponseBytes(in, maxBytes), StandardCharsets.UTF_8);
+    }
+
+    private static byte[] readResponseBytes(InputStream in, int maxBytes) throws IOException {
+        if (in == null) return new byte[0];
         try (InputStream input = in) {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             byte[] buf = new byte[8192];
@@ -1828,7 +1934,7 @@ public class ElizaAgentService extends Service {
                 }
                 out.write(buf, 0, n);
             }
-            return out.toString(StandardCharsets.UTF_8.name());
+            return out.toByteArray();
         }
     }
 
@@ -2133,6 +2239,23 @@ public class ElizaAgentService extends Service {
         // dashboard with no agent to connect to.
         String mode = readRuntimeMode(context);
         return !"cloud".equals(mode);
+    }
+
+    /**
+     * True once the user (or the device image) has actually committed to
+     * running the on-device agent — a branded device, or a stock phone whose
+     * runtime mode has been explicitly persisted by the onboarding picker.
+     *
+     * Distinct from {@link #shouldAutoStart}: a fresh stock install has no
+     * persisted mode yet, so the agent still auto-starts (so the dashboard has
+     * something to talk to) but the user has chosen nothing. We use this to
+     * avoid cold-asking for notification consent during first-run onboarding —
+     * iOS-style, we ask only after there is a committed reason (the foreground
+     * service still runs without the grant; its notification is just
+     * suppressed until later granted).
+     */
+    public static boolean hasCommittedRuntimeChoice(Context context) {
+        return isBrandedDevice() || readRuntimeMode(context) != null;
     }
 
     private static boolean isBrandedDevice() {

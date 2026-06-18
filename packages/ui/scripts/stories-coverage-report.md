@@ -1,26 +1,13 @@
 # Story coverage
 
-- Components scanned: **407**
-- With stories: **219**
-- Missing stories: **188**
-- Coverage: **53.8%**
+- Components scanned: **405**
+- With stories: **259**
+- Missing stories: **146**
+- Coverage: **64.0%**
 
 ## Missing stories by area
 
-### pages (57)
-- src\components\pages\AppDetailsView.tsx
-- src\components\pages\AppsPageView.tsx
-- src\components\pages\AppsView.tsx
-- src\components\pages\AutomationsFeed.tsx
-- src\components\pages\BrowserWorkspaceView.tsx
-- src\components\pages\ChatView.tsx
-- src\components\pages\ConfigPageView.tsx
-- src\components\pages\DatabasePageView.tsx
-- src\components\pages\DatabaseView.tsx
-- src\components\pages\DocumentsView.tsx
-- src\components\pages\ElizaCloudDashboard.tsx
-- src\components\pages\ElizaOsAppsView.tsx
-- src\components\pages\GeneratedViewHero.tsx
+### pages (44)
 - src\components\pages\HeartbeatForm.tsx
 - src\components\pages\HeartbeatsView.tsx
 - src\components\pages\LogsView.tsx
@@ -66,24 +53,9 @@
 - src\components\pages\skill-detail-panel.tsx
 - src\components\pages\skill-marketplace.tsx
 
-### settings (41)
-- src\components\settings\AdvancedSection.tsx
-- src\components\settings\AdvancedToggle.tsx
-- src\components\settings\ApiKeyConfig.tsx
-- src\components\settings\AppPermissionsSection.tsx
-- src\components\settings\AppearanceSettingsSection.tsx
-- src\components\settings\AppsManagementSection.tsx
-- src\components\settings\CapabilitiesSection.tsx
-- src\components\settings\CloudInstancePanel.tsx
-- src\components\settings\ConnectorsSection.tsx
-- src\components\settings\DesktopWorkspaceDisplay.tsx
-- src\components\settings\DesktopWorkspaceSection.tsx
-- src\components\settings\IdentitySettingsSection.tsx
+### settings (26)
 - src\components\settings\LoadContentPackForm.tsx
 - src\components\settings\LoadedPacksList.tsx
-- src\components\settings\PermissionsSection.tsx
-- src\components\settings\PolicyControlsView.tsx
-- src\components\settings\ProviderCard.tsx
 - src\components\settings\ProviderPanels.tsx
 - src\components\settings\ProviderRoutingPanel.tsx
 - src\components\settings\ProviderSwitcher.tsx
@@ -109,7 +81,7 @@
 - src\components\settings\vault-tabs\RoutingTab.tsx
 - src\components\settings\vault-tabs\SecretsTab.tsx
 
-### shell (17)
+### shell (16)
 - src\components\shell\AssistantOverlay.tsx
 - src\components\shell\BugReportModal.tsx
 - src\components\shell\ChatSurface.tsx
@@ -125,7 +97,6 @@
 - src\components\shell\ShellHeaderControls.tsx
 - src\components\shell\ShellOverlays.tsx
 - src\components\shell\StartupFailureView.tsx
-- src\components\shell\StartupScreen.tsx
 - src\components\shell\StartupShell.tsx
 
 ### connectors (13)
@@ -152,14 +123,6 @@
 - src\components\chat\widgets\music-player.tsx
 - src\components\chat\widgets\task-widget.tsx
 - src\components\chat\widgets\todo.tsx
-
-### components (6)
-- src\cloud-ui\components\auth\authorize-content.tsx
-- src\cloud-ui\components\docs\api-route-explorer-client.tsx
-- src\cloud-ui\components\docs\docs-layout.tsx
-- src\cloud-ui\components\docs\openapi-viewer.tsx
-- src\cloud-ui\components\promotion\promote-app-dialog.tsx
-- src\cloud-ui\components\promotion\social-connection-hint.tsx
 
 ### training (5)
 - src\components\training\BudgetPanel.tsx
@@ -200,32 +163,17 @@
 ### App.tsx (1)
 - src\App.tsx
 
-### AgentElementOverlay.tsx (1)
-- src\agent-surface\AgentElementOverlay.tsx
-
 ### AgentSurfaceContext.tsx (1)
 - src\agent-surface\AgentSurfaceContext.tsx
 
-### components.tsx (1)
-- src\agent-surface\components.tsx
-
-### BackgroundHost.tsx (1)
-- src\backgrounds\BackgroundHost.tsx
-
-### desktop-bar (1)
-- src\companion\desktop-bar\CompanionBar.tsx
-
-### accounts (1)
-- src\components\accounts\AccountList.tsx
+### components (1)
+- src\cloud-ui\components\auth\authorize-content.tsx
 
 ### cloud (1)
 - src\components\cloud\StripeEmbeddedCheckout.tsx
 
 ### custom-actions (1)
 - src\components\custom-actions\CustomActionsView.tsx
-
-### views (1)
-- src\components\views\DynamicViewLoader.tsx
 
 ### CompactOnboarding.tsx (1)
 - src\first-run\CompactOnboarding.tsx
@@ -259,12 +207,6 @@
 
 ### TranslationProvider.tsx (1)
 - src\state\TranslationProvider.tsx
-
-### layout-story-fixtures.tsx (1)
-- src\stories\layout-story-fixtures.tsx
-
-### mock-providers.tsx (1)
-- src\storybook\mock-providers.tsx
 
 ### WidgetHost.tsx (1)
 - src\widgets\WidgetHost.tsx

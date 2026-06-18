@@ -7,7 +7,7 @@
 
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { client, useApp } from "@elizaos/ui";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type CalendarViewMode = "day" | "week" | "month";
 
@@ -61,6 +61,11 @@ export function useCalendarWeek(
   opts: UseCalendarWeekOptions = {},
 ): UseCalendarWeekResult {
   const { t } = useApp();
+  const loadFailedMessage = t("lifeopsCalendar.loadFailed", {
+    defaultValue: "Calendar failed to load.",
+  });
+  const activeRequestId = useRef(0);
+  const mountedRef = useRef(true);
   const [viewMode, setViewMode] = useState<CalendarViewMode>(
     opts.viewMode ?? "week",
   );
@@ -87,6 +92,10 @@ export function useCalendarWeek(
         const next = new Date(current);
         const days = windowDaysForMode(viewMode);
         if (viewMode === "month") {
+          // Normalize to the 1st before shifting: setMonth on e.g. May 31 would
+          // overflow ("June 31" -> July 1) and silently skip a month. The grid
+          // is computed from the 1st via startOfMonthGrid, so this is safe.
+          next.setDate(1);
           next.setMonth(next.getMonth() + direction);
         } else {
           next.setDate(next.getDate() + direction * days);
@@ -101,7 +110,19 @@ export function useCalendarWeek(
   const goPrevious = useCallback(() => shiftBase(-1), [shiftBase]);
   const goNext = useCallback(() => shiftBase(1), [shiftBase]);
 
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      activeRequestId.current += 1;
+    };
+  }, []);
+
   const fetch = useCallback(async () => {
+    const requestId = activeRequestId.current + 1;
+    activeRequestId.current = requestId;
+    const isCurrentRequest = () =>
+      mountedRef.current && activeRequestId.current === requestId;
+
     setLoading(true);
     setError(null);
     try {
@@ -114,19 +135,21 @@ export function useCalendarWeek(
       const sorted = [...feed.events].sort((a, b) =>
         a.startAt.localeCompare(b.startAt),
       );
+      if (!isCurrentRequest()) return;
       setEvents(sorted);
     } catch (cause) {
+      if (!isCurrentRequest()) return;
       setError(
         cause instanceof Error && cause.message.trim().length > 0
           ? cause.message.trim()
-          : t("lifeopsCalendar.loadFailed", {
-              defaultValue: "Calendar failed to load.",
-            }),
+          : loadFailedMessage,
       );
     } finally {
-      setLoading(false);
+      if (isCurrentRequest()) {
+        setLoading(false);
+      }
     }
-  }, [windowStart, windowEnd, t]);
+  }, [windowStart, windowEnd, loadFailedMessage]);
 
   useEffect(() => {
     void fetch();

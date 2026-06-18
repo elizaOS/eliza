@@ -65,7 +65,7 @@ describe("App standalone chat-overlay wiring", () => {
     // (the always-present chat overlay + the command palette). The Header
     // component still ships from the library; the app just never mounts it.
     expect(APP_TSX).toContain("function ChatRouteShellContent");
-    expect(APP_TSX).toContain("minimalHomeGreeting");
+    expect(APP_TSX).toContain("ChatAmbientBackground");
     expect(APP_TSX).not.toContain("<Header");
     expect(APP_TSX).not.toContain('from "./components/shell/Header"');
     expect(APP_TSX).not.toContain("function FullChatWorkspaceShellContent");
@@ -73,12 +73,13 @@ describe("App standalone chat-overlay wiring", () => {
     expect(HEADER_TSX).toContain("getTabGroups");
   });
 
-  it("renders the ambient chat route as a header-less greeting home", () => {
+  it("renders the ambient chat route as a header-less, wordless backdrop home", () => {
     expect(APP_TSX).toContain("function ChatRouteShellContent");
     expect(APP_TSX).toContain('<div key="chat-shell"');
-    expect(APP_TSX).toContain("minimalHomeGreeting");
-    // The shell no longer mounts a Header — the chat home is just the ambient
-    // greeting backdrop under the always-present chat overlay.
+    // The home is a wordless ambient orange backdrop (no greeting text) under
+    // the always-present chat overlay; the shell mounts no Header.
+    expect(APP_TSX).toContain("<ChatAmbientBackground />");
+    expect(APP_TSX).not.toContain("minimalHomeGreeting");
     expect(APP_TSX).not.toContain("<Header />");
   });
 

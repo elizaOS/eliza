@@ -41,6 +41,7 @@ export const CORS_ALLOWED_HEADERS = [
   "X-Eliza-Client-Id",
   "X-ElizaOS-Client-Id",
   "X-Eliza-Terminal-Token",
+  "X-Eliza-Platform",
   "X-Eliza-UI-Language",
   "X-ElizaOS-UI-Language",
   "X-Browser-Bridge-Companion-Id",
@@ -996,14 +997,6 @@ function extractWsQueryToken(url: URL): string | null {
     url.searchParams.get("apiKey") ??
     url.searchParams.get("api_key");
   return token?.trim() || null;
-}
-
-function hasWsQueryToken(url: URL): boolean {
-  return (
-    url.searchParams.has("token") ||
-    url.searchParams.has("apiKey") ||
-    url.searchParams.has("api_key")
-  );
 }
 
 function extractWebSocketHandshakeToken(

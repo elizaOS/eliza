@@ -35,7 +35,7 @@
   "scripts": {
     "typecheck": "BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package typescript@6.0.3 tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src",
-    "test": "bun run build:views && bun run emulator:build && BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package vitest@4.1.5 vitest run --config ./vitest.config.ts",
+    "test": "bun run build:views && bun run emulator:build && NODE_OPTIONS='--experimental-sqlite' vitest run --config ./vitest.config.ts",
     "build": "bun run build:js && bun run build:views && bun run build:types",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:types": "BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package typescript@6.0.3 tsc --noCheck -p tsconfig.build.json",

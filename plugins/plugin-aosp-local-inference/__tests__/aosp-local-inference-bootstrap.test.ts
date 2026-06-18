@@ -13,8 +13,11 @@ import {
   flattenGenerateTextParamsForAospPrompt,
   isAospLocalEmbeddingEnabled,
   makeAospTextToSpeechHandler,
+  parseMemAvailableMb,
   readAssignedBundledModels,
   resolveAospOmnivoiceConfig,
+  shouldEvictChatForAvailMb,
+  VOICE_COLOAD_KEEP_AVAIL_MB,
 } from "../src/aosp-local-inference-bootstrap";
 
 function withEnv<T>(
@@ -65,10 +68,10 @@ describe("flattenGenerateTextParamsForAospPrompt", () => {
       }),
     ).toBe(
       [
-        "system:\nStage 1 instructions",
-        "user:\nSay pixel bundle ok.",
-        "assistant:",
-      ].join("\n\n"),
+        "<|im_start|>system\nStage 1 instructions<|im_end|>",
+        "<|im_start|>user\nSay pixel bundle ok.<|im_end|>",
+        "<|im_start|>assistant\n",
+      ].join("\n"),
     );
   });
 
@@ -79,7 +82,11 @@ describe("flattenGenerateTextParamsForAospPrompt", () => {
         messages: [{ role: "user", content: "hello" }],
       }),
     ).toBe(
-      ["system:\nYou are Eliza.", "user:\nhello", "assistant:"].join("\n\n"),
+      [
+        "<|im_start|>system\nYou are Eliza.<|im_end|>",
+        "<|im_start|>user\nhello<|im_end|>",
+        "<|im_start|>assistant\n",
+      ].join("\n"),
     );
   });
 
@@ -107,11 +114,12 @@ describe("buildGenerateArgsFromParams", () => {
         signal: ctrl.signal,
       }),
     ).toEqual({
-      prompt: "user:\nhello\n\nassistant:",
+      prompt: "<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n",
       maxTokens: 384,
       temperature: 0,
       grammar: 'root ::= "ok"',
       signal: ctrl.signal,
+      stopSequences: ["<|im_end|>", "<|im_start|>"],
     });
   });
 
@@ -608,5 +616,48 @@ describe("buildAospLoadModelArgs", () => {
         v: "f16",
       },
     });
+  });
+});
+
+describe("parseMemAvailableMb", () => {
+  it("parses MemAvailable from real /proc/meminfo layout (kB → MiB)", () => {
+    const meminfo = [
+      "MemTotal:        7752748 kB",
+      "MemFree:          477508 kB",
+      "MemAvailable:    4147956 kB",
+      "Buffers:           12345 kB",
+    ].join("\n");
+    // 4147956 kB / 1024 ≈ 4050.7 MiB
+    expect(parseMemAvailableMb(meminfo)).toBeCloseTo(4147956 / 1024, 3);
+  });
+
+  it("tolerates a single-space layout and trailing fields", () => {
+    expect(parseMemAvailableMb("MemAvailable: 2048000 kB")).toBeCloseTo(2000, 3);
+  });
+
+  it("returns null when MemAvailable is absent", () => {
+    expect(parseMemAvailableMb("MemTotal: 100 kB\nMemFree: 50 kB")).toBeNull();
+    expect(parseMemAvailableMb("")).toBeNull();
+  });
+});
+
+describe("shouldEvictChatForAvailMb (memory-gated chat eviction)", () => {
+  it("KEEPS the chat model when there is headroom (no SEND-stalling reload)", () => {
+    // ~4 GB free → well above the keep threshold → do not evict.
+    expect(shouldEvictChatForAvailMb(4050)).toBe(false);
+    expect(shouldEvictChatForAvailMb(VOICE_COLOAD_KEEP_AVAIL_MB)).toBe(false);
+    expect(shouldEvictChatForAvailMb(VOICE_COLOAD_KEEP_AVAIL_MB + 1)).toBe(
+      false,
+    );
+  });
+
+  it("EVICTS the chat model under genuine memory pressure (OOM protection)", () => {
+    expect(shouldEvictChatForAvailMb(VOICE_COLOAD_KEEP_AVAIL_MB - 1)).toBe(true);
+    expect(shouldEvictChatForAvailMb(1500)).toBe(true);
+    expect(shouldEvictChatForAvailMb(0)).toBe(true);
+  });
+
+  it("evicts on unknown memory (safe default = original always-evict)", () => {
+    expect(shouldEvictChatForAvailMb(null)).toBe(true);
   });
 });
