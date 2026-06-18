@@ -115,10 +115,8 @@ function getDiscordConversationApi(): Promise<DiscordConversationModule> {
   return discordConversationPromise;
 }
 
-function mayBeDiscordSource(source: unknown): boolean {
-  return (
-    typeof source === "string" && source.trim().toLowerCase() === "discord"
-  );
+function mayNeedDiscordMessageEnrichment(source: unknown): boolean {
+  return typeof source === "string" && source.toLowerCase().includes("discord");
 }
 
 function chunkVisibleTextForSse(text: string): string[] {
@@ -1440,7 +1438,7 @@ export async function handleConversationRoutes(
         // Without this filter they appear as blank chat bubbles.
         .filter((m) => m.text.trim().length > 0);
       const discordMessages = messages.filter((message) =>
-        mayBeDiscordSource(message.source),
+        mayNeedDiscordMessageEnrichment(message.source),
       );
       const discord =
         discordMessages.length > 0
