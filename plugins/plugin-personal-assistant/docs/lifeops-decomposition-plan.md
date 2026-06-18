@@ -667,14 +667,20 @@ bundled bun) and xvfb is available. The packaged desktop e2e
 the Linux env builder in `packaged-app-helpers.ts` forwarded DISPLAY but not XAUTHORITY,
 and `buildMinimalMacEnv` is an allowlist that drops it — so under any headless X server
 (xvfb / CI) the child can't authenticate. Forwarded XAUTHORITY when present. After the
-fix the packaged Eliza desktop app LAUNCHES under xvfb, the webview RENDERS the startup
-shell ("elizaOS Initializing agent…"), and the Playwright test bridge CONNECTS — i.e. the
-desktop SHELL e2e infrastructure runs on Linux headlessly now (was completely unrunnable
-before). The remaining gate is the embedded agent-runtime reaching `ready` (stuck at
-`startupPhase:"starting-runtime"` within 60s) — the same heavy-embedded-full-agent-boot
-constraint as Android-native in a constrained sandbox, NOT a display/shell problem. Net:
-desktop went from "can't run here" → "shell launches+renders+bridges on headless Linux;
-agent-ready boot is the residual constraint", plus a real CI-unblocking fix shipped.
+fix the packaged Eliza desktop app LAUNCHES under xvfb and boots its full stack headlessly:
+`desktopRuntimeMode=external` (connects to the test live-api backend — NOT a local agent),
+WebGPU/Dawn ready, and all three bridges come up (BrowserWorkspaceBridge, DesktopTestBridge,
+Renderer static server) + the window partition is set. PRECISE residual (from the captured
+app log): the WebKitGTK webview is then "terminated by signal: 5" (SIGTRAP) under xvfb
+software-GL (llvmpipe) — a headless-graphics-stack crash with no real GPU/compositor,
+DESPITE the standard mitigations already set (WEBKIT_DISABLE_DMABUF_RENDERER /
+WEBKIT_DISABLE_COMPOSITING_MODE / LIBGL_ALWAYS_SOFTWARE / GALLIUM_DRIVER=llvmpipe). So the
+residual is NOT display-auth (fixed), NOT the agent (external mode, backend healthy), NOT
+the decomposed code — it is WebKitGTK trapping on the headless GL path. Net: desktop went
+from "can't run here" → "full app stack boots headlessly (external-mode backend + all
+bridges + renderer); WebKitGTK SIGTRAPs on the no-GPU render path" + a real CI-unblocking
+fix shipped (XAUTHORITY). (A model-env-passthrough experiment was tried then reverted — the
+app is external-mode, so it had no effect; the blocker is the WebKitGTK GL crash.)
 
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
