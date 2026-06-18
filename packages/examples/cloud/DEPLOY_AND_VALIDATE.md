@@ -21,6 +21,28 @@ Live status at the time of writing (read-only probes):
 | Login page | `GET https://elizacloud.ai/login` | `200` |
 | x402 support | `GET https://api.elizacloud.ai/api/v1/x402` | `200` |
 
+### Validated live this session (against production, with the example account API key)
+
+- **All three apps registered live on the example account** with monetization
+  enabled (20% markup, 10% purchase share): `PayPerPixel` (`229e3b2d…`),
+  `eDad Example` (`dd2b5647…`), `Clone Ur Crush Example` (`c38794b8…`). The bare
+  names "eDad"/"Clone Ur Crush" are globally taken, so example-suffixed names
+  were used. Confirm under **Dashboard → Apps**.
+- **Live x402 payment request created and app-bound** — `POST /api/v1/x402/requests`
+  with `appId` returned a real request (`amountUsd 0.05`, network `eip155:8453`,
+  a real `payTo`). The payment-in challenge is real; on-chain settlement needs a
+  funded wallet (operator).
+- **Browser e2e (chromium) passed for all three miniapps**, 0 console/page
+  errors: PayPerPixel full flow (home → x402 payment card → settled image),
+  eDad landing+config, clone-ur-crush landing+cloning funnel.
+- **⚠️ Weakness found — production image generation returns HTTP 500.**
+  `POST /api/v1/generate-image` 500s ("internal_error") for supported models
+  (`google/gemini-2.5-flash-image`, `fal-ai/flux/schnell`). The model-validation
+  and provider-key guards pass (they'd 503), so it's a runtime failure in the
+  content-safety check or the upstream provider call — needs the Worker logs to
+  root-cause (operator). The generic `internal_error` with no detail is itself an
+  observability gap. **This blocks live end-to-end image delivery until fixed.**
+
 ## 0. Steward: confirm login + signup work (goal: "make sure we can log in and create an account")
 
 The login UI, JWT verification, user-sync, and logout allowlist are correct in
@@ -61,12 +83,14 @@ register "Clone Ur Crush" "https://cloneurcrush.example"
 register "PayPerPixel"    "https://payperpixel.example"
 ```
 
-Turn on monetization for each (markup + purchase share):
+Turn on monetization for each (markup + purchase share). NOTE: the endpoint
+expects **camelCase** keys — snake_case is silently ignored (the route 200s and
+applies nothing):
 
 ```bash
-curl -s -X PUT https://www.elizacloud.ai/api/v1/apps/<appId>/monetization \
+curl -s -X PUT https://api.elizacloud.ai/api/v1/apps/<appId>/monetization \
   -H "Authorization: Bearer $KEY" -H 'content-type: application/json' \
-  -d '{"monetization_enabled":true,"inference_markup_percentage":20,"purchase_share_percentage":10}'
+  -d '{"monetizationEnabled":true,"inferenceMarkupPercentage":20,"purchaseSharePercentage":10}'
 ```
 
 Confirm each appears under **Dashboard → Apps** (the renamed nav section) with an
