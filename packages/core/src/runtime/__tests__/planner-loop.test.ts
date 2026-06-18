@@ -1654,4 +1654,51 @@ describe("v5 planner loop — evaluator gate", () => {
 
 		expect(evaluate).toHaveBeenCalled();
 	});
+
+	it("never surfaces scratch prose accompanying a STOP-only terminal", async () => {
+		// Live regression 2026-06-12 (tj-5d0d458b7ad281): after spawning a
+		// sub-agent the planner emitted STOP plus the free text "We should wait
+		// for the sub-agent result before replying." — and that scratch
+		// reasoning was sent to Discord verbatim as the reply.
+		const runtime = {
+			useModel: vi.fn().mockResolvedValueOnce({
+				text: "We should wait for the sub-agent result before replying.",
+				toolCalls: [{ id: "stop-1", name: "STOP", arguments: {} }],
+			}),
+			logger: { warn: vi.fn() },
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBeUndefined();
+	});
+
+	it("keeps the prose fallback for a textless REPLY terminal", async () => {
+		// Counterpart contract: when the model DID choose REPLY but put the
+		// answer in the text channel instead of the call args, the prose is
+		// the reply and must still reach the user.
+		const runtime = {
+			useModel: vi.fn().mockResolvedValueOnce({
+				text: "Here is your answer.",
+				toolCalls: [{ id: "reply-1", name: "REPLY", arguments: {} }],
+			}),
+			logger: { warn: vi.fn() },
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe("Here is your answer.");
+	});
 });

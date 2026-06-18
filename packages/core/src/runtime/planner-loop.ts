@@ -379,10 +379,21 @@ export async function runPlannerLoop(
 					});
 					continue;
 				}
-				const finalMessage = terminalMessageFromToolCalls(
-					plannerOutput.toolCalls,
-					plannerOutput.messageToUser,
+				// The messageToUser fallback applies only when a REPLY call is
+				// present (textless REPLY → the model's text is its reply). On
+				// STOP/IGNORE-only terminals the model chose silence: free text
+				// accompanying the call is scratch reasoning, not a user reply
+				// ("We should wait for the sub-agent result before replying."
+				// reached Discord verbatim, live 2026-06-12).
+				const hasReplyCall = plannerOutput.toolCalls.some(
+					(toolCall) => toolCall.name.toUpperCase() === "REPLY",
 				);
+				const finalMessage = hasReplyCall
+					? terminalMessageFromToolCalls(
+							plannerOutput.toolCalls,
+							plannerOutput.messageToUser,
+						)
+					: undefined;
 				trajectory.steps.push({
 					iteration,
 					thought: plannerOutput.thought,
