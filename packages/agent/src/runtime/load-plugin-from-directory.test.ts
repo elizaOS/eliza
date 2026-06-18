@@ -161,6 +161,38 @@ describe("loadPluginFromDirectory", () => {
     ).rejects.toThrow(/no built entry/);
   });
 
+  it("rejects an explicit absolute entry outside the plugin directory", async () => {
+    const dir = await scaffold(
+      "plugin-explicit-entry",
+      { name: "@local/plugin-explicit-entry", main: "dist/index.js" },
+      { "dist/index.js": PREBUILT_PLUGIN_JS },
+    );
+    const outside = path.join(tmpDir, "outside.js");
+    await fsp.writeFile(outside, PREBUILT_PLUGIN_JS);
+
+    const runtime = new AgentRuntime({ logLevel: "fatal" });
+    await expect(
+      loadPluginFromDirectory({ runtime, directory: dir, entry: outside }),
+    ).rejects.toThrow(/explicit entry must be a relative built JavaScript path/);
+  });
+
+  it("rejects package entries that resolve through a symlink outside the plugin directory", async () => {
+    const outside = path.join(tmpDir, "outside.js");
+    await fsp.writeFile(outside, PREBUILT_PLUGIN_JS);
+    const dir = await scaffold(
+      "plugin-symlink-entry",
+      { name: "@local/plugin-symlink-entry", main: "dist/index.js" },
+      {},
+    );
+    await fsp.mkdir(path.join(dir, "dist"), { recursive: true });
+    await fsp.symlink(outside, path.join(dir, "dist/index.js"));
+
+    const runtime = new AgentRuntime({ logLevel: "fatal" });
+    await expect(
+      loadPluginFromDirectory({ runtime, directory: dir }),
+    ).rejects.toThrow(/entry must stay inside plugin directory/);
+  });
+
   it("throws when the entry exports no valid plugin", async () => {
     const dir = await scaffold(
       "plugin-noexport",
