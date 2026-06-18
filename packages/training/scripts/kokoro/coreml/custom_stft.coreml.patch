@@ -1,0 +1,16 @@
+--- ref/kokoro/custom_stft.py
++++ ref/kokoro/custom_stft.py
+@@ -255,9 +255,10 @@
+         # PyTorch and ONNX handle atan2(0, negative) differently
+         # PyTorch returns π, ONNX returns -π
+         # Manual correction ensures consistent behavior across platforms
+-        correction_mask = (imag_out == 0) & (real_out < 0)
+-        phase[correction_mask] = torch.pi
+-        return magnitude, phase
++        # CoreML-friendly: float-mask blend instead of bitwise-and + boolean scatter.
++        correction = (imag_out == 0).to(phase.dtype) * (real_out < 0).to(phase.dtype)
++        phase = phase * (1.0 - correction) + torch.pi * correction
++        return magnitude, phase
+
+
+     def inverse(self, magnitude: torch.Tensor, phase: torch.Tensor, length=None):

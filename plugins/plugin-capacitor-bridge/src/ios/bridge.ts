@@ -25,6 +25,7 @@ import {
 	writeFileSync,
 } from "../shared/fs-proxy.ts";
 import { installMobileFsShim } from "../shared/fs-shim.ts";
+import { runModelGrind } from "./model-grind.ts";
 
 interface BridgeRequest {
 	id?: unknown;
@@ -2956,6 +2957,22 @@ async function handleDirectCoreRoute(
 			uptime: 0,
 			iosBridge: "bun",
 		});
+	}
+
+	if (method === "POST" && pathname === "/api/dev/model-grind") {
+		const report = await runModelGrind({
+			callIosHost,
+			ensureTextModelLoaded: (slot) => ensureNativeModelLoaded(slot),
+			synthesizeTts: async (text) => ({
+				bytes: await synthesizeNativeIosLocalTts({ text }),
+				sampleRate: 24_000,
+			}),
+			transcribeAsr: (pcm, sampleRate) =>
+				transcribeNativeIosLocalAsr({ pcm, sampleRate }),
+			hardwareInfo: () => nativeHardwareInfo(),
+			bundleDir: nativeVoiceBundleDir(),
+		});
+		return jsonResponse(report.overall.allPassed ? 200 : 207, report);
 	}
 
 	const localTts = await handleNativeIosLocalTtsRoute(method, rawPath, payload);
