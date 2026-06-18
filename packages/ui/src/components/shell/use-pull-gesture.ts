@@ -18,6 +18,12 @@ export interface PullGestureOptions {
   onDrag?: (offset: number) => void;
   /** A near-stationary press/release — a tap, not a pull. */
   onTap?: () => void;
+  /**
+   * A deliberate (slow) drag released without passing the flick/distance
+   * threshold. When provided, the gesture rests exactly where released
+   * (the consumer keeps the live offset) instead of snapping back.
+   */
+  onSettleFree?: (direction: "up" | "down") => void;
   /** Minimum travel (px) to count as a pull. Default 56. */
   distanceThreshold?: number;
   /** Minimum speed (px/ms) to count as a flick. Default 0.5. */
@@ -56,6 +62,7 @@ export function usePullGesture(
     onPullDown,
     onDrag,
     onTap,
+    onSettleFree,
     distanceThreshold = 56,
     velocityThreshold = 0.5,
   } = options;
@@ -95,16 +102,32 @@ export function usePullGesture(
         velocityThreshold,
       );
       if (direction === null) {
-        onDrag?.(0); // snap back
         // A near-stationary release is a tap (e.g. tapping the collapsed bar to
         // focus the composer), not an aborted drag.
-        if (Math.abs(deltaUp) < TAP_SLOP) onTap?.();
+        if (Math.abs(deltaUp) < TAP_SLOP) {
+          onDrag?.(0); // snap back
+          onTap?.();
+        } else if (onSettleFree) {
+          // Deliberate slow drag below the flick/distance threshold: rest
+          // exactly where released instead of snapping back.
+          onSettleFree(deltaUp > 0 ? "up" : "down");
+        } else {
+          onDrag?.(0); // snap back
+        }
         return;
       }
       if (direction === "up") onPullUp?.();
       else onPullDown?.();
     },
-    [onDrag, onPullUp, onPullDown, onTap, distanceThreshold, velocityThreshold],
+    [
+      onDrag,
+      onPullUp,
+      onPullDown,
+      onTap,
+      onSettleFree,
+      distanceThreshold,
+      velocityThreshold,
+    ],
   );
 
   return {
