@@ -46,6 +46,15 @@ export const JOB_TYPES = {
   CONTAINER_PROVISION: "container_provision",
   /** Stop + remove an app container and free its slot. */
   CONTAINER_DELETE: "container_delete",
+  /**
+   * Stop a container's live runtime when billing is suspended, WITHOUT
+   * deleting its row or volume (#8342). The container-billing cron runs on the
+   * Worker (no SSH) and can't `docker stop` the node-side container, which runs
+   * `--restart unless-stopped` and would otherwise keep running for free after
+   * billing stops. The Worker enqueues this; the daemon runs the real stop via
+   * HetznerContainersClient (preserving the volume) and frees the node slot.
+   */
+  CONTAINER_STOP: "container_stop",
   /** Restart an app container in place. */
   CONTAINER_RESTART: "container_restart",
   /** Re-deploy an app container onto a new image. */
