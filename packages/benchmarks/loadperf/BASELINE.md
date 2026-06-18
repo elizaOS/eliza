@@ -46,9 +46,23 @@ all artifacts of measuring a 3-generation layered watch dist; disregard.
 - **Real cold readyMs ≈ 28.4 s (median; runs 23 s / 28 s / >33 s under load) —
   FAILS the 25 000 ms budget.** Peak RSS ≈ 1272 MB (passes 1600 MB).
 - The original "70 ms PASS" was a false positive from the permissive readiness
-  check. Until W5.0 lands (require explicit `ready:true`, report median/p95),
-  read boot numbers from research/03 directly, not from the old latest.json.
-- Budgets: cold `readyMs` ≤ 25 000, peak RSS ≤ 1600 MB.
+  check. Budgets: cold `readyMs` ≤ 25 000, peak RSS ≤ 1600 MB.
+- **Harness is now honest (loadperf F1 + F8).** The boot KPI:
+  - requires an explicit `health.ready === true` from `/api/health` — a bare
+    HTTP 200 (stale server / early-liveness handler) no longer counts as ready,
+    so the old "70 ms" artifact is impossible. `waitForReady` (lib.mjs) is the
+    single gate; it has no loose opt-in because `boot-kpi.mjs` is its only caller.
+  - **fails the run** (exit 1) unless the final probe returned `ready === true`
+    AND the median `readyMs` is at/above the sanity floor (3000 ms) — a
+    sub-second "boot" is physically impossible and means a false-positive read.
+  - **runs N cold boots (default 3; `--runs=N` or `LOADPERF_BOOT_RUNS`)** and
+    checks the **median** against budget, reporting **median / p95 / min / max**
+    and the per-run list so a single noisy sample can't be read as a real delta.
+  - prints a **WARN** when the host is under heavy CPU contention (loadavg over
+    cpu count, or more sibling node/bun/tsx procs than cpus) — boot is
+    single-threaded and import-bound, so a contended run inflates readyMs with no
+    code regression. `summary.contention` (loadavg, cpu count, sibling count) is
+    recorded for every run.
 
 ## Frontend (`frontend-kpi.mjs`) — skipped this run
 

@@ -17,15 +17,24 @@
  *   ELIZA_API_PORT      API port for the spawned/attached server (default 31337)
  *   LOADPERF_BASE_URL   base URL to probe (overrides host:port derivation)
  *   LOADPERF_BOOT_TIMEOUT_MS  ready timeout (default 120000)
+ *   LOADPERF_BOOT_RUNS  cold boots to spawn for median/p95 (default 3; the CLI
+ *                       --runs=N takes precedence; --attach forces a single run)
+ *
+ * Honesty gates (so a stale server / early-liveness 200 can never read as PASS):
+ *   - the run FAILS unless the final probe returned health.ready === true;
+ *   - the run FAILS if the median readyMs is below the sanity floor
+ *     (READY_SANITY_FLOOR_MS) — a real agent boot can never be sub-second, so a
+ *     sub-floor reading means a false-positive / stale-server measurement.
  *
  * Fail-safe: if the agent cannot boot or never reports ready, records
  * { skipped: true, error } and exits 2 (so run-all can carry on).
  *
- * Exit: 0 pass, 1 budget fail, 2 skipped/unavailable.
+ * Exit: 0 pass, 1 budget/honesty fail, 2 skipped/unavailable.
  */
 
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import os from "node:os";
 import {
   REPO_ROOT,
   waitForReady,
@@ -39,11 +48,21 @@ import {
 const NOW = new Date().toISOString();
 const ATTACH = process.argv.includes("--attach");
 const JSON_ONLY = process.argv.includes("--json");
-// Cold boot varies run-to-run (CPU contention, JIT warmup). --runs=N spawns N
-// cold boots and reports the median (the budget is checked against it) plus
-// p95/min/max so a single noisy run can't be mistaken for a real delta.
+// Cold boot varies run-to-run (CPU contention, JIT warmup). Spawn N cold boots
+// and report the median (the budget is checked against it) plus p95/min/max so a
+// single noisy run can't be mistaken for a real delta. Default 3; override with
+// --runs=N (precedence) or LOADPERF_BOOT_RUNS. --attach forces a single probe.
+const DEFAULT_RUNS = 3;
 const RUNS_ARG = process.argv.find((a) => a.startsWith("--runs="));
-const RUNS = ATTACH ? 1 : Math.max(1, Math.trunc(Number(RUNS_ARG?.split("=")[1]) || 1));
+const RUNS_REQUESTED =
+  Number(RUNS_ARG?.split("=")[1]) || Number(process.env.LOADPERF_BOOT_RUNS) || DEFAULT_RUNS;
+const RUNS = ATTACH ? 1 : Math.max(1, Math.trunc(RUNS_REQUESTED));
+
+// A real agent cold boot is multiple seconds (blocking phase alone is ~2 s, and
+// the full readiness gate is tens of seconds today). Any median below this floor
+// is physically impossible for a genuine boot and signals a stale server / an
+// early-liveness 200 that slipped past the readiness check — fail loudly.
+const READY_SANITY_FLOOR_MS = 3000;
 
 const API_PORT = Number(process.env.ELIZA_API_PORT ?? process.env.MILADY_API_PORT ?? 31337);
 const BASE_URL = (process.env.LOADPERF_BASE_URL ?? `http://127.0.0.1:${API_PORT}`).replace(/\/$/, "");
@@ -60,6 +79,38 @@ function readRssBytes(pid) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Best-effort detection of CPU contention from sibling node/agent processes.
+ * Boot is single-threaded and import-bound (research/03 F8), so a contended host
+ * inflates readyMs without any code regression. We count peer processes whose
+ * /proc/<pid>/comm is node/bun/tsx (excluding our own pid) and read loadavg; the
+ * caller WARNs when either looks heavy so a contended run is visibly flagged.
+ */
+function detectContention() {
+  const cpuCount = os.cpus().length;
+  const loadAvg1 = os.loadavg()[0];
+  let siblingProcs = 0;
+  try {
+    const self = process.pid;
+    for (const name of readdirSync("/proc")) {
+      if (!/^\d+$/.test(name)) continue;
+      const pid = Number(name);
+      if (pid === self) continue;
+      let comm;
+      try {
+        comm = readFileSync(`/proc/${pid}/comm`, "utf8").trim();
+      } catch {
+        continue; // process exited between readdir and read
+      }
+      if (comm === "node" || comm === "bun" || comm === "tsx") siblingProcs += 1;
+    }
+  } catch {
+    siblingProcs = -1; // /proc unavailable (non-Linux); leave the rest meaningful
+  }
+  const heavy = loadAvg1 > cpuCount || (siblingProcs >= 0 && siblingProcs > cpuCount);
+  return { cpuCount, loadAvg1, siblingProcs, heavy };
 }
 
 function checkBudgets(readyMs, peakRssBytes) {
@@ -154,6 +205,17 @@ function percentile(values, p) {
 }
 
 async function main() {
+  const contention = detectContention();
+  if (contention.heavy) {
+    const sib = contention.siblingProcs < 0 ? "?" : contention.siblingProcs;
+    console.warn(
+      `[boot-kpi] WARN: heavy CPU contention — loadavg(1m)=${contention.loadAvg1.toFixed(2)} ` +
+        `over ${contention.cpuCount} cpus, ${sib} sibling node/bun/tsx procs. ` +
+        `Boot is single-threaded and import-bound, so readyMs will be inflated; ` +
+        `re-run on a quiet host before trusting this number.`,
+    );
+  }
+
   // Collect 1 (attach) or N (spawn) measurements. A run that fails to boot is
   // recorded but doesn't abort the others; we only "skip" if EVERY run failed.
   const runs = [];
@@ -188,6 +250,25 @@ async function main() {
   const checks = checkBudgets(medianReadyMs, peakRssBytes);
   const peakRssMb = peakRssBytes == null ? null : Number((peakRssBytes / (1024 * 1024)).toFixed(1));
 
+  // Honesty gates — these are PASS/FAIL conditions, not budget tunables. They
+  // make a stale-server / early-liveness false positive fail the run loudly.
+  const healthReady = runs[runs.length - 1].health?.ready ?? null;
+  checks.push({
+    name: "healthReady",
+    value: healthReady === true ? 1 : 0,
+    budget: 1,
+    unit: "bool",
+    pass: healthReady === true,
+  });
+  checks.push({
+    name: "readyMsSanityFloor",
+    value: medianReadyMs,
+    budget: READY_SANITY_FLOOR_MS,
+    unit: "ms",
+    // A genuine boot is ABOVE the floor; below it means a false-positive read.
+    pass: medianReadyMs != null && medianReadyMs >= READY_SANITY_FLOOR_MS,
+  });
+
   const result = {
     summary: {
       mode,
@@ -201,7 +282,9 @@ async function main() {
       readyMsMax: Math.max(...readyMsRuns),
       peakRssBytes,
       peakRssMb,
-      healthReady: runs[runs.length - 1].health?.ready ?? null,
+      healthReady,
+      readySanityFloorMs: READY_SANITY_FLOOR_MS,
+      contention,
     },
     checks,
     pass: checks.every((c) => c.pass),
@@ -224,10 +307,24 @@ async function main() {
       console.log(`ready:       ${ms(medianReadyMs)}`);
     }
     console.log(`peak RSS:    ${peakRssMb == null ? "—" : `${peakRssMb} MB`}`);
+    console.log(`health.ready:${healthReady === true ? " true" : ` ${healthReady}`}`);
     console.log("\n-- budget checks --");
     for (const c of checks) {
-      const v = c.unit === "MB" ? `${c.value.toFixed(1)} MB` : ms(c.value);
-      const bud = c.unit === "MB" ? `${c.budget} MB` : ms(c.budget);
+      let v;
+      let bud;
+      if (c.unit === "MB") {
+        v = `${c.value.toFixed(1)} MB`;
+        bud = `${c.budget} MB`;
+      } else if (c.unit === "bool") {
+        v = healthReady === true ? "true" : String(healthReady);
+        bud = "true";
+      } else if (c.name === "readyMsSanityFloor") {
+        v = ms(c.value);
+        bud = `≥ ${ms(c.budget)}`;
+      } else {
+        v = ms(c.value);
+        bud = ms(c.budget);
+      }
       console.log(`  ${c.pass ? "PASS" : "FAIL"}  ${c.name}: ${v} / budget ${bud}`);
     }
     console.log(`\nresult: ${result.pass ? "PASS" : "FAIL"}   recorded -> ${file}\n`);
