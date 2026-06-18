@@ -204,8 +204,19 @@ hits two cross-cutting prerequisites that must be tackled deliberately FIRST:
    stack is promoted to a shared package (likely `@elizaos/agent` — has LLM
    access, all plugins depend on it), domain actions (remote-desktop, finances,
    inbox, goals, todos) cannot move. This is why slice 1 left the BLOCK action in
-   PA. Do this untangle as its own slice; check extractor-pipeline's further
-   coupling before moving.
+   PA. **De-risked 2026-06-17:** the whole stack is CLEAN — `resolve-action-args.ts`
+   (423), `lifeops/llm/extractor-pipeline.ts` (113, imports only core), `actions/
+   lib/recent-context.ts` (core + `getRecentMessagesData` from shared), `utils/
+   json-model-output.ts` (pure) depend ONLY on `@elizaos/core` + `@elizaos/shared`.
+   Ideal home: **`@elizaos/core/actions/`** next to the sibling
+   `promoteSubactionsToActions` (every plugin deps core; core already imports
+   shared, so `getRecentMessagesData` resolves). Then rewire the 10 PA importers
+   (app-block, autofill, calendar, lib/index, life, remote-desktop, resolve-request,
+   screen-time, voice-call, website-block) + future domain plugins to
+   `@elizaos/core`. CAUTION: this modifies `@elizaos/core` — the innermost package
+   every concurrent actor depends on; a transient break disrupts the whole shared
+   develop tree. Do it COORDINATED / when not sharing the tree, with a full core +
+   PA + one-domain-plugin build verify.
 2. **`app_lifeops` schema carve-out** — gates filling inbox/finances/goals/todos
    (their data is in the monolith). Schema is `appLifeopsPgSchema.table(...)` in
    `lifeops/schema.ts` (40+ tables). Finance owns `lifePaymentSources`,
