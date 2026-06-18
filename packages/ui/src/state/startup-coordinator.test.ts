@@ -32,6 +32,61 @@ describe("startup coordinator", () => {
     });
   });
 
+  it("carries a cloud-managed target from backend polling into starting-runtime", () => {
+    const reached = startupReducer(
+      { phase: "polling-backend", target: "cloud-managed", attempts: 0 },
+      { type: "BACKEND_REACHED", firstRunComplete: true },
+    );
+    expect(reached).toEqual({
+      phase: "starting-runtime",
+      attempts: 0,
+      target: "cloud-managed",
+    });
+  });
+
+  it("carries the target through first-run into starting-runtime", () => {
+    const firstRun = startupReducer(
+      { phase: "polling-backend", target: "cloud-managed", attempts: 0 },
+      { type: "BACKEND_REACHED", firstRunComplete: false },
+    );
+    expect(firstRun).toEqual({
+      phase: "first-run-required",
+      serverReachable: true,
+      target: "cloud-managed",
+    });
+    expect(startupReducer(firstRun, { type: "FIRST_RUN_COMPLETE" })).toEqual({
+      phase: "starting-runtime",
+      attempts: 0,
+      target: "cloud-managed",
+    });
+  });
+
+  it("defaults a targetless first-run completion to embedded-local", () => {
+    expect(
+      startupReducer(
+        { phase: "first-run-required", serverReachable: false },
+        { type: "FIRST_RUN_COMPLETE" },
+      ),
+    ).toEqual({
+      phase: "starting-runtime",
+      attempts: 0,
+      target: "embedded-local",
+    });
+  });
+
+  it("keeps the target across starting-runtime self-transitions", () => {
+    expect(
+      startupReducer(
+        { phase: "starting-runtime", attempts: 0, target: "cloud-managed" },
+        { type: "AGENT_POLL_RETRY" },
+      ),
+    ).toEqual({
+      phase: "starting-runtime",
+      attempts: 1,
+      target: "cloud-managed",
+    });
+  });
+
   it("resets back to session restoration", () => {
     expect(
       startupReducer(

@@ -5,6 +5,7 @@
  * Polls the agent status until running, then dispatches AGENT_RUNNING.
  */
 
+import { logger } from "@elizaos/logger";
 import {
   type AgentBootProgress,
   type AgentStartupDiagnostics,
@@ -21,7 +22,7 @@ import {
   formatStartupErrorDetail,
   type StartupErrorState,
 } from "./internal";
-import type { StartupEvent } from "./startup-coordinator";
+import type { RuntimeTarget, StartupEvent } from "./startup-coordinator";
 
 function isCapacitorNative(): boolean {
   try {
@@ -146,6 +147,10 @@ async function hydrateReadyAgentStatus(
  * @param effectRunRef - Shared ref tracking the latest run ID
  * @param cancelled - Ref-flag set true by the cleanup function
  * @param tidRef - Mutable ref for the pending setTimeout handle (for cleanup)
+ * @param target - Resolved runtime target. "cloud-managed" / "remote-backend"
+ *   means the agent is cloud-hosted (topology 3): skip client.startAgent() and
+ *   the local agent-readiness loop entirely. Defaults to "embedded-local"
+ *   (topologies 1 & 2), which keeps the original local boot/poll behavior.
  */
 export async function runStartingRuntime(
   deps: StartingRuntimeDeps,
@@ -154,7 +159,27 @@ export async function runStartingRuntime(
   effectRunRef: React.MutableRefObject<number>,
   cancelled: { current: boolean },
   tidRef: { current: ReturnType<typeof setTimeout> | null },
+  target: RuntimeTarget = "embedded-local",
 ): Promise<void> {
+  // Topology 3 (cloud-hosted agent): the agent already runs in the cloud
+  // container the device is pointed at — there is no local runtime to start.
+  // Calling client.startAgent() here would (at best) hit a remote endpoint
+  // that has nothing to boot, and the local agent-readiness poll loop is
+  // pure latency on the first-paint critical path. Treat the running remote
+  // agent as ready and advance straight to hydration. Topologies 1 & 2
+  // ("embedded-local") fall through to the full boot/poll loop below.
+  if (target === "cloud-managed" || target === "remote-backend") {
+    if (cancelled.current || effectRunRef.current !== effectRunId) return;
+    await hydrateReadyAgentStatus(deps);
+    if (cancelled.current || effectRunRef.current !== effectRunId) return;
+    deps.setConnected(true);
+    deps.setFirstRunLoading(false);
+    logger.info(
+      `[eliza][startup:init] cloud-hosted agent (${target}); skipping local agent startup`,
+    );
+    dispatch({ type: "AGENT_RUNNING" });
+    return;
+  }
   const describeAgentFailure = (
     err: unknown,
     timedOut: boolean,

@@ -336,4 +336,72 @@ describe("runStartingRuntime", () => {
     expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
     expect(deps.setStartupError).not.toHaveBeenCalled();
   });
+
+  it("skips local agent startup for a cloud-hosted (cloud-managed) target", async () => {
+    const dispatch = vi.fn();
+    const deps = createDeps();
+
+    await runStartingRuntime(
+      deps,
+      dispatch,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+      "cloud-managed",
+    );
+
+    // No local boot/poll: never asks the bridge to start an agent and never
+    // walks the launch/boot progress loop.
+    expect(clientMock.startAgent).not.toHaveBeenCalled();
+    expect(clientMock.getLaunchProgress).not.toHaveBeenCalled();
+    expect(clientMock.getBootProgress).not.toHaveBeenCalled();
+    // The already-running cloud agent is treated as ready and advanced.
+    expect(deps.setConnected).toHaveBeenCalledWith(true);
+    expect(deps.setFirstRunLoading).toHaveBeenCalledWith(false);
+    expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
+    expect(deps.setStartupError).not.toHaveBeenCalled();
+  });
+
+  it("skips local agent startup for a cloud-hosted (remote-backend) target", async () => {
+    const dispatch = vi.fn();
+    const deps = createDeps();
+
+    await runStartingRuntime(
+      deps,
+      dispatch,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+      "remote-backend",
+    );
+
+    expect(clientMock.startAgent).not.toHaveBeenCalled();
+    expect(clientMock.getLaunchProgress).not.toHaveBeenCalled();
+    expect(clientMock.getBootProgress).not.toHaveBeenCalled();
+    expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
+  });
+
+  it("still runs the full local boot/poll loop for an embedded-local target", async () => {
+    const dispatch = vi.fn();
+    const deps = createDeps();
+
+    await runStartingRuntime(
+      deps,
+      dispatch,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+      "embedded-local",
+    );
+
+    // Embedded-local walks the launch/boot/status path exactly as before.
+    expect(clientMock.getLaunchProgress).toHaveBeenCalled();
+    expect(clientMock.getBootProgress).toHaveBeenCalled();
+    expect(clientMock.getStatus).toHaveBeenCalled();
+    expect(deps.setConnected).toHaveBeenCalledWith(true);
+    expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
+  });
 });

@@ -231,10 +231,17 @@ export function useStartupCoordinator(
   }, [state.phase, policy.backendTimeoutMs, depsReady, policy]);
 
   // ── Phase: starting-runtime ─────────────────────────────────────
+  // The runtime target is fixed for a given starting-runtime entry (it is
+  // carried in the state object and never mutates in place), so re-running on
+  // `state.phase` alone already picks up the correct target. The local
+  // primitive keeps it readable inside the effect without widening the deps.
+  const startingRuntimeTarget: RuntimeTarget | null =
+    state.phase === "starting-runtime" ? state.target : null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: startingRuntimeTarget is constant across a single starting-runtime entry; state.phase is the real trigger.
   useEffect(() => {
     if (state.phase !== "starting-runtime" || !depsReady) return;
     const currentDeps = depsRef.current;
-    if (!currentDeps) return;
+    if (!currentDeps || !startingRuntimeTarget) return;
     effectRunRef.current += 1;
     const runId = effectRunRef.current;
     const cancelled = { current: false };
@@ -247,6 +254,7 @@ export function useStartupCoordinator(
       effectRunRef,
       cancelled,
       tidRef,
+      startingRuntimeTarget,
     ).catch(() => {});
 
     return () => {
@@ -374,6 +382,7 @@ export function useStartupCoordinator(
   let target: RuntimeTarget | null = null;
   if (state.phase === "resolving-target") target = state.target;
   else if (state.phase === "polling-backend") target = state.target;
+  else if (state.phase === "starting-runtime") target = state.target;
 
   return {
     state,
