@@ -45,6 +45,10 @@ import { uiCatalogProvider } from "../providers/ui-catalog.ts";
 import { createUserNameProvider } from "../providers/user-name.ts";
 import { createWorkspaceProvider } from "../providers/workspace-provider.ts";
 import { ElizaCharacterPersistenceService } from "../services/character-persistence.ts";
+import {
+  KnowledgeGraphService,
+  knowledgeGraphSchema,
+} from "../services/knowledge-graph/index.ts";
 import { AgentMediaGenerationService } from "../services/media-generation.ts";
 import { PermissionRegistry } from "../services/permissions-registry.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
@@ -105,11 +109,17 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     name: "eliza",
     description: "Eliza workspace context, session keys, and lifecycle actions",
 
+    // Runtime-owned knowledge graph (entity nodes + typed relationship edges)
+    // under the app_lifeops schema. Registered here so the tables exist
+    // whenever the runtime runs and are migrated by the SQL plugin.
+    schema: knowledgeGraphSchema,
+
     services: [
       AgentEventService as ServiceClass,
       ElizaCharacterPersistenceService as ServiceClass,
       AgentMediaGenerationService as ServiceClass,
       PermissionRegistry as ServiceClass,
+      KnowledgeGraphService as ServiceClass,
     ],
 
     init: async (_pluginConfig, runtime: IAgentRuntime) => {

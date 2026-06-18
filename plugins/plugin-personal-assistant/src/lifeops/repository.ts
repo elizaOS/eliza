@@ -1,4 +1,10 @@
 import crypto from "node:crypto";
+import {
+  type EntityStore,
+  knowledgeGraphSchema,
+  type RelationshipStore,
+  resolveKnowledgeGraphService,
+} from "@elizaos/agent";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
@@ -13,6 +19,14 @@ import type {
   LifeOpsScheduleMergedState,
   LifeOpsScheduleObservation,
 } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
+import {
+  FinancesRepository,
+  type LifeOpsPaymentSource,
+  type LifeOpsPaymentTransaction,
+  type LifeOpsSubscriptionAudit,
+  type LifeOpsSubscriptionCancellation,
+  type LifeOpsSubscriptionCandidate,
+} from "@elizaos/plugin-finances";
 import type {
   LifeOpsXDm,
   LifeOpsXFeedItem,
@@ -79,14 +93,6 @@ import type {
   EmailUnsubscribeRecord,
   EmailUnsubscribeStatus,
 } from "./email-unsubscribe-types.js";
-import {
-  FinancesRepository,
-  type LifeOpsPaymentSource,
-  type LifeOpsPaymentTransaction,
-  type LifeOpsSubscriptionAudit,
-  type LifeOpsSubscriptionCancellation,
-  type LifeOpsSubscriptionCandidate,
-} from "@elizaos/plugin-finances";
 import {
   createConnectorAccountPrivacyPolicy,
   deriveConnectorAccountId,
@@ -2377,22 +2383,27 @@ export class LifeOpsRepository {
   }
 
   /**
-   * EntityStore / RelationshipStore accessors for the typed graph. New code
-   * paths should consume the graph via these factories rather than the
-   * legacy `upsertRelationship` / `listRelationships` helpers.
+   * EntityStore / RelationshipStore accessors for the typed graph. The
+   * knowledge graph is a runtime primitive owned by `@elizaos/agent`; these
+   * factories resolve the per-agent stores from the registered
+   * `KnowledgeGraphService` rather than constructing them directly.
    */
-  async entityStore(
-    agentId: string,
-  ): Promise<import("./entities/store.js").EntityStore> {
-    const mod = await import("./entities/store.js");
-    return new mod.EntityStore(this.runtime, agentId);
+  private knowledgeGraph(): ReturnType<typeof resolveKnowledgeGraphService> {
+    const service = resolveKnowledgeGraphService(this.runtime);
+    if (!service) {
+      throw new Error(
+        "[LifeOpsRepository] KnowledgeGraphService is not registered on the runtime",
+      );
+    }
+    return service;
   }
 
-  async relationshipStore(
-    agentId: string,
-  ): Promise<import("./relationships/store.js").RelationshipStore> {
-    const mod = await import("./relationships/store.js");
-    return new mod.RelationshipStore(this.runtime, agentId);
+  async entityStore(agentId: string): Promise<EntityStore> {
+    return this.knowledgeGraph().getEntityStore(agentId);
+  }
+
+  async relationshipStore(agentId: string): Promise<RelationshipStore> {
+    return this.knowledgeGraph().getRelationshipStore(agentId);
   }
 
   static async bootstrapSchema(runtime: IAgentRuntime): Promise<void> {
@@ -2412,6 +2423,14 @@ export class LifeOpsRepository {
         {
           name: "@elizaos/plugin-personal-assistant",
           schema: lifeOpsSchema,
+        },
+        // The knowledge-graph tables are runtime-owned (registered by the
+        // agent "eliza" plugin in production). Migrate them under the same
+        // plugin name here so test harnesses that only call
+        // bootstrapSchema still get the app_lifeops graph tables.
+        {
+          name: "eliza",
+          schema: knowledgeGraphSchema,
         },
       ],
       {

@@ -1,6 +1,20 @@
 import os from "node:os";
 import path from "node:path";
 
+// The runtime knowledge graph (entity/relationship stores + service + schema)
+// is owned by @elizaos/agent. Re-export the real implementations here: they
+// are self-contained (only @elizaos/core, @elizaos/shared, drizzle-orm) and do
+// not drag the agent server graph into the e2e lane, so the e2e tests exercise
+// the genuine stores via the personal-assistant shims.
+export {
+  EntityStore,
+  KNOWLEDGE_GRAPH_SERVICE,
+  KnowledgeGraphService,
+  knowledgeGraphSchema,
+  RelationshipStore,
+  resolveKnowledgeGraphService,
+} from "../../../../packages/agent/src/services/knowledge-graph/index.ts";
+
 export class DatabaseSync {}
 
 export async function hasOwnerAccess(): Promise<boolean> {

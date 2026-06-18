@@ -9,8 +9,11 @@
  *   POST   /api/lifeops/relationships/:id/retire
  */
 
+import {
+  type RelationshipStore,
+  resolveKnowledgeGraphService,
+} from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
-import { RelationshipStore } from "../lifeops/relationships/store.js";
 import type {
   Relationship,
   RelationshipFilter,
@@ -27,8 +30,12 @@ function makeStore(ctx: LifeOpsRouteContext): RelationshipStore | null {
     ctx.error(ctx.res, "Agent runtime is not available", 503);
     return null;
   }
-  return new RelationshipStore(
-    ctx.state.runtime,
+  const knowledgeGraph = resolveKnowledgeGraphService(ctx.state.runtime);
+  if (!knowledgeGraph) {
+    ctx.error(ctx.res, "Knowledge graph service is not available", 503);
+    return null;
+  }
+  return knowledgeGraph.getRelationshipStore(
     ctx.state.adminEntityId
       ? String(ctx.state.adminEntityId)
       : defaultAgentId(ctx.state.runtime),
