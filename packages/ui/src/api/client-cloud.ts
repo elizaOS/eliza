@@ -5,6 +5,7 @@
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { getBootConfig } from "../config/boot-config";
+import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
 import { ElizaClient } from "./client-base";
 import type {
   ApiError,
@@ -2428,8 +2429,14 @@ export function resolveCloudAgentApiBase(args: {
 }): string {
   const stripTrailingSlash = (u: string): string => u.replace(/\/+$/, "");
   const serverProvided = args.webUiUrl?.trim();
-  if (serverProvided) return stripTrailingSlash(serverProvided);
-  return stripTrailingSlash(args.bridgeUrl ?? "");
+  if (serverProvided) {
+    return normalizeDirectCloudSharedAgentApiBase(
+      stripTrailingSlash(serverProvided),
+    );
+  }
+  return normalizeDirectCloudSharedAgentApiBase(
+    stripTrailingSlash(args.bridgeUrl ?? ""),
+  );
 }
 
 function resolveDirectCloudAgentBridgeUrl(

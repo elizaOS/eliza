@@ -1,6 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 import * as React from "react";
 import { client } from "../api";
+import { resolveCloudAgentApiBase } from "../api/client-cloud";
 import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
 import { getBootConfig } from "../config/boot-config";
 import {
@@ -15,6 +16,7 @@ import {
   savePersistedActiveServer,
   useApp,
 } from "../state";
+import { isDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
 import { isCloudStatusAuthenticated, preOpenWindow } from "../utils";
 import {
   createVoiceCapture,
@@ -230,6 +232,14 @@ async function waitForAgentApi(): Promise<void> {
   throw new Error(
     "The agent API did not become ready before the first-run deadline.",
   );
+}
+
+function errorHttpStatus(error: unknown): number | null {
+  if (error instanceof Error && "status" in error) {
+    const status = (error as { status?: unknown }).status;
+    return typeof status === "number" ? status : null;
+  }
+  return null;
 }
 
 function normalizeRemoteTarget(value: string): string {
@@ -619,11 +629,16 @@ export function useFirstRunController(): FirstRunController {
         // new Android/desktop users. Mirrors the useFirstRunCallbacks path.
         allowSharedRuntime: true,
       });
-      client.setBaseUrl(provisionedAgent.bridgeUrl);
+      const cloudAgentApiBase = resolveCloudAgentApiBase({
+        bridgeUrl: provisionedAgent.bridgeUrl,
+        webUiUrl: provisionedAgent.webUiUrl,
+      });
+      client.setBaseUrl(cloudAgentApiBase);
       client.setToken(authToken);
       const activeServer = createPersistedActiveServer({
         kind: "cloud",
-        apiBase: provisionedAgent.bridgeUrl,
+        id: `cloud:${provisionedAgent.agentId}`,
+        apiBase: cloudAgentApiBase,
         accessToken: authToken,
       });
       savePersistedActiveServer(activeServer);
@@ -637,7 +652,16 @@ export function useFirstRunController(): FirstRunController {
       });
       persistMobileRuntimeModeForServerTarget("elizacloud");
       setBusyText("Saving first-run profile");
-      await client.submitFirstRun(plan.payload);
+      try {
+        await client.submitFirstRun(plan.payload);
+      } catch (err) {
+        if (
+          errorHttpStatus(err) !== 404 ||
+          !isDirectCloudSharedAgentApiBase(cloudAgentApiBase)
+        ) {
+          throw err;
+        }
+      }
       clearPersistedFirstRunState();
       setBusyText(null);
       completeFirstRun("chat", { launchCompanionOverlay: true });
