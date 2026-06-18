@@ -25416,16 +25416,13 @@
         },
         ...binding,
         className: cn(
-          "appearance-none border-0 bg-transparent p-0 text-left",
-          // The bar sits LOW, floating inside the input row's top padding: a small
-          // pt nudges it down and the negative bottom margin pulls the input up
-          // under it, so the handle adds ~no height (collapsed = the input row, no
-          // extra top margin above the buttons vs below). z-20 keeps the handle
-          // above the input row (z-10) in the overlap so it still catches the drag.
-          "pointer-events-auto relative z-20 mx-auto flex w-full max-w-3xl shrink-0 cursor-grab touch-none select-none items-center justify-center pt-0.5 -mb-2 active:cursor-grabbing",
-          // Generous invisible drag target, larger than the thin bar (without
-          // reaching down onto the textarea/buttons). Adds no layout height.
-          "before:absolute before:inset-x-0 before:-top-2 before:bottom-0 before:content-['']",
+          "appearance-none border-0 bg-transparent text-left",
+          // ABSOLUTELY positioned at the top-center of the panel, so the handle
+          // adds ZERO layout height — it floats slightly on top of the input row
+          // (collapsed height == the input bar). Generous wide+tall padding makes
+          // the hitbox much larger than the thin bar; z-20 keeps it above the
+          // input row (z-10) so it always wins the drag.
+          "pointer-events-auto absolute left-1/2 top-0 z-20 -translate-x-1/2 flex cursor-grab touch-none select-none items-center justify-center px-14 py-3 active:cursor-grabbing",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full"
         ),
         children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
@@ -25433,8 +25430,44 @@
           {
             "aria-hidden": "true",
             className: cn(
-              "h-1.5 w-10 rounded-full transition-colors duration-300",
-              glow ? "bg-[rgba(255,180,120,0.75)]" : "bg-white/35"
+              "h-1.5 w-11 rounded-full transition-colors duration-300",
+              glow ? "bg-[rgba(255,180,120,0.75)]" : "bg-white/40"
+            )
+          }
+        )
+      }
+    );
+  }
+  function PillHandle({
+    binding,
+    onOpen,
+    glow
+  }) {
+    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+      "button",
+      {
+        type: "button",
+        "data-testid": "chat-pill",
+        "aria-label": "open chat",
+        onClick: onOpen,
+        onKeyDown: (e) => {
+          if (e.key === "Enter" || e.key === " " || e.key === "ArrowUp") {
+            e.preventDefault();
+            onOpen();
+          }
+        },
+        ...binding,
+        className: cn(
+          "pointer-events-auto flex cursor-grab touch-none select-none items-center justify-center px-12 py-4 active:cursor-grabbing",
+          "focus-visible:rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+        ),
+        children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+          "span",
+          {
+            className: cn(
+              "h-2 w-20 rounded-full border border-white/15 backdrop-blur-2xl transition-colors",
+              "shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_10px_30px_-12px_rgba(0,0,0,0.7)]",
+              glow ? "bg-[rgba(255,180,120,0.7)]" : "bg-black/55"
             )
           }
         )
@@ -25655,6 +25688,7 @@
     const [draft, setDraft] = React5.useState("");
     const [sheetOpen, setSheetOpen] = React5.useState(false);
     const [expanded, setExpanded] = React5.useState(false);
+    const [pilled, setPilled] = React5.useState(false);
     const threadHeight = useMotionValue(0);
     const draggingRef = React5.useRef(false);
     const [pushToTalkActive, setPushToTalkActive] = React5.useState(false);
@@ -25684,7 +25718,7 @@
     const responding = phase === "responding";
     const hasDraft = draft.trim().length > 0;
     const hasImages = pendingImages.length > 0;
-    const suggestionsVisible = !sheetOpen && !recording && !booting && canSend && !hasDraft && !hasImages;
+    const suggestionsVisible = !pilled && !sheetOpen && !recording && !booting && canSend && !hasDraft && !hasImages;
     const suggestions = usePromptSuggestions(messages, {
       enabled: suggestionsVisible
     });
@@ -25934,6 +25968,11 @@
       // jumping straight to the ends — the iOS sheet feel. The inline closures are
       // rebuilt every render, so they always read the current detent.
       onPullUp: () => {
+        if (pilled) {
+          setPilled(false);
+          detentHaptic();
+          return;
+        }
         if (!sheetOpen) {
           if (!hasThread) return settleDrag();
           goToDetent("half");
@@ -25946,9 +25985,14 @@
         }
       },
       onPullDown: () => {
+        if (pilled) return settleDrag();
         if (expanded) goToDetent("half");
         else if (sheetOpen) goToDetent("collapsed");
-        else settleDrag();
+        else {
+          setPilled(true);
+          inputRef.current?.blur();
+          detentHaptic();
+        }
       }
     });
     return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
@@ -26048,25 +26092,38 @@
               ))
             }
           ) : null,
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
             "fieldset",
             {
               ref: panelRef,
               "aria-label": "Chat composer",
               "data-testid": "chat-sheet",
               "data-variant": sheetOpen ? "open" : "closed",
-              "data-detent": !sheetOpen ? "collapsed" : expanded ? "full" : "half",
+              "data-detent": pilled ? "pill" : !sheetOpen ? "collapsed" : expanded ? "full" : "half",
               "data-revealed": sheetOpen ? "true" : "false",
-              style: { maxHeight: panelMaxH },
+              style: pilled ? void 0 : { maxHeight: panelMaxH },
               className: cn(
-                "pointer-events-auto relative m-0 flex w-full min-w-0 max-w-3xl flex-col overflow-hidden border-0 p-0",
-                // Liquid glass: a translucent, blurred, slightly over-saturated pane
-                // (more glass where backdrop-filter is supported) with a bright top
-                // specular edge + a faint full-perimeter refractive inner stroke.
-                "rounded-[28px] border border-white/[0.14] bg-black/55 backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
-                "shadow-[inset_0_1px_0_rgba(255,255,255,0.20),inset_0_0_0_0.5px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(0,0,0,0.72)]"
+                "pointer-events-auto relative m-0 flex min-w-0 flex-col border-0 p-0",
+                pilled ? (
+                  // PILL: a bare, transparent container — the capsule carries its own
+                  // glass, and the panel shrinks to fit it.
+                  "w-auto"
+                ) : cn(
+                  "w-full max-w-3xl overflow-hidden",
+                  // Liquid glass: a translucent, blurred, slightly over-saturated
+                  // pane with a bright top specular edge + a faint refractive stroke.
+                  "rounded-[28px] border border-white/[0.14] bg-black/55 backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-black/40",
+                  "shadow-[inset_0_1px_0_rgba(255,255,255,0.20),inset_0_0_0_0.5px_rgba(255,255,255,0.06),0_18px_50px_-16px_rgba(0,0,0,0.72)]"
+                )
               ),
-              children: [
+              children: pilled ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                PillHandle,
+                {
+                  binding: pullBinding,
+                  onOpen: () => setPilled(false),
+                  glow: listening || responding
+                }
+              ) : /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(import_jsx_runtime6.Fragment, { children: [
                 /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
                   "div",
                   {
@@ -26087,11 +26144,12 @@
                     transition: { duration: reduce ? 0 : 1.1, ease: "easeInOut" }
                   }
                 ),
-                hasThread ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
                   SheetGrabber,
                   {
                     open: sheetOpen,
                     onOpen: () => {
+                      if (!hasThread) return;
                       goToDetent("half");
                       focusThreadRef.current = true;
                     },
@@ -26099,7 +26157,7 @@
                     binding: pullBinding,
                     glow: listening || responding
                   }
-                ) : null,
+                ),
                 hasThread ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
                   motion.div,
                   {
@@ -26303,7 +26361,7 @@
                     ]
                   }
                 )
-              ]
+              ] })
             }
           )
         ]

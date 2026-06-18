@@ -686,6 +686,40 @@ try {
     await p.close();
   }
 
+  // PILL: pull DOWN from the input collapses the whole chat into a small pill at
+  // the bottom (input hidden); tapping the pill brings the input back.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet-grabber"]');
+    await p.waitForTimeout(500);
+    assert((await detent(p)) === "collapsed", "PILL: starts at input (collapsed)");
+    await gesture(p, -120, { pointer: "touch", slow: true }); // pull DOWN
+    await p.waitForTimeout(SETTLE);
+    assert((await detent(p)) === "pill", "PILL: pull-down collapses the input → pill");
+    assert(
+      (await p.getByTestId("chat-pill").count()) === 1,
+      "PILL: the recoverable pill capsule is shown",
+    );
+    assert(
+      (await p.getByTestId("chat-composer-textarea").count()) === 0,
+      "PILL: the input is fully hidden in pill mode",
+    );
+    await snap(p, "state-pill");
+    await p.getByTestId("chat-pill").click();
+    await p.waitForTimeout(SETTLE);
+    assert(
+      (await detent(p)) === "collapsed",
+      "PILL: tapping the pill recovers the input",
+    );
+    assert(
+      (await p.getByTestId("chat-composer-textarea").count()) === 1,
+      "PILL: input is back after recovery",
+    );
+    await p.close();
+  }
+
   // reduced-motion still opens via flick
   {
     const p = await ctrl();

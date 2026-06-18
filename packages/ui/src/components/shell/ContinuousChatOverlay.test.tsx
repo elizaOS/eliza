@@ -587,4 +587,49 @@ describe("ContinuousChatOverlay", () => {
       vi.useRealTimers();
     }
   });
+
+  it("pulls DOWN from the input to collapse into a recoverable pill", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(screen.getByTestId("chat-composer-textarea")).toBeTruthy();
+    // A downward drag past the threshold collapses the input away into the pill.
+    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("pill");
+    expect(screen.getByTestId("chat-pill")).toBeTruthy();
+    // The input is fully gone in pill mode.
+    expect(screen.queryByTestId("chat-composer-textarea")).toBeNull();
+  });
+
+  it("recovers from the pill back to the input on tap", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
+    const pill = screen.getByTestId("chat-pill");
+    fireEvent.click(pill);
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(screen.getByTestId("chat-composer-textarea")).toBeTruthy();
+  });
+
+  it("flicks UP from the pill to recover the input", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
+    const pill = screen.getByTestId("chat-pill");
+    // A quick upward flick on the pill brings the input back.
+    fireEvent.pointerDown(pill, { clientY: 400, pointerId: 1 });
+    fireEvent.pointerMove(pill, { clientY: 360, pointerId: 1 });
+    fireEvent.pointerUp(pill, { clientY: 360, pointerId: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(screen.getByTestId("chat-composer-textarea")).toBeTruthy();
+  });
 });
