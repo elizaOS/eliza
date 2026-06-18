@@ -6029,7 +6029,9 @@ function auditAndroidSideloadArtifact({ javaHome } = {}) {
     requireAgent: true,
     label: "android",
   });
-  console.log(`[mobile-build] android sideload artifact audit passed: ${artifact}`);
+  console.log(
+    `[mobile-build] android sideload artifact audit passed: ${artifact}`,
+  );
   return artifact;
 }
 
