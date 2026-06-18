@@ -26034,13 +26034,14 @@
           // zone reaches UP into the empty space above the panel (3× taller/wider
           // than the bar) so it's easy to grab without covering the edge buttons.
           // z-20 keeps it above the input row (z-10) so it always wins the drag.
-          "pointer-events-auto absolute left-1/2 top-0.5 z-20 -translate-x-1/2 flex cursor-grab touch-none select-none items-center justify-center px-16 py-1 active:cursor-grabbing",
+          "pointer-events-auto absolute left-1/2 top-0.5 z-20 -translate-x-1/2 flex cursor-grab touch-none select-none items-center justify-center px-16 py-2 active:cursor-grabbing",
+          "before:absolute before:-inset-x-4 before:-top-10 before:content-['']",
           // The hit zone reaches UP into the empty space above the panel (easy to
-          // grab) and stops at the handle's own bottom — it never reaches the
-          // vertically-centered textarea, so a tap on the composer lands natively
-          // on the textarea and raises the keyboard (a programmatic focus from the
-          // handle wouldn't). Pull gestures start from the bar / the upward zone.
-          "before:absolute before:-inset-x-4 before:-top-10 before:bottom-0 before:content-['']",
+          // grab) but stays SHALLOW downward so it never covers the textarea — a
+          // tap on the composer must land natively on the textarea to raise the
+          // keyboard (a programmatic focus from the handle wouldn't). Pull gestures
+          // start from the bar / the upward zone; pull DOWN there → pill.
+          "before:-bottom-2",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full"
         ),
         children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
@@ -26645,9 +26646,6 @@
         if (!input || document.activeElement !== input) return;
         const target = event.target;
         if (target && panelRef.current?.contains(target)) return;
-        if (target instanceof Element && target.closest('[data-testid="chat-sheet-grabber"]')) {
-          return;
-        }
         input.blur();
       };
       document.addEventListener("pointerdown", onPointerDown, true);

@@ -810,6 +810,42 @@ ElizaClient.prototype.sendChatStream = async function (
   }
 };
 
+// A serverless / shared-runtime agent may omit `updatedAt` from conversation
+// objects (a never-updated conversation legitimately has updatedAt == createdAt).
+// The shared `isConversationRecord` guard requires the standard shape, so without
+// this the conversation list filters to empty and chat sends are dropped for want
+// of an active conversation (createConversation's result is rejected too). Default
+// the field at the API boundary — clean DTO completion, not a server-specific
+// special case.
+function withConversationDefaults<T>(conversation: T): T {
+  if (
+    conversation &&
+    typeof conversation === "object" &&
+    typeof (conversation as Record<string, unknown>).updatedAt !== "string"
+  ) {
+    const createdAt = (conversation as Record<string, unknown>).createdAt;
+    if (typeof createdAt === "string") {
+      return {
+        ...(conversation as Record<string, unknown>),
+        updatedAt: createdAt,
+      } as T;
+    }
+  }
+  return conversation;
+}
+
+function withConversationListDefaults<T extends { conversations?: unknown }>(
+  response: T,
+): T {
+  if (response && Array.isArray(response.conversations)) {
+    return {
+      ...response,
+      conversations: response.conversations.map(withConversationDefaults),
+    };
+  }
+  return response;
+}
+
 ElizaClient.prototype.listConversations = async function (this: ElizaClient) {
   // Prefer typed Electrobun RPC. The bun-side composer throws
   // AgentNotReadyError if the agent has no port yet; we catch and
@@ -819,11 +855,13 @@ ElizaClient.prototype.listConversations = async function (this: ElizaClient) {
     const viaRpc = await invokeDesktopBridgeRequest<{
       conversations: Conversation[];
     }>({ rpcMethod: "listConversations", ipcChannel: "agent" });
-    if (viaRpc) return viaRpc;
+    if (viaRpc) return withConversationListDefaults(viaRpc);
   } catch {
     /* AgentNotReadyError or any RPC failure → fall through to HTTP */
   }
-  return this.fetch("/api/conversations");
+  return withConversationListDefaults(
+    await this.fetch<{ conversations: Conversation[] }>("/api/conversations"),
+  );
 };
 
 ElizaClient.prototype.createConversation = async function (
@@ -848,11 +886,13 @@ ElizaClient.prototype.createConversation = async function (
       ...(options?.metadata ? { metadata: options.metadata } : {}),
     }),
   });
+  const conversation = withConversationDefaults(response.conversation);
   if (!response.greeting) {
-    return response;
+    return { ...response, conversation };
   }
   return {
     ...response,
+    conversation,
     greeting: {
       ...response.greeting,
       text: this.normalizeGreetingText(response.greeting.text),

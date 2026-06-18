@@ -207,6 +207,33 @@ function isLocalAgentIpcBase(value: string | null | undefined): boolean {
   return isMobileLocalAgentIpcUrl(normalized);
 }
 
+function isSharedRuntimeRestAdapterBase(
+  value: string | null | undefined,
+): boolean {
+  const normalized = normalizeBaseUrl(value);
+  if (!normalized) return false;
+  try {
+    const url = new URL(normalized);
+    // Shared-runtime agents are served by the Cloud Worker over REST/SSE, not
+    // by a stateful agent server with `/ws`. Treat both the current adapter
+    // base and the legacy bridge base as connected so the shell does not show
+    // the lost-connection overlay while REST chat remains usable.
+    return /^\/api\/v1\/eliza\/agents\/[^/]+(?:\/bridge)?$/.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
+function shouldTreatAsConnectedWithoutWebSocket(
+  value: string | null | undefined,
+): boolean {
+  return (
+    isIosInProcessLocalAgentBase(value) ||
+    isLocalAgentIpcBase(value) ||
+    isSharedRuntimeRestAdapterBase(value)
+  );
+}
+
 function getInjectedWsBase(): string | undefined {
   if (typeof window === "undefined") return undefined;
   const values = [
@@ -764,10 +791,7 @@ export class ElizaClient {
   // --- WebSocket ---
 
   connectWs(): void {
-    if (
-      isIosInProcessLocalAgentBase(this.baseUrl) ||
-      isLocalAgentIpcBase(this.baseUrl)
-    ) {
+    if (shouldTreatAsConnectedWithoutWebSocket(this.baseUrl)) {
       this.backoffMs = 500;
       this.reconnectAttempt = 0;
       this.disconnectedAt = null;
