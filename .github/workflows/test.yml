@@ -232,8 +232,13 @@ jobs:
 
       # plugin-xr's xr-bundle-coverage test asserts every view plugin has a
       # built dist/views/bundle.js; build them before running plugin tests.
+      # @elizaos/tui first: the spatial-view tests (45 plugins) import
+      # @elizaos/ui/spatial/tui, whose terminal renderer externalizes
+      # @elizaos/tui — without its dist, vitest fails to resolve the package.
       - name: Build view bundles
-        run: bun run build:views
+        run: |
+          bun run --cwd packages/tui build
+          bun run build:views
 
       - name: Run plugin tests
         # Cap step below the 95m job budget so a flaky plugin
