@@ -1176,7 +1176,25 @@ ElizaClient.prototype.getStatus = async function (this: ElizaClient) {
     this.getBaseUrl(),
   );
   if (nativeAgent?.getStatus) {
-    return (await nativeAgent.getStatus()) as AgentStatus;
+    const native = (await nativeAgent.getStatus()) as AgentStatus;
+    // The native lifecycle plugin reports the bun *process* state but not the
+    // agent's first-turn readiness (`canRespond`) or loaded `model` — those
+    // exist only in the HTTP `/api/status` the running agent serves. Without
+    // them `deriveAgentReady` never flips, so the chat's `ready` gate stays
+    // false forever ("waking up…") and voice / hands-free is blocked even though
+    // the agent can answer. When the process is up but its status doesn't yet
+    // confirm `canRespond`, fill the readiness fields from `/api/status`.
+    if (native.state === "running" && native.canRespond !== true) {
+      try {
+        const http = (await this.fetch("/api/status")) as AgentStatus | null;
+        if (http && typeof http === "object") {
+          return { ...native, ...http };
+        }
+      } catch {
+        /* /api/status unreachable — fall back to the native lifecycle status */
+      }
+    }
+    return native;
   }
   return this.fetch("/api/status");
 };
