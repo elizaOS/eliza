@@ -13,6 +13,20 @@
 export const RELATIONSHIPS_LOG_PREFIX = "[Relationships]";
 export const RELATIONSHIPS_SERVICE_TYPE = "relationships";
 
+/**
+ * Action name for the relationships graph-CRUD umbrella.
+ *
+ * NOT `ENTITY`. `@elizaos/plugin-personal-assistant` already registers an
+ * `ENTITY` action: a rich orchestration over the legacy Rolodex contact model
+ * (`LifeOpsService.listRelationships/upsertRelationship/logInteraction`) with
+ * an LLM planner and voice-grounded replies. That action stays in PA. This
+ * action is the thin "extras" surface — direct CRUD over the runtime
+ * {@link KNOWLEDGE_GRAPH_SERVICE} graph that powers the relationships viewer —
+ * so it is registered under a distinct name to avoid a duplicate `ENTITY`
+ * registration when both plugins load together.
+ */
+export const RELATIONSHIPS_ACTION_NAME = "KNOWLEDGE_GRAPH";
+
 export const RELATIONSHIPS_CONTEXTS = [
   "people",
   "contacts",
