@@ -57,7 +57,19 @@ export * from "./payment-csv-import.ts";
 export * from "./payment-recurrence.ts";
 export * from "./payment-types.ts";
 export { default, financesPlugin } from "./plugin.ts";
+export {
+  createSubscriptionsBrowserGateway,
+  type SubscriptionsBrowserGateway,
+} from "./services/browser-bridge-seam.ts";
+export {
+  createSubscriptionsGmailGateway,
+  type SubscriptionsGmailGateway,
+} from "./services/gmail-seam.ts";
 export { FinancesMigrationService } from "./services/migration.ts";
+export {
+  SubscriptionsService,
+  type SubscriptionsServiceOptions,
+} from "./services/subscriptions-service.ts";
 export * from "./subscriptions-playbooks.ts";
 export * from "./subscriptions-types.ts";
 export {

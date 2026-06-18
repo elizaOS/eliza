@@ -9,11 +9,9 @@
  * `@elizaos/plugin-personal-assistant`. Behavior and the data it returns are
  * preserved verbatim from the original mixin.
  *
- * Subscription audit / cancellation logic is NOT here: it orchestrates the
- * agent's Gmail triage + browser-bridge surfaces (which live in
- * plugin-personal-assistant) and persists into both `app_finances` and PA's
- * `app_lifeops` browser-session table, so it remains a PA mixin that reads the
- * finance tables through {@link FinancesRepository}.
+ * Subscription audit / cancellation lives in the sibling
+ * `./services/subscriptions-service.ts` (`SubscriptionsService`), which reaches
+ * Gmail + the browser bridge through runtime-service seams.
  */
 
 import crypto from "node:crypto";
