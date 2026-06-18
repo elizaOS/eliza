@@ -45,6 +45,14 @@ const publicPathPrefixes = [
   "/api/auth/steward-session",
   "/api/auth/steward-nonce-exchange",
   "/api/auth/steward-refresh",
+  // Logout must be reachable without a valid session: the client clears the
+  // Steward cookies before (or independently of) this call, and an expired
+  // session still needs to tear down server state + clear cookies. The handler
+  // resolves the user best-effort and only ends sessions when one is present,
+  // so a public, idempotent logout is safe. Gating it (the prior behavior) made
+  // every logout 401 once cookies were gone, so the server-side teardown never
+  // ran and stale refresh cookies could silently re-mint a session.
+  "/api/auth/logout",
   "/api/set-anonymous-session",
   "/api/anonymous-session",
   "/api/auth/create-anonymous-session",

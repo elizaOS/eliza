@@ -74,23 +74,25 @@ export function AccountTab({ user, onTabChange }: AccountTabProps) {
     if (isLoggingOut) return;
     setIsLoggingOut(true);
 
-    // Clear chat data (rooms, entityId, localStorage)
-    clearChatData();
+    try {
+      // Clear chat data (rooms, entityId, localStorage)
+      clearChatData();
 
-    if (stewardAuthenticated) {
-      stewardSignOut();
-      await fetch(STEWARD_SESSION_ENDPOINT, {
-        method: "DELETE",
-      }).catch(() => {});
+      // Server-side logout first (ends sessions + clears cookies), then drop
+      // local Steward state. Every network step is best-effort: a failed call
+      // must never block the redirect or leave the button stuck spinning.
+      await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+      if (stewardAuthenticated) {
+        stewardSignOut();
+        await fetch(STEWARD_SESSION_ENDPOINT, { method: "DELETE" }).catch(
+          () => {},
+        );
+      }
+
+      toast.success("Logged out successfully");
+    } finally {
+      window.location.href = "/";
     }
-
-    await fetch("/api/auth/logout", {
-      method: "POST",
-    });
-
-    toast.success("Logged out successfully");
-
-    window.location.href = "/";
   };
 
   const handleContactSupport = () => {
