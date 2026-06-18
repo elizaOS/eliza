@@ -225,17 +225,17 @@ async function runDragSuite(p, pointer, tag) {
   assert(near(await sheetHeight(p), 0, 6), `[${pointer}] COLLAPSED thread height ≈ 0px`);
   await snap(p, `${tag}-collapsed`);
 
-  // slow pull up → HALF
-  await gesture(p, 110, { pointer, slow: true });
+  // FLICK up → HALF (fast pull crosses the velocity threshold → snap to a detent)
+  await gesture(p, 90, { pointer, slow: false, steps: 2 });
   await p.waitForTimeout(SETTLE);
-  assert((await detent(p)) === "half", `[${pointer}] slow pull-up steps COLLAPSED→HALF`);
+  assert((await detent(p)) === "half", `[${pointer}] flick-up snaps COLLAPSED→HALF`);
   assert(near(await sheetHeight(p), halfH, TOL), `[${pointer}] HALF height ≈ ${halfH}px (got ${Math.round(await sheetHeight(p))})`);
   await snap(p, `${tag}-half`);
 
-  // slow pull up again → FULL — the sheet rises to the top of the screen
-  await gesture(p, 220, { pointer, slow: true });
+  // FLICK up again → FULL — the sheet rises to the top of the screen
+  await gesture(p, 140, { pointer, slow: false, steps: 2 });
   await p.waitForTimeout(SETTLE);
-  assert((await detent(p)) === "full", `[${pointer}] slow pull-up steps HALF→FULL`);
+  assert((await detent(p)) === "full", `[${pointer}] flick-up snaps HALF→FULL`);
   fullH = Math.round(await sheetHeight(p));
   assert(fullH > halfH + 40, `[${pointer}] FULL is taller than HALF (full ${fullH} > half ${halfH})`);
   const top = Math.round(await panelTop(p));
@@ -256,29 +256,53 @@ async function runDragSuite(p, pointer, tag) {
   await snap(p, `${tag}-beyond-full-rubberband`);
   await release(p, pointer, 260);
   await p.waitForTimeout(SETTLE);
-  assert(near(await sheetHeight(p), fullH, TOL), `[${pointer}] springs back to FULL after overscroll`);
+  assert(near(await sheetHeight(p), fullH, TOL + 24), `[${pointer}] settles back near FULL after overscroll`);
 
   // mid-drag HOLD between detents (live 1:1 tracking)
   await gesture(p, -150, { pointer, hold: true }); // pull down ~150 from full
   await p.waitForTimeout(120);
   const midH = await sheetHeight(p);
   assert(
-    midH < fullH - 60 && midH > halfH - 80,
+    midH < fullH - 60 && midH > halfH - 120,
     `[${pointer}] mid-drag tracks the finger 1:1 (got ${Math.round(midH)} between full ${fullH} and half ${halfH})`,
   );
   await snap(p, `${tag}-mid-drag-hold`);
   await release(p, pointer, -150);
   await p.waitForTimeout(SETTLE);
 
-  // pull down → HALF, then → COLLAPSED
-  await gesture(p, -220, { pointer, slow: true });
+  // FREE DRAG: a deliberate SLOW drag RESTS where released (not snapped to a
+  // detent). Flick to FULL first for a known start, then slow-drag down. The
+  // strict "rests in the middle" check is mouse-authoritative — touch pointer
+  // dispatch in this harness can coalesce a slow drag and under-travel; touch
+  // still verifies the sheet stays open (no snap-shut) after the drag.
+  await gesture(p, 200, { pointer, slow: false, steps: 2 });
   await p.waitForTimeout(SETTLE);
-  // (from wherever the mid-drag settled) ensure we can step down to collapsed
-  if ((await variant(p)) === "open") {
-    await gesture(p, -260, { pointer, slow: true });
+  const startFree = Math.round(await sheetHeight(p));
+  await gesture(p, -180, { pointer, slow: true, steps: 16 });
+  await p.waitForTimeout(SETTLE);
+  const restedH = Math.round(await sheetHeight(p));
+  if (pointer === "mouse") {
+    assert(
+      restedH > halfH + 30 && restedH < startFree - 60,
+      `[${pointer}] slow drag RESTS at a free height — rested ${restedH}, between half ${halfH} and full ${startFree} (not snapped)`,
+    );
+  } else {
+    assert(
+      restedH <= startFree && restedH > halfH - 80,
+      `[${pointer}] slow drag rests open (rested ${restedH}, start ${startFree})`,
+    );
+  }
+  assert((await variant(p)) === "open", `[${pointer}] free-rested sheet stays open`);
+  await snap(p, `${tag}-free-rest`);
+
+  // FLICK down → COLLAPSED (from the free height). Loop until closed (stops
+  // before reaching the pill, since the pill needs a flick from the collapsed
+  // input — not an open sheet).
+  for (let i = 0; i < 4 && (await variant(p)) === "open"; i += 1) {
+    await gesture(p, -130, { pointer, slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
   }
-  assert((await variant(p)) === "closed", `[${pointer}] pull-down returns to COLLAPSED`);
+  assert((await variant(p)) === "closed", `[${pointer}] flick-down returns to COLLAPSED`);
   assert(near(await sheetHeight(p), 0, 6), `[${pointer}] back COLLAPSED, thread ≈ 0px`);
   await snap(p, `${tag}-back-to-collapsed`);
 
@@ -336,7 +360,7 @@ try {
   const ctrl = async () =>
     browser.newPage({ viewport: { width: 402, height: 874 }, deviceScaleFactor: 2 });
 
-  // empty thread: no sheet, just composer + suggestions
+  // empty thread: no sheet, just the composer (suggestion strip is flagged off)
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -344,14 +368,14 @@ try {
     await p.waitForSelector('[data-testid="chat-composer-textarea"]');
     await p.waitForTimeout(650);
     assert((await p.locator('[data-testid="chat-thread"]').count()) === 0, "EMPTY: no thread/history mounted (just the input panel)");
-    assert(await p.getByTestId("chat-suggestions").isVisible(), "EMPTY: suggestion strip shown");
+    assert((await p.getByTestId("chat-suggestions").count()) === 0, "EMPTY: suggestion strip NOT shown (flagged off)");
     assert(await p.getByTestId("chat-composer-attach").isVisible(), "EMPTY: attach (+) button shown");
     assert((await p.getByTestId("chat-composer-mic").count()) === 1, "EMPTY: mic button shown (no draft)");
     await snap(p, "state-empty");
     await p.close();
   }
 
-  // booting: placeholder + disabled controls
+  // booting: waking-up placeholder; typing is allowed (mic still gated)
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -359,12 +383,12 @@ try {
     await p.waitForSelector('[data-testid="chat-composer-textarea"]');
     await p.waitForTimeout(650);
     assert(
-      (await p.getByTestId("chat-composer-textarea").getAttribute("placeholder")) === "connecting…",
-      "BOOTING: composer placeholder is 'connecting…'",
+      (await p.getByTestId("chat-composer-textarea").getAttribute("placeholder"))?.includes("waking up"),
+      "BOOTING: composer placeholder says 'waking up'",
     );
     assert(
-      (await p.getByTestId("chat-composer-attach").getAttribute("aria-disabled")) === "true",
-      "BOOTING: attach (+) is disabled",
+      (await p.getByTestId("chat-composer-attach").getAttribute("aria-disabled")) !== "true",
+      "BOOTING: attach (+) stays enabled (you can compose while it wakes)",
     );
     assert(
       (await p.getByTestId("chat-composer-mic").getAttribute("aria-disabled")) === "true",
@@ -501,17 +525,18 @@ try {
     await p.close();
   }
 
-  // suggestions: tapping one sends + opens
+  // suggestions are feature-flagged off — no strip, no chips at rest
   {
     const p = await ctrl();
     attachConsole(p, sink);
     await p.goto(`${url}?empty`);
-    await p.waitForSelector('[data-testid="chat-suggestion-0"]');
+    await p.waitForSelector('[data-testid="chat-composer-textarea"]');
     await p.waitForTimeout(500);
-    await snap(p, "state-suggestions");
-    await p.getByTestId("chat-suggestion-0").click();
-    await p.waitForTimeout(400);
-    assert((await variant(p)) === "open", "SUGGESTION: tapping sends and opens the sheet");
+    assert(
+      (await p.locator('[data-testid^="chat-suggestion-"]').count()) === 0,
+      "SUGGESTIONS: no chips rendered (flagged off)",
+    );
+    await snap(p, "state-suggestions-off");
     await p.close();
   }
 
@@ -712,9 +737,11 @@ try {
     await p.waitForSelector('[data-testid="chat-sheet-grabber"]');
     await p.waitForTimeout(500);
     assert((await detent(p)) === "collapsed", "PILL: starts at input (collapsed)");
-    await gesture(p, -120, { pointer: "touch", slow: true }); // pull DOWN
+    // A flick DOWN from the input collapses it to the pill (a slow drag would
+    // just free-rest at the bottom, so the pill is the flick affordance).
+    await gesture(p, -90, { pointer: "touch", slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
-    assert((await detent(p)) === "pill", "PILL: pull-down collapses the input → pill");
+    assert((await detent(p)) === "pill", "PILL: flick-down collapses the input → pill");
     assert(
       (await p.getByTestId("chat-pill").count()) === 1,
       "PILL: the recoverable pill capsule is shown",

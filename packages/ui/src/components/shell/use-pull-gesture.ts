@@ -18,6 +18,13 @@ export interface PullGestureOptions {
   onDrag?: (offset: number) => void;
   /** A near-stationary press/release — a tap, not a pull. */
   onTap?: () => void;
+  /**
+   * A deliberate (non-flick) drag past the tap slop: the sheet should REST
+   * wherever it was released rather than snap to a detent. `direction` is the
+   * net travel sign. Flicks still fire onPullUp/onPullDown (snap); taps fire
+   * onTap. If omitted, a slow drag falls back to onPullUp/onPullDown.
+   */
+  onSettleFree?: (direction: "up" | "down") => void;
   /** Minimum travel (px) to count as a pull. Default 56. */
   distanceThreshold?: number;
   /** Minimum speed (px/ms) to count as a flick. Default 0.5. */
@@ -56,6 +63,7 @@ export function usePullGesture(
     onPullDown,
     onDrag,
     onTap,
+    onSettleFree,
     distanceThreshold = 56,
     velocityThreshold = 0.5,
   } = options;
@@ -88,23 +96,40 @@ export function usePullGesture(
       const deltaUp = s.y - event.clientY; // up is positive
       const elapsed = Math.max(1, performance.now() - s.t);
       const velocityUp = deltaUp / elapsed;
-      const direction = resolvePull(
-        deltaUp,
-        velocityUp,
-        distanceThreshold,
-        velocityThreshold,
-      );
-      if (direction === null) {
+      const moved = Math.abs(deltaUp);
+      const isFlick = Math.abs(velocityUp) >= velocityThreshold;
+      // A near-stationary release is a tap (e.g. tapping the collapsed bar to
+      // focus the composer), not a drag.
+      if (moved < TAP_SLOP && !isFlick) {
         onDrag?.(0); // snap back
-        // A near-stationary release is a tap (e.g. tapping the collapsed bar to
-        // focus the composer), not an aborted drag.
-        if (Math.abs(deltaUp) < TAP_SLOP) onTap?.();
+        onTap?.();
         return;
       }
-      if (direction === "up") onPullUp?.();
-      else onPullDown?.();
+      // A quick FLICK snaps to the next detent in the flick direction; a
+      // deliberate (slow) drag past the slop RESTS wherever it was released.
+      if (isFlick) {
+        if (deltaUp > 0) onPullUp?.();
+        else onPullDown?.();
+        return;
+      }
+      if (onSettleFree) {
+        onSettleFree(deltaUp > 0 ? "up" : "down");
+      } else if (deltaUp >= distanceThreshold) {
+        if (deltaUp > 0) onPullUp?.();
+        else onPullDown?.();
+      } else {
+        onDrag?.(0); // sub-threshold, no free-settle consumer → snap back
+      }
     },
-    [onDrag, onPullUp, onPullDown, onTap, distanceThreshold, velocityThreshold],
+    [
+      onDrag,
+      onPullUp,
+      onPullDown,
+      onTap,
+      onSettleFree,
+      distanceThreshold,
+      velocityThreshold,
+    ],
   );
 
   return {

@@ -25248,17 +25248,13 @@
   // packages/ui/src/components/shell/use-pull-gesture.ts
   var React4 = __toESM(require_react(), 1);
   var TAP_SLOP = 8;
-  function resolvePull(deltaUp, velocityUp, distanceThreshold, velocityThreshold) {
-    const passed = Math.abs(deltaUp) >= distanceThreshold || Math.abs(velocityUp) >= velocityThreshold;
-    if (!passed) return null;
-    return deltaUp > 0 ? "up" : "down";
-  }
   function usePullGesture(options) {
     const {
       onPullUp,
       onPullDown,
       onDrag,
       onTap,
+      onSettleFree,
       distanceThreshold = 56,
       velocityThreshold = 0.5
     } = options;
@@ -25286,21 +25282,36 @@
         const deltaUp = s.y - event.clientY;
         const elapsed = Math.max(1, performance.now() - s.t);
         const velocityUp = deltaUp / elapsed;
-        const direction = resolvePull(
-          deltaUp,
-          velocityUp,
-          distanceThreshold,
-          velocityThreshold
-        );
-        if (direction === null) {
+        const moved = Math.abs(deltaUp);
+        const isFlick = Math.abs(velocityUp) >= velocityThreshold;
+        if (moved < TAP_SLOP && !isFlick) {
           onDrag?.(0);
-          if (Math.abs(deltaUp) < TAP_SLOP) onTap?.();
+          onTap?.();
           return;
         }
-        if (direction === "up") onPullUp?.();
-        else onPullDown?.();
+        if (isFlick) {
+          if (deltaUp > 0) onPullUp?.();
+          else onPullDown?.();
+          return;
+        }
+        if (onSettleFree) {
+          onSettleFree(deltaUp > 0 ? "up" : "down");
+        } else if (deltaUp >= distanceThreshold) {
+          if (deltaUp > 0) onPullUp?.();
+          else onPullDown?.();
+        } else {
+          onDrag?.(0);
+        }
       },
-      [onDrag, onPullUp, onPullDown, onTap, distanceThreshold, velocityThreshold]
+      [
+        onDrag,
+        onPullUp,
+        onPullDown,
+        onTap,
+        onSettleFree,
+        distanceThreshold,
+        velocityThreshold
+      ]
     );
     return {
       onPointerDown,
@@ -25326,6 +25337,7 @@
   var SHEET_HALF_VH = 0.46;
   var SHEET_TOP_MARGIN = 72;
   var MAX_RENDERED_MESSAGES = 80;
+  var SHOW_PROMPT_SUGGESTIONS = false;
   function detentHaptic() {
     try {
       const cap = globalThis.Capacitor;
@@ -25351,7 +25363,7 @@
   var SPEAKER_GLYPH = "M7 15H12L18 10V26L12 21H7Z M21 14Q25 18 21 22L23 22Q27 18 23 14Z M25 11Q31 18 25 25L27 25Q33 18 27 11Z";
   var SPEAKER_MUTED_GLYPH = "M7 15H12L18 10V26L12 21H7Z M21 12.4L22.4 11L31 19.6L29.6 21Z";
   function Glyph({ d }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("svg", { viewBox: "0 0 36 36", className: "h-5 w-5", "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("path", { fill: "currentColor", fillRule: "evenodd", d }) });
+    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("svg", { viewBox: "0 0 36 36", className: "h-[26px] w-[26px]", "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("path", { fill: "currentColor", fillRule: "evenodd", d }) });
   }
   function SoftButton({
     glyph,
@@ -25468,7 +25480,9 @@
         },
         ...binding,
         className: cn(
-          "pointer-events-auto flex cursor-grab touch-none select-none items-center justify-center px-12 py-4 active:cursor-grabbing",
+          // The bar hugs the BOTTOM (small pb) where the collapsed input sat — not
+          // floating mid-air; the tall pt keeps a generous upward grab/flick zone.
+          "pointer-events-auto flex cursor-grab touch-none select-none items-end justify-center px-12 pb-1.5 pt-7 active:cursor-grabbing",
           "focus-visible:rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
         ),
         children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
@@ -25702,6 +25716,7 @@
     const [sheetOpen, setSheetOpen] = React5.useState(false);
     const [expanded, setExpanded] = React5.useState(false);
     const [pilled, setPilled] = React5.useState(false);
+    const [freeH, setFreeH] = React5.useState(null);
     const threadHeight = useMotionValue(0);
     const draggingRef = React5.useRef(false);
     const [pushToTalkActive, setPushToTalkActive] = React5.useState(false);
@@ -25731,7 +25746,7 @@
     const responding = phase === "responding";
     const hasDraft = draft.trim().length > 0;
     const hasImages = pendingImages.length > 0;
-    const suggestionsVisible = !pilled && !sheetOpen && !recording && !booting && canSend && !hasDraft && !hasImages;
+    const suggestionsVisible = SHOW_PROMPT_SUGGESTIONS && !pilled && !sheetOpen && !recording && !booting && canSend && !hasDraft && !hasImages;
     const suggestions = usePromptSuggestions(messages, {
       enabled: suggestionsVisible
     });
@@ -25900,7 +25915,8 @@
     const panelMaxH = Math.max(200, viewportH - bottomPad - SHEET_TOP_MARGIN);
     const openH = panelMaxH;
     const halfH = Math.round(viewportH * SHEET_HALF_VH);
-    const baseH = !sheetOpen ? 0 : expanded ? openH : halfH;
+    const detentH = !sheetOpen ? 0 : expanded ? openH : halfH;
+    const baseH = freeH != null ? Math.min(freeH, panelMaxH) : detentH;
     const clampHeight = React5.useCallback(
       (raw) => raw > openH ? openH + rubberBand(raw - openH) : Math.max(0, raw),
       [openH]
@@ -25914,12 +25930,9 @@
       (h) => Math.max(0, 1 - h / Math.max(1, openH * 0.5))
     );
     const threadFlexBasis = useTransform(threadHeight, (h) => `${h}px`);
-    const panelRadius = useTransform(
-      threadHeight,
-      [0, 12],
-      [9999, 24],
-      { clamp: true }
-    );
+    const panelRadius = useTransform(threadHeight, [0, 12], [9999, 24], {
+      clamp: true
+    });
     const settleDrag = React5.useCallback(() => {
       draggingRef.current = false;
       if (reduce) threadHeight.set(baseH);
@@ -25927,6 +25940,7 @@
     }, [threadHeight, baseH, reduce]);
     const closeSheet = React5.useCallback(() => {
       draggingRef.current = false;
+      setFreeH(null);
       setSheetOpen(false);
       setExpanded(false);
     }, []);
@@ -25942,6 +25956,7 @@
     const goToDetent = React5.useCallback(
       (detent) => {
         draggingRef.current = false;
+        setFreeH(null);
         setSheetOpen(detent !== "collapsed");
         setExpanded(detent === "full");
         detentHaptic();
@@ -26028,6 +26043,26 @@
           return;
         }
         if (!sheetOpen) inputRef.current?.focus();
+      },
+      // A deliberate (slow) drag: REST exactly where released instead of snapping
+      // to a detent — drag the sheet to any size and it stays.
+      onSettleFree: (direction) => {
+        draggingRef.current = false;
+        if (pilled) {
+          if (direction === "up") {
+            setPilled(false);
+            settleDrag();
+          }
+          return;
+        }
+        const h = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
+        if (h < 28) {
+          closeSheet();
+          return;
+        }
+        setFreeH(h);
+        setSheetOpen(true);
+        setExpanded(h >= openH - 1);
       }
     });
     return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
@@ -26039,8 +26074,9 @@
           // max(safe-area, android gesture inset): when the nav bar is hidden the
           // safe-area-inset-bottom is 0, so fall back to the real gesture-home zone
           // (--android-gesture-inset-bottom, published by MainActivity; 0 elsewhere)
-          // so the composer never sits under the home pill.
-          "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+1.5rem)]"
+          // so the composer never sits under the home pill. The +0.5rem breathing
+          // room keeps the chat low on the screen without touching that zone.
+          "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+0.5rem)]"
         ),
         style: { zIndex: Z_SHELL_OVERLAY, bottom: keyboardInset },
         "data-testid": "continuous-chat-overlay",
@@ -26318,7 +26354,7 @@
                           {
                             glyph: PLUS_GLYPH,
                             label: "attach image",
-                            disabled: booting || pendingImages.length >= MAX_CHAT_IMAGES,
+                            disabled: pendingImages.length >= MAX_CHAT_IMAGES,
                             onClick: () => fileInputRef.current?.click(),
                             testId: "chat-composer-attach"
                           }
@@ -26343,16 +26379,17 @@
                                 collapse();
                               }
                             },
-                            placeholder: booting ? "connecting\u2026" : `Ask ${agentName}`,
+                            placeholder: booting ? `Ask ${agentName} \u2014 waking up\u2026` : `Ask ${agentName}`,
                             "aria-label": "message",
                             "data-testid": "chat-composer-textarea",
                             "aria-describedby": booting ? "cc-booting-hint" : void 0,
-                            "aria-disabled": booting,
-                            readOnly: booting,
                             className: "max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
                           }
                         ),
-                        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { id: "cc-booting-hint", className: "sr-only", children: "connecting \u2014 you can\u2019t send yet" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("span", { id: "cc-booting-hint", className: "sr-only", children: [
+                          agentName,
+                          " is waking up \u2014 you can type now; your message sends and the reply arrives in a moment."
+                        ] }),
                         speaking || agentVoiceMuted ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
                           SoftButton,
                           {
