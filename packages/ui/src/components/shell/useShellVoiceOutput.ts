@@ -134,7 +134,9 @@ export function useShellVoiceOutput(
     speaking: isSpeaking,
     agentVoiceMuted,
     toggleAgentVoiceMute,
-    needsAudioUnlock,
-    unlockAudio,
+    // useVoiceChat always returns these; VoiceChatState types them optional, so
+    // coalesce to keep this hook's (and ShellController's) non-optional contract.
+    needsAudioUnlock: needsAudioUnlock ?? false,
+    unlockAudio: unlockAudio ?? (() => {}),
   };
 }
