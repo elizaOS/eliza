@@ -403,6 +403,10 @@ app.post("/", async (c) => {
             status: agent.status,
             createdAt: agent.created_at,
             executionTier: agent.execution_tier,
+            // A shared agent has no agent server of its own; its reachable REST
+            // base is the cloud-api adapter (`.../agents/:id/api/*`). Return the
+            // agent root as webUiUrl so the chat client appends `/api/...` to it.
+            webUiUrl: `${new URL(c.req.url).origin}/api/v1/eliza/agents/${agent.id}`,
           },
         },
         201,
