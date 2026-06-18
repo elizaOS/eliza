@@ -105,7 +105,9 @@ async function loadDeps(): Promise<AppsWorkerDeps> {
  * worker. Gated on `APPS_DEPLOY_ENABLED=1`: returns false when unset so a
  * deployed-but-not-armed daemon idles instead of half-running.
  */
-async function armAppsDeployBackend(logger: WorkerLogger): Promise<boolean> {
+export async function armAppsDeployBackend(
+  logger: WorkerLogger,
+): Promise<boolean> {
   if (process.env.APPS_DEPLOY_ENABLED !== "1") {
     logger.warn(
       "[apps-worker] APPS_DEPLOY_ENABLED is not '1' — deploy backend NOT armed; " +
@@ -223,11 +225,17 @@ process.on("SIGTERM", () => {
 });
 
 process.on("unhandledRejection", (reason) => {
-  void loadDeps().then(({ logger }) => {
-    logger.error("[apps-worker] unhandled rejection", {
-      error: reason instanceof Error ? reason.message : String(reason),
+  const reasonStr = reason instanceof Error ? reason.message : String(reason);
+  // Fall back to stderr if the logger import itself rejects (e.g. a rejection
+  // around startup before deps are loaded) so the original reason is never
+  // silently swallowed.
+  void loadDeps()
+    .then(({ logger }) => {
+      logger.error("[apps-worker] unhandled rejection", { error: reasonStr });
+    })
+    .catch(() => {
+      process.stderr.write(`[apps-worker] unhandled rejection: ${reasonStr}\n`);
     });
-  });
 });
 
 if (isMainModule()) {

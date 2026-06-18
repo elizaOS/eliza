@@ -16,6 +16,7 @@
 import { and, desc, eq, type SQL, sql } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
+import { appsRepository } from "../../db/repositories/apps";
 import {
   hydrateJob,
   type Job,
@@ -29,7 +30,7 @@ import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { logger } from "../utils/logger";
 import { withTimeout } from "../utils/with-timeout";
 import { dispatchAppDbDeprovisionJob } from "./app-db-deprovision-job-service";
-import { dispatchAppDeployJob } from "./app-deploy-job-service";
+import { dispatchAppDeployJob, readAppDeployJobData } from "./app-deploy-job-service";
 import { dispatchContainerJob, getContainerExecutorDeps } from "./container-job-service";
 import { elizaProvisionAdvisoryLockSql } from "./eliza-provision-lock";
 import { elizaSandboxService } from "./eliza-sandbox";
@@ -1437,6 +1438,31 @@ export class ProvisioningJobService {
               jobId: job.id,
               agentId: data.agentId,
               error: sandboxErr instanceof Error ? sandboxErr.message : String(sandboxErr),
+            });
+          }
+        }
+
+        // Apps lane (Product 2): symmetric handling for app_deploy. When the
+        // deploy runner permanently fails — most importantly when a non-apps
+        // daemon (one not pinned to PROVISIONING_JOB_LANES=agent yet) claims an
+        // APP_DEPLOY it can't run and throws "runner not configured" — flip the
+        // app's deployment_status to `failed` so the user/UI sees a real error
+        // instead of an app stuck forever in `building`. Without this, the row
+        // is silently stranded (the AGENT_* repairs above don't cover apps).
+        if (updated?.status === "failed" && job.type === JOB_TYPES.APP_DEPLOY) {
+          try {
+            const { appId } = readAppDeployJobData(job);
+            await appsRepository.update(appId, {
+              deployment_status: "failed",
+            });
+            logger.warn(
+              "[provisioning-jobs] Marked app deployment as failed after permanent failure",
+              { jobId: job.id, appId },
+            );
+          } catch (appErr) {
+            logger.error("[provisioning-jobs] Failed to mark app deployment as failed", {
+              jobId: job.id,
+              error: appErr instanceof Error ? appErr.message : String(appErr),
             });
           }
         }
