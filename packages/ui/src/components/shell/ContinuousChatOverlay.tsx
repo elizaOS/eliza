@@ -619,6 +619,9 @@ export function ContinuousChatOverlay({
     toggleRecording,
     startRecording,
     stopRecording,
+    handsFree,
+    toggleHandsFree,
+    setDictationSink,
     transcript,
     speaking,
     agentVoiceMuted,
@@ -897,7 +900,9 @@ export function ContinuousChatOverlay({
         pushToTalkTimerRef.current = null;
         pushToTalkActiveRef.current = true;
         setPushToTalkActive(true);
-        startRecording();
+        // Press-and-hold = dictation: the transcript fills the composer draft
+        // (no send, no spoken reply) so the user can edit before sending.
+        startRecording("dictate");
       }, 200);
     },
     [booting, clearPushToTalkTimer, hasDraft, recording, startRecording],
@@ -923,8 +928,10 @@ export function ContinuousChatOverlay({
       suppressMicClickRef.current = false;
       return;
     }
-    toggleRecording();
-  }, [toggleRecording]);
+    // Quick tap = hands-free conversation: the agent speaks its replies back and
+    // the mic re-opens after each one. Tap again to end.
+    toggleHandsFree();
+  }, [toggleHandsFree]);
 
   const hasThread = visibleMessages.length > 0;
 
@@ -1095,6 +1102,18 @@ export function ContinuousChatOverlay({
     setFreeH(null);
     setSheetOpen(true);
   }, [hasThread, sheetOpen]);
+
+  // Push-to-talk dictation drops its final transcript into the composer draft
+  // (no send): register the sink with the controller while this overlay is
+  // mounted, appending to whatever the user has already typed.
+  React.useEffect(() => {
+    setDictationSink((text) => {
+      setDraft((current) => (current ? `${current} ${text}` : text));
+      inputRef.current?.focus();
+      expand();
+    });
+    return () => setDictationSink(null);
+  }, [setDictationSink, expand]);
 
   // ── Slash commands ─────────────────────────────────────────────────────────
   // Inline command autocomplete: the menu derives from the draft + the loaded
@@ -1910,11 +1929,13 @@ export function ContinuousChatOverlay({
                       label={
                         pushToTalkActive
                           ? "release to send"
-                          : recording
-                            ? "stop listening"
-                            : "talk"
+                          : handsFree
+                            ? "end conversation"
+                            : recording
+                              ? "stop listening"
+                              : "talk"
                       }
-                      active={recording}
+                      active={recording || handsFree}
                       disabled={booting}
                       onClick={handleMicClick}
                       onPointerDown={beginPushToTalkPress}
