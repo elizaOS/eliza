@@ -633,6 +633,11 @@ export function useFirstRunController(): FirstRunController {
       client.setToken(authToken);
       const activeServer = createPersistedActiveServer({
         kind: "cloud",
+        // Key the persisted server by the stable cloud agent id, not the
+        // ephemeral bridge URL: a reprovision/restart hands back a new bridge
+        // URL, so an apiBase-keyed id would orphan the saved server (and the
+        // user's chat continuity). Mirrors useFirstRunCallbacks.
+        id: `cloud:${provisionedAgent.agentId}`,
         apiBase: cloudAgentApiBase,
         accessToken: authToken,
       });

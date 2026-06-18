@@ -64,7 +64,7 @@ test("first-run starts with setup choices before capability settings", async ({
   await expect(
     page
       .getByRole("heading", { name: /Where should .* run\?/ })
-      .or(page.getByText("Choose how to run your agent"))
+      .or(page.getByText("Let's get you started"))
       .or(page.getByTestId("onboarding-option-cloud")),
   ).toBeVisible();
   await expect(
