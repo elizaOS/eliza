@@ -95,29 +95,31 @@ export function usePullGesture(
       const deltaUp = s.y - event.clientY; // up is positive
       const elapsed = Math.max(1, performance.now() - s.t);
       const velocityUp = deltaUp / elapsed;
-      const direction = resolvePull(
-        deltaUp,
-        velocityUp,
-        distanceThreshold,
-        velocityThreshold,
-      );
-      if (direction === null) {
-        // A near-stationary release is a tap (e.g. tapping the collapsed bar to
-        // focus the composer), not an aborted drag.
-        if (Math.abs(deltaUp) < TAP_SLOP) {
-          onDrag?.(0); // snap back
-          onTap?.();
-        } else if (onSettleFree) {
-          // Deliberate slow drag below the flick/distance threshold: rest
-          // exactly where released instead of snapping back.
-          onSettleFree(deltaUp > 0 ? "up" : "down");
-        } else {
-          onDrag?.(0); // snap back
-        }
+      const moved = Math.abs(deltaUp);
+      const isFlick = Math.abs(velocityUp) >= velocityThreshold;
+      // A near-stationary release is a tap (e.g. tapping the collapsed bar to
+      // focus the composer), not a drag.
+      if (moved < TAP_SLOP && !isFlick) {
+        onDrag?.(0); // snap back
+        onTap?.();
         return;
       }
-      if (direction === "up") onPullUp?.();
-      else onPullDown?.();
+      // A quick FLICK snaps to the next detent in the flick direction; any
+      // deliberate (non-flick) drag RESTS wherever it was released — drag the
+      // sheet to any size and it stays (a detent is only taken by a flick/tap).
+      if (isFlick) {
+        if (deltaUp > 0) onPullUp?.();
+        else onPullDown?.();
+        return;
+      }
+      if (onSettleFree) {
+        onSettleFree(deltaUp > 0 ? "up" : "down");
+      } else if (moved >= distanceThreshold) {
+        if (deltaUp > 0) onPullUp?.();
+        else onPullDown?.();
+      } else {
+        onDrag?.(0); // sub-threshold, no free-settle consumer → snap back
+      }
     },
     [
       onDrag,

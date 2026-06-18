@@ -43,6 +43,19 @@ export const MOBILE_CORE_PLUGINS: readonly string[] = [
 ];
 
 /**
+ * View-providing plugins that must register their `/api/views` entries on EVERY
+ * platform — including stock mobile — so their home tiles resolve to a real
+ * destination instead of dead-ending in the apps catalog. These are bundled
+ * statically and either ship no backend or degrade gracefully without one (the
+ * heavy backends they pair with, e.g. agent-orchestrator, stay gated
+ * separately). Seeded into the load set for all platforms and spread into the
+ * mobile allow-list so the mobile filter keeps them.
+ */
+export const MOBILE_VIEW_PLUGINS: readonly string[] = [
+  "@elizaos/plugin-task-coordinator",
+];
+
+/**
  * ElizaOS-only overlay app plugins. Used when the runtime is the custom
  * Android OS build (`ELIZA_PLATFORM=android` plus `ELIZA_LOCAL_LLAMA=1`),
  * appended to `MOBILE_CORE_PLUGINS` in `collectPluginNames`. Each one is a

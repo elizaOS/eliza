@@ -30,6 +30,7 @@ import {
   ELIZAOS_ANDROID_CORE_PLUGINS,
   ELIZAOS_ANDROID_TERMINAL_PLUGINS,
   MOBILE_CORE_PLUGINS,
+  MOBILE_VIEW_PLUGINS,
   OPTIONAL_CORE_PLUGINS,
 } from "./core-plugins.ts";
 
@@ -426,6 +427,14 @@ export function collectPluginNames(
   for (const core of seedCorePlugins) {
     track(core, onMobile ? "MOBILE_CORE_PLUGINS" : "CORE_PLUGINS");
   }
+  // View-providing plugins register their /api/views entries on every platform
+  // so their home tiles resolve (the orchestrator/inbox tiles dead-ended on
+  // mobile before this). They're views-only or degrade gracefully without a
+  // backend; the mobile allow-list below keeps them.
+  for (const viewPlugin of MOBILE_VIEW_PLUGINS) {
+    pluginsToLoad.add(viewPlugin);
+    track(viewPlugin, "MOBILE_VIEW_PLUGINS (home-tile view)");
+  }
   // ElizaOS-only: add the system-surface overlay app plugins (WiFi,
   // Contacts, Phone). These wrap privileged Android system APIs available
   // only in the custom AOSP build, not in the stock Android APK. The overlay
@@ -447,19 +456,15 @@ export function collectPluginNames(
   // ELIZAOS_ANDROID_TERMINAL_PLUGINS above so it can use the bundled Bun service
   // and Android shell process model.
   if (!onMobile && orchestratorCompatPluginRequested(config)) {
+    // Only the BACKEND is gated to non-mobile + an explicit request. The
+    // operator-console view (@elizaos/plugin-task-coordinator) is seeded for
+    // all platforms via MOBILE_VIEW_PLUGINS above (views-only, degrades
+    // gracefully without the backend), so the /orchestrator tile resolves
+    // everywhere.
     pluginsToLoad.add("agent-orchestrator");
     track(
       "agent-orchestrator",
       "agent-orchestrator (@elizaos/plugin-agent-orchestrator)",
-    );
-    // The orchestrator's operator console (the `/orchestrator` view plus the
-    // task-coordinator GUI/TUI surfaces) ships in the companion view plugin.
-    // It registers no services or actions, only views — load it alongside the
-    // backend so the console is reachable wherever the orchestrator runs.
-    pluginsToLoad.add("@elizaos/plugin-task-coordinator");
-    track(
-      "@elizaos/plugin-task-coordinator",
-      "agent-orchestrator (companion view plugin)",
     );
   }
   if (!onMobile && gitpathologistRequested(config)) {
@@ -687,6 +692,7 @@ export function collectPluginNames(
   if (onMobile) {
     const mobileAllowed = new Set<string>([
       ...MOBILE_CORE_PLUGINS,
+      ...MOBILE_VIEW_PLUGINS,
       ...(onElizaOsAndroid ? ELIZAOS_ANDROID_CORE_PLUGINS : []),
       ...(onElizaOsAndroid ? ELIZAOS_ANDROID_TERMINAL_PLUGINS : []),
       "@elizaos/plugin-anthropic",

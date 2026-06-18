@@ -286,7 +286,10 @@ const taskCoordinatorPlugin: Plugin = {
       description: "Multi-agent task orchestration workbench",
       icon: "Layers",
       path: "/orchestrator",
-      bundlePath: "dist/views/bundle.js",
+      // No bundlePath: OrchestratorWorkbench is baked into the app shell
+      // (registerAppShellPage in register.ts) so it renders in-process on every
+      // platform — and a bundle-URL-less view survives the mobile /api/views
+      // filter (which strips dynamic-bundle views), exactly like the builtins.
       componentExport: "OrchestratorWorkbench",
       capabilities: ORCHESTRATOR_CAPABILITIES,
       tags: ["developer", "coding-agent", "orchestrator"],
