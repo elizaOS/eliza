@@ -21,6 +21,7 @@ import { getCached, setCached } from "../../hooks/resource-cache";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
+import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { MetaPill } from "../composites/page-panel/page-panel-header";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
@@ -586,6 +587,11 @@ export function DatabaseView({
                     <h1 className="mt-1 text-2xl font-semibold text-txt-strong">
                       {t("databaseview.TableBrowser")}
                     </h1>
+                    <ChatSearchHint
+                      noun="tables"
+                      query={sidebarSearch}
+                      className="mt-2"
+                    />
                   </PagePanel>
 
                   <PagePanel.Empty
@@ -617,6 +623,11 @@ export function DatabaseView({
                         <h1 className="mt-1 text-2xl font-semibold text-txt-strong">
                           {selectedTable}
                         </h1>
+                        <ChatSearchHint
+                          noun="tables"
+                          query={sidebarSearch}
+                          className="mt-2"
+                        />
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {columnMeta.size > 0 && (
@@ -873,6 +884,11 @@ export function DatabaseView({
                   <div className="mt-1 text-2xl font-semibold text-txt-strong">
                     {t("databaseview.TableBrowser")}
                   </div>
+                  <ChatSearchHint
+                    noun="tables"
+                    query={sidebarSearch}
+                    className="mt-2"
+                  />
                 </PagePanel>
 
                 <PagePanel.Empty
@@ -904,6 +920,11 @@ export function DatabaseView({
                       <div className="mt-1 text-2xl font-semibold text-txt-strong">
                         {selectedTable}
                       </div>
+                      <ChatSearchHint
+                        noun="tables"
+                        query={sidebarSearch}
+                        className="mt-2"
+                      />
                       <div className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">
                         {t("databaseview.TableWorkspaceDescription", {
                           defaultValue:

@@ -7,6 +7,7 @@ import { useApp } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import type { TranslateFn } from "../../types";
 import { resolveAppAssetUrl } from "../../utils";
+import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { MetaPill } from "../composites/page-panel/page-panel-header";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
@@ -413,14 +414,8 @@ export function MediaGalleryView({
                     })
                   : mediaTypeLabel(t, filter)}
               </MetaPill>
-              {search ? (
-                <span className="rounded-full border border-accent/25 bg-accent/8 px-2.5 py-1 text-accent">
-                  {t("mediagalleryview.SearchActive", {
-                    defaultValue: "Search active",
-                  })}
-                </span>
-              ) : null}
             </div>
+            <ChatSearchHint noun="media" query={search} className="mt-3" />
           </PagePanel.SummaryCard>
         </div>
 

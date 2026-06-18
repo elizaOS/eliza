@@ -32,6 +32,7 @@ import {
 } from "../../state/TranslationContext.hooks";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { formatDateTime } from "../../utils/format";
+import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { MetaPill } from "../composites/page-panel/page-panel-header";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
@@ -466,6 +467,7 @@ function MemoryBrowserPanel({
 
   return (
     <div className="space-y-3" data-testid="memory-browser">
+      {entityId ? null : <ChatSearchHint noun="memories" query={searchInput} />}
       {loading && !result ? (
         <ListSkeleton rows={6} />
       ) : error ? (

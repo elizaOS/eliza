@@ -20,6 +20,7 @@ import { detectUiHostCapabilities } from "../../utils/host-capabilities";
 // Direct sub-path import to avoid the widgets/index.ts ↔ WidgetHost.tsx
 // chunk-level circular dependency.
 import { WidgetHost } from "../../widgets/WidgetHost";
+import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { SidebarCollapsedActionButton } from "../composites/sidebar/sidebar-collapsed-rail";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
@@ -824,6 +825,12 @@ function HeartbeatsLayout() {
               })}
             </button>
           ) : null}
+
+          <ChatSearchHint
+            noun="heartbeats"
+            query={searchQuery}
+            className="mb-3"
+          />
 
           <LongRunningHostBanner triggers={triggers} />
 

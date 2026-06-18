@@ -17,6 +17,7 @@ import type {
 import { PageLayout } from "../../../layouts/page-layout/page-layout";
 import { useApp } from "../../../state/useApp";
 import { useRegisterViewChatBinding } from "../../../state/view-chat-binding";
+import { ChatSearchHint } from "../../composites/chat-search-hint";
 import { PagePanel } from "../../composites/page-panel";
 import { Button } from "../../ui/button";
 import { RelationshipsGraphPanel } from "../RelationshipsGraphPanel";
@@ -211,6 +212,7 @@ export function RelationshipsWorkspaceView({
   const toolbar = (
     <PagePanel variant="surface" className="px-3 py-3">
       <div className="flex flex-col gap-3">
+        <ChatSearchHint noun="people" query={search} />
         <div
           className={
             embedded

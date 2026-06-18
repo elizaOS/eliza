@@ -51,6 +51,7 @@ import {
   recordRecentViewId,
   TOP_VIEW_LIMIT,
 } from "../../view-recents";
+import { ChatSearchHint } from "../composites/chat-search-hint";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { ViewIcon } from "../views/ViewIcon";
 
@@ -1187,11 +1188,7 @@ export function ViewCatalog() {
               </div>
             </div>
 
-            <p className="text-sm text-muted">
-              {t("viewmanager.searchHint", {
-                defaultValue: "Type in the chat below to search your views.",
-              })}
-            </p>
+            <ChatSearchHint noun="views" query={query} />
           </div>
         </div>
 

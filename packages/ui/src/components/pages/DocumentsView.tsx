@@ -34,6 +34,7 @@ import {
   maybeCompressDocumentUploadImage,
 } from "../../utils/documents-upload-image";
 import { formatByteSize } from "../../utils/format";
+import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
 import { Button } from "../ui/button";
@@ -1198,11 +1199,7 @@ export function DocumentsView({
                 })}
           </div>
         </div>
-        <p className="px-1 text-2xs text-muted/70">
-          {t("documents.ui.searchHint", {
-            defaultValue: "Search your documents from the chat below.",
-          })}
-        </p>
+        <ChatSearchHint noun="documents" query={searchQuery} className="px-1" />
         <div className="mt-2">{scopeFilterStrip}</div>
 
         <div className="custom-scrollbar mt-2 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-0.5 py-0.5">
@@ -1278,11 +1275,11 @@ export function DocumentsView({
       className="flex shrink-0 flex-col gap-2 px-0 py-0 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
     >
       <div className="flex flex-col gap-2 md:flex-row md:items-center">
-        <p className="min-w-0 flex-1 text-2xs text-muted/70">
-          {t("documents.ui.searchHint", {
-            defaultValue: "Search your documents from the chat below.",
-          })}
-        </p>
+        <ChatSearchHint
+          noun="documents"
+          query={searchQuery}
+          className="min-w-0 flex-1"
+        />
         {fileInputId ? (
           <label
             htmlFor={fileInputId}
