@@ -551,6 +551,67 @@ Both code-extractable via the proven seam pattern; live behavior needs a credent
 connector lane. The legitimate hub (life.ts orchestration, scheduling spine,
 registries, owner brief/prioritize) stays per the README.
 
+### Session 2026-06-18 (round 18) — email-curation engine → plugin-inbox + WIRED; goal-review = hub-legitimate
+**email-curation (closes the last UNWIRED domain piece):** the engine is pure
+(zero imports — types are co-located) and takes its identity/policy hooks as
+parameters, so it was a clean move PA→`plugins/plugin-inbox/src/inbox/email-curation.ts`
+(PA file → 13-line re-export shim; lifeops barrel unchanged) AND it is now WIRED into
+the triage flow: `InboxService.curate()` / `triageWithCuration()` run the engine over
+candidates with the IDENTITY hook backed by the runtime `KnowledgeGraphService`
+(resolveKnowledgeGraphService — pre-resolve each sender's entity into a map, hand the
+engine a sync lookup since EntityStore.resolve is async; graph `vip` tag → engine `vip`,
+both blockDelete), and the POLICY hook injectable (default = engine DEFAULT_POLICY).
+`triage()` itself is unchanged (curation is additive). No PA import. Tests:
+inbox-curation.test.ts (5) + 2 real-PGlite round-trips; inbox 61/61; PA build:types
+exit 0; PA suite 614. Commit 8237c15804 (pushed, in sync at 79828fdeea). One reported
+gap: no runtime POLICY *store* exists (identity is fully covered by the KG service) —
+default policy used + injectable seam; a richer owner-policy source should be exposed
+as a runtime service (like KG), not imported from PA.
+
+**goal-review / getOverview = legitimate HUB aggregation (DECISION: do NOT extract).**
+Gauged `service-mixin-goals` review/overview methods (reviewGoal, getOverview,
+buildGoalExperienceLoop, reviewGoalsForWeek, explainOccurrence): they aggregate the
+scheduling spine (refreshDefinitionOccurrences/refreshEffectiveScheduleState), reminders
+(resolveEffectiveReminderPlan/inspectReminder), calendar, and activity signals
+(listActivitySignals) — all PA-resident hub subsystems. This is exactly the chief-of-
+staff "owner overview" the README puts in the hub; extracting it to plugin-goals would
+INVERT the architecture (plugin-goals importing the spine+reminders+activity). Goal CRUD
+already lives in plugin-goals (GoalsService/OWNER_GOALS); the cross-domain review/overview
+correctly stays in PA. So this is NOT a decomposition gap.
+
+**DECOMPOSITION COMPLETE (code dimension).** Every domain PRIMITIVE is now extracted to
+its plugin (blocker/health/calendar/finances/goals/inbox/documents/todos-read-route/
+relationships+KG→runtime/remote-desktop) and every former cross-cutting orchestration
+either moved via the runtime-seam pattern (subscriptions, unsubscribe, curation) or is
+confirmed hub-legitimate (goal-review/getOverview, brief, prioritize, spine, registries,
+approval queue, owner profile/identity). What remains in PA IS the README's intended
+chief-of-staff hub. The only literal-goal items still open are ENVIRONMENT-BOUNDED, not
+effort-bounded: (1) multi-OS e2e EXECUTION — wired via the shared
+MANAGER_VISIBLE_VIEW_TILE_CASES (web/android/desktop sweeps) but only web runs in-sandbox
+(needs iOS sim + Android-Cuttlefish + packaged desktop builds); (2) live external-API
+tests — recorded+live contract tests authored, the live lane is credential-gated; (3)
+task #15 agent→WebView push channel for agent-initiated mobile blocks.
+
+### Session 2026-06-18 (round 19) — integration invariant locked + dead focus affinity fixed
+Added `plugins/plugin-personal-assistant/test/decomposition-integration.test.ts` — a
+deterministic test over the FULL composed surface (PA + the 7 domain plugins it
+integrates) that models the runtime's first-wins dedup (no scheduler boot) and pins what
+a large decomposition silently breaks: a dropped owner action (asserts all 22 owner
+umbrellas present), two service classes on one serviceType, a view (id+surface) shadowed
+across plugins, and a VIEW_ACTION_MAP name no loaded plugin registers. It immediately
+caught a REAL bug: `VIEW_ACTION_MAP["focus"]` still pointed at LIST_ACTIVE_BLOCKS /
+RELEASE_BLOCK, which were folded into the BLOCK umbrella (list_active/release subactions)
+during the blocker extraction — no plugin registers those names, so the focus view's
+affinity weighting was a silent no-op AND the agent's git-grep drift guard passed only on
+dead source literals. Fixes (commit 193d7db2ed, pushed/in-sync 1b32a6d020): map
+`focus → ["BLOCK"]` (the live umbrella) + comment; inline plugin-blocker's block action
+`name: "BLOCK"` literal (was a const) so the static drift guard can see it (runtime name
+unchanged); delete the orphaned listActiveBlocks.ts / releaseBlock.ts. Gates: PA
+integration 6/6; agent view-action-affinity 61/61 (drift now resolves BLOCK); blocker
+12/12; PA build:types exit 0; PA suite 620. Also confirmed (not a bug): PA's "lifeops"
+view appears 3× as gui/tui/xr surface variants — the dedup is by (id+surface), not id.
+This is the "fully integrated" dimension made VERIFIABLE in-sandbox.
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
