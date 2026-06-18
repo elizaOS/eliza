@@ -2104,20 +2104,33 @@ export class AcpService extends Service {
     if (
       agentType === "codex" &&
       typeof env.CODEX_HOME === "string" &&
-      env.CODEX_HOME.includes(CODEX_PER_ACCOUNT_HOME_MARKER) &&
-      env.OPENAI_API_KEY
+      env.CODEX_HOME.includes(CODEX_PER_ACCOUNT_HOME_MARKER)
     ) {
       // A specific Codex subscription account was selected: its ChatGPT-login
-      // auth.json lives in the injected per-account CODEX_HOME. Codex treats a
-      // present env OPENAI_API_KEY as api-key mode, which OVERRIDES that
-      // subscription login — silently defeating multi-account selection. Drop it
-      // so the chosen account's auth.json authenticates (symmetric to the Claude
-      // CLAUDE_CODE_OAUTH_TOKEN handling above).
-      delete env.OPENAI_API_KEY;
-      this.log(
-        "debug",
-        "Dropped OPENAI_API_KEY for codex sub-agent in favor of selected per-account CODEX_HOME",
-      );
+      // auth.json lives in the injected per-account CODEX_HOME.
+      if (env.OPENAI_API_KEY) {
+        // Codex treats a present env OPENAI_API_KEY as api-key mode, which
+        // OVERRIDES that subscription login — silently defeating multi-account
+        // selection. Drop it so the chosen account's auth.json authenticates
+        // (symmetric to the Claude CLAUDE_CODE_OAUTH_TOKEN handling above).
+        delete env.OPENAI_API_KEY;
+        this.log(
+          "debug",
+          "Dropped OPENAI_API_KEY for codex sub-agent in favor of selected per-account CODEX_HOME",
+        );
+      }
+      if (env.OPENAI_MODEL) {
+        // A forwarded API-tier model (e.g. gpt-5.3-codex) is rejected by Codex
+        // under ChatGPT-account auth ("model is not supported when using Codex
+        // with a ChatGPT account"). Drop it so Codex picks its ChatGPT-
+        // compatible default; an explicit model belongs in task policy, not
+        // inherited from the runtime's OPENAI_MODEL.
+        delete env.OPENAI_MODEL;
+        this.log(
+          "debug",
+          "Dropped inherited OPENAI_MODEL for codex subscription sub-agent (lets Codex use its ChatGPT-compatible default)",
+        );
+      }
     }
     if (agentType === "opencode") {
       const opencode = buildOpencodeAcpEnv(this.runtime, env, model);
