@@ -27,6 +27,13 @@ export interface SharedRestConversation {
   title: string;
   roomId: string;
   createdAt: string;
+  /**
+   * The client's `isConversationRecord()` guard REQUIRES `updatedAt` — without
+   * it the record is rejected, so there is no active conversation and every send
+   * is silently dropped. A shared agent's canonical conversation is never
+   * renamed/moved, so `updatedAt` === `createdAt`.
+   */
+  updatedAt: string;
 }
 
 /** Minimal subset of the agent-server REST `ConversationMessage`. */
@@ -53,7 +60,8 @@ function makeConversation(
   createdAt: string,
 ): SharedRestConversation {
   const id = canonicalConversationId(agentId);
-  return { id, title: agentName || "Chat", roomId: id, createdAt };
+  // updatedAt === createdAt: the canonical conversation is never renamed/moved.
+  return { id, title: agentName || "Chat", roomId: id, createdAt, updatedAt: createdAt };
 }
 
 /** GET .../api/health — the agent is in-Worker; if it resolves, it's up. */
@@ -61,19 +69,28 @@ export function sharedRestHealth(): { status: "ok" } {
   return { status: "ok" };
 }
 
-/** The agent-status shape the chat client reads; only `state` is load-bearing. */
+/** The agent-status shape the chat client reads; `state` + `canRespond` gate UI. */
 export interface SharedRestStatus {
   state: "running";
   agentName: string;
+  /**
+   * The composer's send-gate is `canRespond ?? (running && model)`. A shared
+   * agent has no LOCAL model (inference is hosted in-Worker), so `running &&
+   * model` is false and the box would stay disabled. We're only here for a
+   * provisioned + running shared agent, so it CAN respond — declare it
+   * explicitly so the client doesn't fall back to the model check.
+   */
+  canRespond: true;
 }
 
 /**
  * GET .../api/status — the startup-coordinator's FIRST hard gate: it calls
  * `getStatus()` before anything else and bails unless `state === "running"`.
- * A shared agent runs in-Worker, so if this resolves it is by definition up.
+ * A shared agent runs in-Worker, so if this resolves it is by definition up and
+ * able to respond (its inference is hosted, not a local model).
  */
 export function sharedRestStatus(agentName: string): SharedRestStatus {
-  return { state: "running", agentName: agentName || "Eliza" };
+  return { state: "running", agentName: agentName || "Eliza", canRespond: true };
 }
 
 // ---------------------------------------------------------------------------
