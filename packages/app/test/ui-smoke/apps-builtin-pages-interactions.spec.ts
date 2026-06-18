@@ -54,10 +54,14 @@ test("plugins view loads plugins and search filters the list", async ({
   });
   await expect.poll(pluginReqs).toBeGreaterThan(0);
 
-  // The stub serves openai + anthropic + plugin-browser. A specific search must
-  // narrow the visible set; clearing it must restore.
-  const search = page.getByTestId("plugins-search");
-  await expect(search).toBeVisible({ timeout: 15_000 });
+  // Search now runs through the floating chat composer — the plugins view takes
+  // over its placeholder + live draft (no in-page search box). The stub serves
+  // openai + anthropic + plugin-browser: a specific search must narrow the
+  // visible set; clearing it must restore.
+  const search = page.getByTestId("chat-composer-textarea");
+  await expect(search).toHaveAttribute("placeholder", /search plugins/i, {
+    timeout: 15_000,
+  });
   const cardsAll = await page.locator("[data-plugin-toggle]").count();
   await search.fill("browser");
   await expect

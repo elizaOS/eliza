@@ -1,17 +1,10 @@
-import {
-  Filter,
-  Network,
-  RefreshCw,
-  Search,
-  Sparkles,
-  UserRound,
-  X,
-} from "lucide-react";
+import { Filter, Network, RefreshCw, Sparkles, UserRound } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
   useDeferredValue,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -23,6 +16,7 @@ import type {
 } from "../../../api/client-types-relationships";
 import { PageLayout } from "../../../layouts/page-layout/page-layout";
 import { useApp } from "../../../state/useApp";
+import { useRegisterViewChatBinding } from "../../../state/view-chat-binding";
 import { PagePanel } from "../../composites/page-panel";
 import { Button } from "../../ui/button";
 import { RelationshipsGraphPanel } from "../RelationshipsGraphPanel";
@@ -65,6 +59,15 @@ export function RelationshipsWorkspaceView({
   const [detail, setDetail] = useState<RelationshipsPersonDetail | null>(null);
   const graphRequestId = useRef(0);
   const deferredSearch = useDeferredValue(search);
+
+  const searchPlaceholder = t("relationships.searchPlaceholder", {
+    defaultValue: "Search",
+  });
+  const chatBinding = useMemo(
+    () => ({ placeholder: searchPlaceholder, onQuery: setSearch }),
+    [searchPlaceholder],
+  );
+  useRegisterViewChatBinding(chatBinding);
 
   const loadGraph = useCallback(
     async (query = buildRelationshipsGraphQuery("", "all")) => {
@@ -182,7 +185,7 @@ export function RelationshipsWorkspaceView({
     void loadGraph(buildRelationshipsGraphQuery(deferredSearch, platform));
   };
 
-  const searchAgent = useAgentElement<HTMLInputElement>({
+  useAgentElement<HTMLInputElement>({
     id: "relationships-search",
     role: "text-input",
     label: t("relationships.searchLabel", {
@@ -194,7 +197,7 @@ export function RelationshipsWorkspaceView({
     getValue: () => search,
     onFill: (value) => setSearch(value),
   });
-  const clearSearchAgent = useAgentElement<HTMLButtonElement>({
+  useAgentElement<HTMLButtonElement>({
     id: "relationships-clear-search",
     role: "button",
     label: t("relationships.clearSearch", {
@@ -232,51 +235,10 @@ export function RelationshipsWorkspaceView({
         <div
           className={
             embedded
-              ? "grid min-w-0 gap-2 md:grid-cols-[minmax(16rem,1fr)_minmax(12rem,14rem)_auto]"
+              ? "grid min-w-0 gap-2 md:grid-cols-[minmax(12rem,14rem)_auto]"
               : "flex min-w-0 flex-col gap-2 sm:flex-row sm:justify-end"
           }
         >
-          {embedded ? (
-            <>
-              <label className="sr-only" htmlFor="relationships-search">
-                {t("relationships.searchLabel", {
-                  defaultValue: "Search people, aliases, handles",
-                })}
-              </label>
-              <div className="relative min-w-0 flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-                <input
-                  ref={searchAgent.ref}
-                  id="relationships-search"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder={t("relationships.searchPlaceholder", {
-                    defaultValue: "Search",
-                  })}
-                  aria-label={t("relationships.searchLabel", {
-                    defaultValue: "Search people, aliases, handles",
-                  })}
-                  className="h-9 w-full rounded-sm border border-border/35 bg-card/45 pl-9 pr-10 text-sm text-txt outline-none transition focus:border-accent/55"
-                  {...searchAgent.agentProps}
-                />
-                {search ? (
-                  <button
-                    ref={clearSearchAgent.ref}
-                    type="button"
-                    className="absolute right-1.5 top-1.5 inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted transition hover:bg-bg-hover hover:text-txt"
-                    onClick={() => setSearch("")}
-                    aria-label={t("relationships.clearSearch", {
-                      defaultValue: "Clear relationship search",
-                    })}
-                    {...clearSearchAgent.agentProps}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                ) : null}
-              </div>
-            </>
-          ) : null}
-
           <div className="relative min-w-0">
             <label className="sr-only" htmlFor="relationships-platform">
               {t("relationships.platformFilter", {
