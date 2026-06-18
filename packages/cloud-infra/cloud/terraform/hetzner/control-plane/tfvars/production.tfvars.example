@@ -6,6 +6,11 @@ hcloud_server_type    = "cpx32"
 control_plane_count   = 1
 cloudflare_zone_id    = "<zone-id-for-elizacloud.ai>"
 
+# Public headscale coordination hostname for this env's CP. Prod drops the
+# `-staging` suffix. Must match HEADSCALE_PUBLIC_URL in the
+# arm-headscale-control-plane workflow.
+headscale_hostname    = "headscale.elizacloud.ai"
+
 ssh_public_keys = [
   # "ssh-ed25519 AAAA... operator@laptop"
 ]

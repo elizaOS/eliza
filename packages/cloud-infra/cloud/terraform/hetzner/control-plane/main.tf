@@ -130,3 +130,45 @@ resource "cloudflare_dns_record" "control_plane" {
     ignore_changes = [content]
   }
 }
+
+# Headscale coordination-server DNS record. SIBLING of control_plane above —
+# same CP ipv4, different (stable) hostname. This is part 1 of codifying the
+# headscale-on-CP cutover that was previously a manual `dig`/dashboard step on
+# every CP rebuild (a DR gap). The nginx vhost + Let's Encrypt cert that serve
+# this hostname are provisioned by the arm-headscale-control-plane workflow
+# (packages/scripts/cloud/admin/arm-headscale-control-plane.mjs) — that script
+# runs AFTER this record exists, so HTTP-01 issuance can resolve the name.
+#
+# Headscale is singular per env (one coordination server), so this binds to the
+# first control-plane VM ("1"). A multi-CP HA topology would need a different
+# strategy (LB / floating IP) and is out of scope here.
+#
+# proxied=false (unlike the agent-router record): the headscale TS2021/noise
+# control protocol needs a raw HTTP/1.1 Upgrade passthrough that the Cloudflare
+# proxy edge mangles, and the CP terminates real TLS via a Let's Encrypt cert.
+# Routing through CF would both break the Upgrade handshake AND hide the origin
+# from the HTTP-01 challenge. ttl=300 is a normal DNS-only TTL (ttl=1/"Auto" is
+# only valid when proxied=true).
+resource "cloudflare_dns_record" "headscale" {
+  for_each = { for k, v in hcloud_server.control_plane : k => v if k == "1" }
+
+  zone_id = var.cloudflare_zone_id
+  name    = var.headscale_hostname
+  type    = "A"
+  content = each.value.ipv4_address
+  ttl     = 300
+  proxied = false
+  comment = "eliza headscale coordination server on ${each.value.name} (managed by terraform/hetzner/control-plane)"
+
+  # Same cutover-decoupling rationale as control_plane above: an apply that
+  # spawns a replacement CP must NOT atomically flip this A record to the new
+  # IP before the arm workflow has stood up nginx + the LE cert on the new box
+  # (agent nodes would fail their noise handshake mid-cutover). TF keeps the
+  # record's name/type/ttl/proxied/comment managed but never touches `content`;
+  # the operator cuts over deliberately (dashboard edit, or
+  # `terraform apply -replace=cloudflare_dns_record.headscale["1"]`) once the
+  # new CP's headscale is armed and healthy.
+  lifecycle {
+    ignore_changes = [content]
+  }
+}
