@@ -1430,7 +1430,13 @@ export class AcpService extends Service {
     return new Promise((resolveRun) => {
       const proc = spawn(this.cliPath, opts.args, {
         cwd: opts.workdir,
-        env: this.buildEnv(opts.env),
+        // Pass agentType so the FINAL spawned env applies the agent-type
+        // credential drops (claude → drop ANTHROPIC_API_KEY when
+        // CLAUDE_CODE_OAUTH_TOKEN is present; codex → drop OPENAI_API_KEY when a
+        // per-account CODEX_HOME is injected). buildEnv reseeds from
+        // process.env, so without agentType here those parent keys would be
+        // re-added and override the selected account on the cli transport.
+        env: this.buildEnv(opts.env, undefined, undefined, opts.agentType),
         stdio: ["pipe", "pipe", "pipe"],
         // Place the child in its own process group so we can SIGTERM the
         // whole tree (acpx → npm exec → claude-agent-acp) via the negative
