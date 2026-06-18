@@ -4,9 +4,11 @@ import {
   CalendarCheck,
   CheckCircle2,
   Contact,
+  GraduationCap,
   Hand,
   Inbox,
   LayoutGrid,
+  LifeBuoy,
   Loader2,
   type LucideIcon,
   MessageCircle,
@@ -68,6 +70,20 @@ interface HomeTile {
 }
 
 const HOME_TILES: HomeTile[] = [
+  {
+    // Pinned first: the interactive tour that teaches the whole UI. Opens a
+    // launcher view that kicks off the global tutorial overlay.
+    id: "tutorial",
+    label: "Tutorial",
+    icon: GraduationCap,
+    target: { kind: "tab", tab: "tutorial" },
+  },
+  {
+    id: "help",
+    label: "Help",
+    icon: LifeBuoy,
+    target: { kind: "tab", tab: "help" },
+  },
   {
     id: "settings",
     label: "Settings",

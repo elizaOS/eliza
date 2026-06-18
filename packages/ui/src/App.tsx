@@ -32,6 +32,7 @@ import { SaveCommandModal } from "./components/chat/SaveCommandModal";
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
+import { TutorialOverlay } from "./components/pages/tutorial/TutorialOverlay";
 import { SecretsManagerModalRoot } from "./components/settings/SecretsManagerSection";
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
@@ -161,6 +162,14 @@ const PhonePageView = lazyNamedView(
 const SettingsView = lazyNamedView(
   () => import("./components/pages/SettingsView"),
   "SettingsView",
+);
+const TutorialView = lazyNamedView(
+  () => import("./components/pages/tutorial/TutorialView"),
+  "TutorialView",
+);
+const HelpView = lazyNamedView(
+  () => import("./components/pages/help/HelpView"),
+  "HelpView",
 );
 const StreamView = lazyNamedView(
   () => import("./components/pages/StreamView"),
@@ -721,6 +730,16 @@ function renderStaticViewRouterTab({
 }): ReactNode {
   const directViews: Record<string, ReactNode> = {
     onboarding: <FirstRunScreen />,
+    tutorial: (
+      <TabContentView>
+        <TutorialView />
+      </TabContentView>
+    ),
+    help: (
+      <TabContentView>
+        <HelpView />
+      </TabContentView>
+    ),
     chat: <ViewUnavailableFallback />,
     browser: <BrowserWorkspaceView />,
     companion: <ViewUnavailableFallback />,
@@ -1662,6 +1681,11 @@ export function App() {
           behind stays live.
         */}
         <ContinuousChatOverlayMount />
+        {/* Interactive tutorial: a persistent spotlight overlay that survives
+            navigation (it sends the user to Settings, back home, …). Renders
+            only when the tutorial is active (launched from the home Tutorial
+            tile or the Help view). */}
+        <TutorialOverlay />
         <ShellOverlays actionNotice={actionNotice} />
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}
