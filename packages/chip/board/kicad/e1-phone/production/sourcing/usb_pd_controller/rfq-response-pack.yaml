@@ -1,0 +1,35 @@
+schema: eliza.e1_phone_supplier_return_intake_placeholder.v1
+artifact_id: charger_pd:rfq_response_pack
+source_requirement_id: usb_pd_controller
+owner: sourcing:charger_pd
+created_at: blocked_pending_supplier_return
+tool_or_supplier_revision: blocked_pending_supplier_return
+input_artifact_hashes:
+- blocked_pending_supplier_return
+reviewer: blocked_pending_supplier_return
+reviewed_at: blocked_pending_supplier_return
+disposition: blocked_pending_supplier_return
+supplier_name: blocked_pending_supplier_return
+supplier_part_number: blocked_pending_supplier_return
+manufacturer_part_number: blocked_pending_supplier_return
+drawing_revision: blocked_pending_supplier_return
+sample_lot_or_quote_id: blocked_pending_supplier_return
+signed_supplier_response: false
+pinout_or_land_pattern_source: blocked_pending_supplier_return
+mechanical_model_source: blocked_pending_supplier_return
+expected_intake_path: board/kicad/e1-phone/production/sourcing/usb_pd_controller/rfq-response-pack.yaml
+evidence_class: rfq_response_pack
+release_credit: false
+claim_boundary: Local fail-closed supplier-return intake placeholder. This is not
+  supplier evidence, not a signed drawing, not a verified pinout or land pattern,
+  not a STEP/B-rep model, and not release evidence.
+required_replacement: Replace this placeholder with the supplier-returned, reviewed,
+  signed artifact and approved metadata before any KiCad, CAD, fabrication, enclosure,
+  or production release claim.
+forbidden_claims:
+- supplier_return_received
+- pinout_approved
+- land_pattern_approved
+- step_model_approved
+- fabrication_ready
+- release_ready

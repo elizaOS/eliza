@@ -1,0 +1,1 @@
+blocked local production/factory output candidate; supplier/factory approval, signoff, and release classification are missing

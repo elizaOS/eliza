@@ -1,0 +1,110 @@
+{
+  "schema": "eliza.e1_phone_first_article_test_transcript_template.v1",
+  "status": "template_empty_not_executed",
+  "date": "2026-05-22",
+  "claim_boundary": "Empty selected-hardware first-article transcript template. This is not a completed transcript, not a traveler, not a routed-clearance release, and not production approval.",
+  "source_artifacts": [
+    "board/kicad/e1-phone/power-usb-sidekey-bench-bringup-execution-2026-05-22.yaml",
+    "board/kicad/e1-phone/selected-hardware-first-article-execution.yaml"
+  ],
+  "release_flags": {
+    "first_article_passed": false,
+    "selected_hardware_release_allowed": false,
+    "factory_test_release_allowed": false,
+    "enclosure_release_allowed": false,
+    "fabrication_release_allowed": false,
+    "end_to_end_phone_release_allowed": false
+  },
+  "traceability": {
+    "board_serial": "",
+    "board_revision": "",
+    "assembly_lot": "",
+    "fixture_id": "",
+    "operator": "",
+    "test_software_revision": "",
+    "traveler_id": "",
+    "supplier_lots": {
+      "usb_c_connector": "",
+      "pd_controller": "",
+      "charger": "",
+      "side_keys": "",
+      "battery_pack": ""
+    }
+  },
+  "required_sections": [
+    {
+      "section": "board_serial_and_usb_power_sidekey_supplier_lots",
+      "status": "not_run",
+      "evidence_refs": []
+    },
+    {
+      "section": "usb_c_shell_load_path_and_connector_revision",
+      "status": "not_run",
+      "evidence_refs": []
+    },
+    {
+      "section": "usb_pd_attach_debug_and_dead_battery_log",
+      "status": "not_run",
+      "evidence_refs": [
+        "board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json",
+        "board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json"
+      ]
+    },
+    {
+      "section": "charger_cc_cv_jeita_and_thermal_log",
+      "status": "not_run",
+      "evidence_refs": [
+        "board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json"
+      ]
+    },
+    {
+      "section": "side_key_force_travel_wake_and_recovery_combo_log",
+      "status": "not_run",
+      "evidence_refs": [
+        "board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json"
+      ]
+    },
+    {
+      "section": "routed_clearance_release_reference",
+      "status": "not_run",
+      "evidence_refs": [
+        "board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml"
+      ]
+    }
+  ],
+  "defects": [],
+  "review": {
+    "reviewer": "",
+    "review_date": "",
+    "disposition": "not_reviewed",
+    "open_blockers": [
+      "real first-article transcript missing",
+      "routed clearance release missing",
+      "USB power side-key evidence logs missing",
+      "signed traveler missing"
+    ]
+  },
+  "artifact_id": "first_article_test_transcript",
+  "source_requirement_id": "first_article_test_transcript",
+  "owner": "first_article_validation",
+  "created_at": "blocked_not_executed",
+  "tool_or_supplier_revision": "blocked_not_executed",
+  "input_artifact_hashes": [
+    "blocked_not_executed"
+  ],
+  "reviewer": "blocked_not_reviewed",
+  "reviewed_at": "blocked_not_reviewed",
+  "disposition": "blocked_not_executed",
+  "board_serial": "blocked_not_executed",
+  "supplier_lot_ids": [
+    "blocked_not_executed"
+  ],
+  "fixture_id": "blocked_not_executed",
+  "fixture_calibration_id": "blocked_not_executed",
+  "test_software_revision": "blocked_not_executed",
+  "operator": "blocked_not_executed",
+  "limits_file": "blocked_not_executed",
+  "measured_results": [],
+  "pass_fail_disposition": "blocked_not_executed",
+  "waivers": []
+}
