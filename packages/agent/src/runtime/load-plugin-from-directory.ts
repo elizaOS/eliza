@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { AgentRuntime, Plugin } from "@elizaos/core";
@@ -42,20 +42,54 @@ const loadedPlugins = new Map<string, LoadedDirectoryPlugin>();
 
 function asRelativeEntry(value: unknown): string | null {
   if (typeof value !== "string" || value.length === 0) return null;
+  if (path.isAbsolute(value) || value.split(/[\\/]/).includes("..")) {
+    return null;
+  }
   // Only built JS is loadable here; ignore a TS `main` left over from source.
   if (value.endsWith(".ts") || value.endsWith(".tsx")) return null;
   return value;
+}
+
+function assertPathInsideDirectory(
+  directory: string,
+  file: string,
+): void {
+  const relative = path.relative(directory, file);
+  if (
+    relative === "" ||
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    throw new Error(
+      `loadPluginFromDirectory: entry must stay inside plugin directory (${path.relative(
+        process.cwd(),
+        file,
+      )})`,
+    );
+  }
 }
 
 async function resolveEntryFile(
   directory: string,
   explicitEntry?: string,
 ): Promise<string> {
-  if (explicitEntry) return path.resolve(directory, explicitEntry);
+  const realDirectory = await realpath(directory);
+  if (explicitEntry) {
+    const relativeEntry = asRelativeEntry(explicitEntry);
+    if (!relativeEntry) {
+      throw new Error(
+        "loadPluginFromDirectory: explicit entry must be a relative built JavaScript path inside the plugin directory",
+      );
+    }
+    const entry = await realpath(path.resolve(realDirectory, relativeEntry));
+    assertPathInsideDirectory(realDirectory, entry);
+    return entry;
+  }
 
   const candidates: string[] = [];
   const pkgRaw = await readFile(
-    path.join(directory, "package.json"),
+    path.join(realDirectory, "package.json"),
     "utf8",
   ).catch(() => null);
   if (pkgRaw) {
@@ -82,21 +116,24 @@ async function resolveEntryFile(
         }
       }
       for (const c of [fromModule, fromMain, fromExports]) {
-        if (c) candidates.push(path.resolve(directory, c));
+        if (c) candidates.push(path.resolve(realDirectory, c));
       }
     }
   }
-  candidates.push(path.resolve(directory, "dist/index.js"));
+  candidates.push(path.resolve(realDirectory, "dist/index.js"));
 
   for (const candidate of candidates) {
-    const exists = await readFile(candidate)
+    const entry = await realpath(candidate).catch(() => null);
+    if (!entry) continue;
+    assertPathInsideDirectory(realDirectory, entry);
+    const exists = await readFile(entry)
       .then(() => true)
       .catch(() => false);
-    if (exists) return candidate;
+    if (exists) return entry;
   }
   throw new Error(
-    `loadPluginFromDirectory: no built entry found in ${directory} (looked for ${candidates
-      .map((c) => path.relative(directory, c))
+    `loadPluginFromDirectory: no built entry found in ${realDirectory} (looked for ${candidates
+      .map((c) => path.relative(realDirectory, c))
       .join(", ")}). Build the plugin first.`,
   );
 }
@@ -132,7 +169,7 @@ export async function loadPluginFromDirectory(
 
   loadedPlugins.set(plugin.name, {
     pluginName: plugin.name,
-    directory,
+    directory: await realpath(directory),
     diskPath,
     loadedAt: Date.now(),
   });
