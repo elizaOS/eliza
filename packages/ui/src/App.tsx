@@ -24,6 +24,11 @@ import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
 } from "./bridge/electrobun-rpc";
+import {
+  NAVIGATE_SETTINGS_EVENT,
+  type NavigateSettingsDetail,
+  useSlashCommandController,
+} from "./chat/useSlashCommandController";
 import { getOverlayAppLazyComponent } from "./components/apps/AppWindowRenderer.helpers";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
@@ -1123,6 +1128,7 @@ function ShellFoundationMount() {
 function ContinuousChatOverlayMount(): ReactNode {
   const controller = useShellControllerContext();
   const { characterData, agentStatus } = useApp();
+  const slash = useSlashCommandController();
   if (!controller) return null;
   // The live agent's name drives the composer placeholder ("Ask {name}").
   // Character name wins (what the user configured), then the running agent's
@@ -1130,7 +1136,11 @@ function ContinuousChatOverlayMount(): ReactNode {
   const agentName =
     characterData?.name?.trim() || agentStatus?.agentName?.trim() || undefined;
   return (
-    <ContinuousChatOverlay controller={controller} agentName={agentName} />
+    <ContinuousChatOverlay
+      controller={controller}
+      agentName={agentName}
+      slash={slash}
+    />
   );
 }
 
@@ -1346,6 +1356,23 @@ export function App() {
     document.addEventListener(FOCUS_CONNECTOR_EVENT, handleFocusConnector);
     return () =>
       document.removeEventListener(FOCUS_CONNECTOR_EVENT, handleFocusConnector);
+  }, [setTab]);
+
+  // Slash-command settings navigation (e.g. `/settings model`): open the
+  // settings tab focused on the requested section (or the hub when absent).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleNavigateSettings = (event: Event) => {
+      const detail = (event as CustomEvent<NavigateSettingsDetail>).detail;
+      setSettingsInitialSection(detail?.section ?? null);
+      setTab("settings");
+    };
+    window.addEventListener(NAVIGATE_SETTINGS_EVENT, handleNavigateSettings);
+    return () =>
+      window.removeEventListener(
+        NAVIGATE_SETTINGS_EVENT,
+        handleNavigateSettings,
+      );
   }, [setTab]);
 
   // Handle agent-dispatched view navigation events.

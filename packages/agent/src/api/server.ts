@@ -332,6 +332,7 @@ import {
   handleBugReportRoutes,
   handleCharacterRoutes,
   handleCloudAndCoreRouteGroup,
+  handleCommandsRoutes,
   handleConfigRoutes,
   handleConnectorRoutes,
   handleConversationRouteGroup,
@@ -3084,6 +3085,22 @@ async function handleRequest(
     ) {
       return;
     }
+  }
+
+  // ── Slash-command catalog (/api/commands) ─────────────────────────────────
+  if (
+    await handleCommandsRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      json,
+      error,
+      runtime: state.runtime,
+    })
+  ) {
+    return;
   }
 
   // ── Prompt suggestions (/api/suggestions) ─────────────────────────────────
