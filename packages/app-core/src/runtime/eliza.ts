@@ -1588,27 +1588,27 @@ export async function startEliza(
     }
 
     if (options?.serverOnly) {
-      let currentRuntime =
-        (await upstreamStartElizaWithPgliteCompat({
-          ...options,
-          headless: true,
-          serverOnly: false,
-        })) ?? undefined;
+      let currentRuntime: AgentRuntime | undefined;
 
-      currentRuntime = currentRuntime
-        ? await repairRuntimeAfterBoot(currentRuntime)
-        : currentRuntime;
-
-      if (!currentRuntime) {
-        return currentRuntime;
-      }
-
-      // Hand the live runtime to the early-installed compat wrapper so
-      // `/api/tts/*`, `/api/database`, `/api/runtime/mode`, and every other
-      // compat-dispatcher path can resolve. Without this, `state.current`
-      // stays null and `handleCompatRoute` is never invoked even though the
-      // patch is in place — the wrapper short-circuits on null state.
-      earlyCompatState.current = currentRuntime;
+      // Boot (or re-boot) the runtime headless + repair, and hand the live
+      // runtime to the early-installed compat wrapper so `/api/tts/*`,
+      // `/api/database`, `/api/runtime/mode`, and every other compat-dispatcher
+      // path can resolve. Without the latter, `state.current` stays null and
+      // `handleCompatRoute` short-circuits. Used for the initial async boot AND
+      // the `/api/agent/restart` handler.
+      const bootServerOnlyRuntime = async (): Promise<
+        AgentRuntime | undefined
+      > => {
+        const booted =
+          (await upstreamStartElizaWithPgliteCompat({
+            ...options,
+            headless: true,
+            serverOnly: false,
+          })) ?? undefined;
+        const repaired = booted ? await repairRuntimeAfterBoot(booted) : booted;
+        earlyCompatState.current = repaired ?? null;
+        return repaired;
+      };
 
       // Desktop launcher sets ELIZA_API_PORT (default 31337) to match the
       // renderer's hardcoded API base; honor it when present. CLI/server-only
@@ -1618,36 +1618,35 @@ export async function startEliza(
         ? resolveDesktopApiPort(process.env)
         : resolveServerOnlyPort(process.env);
       let actualApiPort: number;
+      let updateRuntime:
+        | Awaited<ReturnType<typeof startApiServer>>["updateRuntime"]
+        | undefined;
+      let updateStartup:
+        | Awaited<ReturnType<typeof startApiServer>>["updateStartup"]
+        | undefined;
       try {
+        // Bind the API server FIRST with no runtime yet (state "starting"), so
+        // the desktop webview connects + hydrates in PARALLEL with the heavier
+        // agent boot instead of waiting the full boot. The runtime is wired in
+        // via updateRuntime once it finishes booting below. Mirrors the
+        // dev-server's bind-first orchestration.
         const startedApiServer = await startApiServer({
           port: apiPort,
-          runtime: currentRuntime,
+          initialAgentState: "starting",
           onRestart: async () => {
-            if (!currentRuntime) {
-              return null;
+            if (currentRuntime) {
+              await upstreamShutdownRuntime(
+                currentRuntime,
+                "server-only restart",
+              );
             }
-
-            await upstreamShutdownRuntime(
-              currentRuntime,
-              "server-only restart",
-            );
-
-            const restarted =
-              (await upstreamStartElizaWithPgliteCompat({
-                ...options,
-                headless: true,
-                serverOnly: false,
-              })) ?? undefined;
-
-            currentRuntime = restarted
-              ? await repairRuntimeAfterBoot(restarted)
-              : undefined;
-            earlyCompatState.current = currentRuntime ?? null;
-
+            currentRuntime = await bootServerOnlyRuntime();
             return currentRuntime ?? null;
           },
         });
         actualApiPort = startedApiServer.port;
+        updateRuntime = startedApiServer.updateRuntime;
+        updateStartup = startedApiServer.updateStartup;
       } catch (apiErr) {
         const apiErrMsg =
           apiErr instanceof Error
@@ -1674,9 +1673,21 @@ export async function startEliza(
       invalidateCorsAllowedPorts();
 
       logger.info(
-        `[eliza] API server listening on http://localhost:${actualApiPort}`,
+        `[eliza] API server listening on http://localhost:${actualApiPort} (agent booting…)`,
       );
       console.log(`[eliza] Control UI: http://localhost:${actualApiPort}`);
+
+      // Now boot the runtime; the API is already reachable (state "starting"),
+      // so the UI is connecting + hydrating while this runs, then flips to
+      // "running" once the agent is ready.
+      currentRuntime = await bootServerOnlyRuntime();
+      if (!currentRuntime) {
+        updateStartup?.({ phase: "error", state: "error" });
+        return currentRuntime;
+      }
+      updateRuntime?.(currentRuntime);
+      updateStartup?.({ phase: "running", attempt: 0, state: "running" });
+
       console.log("[eliza] Server running. Press Ctrl+C to stop.");
 
       const { buildSandboxRegistryFromEnv } = await import(
