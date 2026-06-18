@@ -613,6 +613,11 @@ export function useFirstRunController(): FirstRunController {
         name,
         bio,
         onProgress: () => {},
+        // Cloud returns a shared-runtime agent (no dedicated container) for the
+        // default tier on every non-iOS platform. Without this flag the client
+        // throws "shared runtime has no sandbox bridge" and first-run bricks for
+        // new Android/desktop users. Mirrors the useFirstRunCallbacks path.
+        allowSharedRuntime: true,
       });
       client.setBaseUrl(provisionedAgent.bridgeUrl);
       client.setToken(authToken);
