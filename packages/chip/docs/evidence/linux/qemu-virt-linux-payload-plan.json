@@ -1,0 +1,53 @@
+{
+  "claim_boundary": "qemu_virt_prebuilt_payload_only_not_e1_hardware",
+  "commands": [
+    "python3 scripts/fetch_qemu_linux_payload.py",
+    "scripts/run_qemu.sh --check-os",
+    "python3 scripts/check_qemu_linux_payload_status.py",
+    "python3 scripts/check_bsp_next_import_step.py"
+  ],
+  "generated_utc": "2026-05-20T10:12:30Z",
+  "not_claimed": [
+    "e1-chip hardware boot",
+    "selected AP generated-target boot",
+    "Eliza BSP driver runtime proof",
+    "Android compatibility"
+  ],
+  "payloads": [
+    {
+      "local_path": "build/qemu/linux_payload/debian-installer-riscv64-20260517T000000Z/linux",
+      "name": "linux",
+      "relative_url": "netboot/debian-installer/riscv64/linux"
+    },
+    {
+      "local_path": "build/qemu/linux_payload/debian-installer-riscv64-20260517T000000Z/initrd.gz",
+      "name": "initrd.gz",
+      "relative_url": "netboot/debian-installer/riscv64/initrd.gz"
+    }
+  ],
+  "required_real_outputs": [
+    "build/qemu/linux_payload/debian-installer-riscv64-20260517T000000Z/manifest.json",
+    "build/reports/qemu_os_boot_attempt.log with STATUS: PASS qemu.os_boot output",
+    "build/reports/qemu_os_boot_attempt.json with claim_boundary=qemu_virt_reference_only_not_e1_chip_rtl"
+  ],
+  "schema": "eliza.qemu_virt_linux_payload_plan.v1",
+  "smallest_next_external_import_step": {
+    "evidence_after_import": [
+      "sw/linux/scripts/capture-linux-bsp-evidence.sh /path/to/linux kernel-build",
+      "sw/linux/scripts/capture-linux-bsp-evidence.sh /path/to/linux dtb-check"
+    ],
+    "external_import_helper": "sw/linux/scripts/import-linux-bsp.sh /path/to/linux",
+    "external_preflight": "LINUX_DIR=/path/to/linux python3 scripts/check_bsp_next_import_step.py",
+    "local_preflight": "python3 scripts/check_bsp_next_import_step.py",
+    "reason": "Buildroot needs a kernel tree that already contains the Eliza BSP; OpenSBI and U-Boot need a CPU-capable SoC handoff.",
+    "target": "linux"
+  },
+  "source": {
+    "architecture": "riscv64",
+    "base_url": "https://deb.debian.org/debian/dists/stable/main/installer-riscv64/current/images",
+    "distribution": "Debian",
+    "sha256s": "https://deb.debian.org/debian/dists/stable/main/installer-riscv64/current/images/SHA256SUMS",
+    "suite": "stable"
+  },
+  "status": "reference_boot_passed_when_build_reports_manifest_status_pass"
+}

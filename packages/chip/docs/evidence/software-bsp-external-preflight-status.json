@@ -1,0 +1,55 @@
+{
+  "claim_boundary": "environment_preflight_only_not_external_build_boot_or_runtime_evidence",
+  "generated_utc": "2026-06-02T06:20:31Z",
+  "host": {
+    "cwd": "<repo>",
+    "platform": "linux"
+  },
+  "schema": "eliza.software_bsp_external_preflight.v1",
+  "status": "READY_TO_CAPTURE",
+  "targets": [
+    {
+      "blockers": [],
+      "checks": [
+        {
+          "name": "OpenSBI Makefile",
+          "path": "<repo>/external/opensbi/opensbi/Makefile",
+          "status": "PASS"
+        },
+        {
+          "name": "OpenSBI lib directory",
+          "path": "<repo>/external/opensbi/opensbi/lib",
+          "status": "PASS"
+        },
+        {
+          "name": "OpenSBI fw_dynamic source",
+          "path": "<repo>/external/opensbi/opensbi/firmware/fw_dynamic.S",
+          "status": "PASS"
+        },
+        {
+          "name": "optional imported Eliza OpenSBI platform",
+          "path": "<repo>/external/opensbi/opensbi/platform/eliza/config.mk",
+          "status": "PASS"
+        },
+        {
+          "name": "RISC-V OpenSBI cross compiler on PATH",
+          "status": "PASS"
+        },
+        {
+          "detail": "GNU Make 4.3",
+          "name": "GNU Make version",
+          "status": "PASS"
+        }
+      ],
+      "commands": [
+        "sw/opensbi/scripts/import-opensbi-platform.sh --check <repo>/external/opensbi/opensbi",
+        "ELIZA_OPENSBI_CMD='make PLATFORM=generic FW_DYNAMIC=y' docs/sw/opensbi/capture-opensbi-evidence.sh <repo>/external/opensbi/opensbi build",
+        "ELIZA_OPENSBI_HANDOFF_CMD='PATH=packages/chip/external/deb-tools/verilator/usr/bin:packages/chip/external/deb-tools/dtc/usr/bin:packages/chip/external/circt/1.147.0/bin:$PATH CHIPYARD_LINUX_BINARY=packages/chip/external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk CHIPYARD_LINUX_SMOKE_TIMEOUT_SECONDS=14400 CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES=4000000000 CHIPYARD_LINUX_SMOKE_DISABLE_DRAMSIM=1 CHIPYARD_LINUX_SMOKE_BREAK_SIM_PREREQ=0 CHIPYARD_LINUX_SMOKE_RUN_TARGET=run-binary-fast scripts/run_chipyard_eliza_linux_smoke.sh' docs/sw/opensbi/capture-opensbi-evidence.sh <repo>/external/opensbi/opensbi handoff",
+        "python3 scripts/check_software_bsp.py opensbi --require-evidence"
+      ],
+      "status": "READY_TO_CAPTURE",
+      "target": "opensbi",
+      "tree": "<repo>/external/opensbi/opensbi"
+    }
+  ]
+}

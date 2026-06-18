@@ -1,0 +1,76 @@
+{
+  "algorithmic_scope": {
+    "action_offsets_blocks": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      8,
+      16,
+      -1,
+      -2,
+      -3,
+      -4,
+      -8,
+      -16,
+      32,
+      0
+    ],
+    "action_space_size": 16,
+    "alpha": "1/8 (right-shift by 3)",
+    "epsilon": "1/16 ~= 6.25 % exploration",
+    "evaluation_queue_size": 256,
+    "gamma": "1/2 (right-shift by 1)",
+    "num_states": 16384,
+    "reward_useful": 20,
+    "reward_useless": -14,
+    "state_features": [
+      "pc_low_8_bits",
+      "page_offset_6_bits"
+    ],
+    "update_rule": "tabular SARSA, Q(s,a) += alpha * (r + gamma * max_a' Q(s', a') - Q(s,a))"
+  },
+  "binary": "external/ChampSim/bin/champsim_pref_pythia",
+  "build_config": "external/ChampSim/build-configs/pref_pythia.json",
+  "captured_utc": "2026-05-20T02:54:54.816863+00:00",
+  "champsim_module_api": "2024-12 (champsim::modules::prefetcher)",
+  "claim_boundary": "Pythia ChampSim DPC-3 port evidence only; not synthesizable Pythia RTL productization, phone-class IPC, silicon, DRAM, Android, or release evidence.",
+  "deviation_from_reference": [
+    "Canonical 2-feature SARSA only (paper's baseline before extended features).",
+    "No eligibility-trace lambda \u2014 single-step SARSA only.",
+    "Action 'offset 0' (no-prefetch) is placed last so argmax-tie-breaking on zero-initialized Q rows does not collapse to 'do nothing' before any learning has happened."
+  ],
+  "evidence_class": "champsim_dpc3_traces_only",
+  "generated_utc": "2026-05-24T02:03:00Z",
+  "language_note": "Pythia (Bera et al., MICRO'21) is a CPU C++ tabular-SARSA prefetcher. Earlier project notes describing it as a GPU/ML prefetcher were incorrect; corrected here.",
+  "phone_claim_allowed": false,
+  "false_claim_flags": {
+    "phone_claim_allowed": false,
+    "release_claim_allowed": false
+  },
+  "port_location": "external/ChampSim/prefetcher/pythia/",
+  "provenance": {
+    "source_artifacts": [
+      {
+        "path": "external/ChampSim/prefetcher/pythia/pythia.cc",
+        "sha256": "00b43ce53fd9e13d13012d30faeead7d2592fee84fd7ee43b903c114aab86cf9"
+      },
+      {
+        "path": "external/ChampSim/prefetcher/pythia/pythia.h",
+        "sha256": "6228d48d0a7f08d08e15125a46a9394daece34b0f76139cd9ce9abb7963b4d5d"
+      },
+      {
+        "path": "external/ChampSim/build-configs/pref_pythia.json",
+        "sha256": "16754e0a8c21f9b2108d9ba3dd6c03d8828b0349ea27710938ede955a6f893cf"
+      }
+    ]
+  },
+  "release_claim_allowed": false,
+  "results_artifact": "docs/evidence/cache/champsim_prefetch_sweep_report.json",
+  "results_section": "Search aggregate.pythia and per-trace results with label='pythia' for Pythia's ChampSim-scoped IPC / LLC MPKI / L2C MPKI on 401.bzip2-7B, 403.gcc-16B, 429.mcf-22B.",
+  "schema": "eliza.cache.pythia_dpc3.v1",
+  "source_repo": "https://github.com/CMU-SAFARI/Pythia (prefetcher/scooby.{cc,h})",
+  "status": "ported_and_champsim_scoped"
+}

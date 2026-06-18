@@ -1,0 +1,107 @@
+{
+  "claim_boundary": "operator_capture_contracts_only_not_live_runtime_evidence",
+  "generated_utc": "2026-05-28T20:46:25Z",
+  "live_capture_contracts": [
+    {
+      "capture_commands": [
+        "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
+        "python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py --adb-connect \"$CHIP_ANDROID_ADB_HOSTPORT\" --artifact-id android-chip-riscv64-zip --target-label chip-riscv64 --expected-cpu-abi riscv64 --output $(pwd)/packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json --logcat $(pwd)/packages/chip/docs/evidence/android/eliza_launcher_runtime_logcat.txt --transcript $(pwd)/packages/chip/docs/evidence/android/eliza_launcher_runtime_transcript.log",
+        "python3 packages/chip/scripts/check_android_launcher_runtime_evidence.py --expected-artifact-id android-chip-riscv64-zip --expected-target-label chip-riscv64 --expected-cpu-abi riscv64 --evidence packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json"
+      ],
+      "device_or_emulator_prerequisites": [
+        "booted eliza_ai_soc Android target reachable over adb",
+        "CHIP_ANDROID_ADB_HOSTPORT points to the target adb host:port, or exactly one adb device is already online",
+        "current staged system APK payload report exists at build/reports/android_system_apk_payload.json"
+      ],
+      "expected_file_schema": "eliza.android_launcher_runtime_evidence.v1 JSON with status=PASS, result=0, riscv64 boot-complete device fields, launcher HOME ownership, healthy agent service, and zero AVC/fatal crash counters",
+      "expected_path": "packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json",
+      "fail_closed_validation_rule": "BLOCKED unless the JSON is valid, status is PASS, result is 0, device.cpu_abi is riscv64, sys.boot_completed is 1, HOME resolves to the staged package, the launcher service PID is positive, agent health is ready, and AVC/fatal crash counters are zero."
+    },
+    {
+      "capture_commands": [
+        "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
+        "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py --adb-connect \"$CHIP_ANDROID_ADB_HOSTPORT\" rear_camera"
+      ],
+      "device_or_emulator_prerequisites": [
+        "booted eliza_ai_soc Android target reachable over adb",
+        "rear camera simulator/probe backend available in the target image",
+        "CHIP_ANDROID_ADB_HOSTPORT points to the target adb host:port, or exactly one adb device is already online"
+      ],
+      "expected_file_schema": "line-oriented eliza-evidence peripheral log with eliza-evidence: status=PASS, COMPONENT=rear_camera, FRAME_SOURCE=simulated_sensor, and CAPTURE_COUNT markers",
+      "expected_path": "docs/evidence/android/peripherals/rear_camera_sim.log",
+      "fail_closed_validation_rule": "BLOCKED unless the log contains eliza-evidence: status=PASS and CAPTURE_COUNT=, and contains no status=BLOCKED, PROBE_ERROR, or MISSING_MARKERS token."
+    },
+    {
+      "capture_commands": [
+        "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
+        "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py --adb-connect \"$CHIP_ANDROID_ADB_HOSTPORT\" front_camera"
+      ],
+      "device_or_emulator_prerequisites": [
+        "booted eliza_ai_soc Android target reachable over adb",
+        "front camera simulator/probe backend available in the target image",
+        "CHIP_ANDROID_ADB_HOSTPORT points to the target adb host:port, or exactly one adb device is already online"
+      ],
+      "expected_file_schema": "line-oriented eliza-evidence peripheral log with eliza-evidence: status=PASS, COMPONENT=front_camera, FRAME_SOURCE=simulated_sensor, and CAPTURE_COUNT markers",
+      "expected_path": "docs/evidence/android/peripherals/front_camera_sim.log",
+      "fail_closed_validation_rule": "BLOCKED unless the log contains eliza-evidence: status=PASS and CAPTURE_COUNT=, and contains no status=BLOCKED, PROBE_ERROR, or MISSING_MARKERS token."
+    },
+    {
+      "capture_commands": [
+        "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
+        "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py --adb-connect \"$CHIP_ANDROID_ADB_HOSTPORT\" wifi"
+      ],
+      "device_or_emulator_prerequisites": [
+        "booted eliza_ai_soc Android target reachable over adb",
+        "Wi-Fi HAL/service and simulated network backend available in the target image",
+        "CHIP_ANDROID_ADB_HOSTPORT points to the target adb host:port, or exactly one adb device is already online"
+      ],
+      "expected_file_schema": "line-oriented eliza-evidence peripheral log with eliza-evidence: status=PASS, COMPONENT=wifi, IP_CONNECTIVITY=pass, and ANDROID_DUMPSYS_WIFI=pass markers",
+      "expected_path": "docs/evidence/android/peripherals/wifi_sim.log",
+      "fail_closed_validation_rule": "BLOCKED unless the log contains eliza-evidence: status=PASS and IP_CONNECTIVITY=pass, and contains no status=BLOCKED, PROBE_ERROR, or MISSING_MARKERS token."
+    },
+    {
+      "capture_commands": [
+        "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
+        "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py --adb-connect \"$CHIP_ANDROID_ADB_HOSTPORT\" bluetooth"
+      ],
+      "device_or_emulator_prerequisites": [
+        "booted eliza_ai_soc Android target reachable over adb",
+        "Bluetooth HAL/service and simulated controller backend available in the target image",
+        "CHIP_ANDROID_ADB_HOSTPORT points to the target adb host:port, or exactly one adb device is already online"
+      ],
+      "expected_file_schema": "line-oriented eliza-evidence peripheral log with eliza-evidence: status=PASS, COMPONENT=bluetooth, HCI_ATTACH=pass, BLE_SCAN=pass, and PAIRING=pass markers",
+      "expected_path": "docs/evidence/android/peripherals/bluetooth_sim.log",
+      "fail_closed_validation_rule": "BLOCKED unless the log contains eliza-evidence: status=PASS and PAIRING=pass, and contains no status=BLOCKED, PROBE_ERROR, or MISSING_MARKERS token."
+    },
+    {
+      "capture_commands": [
+        "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
+        "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py --adb-connect \"$CHIP_ANDROID_ADB_HOSTPORT\" cellular_5g_lte"
+      ],
+      "device_or_emulator_prerequisites": [
+        "booted eliza_ai_soc Android target reachable over adb",
+        "cellular modem simulator/backend and radio service available in the target image",
+        "CHIP_ANDROID_ADB_HOSTPORT points to the target adb host:port, or exactly one adb device is already online"
+      ],
+      "expected_file_schema": "line-oriented eliza-evidence peripheral log with eliza-evidence: status=PASS, COMPONENT=cellular_5g_lte, LTE_REGISTRATION=pass, NR5G_REGISTRATION=pass, and DATA_ATTACH=pass markers",
+      "expected_path": "docs/evidence/android/peripherals/cellular_5g_lte_sim.log",
+      "fail_closed_validation_rule": "BLOCKED unless the log contains eliza-evidence: status=PASS and DATA_ATTACH=pass, and contains no status=BLOCKED, PROBE_ERROR, or MISSING_MARKERS token."
+    },
+    {
+      "capture_commands": [
+        "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
+        "python3 packages/chip/scripts/android/capture_e1_npu_hal_liveness.py --adb-connect \"$CHIP_ANDROID_ADB_HOSTPORT\" --output $(pwd)/packages/chip/docs/evidence/android/eliza_ai_soc_e1_npu_hal_liveness.log"
+      ],
+      "device_or_emulator_prerequisites": [
+        "booted eliza_ai_soc Android target reachable over adb",
+        "E1 NPU HAL/NNAPI service available in the target image",
+        "CHIP_ANDROID_ADB_HOSTPORT points to the target adb host:port, or exactly one adb device is already online"
+      ],
+      "expected_file_schema": "line-oriented eliza-evidence NPU HAL liveness log with eliza-evidence: status=PASS, RESULT=0, NNAPI_SERVICE=present, and E1_NPU_ACCELERATOR=present markers",
+      "expected_path": "packages/chip/docs/evidence/android/eliza_ai_soc_e1_npu_hal_liveness.log",
+      "fail_closed_validation_rule": "BLOCKED unless the liveness script observes an online adb target, a passing neuralnetworks service query, the expected E1 NPU accelerator marker, eliza-evidence: status=PASS, and RESULT=0."
+    }
+  ],
+  "release_credit": false,
+  "schema": "eliza.android_live_runtime_capture_contracts.v1"
+}

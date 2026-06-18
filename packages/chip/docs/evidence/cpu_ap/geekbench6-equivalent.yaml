@@ -1,0 +1,40 @@
+claim_boundary: 'Geekbench 6 is proprietary (Primate Labs). We do NOT redistribute
+  or publish Geekbench 6 numbers; instead we publish an open functional equivalent
+  assembled from Phoronix Test Suite micro-workloads that map to the GB6 subscores.
+  The "equivalent" score is comparable in shape but not bit-identical to GB6.
+
+  '
+expected_target_e1_ultra_4_ghz:
+  aspirational_st_a19_pro_parity: 3895
+  aspirational_st_status: explicitly_blocked_aspirational
+  mt_equivalent_8_core: 8500
+  st_equivalent: 2800
+fail_closed_until:
+- real e1 silicon (target 2028 dev-board, 2029 phone product)
+- V8 / clang / opencv / image-libs RVA23 stack built
+- independent third-party Geekbench 6 (proprietary) run on the same silicon for cross-check;
+  we will quote that number from third-party publication and never redistribute the
+  binary
+generated_utc: '2026-05-20T10:12:30Z'
+manifest: benchmarks/cpu/geekbench/manifest.json
+reference_devices:
+  apple_a19_pro_mt: 9988
+  apple_a19_pro_st: 3895
+  arm_c1_ultra_mt: 10417
+  arm_c1_ultra_st: 3502
+  qualcomm_oryon_gen_3_mt: 11068
+  qualcomm_oryon_gen_3_st: 3649
+result_artifact: benchmarks/results/cpu/geekbench/result.json
+schema: eliza.cpu_ap_geekbench6_equivalent_gate.v1
+status: blocked_until_silicon_and_full_software_stack
+target_dut: real_silicon_only
+why_no_pre_silicon: 'GB6 mixes JS, image, ML, compression, and rendering at typical
+  user
+
+  durations (60-180 s each). Verilator at ~100 kHz simulated is ~10000x too
+
+  slow; FireSim at 100 MHz is ~40x too slow. Only silicon or a high-rate
+
+  emulator (Palladium / Zebu) closes the budget.
+
+  '

@@ -1,0 +1,106 @@
+acceptance_criteria:
+- build/dft/e1_chip_top.scan.v exists after a release run.
+- Every macro in pd/macros/manifest.yaml has rtl_status=complete_local_evidence in
+  pd/dft/mbist.yaml.
+- JTAG boundary scan chain length == finalized pad count.
+- build/dft/atpg/coverage.json reports stuck_at_percent >= 95.0.
+claim_boundary: scope_limited_to_structural_metadata_inventory_and_gate_diagnostics
+description: 'DFT evidence gate. The Yosys-side prep (pd/dft/scan_insertion.tcl
+
+  dfflibmap) only performs ordinary D-FF library mapping, not scan-flop
+
+  retargeting -- it emits non-scan sky130_fd_sc_hd flops (e.g. dfrtp_1), not
+
+  sky130_fd_sc_hd__sdfxxx scan cells. Scan-flop substitution, scan chain
+
+  stitching, per-SRAM MBIST controllers (tied to pd/macros/manifest.yaml), and
+
+  JTAG boundary scan for all pads are all BLOCKED on Fault (not vendored under
+
+  external/) or commercial ATPG. Fault or commercial ATPG must produce
+
+  coverage.json >= 95 % stuck-at before this gate unblocks.
+
+  '
+generated_utc: '2026-05-20T10:12:30Z'
+local_findings:
+  atpg_coverage:
+    evidence_boundary: 'Fault is not vendored under external/. Commercial ATPG is
+      BLOCKED on
+
+      docs/evidence/pd/commercial-eda-gate.yaml.
+
+      '
+    status: blocked
+  jtag_boundary_scan:
+    evidence_boundary: 'Boundary scan chain length depends on the final pad inventory.
+
+      Pad cell selection criteria exist (docs/pd/pad-cell-selection-criteria.md)
+
+      but the pad list is not finalized.
+
+      '
+    status: blocked
+  mbist:
+    evidence_boundary: 'MBIST controllers cannot be generated until OpenRAM SRAM macros
+      land
+
+      in pd/macros/sky130/. pd/dft/mbist.yaml enumerates the required
+
+      controllers.
+
+      '
+    status: blocked
+  scan_insertion:
+    evidence_boundary: 'pd/dft/scan_insertion.tcl runs cleanly on rtl/bootrom/e1_bootrom.sv
+
+      through Yosys with the Sky130 sky130_fd_sc_hd typical Liberty, producing
+
+      build/dft/e1_bootrom.scan_ready.v. dfflibmap was the active pass (not the
+
+      non-existent `scanchain`), but dfflibmap only maps to ordinary library
+
+      flops, NOT scan (sdf*) cells: e1_bootrom is a flop-less ROM (no flops at
+
+      all), and on a flop-bearing module (rtl/peripherals/e1_peripherals.sv,
+
+      104 flops) the same pass emits only sky130_fd_sc_hd__dfrtp_1 / dfxtp_1 /
+
+      dfstp_2 / dfbbn_1 ordinary flops and zero sdf* scan cells. Confirmed via
+
+      scripts/build_scan_chain_contract.py, which fails closed (exit 2, no
+
+      chain invented) because no scan-capable flops exist in the netlist.
+
+      Scan-flop retargeting + chain stitching require Fault
+
+      (https://github.com/AUCOHL/Fault), which is not vendored under external/.
+
+      Not yet hooked into the OpenLane release config via SYNTH_EXTRA_SCRIPT.
+
+      '
+    status: standard_ff_mapping_only_scan_retargeting_blocked_on_fault
+    validation_command: 'LIB_TYPICAL_FAST_LIBERTY=$PWD/external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+
+      yosys -c pd/dft/run_e1_bootrom_scan_prep.tcl
+
+      '
+release_blockers:
+- Scan-flop retargeting is not done; pd/dft/scan_insertion.tcl dfflibmap emits
+  ordinary (non-scan) flops only. True sdf* substitution + chain stitching are
+  blocked on Fault (not vendored under external/).
+- Scan-prep pass not yet invoked from OpenLane synth flow via SYNTH_EXTRA_SCRIPT.
+- OpenRAM SRAM macros unbuilt; MBIST controllers cannot be generated.
+- Pad inventory not finalized; JTAG boundary register width unknown.
+- Fault ATPG not vendored; commercial alternative blocked on commercial-eda-gate.
+release_use: prohibited_until_external_review
+schema: eliza.pd_dft_evidence.v1
+scope: scan_insertion_plus_mbist_plus_jtag_boundary_scan
+source_artifacts:
+- pd/dft/scan_insertion.tcl
+- pd/dft/mbist.yaml
+- pd/dft/fault_atpg.config.yaml
+- pd/dft/README.md
+- docs/pd/dft-strategy.md
+- pd/macros/manifest.yaml
+status: draft_local_evidence

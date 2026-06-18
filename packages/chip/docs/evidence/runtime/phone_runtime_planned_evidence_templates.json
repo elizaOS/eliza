@@ -1,0 +1,81 @@
+{
+  "claim_boundary": "repo_side_capture_templates_only_not_runtime_evidence",
+  "generated_utc": "2026-05-28T20:46:40Z",
+  "planned_evidence_templates": [
+    {
+      "capture_commands": [
+        "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port> && adb connect \"$CHIP_ANDROID_ADB_HOSTPORT\"",
+        "mkdir -p packages/chip/docs/evidence/android/security && state=$(adb -s \"$CHIP_ANDROID_ADB_HOSTPORT\" shell getprop ro.boot.verifiedbootstate | tr -d '\\r') && if [ \"$state\" = green ]; then result=0; verdict=pass; else result=1; verdict=fail; fi; printf 'VERIFIED_BOOT=%s\\nSTATE=%s\\nRESULT=%s\\n' \"$verdict\" \"$state\" \"$result\" | tee packages/chip/docs/evidence/android/security/verified_boot_acceptance.log; test \"$result\" = 0"
+      ],
+      "capture_status": "planned_incomplete",
+      "expected_path": "docs/evidence/android/security/verified_boot_acceptance.log",
+      "required_capture": "boot a production-key eliza_ai_soc Android target and record verified-boot state from the live target",
+      "success_criteria": [
+        "required verified-boot success markers are present",
+        "RESULT is zero",
+        "no forbidden BLOCKED or FAIL markers are present"
+      ]
+    },
+    {
+      "capture_commands": [
+        "test -n \"$ELIZA_TAMPERED_BOOT_REJECTION_COMMAND\"",
+        "mkdir -p packages/chip/docs/evidence/android/security && sh -c \"$ELIZA_TAMPERED_BOOT_REJECTION_COMMAND\" | tee packages/chip/docs/evidence/android/security/tampered_boot_rejection.log"
+      ],
+      "capture_status": "planned_incomplete",
+      "expected_path": "docs/evidence/android/security/tampered_boot_rejection.log",
+      "required_capture": "run the approved tampered boot image rejection flow against production verified-boot policy",
+      "success_criteria": [
+        "required tamper-rejection success markers are present",
+        "RESULT is zero",
+        "no forbidden BLOCKED, FAIL, or image-acceptance markers are present"
+      ]
+    },
+    {
+      "capture_commands": [
+        "test -n \"$ELIZA_ROLLBACK_REJECTION_COMMAND\"",
+        "mkdir -p packages/chip/docs/evidence/android/security && sh -c \"$ELIZA_ROLLBACK_REJECTION_COMMAND\" | tee packages/chip/docs/evidence/android/security/rollback_rejection.log"
+      ],
+      "capture_status": "planned_incomplete",
+      "expected_path": "docs/evidence/android/security/rollback_rejection.log",
+      "required_capture": "run the approved older rollback-index image rejection flow against rollback policy",
+      "success_criteria": [
+        "required rollback-rejection success markers are present",
+        "RESULT is zero",
+        "no forbidden BLOCKED, FAIL, or image-acceptance markers are present"
+      ]
+    },
+    {
+      "capture_commands": [
+        "test -n \"$ELIZA_DEBUG_LOCK_KEY_PROVISIONING_COMMAND\"",
+        "mkdir -p packages/chip/docs/evidence/android/security && sh -c \"$ELIZA_DEBUG_LOCK_KEY_PROVISIONING_COMMAND\" | tee packages/chip/docs/evidence/android/security/debug_lock_key_provisioning.log"
+      ],
+      "capture_status": "planned_incomplete",
+      "expected_path": "docs/evidence/android/security/debug_lock_key_provisioning.log",
+      "required_capture": "record production debug-lock and key-provisioning state from the target provisioning flow",
+      "success_criteria": [
+        "required debug-lock and production-key success markers are present",
+        "RESULT is zero",
+        "no forbidden BLOCKED, FAIL, test-key, or development-key markers are present"
+      ]
+    },
+    {
+      "capture_commands": [
+        "test -n \"$ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND\"",
+        "mkdir -p packages/chip/docs/evidence/android/power && sh -c \"$ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND --output packages/chip/docs/evidence/android/power/sustained_npu_power_thermal_trace.json\""
+      ],
+      "capture_status": "planned_incomplete",
+      "expected_path": "docs/evidence/android/power/sustained_npu_power_thermal_trace.json",
+      "required_capture": "calibrated sustained NPU workload power, thermal, frequency, and throttle trace from a booted riscv64 target",
+      "success_criteria": [
+        "JSON status is PASS",
+        "result is zero",
+        "device CPU ABI is riscv64",
+        "NPU workload is sustained",
+        "instrumentation is calibrated",
+        "thermal throttling is not observed"
+      ]
+    }
+  ],
+  "release_credit": false,
+  "schema": "eliza.phone_runtime_planned_evidence_templates.v1"
+}

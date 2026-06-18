@@ -1,0 +1,115 @@
+annual_license_budget_estimate:
+  lower_bound_usd: 5000000
+  notes: 'Order-of-magnitude estimate based on typical mid-sized fabless SoC
+
+    teams (single-digit number of seats per tool, multi-tool stack).
+
+    Vendor partnerships and academic discounts reduce this; large
+
+    commercial contracts increase it. The actual number is BLOCKED on a
+
+    vendor partnership negotiation.
+
+    '
+  upper_bound_usd: 15000000
+claim_boundary: scope_limited_to_structural_metadata_inventory_and_gate_diagnostics
+description: 'Stage-3 closure at the 2028 target node (sub-7 nm) is impossible with
+
+  open tooling alone. OpenROAD has no published sub-7 nm flow on a real
+
+  PDK; the only documented sub-7 nm OpenROAD flow runs on the ASAP7
+
+  predictive academic PDK. This gate enumerates the commercial EDA stack
+
+  that must land before the advanced-node release can sign off, and the
+
+  annual budget order-of-magnitude needed to license it. The gate is
+
+  intentionally BLOCKED today; flipping it requires a vendor partnership.
+
+  '
+generated_utc: '2026-05-20T10:12:30Z'
+partnership_paths:
+- Synopsys Academic and Research Alliances program
+- Cadence Academic Network
+- Siemens EDA Academic Partner Program
+- foundry-sponsored multi-project shuttle (eMPW) with embedded tool access
+release_blockers:
+- No commercial EDA partnership signed.
+- No foundry MPW slot with embedded tool access secured.
+- Annual license budget unfunded.
+release_use: prohibited_until_external_review
+required_tool_stack:
+  atpg:
+    open_equivalent: Fault (academic)
+    open_equivalent_acceptable_at_advanced_node: false
+    primary: Synopsys TetraMAX / Siemens Tessent
+    rationale: 'Transition-delay and small-delay-defect coverage at advanced nodes
+
+      requires commercial ATPG and library characterization.
+
+      '
+  cts_and_useful_skew:
+    open_equivalent: TritonCTS (H-tree only)
+    open_equivalent_acceptable_at_advanced_node: false
+    primary: Cadence CCOpt (inside Innovus) / Fusion Compiler concurrent CTS
+  drc_lvs:
+    open_equivalent: Magic + Netgen + KLayout
+    open_equivalent_acceptable_at_advanced_node: false
+    primary: Siemens Calibre / Synopsys IC Validator
+    rationale: 'Foundry sub-7 nm DRC decks are Calibre-encrypted; open tooling
+
+      cannot ingest them.
+
+      '
+  place_and_route:
+    alternates:
+    - Siemens Aprisa
+    open_equivalent: OpenROAD
+    open_equivalent_acceptable_at_advanced_node: false
+    primary: Cadence Innovus / Synopsys Fusion Compiler
+    rationale: 'OpenROAD sub-7 nm flow is published only on ASAP7 predictive PDK.
+
+      Real foundry sub-7 nm PDK rules require commercial tools.
+
+      '
+  power_signoff:
+    alternates:
+    - Synopsys PrimePower
+    - Cadence Voltus
+    open_equivalent: OpenROAD power_estimation (very limited)
+    open_equivalent_acceptable_at_advanced_node: false
+    primary: Ansys RedHawk-SC
+    rationale: 'Vectorless dynamic IR-drop, EM, ESD, and on-chip variation analysis
+
+      at 100+ scenarios.
+
+      '
+  static_timing_analysis:
+    alternates:
+    - Cadence Tempus
+    - Siemens Solido
+    open_equivalent: OpenSTA
+    open_equivalent_acceptable_at_advanced_node: false
+    primary: Synopsys PrimeTime SI
+    rationale: POCV/SOCV with LVF Liberty + path-based STA at 100+ corners.
+  synthesis:
+    alternates:
+    - Cadence Genus
+    - Siemens Tessent
+    open_equivalent: Yosys + ABC
+    open_equivalent_acceptable_at_advanced_node: false
+    primary: Synopsys Design Compiler / Fusion Compiler
+schema: eliza.pd_commercial_eda_gate.v1
+scope: commercial_eda_partnership_required_for_stage3_advanced_node_closure
+source_artifacts:
+- docs/pd/macro-placement.md
+- docs/pd/dft-strategy.md
+- docs/pd/cts-strategy.md
+- docs/pd/multi-corner-sta.md
+status: blocked_external_vendor
+unblock_steps:
+- Secure at least one synthesis + place-and-route + STA + power-signoff partnership.
+- Document license seat count and renewal cadence here.
+- Re-run Stage-3 advanced-node flow against real PDK and capture every Stage-3 evidence
+  gate (macro placement, DFT, CTS, multi-corner STA).

@@ -1,0 +1,87 @@
+{
+  "claim_boundary": "This template is not DRAM, LPDDR, UMA, IOMMU, QoS, Android, or phone-class evidence. A copied report becomes evidence only after every placeholder is replaced with real target measurements and raw artifacts.",
+  "generated_utc": "2026-05-24T02:03:00Z",
+  "report": {
+    "benchmark_commands": [
+      "__REQUIRED_EXACT_STREAM_LMBENCH_POINTER_CHASE_DMA_COMMANDS__"
+    ],
+    "contention_workload": {
+      "clients": [
+        "CPU",
+        "DMA",
+        "NPU",
+        "display",
+        "camera_or_isp",
+        "GPU_or_2D"
+      ],
+      "duration_seconds": "__REQUIRED_NUMBER__",
+      "raw_trace_path": "__REQUIRED_RELATIVE_TRACE_PATH__"
+    },
+    "evidence_class": "real_target_measurement",
+    "memory_config": {
+      "capacity_gib": "__REQUIRED_NUMBER__",
+      "channels": "__REQUIRED_NUMBER__",
+      "controller_or_phy": "__REQUIRED_CONTROLLER_PHY_ID__",
+      "dram_clock_mhz": "__REQUIRED_NUMBER__",
+      "memory_type": "__REQUIRED_LPDDR_OR_DECLARED_DOWNGRADE__",
+      "ranks": "__REQUIRED_NUMBER__"
+    },
+    "negative_evidence_rejection": {
+      "axi_lite_sram_model_cycle_count": "reject",
+      "generated_memmap_without_target_run": "reject",
+      "host_benchmark": "reject",
+      "process_corner_without_contract_hash": "reject",
+      "simulator_wall_clock": "reject"
+    },
+    "parsed_metrics": {
+      "contended_cpu_latency_ns": "__REQUIRED_NUMBER__",
+      "display_underflow_count": "__REQUIRED_INTEGER__",
+      "dma_copy_bandwidth_gbps": "__REQUIRED_NUMBER__",
+      "p95_random_read_latency_ns": "__REQUIRED_NUMBER__",
+      "peak_bandwidth_gbps": "__REQUIRED_NUMBER__",
+      "sustained_bandwidth_gbps": "__REQUIRED_NUMBER__",
+      "worst_process_corner_p95_random_read_latency_ns": "__REQUIRED_NUMBER__",
+      "worst_process_corner_sustained_bandwidth_gbps": "__REQUIRED_NUMBER__"
+    },
+    "pass_fail_against_phone_2028_target_profile": {
+      "capacity_gib_min_12": "__PASS_FAIL_OR_DOWNGRADED__",
+      "contended_trace_present": "__PASS_FAIL__",
+      "overall": "__PASS_FAIL_OR_DOWNGRADED__",
+      "p95_random_read_latency_ns_max_120": "__PASS_FAIL_OR_DOWNGRADED__",
+      "peak_bandwidth_gbps_min_180": "__PASS_FAIL_OR_DOWNGRADED__",
+      "sustained_bandwidth_gbps_min_120": "__PASS_FAIL_OR_DOWNGRADED__"
+    },
+    "process_corners": {
+      "pdk_signoff_claim": "none",
+      "process_corner_count": "__REQUIRED_INTEGER__",
+      "process_effects_contract": {
+        "path": "docs/spec-db/process-14a-effects.yaml",
+        "sha256": "__REQUIRED_SHA256__"
+      },
+      "worst_process_corner": "__REQUIRED_14A_CORNER_ID__"
+    },
+    "raw_artifacts": [
+      {
+        "path": "__REQUIRED_RELATIVE_RAW_LOG_PATH__",
+        "sha256": "__REQUIRED_SHA256__"
+      }
+    ],
+    "runtime_state": {
+      "cpu_clock_mhz": "__REQUIRED_NUMBER__",
+      "display_mode": "__REQUIRED_MODE_OR_NOT_APPLICABLE__",
+      "npu_clock_mhz": "__REQUIRED_NUMBER_OR_NOT_APPLICABLE__",
+      "power_mode": "__REQUIRED_POWER_MODE__",
+      "thermal_state": "__REQUIRED_THERMAL_STATE__"
+    },
+    "schema": "__REQUIRED_REPORT_SCHEMA__",
+    "target": {
+      "capture_utc": "__REQUIRED_UTC_TIMESTAMP__",
+      "is_host": false,
+      "is_simulator": false,
+      "target_id": "__REQUIRED_TARGET_ID__",
+      "target_kind": "__REQUIRED_FPGA_EMULATION_OR_SILICON__"
+    }
+  },
+  "schema": "eliza.memory.bandwidth_latency_contended_access.template.v1",
+  "template_status": "template_only_not_evidence"
+}
