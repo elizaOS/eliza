@@ -44,6 +44,20 @@ function isProviderUnavailable(modelId: string): {
 
 const app = new Hono<AppEnv>();
 
+// This endpoint is POST-only (it takes a body of model ids to check). Answer a
+// bare GET with a clean 405 instead of letting it fall through to the sibling
+// `[...model]` catalog splat, which 500s on the missing param.
+app.get("/", (c) =>
+  c.json(
+    {
+      success: false,
+      error: "Method not allowed; use POST",
+      code: "method_not_allowed",
+    },
+    405,
+  ),
+);
+
 app.post("/", async (c) => {
   try {
     await getCurrentUser(c).catch(() => null);
