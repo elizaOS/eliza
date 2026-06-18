@@ -210,6 +210,44 @@ export const elizaLogger = workerLogger;
 export const DEFAULT_ELIZA_CLOUD_TEXT_MODEL = "deepseek/deepseek-chat";
 export const DEFAULT_MAX_BODY_BYTES = 1_048_576;
 
+/**
+ * Worker-safe stand-in for `runWithTrajectoryContext`. The trajectory context
+ * manager lives on the agent sidecar; in the Worker bundle there is nothing to
+ * track, so just run the function. (Pulled into the bundle transitively via
+ * `@elizaos/shared` email-classification — not invoked on a Worker route.)
+ */
+export function runWithTrajectoryContext<T>(
+  _context: unknown,
+  fn: () => T | Promise<T>,
+): T | Promise<T> {
+  return fn();
+}
+
+/**
+ * Worker-safe `parseJsonModelRecord`: mirrors @elizaos/core — strip a leading
+ * `<think>…</think>` block and a fenced code block, JSON.parse, and accept only
+ * a plain (non-array) object. Pure string work, safe in workerd.
+ */
+export function parseJsonModelRecord<
+  T extends Record<string, unknown> = Record<string, unknown>,
+>(raw: string): T | null {
+  let candidate = raw.trim();
+  const thinkEnd = candidate.indexOf("</think>");
+  if (candidate.startsWith("<think>") && thinkEnd !== -1) {
+    candidate = candidate.slice(thinkEnd + "</think>".length).trim();
+  }
+  const fenced = candidate.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (fenced) candidate = (fenced[1] ?? "").trim();
+  if (candidate.length === 0) return null;
+  try {
+    const parsed = JSON.parse(candidate);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return parsed as T;
+  } catch {
+    return null;
+  }
+}
+
 export async function readRequestBodyBuffer(
   request: Request,
   { maxBytes = DEFAULT_MAX_BODY_BYTES }: { maxBytes?: number } = {},
