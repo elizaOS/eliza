@@ -141,3 +141,48 @@ export function listEnabledTelegramAccounts(
     .map((accountId) => resolveTelegramAccount(runtime, accountId))
     .filter((account) => account.enabled && account.botToken);
 }
+
+/**
+ * Whether an account declares a usable personal (MTProto user-account) identity:
+ * a personal block that isn't explicitly disabled and carries at least a phone
+ * number or a saved session. This is the OWNER signal — the human user the agent
+ * can act through — distinct from the bot identity (botToken) it acts AS.
+ */
+export function isTelegramPersonalEnabled(
+  account: ResolvedTelegramAccount,
+): boolean {
+  const personal = account.config.personal;
+  if (!personal || personal.enabled === false) {
+    return false;
+  }
+  return Boolean(
+    readNonEmptyString(personal.phone) || readNonEmptyString(personal.session),
+  );
+}
+
+/**
+ * Stable external id for an account's personal identity, used as the binding key
+ * the owner-binding access gate matches against. Derived from the phone number;
+ * undefined when no phone is configured (the gate then can't resolve a binding,
+ * which correctly keeps the account blocked).
+ */
+export function telegramPersonalExternalId(
+  account: ResolvedTelegramAccount,
+): string | undefined {
+  const phone = readNonEmptyString(account.config.personal?.phone);
+  return phone ? `tg-user:${phone}` : undefined;
+}
+
+/**
+ * Accounts that declare a personal (user-account) identity. Separate from
+ * listEnabledTelegramAccounts (which is the bot-service's view — accounts with a
+ * botToken to long-poll); a personal-only account has no botToken and must never
+ * reach the bot service, only the connector-account provider.
+ */
+export function listPersonalTelegramAccounts(
+  runtime: IAgentRuntime,
+): ResolvedTelegramAccount[] {
+  return listTelegramAccountIds(runtime)
+    .map((accountId) => resolveTelegramAccount(runtime, accountId))
+    .filter((account) => account.enabled && isTelegramPersonalEnabled(account));
+}
