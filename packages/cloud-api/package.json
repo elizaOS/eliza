@@ -13,7 +13,8 @@
     "deploy": "wrangler deploy --env production",
     "codegen": "node src/_generate-router.mjs",
     "typecheck": "tsgo --noEmit",
-    "test": "bun test __tests__",
+    "test": "node test/run-unit-isolated.mjs",
+    "test:batch": "bun test __tests__",
     "test:audit": "node test/_audit-coverage.mjs",
     "test:e2e": "node test/e2e/run-e2e-batches.mjs",
     "test:e2e:foundation": "TEST_SERVER_SCRIPT=dev bun test --preload test/e2e/preload.ts test/e2e/agent-token-flow.test.ts --timeout 120000"
