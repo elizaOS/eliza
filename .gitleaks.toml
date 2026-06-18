@@ -27,6 +27,12 @@ paths = [
 ]
 
 [[allowlists]]
+description = "Headscale DEPLOY.md CLI examples (`headscale apikeys create` — not a credential)"
+paths = [
+  '''(^|/)packages/cloud-services/headscale/DEPLOY\.md$''',
+]
+
+[[allowlists]]
 description = "Documented placeholder strings"
 regexTarget = "match"
 regexes = [

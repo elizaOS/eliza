@@ -9,8 +9,8 @@ is heading.
 |---|---|---|---|
 | `cloud-frontend` (dashboard SPA) | Cloudflare Pages | `packages/cloud-frontend/` | Wrangler / Pages project |
 | `cloud-api` (REST + auth + billing) | Cloudflare Worker | `packages/cloud-api/` | `apps/api/wrangler.toml` (env vars, secrets via `wrangler secret`) |
-| `headscale` (Tailscale coordination server for customer tunnels) | Railway | `packages/cloud-services/headscale/` | `railway.toml`, `Dockerfile` |
-| `tunnel-proxy` (public HTTPS -> tailnet bridge) | Railway | `packages/cloud-services/tunnel-proxy/` | `railway.toml`, `Dockerfile` |
+| `headscale` (Tailscale coordination server for agents + customer tunnels) | Hetzner control-plane VM | `packages/cloud-services/headscale/` | armed via `arm-headscale-control-plane.yml` (ACL `acl.hujson`) |
+| `tunnel-proxy` (public HTTPS -> tailnet bridge, customer-tunnel path) | Railway | `packages/cloud-services/tunnel-proxy/` | `railway.toml`, `Dockerfile` |
 | `bitrouter` (Eliza Cloud model router) | Railway | `packages/cloud-infra/cloud/bitrouter/` | `railway.toml`, `Dockerfile` |
 | `gateway-discord` | Cloudflare Worker | `packages/cloud-services/gateway-discord/` | own `wrangler.toml` |
 | `gateway-webhook` | Cloudflare Worker | `packages/cloud-services/gateway-webhook/` | own `wrangler.toml` |
@@ -23,16 +23,23 @@ The deprecated agent VPS deploy still exists behind the
 `cloud-deploy-backend.yml`. It is **off by default** and only runs when an
 operator explicitly opts in. New code should not target it.
 
-## Railway services in detail
+## headscale (not Railway — Hetzner control-plane VM)
 
-### `headscale`
+`headscale` is the Tailscale coordination server for both internal agents
+(`tag:agent`) and customer tunnels (`tag:eliza-tunnel`). For the agent launch
+path it runs **on the Hetzner control-plane VM**, not on Railway — the
+provisioning worker and agent router talk to it over a private loopback API.
+The previous Railway-hosted headscale runtime was decommissioned on 2026-06-17.
 
-- Builder: Dockerfile (pinned headscale v0.28.0).
-- Healthcheck: `GET /health` on `listen_addr` (port 8080). Headscale v0.28
-  serves this natively.
-- Volume: `/var/lib/headscale` (SQLite db + generated keys).
-- Public domain: `headscale.elizacloud.ai`.
+- Runtime: Hetzner control-plane VM (nginx + Let's Encrypt terminate TLS in
+  front of local headscale).
+- Public domain: `headscale.elizacloud.ai` → CP VM (DNS points at the
+  control plane).
+- ACL source of truth: [`packages/cloud-services/headscale/acl.hujson`](../../cloud-services/headscale/acl.hujson),
+  deployed by `arm-headscale-control-plane.yml`.
 - Provisioning runbook: [`packages/cloud-services/headscale/DEPLOY.md`](../../cloud-services/headscale/DEPLOY.md).
+
+## Railway services in detail
 
 ### `tunnel-proxy`
 
