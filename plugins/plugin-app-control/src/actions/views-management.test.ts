@@ -762,11 +762,18 @@ describe("view management actions", () => {
 			hasOwnerAccess: vi.fn(async () => true),
 		});
 
-		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-			ok: true,
-			status: 200,
-			json: async () => ({ ok: true }),
-		} as Response);
+		// Two layout calls (split, then tile) → queue two navigate responses.
+		vi.mocked(globalThis.fetch)
+			.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({ ok: true }),
+			} as Response)
+			.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({ ok: true }),
+			} as Response);
 
 		const splitResult = await action.handler(
 			runtime as never,
@@ -862,7 +869,18 @@ describe("view management actions", () => {
 			hasOwnerAccess: vi.fn(async () => true),
 		});
 
+		// This test exercises four layout handler calls (split, tile, planner-partial
+		// tile, bad-split-mode tile); each issues one navigate POST, so queue four
+		// successful navigate responses. (Previously only three were queued and the
+		// fourth call silently received `undefined` from the bare fetch mock — it
+		// passed only because the helper hardcoded success:true regardless of the
+		// transport result, which is the bug this change fixes.)
 		vi.mocked(globalThis.fetch)
+			.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({ ok: true }),
+			} as Response)
 			.mockResolvedValueOnce({
 				ok: true,
 				status: 200,

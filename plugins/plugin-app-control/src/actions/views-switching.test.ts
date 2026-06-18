@@ -274,16 +274,15 @@ describe("view switching — VIEWS action resolver", () => {
 			["show the logs view", "logs"],
 		];
 
-		it.each(ACTIVE_CASES)(
-			'"%s" navigates to view "%s"',
-			async (phrase, expectedId) => {
-				const { navigated } = installNavigateCapture();
-				const { result } = await runShow(REGISTRY, phrase);
-				expect(result?.success).toBe(true);
-				expect(result?.values?.viewId).toBe(expectedId);
-				expect(navigated).toEqual([expectedId]);
-			},
-		);
+		it.each(
+			ACTIVE_CASES,
+		)('"%s" navigates to view "%s"', async (phrase, expectedId) => {
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(REGISTRY, phrase);
+			expect(result?.success).toBe(true);
+			expect(result?.values?.viewId).toBe(expectedId);
+			expect(navigated).toEqual([expectedId]);
+		});
 
 		it("dispatches navigate to the exact /api/views/<id>/navigate endpoint", async () => {
 			installNavigateCapture();
@@ -316,19 +315,18 @@ describe("view switching — VIEWS action resolver", () => {
 			["how much money do I have", "wallet"],
 		];
 
-		it.each(PASSIVE_PLANNER_CASES)(
-			'planner-routed intent "%s" opens view "%s"',
-			async (phrase, viewId) => {
-				const { navigated } = installNavigateCapture();
-				const { result } = await runShow(REGISTRY, phrase, {
-					action: "show",
-					view: viewId,
-				});
-				expect(result?.success).toBe(true);
-				expect(result?.values?.viewId).toBe(viewId);
-				expect(navigated).toEqual([viewId]);
-			},
-		);
+		it.each(
+			PASSIVE_PLANNER_CASES,
+		)('planner-routed intent "%s" opens view "%s"', async (phrase, viewId) => {
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(REGISTRY, phrase, {
+				action: "show",
+				view: viewId,
+			});
+			expect(result?.success).toBe(true);
+			expect(result?.values?.viewId).toBe(viewId);
+			expect(navigated).toEqual([viewId]);
+		});
 
 		// The deterministic intent->view fallback (resolveIntentView) routes the
 		// spec's passive examples even when the planner does NOT pre-resolve the
@@ -503,6 +501,50 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(ok).toBe(false);
 			expect(owner).toHaveBeenCalled();
 		});
+
+		// Regression: the runtime calls validate(runtime, message, state, options)
+		// with options.parameters carrying the planner's chosen action. A
+		// destructive mode supplied via options whose text lacks a "view"/"plugin"
+		// noun must STILL hit the owner gate — previously validate inferred the
+		// mode from text only and let these through ungated.
+		it.each([
+			["delete", { action: "delete", view: "wallet" }, "remove wallet"],
+			["create", { action: "create" }, "make me a habit tracker"],
+			["edit", { action: "edit", view: "wallet" }, "change the wallet color"],
+		])(
+			"owner-gates %s supplied via planner options (text has no view noun)",
+			async (_label, options, text) => {
+				const owner = vi.fn(async () => false);
+				const action = createViewsAction({
+					client: clientFor(REGISTRY),
+					hasOwnerAccess: owner,
+				});
+				const ok = await action.validate(
+					{ agentId: "agent-1" } as never,
+					message(text) as never,
+					undefined as never,
+					options as never,
+				);
+				expect(ok).toBe(false);
+				expect(owner).toHaveBeenCalled();
+			},
+		);
+
+		it("still allows read modes supplied via planner options for any user", async () => {
+			const owner = vi.fn(async () => false);
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: owner,
+			});
+			const ok = await action.validate(
+				{ agentId: "agent-1" } as never,
+				message("wallet") as never,
+				undefined as never,
+				{ action: "show", view: "wallet" } as never,
+			);
+			expect(ok).toBe(true);
+			expect(owner).not.toHaveBeenCalled();
+		});
 	});
 
 	describe("BUG PROBE: developerMode-gated views reachable by ACTIVE command", () => {
@@ -529,7 +571,9 @@ describe("view switching — VIEWS action resolver", () => {
 			// Every listViews call must NOT request developerMode (the action relies
 			// on the route's default visibility filtering, not its own escalation).
 			for (const [opts] of calls) {
-				expect((opts as { developerMode?: boolean } | undefined)?.developerMode).toBeFalsy();
+				expect(
+					(opts as { developerMode?: boolean } | undefined)?.developerMode,
+				).toBeFalsy();
 			}
 		});
 	});

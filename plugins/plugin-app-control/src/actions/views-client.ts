@@ -114,7 +114,7 @@ function parseViewCapability(entry: unknown): ViewCapability | null {
 	};
 }
 
-function parseViewSummary(entry: Record<string, unknown>): ViewSummary {
+export function parseViewSummary(entry: Record<string, unknown>): ViewSummary {
 	const id = entry.id;
 	const label = entry.label;
 	const pluginName = entry.pluginName;

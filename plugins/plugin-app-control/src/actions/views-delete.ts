@@ -52,7 +52,9 @@ interface DeleteConfirmMetadata {
 	viewId: string;
 	viewLabel: string;
 	pluginName: string;
-	confirmedAt?: string;
+	/** ISO timestamp the confirm prompt was created — used to pick the most
+	 * recent pending delete when several exist in the same room. */
+	intentCreatedAt?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -176,16 +178,19 @@ async function findConfirmTask(
 			return meta?.roomId === roomId;
 		})
 		.sort((a, b) => {
+			// Most recently created pending confirm wins. Mirrors views-create's
+			// intent-task ordering so two concurrent deletes in one room resolve to
+			// the prompt the user just saw, not an arbitrary getTasks() order.
 			const aMeta = a.metadata as Record<string, unknown> | undefined;
 			const bMeta = b.metadata as Record<string, unknown> | undefined;
 			const aAt =
-				typeof aMeta?.confirmedAt === "string"
-					? 0
-					: Date.parse(String(aMeta?.roomId ?? "")) || 0;
+				typeof aMeta?.intentCreatedAt === "string"
+					? Date.parse(aMeta.intentCreatedAt) || 0
+					: 0;
 			const bAt =
-				typeof bMeta?.confirmedAt === "string"
-					? 0
-					: Date.parse(String(bMeta?.roomId ?? "")) || 0;
+				typeof bMeta?.intentCreatedAt === "string"
+					? Date.parse(bMeta.intentCreatedAt) || 0
+					: 0;
 			return bAt - aAt;
 		});
 
@@ -224,6 +229,7 @@ async function persistConfirmTask(
 			viewId: metadata.viewId,
 			viewLabel: metadata.viewLabel,
 			pluginName: metadata.pluginName,
+			intentCreatedAt: metadata.intentCreatedAt ?? new Date().toISOString(),
 		},
 	});
 }
