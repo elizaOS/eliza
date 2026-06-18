@@ -4,6 +4,7 @@ import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useApp } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { formatTime } from "../../utils/format";
+import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import {
@@ -127,6 +128,7 @@ function LogsViewBody() {
             {filteredLogs.length}
           </div>
         </div>
+        <ChatSearchHint noun="logs" query={searchQuery} />
         <div className="flex flex-wrap items-center gap-2">
           <Select
             value={logLevelFilter === "" ? "all" : logLevelFilter}

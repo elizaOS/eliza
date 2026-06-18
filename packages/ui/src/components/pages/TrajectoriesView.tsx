@@ -30,6 +30,7 @@ import {
   formatTrajectoryTimestamp,
   formatTrajectoryTokenCount,
 } from "../../utils/trajectory-format";
+import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
@@ -585,6 +586,12 @@ export function TrajectoriesView({
         contentInnerClassName="mx-auto w-full max-w-[76rem]"
         data-testid="trajectories-view"
       >
+        <ChatSearchHint
+          noun="trajectories"
+          query={searchQuery}
+          className="mb-4"
+        />
+
         {error ? (
           <PagePanel.Notice tone="danger" className="mb-4">
             {error}

@@ -19,6 +19,7 @@ export * from "../ui/status-badge";
 export * from "../ui/status-badge.helpers";
 export * from "../ui/tooltip-extended";
 export * from "./chat";
+export * from "./chat-search-hint";
 export * from "./form-field";
 export * from "./page-panel";
 export * from "./search";

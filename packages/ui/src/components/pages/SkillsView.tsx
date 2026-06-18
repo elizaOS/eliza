@@ -5,6 +5,7 @@ import type { SkillInfo } from "../../api";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
+import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
@@ -515,6 +516,10 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                 </PagePanel.Meta>
               }
             />
+
+            <div className="border-b border-border/35 px-4 py-2.5 sm:px-5">
+              <ChatSearchHint noun="skills" query={filterText} />
+            </div>
 
             <div className="bg-bg/18 px-4 py-4 sm:px-5">
               {skills.length === 0 && !skillCreateFormOpen ? (

@@ -11,6 +11,7 @@ import type { SkillInfo } from "../../api";
 import { client } from "../../api";
 import { useApp } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
+import { ChatSearchHint } from "../composites/chat-search-hint";
 import {
   AdminCodeEditor,
   AdminDialogContent,
@@ -354,18 +355,17 @@ export function SkillsModalView() {
           </div>
         </div>
         <div className="plugins-game-list-search">
-          <div className="plugins-game-list-search-row">
-            <Button
-              variant="default"
-              size="sm"
-              type="button"
-              className="plugins-game-chip plugins-game-add-btn"
-              onClick={() => setInstallModalOpen(true)}
-            >
-              <span className="plugins-game-add-symbol">+</span>{" "}
-              {t("common.install", { defaultValue: "Install" })}
-            </Button>
-          </div>
+          <Button
+            variant="default"
+            size="sm"
+            type="button"
+            className="plugins-game-chip plugins-game-add-btn"
+            onClick={() => setInstallModalOpen(true)}
+          >
+            <span className="plugins-game-add-symbol">+</span>{" "}
+            {t("common.install", { defaultValue: "Install" })}
+          </Button>
+          <ChatSearchHint noun="skills" query={filterText} />
         </div>
         <div className="plugins-game-chip-row">
           {tabs.map((tab) => (

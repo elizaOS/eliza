@@ -16,6 +16,7 @@ import { PageLayoutHeader } from "../../layouts/page-layout/page-layout-header";
 import { useApp } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { openExternalUrl } from "../../utils";
+import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { PluginCard } from "./PluginCard";
@@ -1150,6 +1151,7 @@ function PluginListView({
       pluginSearch.trim().length > 0 || subgroupFilter !== "all";
     const connectorContent = (
       <div className="w-full">
+        <ChatSearchHint noun="plugins" query={pluginSearch} className="mb-4" />
         {hasPluginToggleInFlight && (
           <PagePanel.Notice tone="accent" className="mb-4 text-xs-tight">
             {t("pluginsview.ApplyingPluginChan")}
@@ -1301,11 +1303,11 @@ function PluginListView({
                 </span>
               </div>
 
-              <p className="mt-2 text-xs-tight text-muted">
-                {t("pluginsview.SearchHint", {
-                  defaultValue: "Type in the chat below to search plugins.",
-                })}
-              </p>
+              <ChatSearchHint
+                noun="plugins"
+                query={pluginSearch}
+                className="mt-2"
+              />
 
               {showSubgroupFilters && subgroupTags.length > 1 && (
                 <div

@@ -18,6 +18,7 @@ import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { formatDateTime } from "../../utils/format";
+import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { MetaPill } from "../composites/page-panel/page-panel-header";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
@@ -613,6 +614,11 @@ export function RuntimeView({
         <SidebarContent.SectionLabel className="mt-3">
           {t("runtimeview.sections")}
         </SidebarContent.SectionLabel>
+        <ChatSearchHint
+          noun="sections"
+          query={sidebarSearch}
+          className="px-1"
+        />
         <SidebarScrollRegion className="mt-2">
           <div className="space-y-1.5">
             {filteredSections.map((section) => {
