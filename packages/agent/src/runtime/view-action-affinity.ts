@@ -110,6 +110,7 @@ export function setActiveViewElements(
  *              (OWNER_HEALTH, OWNER_SCREENTIME)
  *   focus    — plugins/plugin-personal-assistant/src/website-blocker/chat-integration/
  *              actions/{listActiveBlocks,releaseBlock}.ts (LIST_ACTIVE_BLOCKS, RELEASE_BLOCK)
+ *   finances — plugins/plugin-finances/src/actions/finances.ts (OWNER_FINANCES)
  */
 export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
   companion: ["PLAY_EMOTE"],
@@ -150,6 +151,7 @@ export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
   calendar: ["CALENDAR"],
   health: ["OWNER_HEALTH", "OWNER_SCREENTIME"],
   focus: ["LIST_ACTIVE_BLOCKS", "RELEASE_BLOCK"],
+  finances: ["OWNER_FINANCES"],
 };
 
 /**

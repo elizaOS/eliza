@@ -1,250 +1,184 @@
 // @vitest-environment jsdom
-//
-// Renders the real FinancesView component (the gui `finances` view) against
-// realistic FinancesViewProps and asserts the populated DATA of all three
-// sections — balance summary, transactions, recurring charges — with exact
-// formatted values, plus every empty state. The view is purely props-driven
-// and stateless (no buttons / inputs / fetch / hooks), so there are no
-// interactive controls to drive; coverage is data-render correctness.
 
-import { cleanup, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
-import type {
-  FinanceBalanceSummaryDTO,
-  FinancesViewProps,
-  FinanceTransactionDTO,
-  RecurringChargeDTO,
-} from "../../types.ts";
-import { FinancesView } from "./FinancesView.tsx";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-const balance: FinanceBalanceSummaryDTO = {
-  netBalanceMinor: 1234567, // -> $12,345.67
-  currency: "USD",
-  monthlyIncomeMinor: 500000, // -> $5,000.00
-  monthlyOutflowMinor: 320000, // -> $3,200.00
-  asOf: "2026-06-01",
-};
-
-const transactions: FinanceTransactionDTO[] = [
-  {
-    id: "tx-1",
-    occurredAt: "2026-06-10",
-    amountMinor: 250000, // -> $2,500.00 (inflow, posted)
-    currency: "USD",
-    description: "Payroll deposit",
-    category: "income",
-    merchant: "Acme Corp",
-    status: "posted",
-    source: "bank",
+// `@elizaos/ui` is the giant renderer barrel; FinancesView only touches
+// `client.getBaseUrl()` (default fetcher seam, overridden in every test) and
+// `client.sendChatMessage()` (connect affordance). `@elizaos/ui/agent-surface`
+// is mocked to an inert hook so the instrumented buttons render outside a
+// provider.
+const { sendChatMessage } = vi.hoisted(() => ({ sendChatMessage: vi.fn() }));
+vi.mock("@elizaos/ui", () => ({
+  client: {
+    getBaseUrl: () => "http://test.local",
+    sendChatMessage,
   },
-  {
-    id: "tx-2",
-    occurredAt: "2026-06-11",
-    amountMinor: -4599, // -> -$45.99 (outflow, pending)
-    currency: "USD",
-    description: "Coffee subscription",
-    category: "food",
-    merchant: "Blue Bottle",
-    status: "pending",
-    source: "card",
-  },
-  {
-    id: "tx-3",
-    occurredAt: "2026-06-12",
-    amountMinor: -129900, // -> -$1,299.00 (outflow, posted)
-    currency: "USD",
-    description: "Laptop purchase",
-    category: "equipment",
-    merchant: "Apple",
-    status: "posted",
-    source: "card",
-  },
-];
+}));
+vi.mock("@elizaos/ui/agent-surface", () => ({
+  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
+}));
 
-const recurring: RecurringChargeDTO[] = [
-  {
-    id: "rec-1",
-    label: "Netflix",
-    amountMinor: 1599, // -> $15.99
-    currency: "USD",
-    cadence: "monthly",
-    nextChargeAt: "2026-07-01",
-    merchant: "Netflix",
-    active: true,
-  },
-  {
-    id: "rec-2",
-    label: "Domain renewal",
-    amountMinor: 1200, // -> $12.00
-    currency: "USD",
-    cadence: "yearly",
-    nextChargeAt: null, // -> "—" fallback
-    merchant: "Namecheap",
-    active: false,
-  },
-];
+import { type FinancesFetchers, FinancesView } from "./FinancesView.js";
 
-const fullProps: FinancesViewProps = { balance, transactions, recurring };
+// ---------------------------------------------------------------------------
+// Wire fixtures — one shape per fetch endpoint.
+// ---------------------------------------------------------------------------
 
-afterEach(cleanup);
+function dashboard() {
+  return {
+    spending: {
+      windowDays: 30,
+      fromDate: "2026-05-18",
+      toDate: "2026-06-17",
+      totalSpendUsd: 1234.5,
+      totalIncomeUsd: 4000,
+      netUsd: 2765.5,
+      transactionCount: 12,
+    },
+    generatedAt: "2026-06-17T12:00:00.000Z",
+  };
+}
 
-describe("FinancesView — balance summary section", () => {
-  it("renders the heading and the 4 labeled fields with exact formatted values", () => {
-    render(<FinancesView {...fullProps} />);
+function sources(status: "active" | "disconnected" = "active") {
+  return {
+    sources: [
+      {
+        id: "src-1",
+        kind: "plaid",
+        label: "Checking",
+        institution: "Acme Bank",
+        status,
+      },
+    ],
+  };
+}
 
-    expect(screen.getByRole("heading", { name: "Balance" })).toBeTruthy();
+function transactions() {
+  return {
+    transactions: [
+      {
+        id: "tx-1",
+        postedAt: "2026-06-16T09:00:00.000Z",
+        amountUsd: 42.5,
+        direction: "debit" as const,
+        merchantDisplay: "Coffee Bar",
+        merchantNormalized: "coffee-bar",
+        merchantRaw: "COFFEE BAR #12",
+        description: "Latte",
+        category: "dining",
+        currency: "USD",
+      },
+    ],
+  };
+}
 
-    // The four <dt> labels.
-    expect(screen.getByText("Net balance")).toBeTruthy();
-    expect(screen.getByText("This month — in")).toBeTruthy();
-    expect(screen.getByText("This month — out")).toBeTruthy();
-    expect(screen.getByText("As of")).toBeTruthy();
+function recurring() {
+  return {
+    charges: [
+      {
+        merchantNormalized: "netflix",
+        merchantDisplay: "Netflix",
+        cadence: "monthly",
+        averageAmountUsd: 15.99,
+        nextExpectedAt: "2026-07-01T00:00:00.000Z",
+        category: "entertainment",
+      },
+    ],
+  };
+}
 
-    // Their formatted <dd> values (minor units -> major currency).
-    expect(screen.getByText("$12,345.67")).toBeTruthy();
-    expect(screen.getByText("$5,000.00")).toBeTruthy();
-    expect(screen.getByText("$3,200.00")).toBeTruthy();
-    expect(screen.getByText("2026-06-01")).toBeTruthy();
-  });
+function makeFetchers(
+  overrides: Partial<FinancesFetchers> = {},
+): FinancesFetchers {
+  return {
+    fetchDashboard: async () => dashboard(),
+    fetchSources: async () => sources("active"),
+    fetchTransactions: async () => transactions(),
+    fetchRecurring: async () => recurring(),
+    ...overrides,
+  };
+}
 
-  it("renders 'No balance data yet.' when balance is undefined", () => {
-    render(<FinancesView transactions={transactions} recurring={recurring} />);
-    expect(screen.getByText("No balance data yet.")).toBeTruthy();
-    // The heading is still present even with no data.
-    expect(screen.getByRole("heading", { name: "Balance" })).toBeTruthy();
-  });
+afterEach(() => {
+  cleanup();
+  sendChatMessage.mockClear();
 });
 
-describe("FinancesView — transactions section", () => {
-  it("renders every transaction row in order with date, description, amount, status", () => {
-    const { container } = render(<FinancesView {...fullProps} />);
-
-    expect(screen.getByRole("heading", { name: "Transactions" })).toBeTruthy();
-
-    const list = container.querySelector(".finances-transactions-list");
-    expect(list).toBeTruthy();
-    const rows = list?.querySelectorAll(".finances-transactions-row");
-    expect(rows?.length).toBe(3);
-
-    // Descriptions render.
-    expect(screen.getByText("Payroll deposit")).toBeTruthy();
-    expect(screen.getByText("Coffee subscription")).toBeTruthy();
-    expect(screen.getByText("Laptop purchase")).toBeTruthy();
-
-    // Dates render.
-    expect(screen.getByText("2026-06-10")).toBeTruthy();
-    expect(screen.getByText("2026-06-11")).toBeTruthy();
-    expect(screen.getByText("2026-06-12")).toBeTruthy();
-
-    // Formatted amounts (incl. negative outflows).
-    expect(screen.getByText("$2,500.00")).toBeTruthy();
-    expect(screen.getByText("-$45.99")).toBeTruthy();
-    expect(screen.getByText("-$1,299.00")).toBeTruthy();
-
-    // Status labels: 2x posted, 1x pending.
-    expect(screen.getAllByText("posted")).toHaveLength(2);
-    expect(screen.getByText("pending")).toBeTruthy();
-
-    // First row is the payroll deposit (order preserved from props).
-    const firstRow = rows?.[0] as HTMLElement;
-    expect(within(firstRow).getByText("Payroll deposit")).toBeTruthy();
-    expect(within(firstRow).getByText("2026-06-10")).toBeTruthy();
-    expect(within(firstRow).getByText("$2,500.00")).toBeTruthy();
-    expect(within(firstRow).getByText("posted")).toBeTruthy();
+describe("FinancesView", () => {
+  it("shows the loading state while the first fetch is in flight", () => {
+    const never = new Promise<never>(() => {});
+    render(
+      <FinancesView fetchers={makeFetchers({ fetchDashboard: () => never })} />,
+    );
+    expect(screen.getByTestId("finances-loading")).toBeTruthy();
   });
 
-  it("renders 'No transactions yet.' when transactions is undefined", () => {
-    render(<FinancesView balance={balance} recurring={recurring} />);
-    expect(screen.getByText("No transactions yet.")).toBeTruthy();
+  it("renders the populated dashboard with balance, transactions and recurring charges", async () => {
+    render(<FinancesView fetchers={makeFetchers()} />);
+    expect(await screen.findByTestId("finances-populated")).toBeTruthy();
+    expect(screen.getByTestId("finances-balance")).toBeTruthy();
+    expect(screen.getByTestId("finances-transactions")).toBeTruthy();
+    expect(screen.getByTestId("finances-recurring")).toBeTruthy();
+    expect(screen.getByText(/Coffee Bar|Latte/)).toBeTruthy();
+    expect(screen.getByText(/Netflix/)).toBeTruthy();
   });
 
-  it("renders 'No transactions yet.' when transactions is an empty array", () => {
+  it("shows the connect-a-source empty state when no source is connected (no fabricated balances)", async () => {
     render(
       <FinancesView
-        balance={balance}
-        transactions={[]}
-        recurring={recurring}
+        fetchers={makeFetchers({
+          fetchSources: async () => sources("disconnected"),
+        })}
       />,
     );
-    expect(screen.getByText("No transactions yet.")).toBeTruthy();
-  });
-});
-
-describe("FinancesView — recurring charges section", () => {
-  it("renders every recurring row with label, cadence, amount and nextChargeAt fallback", () => {
-    const { container } = render(<FinancesView {...fullProps} />);
-
-    expect(
-      screen.getByRole("heading", { name: "Recurring charges" }),
-    ).toBeTruthy();
-
-    const list = container.querySelector(".finances-recurring-list");
-    expect(list).toBeTruthy();
-    const rows = list?.querySelectorAll(".finances-recurring-row");
-    expect(rows?.length).toBe(2);
-
-    // Labels.
-    expect(screen.getByText("Netflix")).toBeTruthy();
-    expect(screen.getByText("Domain renewal")).toBeTruthy();
-
-    // Cadences.
-    expect(screen.getByText("monthly")).toBeTruthy();
-    expect(screen.getByText("yearly")).toBeTruthy();
-
-    // Formatted amounts.
-    expect(screen.getByText("$15.99")).toBeTruthy();
-    expect(screen.getByText("$12.00")).toBeTruthy();
-
-    // nextChargeAt: dated row shows its date.
-    const netflixRow = rows?.[0] as HTMLElement;
-    expect(within(netflixRow).getByText("2026-07-01")).toBeTruthy();
-
-    // nextChargeAt: null row shows the "—" fallback.
-    const domainRow = rows?.[1] as HTMLElement;
-    expect(within(domainRow).getByText("—")).toBeTruthy();
+    expect(await screen.findByTestId("finances-empty")).toBeTruthy();
+    expect(screen.getByText(/No money sources connected/i)).toBeTruthy();
+    expect(screen.queryByTestId("finances-balance")).toBeNull();
   });
 
-  it("renders 'No recurring charges tracked.' when recurring is undefined", () => {
-    render(<FinancesView balance={balance} transactions={transactions} />);
-    expect(screen.getByText("No recurring charges tracked.")).toBeTruthy();
-  });
-
-  it("renders 'No recurring charges tracked.' when recurring is an empty array", () => {
+  it("routes the connect affordance through the assistant chat", async () => {
     render(
       <FinancesView
-        balance={balance}
-        transactions={transactions}
-        recurring={[]}
+        fetchers={makeFetchers({
+          fetchSources: async () => sources("disconnected"),
+        })}
       />,
     );
-    expect(screen.getByText("No recurring charges tracked.")).toBeTruthy();
-  });
-});
-
-describe("FinancesView — combined / partial props", () => {
-  it("renders all three empty states when called with no props", () => {
-    render(<FinancesView />);
-    expect(screen.getByText("No balance data yet.")).toBeTruthy();
-    expect(screen.getByText("No transactions yet.")).toBeTruthy();
-    expect(screen.getByText("No recurring charges tracked.")).toBeTruthy();
-
-    // All three section headings still render in the empty case.
-    expect(screen.getByRole("heading", { name: "Balance" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Transactions" })).toBeTruthy();
-    expect(
-      screen.getByRole("heading", { name: "Recurring charges" }),
-    ).toBeTruthy();
+    await screen.findByTestId("finances-empty");
+    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });
 
-  it("renders sections independently: populated balance with empty lists", () => {
-    render(<FinancesView balance={balance} transactions={[]} recurring={[]} />);
+  it("shows the error state with a Retry that refetches into the populated state", async () => {
+    let attempt = 0;
+    const fetchDashboard = async () => {
+      attempt += 1;
+      if (attempt === 1) throw new Error("boom");
+      return dashboard();
+    };
+    render(<FinancesView fetchers={makeFetchers({ fetchDashboard })} />);
+    expect(await screen.findByTestId("finances-error")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    expect(await screen.findByTestId("finances-populated")).toBeTruthy();
+  });
 
-    // Balance is populated...
-    expect(screen.getByText("$12,345.67")).toBeTruthy();
-    expect(screen.queryByText("No balance data yet.")).toBeNull();
-
-    // ...while the two lists fall to their empty states.
-    expect(screen.getByText("No transactions yet.")).toBeTruthy();
-    expect(screen.getByText("No recurring charges tracked.")).toBeTruthy();
+  it("refetches when the header refresh control is activated", async () => {
+    let calls = 0;
+    const fetchDashboard = async () => {
+      calls += 1;
+      return dashboard();
+    };
+    render(<FinancesView fetchers={makeFetchers({ fetchDashboard })} />);
+    await screen.findByTestId("finances-populated");
+    expect(calls).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
+    await waitFor(() => expect(calls).toBe(2));
   });
 });

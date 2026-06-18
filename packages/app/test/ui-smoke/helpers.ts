@@ -1101,6 +1101,70 @@ function sleepWindowDaysFromUrl(rawUrl: string): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 14;
 }
 
+// Valid populated DTOs for the /api/lifeops/money/* endpoints the decomposed
+// FinancesView fetches, so `finances:gui` renders its `finances-populated`
+// branch (a connected source + balance + transactions + recurring) instead of
+// the connect-a-source empty state.
+function populatedMoneyDashboard() {
+  return {
+    spending: {
+      windowDays: 30,
+      fromDate: "2026-05-18",
+      toDate: "2026-06-17",
+      totalSpendUsd: 1234.5,
+      totalIncomeUsd: 4000,
+      netUsd: 2765.5,
+      transactionCount: 12,
+    },
+    generatedAt: "2026-06-17T12:00:00.000Z",
+  };
+}
+function populatedMoneySources() {
+  return {
+    sources: [
+      {
+        id: "src-1",
+        kind: "plaid",
+        label: "Checking",
+        institution: "Acme Bank",
+        status: "active",
+      },
+    ],
+  };
+}
+function populatedMoneyTransactions() {
+  return {
+    transactions: [
+      {
+        id: "tx-1",
+        postedAt: "2026-06-16T09:00:00.000Z",
+        amountUsd: 42.5,
+        direction: "debit",
+        merchantDisplay: "Coffee Bar",
+        merchantNormalized: "coffee-bar",
+        merchantRaw: "COFFEE BAR #12",
+        description: "Latte",
+        category: "dining",
+        currency: "USD",
+      },
+    ],
+  };
+}
+function populatedMoneyRecurring() {
+  return {
+    charges: [
+      {
+        merchantNormalized: "netflix",
+        merchantDisplay: "Netflix",
+        cadence: "monthly",
+        averageAmountUsd: 15.99,
+        nextExpectedAt: "2026-07-01T00:00:00.000Z",
+        category: "entertainment",
+      },
+    ],
+  };
+}
+
 // Valid empty-state SelfControlStatus (engine available, no active block) so the
 // decomposed FocusView lands on its `focus-empty` branch ("No active focus
 // session.") instead of the unavailable/disconnected branch.
@@ -2505,6 +2569,51 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify(
         populatedSleepBaseline(sleepWindowDaysFromUrl(route.request().url())),
       ),
+    });
+  });
+
+  await page.route("**/api/lifeops/money/dashboard**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedMoneyDashboard()),
+    });
+  });
+  await page.route("**/api/lifeops/money/sources**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedMoneySources()),
+    });
+  });
+  await page.route("**/api/lifeops/money/transactions**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedMoneyTransactions()),
+    });
+  });
+  await page.route("**/api/lifeops/money/recurring**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedMoneyRecurring()),
     });
   });
 
