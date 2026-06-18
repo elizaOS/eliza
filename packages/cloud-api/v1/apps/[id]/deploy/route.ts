@@ -25,6 +25,20 @@ const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
   try {
+    // Product-2 container deploy is gated: until APPS_DEPLOY_ENABLED=1 on the
+    // Worker, the deploy trigger isn't wired (bootstrap-app.ts), so creating a
+    // deployment would flip the app to `building` with nothing to advance it —
+    // a stranded app, no URL, no recovery (#8434). Fail clean with 503 instead.
+    if (c.env.APPS_DEPLOY_ENABLED !== "1") {
+      return c.json(
+        {
+          success: false,
+          error: "App container deployment is not enabled",
+          code: "apps_deploy_disabled",
+        },
+        503,
+      );
+    }
     const user = await requireUserOrApiKeyWithOrg(c);
     const appId = c.req.param("id");
     if (!appId) {
