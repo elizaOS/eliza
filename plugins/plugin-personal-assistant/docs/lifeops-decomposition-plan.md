@@ -370,6 +370,38 @@ Remaining: remote-desktop (small, low-coupling — next), relationships (entity 
 delegated sub-backends (subscriptions, gmail-curation, goal-review, getInbox) which
 need connector-contract seams first. 5-OS e2e remains environment-bounded.
 
+### Session 2026-06-18 (rounds 8-9) — remote-desktop + relationships viewer
+- `36306214d8` remote-desktop fully extracted (engine + session service + action →
+  plugin-remote-desktop; no DB; 10 tests; PA delegates; no double-registration).
+- `53b72911e1` RelationshipsView (the viewer) added to plugin-relationships per the
+  owner decision (entities/relationships = runtime primitive; plugin holds the
+  VIEWER + extras). 9th decomposed view; ENTITY → VIEW_ACTION_MAP; all ratchets wired.
+
+### #20 (entities/relationships → runtime) — RESEARCHED 2026-06-18, confirmed LARGE
+PA's lifeops `EntityStore`/`RelationshipStore`/`merge`/`context-graph` (~6k LOC over
+app_lifeops tables) **DUPLICATES** the runtime's existing entity/relationship system:
+`@elizaos/core` already has `Entity`/`Relationship`/`Component` types
+(`types/environment.ts`) + `services/relationships.ts` (ContactInfo,
+EntityIdentityRecord, MergeCandidateEvidence, identity-link/merge) +
+`relationships-graph-builder.ts` (2.6k) + `@elizaos/agent` resolveRelationshipsGraphService.
+So the owner directive = FOLD PA's parallel graph into core's entity system (not a
+move to plugin-relationships). This is: core-types-touching + the DEEPEST inbound
+coupling in the repo (connectors/checkin/followup/providers/default-packs/voice/
+routes/repository/identity-observations) + a data migration (app_lifeops entities/
+relationships → the runtime entity store) + reconciling two schemas/APIs.
+=> Dedicated, coordinated, multi-step effort with full verification headroom on a
+quiet tree — modifying @elizaos/core mid-session risks breaking all ~10 concurrent
+actors. NOT a tail-of-session change. Suggested first slices: (1) map PA EntityStore
+API ↔ core relationships service API gaps; (2) add any missing core service methods
+(additive, low-risk); (3) strangler-fig PA writes onto the core service; (4) migrate
+data; (5) rewire PA readers; (6) delete PA's parallel store.
+
+### Environment-bounded (cannot complete in this sandbox; needs real-device CI + creds)
+5-OS e2e (linux/ios/android/mac/windows) — web ui-smoke is PR-gated + green; desktop/
+android/ios harnesses are authored but unrunnable here (no iOS sim; Android emulator
+segfaults the embedded bun agent on stock x86_64 — needs real HW/Cuttlefish). Live
+`*.real.test.ts` need real provider credentials. These are CI-on-real-devices tasks.
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
