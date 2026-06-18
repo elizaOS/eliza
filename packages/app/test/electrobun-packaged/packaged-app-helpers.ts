@@ -340,6 +340,14 @@ function createPackagedDesktopEnv(args: {
       ...(xauthority ? { XAUTHORITY: xauthority } : {}),
       WEBKIT_DISABLE_DMABUF_RENDERER: "1",
       WEBKIT_DISABLE_COMPOSITING_MODE: "1",
+      // WebKitGTK's bubblewrap web/network-process sandbox aborts (SIGTRAP)
+      // under restricted/headless environments (containers, CI behind xvfb)
+      // where it cannot set up its namespaces — disable it so the webview's
+      // child processes start. Honor an explicit opt-out from the caller.
+      WEBKIT_DISABLE_SANDBOX:
+        args.baseEnv.WEBKIT_DISABLE_SANDBOX ??
+        process.env.WEBKIT_DISABLE_SANDBOX ??
+        "1",
       LIBGL_ALWAYS_SOFTWARE: "1",
       GALLIUM_DRIVER: "llvmpipe",
     };
