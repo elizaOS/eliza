@@ -1,6 +1,6 @@
 import type * as React from "react";
 
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 
 import { ChatBubble } from "./chat-bubble";
 import { ChatMessage } from "./chat-message";
@@ -130,6 +130,26 @@ export const ChatTranscript = memo(function ChatTranscript({
     [normalizedMessages],
   );
 
+  // A freshly-arrived last turn (and only that one) plays the mount entrance.
+  // `seenIdsRef` holds the ids present last render; a last message absent from it
+  // (with the transcript already non-empty) is newly arrived. We LATCH such ids
+  // into `animatedIdsRef` and keep `enterOnMount` true for the row's whole life,
+  // so streamed-token re-renders keep the class (CSS plays once, never cancels)
+  // — and reloaded history (first render, empty seen set) never animates.
+  const seenIdsRef = useRef<Set<string>>(new Set());
+  const animatedIdsRef = useRef<Set<string>>(new Set());
+  const lastMessageId = normalizedMessages.at(-1)?.id ?? null;
+  if (
+    lastMessageId != null &&
+    seenIdsRef.current.size > 0 &&
+    !seenIdsRef.current.has(lastMessageId)
+  ) {
+    animatedIdsRef.current.add(lastMessageId);
+  }
+  useEffect(() => {
+    seenIdsRef.current = new Set(normalizedMessages.map((m) => m.id));
+  }, [normalizedMessages]);
+
   if (variant === "game-modal") {
     return (
       <div className="flex min-h-full w-full flex-col justify-end gap-4 px-1 py-4">
@@ -215,6 +235,7 @@ export const ChatTranscript = memo(function ChatTranscript({
             key={message.id}
             message={message}
             isGrouped={isGrouped}
+            enterOnMount={animatedIdsRef.current.has(message.id)}
             agentName={agentName}
             labels={labels}
             onCopy={onCopy}
