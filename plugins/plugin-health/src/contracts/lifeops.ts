@@ -4200,91 +4200,20 @@ export interface SendLifeOpsIMessageRequest {
 }
 // ── Knowledge-graph: Entity + Relationship (W1-E) ──────────────────────────
 //
-// Frozen shapes per `eliza/plugins/plugin-personal-assistant/docs/audit/wave1-interfaces.md
-// §2`. The runtime stores live in `@elizaos/plugin-personal-assistant`. These contracts
-// expose the wire shape so other packages (UI, Cloud relay, tests) can work
-// against typed data without depending on the lifeops package.
+// Wire-contract aliases over the canonical knowledge-graph primitives in
+// `@elizaos/shared/knowledge-graph`. The `LifeOps*` names are kept as the
+// cross-package contract surface but resolve to the single canonical
+// definitions — no parallel shape is maintained here.
 
-export type LifeOpsEntityVisibility =
-  | "owner_only"
-  | "agent_and_admin"
-  | "owner_agent_admin";
-
-export type LifeOpsEntityIdentityAddedVia =
-  | "user_chat"
-  | "merge"
-  | "platform_observation"
-  | "extraction"
-  | "import";
-
-export interface LifeOpsEntityIdentity {
-  platform: string;
-  handle: string;
-  displayName?: string;
-  verified: boolean;
-  confidence: number;
-  addedAt: string;
-  addedVia: LifeOpsEntityIdentityAddedVia;
-  evidence: string[];
-}
-
-export interface LifeOpsEntityAttribute {
-  value: unknown;
-  confidence: number;
-  evidence: string[];
-  updatedAt: string;
-}
-
-export interface LifeOpsEntityState {
-  lastObservedAt?: string;
-  lastInboundAt?: string;
-  lastOutboundAt?: string;
-  lastInteractionPlatform?: string;
-}
-
-export interface LifeOpsEntity {
-  entityId: string;
-  type: string;
-  preferredName: string;
-  fullName?: string;
-  identities: LifeOpsEntityIdentity[];
-  attributes?: Record<string, LifeOpsEntityAttribute>;
-  state: LifeOpsEntityState;
-  tags: string[];
-  visibility: LifeOpsEntityVisibility;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export type LifeOpsGraphRelationshipSource =
-  | "user_chat"
-  | "platform_observation"
-  | "extraction"
-  | "import"
-  | "system";
-
-export type LifeOpsGraphRelationshipStatus = "active" | "retired";
-
-export interface LifeOpsGraphRelationshipState {
-  lastObservedAt?: string;
-  lastInteractionAt?: string;
-  interactionCount?: number;
-  sentimentTrend?: "positive" | "neutral" | "negative";
-}
-
-export interface LifeOpsGraphRelationship {
-  relationshipId: string;
-  fromEntityId: string;
-  toEntityId: string;
-  type: string;
-  metadata?: Record<string, unknown>;
-  state: LifeOpsGraphRelationshipState;
-  evidence: string[];
-  confidence: number;
-  source: LifeOpsGraphRelationshipSource;
-  status: LifeOpsGraphRelationshipStatus;
-  retiredAt?: string;
-  retiredReason?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+export type {
+  Entity as LifeOpsEntity,
+  EntityAttribute as LifeOpsEntityAttribute,
+  EntityIdentity as LifeOpsEntityIdentity,
+  EntityIdentityAddedVia as LifeOpsEntityIdentityAddedVia,
+  EntityState as LifeOpsEntityState,
+  EntityVisibility as LifeOpsEntityVisibility,
+  Relationship as LifeOpsGraphRelationship,
+  RelationshipSource as LifeOpsGraphRelationshipSource,
+  RelationshipState as LifeOpsGraphRelationshipState,
+  RelationshipStatus as LifeOpsGraphRelationshipStatus,
+} from "@elizaos/shared";

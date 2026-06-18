@@ -230,6 +230,10 @@ export * from "./elizacloud/index.js";
 export * from "./env-utils.js";
 export * from "./events/index.js";
 export * from "./format-error.js";
+// Knowledge-graph primitives — canonical Entity/Relationship types + the
+// identity-merge engine. Dependency-free; the DB-backed stores stay in
+// @elizaos/plugin-personal-assistant.
+export * from "./knowledge-graph/index.js";
 // Local-inference shared subset (types, paths, routing-preferences, verify).
 // Server runtime (KV cache, llama-server lifecycle, etc.) stays in @elizaos/app-core.
 export * from "./local-inference/index.js";
