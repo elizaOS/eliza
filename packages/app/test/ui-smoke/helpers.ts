@@ -1042,6 +1042,33 @@ const EMPTY_LIFEOPS_CHANNEL_COUNTS = {
   x_dm: { total: 0, unread: 0 },
 };
 
+// Valid empty-state SelfControlStatus (engine available, no active block) so the
+// decomposed FocusView lands on its `focus-empty` branch ("No active focus
+// session.") instead of the unavailable/disconnected branch.
+function emptySelfControlStatus() {
+  return {
+    available: true,
+    active: false,
+    hostsFilePath: "/etc/hosts",
+    startedAt: null,
+    endsAt: null,
+    websites: [],
+    blockedWebsites: [],
+    allowedWebsites: [],
+    requestedWebsites: [],
+    matchMode: "exact",
+    managedBy: null,
+    metadata: null,
+    scheduledByAgentId: null,
+    canUnblockEarly: true,
+    requiresElevation: false,
+    engine: "hosts-file",
+    platform: "linux",
+    supportsElevationPrompt: true,
+    elevationPromptMethod: "pkexec",
+  };
+}
+
 function emptyLifeOpsOverview() {
   const section = {
     occurrences: [],
@@ -2474,7 +2501,7 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ enabled: false, rules: [], activeBlocks: [] }),
+      body: JSON.stringify(emptySelfControlStatus()),
     });
   });
 

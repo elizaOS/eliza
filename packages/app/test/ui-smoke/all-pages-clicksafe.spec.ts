@@ -1341,7 +1341,27 @@ async function installSupplementalSafeRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ enabled: false, rules: [], activeBlocks: [] }),
+      body: JSON.stringify({
+        available: true,
+        active: false,
+        hostsFilePath: "/etc/hosts",
+        startedAt: null,
+        endsAt: null,
+        websites: [],
+        blockedWebsites: [],
+        allowedWebsites: [],
+        requestedWebsites: [],
+        matchMode: "exact",
+        managedBy: null,
+        metadata: null,
+        scheduledByAgentId: null,
+        canUnblockEarly: true,
+        requiresElevation: false,
+        engine: "hosts-file",
+        platform: "linux",
+        supportsElevationPrompt: true,
+        elevationPromptMethod: "pkexec",
+      }),
     });
   });
 
