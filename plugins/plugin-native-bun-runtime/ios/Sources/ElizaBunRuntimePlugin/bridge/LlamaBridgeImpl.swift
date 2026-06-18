@@ -306,6 +306,17 @@ private func c_eliza_inference_tts_synthesize(
     _ outError: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>
 ) -> Int32
 
+@_silgen_name("eliza_inference_asr_transcribe")
+private func c_eliza_inference_asr_transcribe(
+    _ ctx: ElizaInferenceContextPtr?,
+    _ pcm: UnsafePointer<Float>?,
+    _ nSamples: Int,
+    _ sampleRate: Int32,
+    _ outText: UnsafeMutablePointer<CChar>?,
+    _ maxTextBytes: Int,
+    _ outError: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
+) -> Int32
+
 @_silgen_name("eliza_inference_free_string")
 private func c_eliza_inference_free_string(_ value: UnsafeMutablePointer<CChar>?)
 
@@ -373,6 +384,20 @@ public struct LlamaTtsSynthesizeResult {
             durationMs: 0,
             error: msg
         )
+    }
+}
+
+public struct LlamaAsrTranscribeResult {
+    public let text: String
+    public let durationMs: Double
+    public let error: String?
+
+    public static func success(text: String, durationMs: Double) -> LlamaAsrTranscribeResult {
+        .init(text: text, durationMs: durationMs, error: nil)
+    }
+
+    public static func failure(_ msg: String) -> LlamaAsrTranscribeResult {
+        .init(text: "", durationMs: 0, error: msg)
     }
 }
 
@@ -1067,6 +1092,92 @@ public final class LlamaBridgeImpl {
         }
     }
 
+    /// On-device speech-to-text. Mirrors `synthesizeSpeech`: serializes on the
+    /// shared inference queue, reuses the per-bundle `EliInferenceContext`
+    /// (which serves text + tts + asr), and surfaces native errors verbatim.
+    /// `pcm` is mono fp32 in [-1, 1]; `sampleRate` is the source rate in Hz —
+    /// the linked slice resamples internally as needed.
+    public func transcribeSpeech(
+        bundleDir: String,
+        pcm: [Float],
+        sampleRate: Int
+    ) -> LlamaAsrTranscribeResult {
+        ttsQueue.sync {
+            Self.withTemporaryEnvironment("GGML_BACKEND", value: "CPU") {
+                transcribeSpeechAttempt(
+                    bundleDir: bundleDir,
+                    pcm: pcm,
+                    sampleRate: sampleRate
+                )
+            }
+        }
+    }
+
+    private func transcribeSpeechAttempt(
+        bundleDir: String,
+        pcm: [Float],
+        sampleRate: Int
+    ) -> LlamaAsrTranscribeResult {
+        let attemptBackend = Self.currentBackendEnv()
+        NSLog("[LlamaBridgeImpl] ASR attempt start backend=\(attemptBackend) bundle=\(bundleDir) samples=\(pcm.count) sampleRate=\(sampleRate)")
+        guard FileManager.default.fileExists(atPath: bundleDir) else {
+            NSLog("[LlamaBridgeImpl] ASR attempt failed stage=bundle-check backend=\(attemptBackend) bundle=\(bundleDir)")
+            return .failure("eliza_asr_transcribe: bundle not found at \(bundleDir)")
+        }
+        guard !pcm.isEmpty else {
+            NSLog("[LlamaBridgeImpl] ASR attempt failed stage=pcm-check backend=\(attemptBackend)")
+            return .failure("eliza_asr_transcribe: empty pcm")
+        }
+        guard let abiPtr = c_eliza_inference_abi_version() else {
+            NSLog("[LlamaBridgeImpl] ASR attempt failed stage=abi backend=\(attemptBackend) reason=missing")
+            return .failure("eliza_asr_transcribe: missing eliza inference ABI")
+        }
+        let abi = String(cString: abiPtr)
+        guard let abiVersion = Int(abi), abiVersion >= 4 else {
+            NSLog("[LlamaBridgeImpl] ASR attempt failed stage=abi backend=\(attemptBackend) abi=\(abi)")
+            return .failure("eliza_asr_transcribe: linked iOS inference slice is the smoke-build ABI \(abi); rebuild with fused iOS local inference")
+        }
+
+        let start = DispatchTime.now()
+        let prepared = prepareTtsContext(bundleDir: bundleDir, backend: attemptBackend)
+        guard let ctx = prepared.context else {
+            let error = prepared.error ?? "eliza_inference_mmap_acquire(tts) failed"
+            return .failure(error)
+        }
+
+        var out = [CChar](repeating: 0, count: 4096)
+        var asrError: UnsafeMutablePointer<CChar>? = nil
+        NSLog("[LlamaBridgeImpl] ASR stage=transcribe begin backend=\(attemptBackend) samples=\(pcm.count)")
+        let bytesWritten = pcm.withUnsafeBufferPointer { pcmBuffer -> Int32 in
+            guard let pcmPtr = pcmBuffer.baseAddress else { return -2 }
+            return out.withUnsafeMutableBufferPointer { outBuffer -> Int32 in
+                guard let outPtr = outBuffer.baseAddress else { return -2 }
+                return c_eliza_inference_asr_transcribe(
+                    ctx,
+                    pcmPtr,
+                    pcm.count,
+                    Int32(sampleRate),
+                    outPtr,
+                    outBuffer.count,
+                    &asrError
+                )
+            }
+        }
+        guard bytesWritten >= 0 else {
+            let error = Self.takeInferenceError(&asrError, fallback: "eliza_inference_asr_transcribe failed with code \(bytesWritten)")
+            NSLog("[LlamaBridgeImpl] ASR stage=transcribe failed backend=\(attemptBackend) code=\(bytesWritten) error=\(error)")
+            clearCachedTtsContext()
+            return .failure(error)
+        }
+        let transcript = out.withUnsafeBufferPointer { buffer -> String in
+            guard let base = buffer.baseAddress else { return "" }
+            return String(cString: base)
+        }
+        let elapsedNs = DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds
+        NSLog("[LlamaBridgeImpl] ASR attempt ok backend=\(attemptBackend) bytes=\(bytesWritten) durationMs=\(Double(elapsedNs) / 1_000_000.0)")
+        return .success(text: transcript, durationMs: Double(elapsedNs) / 1_000_000.0)
+    }
+
     public func ttsEngineDiagnostics(bundleDir: String?) -> [String: Any] {
         let hardware = hardwareInfo()
         var payload: [String: Any] = [
@@ -1639,6 +1750,14 @@ public final class LlamaBridgeImpl {
         speakerPresetId: String? = nil,
         maxSamples: Int = 24_000 * 60
     ) -> LlamaTtsSynthesizeResult {
+        return .failure("llama.cpp is not bundled in this iOS build")
+    }
+
+    public func transcribeSpeech(
+        bundleDir: String,
+        pcm: [Float],
+        sampleRate: Int
+    ) -> LlamaAsrTranscribeResult {
         return .failure("llama.cpp is not bundled in this iOS build")
     }
 
