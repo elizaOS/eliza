@@ -8,6 +8,25 @@ export type NativeAcpEventCallback = (
   sessionId?: string,
 ) => void;
 
+/**
+ * An MCP server entry for ACP `session/new.mcpServers`, so a spawned sub-agent
+ * inherits the parent's MCP tools (Codex / Claude-Code parity). Either a stdio
+ * server (`command` + `args`) or an HTTP server (`type: "http"` + `url`).
+ */
+export type AcpMcpServerConfig =
+  | {
+      name: string;
+      command: string;
+      args?: string[];
+      env?: Array<{ name: string; value: string }>;
+    }
+  | {
+      name: string;
+      type: "http";
+      url: string;
+      headers?: Array<{ name: string; value: string }>;
+    };
+
 export type NativeAcpClientOptions = {
   command: string;
   cwd: string;
@@ -17,7 +36,42 @@ export type NativeAcpClientOptions = {
   timeoutMs?: number;
   onEvent?: NativeAcpEventCallback;
   onStderr?: (chunk: string) => void;
+  /**
+   * MCP servers to expose to the spawned sub-agent. Defaults to the opt-in
+   * `ELIZA_ACP_MCP_SERVERS` env var (see `parseAcpMcpServersEnv`); when unset,
+   * sub-agents start with no MCP servers (the prior behavior).
+   */
+  mcpServers?: AcpMcpServerConfig[];
 };
+
+/**
+ * Parse the opt-in `ELIZA_ACP_MCP_SERVERS` env var — a JSON array of
+ * `AcpMcpServerConfig` — into the list forwarded to ACP `session/new`. This
+ * closes the parity gap where sub-agents couldn't use the parent's MCP tools.
+ *
+ * Defaults to `[]` so the common path is unchanged and a malformed value can
+ * never break sub-agent spawning: anything that isn't a well-formed array of
+ * `{name, command}` / `{name, type:"http", url}` entries is dropped.
+ */
+export function parseAcpMcpServersEnv(
+  raw: string | undefined = process.env.ELIZA_ACP_MCP_SERVERS,
+): AcpMcpServerConfig[] {
+  if (!raw?.trim()) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter((s): s is AcpMcpServerConfig => {
+    if (!s || typeof s !== "object") return false;
+    const r = s as Record<string, unknown>;
+    if (typeof r.name !== "string" || !r.name) return false;
+    if (r.type === "http") return typeof r.url === "string" && r.url.length > 0;
+    return typeof r.command === "string" && r.command.length > 0;
+  });
+}
 
 export type NativeAcpSession = {
   sessionId: string;
@@ -139,14 +193,10 @@ export class NativeAcpClient {
     const result = asRecord(
       await this.request("session/new", {
         cwd,
-        // PARITY GAP (documented in docs/SUBAGENT_FLOW_AND_PARITY.md): sub-agents
-        // start with no MCP servers, so they can't use the parent's MCP tools the
-        // way standalone Codex / Claude Code can. Forwarding requires a design
-        // decision on where sub-agent MCP servers are configured (no runtime MCP
-        // config surface exists today); once defined, map it to the ACP
-        // `session/new.mcpServers` array (`{ name, command, args, env }` for
-        // stdio, `{ name, type: "http", url }` for http) here.
-        mcpServers: [],
+        // Forward the parent's MCP servers so the sub-agent has the same tools
+        // (Codex / Claude-Code parity). Opt-in via ELIZA_ACP_MCP_SERVERS;
+        // defaults to [] (prior behavior) so spawning never regresses.
+        mcpServers: this.opts.mcpServers ?? parseAcpMcpServersEnv(),
       }),
     );
     const sessionId = stringValue(result?.sessionId);

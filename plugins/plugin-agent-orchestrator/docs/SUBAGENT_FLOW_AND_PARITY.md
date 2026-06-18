@@ -108,13 +108,16 @@ Codex/Claude; diff surfacing truncates (20 files / 50 lines) with no inline
 per-line review UI; sub-agents run `--no-terminal` (event-driven, no interactive
 TUI — correct for orchestration, but differs from a human at the CLI).
 
-**Gaps (open):**
-1. **MCP forwarding** — `acp-native-transport.ts` passes `mcpServers: []` to
-   `session/new`, so sub-agents can't use the parent's MCP tools. This is the
-   biggest functional parity gap vs Claude Code / Codex (both support MCP).
-   Seam: map the runtime's configured MCP servers → ACP `session/new.mcpServers`.
-2. **Sub-agent nesting** — no spawn-child API; a sub-agent cannot delegate to its
-   own sub-agents (single level of orchestration).
+**Gaps:**
+1. **MCP forwarding** — ✅ implemented (opt-in). `acp-native-transport.ts`
+   forwards `ELIZA_ACP_MCP_SERVERS` (a JSON array of stdio/http MCP server
+   configs) into `session/new.mcpServers` via `parseAcpMcpServersEnv`, so
+   sub-agents get the parent's MCP tools (Codex / Claude-Code parity). Defaults
+   to `[]` (prior behavior) so spawning never regresses. Remaining: auto-inherit
+   the parent runtime's MCP set without explicit env config (needs a runtime
+   MCP-config surface, which doesn't exist yet).
+2. **Sub-agent nesting** (open) — no spawn-child API; a sub-agent cannot delegate
+   to its own sub-agents (single level of orchestration). Feature-level work.
 3. **Inline code-review surface** — diffs are captured but there's no structured
    per-file/line review/approve UI in the task view.
 
@@ -125,8 +128,8 @@ TUI — correct for orchestration, but differs from a human at the CLI).
 - [x] Per-task threads on TG + Discord (orchestrator-driven; both connectors now capable)
 - [x] Task view with sub-agent message room (OrchestratorWorkbench)
 - [x] Real interaction-widget + connector round-trip tests
-- [ ] MCP server forwarding to sub-agents (gap #1)
-- [ ] Sub-agent nesting / delegation (gap #2)
+- [x] MCP server forwarding to sub-agents (opt-in via `ELIZA_ACP_MCP_SERVERS`)
+- [ ] Sub-agent nesting / delegation (gap #2 — feature-level)
 - [ ] Inline diff review UI in the task view (gap #3)
 - [ ] Live connector E2E (needs TG/Discord credentials) + orchestrator HTTP task-flow E2E
 - [ ] Optional: `outgoing_before_deliver` central interaction normalization hook
