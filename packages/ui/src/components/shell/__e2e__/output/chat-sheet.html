@@ -24723,7 +24723,9 @@
         ...binding,
         className: cn(
           "appearance-none border-0 bg-transparent p-0 text-left",
-          "pointer-events-auto mx-auto flex h-7 w-full max-w-3xl shrink-0 cursor-grab touch-none select-none items-center justify-center active:cursor-grabbing",
+          // Top padding only — the bar hugs the very bottom of the handle so, when
+          // collapsed, it sits right above the input with no gap below it.
+          "pointer-events-auto mx-auto flex w-full max-w-3xl shrink-0 cursor-grab touch-none select-none items-center justify-center pt-2.5 active:cursor-grabbing",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full"
         ),
         children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
