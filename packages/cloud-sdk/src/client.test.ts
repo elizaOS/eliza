@@ -61,9 +61,7 @@ describe("ElizaCloudClient payment and monetization helpers", () => {
       fetchImpl,
     });
 
-    expect(client.apiBaseUrl).toBe(
-      "https://api-staging.elizacloud.ai/api/v1",
-    );
+    expect(client.apiBaseUrl).toBe("https://api-staging.elizacloud.ai/api/v1");
     await client.listModels();
     expect(requests[0]?.url).toBe(
       "https://api-staging.elizacloud.ai/api/v1/models",
