@@ -33,7 +33,9 @@ function makeService(store: OrchestratorTaskStore): OrchestratorTaskService {
   );
 }
 
-function session(over: Partial<OrchestratorTaskSession>): OrchestratorTaskSession {
+function session(
+  over: Partial<OrchestratorTaskSession>,
+): OrchestratorTaskSession {
   return {
     id: over.sessionId ?? "s",
     taskId: "t",
@@ -143,7 +145,12 @@ describe("GET /api/orchestrator/rooms", () => {
       }),
     );
     await store.addSession(
-      session({ taskId, sessionId: "sess-c", label: "gamma", status: "stopped" }),
+      session({
+        taskId,
+        sessionId: "sess-c",
+        label: "gamma",
+        status: "stopped",
+      }),
     );
 
     const { rooms } = await service.getRoomRoster();
@@ -159,14 +166,18 @@ describe("GET /api/orchestrator/rooms", () => {
     expect(kinds[0]).toBe("orchestrator");
     expect(room.participants[0].label).toBe("Eliza");
     expect(kinds).toContain("user");
-    expect(room.participants.find((p) => p.kind === "user")?.id).toBe("user-42");
+    expect(room.participants.find((p) => p.kind === "user")?.id).toBe(
+      "user-42",
+    );
     expect(kinds.filter((k) => k === "sub_agent")).toHaveLength(3);
 
     const alpha = room.participants.find((p) => p.id === "sess-a");
     expect(alpha?.accountLabel).toBe("Work");
     expect(alpha?.active).toBe(true);
     expect(alpha?.totalTokens).toBe(120);
-    expect(room.participants.find((p) => p.id === "sess-c")?.active).toBe(false);
+    expect(room.participants.find((p) => p.id === "sess-c")?.active).toBe(
+      false,
+    );
   });
 
   it("omits rooms with no sub-agent sessions", async () => {
