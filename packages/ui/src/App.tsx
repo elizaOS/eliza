@@ -41,6 +41,7 @@ import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanne
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
 import { HomePill } from "./components/shell/HomePill";
+import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
 import { ShellControllerProvider } from "./components/shell/ShellControllerContext";
 import { useShellControllerContext } from "./components/shell/ShellControllerContext.hooks";
@@ -989,6 +990,7 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
     <div key="chat-shell" className={APP_SHELL_CLASS}>
       <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden">
         <ChatAmbientBackground />
+        <HomeScreenMount />
         <CustomActionsPanel
           open={props.customActionsPanelOpen}
           onClose={() => props.setCustomActionsPanelOpen(false)}
@@ -1102,6 +1104,36 @@ function ContinuousChatOverlayMount(): ReactNode {
   const controller = useShellControllerContext();
   if (!controller) return null;
   return <ContinuousChatOverlay controller={controller} />;
+}
+
+/**
+ * The iOS-style home dashboard for the /chat route — clock, recent activity,
+ * recent messages, a customizable widget area, and pinned view tiles. Sits
+ * behind the always-present chat overlay. Wires tile taps to the real nav:
+ * builtin tabs via setTab, plugin/remote views via the eliza:navigate:view event.
+ */
+function HomeScreenMount(): ReactNode {
+  const { setTab } = useApp();
+  const onOpenTile = useCallback(
+    (target: HomeTileTarget) => {
+      if (target.kind === "tab") {
+        setTab(target.tab);
+      } else {
+        window.dispatchEvent(
+          new CustomEvent("eliza:navigate:view", {
+            detail: { viewPath: target.path },
+          }),
+        );
+      }
+    },
+    [setTab],
+  );
+  return (
+    <HomeScreen
+      onOpenTile={onOpenTile}
+      showNativeOsTiles={isAndroidPhoneSurfaceEnabled()}
+    />
+  );
 }
 
 export function App() {
