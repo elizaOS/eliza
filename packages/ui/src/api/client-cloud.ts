@@ -2509,22 +2509,28 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
     provisionData.data?.executionTier ?? provisionData.executionTier ?? null;
   const isSharedRuntime =
     provisionData.source === "shared_runtime" || executionTier === "shared";
-  if (isSharedRuntime && options.allowSharedRuntime) {
+  if (isSharedRuntime) {
     onProgress?.("ready", "Cloud agent ready!");
+    // A shared agent has no agent server; the cloud-api REST adapter at
+    // `<base>/api/v1/eliza/agents/<id>` serves its /api/* surface. Prefer the
+    // server-provided webUiUrl; derive the same base if an older server omits
+    // it (so chat works even before the create/provision response is updated).
+    // resolveCloudAgentApiBase() prefers webUiUrl over bridgeUrl, so the REST
+    // client targets the adapter while the bridgeUrl stays as a JSON-RPC
+    // fallback. (The allowSharedRuntime gate is retained for callers that opt
+    // out, but all first-run paths pass it true.)
+    const sharedWebUiUrl =
+      immediateWebUiUrl ??
+      `${resolvedCloudApiBase.replace(/\/+$/, "")}/api/v1/eliza/agents/${encodeURIComponent(agentId)}`;
     return {
       bridgeUrl: resolveDirectCloudAgentBridgeUrl(
         resolvedCloudApiBase,
         agentId,
       ),
       agentId,
-      webUiUrl: null,
+      webUiUrl: sharedWebUiUrl,
       executionTier: "shared",
     };
-  }
-  if (isSharedRuntime) {
-    throw new Error(
-      "Failed to start provisioning: shared runtime has no sandbox bridge",
-    );
   }
   if (immediateBridgeUrl) {
     onProgress?.("ready", "Sandbox ready!");
