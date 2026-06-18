@@ -173,6 +173,7 @@ const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-browser",
   "plugin-capacitor-bridge",
   "plugin-coding-tools",
+  "plugin-commands",
   "plugin-computeruse",
   "plugin-discord",
   "plugin-elizacloud",
