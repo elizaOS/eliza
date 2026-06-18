@@ -140,6 +140,7 @@ export * from "./markdown";
 // Export media utilities
 export * from "./media";
 export * from "./memory";
+export * from "./messaging/interactions";
 export * from "./mobile-device-bridge-hooks";
 // Export network utilities (SSRF protection, secure fetch)
 export * from "./network";
@@ -245,7 +246,6 @@ export * from "./secrets";
 // Export security utilities
 export * from "./security";
 export * from "./sensitive-request-policy";
-export * from "./messaging/interactions";
 export * from "./sensitive-requests";
 export * from "./services";
 export * from "./services/agentEvent";
