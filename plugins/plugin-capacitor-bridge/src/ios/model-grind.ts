@@ -191,7 +191,11 @@ export async function runModelGrind(
 		const r: ModelGrindResult = { model: "text", ok: false };
 		// Per-model memory + load telemetry to localize the on-device load hang.
 		let availPreLoad: number | null = null;
-		try { availPreLoad = availGb(await deps.hardwareInfo()); } catch { /* probe */ }
+		try {
+			availPreLoad = availGb(await deps.hardwareInfo());
+		} catch {
+			/* probe */
+		}
 		try {
 			const lt = now();
 			const state = (await deps.ensureTextModelLoaded("TEXT_SMALL")) as {
@@ -206,7 +210,11 @@ export async function runModelGrind(
 			}
 			r.loadMs = Math.round(now() - lt);
 			let availPostLoad: number | null = null;
-			try { availPostLoad = availGb(await deps.hardwareInfo()); } catch { /* probe */ }
+			try {
+				availPostLoad = availGb(await deps.hardwareInfo());
+			} catch {
+				/* probe */
+			}
 			r.loadDetail = {
 				loadResult: state,
 				availPreLoadGb: availPreLoad,
@@ -250,7 +258,11 @@ export async function runModelGrind(
 			// Record pre-load memory + loadMs even on a load hang/timeout (the
 			// failure case we most want to localize).
 			let availAtFail: number | null = null;
-			try { availAtFail = availGb(await deps.hardwareInfo()); } catch { /* probe */ }
+			try {
+				availAtFail = availGb(await deps.hardwareInfo());
+			} catch {
+				/* probe */
+			}
 			r.loadDetail = r.loadDetail ?? {
 				availPreLoadGb: availPreLoad,
 				availAtFailureGb: availAtFail,
