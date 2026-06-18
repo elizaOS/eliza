@@ -130,58 +130,56 @@ function groupEventsByDay(
   return map;
 }
 
-// Google-Calendar-inspired palette. Each entry is a self-contained class
-// pair so we can render filled blocks or tinted pills from the same source.
-const EVENT_PALETTE = [
-  {
-    bg: "bg-blue-500/85",
-    softBg: "bg-blue-500/18",
-    border: "border-blue-500/60",
-    text: "text-blue-50",
-    softText: "text-blue-200",
-    dot: "bg-blue-400",
-  },
-  {
-    bg: "bg-violet-500/85",
-    softBg: "bg-violet-500/18",
-    border: "border-violet-500/60",
-    text: "text-violet-50",
-    softText: "text-violet-200",
-    dot: "bg-violet-400",
-  },
-  {
-    bg: "bg-emerald-500/85",
-    softBg: "bg-emerald-500/18",
-    border: "border-emerald-500/60",
-    text: "text-emerald-50",
-    softText: "text-emerald-200",
-    dot: "bg-emerald-400",
-  },
-  {
-    bg: "bg-amber-500/85",
-    softBg: "bg-amber-500/18",
-    border: "border-amber-500/60",
-    text: "text-amber-50",
-    softText: "text-amber-200",
-    dot: "bg-amber-400",
-  },
-  {
-    bg: "bg-rose-500/85",
-    softBg: "bg-rose-500/18",
-    border: "border-rose-500/60",
-    text: "text-rose-50",
-    softText: "text-rose-200",
-    dot: "bg-rose-400",
-  },
-  {
-    bg: "bg-cyan-500/85",
-    softBg: "bg-cyan-500/18",
-    border: "border-cyan-500/60",
-    text: "text-cyan-50",
-    softText: "text-cyan-200",
-    dot: "bg-cyan-400",
-  },
+// Design-compliant event palette. No blue anywhere: the brand orange accent is
+// reserved for selected/today (driven by the `accent` theme token elsewhere in
+// this file), and event categories are differentiated by neutral grayscale
+// shades plus a few non-blue warm hues. Each entry is a set of inline-style
+// values rather than Tailwind classes: the view bundle is built separately from
+// the host's Tailwind pass, so arbitrary opacity-modified utility classes never
+// make it into the compiled CSS. Inline `color-mix` over fixed seeds renders
+// identically everywhere the bundle mounts.
+interface EventPaletteEntry {
+  /** Filled event block background + border + text (day/week grid blocks). */
+  readonly seed: string;
+  readonly text: string;
+}
+
+const EVENT_PALETTE: readonly EventPaletteEntry[] = [
+  // Neutral grayscale ramp (light → mid).
+  { seed: "#d4d4d8", text: "#e7e7ea" },
+  { seed: "#a1a1aa", text: "#ededf0" },
+  { seed: "#71717a", text: "#f4f4f5" },
+  // Warm, non-blue hues for additional differentiation.
+  { seed: "#f5a623", text: "#fff7e6" }, // amber
+  { seed: "#e8743b", text: "#fff1e8" }, // burnt orange
+  { seed: "#d65a5a", text: "#fdecec" }, // warm red
 ] as const;
+
+interface EventColor {
+  /** Filled block background (day/week event blocks, selected month chip). */
+  readonly bg: string;
+  /** Tinted pill background (all-day pills, month chips, agenda hover). */
+  readonly softBg: string;
+  /** Filled block border. */
+  readonly border: string;
+  /** Text on a filled block. */
+  readonly text: string;
+  /** Text on a tinted pill. */
+  readonly softText: string;
+  /** Category dot. */
+  readonly dot: string;
+}
+
+function eventColorFor(entry: EventPaletteEntry): EventColor {
+  return {
+    bg: `color-mix(in srgb, ${entry.seed} 85%, transparent)`,
+    softBg: `color-mix(in srgb, ${entry.seed} 18%, transparent)`,
+    border: `color-mix(in srgb, ${entry.seed} 60%, transparent)`,
+    text: entry.text,
+    softText: `color-mix(in srgb, ${entry.seed} 75%, var(--foreground, #f5f5f5))`,
+    dot: entry.seed,
+  };
+}
 
 function hashString(input: string): number {
   let hash = 0;
@@ -191,14 +189,14 @@ function hashString(input: string): number {
   return Math.abs(hash);
 }
 
-function paletteFor(event: LifeOpsCalendarEvent) {
+function paletteFor(event: LifeOpsCalendarEvent): EventColor {
   // Prefer calendar-level seeds so gcal-style "one colour per calendar"
   // holds when those are distinct. Fall back to event.id for variety when
   // every event shares the same calendar.
   const seed = [event.calendarId, event.accountEmail, event.id]
     .filter(Boolean)
     .join("|");
-  return EVENT_PALETTE[hashString(seed) % EVENT_PALETTE.length];
+  return eventColorFor(EVENT_PALETTE[hashString(seed) % EVENT_PALETTE.length]);
 }
 
 function sortAgendaEvents(
@@ -430,6 +428,7 @@ function AllDayBandCell({
     >
       {events.map((event) => {
         const color = paletteFor(event);
+        const selected = event.id === selectedEventId;
         return (
           <button
             key={event.id}
@@ -439,8 +438,12 @@ function AllDayBandCell({
               mouseEvent.preventDefault();
               onSelectEvent(event);
             }}
-            className={`block w-full truncate rounded-md ${color.softBg} ${color.softText} px-1.5 py-0.5 text-left text-[10px] font-medium hover:${color.bg} hover:${color.text}`}
-            aria-pressed={event.id === selectedEventId}
+            className="block w-full truncate rounded-md px-1.5 py-0.5 text-left text-[10px] font-medium"
+            style={{
+              background: selected ? color.bg : color.softBg,
+              color: selected ? color.text : color.softText,
+            }}
+            aria-pressed={selected}
           >
             {event.title}
           </button>
@@ -514,8 +517,21 @@ function DayColumnGrid({
           aria-hidden
         >
           <div className="flex items-center">
-            <span className="h-2 w-2 rounded-full bg-rose-500 ring-2 ring-rose-500/30" />
-            <span className="h-px flex-1 bg-rose-500/80" />
+            <span
+              className="h-2 w-2 rounded-full"
+              style={{
+                background: "var(--accent, #ff6a00)",
+                boxShadow:
+                  "0 0 0 2px color-mix(in srgb, var(--accent, #ff6a00) 30%, transparent)",
+              }}
+            />
+            <span
+              className="h-px flex-1"
+              style={{
+                background:
+                  "color-mix(in srgb, var(--accent, #ff6a00) 80%, transparent)",
+              }}
+            />
           </div>
         </div>
       ) : null}
@@ -534,13 +550,16 @@ function DayColumnGrid({
               onSelectEvent(event);
             }}
             aria-pressed={isSelected}
-            className={`group absolute overflow-hidden rounded-md border px-1.5 py-1 text-left shadow-sm transition-transform ${color.bg} ${color.border} ${color.text} ${isSelected ? "ring-2 ring-white/50 z-10" : "hover:translate-y-[-1px]"}`}
+            className={`group absolute overflow-hidden rounded-md border px-1.5 py-1 text-left shadow-sm transition-transform ${isSelected ? "ring-2 ring-white/50 z-10" : "hover:translate-y-[-1px]"}`}
             style={{
               top: `calc(${position.topPct}% + 0.1rem)`,
               height: `calc(${position.heightPct}% - 0.2rem)`,
               left: `calc(${position.leftPct}% + 0.125rem)`,
               width: `calc(${position.widthPct}% - 0.25rem)`,
               minHeight: "1.5rem",
+              background: color.bg,
+              borderColor: color.border,
+              color: color.text,
             }}
           >
             <div className="truncate text-[11px] font-semibold leading-tight">
@@ -770,15 +789,16 @@ function MonthGrid({
                         mouseEvent.preventDefault();
                         onSelectEvent(event);
                       }}
-                      className={`flex min-w-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-left text-[10px] font-medium ${
-                        isSelected
-                          ? `${color.bg} ${color.text}`
-                          : `${color.softBg} ${color.softText} hover:${color.bg} hover:${color.text}`
-                      }`}
+                      className="flex min-w-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-left text-[10px] font-medium"
+                      style={{
+                        background: isSelected ? color.bg : color.softBg,
+                        color: isSelected ? color.text : color.softText,
+                      }}
                     >
                       {!event.isAllDay ? (
                         <span
-                          className={`h-1.5 w-1.5 shrink-0 rounded-full ${color.dot}`}
+                          className="h-1.5 w-1.5 shrink-0 rounded-full"
+                          style={{ background: color.dot }}
                           aria-hidden
                         />
                       ) : null}
@@ -818,7 +838,8 @@ function MonthGrid({
                             >
                               <span
                                 aria-hidden
-                                className={`mt-1 h-2 w-2 shrink-0 rounded-full ${overflowColor.dot}`}
+                                className="mt-1 h-2 w-2 shrink-0 rounded-full"
+                                style={{ background: overflowColor.dot }}
                               />
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate text-xs font-medium text-txt">
@@ -881,7 +902,8 @@ function AgendaEventButton({
     >
       <span
         aria-hidden
-        className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${color.dot}`}
+        className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
+        style={{ background: color.dot }}
       />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-semibold text-txt">
@@ -1185,7 +1207,16 @@ export function CalendarSection({
         </div>
 
         {calendar.error ? (
-          <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+          <div
+            className="rounded-2xl border px-3 py-2 text-xs"
+            style={{
+              borderColor:
+                "color-mix(in srgb, var(--danger, #e5484d) 30%, transparent)",
+              background:
+                "color-mix(in srgb, var(--danger, #e5484d) 10%, transparent)",
+              color: "color-mix(in srgb, var(--danger, #e5484d) 70%, white)",
+            }}
+          >
             {calendar.error}
           </div>
         ) : null}

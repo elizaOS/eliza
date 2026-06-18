@@ -2332,15 +2332,60 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       return;
     }
     const url = new URL(request.url());
+    const timeMin = url.searchParams.get("timeMin") ?? SMOKE_GENERATED_AT;
+    const timeMax = url.searchParams.get("timeMax") ?? SMOKE_GENERATED_AT;
+    // Anchor a couple of deterministic events inside the requested window so the
+    // calendar:gui renders populated (event blocks, not just an empty grid).
+    // Place the first event at 09:00 local on the window's first day; the helper
+    // is reused across desktop + mobile (agenda) layouts.
+    const windowStart = new Date(timeMin);
+    const at = (dayOffset: number, hour: number) => {
+      const d = new Date(windowStart);
+      d.setDate(d.getDate() + dayOffset);
+      d.setHours(hour, 0, 0, 0);
+      return d.toISOString();
+    };
+    const smokeEvent = (
+      id: string,
+      title: string,
+      startAt: string,
+      endAt: string,
+    ) => ({
+      id,
+      externalId: id,
+      agentId: "smoke-agent",
+      provider: "google" as const,
+      side: "owner" as const,
+      calendarId: "primary",
+      title,
+      description: "",
+      location: "",
+      status: "confirmed",
+      startAt,
+      endAt,
+      isAllDay: false,
+      timezone: null,
+      htmlLink: null,
+      conferenceLink: null,
+      organizer: null,
+      attendees: [],
+      metadata: {},
+      syncedAt: SMOKE_GENERATED_AT,
+      updatedAt: SMOKE_GENERATED_AT,
+      calendarSummary: "Primary",
+    });
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         calendarId: "primary",
-        events: [],
+        events: [
+          smokeEvent("smoke-evt-1", "Design sync", at(0, 9), at(0, 10)),
+          smokeEvent("smoke-evt-2", "Standup", at(1, 11), at(1, 12)),
+        ],
         source: "cache",
-        timeMin: url.searchParams.get("timeMin") ?? SMOKE_GENERATED_AT,
-        timeMax: url.searchParams.get("timeMax") ?? SMOKE_GENERATED_AT,
+        timeMin,
+        timeMax,
         syncedAt: null,
       }),
     });
