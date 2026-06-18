@@ -67,16 +67,6 @@ export function getAgentTier(input: AgentTierInput): AgentTier {
   return "shared";
 }
 
-/** True when the agent can run container-free in the shared hosted runtime. */
-export function isSharedEligible(input: AgentTierInput): boolean {
-  return getAgentTier(input) === "shared";
-}
-
-/** True when the tier requires a dedicated container (any non-shared tier). */
-export function tierRequiresContainer(tier: AgentTier): boolean {
-  return tier !== "shared";
-}
-
 /** True when the container for this tier should be provisioned eagerly at create time. */
 export function tierProvisionsEagerly(tier: AgentTier): boolean {
   // dedicated-always + custom want the box up immediately; dedicated-lazy waits

@@ -1,7 +1,6 @@
-import { type Context, Hono } from "hono";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { Hono } from "hono";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
+import { resolveSharedAgent } from "@/lib/services/shared-runtime/resolve-shared-agent";
 import {
   sharedRestMessageSend,
   sharedRestMessagesGet,
@@ -20,38 +19,6 @@ const CORS_METHODS = "GET, POST, OPTIONS";
 
 const app = new Hono<AppEnv>();
 
-type Resolved =
-  | { error: string; status: 400 | 404 }
-  | {
-      orgId: string;
-      agentId: string;
-      conversationId: string;
-      agentName: string;
-    };
-
-async function resolveSharedAgent(c: Context<AppEnv>): Promise<Resolved> {
-  const user = await requireUserOrApiKeyWithOrg(c);
-  const agentId = c.req.param("agentId");
-  const conversationId = c.req.param("conversationId");
-  if (!agentId || !conversationId) {
-    return { error: "Missing agent or conversation id", status: 400 };
-  }
-  const agent = await agentSandboxesRepository.findByIdAndOrg(
-    agentId,
-    user.organization_id,
-  );
-  if (!agent) return { error: "Agent not found", status: 404 };
-  if (agent.execution_tier !== "shared") {
-    return { error: "Not a shared-runtime agent", status: 404 };
-  }
-  return {
-    orgId: user.organization_id,
-    agentId,
-    conversationId,
-    agentName: agent.agent_name ?? "Eliza",
-  };
-}
-
 app.options("/", () => handleCorsOptions(CORS_METHODS));
 
 app.get("/", async (c) => {
@@ -62,7 +29,8 @@ app.get("/", async (c) => {
       CORS_METHODS,
     );
   }
-  const body = await sharedRestMessagesGet(r.agentId, r.conversationId);
+  const conversationId = c.req.param("conversationId") ?? r.agentId;
+  const body = await sharedRestMessagesGet(r.agentId, conversationId);
   return applyCorsHeaders(Response.json(body), CORS_METHODS);
 });
 
@@ -74,6 +42,7 @@ app.post("/", async (c) => {
       CORS_METHODS,
     );
   }
+  const conversationId = c.req.param("conversationId") ?? r.agentId;
   const raw: unknown = await c.req.json().catch(() => ({}));
   const text =
     raw &&
@@ -93,7 +62,7 @@ app.post("/", async (c) => {
   const result = await sharedRestMessageSend(
     r.agentId,
     r.orgId,
-    r.conversationId,
+    conversationId,
     text,
     r.agentName,
   );
