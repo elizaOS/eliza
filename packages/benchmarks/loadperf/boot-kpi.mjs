@@ -33,7 +33,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import os from "node:os";
 import {
   REPO_ROOT,
@@ -69,6 +69,15 @@ const BASE_URL = (process.env.LOADPERF_BASE_URL ?? `http://127.0.0.1:${API_PORT}
 const BOOT_TIMEOUT_MS = Number(process.env.LOADPERF_BOOT_TIMEOUT_MS ?? 120_000);
 
 const DEV_SERVER = join("packages", "app-core", "src", "runtime", "dev-server.ts");
+// By DEFAULT measure the SHIPPED binary. The desktop/mobile app spawns the
+// pre-built `dist/entry.js start` via Bun (native/agent.ts), NOT the
+// tsx-transpiled dev-server — so the old default counted a ~2s on-the-fly tsx
+// transpile + dev-only orchestration that production never pays, and never the
+// real `start` blocking work (vault/keychain bootstrap, embedding warmup,
+// provider load). Pass --dev to measure the old tsx dev-server path instead.
+const PROD_ENTRY = join("packages", "app-core", "dist", "entry.js");
+const USE_DEV = process.argv.includes("--dev");
+const BUN_BIN = process.env.BUN_PATH || "bun";
 
 /** Read VmRSS (kB) for a pid from /proc; returns bytes or null. */
 function readRssBytes(pid) {
@@ -131,16 +140,29 @@ async function measureAttached() {
 }
 
 async function measureSpawned() {
+  if (!USE_DEV && !existsSync(join(REPO_ROOT, PROD_ENTRY))) {
+    throw new Error(
+      `built agent entry not found at ${PROD_ENTRY} — run \`bun run --cwd packages/app-core build\` first, or pass --dev to measure the tsx dev-server path`,
+    );
+  }
   const startMs = Date.now();
-  const child = spawn(
-    process.execPath,
-    ["--conditions=eliza-source", "--import", "tsx", DEV_SERVER],
-    {
-      cwd: REPO_ROOT,
-      env: { ...process.env, ELIZA_HEADLESS: "1", ELIZA_API_PORT: String(API_PORT) },
-      stdio: ["ignore", "ignore", "pipe"],
+  // Production: `bun run dist/entry.js start` (what the desktop/mobile app
+  // spawns). Dev (--dev): the tsx-transpiled dev-server. Match the desktop
+  // launcher's ELIZA_DEFER_APP_ROUTES=1 default so the readiness gate is
+  // representative of the shipped boot.
+  const [cmd, args] = USE_DEV
+    ? [process.execPath, ["--conditions=eliza-source", "--import", "tsx", DEV_SERVER]]
+    : [BUN_BIN, ["run", PROD_ENTRY, "start"]];
+  const child = spawn(cmd, args, {
+    cwd: REPO_ROOT,
+    env: {
+      ...process.env,
+      ELIZA_HEADLESS: "1",
+      ELIZA_API_PORT: String(API_PORT),
+      ELIZA_DEFER_APP_ROUTES: process.env.ELIZA_DEFER_APP_ROUTES ?? "1",
     },
-  );
+    stdio: ["ignore", "ignore", "pipe"],
+  });
 
   let stderrTail = "";
   child.stderr.on("data", (d) => {
@@ -159,7 +181,7 @@ async function measureSpawned() {
 
   const exited = new Promise((_, reject) => {
     child.once("exit", (code, signal) => {
-      reject(new Error(`dev-server exited early (code=${code} signal=${signal})\n${stderrTail}`));
+      reject(new Error(`agent process exited early (code=${code} signal=${signal})\n${stderrTail}`));
     });
     child.once("error", (err) => reject(err));
   });
