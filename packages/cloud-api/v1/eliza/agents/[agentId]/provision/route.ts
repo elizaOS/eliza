@@ -121,6 +121,9 @@ async function __hono_POST(
             status: existing.status,
             executionTier: existing.execution_tier,
             message: "Agent is already available on the shared runtime",
+            // Shared agents have no agent server; their REST base is the
+            // cloud-api adapter root (chat client appends `/api/...`).
+            webUiUrl: `${new URL(request.url).origin}/api/v1/eliza/agents/${existing.id}`,
           },
         }),
         CORS_METHODS,
