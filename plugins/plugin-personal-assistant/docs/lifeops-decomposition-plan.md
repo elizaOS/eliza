@@ -612,6 +612,31 @@ integration 6/6; agent view-action-affinity 61/61 (drift now resolves BLOCK); bl
 view appears 3× as gui/tui/xr surface variants — the dedup is by (id+surface), not id.
 This is the "fully integrated" dimension made VERIFIABLE in-sandbox.
 
+### Session 2026-06-18 (round 20) — web/linux + mobile-viewport e2e EXECUTED green (not just wired)
+Stopped asserting "wired" and actually RAN the decomposed-views Playwright e2e
+(`packages/app/test/ui-smoke/apps-personal-assistant-decomposed-interactions.spec.ts`) in
+sandbox. It boots the real live stack + headless chromium and exercises all 8 lifeops
+views (calendar/inbox/finances/focus/goals/health/todos/relationships). First run: 5
+passed / 3 failed — execution surfaced 3 REAL issues:
+  1. **relationships viewer never mounted** (`/relationships` fell to the launcher) — a
+     genuine production gap: the ui-smoke api stub's decomposed-view list omitted it AND
+     plugin-relationships lacked the `elizaos.app` package.json marker the app's vite
+     build keys on to bundle a plugin's view (it was the only view-bearing decomposed
+     plugin missing it). Added both → RelationshipsView mounts + the kind-filter toggles.
+  2. **calendar** test used a stale `view-week`/`view-day` testId; the real SegmentedControl
+     exposes accessible names — switched to role+name with `exact:true` (so "Day" doesn't
+     substring-match the "Today" nav button).
+  3. **finances** test asserted the empty state but the mock seeds transactions — assert
+     the populated branch instead.
+Result: **8/8 green on desktop (chromium) AND 8/8 green at mobile (Pixel 7) viewport** —
+the same WebView layout that ships on Capacitor iOS/Android (extended the mobile-chromium
+project to run the spec). Boot-free coverage ratchets 19/19. Commits 8fbe4635c2 (fixes),
+6557a18ba5 (mobile-viewport). This converts conditions 2/4 from "wired" to "DEMONSTRATED
+EXECUTING" for the in-sandbox-runnable platforms (linux + mobile viewport). Native iOS
+(needs macOS+Xcode sim) / Windows (needs Windows) / Android-native (embedded bun agent
+segfaults on stock x86_64 emulator — needs real hardware/Cuttlefish) remain device-bound;
+their lanes are wired (Android sweep consumes the shared cases, now incl. relationships).
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
