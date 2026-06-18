@@ -227,6 +227,11 @@ export * from "./dev-settings-table.js";
 // elizacloud helpers — pure utilities + config-driven server helpers used by
 // app-core and the agent so they don't reverse-import from plugin-elizacloud.
 export * from "./elizacloud/index.js";
+// Email-classification primitives — canonical two-stage classifier + the
+// untrusted-content fence. Dependency-free beyond @elizaos/core; consumed by
+// inbox-curation and finance bill-extraction in
+// @elizaos/plugin-personal-assistant.
+export * from "./email-classification/index.js";
 export * from "./env-utils.js";
 export * from "./events/index.js";
 export * from "./format-error.js";
