@@ -1355,16 +1355,21 @@ export function ContinuousChatOverlay({
         "pointer-events-none fixed inset-x-0 bottom-0 flex w-full min-w-0 flex-col items-center",
         // Full-bleed (maximized) removes the side inset so the chat is edge-to-edge.
         fullBleed ? "px-0" : "px-3 sm:px-4",
-        // max(safe-area, android gesture inset): when the nav bar is hidden the
-        // safe-area-inset-bottom is 0, so fall back to the real gesture-home zone
-        // (--android-gesture-inset-bottom, published by MainActivity; 0 elsewhere)
-        // so the composer never sits under the home pill. The +0.5rem breathing
-        // room keeps the chat low on the screen without touching that zone.
-        "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+0.5rem)]",
       )}
-      // Lift the whole overlay above the on-screen keyboard so the input + chat
-      // stay visible; `keyboardInset` is 0 when no keyboard is shown.
-      style={{ zIndex: Z_SHELL_OVERLAY, bottom: keyboardInset }}
+      // Lift the whole overlay above the on-screen keyboard (`bottom`); padding
+      // below the composer is conditional: when the KEYBOARD is up, only a small
+      // gap (matching the side margin) sits between the composer and the keyboard
+      // — the home-gesture clearance isn't needed because the keyboard covers it.
+      // At rest, clear the home-gesture zone (max safe-area / android inset) plus
+      // a hair, keeping the chat low without touching that zone.
+      style={{
+        zIndex: Z_SHELL_OVERLAY,
+        bottom: keyboardInset,
+        paddingBottom:
+          keyboardInset > 0
+            ? "0.75rem"
+            : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.25rem)",
+      }}
       data-testid="continuous-chat-overlay"
       data-open={sheetOpen ? "true" : undefined}
     >
