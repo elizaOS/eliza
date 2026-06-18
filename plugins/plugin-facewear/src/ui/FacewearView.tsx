@@ -342,8 +342,8 @@ export function FacewearTuiView() {
   return (
     <TerminalPluginView
       id="facewear"
-      label="Hearwear TUI"
-      description="Hearwear device status endpoints"
+      label="Facewear TUI"
+      description="Facewear device status endpoints"
       commands={[]}
       endpoints={[
         "/api/facewear/status",

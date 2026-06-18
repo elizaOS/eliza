@@ -201,7 +201,7 @@ const icons = {
     <circle cx="-66" cy="72" r="11" stroke-width="0" fill="currentColor"/>
     <circle cx="0" cy="72" r="11" stroke-width="0" fill="currentColor"/>`,
 
-  // headphones — Hearwear
+  // headphones — Facewear
   headphones: `    <path d="M-140 30 V-10 A140 140 0 0 1 140 -10 V30"/>
     <rect x="-160" y="26" width="58" height="110" rx="26" fill="currentColor" stroke-width="0"/>
     <rect x="102" y="26" width="58" height="110" rx="26" fill="currentColor" stroke-width="0"/>
@@ -275,7 +275,7 @@ const views = [
   { out: "plugins/plugin-app-control/assets/hero.svg", id: "views", label: "Views", hue: 270, icon: icons.views },
   { out: "plugins/plugin-blocker/assets/hero.svg", id: "focus", label: "Focus", hue: 348, icon: icons.focus },
   { out: "plugins/plugin-calendar/assets/hero.svg", id: "calendar", label: "Calendar", hue: 12, icon: icons.calendar },
-  { out: "plugins/plugin-facewear/assets/hero-facewear.svg", id: "hearwear", label: "Hearwear", hue: 190, icon: icons.headphones },
+  { out: "plugins/plugin-facewear/assets/hero-facewear.svg", id: "facewear", label: "Facewear", hue: 190, icon: icons.headphones },
   { out: "plugins/plugin-facewear/assets/hero-smartglasses.svg", id: "smartglasses", label: "Smartglasses", hue: 300, icon: icons.glasses },
   { out: "plugins/plugin-finances/assets/hero.svg", id: "finances", label: "Finances", hue: 150, icon: icons.finances },
   { out: "plugins/plugin-goals/assets/hero.svg", id: "goals", label: "Goals", hue: 38, icon: icons.goals },

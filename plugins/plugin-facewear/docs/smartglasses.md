@@ -245,7 +245,7 @@ For the full software proof from the repository root:
 npm run verify:smartglasses-software
 ```
 
-That command runs the Hearwear plugin lint/typecheck/test/app-registration
+That command runs the Facewear plugin lint/typecheck/test/app-registration
 gates, then the example software gate, repairs Facewear lockfile churn, and
 reruns the consolidation, Even research self-test, Even research audit, and
 completion self-test guards.
