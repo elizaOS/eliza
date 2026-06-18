@@ -53,7 +53,7 @@ bridge**.
 
 ### P2 — Room system + interruption decider
 - [x] Per-participant interruption decider: a running sub-agent keeps working; a new room message is classified (deliver / queue / interrupt / ignore) before it is injected. The "busy" check covers `tool_running` (the dominant mid-turn state), not just `busy`; queued messages flush when the session returns to `ready`. An Eliza participant's `shouldRespond` verdict threads through unchanged when a caller supplies it; coding sub-agents use the structural decider. `multiParty` (more than one live sub-agent in the room) is computed in the forward handler so ambient-chatter suppression is live.
-- [~] Task-room participant **view**: the "Coding accounts" sidebar widget shows the live sub-agent → account assignment map + per-account usage. A dedicated per-room participant roster (orchestrator + user + each sub-agent grouped by room) is **not yet shipped** — the assignment map is global across active tasks. Follow-up.
+- [x] Task-room participant **view**: the "Coding accounts" sidebar widget shows the live sub-agent → account assignment map + per-account usage (the flat global map). The dedicated per-room participant roster (orchestrator + owning user + each sub-agent grouped by room, with `activeAgentCount` / `multiParty`) now ships as `GET /api/orchestrator/rooms` (`OrchestratorTaskService.getRoomRoster`), the room-scoped counterpart to `/accounts`. Rooms with no sub-agent sessions are omitted.
 
 ### P3 — Tests + mocks + live E2E
 - [x] Mock account fixtures (multi-account, multi-provider) + an in-memory pool for unit tests.
