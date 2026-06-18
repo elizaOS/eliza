@@ -1079,8 +1079,12 @@ public final class LlamaBridgeImpl {
             ) {
                 return coreMlResult
             }
-            return Self.withTemporaryEnvironment("ELIZA_TTS_BACKEND", value: "kokoro") {
-                return Self.withTemporaryEnvironment("ELIZA_TTS_MAX_BACKEND_ALLOC_MB", value: "384") {
+            // When CoreML Kokoro is unavailable, route through OmniVoice — the
+            // tier DEFAULT voice engine (ELIZA_1_VOICE_BACKENDS) and the validated
+            // fused engine. The fork GGUF-Kokoro path is intentionally disabled on
+            // iOS ("not production speech"); OmniVoice is not gated.
+            return Self.withTemporaryEnvironment("ELIZA_TTS_BACKEND", value: "omnivoice") {
+                return Self.withTemporaryEnvironment("ELIZA_TTS_MAX_BACKEND_ALLOC_MB", value: "768") {
                     return Self.withTemporaryEnvironment("GGML_BACKEND", value: "CPU") {
                         return synthesizeSpeechAttempt(
                             bundleDir: bundleDir,

@@ -232,12 +232,17 @@ class KokoroE2E(nn.Module):
         t_en = k.text_encoder(input_ids, input_lengths, text_mask)  # [1,Ht,N]
         asr = t_en.matmul(aln)  # [1,Ht,Fr]
         self.lsin._inj_phase = random_phases
+        gen = k.decoder.generator
+        f0_up = gen.f0_upsamp(F0_pred[:, None]).transpose(1, 2)
+        har_source, _noi, _uv = gen.m_source(f0_up)
         audio = k.decoder(asr, F0_pred, N_pred, ref_s[:, :128]).reshape(1, -1)
         # int32 length: float16 compute precision overflows past 65504, so any
         # utterance > ~1.8s (>109 frames) would yield inf in an fp16 scalar.
         pred_dur_i = pred_dur.to(torch.int32)
         total_frames = pred_dur_i.sum(dim=1)  # int32 [1]
         audio_length_samples = total_frames * SAMPLES_PER_FRAME  # int32, overflow-safe
+        if getattr(self, "_diag", False):
+            return audio, audio_length_samples, pred_dur_i, F0_pred, har_source.reshape(1, -1)
         return audio, audio_length_samples, pred_dur_i
 
 

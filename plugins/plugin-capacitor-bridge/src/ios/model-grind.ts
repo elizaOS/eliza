@@ -40,6 +40,7 @@ export interface ModelGrindResult {
 	firstResultMs?: number;
 	throughput?: { kind: "tokens_per_sec" | "rtf" | "wer"; value: number };
 	detail?: Record<string, unknown>;
+	loadDetail?: Record<string, unknown>;
 	error?: string;
 }
 
@@ -188,6 +189,9 @@ export async function runModelGrind(
 	// ── 1. Text LLM (load + generate, MTP if available) ─────────────────────
 	{
 		const r: ModelGrindResult = { model: "text", ok: false };
+		// Per-model memory + load telemetry to localize the on-device load hang.
+		let availPreLoad: number | null = null;
+		try { availPreLoad = availGb(await deps.hardwareInfo()); } catch { /* probe */ }
 		try {
 			const lt = now();
 			const state = (await deps.ensureTextModelLoaded("TEXT_SMALL")) as {
@@ -201,6 +205,17 @@ export async function runModelGrind(
 				throw new Error("Text model load returned no contextId");
 			}
 			r.loadMs = Math.round(now() - lt);
+			let availPostLoad: number | null = null;
+			try { availPostLoad = availGb(await deps.hardwareInfo()); } catch { /* probe */ }
+			r.loadDetail = {
+				loadResult: state,
+				availPreLoadGb: availPreLoad,
+				availPostLoadGb: availPostLoad,
+				loadUsedGb:
+					availPreLoad !== null && availPostLoad !== null
+						? Math.round((availPreLoad - availPostLoad) * 1000) / 1000
+						: null,
+			};
 			const gt = now();
 			const res = (await deps.callIosHost(
 				"llama_generate",
@@ -232,6 +247,18 @@ export async function runModelGrind(
 			if (!r.ok) r.error = "text model returned empty output";
 		} catch (error) {
 			r.error = error instanceof Error ? error.message : String(error);
+			// Record pre-load memory + loadMs even on a load hang/timeout (the
+			// failure case we most want to localize).
+			let availAtFail: number | null = null;
+			try { availAtFail = availGb(await deps.hardwareInfo()); } catch { /* probe */ }
+			r.loadDetail = r.loadDetail ?? {
+				availPreLoadGb: availPreLoad,
+				availAtFailureGb: availAtFail,
+				usedBeforeFailureGb:
+					availPreLoad !== null && availAtFail !== null
+						? Math.round((availPreLoad - availAtFail) * 1000) / 1000
+						: null,
+			};
 		}
 		await trackMem();
 		models.push(r);
