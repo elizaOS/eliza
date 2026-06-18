@@ -27,6 +27,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.net.HttpURLConnection;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -961,6 +963,28 @@ public class ElizaAgentService extends Service {
                 return;
             }
 
+            // Detached agents outlive the service/app process that launched
+            // them. If a prior instance's agent is still bound to the loopback
+            // port, ADOPT it instead of relaunching: launch.sh pkills any
+            // running bun before forking a fresh one, so a needless relaunch
+            // tears the live HTTP listener down for tens of seconds and the
+            // WebView's /api/auth/me startup probe fails with "Backend
+            // Unreachable". That is the emulator e2e churn — the Activity/FGS
+            // gets recreated mid-run and onStartCommand → startAgentProcess
+            // would relaunch a perfectly healthy agent. Gate on the raw TCP
+            // listener (not /api/health), so a bun that is alive but busy
+            // mid-llama_decode — when an HTTP probe would time out — is still
+            // recognised as running and left alone.
+            if (detachedAgentMode && isLoopbackAgentListening()) {
+                if (!"running".equals(currentStatus)) {
+                    currentStatus = "running";
+                    updateNotification();
+                }
+                Log.i(TAG, "Detached agent already listening on port " + AGENT_PORT
+                    + "; adopting it (no relaunch).");
+                return;
+            }
+
             String abi = resolveRuntimeAbi();
             try {
                 extractAssetsIfNeeded(abi);
@@ -1814,6 +1838,25 @@ public class ElizaAgentService extends Service {
         }, "ElizaAgent-detached-startup-probe");
         probe.setDaemon(true);
         probe.start();
+    }
+
+    /**
+     * Quick liveness probe for an already-running detached agent: can a TCP
+     * connection be opened to the loopback agent port? Unlike {@link
+     * #probeHealth()} this only completes the socket handshake, so it returns
+     * true even while bun is busy inside a synchronous native call
+     * (mid-llama_decode) and the HTTP layer is unresponsive — precisely the
+     * state we must NOT mistake for a dead agent and relaunch over. Used by
+     * {@link #startAgentProcess()} to adopt a surviving detached agent instead
+     * of killing + restarting it when the service/Activity is recreated.
+     */
+    private boolean isLoopbackAgentListening() {
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress("127.0.0.1", AGENT_PORT), 2000);
+            return true;
+        } catch (IOException ignored) {
+            return false;
+        }
     }
 
     private ProbeResult probeHealth() {
