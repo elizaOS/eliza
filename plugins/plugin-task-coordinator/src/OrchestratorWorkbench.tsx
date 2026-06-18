@@ -434,6 +434,21 @@ function getClientErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
+/**
+ * True when the connected agent simply doesn't serve the orchestrator backend
+ * (a 404 on its routes) — e.g. a local on-device agent without
+ * agent-orchestrator. This is NOT a failure: the workbench runs against
+ * whatever agent the client points at, so a cloud or desktop agent that has the
+ * backend just works. We surface a calm "connect a cloud/desktop agent" hint
+ * instead of a red error in that case.
+ */
+function isOrchestratorBackendAbsent(error: unknown): boolean {
+  const status = (error as { status?: unknown } | null)?.status;
+  if (status === 404) return true;
+  const msg = error instanceof Error ? error.message.toLowerCase() : "";
+  return msg === "not found" || msg.includes("404");
+}
+
 /** Merge timeline records by id and return them ascending by timestamp. */
 function mergeById<T extends { id: string; timestamp: number }>(
   previous: T[],
@@ -3291,6 +3306,9 @@ export function OrchestratorWorkbench() {
   const [loading, setLoading] = useState(true);
   const [mutating, setMutating] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // The connected agent doesn't serve the orchestrator backend (local on-device
+  // agent without it) — shown as a calm hint, not a red error.
+  const [backendAbsent, setBackendAbsent] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const isMobile = useIsMobile();
@@ -3326,16 +3344,25 @@ export function OrchestratorWorkbench() {
         setStatus(nextStatus);
         setTasks(nextTasks);
         setLoadError(null);
+        setBackendAbsent(false);
       } catch (error) {
         if (!silent) {
-          setLoadError(
-            getClientErrorMessage(
-              error,
-              t("orchestrator.loadFailed", {
-                defaultValue: "Failed to load orchestrator state.",
-              }),
-            ),
-          );
+          if (isOrchestratorBackendAbsent(error)) {
+            // Not a failure — this agent just doesn't run the orchestrator
+            // backend. Connect a cloud or desktop agent and it works.
+            setBackendAbsent(true);
+            setLoadError(null);
+          } else {
+            setBackendAbsent(false);
+            setLoadError(
+              getClientErrorMessage(
+                error,
+                t("orchestrator.loadFailed", {
+                  defaultValue: "Failed to load orchestrator state.",
+                }),
+              ),
+            );
+          }
         }
       } finally {
         if (!silent) setLoading(false);
@@ -3749,6 +3776,14 @@ export function OrchestratorWorkbench() {
         locale={locale}
       />
 
+      {backendAbsent ? (
+        <div className="border-b border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/55">
+          {t("orchestrator.backendAbsent", {
+            defaultValue:
+              "The orchestrator runs on a cloud or desktop agent. Connect one to create and manage multi-agent tasks.",
+          })}
+        </div>
+      ) : null}
       {loadError ? (
         <div className="border-b border-danger/30 bg-danger/10 px-3 py-1.5 text-xs text-danger">
           {loadError}

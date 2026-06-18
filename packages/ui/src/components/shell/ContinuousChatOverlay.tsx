@@ -1082,6 +1082,14 @@ export function ContinuousChatOverlay({
         }
         return;
       }
+      // From the collapsed input, a downward drag has nothing to "size" below
+      // it — collapse straight to the pill (matches the flick-down path).
+      if (!sheetOpen && direction === "down") {
+        setPilled(true);
+        inputRef.current?.blur();
+        detentHaptic();
+        return;
+      }
       const h = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
       if (h < 28) {
         // Dragged essentially shut → collapse to the input peek.

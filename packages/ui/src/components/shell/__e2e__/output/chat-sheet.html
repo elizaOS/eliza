@@ -25296,7 +25296,7 @@
         }
         if (onSettleFree) {
           onSettleFree(deltaUp > 0 ? "up" : "down");
-        } else if (deltaUp >= distanceThreshold) {
+        } else if (moved >= distanceThreshold) {
           if (deltaUp > 0) onPullUp?.();
           else onPullDown?.();
         } else {
@@ -26053,6 +26053,12 @@
             setPilled(false);
             settleDrag();
           }
+          return;
+        }
+        if (!sheetOpen && direction === "down") {
+          setPilled(true);
+          inputRef.current?.blur();
+          detentHaptic();
           return;
         }
         const h = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
