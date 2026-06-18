@@ -623,6 +623,7 @@ export function useFirstRunController(): FirstRunController {
         name,
         bio,
         onProgress: () => {},
+        allowSharedRuntime: true,
       });
       const cloudAgentApiBase = resolveCloudAgentApiBase({
         bridgeUrl: provisionedAgent.bridgeUrl,
