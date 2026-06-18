@@ -77,12 +77,20 @@ export interface EvaluateOptions {
   store?: SpatialStateStore;
   /** Called by a `useSpatialState` setter so the host can re-snapshot. */
   requestRender?: () => void;
+  /**
+   * When provided, button `onPress` handlers are recorded here keyed by the
+   * button's agent id — so a terminal host can activate a focused button by
+   * firing its handler (the IR itself carries no handlers). Cleared/owned by
+   * the caller.
+   */
+  handlers?: Map<string, () => void>;
 }
 
 interface EvalContext {
   path: string;
   store: SpatialStateStore | null;
   requestRender: (() => void) | null;
+  handlers: Map<string, () => void> | null;
 }
 
 /**
@@ -99,6 +107,7 @@ export function evaluateToSpatialTree(
     path: "",
     store: options.store ?? null,
     requestRender: options.requestRender ?? null,
+    handlers: options.handlers ?? null,
   };
   const nodes = evalNode(element, ctx, 0);
   if (nodes.length === 1) return nodes[0];
@@ -233,11 +242,17 @@ function buildPrimitiveNode(
         props as never,
         flattenText(props.children as ReactNode),
       );
-    case "button":
-      return buildButtonSpec(
+    case "button": {
+      const node = buildButtonSpec(
         props as never,
         flattenText(props.children as ReactNode),
       );
+      const onPress = (props as { onPress?: () => void }).onPress;
+      if (ctx.handlers && node.agent?.id && typeof onPress === "function") {
+        ctx.handlers.set(node.agent.id, onPress);
+      }
+      return node;
+    }
     case "field":
       return buildFieldSpec(props as never);
     case "divider":

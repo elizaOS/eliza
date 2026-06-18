@@ -71,7 +71,7 @@ function readObservable(
 
 export function TutorialOverlay(): React.ReactElement | null {
   const { active, stepIndex, mode } = useTutorial();
-  const tab = useApp().tab;
+  const { tab, setTab } = useApp();
 
   const [secondsOnStep, setSecondsOnStep] = React.useState(0);
   const [succeeded, setSucceeded] = React.useState(false);
@@ -87,6 +87,16 @@ export function TutorialOverlay(): React.ReactElement | null {
       goToStep(stepIndex + 1);
     }
   }, [stepIndex]);
+
+  // Manual Continue: if the step would normally advance by the user navigating
+  // somewhere (e.g. "open settings"), perform that navigation on their behalf so
+  // the fallback actually takes them there, then advance.
+  const handleManualContinue = React.useCallback(() => {
+    if (step?.advanceNavigateTo) {
+      setTab(step.advanceNavigateTo);
+    }
+    advance();
+  }, [step, setTab, advance]);
 
   // First-run auto-launch: once ever, the first time a brand-new user lands on
   // the home base (tab "chat"), start the tour after a short beat so the home
@@ -167,7 +177,7 @@ export function TutorialOverlay(): React.ReactElement | null {
       }
       onToggleMode={() => setTutorialMode(mode === "voice" ? "text" : "voice")}
       onSkip={stopTutorial}
-      onContinue={showContinue ? advance : undefined}
+      onContinue={showContinue ? handleManualContinue : undefined}
       continueLabel={isLast ? "Done" : step.continueLabel}
     />
   );
