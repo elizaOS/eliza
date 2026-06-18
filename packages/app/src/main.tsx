@@ -1326,6 +1326,13 @@ function initializeAppLifecycle(): void {
     CapacitorApp.addListener("backButton", ({ canGoBack }) => {
       if (canGoBack) {
         window.history.back();
+      } else {
+        // At the root view the hardware back button was a no-op (the app felt
+        // frozen). Match Android convention: send the app to the background
+        // (minimize) rather than killing it, so the agent + state survive.
+        void CapacitorApp.minimizeApp().catch(() => {
+          // minimizeApp is Android-only; ignore where unavailable.
+        });
       }
     }),
   ).catch((error) => {
