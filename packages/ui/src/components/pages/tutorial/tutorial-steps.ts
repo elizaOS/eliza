@@ -42,6 +42,13 @@ export interface TutorialStep {
   continueLabel?: string;
   /** Show the Continue fallback after N seconds even on auto-detected steps. */
   continueAfterSec?: number;
+  /**
+   * When the user advances this step MANUALLY (the Continue fallback) rather than
+   * doing the action themselves, navigate to this tab first — so a "Take me to
+   * Settings" fallback actually lands them there instead of stranding them on the
+   * next step's screen. Not applied on auto-detected success (they already moved).
+   */
+  advanceNavigateTo?: string;
   /** In voice mode, the command the user should speak for this step. */
   voiceCommandHint?: string;
 }
@@ -61,13 +68,13 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: "meet-chat",
     title: "This is your chat",
-    body: "The glowing capsule floats over every screen — it's how you talk to Eliza by text or voice. Tap it to open the chat.",
+    body: "The bar at the bottom is your chat — it floats over every screen and is how you talk to Eliza by text or voice. Tap it, then continue.",
     voiceLine:
-      "See the glowing capsule? That's your chat. It floats over every screen. Tap it now to open it.",
-    targetSelector: '[data-testid="chat-pill"]',
-    blockOutside: true,
-    isComplete: (s) => s.chatOpen && !s.chatPilled,
-    continueAfterSec: 12,
+      "The bar at the bottom is your chat. It floats over every screen and it's how you talk to Eliza, by text or voice. Tap it, then press continue.",
+    targetSelector: '[data-testid="chat-composer-textarea"]',
+    blockOutside: false,
+    manualContinue: true,
+    continueLabel: "Got it",
   },
   {
     id: "expand-chat",
@@ -78,18 +85,29 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     targetSelector: '[data-testid="chat-sheet-grabber"]',
     blockOutside: true,
     isComplete: (s) => s.chatExpanded,
-    continueAfterSec: 14,
+    continueAfterSec: 12,
   },
   {
     id: "minimize-chat",
-    title: "Shrink it back",
-    body: "Swipe down on the handle (or tap it) to collapse the chat back into the floating pill. It's never in your way.",
+    title: "Shrink it to a pill",
+    body: "Now swipe down on the handle (or tap it) to collapse the whole chat into a small floating pill, out of your way.",
     voiceLine:
-      "Great. Now shrink it back down. Swipe down on the handle, or tap it, to collapse the chat into the little pill.",
+      "Great. Now shrink it down. Swipe down on the handle, or tap it, to collapse the chat into a small floating pill.",
     targetSelector: '[data-testid="chat-sheet-grabber"]',
     blockOutside: true,
     isComplete: (s) => s.chatPilled,
-    continueAfterSec: 14,
+    continueAfterSec: 12,
+  },
+  {
+    id: "reopen-chat",
+    title: "Bring it back",
+    body: "There's your pill. Tap it to open the chat again — it's always one tap away, on every screen.",
+    voiceLine:
+      "There's your pill. Tap it to open the chat again. It's always one tap away, on every screen.",
+    targetSelector: '[data-testid="chat-pill"]',
+    blockOutside: true,
+    isComplete: (s) => s.chatOpen && !s.chatPilled,
+    continueAfterSec: 12,
   },
   {
     id: "switch-by-text",
@@ -103,6 +121,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     manualContinue: true,
     continueAfterSec: 18,
     continueLabel: "Take me to Settings",
+    advanceNavigateTo: "settings",
     voiceCommandHint: "open settings",
   },
   {
@@ -124,11 +143,11 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
       "Let's try voice. Tap the microphone in the chat and say, go home. Eliza will take you there, hands free.",
     targetSelector: '[data-testid="chat-pill"]',
     blockOutside: false,
-    isComplete: (s) =>
-      s.tab === "home" || s.tab === "views" || s.tab === "chat",
+    isComplete: (s) => s.tab === "chat" || s.tab === "views",
     manualContinue: true,
     continueAfterSec: 16,
     continueLabel: "Skip voice",
+    advanceNavigateTo: "chat",
     voiceCommandHint: "go home",
   },
   {
