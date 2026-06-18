@@ -1042,6 +1042,65 @@ const EMPTY_LIFEOPS_CHANNEL_COUNTS = {
   x_dm: { total: 0, unread: 0 },
 };
 
+// Valid populated DTOs for the three /api/lifeops/sleep/* endpoints so the
+// decomposed HealthView lands on its `health-populated` branch (latest night,
+// regularity, baseline) instead of the empty/connect-a-source branch. Shapes
+// mirror LifeOpsSleepHistoryResponse / LifeOpsSleepRegularityResponse /
+// LifeOpsPersonalBaselineResponse from @elizaos/plugin-health.
+function populatedSleepHistory(windowDays: number) {
+  return {
+    episodes: [
+      {
+        id: "smoke-sleep-1",
+        startedAt: "2026-01-01T23:30:00.000Z",
+        endedAt: "2026-01-02T07:15:00.000Z",
+        durationMin: 465,
+        cycleType: "overnight",
+        source: "health",
+        confidence: 0.92,
+      },
+    ],
+    summary: {
+      cycleCount: 6,
+      averageDurationMin: 452,
+      overnightCount: 6,
+      napCount: 0,
+      openCount: 0,
+    },
+    windowDays,
+    includeNaps: true,
+  };
+}
+
+function populatedSleepRegularity(windowDays: number) {
+  return {
+    sri: 78.4,
+    classification: "regular",
+    bedtimeStddevMin: 42,
+    wakeStddevMin: 31,
+    midSleepStddevMin: 36,
+    sampleSize: 6,
+    windowDays,
+  };
+}
+
+function populatedSleepBaseline(windowDays: number) {
+  return {
+    medianBedtimeLocalHour: 23.5,
+    medianWakeLocalHour: 7.25,
+    medianSleepDurationMin: 452,
+    bedtimeStddevMin: 42,
+    wakeStddevMin: 31,
+    sampleSize: 6,
+    windowDays,
+  };
+}
+
+function sleepWindowDaysFromUrl(rawUrl: string): number {
+  const parsed = Number(new URL(rawUrl).searchParams.get("windowDays"));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 14;
+}
+
 // Valid empty-state SelfControlStatus (engine available, no active block) so the
 // decomposed FocusView lands on its `focus-empty` branch ("No active focus
 // session.") instead of the unavailable/disconnected branch.
@@ -2370,7 +2429,9 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ entries: [], items: [] }),
+      body: JSON.stringify(
+        populatedSleepHistory(sleepWindowDaysFromUrl(route.request().url())),
+      ),
     });
   });
 
@@ -2382,11 +2443,9 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({
-        score: null,
-        items: [],
-        generatedAt: SMOKE_GENERATED_AT,
-      }),
+      body: JSON.stringify(
+        populatedSleepRegularity(sleepWindowDaysFromUrl(route.request().url())),
+      ),
     });
   });
 
@@ -2398,7 +2457,9 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ baseline: null, generatedAt: SMOKE_GENERATED_AT }),
+      body: JSON.stringify(
+        populatedSleepBaseline(sleepWindowDaysFromUrl(route.request().url())),
+      ),
     });
   });
 
