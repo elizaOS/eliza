@@ -303,6 +303,24 @@ export function requiresHeadscaleRoute(
   );
 }
 
+/**
+ * Whether the sandbox should actively enroll in the Headscale/tailnet VPN
+ * (inject TS_AUTHKEY, add the tun device + NET_ADMIN cap, and wait for a
+ * headscale_ip).
+ *
+ * Requires a configured `HEADSCALE_API_KEY` *and* that the operator has not
+ * explicitly opted into legacy bridge-host routing. Gating on the fallback
+ * flag here — not just in {@link requiresHeadscaleRoute} — keeps the escape
+ * hatch internally consistent: without it, `AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK`
+ * only relaxes the "must register a headscale_ip" guard while TS_AUTHKEY is
+ * still injected, so the container entrypoint hard-`tailscale up`s and dies
+ * under `set -e` when headscale is unreachable — the exact failure the flag is
+ * meant to bypass on nodes that aren't on the mesh.
+ */
+export function headscaleVpnEnabled(env: HeadscaleRouteEnv): boolean {
+  return hasConfiguredValue(env.HEADSCALE_API_KEY) && !isBridgeHostFallbackEnabled(env);
+}
+
 function buildStewardRefreshCommand(
   containerName: string,
   agentId: string,
@@ -786,7 +804,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     // HEADSCALE_API_KEY presence check and the route-required decision read
     // from one consistent view of the environment.
     const headscaleRouteRequired = requiresHeadscaleRoute(env);
-    const headscaleEnabled = !!env.HEADSCALE_API_KEY?.trim();
+    const headscaleEnabled = headscaleVpnEnabled(env);
     if (headscaleRouteRequired && !headscaleEnabled) {
       const errorMessage =
         "Headscale routing is required for this cloud environment, but HEADSCALE_API_KEY is not configured. " +
