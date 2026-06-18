@@ -1,9 +1,11 @@
+/* Tailwind v4 — single import (the v3 `@tailwind base/components/utilities`
+   directives are dead in v4 and generate NO utilities, which left the whole app
+   unstyled). `@config` keeps the legacy tailwind.config.ts theme (primary/accent
+   colors + animations) active. */
 /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind CSS directive processed by PostCSS. */
-@tailwind base;
+@import "tailwindcss";
 /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind CSS directive processed by PostCSS. */
-@tailwind components;
-/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind CSS directive processed by PostCSS. */
-@tailwind utilities;
+@config "../tailwind.config.ts";
 
 :root {
   --background: #ffffff;
