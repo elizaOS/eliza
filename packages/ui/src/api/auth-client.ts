@@ -10,6 +10,7 @@
 
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { getBootConfig } from "../config/boot-config";
+import { isDirectCloudSharedAgentBase } from "./client-cloud";
 import { fetchWithCsrf } from "./csrf-client";
 
 // ── Shared response shapes ────────────────────────────────────────────────────
@@ -287,6 +288,23 @@ export async function authLogout(): Promise<AuthLogoutResult> {
  * show a backend failure instead of a misleading credential prompt.
  */
 export async function authMe(): Promise<AuthMeResult> {
+  // A serverless shared-runtime cloud agent has no agent server, so /api/auth/me
+  // 404s and the startup auth probe fails "Backend Unreachable". The cloud API
+  // key (validated per-request by the cloud API) IS the auth here — there's no
+  // per-agent password/session gate to satisfy. Report authenticated (machine
+  // identity = the API-key-authed cloud caller) so auth-checking passes.
+  if (isDirectCloudSharedAgentBase(authBase())) {
+    return {
+      ok: true,
+      identity: { id: "cloud", displayName: "Eliza Cloud", kind: "machine" },
+      session: { id: "cloud", kind: "machine", expiresAt: null },
+      access: {
+        mode: "session",
+        passwordConfigured: true,
+        ownerConfigured: true,
+      },
+    };
+  }
   // Prefer typed Electrobun RPC. The bun-side composer throws
   // AgentNotReadyError if the agent has no port yet — we catch and
   // fall through to HTTP, which then surfaces a transport error to
