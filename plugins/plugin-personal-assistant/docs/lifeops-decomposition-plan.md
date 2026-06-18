@@ -288,6 +288,23 @@ calendar/finances) w/ all states + floating-chat; the core action-resolution
 unblock; platform P0 wiring; recorded+live contract tests for 5 connectors. All
 pushed to origin/develop.
 
+### Session 2026-06-17 (round 3) — view sweep complete + pushed
+Built the remaining safely-buildable decomposed views (each fetches an EXISTING
+PA route, all states + agent-surface + VIEW_ACTION_MAP + ui-smoke mock, no schema
+risk, no PA import): `0888ee938b` finances, DocumentsView, `65cc9e32aa` inbox,
+`df02505487` goals. **7 production-grade decomposed views total** now:
+blocker(focus)/health/calendar/finances/documents/inbox/goals.
+VIEW_ACTION_MAP: calendar/health/focus/finances/inbox/goals wired (documents
+SKIPPED — OWNER_DOCUMENTS is const-derived, would fail the drift guard).
+
+**TodosView is BLOCKED** — there is no `/api/lifeops/todos` list route (reminders
+routes are acknowledge/inspection/process only), so todos can't fetch real data
+until its data layer extracts. relationships/remote-desktop have no UI by design.
+
+So the VIEW dimension is essentially done for everything that has a data source;
+what remains is the back-end extraction (schema carve-out + repo/services/action
+moves), which unblocks todos' view and makes the others' data plugin-owned.
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
