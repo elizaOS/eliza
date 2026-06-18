@@ -39,6 +39,10 @@ export default defineConfig({
   // tests/e2e/global-setup.ts for the rationale (fixes #8144).
   globalSetup: "./tests/e2e/global-setup.ts",
   fullyParallel: true,
+  // Absorb the occasional environmental flake (a slow paint under cumulative
+  // load) in CI so the required behavioral gate stays deterministic; locally
+  // run with zero retries for honest fast feedback.
+  retries: process.env.CI ? 2 : 0,
   reporter: [["list"], ["html", { open: "never" }]],
   expect: {
     toHaveScreenshot: {

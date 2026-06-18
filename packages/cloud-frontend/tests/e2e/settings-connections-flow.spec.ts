@@ -209,14 +209,29 @@ test("connections: Telegram connect POSTs /api/v1/telegram/connect with the bot 
 
   await gotoConnections(page);
 
-  // The Telegram setup form exposes #botToken + a "Connect Telegram Bot" button.
-  const tokenInput = page.locator("#botToken").first();
+  // The settings dashboard mounts the connections tab content twice (a
+  // responsive desktop + mobile pair), so the page actually has TWO #botToken
+  // inputs but only one visible "Connect Telegram Bot" button — each belongs to
+  // a different <TelegramConnection> React instance with its own `botToken`
+  // state. Filling `#botToken`.first() updates one instance while the visible
+  // button belongs to the other, so the button stays `disabled` (it gates on
+  // `!botToken.trim()` of its OWN instance) and the click times out. Scope both
+  // the fill and the click to the SAME setup-form card (the one that contains
+  // both the input and the button) so they hit the same instance.
+  const connectButton = page.getByRole("button", {
+    name: /connect telegram bot/i,
+  });
+  const telegramSetup = page
+    .locator("div.space-y-4")
+    .filter({ has: connectButton })
+    .filter({ has: page.locator("#botToken") })
+    .last();
+  const tokenInput = telegramSetup.locator("#botToken");
   await expect(tokenInput).toBeVisible({ timeout: 15_000 });
   await tokenInput.fill("123456789:ABCdefGHIjklMNOpqrsTUVwxyz");
 
-  await page
+  await telegramSetup
     .getByRole("button", { name: /connect telegram bot/i })
-    .first()
     .click();
 
   await expect

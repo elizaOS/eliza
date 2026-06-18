@@ -93,7 +93,9 @@ async function installBaseApiMocks(
   await page.route(
     (url) => url.pathname.startsWith("/api/"),
     (route) => {
-      if (new URL(route.request().url()).pathname === "/api/auth/steward-session") {
+      if (
+        new URL(route.request().url()).pathname === "/api/auth/steward-session"
+      ) {
         return route.fallback();
       }
       return route.fulfill({
@@ -185,14 +187,17 @@ test("passkey: signInWithPasskey first-time branch registers a passkey and redir
   // virtual authenticator's create() is not rejected for an rpId mismatch.
   await page.route(
     (url) => url.pathname.endsWith("/auth/passkey/login/options"),
-    (route) => route.fulfill({ status: 404, json: { ok: false, error: "no passkey" } }),
+    (route) =>
+      route.fulfill({ status: 404, json: { ok: false, error: "no passkey" } }),
   );
 
   let registerVerified = false;
   await page.route(
     (url) => url.pathname.endsWith("/auth/passkey/register/options"),
     (route) =>
-      route.fulfill({ json: passkeyRegisterOptions(new URL(route.request().url()).hostname) }),
+      route.fulfill({
+        json: passkeyRegisterOptions(new URL(route.request().url()).hostname),
+      }),
   );
   await page.route(
     (url) => url.pathname.endsWith("/auth/passkey/register/verify"),
@@ -238,7 +243,10 @@ test("magic link: signInWithEmail renders the email-sent step with a back button
     (route) => {
       emailSendCalled = true;
       return route.fulfill({
-        json: { ok: true, data: { expiresAt: new Date(Date.now() + 600_000).toISOString() } },
+        json: {
+          ok: true,
+          data: { expiresAt: new Date(Date.now() + 600_000).toISOString() },
+        },
       });
     },
   );
@@ -283,7 +291,8 @@ test("otp signup: passkey error → OTP code → addPasskey → redirect", async
   // catch falls through to startPasskeySignup() which calls sendEmailOtp.
   await page.route(
     (url) => url.pathname.endsWith("/auth/passkey/login/options"),
-    (route) => route.fulfill({ status: 500, json: { ok: false, error: "boom" } }),
+    (route) =>
+      route.fulfill({ status: 500, json: { ok: false, error: "boom" } }),
   );
 
   let otpSendCalled = false;
@@ -302,7 +311,10 @@ test("otp signup: passkey error → OTP code → addPasskey → redirect", async
       otpVerifyCalled = true;
       // verifyEmailOtp unwraps `data.emailGrant`.
       return route.fulfill({
-        json: { ok: true, data: { emailGrant: "grant_login_e2e", expiresInSeconds: 600 } },
+        json: {
+          ok: true,
+          data: { emailGrant: "grant_login_e2e", expiresInSeconds: 600 },
+        },
       });
     },
   );
@@ -313,7 +325,9 @@ test("otp signup: passkey error → OTP code → addPasskey → redirect", async
   await page.route(
     (url) => url.pathname.endsWith("/auth/passkey/register/options"),
     (route) =>
-      route.fulfill({ json: passkeyRegisterOptions(new URL(route.request().url()).hostname) }),
+      route.fulfill({
+        json: passkeyRegisterOptions(new URL(route.request().url()).hostname),
+      }),
   );
   await page.route(
     (url) => url.pathname.endsWith("/auth/passkey/register/verify"),
@@ -429,7 +443,9 @@ for (const provider of ["google", "discord", "github"] as const) {
 
     await expect.poll(() => authorizeUrl, { timeout: 10_000 }).toBeTruthy();
     const parsed = new URL(authorizeUrl as unknown as string);
-    expect(parsed.pathname.endsWith(`/auth/oauth/${provider}/authorize`)).toBe(true);
+    expect(parsed.pathname.endsWith(`/auth/oauth/${provider}/authorize`)).toBe(
+      true,
+    );
     expect(parsed.searchParams.get("response_type")).toBe("code");
     expect(parsed.searchParams.get("tenant_id")).toBe("elizacloud");
     expect(parsed.searchParams.get("code_challenge")).toBeTruthy();

@@ -39,6 +39,14 @@ test.beforeEach(async ({ context }) => {
       sameSite: "Lax",
     },
   ]);
+  // Mark the apps-page onboarding tour seen so its full-screen scrim never
+  // mounts to intercept clicks (the only tour, id "apps", path /dashboard/apps).
+  await context.addInitScript(() => {
+    localStorage.setItem(
+      "eliza-onboarding",
+      JSON.stringify({ completedTours: ["apps"], skippedTours: ["apps"] }),
+    );
+  });
 });
 
 test("app: Delete App row action sends DELETE for the app id", async ({
@@ -72,13 +80,6 @@ test("app: Delete App row action sends DELETE for the app id", async ({
 
   await page.goto("/dashboard/apps");
   await expect(page).not.toHaveURL(/\/login/);
-
-  // The first-run onboarding tour overlays the apps page and intercepts clicks.
-  await page
-    .getByRole("button", { name: /skip tour/i })
-    .first()
-    .click({ timeout: 8000 })
-    .catch(() => {});
 
   // The row's action menu trigger is labelled "Open actions" (sr-only).
   await page

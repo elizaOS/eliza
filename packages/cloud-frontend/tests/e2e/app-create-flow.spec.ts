@@ -27,6 +27,14 @@ test.beforeEach(async ({ context, browserName }) => {
       sameSite: "Lax",
     },
   ]);
+  // Mark the apps-page onboarding tour seen so its full-screen scrim never
+  // mounts to intercept clicks (the only tour, id "apps", path /dashboard/apps).
+  await context.addInitScript(() => {
+    localStorage.setItem(
+      "eliza-onboarding",
+      JSON.stringify({ completedTours: ["apps"], skippedTours: ["apps"] }),
+    );
+  });
   if (browserName === "chromium") {
     const origin = new URL(
       process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:4173",
@@ -79,13 +87,6 @@ test("app: create dialog → check-name → POST /api/v1/apps → reveals API ke
 
   await page.goto("/dashboard/apps");
   await expect(page).not.toHaveURL(/\/login/);
-
-  // The first-run onboarding tour overlays the apps page and intercepts clicks.
-  await page
-    .getByRole("button", { name: /skip tour/i })
-    .first()
-    .click({ timeout: 8000 })
-    .catch(() => {});
 
   // The "Create App" button lives inside a collapsed "Advanced" <details>
   // disclosure — open every disclosure, then click the now-visible button.

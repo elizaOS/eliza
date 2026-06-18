@@ -99,7 +99,10 @@ async function installRedemptionRoutes(
         operational: true,
         networks: { base: { available: true } },
         wallets: {
-          evm: { configured: true, address: "0xabc0000000000000000000000000000000000abc" },
+          evm: {
+            configured: true,
+            address: "0xabc0000000000000000000000000000000000abc",
+          },
           solana: { configured: false },
         },
       },
@@ -274,7 +277,9 @@ async function installInfraRoutes(
     `**/api/v1/admin/docker-nodes/${NODE_ID}/health-check`,
     (route) => {
       capture(route, sink);
-      return route.fulfill({ json: { success: true, data: { status: "healthy" } } });
+      return route.fulfill({
+        json: { success: true, data: { status: "healthy" } },
+      });
     },
   );
 
@@ -290,7 +295,9 @@ async function installInfraRoutes(
       capture(route, sink);
       return route.fulfill({ json: { success: true, data: {} } });
     }
-    return route.fulfill({ json: { success: true, data: { nodes: [dockerNode()] } } });
+    return route.fulfill({
+      json: { success: true, data: { nodes: [dockerNode()] } },
+    });
   });
 
   await page.route("**/api/v1/admin/infrastructure", (route) =>
@@ -311,6 +318,38 @@ async function installInfraRoutes(
     }),
   );
 
+  // The infra page also renders <WarmPoolPanel>, which fetches
+  // /api/v1/admin/warm-pool and reads `data.size.ready`. The generic catch-all
+  // returns `data: []`, which is truthy, so WarmPoolPanel does `[].size.ready`
+  // → "Cannot read properties of undefined (reading 'ready')" → the tab error
+  // boundary trips and the whole page renders "Something went wrong" (no node
+  // row). Serve a valid warm-pool snapshot so the panel renders cleanly.
+  await page.route("**/api/v1/admin/warm-pool", (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: {
+          enabled: true,
+          minPoolSize: 1,
+          maxPoolSize: 5,
+          image: "eliza/agent:latest",
+          size: { ready: 2, provisioning: 0, onCurrentImage: 2, stale: 0 },
+          forecast: {
+            bucketsHourly: [],
+            predictedRate: 0,
+            targetPoolSize: 2,
+          },
+          policy: {
+            forecastWindowHours: 6,
+            emaAlpha: 0.3,
+            idleScaleDownMs: 600_000,
+            replenishBurstLimit: 3,
+          },
+        },
+      },
+    }),
+  );
+
   await page.route(
     (url) => url.pathname.startsWith("/api/"),
     (route) => {
@@ -318,6 +357,7 @@ async function installInfraRoutes(
       if (p.startsWith("/api/v1/admin/docker-nodes")) return route.fallback();
       if (p === "/api/v1/admin/infrastructure") return route.fallback();
       if (p === "/api/v1/admin/headscale") return route.fallback();
+      if (p === "/api/v1/admin/warm-pool") return route.fallback();
       return route.fulfill({
         json: { success: true, data: [], items: [], balance: 100 },
       });
@@ -330,7 +370,9 @@ async function gotoInfra(page: import("@playwright/test").Page) {
   await expect(page).not.toHaveURL(/\/login/);
   await expect(page.getByText(/access denied/i)).toHaveCount(0);
   // The Nodes tab table renders the node id (font-mono) once data loads.
-  await expect(page.getByText(NODE_ID).first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(NODE_ID).first()).toBeVisible({
+    timeout: 20_000,
+  });
 }
 
 test("admin/infrastructure: node health-check POSTs to /:id/health-check", async ({
@@ -373,7 +415,9 @@ test("admin/infrastructure: delete node confirm sends DELETE for the node id", a
     .getByRole("button", { name: /^deregister$/i })
     .click();
 
-  await expect.poll(() => calls.find((c) => c.method === "DELETE")).toBeTruthy();
+  await expect
+    .poll(() => calls.find((c) => c.method === "DELETE"))
+    .toBeTruthy();
   expect(calls.find((c) => c.method === "DELETE")?.path).toBe(
     `/api/v1/admin/docker-nodes/${NODE_ID}`,
   );
@@ -487,34 +531,41 @@ test("admin/rpc-status: renders probes and Refresh re-fetches", async ({
 }) => {
   let getCount = 0;
   // NOTE: this page calls api("/admin/rpc-status") which does NOT prefix /api.
-  await page.route("**/admin/rpc-status", (route) => {
-    getCount += 1;
-    return route.fulfill({
-      json: {
-        success: true,
-        data: {
-          evm: [
-            {
-              network: "base",
-              chainId: 8453,
-              rpcUrl: "https://base.example/rpc",
-              rpcSource: "alchemy",
-              reachable: true,
-              latencyMs: 42,
-              latestBlock: "12345678",
-              hotWalletAddress: "0xfeed000000000000000000000000000000000feed",
-              hotWalletBalance: 1000,
-              error: null,
-            },
-          ],
-          solana: { rpcUrl: "https://solana.example/rpc", configured: true },
-          allReachable: true,
-          hotWalletAddress: "0xfeed000000000000000000000000000000000feed",
-          checkedAt: new Date().toISOString(),
+  // Match the EXACT pathname, not a `**/admin/rpc-status` glob — that glob also
+  // matches the document navigation to `/dashboard/admin/rpc-status`, which
+  // would fulfill the page load itself with this JSON (the browser then renders
+  // raw JSON text instead of the SPA, so the "RPC Status" heading never mounts).
+  await page.route(
+    (url) => url.pathname === "/admin/rpc-status",
+    (route) => {
+      getCount += 1;
+      return route.fulfill({
+        json: {
+          success: true,
+          data: {
+            evm: [
+              {
+                network: "base",
+                chainId: 8453,
+                rpcUrl: "https://base.example/rpc",
+                rpcSource: "alchemy",
+                reachable: true,
+                latencyMs: 42,
+                latestBlock: "12345678",
+                hotWalletAddress: "0xfeed000000000000000000000000000000000feed",
+                hotWalletBalance: 1000,
+                error: null,
+              },
+            ],
+            solana: { rpcUrl: "https://solana.example/rpc", configured: true },
+            allReachable: true,
+            hotWalletAddress: "0xfeed000000000000000000000000000000000feed",
+            checkedAt: new Date().toISOString(),
+          },
         },
-      },
-    });
-  });
+      });
+    },
+  );
 
   await page.route(
     (url) => url.pathname.startsWith("/api/"),
@@ -576,14 +627,35 @@ test("admin/metrics: renders KPI stats and a time-range switch re-fetches", asyn
     });
   });
 
+  // The metrics page also renders <CloudObservabilityPanel>, which fetches
+  // /api/v1/admin/cloud-observability and does `data.requests.slice(0, 8)`. The
+  // generic catch-all returns `data: []`, so the panel does `[].requests.slice`
+  // → "Cannot read properties of undefined (reading 'slice')" → the page falls
+  // into the error boundary and "Controls" never renders. Serve a valid (empty)
+  // telemetry snapshot so the panel renders cleanly.
+  await page.route("**/api/v1/admin/cloud-observability**", (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: {
+          generatedAt: new Date().toISOString(),
+          thresholds: { slowRequestMs: 500, slowDbMs: 100, dbBurstCount: 10 },
+          requests: [],
+          slowRequests: [],
+          slowDb: [],
+          burstyRequests: [],
+          duplicateReadRequests: [],
+        },
+      },
+    }),
+  );
+
   await page.route(
     (url) => url.pathname.startsWith("/api/"),
     (route) => {
-      if (
-        new URL(route.request().url()).pathname.startsWith(
-          "/api/v1/admin/metrics",
-        )
-      ) {
+      const p = new URL(route.request().url()).pathname;
+      if (p.startsWith("/api/v1/admin/metrics")) return route.fallback();
+      if (p.startsWith("/api/v1/admin/cloud-observability")) {
         return route.fallback();
       }
       return route.fulfill({
@@ -606,6 +678,9 @@ test("admin/metrics: renders KPI stats and a time-range switch re-fetches", asyn
   // (The page also has a "Refresh" button, but a sibling observability panel
   // renders its own "Refresh" first — a time-range button is metrics-specific.)
   const before = overviewCount;
-  await page.getByRole("button", { name: /^7 days$/i }).first().click();
+  await page
+    .getByRole("button", { name: /^7 days$/i })
+    .first()
+    .click();
   await expect.poll(() => overviewCount).toBeGreaterThan(before);
 });

@@ -201,12 +201,29 @@ async function installBillingRoutes(
     route.fulfill({ json: directWalletStatus }),
   );
 
+  // Catch-all for every other /api/* render-time call. Playwright runs route
+  // handlers last-registered-first, so this one fires before the specific mocks
+  // above — fall back to them for their exact paths (otherwise this generic
+  // `data: []` response shadows /api/v1/user and the billing page renders
+  // "No organization associated with this account").
+  const specificPaths = new Set([
+    "/api/v1/billing/settings",
+    "/api/v1/user",
+    "/api/credits/balance",
+    "/api/invoices/list",
+    "/api/crypto/status",
+    "/api/crypto/direct-payments",
+  ]);
   await page.route(
     (url) => url.pathname.startsWith("/api/"),
-    (route) =>
-      route.fulfill({
+    (route) => {
+      if (specificPaths.has(new URL(route.request().url()).pathname)) {
+        return route.fallback();
+      }
+      return route.fulfill({
         json: { success: true, data: [], items: [], balance: 100 },
-      }),
+      });
+    },
   );
 }
 
