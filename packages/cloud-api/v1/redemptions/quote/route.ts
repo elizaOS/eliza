@@ -195,6 +195,13 @@ app.get("/", async (c) => {
       canRedeem: availability.available && quoteResult.success,
     });
   } catch (error) {
+    // failureResponse maps unknown throws to a generic 500 and does NOT log;
+    // a thrown TWAP-oracle / payout-status failure would otherwise be invisible.
+    logger.error("[Redemption Quote] Quote threw", {
+      error: error instanceof Error ? error.message : String(error),
+      name: error instanceof Error ? error.name : undefined,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return failureResponse(c, error);
   }
 });
