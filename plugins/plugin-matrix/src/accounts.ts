@@ -171,6 +171,10 @@ export function resolveMatrixAccountSettings(
       base.accessToken ??
       (allowEnv ? stringSetting(runtime, "MATRIX_ACCESS_TOKEN") : undefined) ??
       "",
+    password:
+      account.password ??
+      base.password ??
+      (allowEnv ? stringSetting(runtime, "MATRIX_PASSWORD") : undefined),
     deviceId:
       account.deviceId ??
       base.deviceId ??
@@ -178,20 +182,31 @@ export function resolveMatrixAccountSettings(
     rooms: roomsValue(
       account.rooms ?? base.rooms ?? (allowEnv ? stringSetting(runtime, "MATRIX_ROOMS") : undefined)
     ),
+    verifyAllowlist: roomsValue(
+      account.verifyAllowlist ??
+        base.verifyAllowlist ??
+        (allowEnv ? stringSetting(runtime, "MATRIX_VERIFY_ALLOWLIST") : undefined)
+    ),
+    // boolean flags: read raw via getSetting (NOT stringSetting, which drops real booleans)
     autoJoin: boolValue(
       account.autoJoin ??
         base.autoJoin ??
-        (allowEnv ? stringSetting(runtime, "MATRIX_AUTO_JOIN") : undefined)
+        (allowEnv ? runtime.getSetting("MATRIX_AUTO_JOIN") : undefined)
     ),
     encryption: boolValue(
       account.encryption ??
         base.encryption ??
-        (allowEnv ? stringSetting(runtime, "MATRIX_ENCRYPTION") : undefined)
+        (allowEnv ? runtime.getSetting("MATRIX_ENCRYPTION") : undefined)
     ),
     requireMention: boolValue(
       account.requireMention ??
         base.requireMention ??
-        (allowEnv ? stringSetting(runtime, "MATRIX_REQUIRE_MENTION") : undefined)
+        (allowEnv ? runtime.getSetting("MATRIX_REQUIRE_MENTION") : undefined)
+    ),
+    personal: boolValue(
+      account.personal ??
+        base.personal ??
+        (allowEnv ? runtime.getSetting("MATRIX_PERSONAL") : undefined)
     ),
     enabled: boolValue(account.enabled ?? base.enabled, true),
   };

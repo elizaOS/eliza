@@ -129,6 +129,16 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     "MSTEAMS_APP_PASSWORD",
     "MATTERMOST_BOT_TOKEN",
     "MATTERMOST_BASE_URL",
+    // Matrix connector — only the genuine credentials live here (redactable
+    // secrets). The homeserver URL, user/room/device IDs, the verify-allowlist,
+    // and the behaviour flags are PUBLIC identifiers and are bridged as plain
+    // settings below (matrixPublicConfigKeys) — putting them in secrets makes the
+    // redaction layer blank them out wherever they appear in output (e.g. a DM
+    // room name "remilio ↔ @user:server" rendered as "[REDACTED:...]").
+    // MATRIX_ACCOUNTS stays a secret because its JSON embeds per-account tokens.
+    "MATRIX_ACCESS_TOKEN",
+    "MATRIX_PASSWORD",
+    "MATRIX_ACCOUNTS",
     // ElizaCloud secrets
     "ELIZAOS_CLOUD_API_KEY",
     "ELIZAOS_CLOUD_BASE_URL",
@@ -158,6 +168,31 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     const value = process.env[key];
     if (value?.trim()) {
       secrets[key] = value;
+    }
+  }
+
+  // Public connector identifiers + behaviour flags: bridged as plain settings so
+  // getSetting() still resolves them (settings is checked before env in
+  // getSetting), but the secrets-redaction layer — which only scans
+  // character.settings.secrets — leaves them intact. These are not credentials
+  // (homeserver URL, user/room/device IDs, the verify allow-list, on/off flags),
+  // so redacting them only corrupted output (room names, the agent's own id).
+  const matrixPublicConfigKeys = [
+    "MATRIX_HOMESERVER",
+    "MATRIX_USER_ID",
+    "MATRIX_DEVICE_ID",
+    "MATRIX_ROOMS",
+    "MATRIX_AUTO_JOIN",
+    "MATRIX_AUTO_REPLY",
+    "MATRIX_ENCRYPTION",
+    "MATRIX_REQUIRE_MENTION",
+    "MATRIX_VERIFY_ALLOWLIST",
+    "MATRIX_PERSONAL",
+  ];
+  for (const key of matrixPublicConfigKeys) {
+    const value = process.env[key];
+    if (value?.trim()) {
+      settings[key] = value;
     }
   }
 
