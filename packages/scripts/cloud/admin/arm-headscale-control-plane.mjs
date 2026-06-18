@@ -193,9 +193,9 @@ validateHttpsUrl("HEADSCALE_PUBLIC_URL", publicUrl);
 // are already env-correct on the workflow inputs — staging is :8080, prod :8081
 // — so the vhost upstream tracks listen_addr automatically with no extra flag.
 const headscaleHostname = new URL(publicUrl).hostname;
-const headscalePort = listenAddr.includes(":")
-  ? listenAddr.split(":").pop()
-  : listenAddr;
+// .pop() on the colon-split yields the port for "addr:port" and the whole
+// string for a bare "port" — no need to branch on includes(":").
+const headscalePort = listenAddr.split(":").pop();
 if (!/^\d+$/.test(headscalePort ?? ""))
   die(`could not derive headscale port from listen_addr '${listenAddr}'`);
 
