@@ -438,6 +438,28 @@ ownership. Per owner: stores→runtime; viewer+extras→plugin-relationships (vi
 already shipped). Distinct: core's environment Entity + plugin-relationships
 scaffold types are different concepts, left alone.
 
+### Session 2026-06-18 (round 12) — #20 COMPLETE: entity/relationship graph is a runtime primitive
+Three slices landed the owner directive ("entities/relationships mostly in the
+runtime; plugin-relationships holds the viewer + extras"):
+- Slice 1 `2ab980bd64`: KG types + merge engine → `@elizaos/shared/knowledge-graph`.
+- Slice 2: stores + schema → `@elizaos/agent` `KnowledgeGraphService` (serviceType
+  `eliza_knowledge_graph`, `resolveKnowledgeGraphService`); app_lifeops table names
+  kept (no data migration); PA's 8 consumers + routes resolve the runtime service;
+  zero `new EntityStore` left in PA. agent build + tests, PA build:types green.
+- Slice 3: plugin-relationships ENTITY/graph action made real as `KNOWLEDGE_GRAPH`
+  (avoids double-reg with PA's legacy-Rolodex `ENTITY`) + real entity-graph provider,
+  both over the runtime service; 31 tests.
+**The entity/relationship graph is now a runtime primitive consumed via
+runtime.getService.** plugin-relationships holds the viewer + graph-CRUD + provider.
+
+DECOMPOSITION now architecturally substantially COMPLETE: 5 domain backends
+(finances/inbox/goals/remote-desktop/blocker) + 9 production-grade views + the
+KG→runtime consolidation. What remains in PA is the legitimate chief-of-staff
+HUB (life.ts orchestration, brief/prioritize, scheduling spine, connector/channel
+registries, the cross-domain sub-backends [subscriptions/gmail-curation/goal-review],
+PA's legacy Rolodex ENTITY orchestration, identity-observations/context-graph) —
+the README's intended hub end-state. Those are orchestration, not domain primitives.
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
