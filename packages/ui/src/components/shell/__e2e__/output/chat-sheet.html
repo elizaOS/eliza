@@ -781,7 +781,7 @@
   var require_react_dom_production = __commonJS({
     "node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom.production.js"(exports) {
       "use strict";
-      var React8 = require_react();
+      var React9 = require_react();
       function formatProdErrorMessage(code) {
         var url = "https://react.dev/errors/" + code;
         if (1 < arguments.length) {
@@ -821,7 +821,7 @@
           implementation
         };
       }
-      var ReactSharedInternals = React8.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var ReactSharedInternals = React9.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       function getCrossOriginStringAs(as, input) {
         if ("font" === as) return "";
         if ("string" === typeof input)
@@ -957,7 +957,7 @@
     "node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom-client.production.js"(exports) {
       "use strict";
       var Scheduler = require_scheduler();
-      var React8 = require_react();
+      var React9 = require_react();
       var ReactDOM = require_react_dom();
       function formatProdErrorMessage(code) {
         var url = "https://react.dev/errors/" + code;
@@ -1148,7 +1148,7 @@
         return null;
       }
       var isArrayImpl = Array.isArray;
-      var ReactSharedInternals = React8.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var ReactSharedInternals = React9.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       var ReactDOMSharedInternals = ReactDOM.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       var sharedNotPendingObject = {
         pending: false,
@@ -12594,7 +12594,7 @@
           0 === i && attemptExplicitHydrationTarget(target);
         }
       };
-      var isomorphicReactPackageVersion$jscomp$inline_1840 = React8.version;
+      var isomorphicReactPackageVersion$jscomp$inline_1840 = React9.version;
       if ("19.2.5" !== isomorphicReactPackageVersion$jscomp$inline_1840)
         throw Error(
           formatProdErrorMessage(
@@ -12762,7 +12762,7 @@
   });
 
   // packages/ui/src/components/shell/__e2e__/chat-sheet-fixture.tsx
-  var React7 = __toESM(require_react(), 1);
+  var React8 = __toESM(require_react(), 1);
   var import_client = __toESM(require_client(), 1);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/createLucideIcon.mjs
@@ -22275,7 +22275,7 @@
   var animate = createScopedAnimate();
 
   // packages/ui/src/components/shell/ContinuousChatOverlay.tsx
-  var React6 = __toESM(require_react(), 1);
+  var React7 = __toESM(require_react(), 1);
 
   // packages/ui/src/chat/slash-menu.ts
   var NONE = {
@@ -25494,6 +25494,29 @@
     return twMerge(clsx(inputs));
   }
 
+  // packages/ui/src/state/view-chat-binding.ts
+  var React4 = __toESM(require_react(), 1);
+  function store() {
+    const g = globalThis;
+    const k = /* @__PURE__ */ Symbol.for("elizaos.ui.view-chat-binding");
+    const existing = g[k];
+    if (existing) return existing;
+    const created = { current: null, listeners: /* @__PURE__ */ new Set() };
+    g[k] = created;
+    return created;
+  }
+  function useViewChatBinding() {
+    const s = store();
+    return React4.useSyncExternalStore(
+      (l) => {
+        s.listeners.add(l);
+        return () => s.listeners.delete(l);
+      },
+      () => s.current,
+      () => s.current
+    );
+  }
+
   // packages/ui/src/bridge/electrobun-rpc.ts
   function getDesktopBridgeWindow() {
     const g = globalThis;
@@ -25576,16 +25599,16 @@
   }
 
   // packages/ui/src/components/shell/SlashCommandMenu.tsx
-  var React4 = __toESM(require_react(), 1);
+  var React5 = __toESM(require_react(), 1);
   var import_jsx_runtime6 = __toESM(require_jsx_runtime(), 1);
   var FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
   function useSlashMenu(draft, controller) {
-    const parsed = React4.useMemo(() => parseSlashDraft(draft), [draft]);
-    const matched = React4.useMemo(
+    const parsed = React5.useMemo(() => parseSlashDraft(draft), [draft]);
+    const matched = React5.useMemo(
       () => parsed.isSlash && parsed.hasSpace ? matchCommand(controller.commands, parsed.commandToken) : void 0,
       [parsed, controller.commands]
     );
-    const argInfo = React4.useMemo(() => {
+    const argInfo = React5.useMemo(() => {
       if (!matched) return null;
       const argIndex = activeArgIndex(matched, parsed);
       if (argIndex < 0) return null;
@@ -25597,11 +25620,11 @@
       return { arg, choices: filterArgChoices(all, parsed.argQuery) };
     }, [matched, parsed, controller]);
     const mode = !parsed.isSlash ? "none" : parsed.hasSpace ? argInfo ? "arg" : "none" : "command";
-    const commandResults = React4.useMemo(
+    const commandResults = React5.useMemo(
       () => mode === "command" ? filterCommands(controller.commands, parsed.commandToken) : [],
       [mode, controller.commands, parsed.commandToken]
     );
-    const items = React4.useMemo(() => {
+    const items = React5.useMemo(() => {
       if (mode === "command") {
         return commandResults.map((c) => ({
           id: c.key,
@@ -25622,13 +25645,13 @@
       }
       return [];
     }, [mode, commandResults, argInfo]);
-    const [activeIndex, setActiveIndexState] = React4.useState(0);
+    const [activeIndex, setActiveIndexState] = React5.useState(0);
     const itemsSignature = items.map((i) => i.id).join("|");
-    React4.useEffect(() => {
+    React5.useEffect(() => {
       setActiveIndexState(0);
     }, [itemsSignature]);
     const open = mode !== "none" && items.length > 0;
-    const setActiveIndex = React4.useCallback(
+    const setActiveIndex = React5.useCallback(
       (index) => {
         if (items.length === 0) return;
         const clamped = (index % items.length + items.length) % items.length;
@@ -25636,7 +25659,7 @@
       },
       [items.length]
     );
-    const move = React4.useCallback(
+    const move = React5.useCallback(
       (delta) => {
         if (items.length === 0) return;
         setActiveIndexState((prev) => {
@@ -25646,7 +25669,7 @@
       },
       [items.length]
     );
-    const complete = React4.useCallback(
+    const complete = React5.useCallback(
       (index = activeIndex) => {
         if (mode === "command") {
           const command = commandResults[index];
@@ -25660,7 +25683,7 @@
       },
       [activeIndex, mode, commandResults, argInfo, parsed]
     );
-    const resolve = React4.useCallback(
+    const resolve = React5.useCallback(
       (index = activeIndex) => {
         if (mode === "command") {
           const command = commandResults[index];
@@ -25802,7 +25825,7 @@
   }
 
   // packages/ui/src/components/shell/use-pull-gesture.ts
-  var React5 = __toESM(require_react(), 1);
+  var React6 = __toESM(require_react(), 1);
   var TAP_SLOP = 8;
   function usePullGesture(options) {
     const {
@@ -25814,15 +25837,15 @@
       distanceThreshold = 56,
       velocityThreshold = 0.5
     } = options;
-    const start = React5.useRef(null);
-    const onPointerDown = React5.useCallback((event) => {
+    const start = React6.useRef(null);
+    const onPointerDown = React6.useCallback((event) => {
       start.current = { y: event.clientY, t: performance.now() };
       try {
         event.currentTarget.setPointerCapture(event.pointerId);
       } catch {
       }
     }, []);
-    const onPointerMove = React5.useCallback(
+    const onPointerMove = React6.useCallback(
       (event) => {
         const s = start.current;
         if (!s || !onDrag) return;
@@ -25830,7 +25853,7 @@
       },
       [onDrag]
     );
-    const finish = React5.useCallback(
+    const finish = React6.useCallback(
       (event) => {
         const s = start.current;
         start.current = null;
@@ -26034,14 +26057,13 @@
           // zone reaches UP into the empty space above the panel (3× taller/wider
           // than the bar) so it's easy to grab without covering the edge buttons.
           // z-20 keeps it above the input row (z-10) so it always wins the drag.
-          "pointer-events-auto absolute left-1/2 top-0.5 z-20 -translate-x-1/2 flex cursor-grab touch-none select-none items-center justify-center px-16 py-2 active:cursor-grabbing",
-          "before:absolute before:-inset-x-4 before:-top-10 before:content-['']",
+          "pointer-events-auto absolute left-1/2 top-0.5 z-20 -translate-x-1/2 flex cursor-grab touch-none select-none items-center justify-center px-16 py-1 active:cursor-grabbing",
           // The hit zone reaches UP into the empty space above the panel (easy to
-          // grab) but stays SHALLOW downward so it never covers the textarea — a
-          // tap on the composer must land natively on the textarea to raise the
-          // keyboard (a programmatic focus from the handle wouldn't). Pull gestures
-          // start from the bar / the upward zone; pull DOWN there → pill.
-          "before:-bottom-2",
+          // grab) and stops at the handle's own bottom — it never reaches the
+          // vertically-centered textarea, so a tap on the composer lands natively
+          // on the textarea and raises the keyboard (a programmatic focus from the
+          // handle wouldn't). Pull gestures start from the bar / the upward zone.
+          "before:absolute before:-inset-x-4 before:-top-10 before:bottom-0 before:content-['']",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full"
         ),
         children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
@@ -26132,7 +26154,7 @@
   }
   var COPY_HOLD_MS = 420;
   var COPY_MOVE_CANCEL_PX = 10;
-  var ThreadLine = React6.memo(function ThreadLine2({
+  var ThreadLine = React7.memo(function ThreadLine2({
     message,
     floating,
     reduce,
@@ -26141,18 +26163,18 @@
   }) {
     const isUser = message.role === "user";
     const isAssistant = message.role === "assistant";
-    const [copied, setCopied] = React6.useState(false);
-    const holdTimer = React6.useRef(null);
-    const holdStart = React6.useRef(null);
-    const copiedTimer = React6.useRef(null);
-    const clearHold = React6.useCallback(() => {
+    const [copied, setCopied] = React7.useState(false);
+    const holdTimer = React7.useRef(null);
+    const holdStart = React7.useRef(null);
+    const copiedTimer = React7.useRef(null);
+    const clearHold = React7.useCallback(() => {
       if (holdTimer.current !== null) {
         window.clearTimeout(holdTimer.current);
         holdTimer.current = null;
       }
       holdStart.current = null;
     }, []);
-    React6.useEffect(
+    React7.useEffect(
       () => () => {
         if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
         if (copiedTimer.current !== null)
@@ -26295,9 +26317,11 @@
       send,
       canSend,
       recording,
-      toggleRecording,
       startRecording,
       stopRecording,
+      handsFree,
+      toggleHandsFree,
+      setDictationSink,
       transcript,
       speaking,
       agentVoiceMuted,
@@ -26308,44 +26332,45 @@
       clearConversation,
       stop
     } = controller;
-    const handleCopyMessage = React6.useCallback((text) => {
+    const handleCopyMessage = React7.useCallback((text) => {
       void copyTextToClipboard(text);
     }, []);
     const slash = slashProp ?? EMPTY_SLASH_CONTROLLER;
     const reduce = useReducedMotion() ?? false;
-    const [draft, setDraft] = React6.useState("");
-    const [slashDismissed, setSlashDismissed] = React6.useState(false);
-    const [sheetOpen, setSheetOpen] = React6.useState(false);
-    const [expanded, setExpanded] = React6.useState(false);
-    const [pilled, setPilled] = React6.useState(false);
-    const [freeH, setFreeH] = React6.useState(null);
-    const [maximized, setMaximized] = React6.useState(false);
-    const preFocusCollapsedRef = React6.useRef(true);
-    const [composerFocused, setComposerFocused] = React6.useState(false);
+    const [draft, setDraft] = React7.useState("");
+    const viewChatBinding = useViewChatBinding();
+    const [slashDismissed, setSlashDismissed] = React7.useState(false);
+    const [sheetOpen, setSheetOpen] = React7.useState(false);
+    const [expanded, setExpanded] = React7.useState(false);
+    const [pilled, setPilled] = React7.useState(false);
+    const [freeH, setFreeH] = React7.useState(null);
+    const [maximized, setMaximized] = React7.useState(false);
+    const preFocusCollapsedRef = React7.useRef(true);
+    const [composerFocused, setComposerFocused] = React7.useState(false);
     const threadHeight = useMotionValue(0);
-    const draggingRef = React6.useRef(false);
-    const [pushToTalkActive, setPushToTalkActive] = React6.useState(false);
-    const [pendingImages, setPendingImages] = React6.useState(
+    const draggingRef = React7.useRef(false);
+    const [pushToTalkActive, setPushToTalkActive] = React7.useState(false);
+    const [pendingImages, setPendingImages] = React7.useState(
       []
     );
-    const [imageError, setImageError] = React6.useState(null);
-    const endRef = React6.useRef(null);
-    const inputRef = React6.useRef(null);
-    const fileInputRef = React6.useRef(null);
-    const overlayRef = React6.useRef(null);
-    const panelRef = React6.useRef(null);
-    const threadRef = React6.useRef(null);
-    const focusThreadRef = React6.useRef(false);
-    const pushToTalkTimerRef = React6.useRef(null);
-    const pushToTalkActiveRef = React6.useRef(false);
-    const suppressMicClickRef = React6.useRef(false);
-    const visibleMessages = React6.useMemo(
+    const [imageError, setImageError] = React7.useState(null);
+    const endRef = React7.useRef(null);
+    const inputRef = React7.useRef(null);
+    const fileInputRef = React7.useRef(null);
+    const overlayRef = React7.useRef(null);
+    const panelRef = React7.useRef(null);
+    const threadRef = React7.useRef(null);
+    const focusThreadRef = React7.useRef(false);
+    const pushToTalkTimerRef = React7.useRef(null);
+    const pushToTalkActiveRef = React7.useRef(false);
+    const suppressMicClickRef = React7.useRef(false);
+    const visibleMessages = React7.useMemo(
       () => messages.filter((m2) => m2.content.trim()).slice(-MAX_RENDERED_MESSAGES),
       [messages]
     );
     const lastId = visibleMessages.at(-1)?.id ?? null;
     const lastContent = visibleMessages.at(-1)?.content ?? "";
-    const scrollPinnedIdRef = React6.useRef(lastId);
+    const scrollPinnedIdRef = React7.useRef(lastId);
     const booting = phase === "booting";
     const listening = phase === "listening";
     const responding = phase === "responding";
@@ -26355,7 +26380,7 @@
     const suggestions = usePromptSuggestions(messages, {
       enabled: suggestionsVisible
     });
-    React6.useEffect(
+    React7.useEffect(
       () => () => {
         if (pushToTalkTimerRef.current !== null) {
           window.clearTimeout(pushToTalkTimerRef.current);
@@ -26363,8 +26388,8 @@
       },
       []
     );
-    const wasOpenRef = React6.useRef(false);
-    React6.useLayoutEffect(() => {
+    const wasOpenRef = React7.useRef(false);
+    React7.useLayoutEffect(() => {
       const el = threadRef.current;
       if (!el) return;
       const isNewLine = lastId !== scrollPinnedIdRef.current;
@@ -26387,7 +26412,7 @@
         focusThreadRef.current = false;
       }
     }, [lastId, lastContent, sheetOpen]);
-    React6.useEffect(() => {
+    React7.useEffect(() => {
       const el = threadRef.current;
       if (!el || sheetOpen || typeof ResizeObserver === "undefined") return;
       const pin = () => {
@@ -26398,7 +26423,7 @@
       ro.observe(el);
       return () => ro.disconnect();
     }, [sheetOpen]);
-    const submitText = React6.useCallback(
+    const submitText = React7.useCallback(
       (text, images = []) => {
         const trimmed = text.trim();
         if (!trimmed && images.length === 0 || !canSend) return;
@@ -26419,10 +26444,10 @@
       },
       [canSend, send]
     );
-    const submit = React6.useCallback(() => {
+    const submit = React7.useCallback(() => {
       submitText(draft, pendingImages);
     }, [submitText, draft, pendingImages]);
-    const pickSuggestion = React6.useCallback(
+    const pickSuggestion = React7.useCallback(
       (text) => {
         if (!canSend) return;
         setDraft("");
@@ -26435,7 +26460,7 @@
       },
       [canSend, send]
     );
-    const addImageFiles = React6.useCallback((files) => {
+    const addImageFiles = React7.useCallback((files) => {
       void filesToImageAttachments(files).then((attachments) => {
         if (!attachments.length) return;
         setImageError(null);
@@ -26448,15 +26473,15 @@
         );
       });
     }, []);
-    const removeImage = React6.useCallback((index) => {
+    const removeImage = React7.useCallback((index) => {
       setPendingImages((prev) => prev.filter((_, i) => i !== index));
     }, []);
-    const clearPushToTalkTimer = React6.useCallback(() => {
+    const clearPushToTalkTimer = React7.useCallback(() => {
       if (pushToTalkTimerRef.current === null) return;
       window.clearTimeout(pushToTalkTimerRef.current);
       pushToTalkTimerRef.current = null;
     }, []);
-    const beginPushToTalkPress = React6.useCallback(
+    const beginPushToTalkPress = React7.useCallback(
       (event) => {
         if (hasDraft || recording || booting || event.button !== 0) return;
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -26465,12 +26490,12 @@
           pushToTalkTimerRef.current = null;
           pushToTalkActiveRef.current = true;
           setPushToTalkActive(true);
-          startRecording();
+          startRecording("dictate");
         }, 200);
       },
       [booting, clearPushToTalkTimer, hasDraft, recording, startRecording]
     );
-    const endPushToTalkPress = React6.useCallback(
+    const endPushToTalkPress = React7.useCallback(
       (event) => {
         clearPushToTalkTimer();
         if (!pushToTalkActiveRef.current) return;
@@ -26484,24 +26509,24 @@
       },
       [clearPushToTalkTimer, stopRecording]
     );
-    const handleMicClick = React6.useCallback(() => {
+    const handleMicClick = React7.useCallback(() => {
       if (suppressMicClickRef.current) {
         suppressMicClickRef.current = false;
         return;
       }
-      toggleRecording();
-    }, [toggleRecording]);
+      toggleHandsFree();
+    }, [toggleHandsFree]);
     const hasThread = visibleMessages.length > 0;
-    const readViewport = React6.useCallback(() => {
+    const readViewport = React7.useCallback(() => {
       if (typeof window === "undefined") return { height: 800, keyboardInset: 0 };
       const vv = window.visualViewport;
       const height = vv?.height ?? window.innerHeight;
       const keyboardInset2 = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
       return { height, keyboardInset: keyboardInset2 };
     }, []);
-    const [viewport, setViewport] = React6.useState(readViewport);
-    const [bottomPad, setBottomPad] = React6.useState(0);
-    React6.useEffect(() => {
+    const [viewport, setViewport] = React7.useState(readViewport);
+    const [bottomPad, setBottomPad] = React7.useState(0);
+    React7.useEffect(() => {
       if (typeof window === "undefined") return void 0;
       const sync = () => {
         setViewport(readViewport());
@@ -26532,7 +26557,7 @@
     const halfH = Math.round(viewportH * SHEET_HALF_VH);
     const detentH = !sheetOpen ? 0 : expanded ? openH : halfH;
     const baseH = freeH != null ? Math.min(freeH, panelMaxH) : detentH;
-    const clampHeight = React6.useCallback(
+    const clampHeight = React7.useCallback(
       (raw) => raw > openH ? openH + rubberBand(raw - openH) : Math.max(0, raw),
       [openH]
     );
@@ -26548,19 +26573,19 @@
     const panelRadius = useTransform(threadHeight, [0, 12], [9999, 24], {
       clamp: true
     });
-    const settleDrag = React6.useCallback(() => {
+    const settleDrag = React7.useCallback(() => {
       draggingRef.current = false;
       if (reduce) threadHeight.set(baseH);
       else animate(threadHeight, baseH, SHEET_SPRING);
     }, [threadHeight, baseH, reduce]);
-    const closeSheet = React6.useCallback(() => {
+    const closeSheet = React7.useCallback(() => {
       draggingRef.current = false;
       setFreeH(null);
       setMaximized(false);
       setSheetOpen(false);
       setExpanded(false);
     }, []);
-    React6.useEffect(() => {
+    React7.useEffect(() => {
       if (draggingRef.current) return;
       if (reduce) {
         threadHeight.set(baseH);
@@ -26569,7 +26594,7 @@
       const controls = animate(threadHeight, baseH, SHEET_SPRING);
       return () => controls.stop();
     }, [baseH, reduce]);
-    const goToDetent = React6.useCallback(
+    const goToDetent = React7.useCallback(
       (detent) => {
         draggingRef.current = false;
         setFreeH(null);
@@ -26581,19 +26606,27 @@
       },
       []
     );
-    const collapse = React6.useCallback(() => {
+    const collapse = React7.useCallback(() => {
       if (typeof document !== "undefined" && threadRef.current && document.activeElement instanceof HTMLElement && threadRef.current.contains(document.activeElement)) {
         document.activeElement.blur();
       }
       closeSheet();
       inputRef.current?.blur();
     }, [closeSheet]);
-    const expand = React6.useCallback(() => {
+    const expand = React7.useCallback(() => {
       if (!hasThread) return;
       preFocusCollapsedRef.current = !sheetOpen;
       setFreeH(null);
       setSheetOpen(true);
     }, [hasThread, sheetOpen]);
+    React7.useEffect(() => {
+      setDictationSink((text) => {
+        setDraft((current) => current ? `${current} ${text}` : text);
+        inputRef.current?.focus();
+        expand();
+      });
+      return () => setDictationSink(null);
+    }, [setDictationSink, expand]);
     const slashMenu = useSlashMenu(draft, slash);
     const isSlashDraft = parseSlashDraft(draft).isSlash;
     const slashOpen = slashMenu.open && !slashDismissed;
@@ -26604,10 +26637,10 @@
       "aria-controls": slashOpen ? "slash-command-listbox" : void 0,
       "aria-activedescendant": slashOpen && slashMenu.items[slashMenu.activeIndex] ? `slash-option-${slashMenu.items[slashMenu.activeIndex].id}` : void 0
     } : {};
-    React6.useEffect(() => {
+    React7.useEffect(() => {
       setSlashDismissed(false);
     }, [draft]);
-    const runExecution = React6.useCallback(
+    const runExecution = React7.useCallback(
       (exec) => {
         if (exec.kind === "send") {
           submitText(exec.text);
@@ -26632,26 +26665,29 @@
       },
       [slash, controller, submitText]
     );
-    const pickSlashItem = React6.useCallback(
+    const pickSlashItem = React7.useCallback(
       (index) => {
         const exec = slashMenu.resolve(index);
         if (exec) runExecution(exec);
       },
       [slashMenu, runExecution]
     );
-    React6.useEffect(() => {
+    React7.useEffect(() => {
       if (typeof document === "undefined") return void 0;
       const onPointerDown = (event) => {
         const input = inputRef.current;
         if (!input || document.activeElement !== input) return;
         const target = event.target;
         if (target && panelRef.current?.contains(target)) return;
+        if (target instanceof Element && target.closest('[data-testid="chat-sheet-grabber"]')) {
+          return;
+        }
         input.blur();
       };
       document.addEventListener("pointerdown", onPointerDown, true);
       return () => document.removeEventListener("pointerdown", onPointerDown, true);
     }, []);
-    React6.useEffect(() => {
+    React7.useEffect(() => {
       if (typeof document === "undefined" || !sheetOpen) return void 0;
       const onKey = (e) => {
         if (e.key === "Escape") {
@@ -26662,13 +26698,13 @@
       document.addEventListener("keydown", onKey);
       return () => document.removeEventListener("keydown", onKey);
     }, [sheetOpen, collapse]);
-    React6.useLayoutEffect(() => {
+    React7.useLayoutEffect(() => {
       const el = inputRef.current;
       if (!el) return;
       el.style.height = "auto";
       el.style.height = `${el.scrollHeight}px`;
     }, [draft]);
-    const onDragOffset = React6.useCallback(
+    const onDragOffset = React7.useCallback(
       (offset) => {
         if (pilled) return;
         draggingRef.current = true;
@@ -27139,6 +27175,7 @@
                                 value: draft,
                                 onChange: (e) => {
                                   setDraft(e.target.value);
+                                  viewChatBinding?.onQuery?.(e.target.value);
                                   if (e.target.value.trim().length > 0) expand();
                                 },
                                 onFocus: () => {
@@ -27189,7 +27226,7 @@
                                     collapse();
                                   }
                                 },
-                                placeholder: booting ? `Ask ${agentName} \u2014 waking up\u2026` : `Ask ${agentName}`,
+                                placeholder: booting ? `Ask ${agentName} \u2014 waking up\u2026` : viewChatBinding?.placeholder ?? `Ask ${agentName}`,
                                 "aria-label": "message",
                                 "data-testid": "chat-composer-textarea",
                                 "aria-describedby": booting ? "cc-booting-hint" : void 0,
@@ -27246,8 +27283,8 @@
                                   SoftButton,
                                   {
                                     glyph: MIC_GLYPH,
-                                    label: pushToTalkActive ? "release to send" : recording ? "stop listening" : "talk",
-                                    active: recording,
+                                    label: pushToTalkActive ? "release to send" : handsFree ? "end conversation" : recording ? "stop listening" : "talk",
+                                    active: recording || handsFree,
                                     disabled: booting,
                                     onClick: handleMicClick,
                                     onPointerDown: beginPushToTalkPress,
@@ -27341,19 +27378,20 @@
     }
   ] : SEED;
   function Harness() {
-    const [messages, setMessages] = React7.useState(
+    const [messages, setMessages] = React8.useState(
       startEmpty ? [] : SEED_WITH_FAILURE
     );
-    const [phase, setPhase] = React7.useState(initialPhase);
-    const [recording, setRecording] = React7.useState(initialRecording);
-    const [transcript, setTranscript] = React7.useState(initialTranscript);
-    const [agentVoiceMuted, setAgentVoiceMuted] = React7.useState(initialMuted);
-    React7.useEffect(() => {
+    const [phase, setPhase] = React8.useState(initialPhase);
+    const [recording, setRecording] = React8.useState(initialRecording);
+    const [handsFree, setHandsFree] = React8.useState(false);
+    const [transcript, setTranscript] = React8.useState(initialTranscript);
+    const [agentVoiceMuted, setAgentVoiceMuted] = React8.useState(initialMuted);
+    React8.useEffect(() => {
       console.log(
         `[fixture] phase=${phase} messages=${messages.length} recording=${recording}`
       );
     }, [phase, messages.length, recording]);
-    const send = React7.useCallback((text) => {
+    const send = React8.useCallback((text) => {
       const trimmed = text.trim();
       if (!trimmed) return;
       console.log(`[fixture] send: ${JSON.stringify(trimmed)}`);
@@ -27375,19 +27413,19 @@
         setPhase("summoned");
       }, 500);
     }, []);
-    const startRecording = React7.useCallback(() => {
+    const startRecording = React8.useCallback(() => {
       console.log("[fixture] startRecording");
       setRecording(true);
       setTranscript("tell me the plan for\u2026");
       setPhase("listening");
     }, []);
-    const stopRecording = React7.useCallback(() => {
+    const stopRecording = React8.useCallback(() => {
       console.log("[fixture] stopRecording");
       setRecording(false);
       setTranscript("");
       setPhase("summoned");
     }, []);
-    const toggleRecording = React7.useCallback(() => {
+    const toggleRecording = React8.useCallback(() => {
       setRecording((r2) => {
         const next = !r2;
         console.log(`[fixture] toggleRecording -> ${next}`);
@@ -27396,7 +27434,20 @@
         return next;
       });
     }, []);
-    const toggleAgentVoiceMute = React7.useCallback(() => {
+    const toggleHandsFree = React8.useCallback(() => {
+      setHandsFree((h) => {
+        const next = !h;
+        console.log(`[fixture] toggleHandsFree -> ${next}`);
+        setPhase(next ? "listening" : "summoned");
+        return next;
+      });
+    }, []);
+    const setDictationSink = React8.useCallback(
+      (_sink) => {
+      },
+      []
+    );
+    const toggleAgentVoiceMute = React8.useCallback(() => {
       setAgentVoiceMuted((m2) => {
         console.log(`[fixture] toggleAgentVoiceMute -> ${!m2}`);
         return !m2;
@@ -27407,14 +27458,19 @@
       messages,
       canSend: initialCanSend && phase !== "booting",
       recording,
+      handsFree,
       transcript,
       speaking: initialSpeaking,
       agentVoiceMuted,
+      needsAudioUnlock: false,
       send,
       toggleRecording,
+      toggleHandsFree,
+      setDictationSink,
       startRecording,
       stopRecording,
       toggleAgentVoiceMute,
+      unlockAudio: () => console.log("[fixture] unlockAudio"),
       openSettings: () => console.log("[fixture] openSettings"),
       clearConversation: () => console.log("[fixture] clearConversation"),
       stop: () => {

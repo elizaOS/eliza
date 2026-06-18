@@ -842,8 +842,13 @@ assert(sink.errors.length === 0, `no uncaught page errors (${sink.errors.length}
 if (sink.errors.length) for (const e of sink.errors) console.error(`  ⚠ ${e}`);
 assert(errorLevel.length === 0, `no error-level console messages (${errorLevel.length})`);
 assert(
-  sink.logs.some((l) => l.includes("[fixture] toggleRecording") || l.includes("startRecording")),
-  "fixture logged a recording interaction",
+  sink.logs.some(
+    (l) =>
+      l.includes("[fixture] toggleHandsFree") ||
+      l.includes("[fixture] toggleRecording") ||
+      l.includes("startRecording"),
+  ),
+  "fixture logged a voice interaction (mic tap → hands-free / recording)",
 );
 
 console.log(`\nScreenshots (${shot}) written to ${outDir}`);

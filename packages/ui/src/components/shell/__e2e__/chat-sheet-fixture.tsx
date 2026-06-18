@@ -106,6 +106,7 @@ function Harness(): React.JSX.Element {
   const [phase, setPhase] =
     React.useState<ShellController["phase"]>(initialPhase);
   const [recording, setRecording] = React.useState(initialRecording);
+  const [handsFree, setHandsFree] = React.useState(false);
   const [transcript, setTranscript] = React.useState(initialTranscript);
   const [agentVoiceMuted, setAgentVoiceMuted] = React.useState(initialMuted);
 
@@ -161,6 +162,24 @@ function Harness(): React.JSX.Element {
       return next;
     });
   }, []);
+  // A quick tap on the mic toggles the hands-free conversation loop (the mic
+  // re-opens after each spoken reply). The overlay's mic button reflects this
+  // via aria-pressed (active = recording || handsFree).
+  const toggleHandsFree = React.useCallback(() => {
+    setHandsFree((h) => {
+      const next = !h;
+      console.log(`[fixture] toggleHandsFree -> ${next}`);
+      setPhase(next ? "listening" : "summoned");
+      return next;
+    });
+  }, []);
+  // Push-to-talk dictation routes a final transcript into the composer draft.
+  // The overlay registers/clears the sink on mount/unmount — accept it as a
+  // no-op so the registration effect doesn't throw.
+  const setDictationSink = React.useCallback(
+    (_sink: ((text: string) => void) | null) => {},
+    [],
+  );
   const toggleAgentVoiceMute = React.useCallback(() => {
     setAgentVoiceMuted((m) => {
       console.log(`[fixture] toggleAgentVoiceMute -> ${!m}`);
@@ -173,14 +192,19 @@ function Harness(): React.JSX.Element {
     messages,
     canSend: initialCanSend && phase !== "booting",
     recording,
+    handsFree,
     transcript,
     speaking: initialSpeaking,
     agentVoiceMuted,
+    needsAudioUnlock: false,
     send,
     toggleRecording,
+    toggleHandsFree,
+    setDictationSink,
     startRecording,
     stopRecording,
     toggleAgentVoiceMute,
+    unlockAudio: () => console.log("[fixture] unlockAudio"),
     openSettings: () => console.log("[fixture] openSettings"),
     clearConversation: () => console.log("[fixture] clearConversation"),
     stop: () => {
