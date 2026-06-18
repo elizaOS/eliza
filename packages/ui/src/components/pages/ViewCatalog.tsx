@@ -20,7 +20,6 @@ import {
   Pin,
   Plus,
   RefreshCw,
-  Search,
   Sparkles,
   Trash2,
 } from "lucide-react";
@@ -46,6 +45,7 @@ import {
 } from "../../platform/platform-guards";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { useIsDeveloperMode } from "../../state/useDeveloperMode";
+import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import {
   readRecentViewIds,
   recordRecentViewId,
@@ -794,17 +794,20 @@ export function ViewCatalog() {
   const [searchLoading, setSearchLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const searchInput = useAgentElement<HTMLInputElement>({
-    id: "views-search-input",
-    role: "text-input",
-    label: t("viewmanager.searchPlaceholder", {
-      defaultValue: "Search views…",
-    }),
-    group: "views-toolbar",
-    description: "Search the registered views by name, description, or tag",
-    getValue: () => query,
-    onFill: (value) => setQuery(value),
+  // The floating chat composer IS the search box for this view: while it's open
+  // it takes over the composer placeholder and receives the live draft via
+  // onQuery, feeding the same `query` state the filtering below reads. setQuery
+  // (a useState setter) is stable, so the binding only re-registers if the
+  // localized placeholder string changes.
+  const searchPlaceholder = t("viewmanager.searchPlaceholder", {
+    defaultValue: "Search views…",
   });
+  const chatSearchBinding = useMemo(
+    () => ({ placeholder: searchPlaceholder, onQuery: setQuery }),
+    [searchPlaceholder],
+  );
+  useRegisterViewChatBinding(chatSearchBinding);
+
   const formIdInput = useAgentElement<HTMLInputElement>({
     id: "views-form-id",
     role: "text-input",
@@ -1184,20 +1187,11 @@ export function ViewCatalog() {
               </div>
             </div>
 
-            <div className="relative min-w-0">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-              <input
-                ref={searchInput.ref}
-                type="search"
-                placeholder={t("viewmanager.searchPlaceholder", {
-                  defaultValue: "Search views…",
-                })}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                className="h-12 w-full rounded-lg border border-border bg-card py-2 pl-10 pr-3 text-base text-txt placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
-                {...searchInput.agentProps}
-              />
-            </div>
+            <p className="text-sm text-muted">
+              {t("viewmanager.searchHint", {
+                defaultValue: "Type in the chat below to search your views.",
+              })}
+            </p>
           </div>
         </div>
 

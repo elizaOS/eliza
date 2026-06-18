@@ -4,6 +4,7 @@ import { useAgentElement } from "../../agent-surface";
 import { client, type QueryResult } from "../../api";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
+import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import type { TranslateFn } from "../../types";
 import { resolveAppAssetUrl } from "../../utils";
 import { PagePanel } from "../composites/page-panel";
@@ -13,7 +14,6 @@ import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
 
 type MediaType = "all" | "image" | "video" | "audio";
 
@@ -272,15 +272,14 @@ export function MediaGalleryView({
   const [search, setSearch] = useState("");
   const [selectedMediaUrl, setSelectedMediaUrl] = useState<string | null>(null);
 
-  const searchField = useAgentElement<HTMLInputElement>({
-    id: "search",
-    role: "text-input",
-    label: t("mediagalleryview.SearchMedia"),
-    group: "media-filters",
-    description: "Search media by filename or URL",
-    getValue: () => search,
-    onFill: (value) => setSearch(value),
-  });
+  // The floating chat IS the search box for this view. Stable binding
+  // (setSearch is a stable useState setter; placeholder changes only on locale).
+  const searchPlaceholder = t("mediagalleryview.SearchMedia");
+  const chatBinding = useMemo(
+    () => ({ placeholder: searchPlaceholder, onQuery: setSearch }),
+    [searchPlaceholder],
+  );
+  useRegisterViewChatBinding(chatBinding);
 
   const loadMedia = useCallback(async () => {
     setLoading(true);
@@ -426,16 +425,6 @@ export function MediaGalleryView({
         </div>
 
         <div className="space-y-3 pt-4">
-          <Input
-            ref={searchField.ref}
-            type="search"
-            placeholder={t("mediagalleryview.SearchMedia")}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-10 rounded-sm border-border/40 bg-card/50 text-sm placeholder:text-muted/65 focus-visible:ring-accent/30"
-            {...searchField.agentProps}
-          />
-
           <div className="grid grid-cols-2 gap-1.5">
             {FILTER_CHIPS.map((chip) => (
               <MediaFilterChip

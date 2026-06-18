@@ -2,10 +2,10 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import type { LogEntry } from "../../api";
 import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useApp } from "../../state";
+import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { formatTime } from "../../utils/format";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
 import {
   Select,
   SelectContent,
@@ -57,6 +57,16 @@ function LogsViewBody() {
     setState,
     t,
   } = useApp();
+
+  // The floating chat composer becomes this view's search box: while Logs is
+  // open it takes over the composer placeholder and feeds the live draft into
+  // searchQuery via onQuery. setSearchQuery is a stable useState setter.
+  const searchPlaceholder = t("logsview.SearchLogs");
+  const chatBinding = useMemo(
+    () => ({ placeholder: searchPlaceholder, onQuery: setSearchQuery }),
+    [searchPlaceholder],
+  );
+  useRegisterViewChatBinding(chatBinding);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,15 +128,6 @@ function LogsViewBody() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Input
-            type="text"
-            className="min-w-[15rem] flex-1 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt "
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t("logsview.SearchLogs")}
-            aria-label={t("aria.searchLogs")}
-          />
-
           <Select
             value={logLevelFilter === "" ? "all" : logLevelFilter}
             onValueChange={(val: string) => {
