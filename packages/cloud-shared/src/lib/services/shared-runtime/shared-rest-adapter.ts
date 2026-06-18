@@ -19,6 +19,7 @@
 
 import type { BridgeRequest } from "../eliza-sandbox";
 import { elizaSandboxService } from "../eliza-sandbox";
+import type { SharedAgentCharacter } from "./run-shared-agent-turn";
 
 /** Minimal subset of the agent-server REST `Conversation` the chat client reads. */
 export interface SharedRestConversation {
@@ -182,11 +183,72 @@ export function sharedRestViews(viewType?: string): {
 
 /**
  * GET .../api/config — the dashboard's open-ended agent config. A shared agent
- * exposes no editable config through this adapter, so return the minimal empty
- * object the client tolerates (it reads `ui`/`cloud` defensively and falls back).
+ * exposes no editable config through this adapter, but it DOES declare its
+ * realtime transport: a Tier-0 agent runs in a stateless Worker with no
+ * persistent process, so there is no WebSocket to connect (per-turn streaming is
+ * the SSE `/stream` endpoint; chat send already works over REST). It advertises
+ * `websocket: false` so a client that honors it skips opening a WS to the shared
+ * base — avoiding the doomed reconnect loop + "Lost backend connection" overlay
+ * that otherwise paints over a fully working REST/SSE chat. The client still
+ * reads the rest of the object defensively (`ui`/`cloud`) and falls back.
  */
-export function sharedRestConfig(): Record<string, never> {
-  return {};
+export function sharedRestConfig(): { websocket: false } {
+  return { websocket: false };
+}
+
+/** The authed-identity shape `authMe()` (ui/src/api/auth-client.ts) parses. */
+export interface SharedRestAuthMe {
+  identity: { id: string; displayName: string; kind: "machine" };
+  session: { id: string; kind: "machine"; expiresAt: null };
+  access: { mode: "bearer"; passwordConfigured: false; ownerConfigured: false };
+}
+
+/**
+ * GET .../api/auth/me — the app's HARD startup gate (App.tsx auth gate →
+ * useAuthStatus → authMe()). A shared agent has no agent server and no
+ * owner-password flow; it is reached purely through the caller's authenticated
+ * API key, which the route already validated (resolveSharedAgent →
+ * requireUserOrApiKeyWithOrg). So the caller is, by construction, an authed
+ * machine identity — return it in the agent-server's `bearer-agent` shape
+ * (auth-routes.ts authorized branch: identity.kind "machine", session machine
+ * with no expiry, access mode "bearer"). Without an `ok:true` body here, the
+ * client maps the 404 to status 503 → "server_unavailable" → StartupFailureView
+ * and never reaches chat. The identity is the agent itself (id = agentId,
+ * displayName = agentName) — the only stable identity this adapter owns.
+ */
+export function sharedRestAuthMe(agentId: string, agentName: string): SharedRestAuthMe {
+  return {
+    identity: {
+      id: agentId,
+      displayName: agentName || "Eliza",
+      kind: "machine",
+    },
+    session: { id: "bearer", kind: "machine", expiresAt: null },
+    access: { mode: "bearer", passwordConfigured: false, ownerConfigured: false },
+  };
+}
+
+/** GET .../api/character body — mirrors the agent server (character-routes.ts). */
+export interface SharedRestCharacter {
+  character: SharedAgentCharacter | Record<string, never>;
+  agentName: string;
+}
+
+/**
+ * GET .../api/character — the character the app reads (getCharacter() →
+ * `{ character, agentName }`, character-routes.ts GET /api/character). Reuse the
+ * EXACT character the shared turn answers as: getSharedRuntimeCharacter resolves
+ * the same `SharedAgentCharacter` buildSharedRuntimeCharacter feeds into
+ * message.send. Falls back to an empty character object (the agent server's
+ * "no runtime" branch shape) if the sandbox can't be resolved.
+ */
+export async function sharedRestCharacter(
+  agentId: string,
+  orgId: string,
+  agentName: string,
+): Promise<SharedRestCharacter> {
+  const character = await elizaSandboxService.getSharedRuntimeCharacter(agentId, orgId);
+  return { character: character ?? {}, agentName: agentName || "Eliza" };
 }
 
 /** GET .../api/conversations — always the one canonical conversation. */
