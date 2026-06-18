@@ -3,7 +3,11 @@ import * as React from "react";
 import type { ImageAttachment } from "../../api/client-types-chat";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
 import { useApp } from "../../state";
-import { loadVadAutoStop } from "../../state/persistence";
+import {
+  loadContinuousChatMode,
+  loadVadAutoStop,
+  saveContinuousChatMode,
+} from "../../state/persistence";
 import { deriveAgentReady } from "../../state/types";
 import {
   createVoiceCapture,
@@ -153,6 +157,14 @@ export function useShellController(): ShellController {
   const [handsFree, setHandsFree] = React.useState(false);
   const handsFreeRef = React.useRef(false);
   handsFreeRef.current = handsFree;
+  // The continuous-chat-mode persisted before hands-free engaged, restored when
+  // the user taps the mic off so a deliberate ChatView "vad-gated" choice isn't
+  // clobbered to "off". Defaults to "off" — tapping the mic off means voice off.
+  const priorContinuousModeRef = React.useRef<"off" | "vad-gated">("off");
+  // Auto-restore the persisted "always-on" loop at most once per mount (see the
+  // boot effect below) so a later tap-off (which persists "off") is not
+  // immediately re-engaged by the same effect re-running.
+  const autoEngagedHandsFreeRef = React.useRef(false);
   // Composer-draft signal from the overlay. While the user has a pending typed
   // (or PTT-dictated) draft, the hands-free always-on loop pauses so the mic
   // doesn't transcribe the room over the keyboard; clearing it (on send) lets
@@ -313,18 +325,23 @@ export function useShellController(): ShellController {
 
   React.useEffect(() => stopCapture, [stopCapture]);
 
+  // Restore a persisted "always-on" continuous-chat mode on boot: engage the
+  // hands-free re-listen LOOP (not a one-shot capture) so always-on survives a
+  // reload as a real setting — the same state a mic tap produces. Audio output
+  // stays locked until the first user gesture (no unlockAudio here), but the mic
+  // (capture) opens from the already-granted permission. Guarded to auto-engage
+  // at most once per mount so a later tap-off (which persists "off") isn't
+  // re-engaged by this effect re-running.
   React.useEffect(() => {
-    if (!ready || recording || captureRef.current) return;
-    let mode: string | null = null;
-    try {
-      mode = window.localStorage.getItem("eliza:voice:continuous-chat-mode");
-    } catch {
-      mode = null;
-    }
-    if (mode !== "always-on") return;
+    if (autoEngagedHandsFreeRef.current) return;
+    if (!ready || recording || captureRef.current || handsFree) return;
+    if (loadContinuousChatMode() !== "always-on") return;
+    autoEngagedHandsFreeRef.current = true;
+    priorContinuousModeRef.current = "off";
+    setHandsFree(true);
     setIsOpen(true);
-    startCapture();
-  }, [ready, recording, startCapture]);
+    startCapture("converse");
+  }, [ready, recording, handsFree, startCapture]);
 
   const open = React.useCallback(() => {
     setIsOpen(true);
@@ -366,18 +383,24 @@ export function useShellController(): ShellController {
   // tap is the gesture) and opens the mic in "converse" mode; disabling stops
   // both the mic and any in-flight reply.
   const toggleHandsFree = React.useCallback(() => {
-    setHandsFree((on) => {
-      const next = !on;
-      if (next) {
-        setIsOpen(true);
-        voiceOutput.unlockAudio();
-        startCapture("converse");
-      } else {
-        if (captureRef.current) stopCapture();
-        voiceOutput.stopSpeaking();
-      }
-      return next;
-    });
+    if (handsFreeRef.current) {
+      // Tap off → persist the prior non-always-on mode (so a deliberate
+      // "vad-gated" choice survives) and stop the mic + any in-flight reply.
+      saveContinuousChatMode(priorContinuousModeRef.current);
+      setHandsFree(false);
+      if (captureRef.current) stopCapture();
+      voiceOutput.stopSpeaking();
+    } else {
+      // Tap on → persist "always-on" so the loop is restored across reloads,
+      // remembering what to fall back to when it is turned off.
+      const prior = loadContinuousChatMode();
+      if (prior !== "always-on") priorContinuousModeRef.current = prior;
+      saveContinuousChatMode("always-on");
+      setHandsFree(true);
+      setIsOpen(true);
+      voiceOutput.unlockAudio();
+      startCapture("converse");
+    }
   }, [startCapture, stopCapture, voiceOutput]);
 
   // Typing pauses always-on: when a draft appears while the hands-free mic is

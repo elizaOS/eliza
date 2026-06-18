@@ -169,6 +169,11 @@ describe("useShellController — voice capture routing", () => {
     voiceOutputMock.speaking = false;
     appMock.value.agentStatus = { ...READY_STATUS };
     appMock.value.sendChatText.mockClear();
+    // Hands-free now persists to localStorage (continuous-chat-mode). Clear it so
+    // a write in one test doesn't auto-engage the boot loop in the next.
+    try {
+      window.localStorage.clear();
+    } catch {}
   });
 
   afterEach(() => {
@@ -272,5 +277,54 @@ describe("useShellController — voice capture routing", () => {
     });
     expect(createVoiceCaptureMock).not.toHaveBeenCalled();
     expect(result.current.handsFree).toBe(false);
+  });
+
+  it("restores a persisted always-on mode by engaging the loop on mount", async () => {
+    // A persisted always-on setting is now unified with the hands-free loop: on
+    // boot it engages handsFree (the re-listen loop), not a one-shot capture.
+    window.localStorage.setItem(
+      "eliza:voice:continuous-chat-mode",
+      "always-on",
+    );
+
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(result.current.handsFree).toBe(true);
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+    // It is a converse capture (sends + speaks), not a silent one-shot.
+    act(() => fireFinalTranscript("hello"));
+    expect(appMock.value.sendChatText.mock.calls[0]?.[1]).toMatchObject({
+      channelType: "VOICE_DM",
+    });
+  });
+
+  it("persists always-on on tap and restores the prior mode on tap-off", async () => {
+    // A deliberate vad-gated choice (e.g. from the full ChatView toggle) must
+    // survive a hands-free on/off cycle in the shell, not collapse to "off".
+    window.localStorage.setItem(
+      "eliza:voice:continuous-chat-mode",
+      "vad-gated",
+    );
+
+    const { result } = renderHook(() => useShellController());
+
+    await act(async () => {
+      result.current.toggleHandsFree();
+    });
+    expect(result.current.handsFree).toBe(true);
+    expect(
+      window.localStorage.getItem("eliza:voice:continuous-chat-mode"),
+    ).toBe("always-on");
+
+    await act(async () => {
+      result.current.toggleHandsFree();
+    });
+    expect(result.current.handsFree).toBe(false);
+    expect(
+      window.localStorage.getItem("eliza:voice:continuous-chat-mode"),
+    ).toBe("vad-gated");
   });
 });
