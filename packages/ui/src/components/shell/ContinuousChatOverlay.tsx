@@ -77,6 +77,10 @@ const SHEET_TOP_MARGIN = 72;
 // can't jank scrolling on a phone, without pulling in a virtualizer.
 const MAX_RENDERED_MESSAGES = 80;
 
+// Feature flag: the resting one-tap prompt-suggestion strip. Off for now so the
+// composer can be tested without it; flip to true to bring the strip back.
+const SHOW_PROMPT_SUGGESTIONS = false;
+
 // A light iOS-style impact on each detent cross. Self-contained + guarded so it
 // is a no-op off-native (and in jsdom tests) without coupling the overlay to the
 // Capacitor bridge module. Mirrors `bridge/capacitor-bridge.ts` `haptics.light()`.
@@ -126,7 +130,7 @@ const SPEAKER_MUTED_GLYPH =
   "M7 15H12L18 10V26L12 21H7Z M21 12.4L22.4 11L31 19.6L29.6 21Z";
 function Glyph({ d }: { d: string }): React.JSX.Element {
   return (
-    <svg viewBox="0 0 36 36" className="h-5 w-5" aria-hidden="true">
+    <svg viewBox="0 0 36 36" className="h-[26px] w-[26px]" aria-hidden="true">
       <path fill="currentColor" fillRule="evenodd" d={d} />
     </svg>
   );
@@ -285,7 +289,9 @@ function PillHandle({
       }}
       {...binding}
       className={cn(
-        "pointer-events-auto flex cursor-grab touch-none select-none items-center justify-center px-12 py-4 active:cursor-grabbing",
+        // The bar hugs the BOTTOM (small pb) where the collapsed input sat — not
+        // floating mid-air; the tall pt keeps a generous upward grab/flick zone.
+        "pointer-events-auto flex cursor-grab touch-none select-none items-end justify-center px-12 pb-1.5 pt-7 active:cursor-grabbing",
         "focus-visible:rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50",
       )}
     >
@@ -578,6 +584,11 @@ export function ContinuousChatOverlay({
   // one flick away. Pull down from input → pill; flick/pull up from pill → input
   // → chat. `pilled` overrides sheetOpen/expanded while true.
   const [pilled, setPilled] = React.useState(false);
+  // Free-drag rest height (px): when set, the sheet rests exactly where the user
+  // released a deliberate drag instead of snapping to a detent. Cleared whenever
+  // a detent is taken (tap/flick/focus/collapse) so the detents stay the
+  // snap-to targets and free-positioning is purely the drag affordance.
+  const [freeH, setFreeH] = React.useState<number | null>(null);
   // The live thread (history) height in px, as a MOTION VALUE — driven directly
   // by the pointer during a drag and spring-animated to a detent on release.
   // Keeping it off React state means a drag updates the DOM height every frame
@@ -626,6 +637,7 @@ export function ContinuousChatOverlay({
   // unmounts once the sheet opens or a draft starts; this condition also gates
   // the small-model fetch so it isn't called for a hidden strip.
   const suggestionsVisible =
+    SHOW_PROMPT_SUGGESTIONS &&
     !pilled &&
     !sheetOpen &&
     !recording &&
@@ -864,7 +876,9 @@ export function ContinuousChatOverlay({
   // pull-down) while the sheet rises all the way to the top.
   const openH = panelMaxH;
   const halfH = Math.round(viewportH * SHEET_HALF_VH);
-  const baseH = !sheetOpen ? 0 : expanded ? openH : halfH;
+  const detentH = !sheetOpen ? 0 : expanded ? openH : halfH;
+  // A free-drag rest height wins over the detent until a detent is re-taken.
+  const baseH = freeH != null ? Math.min(freeH, panelMaxH) : detentH;
   // Map a raw drag height: rubber-band past FULL, hard-clamp the bottom to 0.
   const clampHeight = React.useCallback(
     (raw: number) =>
@@ -896,6 +910,7 @@ export function ContinuousChatOverlay({
 
   const closeSheet = React.useCallback(() => {
     draggingRef.current = false;
+    setFreeH(null);
     setSheetOpen(false);
     setExpanded(false);
   }, []);
@@ -904,7 +919,7 @@ export function ContinuousChatOverlay({
   // changes and we're not mid finger-drag, spring the history height to it. The
   // gesture / open paths just flip sheetOpen/expanded and this reacts — no
   // per-frame React state, so the live drag stays buttery.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: baseH already encodes sheetOpen/expanded/viewportH; threadHeight is a stable ref
+  // biome-ignore lint/correctness/useExhaustiveDependencies: baseH already encodes sheetOpen/expanded/freeH/viewportH; threadHeight is a stable ref
   React.useEffect(() => {
     if (draggingRef.current) return;
     if (reduce) {
@@ -922,7 +937,9 @@ export function ContinuousChatOverlay({
   const goToDetent = React.useCallback(
     (detent: "collapsed" | "half" | "full") => {
       // Flip the settled detent; the [baseH] effect springs the height to it.
+      // A detent always clears any free-drag rest height.
       draggingRef.current = false;
+      setFreeH(null);
       setSheetOpen(detent !== "collapsed");
       setExpanded(detent === "full");
       detentHaptic();
@@ -1053,6 +1070,29 @@ export function ContinuousChatOverlay({
       }
       if (!sheetOpen) inputRef.current?.focus();
     },
+    // A deliberate (slow) drag: REST exactly where released instead of snapping
+    // to a detent — drag the sheet to any size and it stays.
+    onSettleFree: (direction) => {
+      draggingRef.current = false;
+      if (pilled) {
+        // The pill only knows two states; a slow drag up recovers the input.
+        if (direction === "up") {
+          setPilled(false);
+          settleDrag();
+        }
+        return;
+      }
+      const h = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
+      if (h < 28) {
+        // Dragged essentially shut → collapse to the input peek.
+        closeSheet();
+        return;
+      }
+      // Park the thread at the released height; expanded only when it reached the top.
+      setFreeH(h);
+      setSheetOpen(true);
+      setExpanded(h >= openH - 1);
+    },
   });
 
   // NOTE: the chat has NO close-on-outside-pointerdown beyond the keyboard blur;
@@ -1066,8 +1106,9 @@ export function ContinuousChatOverlay({
         // max(safe-area, android gesture inset): when the nav bar is hidden the
         // safe-area-inset-bottom is 0, so fall back to the real gesture-home zone
         // (--android-gesture-inset-bottom, published by MainActivity; 0 elsewhere)
-        // so the composer never sits under the home pill.
-        "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+1.5rem)]",
+        // so the composer never sits under the home pill. The +0.5rem breathing
+        // room keeps the chat low on the screen without touching that zone.
+        "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+0.5rem)]",
       )}
       // Lift the whole overlay above the on-screen keyboard so the input + chat
       // stay visible; `keyboardInset` is 0 when no keyboard is shown.
@@ -1391,7 +1432,7 @@ export function ContinuousChatOverlay({
                 <SoftButton
                   glyph={PLUS_GLYPH}
                   label="attach image"
-                  disabled={booting || pendingImages.length >= MAX_CHAT_IMAGES}
+                  disabled={pendingImages.length >= MAX_CHAT_IMAGES}
                   onClick={() => fileInputRef.current?.click()}
                   testId="chat-composer-attach"
                 />
@@ -1414,16 +1455,19 @@ export function ContinuousChatOverlay({
                       collapse();
                     }
                   }}
-                  placeholder={booting ? "connecting…" : `Ask ${agentName}`}
+                  placeholder={
+                    booting
+                      ? `Ask ${agentName} — waking up…`
+                      : `Ask ${agentName}`
+                  }
                   aria-label="message"
                   data-testid="chat-composer-textarea"
                   aria-describedby={booting ? "cc-booting-hint" : undefined}
-                  aria-disabled={booting}
-                  readOnly={booting}
                   className="max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
                 />
                 <span id="cc-booting-hint" className="sr-only">
-                  connecting — you can’t send yet
+                  {agentName} is waking up — you can type now; your message
+                  sends and the reply arrives in a moment.
                 </span>
                 {/* Assistant-voice mute: shown only while the agent is speaking or
               already muted, so the resting bar stays uncluttered. */}

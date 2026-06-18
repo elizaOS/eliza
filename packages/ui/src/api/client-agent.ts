@@ -1159,6 +1159,9 @@ ElizaClient.prototype.getStatus = async function (this: ElizaClient) {
       state: "running",
       agentName: "Eliza",
       model: undefined,
+      // Cloud-shared agent is provisioned + serving cloud-side — first-turn
+      // capability is online, so the composer should be live immediately.
+      canRespond: true,
       uptime: undefined,
       startedAt: undefined,
     };
