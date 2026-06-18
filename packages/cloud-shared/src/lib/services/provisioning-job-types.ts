@@ -138,7 +138,13 @@ export function resolveJobTypesForLanes(spec: string | undefined | null): Provis
   let matchedAnyLane = false;
   for (const raw of spec.split(",")) {
     const lane = raw.trim().toLowerCase();
-    if (lane in JOB_LANES) {
+    // `Object.hasOwn`, not `in`: `in` walks the prototype chain, so inherited
+    // keys that survive `.toLowerCase()` (notably `constructor` and `__proto__`)
+    // would pass the gate and then throw on `for (… of JOB_LANES[lane])` because
+    // the value is a function/object, not an array — turning a typo'd
+    // `PROVISIONING_JOB_LANES` into a daemon-startup crash instead of the
+    // documented fail-open. Own-property check keeps the fail-open contract.
+    if (Object.hasOwn(JOB_LANES, lane)) {
       matchedAnyLane = true;
       for (const t of JOB_LANES[lane as JobLane]) wanted.add(t);
     }
