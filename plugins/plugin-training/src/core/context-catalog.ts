@@ -40,6 +40,7 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
   STATUS: ["general"],
   MODELS: ["general"],
   CONFIGURE: ["general", "system"],
+  VIEWS: ["general", "system"],
   SET_USER_NAME: ["social"],
   CONTACT: ["social"],
   ENTITY: ["social"],
