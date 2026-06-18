@@ -11,11 +11,16 @@ import { describe, expect, mock, spyOn, test } from "bun:test";
 
 import { elizaSandboxService } from "../eliza-sandbox";
 import {
+  sharedRestConfig,
   sharedRestConversationCreate,
   sharedRestConversationsList,
+  sharedRestFirstRun,
+  sharedRestFirstRunStatus,
   sharedRestHealth,
   sharedRestMessageSend,
   sharedRestMessagesGet,
+  sharedRestStatus,
+  sharedRestViews,
 } from "./shared-rest-adapter";
 
 const AGENT = "de42b5ff-72d3-4a1a-8a16-19aee293bfea";
@@ -46,6 +51,44 @@ describe("shared-rest-adapter — conversation surface", () => {
 
   test("create falls back to a title when the agent has no name", () => {
     expect(sharedRestConversationCreate(AGENT, "", CREATED).conversation.title).toBe("Chat");
+  });
+});
+
+describe("shared-rest-adapter — startup shell surface", () => {
+  test("status is the first gate: running + agent name", () => {
+    expect(sharedRestStatus("Nova")).toEqual({ state: "running", agentName: "Nova" });
+  });
+
+  test("status falls back to a name when the agent has none", () => {
+    expect(sharedRestStatus("").agentName).toBe("Eliza");
+  });
+
+  test("first-run is always complete + cloud-provisioned (no onboarding)", () => {
+    expect(sharedRestFirstRunStatus()).toEqual({ complete: true, cloudProvisioned: true });
+    expect(sharedRestFirstRun()).toEqual({ complete: true, ok: true });
+  });
+
+  test("config is an empty object the client tolerates", () => {
+    expect(sharedRestConfig()).toEqual({});
+  });
+
+  test("views returns the builtin chat view by default", () => {
+    const { views } = sharedRestViews();
+    expect(views).toHaveLength(1);
+    expect(views[0]).toMatchObject({
+      id: "chat",
+      viewType: "gui",
+      path: "/chat",
+      available: true,
+      builtin: true,
+      pluginName: "@elizaos/builtin",
+    });
+  });
+
+  test("views honors ?viewType=: gui matches, tui/xr return empty", () => {
+    expect(sharedRestViews("gui").views).toHaveLength(1);
+    expect(sharedRestViews("tui").views).toHaveLength(0);
+    expect(sharedRestViews("xr").views).toHaveLength(0);
   });
 });
 
