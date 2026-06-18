@@ -15,6 +15,7 @@ import Electrobun, {
 } from "electrobun/bun";
 import {
   resolveDesktopRuntimeMode,
+  resolveDesktopRuntimeModeWithDeployment,
   resolveInitialApiBase,
   resolveRendererFacingApiBase,
 } from "./api-base";
@@ -90,6 +91,7 @@ import {
   createOnboardingOverlayWindow,
   getOnboardingOverlayWindow,
 } from "./onboarding-overlay-window";
+import { getPersistedDeploymentRuntime } from "./persisted-deployment";
 import { createPillWindow, getPillWindow } from "./pill-window";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
 import {
@@ -181,6 +183,22 @@ function setupApplicationMenu(): void {
 
 onAgentReadyChange(() => setupApplicationMenu());
 
+/**
+ * Resolve the desktop runtime mode, consulting both the env vars and the
+ * persisted deployment target (`eliza.json` `deploymentTarget.runtime`). A
+ * topology-3 (cloud-hosted) agent target with a renderer-ready cloud agent
+ * base resolves to `external` so the embedded agent is skipped; topology 1
+ * (local agent → cloud inference) and topology 2 (all-local) keep `local`.
+ */
+function resolveDesktopRuntime(): ReturnType<
+  typeof resolveDesktopRuntimeModeWithDeployment
+> {
+  return resolveDesktopRuntimeModeWithDeployment(
+    process.env as Record<string, string | undefined>,
+    getPersistedDeploymentRuntime(),
+  );
+}
+
 function summarizeDesktopActionError(error: unknown, fallback: string): string {
   const message = error instanceof Error ? error.message : fallback;
   const trimmed = message.trim();
@@ -197,9 +215,7 @@ function buildApiRequestHeaders(contentType?: string): Record<string, string> {
   }
   let apiToken = resolveApiToken(process.env);
   if (!apiToken) {
-    const rt = resolveDesktopRuntimeMode(
-      process.env as Record<string, string | undefined>,
-    );
+    const rt = resolveDesktopRuntime();
     if (rt.mode === "local") {
       apiToken = configureDesktopLocalApiAuth().trim();
     }
@@ -311,9 +327,7 @@ async function resetTheAppFromApplicationMenu(): Promise<void> {
   }
 
   try {
-    const runtimeMode = resolveDesktopRuntimeMode(
-      process.env as Record<string, string | undefined>,
-    );
+    const runtimeMode = resolveDesktopRuntime();
 
     await runMainMenuResetAfterApiBaseResolved({
       apiBase,
@@ -719,12 +733,17 @@ async function startRendererServer(): Promise<string> {
   // into HTML before the renderer mounts and the RPC bridge would push a
   // different value moments later — the renderer racing two answers is
   // what produced the port-shift disconnect documented in MASTER.md §0.
-  const initialApiBase = resolveInitialApiBase(
-    process.env as Record<string, string | undefined>,
-  );
+  const initialRuntime = resolveDesktopRuntime();
+  // External mode (env-forced OR a cloud-hosted deployment target) seeds the
+  // resolved external base directly; local mode keeps the loopback agent port.
+  const initialApiBase =
+    initialRuntime.mode === "external" && initialRuntime.externalApi.base
+      ? initialRuntime.externalApi.base
+      : resolveInitialApiBase(
+          process.env as Record<string, string | undefined>,
+        );
   const initialApiToken =
-    resolveDesktopRuntimeMode(process.env as Record<string, string | undefined>)
-      .mode === "local"
+    initialRuntime.mode === "local"
       ? configureDesktopLocalApiAuth()
       : (resolveApiToken(process.env) ?? "");
   apiBaseOwner.setCurrent(initialApiBase, initialApiToken);
@@ -1611,9 +1630,7 @@ function wireSettingsRpcAfterCreate(rpc: ElizaDesktopRpc): void {
 }
 
 function injectApiBase(win: BrowserWindow): void {
-  const runtimeResolution = resolveDesktopRuntimeMode(
-    process.env as Record<string, string | undefined>,
-  );
+  const runtimeResolution = resolveDesktopRuntime();
 
   if (runtimeResolution.externalApi.invalidSources.length > 0) {
     logger.warn(
@@ -1709,9 +1726,7 @@ async function syncPermissionsToRestApi(
 }
 
 async function _startAgent(): Promise<void> {
-  const runtimeResolution = resolveDesktopRuntimeMode(
-    process.env as Record<string, string | undefined>,
-  );
+  const runtimeResolution = resolveDesktopRuntime();
 
   if (runtimeResolution.mode !== "local") {
     logger.info(
@@ -2275,11 +2290,15 @@ async function main(): Promise<void> {
   recordStartupPhase("env_loaded", {
     pid: process.pid,
   });
+  // Start the static renderer server in parallel with the rest of pre-window
+  // work — first paint needs the renderer URL, so kicking it off now overlaps
+  // the server bind/port-scan with crash-prompt checks, WebGPU init, and bridge
+  // startup below. resolveRendererUrl() is idempotent (memoises this promise),
+  // so later callers reuse it. Errors surface when the promise is awaited.
+  void resolveRendererUrl();
   console.log(`[Main] Starting ${BRAND.appName} (Electrobun)`);
   const normalizedModuleDir = import.meta.dir.replaceAll("\\", "/");
-  const runtimeResolution = resolveDesktopRuntimeMode(
-    process.env as Record<string, string | undefined>,
-  );
+  const runtimeResolution = resolveDesktopRuntime();
   // Structured startup environment block — visible in CI logs and eliza-startup.log
   console.log(
     `[Env] platform=${process.platform} arch=${process.arch} bun=${Bun.version} ` +
@@ -2294,10 +2313,20 @@ async function main(): Promise<void> {
     process.env as Record<string, string | undefined>,
   );
 
-  await maybePromptStartupCrashReport();
-  recordStartupPhase("crash_prompt_checked", {
-    pid: process.pid,
-  });
+  // Don't block first paint on the crash-recovery prompt. The common path is a
+  // couple of stat reads that early-return; the only blocking case is a modal
+  // shown after a *prior* launch crashed, which can safely overlap the window.
+  void maybePromptStartupCrashReport()
+    .then(() => {
+      recordStartupPhase("crash_prompt_checked", {
+        pid: process.pid,
+      });
+    })
+    .catch((err) => {
+      logger.warn(
+        `[Main] Startup crash prompt failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
   // On Windows (CEF renderer), clear stale CEF profile data when the app
   // version changes.  A leftover Partitions/default profile from a previous
   // install causes "Cannot create profile at path" errors that cascade into
@@ -2361,9 +2390,26 @@ async function main(): Promise<void> {
   const buildInfo = await BuildConfig.get();
   checkWebGpuBrowserSupport(buildInfo.defaultRenderer);
   cleanupFns.length = 0;
-  cleanupFns.push(await startBrowserWorkspaceBridgeServer());
-  recordStartupPhase("browser_workspace_bridge_ready", {
-    pid: process.pid,
+  // Start the browser-workspace bridge without blocking first paint. The
+  // renderer reaches it lazily (browser-workspace RPC), so it does not need to
+  // be listening before the window opens. Register a cleanup that awaits the
+  // resolved stop fn so shutdown still tears it down.
+  const browserWorkspaceBridgeStop = startBrowserWorkspaceBridgeServer()
+    .then((stop) => {
+      recordStartupPhase("browser_workspace_bridge_ready", {
+        pid: process.pid,
+      });
+      return stop;
+    })
+    .catch((err) => {
+      logger.warn(
+        `[Main] Browser-workspace bridge startup failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return undefined;
+    });
+  cleanupFns.push(async () => {
+    const stop = await browserWorkspaceBridgeStop;
+    await stop?.();
   });
   const stopDesktopTestBridgeServer = await startDesktopTestBridgeServer();
   recordStartupPhase("desktop_test_bridge_ready", {
@@ -2693,9 +2739,7 @@ async function main(): Promise<void> {
   // already set the initial window.__ELIZA_API_BASE__ from the seed value
   // in main(), but _startAgent will push the actual port once the agent
   // reports it.
-  const rt = resolveDesktopRuntimeMode(
-    process.env as Record<string, string | undefined>,
-  );
+  const rt = resolveDesktopRuntime();
   if (rt.mode === "external") {
     injectApiBaseIntoOpenRendererWindows();
   } else if (rt.mode === "local") {

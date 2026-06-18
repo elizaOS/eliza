@@ -86,6 +86,73 @@ export function resolveDesktopRuntimeMode(
 }
 
 /**
+ * The persisted deployment runtime the desktop main process reads from
+ * `eliza.json` (`deploymentTarget.runtime`). Only `"cloud"` is a topology-3
+ * (cloud-hosted agent) signal; `"local"`/`"remote"` keep the existing
+ * env-driven behavior. `null` ⇒ no persisted deployment target.
+ */
+export type PersistedDeploymentRuntime = "local" | "cloud" | "remote" | null;
+
+/**
+ * Resolve the cloud-hosted agent API base the renderer should call when the
+ * persisted deployment is a real cloud-hosted agent (topology 3). This is a
+ * renderer-ready base (origin that serves `/api/...` agent paths), NOT the
+ * Eliza Cloud `/api/v1` URL — the cloud's agent/auth routes live at different
+ * mount points, so it cannot be derived from the cloud site URL by
+ * origin-concat. Resolution is therefore an explicit base the shell is given
+ * at boot:
+ *   1. `ELIZA_DESKTOP_CLOUD_AGENT_BASE` — the cloud-hosted agent's reachable base.
+ * Returns `null` when no renderer-ready cloud agent base is available, so the
+ * caller falls back to running the local agent (topology-1/2 behavior).
+ */
+export function resolveCloudHostedAgentApiBase(
+  env: Record<string, string | undefined>,
+): string | null {
+  return normalizeApiBase(env.ELIZA_DESKTOP_CLOUD_AGENT_BASE?.trim());
+}
+
+/**
+ * Topology-aware runtime-mode resolution. Layers the persisted deployment
+ * target on top of the pure env resolver ({@link resolveDesktopRuntimeMode}):
+ *
+ * - If env already forces `external`/`disabled`, that wins (unchanged).
+ * - Else, if the persisted deployment is a real cloud-hosted agent
+ *   (`runtime === "cloud"`) AND a renderer-ready cloud agent API base is
+ *   available, resolve to `external` with that base so the embedded agent is
+ *   skipped and the renderer points at the cloud agent (topology 3).
+ * - Otherwise fall through to the env result (`local`).
+ *
+ * Topology 1 (local agent → cloud inference; persisted runtime is `"local"`,
+ * branded cloud via {@link resolveDesktopRuntimeModeSignal}) and topology 2
+ * (all-local) keep `mode === "local"` and still boot the embedded agent.
+ */
+export function resolveDesktopRuntimeModeWithDeployment(
+  env: Record<string, string | undefined>,
+  deploymentRuntime: PersistedDeploymentRuntime,
+): DesktopRuntimeModeResolution {
+  const envResolution = resolveDesktopRuntimeMode(env);
+  if (envResolution.mode !== "local") {
+    return envResolution;
+  }
+
+  if (deploymentRuntime === "cloud") {
+    const cloudBase = resolveCloudHostedAgentApiBase(env);
+    if (cloudBase) {
+      return {
+        mode: "external",
+        externalApi: {
+          base: cloudBase,
+          source: null,
+          invalidSources: envResolution.externalApi.invalidSources,
+        },
+      };
+    }
+  }
+
+  return envResolution;
+}
+
+/**
  * Desktop cloud-only opt-in. Returns `"cloud"` when the desktop shell should run
  * cloud-only — cloud model providers only (no local model/embedding warmup) and a
  * cloud-only first-run UI. This is ORTHOGONAL to {@link resolveDesktopRuntimeMode}
