@@ -10,6 +10,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 
 import androidx.core.content.ContextCompat;
+import androidx.core.splashscreen.SplashScreen;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -60,6 +61,14 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Install the AndroidX splash screen BEFORE super.onCreate so it swaps
+        // the launch theme (AppTheme.NoActionBarLaunch / Theme.SplashScreen) to
+        // the activity's postSplashScreenTheme (AppTheme.NoActionBar). Without
+        // it the splash theme persists and Android renders a native AppCompat
+        // action bar — the orange "Eliza" top bar with splash.png stretched
+        // across it — above the Capacitor WebView.
+        SplashScreen.installSplashScreen(this);
+
         // Per Android docs, must precede the first WebView instantiation.
         // BridgeActivity.super.onCreate constructs the Capacitor WebView,
         // so the toggle is set first to stay race-proof against future
