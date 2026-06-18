@@ -246,6 +246,15 @@ export async function handleSuggestionsRoutes(
   );
 }
 
+type CommandsRoutesModule = typeof import("./commands-routes.ts");
+export async function handleCommandsRoutes(
+  ...args: Parameters<CommandsRoutesModule["handleCommandsRoutes"]>
+): ReturnType<CommandsRoutesModule["handleCommandsRoutes"]> {
+  const ctx = routeContext(args);
+  if (ctx?.pathname !== "/api/commands") return false;
+  return (await import("./commands-routes.ts")).handleCommandsRoutes(...args);
+}
+
 type BackgroundTasksRoutesModule =
   typeof import("./background-tasks-routes.ts");
 export async function handleBackgroundTasksRoute(
