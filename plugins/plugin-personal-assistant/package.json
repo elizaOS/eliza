@@ -77,6 +77,7 @@
     "@elizaos/plugin-finances": "workspace:*",
     "@elizaos/plugin-google": "workspace:*",
     "@elizaos/plugin-health": "workspace:*",
+    "@elizaos/plugin-inbox": "workspace:*",
     "@elizaos/plugin-phone": "workspace:*",
     "@elizaos/plugin-x": "workspace:*",
     "@elizaos/plugin-whatsapp": "workspace:*",

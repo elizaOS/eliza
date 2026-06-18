@@ -18,6 +18,7 @@ import { BrowserBridgeAdapter } from "@elizaos/plugin-browser";
 import { calendarPlugin } from "@elizaos/plugin-calendar";
 import { CalendlyAdapter } from "@elizaos/plugin-calendly";
 import { financesPlugin } from "@elizaos/plugin-finances";
+import { inboxPlugin } from "@elizaos/plugin-inbox";
 import { GoogleGmailAdapter } from "@elizaos/plugin-google";
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
 import { blockAction } from "./actions/block.js";
@@ -574,6 +575,24 @@ export async function ensureLifeOpsFinancesPluginRegistered(
   await runtime.registerPlugin(financesPlugin);
 }
 
+/**
+ * Register `@elizaos/plugin-inbox` if it is not already in the runtime. The
+ * inbox triage domain (the INBOX action, the inboxTriage provider, and the
+ * InboxService/InboxRepository back-end over the `app_lifeops` triage tables)
+ * moved out of PA into the inbox plugin; PA still owns the cross-channel inbox
+ * read route (`GET /api/lifeops/inbox`) via its `getInbox` service method, but
+ * the action + provider + triage repository are registered there, so the inbox
+ * plugin MUST be loaded whenever PA is. Hard dependency, static import.
+ */
+export async function ensureLifeOpsInboxPluginRegistered(
+  runtime: IAgentRuntime,
+): Promise<void> {
+  if (runtime.plugins.some((plugin) => plugin.name === inboxPlugin.name)) {
+    return;
+  }
+  await runtime.registerPlugin(inboxPlugin);
+}
+
 const LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY =
   "eliza:lifeops:plugin:init-failures";
 
@@ -766,6 +785,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     await ensureLifeOpsGooglePluginRegistered(runtime);
     await ensureLifeOpsCalendarPluginRegistered(runtime);
     await ensureLifeOpsFinancesPluginRegistered(runtime);
+    await ensureLifeOpsInboxPluginRegistered(runtime);
 
     // Inject the LifeOps-backed calendar gate once the runtime has finished
     // initializing both plugins, so calendar events keep firing reminders and
