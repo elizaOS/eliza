@@ -18,7 +18,7 @@ See `cloud/RAILWAY.md` for the canonical service map. Short version:
 
 - `cloud-frontend` → Cloudflare Pages
 - `cloud-api` → Cloudflare Worker
-- `headscale`, `tunnel-proxy` → Railway
+- `headscale` → Hetzner control-plane VM (agent path); `tunnel-proxy` → Railway (customer-tunnel path)
 - `agent-server` (per-customer compute) → Hetzner via `container-control-plane`
 - Database → Neon (Postgres)
 - Object storage → Cloudflare R2

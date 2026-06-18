@@ -9,8 +9,8 @@ split so we stop treating manually-created VMs as "infrastructure-by-prayer".
 ┌──────────────────────────────────────────────────────────────┐
 │  Tier 1 — Control plane (static, 1-2 VMs, Terraform)        │
 │                                                              │
-│   eliza-1   (Hetzner cax21 ARM, fsn1, manual)               │
-│   eliza-staging-1   (Hetzner cpx32 x86, fsn1)               │
+│   eliza-production-1   (Hetzner cpx32 x86, fsn1)            │
+│   eliza-staging-1      (Hetzner cpx32 x86, fsn1)            │
 │     ├── eliza-provisioning-worker  (systemd, queue consumer)│
 │     ├── eliza-agent-router         (systemd, HTTP routing)  │
 │     ├── headscale                  (VPN mesh)               │
@@ -19,7 +19,7 @@ split so we stop treating manually-created VMs as "infrastructure-by-prayer".
 │     └── (optional: grafana/prometheus)                      │
 │                                                              │
 │   Lifecycle: long-lived. Replaced on demand, not autoscaled.│
-│   Cost: prod ~€7/mo (cax21), staging ~€11/mo (cpx32).       │
+│   Cost: ~€11/mo per VM (cpx32, both envs).                  │
 │   See variables.tf for cpx21→cpx32 retirement + ARM notes.  │
 └──────────────────────────────────────────────────────────────┘
                               │ enqueue / SSH
@@ -114,7 +114,7 @@ is no `hcloud_project` Terraform resource — projects are management-plane only
 ```
 Hetzner Cloud account (one human)
 ├── Project "eliza-prod"      (env-scoped HCLOUD_TOKEN, 5/5 servers max)
-│   ├── eliza-1               (control-plane, cax21)
+│   ├── eliza-production-1     (control-plane, cpx32)
 │   └── eliza-core-<hex>      (worker, ccx33, autoscaled by node-autoscaler.ts)
 ├── Project "eliza-staging"   (env-scoped HCLOUD_TOKEN, 5/5 servers max)
 │   ├── eliza-staging-1               (control-plane, cpx32)

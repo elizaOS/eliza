@@ -161,8 +161,10 @@ These are tracked as follow-ups in
 | **Total per environment**    |             | **~11**     |
 
 The default is `cpx32` since Hetzner retired `cpx21` in `fsn1`. Production VM
-`eliza-1` actually runs `cax21` (ARM, ~€7/mo, manually provisioned) — flipping
-prod via TF needs the cloud-init arm64 templating fix tracked as a followup.
+`eliza-production-1` runs x86 `cpx32`, the same type as staging. Moving the
+control plane to ARM (`cax`-series, ~€7/mo) is a possible future cost
+optimization, not current state — it needs the cloud-init arm64 templating fix
+tracked as a followup first.
 
 A 2nd control-plane VM (HA, currently unused) doubles the line. The
 **data-plane autoscale** cost is separate and elastic.

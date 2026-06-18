@@ -24,7 +24,7 @@ service runs today. Short version:
 
 - `cloud-frontend` → Cloudflare Pages.
 - `cloud-api` → Cloudflare Worker.
-- `headscale`, `tunnel-proxy` → Railway.
+- `headscale` → Hetzner control-plane VM (agent path); `tunnel-proxy` → Railway (customer-tunnel path).
 - `gateway-discord`, `gateway-webhook` → Docker (target: Railway).
 - `agent-server`, per-customer compute → Hetzner via
   `container-control-plane`.
