@@ -795,6 +795,27 @@ Still host/hardware-bound: iOS/Windows/mac NATIVE e2e (no host OS in a Linux san
 Android-NATIVE e2e (no device; emulator embedded-agent segfault). Those need a real
 device/host CI lane — a provisioning step, not a code step.
 
+### Session 2026-06-18 (round 28) — ANDROID-NATIVE e2e GREEN on a real Pixel 9a (4th platform)
+Discovered this host actually has Android hardware attached: an AVD + system image + a
+running emulator (emulator-5554) AND a REAL Pixel 9a (adb serial 53081JEBF11586) with the
+Eliza app (ai.elizaos.app v1.0.0) installed, and /dev/kvm present. (No wine → Windows still
+impossible; no macOS → iOS still impossible.) Ran the real on-device Android WebView e2e:
+  `ANDROID_SERIAL=53081JEBF11586 bun run --cwd packages/app test:e2e:android:webview`
+(Playwright `_android` drives the installed app's WebView; route-coverage.android.spec.ts
+sweeps DIRECT_ROUTE_CASES + MANAGER_VISIBLE_VIEW_TILE_CASES — the decomposed views).
+**RESULT: 62 passed (4.5m)** — every decomposed view (relationships/todos/lifeops/wallet/…)
+renders on the real device WebView, PLUS a LIVE on-device voice round-trip
+(`voice-selftest.android.spec.ts`: real STT→agent→TTS loop, overall=pass, 4.1m) — a live
+real test on real hardware. So Android-native is GREEN.
+
+**PLATFORM SCORECARD NOW 4 of 5 with real e2e:**
+  - linux web/browser e2e 8/8 ✅
+  - mobile-viewport (Pixel-7 chromium) e2e 8/8 ✅
+  - desktop (Electrobun packaged) launch+render e2e ✅
+  - **Android-NATIVE (real Pixel 9a) 62 passed ✅ (decomposed views + live voice loop)**
+Remaining: iOS-native (needs macOS+Xcode — no macOS host here) and Windows-native (needs a
+Windows host / wine — neither present). Those two are the only genuinely host-absent cells.
+
 ### Genuine owner decisions to resolve before the next big slices
 1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
 2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
