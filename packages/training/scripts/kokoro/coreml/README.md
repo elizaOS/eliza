@@ -86,14 +86,18 @@ into a bundle's `tts/kokoro-coreml/` (see `KokoroCoreMlEngine.modelDirectory`).
   CoreML-vs-torch at **corr 1.0** (F0Ntrain + masked LSTM + masked AdaIN all
   convert perfectly), but the hn-NSF **`har_source` is constant/dead in CoreML**
   (corr = nan / zero variance). So the divergence is isolated to
-  **`istftnet.SineGen` (the harmonic source)** — its `F.interpolate(mode="linear")`
-  phase resample and/or the injected-`random_phases` attribute path — **NOT** the
-  iSTFT and **NOT** F0Ntrain. Audio still scores 0.68 spectral because the
-  spectral envelope from `asr`→decoder survives; only the voiced harmonic
-  excitation is lost (→ halved amplitude, degraded voiced speech).
-  Fix: reimplement `SineGen._f02sine`'s phase cumsum/resample without
-  `F.interpolate` (explicit fixed-shape linear resample via matmul, or thread the
-  phase as a real graph input rather than a module attribute), then re-run
+  **`istftnet.SineGen` (the harmonic source)** — **NOT** the iSTFT and **NOT**
+  F0Ntrain. Audio still scores 0.68 spectral because the spectral envelope from
+  `asr`→decoder survives; only the voiced harmonic excitation is lost
+  (→ halved amplitude, degraded voiced speech).
+  **Narrowed further (2nd diagnostic):** replacing the StyleTTS2
+  downsample→cumsum→upsample with a direct full-resolution `cumsum`+`sin` (NO
+  `F.interpolate`) left `har_source` corr = 0.001 — **still dead**. So the
+  culprit is **NOT `F.interpolate`**; it is `torch.cumsum`/`torch.sin` over the
+  long audio-rate axis (L≈96k) under coremltools — the phase accumulation
+  produces a constant. Next: output the pre-`sin` phase to confirm cumsum vs sin,
+  then replace with a coremltools-correct cumulative sum (e.g. a lower-triangular
+  matmul on the downsampled phase, or a segmented/blocked cumsum) and re-run
   `diag_stages.py` until `har_source` corr ≈ 1.0.
 
 NOTE: with iOS TTS routed through OmniVoice (the tier default), this CoreML path
