@@ -10,8 +10,8 @@
  *   GET    /api/lifeops/entities/resolve?q=
  */
 
+import { type EntityStore, resolveKnowledgeGraphService } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
-import { EntityStore } from "../lifeops/entities/store.js";
 import type {
   Entity,
   EntityFilter,
@@ -28,8 +28,12 @@ function makeStore(ctx: LifeOpsRouteContext): EntityStore | null {
     ctx.error(ctx.res, "Agent runtime is not available", 503);
     return null;
   }
-  return new EntityStore(
-    ctx.state.runtime,
+  const knowledgeGraph = resolveKnowledgeGraphService(ctx.state.runtime);
+  if (!knowledgeGraph) {
+    ctx.error(ctx.res, "Knowledge graph service is not available", 503);
+    return null;
+  }
+  return knowledgeGraph.getEntityStore(
     ctx.state.adminEntityId
       ? String(ctx.state.adminEntityId)
       : defaultAgentId(ctx.state.runtime),

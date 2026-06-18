@@ -52,6 +52,7 @@ export const PLUGIN_VIEW_LLM_MOCK_CASES: PluginViewMockCase[] = [
   { id: "goals", viewType: "gui", path: "/goals" },
   { id: "health", viewType: "gui", path: "/health" },
   { id: "inbox", viewType: "gui", path: "/inbox" },
+  { id: "relationships", viewType: "gui", path: "/relationships" },
   { id: "todos", viewType: "gui", path: "/todos" },
   { id: "messages", viewType: "gui", path: "/messages" },
   { id: "messages", viewType: "tui", path: "/messages/tui" },

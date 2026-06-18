@@ -27,11 +27,10 @@
 import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import type { IAgentRuntime } from "@elizaos/core";
-import { EntityStore } from "../entities/store.js";
 import type { EntityIdentity } from "../entities/types.js";
 import { SELF_ENTITY_ID } from "../entities/types.js";
-import { RelationshipStore } from "../relationships/store.js";
 import {
   executeRawSql,
   parseJsonArray,
@@ -179,8 +178,16 @@ export async function runGraphMigration(
     await ensureLegacyEntityIdColumn(runtime);
   }
 
-  const entityStore = new EntityStore(runtime, options.agentId);
-  const relationshipStore = new RelationshipStore(runtime, options.agentId);
+  const knowledgeGraph = resolveKnowledgeGraphService(runtime);
+  if (!knowledgeGraph) {
+    throw new Error(
+      "[graph-migration] KnowledgeGraphService is not registered on the runtime",
+    );
+  }
+  const entityStore = knowledgeGraph.getEntityStore(options.agentId);
+  const relationshipStore = knowledgeGraph.getRelationshipStore(
+    options.agentId,
+  );
 
   if (options.apply) {
     await entityStore.ensureSelf();

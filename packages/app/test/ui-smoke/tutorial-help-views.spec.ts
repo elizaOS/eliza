@@ -47,13 +47,18 @@ test("Tutorial + Help are pinned to home and both work", async ({ page }) => {
   await page.getByText("Skip tutorial").click();
   await expect(card).toHaveCount(0);
 
-  // 3. Help → search the knowledge base → a matching answer with a deep-link.
+  // 3. Help → the floating chat is its search box; typing filters + expands the
+  // best match (the per-state walkthrough spec covers this in depth).
   await page.getByTestId("home-tile-help").click();
   await expect(page.getByTestId("help-view")).toBeVisible();
-  await page.getByTestId("help-search").fill("change the model");
+  const composer = page.getByTestId("chat-composer-textarea");
+  await expect(composer).toHaveAttribute(
+    "placeholder",
+    /question about eliza/i,
+  );
+  await composer.fill("change the model");
   const entry = page.getByTestId("help-entry-change-model");
   await expect(entry).toBeVisible();
-  await entry.click();
   await expect(entry).toContainText(/AI Model/i);
 });
 

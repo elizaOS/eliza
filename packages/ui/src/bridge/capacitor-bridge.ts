@@ -10,7 +10,6 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
 import { BRIDGE_READY_EVENT, dispatchAppEvent } from "../events";
 import { isElectrobunRuntime } from "./electrobun-runtime";
 
@@ -88,6 +87,16 @@ export function getCapabilities(): CapacitorCapabilities {
 }
 
 /**
+ * Lazy-load @capacitor/haptics on demand. Keeping it out of the static module
+ * graph means server consumers that pull in the @elizaos/ui barrel (e.g.
+ * plugin-inbox in the Node agent image) don't crash resolving a native-only,
+ * mobile-only devDependency. Only ever invoked behind an `isNative` guard.
+ */
+function loadHaptics() {
+  return import("@capacitor/haptics");
+}
+
+/**
  * Haptic feedback wrapper
  */
 export const haptics = {
@@ -96,6 +105,7 @@ export const haptics = {
    */
   async light(): Promise<void> {
     if (!isNative) return;
+    const { Haptics, ImpactStyle } = await loadHaptics();
     await Haptics.impact({ style: ImpactStyle.Light });
   },
 
@@ -104,6 +114,7 @@ export const haptics = {
    */
   async medium(): Promise<void> {
     if (!isNative) return;
+    const { Haptics, ImpactStyle } = await loadHaptics();
     await Haptics.impact({ style: ImpactStyle.Medium });
   },
 
@@ -112,6 +123,7 @@ export const haptics = {
    */
   async heavy(): Promise<void> {
     if (!isNative) return;
+    const { Haptics, ImpactStyle } = await loadHaptics();
     await Haptics.impact({ style: ImpactStyle.Heavy });
   },
 
@@ -120,6 +132,7 @@ export const haptics = {
    */
   async success(): Promise<void> {
     if (!isNative) return;
+    const { Haptics, NotificationType } = await loadHaptics();
     await Haptics.notification({ type: NotificationType.Success });
   },
 
@@ -128,6 +141,7 @@ export const haptics = {
    */
   async warning(): Promise<void> {
     if (!isNative) return;
+    const { Haptics, NotificationType } = await loadHaptics();
     await Haptics.notification({ type: NotificationType.Warning });
   },
 
@@ -136,6 +150,7 @@ export const haptics = {
    */
   async error(): Promise<void> {
     if (!isNative) return;
+    const { Haptics, NotificationType } = await loadHaptics();
     await Haptics.notification({ type: NotificationType.Error });
   },
 
@@ -144,6 +159,7 @@ export const haptics = {
    */
   async selectionStart(): Promise<void> {
     if (!isNative) return;
+    const { Haptics } = await loadHaptics();
     await Haptics.selectionStart();
   },
 
@@ -152,6 +168,7 @@ export const haptics = {
    */
   async selectionChanged(): Promise<void> {
     if (!isNative) return;
+    const { Haptics } = await loadHaptics();
     await Haptics.selectionChanged();
   },
 
@@ -160,6 +177,7 @@ export const haptics = {
    */
   async selectionEnd(): Promise<void> {
     if (!isNative) return;
+    const { Haptics } = await loadHaptics();
     await Haptics.selectionEnd();
   },
 };

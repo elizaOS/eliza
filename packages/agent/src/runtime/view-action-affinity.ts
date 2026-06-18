@@ -103,19 +103,20 @@ export function setActiveViewElements(
  *   scape       — plugins/plugin-scape/src/actions (SCAPE)
  *   2004scape   — plugins/plugin-2004scape/src/actions (RS_2004, RS_2004_INVENTORY)
  *
- * Verified action names + view ids (2026-06-17) — LifeOps decomposition views,
- * now real + agent-surface-instrumented:
- *   calendar — plugins/plugin-calendar/src/actions/calendar.ts (CALENDAR)
- *   health   — plugins/plugin-health/src/actions/{health,screen-time}.ts
- *              (OWNER_HEALTH, OWNER_SCREENTIME)
- *   focus    — plugins/plugin-personal-assistant/src/website-blocker/chat-integration/
- *              actions/{listActiveBlocks,releaseBlock}.ts (LIST_ACTIVE_BLOCKS, RELEASE_BLOCK)
- *   finances — plugins/plugin-finances/src/actions/finances.ts (OWNER_FINANCES)
- *   inbox    — plugins/plugin-inbox/src/actions/inbox.ts (literal name: "INBOX")
- *   goals    — plugins/plugin-goals/src/actions/goals.ts (literal name: "OWNER_GOALS")
- *   todos    — plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts
- *              (literal name: "OWNER_TODOS"; TodosView projects the shared
- *              scheduled-task spine via GET /api/lifeops/todos)
+ * Verified action names + view ids (2026-06-18) — each LifeOps/utility view's
+ * own domain actions, so they are emphasised (not just universally
+ * element-controllable) when that view is the foreground surface. Names
+ * confirmed registered in each plugin's actions/ source; plugin-conditional like
+ * the rest (a missing-plugin skip when not loaded). Sources:
+ *   calendar  — plugins/plugin-calendar/src/actions (CALENDAR, CONFLICT_DETECT)
+ *   health    — plugins/plugin-health/src/actions (OWNER_HEALTH, OWNER_SCREENTIME)
+ *   focus     — plugins/plugin-blocker/src/actions/block.ts (BLOCK umbrella;
+ *               list_active / release are subactions of it, not standalone actions)
+ *   finances  — plugins/plugin-finances/src/actions/finances (OWNER_FINANCES)
+ *   inbox     — plugins/plugin-inbox/src/actions/inbox (literal name: "INBOX")
+ *   goals     — plugins/plugin-goals/src/actions (OWNER_GOALS, OWNER_ALARMS, OWNER_REMINDERS, OWNER_ROUTINES)
+ *   todos     — plugins/plugin-personal-assistant/src/actions/owner-surfaces (OWNER_TODOS)
+ *   lifeops   — plugins/plugin-personal-assistant/src/actions (PERSONAL_ASSISTANT)
  *   relationships — plugins/plugin-relationships/src/actions/entity.ts
  *              (literal name: "ENTITY"; RelationshipsView reads the entity /
  *              relationship graph via GET /api/lifeops/{entities,relationships})
@@ -156,13 +157,14 @@ export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
   ],
   scape: ["SCAPE"],
   "2004scape": ["RS_2004", "RS_2004_INVENTORY"],
-  calendar: ["CALENDAR"],
+  calendar: ["CALENDAR", "CONFLICT_DETECT"],
   health: ["OWNER_HEALTH", "OWNER_SCREENTIME"],
-  focus: ["LIST_ACTIVE_BLOCKS", "RELEASE_BLOCK"],
+  focus: ["BLOCK"],
   finances: ["OWNER_FINANCES"],
   inbox: ["INBOX"],
-  goals: ["OWNER_GOALS"],
+  goals: ["OWNER_GOALS", "OWNER_ALARMS", "OWNER_REMINDERS", "OWNER_ROUTINES"],
   todos: ["OWNER_TODOS"],
+  lifeops: ["PERSONAL_ASSISTANT"],
   relationships: ["ENTITY"],
 };
 

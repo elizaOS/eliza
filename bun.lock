@@ -2882,6 +2882,7 @@
       },
       "optionalDependencies": {
         "@elizaos/capacitor-bun-runtime": "workspace:*",
+        "@elizaos/capacitor-camera": "workspace:*",
       },
       "peerDependencies": {
         "react": "19.2.5",
@@ -4180,6 +4181,7 @@
       "version": "2.0.3-beta.14",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "fake-indexeddb": "^6.2.5",
         "matrix-js-sdk": "^41.4.0",
       },
       "devDependencies": {
@@ -11215,6 +11217,7 @@
 
     "face-api.js": ["face-api.js@0.22.2", "", { "dependencies": { "@tensorflow/tfjs-core": "1.7.0", "tslib": "^1.11.1" } }, "sha512-9Bbv/yaBRTKCXjiDqzryeKhYxmgSjJ7ukvOvEBy6krA0Ah/vNBlsf7iBNfJljWiPA8Tys1/MnB3lyP2Hfmsuyw=="],
 
+    "fake-indexeddb": ["fake-indexeddb@6.2.5", "", {}, "sha512-CGnyrvbhPlWYMngksqrSSUT1BAVP49dZocrHuK0SvtR0D5TMs5wP0o3j7jexDJW01KSadjBp1M/71o/KR3nD1w=="],
     "fancy-canvas": ["fancy-canvas@2.1.0", "", {}, "sha512-nifxXJ95JNLFR2NgRV4/MxVP45G9909wJTEKz5fg/TZS20JJZA6hfgRVh/bC9bwl2zBtBNcYPjiBE4njQHVBwQ=="],
 
     "fast-check": ["fast-check@4.8.0", "", { "dependencies": { "pure-rand": "^8.0.0" } }, "sha512-GOJ158CUMnN6cSahsv4+ExARvIDuzzinFjkp0E9WtiBa5zcVeLozVkWaE4IzFcc+Y48Wp1EDlUZsXRyAztQcSg=="],

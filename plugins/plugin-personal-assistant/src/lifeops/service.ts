@@ -66,11 +66,13 @@ const LIFEOPS_WITH_CONNECTORS = withWhatsApp(
 const LIFEOPS_WITH_TRAVEL = withTravel(LIFEOPS_WITH_CONNECTORS);
 const LIFEOPS_WITH_SCHEDULING = withScheduling(LIFEOPS_WITH_TRAVEL);
 // Payment-source / transaction / spending logic moved to
-// @elizaos/plugin-finances (FinancesService). LifeOpsService no longer mixes
-// in payments; the OWNER_FINANCES payments handler + the /api/lifeops/money/*
-// routes delegate to FinancesService. Subscription discovery / cancellation
-// stays here because it orchestrates the agent's Gmail triage + browser bridge
-// surfaces and reaches the finance tables through LifeOpsRepository.
+// @elizaos/plugin-finances (FinancesService). Subscription audit / cancellation
+// also moved there (SubscriptionsService), which reaches Gmail + the browser
+// bridge through runtime-service seams. LifeOpsService no longer implements
+// either back-end; the OWNER_FINANCES handler + the /api/lifeops/money/* and
+// /api/lifeops/subscriptions/* routes delegate to the finances services. The
+// `withSubscriptions` mixin is a thin forwarding shim that keeps the service
+// surface stable for those call sites.
 const LIFEOPS_WITH_SUBS = withSubscriptions(LIFEOPS_WITH_SCHEDULING);
 // TypeScript loses track of constraint satisfaction past ~6 chained generic
 // mixins, so we cast explicitly. The runtime composition has every method

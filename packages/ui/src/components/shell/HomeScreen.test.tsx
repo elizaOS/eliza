@@ -69,61 +69,48 @@ afterEach(() => {
   ];
 });
 
+const DEFAULT_TILES = ["tutorial", "help", "settings", "views"];
+const NATIVE_OS_TILES = ["messages", "phone", "contacts", "camera"];
+
+function tileIds(container: HTMLElement): string[] {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>('[data-testid^="home-tile-"]'),
+  ).map((el) => el.dataset.testid?.replace("home-tile-", "") ?? "");
+}
+
 describe("HomeScreen", () => {
-  it("renders the clock, activity (when present), messages, and pinned tiles", async () => {
-    render(<HomeScreen onOpenTile={vi.fn()} />);
+  it("renders the clock, activity (when present), messages, and exactly the 4 default tiles", async () => {
+    const { container } = render(<HomeScreen onOpenTile={vi.fn()} />);
     expect(screen.getByTestId("home-clock")).toBeTruthy();
     // Activity card shows because the mock has events.
     expect(screen.getByTestId("home-widget-activity")).toBeTruthy();
     expect(screen.getByText("Finished the build")).toBeTruthy();
     // Messages card appears once the (async) inbox fetch resolves with a chat.
     expect(await screen.findByTestId("home-widget-messages")).toBeTruthy();
-    // Always-on tab tiles + the view tiles whose paths are registered.
-    for (const id of [
-      "settings",
-      "orchestrator",
-      "workflows",
-      "views",
-      "inbox",
-    ]) {
-      expect(screen.getByTestId(`home-tile-${id}`)).toBeTruthy();
+    // Off-AOSP: exactly the four default tiles, in order.
+    expect(tileIds(container)).toEqual(DEFAULT_TILES);
+  });
+
+  it("shows 8 tiles on the AOSP fork — the 4 defaults plus messages/phone/contacts/camera", () => {
+    const { rerender, container } = render(<HomeScreen onOpenTile={vi.fn()} />);
+    // Off-AOSP: the four native-OS tiles are hidden.
+    for (const id of NATIVE_OS_TILES) {
+      expect(screen.queryByTestId(`home-tile-${id}`)).toBeNull();
     }
-  });
+    expect(tileIds(container)).toHaveLength(4);
 
-  it("hides phone, contacts + messages tiles unless native-OS tiles are enabled", () => {
-    const { rerender } = render(<HomeScreen onOpenTile={vi.fn()} />);
-    expect(screen.queryByTestId("home-tile-phone")).toBeNull();
-    expect(screen.queryByTestId("home-tile-contacts")).toBeNull();
-    expect(screen.queryByTestId("home-tile-messages")).toBeNull();
     rerender(<HomeScreen onOpenTile={vi.fn()} showNativeOsTiles />);
-    expect(screen.getByTestId("home-tile-phone")).toBeTruthy();
-    expect(screen.getByTestId("home-tile-contacts")).toBeTruthy();
-    expect(screen.getByTestId("home-tile-messages")).toBeTruthy();
+    // AOSP: all eight, defaults first then the native-OS surfaces.
+    expect(tileIds(container)).toEqual([...DEFAULT_TILES, ...NATIVE_OS_TILES]);
   });
 
-  it("hides a view tile whose destination isn't registered (no dead-end nav)", () => {
-    // A build where /orchestrator + /inbox aren't registered (e.g. the mobile
-    // build) — those tiles must not render; /automations stays.
-    mockViews = [{ id: "automations", path: "/automations" }];
-    render(<HomeScreen onOpenTile={vi.fn()} />);
-    expect(screen.queryByTestId("home-tile-orchestrator")).toBeNull();
-    expect(screen.queryByTestId("home-tile-inbox")).toBeNull();
-    expect(screen.getByTestId("home-tile-workflows")).toBeTruthy();
-    // Tab tiles always resolve.
-    expect(screen.getByTestId("home-tile-settings")).toBeTruthy();
-    expect(screen.getByTestId("home-tile-views")).toBeTruthy();
-  });
-
-  it("opens a builtin-tab tile and a view tile with the right target", () => {
+  it("opens a default tile and the AOSP camera tile with the right target", () => {
     const onOpenTile = vi.fn();
-    render(<HomeScreen onOpenTile={onOpenTile} />);
+    render(<HomeScreen onOpenTile={onOpenTile} showNativeOsTiles />);
     fireEvent.click(screen.getByTestId("home-tile-settings"));
     expect(onOpenTile).toHaveBeenCalledWith({ kind: "tab", tab: "settings" });
-    fireEvent.click(screen.getByTestId("home-tile-orchestrator"));
-    expect(onOpenTile).toHaveBeenCalledWith({
-      kind: "view",
-      path: "/orchestrator",
-    });
+    fireEvent.click(screen.getByTestId("home-tile-camera"));
+    expect(onOpenTile).toHaveBeenCalledWith({ kind: "tab", tab: "camera" });
   });
 
   it("has no Edit button or Pinned label (clean, action-driven dashboard)", () => {

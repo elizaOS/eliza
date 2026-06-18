@@ -23,6 +23,7 @@
     "node_modules",
     "vendor",
     "vendor/**",
+    "scripts/**",
     "src/test-utils/**",
     "vitest.config.ts",
     "**/__tests__/**",

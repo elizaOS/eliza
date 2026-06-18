@@ -104,7 +104,11 @@ export default defineConfig({
     },
     {
       name: "mobile-chromium",
-      testMatch: /backgrounds\.spec\.ts/,
+      // Mobile-viewport (Pixel 7) lane: background rendering + the decomposed
+      // personal-assistant domain views, so each lifeops view is exercised at
+      // the same WebView viewport that ships on Capacitor iOS/Android.
+      testMatch:
+        /(backgrounds|apps-personal-assistant-decomposed-interactions)\.spec\.ts/,
       use: { ...devices["Pixel 7"] },
     },
   ],

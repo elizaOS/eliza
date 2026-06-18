@@ -13,14 +13,20 @@ const reactEntry = requireFromUi.resolve("react");
 const reactJsxRuntime = requireFromUi.resolve("react/jsx-runtime");
 const reactDomEntry = requireFromUi.resolve("react-dom");
 const reactDomClient = requireFromUi.resolve("react-dom/client");
+const reactDomServer = requireFromUi.resolve("react-dom/server");
 
 export default defineConfig({
   resolve: {
+    // Pin a single react/react-dom copy (the UI package's) so a server-render
+    // import (react-dom/server, used by the spatial tri-modal view test) cannot
+    // resolve a different react-dom version and trip "invalid hook call".
+    dedupe: ["react", "react-dom"],
     alias: [
       { find: /^react$/, replacement: reactEntry },
       { find: /^react\/jsx-runtime$/, replacement: reactJsxRuntime },
       { find: /^react-dom$/, replacement: reactDomEntry },
       { find: /^react-dom\/client$/, replacement: reactDomClient },
+      { find: /^react-dom\/server$/, replacement: reactDomServer },
     ],
   },
   test: {

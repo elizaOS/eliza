@@ -28,10 +28,12 @@ test("calendar decomposed view: day/week/month view-mode control switches", asyn
     page.getByTestId("lifeops-calendar-section").first(),
   ).toBeVisible({ timeout: 60_000 });
 
-  // The view-mode control is a SegmentedControl (aria-pressed buttons, testIds),
-  // not role=tab. Driving it exercises the real CalendarSection control.
-  const week = page.getByTestId("view-week").first();
-  const day = page.getByTestId("view-day").first();
+  // The view-mode control is a SegmentedControl whose buttons expose accessible
+  // names ("Day" / "Week" / "Month") with aria-pressed — drive it by role+name
+  // (Playwright-preferred) rather than a testId. Week is the default selection.
+  // exact:true so "Day" does not substring-match the "Today" nav button.
+  const week = page.getByRole("button", { name: "Week", exact: true }).first();
+  const day = page.getByRole("button", { name: "Day", exact: true }).first();
   await expect(week).toBeVisible({ timeout: 15_000 });
   await expect(week).toHaveAttribute("aria-pressed", "true", {
     timeout: 10_000,
@@ -65,14 +67,19 @@ test("inbox decomposed view: channel filters toggle", async ({ page }) => {
   await expect.poll(() => email.getAttribute("aria-pressed")).not.toBe(before);
 });
 
-test("finances decomposed view: renders the financial summary scaffold", async ({
+test("finances decomposed view: renders the financial summary", async ({
   page,
 }) => {
   await openAppPath(page, "/finances");
   await expect(
     page.getByRole("heading", { name: /Balance/i }).first(),
   ).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText(/No transactions yet\./i).first()).toBeVisible({
+  // The feed mock seeds payment sources + transactions, so FinancesView lands on
+  // its populated branch (Recent transactions list), not the empty state.
+  await expect(
+    page.getByRole("heading", { name: /Recent transactions/i }).first(),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Latte").first()).toBeVisible({
     timeout: 15_000,
   });
 });

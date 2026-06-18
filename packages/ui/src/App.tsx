@@ -2,7 +2,6 @@
  * Root App component — routing shell.
  */
 
-import { Keyboard } from "@capacitor/keyboard";
 import { X } from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {
@@ -65,7 +64,6 @@ import {
   type FocusConnectorEventDetail,
 } from "./events";
 import { CompactOnboarding } from "./first-run/CompactOnboarding";
-import { FirstRunScreen } from "./first-run/FirstRunScreen";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
@@ -74,6 +72,7 @@ import {
   getAppSlugFromPath,
   getWindowNavigationPath,
   isAndroidPhoneSurfaceEnabled,
+  isAospShellEnabled,
   isRouteRootPath,
   shouldUseHashNavigation,
 } from "./navigation";
@@ -147,6 +146,10 @@ const AutomationsFeed = lazyNamedView(
 const BrowserWorkspaceView = lazyNamedView(
   () => import("./components/pages/BrowserWorkspaceView"),
   "BrowserWorkspaceView",
+);
+const CameraPageView = lazyNamedView(
+  () => import("./components/pages/CameraPageView"),
+  "CameraPageView",
 );
 const ContactsPageView = lazyNamedView(
   () => import("./components/pages/ElizaOsAppsView"),
@@ -734,7 +737,6 @@ function renderStaticViewRouterTab({
   LifeOpsPageView: ComponentType | null | undefined;
 }): ReactNode {
   const directViews: Record<string, ReactNode> = {
-    onboarding: <FirstRunScreen />,
     tutorial: (
       <TabContentView>
         <TutorialView />
@@ -743,6 +745,11 @@ function renderStaticViewRouterTab({
     help: (
       <TabContentView>
         <HelpView />
+      </TabContentView>
+    ),
+    camera: (
+      <TabContentView>
+        <CameraPageView />
       </TabContentView>
     ),
     chat: <ViewUnavailableFallback />,
@@ -1169,7 +1176,7 @@ function HomeScreenMount(): ReactNode {
   return (
     <HomeScreen
       onOpenTile={onOpenTile}
-      showNativeOsTiles={isAndroidPhoneSurfaceEnabled()}
+      showNativeOsTiles={isAospShellEnabled()}
     />
   );
 }
@@ -1422,9 +1429,15 @@ export function App() {
       return;
     }
 
-    void Keyboard.setScroll({ isDisabled: true }).catch(() => {
-      // Ignore bridge failures so web and desktop shells keep working.
-    });
+    // Dynamic import keeps @capacitor/keyboard (a native-only, devDependency
+    // plugin) out of the static module graph, so server consumers that pull in
+    // the @elizaos/ui barrel (e.g. plugin-inbox in the Node agent image) don't
+    // crash trying to resolve a package that's only installed for mobile.
+    void import("@capacitor/keyboard")
+      .then(({ Keyboard }) => Keyboard.setScroll({ isDisabled: true }))
+      .catch(() => {
+        // Ignore bridge failures so web and desktop shells keep working.
+      });
   }, []);
 
   useEffect(() => {

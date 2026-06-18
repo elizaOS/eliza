@@ -194,6 +194,12 @@ function buildTriagePrompt(
     "Return JSON only as a single object with one results array entry per message in the same order.",
     "Use this exact shape:",
     '{"results":[{"classification":"ignore|info|notify|needs_reply|urgent","urgency":"low|medium|high","confidence":0.0,"reasoning":"brief explanation","suggestedResponse":null}]}',
+    // The `a|b|c` placeholders above list the allowed values — they are NOT
+    // literal output. Smaller/local models otherwise echo the pipe string
+    // ("urgent|ignore"), which fails strict validation. Be explicit.
+    'For "classification" output exactly one of: ignore, info, notify, needs_reply, urgent.',
+    'For "urgency" output exactly one of: low, medium, high.',
+    'Choose a single value per field — never output the "|" character or more than one option.',
     "suggestedResponse may be a brief draft response when useful, otherwise null.",
     "",
     "No prose, markdown, code fences, or <think>.",

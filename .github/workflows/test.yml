@@ -173,6 +173,13 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
+      # @elizaos/tui first: the packages/ui spatial-view tests
+      # (src/spatial/__tests__/*) import @elizaos/ui/spatial/tui, whose terminal
+      # renderer externalizes @elizaos/tui — without its dist, vitest fails to
+      # resolve the package and the test files load "0 test".
+      - name: Build @elizaos/tui for spatial-view tests
+        run: bun run --cwd packages/tui build
+
       - name: Run client tests
         run: bun run test:client
 
@@ -232,8 +239,13 @@ jobs:
 
       # plugin-xr's xr-bundle-coverage test asserts every view plugin has a
       # built dist/views/bundle.js; build them before running plugin tests.
+      # @elizaos/tui first: the spatial-view tests (45 plugins) import
+      # @elizaos/ui/spatial/tui, whose terminal renderer externalizes
+      # @elizaos/tui — without its dist, vitest fails to resolve the package.
       - name: Build view bundles
-        run: bun run build:views
+        run: |
+          bun run --cwd packages/tui build
+          bun run build:views
 
       - name: Run plugin tests
         # Cap step below the 95m job budget so a flaky plugin

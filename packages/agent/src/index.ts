@@ -242,6 +242,17 @@ export {
   registerJsRuntimeFactory,
   resolveJsRuntimeBridge,
 } from "./services/js-runtime-bridge.ts";
+// Runtime knowledge graph (entity/relationship stores + service). Named
+// re-export to mirror the relationships-graph surface and avoid colliding
+// with the broad services barrel.
+export {
+  EntityStore,
+  KNOWLEDGE_GRAPH_SERVICE,
+  KnowledgeGraphService,
+  knowledgeGraphSchema,
+  RelationshipStore,
+  resolveKnowledgeGraphService,
+} from "./services/knowledge-graph/index.ts";
 export * from "./services/plugin-installer";
 export type {
   CoreManagerLike,

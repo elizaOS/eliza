@@ -27,6 +27,13 @@ export interface SharedRestConversation {
   title: string;
   roomId: string;
   createdAt: string;
+  /**
+   * The client's `isConversationRecord()` guard REQUIRES `updatedAt` — without
+   * it the record is rejected, so there is no active conversation and every send
+   * is silently dropped. A shared agent's canonical conversation is never
+   * renamed/moved, so `updatedAt` === `createdAt`.
+   */
+  updatedAt: string;
 }
 
 /** Minimal subset of the agent-server REST `ConversationMessage`. */
@@ -53,7 +60,8 @@ function makeConversation(
   createdAt: string,
 ): SharedRestConversation {
   const id = canonicalConversationId(agentId);
-  return { id, title: agentName || "Chat", roomId: id, createdAt };
+  // updatedAt === createdAt: the canonical conversation is never renamed/moved.
+  return { id, title: agentName || "Chat", roomId: id, createdAt, updatedAt: createdAt };
 }
 
 /** GET .../api/health — the agent is in-Worker; if it resolves, it's up. */
@@ -61,19 +69,28 @@ export function sharedRestHealth(): { status: "ok" } {
   return { status: "ok" };
 }
 
-/** The agent-status shape the chat client reads; only `state` is load-bearing. */
+/** The agent-status shape the chat client reads; `state` + `canRespond` gate UI. */
 export interface SharedRestStatus {
   state: "running";
   agentName: string;
+  /**
+   * The composer's send-gate is `canRespond ?? (running && model)`. A shared
+   * agent has no LOCAL model (inference is hosted in-Worker), so `running &&
+   * model` is false and the box would stay disabled. We're only here for a
+   * provisioned + running shared agent, so it CAN respond — declare it
+   * explicitly so the client doesn't fall back to the model check.
+   */
+  canRespond: true;
 }
 
 /**
  * GET .../api/status — the startup-coordinator's FIRST hard gate: it calls
  * `getStatus()` before anything else and bails unless `state === "running"`.
- * A shared agent runs in-Worker, so if this resolves it is by definition up.
+ * A shared agent runs in-Worker, so if this resolves it is by definition up and
+ * able to respond (its inference is hosted, not a local model).
  */
 export function sharedRestStatus(agentName: string): SharedRestStatus {
-  return { state: "running", agentName: agentName || "Eliza" };
+  return { state: "running", agentName: agentName || "Eliza", canRespond: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -184,16 +201,20 @@ export function sharedRestViews(viewType?: string): {
 /**
  * GET .../api/config — the dashboard's open-ended agent config. A shared agent
  * exposes no editable config through this adapter, but it DOES declare its
- * realtime transport: a Tier-0 agent runs in a stateless Worker with no
- * persistent process, so there is no WebSocket to connect (per-turn streaming is
- * the SSE `/stream` endpoint; chat send already works over REST). It advertises
- * `websocket: false` so a client that honors it skips opening a WS to the shared
- * base — avoiding the doomed reconnect loop + "Lost backend connection" overlay
- * that otherwise paints over a fully working REST/SSE chat. The client still
- * reads the rest of the object defensively (`ui`/`cloud`) and falls back.
+ * transport capabilities so the client adapts by negotiation instead of
+ * URL-sniffing the agent base. A Tier-0 agent runs in a stateless Worker with no
+ * persistent process, so it has:
+ *  - `websocket: false` — no per-agent socket to connect; the client skips the
+ *    WS (avoiding the doomed reconnect loop + "Lost backend connection" overlay
+ *    that otherwise paints over a working chat).
+ *  - `streaming: false` — no token-by-token SSE chat stream
+ *    (`/messages/stream`); the client uses the non-stream `POST .../messages`
+ *    (which returns the full reply) cleanly, without probing a 404 first.
+ * The client still reads the rest of the object defensively (`ui`/`cloud`) and
+ * falls back. These flags let the app delete its per-base special-casing.
  */
-export function sharedRestConfig(): { websocket: false } {
-  return { websocket: false };
+export function sharedRestConfig(): { websocket: false; streaming: false } {
+  return { websocket: false, streaming: false };
 }
 
 /** The authed-identity shape `authMe()` (ui/src/api/auth-client.ts) parses. */

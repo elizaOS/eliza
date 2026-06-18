@@ -489,7 +489,7 @@ private final class LlamaSession {
     }
 }
 
-private final class CachedTtsContext {
+private final class CachedVoiceContext {
     let bundleDir: String
     let backend: String
     let context: ElizaInferenceContextPtr
@@ -581,7 +581,8 @@ private final class SessionRegistry {
 public final class LlamaBridgeImpl {
     public static let shared = LlamaBridgeImpl()
     private let ttsQueue = DispatchQueue(label: "ai.eliza.bun.llama.tts")
-    private var cachedTtsContext: CachedTtsContext?
+    private var cachedTtsContext: CachedVoiceContext?
+    private var cachedAsrContext: CachedVoiceContext?
 
     private init() {}
 
@@ -1069,7 +1070,8 @@ public final class LlamaBridgeImpl {
         maxSamples: Int = 24_000 * 60
     ) -> LlamaTtsSynthesizeResult {
         ttsQueue.sync {
-            if let coreMlResult = synthesizeKokoroCoreMl(
+            if Self.kokoroCoreMlTtsEnabled(),
+               let coreMlResult = synthesizeKokoroCoreMl(
                 bundleDir: bundleDir,
                 text: text,
                 speakerPresetId: speakerPresetId,
@@ -1077,8 +1079,12 @@ public final class LlamaBridgeImpl {
             ) {
                 return coreMlResult
             }
-            return Self.withTemporaryEnvironment("ELIZA_TTS_BACKEND", value: "kokoro") {
-                return Self.withTemporaryEnvironment("ELIZA_TTS_MAX_BACKEND_ALLOC_MB", value: "384") {
+            // When CoreML Kokoro is unavailable, route through OmniVoice — the
+            // tier DEFAULT voice engine (ELIZA_1_VOICE_BACKENDS) and the validated
+            // fused engine. The fork GGUF-Kokoro path is intentionally disabled on
+            // iOS ("not production speech"); OmniVoice is not gated.
+            return Self.withTemporaryEnvironment("ELIZA_TTS_BACKEND", value: "omnivoice") {
+                return Self.withTemporaryEnvironment("ELIZA_TTS_MAX_BACKEND_ALLOC_MB", value: "768") {
                     return Self.withTemporaryEnvironment("GGML_BACKEND", value: "CPU") {
                         return synthesizeSpeechAttempt(
                             bundleDir: bundleDir,
@@ -1139,9 +1145,9 @@ public final class LlamaBridgeImpl {
         }
 
         let start = DispatchTime.now()
-        let prepared = prepareTtsContext(bundleDir: bundleDir, backend: attemptBackend)
+        let prepared = prepareAsrContext(bundleDir: bundleDir, backend: attemptBackend)
         guard let ctx = prepared.context else {
-            let error = prepared.error ?? "eliza_inference_mmap_acquire(tts) failed"
+            let error = prepared.error ?? "eliza_inference_mmap_acquire(asr) failed"
             return .failure(error)
         }
 
@@ -1166,7 +1172,7 @@ public final class LlamaBridgeImpl {
         guard bytesWritten >= 0 else {
             let error = Self.takeInferenceError(&asrError, fallback: "eliza_inference_asr_transcribe failed with code \(bytesWritten)")
             NSLog("[LlamaBridgeImpl] ASR stage=transcribe failed backend=\(attemptBackend) code=\(bytesWritten) error=\(error)")
-            clearCachedTtsContext()
+            clearCachedAsrContext()
             return .failure(error)
         }
         let transcript = out.withUnsafeBufferPointer { buffer -> String in
@@ -1186,7 +1192,9 @@ public final class LlamaBridgeImpl {
             "ggmlBackendEnv": Self.currentBackendEnv(),
             "ttsBackendEnv": Self.currentTtsBackendEnv(),
             "kokoroGgufTtsEnabled": Self.experimentalKokoroGgufTtsEnabled(),
+            "kokoroCoreMlTtsEnabled": Self.kokoroCoreMlTtsEnabled(),
             "cachedTtsContext": cachedTtsContext != nil,
+            "cachedAsrContext": cachedAsrContext != nil,
             "hardware": hardware.asDict(),
         ]
         if let bundleDir {
@@ -1331,42 +1339,78 @@ public final class LlamaBridgeImpl {
         bundleDir: String,
         backend: String
     ) -> (context: ElizaInferenceContextPtr?, error: String?) {
-        if let cachedTtsContext,
-           cachedTtsContext.bundleDir == bundleDir,
-           cachedTtsContext.backend == backend {
-            NSLog("[LlamaBridgeImpl] TTS stage=mmap-acquire cached backend=\(backend)")
-            return (cachedTtsContext.context, nil)
+        return prepareVoiceContext(bundleDir: bundleDir, backend: backend, region: "tts")
+    }
+
+    private func prepareAsrContext(
+        bundleDir: String,
+        backend: String
+    ) -> (context: ElizaInferenceContextPtr?, error: String?) {
+        return prepareVoiceContext(bundleDir: bundleDir, backend: backend, region: "asr")
+    }
+
+    private func prepareVoiceContext(
+        bundleDir: String,
+        backend: String,
+        region: String
+    ) -> (context: ElizaInferenceContextPtr?, error: String?) {
+        let cachedContext = region == "asr" ? cachedAsrContext : cachedTtsContext
+        if let cachedContext,
+           cachedContext.bundleDir == bundleDir,
+           cachedContext.backend == backend {
+            NSLog("[LlamaBridgeImpl] \(region.uppercased()) stage=mmap-acquire cached backend=\(backend) region=\(region)")
+            return (cachedContext.context, nil)
         }
-        clearCachedTtsContext()
+        clearCachedVoiceContext(region: region)
 
         var createError: UnsafeMutablePointer<CChar>? = nil
-        NSLog("[LlamaBridgeImpl] TTS stage=create begin backend=\(backend)")
+        NSLog("[LlamaBridgeImpl] \(region.uppercased()) stage=create begin backend=\(backend)")
         guard let ctx = bundleDir.withCString({ bundlePtr in
             c_eliza_inference_create(bundlePtr, &createError)
         }) else {
             let error = Self.takeInferenceError(&createError, fallback: "eliza_inference_create failed")
-            NSLog("[LlamaBridgeImpl] TTS stage=create failed backend=\(backend) error=\(error)")
+            NSLog("[LlamaBridgeImpl] \(region.uppercased()) stage=create failed backend=\(backend) error=\(error)")
             return (nil, error)
         }
-        NSLog("[LlamaBridgeImpl] TTS stage=create ok backend=\(backend)")
+        NSLog("[LlamaBridgeImpl] \(region.uppercased()) stage=create ok backend=\(backend)")
 
         var acquireError: UnsafeMutablePointer<CChar>? = nil
-        NSLog("[LlamaBridgeImpl] TTS stage=mmap-acquire begin backend=\(backend) region=tts")
-        let acquireCode = "tts".withCString { regionPtr in
+        NSLog("[LlamaBridgeImpl] \(region.uppercased()) stage=mmap-acquire begin backend=\(backend) region=\(region)")
+        let acquireCode = region.withCString { regionPtr in
             c_eliza_inference_mmap_acquire(ctx, regionPtr, &acquireError)
         }
         guard acquireCode >= 0 else {
-            let error = Self.takeInferenceError(&acquireError, fallback: "eliza_inference_mmap_acquire(tts) failed with code \(acquireCode)")
-            NSLog("[LlamaBridgeImpl] TTS stage=mmap-acquire failed backend=\(backend) code=\(acquireCode) error=\(error)")
+            let error = Self.takeInferenceError(&acquireError, fallback: "eliza_inference_mmap_acquire(\(region)) failed with code \(acquireCode)")
+            NSLog("[LlamaBridgeImpl] \(region.uppercased()) stage=mmap-acquire failed backend=\(backend) code=\(acquireCode) error=\(error)")
             c_eliza_inference_destroy(ctx)
             return (nil, error)
         }
-        NSLog("[LlamaBridgeImpl] TTS stage=mmap-acquire ok backend=\(backend)")
-        cachedTtsContext = CachedTtsContext(bundleDir: bundleDir, backend: backend, context: ctx)
+        NSLog("[LlamaBridgeImpl] \(region.uppercased()) stage=mmap-acquire ok backend=\(backend) region=\(region)")
+        let context = CachedVoiceContext(bundleDir: bundleDir, backend: backend, context: ctx)
+        if region == "asr" {
+            cachedAsrContext = context
+        } else {
+            cachedTtsContext = context
+        }
         return (ctx, nil)
     }
 
     private func clearCachedTtsContext() {
+        clearCachedVoiceContext(region: "tts")
+    }
+
+    private func clearCachedAsrContext() {
+        clearCachedVoiceContext(region: "asr")
+    }
+
+    private func clearCachedVoiceContext(region: String) {
+        if region == "asr" {
+            if let cachedAsrContext {
+                c_eliza_inference_destroy(cachedAsrContext.context)
+                self.cachedAsrContext = nil
+            }
+            return
+        }
         if let cachedTtsContext {
             c_eliza_inference_destroy(cachedTtsContext.context)
             self.cachedTtsContext = nil
@@ -1424,6 +1468,13 @@ public final class LlamaBridgeImpl {
 
     private static func experimentalKokoroGgufTtsEnabled() -> Bool {
         guard let value = getenv("ELIZA_IOS_ALLOW_EXPERIMENTAL_KOKORO_GGUF_TTS").map({ String(cString: $0).lowercased() }) else {
+            return false
+        }
+        return value == "1" || value == "true" || value == "yes" || value == "on"
+    }
+
+    private static func kokoroCoreMlTtsEnabled() -> Bool {
+        guard let value = getenv("ELIZA_IOS_ENABLE_KOKORO_COREML_TTS").map({ String(cString: $0).lowercased() }) else {
             return false
         }
         return value == "1" || value == "true" || value == "yes" || value == "on"

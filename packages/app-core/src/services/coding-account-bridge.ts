@@ -23,7 +23,8 @@
  * `applySubscriptionCredentialsLocal` does.
  */
 
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { loadAccount } from "@elizaos/agent/auth/account-storage";
 import { getAccessToken } from "@elizaos/agent/auth/credentials";
@@ -51,17 +52,21 @@ const DEFAULT_CODING_STRATEGY: Strategy = "least-used";
  * Ordered provider candidates per coding-agent type. The first provider with an
  * eligible account wins; a subscription provider is preferred over its direct
  * API equivalent (subscriptions are the primary use case here).
+ *
+ * claude (claude-agent-acp) and codex (codex-acp) are first-party CLIs.
+ * opencode authenticates through its configured backend; the only backend it
+ * resolves from a pooled key is Cerebras (`CEREBRAS_API_KEY`, see
+ * buildOpencodeSpawnConfig), so opencode pool-rotates across `cerebras-api`
+ * accounts and no-ops otherwise. z.ai / Kimi / GLM have no first-party coding
+ * CLI — their accounts serve the main runtime's API-key routing — so they are
+ * deliberately absent (advertising them would offer an unspawnable path).
  */
 const AGENT_PROVIDER_CANDIDATES: Readonly<
   Record<string, readonly LinkedAccountProviderId[]>
 > = {
   claude: ["anthropic-subscription", "anthropic-api"],
   codex: ["openai-codex", "openai-api"],
-  // z.ai / GLM coding plans, surfaced for completeness; used via OpenCode config
-  // or a dedicated coding endpoint rather than a first-party CLI.
-  zai: ["zai-coding", "zai-api"],
-  glm: ["zai-coding", "zai-api"],
-  kimi: ["kimi-coding", "moonshot-api"],
+  opencode: ["cerebras-api"],
 };
 
 export interface CodingAgentAccountDescriptor {
@@ -159,6 +164,34 @@ function materializeCodexHome(accountId: string, accessToken: string): string {
     last_refresh: new Date().toISOString(),
   };
   writeJsonAtomicSync(path.join(dir, "auth.json"), authJson);
+
+  // Codex reads its model from CODEX_HOME/config.toml; with none, codex-acp
+  // falls back to a built-in default (e.g. gpt-5.3-codex) that ChatGPT-account
+  // auth rejects ("model is not supported when using Codex with a ChatGPT
+  // account"). Write a MINIMAL config.toml with just the model — reusing the
+  // operator's working model (extracted from ~/.codex/config.toml) but NOT the
+  // rest of their config, which can carry fields the pinned codex-acp rejects
+  // (e.g. newer reasoning-effort variants). Falls back to a compatible default.
+  const targetConfig = path.join(dir, "config.toml");
+  try {
+    let model = process.env.ELIZA_CODEX_MODEL?.trim();
+    if (!model) {
+      const machineConfig = path.join(os.homedir(), ".codex", "config.toml");
+      if (existsSync(machineConfig)) {
+        const m = readFileSync(machineConfig, "utf-8").match(
+          /^\s*model\s*=\s*"([^"]+)"/m,
+        );
+        if (m?.[1]) model = m[1];
+      }
+    }
+    writeFileSync(targetConfig, `model = "${model || "gpt-5.1-codex"}"\n`, {
+      mode: 0o600,
+    });
+  } catch (err) {
+    logger.warn(
+      `[coding-account-bridge] could not materialize codex config.toml: ${String(err)}`,
+    );
+  }
   return dir;
 }
 
@@ -172,13 +205,10 @@ async function buildEnvPatch(
       return { CLAUDE_CODE_OAUTH_TOKEN: accessToken };
     case "openai-codex":
       return { CODEX_HOME: materializeCodexHome(accountId, accessToken) };
-    case "zai-coding":
-    case "zai-api":
-      return { ZAI_API_KEY: accessToken, Z_AI_API_KEY: accessToken };
-    case "kimi-coding":
-    case "moonshot-api":
-      return { MOONSHOT_API_KEY: accessToken, KIMI_API_KEY: accessToken };
     default: {
+      // Direct API providers (e.g. cerebras-api → CEREBRAS_API_KEY for opencode)
+      // inject under their canonical env key; run-main.ts normalizes aliases
+      // (Z_AI_API_KEY → ZAI_API_KEY, KIMI_API_KEY → MOONSHOT_API_KEY).
       const envKey =
         DIRECT_ACCOUNT_PROVIDER_ENV[providerId as DirectAccountProvider];
       return envKey ? { [envKey]: accessToken } : {};

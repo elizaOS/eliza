@@ -215,7 +215,10 @@ async function loadPluginFromWorkdir(
 					: `load returned HTTP ${resp.status}`,
 		};
 	} catch (err) {
-		return { ok: false, error: err instanceof Error ? err.message : String(err) };
+		return {
+			ok: false,
+			error: err instanceof Error ? err.message : String(err),
+		};
 	}
 }
 

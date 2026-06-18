@@ -23,6 +23,7 @@ import {
 import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
+import { useViewChatBinding } from "../../state/view-chat-binding";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import {
   filesToImageAttachments,
@@ -98,6 +99,11 @@ const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
 // (~58px) plus a buffer so the grabber sits BELOW the notification-shade pull
 // zone — the full sheet reaches the top without fighting the system gesture.
 const SHEET_TOP_MARGIN = 72;
+// Detent magnetism: on a deliberate (non-flick) drag release, a height within
+// this many px of a detent (collapsed/half/full) snaps to that detent instead
+// of resting free — so near-detent releases are deterministic + clean, and only
+// the clear gaps between detents keep the free-drag rest height.
+const SHEET_DETENT_MAGNET = 64;
 // Cap how many turns are actually rendered. Older messages stay in state (the
 // agent's context is untouched) — this only bounds DOM nodes so a long thread
 // can't jank scrolling on a phone, without pulling in a virtualizer.
@@ -610,9 +616,11 @@ export function ContinuousChatOverlay({
     send,
     canSend,
     recording,
-    toggleRecording,
     startRecording,
     stopRecording,
+    handsFree,
+    toggleHandsFree,
+    setDictationSink,
     transcript,
     speaking,
     agentVoiceMuted,
@@ -637,6 +645,9 @@ export function ContinuousChatOverlay({
   const reduce = useReducedMotion() ?? false;
 
   const [draft, setDraft] = React.useState("");
+  // The active view can take over the composer: override the placeholder and
+  // receive the live draft (e.g. Help uses the chat as its search box).
+  const viewChatBinding = useViewChatBinding();
   // Escape dismisses the slash menu without clearing the draft; typing reopens.
   const [slashDismissed, setSlashDismissed] = React.useState(false);
   // The chat-history sheet: closed (a slim peek + grabber) ↔ open (full
@@ -668,6 +679,10 @@ export function ContinuousChatOverlay({
   // dismissing the keyboard (tap the handle) returns to the prior resting state
   // (collapsed) instead of leaving the sheet hanging open.
   const preFocusCollapsedRef = React.useRef(true);
+  // Composer focus ⟺ the soft keyboard is up on mobile. This is the reliable
+  // keyboard signal: Capacitor's resize:"body" shrinks innerHeight too, so a
+  // visualViewport-derived keyboardInset reads 0 and can't gate the layout.
+  const [composerFocused, setComposerFocused] = React.useState(false);
   // The live thread (history) height in px, as a MOTION VALUE — driven directly
   // by the pointer during a drag and spring-animated to a detent on release.
   // Keeping it off React state means a drag updates the DOM height every frame
@@ -884,7 +899,9 @@ export function ContinuousChatOverlay({
         pushToTalkTimerRef.current = null;
         pushToTalkActiveRef.current = true;
         setPushToTalkActive(true);
-        startRecording();
+        // Press-and-hold = dictation: the transcript fills the composer draft
+        // (no send, no spoken reply) so the user can edit before sending.
+        startRecording("dictate");
       }, 200);
     },
     [booting, clearPushToTalkTimer, hasDraft, recording, startRecording],
@@ -910,8 +927,10 @@ export function ContinuousChatOverlay({
       suppressMicClickRef.current = false;
       return;
     }
-    toggleRecording();
-  }, [toggleRecording]);
+    // Quick tap = hands-free conversation: the agent speaks its replies back and
+    // the mic re-opens after each one. Tap again to end.
+    toggleHandsFree();
+  }, [toggleHandsFree]);
 
   const hasThread = visibleMessages.length > 0;
 
@@ -1082,6 +1101,18 @@ export function ContinuousChatOverlay({
     setFreeH(null);
     setSheetOpen(true);
   }, [hasThread, sheetOpen]);
+
+  // Push-to-talk dictation drops its final transcript into the composer draft
+  // (no send): register the sink with the controller while this overlay is
+  // mounted, appending to whatever the user has already typed.
+  React.useEffect(() => {
+    setDictationSink((text) => {
+      setDraft((current) => (current ? `${current} ${text}` : text));
+      inputRef.current?.focus();
+      expand();
+    });
+    return () => setDictationSink(null);
+  }, [setDictationSink, expand]);
 
   // ── Slash commands ─────────────────────────────────────────────────────────
   // Inline command autocomplete: the menu derives from the draft + the loaded
@@ -1316,18 +1347,23 @@ export function ContinuousChatOverlay({
         return;
       }
       const h = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
-      if (h < 28) {
-        // Dragged essentially shut → collapse to the input peek.
+      // DETENT MAGNETISM — the resting positions are the detents {collapsed:0,
+      // half, full}; a release within SHEET_DETENT_MAGNET of one snaps to it
+      // (deterministic, no janky near-detent slivers), and only the clear gaps
+      // between them keep the free-drag rest height. goToDetent commits the
+      // honest flags so data-detent + the maximize header match the height.
+      if (h <= SHEET_DETENT_MAGNET) {
+        // Near the bottom → collapse to the input peek.
         closeSheet();
         return;
       }
       focusThreadRef.current = true;
-      // At/near the top, commit the FULL detent rather than parking a near-full
-      // freeH — so the flags + data-detent honestly read "full" (and the maximize
-      // header shows). Otherwise rest exactly where released.
-      if (h >= openH - 1) {
+      if (h >= openH - SHEET_DETENT_MAGNET) {
         goToDetent("full");
+      } else if (Math.abs(h - halfH) <= SHEET_DETENT_MAGNET) {
+        goToDetent("half");
       } else {
+        // In a gap between detents → rest exactly where released.
         setFreeH(h);
         setSheetOpen(true);
         setExpanded(false);
@@ -1345,16 +1381,21 @@ export function ContinuousChatOverlay({
         "pointer-events-none fixed inset-x-0 bottom-0 flex w-full min-w-0 flex-col items-center",
         // Full-bleed (maximized) removes the side inset so the chat is edge-to-edge.
         fullBleed ? "px-0" : "px-3 sm:px-4",
-        // max(safe-area, android gesture inset): when the nav bar is hidden the
-        // safe-area-inset-bottom is 0, so fall back to the real gesture-home zone
-        // (--android-gesture-inset-bottom, published by MainActivity; 0 elsewhere)
-        // so the composer never sits under the home pill. The +0.5rem breathing
-        // room keeps the chat low on the screen without touching that zone.
-        "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+0.5rem)]",
       )}
-      // Lift the whole overlay above the on-screen keyboard so the input + chat
-      // stay visible; `keyboardInset` is 0 when no keyboard is shown.
-      style={{ zIndex: Z_SHELL_OVERLAY, bottom: keyboardInset }}
+      // Lift the whole overlay above the on-screen keyboard (`bottom`); padding
+      // below the composer is conditional: when the composer is FOCUSED (keyboard
+      // up), only a small gap (0.75rem, matching the side margin) sits between the
+      // composer and the keyboard — the home-gesture clearance isn't needed
+      // because the keyboard covers it. At rest, clear the home-gesture zone (max
+      // safe-area / android inset) plus a hair, keeping the chat low without
+      // touching that zone.
+      style={{
+        zIndex: Z_SHELL_OVERLAY,
+        bottom: keyboardInset,
+        paddingBottom: composerFocused
+          ? "0.75rem"
+          : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.25rem)",
+      }}
       data-testid="continuous-chat-overlay"
       data-open={sheetOpen ? "true" : undefined}
     >
@@ -1466,7 +1507,7 @@ export function ContinuousChatOverlay({
           fullBleed ? "max-w-none" : "max-w-3xl",
         )}
       >
-        {!pilled ? (
+        {!pilled && !fullBleed ? (
           <SheetGrabber
             open={sheetOpen}
             onOpen={() => {
@@ -1570,7 +1611,17 @@ export function ContinuousChatOverlay({
               edge-to-edge full-screen, Clear resets the conversation (a fresh
               greeted thread), Settings opens preferences. */}
               {sheetOpen && expanded && !pilled ? (
-                <div className="relative z-10 flex shrink-0 items-center justify-end gap-1.5 px-3 pt-2.5">
+                <div
+                  className={cn(
+                    "relative z-10 flex shrink-0 items-center justify-end gap-1.5 px-3",
+                    // Maximized goes edge-to-edge under the status bar, so the
+                    // buttons must clear the safe-area inset (the clock/battery)
+                    // or they sit under it and become untappable.
+                    fullBleed
+                      ? "pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]"
+                      : "pt-2.5",
+                  )}
+                >
                   <HeaderButton
                     icon={maximized ? Minimize2 : Maximize2}
                     label={maximized ? "exit full screen" : "full screen"}
@@ -1742,9 +1793,15 @@ export function ContinuousChatOverlay({
                   value={draft}
                   onChange={(e) => {
                     setDraft(e.target.value);
+                    // Mirror the live draft to the active view (Help search etc.).
+                    viewChatBinding?.onQuery?.(e.target.value);
                     if (e.target.value.trim().length > 0) expand();
                   }}
-                  onFocus={expand}
+                  onFocus={() => {
+                    setComposerFocused(true);
+                    expand();
+                  }}
+                  onBlur={() => setComposerFocused(false)}
                   onKeyDown={(e) => {
                     // The slash menu intercepts navigation/commit keys when open.
                     if (slashOpen) {
@@ -1793,7 +1850,7 @@ export function ContinuousChatOverlay({
                   placeholder={
                     booting
                       ? `Ask ${agentName} — waking up…`
-                      : `Ask ${agentName}`
+                      : (viewChatBinding?.placeholder ?? `Ask ${agentName}`)
                   }
                   aria-label="message"
                   data-testid="chat-composer-textarea"
@@ -1871,11 +1928,13 @@ export function ContinuousChatOverlay({
                       label={
                         pushToTalkActive
                           ? "release to send"
-                          : recording
-                            ? "stop listening"
-                            : "talk"
+                          : handsFree
+                            ? "end conversation"
+                            : recording
+                              ? "stop listening"
+                              : "talk"
                       }
-                      active={recording}
+                      active={recording || handsFree}
                       disabled={booting}
                       onClick={handleMicClick}
                       onPointerDown={beginPushToTalkPress}

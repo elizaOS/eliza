@@ -203,9 +203,12 @@ describe("multi-account coding-agent spawn", () => {
     }
   });
 
-  it("injects a per-account CODEX_HOME for Codex and drops a forwarded OPENAI_API_KEY", async () => {
-    const prev = process.env.OPENAI_API_KEY;
+  it("injects a per-account CODEX_HOME for Codex and drops forwarded OPENAI_API_KEY + OPENAI_MODEL", async () => {
+    const prevKey = process.env.OPENAI_API_KEY;
+    const prevModel = process.env.OPENAI_MODEL;
     process.env.OPENAI_API_KEY = "sk-openai-should-be-dropped";
+    // An API-tier model that Codex rejects under ChatGPT-account auth.
+    process.env.OPENAI_MODEL = "gpt-5.3-codex";
     // Path carries the per-account `_codex-home` marker buildEnv keys off of.
     installBridge({
       codex: {
@@ -227,16 +230,20 @@ describe("multi-account coding-agent spawn", () => {
       });
       const env = firstNativeClient().opts.env ?? {};
       expect(env.CODEX_HOME).toBe("/tmp/auth/_codex-home/acc-personal");
-      // A forwarded api key would override the per-account ChatGPT auth.json.
+      // A forwarded api key would override the per-account ChatGPT auth.json;
+      // an API-tier model is rejected by Codex under ChatGPT-account auth.
       expect(env.OPENAI_API_KEY).toBeUndefined();
+      expect(env.OPENAI_MODEL).toBeUndefined();
       const account = (result.metadata as Record<string, unknown>)?.account as
         | Record<string, unknown>
         | undefined;
       expect(account?.providerId).toBe("openai-codex");
       await service.stop();
     } finally {
-      if (prev === undefined) delete process.env.OPENAI_API_KEY;
-      else process.env.OPENAI_API_KEY = prev;
+      if (prevKey === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = prevKey;
+      if (prevModel === undefined) delete process.env.OPENAI_MODEL;
+      else process.env.OPENAI_MODEL = prevModel;
     }
   });
 

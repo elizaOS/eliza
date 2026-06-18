@@ -74,6 +74,8 @@ import {
 	sendMessageInChunks,
 } from "./utils";
 
+const INTERACTION_ONLY_FALLBACK_TEXT = "Choose an option:";
+
 export function resolveGenerationTimeoutMs(
 	timeoutSetting: unknown,
 	fallbackSetting: unknown,
@@ -921,7 +923,11 @@ export class MessageManager {
 					// Project embedded interaction blocks (choices, task cards, …) onto
 					// native Discord components, and strip their markers from the prose.
 					const rendered = renderDiscordInteractions(content);
-					const textContent = normalizeDiscordMessageText(rendered.text);
+					const hasComponents = rendered.components.length > 0;
+					let textContent = normalizeDiscordMessageText(rendered.text);
+					if (textContent.trim().length === 0 && hasComponents) {
+						textContent = INTERACTION_ONLY_FALLBACK_TEXT;
+					}
 					const hasText = textContent.trim().length > 0;
 					const attachmentCount = Array.isArray(content.attachments)
 						? content.attachments.filter((media) => Boolean(media?.url)).length
@@ -1048,7 +1054,7 @@ export class MessageManager {
 								textContent,
 								outboundReplyToMessageId ?? "",
 								files,
-								rendered.components.length > 0 ? rendered.components : undefined,
+								hasComponents ? rendered.components : undefined,
 								this.runtime,
 								replyToMode,
 							),

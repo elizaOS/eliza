@@ -68,6 +68,7 @@ describe("shared-rest-adapter — conversation surface", () => {
       title: "Eliza",
       roomId: AGENT,
       createdAt: CREATED,
+      updatedAt: CREATED,
     });
   });
 
@@ -84,7 +85,11 @@ describe("shared-rest-adapter — conversation surface", () => {
 
 describe("shared-rest-adapter — startup shell surface", () => {
   test("status is the first gate: running + agent name", () => {
-    expect(sharedRestStatus("Nova")).toEqual({ state: "running", agentName: "Nova" });
+    expect(sharedRestStatus("Nova")).toEqual({
+      state: "running",
+      agentName: "Nova",
+      canRespond: true,
+    });
   });
 
   test("status falls back to a name when the agent has none", () => {
@@ -96,8 +101,8 @@ describe("shared-rest-adapter — startup shell surface", () => {
     expect(sharedRestFirstRun()).toEqual({ complete: true, ok: true });
   });
 
-  test("config advertises no websocket (shared agents stream via SSE/REST)", () => {
-    expect(sharedRestConfig()).toEqual({ websocket: false });
+  test("config declares no websocket + no streaming (client uses non-stream REST)", () => {
+    expect(sharedRestConfig()).toEqual({ websocket: false, streaming: false });
   });
 
   test("views returns the builtin chat view by default", () => {

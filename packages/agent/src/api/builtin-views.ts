@@ -37,6 +37,19 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     platforms: ["web", "desktop", "ios", "android"],
   },
   {
+    id: "camera",
+    label: "Camera",
+    description:
+      "Live camera preview with photo capture and front/back switching",
+    icon: "Camera",
+    path: "/camera",
+    order: 3,
+    tags: ["camera", "photo", "capture", "video", "vision"],
+    visibleInManager: true,
+    desktopTabEnabled: true,
+    platforms: ["android"],
+  },
+  {
     id: "chat",
     label: "Chat",
     description:

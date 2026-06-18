@@ -129,7 +129,10 @@ jobs:
           (cd packages/core && bun run build.ts --node-only)
           # security → plugin-remote-manifest → plugin-worker-runtime: ordered by
           # build-time type deps; agent boot ERR_MODULE_NOT_FOUNDs without their dist.
-          for pkg in packages/shared packages/cloud-sdk packages/cloud-routing packages/skills packages/ui packages/security packages/plugin-remote-manifest packages/plugin-worker-runtime; do
+          # tui before ui: @elizaos/ui (workspace:* on @elizaos/tui) exposes the
+          # spatial/tui terminal renderer, and the app's `build:client` bundles it;
+          # without @elizaos/tui's dist the renderer build fails to resolve it.
+          for pkg in packages/shared packages/cloud-sdk packages/cloud-routing packages/skills packages/tui packages/ui packages/security packages/plugin-remote-manifest packages/plugin-worker-runtime; do
             if [[ -f "$pkg/package.json" ]] && jq -e '.scripts.build' "$pkg/package.json" >/dev/null; then
               echo "::group::Building $pkg"
               (cd "$pkg" && bun install --no-frozen-lockfile --ignore-scripts && bun run build)
@@ -160,7 +163,7 @@ jobs:
         run: |
           for plugin in plugin-sql plugin-video plugin-agent-skills plugin-pdf \
             plugin-browser plugin-capacitor-bridge plugin-coding-tools \
-            plugin-computeruse plugin-discord plugin-edge-tts plugin-elizacloud \
+            plugin-commands plugin-computeruse plugin-discord plugin-edge-tts plugin-elizacloud \
             plugin-imessage plugin-local-inference plugin-mcp plugin-signal \
             plugin-streaming plugin-telegram plugin-whatsapp plugin-wallet plugin-workflow \
             plugin-x402; do

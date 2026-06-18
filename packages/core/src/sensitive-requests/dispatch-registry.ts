@@ -135,10 +135,7 @@ export function createSensitiveRequestDispatchRegistry(): SensitiveRequestDispat
 		resolve(target, channelId, runtime) {
 			const arr = listFor(target);
 			for (const adapter of arr) {
-				if (
-					!adapter.supportsChannel ||
-					adapter.supportsChannel(channelId, runtime) !== false
-				) {
+				if (adapter.supportsChannel?.(channelId, runtime) !== false) {
 					return adapter;
 				}
 			}

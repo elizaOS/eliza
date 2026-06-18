@@ -267,7 +267,8 @@
     "react-dom": "19.2.5"
   },
   "optionalDependencies": {
-    "@elizaos/capacitor-bun-runtime": "workspace:*"
+    "@elizaos/capacitor-bun-runtime": "workspace:*",
+    "@elizaos/capacitor-camera": "workspace:*"
   },
   "dependencies": {
     "@elizaos/cloud-sdk": "workspace:*",

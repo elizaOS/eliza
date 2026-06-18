@@ -20,6 +20,7 @@ paths = [
   '''(^|/)__mocks__/''',
   '''(^|/)test/fixtures/''',
   '''(^|/)tests/fixtures/''',
+  '''(^|/)tests/e2e/.*\.spec\.ts$''',
   '''.*\.example$''',
   '''\.env\.example$''',
   '''\.env\.sample$''',
@@ -65,6 +66,17 @@ paths = [
   '''(^|/)Cargo\.lock$''',
   '''(^|/)poetry\.lock$''',
   '''(^|/)uv\.lock$''',
+]
+
+# Vendored third-party dependency patches (Bun/npm `patches/` overlays). These
+# are upstream package diffs that embed base64/hex blobs (compiled artifacts,
+# native binaries) whose high-entropy lines trip generic token rules — e.g. the
+# llama-cpp-capacitor patch matched `sourcegraph-access-token`. They are not our
+# credentials. Scoped to `patches/` directories so real source is still scanned.
+[[allowlists]]
+description = "Vendored dependency patch overlays — upstream blobs, not secrets"
+paths = [
+  '''(^|/)patches/[^/]+\.patch$''',
 ]
 
 # Hardware part-selection YAMLs under packages/chip/board/kicad/. The

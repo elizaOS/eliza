@@ -137,6 +137,13 @@ const smokeViewDeclarations = [
   ["inbox", "Inbox", "plugin-inbox", "/inbox", "InboxView"],
   ["todos", "Todos", "plugin-todos", "/todos", "TodosView"],
   [
+    "relationships",
+    "Relationships",
+    "plugin-relationships",
+    "/relationships",
+    "RelationshipsView",
+  ],
+  [
     "messages",
     "Messages",
     "plugin-messages",

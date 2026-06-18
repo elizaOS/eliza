@@ -1,27 +1,27 @@
 import * as React from "react";
 
 import { useApp } from "../../../state";
+import { useRegisterViewChatBinding } from "../../../state/view-chat-binding";
 import { startTutorial } from "../tutorial/tutorial-controller";
 import {
-  HELP_CATEGORIES,
   HELP_ENTRIES,
-  type HelpCategory,
   type HelpDeepLink,
   type HelpEntry,
 } from "./help-content";
 
 /**
- * Help — a searchable FAQ / knowledge base. Type a question or pick a category;
- * each answer can deep-link straight to the relevant screen (or launch the
- * interactive tutorial). Pinned to the home screen next to Tutorial.
+ * Help — a knowledge base searched through the floating chat. There's no search
+ * box of its own: while Help is open it takes over the chat composer (placeholder
+ * "Ask a question about Eliza…") and receives the live draft, pulling up the best
+ * matching answer here as you type. You can also browse the common questions and
+ * deep-link straight to the relevant screen.
  */
 
 const BRAND = "#FF5800";
 
 function scoreEntry(entry: HelpEntry, q: string): number {
   if (!q) return 1;
-  const needle = q.toLowerCase();
-  const tokens = needle.split(/\s+/).filter(Boolean);
+  const tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
   const hay =
     `${entry.question} ${entry.answer} ${entry.keywords.join(" ")}`.toLowerCase();
   let score = 0;
@@ -37,18 +37,36 @@ function scoreEntry(entry: HelpEntry, q: string): number {
 export function HelpView(): React.ReactElement {
   const { setTab } = useApp();
   const [query, setQuery] = React.useState("");
-  const [category, setCategory] = React.useState<HelpCategory | "All">("All");
   const [openId, setOpenId] = React.useState<string | null>(null);
 
-  const results = React.useMemo(() => {
-    return HELP_ENTRIES.map((e) => ({ e, score: scoreEntry(e, query) }))
-      .filter(
-        ({ e, score }) =>
-          score > 0 && (category === "All" || e.category === category),
-      )
-      .sort((a, b) => b.score - a.score)
-      .map(({ e }) => e);
-  }, [query, category]);
+  // The chat IS the search box for Help. Stable binding (setQuery is stable).
+  const binding = React.useMemo(
+    () => ({ placeholder: "Ask a question about Eliza…", onQuery: setQuery }),
+    [],
+  );
+  useRegisterViewChatBinding(binding);
+
+  const results = React.useMemo(
+    () =>
+      HELP_ENTRIES.map((e) => ({ e, score: scoreEntry(e, query) }))
+        .filter(({ score }) => score > 0)
+        .sort((a, b) => b.score - a.score)
+        .map(({ e }) => e),
+    [query],
+  );
+
+  // As the user types a question in the chat, pull up the best match — but don't
+  // fight a manual close (only re-open when the top match actually changes).
+  const lastTopRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const top = query.trim() && results.length > 0 ? results[0].id : null;
+    if (top && top !== lastTopRef.current) {
+      lastTopRef.current = top;
+      setOpenId(top);
+    } else if (!query.trim()) {
+      lastTopRef.current = null;
+    }
+  }, [query, results]);
 
   const navigate = React.useCallback(
     (link: HelpDeepLink) => {
@@ -71,6 +89,8 @@ export function HelpView(): React.ReactElement {
     [setTab],
   );
 
+  const searching = query.trim().length > 0;
+
   return (
     <div
       className="flex h-full w-full flex-col overflow-hidden"
@@ -78,53 +98,26 @@ export function HelpView(): React.ReactElement {
     >
       <div className="px-5 pt-5">
         <h1 className="text-xl font-semibold text-txt-strong">Help</h1>
-        <p className="mt-0.5 text-[13px] text-txt/60">
-          Search for anything, or browse by topic. Answers can take you straight
-          there.
+        <p className="mt-1 text-[13px] leading-relaxed text-txt/60">
+          {searching ? (
+            <>
+              Showing answers for{" "}
+              <span className="font-medium text-txt-strong">“{query}”</span>
+            </>
+          ) : (
+            <>
+              Type your question in the chat below — the answer appears right
+              here. Or tap a common question to expand it.
+            </>
+          )}
         </p>
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Ask a question… e.g. “how do I change the model?”"
-          data-testid="help-search"
-          aria-label="Search help"
-          className="mt-3 w-full rounded-xl border border-white/12 bg-white/5 px-4 py-2.5 text-[14px] text-txt-strong outline-none placeholder:text-txt/40 focus:border-white/25"
-        />
-        <div className="mt-3 flex flex-wrap gap-1.5 pb-3">
-          {(["All", ...HELP_CATEGORIES] as const).map((c) => {
-            const activeCat = category === c;
-            return (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setCategory(c)}
-                className="rounded-full border px-2.5 py-1 text-[12px] transition-colors"
-                style={
-                  activeCat
-                    ? {
-                        backgroundColor: BRAND,
-                        borderColor: BRAND,
-                        color: "#fff",
-                      }
-                    : {
-                        borderColor: "rgba(255,255,255,0.14)",
-                        color: "rgba(255,255,255,0.7)",
-                      }
-                }
-              >
-                {c}
-              </button>
-            );
-          })}
-        </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-8">
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-8 pt-3">
         {results.length === 0 ? (
           <p className="mt-6 text-center text-[13px] text-txt/50">
-            No answers matched “{query}”. Try simpler words, or ask the chat
-            directly — Eliza can help in the moment.
+            No answer matched that yet. Try simpler words — or just send your
+            question in the chat and Eliza will help directly.
           </p>
         ) : (
           <ul className="flex flex-col gap-2">

@@ -29,8 +29,8 @@ import { resolveLifeOpsScheduleSyncConfigFromElizaConfig } from "./schedule-sync
 import {
   DEFAULT_BROWSER_PERMISSION_STATE,
   DEFAULT_BROWSER_SETTINGS,
-  reminderProcessingQueues,
-} from "./service-constants.js";
+} from "./browser-constants.js";
+import { reminderProcessingQueues } from "./service-constants.js";
 import {
   defaultOwnerEntityId,
   fail,

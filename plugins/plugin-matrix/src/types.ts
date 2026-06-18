@@ -46,6 +46,13 @@ export interface MatrixSettings {
   userId: string;
   /** Access token for authentication */
   accessToken: string;
+  /**
+   * Account password — only used to satisfy user-interactive auth when
+   * self-cross-signing on homeservers that require it for the device-signing-key
+   * upload (i.e. no MSC3967). Absent ⇒ cross-signing is attempted token-only and
+   * skipped if the server demands a password.
+   */
+  password?: string;
   /** Device ID for this session */
   deviceId?: string;
   /** Rooms to auto-join */
@@ -56,6 +63,22 @@ export interface MatrixSettings {
   encryption: boolean;
   /** Require mention to respond in rooms */
   requireMention: boolean;
+  /**
+   * Matrix user IDs allowed to verify this device via SAS (emoji) verification.
+   * When one of them starts a verification from their own client, the bot auto-
+   * accepts and auto-confirms, so their client then shares megolm room keys to
+   * this now-trusted device. Fail-closed: empty ⇒ no verification is accepted.
+   */
+  verifyAllowlist: string[];
+  /**
+   * Whether this account is the HUMAN owner's personal account (acting as the
+   * user) rather than the agent's own identity. A personal account is exposed as
+   * an OWNER connector behind the owner_binding access gate (acting as the user
+   * requires a verified binding); the default account — the agent's own Matrix
+   * identity — is an AGENT connector with the open gate (acting as the bot is
+   * frictionless).
+   */
+  personal: boolean;
   /** Whether this configuration is enabled */
   enabled: boolean;
 }

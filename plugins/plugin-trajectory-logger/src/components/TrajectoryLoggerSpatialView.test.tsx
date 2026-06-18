@@ -131,8 +131,8 @@ describe("TrajectoryLoggerSpatialView one source, three modalities", () => {
       const flat = lines.join("\n");
       expect(flat).toContain("Trajectories");
       expect(flat).toContain("recording");
-      expect(flat).toContain("NOW");
-      expect(flat).toContain("LAST");
+      expect(flat).toContain("now");
+      expect(flat).toContain("last");
       expect(flat).toContain("HANDLE");
       expect(flat).toContain("ACTION");
       expect(flat).toContain("sendMessage"); // expanded drilldown body

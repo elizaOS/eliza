@@ -486,8 +486,25 @@ export async function runRestoringSession(
     shouldPreserveCompletedFirstRun: preserveCompleted,
     hadPriorFirstRun: hadPrior,
   };
+  // When the desktop shell runs in a non-"local" runtime mode (e.g. "external",
+  // pointed at a backend it does NOT host) it has SKIPPED its embedded agent.
+  // A loopback backend is otherwise classified "local" → embedded-local, which
+  // makes the coordinator run the local agent-readiness poll for an agent that
+  // was never started — startup then stalls at starting-runtime forever. Treat
+  // it as a remote backend (already running) so the coordinator skips the local
+  // poll. Only triggers on desktop when the resolved target is embedded-local
+  // AND the shell reports a non-local mode, so local/cloud boots are unchanged.
+  let resolvedTarget = activeServerToTarget(restoredActiveServer);
+  if (resolvedTarget === "embedded-local" && isElectrobunRuntime()) {
+    const runtimeMode = await getDesktopRuntimeModeForStartup().catch(
+      () => null,
+    );
+    if (runtimeMode?.mode && runtimeMode.mode !== "local") {
+      resolvedTarget = "remote-backend";
+    }
+  }
   dispatch({
     type: "SESSION_RESTORED",
-    target: activeServerToTarget(restoredActiveServer),
+    target: resolvedTarget,
   });
 }

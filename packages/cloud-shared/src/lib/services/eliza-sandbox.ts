@@ -16,6 +16,7 @@ import {
 } from "../../db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "../../db/repositories/characters";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
+import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
 import {
   type AgentBackupStateData,
   type AgentExecutionTier,
@@ -25,7 +26,6 @@ import {
   type NewAgentSandboxBackup,
 } from "../../db/schemas/agent-sandboxes";
 import { jobs } from "../../db/schemas/jobs";
-import { cache } from "../cache/client";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
@@ -119,7 +119,6 @@ export interface SnapshotResult {
 }
 
 const MAX_BACKUPS = 10;
-const SHARED_RUNTIME_HISTORY_TTL_SECONDS = 60 * 60 * 24 * 30;
 const SHARED_RUNTIME_HISTORY_MAX_MESSAGES = 40;
 // Heartbeat probes the agent over the headscale tailnet. When idle the path
 // goes cold, so the first probe after a quiet period can fail while it
@@ -1348,10 +1347,6 @@ export class ElizaSandboxService {
     );
   }
 
-  private sharedRuntimeHistoryCacheKey(agentId: string, channelId: string): string {
-    return `shared-runtime:${agentId}:${channelId}:history:v1`;
-  }
-
   private isSharedTurnMessage(value: unknown): value is SharedTurnMessage {
     const message = this.nestedBridgeRecord(value);
     return (
@@ -1365,11 +1360,11 @@ export class ElizaSandboxService {
     agentId: string,
     channelId: string,
   ): Promise<SharedTurnMessage[]> {
-    const cached = await cache.get<SharedTurnMessage[]>(
-      this.sharedRuntimeHistoryCacheKey(agentId, channelId),
-    );
-    if (!Array.isArray(cached)) return [];
-    return cached.filter((message): message is SharedTurnMessage =>
+    // Durable source of truth is Postgres (the cache is disabled on the prod
+    // Worker, CACHE_ENABLED=false, so it never persisted). See
+    // db/schemas/shared-runtime-history.ts.
+    const stored = await sharedRuntimeHistoryRepository.get(agentId, channelId);
+    return stored.filter((message): message is SharedTurnMessage =>
       this.isSharedTurnMessage(message),
     );
   }
@@ -1383,11 +1378,7 @@ export class ElizaSandboxService {
       history.length > SHARED_RUNTIME_HISTORY_MAX_MESSAGES
         ? history.slice(history.length - SHARED_RUNTIME_HISTORY_MAX_MESSAGES)
         : history;
-    await cache.set(
-      this.sharedRuntimeHistoryCacheKey(agentId, channelId),
-      capped,
-      SHARED_RUNTIME_HISTORY_TTL_SECONDS,
-    );
+    await sharedRuntimeHistoryRepository.upsert(agentId, channelId, capped);
   }
 
   private sharedRuntimeBillingPrompt(

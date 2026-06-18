@@ -7,6 +7,7 @@
  */
 
 import crypto from "node:crypto";
+import { KNOWLEDGE_GRAPH_SERVICE, KnowledgeGraphService } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -97,6 +98,10 @@ describe("graph migration — synthetic legacy → graph", () => {
   beforeAll(async () => {
     testResult = await createRealTestRuntime({ characterName: AGENT_ID });
     runtime = testResult.runtime;
+    await runtime.registerService(KnowledgeGraphService);
+    // Lazily-registered services start on first resolve; force the start so
+    // runGraphMigration's resolveKnowledgeGraphService(runtime) finds it.
+    await runtime.getServiceLoadPromise(KNOWLEDGE_GRAPH_SERVICE);
     await LifeOpsRepository.bootstrapSchema(runtime);
     await new EntityStore(runtime, AGENT_ID).ensureSelf();
   }, 180_000);

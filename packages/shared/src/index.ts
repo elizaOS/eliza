@@ -227,9 +227,28 @@ export * from "./dev-settings-table.js";
 // elizacloud helpers — pure utilities + config-driven server helpers used by
 // app-core and the agent so they don't reverse-import from plugin-elizacloud.
 export * from "./elizacloud/index.js";
+// Email-classification primitives — canonical two-stage classifier + the
+// untrusted-content fence. Dependency-free beyond @elizaos/core; consumed by
+// inbox-curation and finance bill-extraction in
+// @elizaos/plugin-personal-assistant.
+export * from "./email-classification/index.js";
 export * from "./env-utils.js";
+// LifeOps service constants — canonical constant tables for the
+// personal-assistant scheduled-task / reminder / connector pipelines. Depends
+// only on the LifeOps contract types; consumed by
+// @elizaos/plugin-personal-assistant via a thin re-export shim.
+export * from "./lifeops-constants/index.js";
+// LifeOps normalize/validation primitives — pure input normalization helpers,
+// time-zone helpers, and the status-carrying LifeOpsServiceError. Depends only
+// on @elizaos/core and the LifeOps contract types/constants; consumed by
+// @elizaos/plugin-personal-assistant via thin re-export shims.
+export * from "./lifeops-normalize/index.js";
 export * from "./events/index.js";
 export * from "./format-error.js";
+// Knowledge-graph primitives — canonical Entity/Relationship types + the
+// identity-merge engine. Dependency-free; the DB-backed stores stay in
+// @elizaos/plugin-personal-assistant.
+export * from "./knowledge-graph/index.js";
 // Local-inference shared subset (types, paths, routing-preferences, verify).
 // Server runtime (KV cache, llama-server lifecycle, etc.) stays in @elizaos/app-core.
 export * from "./local-inference/index.js";

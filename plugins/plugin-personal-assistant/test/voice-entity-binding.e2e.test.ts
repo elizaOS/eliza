@@ -29,6 +29,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { KNOWLEDGE_GRAPH_SERVICE, KnowledgeGraphService } from "@elizaos/agent";
 import {
   type AgentRuntime,
   EventType,
@@ -124,6 +125,8 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
       plugins: [buildSeamPlugin()],
     });
     runtime = testResult.runtime;
+    await runtime.registerService(KnowledgeGraphService);
+    await runtime.getServiceLoadPromise(KNOWLEDGE_GRAPH_SERVICE);
     await LifeOpsRepository.bootstrapSchema(runtime);
     entityStore = new EntityStore(runtime, runtime.agentId);
     await entityStore.ensureSelf();

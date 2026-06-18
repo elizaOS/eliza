@@ -101,23 +101,32 @@ export function TutorialSpotlight({
       }
     : null;
 
-  // Card placement: below the target if there's room, else above; centered when
-  // there's no target.
-  const cardStyle: React.CSSProperties = hole
-    ? hole.top + hole.height + 180 < window.innerHeight
-      ? { top: hole.top + hole.height + 14, left: clampLeft(hole.left) }
-      : { top: Math.max(14, hole.top - 172), left: clampLeft(hole.left) }
-    : {
-        top: "50%",
-        left: "50%",
-        transform: "translate(-50%, -50%)",
-      };
+  // Card placement: centered when there's no target. For a target in the BOTTOM
+  // of the screen (e.g. the chat — which also expands upward), pin the card near
+  // the TOP so it never covers the control or sits in the chat's expand path.
+  // Otherwise place it just below the target, or above when there's no room.
+  const vh = typeof window === "undefined" ? 800 : window.innerHeight;
+  const cardStyle: React.CSSProperties = !hole
+    ? { top: "50%", left: "50%", transform: "translate(-50%, -50%)" }
+    : hole.top > vh * 0.55
+      ? {
+          top: Math.max(72, Math.round(vh * 0.12)),
+          left: "50%",
+          transform: "translateX(-50%)",
+        }
+      : hole.top + hole.height + 180 < vh
+        ? { top: hole.top + hole.height + 14, left: clampLeft(hole.left) }
+        : { top: Math.max(14, hole.top - 172), left: clampLeft(hole.left) };
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[2147483000]"
-      // Pass clicks through when not blocking AND not over a backdrop rect.
-      style={{ pointerEvents: "none" }}
+      className="fixed inset-0"
+      // Inline z-index (not a Tailwind arbitrary class — that huge value isn't
+      // reliably generated) so the spotlight + card always sit ABOVE the chat
+      // overlay (z 9000), even when the chat is expanded full-screen while the
+      // user types the instructed command. Pass clicks through except over the
+      // card / backdrop rects.
+      style={{ pointerEvents: "none", zIndex: 2147483000 }}
       aria-live="polite"
     >
       <style>{SPOTLIGHT_KEYFRAMES}</style>
@@ -255,6 +264,7 @@ function SpotlightCard({
         <button
           type="button"
           onClick={onSkip}
+          data-testid="tutorial-skip"
           className="text-[12px] text-white/45 underline-offset-2 hover:text-white/70 hover:underline"
         >
           Skip tutorial
@@ -263,6 +273,7 @@ function SpotlightCard({
           <button
             type="button"
             onClick={onContinue}
+            data-testid="tutorial-continue"
             className="rounded-lg px-3 py-1.5 text-[13px] font-semibold text-white transition-colors"
             style={{ backgroundColor: BRAND }}
             onMouseEnter={(e) => {
