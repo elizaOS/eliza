@@ -12887,8 +12887,15 @@
   ];
   var Minimize2 = createLucideIcon("minimize-2", __iconNode2);
 
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/settings.mjs
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/rotate-ccw.mjs
   var __iconNode3 = [
+    ["path", { d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", key: "1357e3" }],
+    ["path", { d: "M3 3v5h5", key: "1xhq8a" }]
+  ];
+  var RotateCcw = createLucideIcon("rotate-ccw", __iconNode3);
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/settings.mjs
+  var __iconNode4 = [
     [
       "path",
       {
@@ -12898,17 +12905,7 @@
     ],
     ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
   ];
-  var Settings = createLucideIcon("settings", __iconNode3);
-
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/trash-2.mjs
-  var __iconNode4 = [
-    ["path", { d: "M10 11v6", key: "nco0om" }],
-    ["path", { d: "M14 11v6", key: "outv1u" }],
-    ["path", { d: "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6", key: "miytrc" }],
-    ["path", { d: "M3 6h18", key: "d0wm0j" }],
-    ["path", { d: "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2", key: "e791ji" }]
-  ];
-  var Trash2 = createLucideIcon("trash-2", __iconNode4);
+  var Settings = createLucideIcon("settings", __iconNode4);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/components/AnimatePresence/index.mjs
   var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
@@ -26996,32 +26993,34 @@
                         "div",
                         {
                           className: cn(
-                            "relative z-10 flex shrink-0 items-center justify-end gap-1.5 px-3",
+                            "relative z-10 flex shrink-0 items-center justify-between gap-1.5 px-3",
                             // Maximized goes edge-to-edge under the status bar, so the
                             // buttons must clear the safe-area inset (the clock/battery)
                             // or they sit under it and become untappable.
                             fullBleed ? "pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]" : "pt-2.5"
                           ),
                           children: [
-                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                              HeaderButton,
-                              {
-                                icon: maximized ? Minimize2 : Maximize2,
-                                label: maximized ? "exit full screen" : "full screen",
-                                active: maximized,
-                                onClick: () => setMaximized((v) => !v),
-                                testId: "chat-full-maximize"
-                              }
-                            ),
-                            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                              HeaderButton,
-                              {
-                                icon: Trash2,
-                                label: "clear conversation",
-                                onClick: () => clearConversation(),
-                                testId: "chat-full-clear"
-                              }
-                            ),
+                            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "flex items-center gap-1.5", children: [
+                              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                HeaderButton,
+                                {
+                                  icon: maximized ? Minimize2 : Maximize2,
+                                  label: maximized ? "exit full screen" : "full screen",
+                                  active: maximized,
+                                  onClick: () => setMaximized((v) => !v),
+                                  testId: "chat-full-maximize"
+                                }
+                              ),
+                              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                                HeaderButton,
+                                {
+                                  icon: RotateCcw,
+                                  label: "clear conversation",
+                                  onClick: () => clearConversation(),
+                                  testId: "chat-full-clear"
+                                }
+                              )
+                            ] }),
                             /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                               HeaderButton,
                               {
@@ -27264,6 +27263,7 @@
                                     glyph: SEND_GLYPH,
                                     label: canSend ? "send" : "send (waiting for reply)",
                                     disabled: !canSend,
+                                    onPointerDown: (e) => e.preventDefault(),
                                     onClick: submit,
                                     testId: "chat-composer-action"
                                   }
@@ -27594,8 +27594,8 @@ lucide-react/dist/esm/Icon.mjs:
 lucide-react/dist/esm/createLucideIcon.mjs:
 lucide-react/dist/esm/icons/maximize-2.mjs:
 lucide-react/dist/esm/icons/minimize-2.mjs:
+lucide-react/dist/esm/icons/rotate-ccw.mjs:
 lucide-react/dist/esm/icons/settings.mjs:
-lucide-react/dist/esm/icons/trash-2.mjs:
 lucide-react/dist/esm/lucide-react.mjs:
   (**
    * @license lucide-react v1.18.0 - ISC

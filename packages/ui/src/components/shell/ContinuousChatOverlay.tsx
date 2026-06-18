@@ -1,8 +1,8 @@
 import {
   Maximize2,
   Minimize2,
+  RotateCcw,
   Settings as SettingsIcon,
-  Trash2,
 } from "lucide-react";
 import {
   AnimatePresence,
@@ -1607,13 +1607,14 @@ export function ContinuousChatOverlay({
                 transition={{ duration: reduce ? 0 : 1.1, ease: "easeInOut" }}
               />
 
-              {/* Full-state header — only at the FULL detent. Maximize toggles
-              edge-to-edge full-screen, Clear resets the conversation (a fresh
-              greeted thread), Settings opens preferences. */}
+              {/* Full-state header — only at the FULL detent. Maximize (toggles
+              edge-to-edge full-screen) and Clear (resets to a fresh greeted
+              thread) sit together on the left; Settings opens preferences from
+              the right. */}
               {sheetOpen && expanded && !pilled ? (
                 <div
                   className={cn(
-                    "relative z-10 flex shrink-0 items-center justify-end gap-1.5 px-3",
+                    "relative z-10 flex shrink-0 items-center justify-between gap-1.5 px-3",
                     // Maximized goes edge-to-edge under the status bar, so the
                     // buttons must clear the safe-area inset (the clock/battery)
                     // or they sit under it and become untappable.
@@ -1622,19 +1623,21 @@ export function ContinuousChatOverlay({
                       : "pt-2.5",
                   )}
                 >
-                  <HeaderButton
-                    icon={maximized ? Minimize2 : Maximize2}
-                    label={maximized ? "exit full screen" : "full screen"}
-                    active={maximized}
-                    onClick={() => setMaximized((v) => !v)}
-                    testId="chat-full-maximize"
-                  />
-                  <HeaderButton
-                    icon={Trash2}
-                    label="clear conversation"
-                    onClick={() => clearConversation()}
-                    testId="chat-full-clear"
-                  />
+                  <div className="flex items-center gap-1.5">
+                    <HeaderButton
+                      icon={maximized ? Minimize2 : Maximize2}
+                      label={maximized ? "exit full screen" : "full screen"}
+                      active={maximized}
+                      onClick={() => setMaximized((v) => !v)}
+                      testId="chat-full-maximize"
+                    />
+                    <HeaderButton
+                      icon={RotateCcw}
+                      label="clear conversation"
+                      onClick={() => clearConversation()}
+                      testId="chat-full-clear"
+                    />
+                  </div>
                   <HeaderButton
                     icon={SettingsIcon}
                     label="settings"
@@ -1910,6 +1913,15 @@ export function ContinuousChatOverlay({
                       glyph={SEND_GLYPH}
                       label={canSend ? "send" : "send (waiting for reply)"}
                       disabled={!canSend}
+                      // Keep focus in the textarea on tap: without this the
+                      // button steals focus, the textarea blurs, the keyboard
+                      // retracts and the composer relayouts between pointerdown
+                      // and click — so the first tap only dismissed the keyboard
+                      // and a second tap was needed to actually send. Chromium
+                      // still dispatches click after a preventDefaulted
+                      // pointerdown, so onClick fires on the first tap and the
+                      // keyboard stays up for the next message.
+                      onPointerDown={(e) => e.preventDefault()}
                       onClick={submit}
                       testId="chat-composer-action"
                     />
