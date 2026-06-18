@@ -601,6 +601,21 @@ export default scenario({
             return jsonResponse(unloadPluginResponse(pluginName));
           }
 
+          // VIEWS/delete now uninstalls via POST /api/plugins/uninstall
+          // (unloadPlugin checks `resp.ok && body.ok`).
+          if (
+            request.method === "POST" &&
+            request.pathname === "/api/plugins/uninstall"
+          ) {
+            const pluginName = String(
+              toRecord(request.body).name ?? "@elizaos/plugin-remote-ledger",
+            );
+            return jsonResponse({
+              ok: true,
+              message: `Plugin ${pluginName} unloaded.`,
+            });
+          }
+
           return undefined;
         });
 
@@ -915,9 +930,12 @@ export default scenario({
           {
             body: { name: "@elizaos/plugin-remote-ledger" },
             method: "POST",
-            pathname: "/api/apps/stop",
+            pathname: "/api/plugins/uninstall",
             response: {
-              body: unloadPluginResponse("@elizaos/plugin-remote-ledger"),
+              body: {
+                ok: true,
+                message: "Plugin @elizaos/plugin-remote-ledger unloaded.",
+              },
               status: 200,
             },
             search: "",
