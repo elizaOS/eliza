@@ -1236,9 +1236,27 @@ function reconcilePluginManifestWithGradle(targetAssets) {
   const stubLlamaCpp =
     process.env.ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB === "1" ||
     process.env.elizaSkipForkLlamaLib === "true";
+  // Third-party Capacitor plugins that `cap sync` includes (they ship an
+  // android/ dir, so they ARE in capacitor.settings.gradle) but whose Kotlin
+  // plugin class never lands in the app dex on AGP 8.x: both rely on AGP's
+  // built-in Kotlin instead of applying `org.jetbrains.kotlin.android`, so the
+  // built-in kotlinc compiles the .kt but does NOT bundle the .class into the
+  // library AAR. PluginManager.loadPluginClasses then throws "Could not find
+  // class …" on the first one and aborts the ENTIRE plugin load, so EVERY
+  // plugin (Browser, Haptics, Keyboard, …) silently fails to register. We can't
+  // edit node_modules durably, and neither is needed for the core Android app —
+  // background work uses WorkManager (ElizaWorkScheduler) and barcode scanning
+  // is a companion-pairing-only feature — so drop them from the manifest. (Our
+  // own native plugins fix this properly by applying the Kotlin plugin in their
+  // android/build.gradle.)
+  const nonBundlingThirdPartyPlugins = new Set([
+    "@capacitor/background-runner",
+    "@capacitor/barcode-scanner",
+  ]);
   const isCompiledAndUsable = (plugin) => {
     if (!compiledProjects.has(gradleProjectFor(plugin?.pkg))) return false;
     if (stubLlamaCpp && plugin?.pkg === "llama-cpp-capacitor") return false;
+    if (nonBundlingThirdPartyPlugins.has(plugin?.pkg)) return false;
     return true;
   };
   const kept = plugins.filter(isCompiledAndUsable);
