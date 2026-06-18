@@ -33,10 +33,10 @@ import {
   BLOCKER_LOG_PREFIX,
 } from "../types.ts";
 
-const ACTION_NAME = "BLOCK";
-
 export const blockAction: Action = {
-  name: ACTION_NAME,
+  // Literal (not a const) so the VIEW_ACTION_MAP drift guard can statically see
+  // it — the `focus` view emphasizes this BLOCK umbrella.
+  name: "BLOCK",
   contexts: [...BLOCKER_CONTEXTS],
   roleGate: { minRole: "ADMIN" },
   contextGate: { anyOf: [...BLOCKER_CONTEXTS] },

@@ -110,8 +110,8 @@ export function setActiveViewElements(
  * the rest (a missing-plugin skip when not loaded). Sources:
  *   calendar  — plugins/plugin-calendar/src/actions (CALENDAR, CONFLICT_DETECT)
  *   health    — plugins/plugin-health/src/actions (OWNER_HEALTH, OWNER_SCREENTIME)
- *   focus     — plugins/plugin-personal-assistant/src/website-blocker/chat-integration/
- *               actions/{listActiveBlocks,releaseBlock}.ts (LIST_ACTIVE_BLOCKS, RELEASE_BLOCK)
+ *   focus     — plugins/plugin-blocker/src/actions/block.ts (BLOCK umbrella;
+ *               list_active / release are subactions of it, not standalone actions)
  *   finances  — plugins/plugin-finances/src/actions/finances (OWNER_FINANCES)
  *   inbox     — plugins/plugin-inbox/src/actions/inbox (literal name: "INBOX")
  *   goals     — plugins/plugin-goals/src/actions (OWNER_GOALS, OWNER_ALARMS, OWNER_REMINDERS, OWNER_ROUTINES)
@@ -159,7 +159,7 @@ export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
   "2004scape": ["RS_2004", "RS_2004_INVENTORY"],
   calendar: ["CALENDAR", "CONFLICT_DETECT"],
   health: ["OWNER_HEALTH", "OWNER_SCREENTIME"],
-  focus: ["LIST_ACTIVE_BLOCKS", "RELEASE_BLOCK"],
+  focus: ["BLOCK"],
   finances: ["OWNER_FINANCES"],
   inbox: ["INBOX"],
   goals: ["OWNER_GOALS", "OWNER_ALARMS", "OWNER_REMINDERS", "OWNER_ROUTINES"],
