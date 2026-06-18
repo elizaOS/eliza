@@ -18,8 +18,8 @@ import { BrowserBridgeAdapter } from "@elizaos/plugin-browser";
 import { calendarPlugin } from "@elizaos/plugin-calendar";
 import { CalendlyAdapter } from "@elizaos/plugin-calendly";
 import { financesPlugin } from "@elizaos/plugin-finances";
-import { inboxPlugin } from "@elizaos/plugin-inbox";
 import { GoogleGmailAdapter } from "@elizaos/plugin-google";
+import { inboxPlugin } from "@elizaos/plugin-inbox";
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
 import { blockAction } from "./actions/block.js";
 import { briefAction } from "./actions/brief.js";
@@ -593,6 +593,19 @@ export async function ensureLifeOpsInboxPluginRegistered(
   await runtime.registerPlugin(inboxPlugin);
 }
 
+// Goals: the goal CRUD back-end (`GoalsService`) moved to
+// `@elizaos/plugin-goals`, but — unlike finances/inbox — the goal TABLES
+// (life_goal_definitions / life_goal_links) deliberately stay registered by PA
+// in the `app_lifeops` schema, because PA's reminder/scheduling subsystem also
+// reads and writes goal links (see service-mixin-reminders.ts: getGoal /
+// upsertGoalLink / deleteGoalLinksForLinked). plugin-goals' GoalsRepository
+// reaches those existing tables via the runtime DB handle. So PA does NOT
+// auto-register the plugin-goals plugin (its own `app_goals` schema + view +
+// stub actions are for the decomposed PA-free topology); PA just imports the
+// `GoalsService` class and delegates its goal CRUD to it (see
+// service-mixin-goals.ts). There is intentionally no
+// `ensureLifeOpsGoalsPluginRegistered`.
+
 const LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY =
   "eliza:lifeops:plugin:init-failures";
 
@@ -1047,8 +1060,8 @@ const rawPersonalAssistantPlugin: Plugin = {
 
 export const personalAssistantPlugin: Plugin = rawPersonalAssistantPlugin;
 
-export { workThreadAction } from "./actions/work-thread.js";
 export {
+  appBlockerProvider,
   getAppBlockerPermissionState,
   getAppBlockerStatus,
   getCachedAppBlockerStatus,
@@ -1058,6 +1071,7 @@ export {
   startAppBlock,
   stopAppBlock,
 } from "@elizaos/plugin-blocker";
+export { workThreadAction } from "./actions/work-thread.js";
 export type {
   OverdueDigest,
   OverdueFollowup,
@@ -1241,7 +1255,6 @@ export {
   type WorkThreadStatus,
   type WorkThreadStore,
 } from "./lifeops/work-threads/index.js";
-export { appBlockerProvider } from "@elizaos/plugin-blocker";
 export type { FirstRunAffordance } from "./providers/first-run.js";
 export { firstRunProvider } from "./providers/first-run.js";
 export { healthProvider } from "./providers/health.js";

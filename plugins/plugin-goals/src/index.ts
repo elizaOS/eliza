@@ -6,6 +6,10 @@ export { ownerRoutinesAction } from "./actions/routines.ts";
 // without going through the dynamic bundle loader.
 export { GoalsView } from "./components/goals/GoalsView.tsx";
 export {
+  createGoalDefinition,
+  GoalsRepository,
+} from "./db/goals-repository.ts";
+export {
   type AlarmInsert,
   type AlarmRow,
   alarmsTable,
@@ -23,6 +27,27 @@ export {
   remindersTable,
   routinesTable,
 } from "./db/schema.ts";
+export * from "./goal-grounding.ts";
+export {
+  GoalsServiceError,
+  goalsErrorMessage,
+} from "./goal-normalize.ts";
+export {
+  evaluateGoalProgressWithLlm,
+  type GoalSemanticEvaluationResult,
+} from "./goal-semantic-evaluator.ts";
+export {
+  buildOwnerOwnership,
+  createOwnerGoalsService,
+  ownerEntityIdFor,
+} from "./goals-runtime.ts";
+export {
+  type GoalsNormalizeOwnership,
+  type GoalsRecordAudit,
+  GoalsService,
+  type GoalsServiceDependencies,
+  scoreGoalSimilarity,
+} from "./goals-service.ts";
 export { default, goalsPlugin } from "./plugin.ts";
 export {
   GoalsCheckinService,

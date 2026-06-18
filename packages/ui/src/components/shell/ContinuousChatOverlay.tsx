@@ -1008,6 +1008,11 @@ export function ContinuousChatOverlay({
   // usePullGesture) to snap to a detent.
   const onDragOffset = React.useCallback(
     (offset: number) => {
+      // While pilled, the thread stays hidden (height 0): dragging the pill is a
+      // discrete pill↔input/chat transition decided on release, not a live
+      // height drag. Growing it here is what made a flick-up flash a sliver of
+      // chat (the grown height showing for a frame on un-pill) before settling.
+      if (pilled) return;
       draggingRef.current = true;
       // Pin the dead direction at each end so the panel feels held: collapsed →
       // only upward (positive); full → only downward (negative); half → both.
@@ -1018,7 +1023,7 @@ export function ContinuousChatOverlay({
           : offset;
       threadHeight.set(clampHeight(baseH + off));
     },
-    [sheetOpen, expanded, baseH, clampHeight, threadHeight],
+    [pilled, sheetOpen, expanded, baseH, clampHeight, threadHeight],
   );
 
   const pullBinding: PullGestureBinding = usePullGesture({
@@ -1075,10 +1080,13 @@ export function ContinuousChatOverlay({
     onSettleFree: (direction) => {
       draggingRef.current = false;
       if (pilled) {
-        // The pill only knows two states; a slow drag up recovers the input.
+        // From the pill: a slow drag up PASSES through the input into the chat
+        // (half) when there's a thread to show; a flick only reaches the input
+        // (onPullUp). With no thread there's nothing to open → just the input.
         if (direction === "up") {
           setPilled(false);
-          settleDrag();
+          if (hasThread) goToDetent("half");
+          else settleDrag();
         }
         return;
       }

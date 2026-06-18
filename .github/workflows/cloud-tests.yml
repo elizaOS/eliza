@@ -189,3 +189,28 @@ jobs:
         # with screenshot quality checks while the full dashboard audit is
         # repaired separately.
         run: bun run --cwd packages/cloud-frontend test:e2e tests/e2e/cloud-routes.spec.ts --project=chromium-desktop -g "public route renders:"
+
+  playwright-behavioral:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [changed-paths, lint-and-types]
+    if: needs.changed-paths.outputs.cloud_frontend == 'true'
+    env:
+      NODE_ENV: test
+      PLAYWRIGHT_WORKERS: "1"
+      # Runs every deterministic mock-driven flow spec; testIgnore in
+      # playwright.config.ts drops the audit/visual/live specs that can't gate.
+      CLOUD_E2E_BEHAVIORAL: "1"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: ./.github/actions/cloud-setup-test-env
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+      - name: Run Playwright behavioral flow suite
+        # WHY: the mock-driven flow specs (login/logout, api keys, app + agent
+        # CRUD, billing, monetization, admin, settings connections/invites,
+        # signing) exercise every page, input, and mutation against page.route
+        # mocks — deterministic and backend-free, so they are a required PR gate.
+        # Visual/palette/a11y audits + live-backend specs are excluded via the
+        # CLOUD_E2E_BEHAVIORAL testIgnore list in playwright.config.ts.
+        run: bun run --cwd packages/cloud-frontend test:e2e --project=chromium-desktop
