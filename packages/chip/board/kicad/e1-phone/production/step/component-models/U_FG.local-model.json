@@ -1,0 +1,197 @@
+{
+  "all_pad_visuals_have_contract": true,
+  "at_mm": {
+    "rotation": 0.0,
+    "x": 59.0,
+    "y": 24.8
+  },
+  "claim_boundary": "Per-reference local model metadata only. This is not a discrete supplier-approved STEP/B-rep model and cannot satisfy routed-board release or enclosure clearance.",
+  "combined_step_assembly_name": "44_U_FG_FUEL_GAUGE_WLCSP_DEV",
+  "combined_step_locator_status": "development_envelope_named_subshape_in_combined_routed_step",
+  "coverage": "exact_public_fuel_gauge_signal_contract_pending_selected_gauge_pinout",
+  "discrete_supplier_step_file": "",
+  "discrete_supplier_step_status": "missing_supplier_approved_component_step",
+  "electrical_pad_count": 12,
+  "envelope_mm": {
+    "depth": 1.6,
+    "height": 0.55,
+    "width": 2.0
+  },
+  "expected_supplier_brep_or_step_status": "missing_supplier_approved_discrete_component_model",
+  "expected_supplier_step_file": "U_FG.step",
+  "footprint": "FUEL_GAUGE_WLCSP_DEV",
+  "land_pattern_basis": "local WLCSP12 fuel-gauge development grid from battery gauge signal contract; pending exact gauge ball map",
+  "layer": "F.Cu",
+  "local_discrete_step_bbox_matches_envelope": true,
+  "local_discrete_step_bbox_mm": {
+    "depth": 1.6000002,
+    "height": 0.5500002,
+    "width": 2.0000002
+  },
+  "local_discrete_step_bytes": 15546,
+  "local_discrete_step_expected_bbox_mm": {
+    "depth": 1.6,
+    "height": 0.55,
+    "width": 2.0
+  },
+  "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/U_FG.local-envelope.step",
+  "local_discrete_step_import_status": "pass",
+  "local_discrete_step_imported_as_solid": true,
+  "local_discrete_step_sha256": "3a9a1c796847615e493d328da0ce596d93cb1ea69ac7e61b71ef807014c4a32f",
+  "local_discrete_step_solid_type": "Solid",
+  "local_discrete_step_status": "local_development_envelope_not_supplier_model",
+  "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
+  "local_step_bound": true,
+  "local_terminal_contract": [
+    "A1",
+    "A2",
+    "A3",
+    "A4",
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "C1",
+    "C2",
+    "C3",
+    "C4"
+  ],
+  "local_terminal_contract_source": "captured_public_pinout_expected_pins",
+  "mechanical_pad_count": 0,
+  "mechanical_pads": [],
+  "model_binding_status": "blocked_pending_supplier_step_or_verified_package_drawing",
+  "model_source": "local_development_envelope",
+  "non_signal_pad_contract": [],
+  "non_signal_pad_contract_matches_pad_visuals": true,
+  "non_signal_pad_contract_source": "",
+  "npth_mechanical_feature_contract": [],
+  "npth_mechanical_feature_contract_matches_footprint": true,
+  "npth_mechanical_feature_contract_source": "",
+  "npth_mechanical_feature_count": 0,
+  "npth_mechanical_features": [],
+  "pad_contract_covered_count": 12,
+  "pad_contract_records": [
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/fuel-gauge-wlcsp12-pinout.yaml",
+      "covered": true,
+      "pad": "A1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/fuel-gauge-wlcsp12-pinout.yaml",
+      "covered": true,
+      "pad": "A2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/fuel-gauge-wlcsp12-pinout.yaml",
+      "covered": true,
+      "pad": "A3"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/fuel-gauge-wlcsp12-pinout.yaml",
+      "covered": true,
+      "pad": "A4"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/fuel-gauge-wlcsp12-pinout.yaml",
+      "covered": true,
+      "pad": "B1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/fuel-gauge-wlcsp12-pinout.yaml",
+      "covered": true,
+      "pad": "B2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/fuel-gauge-wlcsp12-pinout.yaml",
+      "covered": true,
+      "pad": "B3"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/fuel-gauge-wlcsp12-pinout.yaml",
+      "covered": true,
+      "pad": "B4"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/fuel-gauge-wlcsp12-pinout.yaml",
+      "covered": true,
+      "pad": "C1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/fuel-gauge-wlcsp12-pinout.yaml",
+      "covered": true,
+      "pad": "C2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/fuel-gauge-wlcsp12-pinout.yaml",
+      "covered": true,
+      "pad": "C3"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/fuel-gauge-wlcsp12-pinout.yaml",
+      "covered": true,
+      "pad": "C4"
+    }
+  ],
+  "pad_count": 12,
+  "pad_names": [
+    "A1",
+    "A2",
+    "A3",
+    "A4",
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "C1",
+    "C2",
+    "C3",
+    "C4"
+  ],
+  "pad_visual_count": 12,
+  "pattern_binding_status": "pinout_bound_public_or_captured_contract",
+  "pattern_bound": true,
+  "pinout_bound": true,
+  "pinout_file": "board/kicad/e1-phone/supplier-pinouts/fuel-gauge-wlcsp12-pinout.yaml",
+  "public_cad_source_record": "",
+  "public_cad_step_overlay_bytes": 0,
+  "public_cad_step_overlay_file": "",
+  "public_cad_step_overlay_release_credit": false,
+  "public_cad_step_overlay_sha256": "",
+  "public_cad_step_overlay_status": "not_applicable_or_not_downloaded",
+  "reference": "U_FG",
+  "release_allowed": false,
+  "release_credit": false,
+  "schema": "eliza.e1_phone_local_component_model_record.v1",
+  "source_assembly_item": "U_FG",
+  "source_routed_step": "board/kicad/e1-phone/production/step/routed-board-with-components.step",
+  "source_routed_step_bytes": 33644627,
+  "source_routed_step_sha256": "ea98f73d805f237ed397d5b6f190b86c31a9fc4ea270ea983a472220470043d6",
+  "source_step_intake": "board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml",
+  "status": "blocked_local_development_envelope_not_supplier_step",
+  "supplier_approved": false,
+  "supplier_sourcing_lane": "battery_pack",
+  "supplier_step_intake_bytes": 15574,
+  "supplier_step_intake_file": "board/kicad/e1-phone/production/sourcing/battery_pack/supplier-model.step",
+  "supplier_step_intake_release_credit": false,
+  "supplier_step_intake_sha256": "07510e2a329913e0f6274a351d1715291019d4d73c90cf3e03841f3ddf196fbb",
+  "supplier_step_intake_status": "present_local_surrogate_step_not_supplier_approved",
+  "support_pattern_bound": false,
+  "support_pattern_has_explicit_provenance": false,
+  "terminal_contract_bound": true,
+  "terminal_contract_count": 12,
+  "terminal_contract_matches_pad_visuals": true,
+  "uncovered_pad_visuals": [],
+  "visual_package_class": "pinout_bound_package_or_connector"
+}

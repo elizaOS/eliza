@@ -55,7 +55,10 @@ async function expectViewManagerPage(page: Page) {
       main.getByRole("button", { name: "Open Companion" }),
     ).toBeVisible();
   } else {
-    await expect(main.getByPlaceholder(/Search views/)).toBeVisible();
+    // #8597 moved the views search out of <main> and into the floating chat
+    // composer, which takes over the composer placeholder ("Search views…").
+    // Look page-wide rather than inside <main>.
+    await expect(page.getByPlaceholder(/Search views/)).toBeVisible();
     await expect(
       main.getByRole("heading", { level: 2, name: "Plugins" }),
     ).toBeVisible();

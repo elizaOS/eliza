@@ -1,0 +1,35 @@
+schema: eliza.e1_phone_supplier_response_pack_intake_template.v1
+status: outbound_template_not_supplier_evidence
+date: 2026-05-22
+lane: wifi_bluetooth
+maps_to_gap_map_function: wifi_bluetooth
+selected_hardware: Murata_LBEE5XV2EA-802_Type_2EA
+package_binding: package/wifi/murata-type-2ea-wifi6e.yaml
+expected_return_archive: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/rfq-response-pack.yaml
+required_supplier_returns:
+  - exact module MPN, lifecycle statement, signed module drawing, shield height, package datum, and RF keepout
+  - module pinout, SMT pad map, signal-voltage table, reserved-pin rules, host bus voltage binding, and coexistence pins
+  - hardware design guide, reference layout, paste mask, land pattern, reflow restrictions, antenna rules, and modular grant limitations
+  - firmware, regulatory database, driver license package, country-code scope, conducted RF limits, and coexistence guidance
+  - STEP or B-rep model with shield height and maximum component envelope
+intake_fields:
+  supplier_legal_name: ""
+  supplier_contact: ""
+  orderable_mpn: ""
+  quote_quantities: [10, 100, 1000]
+  sample_lot_quantity: 5
+  signed_2d_drawing_path: ""
+  pinout_or_pad_map_path: ""
+  recommended_land_pattern_path: ""
+  step_or_brep_model_path: ""
+  lifecycle_stock_quote_path: ""
+  sample_lot_tracking_path: ""
+  incoming_inspection_path: ""
+release_flags:
+  supplier_response_received: false
+  signed_drawing_received: false
+  kicad_capture_allowed: false
+  route_release_allowed: false
+  enclosure_release_allowed: false
+  fabrication_release_allowed: false
+  end_to_end_phone_release_allowed: false

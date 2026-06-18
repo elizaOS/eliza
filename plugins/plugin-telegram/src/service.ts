@@ -986,10 +986,26 @@ export class TelegramService extends Service {
     if (!allowedChats) {
       return true;
     }
+    if (typeof allowedChats !== "string") {
+      logger.warn(
+        { src: "plugin:telegram", agentId: this.runtime.agentId, accountId },
+        "TELEGRAM_ALLOWED_CHATS must be a JSON array of chat-id strings; blocking all chats until fixed",
+      );
+      return false;
+    }
 
     try {
-      const allowedChatsList = JSON.parse(allowedChats as string);
-      return allowedChatsList.includes(chatId);
+      const parsed = JSON.parse(allowedChats);
+      if (!Array.isArray(parsed)) {
+        // A bare JSON string (e.g. "-1001234567") would make `.includes` a
+        // substring match and silently over-authorize — fail closed instead.
+        logger.warn(
+          { src: "plugin:telegram", agentId: this.runtime.agentId, accountId },
+          "TELEGRAM_ALLOWED_CHATS must be a JSON array of chat-id strings; blocking all chats until fixed",
+        );
+        return false;
+      }
+      return parsed.map((entry) => String(entry)).includes(chatId);
     } catch (error) {
       logger.error(
         {
