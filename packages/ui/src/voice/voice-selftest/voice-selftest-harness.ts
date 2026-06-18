@@ -143,7 +143,10 @@ const sleep = (ms: number): Promise<void> =>
  * pure silence decodes fine and reports a positive `duration`, so duration
  * alone never proves the TTS produced audible sound — these levels do.
  */
-function measureBufferLevel(buffer: AudioBuffer): { peak: number; rms: number } {
+function measureBufferLevel(buffer: AudioBuffer): {
+  peak: number;
+  rms: number;
+} {
   let peak = 0;
   let sumSquares = 0;
   let count = 0;

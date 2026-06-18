@@ -24,6 +24,11 @@ import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
 } from "./bridge/electrobun-rpc";
+import {
+  NAVIGATE_SETTINGS_EVENT,
+  type NavigateSettingsDetail,
+  useSlashCommandController,
+} from "./chat/useSlashCommandController";
 import { getOverlayAppLazyComponent } from "./components/apps/AppWindowRenderer.helpers";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
@@ -40,11 +45,6 @@ import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
-import {
-  type NavigateSettingsDetail,
-  NAVIGATE_SETTINGS_EVENT,
-  useSlashCommandController,
-} from "./chat/useSlashCommandController";
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";

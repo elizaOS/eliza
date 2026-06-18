@@ -11,11 +11,6 @@ import type {
 import { packageNameToAppRouteSlug } from "@elizaos/shared";
 import { ElizaClient } from "./client-base";
 import type {
-  CommandsCatalogResponse,
-  CommandSurface,
-  SlashCommandCatalogItem,
-} from "./client-types-commands";
-import type {
   AppLaunchResult,
   AppRunActionResult,
   AppRunSummary,
@@ -36,6 +31,11 @@ import type {
   SkillMarketplaceResult,
   SkillScanReportSummary,
 } from "./client-types";
+import type {
+  CommandSurface,
+  CommandsCatalogResponse,
+  SlashCommandCatalogItem,
+} from "./client-types-commands";
 import type {
   FeedActivityFeed,
   FeedAgentGoal,

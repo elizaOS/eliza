@@ -41,7 +41,10 @@ app.post("/", async (c) => {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
 
-    const deployGate = appsDeployOrganizationDecision(c.env, user.organization_id);
+    const deployGate = appsDeployOrganizationDecision(
+      c.env,
+      user.organization_id,
+    );
     if (!deployGate.allowed) {
       logger.warn("[Deploy POST] deployment blocked by production allowlist", {
         appId,

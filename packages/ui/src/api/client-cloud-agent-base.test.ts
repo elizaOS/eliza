@@ -57,8 +57,7 @@ describe("resolveCloudAgentApiBase", () => {
       resolveCloudAgentApiBase({
         bridgeUrl:
           "https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent/bridge",
-        webUiUrl:
-          "https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent/",
+        webUiUrl: "https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent/",
       }),
     ).toBe("https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent");
   });

@@ -7,8 +7,8 @@
  * Writes PNGs to ./slash-commands/. Pure verification artifact — not wired into CI.
  */
 
-import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));

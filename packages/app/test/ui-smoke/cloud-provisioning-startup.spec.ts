@@ -178,6 +178,10 @@ async function installDirectCloudSandboxRoutes(
         return;
       }
       options.state.createRequests += 1;
+      expect(route.request().postDataJSON()).toMatchObject({
+        alwaysOn: true,
+        autoProvision: false,
+      });
       await fulfillJson(route, 200, {
         success: true,
         data: { id: options.agentId },
