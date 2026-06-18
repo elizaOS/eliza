@@ -1949,7 +1949,7 @@ export class TelegramService extends Service {
    * Requires a forum-enabled supergroup; throws otherwise.
    */
   public async createConnectorThread(
-    _runtime: IAgentRuntime,
+    runtime: IAgentRuntime,
     params: MessageConnectorCreateThreadParams,
   ): Promise<ThreadHandle> {
     const target = params.target as AccountScopedTargetInfo;
@@ -1958,15 +1958,25 @@ export class TelegramService extends Service {
     if (!bot) {
       throw new Error("Telegram bot is not available — cannot create thread");
     }
-    const chatId = target.channelId ?? target.serverId;
+    // The orchestrator progress hook passes a {source, roomId} target; resolve
+    // the chat id from the room when the target carries no channelId.
+    let chatId = target.channelId ?? target.serverId;
+    if (!chatId && target.roomId && typeof runtime.getRoom === "function") {
+      const room = await runtime.getRoom(target.roomId);
+      chatId = room?.channelId ?? undefined;
+    }
     if (!chatId) {
       throw new Error("createConnectorThread requires a target chatId");
     }
+    // A composite "<chatId>-<threadId>" room means we're already inside a topic;
+    // create the new topic on the parent chat (the pattern preserves negative ids).
+    const threadedMatch = chatId.match(TELEGRAM_THREADED_CHANNEL_PATTERN);
+    const parentChatId = threadedMatch ? threadedMatch[1] : chatId;
     const name = (params.name ?? "thread").slice(0, 128);
-    const topic = await bot.telegram.createForumTopic(chatId, name);
+    const topic = await bot.telegram.createForumTopic(parentChatId, name);
     return {
       threadId: String(topic.message_thread_id),
-      parentChannelId: String(chatId),
+      parentChannelId: String(parentChatId),
     };
   }
 
