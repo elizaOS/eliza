@@ -1252,6 +1252,7 @@ async function initializePlatform(): Promise<void> {
     void initializeNetworkListener();
     void initializeMobileDeviceBridge();
     void initializeMobileAgentTunnel();
+    void registerMobileBlockerBackends();
   }
 
   if (isDesktopPlatform()) {
@@ -1262,6 +1263,41 @@ async function initializePlatform(): Promise<void> {
 
   if (isIOS || isAndroid) {
     void configureMobileBackgroundRunner();
+  }
+}
+
+/**
+ * Register the Capacitor website/app blocker plugins as the native backends of
+ * the `@elizaos/plugin-blocker` engine instance loaded in this WebView realm.
+ *
+ * Without this, the engine falls back to its system hosts-file path, which
+ * cannot work inside the iOS/Android app sandbox, so BLOCK is a no-op. The
+ * adapters wrap the Capacitor plugins (Safari content blocker / VPN DNS on iOS
+ * and Android) and map the engine's call/return shapes onto the plugin API.
+ *
+ * Process boundary: this wires the engine instance that runs in the WebView's
+ * JS realm (the web/PWA build, and any in-WebView engine consumer). On stock
+ * native builds the elizaOS runtime — and the engine instance the agent's BLOCK
+ * action calls — runs in a SEPARATE bun process, which this registration does
+ * not reach; that path still flows WebView→engine over the HTTP route.
+ */
+async function registerMobileBlockerBackends(): Promise<void> {
+  try {
+    const [blocker, websiteNative, appNative] = await Promise.all([
+      import("@elizaos/plugin-blocker"),
+      import("@elizaos/capacitor-websiteblocker"),
+      import("@elizaos/capacitor-appblocker"),
+    ]);
+    blocker.registerNativeWebsiteBlockerBackend(
+      websiteNative.createNativeWebsiteBlockerBackend(
+        websiteNative.WebsiteBlocker,
+      ),
+    );
+    blocker.registerNativeAppBlockerBackend(
+      appNative.createNativeAppBlockerBackend(appNative.AppBlocker),
+    );
+  } catch (error) {
+    logNativePluginUnavailable("Blocker backends", error);
   }
 }
 

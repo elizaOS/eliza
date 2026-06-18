@@ -10,3 +10,8 @@ const loadWeb = () =>
 export const AppBlocker = registerPlugin<AppBlockerPlugin>("ElizaAppBlocker", {
   web: loadWeb,
 });
+
+export {
+  createNativeAppBlockerBackend,
+  type NativeAppBlockerBackend,
+} from "./backend";

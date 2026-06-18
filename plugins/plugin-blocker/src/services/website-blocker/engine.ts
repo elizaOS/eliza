@@ -17,13 +17,23 @@ const DEFAULT_STATUS_CACHE_TTL_MS = 5_000;
 // ---------------------------------------------------------------------------
 // Native backend adapter
 // ---------------------------------------------------------------------------
-// On iOS and Android the hosts-file engine is not available. A native backend
-// can be registered at startup so the action/provider layer dispatches to the
-// Capacitor native plugin (Safari content blocker on iOS, VPN DNS on Android)
-// instead of falling through to "not-applicable".
+// On iOS and Android the hosts-file engine cannot work (the WebView/app sandbox
+// has no writable system hosts file). A native backend can be registered so the
+// engine dispatches blocking to the Capacitor native plugin (Safari content
+// blocker on iOS, split-tunnel VPN DNS on Android) instead of editing the hosts
+// file.
 //
-// The mobile app's webview startup code calls `registerNativeWebsiteBlockerBackend`
-// with an adapter that wraps the Capacitor plugin.
+// The backend is registered in whatever JS realm holds this engine module
+// instance. In the mobile WebView realm (the web/PWA build and any in-WebView
+// engine consumer) `registerNativeWebsiteBlockerBackend` is called at startup
+// with `createNativeWebsiteBlockerBackend()` from
+// `@elizaos/capacitor-websiteblocker`, which wraps the Capacitor plugin.
+//
+// NOTE (process split): on stock native mobile builds the elizaOS runtime — and
+// therefore the engine instance the BLOCK action calls — runs in a SEPARATE bun
+// process from the WebView, and there is no agent→WebView RPC channel. Native
+// enforcement there still flows WebView→engine via the HTTP route. See
+// `createNativeWebsiteBlockerBackend` for the precise bridge boundary.
 // ---------------------------------------------------------------------------
 
 export interface NativeWebsiteBlockerBackend {
@@ -62,7 +72,18 @@ const execFileAsync = promisify(execFile);
 export type SelfControlElevationMethod =
   | "osascript"
   | "pkexec"
-  | "powershell-runas";
+  | "powershell-runas"
+  | "vpn-consent"
+  | "system-settings";
+
+// The hosts-file path always reports `hosts-file`. A registered native backend
+// (iOS Safari content blocker, Android split-tunnel VPN DNS) reports its own
+// enforcement engine instead.
+export type SelfControlEngine =
+  | "hosts-file"
+  | "vpn-dns"
+  | "network-extension"
+  | "content-blocker";
 
 export interface SelfControlPluginConfig {
   hostsFilePath?: string;
@@ -87,8 +108,8 @@ export interface SelfControlStatus {
   scheduledByAgentId: string | null;
   canUnblockEarly: boolean;
   requiresElevation: boolean;
-  engine: "hosts-file";
-  platform: NodeJS.Platform;
+  engine: SelfControlEngine;
+  platform: NodeJS.Platform | string;
   supportsElevationPrompt: boolean;
   elevationPromptMethod: SelfControlElevationMethod | null;
   reason?: string;

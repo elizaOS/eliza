@@ -107,6 +107,7 @@
     "@elizaos/plugin-2004scape": "workspace:*",
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
     "@elizaos/plugin-background-runner": "workspace:*",
+    "@elizaos/plugin-blocker": "workspace:*",
     "@elizaos/plugin-clawville": "workspace:*",
     "@elizaos/plugin-companion": "workspace:*",
     "@elizaos/plugin-contacts": "workspace:*",

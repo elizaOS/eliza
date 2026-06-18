@@ -13,6 +13,31 @@ import type {
 const STATUS_CACHE_TTL_MS = 5_000;
 let statusCache: { expiresAt: number; value: AppBlockerStatus } | null = null;
 
+// ---------------------------------------------------------------------------
+// Native backend adapter
+// ---------------------------------------------------------------------------
+// App blocking is mobile-only and enforced by the Capacitor `ElizaAppBlocker`
+// plugin (Family Controls on iOS, Usage-Stats + overlay on Android). When the
+// engine module runs in the WebView realm where that plugin is reachable, the
+// adapter created by `createNativeAppBlockerBackend()` is registered so the
+// engine drives the real native plugin. Symmetric with the website-blocker
+// `registerNativeWebsiteBlockerBackend` registrar.
+// ---------------------------------------------------------------------------
+
+export type NativeAppBlockerBackend = AppBlockerPluginLike;
+
+let nativeBackend: NativeAppBlockerBackend | null = null;
+
+export function registerNativeAppBlockerBackend(
+  backend: NativeAppBlockerBackend,
+): void {
+  nativeBackend = backend;
+}
+
+export function getNativeAppBlockerBackend(): NativeAppBlockerBackend | null {
+  return nativeBackend;
+}
+
 type GlobalWithCapacitor = typeof globalThis & {
   Capacitor?: { Plugins?: Record<string, unknown> };
 };
@@ -33,7 +58,10 @@ function getAppBlockerPlugin(): AppBlockerPluginLike {
 }
 
 function getPlugin(): AppBlockerPluginLike {
-  const plugin = getAppBlockerPlugin();
+  // A registered native backend (set by the WebView at startup) wins over
+  // reaching into `Capacitor.Plugins` directly, so a single registration point
+  // controls enforcement.
+  const plugin = nativeBackend ?? getAppBlockerPlugin();
   if (!plugin || typeof plugin.getStatus !== "function") {
     throw new Error(
       "[app-blocker] AppBlocker Capacitor plugin is not available. App blocking is mobile-only.",
