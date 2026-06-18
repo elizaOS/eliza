@@ -95,32 +95,29 @@ The floating chat overlay (`ContinuousChatOverlay`) also renders these widgets
 - ✅ Telegram: choice/followups/task rendering + `callback_query` round-trip + secret/OAuth DM link-out adapter.
 - ✅ Discord: choice/followups/task rendering (buttons + link buttons) + `isButton` round-trip.
 - ✅ Floating chat overlay renders interaction widgets.
+- ✅ **Thread per task** on both connectors. The orchestrator already routes each
+  sub-agent's narration into a per-task thread (`emitProgress` in
+  `plugin-agent-orchestrator/src/index.ts` — capability-gated on
+  `create_thread` + `post_to_thread`, created via `runtime.createThreadOnTarget`).
+  This worked only on Discord; Telegram now declares those capabilities and
+  implements `createConnectorThread` (forum topic) / `postToConnectorThread`, so
+  it works there too. Requires threaded progress mode
+  (`ACPX_PROGRESS_MODE=threaded`) + a forum-enabled Telegram supergroup.
+- ✅ **Task detail view with sub-agent message room** already exists:
+  `plugin-task-coordinator/src/OrchestratorWorkbench.tsx` renders the per-task
+  timeline (sub-agent / orchestrator / user / system senders), the sessions
+  (sub-agents) list, plan, artifacts, usage, and recovery — with near-live room
+  polling. The task widget links here via `/orchestrator?taskId=<threadId>`.
 
 ## Remaining work — exact seams
 
-1. **Thread per task.** On task create, materialize `OrchestratorTaskRecord.taskRoomId`
-   as a platform thread and route that task's sub-agent messages + status into it.
-   - Discord: `DiscordService.createConnectorThread` (`service.ts` ~L2375) +
-     `postToConnectorThread` (~L2415).
-   - Telegram: `bot.telegram.createForumTopic(chatId, name)` → `message_thread_id`;
-     rooms already key on `<chatId>-<threadId>` (`buildForumTopicRoom`). Send into
-     it via `sendMessageInChunks(ctx, content, undefined, message_thread_id)`.
-   - The orchestrator owns the trigger: call the connector thread API from the
-     task-create path in `plugin-agent-orchestrator` and persist the thread id on
-     `taskRoomId`.
-2. **Task detail view (Codex/Claude-Code parity).** Header (goal, status, live
-   timeline), sub-agent message room, plan/diff, forms-and-asks inbox. Data is
-   already exposed: `GET /api/orchestrator/tasks/:id` + `/timeline` + `/stream`
-   (SSE). The widget link target is `/orchestrator?taskId=<threadId>`; the view is
-   a prebuilt bundle (`agent-orchestrator.json` registry entry) — enhance that
-   bundle (build:views + API bounce) to add the sub-agent room panel.
-3. **Multi-connector `dm` resolution (registry follow-up).** The dispatch registry
+1. **Multi-connector `dm` resolution (registry follow-up).** The dispatch registry
    holds one adapter per target; with both Discord and Telegram loaded, the last
    `register("dm")` wins. Make the registry hold a list per target and resolve via
    `supportsChannel` (the hook already exists), then update the 3 consumers
    (`features/payments|oauth|plugin-config` `deliver-*`). Single-connector
    deployments already resolve correctly.
-4. **Central normalization (optional).** Register `normalizeContentInteractions`
+2. **Central normalization (optional).** Register `normalizeContentInteractions`
    on the `outgoing_before_deliver` pipeline hook so every consumer gets
    `Content.interactions` without re-parsing. Connectors are already self-sufficient
    (they call `parseInteractionBlocks` directly), so this is a convenience, not a
