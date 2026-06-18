@@ -38,6 +38,7 @@ function deps(
         },
         async deprovision(appId) {
           seen.deprovisionedApp = appId;
+          return { existed: true };
         },
       };
     },
@@ -95,6 +96,34 @@ describe("SqlTenantDbProvisioning", () => {
     expect(d.seen.resolvedHost).toBe("apps-cluster-1"); // host parsed from the stored DSN
     expect(d.seen.deprovisionedApp).toBe("app-1"); // the DROP ran on that cluster
     expect(released).toEqual(["cluster-1"]); // the slot was released
+  });
+
+  test("deprovisionForApp does NOT release the slot when the DB was already gone (idempotent re-run)", async () => {
+    const released: string[] = [];
+    const d = deps({
+      async resolveClusterByHost() {
+        return { id: "cluster-1", adminDsnEncrypted: "enc:v1:admin-dsn" };
+      },
+      async releaseSlot(clusterId) {
+        released.push(clusterId);
+      },
+      // A re-run: the DROP finds nothing (existed: false), so the slot must not
+      // be decremented a second time. (#8342)
+      makeProvisioner(): TenantDbProvisioner {
+        return {
+          async provision() {
+            return { dbName: "db_app_x", roleName: "app_x", dsn: PROVISIONED_DSN };
+          },
+          async deprovision() {
+            return { existed: false };
+          },
+        };
+      },
+    });
+    const result = await new SqlTenantDbProvisioning(d).deprovisionForApp("app-1", PROVISIONED_DSN);
+
+    expect(result).toEqual({ deprovisioned: true });
+    expect(released).toEqual([]); // slot NOT released — no double-free
   });
 
   test("deprovisionForApp throws a clear error when the teardown deps aren't wired", async () => {

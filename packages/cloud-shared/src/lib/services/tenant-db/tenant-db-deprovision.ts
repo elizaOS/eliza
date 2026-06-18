@@ -17,7 +17,12 @@
 
 /** Provisioner bound to one cluster's admin connection (the deprovision half). */
 export interface TenantDbDeprovisioner {
-  deprovision(appId: string): Promise<void>;
+  /**
+   * DROP the app's DB + role. Returns `{ existed }` — whether the database was
+   * actually present before the DROP — so the caller can release the cluster
+   * slot exactly once (a re-run finds `existed: false` and skips the release).
+   */
+  deprovision(appId: string): Promise<{ existed: boolean }>;
 }
 
 export interface TenantDbDeprovisionDeps {
@@ -76,7 +81,16 @@ export async function deprovisionTenantDbForApp(
   const cluster = await deps.resolveClusterByHost(host);
   if (!cluster) return { deprovisioned: false, reason: "unknown-cluster" };
 
-  await deps.makeDeprovisioner(cluster.adminDsn, host).deprovision(appId);
-  await deps.releaseSlot(cluster.id);
+  const { existed } = await deps.makeDeprovisioner(cluster.adminDsn, host).deprovision(appId);
+  // Release the cluster slot ONLY when this call actually dropped a live DB.
+  // The DROP runs on the tenant cluster while `database_count` lives in the
+  // control-plane DB, so the two can't share a transaction — gating on existence
+  // is what makes a re-run idempotent (DB already gone → no second decrement →
+  // no freed phantom capacity). Residual window: a crash AFTER the DROP but
+  // BEFORE releaseSlot leaves the slot counted, which fails SAFE (under-counts
+  // free capacity rather than over-committing a multi-tenant cluster); a periodic
+  // reconcile of database_count against the actual db_app_* databases is the
+  // complete fix. (#8342)
+  if (existed) await deps.releaseSlot(cluster.id);
   return { deprovisioned: true };
 }

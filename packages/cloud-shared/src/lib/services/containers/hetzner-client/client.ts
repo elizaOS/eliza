@@ -418,11 +418,16 @@ export class HetznerContainersClient {
         }
       });
 
-      await dockerNodesRepository.decrementAllocated(meta.nodeId).catch((err) => {
-        logger.warn(`[hetzner-client] decrementAllocated failed for ${meta.nodeId}`, {
-          error: err instanceof Error ? err.message : String(err),
+      // Idempotent slot release (#8342): only the first stop/delete of this
+      // container actually decrements the node — a re-claimed job can't free a
+      // phantom slot belonging to a live container. Atomic marker + decrement.
+      await containersRepository
+        .tryReleaseNodeSlot(containerId, organizationId, meta.nodeId)
+        .catch((err) => {
+          logger.warn(`[hetzner-client] tryReleaseNodeSlot failed for ${meta.nodeId}`, {
+            error: err instanceof Error ? err.message : String(err),
+          });
         });
-      });
     }
 
     if (row.hcloud_volume_id !== null && isHetznerVolumesAvailable()) {
@@ -516,11 +521,16 @@ export class HetznerContainersClient {
         }
       });
 
-      await dockerNodesRepository.decrementAllocated(meta.nodeId).catch((err) => {
-        logger.warn(`[hetzner-client] decrementAllocated failed for ${meta.nodeId}`, {
-          error: err instanceof Error ? err.message : String(err),
+      // Idempotent slot release (#8342): only the first stop/delete of this
+      // container actually decrements the node — a re-claimed job can't free a
+      // phantom slot belonging to a live container. Atomic marker + decrement.
+      await containersRepository
+        .tryReleaseNodeSlot(containerId, organizationId, meta.nodeId)
+        .catch((err) => {
+          logger.warn(`[hetzner-client] tryReleaseNodeSlot failed for ${meta.nodeId}`, {
+            error: err instanceof Error ? err.message : String(err),
+          });
         });
-      });
     }
 
     // Hetzner Cloud volume lifecycle - handled after Docker cleanup so the
