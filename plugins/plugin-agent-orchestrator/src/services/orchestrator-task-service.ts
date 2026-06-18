@@ -649,7 +649,10 @@ export class OrchestratorTaskService extends Service {
           /401|403|invalid api key|unauthor/i.test(message)
         ) {
           await this.markSessionAccountUnhealthy(sessionId, "auth", message);
-        } else if (/429|rate.?limit|quota|overloaded/i.test(message)) {
+        } else if (/429|rate.?limit|quota/i.test(message)) {
+          // A 529 "overloaded" is a server-wide transient condition, not an
+          // account quota — deliberately excluded so a healthy account isn't
+          // sidelined from rotation for ~5min over a server blip.
           await this.markSessionAccountUnhealthy(
             sessionId,
             "rate-limit",
@@ -1813,6 +1816,11 @@ export class OrchestratorTaskService extends Service {
           outputTokens: session.outputTokens,
           reasoningTokens: session.reasoningTokens,
           cacheTokens: session.cacheTokens,
+          totalTokens:
+            session.inputTokens +
+            session.outputTokens +
+            session.reasoningTokens +
+            session.cacheTokens,
           costUsd: session.costUsd,
           usageState: session.usageState,
         });

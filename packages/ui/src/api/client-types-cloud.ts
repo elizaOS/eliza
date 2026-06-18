@@ -1057,6 +1057,9 @@ export interface CodingAgentTaskSessionRecord {
   framework: string;
   providerSource: string | null;
   model: string | null;
+  accountProviderId: string | null;
+  accountId: string | null;
+  accountLabel: string | null;
   label: string;
   originalTask: string;
   workdir: string;
@@ -1256,8 +1259,9 @@ export interface OrchestratorAccountAssignment {
   outputTokens: number;
   reasoningTokens: number;
   cacheTokens: number;
+  totalTokens: number;
   costUsd: number;
-  usageState: string;
+  usageState: "measured" | "estimated" | "unavailable";
 }
 
 export interface OrchestratorAccountProviderAvailability {

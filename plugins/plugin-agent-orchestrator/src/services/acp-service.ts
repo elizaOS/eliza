@@ -127,6 +127,13 @@ const ORPHAN_RESUME_STATUSES: ReadonlySet<string> = new Set([
 const ORPHAN_RESUME_PROMPT =
   "[System] Your previous turn was interrupted by a runtime restart. Continue where you left off on the original task and report results as usual.";
 const DEFAULT_AGENTS: AgentType[] = ["elizaos", "codex", "claude", "opencode"];
+// Path segment the app-core coding-account bridge uses for per-account Codex
+// homes (`<stateDir>/auth/_codex-home/<accountId>`). buildEnv keys off this
+// marker to know a subscription account was selected and drop a forwarded
+// OPENAI_API_KEY that would otherwise override the per-account auth.json. Kept
+// in sync with coding-account-bridge.ts:codexHomeDir (cross-package, no shared
+// import — the orchestrator depends only on @elizaos/core).
+const CODEX_PER_ACCOUNT_HOME_MARKER = "_codex-home";
 const DENY_ENV_PATTERNS = [
   /DISCORD.*TOKEN/i,
   /TELEGRAM.*TOKEN/i,
@@ -2086,6 +2093,24 @@ export class AcpService extends Service {
       this.log(
         "debug",
         "Stripped OAuth-token ANTHROPIC_API_KEY for claude sub-agent (uses native OAuth)",
+      );
+    }
+    if (
+      agentType === "codex" &&
+      typeof env.CODEX_HOME === "string" &&
+      env.CODEX_HOME.includes(CODEX_PER_ACCOUNT_HOME_MARKER) &&
+      env.OPENAI_API_KEY
+    ) {
+      // A specific Codex subscription account was selected: its ChatGPT-login
+      // auth.json lives in the injected per-account CODEX_HOME. Codex treats a
+      // present env OPENAI_API_KEY as api-key mode, which OVERRIDES that
+      // subscription login — silently defeating multi-account selection. Drop it
+      // so the chosen account's auth.json authenticates (symmetric to the Claude
+      // CLAUDE_CODE_OAUTH_TOKEN handling above).
+      delete env.OPENAI_API_KEY;
+      this.log(
+        "debug",
+        "Dropped OPENAI_API_KEY for codex sub-agent in favor of selected per-account CODEX_HOME",
       );
     }
     if (agentType === "opencode") {

@@ -52,18 +52,23 @@ bridge**.
 - [x] Settings already shows per-account usage; orchestrator dashboard widget adds the accounts + usage summary.
 
 ### P2 — Room system + interruption decider
-- [x] Per-participant interruption decider: a running sub-agent keeps working; a new user message in the task room is classified (interrupt / queue / ignore) before it is injected. Eliza participants use `shouldRespond`; coding sub-agents use a structural decider.
-- [x] Task room view shows participants (orchestrator + user + each sub-agent + its account) and per-agent run state.
+- [x] Per-participant interruption decider: a running sub-agent keeps working; a new room message is classified (deliver / queue / interrupt / ignore) before it is injected. The "busy" check covers `tool_running` (the dominant mid-turn state), not just `busy`; queued messages flush when the session returns to `ready`. An Eliza participant's `shouldRespond` verdict threads through unchanged when a caller supplies it; coding sub-agents use the structural decider. `multiParty` (more than one live sub-agent in the room) is computed in the forward handler so ambient-chatter suppression is live.
+- [~] Task-room participant **view**: the "Coding accounts" sidebar widget shows the live sub-agent → account assignment map + per-account usage. A dedicated per-room participant roster (orchestrator + user + each sub-agent grouped by room) is **not yet shipped** — the assignment map is global across active tasks. Follow-up.
 
 ### P3 — Tests + mocks + live E2E
 - [x] Mock account fixtures (multi-account, multi-provider) + an in-memory pool for unit tests.
-- [x] Unit tests: selection strategy, env injection per agent type, exclude-on-failure, usage attribution, interruption decider.
-- [x] Live E2E (gated `ORCHESTRATOR_LIVE_MULTI_ACCOUNT=1`): spawn against ≥2 real accounts, assert each used a distinct account + usage moved.
+- [x] Unit tests: selection strategy, per-agent env injection + API-key drop (Claude & Codex), intra-provider retry, usage attribution, interruption decider, route registration.
+- [x] Live E2E (gated `ORCHESTRATOR_LIVE_MULTI_ACCOUNT=1`): validates the selector bridge + usage probe against ≥2 **real** linked accounts (distinct-account rotation via the exclude set; live session/weekly usage). A full spawn-level E2E (boot a real sub-agent, assert `session.metadata.account` distinctness + a usage delta) is the manual `test:e2e:manual` lane — not part of the gated unit-suite test.
 
 ### P4 — Connect-accounts window
-- [x] Verify the AddAccountDialog OAuth/API-key/coding-key flows; open the accounts surface for the operator to connect multiple of each type.
+- [x] The connect-accounts window (Settings → Accounts: `AddAccountDialog` OAuth / API-key / coding-plan-key flows, `AccountList`, `RotationStrategyPicker`) pre-exists and is the surface for linking multiple accounts of each type.
+
+## Known constraints / follow-ups
+- **OpenCode is not pool-rotated.** The orchestrator's default coding agent is `opencode`, which authenticates through its own configured backend (Cerebras / Eliza Cloud / etc.) — it is intentionally **not** a multi-account selector type. Least-used rotation + per-account attribution apply to **claude** and **codex** spawns (the first-party CLIs with a real ACP adapter). Wiring opencode → pooled accounts (inject a selected provider key into its config) is a follow-up.
+- **z.ai / Kimi / GLM have no first-party coding CLI.** Their linked accounts serve the main runtime's API-key routing (`resolveProviderCredentialMulti` for `zai-api` / `moonshot-api`) and OpenCode's provider config — there is no `zai`/`kimi`/`glm` spawnable agent type, so they are not advertised as coding-agent selector candidates.
 
 ## Quality bar
 - No regression when zero accounts are linked (bridge returns null → today's behavior).
 - Selected account is **observable** (session metadata + structured log + dashboard), never assumed.
 - Subscription tokens only ever flow to the first-party coding subprocess (TOS), never into runtime `process.env`.
+- Per-agent credential precedence is enforced: a selected Claude subscription drops `ANTHROPIC_API_KEY`; a selected Codex subscription (per-account `CODEX_HOME`) drops a forwarded `OPENAI_API_KEY` — so the chosen account always authenticates.
