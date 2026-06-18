@@ -28,8 +28,11 @@ export interface TenantDbProvisioning {
 /** A per-cluster provisioner (the U2 `SqlTenantDbProvisioner` shape). */
 export interface TenantDbProvisioner {
   provision(appId: string): Promise<ProvisionedTenantDb>;
-  /** DROP the app's DATABASE + ROLE on this cluster (teardown). */
-  deprovision(appId: string): Promise<void>;
+  /**
+   * DROP the app's DATABASE + ROLE on this cluster (teardown). Returns whether
+   * the database existed before the DROP so the slot is released exactly once.
+   */
+  deprovision(appId: string): Promise<{ existed: boolean }>;
 }
 
 export interface SqlTenantDbProvisioningDeps {

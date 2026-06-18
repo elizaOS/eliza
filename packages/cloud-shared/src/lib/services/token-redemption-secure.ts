@@ -877,6 +877,14 @@ export class SecureTokenRedemptionService {
     requiredAmount: number,
   ): Promise<{ available: boolean; balance: number; error?: string }> {
     const env = getCloudAwareEnv();
+    // When the operator has explicitly opted out of live balance reads
+    // (PAYOUT_STATUS_ASSUME_OPERATIONAL=1, e.g. local/e2e with no funded wallet),
+    // trust the configured wallet here too. The on-chain payout cron still
+    // performs the real transfer and fail-closes on an actually-empty wallet, so
+    // this only gates request/quote — it cannot move tokens on a false premise.
+    if (env.PAYOUT_STATUS_ASSUME_OPERATIONAL === "1") {
+      return { available: true, balance: requiredAmount };
+    }
     if (network === "solana") {
       const solanaAddress = env.SOLANA_PAYOUT_WALLET_ADDRESS;
       if (!solanaAddress) {

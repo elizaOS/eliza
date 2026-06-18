@@ -511,7 +511,7 @@ export class ElizaClient {
       }
     }
     if (!res.ok && !options?.allowNonOk) {
-      const body = (await this.readBodyText(res, path, options?.timeoutMs)
+      const body = (await this.readBodyText(res, path, options?.timeoutMs, init)
         .then((text) => JSON.parse(text) as Record<string, unknown>)
         .catch(() => ({ error: res.statusText }))) as Record<
         string,
@@ -692,8 +692,14 @@ export class ElizaClient {
     res: Response,
     path: string,
     timeoutMs?: number,
+    init?: RequestInit,
   ): Promise<string> {
-    const budgetMs = timeoutMs ?? defaultFetchTimeoutMs(path, undefined);
+    // Must mirror the request phase's budget (rawRequestOnce uses
+    // defaultFetchTimeoutMs(path, init)). Passing `undefined` here forced the
+    // GET branch -> 10s for every route, so the body read of a long POST
+    // (chat 600s, ASR/TTS 180s, reset 60s) would spuriously time out on slow
+    // on-device builds that emit headers early then take >10s to finish.
+    const budgetMs = timeoutMs ?? defaultFetchTimeoutMs(path, init);
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
@@ -735,7 +741,7 @@ export class ElizaClient {
     if (res.status === 204) {
       return undefined as T;
     }
-    const text = await this.readBodyText(res, path, options?.timeoutMs);
+    const text = await this.readBodyText(res, path, options?.timeoutMs, init);
     if (text === "") {
       return undefined as T;
     }

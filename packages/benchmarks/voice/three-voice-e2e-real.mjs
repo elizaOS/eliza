@@ -16,10 +16,9 @@
  *   agent reply          → omnivoice-tts agent voice, ASR'd back
  *
  * No synthetic fixtures, no JS fallbacks. Every model is the real one.
- * Kokoro was requested for the agent voice but is unavailable here
- * (ONNX-only, onnxruntime not installed, no GGUF / CLI / server path),
- * so the agent voice uses a distinct OmniVoice design — documented in
- * the report.
+ * The agent voice uses Kokoro via the fork llama-server
+ * (`/v1/audio/speech`); point ELIZA_KOKORO_FORK_URL at a running
+ * Kokoro-capable llama-server.
  *
  * Run:
  *   ELIZA_VOICE_CLASSIFIER_LIB=<...>/build-darwin/libvoice_classifier.dylib \
@@ -34,7 +33,7 @@ import path from "node:path";
 import { loadElizaInferenceFfi } from "../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings.ts";
 import { PyannoteDiarizer } from "../../../plugins/plugin-local-inference/src/services/voice/speaker/diarizer.ts";
 import { SpeakerEncoderGgmlImpl } from "../../../plugins/plugin-local-inference/src/services/voice/speaker/encoder-ggml.ts";
-import { KokoroOnnxRuntime } from "../../../plugins/plugin-local-inference/src/services/voice/kokoro/kokoro-runtime.ts";
+import { KokoroGgufRuntime } from "../../../plugins/plugin-local-inference/src/services/voice/kokoro/kokoro-runtime.ts";
 import { resolvePhonemizer } from "../../../plugins/plugin-local-inference/src/services/voice/kokoro/phonemizer.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
@@ -72,9 +71,11 @@ const SCRIPT = [
 
 const AGENT_NAME = "eliza";
 
-// Kokoro agent voice (v1.0 ONNX). Agent turns use Kokoro; humans use OmniVoice.
-const KOKORO_ROOT = path.join(BUNDLE, "tts/kokoro");
-const KOKORO_LAYOUT = { root: KOKORO_ROOT, modelFile: "model_q4.onnx", voicesDir: path.join(KOKORO_ROOT, "voices"), sampleRate: 24_000 };
+// Kokoro agent voice (fork → llama-server /v1/audio/speech). Agent turns use
+// Kokoro; humans use OmniVoice. Point ELIZA_KOKORO_FORK_URL at a running
+// Kokoro-capable llama-server.
+const KOKORO_SERVER_URL = process.env.ELIZA_KOKORO_FORK_URL?.trim() || "http://127.0.0.1:8081";
+const KOKORO_SAMPLE_RATE = 24_000;
 const KOKORO_VOICE = { id: "af_bella", displayName: "Bella", lang: "a", file: "af_bella.bin", dim: 256 };
 let _kokoro = null;
 let _phonemizer = null;
@@ -91,17 +92,17 @@ function writeWav16(pcm, sampleRate, outPath) {
 	writeFileSync(outPath, buf);
 }
 
-/** Synthesize an agent turn via Kokoro v1.0 ONNX → 16-bit WAV. */
+/** Synthesize an agent turn via Kokoro (fork llama-server) → 16-bit WAV. */
 async function kokoroSynth(text, outPath) {
 	const t0 = performance.now();
-	if (!_kokoro) { _kokoro = new KokoroOnnxRuntime({ layout: KOKORO_LAYOUT }); _phonemizer = await resolvePhonemizer(); }
+	if (!_kokoro) { _kokoro = new KokoroGgufRuntime({ serverUrl: KOKORO_SERVER_URL, modelId: process.env.ELIZA_KOKORO_FORK_MODEL_ID?.trim() || "kokoro-v1.0", sampleRate: KOKORO_SAMPLE_RATE }); _phonemizer = await resolvePhonemizer(); }
 	const phonemes = await _phonemizer.phonemize(text, KOKORO_VOICE.lang);
 	const chunks = [];
 	await _kokoro.synthesize({ phonemes, voice: KOKORO_VOICE, cancelSignal: { cancelled: false }, onChunk: ({ pcm, isFinal }) => { if (!isFinal && pcm.length) chunks.push(pcm); return false; } });
 	const total = chunks.reduce((s, c) => s + c.length, 0);
 	const pcm = new Float32Array(total);
 	let off = 0; for (const c of chunks) { pcm.set(c, off); off += c.length; }
-	writeWav16(pcm, KOKORO_LAYOUT.sampleRate, outPath);
+	writeWav16(pcm, KOKORO_SAMPLE_RATE, outPath);
 	return performance.now() - t0;
 }
 
@@ -326,7 +327,7 @@ const report = {
 		asr: asrAvailable ? "eliza-1-asr.gguf (libelizainference FFI)" : "UNAVAILABLE",
 		diarizer: "pyannote-segmentation-3.0-fp32 (libvoice_classifier FFI)",
 		encoder: "wespeaker-resnet34-lm-fp32 (libvoice_classifier FFI)",
-		agentVoice: "Kokoro v1.0 (af_bella, model_q4.onnx via onnxruntime-node)",
+		agentVoice: "Kokoro v1.0 (af_bella, fork llama-server /v1/audio/speech)",
 	},
 	voices: VOICES,
 	ttsTimings,

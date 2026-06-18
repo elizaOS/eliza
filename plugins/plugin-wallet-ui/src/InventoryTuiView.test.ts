@@ -122,10 +122,27 @@ function seedWalletClientResponses() {
   walletClient.getWalletNfts.mockResolvedValue(nfts);
   walletClient.getWalletMarketOverview.mockResolvedValue(marketOverview);
   walletClient.getWalletTradingProfile.mockResolvedValue({
-    summary: { realizedPnlBnb: "0.1" },
+    window: "30d",
+    source: "all",
+    generatedAt: "2026-06-01T00:00:00.000Z",
+    summary: {
+      totalSwaps: 0,
+      buyCount: 0,
+      sellCount: 0,
+      settledCount: 0,
+      successCount: 0,
+      revertedCount: 0,
+      tradeWinRate: null,
+      txSuccessRate: null,
+      winningTrades: 0,
+      evaluatedTrades: 0,
+      realizedPnlBnb: "0.1",
+      volumeBnb: "0",
+    },
     recentSwaps: [],
     tokenBreakdown: [],
-    series: [],
+    // Real @elizaos/contracts key is `pnlSeries` (not `series`).
+    pnlSeries: [],
   });
 }
 
@@ -224,6 +241,161 @@ describe("InventoryTuiView", () => {
       },
     });
     expect(walletClient.getWalletTradingProfile).toHaveBeenCalledWith("7d");
+  });
+
+  it("coerces a missing or invalid trading-profile window to 30d", async () => {
+    seedWalletClientResponses();
+
+    await interact("terminal-wallet-trading-profile");
+    expect(walletClient.getWalletTradingProfile).toHaveBeenLastCalledWith(
+      "30d",
+    );
+
+    await interact("terminal-wallet-trading-profile", { window: "bogus" });
+    expect(walletClient.getWalletTradingProfile).toHaveBeenLastCalledWith(
+      "30d",
+    );
+  });
+
+  it("rejects unknown interact capabilities", async () => {
+    seedWalletClientResponses();
+    await expect(interact("nope")).rejects.toThrow(/Unsupported capability/);
+  });
+
+  it("re-fetches balances and flips lastAction to refresh on the refresh button", async () => {
+    seedWalletClientResponses();
+
+    const { container } = render(React.createElement(InventoryTuiView));
+    await screen.findByText("USDC");
+    await waitFor(() =>
+      expect(walletClient.getWalletBalances).toHaveBeenCalledTimes(1),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "refresh" }));
+
+    await waitFor(() =>
+      expect(walletClient.getWalletBalances).toHaveBeenCalledTimes(2),
+    );
+    const stateElement = container.querySelector("[data-view-state]");
+    await waitFor(() =>
+      expect(
+        JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}"),
+      ).toMatchObject({ lastAction: "refresh", loading: false }),
+    );
+  });
+
+  it("shows the not-configured fallback and empty rows when every call returns null", async () => {
+    walletClient.getWalletAddresses.mockResolvedValue(null);
+    walletClient.getWalletConfig.mockResolvedValue(null);
+    walletClient.getWalletBalances.mockResolvedValue(null);
+    walletClient.getWalletNfts.mockResolvedValue(null);
+    walletClient.getWalletMarketOverview.mockResolvedValue(null);
+
+    const { container } = render(React.createElement(InventoryTuiView));
+
+    expect(await screen.findAllByText("not configured")).toHaveLength(2);
+    const stateElement = container.querySelector("[data-view-state]");
+    await waitFor(() =>
+      expect(
+        JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}"),
+      ).toMatchObject({
+        totalUsd: 0,
+        tokenCount: 0,
+        nftCount: 0,
+        evmAddress: null,
+        solanaAddress: null,
+        marketMoverCount: 0,
+        loading: false,
+        error: null,
+      }),
+    );
+  });
+
+  it("renders NFT lines and chain-error lines in the market section", async () => {
+    walletClient.getWalletAddresses.mockResolvedValue({
+      evmAddress: "0xabc",
+      solanaAddress: "So111",
+    });
+    walletClient.getWalletConfig.mockResolvedValue({
+      evmAddress: "0xabc",
+      solanaAddress: "So111",
+      evmBalanceReady: true,
+      solanaBalanceReady: false,
+    });
+    walletClient.getWalletBalances.mockResolvedValue({
+      evm: {
+        address: "0xabc",
+        chains: [
+          {
+            chain: "Base",
+            chainId: 8453,
+            nativeBalance: "0",
+            nativeSymbol: "ETH",
+            nativeValueUsd: "0",
+            tokens: [],
+            error: "RPC timeout",
+          },
+        ],
+      },
+      solana: null,
+    });
+    walletClient.getWalletNfts.mockResolvedValue(nfts);
+    walletClient.getWalletMarketOverview.mockResolvedValue(marketOverview);
+    walletClient.getWalletTradingProfile.mockResolvedValue({
+      window: "30d",
+      source: "all",
+      generatedAt: "2026-06-01T00:00:00.000Z",
+      summary: {
+        totalSwaps: 0,
+        buyCount: 0,
+        sellCount: 0,
+        settledCount: 0,
+        successCount: 0,
+        revertedCount: 0,
+        tradeWinRate: null,
+        txSuccessRate: null,
+        winningTrades: 0,
+        evaluatedTrades: 0,
+        realizedPnlBnb: "0",
+        volumeBnb: "0",
+      },
+      recentSwaps: [],
+      tokenBreakdown: [],
+      pnlSeries: [],
+    });
+
+    const { container } = render(React.createElement(InventoryTuiView));
+
+    // NFT line in the market section.
+    expect(await screen.findByText("Agent NFT")).toBeTruthy();
+    // Chain-error line "Base: RPC timeout" (split across nodes -> match parts).
+    await screen.findByText(/RPC timeout/);
+    const stateElement = container.querySelector("[data-view-state]");
+    await waitFor(() =>
+      expect(
+        JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}"),
+      ).toMatchObject({ chainErrorCount: 1, nftCount: 1 }),
+    );
+  });
+
+  it("surfaces the error branch when loading the TUI state throws", async () => {
+    walletClient.getWalletAddresses.mockRejectedValue(new Error("boom"));
+    walletClient.getWalletConfig.mockRejectedValue(new Error("boom"));
+    walletClient.getWalletBalances.mockImplementation(() => {
+      throw new Error("balances exploded");
+    });
+    walletClient.getWalletNfts.mockRejectedValue(new Error("boom"));
+    walletClient.getWalletMarketOverview.mockRejectedValue(new Error("boom"));
+
+    const { container } = render(React.createElement(InventoryTuiView));
+
+    expect(await screen.findByText("balances exploded")).toBeTruthy();
+    const stateElement = container.querySelector("[data-view-state]");
+    await waitFor(() =>
+      expect(
+        JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}"),
+      ).toMatchObject({ error: "balances exploded", loading: false }),
+    );
   });
 
   it("preserves back navigation when opening RPC settings", async () => {

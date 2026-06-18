@@ -15,6 +15,7 @@ import { hydrateTextField, offloadTextField } from "../../lib/storage/object-sto
 import { type Database, dbRead, dbWrite } from "../helpers";
 import { containers } from "../schemas/containers";
 import { creditTransactions } from "../schemas/credit-transactions";
+import { dockerNodes } from "../schemas/docker-nodes";
 import { organizationConfig } from "../schemas/organization-config";
 import { organizations } from "../schemas/organizations";
 
@@ -412,6 +413,57 @@ export class ContainersRepository {
       .returning();
 
     return updated ? await hydrateContainerDeploymentLog(updated) : null;
+  }
+
+  /**
+   * Release this container's node slot EXACTLY ONCE, atomically (#8342).
+   *
+   * The slot decrement on a node (`docker_nodes.allocated_count`) must not run
+   * twice for one container, or a re-claim of a CONTAINER_STOP/DELETE job (the
+   * crash-retry window) frees a phantom slot that belongs to a LIVE container —
+   * the node then over-allocates. The container `status` is NOT a usable gate
+   * here: the billing cron pre-sets `status='stopped'` before enqueuing the
+   * stop, so the daemon's first legitimate run already sees `stopped`.
+   *
+   * Instead we stamp a one-way `metadata.slotReleasedAt` marker and decrement
+   * the node IN THE SAME TRANSACTION, gated on the marker being absent — so the
+   * decrement and the "already released" bookkeeping commit together. A re-run
+   * finds the marker set, the conditional update matches no row, and nothing is
+   * decremented. Uses the existing `metadata` jsonb (no migration); `jsonb_set`
+   * preserves all other keys and `jsonb_exists` avoids the `?` operator's
+   * parameter-placeholder ambiguity.
+   *
+   * @returns true if THIS call released the slot, false if it was already released.
+   */
+  async tryReleaseNodeSlot(id: string, organizationId: string, nodeId: string): Promise<boolean> {
+    return dbWrite.transaction(async (tx) => {
+      const [marked] = await tx
+        .update(containers)
+        .set({
+          metadata: sql`jsonb_set(coalesce(${containers.metadata}, '{}'::jsonb), '{slotReleasedAt}', to_jsonb(now()::text))`,
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(containers.id, id),
+            eq(containers.organization_id, organizationId),
+            sql`NOT jsonb_exists(coalesce(${containers.metadata}, '{}'::jsonb), 'slotReleasedAt')`,
+          ),
+        )
+        .returning({ id: containers.id });
+
+      if (!marked) return false; // already released — never double-free
+
+      await tx
+        .update(dockerNodes)
+        .set({
+          allocated_count: sql`GREATEST(${dockerNodes.allocated_count} - 1, 0)`,
+          updated_at: new Date(),
+        })
+        .where(eq(dockerNodes.node_id, nodeId));
+
+      return true;
+    });
   }
 
   /**

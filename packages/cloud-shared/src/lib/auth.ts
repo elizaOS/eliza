@@ -433,28 +433,6 @@ export async function requireAuthOrApiKeyWithOrg(request: Request): Promise<
     };
   }
 > {
-  // Dev-only bypass: allow X-Api-Key: dev-test-key to skip real auth
-  if (
-    process.env.NODE_ENV === "development" &&
-    request.headers.get("X-Api-Key") === "dev-test-key"
-  ) {
-    const devUser = {
-      id: "00000000-0000-0000-0000-000000000001",
-      email: "dev@localhost",
-      organization_id: "00000000-0000-0000-0000-000000000001",
-      organization: {
-        id: "00000000-0000-0000-0000-000000000001",
-        name: "Dev Org",
-      } as Organization,
-    } as UserWithOrganization & {
-      organization_id: string;
-      organization: Organization;
-    };
-    return { user: devUser, authMethod: "api_key" as const } as AuthResult & {
-      user: typeof devUser;
-    };
-  }
-
   const result = await requireAuthOrApiKey(request);
 
   if (!result.user.organization_id || !result.user.organization) {

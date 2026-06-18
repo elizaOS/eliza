@@ -107,6 +107,15 @@ export interface LlmStreamConfig {
 	draftMax: number;
 	/** Absolute MTP drafter GGUF path; null disables drafter-backed MTP. */
 	draftModelPath: string | null;
+	/**
+	 * GBNF grammar source. When set the native session installs a grammar
+	 * sampler FIRST in the chain so every sampled token is constrained — this
+	 * is how the structured-reply envelope is forced on the in-process FFI
+	 * path. `null`/empty disables grammar constraint.
+	 */
+	gbnfGrammar?: string | null;
+	/** Qwen3-style thinking-tag suppression passthrough (v1 no-op). */
+	disableThinking?: boolean;
 }
 
 /**
@@ -1569,7 +1578,9 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 				);
 			}
 			const err = makeOutErr();
-			// Marshal the config struct into a Buffer. Layout (8-byte aligned):
+			// Marshal the config struct into a Buffer. Layout matches
+			// `eliza_llm_stream_config_t` in `eliza-inference-ffi.h`
+			// (8-byte aligned):
 			//   off  0 : i32  max_tokens
 			//   off  4 : f32  temperature
 			//   off  8 : f32  top_p
@@ -1580,8 +1591,11 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			//   off 32 : i32  draft_min
 			//   off 36 : i32  draft_max
 			//   off 40 : ptr  mtp_drafter_path
-			//   sizeof = 48
-			const buf = Buffer.alloc(48);
+			//   off 48 : ptr  gbnf_grammar
+			//   off 56 : i32  disable_thinking
+			//   off 60 : (4 bytes tail padding)
+			//   sizeof = 64
+			const buf = Buffer.alloc(64);
 			buf.writeInt32LE(config.maxTokens, 0);
 			buf.writeFloatLE(config.temperature, 4);
 			buf.writeFloatLE(config.topP, 8);
@@ -1590,10 +1604,17 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			buf.writeInt32LE(config.slotId, 20);
 			const keyArg = cstr(config.promptCacheKey);
 			const drafterArg = cstr(config.draftModelPath);
+			const grammarArg = cstr(
+				config.gbnfGrammar && config.gbnfGrammar.length > 0
+					? config.gbnfGrammar
+					: null,
+			);
 			buf.writeBigUInt64LE(toPtrBigInt(keyArg.ptr), 24);
 			buf.writeInt32LE(config.draftMin, 32);
 			buf.writeInt32LE(config.draftMax, 36);
 			buf.writeBigUInt64LE(toPtrBigInt(drafterArg.ptr), 40);
+			buf.writeBigUInt64LE(toPtrBigInt(grammarArg.ptr), 48);
+			buf.writeInt32LE(config.disableThinking ? 1 : 0, 56);
 			const handle = open(ctx, ffi.ptr(buf), err.ptr);
 			if (isNullPointer(handle)) {
 				const message =

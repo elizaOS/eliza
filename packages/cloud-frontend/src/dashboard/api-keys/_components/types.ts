@@ -8,7 +8,6 @@ export interface ApiKeyDisplay {
   status: ApiKeyStatus;
   lastUsedAt?: string | null;
   createdAt: string;
-  permissions: string[];
   usageCount: number;
   rateLimit: number;
   expiresAt?: string | null;

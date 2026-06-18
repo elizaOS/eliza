@@ -6,7 +6,6 @@
  * internal layout may change; this surface is stable.
  */
 
-export type { KokoroExecutionProvider } from "../kokoro-execution-provider.js";
 export type { KokoroTtsBackendDeps } from "./kokoro-backend.js";
 export { KokoroTtsBackend } from "./kokoro-backend.js";
 export type { KokoroEngineDiscoveryResult } from "./kokoro-engine-discovery.js";
@@ -19,7 +18,6 @@ export {
 export type {
   KokoroGgufRuntimeOptions,
   KokoroMockRuntimeOptions,
-  KokoroOnnxRuntimeOptions,
   KokoroPythonRuntimeOptions,
   KokoroRuntime,
   KokoroRuntimeChunk,
@@ -27,11 +25,9 @@ export type {
 } from "./kokoro-runtime.js";
 export {
   KOKORO_GGUF_REL_PATH,
-  KOKORO_ONNX_MODEL_URL,
   KOKORO_VOICES_BASE_URL,
   KokoroGgufRuntime,
   KokoroMockRuntime,
-  KokoroOnnxRuntime,
   KokoroPythonRuntime,
 } from "./kokoro-runtime.js";
 export type {

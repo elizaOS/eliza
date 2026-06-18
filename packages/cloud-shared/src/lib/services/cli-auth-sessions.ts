@@ -84,7 +84,6 @@ export class CliAuthSessionsService {
       description: "Generated via CLI login command",
       organization_id: organizationId,
       user_id: userId,
-      permissions: [], // Full access
       rate_limit: 1000,
       is_active: true,
       expires_at: null, // Never expires by default

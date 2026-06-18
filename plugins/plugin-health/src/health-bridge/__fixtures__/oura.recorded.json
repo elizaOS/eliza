@@ -1,0 +1,93 @@
+{
+  "_source": "Oura API v2 (api.ouraring.com/v2/usercollection/*) documented response shapes — https://cloud.ouraring.com/v2/docs. Collections return {data:[...],next_token}; personal_info returns the resource fields at top level. Field names + units (bedtime_start/bedtime_end ISO-8601, total_sleep_duration/time_in_bed/latency/awake_time/*_sleep_duration in seconds, score 0-100, average_heart_rate bpm, average_hrv ms, equivalent_walking_distance meters, start_datetime/end_datetime ISO) match the real wire shape.",
+  "_why": "Replayed through syncHealthConnectorData({token:{provider:'oura'}}) so the normalized HealthConnectorSyncPayload (sleepEpisodes + samples + workouts + identity) is validated against the real Oura collection shape. oura-connector.real.test.ts re-fetches the live API with a token to detect drift from this recording.",
+  "_captured": "2026-06-17",
+  "personalInfo": {
+    "id": "8839e93e-2d3a-4f6a-9b1c-1f0a2b3c4d5e",
+    "age": 33,
+    "weight": 61.2,
+    "height": 1.67,
+    "biological_sex": "female",
+    "email": "ada@example.com"
+  },
+  "dailyActivity": {
+    "data": [
+      {
+        "id": "act-2026-05-01",
+        "day": "2026-05-01",
+        "score": 88,
+        "steps": 11842,
+        "total_calories": 2415,
+        "active_calories": 612,
+        "equivalent_walking_distance": 8520,
+        "timestamp": "2026-05-01T00:00:00+00:00"
+      }
+    ],
+    "next_token": null
+  },
+  "dailyReadiness": {
+    "data": [
+      {
+        "id": "rdy-2026-05-01",
+        "day": "2026-05-01",
+        "score": 79,
+        "temperature_deviation": -0.1,
+        "timestamp": "2026-05-01T00:00:00+00:00"
+      }
+    ],
+    "next_token": null
+  },
+  "sleep": {
+    "data": [
+      {
+        "id": "slp-2026-05-01",
+        "day": "2026-05-01",
+        "type": "long_sleep",
+        "bedtime_start": "2026-04-30T22:48:00+00:00",
+        "bedtime_end": "2026-05-01T06:54:00+00:00",
+        "total_sleep_duration": 27360,
+        "time_in_bed": 29160,
+        "awake_time": 1800,
+        "light_sleep_duration": 15120,
+        "deep_sleep_duration": 6480,
+        "rem_sleep_duration": 5760,
+        "latency": 540,
+        "efficiency": 94,
+        "score": 86,
+        "average_heart_rate": 52.5,
+        "lowest_heart_rate": 47,
+        "average_hrv": 68,
+        "average_breath": 13.5,
+        "timezone": 0
+      }
+    ],
+    "next_token": null
+  },
+  "heartRate": {
+    "data": [
+      {
+        "id": "hr-1",
+        "bpm": 58,
+        "source": "awake",
+        "timestamp": "2026-05-01T08:00:00+00:00"
+      }
+    ],
+    "next_token": null
+  },
+  "workout": {
+    "data": [
+      {
+        "id": "wkt-2026-05-01",
+        "activity": "running",
+        "day": "2026-05-01",
+        "start_datetime": "2026-05-01T13:05:00+00:00",
+        "end_datetime": "2026-05-01T13:47:00+00:00",
+        "distance": 8042.4,
+        "calories": 612,
+        "intensity": "moderate",
+        "source": "manual"
+      }
+    ],
+    "next_token": null
+  }
+}

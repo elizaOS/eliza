@@ -86,6 +86,96 @@ export function resolveDesktopRuntimeMode(
 }
 
 /**
+ * The persisted deployment runtime the desktop main process reads from
+ * `eliza.json` (`deploymentTarget.runtime`). `"cloud"` is a cloud-hosted agent
+ * (topology 3) and `"remote"` is an external agent the device connects to;
+ * both skip the embedded agent when a reachable base is known. `"local"` keeps
+ * the existing env-driven embedded-agent boot. `null` ⇒ no persisted target.
+ */
+export type PersistedDeploymentRuntime = "local" | "cloud" | "remote" | null;
+
+/**
+ * The persisted deployment the desktop main process reads from `eliza.json`'s
+ * `deploymentTarget`. `runtime` drives the topology decision; `remoteApiBase`
+ * is the cloud-hosted/external agent's reachable URL the renderer wrote when it
+ * connected (`null` when none was persisted). `null` ⇒ no persisted target.
+ */
+export interface PersistedDeployment {
+  runtime: NonNullable<PersistedDeploymentRuntime>;
+  remoteApiBase: string | null;
+}
+
+/**
+ * Resolve the cloud-hosted agent API base the renderer should call when the
+ * persisted deployment is a real cloud-hosted agent (topology 3). This is a
+ * renderer-ready base (origin that serves `/api/...` agent paths), NOT the
+ * Eliza Cloud `/api/v1` URL — the cloud's agent/auth routes live at different
+ * mount points, so it cannot be derived from the cloud site URL by
+ * origin-concat. Resolution is an explicit base, in priority order:
+ *   1. `ELIZA_DESKTOP_CLOUD_AGENT_BASE` — env override (tests / pinning).
+ *   2. The persisted `deploymentTarget.remoteApiBase` the renderer wrote when
+ *      it connected to the cloud-hosted/external agent — the auto-wire path, so
+ *      a topology-3 user gets the embedded-agent skip on next boot with no env.
+ * Both candidates go through {@link normalizeApiBase}, so a non-http(s) or
+ * malformed value (e.g. the on-device `eliza-local-agent://ipc` shared-runtime
+ * base) is rejected. Returns `null` when no renderer-ready cloud agent base is
+ * available, so the caller falls back to running the local agent (topology-1/2).
+ */
+export function resolveCloudHostedAgentApiBase(
+  env: Record<string, string | undefined>,
+  persistedRemoteApiBase?: string | null,
+): string | null {
+  const fromEnv = normalizeApiBase(env.ELIZA_DESKTOP_CLOUD_AGENT_BASE?.trim());
+  if (fromEnv) return fromEnv;
+  return normalizeApiBase(persistedRemoteApiBase?.trim() ?? undefined);
+}
+
+/**
+ * Topology-aware runtime-mode resolution. Layers the persisted deployment
+ * target on top of the pure env resolver ({@link resolveDesktopRuntimeMode}):
+ *
+ * - If env already forces `external`/`disabled`, that wins (unchanged).
+ * - Else, if the persisted deployment is a cloud-hosted (`runtime: "cloud"`) or
+ *   external (`runtime: "remote"`) agent AND a renderer-ready agent API base is
+ *   resolvable (env override or the persisted `remoteApiBase`), resolve to
+ *   `external` with that base so the embedded agent is skipped and the renderer
+ *   points at the cloud/external agent (topology 3).
+ * - Otherwise fall through to the env result (`local`).
+ *
+ * Topology 1 (local agent → cloud inference; persisted runtime is `"local"`,
+ * branded cloud via {@link resolveDesktopRuntimeModeSignal}) and topology 2
+ * (all-local) keep `mode === "local"` and still boot the embedded agent.
+ */
+export function resolveDesktopRuntimeModeWithDeployment(
+  env: Record<string, string | undefined>,
+  deployment: PersistedDeployment | null,
+): DesktopRuntimeModeResolution {
+  const envResolution = resolveDesktopRuntimeMode(env);
+  if (envResolution.mode !== "local") {
+    return envResolution;
+  }
+
+  if (deployment?.runtime === "cloud" || deployment?.runtime === "remote") {
+    const cloudBase = resolveCloudHostedAgentApiBase(
+      env,
+      deployment.remoteApiBase,
+    );
+    if (cloudBase) {
+      return {
+        mode: "external",
+        externalApi: {
+          base: cloudBase,
+          source: null,
+          invalidSources: envResolution.externalApi.invalidSources,
+        },
+      };
+    }
+  }
+
+  return envResolution;
+}
+
+/**
  * Desktop cloud-only opt-in. Returns `"cloud"` when the desktop shell should run
  * cloud-only — cloud model providers only (no local model/embedding warmup) and a
  * cloud-only first-run UI. This is ORTHOGONAL to {@link resolveDesktopRuntimeMode}

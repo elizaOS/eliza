@@ -21,7 +21,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT.parent
-REPO = ROOT.parents[1]
+REPO = ROOT.parents[1] if len(ROOT.parents) > 1 else ROOT
 VARIANT = WORKSPACE / "os/linux/elizaos"
 CHIP_MANIFEST = VARIANT / "chip-boot-manifest.json"
 MANIFEST = CHIP_MANIFEST if CHIP_MANIFEST.exists() else VARIANT / "manifest.json"

@@ -30,6 +30,8 @@ function installBridgeScript(): void {
     candidate.textContent?.includes("__ELIZA_ANDROID_IPC_FETCH_BRIDGE__"),
   );
   if (!script?.textContent) throw new Error("missing fetch bridge script");
+  // biome-ignore lint/security/noGlobalEval: executes the committed index.html
+  // inline bridge script (trusted build artifact, not user input) to test it.
   window.eval(script.textContent);
 }
 

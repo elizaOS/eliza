@@ -22,6 +22,9 @@
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
+      "@elizaos/capacitor-contacts/web": [
+        "../plugin-native-contacts/src/web.ts"
+      ],
       "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
       "@elizaos/plugin-wallet-ui": [

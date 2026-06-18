@@ -7,6 +7,8 @@ import type {
 } from "@elizaos/core";
 import {
   ModelType,
+  parseJsonModelRecord,
+  recentConversationTexts,
   requireConfirmation,
   runWithTrajectoryContext,
 } from "@elizaos/core";
@@ -15,9 +17,7 @@ import { messageText } from "../lifeops/google/format-helpers.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { PLAYBOOK_UNSUPPORTED_FLOW_ERROR } from "../lifeops/subscriptions-playbooks.js";
 import type { LifeOpsSubscriptionExecutor } from "../lifeops/subscriptions-types.js";
-import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { formatPromptSection } from "./lib/prompt-format.js";
-import { recentConversationTexts } from "./lib/recent-context.js";
 
 type SubscriptionSubaction = "audit" | "cancel" | "status";
 

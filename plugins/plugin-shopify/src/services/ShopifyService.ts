@@ -75,13 +75,17 @@ const ORDER_FIELDS = `
   }
 `;
 
+// Admin API 2025-04 removed Customer.ordersCount / totalSpentV2. Alias the
+// current fields (numberOfOrders: UnsignedInt64 -> string; amountSpent: MoneyV2)
+// back to the historic keys so the response/types stay stable. Verified against
+// the 2025-04 schema.
 const CUSTOMER_FIELDS = `
   id
   displayName
   email
   phone
-  ordersCount
-  totalSpentV2 { amount currencyCode }
+  ordersCount: numberOfOrders
+  totalSpentV2: amountSpent { amount currencyCode }
   createdAt
 `;
 

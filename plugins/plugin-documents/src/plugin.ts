@@ -111,8 +111,7 @@ export const documentsPlugin: Plugin = {
     {
       id: "documents",
       label: "Documents",
-      description:
-        "Browse, search, and triage owner-gated document requests (Recent, Search, Signature Queue).",
+      description: "Browse and search the document store.",
       icon: "FileText",
       path: "/documents",
       bundlePath: "dist/views/bundle.js",

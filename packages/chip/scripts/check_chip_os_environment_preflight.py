@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-REPO = ROOT.parents[1]
+REPO = ROOT.parents[1] if len(ROOT.parents) > 1 else ROOT
 REPORT = ROOT / "build/reports/chip-os-environment-preflight.json"
 
 SCHEMA = "eliza.chip_os_environment_preflight.v1"

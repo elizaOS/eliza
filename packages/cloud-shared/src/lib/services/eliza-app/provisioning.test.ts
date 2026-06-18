@@ -1,4 +1,11 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { containersEnv as actualContainersEnv } from "../../config/containers-env";
+// Captured before the mock.module override below so afterAll can restore the
+// real module. bun's mock.module is process-global and leaks across files; the
+// `../eliza-sandbox` stub here only defines `createAgent`, so without this
+// restore it strands later tests (e.g. shared-rest-adapter) whose
+// `elizaSandboxService.bridge` / `getSharedConversationHistory` vanish.
+import * as realElizaSandbox from "../eliza-sandbox";
 
 const listByOrganization = mock();
 const createAgent = mock();
@@ -6,8 +13,14 @@ const enqueueAgentProvision = mock();
 const hasElizaAppInitialFreeCredits = mock();
 const addCredits = mock();
 
+// Spread the real containersEnv so this process-global mock.module only
+// overrides defaultAgentImage. bun's mock.module leaks across files in a
+// single test process; a partial object would make every other method
+// (appsPublicBaseDomain, defaultHcloudServerType, …) undefined for whichever
+// file happens to import after this one (order varies by platform → Windows).
 mock.module("../../config/containers-env", () => ({
   containersEnv: {
+    ...actualContainersEnv,
     defaultAgentImage: () => "ghcr.io/elizaos/eliza:stable",
   },
 }));
@@ -62,6 +75,12 @@ mock.module("../provisioning-jobs", () => ({
     enqueueAgentProvision,
   },
 }));
+
+// Restore the real eliza-sandbox so this file's process-global mock doesn't
+// strand later test files that use the full elizaSandboxService surface.
+afterAll(() => {
+  mock.module("../eliza-sandbox", () => realElizaSandbox);
+});
 
 const { ensureElizaAppProvisioning } = await import(
   `./provisioning.ts?test=provisioning-${Date.now()}`

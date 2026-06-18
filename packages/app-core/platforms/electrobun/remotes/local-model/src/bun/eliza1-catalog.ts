@@ -215,11 +215,11 @@ const VOICE_COMPONENTS: Eliza1VoiceComponent[] = [
   },
   {
     id: "emotion",
-    path: "voice/emotion",
+    path: "voice/voice-emotion",
     displayName: "Emotion classifier",
     roles: ["emotion", "voice"],
     capabilities: ["emotion-classification"],
-    files: ["wav2small-cls7-int8.onnx"],
+    files: ["wav2small-msp-dim.gguf"],
   },
   {
     id: "turn",
@@ -227,7 +227,7 @@ const VOICE_COMPONENTS: Eliza1VoiceComponent[] = [
     displayName: "Turn detector",
     roles: ["turn", "voice"],
     capabilities: ["turn-detection"],
-    files: ["intl/turn-detector-intl-q8.gguf", "intl/model_q8.onnx"],
+    files: ["intl/turn-detector-intl-q8.gguf"],
   },
   {
     id: "asr",
@@ -243,7 +243,11 @@ const VOICE_COMPONENTS: Eliza1VoiceComponent[] = [
     displayName: "Kokoro TTS",
     roles: ["tts", "voice"],
     capabilities: ["text-to-speech"],
-    files: ["kokoro-v1.0-q4.onnx", "voices/af_bella.bin", "voices/af_same.bin"],
+    files: [
+      "kokoro-82m-v1_0-Q4_K_M.gguf",
+      "voices/af_bella.bin",
+      "voices/af_same.bin",
+    ],
   },
   {
     id: "diarizer",

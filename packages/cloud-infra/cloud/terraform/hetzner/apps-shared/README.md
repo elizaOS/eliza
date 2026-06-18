@@ -1,4 +1,4 @@
-# Eliza Cloud Apps — shared infra (Hetzner)
+# Eliza Cloud Apps - shared infra (Hetzner)
 
 The **shared** half of the Apps (Product 2) data plane. Owns the resources
 that are physically a single piece of infrastructure across staging + production
@@ -14,6 +14,18 @@ app worker nodes:
 Per-env app worker nodes + the `*.<apps_base_domain>` Cloudflare record live in
 the sibling [`apps-data-plane`](../apps-data-plane/) module, which consumes
 this module's outputs through a `terraform_remote_state` data source.
+
+## Launch role
+
+This module is the shared dependency for both staging and production app
+workers. It must exist before `apps-data-plane` can be applied in either
+environment, and its sensitive `tenant_db_admin_dsn` is what the apps daemon
+uses to create per-tenant roles and databases.
+
+**Why:** isolated app DB mode is only real when every deployed app receives a
+tenant-specific DSN created from this shared cluster. Without this state, the
+Worker can accept deploy requests but the daemon cannot provision isolated
+database access.
 
 ## State
 

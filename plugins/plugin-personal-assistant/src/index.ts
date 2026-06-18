@@ -28,7 +28,7 @@ export { remoteDesktopAction } from "./actions/remote-desktop.js";
 export { resolveRequestAction } from "./actions/resolve-request.js";
 export { voiceCallAction } from "./actions/voice-call.js";
 export * from "./api/client-lifeops.js";
-export { getAppBlockerStatus } from "./app-blocker/engine.js";
+export { getAppBlockerStatus } from "@elizaos/plugin-blocker";
 export * from "./client.js";
 export * from "./inbox/types.js";
 export {
@@ -78,7 +78,21 @@ export type {
 } from "./types/index.js";
 export * from "./types/index.js";
 export * from "./types/website-blocker-settings-card.js";
-export * from "./website-blocker/engine.js";
+export {
+  buildSelfControlBlockPolicy,
+  formatWebsiteList,
+  getCachedSelfControlStatus,
+  getSelfControlPluginConfig,
+  isWebsiteBlockedByPolicy,
+  normalizeWebsiteTargets,
+  reconcileSelfControlBlockState,
+  resetSelfControlStatusCache,
+  resolveSelfControlElevationPromptMethod,
+  resolveSelfControlHostsFilePath,
+  type SelfControlBlockMatchMode,
+  type SelfControlBlockMetadata,
+  type SelfControlBlockPolicy,
+} from "@elizaos/plugin-blocker";
 export type {
   NativeWebsiteBlockerBackend,
   SelfControlBlockRequest,

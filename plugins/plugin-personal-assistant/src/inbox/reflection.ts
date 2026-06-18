@@ -1,6 +1,10 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, ModelType, runWithTrajectoryContext } from "@elizaos/core";
-import { parseJsonModelRecord } from "../utils/json-model-output.js";
+import {
+  logger,
+  ModelType,
+  parseJsonModelRecord,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
 
 function parseReflectionObject(raw: string): Record<string, unknown> | null {
   const parsedJson = parseJsonModelRecord<Record<string, unknown>>(raw);

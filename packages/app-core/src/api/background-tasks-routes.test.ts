@@ -1,6 +1,12 @@
 import * as http from "node:http";
 import { Socket } from "node:net";
-import { describe, expect, it, vi } from "vitest";
+import {
+  AgentRuntime,
+  createCharacter,
+  ServiceType,
+  type UUID,
+} from "@elizaos/core";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { handleBackgroundTasksRoute } from "./background-tasks-routes";
 import type { CompatRuntimeState } from "./compat-route-shared";
 
@@ -145,5 +151,100 @@ describe("POST /api/background/run-due-tasks", () => {
       stateWithTaskService(null),
     );
     expect(handled).toBe(false);
+  });
+});
+
+// End-to-end against a real `AgentRuntime` and the canonical core
+// `TaskService` (no mocked `getService`). The route resolves the genuine
+// `ServiceType.TASK` service and drives `runDueTasks()`, which runs a real
+// registered `queue` task worker that mutates real persisted runtime state
+// and then deletes the one-shot task row.
+//
+// NOTE on the full lifeops ScheduledTask path: the route's effect on a
+// `LifeOpsRepository` ScheduledTask row (status → "fired") is asserted at the
+// scheduler integration layer
+// (`plugins/plugin-personal-assistant/src/lifeops/scheduled-task/scheduler.integration.test.ts`),
+// which boots a real PGLite-backed runtime with the personal-assistant plugin.
+// Re-wiring that cross-package, schema-migrating runtime here would pull the
+// heavy lifeops plugin into this fast default-lane unit file; the in-memory
+// real runtime below proves the route → real TaskService.runDueTasks() →
+// real worker → real DB transition contract without that cost.
+describe("POST /api/background/run-due-tasks — real TaskService", () => {
+  let runtime: AgentRuntime;
+  const WORKER_NAME = "BACKGROUND_ROUTE_REAL_WORKER";
+  const RAN_CACHE_KEY = "background-route-real-worker:ran-count";
+
+  beforeAll(async () => {
+    runtime = new AgentRuntime({
+      character: createCharacter({ name: "BackgroundRouteTestAgent" }),
+      plugins: [],
+      logLevel: "warn",
+      enableAutonomy: false,
+    });
+    // No SQL plugin: the runtime falls back to the in-memory adapter, which is
+    // enough to exercise the real TaskService + task persistence contract.
+    await runtime.initialize({ allowNoDatabase: true });
+
+    // A real task worker that records its execution in the (real) runtime
+    // cache so we can observe that the route actually drove it.
+    runtime.registerTaskWorker({
+      name: WORKER_NAME,
+      execute: async (rt) => {
+        const prior = (await rt.getCache<number>(RAN_CACHE_KEY)) ?? 0;
+        await rt.setCache<number>(RAN_CACHE_KEY, prior + 1);
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await runtime.stop();
+    await runtime.close();
+  });
+
+  it("drives the real TaskService runner and transitions persisted task state", async () => {
+    const taskService = runtime.getService(ServiceType.TASK);
+    expect(taskService).not.toBeNull();
+    expect(typeof Reflect.get(taskService as object, "runDueTasks")).toBe(
+      "function",
+    );
+
+    // Seed a real, due one-shot `queue` task. `runTick` runs non-repeat tasks
+    // with no `dueAt`/`scheduledAt` immediately, then deletes them. `agentId`
+    // is required: `getTasks`/`runDueTasks` filter by the owning agent.
+    const taskId: UUID = await runtime.createTask({
+      name: WORKER_NAME,
+      description: "Real worker driven by the background route.",
+      metadata: { updatedAt: Date.now() },
+      tags: ["queue"],
+      agentId: runtime.agentId,
+    });
+
+    const before = await runtime.getTasks({ tags: ["queue"] });
+    expect(before.some((task) => task.id === taskId)).toBe(true);
+    expect(await runtime.getCache<number>(RAN_CACHE_KEY)).toBeUndefined();
+
+    const res = fakeRes();
+    const handled = await handleBackgroundTasksRoute(
+      fakeReq("/api/background/run-due-tasks"),
+      res.res,
+      {
+        current: runtime,
+        pendingAgentName: null,
+        pendingRestartReasons: [],
+      },
+    );
+
+    expect(handled).toBe(true);
+    expect(res.status()).toBe(200);
+    expect(res.body()).toMatchObject({ ok: true, coalesced: false });
+
+    // The real worker ran exactly once: the route → TaskService.runDueTasks()
+    // → real worker execution path is live.
+    expect(await runtime.getCache<number>(RAN_CACHE_KEY)).toBe(1);
+
+    // The persisted one-shot task transitioned: the real TaskService deleted
+    // it from the real DB after a successful run.
+    const after = await runtime.getTasks({ tags: ["queue"] });
+    expect(after.some((task) => task.id === taskId)).toBe(false);
   });
 });

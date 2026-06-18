@@ -87,7 +87,9 @@ describe("CompactOnboarding", () => {
 
     render(<CompactOnboarding />);
 
-    expect(screen.getByText("Choose how to run your agent")).toBeTruthy();
+    expect(screen.getByText("Let's get you started")).toBeTruthy();
+    expect(screen.getByText("Start now")).toBeTruthy();
+    expect(screen.getByText("Keep it on this phone")).toBeTruthy();
     expect(screen.getByTestId("onboarding-option-cloud")).toBeTruthy();
     expect(screen.getByTestId("onboarding-option-remote")).toBeTruthy();
     expect(screen.getByTestId("onboarding-option-local")).toBeTruthy();

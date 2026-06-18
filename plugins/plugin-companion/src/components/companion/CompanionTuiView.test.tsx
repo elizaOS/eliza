@@ -69,6 +69,7 @@ vi.mock("./InferenceCloudAlertButton", () => ({
     React.createElement("button", { type: "button" }),
 }));
 
+import { AGENT_EMOTE_CATALOG, EMOTE_CATALOG } from "../../emotes/catalog";
 import { CompanionTuiView } from "./CompanionView";
 import { interact } from "./CompanionView.interact";
 
@@ -156,5 +157,72 @@ describe("CompanionTuiView", () => {
     expect(eventDispatchers.dispatchAppEvent).toHaveBeenCalledWith(
       "eliza:stop-emote",
     );
+  });
+
+  it("rejects terminal-companion-play-emote for missing and unknown emotes", async () => {
+    await expect(interact("terminal-companion-play-emote")).rejects.toThrow(
+      "emote is required",
+    );
+    await expect(
+      interact("terminal-companion-play-emote", { emote: "   " }),
+    ).rejects.toThrow("emote is required");
+    await expect(
+      interact("terminal-companion-play-emote", { emote: "not-a-real-emote" }),
+    ).rejects.toThrow("Unknown emote: not-a-real-emote");
+    // No emote event is dispatched on the error paths.
+    expect(eventDispatchers.dispatchAppEmoteEvent).not.toHaveBeenCalled();
+  });
+
+  it("returns the full catalog for terminal-companion-emotes with default source and no category", async () => {
+    const all = (await interact("terminal-companion-emotes")) as {
+      viewType: string;
+      emotes: Array<{ id: string }>;
+    };
+    // Default source = "all" -> full EMOTE_CATALOG, no category filter.
+    expect(all.viewType).toBe("tui");
+    expect(all.emotes).toHaveLength(EMOTE_CATALOG.length);
+
+    // source = "agent" returns the agent-allowed subset (excludes idle loop).
+    const agent = (await interact("terminal-companion-emotes", {
+      source: "agent",
+    })) as { emotes: Array<{ id: string }> };
+    expect(agent.emotes).toHaveLength(AGENT_EMOTE_CATALOG.length);
+    expect(agent.emotes.length).toBeLessThan(all.emotes.length);
+    expect(agent.emotes.some((e) => e.id === "idle")).toBe(false);
+
+    // Each returned emote carries the contract fields the WS payload needs.
+    const wave = all.emotes.find((e) => e.id === "wave") as
+      | { id: string; path: string; duration: number; loop: boolean }
+      | undefined;
+    expect(wave).toBeDefined();
+    expect(wave?.path.endsWith(".gz")).toBe(true);
+    expect(typeof wave?.duration).toBe("number");
+    expect(typeof wave?.loop).toBe("boolean");
+  });
+
+  it("rejects an unsupported capability", async () => {
+    await expect(interact("terminal-companion-bogus")).rejects.toThrow(
+      "Unsupported companion TUI capability: terminal-companion-bogus",
+    );
+  });
+
+  it("shows the close-emotes branch and wires it to closeEmotePicker when the picker is open", () => {
+    appState.emotePickerOpen = true;
+    const { container } = render(React.createElement(CompanionTuiView));
+
+    // Label reflects the open picker (open->"close emotes").
+    const closeButton = screen.getByText("close emotes");
+    expect(closeButton).toBeTruthy();
+    expect(screen.queryByText("open emotes")).toBeNull();
+
+    const stateElement = container.querySelector("[data-view-state]");
+    expect(
+      JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}"),
+    ).toMatchObject({ emotePickerOpen: true });
+
+    // Clicking it closes the picker (not open).
+    fireEvent.click(closeButton);
+    expect(appState.closeEmotePicker).toHaveBeenCalledTimes(1);
+    expect(appState.openEmotePicker).not.toHaveBeenCalled();
   });
 });

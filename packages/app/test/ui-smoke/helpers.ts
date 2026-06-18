@@ -1039,6 +1039,210 @@ const EMPTY_LIFEOPS_CHANNEL_COUNTS = {
   x_dm: { total: 0, unread: 0 },
 };
 
+// Valid populated DTOs for the three /api/lifeops/sleep/* endpoints so the
+// decomposed HealthView lands on its `health-populated` branch (latest night,
+// regularity, baseline) instead of the empty/connect-a-source branch. Shapes
+// mirror LifeOpsSleepHistoryResponse / LifeOpsSleepRegularityResponse /
+// LifeOpsPersonalBaselineResponse from @elizaos/plugin-health.
+function populatedSleepHistory(windowDays: number) {
+  return {
+    episodes: [
+      {
+        id: "smoke-sleep-1",
+        startedAt: "2026-01-01T23:30:00.000Z",
+        endedAt: "2026-01-02T07:15:00.000Z",
+        durationMin: 465,
+        cycleType: "overnight",
+        source: "health",
+        confidence: 0.92,
+      },
+    ],
+    summary: {
+      cycleCount: 6,
+      averageDurationMin: 452,
+      overnightCount: 6,
+      napCount: 0,
+      openCount: 0,
+    },
+    windowDays,
+    includeNaps: true,
+  };
+}
+
+function populatedSleepRegularity(windowDays: number) {
+  return {
+    sri: 78.4,
+    classification: "regular",
+    bedtimeStddevMin: 42,
+    wakeStddevMin: 31,
+    midSleepStddevMin: 36,
+    sampleSize: 6,
+    windowDays,
+  };
+}
+
+function populatedSleepBaseline(windowDays: number) {
+  return {
+    medianBedtimeLocalHour: 23.5,
+    medianWakeLocalHour: 7.25,
+    medianSleepDurationMin: 452,
+    bedtimeStddevMin: 42,
+    wakeStddevMin: 31,
+    sampleSize: 6,
+    windowDays,
+  };
+}
+
+function sleepWindowDaysFromUrl(rawUrl: string): number {
+  const parsed = Number(new URL(rawUrl).searchParams.get("windowDays"));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 14;
+}
+
+// Valid populated DTOs for the /api/lifeops/money/* endpoints the decomposed
+// FinancesView fetches, so `finances:gui` renders its `finances-populated`
+// branch (a connected source + balance + transactions + recurring) instead of
+// the connect-a-source empty state.
+function populatedMoneyDashboard() {
+  return {
+    spending: {
+      windowDays: 30,
+      fromDate: "2026-05-18",
+      toDate: "2026-06-17",
+      totalSpendUsd: 1234.5,
+      totalIncomeUsd: 4000,
+      netUsd: 2765.5,
+      transactionCount: 12,
+    },
+    generatedAt: "2026-06-17T12:00:00.000Z",
+  };
+}
+function populatedMoneySources() {
+  return {
+    sources: [
+      {
+        id: "src-1",
+        kind: "plaid",
+        label: "Checking",
+        institution: "Acme Bank",
+        status: "active",
+      },
+    ],
+  };
+}
+function populatedMoneyTransactions() {
+  return {
+    transactions: [
+      {
+        id: "tx-1",
+        postedAt: "2026-06-16T09:00:00.000Z",
+        amountUsd: 42.5,
+        direction: "debit",
+        merchantDisplay: "Coffee Bar",
+        merchantNormalized: "coffee-bar",
+        merchantRaw: "COFFEE BAR #12",
+        description: "Latte",
+        category: "dining",
+        currency: "USD",
+      },
+    ],
+  };
+}
+function populatedMoneyRecurring() {
+  return {
+    charges: [
+      {
+        merchantNormalized: "netflix",
+        merchantDisplay: "Netflix",
+        cadence: "monthly",
+        averageAmountUsd: 15.99,
+        nextExpectedAt: "2026-07-01T00:00:00.000Z",
+        category: "entertainment",
+      },
+    ],
+  };
+}
+
+// Valid populated DTOs for the /api/documents* endpoints the decomposed
+// DocumentsView fetches, so `documents:gui` renders its `documents-populated`
+// branch (a document row + stats line) instead of the empty/upload-prompt
+// state. Shapes mirror the PresentedDocument + stats responses from
+// plugin-documents/src/routes.ts.
+function populatedDocumentsList() {
+  return {
+    ok: true,
+    available: true,
+    agentId: "ui-smoke-agent",
+    documents: [
+      {
+        id: "doc-smoke-1",
+        filename: "Quarterly Plan.md",
+        contentType: "text/markdown",
+        fileSize: 4096,
+        createdAt: Date.parse(SMOKE_GENERATED_AT),
+        fragmentCount: 7,
+        source: "upload",
+        scope: "global",
+        provenance: { kind: "upload", label: "Manual upload" },
+        canEditText: true,
+        canDelete: true,
+      },
+    ],
+    total: 1,
+    limit: 100,
+    offset: 0,
+  };
+}
+function populatedDocumentsStats() {
+  return { documentCount: 1, fragmentCount: 7, agentId: "ui-smoke-agent" };
+}
+function populatedDocumentsSearch(url: URL) {
+  const query = (url.searchParams.get("q") ?? "").trim();
+  return {
+    query,
+    threshold: 0.3,
+    results: query
+      ? [
+          {
+            id: "frag-smoke-1",
+            text: "Deterministic search fragment for UI smoke.",
+            similarity: 0.81,
+            documentId: "doc-smoke-1",
+            documentTitle: "Quarterly Plan.md",
+            position: 0,
+          },
+        ]
+      : [],
+    count: query ? 1 : 0,
+  };
+}
+
+// Valid empty-state SelfControlStatus (engine available, no active block) so the
+// decomposed FocusView lands on its `focus-empty` branch ("No active focus
+// session.") instead of the unavailable/disconnected branch.
+function emptySelfControlStatus() {
+  return {
+    available: true,
+    active: false,
+    hostsFilePath: "/etc/hosts",
+    startedAt: null,
+    endsAt: null,
+    websites: [],
+    blockedWebsites: [],
+    allowedWebsites: [],
+    requestedWebsites: [],
+    matchMode: "exact",
+    managedBy: null,
+    metadata: null,
+    scheduledByAgentId: null,
+    canUnblockEarly: true,
+    requiresElevation: false,
+    engine: "hosts-file",
+    platform: "linux",
+    supportsElevationPrompt: true,
+    elevationPromptMethod: "pkexec",
+  };
+}
+
 function emptyLifeOpsOverview() {
   const section = {
     occurrences: [],
@@ -2243,15 +2447,60 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       return;
     }
     const url = new URL(request.url());
+    const timeMin = url.searchParams.get("timeMin") ?? SMOKE_GENERATED_AT;
+    const timeMax = url.searchParams.get("timeMax") ?? SMOKE_GENERATED_AT;
+    // Anchor a couple of deterministic events inside the requested window so the
+    // calendar:gui renders populated (event blocks, not just an empty grid).
+    // Place the first event at 09:00 local on the window's first day; the helper
+    // is reused across desktop + mobile (agenda) layouts.
+    const windowStart = new Date(timeMin);
+    const at = (dayOffset: number, hour: number) => {
+      const d = new Date(windowStart);
+      d.setDate(d.getDate() + dayOffset);
+      d.setHours(hour, 0, 0, 0);
+      return d.toISOString();
+    };
+    const smokeEvent = (
+      id: string,
+      title: string,
+      startAt: string,
+      endAt: string,
+    ) => ({
+      id,
+      externalId: id,
+      agentId: "smoke-agent",
+      provider: "google" as const,
+      side: "owner" as const,
+      calendarId: "primary",
+      title,
+      description: "",
+      location: "",
+      status: "confirmed",
+      startAt,
+      endAt,
+      isAllDay: false,
+      timezone: null,
+      htmlLink: null,
+      conferenceLink: null,
+      organizer: null,
+      attendees: [],
+      metadata: {},
+      syncedAt: SMOKE_GENERATED_AT,
+      updatedAt: SMOKE_GENERATED_AT,
+      calendarSummary: "Primary",
+    });
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         calendarId: "primary",
-        events: [],
+        events: [
+          smokeEvent("smoke-evt-1", "Design sync", at(0, 9), at(0, 10)),
+          smokeEvent("smoke-evt-2", "Standup", at(1, 11), at(1, 12)),
+        ],
         source: "cache",
-        timeMin: url.searchParams.get("timeMin") ?? SMOKE_GENERATED_AT,
-        timeMax: url.searchParams.get("timeMax") ?? SMOKE_GENERATED_AT,
+        timeMin,
+        timeMax,
         syncedAt: null,
       }),
     });
@@ -2340,7 +2589,9 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ entries: [], items: [] }),
+      body: JSON.stringify(
+        populatedSleepHistory(sleepWindowDaysFromUrl(route.request().url())),
+      ),
     });
   });
 
@@ -2352,11 +2603,9 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({
-        score: null,
-        items: [],
-        generatedAt: SMOKE_GENERATED_AT,
-      }),
+      body: JSON.stringify(
+        populatedSleepRegularity(sleepWindowDaysFromUrl(route.request().url())),
+      ),
     });
   });
 
@@ -2368,7 +2617,89 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ baseline: null, generatedAt: SMOKE_GENERATED_AT }),
+      body: JSON.stringify(
+        populatedSleepBaseline(sleepWindowDaysFromUrl(route.request().url())),
+      ),
+    });
+  });
+
+  await page.route("**/api/lifeops/money/dashboard**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedMoneyDashboard()),
+    });
+  });
+  await page.route("**/api/lifeops/money/sources**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedMoneySources()),
+    });
+  });
+  await page.route("**/api/lifeops/money/transactions**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedMoneyTransactions()),
+    });
+  });
+  await page.route("**/api/lifeops/money/recurring**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedMoneyRecurring()),
+    });
+  });
+
+  await page.route("**/api/documents/stats**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedDocumentsStats()),
+    });
+  });
+  await page.route("**/api/documents/search**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedDocumentsSearch(new URL(route.request().url()))),
+    });
+  });
+  // List route last so the more specific /stats and /search routes win.
+  await page.route("**/api/documents**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedDocumentsList()),
     });
   });
 
@@ -2471,7 +2802,7 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ enabled: false, rules: [], activeBlocks: [] }),
+      body: JSON.stringify(emptySelfControlStatus()),
     });
   });
 

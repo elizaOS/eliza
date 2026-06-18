@@ -4,22 +4,33 @@
 // script hasn't run yet (e.g. during some test or SSR paths).
 // The shadow swallows writes to Window readonly properties such as `close`.
 
-const getSafeGlobal = (): any => {
+type ProcessShim = {
+  env: Record<string, string | undefined>;
+  browser: boolean;
+  nextTick: (fn: () => void) => void;
+};
+
+type SafeGlobal = Omit<typeof globalThis, "process"> & {
+  process?: ProcessShim;
+};
+
+type GlobalThisWithShadow = typeof globalThis & { global?: SafeGlobal };
+
+const getSafeGlobal = (): SafeGlobal => {
   try {
-    if (
-      typeof globalThis !== "undefined" &&
-      (globalThis as any).global &&
-      (globalThis as any).global !== globalThis
-    ) {
-      return (globalThis as any).global;
+    if (typeof globalThis !== "undefined") {
+      const shadow = (globalThis as GlobalThisWithShadow).global;
+      if (shadow && shadow !== globalThis) {
+        return shadow;
+      }
     }
   } catch (_) {}
 
   // Fallback minimal shadow (same logic as the early script, in case this
   // module is evaluated extremely early).
-  const g: any = Object.create(
+  const g = Object.create(
     typeof globalThis !== "undefined" ? globalThis : {},
-  );
+  ) as SafeGlobal;
   const readonlys = [
     "close",
     "open",
@@ -37,7 +48,7 @@ const getSafeGlobal = (): any => {
       Object.defineProperty(g, k, {
         configurable: true,
         enumerable: false,
-        get: () => (globalThis as any)?.[k],
+        get: () => (globalThis as Record<string, unknown>)?.[k],
         set: () => {
           /* ignore */
         },
@@ -48,7 +59,7 @@ const getSafeGlobal = (): any => {
     g.process = {
       env: {},
       browser: true,
-      nextTick: (fn: any) =>
+      nextTick: (fn: () => void) =>
         typeof queueMicrotask === "function"
           ? queueMicrotask(fn)
           : Promise.resolve().then(fn),

@@ -1,6 +1,7 @@
 import { Music, Pause, Play, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchWithCsrf } from "../../../api/csrf-client";
+import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { resolveApiUrl } from "../../../utils/asset-url";
 import { EmptyWidgetState, WidgetSection } from "./shared";
 import type { ChatSidebarWidgetProps } from "./types";
@@ -77,9 +78,10 @@ export function MusicPlayerSidebarWidget(_props: ChatSidebarWidgetProps) {
 
   useEffect(() => {
     void pollOnce();
-    const id = window.setInterval(() => void pollOnce(), 5_000);
-    return () => window.clearInterval(id);
   }, [pollOnce]);
+  // Poll only while the document is visible — don't drain battery polling the
+  // music player every 5s in a backgrounded app/tab.
+  useIntervalWhenDocumentVisible(() => void pollOnce(), 5_000);
 
   useEffect(() => {
     const el = audioRef.current;

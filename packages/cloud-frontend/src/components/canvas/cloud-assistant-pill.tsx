@@ -1,4 +1,8 @@
-import { applyElizaGenUiPatch, type ElizaGenUiSpec } from "@elizaos/ui/genui";
+import {
+  applyElizaGenUiPatch,
+  type ElizaGenUiPatch,
+  type ElizaGenUiSpec,
+} from "@elizaos/ui/genui";
 import { useContinuousChat } from "@elizaos/ui/hooks/useContinuousChat";
 import { useVoiceChat } from "@elizaos/ui/hooks/useVoiceChat";
 import { Keyboard, Loader2, Mic, Send, Volume2 } from "lucide-react";
@@ -336,11 +340,11 @@ export function CloudAssistantPill() {
             const trimmed = line.trim();
             if (!trimmed.startsWith("{")) continue;
             try {
-              const parsed = JSON.parse(trimmed);
+              const parsed = JSON.parse(trimmed) as Partial<ElizaGenUiPatch>;
               if (parsed.op && parsed.path) {
-                const result = applyElizaGenUiPatch(currentSpec, [parsed], {
-                  lenient: true,
-                } as any);
+                const result = applyElizaGenUiPatch(currentSpec, [
+                  parsed as ElizaGenUiPatch,
+                ]);
                 if (result.ok && result.spec) {
                   currentSpec = result.spec;
                   if (activeId) {
@@ -664,6 +668,7 @@ export function CloudAssistantPill() {
         )}
 
         {/* The orb / input bar */}
+        {/* biome-ignore lint/a11y/useSemanticElements: contains nested <button>s and an <input>, so a <button> wrapper would be invalid HTML */}
         <div
           className={`relative cursor-pointer flex items-center justify-center ${
             inputGlowActive ? "animate-orange-pulse" : ""

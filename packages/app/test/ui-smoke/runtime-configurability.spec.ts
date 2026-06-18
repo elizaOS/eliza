@@ -64,9 +64,18 @@ async function injectFullCapabilityHost(page: Page): Promise<void> {
 }
 
 async function expectFirstRunSurface(page: Page) {
-  const surface = page.getByTestId("onboarding-toast");
+  const surface = page
+    .getByTestId("first-run-shell")
+    .or(page.getByTestId("onboarding-toast"));
   await expect(surface).toBeVisible({ timeout: 20_000 });
   return surface;
+}
+
+async function hasDetailedFirstRunShell(page: Page): Promise<boolean> {
+  return page
+    .getByTestId("first-run-shell")
+    .isVisible({ timeout: 500 })
+    .catch(() => false);
 }
 
 test("onboarding exposes local, cloud, and remote runtimes and each is configurable", async ({
@@ -80,14 +89,60 @@ test("onboarding exposes local, cloud, and remote runtimes and each is configura
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  const toast = await expectFirstRunSurface(page);
-  await expect(page.getByText("Choose how to run your agent")).toBeVisible();
-  // All three runtimes are offered as option cards on the compact surface.
-  await expect(page.getByTestId("onboarding-option-cloud")).toBeVisible();
-  await expect(page.getByTestId("onboarding-option-remote")).toBeVisible();
-  await expect(page.getByTestId("onboarding-option-local")).toBeVisible();
-  await expect(toast).toBeVisible();
-  await expectNoRenderTelemetryErrors(page, "compact runtime configurability");
+  const shell = await expectFirstRunSurface(page);
+
+  if (!(await hasDetailedFirstRunShell(page))) {
+    const toast = page.getByTestId("onboarding-toast");
+    await expect(toast).toBeVisible();
+    await expect(page.getByText("Choose how to run your agent")).toBeVisible();
+    // All three runtimes are offered as option cards on the compact surface.
+    await expect(page.getByTestId("onboarding-option-cloud")).toBeVisible();
+    await expect(page.getByTestId("onboarding-option-remote")).toBeVisible();
+    await expect(page.getByTestId("onboarding-option-local")).toBeVisible();
+    await expect(toast).toBeVisible();
+    await expectNoRenderTelemetryErrors(
+      page,
+      "compact runtime configurability",
+    );
+    return;
+  }
+
+  // All three runtimes must be offered out of the box on a full-capability host.
+  const cloud = page.getByTestId("first-run-runtime-cloud");
+  const local = page.getByTestId("first-run-runtime-local");
+  const remote = page.getByTestId("first-run-runtime-remote");
+  await expect(cloud).toBeVisible({ timeout: 15_000 });
+  await expect(local).toBeVisible({ timeout: 15_000 });
+  await expect(remote).toBeVisible({ timeout: 15_000 });
+
+  // Local is configurable: selecting it reveals the inference sub-choice, and
+  // both "all local" and "route inference through cloud" must be selectable.
+  await local.click();
+  const allLocal = page.getByTestId("first-run-local-all-local");
+  const cloudInference = page.getByTestId("first-run-local-cloud-inference");
+  await expect(allLocal).toBeVisible({ timeout: 10_000 });
+  await expect(cloudInference).toBeVisible();
+  await cloudInference.check({ force: true });
+  await expect(cloudInference).toBeChecked();
+  await allLocal.check({ force: true });
+  await expect(allLocal).toBeChecked();
+
+  // Cloud is configurable: re-selecting it is the recommended resting choice
+  // and collapses the local sub-choice.
+  await cloud.click();
+  await expect(allLocal).toHaveCount(0);
+
+  // Remote is configurable: selecting it advances to the endpoint + token form
+  // so another device can point at this machine.
+  await remote.click();
+  const back = page.getByRole("button", { name: /runtime/i });
+  await expect(back).toBeVisible({ timeout: 10_000 });
+  // Returning to the runtime step keeps the selector intact (no dead end).
+  await back.click();
+  await expect(cloud).toBeVisible({ timeout: 10_000 });
+
+  await expectNoRenderTelemetryErrors(page, "runtime configurability");
+  await expect(shell).toBeVisible();
 });
 
 test("onboarding survives browser back and forward while runtime choices churn", async ({

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -95,5 +96,49 @@ describe("Companion emote visuals", () => {
     expect(overlay.getAttribute("data-emote-id")).toBe("dance-happy");
     expect(overlay.textContent ?? "").not.toMatch(rawEmoteGlyphs);
     expect(container.querySelector("svg")).toBeTruthy();
+  });
+
+  it("ignores emote events with showOverlay:false", () => {
+    render(<GlobalEmoteOverlay />);
+
+    fireEvent(
+      window,
+      new CustomEvent("eliza:test-app-emote", {
+        detail: { emoteId: "dance-happy", showOverlay: false },
+      }),
+    );
+
+    expect(screen.queryByTestId("global-emote-overlay")).toBeNull();
+  });
+
+  it("auto-hides the overlay after OVERLAY_LIFETIME_MS (2400ms)", async () => {
+    vi.useFakeTimers();
+    try {
+      render(<GlobalEmoteOverlay />);
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent("eliza:test-app-emote", {
+            detail: { emoteId: "wave" },
+          }),
+        );
+      });
+
+      expect(screen.getByTestId("global-emote-overlay")).toBeTruthy();
+
+      // Just before the lifetime expires the overlay is still visible.
+      act(() => {
+        vi.advanceTimersByTime(2399);
+      });
+      expect(screen.queryByTestId("global-emote-overlay")).toBeTruthy();
+
+      // After the full 2400ms lifetime it disappears.
+      act(() => {
+        vi.advanceTimersByTime(2);
+      });
+      expect(screen.queryByTestId("global-emote-overlay")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

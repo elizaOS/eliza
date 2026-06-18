@@ -29,12 +29,12 @@
   "dependencies": {
     "@elizaos/core": "2.0.0-alpha.109",
     "@ai-sdk/groq": "^3.0.39",
-    "@ai-sdk/openai-compatible": "^1.0.39",
+    "@ai-sdk/openai-compatible": "^2.0.51",
     "@vercel/blob": "2.3.2",
     "@feed/a2a": "workspace:*",
     "@feed/db": "workspace:*",
     "@feed/shared": "workspace:*",
-    "ai": "6.0.174",
+    "ai": "6.0.207",
     "js-tiktoken": "^1.0.21",
     "posthog-node": "^5.17.0"
   },
@@ -52,7 +52,7 @@
     "@elizaos/plugin-openai": "2.0.0-alpha.15",
     "@huggingface/hub": "^2.6.12",
     "@privy-io/server-auth": "^1.32.5",
-    "ai": "6.0.174",
+    "ai": "6.0.207",
     "drizzle-orm": "^0.44.7",
     "graphql-request": "^7.2.0",
     "ioredis": "^5.6.1",

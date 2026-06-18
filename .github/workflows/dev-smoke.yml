@@ -29,17 +29,19 @@ env:
   BUN_VERSION: "canary"
   NODE_VERSION: "24.15.0"
   NODE_NO_WARNINGS: "1"
-  # CI LLM is routed to Cerebras instead of Anthropic — the shared
-  # ANTHROPIC_API_KEY is out of credits, which previously failed the onboarding
-  # smoke with "credit balance is too low". plugin-openai talks to the Cerebras
-  # OpenAI-compatible endpoint (gpt-oss-120b); other provider keys are omitted
-  # so the agent's default text provider is deterministically Cerebras.
+  # WHY: the dev smoke needs a real model when one is available, but forcing the
+  # lane through one provider makes develop red when that provider hits daily
+  # quota. The shared live-provider selector chooses from these keys in order and
+  # skips the Playwright spec cleanly when no usable provider is configured.
+  # Cerebras remains available to local/manual runs through the harness, but the
+  # scheduled CI lane does not force it after repeated daily-quota exhaustion.
+  # OpenAI is also intentionally omitted here: the live app currently sends a
+  # memory-response schema that OpenAI rejects strictly, which tests that
+  # provider contract rather than the dev/onboarding plumbing this lane owns.
   CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-  ELIZA_PROVIDER: "cerebras"
-  OPENAI_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-  OPENAI_BASE_URL: "https://api.cerebras.ai/v1"
-  OPENAI_LARGE_MODEL: "gpt-oss-120b"
-  OPENAI_SMALL_MODEL: "gpt-oss-120b"
+  GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+  GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
   ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
 
 jobs:

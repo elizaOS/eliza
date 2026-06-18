@@ -83,7 +83,6 @@ export async function seedTestUser(
     description: "cloud-e2e harness key",
     organization_id: organization.id,
     user_id: user.id,
-    permissions: ["read", "write", "admin"],
     rate_limit: 10_000,
     is_active: true,
   });

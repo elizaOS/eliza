@@ -50,4 +50,39 @@ test.describe("auth errors", () => {
       `valid key should be accepted, got ${res.status}`,
     ).toBeLessThan(300);
   });
+
+  /**
+   * Identity check: the seeded API key must resolve to the seeded user + org.
+   * The task asked for `GET /api/v1/auth/me`, but that route does not exist and
+   * `/api/users/me` is session-only (requireUser). The real API-key-authed
+   * identity surface is `GET /api/organizations/members`
+   * (requireUserOrApiKeyWithOrg; admin/owner only — the seed creates role
+   * "admin"). The seeded user is the sole member, so its id/email confirm the
+   * key resolved to the seeded identity, and a 200 confirms the org scope.
+   * Source: organizations/members/route.ts:21-45, fixtures/seed.ts:54-97.
+   */
+  test("the seeded api key resolves to the seeded identity", async ({
+    stack,
+    seededUser,
+  }) => {
+    const res = await fetch(`${stack.urls.api}/api/organizations/members`, {
+      headers: { Authorization: `Bearer ${seededUser.apiKey}` },
+    });
+    expect(
+      res.status,
+      `members returned ${res.status}: ${await res.clone().text()}`,
+    ).toBe(200);
+    const body = (await res.json()) as {
+      success?: boolean;
+      data?: Array<{ id: string; email: string | null; role: string | null }>;
+    };
+    expect(body.success).toBe(true);
+    const self = body.data?.find((member) => member.id === seededUser.userId);
+    expect(
+      self,
+      "seeded user must appear in its own org membership",
+    ).toBeTruthy();
+    expect(self?.email).toBe(seededUser.email);
+    expect(self?.role).toBe("admin");
+  });
 });

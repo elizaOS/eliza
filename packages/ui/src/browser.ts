@@ -113,11 +113,6 @@ export * from "./components/ui/toggle.tsx";
 export * from "./components/ui/tooltip.tsx";
 export { IconTooltip } from "./components/ui/tooltip-extended.tsx";
 export { TerminalPluginView } from "./components/views/TerminalPluginView.tsx";
-export type {
-  VoicePillMessage,
-  VoicePillProps,
-} from "./components/voice-pill/index.ts";
-export { VoicePill } from "./components/voice-pill/index.ts";
 export * from "./components/workspace/AppWorkspaceChrome.hooks.ts";
 export * from "./components/workspace/AppWorkspaceChrome.tsx";
 // === Phase 5C: ./config/app-config moved to @elizaos/app-core/config/app-config ===

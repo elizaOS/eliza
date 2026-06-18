@@ -34,6 +34,16 @@ describe("modelUsesReasoningTokens", () => {
     "z-ai/glm-4.6-thinking",
     "moonshotai/kimi-k2.6-think",
     "x-ai/grok-4-reasoning",
+    // Cloud launch defaults — gpt-oss spends output tokens on hidden reasoning,
+    // and the Cerebras zai-glm-4.x series is catalog-tagged reasoning. Both must
+    // get the response-token floor or low/default max_tokens returns empty
+    // (billed) output. (gpt-oss-120b = default TEXT_SMALL, zai-glm-4.7 = TEXT_LARGE.)
+    "gpt-oss-120b",
+    "openai/gpt-oss-120b",
+    "cerebras:gpt-oss-120b",
+    "openai/gpt-oss-120b:nitro",
+    "zai-glm-4.7",
+    "cerebras:zai-glm-4.7",
   ])("treats %s as a reasoning model", (model) => {
     expect(modelUsesReasoningTokens(model)).toBe(true);
   });

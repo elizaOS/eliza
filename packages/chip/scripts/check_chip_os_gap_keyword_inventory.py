@@ -23,7 +23,7 @@ TBD_TOKEN = "TB" + "D"
 NOT_IMPLEMENTED_TOKEN = "not " + "implemented"
 
 ROOT = Path(__file__).resolve().parents[1]
-REPO = ROOT.parents[1]
+REPO = ROOT.parents[1] if len(ROOT.parents) > 1 else ROOT
 REPORT = ROOT / "build/reports/chip-os-gap-keyword-inventory.json"
 
 SCHEMA = "eliza.chip_os_gap_keyword_inventory.v1"

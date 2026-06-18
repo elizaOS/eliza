@@ -703,6 +703,7 @@ def test_process_metadata_blocks_without_pdk_signoff() -> None:
 
 
 def test_validate_report_cli_accepts_artifact_root() -> None:
+    evidence = ROOT / "build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log"
     temp_parent = ROOT / "benchmarks/results/test-temp"
     temp_parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=temp_parent) as td:
@@ -720,14 +721,32 @@ def test_validate_report_cli_accepts_artifact_root() -> None:
             stderr=subprocess.STDOUT,
             check=False,
         )
-        if import_result.returncode != 0:
-            raise AssertionError(import_result.stdout)
-
-        validate_result = run_runner(["validate-report", str(report_path), "--artifact-root", "."])
-        if validate_result.returncode != 0:
-            raise AssertionError(validate_result.stdout)
-        if "valid" not in validate_result.stdout:
-            raise AssertionError(validate_result.stdout)
+        if evidence.is_file():
+            # Real generated-AP benchmark evidence is captured: the import must
+            # succeed and the validate-report CLI must accept it under --artifact-root.
+            if import_result.returncode != 0:
+                raise AssertionError(import_result.stdout)
+            validate_result = run_runner(
+                ["validate-report", str(report_path), "--artifact-root", "."]
+            )
+            if validate_result.returncode != 0:
+                raise AssertionError(validate_result.stdout)
+            if "valid" not in validate_result.stdout:
+                raise AssertionError(validate_result.stdout)
+        else:
+            # Fail-closed: with no captured generated-AP evidence (the real capture
+            # is the multi-hour chipyard + FireMarshal + Linux-on-Verilator flow,
+            # `make ci-release-evidence`) the import must BLOCK and name the missing
+            # release-grade artifact rather than fabricate a report.
+            if import_result.returncode != 2:
+                raise AssertionError(
+                    f"expected BLOCKED import (rc=2), got {import_result.returncode}: "
+                    f"{import_result.stdout}"
+                )
+            if "STATUS: BLOCKED" not in import_result.stdout:
+                raise AssertionError(import_result.stdout)
+            if "eliza_e1_ap_benchmarks.log" not in import_result.stdout:
+                raise AssertionError(import_result.stdout)
 
 
 def test_e1_npu_nnapi_proof_check_preserves_missing_proof_blocker() -> None:

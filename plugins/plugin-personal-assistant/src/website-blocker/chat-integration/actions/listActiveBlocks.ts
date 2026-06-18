@@ -4,10 +4,7 @@ import type {
   ActionResult,
   IAgentRuntime,
 } from "@elizaos/core";
-import {
-  formatWebsiteList,
-  getSelfControlStatus,
-} from "../../../website-blocker/engine.js";
+import { formatWebsiteList, getSelfControlStatus } from "@elizaos/plugin-blocker";
 import { BlockRuleReader } from "../block-rule-service.js";
 
 interface ListActiveBlocksParams {

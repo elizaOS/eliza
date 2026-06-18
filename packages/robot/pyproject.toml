@@ -21,7 +21,7 @@ dependencies = [
   # numpy<2 keeps us compatible with the brax/mujoco/jax wheel matrix that
   # has not yet finished the numpy 2.x ABI migration. Revisit when brax
   # publishes numpy>=2 wheels.
-  "numpy<2",
+  "numpy<3",
   # Schema + transport
   "pydantic>=2",
   "websockets>=12",

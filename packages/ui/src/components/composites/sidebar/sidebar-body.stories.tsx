@@ -1,6 +1,11 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { SidebarBody } from "./sidebar-body";
 
+const THREAD_ROWS = Array.from({ length: 20 }, (_, i) => ({
+  id: `thread-${i + 1}`,
+  label: `Thread ${i + 1}`,
+}));
+
 const meta = {
   title: "Composites/Sidebar/SidebarBody",
   component: SidebarBody,
@@ -49,9 +54,9 @@ export const WithScrollableList: Story = {
   args: {
     children: (
       <div style={{ overflowY: "auto", padding: 12, color: "#fff" }}>
-        {Array.from({ length: 20 }).map((_, i) => (
+        {THREAD_ROWS.map((row) => (
           <div
-            key={i}
+            key={row.id}
             style={{
               padding: "8px 12px",
               borderRadius: 6,
@@ -60,7 +65,7 @@ export const WithScrollableList: Story = {
               fontSize: 13,
             }}
           >
-            Thread {i + 1}
+            {row.label}
           </div>
         ))}
       </div>

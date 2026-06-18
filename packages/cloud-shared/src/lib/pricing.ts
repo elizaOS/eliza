@@ -145,8 +145,17 @@ const REASONING_MODEL_PATTERNS: RegExp[] = [
   /(think|thinking|reasoning|reasoner)(:|$|-)/,
   // Grok reasoning builds
   /^grok.*(reasoning|think)/,
-  // Z.ai GLM reasoning
+  // Z.ai GLM reasoning — both the bare `glm-...-thinking` form and the
+  // Cerebras `zai-glm-4.x` series (catalog-tagged "reasoning"; no "think" token
+  // in the id). The cloud's TEXT_LARGE default `zai-glm-4.7` lives here.
   /^glm-.*(think|reasoning)/,
+  /^zai-glm-/,
+  // OpenAI gpt-oss open-weight reasoning models (gpt-oss-120b / gpt-oss-20b).
+  // gpt-oss-120b is the cloud's default TEXT_SMALL model and spends output
+  // tokens on hidden reasoning before answering, so it MUST get the response
+  // floor — otherwise a default/low max_tokens truncates mid-reasoning and
+  // returns empty (but billed) output, intermittently per call.
+  /^gpt-oss/,
 ];
 
 /**

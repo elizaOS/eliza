@@ -72,8 +72,10 @@
   --status-danger-bg: var(--destructive-subtle);
   --status-warning: var(--warn);
   --status-warning-bg: var(--warn-subtle);
-  --status-info: var(--brand-blue);
-  --status-info-bg: rgba(11, 53, 241, 0.12);
+  /* Neutral, not blue — orange is the only accent (status-info is rendered and
+     not theme-overridden, so a blue value here is a live accent violation). */
+  --status-info: var(--muted-strong);
+  --status-info-bg: rgba(0, 0, 0, 0.06);
 
   --focus: rgba(11, 53, 241, 0.18);
   --focus-ring: none;
@@ -210,8 +212,9 @@
   --status-danger-bg: var(--destructive-subtle);
   --status-warning: var(--warn);
   --status-warning-bg: var(--warn-subtle);
-  --status-info: var(--brand-blue);
-  --status-info-bg: rgba(11, 53, 241, 0.16);
+  /* Neutral, not blue (dark) — see the :root note above. */
+  --status-info: var(--muted-strong);
+  --status-info-bg: rgba(255, 255, 255, 0.08);
 
   --focus: rgba(11, 53, 241, 0.18);
   --focus-ring: none;
@@ -312,6 +315,10 @@ body.platform-android {
   position: fixed;
   inset: 0;
   overflow: hidden;
+  /* Raise the tiniest type ramps on phones: 9px/10px is uncomfortable to read
+     at arm's length on a handset. Desktop keeps the tighter scale. */
+  --text-3xs: 0.625rem;
+  --text-2xs: 0.6875rem;
 }
 
 /* Allow text selection inside inputs/contenteditable so users can still type,

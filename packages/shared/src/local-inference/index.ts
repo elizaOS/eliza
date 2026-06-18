@@ -40,14 +40,6 @@ export {
   reservedHeadroomGb,
 } from "./gpu-profiles.js";
 export {
-  buildKokoroOrtSessionOptions,
-  DEFAULT_KOKORO_EXECUTION_PROVIDER,
-  KOKORO_EXECUTION_PROVIDER_IDS,
-  type KokoroExecutionProvider,
-  type KokoroOrtSessionOptionsPatch,
-  parseKokoroExecutionProvider,
-} from "./kokoro-execution-provider.js";
-export {
   type Ed25519PublicKey,
   ManifestSignatureError,
   type SignatureVerifyInput,

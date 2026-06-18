@@ -77,14 +77,23 @@ describe("useVoiceChat local ASR", () => {
     expect(startLocalAsrRecorderMock).toHaveBeenCalledTimes(1);
     expect(stop).toHaveBeenCalledTimes(1);
     expect(fetchWithCsrfMock).toHaveBeenCalledWith(
+      "/api/asr/local-inference/status",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchWithCsrfMock).toHaveBeenCalledWith(
       "/api/asr/local-inference",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({
-          "Content-Type": "audio/wav",
+          "Content-Type": "application/json",
           Accept: "application/json",
         }),
-        body: expect.any(ArrayBuffer),
+        body: JSON.stringify({ audioBase64: "AQIDBA==" }),
       }),
     );
     expect(onTranscriptPreview).toHaveBeenCalledWith(

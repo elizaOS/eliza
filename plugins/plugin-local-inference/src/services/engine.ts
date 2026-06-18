@@ -701,10 +701,13 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
 				? args.cacheKey
 				: DEFAULT_SESSION_KEY;
 		// Resolve a grammar from `args.grammar` (explicit GBNF) or a forced
-		// skeleton. node-llama-cpp can do constrained decoding even though it
-		// can't stream — wire the schema/grammar path here. The no-streaming
-		// limitation means `streamStructured` degrades to one final chunk on
-		// this backend.
+		// skeleton. node-llama-cpp does constrained decoding AND per-token
+		// streaming together — `session.prompt({ grammar, onTextChunk })` fires
+		// `onTextChunk` for every accepted token even while the grammar
+		// constrains them. The streamed envelope is parsed incrementally by the
+		// runtime's structured-field extractor, so `streamStructured` surfaces
+		// `replyText` deltas as they arrive (it does NOT degrade to one final
+		// chunk on this backend).
 		const grammarSource = resolveBindingGrammarSource(args);
 		const grammar =
 			grammarSource && this.bindingModule && this.llama
@@ -768,6 +771,11 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
 						kind: "accept",
 						tokens: [{ index: idx++, text: chunk }],
 					});
+					// Deliver synchronously so each token reaches the structured
+					// extractor in order. node-llama-cpp's `onTextChunk` is sync;
+					// the downstream callback returns a promise we intentionally
+					// don't await here (the binding can't await it anyway), but the
+					// extractor's `push` is synchronous so deltas stay ordered.
 					void args.onTextChunk?.(chunk);
 				};
 				const tail = await session.prompt(promptText, promptOpts);

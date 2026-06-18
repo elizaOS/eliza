@@ -55,7 +55,7 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "@ai-sdk/openai-compatible": "^1.0.0",
+    "@ai-sdk/openai-compatible": "^2.0.51",
     "@elizaos/core": "workspace:*",
     "ai": "^6.0.23"
   },

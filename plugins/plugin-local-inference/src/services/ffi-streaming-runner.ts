@@ -44,6 +44,12 @@ export interface FfiStreamingGenerateArgs {
 	draftMax: number;
 	/** Reserved for separate draft-model speculation; null for Eliza-1 MTP. */
 	draftModelPath: string | null;
+	/**
+	 * GBNF grammar source forcing the structured-reply envelope. Passed to
+	 * the native session's `llmStreamOpen` config so sampling is
+	 * grammar-constrained. `null` disables the constraint (free generation).
+	 */
+	gbnfGrammar?: string | null;
 	/** Cancellation signal — fires `llmStreamCancel` on the active session. */
 	signal?: AbortSignal;
 	/** Per-chunk text callback. */
@@ -258,6 +264,7 @@ export class FfiStreamingRunner {
 				draftMin: args.draftMin,
 				draftMax: args.draftMax,
 				draftModelPath: args.draftModelPath,
+				gbnfGrammar: args.gbnfGrammar ?? null,
 			},
 		});
 

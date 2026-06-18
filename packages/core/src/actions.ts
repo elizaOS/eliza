@@ -17,12 +17,33 @@ import {
 import { compressPromptDescription } from "./utils/prompt-compression";
 
 export {
+	type ExtractorPipelineResult,
+	type RunExtractorPipelineArgs,
+	runExtractorPipeline,
+} from "./actions/extractor-pipeline";
+export {
+	parseJsonModelArray,
+	parseJsonModelOutput,
+	parseJsonModelRecord,
+} from "./actions/json-model-output";
+export {
 	isPromotedSubactionVirtual,
 	listSubactionsFromParameters,
 	type PromoteSubactionsOptions,
 	promoteSubactionsToActions,
 	type SubactionPromotionOverrides,
 } from "./actions/promote-subactions";
+export {
+	recentConversationTexts,
+	recentConversationTextsFromState,
+} from "./actions/recent-context";
+export {
+	resolveActionArgs,
+	type ResolveActionArgsInput,
+	type ResolveActionArgsResult,
+	type SubactionSpec,
+	type SubactionsMap,
+} from "./actions/resolve-action-args";
 export {
 	CANONICAL_SUBACTION_KEY,
 	DEFAULT_SUBACTION_KEYS,

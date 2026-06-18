@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import fc from "fast-check";
 import React from "react";
@@ -235,6 +236,148 @@ describe("MessagesTuiView", () => {
     ).rejects.toThrow("address is required");
 
     expect(bridge.sendSms).not.toHaveBeenCalled();
+  });
+});
+
+function readState(container: HTMLElement) {
+  const el = container.querySelector("[data-view-state]");
+  return JSON.parse(el?.getAttribute("data-view-state") ?? "{}");
+}
+
+describe("MessagesTuiView — interactive controls", () => {
+  it("refresh button re-loads state and records lastAction 'refresh'", async () => {
+    mockBridge();
+
+    const { container } = render(React.createElement(MessagesTuiView));
+
+    await screen.findByText("+15550200");
+    expect(bridge.listMessages).toHaveBeenCalledTimes(1);
+    expect(readState(container).lastAction).toBe("refresh");
+
+    fireEvent.click(screen.getByText("refresh"));
+
+    await waitFor(() => expect(bridge.listMessages).toHaveBeenCalledTimes(2));
+    expect(bridge.getStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders the request-sms-role button when unclaimed and wires it to the bridge", async () => {
+    mockBridge();
+
+    const { container } = render(React.createElement(MessagesTuiView));
+
+    const requestButton = await screen.findByText("request sms role");
+    expect(requestButton).toBeTruthy();
+
+    fireEvent.click(requestButton);
+
+    await waitFor(() =>
+      expect(bridge.requestRole).toHaveBeenCalledWith({ role: "sms" }),
+    );
+    await waitFor(() =>
+      expect(readState(container).lastAction).toBe("request-sms-role"),
+    );
+  });
+
+  it("hides the request-sms-role button when the role is already held", async () => {
+    mockBridge();
+    bridge.getStatus.mockResolvedValue({
+      packageName: "ai.eliza",
+      roles: [
+        {
+          role: "sms",
+          androidRole: "android.app.role.SMS",
+          held: true,
+          holders: ["ai.eliza"],
+          available: true,
+        },
+      ],
+    });
+
+    const { container } = render(React.createElement(MessagesTuiView));
+
+    await screen.findByText("+15550200");
+    await waitFor(() => expect(readState(container).ownsSmsRole).toBe(true));
+    expect(screen.queryByText("request sms role")).toBeNull();
+  });
+
+  it("opening a thread sets lastAction and renders out/in message lines", async () => {
+    mockBridge();
+
+    const { container } = render(React.createElement(MessagesTuiView));
+
+    await screen.findByText("+15550100");
+    fireEvent.click(screen.getByText("+15550100"));
+
+    await waitFor(() =>
+      expect(readState(container).lastAction).toBe("open thread-a"),
+    );
+    expect(readState(container).selectedThreadId).toBe("thread-a");
+
+    // Selected-thread message log lives in the "SMS compose" region; the body
+    // previews also appear in the thread rows, so scope to the compose section.
+    const compose = screen.getByRole("region", { name: "SMS compose" });
+    expect(within(compose).getByText("in")).toBeTruthy();
+    expect(within(compose).getByText("out")).toBeTruthy();
+    expect(within(compose).getByText("hello from alice")).toBeTruthy();
+    expect(within(compose).getByText("reply to alice")).toBeTruthy();
+  });
+
+  it("sends to the opened thread address and clears the body", async () => {
+    mockBridge();
+
+    const { container } = render(React.createElement(MessagesTuiView));
+
+    await screen.findByText("+15550100");
+    fireEvent.click(screen.getByText("+15550100"));
+    fireEvent.change(screen.getByRole("textbox", { name: "body" }), {
+      target: { value: "follow up" },
+    });
+    fireEvent.click(screen.getByText("send"));
+
+    await waitFor(() =>
+      expect(bridge.sendSms).toHaveBeenCalledWith({
+        address: "+15550100",
+        body: "follow up",
+      }),
+    );
+    // send() sets lastAction "sent <addr>" then awaits refresh(), which clears the
+    // body and ends with lastAction "refresh" — assert the durable post-send state.
+    await waitFor(() => expect(readState(container).composeBodyLength).toBe(0));
+    expect(readState(container).lastAction).toBe("refresh");
+  });
+
+  it("shows the 'no sms threads' empty line when there are no messages", async () => {
+    mockBridge();
+    bridge.listMessages.mockResolvedValue({ messages: [] });
+
+    const { container } = render(React.createElement(MessagesTuiView));
+
+    await screen.findByText("no sms threads");
+    expect(readState(container).threadCount).toBe(0);
+  });
+
+  it("disables send until both address and body are non-blank", async () => {
+    mockBridge();
+
+    render(React.createElement(MessagesTuiView));
+
+    await screen.findByText("+15550200");
+    const sendButton = screen.getByText("send") as HTMLButtonElement;
+    expect(sendButton.disabled).toBe(true);
+
+    // The address input's label text is "to".
+    fireEvent.change(screen.getByRole("textbox", { name: "to" }), {
+      target: { value: "+15559999" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "body" }), {
+      target: { value: "   " },
+    });
+    expect(sendButton.disabled).toBe(true);
+
+    fireEvent.change(screen.getByRole("textbox", { name: "body" }), {
+      target: { value: "ready" },
+    });
+    expect(sendButton.disabled).toBe(false);
   });
 });
 

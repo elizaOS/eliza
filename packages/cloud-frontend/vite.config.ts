@@ -320,10 +320,24 @@ export default defineConfig(({ mode }) => {
         // with the `optimizeDeps.include` block above which forces the
         // crypto graph to bundle as a single deterministic chunk.
         { find: /^inherits$/, replacement: r("./src/shims/inherits.cjs") },
+        { find: /^fs-extra$/, replacement: r("./src/shims/fs-extra.ts") },
+        {
+          find: /^@simplewebauthn\/browser$/,
+          replacement: r("./node_modules/@simplewebauthn/browser/esm/index.js"),
+        },
+        {
+          find: /^crypto-js$/,
+          replacement: r("./node_modules/crypto-js/index.js"),
+        },
+        {
+          find: /^tslib$/,
+          replacement: r("./node_modules/tslib/tslib.es6.mjs"),
+        },
+        { find: /^uuid$/, replacement: r("./node_modules/uuid/dist/index.js") },
         // Real Buffer polyfill — Solana wallet adapters, viem, ethers, base64
         // helpers all depend on Buffer. Stubbing it throws at runtime when a
         // browser-reachable code path constructs a Buffer.
-        { find: /^(node:)?buffer$/, replacement: "buffer" },
+        { find: /^(node:)?buffer\/?$/, replacement: "buffer" },
         // Real process shim — many libs read `process.env.NODE_ENV`,
         // `process.browser`, or call `process.nextTick(...)`. The empty stub
         // throws on access, breaking module init for those libs.
@@ -343,6 +357,10 @@ export default defineConfig(({ mode }) => {
         // them is gated behind `typeof window === "undefined"` or only called
         // server-side), but Rollup still has to resolve the module graph at
         // build time.
+        {
+          find: /^(node:)?dns\/promises$/,
+          replacement: r("./src/shims/empty.ts"),
+        },
         {
           find: /^node:(fs|fs\/promises|path|os|crypto|stream|http|https|zlib|net|tls|child_process|util|url|events|querystring|assert|vm|worker_threads|cluster|dgram|dns|punycode|readline|repl|string_decoder|tty|inspector|perf_hooks|async_hooks|trace_events|v8)$/,
           replacement: r("./src/shims/empty.ts"),

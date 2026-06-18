@@ -406,11 +406,8 @@ export async function requireUserOrApiKeyWithOrg(c: AppContext): Promise<
     const authed = toAuthedUser(user);
     c.set("user", authed);
     c.set("authMethod", "api_key");
-    // Expose the validated key id + permissions so downstream middleware
-    // (e.g. requireApiKeyPermission) can enforce scoped access without
-    // re-validating the key.
+    // Expose the validated key id for downstream attribution/audit.
     c.set("apiKeyId", validated.id);
-    c.set("apiKeyPermissions", Array.isArray(validated.permissions) ? validated.permissions : []);
     return authed as AuthedUser & {
       organization_id: string;
       organization: NonNullable<AuthedUser["organization"]>;
@@ -443,7 +440,6 @@ export async function requireUserOrApiKey(c: AppContext): Promise<AuthedUser> {
     c.set("user", authed);
     c.set("authMethod", "api_key");
     c.set("apiKeyId", validated.id);
-    c.set("apiKeyPermissions", Array.isArray(validated.permissions) ? validated.permissions : []);
     return authed;
   }
 

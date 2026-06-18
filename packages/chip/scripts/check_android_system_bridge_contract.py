@@ -22,7 +22,7 @@ from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT.parent
-ELIZA_ROOT = ROOT.parents[1]
+ELIZA_ROOT = ROOT.parents[1] if len(ROOT.parents) > 1 else ROOT
 ANDROID_APP_GRADLE = WORKSPACE / "app/android/app/build.gradle"
 LOCAL_MANIFEST = ROOT / "sw/aosp-device/local_manifests/eliza.xml"
 

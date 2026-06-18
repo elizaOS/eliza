@@ -23,6 +23,7 @@ import type {
 	LlmCtxHandle,
 	LlmStreamingBinding,
 } from "./llm-streaming-binding";
+import { resolveGuidedDecodeForParams } from "./structured-output";
 
 /**
  * Constructor-injected adapter that resolves the FFI binding, context, and
@@ -159,6 +160,13 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 			);
 		}
 		const { runner, tokenize, mtp, draftModelPath } = this.session;
+		// Force the structured-reply envelope: compile the GBNF from the
+		// caller's `responseSkeleton` / explicit `grammar` (precedence handled
+		// by `resolveGuidedDecodeForParams`, mirroring `engine.ts`'s
+		// `resolveBindingGrammarSource`). The native session installs it FIRST
+		// in the sampler chain so every sampled token is grammar-constrained.
+		const gbnfGrammar =
+			resolveGuidedDecodeForParams(args).grammar?.source ?? null;
 		const result = await runner.generateWithUsage({
 			promptTokens: tokenize(args.prompt),
 			slotId: args.slotId ?? -1,
@@ -171,6 +179,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 			draftMin: mtp?.draftMin ?? 0,
 			draftMax: mtp?.draftMax ?? 0,
 			draftModelPath,
+			gbnfGrammar,
 			signal: args.signal,
 			onTextChunk: args.onTextChunk,
 			onVerifierEvent: args.onVerifierEvent,

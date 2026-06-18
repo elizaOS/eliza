@@ -365,7 +365,10 @@ function extractInventory(
     .filter((item): item is ScapeInventoryItem => item !== null);
 }
 
-function extractTelemetry(
+// Exported for the parser-contract test (routes.telemetry.test.ts), which runs
+// a real PerceptionSnapshot through buildScapeSessionState and feeds the result
+// back through this parser to prove producer/consumer shapes agree.
+export function extractTelemetry(
   telemetry: Record<string, AppSessionJsonValue> | null,
 ): ScapeTelemetry {
   return {

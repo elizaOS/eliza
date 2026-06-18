@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-REPO = ROOT.parents[1]
+REPO = ROOT.parents[1] if len(ROOT.parents) > 1 else ROOT
 OS_ROOT = REPO / "packages/os/linux/elizaos"
 MATRIX = OS_ROOT / "evidence/multiarch_boot_matrix.json"
 REPORTS = {

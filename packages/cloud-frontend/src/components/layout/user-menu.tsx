@@ -397,6 +397,9 @@ function UserMenuInner({ preserveWhileUnauthed = false }: UserMenuProps) {
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
+            aria-label={t("cloud.userMenu.open", {
+              defaultValue: "Open user menu",
+            })}
             className="relative h-8 w-8 bg-white/5 p-0 hover:bg-white/15 md:h-10 md:w-10"
           >
             <Avatar className="h-8 w-8 md:h-10 md:w-10 rounded-sm">

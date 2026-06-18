@@ -76,6 +76,19 @@ const iosApiBase = storeSafeAgentApiBase(
   iosRuntimeMode,
 );
 
+// E2E/test builds opt into WebView remote debugging via ELIZA_WEBVIEW_DEBUG=1
+// (alias MILADY_WEBVIEW_DEBUG). This keeps the bundled APK assets and the real
+// on-device agent, but makes the System WebView CDP-attachable so Playwright's
+// Android driver (and chrome://inspect) can drive it for end-to-end tests. It
+// is NEVER enabled for store builds. Production builds leave it unset → off.
+function isFlagEnabled(value: string | undefined): boolean {
+  return /^(1|true|yes|on)$/i.test((value ?? "").trim());
+}
+const webViewDebuggingEnabled =
+  !isIosStoreBuild() &&
+  (isFlagEnabled(process.env.ELIZA_WEBVIEW_DEBUG) ||
+    isFlagEnabled(process.env.MILADY_WEBVIEW_DEBUG));
+
 const config: CapacitorConfig = {
   appId: appConfig.appId,
   appName: appConfig.appName,
@@ -139,12 +152,22 @@ const config: CapacitorConfig = {
     preferredContentMode: "mobile",
     backgroundColor: "#FF5800",
     allowsLinkPreview: false,
+    webContentsDebuggingEnabled: webViewDebuggingEnabled,
   },
   android: {
+    // Point `cap sync` at the SAME android project gradle actually builds
+    // (packages/app-core/platforms/android, resolved relative to this config).
+    // Without this, cap sync writes a full project to packages/app/android while
+    // gradle builds app-core/platforms/android off a STALE committed
+    // capacitor.settings.gradle — so native plugins (@capacitor/browser, haptics,
+    // …) silently never compile and get pruned from the manifest (#8387). With
+    // the path unified, cap sync regenerates the full plugin set in place every
+    // build and nothing drifts.
+    path: "../app-core/platforms/android",
     backgroundColor: "#FF5800",
     allowMixedContent: false,
     captureInput: true,
-    webContentsDebuggingEnabled: false,
+    webContentsDebuggingEnabled: webViewDebuggingEnabled,
   },
 };
 

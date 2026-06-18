@@ -117,15 +117,57 @@ type LocalInferenceServerApi = {
     res: http.ServerResponse,
     state: { current: AgentRuntime | null },
   ) => Promise<boolean>;
+  handleLocalInferenceAsrRoute?: (
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    state: { current: AgentRuntime | null },
+  ) => Promise<boolean>;
 };
 
 let localInferenceServerApiPromise: Promise<LocalInferenceServerApi> | null =
   null;
 
 function getLocalInferenceServerApi(): Promise<LocalInferenceServerApi> {
-  localInferenceServerApiPromise ??= import(
-    /* @vite-ignore */ "@elizaos/plugin-local-inference"
-  ) as Promise<LocalInferenceServerApi>;
+  // Import the route modules directly, NOT the package's bare entry: the mobile
+  // agent bundle stubs `@elizaos/plugin-local-inference` (the heavy Plugin entry)
+  // to a null module, so a bare import yields undefined handlers and every
+  // /api/local-inference/* route 404s on-device. The deep subpaths (the `./*`
+  // wildcard + `./routes` exports) aren't stubbed and carry the real impls on
+  // every platform.
+  localInferenceServerApiPromise ??=
+    (async (): Promise<LocalInferenceServerApi> => {
+      const [routes, ttsRoutes] = await Promise.all([
+        import(
+          /* @vite-ignore */ "@elizaos/plugin-local-inference/local-inference-routes"
+        ) as Promise<
+          Pick<
+            LocalInferenceServerApi,
+            "getLocalInferenceActiveModelId" | "handleLocalInferenceRoutes"
+          >
+        >,
+        import(
+          /* @vite-ignore */ "@elizaos/plugin-local-inference/routes"
+        ) as Promise<
+          Pick<
+            LocalInferenceServerApi,
+            "handleLocalInferenceTtsRoute" | "handleLocalInferenceAsrRoute"
+          >
+        >,
+      ]);
+      return {
+        getLocalInferenceActiveModelId: routes.getLocalInferenceActiveModelId,
+        handleLocalInferenceRoutes: routes.handleLocalInferenceRoutes,
+        handleLocalInferenceTtsRoute: ttsRoutes.handleLocalInferenceTtsRoute,
+        handleLocalInferenceAsrRoute: ttsRoutes.handleLocalInferenceAsrRoute,
+      };
+    })().catch((err: unknown) => {
+      // A cold-boot import failure must not poison the memoized promise: `??=`
+      // would otherwise cache the rejection and 404 EVERY /api/local-inference/*
+      // route for the lifetime of the process. Clear the memo so the next request
+      // retries once the deferred plugin closure is resolvable.
+      localInferenceServerApiPromise = null;
+      throw err;
+    });
   return localInferenceServerApiPromise;
 }
 
@@ -1762,7 +1804,19 @@ async function handleRequest(
   // Cloud SSO popup handoff: GET /pair?token=X must short-circuit BEFORE the
   // static-UI catch-all, otherwise the SPA index.html is served and the user
   // ends up on the password screen.
-  if (await handleCloudPairRoute(req, res)) return;
+  //
+  // Guard the call: in the on-device mobile bundle this app-core export can
+  // come through as `undefined` (circular re-export init order under Bun.build),
+  // and an unguarded call throws on EVERY request — 500-ing /api/auth/status
+  // and wedging the dashboard at "Connecting to backend…". The route is a
+  // cloud-SSO handoff that a local on-device agent never legitimately serves,
+  // so skipping it when unavailable is safe.
+  if (
+    typeof handleCloudPairRoute === "function" &&
+    (await handleCloudPairRoute(req, res))
+  ) {
+    return;
+  }
 
   // Serve dashboard static assets before the auth gates. serveStaticUi already
   // refuses /api/, /v1/, and /ws paths, so API endpoints remain protected
@@ -1801,13 +1855,21 @@ async function handleRequest(
   if (
     (pathname.startsWith("/api/local-inference") ||
       pathname === "/api/tts/local-inference" ||
-      pathname === "/api/asr/local-inference") &&
+      pathname.startsWith("/api/asr/local-inference")) &&
     (await (async () => {
       const localInferenceServerApi = await getLocalInferenceServerApi();
       if (
         typeof localInferenceServerApi.handleLocalInferenceRoutes ===
           "function" &&
         (await localInferenceServerApi.handleLocalInferenceRoutes(req, res))
+      ) {
+        return true;
+      }
+      if (
+        localInferenceServerApi.handleLocalInferenceAsrRoute &&
+        (await localInferenceServerApi.handleLocalInferenceAsrRoute(req, res, {
+          current: state.runtime,
+        }))
       ) {
         return true;
       }

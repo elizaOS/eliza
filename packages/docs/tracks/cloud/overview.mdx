@@ -11,11 +11,11 @@ Cloud is **optional**. Agents and apps run fully local-only without it. Cloud is
 
 | Surface       | What it gives you                                                              |
 | ------------- | ------------------------------------------------------------------------------ |
-| **Auth**      | OAuth (Google, Discord, X), API keys, Steward JWT.                             |
-| **Apps**      | `appId` registration, versioning, publishing.                                  |
+| **Auth**      | Browser sessions, API keys, SIWE, wallet signatures, and x402 payments.        |
+| **Apps**      | Cloud app records for chat routing, hosting metadata, domains, and monetization. |
 | **Inference** | Routed model calls with markup, rate limits, fallback chains.                  |
-| **Containers**| Hosted agent container deploys with logs and lifecycle.                        |
-| **Billing**   | Credits, top-up, Stripe, auto-renewal, creator earnings.                       |
+| **Containers**| Hosted Docker containers with logs, metrics, health checks, and lifecycle.     |
+| **Billing**   | Credits, Stripe checkout, x402 topups, auto top-up, and creator earnings.      |
 | **Domains**   | Bind custom domains to deployed apps and agents.                               |
 | **MCP / A2A** | Hosted Model Context Protocol and agent-to-agent endpoints.                    |
 
@@ -23,10 +23,10 @@ Cloud is **optional**. Agents and apps run fully local-only without it. Cloud is
 
 <CardGroup cols={2}>
   <Card title="Auth" icon="key" href="/tracks/cloud/auth">
-    OAuth, API keys, Steward JWT, redirects.
+    Sessions, API keys, wallet auth, and x402.
   </Card>
   <Card title="Apps" icon="grid" href="/tracks/cloud/apps">
-    Register an `appId`, version, publish.
+    Register an app, route chat, monetize usage.
   </Card>
   <Card title="Inference" icon="bolt" href="/tracks/cloud/inference">
     Routed model calls, gateways, fallback.
@@ -51,6 +51,6 @@ Cloud is **optional**. Agents and apps run fully local-only without it. Cloud is
 
 ## Deeper material
 
-- [Cloud guide](/guides/cloud)
-- [Provider routing](/guides/cloud-provider-routing)
+- [Cloud quickstart](/cloud/quickstart)
+- [Cloud API reference](/cloud/api)
 - [Deployment](/eliza-cloud-deployment)

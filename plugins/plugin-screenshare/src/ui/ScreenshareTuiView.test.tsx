@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -8,9 +8,10 @@ vi.mock("@elizaos/ui", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
   Button: ({
     children,
+    type: _type,
     ...props
   }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-    React.createElement("button", props, children),
+    React.createElement("button", { type: "button", ...props }, children),
   Input: (props: React.InputHTMLAttributes<HTMLInputElement>) =>
     React.createElement("input", props),
   SurfaceBadge: ({ children }: { children: React.ReactNode }) =>
@@ -35,12 +36,17 @@ vi.mock("@elizaos/ui", () => ({
 import { ScreenshareTuiView } from "./ScreenshareOperatorSurface";
 import { interact } from "./ScreenshareOperatorSurface.interact";
 
+// REAL DesktopControlCapabilities shape returned by GET /capabilities
+// (getScreenshareCapabilities -> detectDesktopControlCapabilities): keys are
+// screenshot / computerUse / windowList / headfulGui, each { available, tool }.
+// Shape verified live in ScreenshareOperatorSurface.contract.test.ts.
 const sampleCapabilities = {
   platform: "darwin",
   capabilities: {
-    screenshot: { available: true, tool: "screencapture" },
-    headfulGui: { available: true, tool: "quartz" },
-    keyboard: { available: false, tool: "unavailable" },
+    screenshot: { available: true, tool: "screencapture (built-in)" },
+    computerUse: { available: true, tool: "cliclick" },
+    windowList: { available: false, tool: "none (grant Accessibility)" },
+    headfulGui: { available: true, tool: "desktop session" },
   },
 };
 
@@ -142,12 +148,24 @@ describe("ScreenshareTuiView", () => {
       platform: "darwin",
       sessionCount: 1,
       activeSessionCount: 1,
+      // All four REAL capability keys must appear, mapped name -> available.
       capabilities: {
         screenshot: true,
+        computerUse: true,
+        windowList: false,
         headfulGui: true,
-        keyboard: false,
       },
     });
+
+    // Capabilities section secondary stats: "N live / M sessions", platform
+    // line, and per-cap "ok/off name via tool" rows for both states.
+    expect(screen.getByText(/3 live/)).toBeTruthy();
+    expect(screen.getByText(/computeruse via cliclick/i)).toBeTruthy();
+    expect(
+      screen.getByText(/windowList via none \(grant Accessibility\)/),
+    ).toBeTruthy();
+    // The session row carries label + frame/input counts and last-frame line.
+    expect(screen.getByText("This machine frames 2 inputs 1")).toBeTruthy();
   });
 
   it("supports terminal capabilities for state, session lifecycle, input, and viewer URLs", async () => {
@@ -210,5 +228,68 @@ describe("ScreenshareTuiView", () => {
       viewerUrl:
         "https://remote.example/api/apps/screenshare/viewer?sessionId=session-1&token=token-1&remoteBase=https%3A%2F%2Fremote.example",
     });
+  });
+
+  it("re-runs loadScreenshareTuiState when the refresh button is clicked and records lastAction", async () => {
+    mockFetch();
+    const { container } = render(React.createElement(ScreenshareTuiView));
+    await screen.findByText("session-1 / active");
+
+    const callsForCapabilities = () =>
+      (fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+        ([url]) => url === "/api/apps/screenshare/capabilities",
+      ).length;
+    // Initial mount fetched /capabilities + /sessions once.
+    expect(callsForCapabilities()).toBe(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh sessions" }));
+
+    // Refresh re-fires the Promise.all (GET /capabilities + GET /sessions).
+    await vi.waitFor(() => expect(callsForCapabilities()).toBe(2));
+    expect(
+      (fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+        ([url]) => url === "/api/apps/screenshare/sessions",
+      ).length,
+    ).toBe(2);
+
+    await vi.waitFor(() => {
+      const stateElement = container.querySelector("[data-view-state]");
+      expect(
+        JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}")
+          .lastAction,
+      ).toBe("refresh");
+    });
+  });
+
+  it("renders the red error row and populates data-view-state.error when load fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/apps/screenshare/sessions") {
+          return jsonResponse({ error: "sessions exploded" }, { status: 500 });
+        }
+        return jsonResponse(sampleCapabilities);
+      }),
+    );
+
+    const { container } = render(React.createElement(ScreenshareTuiView));
+
+    // The rejected load surfaces the API error text in the red error row.
+    await screen.findByText("sessions exploded");
+
+    const viewState = JSON.parse(
+      container
+        .querySelector("[data-view-state]")
+        ?.getAttribute("data-view-state") ?? "{}",
+    );
+    expect(viewState.error).toBe("sessions exploded");
+    expect(viewState.sessionCount).toBe(0);
+    expect(viewState.activeSessionCount).toBe(0);
+    // state is reset to null on failure -> no platform, empty capabilities map.
+    expect(viewState.platform).toBeNull();
+    expect(viewState.capabilities).toEqual({});
+    // No session rows render.
+    expect(screen.queryByText(/session-1/)).toBeNull();
   });
 });

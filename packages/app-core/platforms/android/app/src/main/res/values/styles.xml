@@ -22,5 +22,15 @@
         <item name="android:background">@drawable/splash</item>
         <item name="android:windowSplashScreenBackground">@color/splash_background</item>
         <item name="android:statusBarColor">@color/eliza_orange</item>
+        <!-- After the launch splash, swap to the no-action-bar app theme so the
+             Capacitor WebView fills the window. Without this (paired with the
+             installSplashScreen() call in MainActivity) the activity keeps this
+             Theme.SplashScreen theme, which renders a native AppCompat action
+             bar — the orange "Eliza" top bar with splash.png stretched across
+             it — above the WebView. Also suppress the action bar directly so it
+             never appears even before the post-splash swap. -->
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
     </style>
 </resources>

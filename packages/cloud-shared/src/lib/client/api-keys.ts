@@ -7,7 +7,6 @@ export interface ClientApiKey {
   name: string;
   description: string | null;
   key_prefix: string;
-  permissions: string[];
   rate_limit: number;
   is_active: boolean;
   usage_count: number;

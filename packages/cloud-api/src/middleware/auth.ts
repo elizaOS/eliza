@@ -31,6 +31,12 @@ const publicPathPrefixes = [
   // Caddy on-demand-TLS `ask` for the apps front door — called by app nodes
   // without a session; side-effect-free existence check (see route doc).
   "/api/v1/apps-ingress/ask",
+  // Node self-registration callback — a freshly-provisioned (operator or
+  // autoscaled) node POSTs here from cloud-init with no session. The route
+  // fails closed and self-authenticates with a timing-safe `x-bootstrap-secret`
+  // (CONTAINERS_BOOTSTRAP_SECRET) before any work, so it must bypass the session
+  // gate or it 401s before its own secret check runs.
+  "/api/v1/admin/docker-nodes/bootstrap-callback",
   "/api/auth/pair",
   "/api/auth/cli-session",
   "/api/v1/cli-auth",
@@ -213,12 +219,3 @@ export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
   }
   await next();
 };
-
-// Re-export `requireApiKeyPermission` from its dedicated module so existing
-// route imports (`@/api-app/middleware/auth`) continue to work, while tests
-// and new code can import from the standalone file without pulling in the
-// full auth-gate transitive deps.
-export {
-  enforceApiKeyPermission,
-  requireApiKeyPermission,
-} from "./api-key-permission";

@@ -13,12 +13,17 @@ Cloud containers are managed deploys of agent runtimes. You hand Cloud a contain
 
 ## Lifecycle
 
-- `POST /v1/containers` — create a deploy from an image or repo.
-- `GET /v1/containers/:id` — fetch status (provisioning, running, failed, stopped).
-- `PATCH /v1/containers/:id` — update env, scale, image.
-- `DELETE /v1/containers/:id` — stop and remove.
+- `POST /api/v1/containers` - create a deploy from a Docker image reference.
+- `GET /api/v1/containers/{id}` - fetch status (`deploying`, `running`, `failed`, `stopped`, `suspended`).
+- `PATCH /api/v1/containers/{id}` - update env, restart, or keep desired count at `1`.
+- `GET /api/v1/containers/{id}/logs` - fetch recent logs.
+- `GET /api/v1/containers/{id}/metrics` - fetch runtime metrics.
+- `DELETE /api/v1/containers/{id}` - stop and remove.
 
-Resource tiers (CPU, RAM, GPU) are picked at deploy time. Billing is per-minute.
+Resource settings such as CPU units and memory are selected at deploy time.
+Public shared-pool deploys currently use `desired_count: 1`. Billing is tracked
+against the organization credits balance, with optional earnings-first hosting
+billing for creators.
 
 ## Logs
 
@@ -31,6 +36,6 @@ Container logs stream to the dashboard and are queryable through the Cloud API.
 
 ## See also
 
-- [Apps](/tracks/cloud/apps) — link a container to an `appId`
-- [Billing](/tracks/cloud/billing) — container minutes are billable
-- [Deployment guide](/guides/cloud)
+- [Apps](/tracks/cloud/apps) - link a container to a Cloud app record
+- [Billing](/tracks/cloud/billing) - hosting uses credits or eligible earnings
+- [Containers API](/cloud/api/containers)

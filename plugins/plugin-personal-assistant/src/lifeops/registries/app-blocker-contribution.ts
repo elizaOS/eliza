@@ -9,14 +9,12 @@
  */
 
 import {
+  type BlockAppsOptions,
+  type BlockAppsResult,
   getAppBlockerStatus,
   startAppBlock,
   stopAppBlock,
-} from "../../app-blocker/engine.js";
-import type {
-  BlockAppsOptions,
-  BlockAppsResult,
-} from "../../app-blocker/types.js";
+} from "@elizaos/plugin-blocker";
 import type {
   BlockerAvailability,
   BlockerContribution,

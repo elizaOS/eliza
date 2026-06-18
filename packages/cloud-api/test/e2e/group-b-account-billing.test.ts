@@ -170,7 +170,6 @@ describe("POST /api/v1/api-keys/:id/regenerate", () => {
       {
         name: `group-b-regenerate-${Date.now()}`,
         description: "Group B regen test — revoked in afterAll.",
-        permissions: ["read"],
         rate_limit: 60,
       },
       { headers: { Cookie: sessionCookie } },

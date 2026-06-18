@@ -31,7 +31,7 @@ jobs:
       # (low credit balance, rate limit, transient outage). The bot review
       # is best-effort; a missing review must not block CI.
       - continue-on-error: true
-        uses: anthropics/claude-code-action@11ba60486e4aec9ddfeafcf4bb3f00b028ac2c16
+        uses: anthropics/claude-code-action@9dd8b95a392eb34b6f5fb56cf5a64cb735912d4b
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           track_progress: true

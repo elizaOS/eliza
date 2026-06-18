@@ -19,6 +19,6 @@ export {
 export { blockerPlugin, default } from "./plugin.ts";
 export { appBlockerProvider } from "./providers/app-blocker.ts";
 export { websiteBlockerProvider } from "./providers/website-blocker.ts";
-export { AppBlockerService } from "./services/app-blocker.ts";
-export { WebsiteBlockerService } from "./services/website-blocker.ts";
+export * from "./services/app-blocker/index.ts";
+export * from "./services/website-blocker/index.ts";
 export * from "./types.ts";

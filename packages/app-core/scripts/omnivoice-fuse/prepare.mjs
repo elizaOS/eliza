@@ -175,6 +175,11 @@ struct EliInferenceContext {
     std::atomic<bool> tts_cancel{false};
     std::mutex tts_mutex;
     std::mutex asr_mutex;
+    /* Streaming-LLM text model, loaded lazily on the first
+     * eliza_inference_llm_stream_open and shared across sessions. */
+    std::string llm_model_path;
+    llama_model * llm_model = nullptr;
+    std::mutex llm_mutex;
     /* Parsed voice presets, keyed by voice id. Populated lazily on the
      * first TTS call that mentions the id. The mutex protects the map
      * itself; presets are immutable once inserted. */
@@ -845,6 +850,129 @@ static int eliza_load_asr(EliInferenceContext * ctx, char ** out_error) {
     return ELIZA_OK;
 }
 
+/* ---- Streaming LLM (text generation) ------------------------------- *
+ * Deprecated-graft mirror of the in-tree
+ * tools/omnivoice/src/eliza-inference-ffi.cpp implementation. See the ABI
+ * in tools/omnivoice/include/eliza-inference-ffi.h. */
+
+static int eliza_llm_int_env_or_default(const char * name, int fallback) {
+    if (const char * env = std::getenv(name)) {
+        int n = std::atoi(env);
+        if (n > 0) return n;
+    }
+    return fallback;
+}
+
+static bool eliza_llm_bool_env_or_default(const char * name, bool fallback) {
+    if (const char * env = std::getenv(name)) {
+        std::string value = env;
+        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+            return (char) std::tolower(c);
+        });
+        if (value == "1" || value == "true" || value == "yes" || value == "on") return true;
+        if (value == "0" || value == "false" || value == "no" || value == "off") return false;
+    }
+    return fallback;
+}
+
+struct EliLlmStream {
+    EliInferenceContext * ctx = nullptr;
+    llama_context * lctx = nullptr;
+    llama_sampler * sampler = nullptr;
+    int n_past = 0;
+    int generated = 0;
+    int max_tokens = 0;
+    bool eos = false;
+    std::atomic<bool> cancel{false};
+};
+
+static bool eliza_pick_text_file(
+    const std::filesystem::path & bundle_dir,
+    std::string & text_model) {
+    std::vector<std::string> candidates = eliza_find_ggufs(bundle_dir / "text");
+    std::vector<std::string> picked;
+    for (const std::string & path : candidates) {
+        const std::string lower =
+            eliza_lower_ascii(std::filesystem::path(path).filename().string());
+        if (lower.find("mmproj") != std::string::npos) continue;
+        if (lower.find("tokenizer") != std::string::npos) continue;
+        if (lower.find("codec") != std::string::npos) continue;
+        picked.push_back(path);
+    }
+    if (picked.empty()) return false;
+    text_model = picked[0];
+    return true;
+}
+
+static int eliza_load_llm_model_locked(
+    EliInferenceContext * ctx,
+    char ** out_error) {
+    if (ctx->llm_model) return ELIZA_OK;
+    if (ctx->llm_model_path.empty()) {
+        if (!eliza_pick_text_file(std::filesystem::path(ctx->bundle_dir),
+                                  ctx->llm_model_path)) {
+            eliza_set_error(out_error,
+                std::string("[libelizainference] no text GGUF found under ") +
+                (std::filesystem::path(ctx->bundle_dir) / "text").string());
+            return ELIZA_ERR_BUNDLE_INVALID;
+        }
+    }
+    std::call_once(eliza_llama_backend_once, []() { llama_backend_init(); });
+    llama_model_params mparams = llama_model_default_params();
+    mparams.n_gpu_layers = eliza_llm_bool_env_or_default("ELIZA_LLM_USE_GPU", true) ? 99 : 0;
+    mparams.use_mmap = true;
+    ctx->llm_model = llama_model_load_from_file(ctx->llm_model_path.c_str(), mparams);
+    if (!ctx->llm_model) {
+        eliza_set_error(out_error,
+            std::string("[libelizainference] failed to load text model: ") +
+            ctx->llm_model_path);
+        return ELIZA_ERR_BUNDLE_INVALID;
+    }
+    return ELIZA_OK;
+}
+
+static llama_sampler * eliza_build_llm_sampler_chain(
+    const llama_model * model,
+    const eliza_llm_stream_config_t * cfg,
+    char ** out_error) {
+    const llama_vocab * vocab = llama_model_get_vocab(model);
+    llama_sampler_chain_params sparams = llama_sampler_chain_default_params();
+    llama_sampler * chain = llama_sampler_chain_init(sparams);
+    if (!chain) {
+        eliza_set_error(out_error,
+            "[libelizainference] llm_stream: failed to init sampler chain");
+        return nullptr;
+    }
+    if (cfg->gbnf_grammar && cfg->gbnf_grammar[0] != '\\0') {
+        llama_sampler * grammar = llama_sampler_init_grammar(vocab, cfg->gbnf_grammar, "root");
+        if (!grammar) {
+            llama_sampler_free(chain);
+            eliza_set_error(out_error,
+                "[libelizainference] llm_stream: GBNF grammar failed to parse");
+            return nullptr;
+        }
+        llama_sampler_chain_add(chain, grammar);
+    }
+    if (cfg->repeat_penalty != 0.0f && cfg->repeat_penalty != 1.0f) {
+        llama_sampler_chain_add(chain,
+            llama_sampler_init_penalties(64, cfg->repeat_penalty, 0.0f, 0.0f));
+    }
+    const bool greedy = cfg->temperature <= 0.0f;
+    if (!greedy) {
+        if (cfg->top_k > 0) {
+            llama_sampler_chain_add(chain, llama_sampler_init_top_k(cfg->top_k));
+        }
+        if (cfg->top_p > 0.0f && cfg->top_p < 1.0f) {
+            llama_sampler_chain_add(chain, llama_sampler_init_top_p(cfg->top_p, 1));
+        }
+        llama_sampler_chain_add(chain, llama_sampler_init_temp(cfg->temperature));
+        llama_sampler_chain_add(chain, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
+    } else {
+        llama_sampler_chain_add(chain, llama_sampler_init_greedy());
+    }
+    return chain;
+}
+
 extern "C" {
 
 const char * eliza_inference_abi_version(void) {
@@ -892,6 +1020,13 @@ void eliza_inference_destroy(EliInferenceContext * ctx) {
     {
         std::lock_guard<std::mutex> lock(ctx->asr_mutex);
         eliza_free_asr(ctx);
+    }
+    {
+        std::lock_guard<std::mutex> lock(ctx->llm_mutex);
+        if (ctx->llm_model) {
+            llama_model_free(ctx->llm_model);
+            ctx->llm_model = nullptr;
+        }
     }
     delete ctx;
 }
@@ -1440,6 +1575,194 @@ int eliza_inference_vad_reset(
 
 void eliza_inference_vad_close(EliVad * vad) {
     (void) vad;
+}
+
+/* ---- Streaming LLM (text generation, ABI v4) --------------------- */
+
+int eliza_inference_llm_stream_supported(void) {
+    return 1;
+}
+
+EliLlmStream * eliza_inference_llm_stream_open(
+    EliInferenceContext * ctx,
+    const eliza_llm_stream_config_t * cfg,
+    char ** out_error) {
+    if (!ctx || !cfg) {
+        eliza_set_error(out_error,
+            "[libelizainference] llm_stream_open: ctx and cfg are required");
+        return nullptr;
+    }
+    llama_model * model = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(ctx->llm_mutex);
+        int rc = eliza_load_llm_model_locked(ctx, out_error);
+        if (rc != ELIZA_OK) return nullptr;
+        model = ctx->llm_model;
+    }
+    EliLlmStream * stream = new (std::nothrow) EliLlmStream();
+    if (!stream) {
+        eliza_set_error(out_error, "[libelizainference] llm_stream_open: out of memory");
+        return nullptr;
+    }
+    stream->ctx = ctx;
+    stream->max_tokens = cfg->max_tokens > 0 ? cfg->max_tokens : 0;
+    llama_context_params cparams = llama_context_default_params();
+    const int n_ctx_train = llama_model_n_ctx_train(model);
+    int n_ctx = eliza_llm_int_env_or_default("ELIZA_LLM_N_CTX", 8192);
+    if (n_ctx_train > 0 && n_ctx > n_ctx_train) n_ctx = n_ctx_train;
+    cparams.n_ctx = (uint32_t) n_ctx;
+    cparams.n_batch = (uint32_t) eliza_llm_int_env_or_default("ELIZA_LLM_N_BATCH", 512);
+    cparams.n_ubatch = cparams.n_batch;
+    cparams.n_threads = eliza_thread_count(false);
+    cparams.n_threads_batch = eliza_thread_count(true);
+    cparams.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_AUTO;
+    stream->lctx = llama_init_from_model(model, cparams);
+    if (!stream->lctx) {
+        delete stream;
+        eliza_set_error(out_error,
+            "[libelizainference] llm_stream_open: failed to init llama context");
+        return nullptr;
+    }
+    stream->sampler = eliza_build_llm_sampler_chain(model, cfg, out_error);
+    if (!stream->sampler) {
+        llama_free(stream->lctx);
+        delete stream;
+        return nullptr;
+    }
+    return stream;
+}
+
+int eliza_inference_llm_stream_prefill(
+    EliLlmStream * stream,
+    const int32_t * token_ids,
+    size_t num_tokens,
+    char ** out_error) {
+    if (!stream || !stream->lctx) {
+        eliza_set_error(out_error, "[libelizainference] llm_stream_prefill: invalid session");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    if (num_tokens == 0) return ELIZA_OK;
+    if (!token_ids) {
+        eliza_set_error(out_error, "[libelizainference] llm_stream_prefill: token_ids is NULL");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    std::vector<llama_token> tokens(token_ids, token_ids + num_tokens);
+    const int n_batch = (int) llama_n_batch(stream->lctx);
+    const size_t total = tokens.size();
+    for (size_t off = 0; off < total; off += (size_t) n_batch) {
+        if (stream->cancel.load(std::memory_order_acquire)) {
+            eliza_set_error(out_error, "[libelizainference] llm_stream_prefill: cancelled");
+            return ELIZA_ERR_CANCELLED;
+        }
+        const size_t chunk = std::min((size_t) n_batch, total - off);
+        llama_batch batch = llama_batch_get_one(tokens.data() + off, (int32_t) chunk);
+        int32_t rc = llama_decode(stream->lctx, batch);
+        if (rc != 0) {
+            eliza_set_error(out_error,
+                "[libelizainference] llm_stream_prefill: llama_decode failed rc=" +
+                std::to_string(rc));
+            return ELIZA_ERR_FFI_FAULT;
+        }
+        stream->n_past += (int) chunk;
+    }
+    return ELIZA_OK;
+}
+
+int eliza_inference_llm_stream_next(
+    EliLlmStream * stream,
+    int32_t * tokens_out,
+    size_t tokens_cap,
+    size_t * num_tokens_out,
+    char * text_out,
+    size_t text_cap,
+    int32_t * drafter_drafted_out,
+    int32_t * drafter_accepted_out,
+    char ** out_error) {
+    if (num_tokens_out) *num_tokens_out = 0;
+    if (drafter_drafted_out) *drafter_drafted_out = 0;
+    if (drafter_accepted_out) *drafter_accepted_out = 0;
+    if (text_out && text_cap > 0) text_out[0] = '\\0';
+    if (!stream || !stream->lctx || !stream->sampler) {
+        eliza_set_error(out_error, "[libelizainference] llm_stream_next: invalid session");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    if (!tokens_out || tokens_cap == 0 || !text_out || text_cap == 0) {
+        eliza_set_error(out_error, "[libelizainference] llm_stream_next: output buffers are required");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    if (stream->eos) return 1;
+    const llama_model * model = llama_get_model(stream->lctx);
+    const llama_vocab * vocab = llama_model_get_vocab(model);
+    std::string text;
+    size_t produced = 0;
+    size_t step_cap = tokens_cap;
+    if (stream->max_tokens > 0) {
+        const size_t remaining = (size_t) std::max(0, stream->max_tokens - stream->generated);
+        if (remaining == 0) { stream->eos = true; return 1; }
+        step_cap = std::min(step_cap, remaining);
+    }
+    bool final_step = false;
+    while (produced < step_cap) {
+        if (stream->cancel.load(std::memory_order_acquire)) {
+            eliza_set_error(out_error, "[libelizainference] llm_stream_next: cancelled");
+            return ELIZA_ERR_CANCELLED;
+        }
+        llama_token token = llama_sampler_sample(stream->sampler, stream->lctx, -1);
+        if (llama_vocab_is_eog(vocab, token)) { stream->eos = true; final_step = true; break; }
+        std::string piece = eliza_llama_token_piece(vocab, token);
+        if (!piece.empty() && text.size() + piece.size() + 1 > text_cap) break;
+        /* llama_sampler_sample already accepted the token (advancing the
+         * grammar stack); do NOT accept again or the grammar stack empties. */
+        tokens_out[produced] = (int32_t) token;
+        text += piece;
+        produced += 1;
+        stream->generated += 1;
+        llama_batch batch = llama_batch_get_one(&token, 1);
+        int32_t rc = llama_decode(stream->lctx, batch);
+        if (rc != 0) {
+            eliza_set_error(out_error,
+                "[libelizainference] llm_stream_next: llama_decode failed rc=" +
+                std::to_string(rc));
+            return ELIZA_ERR_FFI_FAULT;
+        }
+        stream->n_past += 1;
+        if (stream->max_tokens > 0 && stream->generated >= stream->max_tokens) {
+            stream->eos = true; final_step = true; break;
+        }
+    }
+    if (text.size() + 1 > text_cap) text.resize(text_cap - 1);
+    std::memcpy(text_out, text.data(), text.size());
+    text_out[text.size()] = '\\0';
+    if (num_tokens_out) *num_tokens_out = produced;
+    return final_step ? 1 : 0;
+}
+
+int eliza_inference_llm_stream_cancel(EliLlmStream * stream) {
+    if (stream) stream->cancel.store(true, std::memory_order_release);
+    return ELIZA_OK;
+}
+
+int eliza_inference_llm_stream_save_slot(
+    EliLlmStream * stream, const char * filename, char ** out_error) {
+    (void) stream; (void) filename;
+    eliza_set_error(out_error,
+        "[libelizainference] llm_stream_save_slot is not implemented in this build");
+    return ELIZA_ERR_INVALID_ARG;
+}
+
+int eliza_inference_llm_stream_restore_slot(
+    EliLlmStream * stream, const char * filename, char ** out_error) {
+    (void) stream; (void) filename;
+    eliza_set_error(out_error,
+        "[libelizainference] llm_stream_restore_slot is not implemented in this build");
+    return ELIZA_ERR_INVALID_ARG;
+}
+
+void eliza_inference_llm_stream_close(EliLlmStream * stream) {
+    if (!stream) return;
+    if (stream->sampler) { llama_sampler_free(stream->sampler); stream->sampler = nullptr; }
+    if (stream->lctx) { llama_free(stream->lctx); stream->lctx = nullptr; }
+    delete stream;
 }
 
 void eliza_inference_free_string(char * str) {

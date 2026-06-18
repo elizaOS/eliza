@@ -268,7 +268,6 @@ const nativeStubs = {
   // still has to resolve the dynamic import in
   // plugins/plugin-native-llama/src/capacitor-llama-adapter.ts.
   "llama-cpp-capacitor": path.join(stubsDir, "llama-cpp-capacitor.cjs"),
-  "onnxruntime-node": path.join(stubsDir, "onnxruntime-node.cjs"),
   mammoth: path.join(stubsDir, "mammoth.cjs"),
   "source-map": path.join(stubsDir, "source-map.cjs"),
   // PDF extraction pulls in pdfjs (~2 MB of parser/runtime code) through
@@ -1145,7 +1144,24 @@ const workspaceSrcFallbackPlugin = {
       // (for example @elizaos/plugin-x402/startup-validator); fall back to
       // source when that subpath has not been emitted yet.
       const distDir = path.join(pkgDir, "dist");
-      if (existsSync(distDir)) {
+      // The bundle's own runtime/API packages (@elizaos/agent, @elizaos/app-core)
+      // have compiled `dist` re-exports (e.g. dist/api/cloud-pair-route,
+      // dist/runtime) whose circular barrel exports come out `undefined` once
+      // Bun re-bundles them, OR re-emit bare `@elizaos/*` requires Bun can't
+      // inline — both fatal on-device (no node_modules; handler "is not a
+      // function"). Always resolve these from src so the whole graph inlines
+      // into the single bundle and circular exports settle via Bun's bundler.
+      const forceSourceResolution =
+        pkgName === "@elizaos/agent" ||
+        pkgName === "@elizaos/app-core" ||
+        // @elizaos/cloud-sdk's dist is a barrel that re-exports the
+        // CloudApiClient class (`export { CloudApiClient } from "./http.js"`).
+        // Re-bundling that dist makes the re-export resolve to `undefined`, so
+        // on-device cloud routing dies with "CloudApiClient is not defined"
+        // (CLOUD_AUTH service start fails, every cloud turn → provider_issue).
+        // Resolve from src so the class inlines into the single bundle.
+        pkgName === "@elizaos/cloud-sdk";
+      if (existsSync(distDir) && !forceSourceResolution) {
         if (!subpath) return undefined;
         const cleanedDist = subpath.replace(/\.js$/, "");
         const distCandidates = [
@@ -1812,7 +1828,6 @@ const manifest = {
     "canvas",
     "llama-cpp-capacitor",
     "node-llama-cpp",
-    "onnxruntime-node",
     "pty-manager",
     "sharp",
   ],

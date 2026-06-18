@@ -283,7 +283,7 @@ const response = await fetch("https://elizacloud.ai/api/v1/chat/completions", {
     "Content-Type": "application/json",
   },
   body: JSON.stringify({
-    model: "gpt-4o",
+    model: "gpt-oss-120b",
     messages: [
       { role: "system", content: `Use this context:\n\n${context}` },
       { role: "user", content: "How do I reset my password?" },

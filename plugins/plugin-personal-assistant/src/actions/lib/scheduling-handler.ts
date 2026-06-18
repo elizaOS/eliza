@@ -27,7 +27,12 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
+import {
+  recentConversationTexts as collectRecentConversationTexts,
+  ModelType,
+  parseJsonModelRecord,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../../lifeops/access.js";
 import {
@@ -45,8 +50,6 @@ import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
 } from "../../lifeops/voice/grounded-reply.js";
-import { parseJsonModelRecord } from "../../utils/json-model-output.js";
-import { recentConversationTexts as collectRecentConversationTexts } from "./recent-context.js";
 
 const MS_PER_MINUTE = 60_000;
 const MAX_DAYS_LOOKAHEAD = 60;

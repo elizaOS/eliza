@@ -47,21 +47,32 @@ test.describe("dashboard session", () => {
       expect(result.failed, JSON.stringify(result.errors)).toBe(0);
     };
 
+    // #8493 made the classic dashboard the default surface; the canvas deploy
+    // flow this test exercises now lives behind the UI toggle. Seed the
+    // persisted canvas store so the canvas workspace (and its deploy form)
+    // renders. version:1 matches the store so the classic-default migration
+    // (which only resets defaultUiMode when version < 1) leaves this intact.
+    await authenticatedPage.addInitScript(() => {
+      localStorage.setItem(
+        "eliza-cloud-canvas",
+        JSON.stringify({ state: { defaultUiMode: "canvas" }, version: 1 }),
+      );
+    });
+
     await authenticatedPage.goto(`${stack.urls.frontend}/dashboard/agents`);
-    await authenticatedPage.getByRole("button", { name: "New Agent" }).click();
     await authenticatedPage
-      .getByLabel("Agent Name")
+      .getByPlaceholder("e.g. trading-assistant")
       .fill("e2e-dashboard-agent");
-    // The wizard now exposes execution mode explicitly (#8261): a custom image
-    // is only available under the Dedicated card, which reveals the image
-    // selector + Docker Image input and switches the CTA to
-    // "Deploy Docker container".
-    await authenticatedPage.getByText("Dedicated", { exact: true }).click();
-    await authenticatedPage.getByRole("combobox", { name: "Image" }).click();
+    // The dashboard now exposes the deploy flow inside the canvas workspace.
+    // Custom images are always deployed to dedicated sandboxes; the UI
+    // auto-selects and locks that tier so the API receives a routable image.
+    await authenticatedPage.locator("select").nth(0).selectOption("custom");
+    await expect(authenticatedPage.locator("select").nth(1)).toHaveValue(
+      "dedicated",
+    );
     await authenticatedPage
-      .getByRole("option", { name: "Custom Image" })
-      .click();
-    await authenticatedPage.getByLabel("Docker Image").fill(dockerImage);
+      .getByPlaceholder("ghcr.io/elizaos/eliza:stable")
+      .fill(dockerImage);
 
     const createResponsePromise = authenticatedPage.waitForResponse(
       (response) =>
@@ -71,7 +82,7 @@ test.describe("dashboard session", () => {
     );
 
     await authenticatedPage
-      .getByRole("button", { name: "Deploy Docker container" })
+      .getByRole("button", { name: "Deploy Agent Instance" })
       .click();
     const createResponse = await createResponsePromise;
 

@@ -20,9 +20,31 @@ export class DirectPgExecutor implements TenantDbSqlExecutor {
     this.adminDsn = adminDsn;
   }
 
-  private async run(connectionString: string, statements: readonly string[]): Promise<void> {
-    const client = new Client({ connectionString });
+  private async connect(connectionString: string): Promise<Client> {
+    // The apps tenant Postgres is a self-managed node on the PRIVATE apps
+    // network (10.30.x), provisioned with a self-signed cert. Current `pg`
+    // parses `sslmode=require` in the DSN as `verify-full` and rejects the
+    // self-signed chain ("self-signed certificate") — which would fail EVERY
+    // tenant-DB provision in prod. Strip `sslmode` from the DSN textually (NOT
+    // via `new URL().toString()`, which re-encodes the userinfo and can corrupt
+    // the admin password) and set `ssl` explicitly: still TLS in-transit, but
+    // skip CA-chain verification (safe — already private-network isolated). A
+    // DSN-level `sslmode` would otherwise win over an explicit `ssl` object.
+    // Verified live against the prod tenant DB (10.30.1.10) via the apps-control
+    // node e2e (connection reaches auth; the self-signed reject is gone).
+    const cleaned = connectionString
+      .replace(/[?&]sslmode=[^&]*/gi, (m) => (m[0] === "?" ? "?" : ""))
+      .replace(/\?$/, "");
+    const client = new Client({
+      connectionString: cleaned,
+      ssl: { rejectUnauthorized: false },
+    });
     await client.connect();
+    return client;
+  }
+
+  private async run(connectionString: string, statements: readonly string[]): Promise<void> {
+    const client = await this.connect(connectionString);
     try {
       for (const sql of statements) {
         await client.query(sql);
@@ -40,5 +62,17 @@ export class DirectPgExecutor implements TenantDbSqlExecutor {
     const url = new URL(this.adminDsn);
     url.pathname = `/${encodeURIComponent(dbName)}`;
     await this.run(url.toString(), statements);
+  }
+
+  async databaseExists(dbName: string): Promise<boolean> {
+    // `pg_database` is a shared catalog visible from the admin/maintenance
+    // connection, so no per-tenant connection is needed.
+    const client = await this.connect(this.adminDsn);
+    try {
+      const result = await client.query("SELECT 1 FROM pg_database WHERE datname = $1", [dbName]);
+      return (result.rowCount ?? 0) > 0;
+    } finally {
+      await client.end();
+    }
   }
 }

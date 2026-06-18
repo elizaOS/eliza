@@ -23,6 +23,7 @@ import {
   Waves,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { MODEL_TESTER_TUI_CAPABILITIES } from "./ModelTesterAppView.interact";
 
 type TestId =
   | "text-small"
@@ -555,7 +556,7 @@ export function ModelTesterTuiView() {
       id="model-tester"
       label="Model Tester TUI"
       description="Terminal probes for Eliza-1 text, voice, audio, and vision models"
-      commands={[]}
+      commands={[...MODEL_TESTER_TUI_CAPABILITIES]}
       endpoints={["/api/model-tester/status", "/api/model-tester/run"]}
     />
   );

@@ -52,6 +52,14 @@ interface UseAuthStatusOptions {
 }
 
 const DEFAULT_POLL_INTERVAL_MS = 5 * 60 * 1000;
+// The local/on-device agent answers 503 for a few seconds while it binds after
+// a cold launch (`authMe` maps every unreachable case to 503). Retry through
+// that window before declaring the backend unreachable, so a boot race doesn't
+// strand the user on the failure screen until the next 5-minute poll. A genuine
+// down backend still resolves to `server_unavailable` after the budget; a 401
+// is authoritative and never retried.
+const SERVER_UNAVAILABLE_RETRIES = 10;
+const SERVER_UNAVAILABLE_RETRY_MS = 1000;
 const authStatusSubscribers = new Set<(state: AuthStatusState) => void>();
 let authStatusSnapshot: AuthStatusState = { phase: "loading" };
 let authStatusFetch: Promise<void> | null = null;
@@ -72,8 +80,9 @@ async function fetchAuthStatus(): Promise<void> {
       : { phase: "loading" },
   );
 
-  authStatusFetch = authMe()
-    .then((result) => {
+  authStatusFetch = (async () => {
+    for (let attempt = 0; ; attempt += 1) {
+      const result = await authMe();
       if (result.ok === true) {
         publishAuthStatus({
           phase: "authenticated",
@@ -81,25 +90,32 @@ async function fetchAuthStatus(): Promise<void> {
           session: result.session,
           access: result.access,
         });
-      } else if (result.ok === false) {
-        if (result.status === 503) {
-          publishAuthStatus({ phase: "server_unavailable" });
-        } else {
-          publishAuthStatus({
-            phase: "unauthenticated",
-            reason:
-              result.reason === "remote_auth_required" ||
-              result.reason === "remote_password_not_configured"
-                ? result.reason
-                : undefined,
-            access: result.access,
-          });
-        }
+        return;
       }
-    })
-    .finally(() => {
-      authStatusFetch = null;
-    });
+      if (result.status === 503) {
+        if (attempt < SERVER_UNAVAILABLE_RETRIES) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, SERVER_UNAVAILABLE_RETRY_MS),
+          );
+          continue;
+        }
+        publishAuthStatus({ phase: "server_unavailable" });
+        return;
+      }
+      publishAuthStatus({
+        phase: "unauthenticated",
+        reason:
+          result.reason === "remote_auth_required" ||
+          result.reason === "remote_password_not_configured"
+            ? result.reason
+            : undefined,
+        access: result.access,
+      });
+      return;
+    }
+  })().finally(() => {
+    authStatusFetch = null;
+  });
 
   return authStatusFetch;
 }

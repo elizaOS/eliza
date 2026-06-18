@@ -132,14 +132,14 @@ proxy only forwards unexpired hostnames minted by the Cloud Worker.
 
 Prefer these implementation surfaces:
 
-- `eliza/cloud/packages/db/schemas/app-billing.ts`
-- `eliza/cloud/packages/db/schemas/apps.ts`
-- `eliza/cloud/packages/db/schemas/redeemable-earnings.ts`
-- `eliza/cloud/packages/lib/services/app-charge-requests.ts`
-- `eliza/cloud/packages/lib/services/x402-payment-requests.ts`
-- `eliza/cloud/apps/api/v1/apis/tunnels/tailscale/auth-key/route.ts`
-- `eliza/cloud/apps/api/v1/apps/[id]/charges/route.ts`
-- `eliza/cloud/apps/api/v1/x402/requests/route.ts`
-- `eliza/cloud/packages/ui/src/components/apps/app-monetization-settings.tsx`
-- `eliza/cloud/packages/ui/src/components/apps/app-earnings-dashboard.tsx`
-- `eliza/cloud/packages/ui/src/components/auth/authorize-content.tsx`
+- `packages/cloud-shared/src/db/schemas/app-billing.ts`
+- `packages/cloud-shared/src/db/schemas/apps.ts`
+- `packages/cloud-shared/src/db/schemas/redeemable-earnings.ts`
+- `packages/cloud-shared/src/lib/services/app-charge-requests.ts`
+- `packages/cloud-shared/src/lib/services/x402-payment-requests.ts`
+- `packages/cloud-api/v1/apis/tunnels/tailscale/auth-key/route.ts`
+- `packages/cloud-api/v1/apps/[id]/charges/route.ts`
+- `packages/cloud-api/v1/x402/requests/route.ts`
+- `packages/cloud-frontend/src/dashboard/apps/_components/app-monetization-settings.tsx`
+- `packages/cloud-frontend/src/dashboard/apps/_components/app-earnings-dashboard.tsx`
+- `packages/cloud-frontend/src/pages/login/` (app-auth OAuth is served by the cloud-frontend, not a `/api` route)

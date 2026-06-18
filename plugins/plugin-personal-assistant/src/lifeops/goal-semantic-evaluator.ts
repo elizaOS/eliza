@@ -1,11 +1,15 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, ModelType, runWithTrajectoryContext } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  parseJsonModelRecord,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
 import type {
   LifeOpsGoalDefinition,
   LifeOpsGoalReviewState,
   LifeOpsGoalSuggestionKind,
 } from "../contracts/index.js";
-import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import {
   buildGoalSemanticReviewMetadata,
   type GoalSemanticReviewMetadata,

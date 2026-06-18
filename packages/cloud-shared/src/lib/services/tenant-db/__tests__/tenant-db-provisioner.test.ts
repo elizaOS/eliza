@@ -101,8 +101,9 @@ describe("buildDsn", () => {
 });
 
 describe("SqlTenantDbProvisioner", () => {
-  function recordingExecutor() {
+  function recordingExecutor(opts: { exists?: boolean } = {}) {
     const calls: Array<{ kind: "admin" | "db"; dbName?: string; statements: string[] }> = [];
+    let existsCheckedFor: string | undefined;
     const executor: TenantDbSqlExecutor = {
       async execAdmin(statements) {
         calls.push({ kind: "admin", statements: [...statements] });
@@ -110,8 +111,12 @@ describe("SqlTenantDbProvisioner", () => {
       async execInDatabase(dbName, statements) {
         calls.push({ kind: "db", dbName, statements: [...statements] });
       },
+      async databaseExists(dbName) {
+        existsCheckedFor = dbName;
+        return opts.exists ?? true;
+      },
     };
-    return { calls, executor };
+    return { calls, executor, existsCheckedFor: () => existsCheckedFor };
   }
 
   test("provisions: admin DDL first, then in-database DDL, returns the scoped DSN", async () => {
@@ -139,16 +144,31 @@ describe("SqlTenantDbProvisioner", () => {
     expect(calls[0].statements.join("\n")).toContain("REVOKE CONNECT ON DATABASE");
   });
 
-  test("deprovisions via admin DROP DATABASE/ROLE", async () => {
-    const { calls, executor } = recordingExecutor();
+  test("deprovisions via admin DROP DATABASE/ROLE and reports the DB existed", async () => {
+    const { calls, executor, existsCheckedFor } = recordingExecutor({ exists: true });
     const provisioner = new SqlTenantDbProvisioner({
       cluster: { host: "h" },
       executor,
       genPassword: () => "x",
     });
-    await provisioner.deprovision(APP_ID);
+    const ident = deriveTenantIdent(APP_ID);
+    const result = await provisioner.deprovision(APP_ID);
+    expect(result).toEqual({ existed: true });
+    // existence was checked against the right DB BEFORE the DROP
+    expect(existsCheckedFor()).toBe(ident.dbName);
     expect(calls).toHaveLength(1);
     expect(calls[0].kind).toBe("admin");
     expect(calls[0].statements[0]).toContain("DROP DATABASE IF EXISTS");
+  });
+
+  test("deprovision reports existed:false when the DB is already gone (gates the slot release)", async () => {
+    const { executor } = recordingExecutor({ exists: false });
+    const provisioner = new SqlTenantDbProvisioner({
+      cluster: { host: "h" },
+      executor,
+      genPassword: () => "x",
+    });
+    const result = await provisioner.deprovision(APP_ID);
+    expect(result).toEqual({ existed: false });
   });
 });

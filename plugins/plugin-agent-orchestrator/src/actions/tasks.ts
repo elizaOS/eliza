@@ -663,6 +663,17 @@ async function runCreate(
   // the `[TASK:<id>]<title>[/TASK]` widget that links back to the workbench.
   // The ACP sessions have already succeeded; a failure here is logged but
   // never demotes the action's success — the agents are still running.
+  //
+  // KNOWN GAP (tracked): the ACP sessions spawned above via
+  // `service.spawnSession` are NOT attached to this durable thread — only
+  // sessions created through `OrchestratorTaskService.spawnAgentForTask`
+  // land in the task store's session index (see `resolveTaskId`). So the
+  // freshly-minted thread reads `0/0 agents` and no token usage until/unless
+  // a session reports an event that resolves back to it. The widget still
+  // renders and navigates correctly; wiring true session linkage (a public
+  // `attachSession`, or routing create through `spawnAgentForTask`) is a
+  // follow-up slice that touches the spawn lifecycle — see
+  // docs/orchestrator-dashboard-task-widget-secrets-assessment.md.
   const taskTitle =
     pickString(params, content, "title") ??
     pickString(params, content, "goal") ??

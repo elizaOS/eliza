@@ -1,6 +1,82 @@
-import type { UiSpec } from "@elizaos/shared/config/ui-spec";
+import type {
+  UiComponentType,
+  UiElement,
+  UiSpec,
+} from "@elizaos/shared/config/ui-spec";
 import { api } from "@/lib/api-client";
 import type { CanvasMessage } from "./canvas-store";
+
+// ── Admin/infra response shapes (mirrors the API JSON these builders render) ──
+
+interface WarmPoolData {
+  enabled: boolean;
+  minPoolSize: number;
+  maxPoolSize: number;
+  image: string;
+  size: {
+    ready: number;
+    provisioning: number;
+    onCurrentImage: number;
+    stale: number;
+  };
+  forecast: { predictedRate: number; targetPoolSize: number };
+  policy: {
+    forecastWindowHours: number;
+    emaAlpha: number;
+    idleScaleDownMs: number;
+    replenishBurstLimit: number;
+  };
+}
+
+interface InfraContainer {
+  id: string;
+  name: string;
+  status: string;
+  image?: string;
+  created_at?: string;
+}
+
+interface RpcEvmStatus {
+  network: string;
+  chainId: number;
+  rpcUrl: string;
+  reachable: boolean;
+  latencyMs: number | null;
+  latestBlock: string | null;
+  hotWalletBalance: number | null;
+  error: string | null;
+}
+
+interface RpcStatusData {
+  evm: RpcEvmStatus[];
+  solana: { rpcUrl: string; configured: boolean };
+  allReachable: boolean;
+  hotWalletAddress: string | null;
+  checkedAt: string;
+}
+
+interface AdminMetricsData {
+  dau?: number;
+  dailyActiveUsers?: number;
+  mau?: number;
+  monthlyActiveUsers?: number;
+  retentionRate?: number;
+  newSignups?: number;
+  signupsGrowth?: number;
+  agentProvisions?: number;
+  provisionsGrowth?: number;
+  creditsSpent?: number;
+  spendGrowth?: number;
+  oauthRate?: number;
+}
+
+interface CloudDocument {
+  id: string;
+  filename?: string;
+  contentType?: string;
+  size?: number;
+  createdAt?: string;
+}
 
 interface AgentResult {
   text: string;
@@ -3622,7 +3698,7 @@ function buildAssessmentSpec(
     (s) => s.status === "ready" || s.status === "optional",
   );
 
-  const elements: Record<string, any> = {
+  const elements: Record<string, UiElement> = {
     root: {
       type: "Stack",
       props: { gap: "lg" },
@@ -4201,7 +4277,11 @@ async function handleActionSubmitCreate(
     const executionTier = (params?.executionTier as string) || "shared";
     const _description = (params?.description as string) || "";
 
-    const createBody: Record<string, any> = {
+    const createBody: {
+      agentName: string;
+      autoProvision: boolean;
+      dockerImage?: string;
+    } = {
       agentName: name,
       autoProvision: true,
     };
@@ -4721,7 +4801,7 @@ async function handleContainers(_ctx: AgentContext): Promise<AgentResult> {
           children: [],
         },
         quotaCard: {
-          type: "ContainerQuotaGauge" as any,
+          type: "ContainerQuotaGauge" as UiComponentType,
           props: {
             title: "Container Quota",
             value: `${quota.used} / ${quota.limit}`,
@@ -5035,7 +5115,7 @@ async function handleActionBillingBalance(): Promise<AgentResult> {
           children: ["card", "topupBtn"],
         },
         card: {
-          type: "CreditBalanceCard" as any,
+          type: "CreditBalanceCard" as UiComponentType,
           props: {
             title: "Credit Balance",
             value: fmtCredits(billing.balance),
@@ -5655,7 +5735,9 @@ async function fetchAdminInfraContainers() {
 
 async function fetchAdminMetrics(view: string = "overview") {
   try {
-    const res = await api<any>(`/api/v1/admin/metrics?view=${view}`);
+    const res = await api<AdminMetricsData>(
+      `/api/v1/admin/metrics?view=${view}`,
+    );
     return res;
   } catch {
     return null;
@@ -5712,7 +5794,7 @@ async function fetchPluginGrants() {
 
 async function fetchDocuments() {
   try {
-    const res = await api<{ documents: any[] }>("/api/v1/documents");
+    const res = await api<{ documents: CloudDocument[] }>("/api/v1/documents");
     return res.documents ?? [];
   } catch {
     return [];
@@ -5877,8 +5959,8 @@ async function handleActionDocumentsDelete(
 // ── Spec Builders ─────────────────────────────────────────────────
 
 function buildAdminInfrastructureSpec(
-  warmPool: any,
-  containers: any[],
+  warmPool: WarmPoolData | null,
+  containers: InfraContainer[],
 ): UiSpec {
   const size = warmPool?.size;
   return {
@@ -5962,7 +6044,7 @@ function buildAdminInfrastructureSpec(
   };
 }
 
-function buildAdminRpcStatusSpec(rpc: any): UiSpec {
+function buildAdminRpcStatusSpec(rpc: RpcStatusData | null): UiSpec {
   const evmList = rpc?.evm || [];
   const solana = rpc?.solana;
   return {
@@ -6020,7 +6102,7 @@ function buildAdminRpcStatusSpec(rpc: any): UiSpec {
             "Latest Block",
             "Wallet Balance",
           ],
-          rows: evmList.map((e: any) => [
+          rows: evmList.map((e) => [
             e.network,
             e.reachable ? "ONLINE" : "OFFLINE",
             e.latencyMs ? `${e.latencyMs}ms` : "—",
@@ -6037,8 +6119,8 @@ function buildAdminRpcStatusSpec(rpc: any): UiSpec {
   };
 }
 
-function buildPermissionsMatrixSpec(grants: any[]): UiSpec {
-  const grantElements: Record<string, any> = {};
+function buildPermissionsMatrixSpec(grants: PluginGrant[]): UiSpec {
+  const grantElements: Record<string, UiElement> = {};
 
   grants.forEach((g) => {
     const cardId = `grant-${g.grant_id}`;
@@ -6135,8 +6217,8 @@ function buildPermissionsMatrixSpec(grants: any[]): UiSpec {
   };
 }
 
-function buildDocumentsSpec(docs: any[]): UiSpec {
-  const docElements: Record<string, any> = {};
+function buildDocumentsSpec(docs: CloudDocument[]): UiSpec {
+  const docElements: Record<string, UiElement> = {};
 
   docs.forEach((d) => {
     const cardId = `doc-${d.id}`;
@@ -6266,8 +6348,8 @@ function buildDocumentsSpec(docs: any[]): UiSpec {
   };
 }
 
-function buildAdminMetricsSpec(metrics: any): UiSpec {
-  const stats = metrics || {};
+function buildAdminMetricsSpec(metrics: AdminMetricsData | null): UiSpec {
+  const stats: AdminMetricsData = metrics || {};
   return {
     root: "root",
     elements: {

@@ -78,6 +78,9 @@ const profileWriteDescribe =
   liveEnabled && apiKey && profileWriteEnabled && destructiveEnabled
     ? describe
     : describe.skip;
+// Live public endpoints regularly cross Vitest's 5s default on hosted CI.
+// This is a timeout budget for real network work, not an artificial delay.
+const LIVE_PUBLIC_ENDPOINT_TIMEOUT_MS = 15_000;
 
 function publicClient() {
   return new ElizaCloudClient({ baseUrl, apiBaseUrl });
@@ -116,27 +119,32 @@ liveDescribe(
         const raw = await client.requestRaw("GET", "/api/openapi.json");
         expect(raw.ok).toBe(true);
       },
+      LIVE_PUBLIC_ENDPOINT_TIMEOUT_MS,
     );
 
-    it("starts a CLI login session and polls it with direct and templated endpoint calls", async () => {
-      const client = publicClient();
-      const started = await client.startCliLogin();
-      expect(started.sessionId).toBeTruthy();
-      expect(started.browserUrl).toContain("/auth/cli-login?session=");
+    it(
+      "starts a CLI login session and polls it with direct and templated endpoint calls",
+      async () => {
+        const client = publicClient();
+        const started = await client.startCliLogin();
+        expect(started.sessionId).toBeTruthy();
+        expect(started.browserUrl).toContain("/auth/cli-login?session=");
 
-      const polled = await client.pollCliLogin(started.sessionId);
-      expect(polled.status).toBe("pending");
+        const polled = await client.pollCliLogin(started.sessionId);
+        expect(polled.status).toBe("pending");
 
-      const templated = await client.callEndpoint(
-        "GET",
-        "/api/auth/cli-session/{sessionId}",
-        {
-          pathParams: { sessionId: started.sessionId },
-          skipAuth: true,
-        },
-      );
-      expect(templated).toMatchObject({ status: "pending" });
-    });
+        const templated = await client.callEndpoint(
+          "GET",
+          "/api/auth/cli-session/{sessionId}",
+          {
+            pathParams: { sessionId: started.sessionId },
+            skipAuth: true,
+          },
+        );
+        expect(templated).toMatchObject({ status: "pending" });
+      },
+      LIVE_PUBLIC_ENDPOINT_TIMEOUT_MS,
+    );
 
     it("lists public models through the high-level client and compatibility client", async () => {
       const client = publicClient();
@@ -363,8 +371,8 @@ agentDescribe("ElizaCloudClient real API e2e: shared agent lifecycle", () => {
       agentName: `sdk-e2e-${Date.now()}`,
       agentConfig: {},
     });
-    const agent = created.data;
     expect(agent).toBeDefined();
+    const agent = created.data;
     if (!agent) throw new Error("createAgent returned no agent data");
     const agentId = agent.id;
     expect(agentId).toBeTruthy();

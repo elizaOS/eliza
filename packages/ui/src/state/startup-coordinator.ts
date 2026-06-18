@@ -54,10 +54,23 @@ export type StartupState =
       phase: "first-run-required";
       /** true = server reachable, fetch options from it. false = first-run, use static options. */
       serverReachable: boolean;
+      /** Resolved runtime target carried through so a cloud-hosted agent can
+       * skip local-agent startup once first-run completes. Absent for fresh
+       * installs with no resolved backend yet (treated as embedded-local). */
+      target?: RuntimeTarget;
     }
   | {
       phase: "starting-runtime";
       attempts: number;
+      /**
+       * Resolved runtime target for this boot. When "cloud-managed" or
+       * "remote-backend" the agent is cloud-hosted (topology 3): the
+       * starting-runtime phase must NOT call client.startAgent() nor run the
+       * local agent-readiness loop — the already-running remote agent is
+       * treated as ready. "embedded-local" (topologies 1 & 2) keeps the full
+       * local boot/poll behavior exactly as before.
+       */
+      target: RuntimeTarget;
     }
   | { phase: "hydrating" }
   | { phase: "ready" }
@@ -151,9 +164,17 @@ export function startupReducer(
       switch (event.type) {
         case "BACKEND_REACHED":
           if (event.firstRunComplete) {
-            return { phase: "starting-runtime", attempts: 0 };
+            return {
+              phase: "starting-runtime",
+              attempts: 0,
+              target: state.target,
+            };
           }
-          return { phase: "first-run-required", serverReachable: true };
+          return {
+            phase: "first-run-required",
+            serverReachable: true,
+            target: state.target,
+          };
         case "BACKEND_AUTH_REQUIRED":
           return { phase: "pairing-required" };
         case "BACKEND_NOT_FOUND":
@@ -191,7 +212,11 @@ export function startupReducer(
         case "FIRST_RUN_OPTIONS_LOADED":
           return state;
         case "FIRST_RUN_COMPLETE":
-          return { phase: "starting-runtime", attempts: 0 };
+          return {
+            phase: "starting-runtime",
+            attempts: 0,
+            target: state.target ?? "embedded-local",
+          };
         case "RETRY":
           return { phase: "restoring-session" };
         default:
@@ -251,7 +276,13 @@ export function startupReducer(
       switch (event.type) {
         case "BACKEND_REACHED":
           if (event.firstRunComplete) {
-            return { phase: "starting-runtime", attempts: 0 };
+            // Error-recovery has no resolved target in state; default to the
+            // full local-agent boot (today's behavior) rather than skipping it.
+            return {
+              phase: "starting-runtime",
+              attempts: 0,
+              target: "embedded-local",
+            };
           }
           return { phase: "first-run-required", serverReachable: true };
         case "AGENT_RUNNING":

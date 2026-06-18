@@ -1,7 +1,7 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace "ai.milady.milady"
+    namespace "ai.elizaos.app"
     compileSdk rootProject.ext.compileSdkVersion
     // BuildConfig is needed for AOSP_BUILD gating in ElizaAgentService.java —
     // see eliza/packages/agent/src/runtime/aosp-llama-adapter.ts and
@@ -15,7 +15,7 @@ android {
         buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL", "\"https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles\""
         buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER", "\"+14159611510\""
         buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL", "\"Eliza Cloud Gateway (+14159611510)\""
-        applicationId "ai.milady.milady"
+        applicationId "ai.elizaos.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode System.getenv("ELIZAOS_VERSION_CODE")?.toInteger() ?: 1

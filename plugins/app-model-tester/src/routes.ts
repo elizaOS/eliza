@@ -956,6 +956,17 @@ async function runModelTest(runtime: IAgentRuntime, body: ModelTestRequest) {
   }
 }
 
+export {
+  audioBytesToBase64,
+  coerceText,
+  dataUrlToBytes,
+  decodePcm16Wav,
+  detectVoiceActivity,
+  makeDefaultAudioPayload,
+  readNumberArray,
+  toPcmPayload,
+};
+
 export async function handleModelTesterRoute(
   _req: http.IncomingMessage,
   res: http.ServerResponse,

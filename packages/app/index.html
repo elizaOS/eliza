@@ -187,7 +187,17 @@
           headers: headersToRecord(normalized.headers),
           body: methodAllowsBody(normalized.method) ? (normalized.body || null) : null
         });
-        return new Response(result?.body ? result.body : '', {
+        // Prefer the lossless base64 of the raw response bytes so binary
+        // payloads (e.g. local TTS WAV audio) survive intact; `body` is only a
+        // best-effort UTF-8 view that mangles non-text bytes.
+        let responseBody = result?.body ? result.body : '';
+        if (result && typeof result.bodyBase64 === 'string' && result.bodyBase64.length > 0) {
+          const binary = atob(result.bodyBase64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+          responseBody = bytes;
+        }
+        return new Response(responseBody, {
           status: result?.status ? result.status : 200,
           statusText: result?.statusText ? result.statusText : '',
           headers: result?.headers ? result.headers : undefined

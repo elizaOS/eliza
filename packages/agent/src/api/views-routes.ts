@@ -796,24 +796,34 @@ export async function handleViewsRoutes(
     );
 
     const resolvedViewType = entry?.viewType ?? viewType ?? "gui";
-    currentViewState = {
-      viewId: id,
-      viewPath,
-      viewLabel,
-      viewType: resolvedViewType,
-      ...(action ? { action } : {}),
-      ...(alwaysOnTop ? { alwaysOnTop } : {}),
-      ...layoutPayload,
-      updatedAt: new Date().toISOString(),
-    };
-    // Publish to the prompt-optimization layer so the planner upweights this
-    // view's scoped actions while it is on screen.
-    setActiveViewContext({
-      viewId: id,
-      viewLabel,
-      viewType: resolvedViewType,
-      viewPath,
-    });
+    // Closing a view must NOT stamp it (or the synthetic "__all__" close-all id)
+    // as the active view: that left the planner upweighting a dismissed view's
+    // scoped actions and made "what view am I on" report a closed view forever.
+    // Clear the active-view context on close instead; the next real navigation
+    // re-stamps it.
+    const isCloseNavigation = action === "close" || action === "close-all";
+    if (isCloseNavigation) {
+      clearCurrentViewState();
+    } else {
+      currentViewState = {
+        viewId: id,
+        viewPath,
+        viewLabel,
+        viewType: resolvedViewType,
+        ...(action ? { action } : {}),
+        ...(alwaysOnTop ? { alwaysOnTop } : {}),
+        ...layoutPayload,
+        updatedAt: new Date().toISOString(),
+      };
+      // Publish to the prompt-optimization layer so the planner upweights this
+      // view's scoped actions while it is on screen.
+      setActiveViewContext({
+        viewId: id,
+        viewLabel,
+        viewType: resolvedViewType,
+        viewPath,
+      });
+    }
 
     ctx.broadcastWs?.({
       type: "shell:navigate:view",

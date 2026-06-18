@@ -1,13 +1,14 @@
 import {
   getAgentEventService,
-  loadOwnerContactsConfig,
   loadElizaConfig,
+  loadOwnerContactsConfig,
   resolveOwnerContactWithFallback,
 } from "@elizaos/agent";
 import type { IAgentRuntime, Task, TaskMetadata, UUID } from "@elizaos/core";
 import {
   logger,
   ModelType,
+  parseJsonModelRecord,
   runWithTrajectoryContext,
   stringToUuid,
 } from "@elizaos/core";
@@ -21,7 +22,6 @@ import { enqueueIfSensitive } from "../lifeops/background-planner-dispatch.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { ensureRuntimeAgentRecord } from "../lifeops/runtime.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
-import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { resolveEffectiveDayKey } from "./analyzer.js";
 import { proactiveInboxDigestRequest } from "./proactive-inbox-digest.js";
 import {

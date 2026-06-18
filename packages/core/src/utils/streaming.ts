@@ -587,6 +587,9 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		{ mode: "outside" | "inside"; pending: string }
 	> = new Map();
 	private state: ExtractorState = "streaming";
+	private formatDecided = false;
+	private passthrough = false;
+	private passthroughEmitted = "";
 	private readonly streamFieldSet: Set<string>;
 	private readonly maxKeyPatternLength: number;
 
@@ -621,12 +624,29 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		}
 		validateChunkSize(chunk);
 		this.buffer += chunk;
+		if (!this.formatDecided) {
+			this.decideFormat();
+		}
+		if (this.passthrough) {
+			this.drainPassthrough();
+			return "";
+		}
 		this.config.unordered ? this.drainUnordered(false) : this.drain(false);
 		return "";
 	}
 
 	flush(): string {
 		if (this.state === "failed") {
+			return "";
+		}
+		if (!this.formatDecided) {
+			this.decideFormat();
+		}
+		if (this.passthrough) {
+			this.drainPassthrough();
+			this.buffer = "";
+			this.state = "complete";
+			this.emitEvent({ eventType: "complete", timestamp: Date.now() });
 			return "";
 		}
 		this.config.unordered ? this.drainUnordered(true) : this.drain(true);
@@ -652,7 +672,43 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		this.fieldContents.clear();
 		this.emittedContent.clear();
 		this.reasoningFilters.clear();
+		this.formatDecided = false;
+		this.passthrough = false;
+		this.passthroughEmitted = "";
 		this.state = "streaming";
+	}
+
+	/**
+	 * On the first non-whitespace token, decide whether the stream is the
+	 * structured envelope this extractor parses (JSON/array/XML — opens with
+	 * `{`, `[`, or `<`) or plain prose. A local model that was not grammar-
+	 * constrained (e.g. the FFI backend, which cannot apply GBNF) may emit the
+	 * reply as raw prose with no envelope; the structured drain would then match
+	 * no spans and emit nothing, collapsing the whole reply into a single
+	 * trailing chunk. Detecting prose lets us stream it straight through as the
+	 * reply. Envelope-shaped output is unaffected, so the control fields
+	 * (thought/actions) are never leaked.
+	 */
+	private decideFormat(): void {
+		const trimmed = this.buffer.replace(/^\s+/, "");
+		if (trimmed.length === 0) {
+			return; // wait for the first non-whitespace token before deciding
+		}
+		const first = trimmed[0];
+		const looksStructured = first === "{" || first === "[" || first === "<";
+		this.formatDecided = true;
+		this.passthrough = !looksStructured;
+	}
+
+	/** Stream buffered prose straight through as reply text (passthrough mode). */
+	private drainPassthrough(): void {
+		if (this.buffer.length === 0) {
+			return;
+		}
+		const chunk = this.buffer;
+		this.buffer = "";
+		this.passthroughEmitted += chunk;
+		this.config.onChunk(chunk, undefined, this.passthroughEmitted);
 	}
 
 	signalRetry(retryCount: number): { validatedFields: string[] } {

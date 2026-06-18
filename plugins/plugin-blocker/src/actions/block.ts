@@ -1,20 +1,19 @@
 /**
  * BLOCK action — focus / distraction-control umbrella.
  *
- * STATUS: stub. The real implementation lives in:
- *   plugins/plugin-personal-assistant/src/actions/block.ts            — umbrella action
- *   plugins/plugin-personal-assistant/src/actions/app-block.ts        — app-target dispatch
- *   plugins/plugin-personal-assistant/src/actions/website-block.ts    — website-target dispatch
+ * STATUS: stub. The live BLOCK umbrella action (plus the app-target and
+ * website-target dispatch handlers) is still owned by the personal-assistant
+ * plugin, whose persistence couples to the lifeops SQL layer. The blocking
+ * platform (engine + services + providers) now lives here under src/services
+ * and src/providers.
  *
  * Target / subaction matrix (preserve when migrating):
  *   app:     block, unblock, status
  *   website: block, unblock, status, request_permission, release, list_active
  *
- * TODO(migration):
- *   1. Move the listed action files into this directory.
- *   2. Repoint imports from ../app-blocker / ../website-blocker (lifeops-local)
- *      to ../services/app-blocker / ../services/website-blocker (this plugin).
- *   3. Drop the dispatch wrappers in plugin-lifeops once parity is verified.
+ * TODO(migration): when the BLOCK action moves here, dispatch by target into
+ * ../services/app-blocker and ../services/website-blocker and drop the dispatch
+ * wrappers in the personal-assistant plugin once parity is verified.
  */
 
 import type {
@@ -98,8 +97,8 @@ export const blockAction: Action = {
     _message: Memory,
     _state?: State,
   ): Promise<boolean> => {
-    // TODO(migration): port appBlockValidate / websiteBlockValidate from
-    // plugins/plugin-personal-assistant/src/actions/{app-block,website-block}.ts.
+    // TODO(migration): port appBlockValidate / websiteBlockValidate from the
+    // personal-assistant plugin's app-block / website-block action handlers.
     return true;
   },
   handler: async (
@@ -110,9 +109,9 @@ export const blockAction: Action = {
     _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     // TODO(migration): port runAppBlockHandler / runWebsiteBlockHandler from
-    // plugins/plugin-personal-assistant/src/actions/{app-block,website-block}.ts and
-    // dispatch by target. Until then the stub returns a deferred result so the
-    // planner can still register the action shape.
+    // the personal-assistant plugin's app-block / website-block action handlers
+    // and dispatch by target. Until then the stub returns a deferred result so
+    // the planner can still register the action shape.
     const text = `${BLOCKER_LOG_PREFIX} BLOCK action not yet migrated from plugin-lifeops.`;
     return {
       success: false,

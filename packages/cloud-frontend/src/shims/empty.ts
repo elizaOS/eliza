@@ -9,6 +9,8 @@
 // previously used here meant every callsite produced an identical stack
 // trace and we could not tell which built-in was hit.
 
+import { Buffer as BrowserBuffer } from "buffer";
+
 type StubFn = (...args: unknown[]) => unknown;
 
 const warned = new Set<string>();
@@ -291,9 +293,39 @@ export const Socket = makeStub("Socket");
 export const Server = makeStub("Server");
 
 // node:module — some dependencies import `createRequire`; real createRequire is
-// meaningless in the browser; stub so the bundle resolves.
-export const createRequire = (_url?: string | URL): ((id: string) => unknown) =>
-  makeStub("createRequire.require");
+// meaningless in the browser. Return browser-safe built-ins for CommonJS
+// compatibility packages, and keep unknown ids loud so server-only paths do not
+// become silent runtime no-ops.
+const browserProcess = {
+  env: {},
+  browser: true,
+  version: "",
+  versions: { node: "0.0.0" },
+  platform: "browser",
+  cwd: () => "/",
+  nextTick: (fn: (...args: unknown[]) => void, ...args: unknown[]) =>
+    queueMicrotask(() => fn(...args)),
+};
+const browserBuffer = {
+  Buffer: BrowserBuffer,
+  SlowBuffer: BrowserBuffer,
+  INSPECT_MAX_BYTES: 50,
+  kMaxLength: Number.MAX_SAFE_INTEGER,
+};
+
+export const createRequire =
+  (_url?: string | URL): ((id: string) => unknown) =>
+  (id: string) => {
+    if (id === "process" || id === "node:process") {
+      return browserProcess;
+    }
+    if (id === "buffer" || id === "node:buffer") {
+      return browserBuffer;
+    }
+    throw new Error(
+      `node:module createRequire browser shim cannot resolve '${id}'`,
+    );
+  };
 export const builtinModules: string[] = [];
 export const isBuiltin = () => false;
 export const Module = class {};

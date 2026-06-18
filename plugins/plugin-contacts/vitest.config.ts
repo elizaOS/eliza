@@ -34,6 +34,16 @@ export default defineConfig({
         replacement: resolve(rootDir, "test/stubs/ui-platform.ts"),
       },
       {
+        // Subpath alias (declared before the bare specifier so it wins) so the
+        // real-parser contract test can import the real ContactsWeb fallback —
+        // the package ships no built ./web export.
+        find: /^@elizaos\/capacitor-contacts\/web$/,
+        replacement: resolve(
+          rootDir,
+          "../../plugins/plugin-native-contacts/src/web.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/capacitor-contacts$/,
         replacement: resolve(
           rootDir,

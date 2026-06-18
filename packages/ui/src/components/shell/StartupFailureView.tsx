@@ -86,7 +86,7 @@ export function StartupFailureView({
   return (
     <div className={SCREEN_SHELL_CLASS}>
       <Card className={SCREEN_CARD_CLASS}>
-        <CardHeader className="border-b border-border/10 bg-[#F7F9FF] pb-6 pt-6">
+        <CardHeader className="border-b border-border/10 bg-card pb-6 pt-6">
           <div className="flex flex-col gap-4">
             <span
               aria-label={reasonLabel}
@@ -96,13 +96,17 @@ export function StartupFailureView({
             >
               <AlertCircle className="h-5 w-5" aria-hidden />
             </span>
-            <h1 className="text-xl font-semibold leading-tight text-[#0B35F1]">
+            <h1 className="text-xl font-semibold leading-tight text-destructive">
               {t("startupfailureview.StartupFailed")} {reasonLabel}
             </h1>
           </div>
         </CardHeader>
 
         <CardContent className="flex flex-col gap-5 pt-6">
+          {/* The human-readable reason, surfaced front-and-centre (not buried in
+              the bug-report draft) so a user staring at an offline phone learns
+              what actually went wrong. */}
+          <p className="text-sm leading-relaxed text-txt">{error.message}</p>
           {error.detail ? (
             <section className="space-y-2 rounded-sm border border-border/50 bg-bg/35 p-4">
               <div className="text-xs-tight font-semibold uppercase tracking-[0.08em] text-muted">

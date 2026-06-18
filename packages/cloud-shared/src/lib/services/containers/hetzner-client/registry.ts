@@ -63,6 +63,48 @@ export async function loginToImageRegistry(ssh: DockerSSHClient, image: string):
   );
 }
 
+/**
+ * Guarantee deterministic registry access on a node before pulling `image`.
+ *
+ * The managed agent image (`ghcr.io/elizaos/eliza`) is public, so an anonymous
+ * pull works with no credentials. But a node that ever ran `docker login` with
+ * a token that has since expired/rotated keeps a stale entry in
+ * `~/.docker/config.json` which OVERRIDES anonymous access — the pull then fails
+ * with `denied` even though the image is public. This is the failure class that
+ * bricks Hetzner robot hosts whose creds rotated out from under them.
+ *
+ * Two idempotent, best-effort branches:
+ *   - registry token configured → `loginToImageRegistry` writes a fresh cred.
+ *   - no token configured       → `docker logout <registryHost>` clears any
+ *     stale cred so the pull falls back to deterministic anonymous access.
+ *
+ * Never hard-fails: a logout/login hiccup must not block the pull that follows.
+ */
+export async function ensureRegistryAccess(ssh: DockerSSHClient, image: string): Promise<void> {
+  const registryHost = getImageRegistryHost(image);
+  if (!registryHost) return;
+
+  if (containersEnv.registryToken() || containersEnv.registryTokenFile()) {
+    await loginToImageRegistry(ssh, image).catch((error) => {
+      logger.warn(`[ensureRegistryAccess] docker login to ${registryHost} failed; continuing`, {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+    return;
+  }
+
+  // No token configured: proactively drop any stale stored credential so the
+  // public-image pull uses anonymous access deterministically.
+  await ssh
+    .exec(`docker logout ${shellQuote(registryHost)} >/dev/null 2>&1 || true`, 30_000)
+    .catch((error) => {
+      logger.warn(
+        `[ensureRegistryAccess] docker logout ${registryHost} failed; a stale cred may block the public pull`,
+        { error: error instanceof Error ? error.message : String(error) },
+      );
+    });
+}
+
 export async function readPulledImageDigest(
   ssh: DockerSSHClient,
   image: string,

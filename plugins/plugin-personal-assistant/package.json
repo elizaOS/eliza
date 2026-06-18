@@ -68,6 +68,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/macosreminders": "workspace:*",
     "@elizaos/native-activity-tracker": "workspace:*",
+    "@elizaos/plugin-blocker": "workspace:*",
     "@elizaos/plugin-calendar": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
     "@elizaos/plugin-calendly": "workspace:*",

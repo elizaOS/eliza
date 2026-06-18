@@ -1,0 +1,104 @@
+{
+  "_source": "Fitbit Web API (api.fitbit.com) documented response shapes — https://dev.fitbit.com/build/reference/web-api/. `profile` is GET /1/user/-/profile.json; `activity` is GET /1/user/-/activities/date/{date}.json; `sleep` is GET /1.2/user/-/sleep/date/{date}.json; `heart` is GET /1/user/-/activities/heart/date/{date}/1d.json; `weight` is GET /1/user/-/body/log/weight/date/{date}.json. Field names + units match the real wire shape: activities-heart restingHeartRate bpm, summary.distances[].distance km, summary.caloriesOut kcal, summary.{fairlyActive,veryActive}Minutes minutes, sleep[].duration milliseconds, sleep[].timeInBed/minutesAwake/minutesToFallAsleep minutes, sleep[].levels.data[].seconds seconds, body.log.weight[].weight kg.",
+  "_why": "Replayed through syncHealthConnectorData({token:{provider:'fitbit'}}) so the normalized HealthConnectorSyncPayload (samples + sleepEpisodes + identity) is validated against the real Fitbit per-date shapes. fitbit-connector.real.test.ts re-fetches the live API with a token to detect drift from this recording.",
+  "_captured": "2026-06-17",
+  "profile": {
+    "user": {
+      "encodedId": "GGNJL9",
+      "fullName": "Ada Lovelace",
+      "displayName": "Ada",
+      "gender": "FEMALE",
+      "age": 33,
+      "height": 167.0,
+      "weight": 61.2,
+      "timezone": "Europe/London",
+      "memberSince": "2024-01-02"
+    }
+  },
+  "activity": {
+    "summary": {
+      "steps": 11842,
+      "caloriesOut": 2415,
+      "activityCalories": 1180,
+      "fairlyActiveMinutes": 28,
+      "veryActiveMinutes": 41,
+      "lightlyActiveMinutes": 210,
+      "sedentaryMinutes": 640,
+      "distances": [
+        { "activity": "total", "distance": 8.52 },
+        { "activity": "tracker", "distance": 8.52 },
+        { "activity": "veryActive", "distance": 4.1 }
+      ]
+    },
+    "goals": { "steps": 10000, "caloriesOut": 2300 }
+  },
+  "sleep": {
+    "summary": {
+      "totalMinutesAsleep": 456,
+      "totalSleepRecords": 1,
+      "totalTimeInBed": 486,
+      "stages": { "deep": 108, "light": 252, "rem": 96, "wake": 30 }
+    },
+    "sleep": [
+      {
+        "logId": 38291002001,
+        "dateOfSleep": "2026-05-01",
+        "startTime": "2026-04-30T22:48:00.000",
+        "endTime": "2026-05-01T06:54:00.000",
+        "duration": 29160000,
+        "minutesAsleep": 456,
+        "minutesAwake": 30,
+        "timeInBed": 486,
+        "minutesToFallAsleep": 9,
+        "efficiency": 94,
+        "isMainSleep": true,
+        "type": "stages",
+        "infoCode": 0,
+        "levels": {
+          "summary": {
+            "deep": { "count": 4, "minutes": 108 },
+            "light": { "count": 22, "minutes": 252 },
+            "rem": { "count": 5, "minutes": 96 },
+            "wake": { "count": 18, "minutes": 30 }
+          },
+          "data": [
+            { "dateTime": "2026-04-30T22:48:00.000", "level": "light", "seconds": 1800 },
+            { "dateTime": "2026-04-30T23:18:00.000", "level": "deep", "seconds": 2700 },
+            { "dateTime": "2026-05-01T00:03:00.000", "level": "rem", "seconds": 1200 },
+            { "dateTime": "2026-05-01T00:23:00.000", "level": "wake", "seconds": 300 }
+          ]
+        }
+      }
+    ]
+  },
+  "heart": {
+    "activities-heart": [
+      {
+        "dateTime": "2026-05-01",
+        "value": {
+          "restingHeartRate": 54,
+          "heartRateZones": [
+            { "name": "Out of Range", "min": 30, "max": 109, "minutes": 1200, "caloriesOut": 980.5 },
+            { "name": "Fat Burn", "min": 109, "max": 136, "minutes": 180, "caloriesOut": 620.2 },
+            { "name": "Cardio", "min": 136, "max": 169, "minutes": 42, "caloriesOut": 410.8 },
+            { "name": "Peak", "min": 169, "max": 220, "minutes": 6, "caloriesOut": 88.4 }
+          ]
+        }
+      }
+    ]
+  },
+  "weight": {
+    "weight": [
+      {
+        "logId": 38291077001,
+        "date": "2026-05-01",
+        "time": "07:15:00",
+        "weight": 61.2,
+        "bmi": 21.94,
+        "fat": 23.1,
+        "source": "API",
+        "weightUnit": "kg"
+      }
+    ]
+  }
+}

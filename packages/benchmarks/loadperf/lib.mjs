@@ -97,9 +97,15 @@ export async function fetchText(url, { timeoutMs = 4000 } = {}) {
 }
 
 /**
- * Poll a base URL until the agent reports ready. Accepts either an explicit
- * `{ ready: true }` health payload or a plain HTTP 200 (older builds). Returns
- * the elapsed milliseconds from the first probe to ready.
+ * Poll a base URL until the agent reports ready. Requires an explicit
+ * `{ ready: true }` health payload — a bare HTTP 200 (a stale server, a
+ * different service, or the early liveness handler that returns before the
+ * runtime is up) is NOT treated as ready. Returns the elapsed milliseconds from
+ * the first probe to ready, plus the health body that satisfied the check.
+ *
+ * `boot-kpi.mjs` is the only caller; the strict `ready === true` gate is what
+ * keeps the boot KPI from recording a false PASS against a server that never
+ * actually booted, so there is intentionally no loose opt-in.
  */
 export async function waitForReady(baseUrl, { timeoutMs = 300_000, intervalMs = 250, startMs } = {}) {
   const begin = startMs ?? Date.now();

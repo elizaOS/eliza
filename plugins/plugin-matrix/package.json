@@ -49,6 +49,7 @@
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
+    "@elizaos/core": "workspace:*",
     "matrix-js-sdk": "^41.4.0"
   },
   "peerDependencies": {

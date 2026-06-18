@@ -1,6 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { runExtractorPipeline } from "../../lifeops/llm/extractor-pipeline.js";
-import { parseJsonModelRecord } from "../../utils/json-model-output.js";
+import { parseJsonModelRecord, runExtractorPipeline } from "@elizaos/core";
 
 const VALID_CADENCE_KINDS = new Set([
   "once",

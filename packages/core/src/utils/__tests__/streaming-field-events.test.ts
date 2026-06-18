@@ -172,6 +172,51 @@ describe("ResponseSkeletonStreamExtractor", () => {
 		]);
 	});
 
+	it("streams non-envelope prose straight through as the reply (passthrough)", () => {
+		// A local model that was not grammar-constrained (e.g. the FFI backend,
+		// which cannot apply GBNF) emits the reply as raw prose with no JSON
+		// envelope. Previously the extractor matched no spans and emitted nothing,
+		// so chat-routes collapsed the whole reply into one trailing chunk. Now it
+		// streams the prose token-by-token.
+		const chunks: string[] = [];
+		const accumulated: string[] = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			onChunk: (chunk, _field, acc) => {
+				chunks.push(chunk);
+				if (acc !== undefined) accumulated.push(acc);
+			},
+		});
+
+		extractor.push("Hello ");
+		extractor.push("there, ");
+		extractor.push("friend.");
+		extractor.flush();
+
+		expect(chunks.join("")).toBe("Hello there, friend.");
+		// Streamed incrementally (one emission per pushed token), not once at the end.
+		expect(chunks.length).toBeGreaterThan(1);
+		expect(accumulated.at(-1)).toBe("Hello there, friend.");
+	});
+
+	it("keeps envelope-shaped output on the structured path (no control-field leak)", () => {
+		// Output that opens with `{` is still parsed as the envelope, so thought /
+		// shouldRespond / facts never reach the user — only replyText does.
+		const chunks: string[] = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			onChunk: (chunk) => chunks.push(chunk),
+		});
+
+		extractor.push('{"shouldRespond":"RESPOND","contexts":[],"intents":[],');
+		extractor.push('"replyText":"hi","facts":[]}');
+		extractor.flush();
+
+		expect(chunks.join("")).toBe("hi");
+	});
+
 	it("decodes JSON string escapes before emitting text", () => {
 		const chunks: string[] = [];
 		const extractor = new ResponseSkeletonStreamExtractor({

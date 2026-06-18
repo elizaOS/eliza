@@ -16,6 +16,22 @@ routing.
   - `BITROUTER_BASE_URL=https://<railway-domain>`
   - `BITROUTER_API_KEY=<same value as BITROUTER_PROXY_TOKEN>`
 
+## gpt-oss routing policy
+
+`gpt-oss-120b` is intentionally routed Cerebras-first:
+
+- `gpt-oss-120b` is the bare Cerebras-native id used by the Cloud default path.
+- `openai/gpt-oss-120b` and `openai/gpt-oss-120b:nitro` are legacy gateway
+  aliases kept for stored settings and older clients.
+- All three aliases route to Cerebras first, then to OpenRouter with the plain
+  `openai/gpt-oss-120b` id as fallback.
+
+**Why:** the `:nitro` suffix is an OpenRouter routing convention, not a healthy
+model id for this self-hosted BitRouter path. Leaving new users on
+`openai/gpt-oss-120b:nitro` surfaced upstream 502s as Cloud 503s, while the
+bare Cerebras model was already proven live. The fallback keeps legacy callers
+working without making OpenRouter the first hop.
+
 ## Railway variables
 
 Required:
@@ -48,6 +64,9 @@ railway variables --service bitrouter --set "CEREBRAS_API_KEY=<csk_...>" --skip-
 railway up --service bitrouter packages/cloud-infra/cloud/bitrouter --path-as-root
 railway domain --service bitrouter
 ```
+
+Redeploy BitRouter whenever `bitrouter.yaml` changes. Worker deploys alone do
+not update the Railway service catalog or fallback chain.
 
 After deploy, set Cloud API Worker secrets:
 

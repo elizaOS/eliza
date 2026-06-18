@@ -1,14 +1,3 @@
-/**
- * websiteBlockerProvider — injects the user's current website-block state into
- * the planner each turn (active sessions, allow-list size, override eligibility).
- *
- * STATUS: stub. The real implementation lives in:
- *   plugins/plugin-personal-assistant/src/providers/website-blocker.ts
- *
- * TODO(migration): move the source file here and repoint its service import
- * from the lifeops-local engine to ../services/website-blocker.
- */
-
 import type {
   IAgentRuntime,
   Memory,
@@ -16,31 +5,153 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-
-import type { WebsiteBlockerService } from "../services/website-blocker.ts";
-import { BLOCKER_CONTEXTS, WEBSITE_BLOCKER_SERVICE_TYPE } from "../types.ts";
+import { getSelfControlAccess } from "../services/website-blocker/access.ts";
+import { getCachedSelfControlStatus } from "../services/website-blocker/engine.ts";
 
 export const websiteBlockerProvider: Provider = {
-  name: "WEBSITE_BLOCKER",
+  name: "websiteBlocker",
   description:
-    "Active website block sessions (SelfControl-style hosts rules) and override status for the current user.",
-  position: -3,
-  contexts: [...BLOCKER_CONTEXTS],
-  contextGate: { anyOf: [...BLOCKER_CONTEXTS] },
+    "Owner-only provider for the local hosts-file website blocker integration. Use BLOCK action=block target=website for website blocking (timed focus blocks, generic distraction blocks, or fixed duration).",
+  descriptionCompressed: "Owner: hosts-file website blocker.",
+  dynamic: true,
+  contexts: ["screen_time", "settings"],
+  contextGate: { anyOf: ["screen_time", "settings"] },
+  cacheScope: "turn",
+  roleGate: { minRole: "OWNER" },
   get: async (
     runtime: IAgentRuntime,
-    _message: Memory,
-    _state?: State,
+    message: Memory,
+    _state: State,
   ): Promise<ProviderResult> => {
-    const service = runtime.getService<WebsiteBlockerService>(
-      WEBSITE_BLOCKER_SERVICE_TYPE,
-    );
-    if (!service) return { text: "", data: { sessions: [] } };
-    // TODO(migration): use the real listActive() once ported.
-    const sessions = await service.listActive();
+    const access = await getSelfControlAccess(runtime, message);
+    if (!access.allowed) {
+      return {
+        text: "",
+        values: {
+          websiteBlockerAuthorized: false,
+          selfControlAuthorized: false,
+        },
+        data: {
+          websiteBlockerAuthorized: false,
+          selfControlAuthorized: false,
+        },
+      };
+    }
+
+    let status;
+    try {
+      status = await getCachedSelfControlStatus();
+    } catch (error) {
+      return {
+        text: "Local website blocking status unavailable.",
+        values: {
+          websiteBlockerAuthorized: true,
+          websiteBlockerAvailable: false,
+          selfControlAuthorized: true,
+          selfControlAvailable: false,
+        },
+        data: {
+          websiteBlockerAuthorized: true,
+          websiteBlockerAvailable: false,
+          selfControlAuthorized: true,
+          selfControlAvailable: false,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      };
+    }
+    if (!status.available) {
+      return {
+        text:
+          status.reason ??
+          "Local website blocking is unavailable on this machine.",
+        values: {
+          websiteBlockerAuthorized: true,
+          websiteBlockerAvailable: false,
+          websiteBlockerCanUnblockEarly: false,
+          websiteBlockerRequiresElevation: status.requiresElevation,
+          websiteBlockerSupportsElevationPrompt: status.supportsElevationPrompt,
+          websiteBlockerElevationPromptMethod: status.elevationPromptMethod,
+          websiteBlockerEngine: status.engine,
+          websiteBlockerPlatform: status.platform,
+          selfControlAuthorized: true,
+          selfControlAvailable: false,
+          selfControlCanUnblockEarly: false,
+          selfControlSupportsElevationPrompt: status.supportsElevationPrompt,
+          selfControlElevationPromptMethod: status.elevationPromptMethod,
+        },
+        data: {
+          websiteBlockerAuthorized: true,
+          websiteBlockerAvailable: false,
+          websiteBlockerCanUnblockEarly: false,
+          websiteBlockerRequiresElevation: status.requiresElevation,
+          websiteBlockerSupportsElevationPrompt: status.supportsElevationPrompt,
+          websiteBlockerElevationPromptMethod: status.elevationPromptMethod,
+          websiteBlockerEngine: status.engine,
+          websiteBlockerPlatform: status.platform,
+          selfControlAuthorized: true,
+          selfControlAvailable: false,
+          selfControlCanUnblockEarly: false,
+          selfControlSupportsElevationPrompt: status.supportsElevationPrompt,
+          selfControlElevationPromptMethod: status.elevationPromptMethod,
+        },
+      };
+    }
+
+    const statusLine = status.active
+      ? status.endsAt
+        ? `A website block is active until ${status.endsAt}.`
+        : "A website block is active until you remove it."
+      : "No website block is active right now.";
+
     return {
-      text: "",
-      data: { sessions },
+      text: [
+        "Local website blocking is available through the system hosts file.",
+        statusLine,
+        status.reason ??
+          "Eliza can remove the block early when it has permission to edit the hosts file.",
+      ].join(" "),
+      values: {
+        websiteBlockerAuthorized: true,
+        websiteBlockerAvailable: true,
+        websiteBlockerActive: status.active,
+        websiteBlockerEndsAt: status.endsAt,
+        websiteBlockerCanUnblockEarly: status.canUnblockEarly,
+        websiteBlockerRequiresElevation: status.requiresElevation,
+        websiteBlockerSupportsElevationPrompt: status.supportsElevationPrompt,
+        websiteBlockerElevationPromptMethod: status.elevationPromptMethod,
+        websiteBlockerHostsFilePath: status.hostsFilePath,
+        websiteBlockerEngine: status.engine,
+        websiteBlockerPlatform: status.platform,
+        selfControlAuthorized: true,
+        selfControlAvailable: true,
+        selfControlActive: status.active,
+        selfControlEndsAt: status.endsAt,
+        selfControlCanUnblockEarly: status.canUnblockEarly,
+        selfControlSupportsElevationPrompt: status.supportsElevationPrompt,
+        selfControlElevationPromptMethod: status.elevationPromptMethod,
+        selfControlHostsFilePath: status.hostsFilePath,
+      },
+      data: {
+        websiteBlockerAuthorized: true,
+        websiteBlockerAvailable: true,
+        websiteBlockerActive: status.active,
+        websiteBlockerEndsAt: status.endsAt,
+        websiteBlockerCanUnblockEarly: status.canUnblockEarly,
+        websiteBlockerRequiresElevation: status.requiresElevation,
+        websiteBlockerSupportsElevationPrompt: status.supportsElevationPrompt,
+        websiteBlockerElevationPromptMethod: status.elevationPromptMethod,
+        websiteBlockerHostsFilePath: status.hostsFilePath,
+        websiteBlockerEngine: status.engine,
+        websiteBlockerPlatform: status.platform,
+        selfControlAuthorized: true,
+        selfControlAvailable: true,
+        selfControlActive: status.active,
+        selfControlEndsAt: status.endsAt,
+        selfControlCanUnblockEarly: status.canUnblockEarly,
+        selfControlSupportsElevationPrompt: status.supportsElevationPrompt,
+        selfControlElevationPromptMethod: status.elevationPromptMethod,
+        selfControlHostsFilePath: status.hostsFilePath,
+      },
     };
   },
 };

@@ -1,6 +1,7 @@
+import { recentConversationTexts } from "@elizaos/core";
 import {
-  createOwnerHealthAction,
   createHealthActionRunner,
+  createOwnerHealthAction,
   HEALTH_PARAMETERS,
   HEALTH_SIMILES,
 } from "@elizaos/plugin-health";
@@ -11,7 +12,6 @@ import {
   messageText,
   renderLifeOpsActionReply,
 } from "../lifeops/voice/grounded-reply.js";
-import { recentConversationTexts } from "./lib/recent-context.js";
 
 export { createOwnerHealthAction, HEALTH_PARAMETERS, HEALTH_SIMILES };
 

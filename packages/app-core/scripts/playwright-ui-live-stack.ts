@@ -17,6 +17,7 @@ import {
   selectLiveProvider,
 } from "../test/helpers/live-provider.ts";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
+import { shouldForceStubStack } from "./lib/ui-smoke-stub-decision.mjs";
 import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
@@ -36,8 +37,11 @@ const READY_TIMEOUT_MS = 180_000;
 const API_PORT = Number(process.env.ELIZA_UI_SMOKE_API_PORT ?? "31337");
 const UI_PORT = Number(process.env.ELIZA_UI_SMOKE_PORT ?? "2138");
 const LIVE_PROVIDER = selectLiveProvider();
-const FORCE_STUB_STACK =
-  process.env.ELIZA_UI_SMOKE_FORCE_STUB === "1" || process.env.CI === "true";
+// Precedence (force-stub > live opt-in > CI default) lives in one tested helper.
+// The key behavior: ELIZA_UI_SMOKE_LIVE_STACK=1 overrides the CI-based stub force
+// so a genuinely-real lane is possible (GitHub Actions always sets CI=true, which
+// would otherwise re-force the stub even when a provider key was supplied).
+const FORCE_STUB_STACK = shouldForceStubStack(process.env);
 
 type StartedStack = {
   apiBase: string;
@@ -694,18 +698,25 @@ async function startRealStack(): Promise<StartedStack> {
   });
 
   await waitForJson<{ complete: boolean }>(`${apiBase}/api/first-run/status`);
-  const onboardingStatus = await fetchJson<{ complete: boolean }>(
-    `${apiBase}/api/first-run/status`,
-  );
-  if (!onboardingStatus.complete) {
-    await submitFirstRun(apiBase);
-  }
+  // Cloud-live mode (ELIZA_UI_SMOKE_CLOUD_LIVE=1) leaves first-run UNcompleted so
+  // the spec can drive the real cloud onboarding (login -> provision) through the
+  // UI against real Eliza Cloud. The default lane auto-completes a local first-run
+  // so chat/view specs land on a ready agent.
+  const skipAutoFirstRun = process.env.ELIZA_UI_SMOKE_CLOUD_LIVE === "1";
+  if (!skipAutoFirstRun) {
+    const onboardingStatus = await fetchJson<{ complete: boolean }>(
+      `${apiBase}/api/first-run/status`,
+    );
+    if (!onboardingStatus.complete) {
+      await submitFirstRun(apiBase);
+    }
 
-  await waitForJsonPredicate<{ complete: boolean }>(
-    `${apiBase}/api/first-run/status`,
-    (status) => status.complete === true,
-    READY_TIMEOUT_MS,
-  );
+    await waitForJsonPredicate<{ complete: boolean }>(
+      `${apiBase}/api/first-run/status`,
+      (status) => status.complete === true,
+      READY_TIMEOUT_MS,
+    );
+  }
   await waitForJsonPredicate<{ state?: string }>(
     `${apiBase}/api/status`,
     (status) => status.state === "running",

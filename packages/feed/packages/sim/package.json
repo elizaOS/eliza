@@ -38,7 +38,7 @@
     "@feed/engine": "workspace:*",
     "@feed/shared": "workspace:*",
     "c12": "2.0.4",
-    "chokidar": "^4.0.3",
+    "chokidar": "^5.0.0",
     "citty": "^0.1.6",
     "consola": "^3.4.2",
     "hookable": "^5.5.3",

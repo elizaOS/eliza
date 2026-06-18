@@ -21,6 +21,9 @@ const unitExcludes = [
 export default defineConfig({
   ...baseConfig,
   root: here,
+  resolve: {
+    ...baseConfig.resolve,
+  },
   test: {
     ...baseConfig.test,
     environment: "jsdom",

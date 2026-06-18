@@ -21,9 +21,12 @@ import {
  * SECURITY: this adapter NEVER substitutes the authorization URL into the
  * chat content `text` field. The URL only travels inside the envelope's
  * `form.authorizationUrl`, where the widget consumes it to open a popup
- * with `noopener,noreferrer`. The widget also never echoes the URL back
- * into chat. The actual token-handling provider lives elsewhere; this
- * adapter only formats and delivers the consent-link envelope.
+ * with `noreferrer` (the widget deliberately omits `noopener` — passing it
+ * forces `window.open` to return null and destroys the popup-blocked
+ * signal — and instead nulls `popup.opener` itself after opening). The
+ * widget also never echoes the URL back into chat. The actual
+ * token-handling provider lives elsewhere; this adapter only formats and
+ * delivers the consent-link envelope.
  */
 interface OwnerAppOAuthRuntime {
   sendMessageToTarget(

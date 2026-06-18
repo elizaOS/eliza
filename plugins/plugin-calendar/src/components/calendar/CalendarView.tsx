@@ -1,38 +1,41 @@
-import type { ReactElement } from "react";
-import { useState } from "react";
-
 /**
- * Minimal CalendarView placeholder.
+ * CalendarView — registered top-level calendar overlay view.
  *
- * MIGRATION STATUS: STUB.
- * The richer UI (event grid, agenda mode, event editor drawer, drag-to-create,
- * provider toggles) lives in `CalendarSection.tsx` and will be progressively
- * lifted into this top-level view. For now this renders the day/week/month tab
- * switcher + an inline-conflicts placeholder panel so the route registers,
- * mounts, and is visually identifiable.
+ * Thin host wrapper around the rich `CalendarSection`: CalendarSection owns the
+ * prev/today/next nav, the day/week/month SegmentedControl, the "New" button,
+ * the time/month/agenda grids, and the `EventEditorDrawer` — all instrumented
+ * through `useAgentElement` so the floating chat can drive them. This wrapper
+ * only owns the selection id the section reports back, and routes a
+ * chat-about-event request through the shared `setActionNotice` affordance.
  *
- * TODO(migrate: plugins/plugin-lifeops/src/components/* calendar surface)
- *   - port primed-event cache + chat launcher
- *   - port conflict severity colors
- *   - port event editor drawer wiring (EventEditorDrawer.tsx is already in
- *     this plugin and ready to be wired in)
+ * `getPrimedEvent` returns `null`: there is no deep-link / widget prime cache in
+ * this view yet, so CalendarSection resolves selected events from the loaded
+ * feed only. That is the honest behavior — no fabricated cache.
  */
 
-type CalendarTab = "day" | "week" | "month";
+import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { useApp } from "@elizaos/ui";
+import type { ReactElement } from "react";
+import { useCallback, useState } from "react";
+import { CalendarSection } from "../CalendarSection.js";
 
-const TABS: { id: CalendarTab; label: string }[] = [
-  { id: "day", label: "Day" },
-  { id: "week", label: "Week" },
-  { id: "month", label: "Month" },
-];
+export function CalendarView(): ReactElement {
+  const { setActionNotice } = useApp();
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
-export interface CalendarViewProps {
-  initialTab?: CalendarTab;
-}
-
-export function CalendarView(props: CalendarViewProps): ReactElement {
-  const [activeTab, setActiveTab] = useState<CalendarTab>(
-    props.initialTab ?? "week",
+  const handleChatAboutEvent = useCallback(
+    (event: LifeOpsCalendarEvent) => {
+      // The event buttons are already agent-surface instrumented, so the
+      // floating chat can act on the selected event. Surface a notice that
+      // points the user at the assistant rather than fabricating a launcher
+      // this view doesn't own.
+      setActionNotice(
+        `Ask the assistant about “${event.title}”.`,
+        "info",
+        4000,
+      );
+    },
+    [setActionNotice],
   );
 
   return (
@@ -42,97 +45,18 @@ export function CalendarView(props: CalendarViewProps): ReactElement {
         flexDirection: "column",
         height: "100%",
         padding: "1.5rem",
-        gap: "1rem",
-        fontFamily: "system-ui, sans-serif",
+        boxSizing: "border-box",
+        background: "var(--background, #0a0a0a)",
+        color: "var(--foreground, #f5f5f5)",
       }}
+      data-testid="calendar-view"
     >
-      <header
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "0.5rem",
-        }}
-      >
-        <h1 style={{ fontSize: "1.5rem", fontWeight: 600, margin: 0 }}>
-          Calendar
-        </h1>
-        <p style={{ color: "#888", margin: 0 }}>
-          Unified Google + Apple calendar feed with inline conflict detection.
-        </p>
-      </header>
-
-      <div
-        role="tablist"
-        aria-label="Calendar view mode"
-        style={{ display: "flex", gap: "0.5rem" }}
-      >
-        {TABS.map((tab) => {
-          const active = tab.id === activeTab;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => setActiveTab(tab.id)}
-              style={{
-                padding: "0.4rem 0.9rem",
-                borderRadius: 999,
-                border: "1px solid",
-                borderColor: active ? "#f97316" : "#444",
-                background: active ? "#f97316" : "transparent",
-                color: active ? "#fff" : "inherit",
-                cursor: "pointer",
-                fontSize: "0.85rem",
-              }}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <section
-        role="tabpanel"
-        aria-label={`${activeTab} view`}
-        style={{
-          flex: 1,
-          border: "1px dashed #333",
-          borderRadius: 12,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "#888",
-          minHeight: 240,
-        }}
-      >
-        <span>
-          {activeTab === "day" && "Day view — events for the selected day."}
-          {activeTab === "week" && "Week view — 7-day event grid."}
-          {activeTab === "month" && "Month view — 5/6-row day grid."}
-        </span>
-      </section>
-
-      <aside
-        aria-label="Inline conflicts"
-        style={{
-          border: "1px solid #2a1f15",
-          background: "#1a120a",
-          borderRadius: 12,
-          padding: "1rem",
-          display: "flex",
-          flexDirection: "column",
-          gap: "0.5rem",
-        }}
-      >
-        <strong style={{ color: "#f97316", fontSize: "0.9rem" }}>
-          Inline conflicts
-        </strong>
-        <p style={{ margin: 0, color: "#aaa", fontSize: "0.85rem" }}>
-          Overlap detection runs against the visible window. No conflicts
-          detected.
-        </p>
-      </aside>
+      <CalendarSection
+        selectedEventId={selectedEventId}
+        onSelectEvent={setSelectedEventId}
+        onChatAboutEvent={handleChatAboutEvent}
+        getPrimedEvent={() => null}
+      />
     </div>
   );
 }

@@ -11,6 +11,7 @@ const stub = {
   version: "",
   versions: { node: "0.0.0" },
   platform: "browser" as const,
+  cwd: () => "/",
   nextTick: (fn: (...args: unknown[]) => void, ...args: unknown[]) =>
     queueMicrotask(() => fn(...args)),
 };
@@ -22,3 +23,4 @@ export const browser = true;
 export const version = "";
 export const versions = stub.versions;
 export const platform = "browser";
+export const cwd = stub.cwd;

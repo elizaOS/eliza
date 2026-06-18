@@ -142,7 +142,11 @@ export function installApiFetchBridge(): void {
         const rewritten = `${base}${url.pathname}${url.search}${url.hash}`;
         return nativeFetch(new Request(rewritten, request), {
           headers: withAuthHeaders(request.headers),
-          credentials: request.credentials ?? "include",
+          // A Request always carries credentials (spec default "same-origin"),
+          // so reading request.credentials would never reach "include" and a
+          // cross-origin upstream rewrite would drop the Steward cookie/JWT.
+          // Mirror the string/URL branches: honor an explicit init, else include.
+          credentials: init?.credentials ?? "include",
         });
       }
     }

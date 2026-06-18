@@ -389,11 +389,9 @@ function readBundleIndex(): Record<string, IosBundleRecord> {
 
 function isIosVoiceAssetPath(rawPath: string): boolean {
   const path = rawPath.toLowerCase().replace(/\\/g, "/");
-  if (!/\.(bin|codec|gguf|json|onnx)$/i.test(path)) return false;
+  if (!/\.(bin|codec|gguf|json)$/i.test(path)) return false;
   if (/(^|\/)(asr|tts|vad|voice|voices|wakeword)\//.test(path)) return true;
-  return /(^|\/)cache\/[^/]*voice[^/]*\.(bin|codec|gguf|json|onnx)$/i.test(
-    path,
-  );
+  return /(^|\/)cache\/[^/]*voice[^/]*\.(bin|codec|gguf|json)$/i.test(path);
 }
 
 function inferVoiceReadiness(

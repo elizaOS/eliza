@@ -64,6 +64,13 @@
   --color-status-warning-bg: var(--status-warning-bg);
   --color-status-info: var(--status-info);
   --color-status-info-bg: var(--status-info-bg);
+  /* Short semantic aliases so the widely-used bg-info / text-success /
+     border-warning utilities resolve (they had no --color-* token, so ~46
+     callsites rendered with no semantic color). info follows status-info
+     (neutral, post the no-blue fix); success/warning keep their green/amber. */
+  --color-info: var(--status-info);
+  --color-success: var(--status-success);
+  --color-warning: var(--status-warning);
 
   --color-header-bg: var(--header-bar-bg);
   --color-header-fg: var(--header-bar-fg);

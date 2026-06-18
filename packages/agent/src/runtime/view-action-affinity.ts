@@ -113,6 +113,8 @@ export function setActiveViewElements(
  *   todos     — plugins/plugin-personal-assistant/src/actions/owner-surfaces (OWNER_TODOS)
  *   goals     — plugins/plugin-goals/src/actions (OWNER_GOALS, OWNER_ALARMS, OWNER_REMINDERS, OWNER_ROUTINES)
  *   inbox     — plugins/plugin-inbox/src/actions/inbox (INBOX)
+ *   focus     — plugins/plugin-personal-assistant/src/website-blocker/chat-integration/
+ *               actions/{listActiveBlocks,releaseBlock}.ts (LIST_ACTIVE_BLOCKS, RELEASE_BLOCK)
  *   finances  — plugins/plugin-finances/src/actions/finances (OWNER_FINANCES)
  *   lifeops   — plugins/plugin-personal-assistant/src/actions (PERSONAL_ASSISTANT)
  */
@@ -129,6 +131,7 @@ export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
   todos: ["OWNER_TODOS"],
   goals: ["OWNER_GOALS", "OWNER_ALARMS", "OWNER_REMINDERS", "OWNER_ROUTINES"],
   inbox: ["INBOX"],
+  focus: ["LIST_ACTIVE_BLOCKS", "RELEASE_BLOCK"],
   finances: ["OWNER_FINANCES"],
   lifeops: ["PERSONAL_ASSISTANT"],
   wallet: [

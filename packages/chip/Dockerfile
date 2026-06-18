@@ -16,10 +16,11 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         build-essential ca-certificates curl git make cmake ninja-build \
+        autoconf automake libfl-dev help2man \
         bc bison flex file pkg-config rsync unzip \
         python3 python3-dev python3-pip python3-venv \
         shellcheck jq device-tree-compiler \
-        verilator yosys iverilog gtkwave qemu-system-misc \
+        yosys iverilog gtkwave qemu-system-misc \
         gcc-riscv64-unknown-elf gcc-riscv64-linux-gnu z3 \
         openjdk-17-jdk-headless repo adb \
         fio openocd sigrok-cli \
@@ -33,6 +34,19 @@ RUN set -eux; \
         tar -C /etc/apt -cf /var/log/apt-manifest/sources.list.d.tar sources.list.d 2>/dev/null || true; \
     fi; \
     rm -rf /var/lib/apt/lists/*
+
+# Build Verilator from source. The e1 SoC RTL targets Verilator 5.048+ (see
+# tools/env.sh + docs/evidence). The Ubuntu apt verilator (5.020) is too old:
+# it rejects valid lint codes (e.g. UNUSEDLOOP) and lacks the V3Delayed support
+# for non-blocking array writes inside loops the BPU uses, so the full-SoC
+# cocotb integration TB (cocotb-cross-domain) cannot elaborate on it. 5.048 is
+# open source and elaborates the full SoC (TESTS=16 PASS=16).
+RUN set -eux; \
+    git clone --depth 1 --branch v5.048 https://github.com/verilator/verilator /tmp/verilator; \
+    cd /tmp/verilator; \
+    autoconf; ./configure; make -j"$(nproc)"; make install; \
+    cd /; rm -rf /tmp/verilator; \
+    verilator --version
 
 RUN python3 -m venv /opt/eliza-venv
 ENV PATH="/opt/eliza-venv/bin:${PATH}"

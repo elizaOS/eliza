@@ -4,8 +4,10 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
-  type State,
   requireConfirmation,
+  resolveActionArgs,
+  type State,
+  type SubactionsMap,
 } from "@elizaos/core";
 import {
   DEFAULT_AUTOFILL_WHITELIST,
@@ -15,10 +17,6 @@ import {
 } from "../lifeops/autofill-whitelist.js";
 import { requireFeatureEnabled } from "../lifeops/feature-flags.js";
 import { FeatureNotEnabledError } from "../lifeops/feature-flags.types.js";
-import {
-  resolveActionArgs,
-  type SubactionsMap,
-} from "./lib/resolve-action-args.js";
 
 const ACTION_NAME = "AUTOFILL";
 

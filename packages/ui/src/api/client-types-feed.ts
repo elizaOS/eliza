@@ -286,6 +286,14 @@ export interface FeedAgentStats {
   balance: number;
 }
 
+/**
+ * @deprecated Does NOT describe the Feed `/agent/summary` response. That endpoint
+ * proxies an upstream `{agent,portfolio,positions}` envelope which `plugin-feed`'s
+ * `extractAgentSummary` parses into a `FeedAgentSummaryEnvelope`.
+ * `getFeedAgentSummary()` returns the raw `unknown` body; do not type Feed summary
+ * data with this shape. Retained only for backward compat of the published
+ * `@elizaos/ui` surface.
+ */
 export interface FeedAgentSummary {
   id: string;
   name: string;

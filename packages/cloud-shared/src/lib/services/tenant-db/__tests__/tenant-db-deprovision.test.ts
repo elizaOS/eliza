@@ -32,6 +32,7 @@ function deps(over: Partial<TenantDbDeprovisionDeps> = {}) {
       return {
         async deprovision(appId) {
           calls.push(`drop:${appId}`);
+          return { existed: true };
         },
       };
     },
@@ -72,7 +73,11 @@ describe("deprovisionTenantDbForApp", () => {
       },
       makeDeprovisioner() {
         dropped = true;
-        return { async deprovision() {} };
+        return {
+          async deprovision() {
+            return { existed: true };
+          },
+        };
       },
       async releaseSlot() {
         released = true;
@@ -100,5 +105,28 @@ describe("deprovisionTenantDbForApp", () => {
     });
     await expect(deprovisionTenantDbForApp(APP_ID, DSN, d)).rejects.toThrow("connection refused");
     expect(released).toEqual([]); // slot stays counted — the DB wasn't dropped
+  });
+
+  test("does NOT release the slot when the DB was already gone (idempotent re-run, no double-free)", async () => {
+    const released: string[] = [];
+    const { calls, deps: d } = deps({
+      makeDeprovisioner(adminDsn, host) {
+        return {
+          async deprovision(appId) {
+            calls.push(`drop:${appId}@${host}`);
+            // The DROP IF EXISTS ran but the DB was already gone (a re-run after
+            // a prior successful deprovision) — so the slot must NOT be freed
+            // again. (#8342)
+            return { existed: false };
+          },
+        };
+      },
+      async releaseSlot(id) {
+        released.push(id);
+      },
+    });
+    const result = await deprovisionTenantDbForApp(APP_ID, DSN, d);
+    expect(result).toEqual({ deprovisioned: true }); // teardown still ran / desired state reached
+    expect(released).toEqual([]); // but the slot was NOT decremented a second time
   });
 });

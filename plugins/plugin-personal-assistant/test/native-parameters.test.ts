@@ -3,10 +3,10 @@ import {
   type IAgentRuntime,
   listSubactionsFromParameters,
   type Memory,
+  resolveActionArgs,
 } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { calendarAction } from "../src/actions/calendar.js";
-import { resolveActionArgs } from "../src/actions/lib/resolve-action-args.js";
 import { resolveRequestAction } from "../src/actions/resolve-request.js";
 
 const mocks = vi.hoisted(() => ({

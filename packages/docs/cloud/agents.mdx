@@ -130,9 +130,9 @@ The character JSON defines your agent's personality and behavior.
   },
   "topics": ["science", "research", "data analysis", "academic writing"],
   "adjectives": ["knowledgeable", "thorough", "precise", "helpful"],
-  "modelProvider": "openai",
+  "modelProvider": "eliza-cloud",
   "settings": {
-    "model": "gpt-4o",
+    "model": "gpt-oss-120b",
     "temperature": 0.7,
     "maxTokens": 4096
   }
@@ -151,7 +151,7 @@ The character JSON defines your agent's personality and behavior.
 | `style.post`    | string[] | Social media post instructions           |
 | `topics`        | string[] | Areas of expertise                       |
 | `adjectives`    | string[] | Personality descriptors                  |
-| `modelProvider` | string   | AI provider (openai, anthropic, google)  |
+| `modelProvider` | string   | Model provider, such as `eliza-cloud` or a configured direct provider |
 | `settings`      | object   | Model-specific settings                  |
 
 ## Agent Management

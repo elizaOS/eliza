@@ -37,7 +37,6 @@ app.get("/", async (c) => {
         "Auto-generated key for testing APIs in the API Explorer. Usage is billed to your account.",
       organization_id: user.organization_id,
       user_id: user.id,
-      permissions: [],
       rate_limit: 100,
       expires_at: null,
       is_active: true,

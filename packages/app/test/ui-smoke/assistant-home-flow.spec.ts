@@ -803,6 +803,33 @@ test.describe("assistant home app flow", () => {
     expect(assistantApi.streamRequests).toEqual(["open wallet by typing"]);
   });
 
+  test("renders the iOS-style home screen and a pinned tile opens its view", async ({
+    page,
+  }) => {
+    await seedAssistantFlowStorage(page);
+    await installReadyDesktopStatusBridge(page);
+    await installAssistantFlowRoutes(page);
+
+    await openReadyChat(page, "/chat");
+
+    // The home dashboard renders behind the floating chat: clock + widgets +
+    // the pinned tile grid.
+    await expect(page.getByTestId("home-screen")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("home-clock")).toBeVisible();
+    await expect(page.getByTestId("home-widget-activity")).toBeVisible();
+    for (const id of ["settings", "orchestrator", "workflows", "views"]) {
+      await expect(page.getByTestId(`home-tile-${id}`)).toBeVisible();
+    }
+
+    // Tapping the Settings tile navigates to the Settings view (setTab path).
+    await page.getByTestId("home-tile-settings").click();
+    await expect(page.getByTestId("settings-shell")).toBeVisible({
+      timeout: 15_000,
+    });
+  });
+
   test("push-to-talk records while the mic is held and submits on release", async ({
     page,
   }) => {

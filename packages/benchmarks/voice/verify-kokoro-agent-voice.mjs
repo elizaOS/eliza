@@ -1,41 +1,38 @@
 #!/usr/bin/env bun
 /**
  * Kokoro agent-voice verification — the goal explicitly asks for the
- * agent to reply in a Kokoro TTS voice. This runs Kokoro v1.0 (ONNX
- * model_q4.onnx) via the in-repo KokoroOnnxRuntime with onnxruntime-node
- * (loadable under Bun) and the bundled ASCII fallback phonemizer (no
- * espeak-ng needed for ASCII agent lines). Each agent line is
- * synthesized, written to WAV, then run BACK through eliza-1 ASR to
- * prove the Kokoro audio is intelligible.
+ * agent to reply in a Kokoro TTS voice. This runs Kokoro v1.0 via the
+ * in-repo KokoroGgufRuntime against a Kokoro-capable llama-server
+ * (`/v1/audio/speech`, the fork path) and the bundled ASCII fallback
+ * phonemizer (no espeak-ng needed for ASCII agent lines). Each agent
+ * line is synthesized, written to WAV, then run BACK through eliza-1
+ * ASR to prove the Kokoro audio is intelligible.
+ *
+ * Point ELIZA_KOKORO_FORK_URL at a running Kokoro llama-server.
  *
  * Run:
  *   bun packages/benchmarks/voice/verify-kokoro-agent-voice.mjs
  */
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 import { loadElizaInferenceFfi } from "../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings.ts";
-import { KokoroOnnxRuntime } from "../../../plugins/plugin-local-inference/src/services/voice/kokoro/kokoro-runtime.ts";
+import { KokoroGgufRuntime } from "../../../plugins/plugin-local-inference/src/services/voice/kokoro/kokoro-runtime.ts";
 import { resolvePhonemizer } from "../../../plugins/plugin-local-inference/src/services/voice/kokoro/phonemizer.ts";
 
 const HOME = os.homedir();
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 const BUNDLE = path.join(HOME, ".eliza/local-inference/models/eliza-1-0_8b.bundle");
-const KOKORO_ROOT = path.join(BUNDLE, "tts/kokoro");
 const INFER_DYLIB = path.join(HOME, ".eliza/local-inference/bin/mtp/darwin-arm64-metal-fused/libelizainference.dylib");
 const WORK = "/tmp/three-voice-e2e";
 const REPORTS = path.join(REPO_ROOT, "packages/benchmarks/voice/reports");
 mkdirSync(WORK, { recursive: true });
 mkdirSync(REPORTS, { recursive: true });
 
-const layout = {
-	root: KOKORO_ROOT,
-	modelFile: "model_q4.onnx",
-	voicesDir: path.join(KOKORO_ROOT, "voices"),
-	sampleRate: 24_000,
-};
+const KOKORO_SERVER_URL = process.env.ELIZA_KOKORO_FORK_URL?.trim() || "http://127.0.0.1:8081";
+const layout = { sampleRate: 24_000 };
 // Agent voice = af_bella (American English female). Distinct, warm.
 const AGENT_VOICE = { id: "af_bella", displayName: "Bella", lang: "a", file: "af_bella.bin", dim: 256 };
 
@@ -80,10 +77,7 @@ function wer(ref, hyp) {
 
 const log = (...a) => console.log("[kokoro-agent]", ...a);
 
-if (!existsSync(path.join(layout.root, layout.modelFile))) { log("Kokoro ONNX missing:", layout.modelFile); process.exit(2); }
-if (!existsSync(path.join(layout.voicesDir, AGENT_VOICE.file))) { log("voice pack missing:", AGENT_VOICE.file); process.exit(2); }
-
-const runtime = new KokoroOnnxRuntime({ layout });
+const runtime = new KokoroGgufRuntime({ serverUrl: KOKORO_SERVER_URL, modelId: process.env.ELIZA_KOKORO_FORK_MODEL_ID?.trim() || "kokoro-v1.0", sampleRate: layout.sampleRate });
 const phonemizer = await resolvePhonemizer();
 log("phonemizer:", phonemizer.id, "| voice:", AGENT_VOICE.id);
 
@@ -130,7 +124,7 @@ try {
 const meanWer = asr.length ? Number((asr.reduce((s, a) => s + a.wer, 0) / asr.length).toFixed(3)) : null;
 const report = {
 	generatedAt: new Date().toISOString(),
-	model: "Kokoro v1.0 (model_q4.onnx) via KokoroOnnxRuntime + onnxruntime-node",
+	model: "Kokoro v1.0 via KokoroGgufRuntime (fork llama-server /v1/audio/speech)",
 	phonemizer: phonemizer.id,
 	voice: AGENT_VOICE.id,
 	synth: synth.map(({ pcm16, ...rest }) => rest),

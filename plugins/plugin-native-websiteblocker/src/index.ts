@@ -13,3 +13,8 @@ export const WebsiteBlocker = registerPlugin<WebsiteBlockerPlugin>(
     web: loadWeb,
   },
 );
+
+export {
+  createNativeWebsiteBlockerBackend,
+  type NativeWebsiteBlockerBackend,
+} from "./backend";

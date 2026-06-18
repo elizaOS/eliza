@@ -19,7 +19,6 @@ const FAKE_HOME = resolve("/fake/home");
 const fakeHomedir = () => FAKE_HOME;
 
 const STATE_CANONICAL = resolve("/tmp/canonical");
-const STATE_STATE = resolve("/tmp/state");
 const STATE_FOO = resolve("/tmp/foo");
 const STATE_OAUTH_ELSEWHERE = resolve("/tmp/oauth-elsewhere");
 

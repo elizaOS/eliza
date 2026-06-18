@@ -26,7 +26,7 @@ from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT.parent
-ELIZA_ROOT = ROOT.parents[1]
+ELIZA_ROOT = ROOT.parents[1] if len(ROOT.parents) > 1 else ROOT
 REPORT = ROOT / "build/reports/android_app_runtime_contract.json"
 SCHEMA = "eliza.android_app_runtime_contract.v1"
 CLAIM_BOUNDARY = "static_app_runtime_contract_only_not_android_boot_or_launcher_evidence"

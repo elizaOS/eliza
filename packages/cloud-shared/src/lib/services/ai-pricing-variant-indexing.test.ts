@@ -212,6 +212,34 @@ describe("forced provider route pricing ids", () => {
     );
   });
 
+  test("bridges the slash provider form to the colon-keyed Cerebras forced rows", () => {
+    // The shared runtime hits Cerebras directly and bills by (bareModel, provider),
+    // so canonicalModelId("gpt-oss-120b", "cerebras") yields the slash form
+    // `cerebras/gpt-oss-120b`. The Cerebras forced pricing rows are keyed in
+    // BitRouter's colon-routing form (`cerebras:gpt-oss-120b`). Without the
+    // slash→colon bridge the lookup misses every Cerebras forced row and throws
+    // "Pricing unavailable for language:input cerebras/gpt-oss-120b", which the
+    // agent bridge masks as -32000 "Sandbox bridge is unreachable" — every shared
+    // agent turn fails silently.
+    expect(
+      expandPricingCatalogModelCandidates(canonicalModelId("gpt-oss-120b", "cerebras")),
+    ).toContain("cerebras:gpt-oss-120b");
+    expect(
+      expandPricingCatalogModelCandidates(canonicalModelId("zai-glm-4.7", "cerebras")),
+    ).toContain("cerebras:zai-glm-4.7");
+  });
+
+  test("does not synthesize a colon route id for namespace prefixes or variant ids", () => {
+    // `x-ai` is a dash-bearing BitRouter namespace, not a single-token
+    // forced-provider key, so it must not gain a `x-ai:` route spelling.
+    expect(expandPricingCatalogModelCandidates("x-ai/grok-4.20")).not.toContain("x-ai:grok-4.20");
+    // An id that already carries a colon (a `:nitro` routing variant) must not
+    // gain a second colon from the bridge.
+    expect(expandPricingCatalogModelCandidates("openai/gpt-oss-120b:nitro")).not.toContain(
+      "openai:gpt-oss-120b:nitro",
+    );
+  });
+
   test("adds synthetic Cerebras pricing rows to the BitRouter catalog", async () => {
     const previousApiKey = process.env.BITROUTER_API_KEY;
     const previousFetch = globalThis.fetch;

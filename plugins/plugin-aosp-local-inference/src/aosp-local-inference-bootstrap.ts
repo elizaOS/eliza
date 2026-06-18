@@ -1265,6 +1265,7 @@ type LoadedRole = "chat" | "embedding" | null;
 function makeLoaderLifecycle(loader: AospLoader): {
   ensureChatLoaded(): Promise<void>;
   ensureEmbeddingLoaded(): Promise<void>;
+  markEvicted(): void;
 } {
   let currentRole: LoadedRole = null;
   let inflight: Promise<void> | null = null;
@@ -1345,6 +1346,17 @@ function makeLoaderLifecycle(loader: AospLoader): {
   return {
     ensureChatLoaded: () => loadRole("chat"),
     ensureEmbeddingLoaded: () => loadRole("embedding"),
+    // Out-of-band eviction (voice handlers free the chat model directly via
+    // loader.unloadModel() to reclaim RAM for the cold ASR/TTS load). That
+    // bypasses loadRole, so `currentRole` would stay stale ("chat") and the
+    // next ensureChatLoaded() would short-circuit and run generate() against a
+    // null ctx. Resetting `currentRole` here forces the next ensure*Loaded()
+    // to actually reload. Safe to call when no load is in flight; if a load is
+    // mid-flight the clear just means the subsequent ensure reloads, which is
+    // the intended post-eviction behaviour anyway.
+    markEvicted: () => {
+      currentRole = null;
+    },
   };
 }
 
@@ -1787,7 +1799,50 @@ function resolveAospOmnivoiceTtsStepOverride(
   return String(parsed);
 }
 
-export function makeAospFusedOmnivoiceTextToSpeechHandler(): TextToSpeechHandler {
+// Free RAM (MiB) at or above which the resident chat model is KEPT across a cold
+// voice-model load instead of being evicted. Eviction frees room for the ~1.4 GB
+// ASR / ~0.66 GB TTS load so it cannot trip lmkd, but it forces a synchronous
+// chat-model reload before the next reply that stalls the single-threaded
+// agent's HTTP listener (a concurrent createConversation then sees a spurious
+// local_agent_unavailable). When there is enough headroom to hold both models
+// the eviction is pure cost, so gate it on actual memory pressure.
+export const VOICE_COLOAD_KEEP_AVAIL_MB = 2200;
+
+/**
+ * Parse `MemAvailable` (in MiB) from `/proc/meminfo` text. Returns `null` when
+ * the field is absent (e.g. a non-Linux / unexpected layout). Exported for unit
+ * testing the pure parse without touching the filesystem.
+ */
+export function parseMemAvailableMb(meminfo: string): number | null {
+  const match = meminfo.match(/MemAvailable:\s+(\d+)\s+kB/);
+  return match ? Number(match[1]) / 1024 : null;
+}
+
+/**
+ * Decide whether to evict the resident chat model before a cold voice-model
+ * load, given free RAM in MiB (`null` = unknown). Unknown memory falls back to
+ * eviction, preserving the original always-evict safety on platforms where
+ * `/proc/meminfo` is unavailable. Pure; exported for unit testing.
+ */
+export function shouldEvictChatForAvailMb(availMb: number | null): boolean {
+  if (availMb === null) return true;
+  return availMb < VOICE_COLOAD_KEEP_AVAIL_MB;
+}
+
+function shouldEvictChatForVoiceLoad(): boolean {
+  try {
+    return shouldEvictChatForAvailMb(
+      parseMemAvailableMb(readFileSync("/proc/meminfo", "utf8")),
+    );
+  } catch {
+    return true;
+  }
+}
+
+export function makeAospFusedOmnivoiceTextToSpeechHandler(
+  loader?: AospLoader,
+  onEvicted?: () => void,
+): TextToSpeechHandler {
   let contextPromise: Promise<{
     ffi: BunFfiModule;
     symbols: Record<string, (...args: unknown[]) => unknown>;
@@ -1909,6 +1964,38 @@ export function makeAospFusedOmnivoiceTextToSpeechHandler(): TextToSpeechHandler
     if (stepOverride) process.env.ELIZA_TTS_MASKGIT_STEPS = stepOverride;
 
     try {
+      // Release the resident chat model before the FIRST (cold) fused-TTS load.
+      // The engine keeps one model at a time, but the fused TTS context is a
+      // SEPARATE FFI allocation: loading the ~0.66 GB omnivoice model while the
+      // chat model + its hot KV/compute buffers (from the reply we are about to
+      // speak) are still resident spikes RAM past lmkd's low watermark and the
+      // detached agent — which an unprivileged app cannot oom-protect — gets
+      // killed mid-load. The chat model auto-reloads on the next TEXT turn
+      // (makeGenerateHandler -> lifecycle.ensureChatLoaded). Only on the cold
+      // load (contextPromise still null); cached reuse never re-evicts.
+      if (contextPromise === null && loader) {
+        try {
+          if (
+            shouldEvictChatForVoiceLoad() &&
+            typeof loader.currentModelPath === "function" &&
+            loader.currentModelPath() !== null &&
+            typeof loader.unloadModel === "function"
+          ) {
+            await loader.unloadModel();
+            // Tell the lifecycle the chat model is gone so the next text turn
+            // actually reloads it (loadRole short-circuits on a stale
+            // currentRole otherwise). Done after the unload succeeds so we
+            // never mark evicted when the model is in fact still resident.
+            onEvicted?.();
+            logger.info(
+              "[aosp-local-inference] released chat model before cold fused-TTS load to free memory",
+            );
+          }
+        } catch {
+          // Best-effort: a failed eviction just means TTS loads under the prior
+          // (possibly tight) memory conditions — no worse than before.
+        }
+      }
       const started = Date.now();
       const { ffi, symbols, ctx, config, streamSupported } =
         await ensureContext();
@@ -2214,6 +2301,8 @@ function assertNotAborted(signal: AbortSignal | undefined): void {
 async function transcribeWithAospElizaInference(
   audio: { samples: Float32Array; sampleRate: number },
   signal?: AbortSignal,
+  loader?: AospLoader,
+  onEvicted?: () => void,
 ): Promise<string> {
   assertNotAborted(signal);
   const libPath = resolveElizaInferenceLibPath();
@@ -2221,6 +2310,36 @@ async function transcribeWithAospElizaInference(
     throw new Error(
       `[aosp-local-inference] libelizainference.so missing at ${libPath}`,
     );
+  }
+  // Release the resident chat model before the cold ASR load. The fused ASR
+  // context (eliza_inference_create + mmap_acquire("asr")) maps the ~1.4 GB
+  // Eliza-1 ASR model + projector; loading it while the ~0.55 GB chat model
+  // and its hot KV/compute buffers are still resident spikes RAM past lmkd's
+  // low watermark and the detached agent — which an unprivileged app cannot
+  // oom-protect — gets killed mid-load. The chat model auto-reloads on the
+  // next TEXT turn (makeGenerateHandler -> lifecycle.ensureChatLoaded), so the
+  // eviction is safe; mirrors the cold-TTS eviction in the fused TTS handler.
+  if (
+    loader &&
+    shouldEvictChatForVoiceLoad() &&
+    typeof loader.currentModelPath === "function" &&
+    loader.currentModelPath() !== null &&
+    typeof loader.unloadModel === "function"
+  ) {
+    try {
+      await loader.unloadModel();
+      // Tell the lifecycle the chat model is gone so the next text turn
+      // actually reloads it (loadRole short-circuits on a stale currentRole
+      // otherwise). Done after the unload succeeds so we never mark evicted
+      // when the model is in fact still resident.
+      onEvicted?.();
+      logger.info(
+        "[aosp-local-inference] released chat model before fused ASR load to free memory",
+      );
+    } catch {
+      // Best-effort: a failed eviction just means ASR loads under the prior
+      // (possibly tight) memory conditions — no worse than before.
+    }
   }
   const bundleRoot = resolveAssignedVoiceBundleRoot();
   const ffi = await loadAospVoiceFfi();
@@ -2299,10 +2418,13 @@ async function transcribeWithAospElizaInference(
   }
 }
 
-export function makeAospTranscriptionHandler(): TranscriptionHandler {
+export function makeAospTranscriptionHandler(
+  loader?: AospLoader,
+  onEvicted?: () => void,
+): TranscriptionHandler {
   return async (_runtime, params) => {
     const { signal, ...audio } = extractAospTranscriptionAudio(params);
-    return transcribeWithAospElizaInference(audio, signal);
+    return transcribeWithAospElizaInference(audio, signal, loader, onEvicted);
   };
 }
 
@@ -2392,7 +2514,7 @@ export async function ensureAospLocalInferenceHandlers(
     ModelType.TRANSCRIPTION,
   ];
   const baseOmnivoiceTextToSpeechHandler =
-    makeAospFusedOmnivoiceTextToSpeechHandler();
+    makeAospFusedOmnivoiceTextToSpeechHandler(loader, lifecycle.markEvicted);
   let foregroundOmnivoiceTextToSpeechUsed = false;
   const textToSpeechHandler = makeAospTextToSpeechHandler({
     omnivoice: baseOmnivoiceTextToSpeechHandler,
@@ -2407,7 +2529,7 @@ export async function ensureAospLocalInferenceHandlers(
         : modelType === ModelType.TEXT_TO_SPEECH
           ? textToSpeechHandler
           : modelType === ModelType.TRANSCRIPTION
-            ? makeAospTranscriptionHandler()
+            ? makeAospTranscriptionHandler(loader, lifecycle.markEvicted)
             : makeGenerateHandler(loader, lifecycle);
     runtimeWithRegistration.registerModel(
       modelType,

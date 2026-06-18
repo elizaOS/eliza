@@ -145,6 +145,7 @@ export function WorkspacePanel() {
           ) : (
             <div className="space-y-0.5">
               {savedViews.map((v) => (
+                // biome-ignore lint/a11y/useSemanticElements: contains a nested delete <button>, so a <button> wrapper would be invalid HTML
                 <div
                   key={v.id}
                   onClick={() => loadView(v.id)}

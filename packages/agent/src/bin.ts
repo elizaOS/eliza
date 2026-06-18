@@ -49,6 +49,7 @@ import { homedir as _earlyHomedir } from "node:os";
 })();
 
 import { runAutonomousCli } from "./cli/index.ts";
+import { configureMobileDnsIfNeeded } from "./runtime/mobile-dns.ts";
 
 // Early diagnostic logger for Android: captures errors before the fs shim runs.
 // Uses raw node:fs so the shim can't interfere. Writes to $ELIZA_STATE_DIR/bin-debug.log.
@@ -80,6 +81,12 @@ const _binDebugLog =
 _binDebugLog(
   `[bin.ts] started ELIZA_PLATFORM=${process.env.ELIZA_PLATFORM ?? "(unset)"} ELIZA_STATE_DIR=${process.env.ELIZA_STATE_DIR ?? "(unset)"}`,
 );
+
+// Mobile devices ship no /etc/resolv.conf, so the musl bun agent can't resolve
+// DNS — every outbound fetch (cloud, model catalog, connectors) fails until we
+// point the resolver at public nameservers. No-op off-device. Runs at module
+// eval, before the runtime boots or any fetch fires.
+configureMobileDnsIfNeeded();
 
 async function bootstrapMobileEntrypoint(): Promise<void> {
   if (process.env.ELIZA_PLATFORM === "android") {

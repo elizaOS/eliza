@@ -102,6 +102,28 @@ function stripForcedProviderPrefix(model: string): string | null {
   return model.slice(colonIndex + 1);
 }
 
+/**
+ * Slash forced-provider form (`cerebras/gpt-oss-120b`) → colon routing form
+ * (`cerebras:gpt-oss-120b`). The pricing catalog keys forced provider rows in
+ * BitRouter's colon-routing spelling, but `canonicalModelId(bareModel, provider)`
+ * yields the slash spelling. A caller that hits the provider directly (e.g. the
+ * shared runtime calling Cerebras) bills by `(bareModel, provider)`, so without
+ * this bridge its lookup never reaches the colon-keyed row and throws
+ * "Pricing unavailable". Mirror of {@link stripForcedProviderPrefix} (colon → bare).
+ *
+ * Returns null when the prefix is a dash-bearing namespace (`x-ai/...`) rather
+ * than a single-token forced-provider key, or when the id already carries a colon
+ * (a routing/variant id like `openai/gpt-oss-120b:nitro`).
+ */
+function forcedProviderColonVariant(model: string): string | null {
+  if (model.includes(":")) return null;
+  const slashIndex = model.indexOf("/");
+  if (slashIndex <= 0) return null;
+  const prefix = model.slice(0, slashIndex);
+  if (prefix.includes("-")) return null;
+  return `${prefix}:${model.slice(slashIndex + 1)}`;
+}
+
 /** Manual gateway rename map + inverse (new id → legacy ids still in DB). */
 function collectGatewayPricingManualAliasCandidates(canonicalModel: string): string[] {
   const extras: string[] = [];
@@ -151,6 +173,10 @@ export function expandPricingCatalogModelCandidates(canonicalModel: string): str
   };
 
   pushWithTranslations(canonicalModel);
+  const colonForcedVariant = forcedProviderColonVariant(canonicalModel);
+  if (colonForcedVariant) {
+    pushWithTranslations(colonForcedVariant);
+  }
   const unforcedModel = stripForcedProviderPrefix(canonicalModel);
   if (unforcedModel) {
     pushWithTranslations(unforcedModel);

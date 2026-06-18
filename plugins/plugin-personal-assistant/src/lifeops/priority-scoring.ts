@@ -15,9 +15,13 @@
  *   can fall back to the v1 heuristic.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, ModelType, runWithTrajectoryContext } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  parseJsonModelRecord,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
 import type { LifeOpsInboxMessage } from "@elizaos/shared";
-import { parseJsonModelRecord } from "../utils/json-model-output.js";
 
 export type PriorityCategory = "important" | "planning" | "casual";
 

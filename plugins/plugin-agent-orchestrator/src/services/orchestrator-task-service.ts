@@ -401,6 +401,10 @@ export class OrchestratorTaskService extends Service {
   protected override readonly runtime: RuntimeLike;
   private readonly store: OrchestratorTaskStore;
   private readonly sessionTaskIndex = new Map<string, string>();
+  // Tasks with an auto-goal-verify pass in flight. ACP can emit `task_complete`
+  // from two sites for one turn; without this guard both runs read the same
+  // attempt counter across the model `await` and double-send a correction.
+  private readonly autoVerifyInFlight = new Set<string>();
   private unsubscribe: (() => void) | undefined;
   private started = false;
 
@@ -1029,6 +1033,10 @@ export class OrchestratorTaskService extends Service {
     completionEvidence: string,
   ): Promise<void> {
     if (!shouldAutoVerifyGoal()) return;
+    // Re-entrancy guard: drop a second overlapping run for the same task (the
+    // check-then-act across the model `await` would otherwise double-count).
+    if (this.autoVerifyInFlight.has(taskId)) return;
+    this.autoVerifyInFlight.add(taskId);
     try {
       const doc = await this.store.getTask(taskId);
       if (!doc) return;
@@ -1053,6 +1061,10 @@ export class OrchestratorTaskService extends Service {
           evidence: verdict.rawResponse || completionEvidence,
           verifier: LLM_GOAL_VERIFIER_NAME,
         });
+        // Notify live subscribers (SSE/UI) — this is a fire-and-forget hook with
+        // no HTTP response to refresh the client, so emitChange is the only
+        // signal that the task left `validating`. Every other branch emits too.
+        this.emitChange(taskId);
         return;
       }
 
@@ -1142,6 +1154,8 @@ export class OrchestratorTaskService extends Service {
         sessionId,
         error: err instanceof Error ? err.message : String(err),
       });
+    } finally {
+      this.autoVerifyInFlight.delete(taskId);
     }
   }
 

@@ -4,7 +4,6 @@
 
 import { Keyboard } from "@capacitor/keyboard";
 import { X } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
 import "./components/chat/chat-source-registration";
 import {
   type ComponentType,
@@ -36,6 +35,7 @@ import { AppsPageView } from "./components/pages/AppsPageView";
 import { SecretsManagerModalRoot } from "./components/settings/SecretsManagerSection";
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
+import { ChatAmbientBackground } from "./components/shell/ChatAmbientBackground";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
@@ -46,6 +46,7 @@ import {
   useSlashCommandController,
 } from "./chat/useSlashCommandController";
 import { HomePill } from "./components/shell/HomePill";
+import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
 import { ShellControllerProvider } from "./components/shell/ShellControllerContext";
 import { useShellControllerContext } from "./components/shell/ShellControllerContext.hooks";
@@ -76,6 +77,7 @@ import {
 } from "./navigation";
 import { isIOS, isNative } from "./platform/init";
 import { type ActionNotice, useApp } from "./state";
+import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
 
 const MOBILE_NAV_PADDING_CLASS =
   "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem))]";
@@ -254,6 +256,7 @@ function useIsPopout(): boolean {
 type ShellMode =
   | "chat-overlay"
   | "onboarding-overlay"
+  | "voice-selftest"
   | "launcher"
   | "kiosk"
   | "full";
@@ -270,6 +273,7 @@ function readShellMode(): ShellMode {
     "";
   if (raw === "chat-overlay") return "chat-overlay";
   if (raw === "onboarding-overlay") return "onboarding-overlay";
+  if (raw === "voice-selftest") return "voice-selftest";
   if (raw === "launcher") return "launcher";
   if (raw === "kiosk") return "kiosk";
   return "full";
@@ -979,51 +983,17 @@ function CompanionShellContent(props: ShellContentProps): ReactNode {
   return <div key="companion-shell" className={APP_SHELL_CLASS} />;
 }
 
-/** Time-of-day greeting for the ambient chat home's backdrop (Her-style). */
-function minimalHomeGreeting(): string {
-  const h = new Date().getHours();
-  if (h < 5) return "still up?";
-  if (h < 12) return "good morning";
-  if (h < 18) return "good afternoon";
-  return "good evening";
-}
-
 function ChatRouteShellContent(props: ShellContentProps): ReactNode {
   // The /chat route is the ambient conversational home: open space behind the
   // always-present ContinuousChatOverlay (mounted at the shell root), which is
   // the whole chat experience. Ask it anything, or ask it to open a view ("show
-  // me the coding view") which surfaces over this base.
-  const reduceMotion = useReducedMotion() ?? false;
+  // me the coding view") which surfaces over this base. The home is wordless —
+  // a warm, gently pulsing orange field, no greeting text.
   return (
     <div key="chat-shell" className={APP_SHELL_CLASS}>
       <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden">
-        {/* The greeting settles in — a slow blur+rise fade — then breathes
-            gently so the ambient home feels alive rather than static (Her-style).
-            Honors reduced motion (a plain, still fade). */}
-        <motion.p
-          className="-translate-y-8 select-none text-center text-3xl font-light italic text-muted"
-          initial={
-            reduceMotion
-              ? { opacity: 0 }
-              : { opacity: 0, y: 16, filter: "blur(12px)" }
-          }
-          animate={
-            reduceMotion
-              ? { opacity: 0.38 }
-              : { opacity: [0.3, 0.5, 0.3], y: 0, filter: "blur(0px)" }
-          }
-          transition={
-            reduceMotion
-              ? { duration: 0.6 }
-              : {
-                  y: { duration: 1.9, ease: [0.22, 1, 0.36, 1] },
-                  filter: { duration: 1.9, ease: [0.22, 1, 0.36, 1] },
-                  opacity: { duration: 8, repeat: Infinity, ease: "easeInOut" },
-                }
-          }
-        >
-          {minimalHomeGreeting()}
-        </motion.p>
+        <ChatAmbientBackground />
+        <HomeScreenMount />
         <CustomActionsPanel
           open={props.customActionsPanelOpen}
           onClose={() => props.setCustomActionsPanelOpen(false)}
@@ -1138,6 +1108,36 @@ function ContinuousChatOverlayMount(): ReactNode {
   const slash = useSlashCommandController();
   if (!controller) return null;
   return <ContinuousChatOverlay controller={controller} slash={slash} />;
+}
+
+/**
+ * The iOS-style home dashboard for the /chat route — clock, recent activity,
+ * recent messages, a customizable widget area, and pinned view tiles. Sits
+ * behind the always-present chat overlay. Wires tile taps to the real nav:
+ * builtin tabs via setTab, plugin/remote views via the eliza:navigate:view event.
+ */
+function HomeScreenMount(): ReactNode {
+  const { setTab } = useApp();
+  const onOpenTile = useCallback(
+    (target: HomeTileTarget) => {
+      if (target.kind === "tab") {
+        setTab(target.tab);
+      } else {
+        window.dispatchEvent(
+          new CustomEvent("eliza:navigate:view", {
+            detail: { viewPath: target.path },
+          }),
+        );
+      }
+    },
+    [setTab],
+  );
+  return (
+    <HomeScreen
+      onOpenTile={onOpenTile}
+      showNativeOsTiles={isAndroidPhoneSurfaceEnabled()}
+    />
+  );
 }
 
 export function App() {
@@ -1528,6 +1528,13 @@ export function App() {
         </LazyViewBoundary>
       </div>
     );
+  }
+
+  // Self-driving voice round-trip test screen — runs the real STT->agent->TTS
+  // loop against a known phrase and reports PASS/FAIL with no human in the loop.
+  // Self-contained (its own ElizaClient + AudioContext); no app chrome / gate.
+  if (shellMode === "voice-selftest") {
+    return <VoiceSelfTestShell />;
   }
 
   // OS chat-overlay window — render JUST the floating assistant pill +

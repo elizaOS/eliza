@@ -3,6 +3,11 @@ ext {
 }
 
 apply plugin: 'com.android.library'
+// Apply the Kotlin Android plugin so the plugin's .kt class is bundled into the
+// library AAR. Without it AGP's built-in kotlinc compiles the sources but does
+// NOT bundle the .class files, so the Capacitor plugin class is absent from the
+// app dex at runtime (PluginLoadException -> the whole plugin set fails to load).
+apply plugin: 'org.jetbrains.kotlin.android'
 android {
     namespace = "ai.eliza.plugins.wifi"
     compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 34
@@ -13,6 +18,9 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
     }
 }
 

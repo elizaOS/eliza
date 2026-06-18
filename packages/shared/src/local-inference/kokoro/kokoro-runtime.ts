@@ -1,40 +1,20 @@
 /**
  * Kokoro-82M model runner.
  *
- * Three execution paths are scaffolded here. Production picks the first
- * available; tests can inject any of them via the `runtime` option on
+ * Two execution paths are scaffolded here. Production picks the first
+ * available; tests can inject either of them via the `runtime` option on
  * `KokoroTtsBackend`.
  *
- *   1. ONNX Runtime (default, preferred). Kokoro ships an official ONNX
- *      export at `onnx-community/Kokoro-82M-v1.0-ONNX` (~310 MB fp32, ~80
- *      MB int8). We load via `onnxruntime-node` on desktop / server, or
- *      `onnxruntime-web` in the browser. The session is reused across
- *      synthesis calls — voice swap is just rebinding the `style` tensor.
+ *   1. GGUF via llama-server (default). Our `plugins/plugin-local-inference/native/llama.cpp`
+ *      fork carries a Kokoro head. When the host llama-server advertises a
+ *      Kokoro-capable build and exposes `/v1/audio/speech`, we POST text in
+ *      and stream PCM out. This keeps voice work on the same process as text
+ *      gen.
  *
- *   2. GGUF via llama-server. Upstream `ggml-org/llama.cpp` does not ship
- *      a Kokoro head; our `packages/inference/llama.cpp` fork carries
- *      a WIP port. When the host llama-server advertises a Kokoro-capable
- *      build and exposes `/v1/audio/speech`, we POST text in and stream
- *      PCM out. This keeps voice work on the same process as text gen on
- *      mobile builds where loading a second runtime (ORT) is too heavy.
- *
- *   3. Python subprocess. Spawns `python -m kokoro_tts` from a known
+ *   2. Python subprocess. Spawns `python -m kokoro_tts` from a known
  *      venv. NEVER the default in production — used only by the
  *      fine-tune evaluator that drives Apollo's training-loop quality
  *      gate (which already depends on the upstream Python eval suite).
- *
- * # Model fetch (do NOT auto-download in this session)
- *
- * Canonical model URLs (Apache-2.0):
- *   - ONNX (fp32):   https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model.onnx
- *   - ONNX (q8):     https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_quantized.onnx
- *   - Voices:        https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/tree/main/voices
- *   - PyTorch ckpt:  https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/kokoro-v1_0.pth
- *
- * After download, the runtime verifies SHA-256 against the value pinned in
- * `eliza-1.manifest.json` (or `KOKORO_MODEL_SHA256` env var for ad-hoc
- * builds). A mismatch raises `KokoroModelMissingError` and the engine
- * refuses to activate Kokoro — no silent downgrade.
  */
 
 import type {
@@ -84,7 +64,7 @@ export interface KokoroRuntimeInputs {
 /** Shared runtime contract — `KokoroTtsBackend` depends on this, not the
  *  concrete classes. Tests inject a mock. */
 export interface KokoroRuntime {
-  readonly id: "gguf" | "python" | "mock" | "onnx";
+  readonly id: "gguf" | "python" | "mock";
   readonly sampleRate: number;
   synthesize(args: KokoroRuntimeInputs): Promise<{ cancelled: boolean }>;
   dispose(): void;
@@ -189,7 +169,7 @@ export class KokoroGgufRuntime implements KokoroRuntime {
 
 function decodePhonemesForGgufBody(seq: KokoroPhonemeSequence): string {
   // The upstream spec ships the raw phoneme string; the server tokenises
-  // it the same way the ONNX export does. Sending ids would require a
+  // it the same way the server-side tokenizer does. Sending ids would require a
   // server-side schema for `input_ids` which the OpenAI-compat endpoint
   // does not have.
   return seq.phonemes;
@@ -250,7 +230,7 @@ export class KokoroPythonRuntime implements KokoroRuntime {
 
 // ---------------------------------------------------------------------------
 // Mock runtime — synthesizes a sine sweep keyed to phoneme count so tests
-// can observe deterministic PCM without loading ONNX.
+// can observe deterministic PCM without loading a model.
 // ---------------------------------------------------------------------------
 
 export interface KokoroMockRuntimeOptions {
@@ -317,35 +297,4 @@ export class KokoroMockRuntime implements KokoroRuntime {
   dispose(): void {
     /* nothing */
   }
-}
-
-// ---------------------------------------------------------------------------
-// KokoroOnnxRuntime — legacy ONNX compatibility path. Real implementation
-// lives in the AOSP build pipeline; this class keeps the symbol exported so callers
-// that conditionally reference it (plugin-aosp-local-inference) compile.
-// ---------------------------------------------------------------------------
-
-export interface KokoroOnnxRuntimeOptions {
-  modelPath?: string;
-  voicesDir?: string;
-  loadOrt?: () => Promise<unknown>;
-  layout?: KokoroModelLayout;
-  expectedSha256?: string | null;
-}
-
-export const KOKORO_ONNX_MODEL_URL =
-  "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_q8f16.onnx";
-
-export class KokoroOnnxRuntime implements KokoroRuntime {
-  readonly id = "onnx" as const;
-  readonly sampleRate = 24000;
-  constructor(_opts: KokoroOnnxRuntimeOptions) {
-    void _opts;
-  }
-  async synthesize(
-    _args: KokoroRuntimeInputs,
-  ): Promise<{ cancelled: boolean }> {
-    throw new Error("KokoroOnnxRuntime is not available in this build");
-  }
-  dispose(): void {}
 }

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-REPO_ROOT = ROOT.parents[1]
+REPO_ROOT = ROOT.parents[1] if len(ROOT.parents) > 1 else ROOT
 EVIDENCE_MANIFEST = ROOT / "docs/evidence/software-bsp-evidence-manifest.json"
 PREFLIGHT_REPORT = ROOT / "docs/evidence/software-bsp-external-preflight-status.json"
 CHECK_SOFTWARE_BSP = ROOT / "scripts/check_software_bsp.py"

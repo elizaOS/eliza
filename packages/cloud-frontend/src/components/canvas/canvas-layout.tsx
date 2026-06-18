@@ -96,8 +96,8 @@ export function CanvasLayout() {
     const existingNode = activeTab?.nodes?.find((n) => n.type === targetType);
 
     if (existingNode) {
-      if (!existingNode.isMaximized) {
-        maximizeNode(activeViewId!, existingNode.id, true);
+      if (!existingNode.isMaximized && activeViewId) {
+        maximizeNode(activeViewId, existingNode.id, true);
       }
     } else {
       openView(nodeName, targetType, null, null);
@@ -108,9 +108,9 @@ export function CanvasLayout() {
           (v) => v.id === updatedState.activeViewId,
         );
         const newNode = tab?.nodes?.find((n) => n.type === targetType);
-        if (newNode && !newNode.isMaximized) {
+        if (newNode && !newNode.isMaximized && updatedState.activeViewId) {
           updatedState.maximizeNode(
-            updatedState.activeViewId!,
+            updatedState.activeViewId,
             newNode.id,
             true,
           );

@@ -13,6 +13,15 @@ import { logger } from "../../utils/logger";
 
 const CACHE_TTL_MS = 60_000;
 
+/**
+ * Per-request cap on the two ghcr.io HTTP calls (token + manifest HEAD). These
+ * were the one genuinely-unbounded leaf in the provisioning cycle — a hung
+ * ghcr connection could stall the fleet-upgrade reconciler indefinitely.
+ * `resolveImageDigest` already returns null on any failure and callers treat
+ * null as "skip, retry next tick", so bounding adds no behavior change.
+ */
+const REGISTRY_FETCH_TIMEOUT_MS = 5_000;
+
 interface CacheEntry {
   digest: string | null;
   expiresAt: number;
@@ -34,6 +43,20 @@ export async function resolveImageDigest(
 
   const cached = cache.get(imageRef);
   if (cached && cached.expiresAt > now()) return cached.digest;
+
+  // A digest-pinned ref (`repo@sha256:...`) is already resolved — the digest IS
+  // the answer, and there is no newer digest to fetch. Short-circuit before the
+  // tag path: parseImageRef would keep the `@sha256` in the repo
+  // (`elizaos/eliza@sha256`), corrupting the ghcr token scope
+  // `repository:<repo>:pull` → HTTP 400, which makes the fleet-upgrade probe
+  // skip every digest-pinned fleet (the prod agent image is digest-pinned).
+  const atIdx = imageRef.indexOf("@");
+  if (atIdx !== -1) {
+    const digest = imageRef.slice(atIdx + 1);
+    const resolved = /^sha256:[0-9a-f]{64}$/.test(digest) ? digest : null;
+    cache.set(imageRef, { digest: resolved, expiresAt: now() + CACHE_TTL_MS });
+    return resolved;
+  }
 
   const parsed = parseImageRef(imageRef);
   if (!parsed || parsed.registry !== "ghcr.io") {
@@ -93,6 +116,7 @@ async function fetchGhcrDigest(
   try {
     const tokenResp = await fetchFn(
       `https://ghcr.io/token?scope=repository:${encodedRepo}:pull&service=ghcr.io`,
+      { signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS) },
     );
     if (!tokenResp.ok) {
       logger.warn(`[registry-probe] ghcr token fetch failed for ${repo}: ${tokenResp.status}`);
@@ -113,6 +137,7 @@ async function fetchGhcrDigest(
       `https://ghcr.io/v2/${encodedRepo}/manifests/${encodedTag}`,
       {
         method: "HEAD",
+        signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: [

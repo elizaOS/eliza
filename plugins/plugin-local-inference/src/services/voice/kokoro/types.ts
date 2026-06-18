@@ -1,11 +1,10 @@
 /**
  * Public types for the Kokoro-82M TTS backend (Apache-2.0, hexgrad/Kokoro-82M
- * upstream; ONNX export at onnx-community/Kokoro-82M-v1.0-ONNX).
+ * upstream).
  *
  * Kokoro is a small (~82M-param) StyleTTS-2 derivative that ships with a set
  * of "voice packs" — pre-baked 256-dim style vectors (one .bin per voice).
- * The runtime keeps the ONNX session warm and swaps the style tensor per
- * synthesis call, so adding voices is a cheap (~512KB) extra download.
+ * Adding voices is a cheap (~512KB) extra download.
  */
 
 /** Canonical voice-pack id. Convention: `<lang>_<name>` (af_bella, am_michael). */
@@ -31,7 +30,7 @@ export interface KokoroVoicePack {
 export interface KokoroModelLayout {
 	/** Directory under `<stateDir>/local-inference/models/kokoro/`. */
 	root: string;
-	/** ONNX file — usually `kokoro-v1.0.onnx` (or quantised variant). */
+	/** Model file — the Kokoro GGUF carried by our llama.cpp fork. */
 	modelFile: string;
 	/** Directory containing the per-voice style tensors. */
 	voicesDir: string;
@@ -71,7 +70,7 @@ export interface KokoroPhonemizer {
 }
 
 export interface KokoroPhonemeSequence {
-	/** Token ids fed into the ONNX `input_ids` tensor. */
+	/** Token ids for the model's `input_ids` tensor. */
 	ids: Int32Array;
 	/** Original phoneme string, for debugging and tests. */
 	phonemes: string;

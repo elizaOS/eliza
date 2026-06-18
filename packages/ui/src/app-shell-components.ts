@@ -43,7 +43,6 @@ export { TasksPageView } from "./components/pages/TasksPageView";
 export { BugReportModal } from "./components/shell/BugReportModal";
 export { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
 export { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
-export { Header } from "./components/shell/Header";
 export { PairingView } from "./components/shell/PairingView";
 export { ShellOverlays } from "./components/shell/ShellOverlays";
 export { StartupFailureView } from "./components/shell/StartupFailureView";

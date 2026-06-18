@@ -76,6 +76,18 @@ export function buildSharedEnv(
       process.env.SECRETS_MASTER_KEY ??
       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     PAYOUT_STATUS_SKIP_LIVE_BALANCE: "1",
+    // Treat the (dummy, configured) payout wallet as operational so the
+    // redemption quote/request flow is exercisable without a funded wallet or
+    // live RPC. The on-chain transfer cron still verifies the real balance.
+    PAYOUT_STATUS_ASSUME_OPERATIONAL: "1",
+    // Dummy EVM payout key so the EVM redemption networks (base/bnb/ethereum)
+    // report "operational" for the redemption availability gate. Paired with
+    // PAYOUT_STATUS_SKIP_LIVE_BALANCE=1 there is NO real RPC/balance call; the
+    // actual on-chain transfer only runs in the process-redemptions cron, which
+    // the e2e never invokes. Test-only, never a real funded wallet.
+    EVM_PAYOUT_PRIVATE_KEY:
+      process.env.EVM_PAYOUT_PRIVATE_KEY ??
+      "0x0000000000000000000000000000000000000000000000000000000000000001",
     AGENT_TEST_BOOTSTRAP_ADMIN: "true",
     ...extra,
   };

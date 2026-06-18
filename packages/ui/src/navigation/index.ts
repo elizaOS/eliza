@@ -96,12 +96,6 @@ export const APPS_TOOL_TABS = [
   "advanced",
 ] as const satisfies readonly Tab[];
 
-const APPS_TOOL_TAB_SET = new Set<Tab>(APPS_TOOL_TABS);
-
-export function isAppsToolTab(tab: Tab): boolean {
-  return APPS_TOOL_TAB_SET.has(tab);
-}
-
 export interface TabGroup {
   label: string;
   tabs: Tab[];
@@ -242,64 +236,6 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     description: "Configuration and preferences",
   },
 ];
-
-/** A plugin-provided nav-page widget that should appear in the navigation. */
-export interface DynamicNavTab {
-  /** Tab ID — used as the route path segment. */
-  tabId: string;
-  /** Human-readable label for the nav button. */
-  label: string;
-  /** Which existing TabGroup to join, or a new group label to create. */
-  navGroup?: string;
-  /** Icon for new groups (lucide component). Falls back to Gamepad2. */
-  icon?: LucideIcon;
-  /** Description for new groups. */
-  description?: string;
-}
-
-/** Compute visible tab groups. Pass feature flags explicitly for React reactivity. */
-export function getTabGroups(
-  streamEnabled = STREAM_ENABLED,
-  walletEnabled = true,
-  browserEnabled = true,
-  dynamicTabs?: DynamicNavTab[],
-  phoneSurfaceEnabled = isAndroidPhoneSurfaceEnabled(),
-  automationsEnabled = true,
-): TabGroup[] {
-  const groups = ALL_TAB_GROUPS.filter(
-    (g) =>
-      (APPS_ENABLED || g.label !== "Views") &&
-      (phoneSurfaceEnabled || g.label !== "Phone") &&
-      (streamEnabled || g.label !== "Stream") &&
-      (walletEnabled || g.label !== "Wallet") &&
-      (browserEnabled || g.label !== "Browser") &&
-      (automationsEnabled || g.label !== "Automations"),
-  );
-
-  // Merge dynamic plugin-provided nav-page tabs into groups.
-  if (dynamicTabs?.length) {
-    for (const dt of dynamicTabs) {
-      const targetGroup = dt.navGroup
-        ? groups.find((g) => g.label === dt.navGroup)
-        : null;
-      if (targetGroup) {
-        if (!targetGroup.tabs.includes(dt.tabId)) {
-          targetGroup.tabs.push(dt.tabId);
-        }
-      } else {
-        // Create a new group for this tab.
-        groups.push({
-          label: dt.label,
-          tabs: [dt.tabId],
-          icon: dt.icon ?? Gamepad2,
-          description: dt.description,
-        });
-      }
-    }
-  }
-
-  return groups;
-}
 
 export const TAB_PATHS: Record<BuiltinTab, string> = {
   chat: "/chat",

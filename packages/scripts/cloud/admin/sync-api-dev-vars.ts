@@ -142,6 +142,13 @@ for (const key of [
   "AGENT_SERVER_SHARED_SECRET",
   "AGENT_TEST_BOOTSTRAP_ADMIN",
   "PAYOUT_STATUS_SKIP_LIVE_BALANCE",
+  "PAYOUT_STATUS_ASSUME_OPERATIONAL",
+  // Payout wallet config — the redemption/payout worker reads these to report
+  // which networks are operational and to sign on-chain transfers.
+  "EVM_PAYOUT_PRIVATE_KEY",
+  "EVM_PAYOUT_WALLET_ADDRESS",
+  "SOLANA_PAYOUT_PRIVATE_KEY",
+  "SOLANA_PAYOUT_WALLET_ADDRESS",
 ]) {
   const value = process.env[key];
   if (isRealValue(value)) {

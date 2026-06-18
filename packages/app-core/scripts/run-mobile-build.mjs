@@ -1105,6 +1105,46 @@ async function ensurePlatform(platform) {
  * No-op when both trees resolve to the same directory (standalone layout) or
  * when the synced public payload is missing.
  */
+// `@elizaos/capacitor-bun-runtime` is an app-core-only native module (it powers
+// the on-device Bun agent runtime) and is NOT a `packages/app` dependency, so
+// `cap sync` never emits it. Now that `android.path` makes cap sync regenerate
+// capacitor.settings.gradle / capacitor.build.gradle in place, those files would
+// lose bun-runtime on every sync. Re-register it idempotently after each sync so
+// the on-device agent keeps building (exact module name + projectDir the
+// committed files used).
+function ensureBunRuntimeRegistered() {
+  const MODULE = "elizaos-capacitor-bun-runtime";
+  const PROJECT_DIR = "../../../../plugins/plugin-native-bun-runtime/android";
+  const settingsPath = path.join(androidDir, "capacitor.settings.gradle");
+  const buildGradlePath = path.join(
+    androidDir,
+    "app",
+    "capacitor.build.gradle",
+  );
+
+  if (fs.existsSync(settingsPath)) {
+    let settings = fs.readFileSync(settingsPath, "utf8");
+    if (!settings.includes(`':${MODULE}'`)) {
+      settings = `${settings.trimEnd()}\ninclude ':${MODULE}'\nproject(':${MODULE}').projectDir = new File('${PROJECT_DIR}')\n`;
+      fs.writeFileSync(settingsPath, settings);
+      console.log(
+        `[mobile-build] Re-registered ${MODULE} (cap sync omits this app-core-only module).`,
+      );
+    }
+  }
+
+  if (fs.existsSync(buildGradlePath)) {
+    let build = fs.readFileSync(buildGradlePath, "utf8");
+    if (!build.includes(`project(':${MODULE}')`)) {
+      build = build.replace(
+        /dependencies\s*\{/,
+        `dependencies {\n    implementation project(':${MODULE}')`,
+      );
+      fs.writeFileSync(buildGradlePath, build);
+    }
+  }
+}
+
 function mirrorCapacitorWebPayloadIntoAndroidDir() {
   const syncedAssets = path.join(
     appDir,
@@ -1116,22 +1156,131 @@ function mirrorCapacitorWebPayloadIntoAndroidDir() {
   );
   const targetAssets = path.join(androidDir, "app", "src", "main", "assets");
   const syncedPublic = path.join(syncedAssets, "public");
-  if (!fs.existsSync(syncedPublic)) return;
+  // Mirror the synced web payload only when cap sync wrote to a SEPARATE appDir
+  // tree (the legacy two-tree split). When capacitor.config.ts unifies the trees
+  // via android.path=../app-core/platforms/android (#8387), cap sync writes
+  // straight into androidDir, so there's no syncedPublic to copy (or it's the
+  // same tree). In that case the mirror is a no-op — but we MUST still run the
+  // reconcile below on the android manifest, so the early-returns only skip the
+  // copy, never the reconcile.
+  const hasSyncedPublic = fs.existsSync(syncedPublic);
   const sameTree =
+    hasSyncedPublic &&
     fs.existsSync(targetAssets) &&
     fs.realpathSync(syncedAssets) === fs.realpathSync(targetAssets);
-  if (sameTree) return;
-  const targetPublic = path.join(targetAssets, "public");
-  fs.mkdirSync(targetAssets, { recursive: true });
-  fs.rmSync(targetPublic, { recursive: true, force: true });
-  fs.cpSync(syncedPublic, targetPublic, { recursive: true });
-  for (const cfg of ["capacitor.config.json", "capacitor.plugins.json"]) {
-    const src = path.join(syncedAssets, cfg);
-    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(targetAssets, cfg));
+  if (hasSyncedPublic && !sameTree) {
+    const targetPublic = path.join(targetAssets, "public");
+    fs.mkdirSync(targetAssets, { recursive: true });
+    fs.rmSync(targetPublic, { recursive: true, force: true });
+    fs.cpSync(syncedPublic, targetPublic, { recursive: true });
+    for (const cfg of ["capacitor.config.json", "capacitor.plugins.json"]) {
+      const src = path.join(syncedAssets, cfg);
+      if (fs.existsSync(src)) fs.copyFileSync(src, path.join(targetAssets, cfg));
+    }
+    console.log(
+      `[mobile-build] Mirrored Capacitor web payload into ${path.relative(repoRoot, targetAssets)}`,
+    );
   }
-  console.log(
-    `[mobile-build] Mirrored Capacitor web payload into ${path.relative(repoRoot, targetAssets)}`,
+  // `cap sync` generates capacitor.plugins.json from the
+  // FULL appDir dependency set, but androidDir ships a committed
+  // capacitor.settings.gradle that compiles only a curated subset of plugin
+  // modules (plus app-core additions like elizaos-capacitor-bun-runtime that
+  // cap sync never emits). Mirroring the full manifest into androidDir leaves
+  // it listing classes that aren't on the dex — and Capacitor's
+  // PluginManager.loadPluginClasses ABORTS the ENTIRE auto-registration on the
+  // first missing class (PluginLoadException). The net effect is that NONE of
+  // the auto-registered plugins load — including the compiled ones the app
+  // actually needs (Preferences, LlamaCpp, every @elizaos/capacitor-*) — so
+  // on-device local inference and Capacitor Preferences silently report
+  // "not implemented on android". Reconcile the manifest with what gradle
+  // actually compiles so loadPluginClasses succeeds.
+  reconcilePluginManifestWithGradle(targetAssets);
+}
+
+/**
+ * Drop capacitor.plugins.json entries whose gradle module is not included in
+ * androidDir/capacitor.settings.gradle. Uses Capacitor's canonical package →
+ * gradle-project derivation (`pkg.replace(/@/g,"").replace(/\//g,"-")`), so
+ * `@capacitor/preferences`→`capacitor-preferences`,
+ * `@elizaos/capacitor-agent`→`elizaos-capacitor-agent`,
+ * `llama-cpp-capacitor`→`llama-cpp-capacitor`. Keeping the manifest in lockstep
+ * with the compiled module set is what stops PluginManager.loadPluginClasses
+ * from throwing on a class that isn't on the dex.
+ */
+function reconcilePluginManifestWithGradle(targetAssets) {
+  const manifestPath = path.join(targetAssets, "capacitor.plugins.json");
+  const settingsPath = path.join(androidDir, "capacitor.settings.gradle");
+  if (!fs.existsSync(manifestPath) || !fs.existsSync(settingsPath)) return;
+
+  const settings = fs.readFileSync(settingsPath, "utf8");
+  const compiledProjects = new Set(
+    [...settings.matchAll(/include ':([^']+)'/g)].map((m) => m[1]),
   );
+
+  let plugins;
+  try {
+    plugins = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `[mobile-build] Could not parse capacitor.plugins.json for gradle reconciliation: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  if (!Array.isArray(plugins)) return;
+
+  const gradleProjectFor = (pkg) =>
+    String(pkg ?? "")
+      .replace(/@/g, "")
+      .replace(/\//g, "-");
+  // When ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1 the llama-cpp-capacitor CMake builds
+  // a no-op stub (`ELIZA_SKIP_MTP_ANDROID_LIB`). That stub *registers* fine but
+  // throws java.lang.UnsatisfiedLinkError on its first native call
+  // (LlamaCpp.toggleNativeLog during the WebView device-bridge init) — an
+  // UNCAUGHT exception that kills the whole app process (SIG 9), which tears
+  // down the on-device agent and any in-flight chat turn. Drop the stub from the
+  // manifest so it never registers: the device-bridge import then fails as a
+  // catchable "LlamaCpp plugin not implemented" JS error instead of a native
+  // crash. Agent-side local inference (ELIZA_LOCAL_LLAMA, libllama via bun:ffi)
+  // does NOT use this Capacitor plugin, so dropping the stub costs nothing.
+  const stubLlamaCpp =
+    process.env.ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB === "1" ||
+    process.env.elizaSkipForkLlamaLib === "true";
+  // Third-party Capacitor plugins that `cap sync` includes (they ship an
+  // android/ dir, so they ARE in capacitor.settings.gradle) but whose Kotlin
+  // plugin class never lands in the app dex on AGP 8.x: both rely on AGP's
+  // built-in Kotlin instead of applying `org.jetbrains.kotlin.android`, so the
+  // built-in kotlinc compiles the .kt but does NOT bundle the .class into the
+  // library AAR. PluginManager.loadPluginClasses then throws "Could not find
+  // class …" on the first one and aborts the ENTIRE plugin load, so EVERY
+  // plugin (Browser, Haptics, Keyboard, …) silently fails to register. We can't
+  // edit node_modules durably, and neither is needed for the core Android app —
+  // background work uses WorkManager (ElizaWorkScheduler) and barcode scanning
+  // is a companion-pairing-only feature — so drop them from the manifest. (Our
+  // own native plugins fix this properly by applying the Kotlin plugin in their
+  // android/build.gradle.)
+  const nonBundlingThirdPartyPlugins = new Set([
+    "@capacitor/background-runner",
+    "@capacitor/barcode-scanner",
+  ]);
+  const isCompiledAndUsable = (plugin) => {
+    if (!compiledProjects.has(gradleProjectFor(plugin?.pkg))) return false;
+    if (stubLlamaCpp && plugin?.pkg === "llama-cpp-capacitor") return false;
+    if (nonBundlingThirdPartyPlugins.has(plugin?.pkg)) return false;
+    return true;
+  };
+  const kept = plugins.filter(isCompiledAndUsable);
+
+  if (kept.length !== plugins.length) {
+    const dropped = plugins
+      .filter((plugin) => !isCompiledAndUsable(plugin))
+      .map((plugin) => plugin?.pkg)
+      .join(", ");
+    fs.writeFileSync(manifestPath, `${JSON.stringify(kept, null, "\t")}\n`, "utf8");
+    console.log(
+      `[mobile-build] Reconciled capacitor.plugins.json with capacitor.settings.gradle (dropped ${plugins.length - kept.length} plugin(s): ${dropped}).`,
+    );
+  }
 }
 
 // ── Phase 4: Android native overlay ─────────────────────────────────────
@@ -3264,7 +3413,6 @@ function shouldIncludeIosFullBunEngine(env = process.env) {
 export function isIosAppStoreBuild(env = process.env) {
   return (
     env.ELIZA_RELEASE_AUTHORITY === "apple-app-store" ||
-    env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store" ||
     env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store"
   );
 }
@@ -5915,8 +6063,6 @@ async function buildAndroid() {
   // env vars, fail loudly and point them at the right target.
   const playStoreFlagged =
     process.env.ELIZA_PLAY_STORE_BUILD === "1" ||
-    process.env.ELIZA_PLAY_STORE_BUILD === "1" ||
-    process.env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store" ||
     process.env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store";
   if (playStoreFlagged) {
     console.error(
@@ -5951,6 +6097,7 @@ async function buildAndroid() {
   await buildMobileAgentBundle();
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
+  ensureBunRuntimeRegistered();
   mirrorCapacitorWebPayloadIntoAndroidDir();
 
   patchAndroidGradle();
@@ -6031,6 +6178,29 @@ function auditAndroidSideloadArtifact({ javaHome } = {}) {
   });
   console.log(
     `[mobile-build] android sideload artifact audit passed: ${artifact}`,
+  );
+  return artifact;
+}
+
+function auditAndroidSystemArtifact({ javaHome } = {}) {
+  // The AOSP/system target gets the web-payload mirror like the other three
+  // sync targets, but the privileged release APK still needs the same positive
+  // artifact audit or it could ship web-less (ERR_CONNECTION_REFUSED) silently —
+  // the exact regression class #8387 closes. `-PelizaAospBuild=true` preserves
+  // assets/agent, so requireAgent stays true here like the sideload path.
+  const artifact = findAndroidSystemApk();
+  if (!artifact) {
+    throw new Error(
+      "[mobile-build] android-system release APK was not found under app/build/outputs/apk/release/.",
+    );
+  }
+  const entries = listAndroidArtifactEntries(artifact, javaHome);
+  assertAndroidArtifactShipsWebPayload(artifact, entries, {
+    requireAgent: true,
+    label: "android-system",
+  });
+  console.log(
+    `[mobile-build] android-system artifact audit passed: ${artifact}`,
   );
   return artifact;
 }
@@ -6333,6 +6503,7 @@ async function buildAndroidCloud({ debug = false } = {}) {
   await buildWeb(debug ? "android-cloud-debug" : "android-cloud");
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
+  ensureBunRuntimeRegistered();
   mirrorCapacitorWebPayloadIntoAndroidDir();
 
   patchAndroidGradle();
@@ -6425,6 +6596,7 @@ async function buildAndroidSmsGateway() {
   await buildWeb("android-cloud-debug");
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
+  ensureBunRuntimeRegistered();
   mirrorCapacitorWebPayloadIntoAndroidDir();
 
   patchAndroidGradle();
@@ -6622,6 +6794,7 @@ async function buildAndroidSystem() {
   await buildMobileAgentBundle();
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
+  ensureBunRuntimeRegistered();
   mirrorCapacitorWebPayloadIntoAndroidDir();
 
   patchAndroidGradle();
@@ -6666,6 +6839,7 @@ async function buildAndroidSystem() {
     cwd: androidDir,
     env,
   });
+  auditAndroidSystemArtifact({ javaHome: jdk });
   stageAndroidSystemApk();
 }
 
