@@ -351,6 +351,18 @@ app.post("/", async (c) => {
       cost,
     });
   } catch (error) {
+    // `failureResponse` maps unknown errors to a generic 500 `internal_error`
+    // with no detail and does NOT log — so without this the real cause of a
+    // generation failure is lost in both the response and the Worker logs.
+    // Log it with a stack so `wrangler tail` can root-cause provider/content-
+    // safety/storage failures.
+    logger.error("[GenerateImage] Generation failed", {
+      error: error instanceof Error ? error.message : String(error),
+      name: error instanceof Error ? error.name : undefined,
+      stack: error instanceof Error ? error.stack : undefined,
+      chargeSettled,
+      imagesGenerated: images.length,
+    });
     if (!chargeSettled && images.length > 0) {
       await deleteStoredImages(c.env, images);
     }
