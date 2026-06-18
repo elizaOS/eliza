@@ -1,5 +1,6 @@
 import {
   Archive,
+  Bot,
   Brain,
   KeyRound,
   LayoutGrid,
@@ -24,6 +25,7 @@ import { AppearanceSettingsSection } from "./AppearanceSettingsSection";
 import { AppPermissionsSection } from "./AppPermissionsSection";
 import { AppsManagementSection } from "./AppsManagementSection";
 import { CapabilitiesSection } from "./CapabilitiesSection";
+import { CloudAgentsSection } from "./CloudAgentsSection";
 import { ConnectorsSection } from "./ConnectorsSection";
 import { IdentitySettingsSection } from "./IdentitySettingsSection";
 import { PermissionsSection } from "./PermissionsSection";
@@ -235,6 +237,24 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] =
   });
 
 for (const section of SETTINGS_SECTIONS) registerSettingsSection(section);
+
+// Eliza Cloud agent manager — contributed through the pluggable registry rather
+// than the canonical META list, so it surfaces in Settings (list / switch /
+// create+name / delete agents) without changing the built-in section count that
+// the dev-route-catalog test pins. Ordered right after the AI Model section.
+registerSettingsSection({
+  id: "cloud-agents",
+  label: "settings.sections.cloudAgents.label",
+  defaultLabel: "Agents",
+  icon: Bot,
+  tone: "accent",
+  hue: "accent",
+  group: "agent",
+  titleKey: "settings.sections.cloudAgents.title",
+  defaultTitle: "Eliza Cloud Agents",
+  order: 1.5,
+  Component: CloudAgentsSection,
+});
 
 /** Every section the Settings view should render — built-ins plus any added by
  *  a host app / plugin through {@link registerSettingsSection}. */

@@ -1,10 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 import * as React from "react";
 import { client } from "../api";
-import {
-  isDirectCloudSharedAgentBase,
-  resolveCloudAgentApiBase,
-} from "../api/client-cloud";
+import { isDirectCloudSharedAgentBase } from "../api/client-cloud";
 import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
 import { getBootConfig } from "../config/boot-config";
 import {
@@ -591,7 +588,7 @@ export function useFirstRunController(): FirstRunController {
           return;
         }
       }
-      setBusyText("Provisioning cloud agent");
+      setBusyText("Setting up your cloud agent");
       const authToken = String(
         (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ ??
           "",
@@ -610,34 +607,32 @@ export function useFirstRunController(): FirstRunController {
             (entry): entry is string => typeof entry === "string",
           )
         : ["An autonomous AI agent."];
-      const provisionedAgent = await client.provisionCloudSandbox({
+      // Reuse an existing cloud agent when the user has one, instead of minting a
+      // brand-new agent on every sign-in (the cause of the "11 agents created
+      // today" churn). selectOrProvisionCloudAgent returns a valid per-agent REST
+      // adapter base (.../agents/<id>), never the agent-id-less collection URL
+      // that made first-run's /api/* probes 404 ("Backend Unreachable").
+      const selectedAgent = await client.selectOrProvisionCloudAgent({
         cloudApiBase:
           getBootConfig().cloudApiBase || "https://www.elizacloud.ai",
         authToken,
         name,
         bio,
         onProgress: () => {},
-        allowSharedRuntime: true,
       });
-      // Target the REST adapter base (webUiUrl = .../agents/<id>), NOT the raw
-      // JSON-RPC bridge (.../agents/<id>/bridge). A shared-runtime agent serves
-      // its /api/* chat surface (conversations/messages/health) at the adapter
-      // base; pointing the client at /bridge makes every /api/* call 404 and
-      // first-run bounces. resolveCloudAgentApiBase prefers webUiUrl over
-      // bridgeUrl — same resolution useFirstRunCallbacks uses.
-      const cloudAgentApiBase = resolveCloudAgentApiBase({
-        bridgeUrl: provisionedAgent.bridgeUrl,
-        webUiUrl: provisionedAgent.webUiUrl,
-      });
+      const cloudAgentApiBase = selectedAgent.apiBase;
       client.setBaseUrl(cloudAgentApiBase);
       client.setToken(authToken);
+      // Persist the concrete agent id (cloud:<agentId>) so the next boot restores
+      // this exact agent — and so the apiBase can be re-derived from the id if it
+      // is ever lost (startup-phase-restore backfill).
       const activeServer = createPersistedActiveServer({
         kind: "cloud",
         // Key the persisted server by the stable cloud agent id, not the
         // ephemeral bridge URL: a reprovision/restart hands back a new bridge
         // URL, so an apiBase-keyed id would orphan the saved server (and the
         // user's chat continuity). Mirrors useFirstRunCallbacks.
-        id: `cloud:${provisionedAgent.agentId}`,
+        id: `cloud:${selectedAgent.agentId}`,
         apiBase: cloudAgentApiBase,
         accessToken: authToken,
       });

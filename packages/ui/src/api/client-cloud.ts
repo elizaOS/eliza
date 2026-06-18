@@ -5,7 +5,11 @@
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { getBootConfig } from "../config/boot-config";
-import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
+import {
+  buildCloudSharedAgentApiBase,
+  isElizaCloudControlPlaneAgentlessBase,
+  normalizeDirectCloudSharedAgentApiBase,
+} from "../utils/cloud-agent-base";
 import { ElizaClient } from "./client-base";
 import type {
   ApiError,
@@ -1037,6 +1041,18 @@ declare module "./client-base" {
       success: boolean;
       data: { jobId: string; status: string; message: string };
     }>;
+    /**
+     * Edit a cloud agent in place — rename and/or update its config
+     * (e.g. system prompt / bio). Backed by `PATCH /api/v1/eliza/agents/:id`.
+     */
+    updateCloudCompatAgent(
+      agentId: string,
+      edit: { agentName?: string; agentConfig?: Record<string, unknown> },
+    ): Promise<{
+      success: boolean;
+      error?: string;
+      data: { agentId: string; agentName: string };
+    }>;
     getCloudCompatAgentStatus(agentId: string): Promise<{
       success: boolean;
       data: CloudCompatAgentStatus;
@@ -1148,6 +1164,29 @@ declare module "./client-base" {
       agentId: string;
       webUiUrl?: string | null;
       executionTier?: string;
+    }>;
+    /**
+     * Reuse an existing cloud agent when one exists (so we don't mint a brand-new
+     * agent on every sign-in), otherwise create + provision a fresh named one.
+     * Always returns a valid per-agent REST adapter base (`.../agents/<id>`),
+     * never the agent-id-less collection URL.
+     */
+    selectOrProvisionCloudAgent(options: {
+      cloudApiBase: string;
+      authToken: string;
+      name: string;
+      bio?: string[];
+      /** Reuse this agent id when it still exists (e.g. a remembered choice). */
+      preferAgentId?: string | null;
+      /** Skip reuse and always create a new agent (explicit "Create new"). */
+      forceCreate?: boolean;
+      onProgress?: (status: string, detail?: string) => void;
+    }): Promise<{
+      agentId: string;
+      agentName: string;
+      apiBase: string;
+      bridgeUrl: string | null;
+      created: boolean;
     }>;
     checkBugReportInfo(): Promise<{
       nodeVersion?: string;
@@ -1920,6 +1959,61 @@ ElizaClient.prototype.deleteCloudCompatAgent = async function (
   });
 };
 
+ElizaClient.prototype.updateCloudCompatAgent = async function (
+  this: ElizaClient,
+  agentId,
+  edit,
+) {
+  const path = `/api/v1/eliza/agents/${encodeURIComponent(agentId)}`;
+  const body = JSON.stringify({
+    ...(edit.agentName !== undefined ? { agentName: edit.agentName } : {}),
+    ...(edit.agentConfig !== undefined
+      ? { agentConfig: edit.agentConfig }
+      : {}),
+  });
+  const normalize = (response: {
+    success?: boolean;
+    data?: { agentId?: string; agentName?: string };
+    error?: string;
+  }) => ({
+    success: response.success === true,
+    ...(response.error ? { error: response.error } : {}),
+    data: {
+      agentId: response.data?.agentId ?? agentId,
+      agentName: response.data?.agentName ?? edit.agentName ?? "",
+    },
+  });
+
+  const direct = await directCloudRequest<{
+    success: boolean;
+    data?: { agentId?: string; agentName?: string };
+    error?: string;
+  }>(this, path, { method: "PATCH", body });
+  if (direct) return normalize(direct);
+
+  if (isNativeDirectCloudAuthMissing(this)) {
+    return {
+      success: false,
+      error: nativeDirectCloudAuthMissingMessage(),
+      data: { agentId, agentName: edit.agentName ?? "" },
+    };
+  }
+
+  if (isDirectCloudBase(this)) {
+    const response = await this.fetch<{
+      success: boolean;
+      data?: { agentId?: string; agentName?: string };
+      error?: string;
+    }>(path, { method: "PATCH", body }, { allowNonOk: true });
+    return normalize(response);
+  }
+
+  return this.fetch(`/api/cloud/compat/agents/${encodeURIComponent(agentId)}`, {
+    method: "PATCH",
+    body,
+  });
+};
+
 ElizaClient.prototype.getCloudCompatAgentStatus = async function (
   this: ElizaClient,
   agentId,
@@ -2437,17 +2531,35 @@ ElizaClient.prototype.cloudLoginPollDirect = async function (
 export function resolveCloudAgentApiBase(args: {
   bridgeUrl: string | null;
   webUiUrl?: string | null;
+  /** Known agent id — used to derive a valid base when server URLs are missing
+   *  or collapse to the agent-id-less collection URL. */
+  agentId?: string | null;
+  /** Resolved direct-cloud origin — required to derive from `agentId`. */
+  cloudApiBase?: string | null;
 }): string {
   const stripTrailingSlash = (u: string): string => u.replace(/\/+$/, "");
-  const serverProvided = args.webUiUrl?.trim();
-  if (serverProvided) {
-    return normalizeDirectCloudSharedAgentApiBase(
-      stripTrailingSlash(serverProvided),
+  const candidate =
+    args.webUiUrl?.trim() || stripTrailingSlash(args.bridgeUrl ?? "");
+  const normalized = candidate
+    ? normalizeDirectCloudSharedAgentApiBase(stripTrailingSlash(candidate))
+    : "";
+  // A server URL that is missing/blank, or collapsed to the agent-id-less Eliza
+  // Cloud collection (`.../api/v1/eliza/agents`), is unusable — every `/api/*`
+  // call would concat to `.../agents/api/...` and 404. Derive the shared-runtime
+  // REST adapter base from the known agent id instead. A raw dedicated bridge
+  // (`http://<ip>:<port>`) is a valid base on a non-cloud host, so it is left
+  // untouched (isElizaCloudControlPlaneAgentlessBase is host-checked).
+  if (
+    (!normalized || isElizaCloudControlPlaneAgentlessBase(normalized)) &&
+    args.agentId &&
+    args.cloudApiBase
+  ) {
+    return buildCloudSharedAgentApiBase(
+      resolveDirectCloudAuthApiBase(args.cloudApiBase),
+      args.agentId,
     );
   }
-  return normalizeDirectCloudSharedAgentApiBase(
-    stripTrailingSlash(args.bridgeUrl ?? ""),
-  );
+  return normalized;
 }
 
 function resolveDirectCloudAgentBridgeUrl(
@@ -2633,6 +2745,99 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
   }
 
   throw new Error("Provisioning timed out after 2 minutes");
+};
+
+/**
+ * Pick which agent to reuse from a cloud agent list: a specific requested id if
+ * it still exists, else the most-recently-created "running" agent, else the
+ * most recent of any status.
+ */
+function pickPreferredCloudAgent(
+  agents: CloudCompatAgent[],
+  preferAgentId?: string | null,
+): CloudCompatAgent | null {
+  if (!agents.length) return null;
+  if (preferAgentId) {
+    const exact = agents.find((a) => a.agent_id === preferAgentId);
+    if (exact) return exact;
+  }
+  const byNewest = [...agents].sort((a, b) =>
+    String(b.created_at).localeCompare(String(a.created_at)),
+  );
+  return byNewest.find((a) => a.status === "running") ?? byNewest[0] ?? null;
+}
+
+ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
+  this: ElizaClient,
+  options,
+) {
+  const { cloudApiBase, authToken, name, bio, preferAgentId, forceCreate } =
+    options;
+  const onProgress = options.onProgress;
+  const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
+  // Ensure the direct-cloud requests below authenticate even on a cold boot,
+  // where the runtime global token may be empty (the caller always passes the
+  // session token).
+  if (authToken && typeof globalThis !== "undefined") {
+    (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
+      authToken;
+  }
+
+  // Reuse an existing agent unless the caller explicitly forces a new one. This
+  // is the fix for "a new cloud agent is created on every sign-in" — the create
+  // path only runs when the user has no agent yet.
+  if (!forceCreate) {
+    onProgress?.("creating", "Finding your agents...");
+    const list = await this.getCloudCompatAgents().catch(() => null);
+    const agents = list?.success ? list.data : [];
+    const chosen = pickPreferredCloudAgent(agents, preferAgentId);
+    if (chosen) {
+      const apiBase = resolveCloudAgentApiBase({
+        bridgeUrl: chosen.bridge_url,
+        webUiUrl: chosen.web_ui_url ?? chosen.webUiUrl,
+        agentId: chosen.agent_id,
+        cloudApiBase: resolvedCloudApiBase,
+      });
+      onProgress?.("ready", "Connected to your agent");
+      return {
+        agentId: chosen.agent_id,
+        agentName: chosen.agent_name,
+        apiBase,
+        bridgeUrl: chosen.bridge_url,
+        created: false,
+      };
+    }
+  }
+
+  // Create a NEW agent. We create a SHARED (Tier-0) agent FOR NOW because it is
+  // the only tier reachable from the app today: instant (no container to boot),
+  // served at the public REST adapter, cheap. DEDICATED (the billed container
+  // product) is the goal, but is currently unreachable from the app — the cloud
+  // has not deployed the per-agent public subdomain ingress
+  // (https://<id>.elizacloud.ai) and dedicated provisioning is blocked on
+  // headscale_ip registration (see ~/ELIZA_CLOUD_DEDICATED_AGENT_ENABLEMENT_SPEC.md).
+  // The app is otherwise dedicated-ready: resolveCloudAgentApiBase already prefers
+  // a dedicated agent's public web_ui_url, so once the cloud returns a reachable
+  // one, flip this create to provision dedicated (alwaysOn) — no other app change
+  // needed. createCloudCompatAgent omits alwaysOn → tier "shared", serving immediately.
+  onProgress?.("creating", `Creating ${name}...`);
+  const created = await this.createCloudCompatAgent({
+    agentName: name,
+    ...(bio?.length ? { agentConfig: { bio } } : {}),
+  });
+  if (!created.success || !created.data.agentId) {
+    throw new Error(created.data.message || "Failed to create cloud agent");
+  }
+  const agentId = created.data.agentId;
+  const apiBase = buildCloudSharedAgentApiBase(resolvedCloudApiBase, agentId);
+  onProgress?.("ready", "Cloud agent ready!");
+  return {
+    agentId,
+    agentName: created.data.agentName || name,
+    apiBase,
+    bridgeUrl: null,
+    created: true,
+  };
 };
 
 ElizaClient.prototype.checkBugReportInfo = async function (this: ElizaClient) {

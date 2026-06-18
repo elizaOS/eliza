@@ -620,6 +620,41 @@ export class ElizaSandboxService {
     });
   }
 
+  /**
+   * Edit an agent's profile in place — its display name and/or its persisted
+   * `agent_config` (system prompt / character fields). `agentConfig` is merged
+   * into the existing config so a partial edit never drops other keys. A name
+   * edit applies immediately (cloud agent name + shared-runtime character);
+   * dedicated-container config edits take effect on the next provision/restart.
+   */
+  async updateAgentProfile(
+    agentId: string,
+    orgId: string,
+    input: { agentName?: string; agentConfig?: Record<string, unknown> },
+  ): Promise<AgentSandbox | undefined> {
+    const rec = await agentSandboxesRepository.findByIdAndOrgForWrite(
+      agentId,
+      orgId,
+    );
+    if (!rec) return undefined;
+
+    const updates: { agent_name?: string; agent_config?: Record<string, unknown> } =
+      {};
+    if (input.agentName !== undefined) updates.agent_name = input.agentName;
+    if (input.agentConfig !== undefined) {
+      const existing =
+        rec.agent_config &&
+        typeof rec.agent_config === "object" &&
+        !Array.isArray(rec.agent_config)
+          ? (rec.agent_config as Record<string, unknown>)
+          : {};
+      updates.agent_config = { ...existing, ...input.agentConfig };
+    }
+    if (Object.keys(updates).length === 0) return rec;
+
+    return agentSandboxesRepository.update(rec.id, updates);
+  }
+
   async getAgentForWrite(agentId: string, orgId: string) {
     return agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId);
   }
@@ -3239,7 +3274,16 @@ export class ElizaSandboxService {
     // probe (the first attempt re-warms the path), then apply hysteresis before
     // giving up — seen live: a freshly-running agent was marked disconnected
     // ~1 min after boot by one transient "fetch failed".
-    const heartbeatEndpoint = await this.getAgentApiEndpoint(rec, "/");
+    // Liveness must dial the BRIDGE port over the headscale tailnet. The
+    // container serves its full HTTP API there (and `/api/health` unauthed —
+    // the same endpoint provisioning's health probe passes on); `web_ui_port`
+    // is a host-only docker port mapping that is NOT reachable over the tailnet,
+    // so the web-base-url path `getAgentApiEndpoint` prefers is a dead poll for
+    // the on-prem worker and was flipping every running agent to `disconnected`.
+    const heartbeatEndpoint = await this.getSafeBridgeEndpoint(
+      rec,
+      "/api/health",
+    );
     let res: Response | null = null;
     for (let attempt = 0; attempt < HEARTBEAT_PROBE_ATTEMPTS; attempt++) {
       if (attempt > 0) {

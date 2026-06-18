@@ -298,7 +298,9 @@ export function CapabilitiesSection() {
           agentId="capability-wallet"
           icon={Wallet}
           label={t("nav.wallet", { defaultValue: "Wallet" })}
-          agentLabel="Wallet"
+          agentLabel={t("settings.sections.wallet.enableLabel", {
+            defaultValue: "Enable Wallet",
+          })}
           group="capabilities"
           checked={walletEnabled}
           onCheckedChange={(checked) => setState("walletEnabled", checked)}
@@ -307,7 +309,9 @@ export function CapabilitiesSection() {
           agentId="capability-browser"
           icon={Globe}
           label={t("nav.browser", { defaultValue: "Browser" })}
-          agentLabel="Browser"
+          agentLabel={t("settings.sections.capabilities.browserLabel", {
+            defaultValue: "Enable Browser",
+          })}
           group="capabilities"
           checked={browserEnabled}
           onCheckedChange={(checked) => setState("browserEnabled", checked)}
@@ -318,7 +322,9 @@ export function CapabilitiesSection() {
           label={t("settings.sections.capabilities.computerUseName", {
             defaultValue: "Computer Use",
           })}
-          agentLabel="Computer Use"
+          agentLabel={t("settings.sections.capabilities.computerUseLabel", {
+            defaultValue: "Enable Computer Use",
+          })}
           group="capabilities"
           description={
             computerUseEnabled
@@ -342,7 +348,9 @@ export function CapabilitiesSection() {
               <CapabilityStatusIcon status={autoTrainingStatus} />
             </span>
           }
-          agentLabel="Auto-training"
+          agentLabel={t("settings.sections.capabilities.autoTrainingLabel", {
+            defaultValue: "Enable Auto-training",
+          })}
           group="capabilities"
           disabled={autoTrainingDisabled}
           checked={autoTrainingConfig?.autoTrain ?? false}

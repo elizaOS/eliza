@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { UpstashCompatRedis, createMockRedis, createNativeRedis } from "../src/redis-adapter";
 
 const PREV_MOCK = process.env.MOCK_REDIS;
 
@@ -14,16 +15,15 @@ afterAll(() => {
   }
 });
 
-describe("MockUpstashRedis (MOCK_REDIS=1)", () => {
+describe("UpstashCompatRedis (mock client)", () => {
   test("round-trip across the gateway-discord call surface", async () => {
-    const { MockUpstashRedis } = await import("../src/mock-redis");
-    const redis = new MockUpstashRedis();
+    const redis = createMockRedis();
 
     // set + get round-trip
     await redis.set("hello", "world");
     expect(await redis.get<string>("hello")).toBe("world");
 
-    // set with {ex, nx}
+    // set with {ex, nx} — same option mapping the native (Railway TCP) path uses
     await redis.set("once", "first", { nx: true, ex: 60 });
     await redis.set("once", "second", { nx: true, ex: 60 });
     expect(await redis.get<string>("once")).toBe("first");
@@ -44,5 +44,15 @@ describe("MockUpstashRedis (MOCK_REDIS=1)", () => {
     expect(await redis.smembers("active_pods")).toEqual(["pod-b"]);
 
     await redis.quit();
+  });
+});
+
+describe("createNativeRedis (Railway TCP)", () => {
+  test("builds an UpstashCompatRedis without connecting eagerly", () => {
+    // lazyConnect-style: constructing must not throw or require a live server.
+    const redis = createNativeRedis("redis://default:pw@127.0.0.1:6390");
+    expect(redis).toBeInstanceOf(UpstashCompatRedis);
+    // close the idle ioredis socket so the test process can exit cleanly.
+    void redis.quit();
   });
 });

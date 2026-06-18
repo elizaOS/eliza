@@ -29,7 +29,7 @@ const mocks = vi.hoisted(() => ({
   persistMobileRuntimeModeForServerTarget: vi.fn(),
   preOpenWindow: vi.fn(() => null),
   prepareFirstRunVoiceAndTranscription: vi.fn(async () => null),
-  provisionCloudSandbox: vi.fn(),
+  selectOrProvisionCloudAgent: vi.fn(),
   savePersistedActiveServer: vi.fn(),
   setActionNotice: vi.fn(),
   setBaseUrl: vi.fn(),
@@ -50,7 +50,7 @@ vi.mock("../api", () => ({
     getAuthStatus: mocks.getAuthStatus,
     getCloudStatus: mocks.getCloudStatus,
     getFirstRunStatus: mocks.getFirstRunStatus,
-    provisionCloudSandbox: mocks.provisionCloudSandbox,
+    selectOrProvisionCloudAgent: mocks.selectOrProvisionCloudAgent,
     setBaseUrl: mocks.setBaseUrl,
     setToken: mocks.setToken,
     submitFirstRun: mocks.submitFirstRun,
@@ -193,7 +193,7 @@ function resetMocks(): void {
     mocks.invokeDesktopBridgeRequest,
     mocks.persistMobileRuntimeModeForServerTarget,
     mocks.preOpenWindow,
-    mocks.provisionCloudSandbox,
+    mocks.selectOrProvisionCloudAgent,
     mocks.savePersistedActiveServer,
     mocks.setBaseUrl,
     mocks.setState,
@@ -305,7 +305,7 @@ describe("useFirstRunController remote first-run", () => {
     });
 
     expect(mocks.handleCloudLogin).toHaveBeenCalledTimes(1);
-    expect(mocks.provisionCloudSandbox).not.toHaveBeenCalled();
+    expect(mocks.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
     expect(mocks.submitFirstRun).not.toHaveBeenCalled();
     expect(mocks.completeFirstRun).not.toHaveBeenCalled();
   });
