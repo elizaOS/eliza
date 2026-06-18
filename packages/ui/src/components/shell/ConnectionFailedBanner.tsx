@@ -64,7 +64,7 @@ export function ConnectionFailedBanner() {
             variant="ghost"
             size="sm"
             onClick={dismissBackendDisconnectedBanner}
-            className="rounded-sm px-3 py-1 text-xs text-danger/20 hover:bg-danger hover:text-white"
+            className="rounded-sm px-3 py-1 text-xs text-white/80 hover:bg-white/15 hover:text-white"
           >
             {t("common.dismiss")}
           </Button>
