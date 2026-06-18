@@ -197,10 +197,34 @@ rule. Treat as a full view slice, not a wiring fix.
 remote-desktop (tiny, safest) → finances (first schema carve-out) → documents
 (routes already real) → inbox (largest) → goals/todos (reminders fused w/ spine).
 
-### Session 2026-06-17 net: 6 commits — audit+plan, blocker extraction (1a),
-FocusView (1b), health contract tests (2), HealthView (3). Decomposition +
-views/floating-chat + mock/live tests dimensions all proven end-to-end on real
-domains. Platform (5-platform e2e + mobile-BLOCK P0) is the least-advanced
-dimension — documented above, needs the engine-process-instance check first.
-NOTE: commits are on LOCAL develop (shared tree, many concurrent actors) — not
-pushed; pushing needs coordination given the churning dirty tree.
+- 2026-06-17: **Slice 4 DONE + committed** (`1b1848cd8a`) — real `CalendarView`
+  mounts the rich, instrumented `CalendarSection` (floating chat now drives the
+  calendar) + no-blue design pass. Found+fixed a real bug: the event-color
+  Tailwind classes never compiled (plugin-calendar/src not in any `@source`).
+  plugin-calendar 73 tests; build:views green.
+- 2026-06-17: **VIEW_ACTION_MAP** (`507056fd77`) — planner affinity for the now-
+  real calendar/health/focus views (CALENDAR / OWNER_HEALTH+OWNER_SCREENTIME /
+  LIST_ACTIVE_BLOCKS+RELEASE_BLOCK). Drift guard: 51 pass.
+
+### Session 2026-06-17 net: 8 commits — audit+plan, blocker extraction (1a),
+FocusView (1b), health contract tests (2), HealthView (3), CalendarView (4),
+VIEW_ACTION_MAP. Three of four dimensions proven end-to-end on REAL domains:
+decomposition (blocker), production-grade views w/ all states + floating-chat
+(blocker/health/calendar), mock+live external-API contract tests (health). The
+4th — platform (5-platform e2e + the mobile-BLOCK P0) — is the least-advanced;
+documented above, blocked on the engine-process-instance architecture check.
+
+### Genuine owner decisions to resolve before the next big slices
+1. Entity/relationship graph: hub primitive vs `plugin-relationships`.
+2. Mobile blocking P0: agent-side `NativeWebsiteBlockerBackend` that proxies to
+   the webview Capacitor plugin, vs registering in the webview (engine instance
+   lives in the agent process, not the webview).
+3. Reminders cross-platform: DB-only-everywhere (fix docs) vs per-platform
+   mirrors / Google Tasks fallback.
+4. Next priority: breadth (finances/inbox/remote-desktop extractions + the
+   `app_lifeops` schema carve-out) vs depth (5-platform e2e + committed
+   screenshot/design-review loop for the 3 real views).
+
+NOTE: all commits are on LOCAL develop (shared tree, many concurrent actors,
+incl. an origin/develop merge mid-session) — NOT pushed; pushing needs
+coordination given the churning dirty tree.
