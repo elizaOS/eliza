@@ -71,6 +71,24 @@ async function flushTicks(): Promise<void> {
   }
 }
 
+/**
+ * Poll until a request matching `predicate` has been issued. Deterministic
+ * replacement for guessing tick counts when an action triggers chained awaited
+ * fetches (create-conversation → post-message).
+ */
+async function waitForCall(
+  calls: Array<{ url: string }>,
+  predicate: (call: { url: string }) => boolean,
+  timeoutMs = 3000,
+): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (calls.some(predicate)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  return calls.some(predicate);
+}
+
 describe("agent terminal tui", () => {
   it("starts in prod-compatible terminal mode and supports keyboard view/chat actions", async () => {
     const terminal = new TestTerminal();
@@ -136,17 +154,18 @@ describe("agent terminal tui", () => {
     expect(searchRender).not.toContain("1. Messages TUI");
 
     terminal.send("\r");
-    await flushTicks();
     expect(
-      calls.some((call) =>
+      await waitForCall(calls, (call) =>
         call.url.endsWith("/api/views/wallet/navigate?viewType=tui"),
       ),
     ).toBe(true);
 
     terminal.send("c");
     terminal.send("hello over ssh");
-    terminal.send("\n");
-    await flushTicks();
+    terminal.send("\r");
+    await waitForCall(calls, (call) =>
+      call.url.endsWith("/api/conversations/conv-terminal/messages"),
+    );
 
     const chatCall = calls.find((call) =>
       call.url.endsWith("/api/conversations/conv-terminal/messages"),
