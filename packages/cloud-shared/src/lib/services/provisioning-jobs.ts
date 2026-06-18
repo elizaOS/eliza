@@ -29,7 +29,8 @@ import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { logger } from "../utils/logger";
 import { withTimeout } from "../utils/with-timeout";
 import { dispatchAppDbDeprovisionJob } from "./app-db-deprovision-job-service";
-import { dispatchAppDeployJob } from "./app-deploy-job-service";
+import { dispatchAppDeployJob, readAppDeployJobData } from "./app-deploy-job-service";
+import { appsService } from "./apps";
 import { dispatchContainerJob, getContainerExecutorDeps } from "./container-job-service";
 import { elizaProvisionAdvisoryLockSql } from "./eliza-provision-lock";
 import { elizaSandboxService } from "./eliza-sandbox";
@@ -1413,6 +1414,34 @@ export class ProvisioningJobService {
               jobId: job.id,
               agentId: data.agentId,
               error: sandboxErr instanceof Error ? sandboxErr.message : String(sandboxErr),
+            });
+          }
+        }
+
+        // Symmetric handling for app_deploy (Apps / Product 2): a permanently
+        // failed deploy must flip the app off `building`, or the deploy-status
+        // route (which echoes `apps.deployment_status`) reports BUILDING forever
+        // — the CLI/dashboard never sees the failure. Mirrors the createDeployment
+        // enqueue-side catch, which only covers the synchronous enqueue, not this
+        // async daemon execution. Especially relevant during the lane-migration
+        // window, when the agent CP worker (still default=all lanes) claims an
+        // APP_DEPLOY it can't run and exhausts retries.
+        if (updated?.status === "failed" && job.type === JOB_TYPES.APP_DEPLOY) {
+          const { appId } = readAppDeployJobData(job);
+          try {
+            await appsService.update(appId, { deployment_status: "failed" });
+            logger.warn(
+              "[provisioning-jobs] Marked app deployment as failed after permanent failure",
+              {
+                jobId: job.id,
+                appId,
+              },
+            );
+          } catch (appErr) {
+            logger.error("[provisioning-jobs] Failed to mark app deployment as failed", {
+              jobId: job.id,
+              appId,
+              error: appErr instanceof Error ? appErr.message : String(appErr),
             });
           }
         }

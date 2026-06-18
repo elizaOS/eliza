@@ -66,6 +66,25 @@ describe("resolveJobTypesForLanes — fail-open to ALL", () => {
     expect(resolveJobTypesForLanes("bogus")).toEqual(ALL);
     expect(resolveJobTypesForLanes("agentz,appz")).toEqual(ALL);
   });
+
+  // Prototype keys must NOT be treated as lanes: a lowercase `Object.prototype`
+  // key (`constructor`, `__proto__`) reaches the lane gate unchanged, and an
+  // `in` check would let it through and then throw on `for (… of JOB_LANES[k])`.
+  // A spec made of only such keys must fail open to ALL, never crash the daemon.
+  test.each([
+    "constructor",
+    "__proto__",
+    "valueof,hasownproperty",
+    "tostring",
+  ])("prototype-key-only spec %p → all types (no throw)", (spec) => {
+    expect(resolveJobTypesForLanes(spec)).toEqual(ALL);
+  });
+
+  // A real lane alongside a prototype key resolves to just the real lane — the
+  // prototype key is ignored, not crashed on, not promoted to "all".
+  test("'agent,constructor' → exactly the agent lane (proto key ignored)", () => {
+    expect(new Set(resolveJobTypesForLanes("agent,constructor"))).toEqual(new Set(AGENT_JOB_TYPES));
+  });
 });
 
 describe("resolveJobTypesForLanes — scoping", () => {

@@ -63,7 +63,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: arm-apps-daemon-${{ github.event.inputs.environment }}
+  # Key on target too: the cp-daemon and apps-worker arms touch different hosts,
+  # so serializing them against each other (env-only key) needlessly blocks
+  # arming the two independent daemons concurrently.
+  group: arm-apps-daemon-${{ github.event.inputs.environment }}-${{ github.event.inputs.target }}
   cancel-in-progress: false
 
 jobs:
@@ -77,8 +80,17 @@ jobs:
       # Product-2 daemon on a host that sits on the apps private net (so it can
       # reach the tenant DB) and runs no agent jobs — never touching the agent
       # control plane.
-      DEPLOY_HOST: ${{ github.event.inputs.target == 'apps-worker' && secrets.ELIZA_APPS_WORKER_HOST || secrets.ELIZA_PROVISIONING_HOST }}
-      DEPLOY_SSH_KEY: ${{ github.event.inputs.target == 'apps-worker' && secrets.ELIZA_APPS_WORKER_SSH_KEY || secrets.ELIZA_PROVISIONING_SSH_KEY }}
+      #
+      # NO cross-target fallback. The naive `apps-worker && APPS || PROVISIONING`
+      # form silently resolves to the CP host when ELIZA_APPS_WORKER_HOST is
+      # unset — which would SSH the apps env onto the agent control-plane host
+      # (Preflight can't catch it because DEPLOY_HOST is then non-empty). The
+      # nested form below only ever yields the SAME-target secret or '' (the
+      # trailing `|| ''` forces empty, not the boolean `false`), so a missing
+      # same-target secret leaves DEPLOY_HOST empty and the Preflight
+      # `[ -n "$DEPLOY_HOST" ]` check reports the right missing-secret error.
+      DEPLOY_HOST: ${{ (github.event.inputs.target == 'apps-worker' && secrets.ELIZA_APPS_WORKER_HOST) || (github.event.inputs.target == 'cp-daemon' && secrets.ELIZA_PROVISIONING_HOST) || '' }}
+      DEPLOY_SSH_KEY: ${{ (github.event.inputs.target == 'apps-worker' && secrets.ELIZA_APPS_WORKER_SSH_KEY) || (github.event.inputs.target == 'cp-daemon' && secrets.ELIZA_PROVISIONING_SSH_KEY) || '' }}
       SYSTEMD_UNIT: ${{ github.event.inputs.target == 'apps-worker' && 'eliza-apps-worker.service' || 'eliza-provisioning-worker.service' }}
       BASE_DOMAIN: ${{ vars.APPS_BASE_DOMAIN }}
       APP_NODE: ${{ github.event.inputs.app_node }}
