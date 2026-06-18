@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createVoiceCapture } from "../../../voice/voice-capture-factory";
 import { useShellController } from "../useShellController";
 
 const NOT_REQUIRED_STATUS = {
@@ -40,6 +41,20 @@ vi.mock("../../local-inference/useHomeModelStatus", () => ({
 
 vi.mock("../../../voice/voice-capture-factory", () => ({
   createVoiceCapture: vi.fn(),
+}));
+
+// Voice OUTPUT is stubbed to a quiet, controllable surface so the hands-free
+// re-listen loop is deterministic (never spuriously "speaking").
+const voiceOutputMock = vi.hoisted(() => ({
+  speaking: false,
+  stopSpeaking: vi.fn(),
+  agentVoiceMuted: false,
+  toggleAgentVoiceMute: vi.fn(),
+  needsAudioUnlock: false,
+  unlockAudio: vi.fn(),
+}));
+vi.mock("../useShellVoiceOutput", () => ({
+  useShellVoiceOutput: () => voiceOutputMock,
 }));
 
 afterEach(() => {
@@ -92,5 +107,166 @@ describe("useShellController", () => {
 
     expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
     expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe("hi");
+  });
+});
+
+// ── Voice: push-to-talk routing, hands-free loop, and #5 typing-pause ────────
+
+interface CaptureOpts {
+  onTranscript?: (segment: {
+    text: string;
+    final: boolean;
+    backend: string;
+  }) => void;
+  onStateChange?: (state: string) => void;
+}
+
+const createVoiceCaptureMock = vi.mocked(createVoiceCapture);
+
+/** Records the callbacks of the most recent capture + its handle's stop()/start(). */
+let lastCaptureOpts: CaptureOpts | null = null;
+let captureHandles: Array<{
+  start: ReturnType<typeof vi.fn>;
+  stop: ReturnType<typeof vi.fn>;
+}> = [];
+
+function installFakeCapture(): void {
+  createVoiceCaptureMock.mockImplementation((opts: CaptureOpts) => {
+    lastCaptureOpts = opts;
+    const handle = {
+      start: vi.fn(() => Promise.resolve()),
+      stop: vi.fn(() => Promise.resolve()),
+      dispose: vi.fn(),
+      getAnalyser: vi.fn(() => null),
+    };
+    captureHandles.push(handle);
+    // The real onStateChange("stopped") path clears recording/capture; mirror it
+    // when the handle is stopped so the re-listen loop can re-arm.
+    handle.stop.mockImplementation(() => {
+      opts.onStateChange?.("stopped");
+      return Promise.resolve();
+    });
+    return handle as never;
+  });
+}
+
+/** Fire a final transcript through the most recent capture. */
+function fireFinalTranscript(text: string): void {
+  lastCaptureOpts?.onTranscript?.({ text, final: true, backend: "test" });
+}
+
+describe("useShellController — voice capture routing", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    lastCaptureOpts = null;
+    captureHandles = [];
+    createVoiceCaptureMock.mockReset();
+    installFakeCapture();
+    voiceOutputMock.speaking = false;
+    appMock.value.agentStatus = { ...READY_STATUS };
+    appMock.value.sendChatText.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("push-to-talk dictation fills the draft and does NOT send", async () => {
+    const dictated: string[] = [];
+    const { result } = renderHook(() => useShellController());
+    act(() => result.current.setDictationSink((t) => dictated.push(t)));
+
+    // Press-and-hold → dictation capture.
+    await act(async () => {
+      result.current.startRecording("dictate");
+    });
+    expect(result.current.recording).toBe(true);
+
+    // A final transcript routes to the dictation sink, NOT send().
+    act(() => fireFinalTranscript("remind me tomorrow"));
+    expect(dictated).toEqual(["remind me tomorrow"]);
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
+  });
+
+  it("converse capture (hands-free) sends the transcript as a VOICE_DM", async () => {
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      result.current.toggleHandsFree();
+    });
+    expect(result.current.handsFree).toBe(true);
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+
+    act(() => fireFinalTranscript("what's the weather"));
+    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
+    expect(appMock.value.sendChatText.mock.calls[0]?.[1]).toMatchObject({
+      channelType: "VOICE_DM",
+    });
+  });
+
+  it("hands-free loop re-opens the mic after a turn ends", async () => {
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      result.current.toggleHandsFree();
+    });
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+
+    // The turn ends (capture stops) → after the 250ms debounce the loop re-opens.
+    await act(async () => {
+      captureHandles[0]?.stop();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("#5: a typed draft pauses the always-on loop; clearing it (send) resumes", async () => {
+    const { result } = renderHook(() => useShellController());
+
+    // Always-on engaged: mic open (capture #1).
+    await act(async () => {
+      result.current.toggleHandsFree();
+    });
+    expect(result.current.handsFree).toBe(true);
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+
+    // User starts typing → the live capture is stopped (always-on paused), but
+    // handsFree stays true (the remembered voice state).
+    await act(async () => {
+      result.current.setComposerHasDraft(true);
+    });
+    expect(captureHandles[0]?.stop).toHaveBeenCalled();
+    expect(result.current.handsFree).toBe(true);
+
+    // While the draft persists the loop must NOT re-open the mic.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+
+    // Clearing the draft (on send) returns to the prior voice state — the loop
+    // re-arms and re-opens the mic (capture #2).
+    await act(async () => {
+      result.current.setComposerHasDraft(false);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("#5: typing does nothing when always-on was never engaged", async () => {
+    const { result } = renderHook(() => useShellController());
+
+    // No hands-free → typing + clearing the draft never opens the mic.
+    await act(async () => {
+      result.current.setComposerHasDraft(true);
+    });
+    await act(async () => {
+      result.current.setComposerHasDraft(false);
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    expect(result.current.handsFree).toBe(false);
   });
 });

@@ -73,6 +73,11 @@ export interface ShellController {
   /** Register where push-to-talk dictation drops its final transcript (the
    *  overlay wires this to its composer draft). Pass null to clear. */
   setDictationSink: (sink: ((text: string) => void) | null) => void;
+  /** Tell the controller whether the composer holds a pending typed/dictated
+   *  draft. While a draft exists the hands-free ("always-on") loop is paused so
+   *  the mic isn't listening over the keyboard; clearing the draft (on send)
+   *  resumes it — restoring the prior voice state without a re-tap. */
+  setComposerHasDraft: (hasDraft: boolean) => void;
   /** DEV-only: clear the conversation and start a fresh, greeted one. */
   clearConversation: () => void;
   /** Jump to Settings (where ProviderSwitcher lives) — used by the chat's
@@ -148,6 +153,17 @@ export function useShellController(): ShellController {
   const [handsFree, setHandsFree] = React.useState(false);
   const handsFreeRef = React.useRef(false);
   handsFreeRef.current = handsFree;
+  // Composer-draft signal from the overlay. While the user has a pending typed
+  // (or PTT-dictated) draft, the hands-free always-on loop pauses so the mic
+  // doesn't transcribe the room over the keyboard; clearing it (on send) lets
+  // the loop resume, returning to the prior voice state. State drives the loop
+  // effect's re-arm; the ref gives its debounce timer a live re-check.
+  const [composerHasDraft, setComposerHasDraftState] = React.useState(false);
+  const composerHasDraftRef = React.useRef(false);
+  composerHasDraftRef.current = composerHasDraft;
+  const setComposerHasDraft = React.useCallback((hasDraft: boolean) => {
+    setComposerHasDraftState(hasDraft);
+  }, []);
   // Push-to-talk dictation routes its final transcript here (the overlay wires
   // this to its composer draft) instead of sending it.
   const onDictatedTextRef = React.useRef<((text: string) => void) | null>(null);
@@ -364,19 +380,32 @@ export function useShellController(): ShellController {
     });
   }, [startCapture, stopCapture, voiceOutput]);
 
+  // Typing pauses always-on: when a draft appears while the hands-free mic is
+  // live, stop the capture so it doesn't transcribe the room over the keyboard.
+  // handsFree stays true, so the re-listen loop resumes once the draft clears.
+  React.useEffect(() => {
+    if (composerHasDraft && handsFree && captureRef.current) {
+      stopCapture();
+    }
+  }, [composerHasDraft, handsFree, stopCapture]);
+
   // Hands-free loop: once a spoken reply finishes (and nothing is recording or
   // mid-send), re-open the mic so the conversation continues without a tap. The
   // 250ms debounce + live re-check via handsFreeRef guard against double-start.
+  // Paused while the composer holds a draft (typing → always-on off), so a send
+  // that clears the draft re-arms it and returns to the prior voice state.
   React.useEffect(() => {
     if (!handsFree || !ready) return;
     if (recording || captureRef.current) return;
     if (chatSending || voiceOutput.speaking) return;
+    if (composerHasDraft) return;
     const timer = window.setTimeout(() => {
       if (
         handsFreeRef.current &&
         !captureRef.current &&
         !chatSending &&
-        !voiceOutput.speaking
+        !voiceOutput.speaking &&
+        !composerHasDraftRef.current
       ) {
         startCapture("converse");
       }
@@ -388,6 +417,7 @@ export function useShellController(): ShellController {
     recording,
     chatSending,
     voiceOutput.speaking,
+    composerHasDraft,
     startCapture,
   ]);
 
@@ -425,6 +455,7 @@ export function useShellController(): ShellController {
     handsFree,
     toggleHandsFree,
     setDictationSink,
+    setComposerHasDraft,
     muted,
     toggleMute,
     transcript,

@@ -201,6 +201,7 @@ function Harness(): React.JSX.Element {
     toggleRecording,
     toggleHandsFree,
     setDictationSink,
+    setComposerHasDraft: (_hasDraft: boolean) => {},
     startRecording,
     stopRecording,
     toggleAgentVoiceMute,
