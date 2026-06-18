@@ -670,7 +670,20 @@ export class MessageManager {
         );
         return [];
       }
-      await ctx.telegram.sendChatAction(ctx.chat.id, "typing");
+      // The typing indicator is cosmetic and best-effort — a failure here must
+      // never abort the actual reply on the critical path below.
+      try {
+        await ctx.telegram.sendChatAction(ctx.chat.id, "typing");
+      } catch (error) {
+        logger.debug(
+          {
+            src: "plugin:telegram",
+            agentId: this.runtime.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "sendChatAction (typing) failed; continuing",
+        );
+      }
 
       for (let i = 0; i < chunks.length; i++) {
         const chunk = convertMarkdownToTelegram(chunks[i]);

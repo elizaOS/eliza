@@ -444,3 +444,29 @@ describe("MessageManager send resilience (sendWithRetry)", () => {
     expect(sendMessage).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("MessageManager typing-indicator resilience", () => {
+  it("still sends the reply when the typing action fails", async () => {
+    const sendMessage = vi.fn(
+      async (chatId: number | string, text: string) => ({
+        message_id: 1,
+        date: 1,
+        text,
+        chat: { id: chatId, type: "private" },
+      }),
+    );
+    const sendChatAction = vi.fn(async () => {
+      throw new Error("typing action failed");
+    });
+    const manager = new MessageManager(
+      { telegram: { sendMessage, sendChatAction } } as never,
+      { agentId: "agent-1" } as never,
+    );
+    const sent = await manager.sendMessageInChunks(
+      { chat: { id: 123 }, telegram: { sendMessage, sendChatAction } } as never,
+      { text: "hi" },
+    );
+    expect(sent).toHaveLength(1);
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+});

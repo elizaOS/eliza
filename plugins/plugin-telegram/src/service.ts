@@ -551,6 +551,23 @@ export class TelegramService extends Service {
           break;
         } catch (error) {
           lastError = error instanceof Error ? error : new Error(String(error));
+          const errorCode = (error as { response?: { error_code?: number } })
+            .response?.error_code;
+          // A revoked/malformed bot token (401/404) is permanent — don't burn
+          // ~30s of exponential backoff retrying it; fail fast with a clear
+          // operator message.
+          if (errorCode === 401 || errorCode === 404) {
+            logger.error(
+              {
+                src: "plugin:telegram",
+                agentId: runtime.agentId,
+                accountId: state.accountId,
+                errorCode,
+              },
+              "Telegram bot token rejected — check TELEGRAM_BOT_TOKEN for this account",
+            );
+            break;
+          }
           logger.error(
             {
               src: "plugin:telegram",
