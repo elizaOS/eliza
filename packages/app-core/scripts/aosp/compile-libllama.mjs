@@ -272,6 +272,13 @@ export const FUSED_ANDROID_TARGETS = Object.freeze([
   "android-riscv64-cpu-fused",
 ]);
 
+// Extra cmake targets whose build failure must STILL abort the run. Only the
+// fused `elizainference` lib (libelizainference.so) is bundled into the APK;
+// every other extra target is a standalone CLI driver that ships nothing, so a
+// compile break in one of those (e.g. the fork's stale omnivoice-tts.cpp) must
+// not fail a build whose required libs are otherwise good.
+const CRITICAL_EXTRA_TARGETS = new Set(["elizainference"]);
+
 /**
  * Parse one of the `android-<arch>-<backend>[-fused]` target strings used by
  * the mtp build script into the pieces this script needs (the Android ABI
@@ -1184,11 +1191,30 @@ export function buildLibllamaForAbi({
       log(
         `[compile-libllama] Building extra cmake target ${extraTarget} for ${abi}`,
       );
-      spawn(
-        "cmake",
-        ["--build", buildDir, "--target", extraTarget, "-j", String(jobs)],
-        {},
-      );
+      try {
+        spawn(
+          "cmake",
+          ["--build", buildDir, "--target", extraTarget, "-j", String(jobs)],
+          {},
+        );
+      } catch (err) {
+        // The fused libelizainference.so (`elizainference` target) is the only
+        // extra target the APK actually bundles, and `verifyFusedSymbols`
+        // enforces it after this loop — so it stays fatal. The rest are
+        // standalone CLI drivers (omnivoice-tts / omnivoice-codec / llama-cli /
+        // llama-bench / llama-completion / llama-mtmd-cli) that ship nothing
+        // into the APK. The pinned fork's `omnivoice-tts.cpp` currently calls a
+        // removed `backend_init("LM")` overload (backend.h only exposes
+        // `backend_init_auto()`), so that driver fails to compile while
+        // libelizainference.so builds fine. Don't let a broken auxiliary CLI
+        // abort the build that produces the lib we need; warn and continue.
+        if (CRITICAL_EXTRA_TARGETS.has(extraTarget)) throw err;
+        log(
+          `[compile-libllama] WARN: auxiliary cmake target ${extraTarget} failed to build for ${abi}; ` +
+            `continuing — it bundles nothing into the APK and libllama.so/libelizainference.so are unaffected. ` +
+            `Cause: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
   }
 
@@ -2376,14 +2402,27 @@ export async function mainTargets(args) {
       log: console.log,
       spawn: run,
     });
-    buildSpeculativeShimForAbi({
-      cacheDir: args.cacheDir,
-      abi: parsed.androidAbi,
-      abiAssetDir,
-      llamaSourceDir: srcDir,
-      log: console.log,
-      spawn: run,
-    });
+    // The speculative (MTP) shim is OPTIONAL — the adapter dlopens it only when
+    // present. The pinned fork's spec-shim source references the removed
+    // `COMMON_SPECULATIVE_TYPE_MTP` and fails to compile, but the fused libs are
+    // already built. Don't abort the explicit-target build over it (mirrors the
+    // --abi path's handling); MTP just stays disabled for this APK.
+    try {
+      buildSpeculativeShimForAbi({
+        cacheDir: args.cacheDir,
+        abi: parsed.androidAbi,
+        abiAssetDir,
+        llamaSourceDir: srcDir,
+        log: console.log,
+        spawn: run,
+      });
+    } catch (err) {
+      console.warn(
+        `[compile-libllama] WARN: speculative (MTP) shim build failed for ${parsed.androidAbi}; ` +
+          `continuing — MTP stays disabled and the adapter treats the shim as optional. ` +
+          `Cause: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
 
     // Post-build: for fused targets prove libelizainference.so exports both
     // `llama_*` and `ov_*` (and the eliza_inference ABI surface). Hard error

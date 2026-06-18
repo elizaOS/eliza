@@ -35,12 +35,18 @@ export function fusedCmakeBuildTargets() {
 
 /**
  * CMake flags a fused build must add on top of the per-target defaults.
- * `ELIZA_FUSE_OMNIVOICE=ON` is redirected by the fork's root CMakeLists.txt
- * to `LLAMA_BUILD_OMNIVOICE=ON` so both source-level guards
- * (`#ifdef ELIZA_FUSE_OMNIVOICE` and `#ifdef LLAMA_BUILD_OMNIVOICE`) light up.
+ * The fused lib `elizainference` (libelizainference.so — the TTS+ASR+LLM
+ * artifact the APK bundles) is guarded by `if(ELIZA_FUSE_OMNIVOICE)` in the
+ * fork's root CMakeLists.txt, while the omnivoice TTS subtree (and its CLI
+ * drivers) is guarded by `LLAMA_BUILD_OMNIVOICE`. The pinned fork has NO
+ * redirect wiring one flag to the other, so BOTH must be set explicitly —
+ * with only `LLAMA_BUILD_OMNIVOICE` the `elizainference` target is never
+ * defined and `cmake --build --target elizainference` silently no-ops, which
+ * is exactly why x86_64 shipped without libelizainference.so.
  */
 export function fusedExtraCmakeFlags() {
   return [
+    "-DELIZA_FUSE_OMNIVOICE=ON",
     "-DLLAMA_BUILD_OMNIVOICE=ON",
     "-DOMNIVOICE_SHARED=ON",
     "-DBUILD_SHARED_LIBS=ON",
