@@ -221,6 +221,19 @@ type LifeOpsInboxCacheWriteMessage = LifeOpsInboxMessage & {
   priorityFlags?: readonly string[];
 };
 
+// Finance tables were carved out of plugin-personal-assistant into
+// @elizaos/plugin-finances and now live under the `app_finances` PostgreSQL
+// schema (see plugins/plugin-finances/src/db/schema.ts). PA still reads/writes
+// them via raw SQL, so the qualified names are centralized here.
+const FINANCE_SCHEMA = "app_finances";
+const FINANCE_TABLES = {
+  paymentSources: `${FINANCE_SCHEMA}.life_payment_sources`,
+  paymentTransactions: `${FINANCE_SCHEMA}.life_payment_transactions`,
+  subscriptionAudits: `${FINANCE_SCHEMA}.life_subscription_audits`,
+  subscriptionCandidates: `${FINANCE_SCHEMA}.life_subscription_candidates`,
+  subscriptionCancellations: `${FINANCE_SCHEMA}.life_subscription_cancellations`,
+} as const;
+
 const LIFEOPS_INBOX_CHANNEL_SET = new Set<LifeOpsInboxChannel>(
   LIFEOPS_INBOX_CHANNELS,
 );
@@ -3404,7 +3417,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO app_lifeops.life_subscription_audits (
+      `INSERT INTO ${FINANCE_TABLES.subscriptionAudits} (
         id, agent_id, source, query_window_days, status, total_candidates,
         active_candidates, canceled_candidates, uncertain_candidates, summary,
         metadata_json, created_at, updated_at
@@ -3431,7 +3444,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `UPDATE app_lifeops.life_subscription_audits
+      `UPDATE ${FINANCE_TABLES.subscriptionAudits}
           SET source = ${sqlQuote(audit.source)},
               query_window_days = ${sqlInteger(audit.queryWindowDays)},
               status = ${sqlQuote(audit.status)},
@@ -3454,7 +3467,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_subscription_audits
+         FROM ${FINANCE_TABLES.subscriptionAudits}
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(auditId)}
         LIMIT 1`,
@@ -3469,7 +3482,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_subscription_audits
+         FROM ${FINANCE_TABLES.subscriptionAudits}
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY updated_at DESC, created_at DESC
         LIMIT 1`,
@@ -3483,7 +3496,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO app_lifeops.life_subscription_candidates (
+      `INSERT INTO ${FINANCE_TABLES.subscriptionCandidates} (
         id, agent_id, audit_id, service_slug, service_name, provider, cadence,
         state, confidence, annual_cost_estimate_usd, management_url,
         latest_evidence_at, evidence_json, metadata_json, created_at, updated_at
@@ -3527,7 +3540,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_subscription_candidates
+         FROM ${FINANCE_TABLES.subscriptionCandidates}
         WHERE agent_id = ${sqlQuote(agentId)}
           AND audit_id = ${sqlQuote(auditId)}
         ORDER BY confidence DESC, service_name ASC`,
@@ -3542,7 +3555,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_subscription_candidates
+         FROM ${FINANCE_TABLES.subscriptionCandidates}
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(candidateId)}
         LIMIT 1`,
@@ -3556,7 +3569,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO app_lifeops.life_subscription_cancellations (
+      `INSERT INTO ${FINANCE_TABLES.subscriptionCancellations} (
         id, agent_id, audit_id, candidate_id, service_slug, service_name,
         executor, status, confirmed, current_step, browser_session_id,
         evidence_summary, artifact_count, management_url, error, metadata_json,
@@ -3590,7 +3603,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `UPDATE app_lifeops.life_subscription_cancellations
+      `UPDATE ${FINANCE_TABLES.subscriptionCancellations}
           SET audit_id = ${sqlText(cancellation.auditId)},
               candidate_id = ${sqlText(cancellation.candidateId)},
               service_slug = ${sqlQuote(cancellation.serviceSlug)},
@@ -3619,7 +3632,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_subscription_cancellations
+         FROM ${FINANCE_TABLES.subscriptionCancellations}
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(cancellationId)}
         LIMIT 1`,
@@ -3638,7 +3651,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_subscription_cancellations
+         FROM ${FINANCE_TABLES.subscriptionCancellations}
         WHERE agent_id = ${sqlQuote(agentId)}
           ${serviceClause}
         ORDER BY updated_at DESC, created_at DESC
@@ -3730,7 +3743,7 @@ export class LifeOpsRepository {
   async upsertPaymentSource(source: LifeOpsPaymentSource): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO app_lifeops.life_payment_sources (
+      `INSERT INTO ${FINANCE_TABLES.paymentSources} (
         id, agent_id, kind, label, institution, account_mask, status,
         last_synced_at, transaction_count, metadata_json, created_at, updated_at
       ) VALUES (
@@ -3764,7 +3777,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_payment_sources
+         FROM ${FINANCE_TABLES.paymentSources}
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY created_at DESC`,
     );
@@ -3778,7 +3791,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_payment_sources
+         FROM ${FINANCE_TABLES.paymentSources}
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(sourceId)}
         LIMIT 1`,
@@ -3790,13 +3803,13 @@ export class LifeOpsRepository {
   async deletePaymentSource(agentId: string, sourceId: string): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `DELETE FROM app_lifeops.life_payment_transactions
+      `DELETE FROM ${FINANCE_TABLES.paymentTransactions}
         WHERE agent_id = ${sqlQuote(agentId)}
           AND source_id = ${sqlQuote(sourceId)}`,
     );
     await executeRawSql(
       this.runtime,
-      `DELETE FROM app_lifeops.life_payment_sources
+      `DELETE FROM ${FINANCE_TABLES.paymentSources}
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(sourceId)}`,
     );
@@ -3808,7 +3821,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `DELETE FROM app_lifeops.life_payment_transactions
+      `DELETE FROM ${FINANCE_TABLES.paymentTransactions}
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(transactionId)}`,
     );
@@ -3819,7 +3832,7 @@ export class LifeOpsRepository {
   ): Promise<boolean> {
     const rows = await executeRawSql(
       this.runtime,
-      `INSERT INTO app_lifeops.life_payment_transactions (
+      `INSERT INTO ${FINANCE_TABLES.paymentTransactions} (
         id, agent_id, source_id, external_id, posted_at, amount_usd, direction,
         merchant_raw, merchant_normalized, description, category, currency,
         metadata_json, created_at
@@ -3875,7 +3888,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_payment_transactions
+         FROM ${FINANCE_TABLES.paymentTransactions}
         WHERE agent_id = ${sqlQuote(agentId)}
           ${sourceClause}
           ${sinceClause}
@@ -3895,7 +3908,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT COUNT(*) AS count
-         FROM app_lifeops.life_payment_transactions
+         FROM ${FINANCE_TABLES.paymentTransactions}
         WHERE agent_id = ${sqlQuote(agentId)}
           AND source_id = ${sqlQuote(sourceId)}`,
     );

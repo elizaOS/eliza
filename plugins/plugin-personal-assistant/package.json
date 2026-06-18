@@ -74,6 +74,7 @@
     "@elizaos/plugin-calendly": "workspace:*",
     "@elizaos/plugin-discord": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
+    "@elizaos/plugin-finances": "workspace:*",
     "@elizaos/plugin-google": "workspace:*",
     "@elizaos/plugin-health": "workspace:*",
     "@elizaos/plugin-phone": "workspace:*",

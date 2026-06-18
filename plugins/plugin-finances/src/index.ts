@@ -9,13 +9,24 @@
 export { ownerFinancesAction } from "./actions/finances.ts";
 export { FinancesView } from "./components/finances/FinancesView.tsx";
 export {
+  financesDbSchema,
   financesSchema,
-  type RecurringChargeInsert,
-  type RecurringChargeRow,
-  recurringChargesTable,
-  type TransactionInsert,
-  type TransactionRow,
-  transactionsTable,
+  type LifePaymentSourceInsert,
+  type LifePaymentSourceRow,
+  type LifePaymentTransactionInsert,
+  type LifePaymentTransactionRow,
+  type LifeSubscriptionAuditInsert,
+  type LifeSubscriptionAuditRow,
+  type LifeSubscriptionCancellationInsert,
+  type LifeSubscriptionCancellationRow,
+  type LifeSubscriptionCandidateInsert,
+  type LifeSubscriptionCandidateRow,
+  lifePaymentSources,
+  lifePaymentTransactions,
+  lifeSubscriptionAudits,
+  lifeSubscriptionCancellations,
+  lifeSubscriptionCandidates,
 } from "./db/schema.ts";
 export { default, financesPlugin } from "./plugin.ts";
+export { FinancesMigrationService } from "./services/migration.ts";
 export * from "./types.ts";

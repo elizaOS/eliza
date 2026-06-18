@@ -17,6 +17,7 @@ import {
 import { BrowserBridgeAdapter } from "@elizaos/plugin-browser";
 import { calendarPlugin } from "@elizaos/plugin-calendar";
 import { CalendlyAdapter } from "@elizaos/plugin-calendly";
+import { financesPlugin } from "@elizaos/plugin-finances";
 import { GoogleGmailAdapter } from "@elizaos/plugin-google";
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
 import { blockAction } from "./actions/block.js";
@@ -556,6 +557,23 @@ export async function ensureLifeOpsCalendarPluginRegistered(
   await runtime.registerPlugin(calendarPlugin);
 }
 
+/**
+ * Register `@elizaos/plugin-finances` if it is not already in the runtime. The
+ * finance tables (life_payment_*, life_subscription_*) moved out of LifeOps
+ * into the finances plugin's `app_finances` schema; PA's finance repository
+ * methods read/write those tables via raw SQL, so the finances plugin (which
+ * owns the schema + the non-destructive data copy) MUST be loaded whenever PA
+ * is. Hard dependency, so a static import is sufficient.
+ */
+export async function ensureLifeOpsFinancesPluginRegistered(
+  runtime: IAgentRuntime,
+): Promise<void> {
+  if (runtime.plugins.some((plugin) => plugin.name === financesPlugin.name)) {
+    return;
+  }
+  await runtime.registerPlugin(financesPlugin);
+}
+
 const LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY =
   "eliza:lifeops:plugin:init-failures";
 
@@ -747,6 +765,7 @@ const rawPersonalAssistantPlugin: Plugin = {
 
     await ensureLifeOpsGooglePluginRegistered(runtime);
     await ensureLifeOpsCalendarPluginRegistered(runtime);
+    await ensureLifeOpsFinancesPluginRegistered(runtime);
 
     // Inject the LifeOps-backed calendar gate once the runtime has finished
     // initializing both plugins, so calendar events keep firing reminders and
