@@ -1166,7 +1166,25 @@ async function ensurePlatform(platform) {
 // committed files used).
 function ensureBunRuntimeRegistered() {
   const MODULE = "elizaos-capacitor-bun-runtime";
-  const PROJECT_DIR = "../../../../plugins/plugin-native-bun-runtime/android";
+  // Resolve the projectDir relative to the ACTUAL androidDir, not a hardcoded
+  // `../../../../` that only happens to be right for the eliza tree's depth
+  // (`app-core/platforms/android`). A white-label consumer building in
+  // `apps/app/android` (ELIZA_ANDROID_USE_APP_DIR=1) sits at a different depth,
+  // so the hardcoded path resolved to a non-existent dir and gradle aborted
+  // ("projectDirectory … does not exist"). path.relative gives the correct
+  // hops from either androidDir to the bun-runtime plugin in the eliza checkout.
+  const PROJECT_DIR = path
+    .relative(
+      androidDir,
+      path.join(
+        elizaRepoRoot,
+        "plugins",
+        "plugin-native-bun-runtime",
+        "android",
+      ),
+    )
+    .split(path.sep)
+    .join("/");
   const settingsPath = path.join(androidDir, "capacitor.settings.gradle");
   const buildGradlePath = path.join(
     androidDir,
@@ -1921,9 +1939,35 @@ function patchLlamaCppCapacitorGradle() {
   for (const pkgRoot of resolvePackageAbsolutePathCandidates(
     "llama-cpp-capacitor",
   )) {
-    patchGradleFileForAgp9(
-      path.join(pkgRoot, "android", "build.gradle"),
-      "llama-cpp-capacitor",
+    const gradlePath = path.join(pkgRoot, "android", "build.gradle");
+    patchGradleFileForAgp9(gradlePath, "llama-cpp-capacitor");
+    restrictLlamaCapacitorToArm64(gradlePath);
+  }
+}
+
+// llama-cpp-capacitor@0.1.5 is an arm64-only native package: its
+// android/src/main/CMakeLists.txt unconditionally builds the arm64 target with
+// `-march=armv8-a -mtune=cortex-a76`, and it ships only a
+// jniLibs/arm64-v8a/libllama-cpp-arm64.so prebuilt — there is no x86_64 source
+// path or prebuilt. Its build.gradle nonetheless declares
+// `abiFilters 'arm64-v8a', 'x86_64'`, so AGP runs the arm64 NDK build under the
+// x86_64 toolchain and clang rejects `-march=armv8-a` (unknown target CPU). Drop
+// x86_64 from THIS library only, so the app still packages x86_64 for the other
+// native libs (bun runtime, ggml) — llama-cpp-capacitor is simply absent there,
+// which the plugin already tolerates.
+function restrictLlamaCapacitorToArm64(gradlePath) {
+  if (!fs.existsSync(gradlePath)) return;
+  const current = fs.readFileSync(gradlePath, "utf8");
+  const patched = current
+    .replace(/(abiFilters\s+'arm64-v8a')\s*,\s*'x86_64'/g, "$1")
+    .replace(
+      /abiFilters\s+'x86_64'\s*,\s*'arm64-v8a'/g,
+      "abiFilters 'arm64-v8a'",
+    );
+  if (patched !== current) {
+    fs.writeFileSync(gradlePath, patched, "utf8");
+    console.log(
+      "[mobile-build] Restricted llama-cpp-capacitor to arm64-v8a (package has no x86_64 native build).",
     );
   }
 }
@@ -2488,6 +2532,45 @@ function syncAndroidAppActionsResources() {
     );
   }
 
+  // The staged App Actions drawables reference @color/eliza_orange, defined in
+  // the eliza template's values/colors.xml. We don't copy colors.xml wholesale
+  // (a white-label target keeps its own brand colors), so stage just the
+  // referenced color into a dedicated file — and ONLY when the target doesn't
+  // already define it, so the eliza tree (whose colors.xml already has it)
+  // avoids a duplicate-resource merge error.
+  const templateColorsXml = path.join(templateResDir, "values", "colors.xml");
+  const elizaOrangeMatch = fs.existsSync(templateColorsXml)
+    ? fs
+        .readFileSync(templateColorsXml, "utf8")
+        .match(/<color name="eliza_orange">([^<]+)<\/color>/)
+    : null;
+  if (elizaOrangeMatch) {
+    const alreadyDefined = ["colors.xml", "eliza_app_actions_colors.xml"].some(
+      (name) => {
+        const p = path.join(targetResDir, "values", name);
+        return (
+          fs.existsSync(p) &&
+          /name="eliza_orange"/.test(fs.readFileSync(p, "utf8"))
+        );
+      },
+    );
+    if (!alreadyDefined) {
+      const colorFile = path.join(
+        targetResDir,
+        "values",
+        "eliza_app_actions_colors.xml",
+      );
+      fs.mkdirSync(path.dirname(colorFile), { recursive: true });
+      fs.writeFileSync(
+        colorFile,
+        `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="eliza_orange">${elizaOrangeMatch[1]}</color>\n</resources>\n`,
+      );
+      console.log(
+        "[mobile-build] Staged @color/eliza_orange for App Actions widget (white-label target).",
+      );
+    }
+  }
+
   const shortcutsPath = path.join(targetResDir, "xml", "shortcuts.xml");
   if (!fs.existsSync(shortcutsPath)) return;
 
@@ -2642,39 +2725,18 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       }
     }
     fs.mkdirSync(dstJava, { recursive: true });
-    for (const file of [
-      "GatewayConnectionService.java",
-      "AgentPlugin.java",
-      "AndroidVirtualizationBridge.java",
-      "BatteryOptimizationPlugin.java",
-      "ElizaAndroidSystemBridge.java",
-      "ElizaNativeBridge.java",
-      "MainActivity.java",
-      "ElizaAgentService.java",
-      "ElizaAssistActivity.java",
-      "ElizaQuickActionsWidgetProvider.java",
-      "ElizaShareActivity.java",
-      "ElizaVoiceTileService.java",
-      "ElizaAccessibilityService.java",
-      "ElizaBootReceiver.java",
-      "ElizaNotificationListenerService.java",
-      "ElizaVoiceCaptureService.java",
-      "VoiceCapturePlugin.java",
-      "ElizaBrowserActivity.java",
-      "ElizaCalendarActivity.java",
-      "ElizaCameraActivity.java",
-      "ElizaClockActivity.java",
-      "ElizaContactsActivity.java",
-      "ElizaDialActivity.java",
-      "ElizaInCallService.java",
-      "ElizaMmsReceiver.java",
-      "ElizaSmsGatewayService.java",
-      "ElizaRespondViaMessageService.java",
-      "ElizaSmsComposeActivity.java",
-      "ElizaSmsReceiver.java",
-      "ElizaTasksWorker.java",
-      "ElizaWorkScheduler.java",
-    ]) {
+    // Move EVERY .java file in the source package — never a hardcoded list. A
+    // fixed list silently drops newly-added files (e.g. ElizaVoicePlugin.java /
+    // ElizaVoiceNative.java from the fused-voice work), so the white-label
+    // package overlay leaves them in the legacy package while MainActivity (and
+    // the other moved files) reference them → "cannot find symbol" /
+    // "package R does not exist" and the whole white-label build fails. The
+    // package/import rewrite below makes any file in `ai.elizaos.app` resolve
+    // under the brand package, so moving all of them is always correct.
+    const javaFilesToOverlay = fs.existsSync(srcJava)
+      ? fs.readdirSync(srcJava).filter((name) => name.endsWith(".java"))
+      : [];
+    for (const file of javaFilesToOverlay) {
       const src = path.join(srcJava, file);
       if (!fs.existsSync(src)) continue;
       let code = fs.readFileSync(src, "utf8");
@@ -3991,6 +4053,32 @@ function patchAndroidGradle() {
   }
 
   const appGradlePath = path.join(androidDir, "app", "build.gradle");
+  // Refresh app/build.gradle from the template every build so committed
+  // template changes (e.g. the elizavoice-jni symbol gate) reach a white-label
+  // android project. The initial template sync only runs when the project is
+  // first materialized, so an existing apps/app/android would otherwise keep a
+  // stale build.gradle across incremental builds. For the in-tree build the
+  // template IS the target (same path) — skip so we don't self-copy.
+  const templateAppGradle = path.join(
+    platformsDir,
+    "android",
+    "app",
+    "build.gradle",
+  );
+  if (
+    fs.existsSync(templateAppGradle) &&
+    path.resolve(templateAppGradle) !== path.resolve(appGradlePath)
+  ) {
+    const templateAppGradleContent = fs.readFileSync(templateAppGradle, "utf8");
+    const currentAppGradle = fs.existsSync(appGradlePath)
+      ? fs.readFileSync(appGradlePath, "utf8")
+      : null;
+    if (currentAppGradle !== templateAppGradleContent) {
+      fs.mkdirSync(path.dirname(appGradlePath), { recursive: true });
+      fs.writeFileSync(appGradlePath, templateAppGradleContent, "utf8");
+      console.log("[mobile-build] Refreshed app/build.gradle from template.");
+    }
+  }
   if (fs.existsSync(appGradlePath)) {
     const current = fs.readFileSync(appGradlePath, "utf8");
     let patched = replaceOrInsertGradleString(current, "namespace", APP.appId);
@@ -4013,6 +4101,22 @@ function patchAndroidGradle() {
     patched = injectAospAssetThinning(patched);
     patched = injectCopyForkLlamaLibTask(patched);
     patched = injectAndroidBackgroundRunnerAarFlatDir(patched);
+    // The template resolves `elizaRepoRoot` for the omnivoice FFI headers via a
+    // relative `../../../..` walk from the gradle project dir. That only lands
+    // on the eliza checkout when the android project is nested inside it (the
+    // in-tree app-core/platforms/android build), where the relative form is
+    // correct and portable — leave it alone. A white-label app builds in its
+    // own android dir (appDir/android) OUTSIDE the checkout, so the same walk
+    // overshoots the repo root (→ /home/.../plugins, header not found). Only
+    // there do we pin it to the absolute checkout root this script resolved, so
+    // we never rewrite the committed template with a machine-specific path.
+    if (process.env.ELIZA_ANDROID_USE_APP_DIR === "1") {
+      patched = patched.replace(
+        /def elizaRepoRoot = .*/,
+        () =>
+          `def elizaRepoRoot = new File(${JSON.stringify(elizaRepoRoot).replace(/\$/g, "\\$")})`,
+      );
+    }
     if (patched !== current) {
       fs.writeFileSync(appGradlePath, patched, "utf8");
       console.log(
@@ -6447,12 +6551,18 @@ function resolveAndroidBuildTool(sdkRoot, toolName) {
  * failure so a broken artifact can never pass an audit by yielding an empty
  * listing.
  */
+function resolveJarTool(javaHome) {
+  // Prefer the JDK's own `jar`, but a JAVA_HOME pointing at a stripped JRE
+  // (java/keytool only, no jdk tools) is common and would hard-fail a finished
+  // build. Fall back to `jar` on PATH — `jar tf` is a plain zip listing and
+  // works regardless of which JDK provides it.
+  const exe = process.platform === "win32" ? "jar.exe" : "jar";
+  const fromHome = javaHome ? path.join(javaHome, "bin", exe) : null;
+  return fromHome && fs.existsSync(fromHome) ? fromHome : exe;
+}
+
 function listAndroidArtifactEntries(artifact, javaHome) {
-  const jar = path.join(
-    javaHome,
-    "bin",
-    process.platform === "win32" ? "jar.exe" : "jar",
-  );
+  const jar = resolveJarTool(javaHome);
   const result = spawnSync(jar, ["tf", artifact], { encoding: "utf8" });
   if (result.status !== 0) {
     throw new Error(
@@ -6589,11 +6699,7 @@ function auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome } = {}) {
 }
 
 function assertNoAndroidSmsGatewayPackagedOffenders(artifact, javaHome) {
-  const jar = path.join(
-    javaHome,
-    "bin",
-    process.platform === "win32" ? "jar.exe" : "jar",
-  );
+  const jar = resolveJarTool(javaHome);
   const jarResult = spawnSync(jar, ["tf", artifact], { encoding: "utf8" });
   if (jarResult.status !== 0) {
     throw new Error(
