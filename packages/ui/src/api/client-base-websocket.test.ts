@@ -98,30 +98,19 @@ describe("ElizaClient websocket connection policy", () => {
     expect(createdUrls[0]).toContain("token=agent-token");
   });
 
-  it("degrades a dedicated cloud agent to connected-over-REST after WS exhaustion (no disconnect overlay)", () => {
-    vi.useFakeTimers();
-    try {
-      const instances = stubWebSocketWithInstances();
-      const client = new ElizaClient(
-        "https://abc123def456.elizacloud.ai",
-        "cloud-token",
-      );
-      client.connectWs();
-      // It DID attempt a websocket (dedicated agents have a usable /ws).
-      expect(instances).toHaveLength(1);
-      // Simulate the socket never staying open through every reconnect attempt.
-      for (let i = 0; i < 15; i++) {
-        instances[instances.length - 1].onclose?.();
-      }
-      const state = client.getConnectionState();
-      expect(state.reconnectAttempt).toBeGreaterThanOrEqual(15);
-      // Instead of "failed" (which drives the full-screen "Lost backend
-      // connection" overlay) it degrades to a non-fatal connected state so REST
-      // chat keeps working and the WS keeps probing in the background.
-      expect(state.state).toBe("connected");
-    } finally {
-      vi.useRealTimers();
-    }
+  it("treats a dedicated cloud agent base as connected without opening a websocket (its /ws is not proxied)", () => {
+    const instances = stubWebSocketWithInstances();
+    const client = new ElizaClient(
+      "https://abc123def456.elizacloud.ai",
+      "cloud-token",
+    );
+    client.connectWs();
+    // The dedicated agent's /ws upgrade is NOT proxied by the agent-router (it
+    // 404s), so we don't attempt a websocket at all — no "Reconnecting… (N/15)"
+    // header churn — and report connected-over-REST immediately. (Revisit once
+    // /ws is proxied + advertised via /api/config.)
+    expect(instances).toHaveLength(0);
+    expect(client.getConnectionState().state).toBe("connected");
   });
 
   it("still goes failed for a non-cloud agent base after WS exhaustion (overlay preserved)", () => {
