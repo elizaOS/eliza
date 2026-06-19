@@ -17,7 +17,7 @@ import { drizzle as drizzlePGlite, type PgliteDatabase } from "drizzle-orm/pglit
 import type { ExtractTablesWithRelations } from "drizzle-orm/relations";
 import { Pool as PgPool, type PoolConfig } from "pg";
 import ws from "ws";
-import { getCloudAwareEnv } from "../lib/runtime/cloud-bindings";
+import { getCloudAwareEnv, getCloudBinding } from "../lib/runtime/cloud-bindings";
 import { applyDatabaseUrlFallback } from "./database-url";
 import { disableLocalPreparedStatements } from "./local-pg-query";
 import * as schema from "./schemas";
@@ -189,11 +189,13 @@ function enforceTlsForRemote(url: string): {
   };
 }
 
-function createPgPool(url: string): PgPool {
+function createPgPool(url: string, hyperdriveUrl?: string): PgPool {
   const env = getCloudAwareEnv();
   const inWorkerRuntime = isCloudflareWorkerRuntime();
   const isLocalTcp = isLocalTcpPostgresUrl(url);
-  const tls = enforceTlsForRemote(url);
+  // Hyperdrive proxies to the origin (pooling + TLS); the Worker connects to its
+  // local plaintext endpoint, so bypass the remote-TLS enforcement.
+  const tls = hyperdriveUrl ? { url: hyperdriveUrl, ssl: undefined } : enforceTlsForRemote(url);
   const options: PoolConfig = { connectionString: tls.url };
   if (tls.ssl) options.ssl = tls.ssl;
 
@@ -245,7 +247,11 @@ function createConnection(url: string): Database {
     return registerDatabaseCloser(drizzleNeon(pool, { schema }) as Database, () => pool.end());
   }
 
-  const pool = createPgPool(url);
+  // Non-Neon remote Postgres (e.g. Railway): on workerd a direct node-pg TCP
+  // connection terminates mid-query, so prefer a Cloudflare Hyperdrive binding
+  // when present and let it proxy to the origin.
+  const hyperdriveUrl = getCloudBinding<{ connectionString?: string }>("HYPERDRIVE")?.connectionString;
+  const pool = createPgPool(url, hyperdriveUrl);
   return registerDatabaseCloser(drizzleNode(pool, { schema }) as Database, () => pool.end());
 }
 
