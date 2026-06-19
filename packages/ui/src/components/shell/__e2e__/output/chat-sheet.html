@@ -12891,24 +12891,45 @@
   ];
   var Maximize2 = createLucideIcon("maximize-2", __iconNode2);
 
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/minimize-2.mjs
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/mic.mjs
   var __iconNode3 = [
+    ["path", { d: "M12 19v3", key: "npa21l" }],
+    ["path", { d: "M19 10v2a7 7 0 0 1-14 0v-2", key: "1vc78b" }],
+    ["rect", { x: "9", y: "2", width: "6", height: "13", rx: "3", key: "s6n7sd" }]
+  ];
+  var Mic = createLucideIcon("mic", __iconNode3);
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/minimize-2.mjs
+  var __iconNode4 = [
     ["path", { d: "m14 10 7-7", key: "oa77jy" }],
     ["path", { d: "M20 10h-6V4", key: "mjg0md" }],
     ["path", { d: "m3 21 7-7", key: "tjx5ai" }],
     ["path", { d: "M4 14h6v6", key: "rmj7iw" }]
   ];
-  var Minimize2 = createLucideIcon("minimize-2", __iconNode3);
+  var Minimize2 = createLucideIcon("minimize-2", __iconNode4);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/rotate-ccw.mjs
-  var __iconNode4 = [
+  var __iconNode5 = [
     ["path", { d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", key: "1357e3" }],
     ["path", { d: "M3 3v5h5", key: "1xhq8a" }]
   ];
-  var RotateCcw = createLucideIcon("rotate-ccw", __iconNode4);
+  var RotateCcw = createLucideIcon("rotate-ccw", __iconNode5);
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/send-horizontal.mjs
+  var __iconNode6 = [
+    [
+      "path",
+      {
+        d: "M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z",
+        key: "117uat"
+      }
+    ],
+    ["path", { d: "M6 12h16", key: "s4cdu5" }]
+  ];
+  var SendHorizontal = createLucideIcon("send-horizontal", __iconNode6);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/settings.mjs
-  var __iconNode5 = [
+  var __iconNode7 = [
     [
       "path",
       {
@@ -12918,7 +12939,7 @@
     ],
     ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
   ];
-  var Settings = createLucideIcon("settings", __iconNode5);
+  var Settings = createLucideIcon("settings", __iconNode7);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/components/AnimatePresence/index.mjs
   var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
@@ -25975,8 +25996,6 @@
   function rubberBand(overshoot) {
     return Math.sign(overshoot) * Math.sqrt(Math.abs(overshoot)) * 6;
   }
-  var SEND_GLYPH = "M18 10L25 18H21V27H15V18H11Z";
-  var MIC_GLYPH = "M6 14H9V22H6Z M11.5 10H14.5V26H11.5Z M16.5 7H19.5V29H16.5Z M22 10H25V26H22Z M27 14H30V22H27Z";
   var PLUS_GLYPH = "M16 8H20V16H28V20H20V28H16V20H8V16H16Z";
   var STOP_GLYPH = "M12 12H24V24H12Z";
   var SPEAKER_GLYPH = "M7 15H12L18 10V26L12 21H7Z M21 14Q25 18 21 22L23 22Q27 18 23 14Z M25 11Q31 18 25 25L27 25Q33 18 27 11Z";
@@ -25986,6 +26005,7 @@
   }
   function SoftButton({
     glyph,
+    icon: Icon2,
     label,
     onClick,
     onPointerDown,
@@ -26015,7 +26035,7 @@
           active ? "border-white/40 bg-white/85 text-black" : "border-white/15 bg-white/10 text-white/75 hover:bg-white/20 hover:text-white",
           disabled && "opacity-40"
         ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Glyph, { d: glyph })
+        children: Icon2 ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Icon2, { className: "h-[22px] w-[22px]", "aria-hidden": true }) : glyph ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Glyph, { d: glyph }) : null
       }
     );
   }
@@ -27402,7 +27422,7 @@
                                   /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "shrink-0", children: (hasDraft || hasImages) && !recording ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                                     SoftButton,
                                     {
-                                      glyph: SEND_GLYPH,
+                                      icon: SendHorizontal,
                                       label: canSend ? "send" : "send (waiting for reply)",
                                       disabled: !canSend,
                                       onPointerDown: (e) => e.preventDefault(),
@@ -27424,7 +27444,7 @@
                                   ) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                                     SoftButton,
                                     {
-                                      glyph: MIC_GLYPH,
+                                      icon: Mic,
                                       label: pushToTalkActive ? "release to send" : handsFree ? "end conversation" : recording ? "stop listening" : "talk",
                                       active: recording || handsFree,
                                       onClick: handleMicClick,
@@ -27786,8 +27806,10 @@ lucide-react/dist/esm/Icon.mjs:
 lucide-react/dist/esm/createLucideIcon.mjs:
 lucide-react/dist/esm/icons/house.mjs:
 lucide-react/dist/esm/icons/maximize-2.mjs:
+lucide-react/dist/esm/icons/mic.mjs:
 lucide-react/dist/esm/icons/minimize-2.mjs:
 lucide-react/dist/esm/icons/rotate-ccw.mjs:
+lucide-react/dist/esm/icons/send-horizontal.mjs:
 lucide-react/dist/esm/icons/settings.mjs:
 lucide-react/dist/esm/lucide-react.mjs:
   (**

@@ -1,8 +1,10 @@
 import {
   Home,
   Maximize2,
+  Mic,
   Minimize2,
   RotateCcw,
+  SendHorizontal,
   Settings as SettingsIcon,
 } from "lucide-react";
 import {
@@ -171,11 +173,8 @@ function rubberBand(overshoot: number): number {
   return Math.sign(overshoot) * Math.sqrt(Math.abs(overshoot)) * 6;
 }
 
-// Glyphs (viewBox 0 0 36 36), rendered in currentColor inside a soft chip — the
-// up-arrow (send) and five-bar waveform (mic) from the shared composer language.
-const SEND_GLYPH = "M18 10L25 18H21V27H15V18H11Z";
-const MIC_GLYPH =
-  "M6 14H9V22H6Z M11.5 10H14.5V26H11.5Z M16.5 7H19.5V29H16.5Z M22 10H25V26H22Z M27 14H30V22H27Z";
+// Glyphs (viewBox 0 0 36 36), rendered in currentColor inside a soft chip. Send
+// + mic now use lucide icons (SendHorizontal / Mic); the rest stay hand-drawn.
 const PLUS_GLYPH = "M16 8H20V16H28V20H20V28H16V20H8V16H16Z";
 // Stop generating: a centered rounded square (the universal "stop" affordance).
 const STOP_GLYPH = "M12 12H24V24H12Z";
@@ -196,6 +195,7 @@ function Glyph({ d }: { d: string }): React.JSX.Element {
 /** A soft round glass control that dissolves into the bar; brightens only when active. */
 function SoftButton({
   glyph,
+  icon: Icon,
   label,
   onClick,
   onPointerDown,
@@ -205,7 +205,9 @@ function SoftButton({
   active,
   testId,
 }: {
-  glyph: string;
+  /** A hand-drawn SVG path glyph (legacy), OR pass `icon` for a lucide icon. */
+  glyph?: string;
+  icon?: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
   label: string;
   onClick?: () => void;
   onPointerDown?: React.PointerEventHandler<HTMLButtonElement>;
@@ -239,7 +241,11 @@ function SoftButton({
         disabled && "opacity-40",
       )}
     >
-      <Glyph d={glyph} />
+      {Icon ? (
+        <Icon className="h-[22px] w-[22px]" aria-hidden={true} />
+      ) : glyph ? (
+        <Glyph d={glyph} />
+      ) : null}
     </button>
   );
 }
@@ -2152,7 +2158,7 @@ export function ContinuousChatOverlay({
                 <div className="shrink-0">
                   {(hasDraft || hasImages) && !recording ? (
                     <SoftButton
-                      glyph={SEND_GLYPH}
+                      icon={SendHorizontal}
                       label={canSend ? "send" : "send (waiting for reply)"}
                       disabled={!canSend}
                       // Keep focus in the textarea on tap: without this the
@@ -2178,7 +2184,7 @@ export function ContinuousChatOverlay({
                     />
                   ) : (
                     <SoftButton
-                      glyph={MIC_GLYPH}
+                      icon={Mic}
                       label={
                         pushToTalkActive
                           ? "release to send"

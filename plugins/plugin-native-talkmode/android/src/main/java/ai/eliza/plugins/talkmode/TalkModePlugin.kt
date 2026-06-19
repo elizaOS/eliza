@@ -490,12 +490,14 @@ class TalkModePlugin : Plugin() {
             // monitor still finalizes a real turn snappily; these only stop the
             // platform recognizer from bailing out (NO_MATCH) when nobody is
             // talking yet. End-of-turn after speech is ~800ms.
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 800L)
+            // These extras are read with getIntExtra → they MUST be Int (a Long
+            // is silently ignored).
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 800)
             putExtra(
                 RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS,
-                800L,
+                800,
             )
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 6000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 6000)
             sttLanguage?.let { putExtra(RecognizerIntent.EXTRA_LANGUAGE, it) }
         }
 
