@@ -171,21 +171,26 @@ Production GGUF artifacts (from `train_eliza1_wakeword_head.py --no-mel-rescale`
 (The classifier sha is head-specific; melspec/embedding are the frozen
 openWakeWord front-end and are stable across heads.)
 
-Publish is **gated** — per `packages/training/CLAUDE.md` §6, app-facing bundles
-reach `elizaos/eliza-1` ONLY through `scripts/publish/` (`publish_all_eliza1.sh`
-/ the per-tier publisher), which runs the hardware-verification + eval gates and
-regenerates the manifest. Do NOT raw-`hf upload` these (bypasses the gate).
-Steps, once HF write creds to `elizaos/eliza-1` are available:
-1. Stage the three GGUFs into each tier bundle's `wake/` via the publish flow.
-2. Add a `wakeword` catalog entry (version bump) in
-   `packages/shared/src/local-inference/voice-models.ts` with the filenames +
-   the sha256s above + the published `hfRevision` (replacing the
-   `hey-eliza-int8.onnx` / placeholder `openwakeword.gguf` entries).
-3. Remove `hey-eliza` from `OPENWAKEWORD_PLACEHOLDER_HEADS`.
+Publish status:
+1. ✅ **DONE** — the three GGUFs are uploaded to `elizaos/eliza-1` at
+   `voice/wakeword/hey-eliza.{melspec,embedding,classifier}.gguf`, commit
+   `c544bb4c78a601a0da8372b9399dfe668fbadb1e`.
+2. ✅ **DONE** — registered in the voice catalog as `wakeword` v0.3.0 in
+   `packages/shared/src/local-inference/voice-models.ts` (sha256s above +
+   that `hfRevision`), via `append_voice_model_version.py`.
+3. ⏳ **REMAINING (gated)** — assemble the three GGUFs into each tier bundle's
+   `wake/` dir through `scripts/publish/publish_all_eliza1.sh` (per
+   `packages/training/CLAUDE.md` §6 the bundles reach `elizaos/eliza-1` ONLY
+   through that gated flow — hardware verification + eval gates + manifest
+   regeneration; do NOT hand-assemble bundles).
+4. ⏳ **THEN** remove `hey-eliza` from `OPENWAKEWORD_PLACEHOLDER_HEADS`.
 
-Until the binary is published, the placeholder flag stays (the bundle still
-carries the renamed `hey_jarvis` placeholder) — flipping it earlier would claim
-a head that isn't downloadable.
+The placeholder flag STAYS until step 3 ships the real head in the bundles
+users download — the current bundles still carry the renamed `hey_jarvis`
+placeholder, so flipping the flag now would make the runtime treat that
+placeholder as authentic. Steps 1-2 (asset publish + catalog registration) are
+done and safe; step 3 is a release-engineering operation (full per-tier bundle
+re-publish).
 
 ## License
 

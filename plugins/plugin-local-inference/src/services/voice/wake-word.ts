@@ -82,14 +82,23 @@ export const OPENWAKEWORD_DEFAULT_HEAD = "hey-eliza";
  * definition — it is the wrong phrase.
  *
  * A real "hey eliza" head HAS been trained and verified end-to-end through
- * this exact runtime — ~98.8% true-accept / ~3.6% false-accept on a held-out
- * set scored via `libwakeword.so` (see
+ * this exact runtime — ~98% true-accept / ~4-7% false-accept on a held-out set
+ * scored via `libwakeword.so` (see
  * `packages/training/scripts/wakeword/HEY_ELIZA_HEAD_PROVENANCE.md`). It must
  * be trained with `train_eliza1_wakeword_head.py --no-mel-rescale` to match
- * this runtime's mel preprocessing. The only step left before removing
- * `hey-eliza` here is publishing that head's GGUF into the tier bundles; a
- * future pass should also consult the bundle manifest's `releaseState` so the
- * placeholder warning is data-driven rather than hard-coded.
+ * this runtime's mel preprocessing.
+ *
+ * The trained GGUFs are now PUBLISHED to `elizaos/eliza-1` at
+ * `voice/wakeword/hey-eliza.{melspec,embedding,classifier}.gguf` and registered
+ * in the voice catalog as `wakeword` v0.3.0 (`VOICE_MODEL_VERSIONS` in
+ * `@elizaos/shared`). `hey-eliza` nonetheless STAYS in this set until that head
+ * ships in every tier BUNDLE's `wake/` dir — the gated `publish_all_eliza1.sh`
+ * re-publish — because the bundles users currently download still carry the
+ * renamed `hey_jarvis` placeholder; removing the flag before the bundle ships
+ * the real head would make the runtime treat the placeholder as authentic.
+ * `hey_jarvis` stays by definition (wrong phrase). A future pass should make
+ * this data-driven off the bundle manifest's `releaseState` rather than
+ * hard-coded.
  */
 export const OPENWAKEWORD_PLACEHOLDER_HEADS: ReadonlySet<string> = new Set([
 	"hey-eliza",
