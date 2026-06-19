@@ -14,7 +14,7 @@ import {
 import { logger } from "../utils/logger";
 import { RETRYABLE_UPSTREAM_STATUSES } from "./failover";
 import { stripOpenRouterRoutingSuffix, toBitRouterModelId } from "./model-id-translation";
-import { getProviderKey } from "./provider-env";
+import { getProviderKey, getProviderKeys } from "./provider-env";
 import { hasAnyVastProviderConfigured, resolveVastEndpointConfig } from "./vast-endpoints";
 
 let groqClient: ReturnType<typeof createOpenAI> | null = null;
@@ -24,7 +24,10 @@ let openAIClient: {
   baseURL?: string;
   client: ReturnType<typeof createOpenAI>;
 } | null = null;
-let cerebrasClient: ReturnType<typeof createOpenAI> | null = null;
+// Cerebras: one cached client PER key so we can round-robin across multiple
+// keys to spread rate-limit headroom (the dedicated-agent 429 latency fix).
+let cerebrasClientsByKey: Map<string, ReturnType<typeof createOpenAI>> | null = null;
+let cerebrasRoundRobin = 0;
 let bitRouterClient: ReturnType<typeof createOpenAI> | null = null;
 let openRouterClient: ReturnType<typeof createOpenAI> | null = null;
 let anthropicClient: ReturnType<typeof createAnthropic> | null = null;
@@ -86,19 +89,39 @@ function getOpenAIClient() {
 }
 
 function getCerebrasClient() {
-  if (!cerebrasClient) {
-    const apiKey = getProviderKey("CEREBRAS_API_KEY");
-    if (!apiKey) {
-      throw new Error("CEREBRAS_API_KEY environment variable is required");
-    }
+  // Gather every configured Cerebras key (CEREBRAS_API_KEY, CEREBRAS_API_KEYS
+  // list, CEREBRAS_API_KEY_2..). Each key gets its own cached client; we
+  // round-robin per call so concurrent dedicated-agent traffic spreads across
+  // keys instead of hammering one and hitting 429 -> retry -> 26-55s latency.
+  const keys = getProviderKeys("CEREBRAS_API_KEY");
+  if (keys.length === 0) {
+    throw new Error("CEREBRAS_API_KEY environment variable is required");
+  }
 
-    cerebrasClient = createOpenAI({
+  if (!cerebrasClientsByKey) {
+    cerebrasClientsByKey = new Map();
+  }
+  // Drop any cached clients whose key is no longer configured.
+  for (const cachedKey of cerebrasClientsByKey.keys()) {
+    if (!keys.includes(cachedKey)) {
+      cerebrasClientsByKey.delete(cachedKey);
+    }
+  }
+
+  // Round-robin selection (stable, wraps on key count).
+  const apiKey = keys[cerebrasRoundRobin % keys.length];
+  cerebrasRoundRobin = (cerebrasRoundRobin + 1) % keys.length;
+
+  let client = cerebrasClientsByKey.get(apiKey);
+  if (!client) {
+    client = createOpenAI({
       apiKey,
       baseURL: "https://api.cerebras.ai/v1",
     });
+    cerebrasClientsByKey.set(apiKey, client);
   }
 
-  return cerebrasClient;
+  return client;
 }
 
 function getBitRouterApiKey(): string | null {
